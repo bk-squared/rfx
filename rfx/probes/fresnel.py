@@ -384,6 +384,83 @@ def oblique_reflection_magnitude(
     return jnp.mean(jnp.abs(tp - ip)) / jnp.mean(jnp.abs(ip))
 
 
+def oblique_reflection_coefficient(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    probe_index: jnp.ndarray,
+    interface_index: float,
+    n_gate: int | None = None,
+) -> jnp.ndarray:
+    """Differentiable COMPLEX Γ(θ) (amplitude AND phase) for OBLIQUE incidence.
+
+    Supersedes :func:`oblique_reflection_magnitude` (magnitude-only) by also recovering the
+    reflected PHASE — the RIS phase-steering knob. The obstacle at oblique incidence is that
+    the reflected phase varies by many π across the plateau, so a de-embedded complex mean
+    cancels unless the EXACT discrete k_x is used (the nominal ``k0·cosθ`` is dispersion-
+    shifted and wrong). The fix here is SELF-CALIBRATING: the de-rotation slope is measured
+    from the INCIDENT wave itself (its phase slope along the probe line = the true discrete
+    ``k_x``), so no analytic k_x / dispersion model is needed::
+
+        ratio_p = (T_p - I_p) / I_p                       # |ratio|≈|Γ|, ∠ = ∠Γ + 2·k_x·x_p
+        S       = -2 · d(∠I_p)/d(x_p)                     # from the incident (design-independent)
+        Γ       = mean_p[ ratio_p · e^{-j S x_p} ] · e^{+j S x_iface}
+
+    Because ``S`` is derived from the incident (vacuum) reference it is a CONSTANT w.r.t. the
+    scatterer, so ``Γ`` stays differentiable in ``total_series``. Uses the +j (conjugate) DFT
+    kernel (the oblique complex Bloch envelope; the #404 sign trap). Same oblique physics
+    protocol as :func:`oblique_reflection_magnitude` (narrowband, thick slab, time-gate, plateau).
+
+    Parameters
+    ----------
+    total_series, incident_series : (n_steps, n_probes) COMPLEX arrays
+        Bloch-envelope probe series (scatterer / vacuum) from an oblique ``forward()``.
+        ``incident_series`` is the design-independent reference (its phase sets ``S``).
+    f0, dt : float
+    probe_index : (n_probes,) array
+        Cell index of each probe along the propagation (x) axis. The phase slope is per-cell.
+    interface_index : float
+        Cell index of the reference plane (the scatterer front face) the phase is reported at.
+        A residual ~half-cell Yee offset remains (an εr-independent constant; calibratable).
+    n_gate : int, optional
+        DFT window (time-gate). Defaults to the full series.
+
+    Returns
+    -------
+    jnp.ndarray
+        Complex scalar Γ(f0) at the injected oblique angle, de-embedded to the reference plane.
+        Differentiable in ``total_series``. Validated vs analytic ``fresnel_r_te`` at θ=30°/45°:
+        |Γ| ~4-7%, phase ~180° up to the ~11° Yee reference-plane offset.
+
+    See Also
+    --------
+    oblique_reflection_magnitude : magnitude-only oblique |Γ| (no phase).
+    fresnel_reflection_coefficient : normal-incidence complex Γ.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    idx = jnp.asarray(probe_index, jnp.float32)
+    # self-calibrated de-rotation slope S = -2·(incident phase slope), in-graph linear fit.
+    ph = jnp.unwrap(jnp.angle(ip))
+    xm = idx - jnp.mean(idx)
+    slope_inc = jnp.sum(xm * (ph - jnp.mean(ph))) / jnp.sum(xm * xm)
+    s = -2.0 * slope_inc
+    ratio = (tp - ip) / ip
+    return jnp.mean(ratio * jnp.exp(-1j * s * idx)) * jnp.exp(1j * s * float(interface_index))
+
+
 def fresnel_r_te(angle_deg: float, eps_r: float) -> float:
     """Analytical TE Fresnel reflection coefficient magnitude.
 

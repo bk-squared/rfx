@@ -50,6 +50,29 @@ def _eps_slab(shape, xi, xe, eps):
     return a if eps == 1.0 else a.at[xi:xe, :, :].set(eps)
 
 
+def _build_lean(theta):
+    """Small oblique cell for the GRADIENT test only. AD=FD is config-independent, and the
+    reverse tape of the full-size config OOMs the GPU (~5.6GB alloc on rtx4090); this lean
+    domain/step-count keeps the AD peak well under GPU memory for the pre-release gate."""
+    dom = (0.40, 0.08, 0.006)
+    xif, xend, plat = 0.10, 0.30, (0.04, 0.08)
+    yc, zc = dom[1] / 2, dom[2] / 2
+    grid = Grid(freq_max=10e9, domain=dom, dx=DX, cpml_layers=10)
+    xi = grid.position_to_index((xif, yc, zc))[0]
+    xe = grid.position_to_index((xend, yc, zc))[0]
+    xprobes = np.arange(plat[0], plat[1], DX)
+    n = np.sqrt(EPS_R)
+    t_back = (2 * (xif - plat[1]) / C0) + (2 * (xend - xif) / (C0 / n))
+    ns = min(int(0.9 * t_back / grid.dt), 1000)
+    sim = Simulation(freq_max=10e9, domain=dom, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
+    sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
+                        angle_deg=theta, waveform="modulated_gaussian")
+    for xp in xprobes:
+        sim.add_probe((float(xp), yc, zc), component="ez")
+    probe_idx = np.array([grid.position_to_index((float(xp), yc, zc))[0] for xp in xprobes], float)
+    return sim, grid.shape, xi, xe, probe_idx, grid.dt, ns
+
+
 def _series(sim, eps_arr, ns, ckpt=False):
     return sim.forward(eps_override=eps_arr, n_steps=ns, checkpoint=ckpt,
                        skip_preflight=True).time_series  # complex for oblique
@@ -71,7 +94,7 @@ def test_oblique_fresnel_magnitude_vs_analytic(theta, tol):
 @pytest.mark.slow
 def test_oblique_reflection_magnitude_differentiable():
     """d|Γ|/dε flows through the checkpointed oblique forward and matches finite difference."""
-    sim, shape, xi, xe, dt, ns = _build(30.0)
+    sim, shape, xi, xe, _idx, dt, ns = _build_lean(30.0)  # lean config: AD tape fits GPU memory
     inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
 
     def absg(eps):
