@@ -1723,6 +1723,7 @@ def run_nonuniform_until_decay(
 
     peak_U = 0.0           # running peak, updated at checks only
     energy_below = 0       # consecutive sub-threshold energy checks
+    decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
     decay_checks: list = []
     ys_chunks = []
     steps_done = 0
@@ -1748,9 +1749,18 @@ def run_nonuniform_until_decay(
             if U < decay_by * peak_U:
                 energy_below += 1
                 if energy_below >= decay_energy_consecutive:
+                    decayed_fired = True
                     break
             else:
                 energy_below = 0
+
+    # #388: measured static-remnant advisory on cap-hit (until_decay is absorbing-only on
+    # the NU lane too, so a cap-hit without firing means the energy criterion could not
+    # self-terminate — warn if the remnant is electrostatic). Function-local import avoids
+    # a module-level simulation<->nonuniform cycle.
+    if not decayed_fired:
+        from rfx.simulation import _warn_static_remnant_cap_hit
+        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
     # Per-chunk ys concatenate to exactly steps_done rows; the
     # emit_time_series=False convention ((steps, 0)) is preserved
