@@ -102,14 +102,14 @@ def test_kerr_zero_chi3_unchanged():
     np.testing.assert_array_equal(np.array(corrected.ez), np.array(state.ez))
 
 
-def test_kerr_reactive_increment_scaling():
-    """Non-zero chi3 scales the INCREMENT (reactive), preserving the equilibrium E^n.
+def test_kerr_reactive_selfconsistent_solve():
+    """Non-zero chi3 solves the constitutive relation ε_r·E + χ³·|E|²·E = D_target
+    self-consistently (the #446 D-based reactive Kerr), preserving the equilibrium E^n.
 
-    Discriminates reactive from the pre-#437 dissipative whole-field scaling:
-      (a) zero increment (E_lin == E^n): field UNCHANGED even for chi3>0 (a whole-field
-          absorber would still shrink it);
-      (b) nonzero increment: scaled by 1/(1 + chi3|E^n|^2/eps_r), and the result stays
-          ABOVE E^n (the equilibrium is preserved — not driven toward zero).
+      (a) zero increment (E_lin == E^n): the field is UNCHANGED even for chi3>0 (E^n already
+          satisfies the constitutive relation ⇒ D_target=ε_eff·E^n ⇒ E=E^n). A dissipative
+          whole-field absorber would still shrink it.
+      (b) nonzero increment: E^{n+1} solves the cubic and lies strictly between E^n and E_lin.
     """
     shape = (6, 6, 6)
     E0, E_lin, eps_r, chi3_val = 4e5, 7e5, 2.0, 1e-12
@@ -118,18 +118,20 @@ def test_kerr_reactive_increment_scaling():
     chi3_arr = jnp.full(shape, chi3_val, jnp.float32)
     eps_r_arr = jnp.full(shape, eps_r, jnp.float32)
 
-    # (a) zero increment => reactive leaves the field at the equilibrium E0
+    # (a) zero increment => the equilibrium field is preserved
     state_eq = init_state(shape)._replace(ex=jnp.full(shape, E0, jnp.float32))
     out_eq = apply_kerr_ade(state_eq, e_prev, chi3_arr, eps_r_arr)
-    np.testing.assert_allclose(np.array(out_eq.ex), E0, rtol=1e-6)
+    np.testing.assert_allclose(np.array(out_eq.ex), E0, rtol=1e-5)
 
-    # (b) nonzero increment => exact increment-scaled value, still above E0
+    # (b) nonzero increment => the self-consistent constitutive solve (same fixed-point)
     state = init_state(shape)._replace(ex=jnp.full(shape, E_lin, jnp.float32))
     out = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
-    factor = chi3_val * E0 ** 2 / eps_r
-    expected = E0 + (E_lin - E0) / (1.0 + factor)
-    np.testing.assert_allclose(float(out.ex[3, 3, 3]), expected, rtol=1e-5)
-    assert E0 < float(out.ex[3, 3, 3]) < E_lin       # increment shrunk, equilibrium kept
+    D_target = eps_r * E_lin + chi3_val * E0 ** 3          # ε_r·E_lin + χ³·|E^n|²·E^n
+    E = E_lin
+    for _ in range(4):
+        E = D_target / (eps_r + chi3_val * E ** 2)
+    np.testing.assert_allclose(float(out.ex[3, 3, 3]), E, rtol=1e-3)
+    assert E0 < float(out.ex[3, 3, 3]) < E_lin            # between equilibrium and linear
 
 
 def test_kerr_ade_differentiable():
