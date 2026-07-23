@@ -2217,6 +2217,7 @@ class _ExecuteMixin:
         *,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
+        mu_r_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
@@ -2246,6 +2247,13 @@ class _ExecuteMixin:
             Replacement permittivity array with shape ``grid.shape``.
         sigma_override : jnp.ndarray or None
             Replacement conductivity array with shape ``grid.shape``.
+        mu_r_override : jnp.ndarray or None
+            Replacement relative permeability array with shape ``grid.shape``.
+            Differentiable (the H-update coefficient is ``dt/(mu_r*MU_0*dx)``), so
+            ``jax.grad`` flows w.r.t. a magnetic-material design variable (ferrite /
+            magnetic-RAM inverse design). Uniform single-device lane only; a
+            non-uniform mesh or ``distributed=True`` raises (it would otherwise be
+            silently dropped — a zero-gradient no-op).
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None
@@ -2453,6 +2461,15 @@ class _ExecuteMixin:
                 "uniform mesh + single device for TFSF/plane-wave inverse design."
             )
 
+        # mu_r_override is wired only on the uniform lane; the NU/distributed
+        # material-override paths do not thread it, so fail loud instead of
+        # silently dropping it to a zero-gradient no-op.
+        if mu_r_override is not None and plan.lane != "fwd_uniform":
+            raise NotImplementedError(
+                "mu_r_override (differentiable permeability) is supported only on "
+                f"the uniform single-device forward lane, not {plan.lane!r}."
+            )
+
         if plan.lane == "fwd_distributed_nu":
             return self._forward_distributed_nonuniform_from_materials(
                 eps_override=eps_override,
@@ -2489,11 +2506,11 @@ class _ExecuteMixin:
         grid = self._build_grid()
         materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = self._assemble_materials(grid)
 
-        if eps_override is not None or sigma_override is not None:
+        if eps_override is not None or sigma_override is not None or mu_r_override is not None:
             materials = MaterialArrays(
                 eps_r=eps_override if eps_override is not None else materials.eps_r,
                 sigma=sigma_override if sigma_override is not None else materials.sigma,
-                mu_r=materials.mu_r,
+                mu_r=mu_r_override if mu_r_override is not None else materials.mu_r,
             )
 
         if pec_mask_override is not None:

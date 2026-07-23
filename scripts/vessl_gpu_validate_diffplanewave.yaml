@@ -30,7 +30,7 @@ run: |-
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
   out=".omx/gpu-validate/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
   mkdir -p "$out"
-  echo "=== new slow tests on GPU (-m slow, 4 files: Fresnel Gamma / RCS jax / oblique |Gamma| / RCS reduction) ==="
+  echo "=== new slow tests on GPU (-m slow, 5 files: Fresnel Gamma / RCS jax / oblique |Gamma| / RCS reduction / magnetic mu_r RAM) ==="
   # POSIX-safe rc capture (the VESSL runner shell chokes on ${PIPESTATUS[0]}; see gpu_suite.yaml).
   set +e
   timeout 9000 python -m pytest -m slow -q -ra -p no:cacheprovider \
@@ -39,6 +39,7 @@ run: |-
     tests/test_oblique_fresnel_magnitude.py \
     tests/test_oblique_fresnel_phase.py \
     tests/test_rcs_reduction_inverse_design.py \
+    tests/test_ram_magnetic_mu_r_design.py \
     > "$out/validate.log" 2>&1
   rc=$?
   set -e
