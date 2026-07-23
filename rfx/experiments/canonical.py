@@ -257,10 +257,26 @@ def compile_canonical_experiment(
     except CanonicalSpecError as exc:
         raise ExperimentCompileError([exc.to_diagnostic()]) from exc
 
+    diagnostics: list[CompileDiagnostic] = []
     plan = spec.semantic_plan
+    if plan["simulation"]["dimensionality"].startswith("2d"):
+        for index, observation in enumerate(plan["observations"]):
+            if (
+                observation["kind"] == "field_snapshot"
+                and observation["axis"] == "z"
+                and observation["coordinate_m"] != 0
+            ):
+                observation["coordinate_m"] = 0.0
+                diagnostics.append(
+                    CompileDiagnostic(
+                        "field_plane_snapped",
+                        "warning",
+                        f"$.observations[{index}].coordinate_m",
+                        "The requested 2-D z-normal field snapshot was snapped to the solved z=0 plane.",
+                    )
+                )
     semantic = spec.semantic_fingerprint
     compiled_sha = _sha256_text(_canonical_json(plan))
-    diagnostics: list[CompileDiagnostic] = []
     if spec.metadata.get("fidelity") == "structural-cpu-smoke":
         diagnostics.append(
             CompileDiagnostic(
@@ -941,16 +957,6 @@ def _validate_document(document: dict[str, Any]) -> None:
                     "range_error",
                     f"{path}.coordinate_m",
                     "field snapshot plane must lie inside the simulation domain",
-                )
-            if (
-                simulation["dimensionality"].startswith("2d")
-                and item["axis"] == "z"
-                and coordinate != 0
-            ):
-                _fail(
-                    "range_error",
-                    f"{path}.coordinate_m",
-                    "2-D z-normal field snapshots must use the solved z=0 plane",
                 )
         else:
             _fail(

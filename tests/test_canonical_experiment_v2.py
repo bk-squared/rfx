@@ -202,17 +202,20 @@ def test_metadata_edits_preserve_semantics_but_physics_edits_change_it():
     assert base.semantic_fingerprint != physics_change.semantic_fingerprint
 
 
-def test_2d_field_snapshot_is_locked_to_the_solved_z_plane():
+def test_2d_field_snapshot_off_plane_request_warns_and_compiles_on_solved_plane():
     document = _load(FIXTURE_ROOT / "multilayer_fresnel_v2.json")
     assert document["observations"][2]["coordinate_m"] == 0.0
 
     document["observations"][2]["coordinate_m"] = 0.02
-    with pytest.raises(ExperimentCompileError) as caught:
-        compile_canonical_experiment(document)
+    compiled = compile_canonical_experiment(document)
 
-    diagnostic = caught.value.diagnostics[0]
-    assert diagnostic.code == "range_error"
+    diagnostic = next(
+        item for item in compiled.diagnostics if item.code == "field_plane_snapped"
+    )
+    assert diagnostic.severity == "warning"
     assert diagnostic.path == "$.observations[2].coordinate_m"
+    assert compiled.spec.to_dict()["observations"][2]["coordinate_m"] == 0.02
+    assert compiled.config["observations"][2]["coordinate_m"] == 0.0
 
 
 def test_scene_preview_is_spec_derived_and_does_not_require_solver(monkeypatch):

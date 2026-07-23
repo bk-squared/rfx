@@ -186,6 +186,37 @@ test("patch journey: create, edit, preview, run, inspect, compare, cancel, expor
   });
 });
 
+test("deleted spec sections stay recoverable and sweep edits preserve mesh margin", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load patch example" }).click();
+  await expect(page.getByRole("heading", { name: "2.4 GHz FR4 patch antenna" })).toBeVisible();
+
+  await page.getByLabel("Sweep stop in GHz").fill("2.8");
+  await page.getByRole("button", { name: "Save as new revision" }).click();
+  await expect(page.getByText("Revision 2 created", { exact: false })).toBeVisible();
+
+  const selectedExperimentId = await page.evaluate(() =>
+    localStorage.getItem("rfx:selected-experiment"));
+  const experiments = await (await page.request.get("/api/experiments")).json();
+  const selectedExperiment = experiments.find(
+    (candidate: { id: string }) => candidate.id === selectedExperimentId,
+  );
+  const revision = await (
+    await page.request.get(`/api/revisions/${selectedExperiment.current_revision_id}`)
+  ).json();
+  expect(revision.spec.simulation.freq_max_hz).toBe(4.32e9);
+
+  const invalidSpec = structuredClone(revision.spec);
+  delete invalidSpec.simulation;
+  delete invalidSpec.validation;
+  await page.getByRole("tab", { name: "Model & Code" }).click();
+  const editor = page.locator('[aria-label="ExperimentSpec JSON editor"] .cm-content');
+  await editor.fill(JSON.stringify(invalidSpec, null, 2));
+  await page.getByRole("tab", { name: "Design" }).click();
+  await expect(page.getByText("Setup is invalid", { exact: true })).toBeVisible();
+  await expect(page.getByText("Support lane", { exact: true })).toBeVisible();
+});
+
 test("agent patch is inert until Studio approves the exact MCP call", async ({ page }) => {
   const experiments = await (await page.request.get("/api/experiments")).json();
   expect(experiments.length).toBeGreaterThan(0);

@@ -284,6 +284,33 @@ def test_local_copilot_applies_advertised_sweep_change_across_workflows(tmp_path
         assert center_only.status_code == 200, center_only.text
         assert center_only.json()["candidate_spec"]["simulation"]["freq_max_hz"] == 3e9
 
+        points_only = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "2.4 GHz sweep에서 41 points로 변경"},
+        )
+        assert points_only.status_code == 200, points_only.text
+        points_only_spec = points_only.json()["candidate_spec"]
+        assert points_only_spec["observations"][0]["stop_hz"] == 3e9
+        assert points_only_spec["observations"][0]["points"] == 41
+        assert points_only_spec["simulation"]["freq_max_hz"] == 3e9
+
+        invalid_stop = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "sweep to 2.0 GHz"},
+        )
+        assert invalid_stop.status_code == 200, invalid_stop.text
+        assert invalid_stop.json()["needs_clarification"] is True
+        assert invalid_stop.json()["patch"] == []
+
+        shorter = client.post(
+            "/api/copilot/proposals",
+            json={"intent": "sweep to 2.8 GHz"},
+        )
+        assert shorter.status_code == 200, shorter.text
+        shorter_spec = shorter.json()["candidate_spec"]
+        assert shorter_spec["observations"][0]["stop_hz"] == 2.8e9
+        assert shorter_spec["simulation"]["freq_max_hz"] == 3e9
+
         patch = client.post(
             "/api/copilot/proposals",
             json={"intent": "sweep을 3.5 GHz까지 늘리고 41 points로 변경"},
