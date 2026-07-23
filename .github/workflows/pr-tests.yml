@@ -87,7 +87,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install package with dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Fast suite — shard ${{ matrix.group }} of 4
         run: >

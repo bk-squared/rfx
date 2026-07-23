@@ -51,5 +51,5 @@ def test_all_extra_self_reference_uses_distribution_name():
     )
 
     assert pyproject["project"]["optional-dependencies"]["all"] == [
-        "rfx-fdtd[optimization,visualization,dashboard,agent,studio,dev]"
+        "rfx-fdtd[optimization,visualization,dashboard,agent,studio,cad,dev]"
     ]
