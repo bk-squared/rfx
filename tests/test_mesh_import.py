@@ -157,6 +157,46 @@ def test_mesh_preflight_underresolved_advisory():
         "advisory false-fired on a finely-tessellated but well-resolved sphere (tessellation cry-wolf)")
 
 
+def test_mesh_from_step_file():
+    """STEP import via the cascadio backend (issue #358 Stage 2): the committed 30×20×2 mm box
+    loads watertight (tessellation seams welded), already in metres (scale=1.0), and its occupancy
+    matches an analytic axis-aligned box within one cell."""
+    pytest.importorskip("cascadio", reason="STEP import needs the optional cascadio backend")
+    import os
+
+    step = os.path.join(os.path.dirname(__file__), "fixtures", "mesh", "box_30x20x2mm.step")
+    shape = MeshShape.from_file(step, scale=1.0)  # cascadio → metres already
+    (lox, loy, loz), (hix, hiy, hiz) = shape.bounding_box()
+    assert (hix - lox, hiy - loy, hiz - loz) == pytest.approx((0.03, 0.02, 0.002), abs=1e-4)
+
+    dx = 0.0008
+    x = _coords(-0.004, 0.034, dx)
+    y = _coords(-0.004, 0.024, dx)
+    z = _coords(-0.003, 0.005, dx)
+    m = np.asarray(shape.mask_on_coords(x, y, z))
+    X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
+    ana = ((X >= lox) & (X <= hix) & (Y >= loy) & (Y <= hiy) & (Z >= loz) & (Z <= hiz))
+    dfx = np.minimum(np.abs(X - lox), np.abs(X - hix))
+    dfy = np.minimum(np.abs(Y - loy), np.abs(Y - hiy))
+    dfz = np.minimum(np.abs(Z - loz), np.abs(Z - hiz))
+    surf_dist = np.minimum(np.minimum(dfx, dfy), dfz)
+    xor = m ^ ana
+    assert xor.sum() / ana.sum() < 0.15, "STEP box occupancy disagrees with analytic by >15%"
+    assert _within_one_cell(xor, surf_dist, dx), "STEP box disagreement not confined to one cell"
+
+
+def test_mesh_caches_occupancy():
+    """The expensive point-in-mesh containment is cached by coordinate content: re-rasterising the
+    same grid returns the SAME mask object (the S-param paths rebuild materials repeatedly)."""
+    shape = MeshShape(trimesh.creation.icosphere(subdivisions=3, radius=0.01))
+    x = np.linspace(-0.02, 0.02, 20)
+    m1 = shape.mask_on_coords(x, x, x)
+    m2 = shape.mask_on_coords(x, x, x)
+    assert m1 is m2, "repeat rasterisation of the same grid should return the cached mask"
+    m3 = shape.mask_on_coords(x * 0.5, x, x)   # different grid → cache miss, distinct entry
+    assert m3 is not m1 and len(shape._mask_cache) == 2
+
+
 def test_mesh_rejects_traced_coordinates():
     """MeshShape rasterises host-side (trimesh.contains) so it can't be traced/jitted — a traced
     coordinate must raise a clear MeshShape error, not a cryptic JAX array-conversion failure."""
