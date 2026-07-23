@@ -2002,6 +2002,8 @@ def run_until_decay(
     min_steps: int = 100,
     max_steps: int = 50_000,
     decay_energy_consecutive: int = 2,
+    radiated_flux_box: tuple | None = None,
+    flux_env_checks: int = 4,
     monitor_component: str = "ez",
     monitor_position: tuple[float, float, float] | None = None,
     boundary: str = "pec",
@@ -2060,6 +2062,20 @@ def run_until_decay(
         threshold check can false-fire on such a dip, so ``>= 2`` is required
         to absorb the chatter. Has no effect on closed/PEC boundaries (which
         use the instantaneous point-field fallback).
+    radiated_flux_box : tuple or None
+        Opt-in (#388) RADIATED-FLUX stop for absorbing boundaries: a Huygens box
+        ``((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))`` in physical coordinates
+        enclosing the structure (clear of the CPML). When set, the stop uses the
+        outgoing Poynting flux through the box instead of the interior energy —
+        a *radiation-settling* criterion that ignores non-radiating trapped
+        energy (the static soft-source charge that FLOORS the energy criterion,
+        and near-Nyquist grid buzz), because neither carries net radiated power.
+        Appropriate for radiation / S-parameter measurements; the flux peak is
+        tracked from the first check (the radiation peaks during the source
+        drive). Default ``None`` keeps the interior-energy criterion, unchanged.
+    flux_env_checks : int
+        Number of recent checks whose ``|flux|`` max forms the envelope used by
+        the radiated-flux stop, smoothing the 2f0 Poynting oscillation. Default 4.
     monitor_component : str
         Field component to monitor ("ez", "hy", etc.). Used only by the
         closed/PEC point-field fallback stop.
@@ -2271,9 +2287,46 @@ def run_until_decay(
                  + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
         return float(jnp.sum(u))
 
+    # #388 opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
+    # box decays, instead of the interior energy. This is a *radiation-settling* criterion —
+    # it ignores non-radiating trapped energy (the static soft-source charge that FLOORS the
+    # energy criterion, and near-Nyquist grid buzz) because neither carries net radiated power.
+    # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
+    # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
+    use_flux_stop = radiated_flux_box is not None and use_absorbing
+    if use_flux_stop:
+        _flo = grid.position_to_index(radiated_flux_box[0])
+        _fhi = grid.position_to_index(radiated_flux_box[1])
+        _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
+               min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
+               min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
+
+    def _radiated_power(state) -> float:
+        """Net outgoing Poynting flux P = ∮ (E×H)·n̂ dA over the box (co-located approx; a stop
+        criterion needs only the DECAY, so the half-cell Yee stagger is neglected). The dA=dx²
+        factor is a constant that cancels in P/peak_P."""
+        ex, ey, ez = state.ex, state.ey, state.ez
+        hx, hy, hz = state.hx, state.hy, state.hz
+        il, ih, jl, jh, kl, kh = _bl
+        jj, kk = slice(jl, jh), slice(kl, kh)
+        ii = slice(il, ih)
+        # +x/-x faces: S_x = Ey·Hz - Ez·Hy
+        p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
+        p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
+        # +y/-y faces: S_y = Ez·Hx - Ex·Hz
+        p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
+        p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
+        # +z/-z faces: S_z = Ex·Hy - Ey·Hx
+        p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
+        p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
+        return float(p)
+
     peak_sq = 0.0          # closed/PEC point-field running peak
     peak_U = 0.0           # absorbing interior-energy running peak (at checks)
     energy_below = 0       # consecutive sub-threshold energy checks
+    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope
+    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
+    flux_hist: list[float] = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
     all_probes = []
     actual_steps = 0
@@ -2287,7 +2340,26 @@ def run_until_decay(
         all_probes.append(probe_out)
         actual_steps = step + 1
 
-        if use_absorbing:
+        if use_absorbing and use_flux_stop:
+            # #388 opt-in: RADIATED-FLUX stop. Compute the net outgoing Poynting flux at each
+            # check; smooth the 2f0 oscillation with a max-envelope over the last
+            # ``flux_env_checks`` checks; stop when the envelope decays below the threshold.
+            # The flux PEAK is during the source drive, so track it from the FIRST check (unlike
+            # the interior energy, whose peak is post-source); only the STOP check waits for
+            # min_steps.
+            if step % check_interval == 0:
+                flux_hist.append(abs(_radiated_power(carry["fdtd"])))
+                env = max(flux_hist[-flux_env_checks:])
+                if env > peak_flux:
+                    peak_flux = env
+                if actual_steps >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
+                    flux_below += 1
+                    if flux_below >= decay_energy_consecutive:
+                        decayed_fired = True
+                        break
+                else:
+                    flux_below = 0
+        elif use_absorbing:
             # Interior-energy criterion. The reduction is check-step-only (the
             # whole-domain sum is the expensive part), so we compute U ONLY on
             # an eligible check step — never every step.
@@ -2316,9 +2388,10 @@ def run_until_decay(
                 if val_sq < decay_by * peak_sq:
                     break
 
-    # #388: measured static-remnant advisory on an absorbing-lane cap-hit (the energy
-    # criterion never fired). Complements the pre-run waveform-DC advisory.
-    if use_absorbing and not decayed_fired:
+    # #388: measured static-remnant advisory on an absorbing-lane ENERGY cap-hit (the energy
+    # criterion never fired). Complements the pre-run waveform-DC advisory. Not applicable to
+    # the flux-stop lane (which rejects the static remnant by construction).
+    if use_absorbing and not decayed_fired and not use_flux_stop:
         _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
     # ---- assemble result ----
