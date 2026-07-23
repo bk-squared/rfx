@@ -30,6 +30,8 @@ def main() -> int:
         part_mm.export(stl)
 
         # 2. Import: STL is unitless, so scale mm -> m explicitly; place it in the domain.
+        #    (STEP works the same way — MeshShape.from_file('part.step', scale=1.0), since the
+        #    cascadio backend already converts STEP units to metres on load.)
         patch = MeshShape.from_file(str(stl), scale=1e-3, translate=(0.03, 0.02, 0.015))
         print(f"imported mesh: bbox = {patch.bounding_box()}  "
               f"min feature = {patch.min_feature_size() * 1e3:.2f} mm")
