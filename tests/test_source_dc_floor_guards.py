@@ -148,8 +148,36 @@ def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
         # not the truncation branch.
         assert "truncation-dominated" not in fired[0]
         assert "thin source cells" in fired[0]
+        # #388: the intrinsic-DC advisory must route to the purpose-built
+        # remedy (the radiated-flux stop criterion), not just the weaker
+        # reduce-DC / fixed-n_steps options.
+        assert "radiated_flux_box" in fired[0], (
+            f"{label}: DC-floor warning should point to the flux-stop remedy")
     else:
         assert not fired, f"{label}: unexpected #388 warning: {fired}"
+
+
+def test_static_remnant_cap_hit_points_to_flux_stop():
+    """#388 post-run advisory: on a cap-hit with an electrostatic remnant (E-only, H≈0),
+    the warning must route to the purpose-built flux-stop remedy (radiated_flux_box=)."""
+    from rfx.simulation import _warn_static_remnant_cap_hit
+    from rfx.grid import Grid
+    from rfx.core.yee import init_state, init_materials
+
+    grid = Grid(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3, cpml_layers=4)
+    materials = init_materials(grid.shape)
+    # electrostatic remnant: an interior E-only field, H identically zero (H-share → 0)
+    state = init_state(grid.shape)
+    cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
+    state = state._replace(ez=state.ez.at[cx, cy, cz].set(1.0))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _warn_static_remnant_cap_hit(state, materials, grid)
+    msgs = [str(w.message) for w in caught if "issue #388" in str(w.message)]
+    assert msgs, "electrostatic-remnant cap-hit should warn"
+    assert "radiated_flux_box" in msgs[0], (
+        "the cap-hit advisory should point to the flux-stop remedy")
 
 
 def test_until_decay_dc_floor_wired_into_run():

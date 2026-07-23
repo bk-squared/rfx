@@ -1986,9 +1986,12 @@ def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
             f"(H-share {h_share:.1e}). A static soft-source charge remnant (discrete-Poisson "
             f"self-energy that neither radiates nor is absorbed by CPML) held the interior energy "
             f"above decay_by*peak_U while the radiating field settled, so the energy criterion "
-            f"could not self-terminate. Remedies: reduce the source's deposited DC (GaussianPulse "
-            f"cutoff / lower bandwidth), run a fixed n_steps, or confirm settling from the probe "
-            f"envelope. (issue #388)",
+            f"could not self-terminate. The purpose-built remedy is the radiated-flux stop "
+            f"criterion (immune to this static floor — it terminates on outgoing-flux settling, "
+            f"not interior energy): re-run with "
+            f"radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator. Otherwise reduce "
+            f"the source's deposited DC (GaussianPulse cutoff / lower bandwidth), run a fixed "
+            f"n_steps, or confirm settling from the probe envelope. (issue #388)",
             UserWarning,
         )
 
