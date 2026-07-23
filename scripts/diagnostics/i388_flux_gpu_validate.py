@@ -15,15 +15,17 @@ os.environ.setdefault("PT_SKIP_NTFF", "1")
 import warnings; warnings.filterwarnings("ignore")
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from patch_tutorial_rfx import build_cubic  # noqa: E402
+from patch_tutorial_rfx import build_cubic, build  # noqa: E402
 
 DMAX = int(os.environ.get("FLUX_DMAX", "40000"))
 DECAY_BY = 1e-3
 MIN_STEPS = 4000
+# FLUX_MESH=cubic (uniform, build_cubic) or nu (graded-dz, build — the REAL #388 fixture class)
+MESH = os.environ.get("FLUX_MESH", "cubic")
 
 
 def _fixture():
-    sim, meta, _ = build_cubic()
+    sim, meta, _ = (build() if MESH == "nu" else build_cubic())
     dom_x = meta["dom_x_mm"] * 1e-3
     dom_z = meta["z_total_mm"] * 1e-3
     # Huygens box enclosing the antenna, clear of the CPML (8 layers ~6mm)
@@ -44,7 +46,7 @@ def _add_flux_plane(sim, dom_x, dom_z):
     return off, len(pts)
 
 
-print("=== #388 radiated-flux stop — GPU validation (uniform patch, build_cubic) ===")
+print(f"=== #388 radiated-flux stop — GPU validation (mesh={MESH}: {'NU graded-dz' if MESH=='nu' else 'uniform cubic'} patch) ===")
 import jax
 print("jax devices:", jax.devices())
 

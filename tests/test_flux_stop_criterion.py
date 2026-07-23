@@ -67,3 +67,48 @@ def test_flux_stop_finite_and_stops_before_max():
     ts = np.asarray(r.time_series)
     assert np.all(np.isfinite(ts))
     assert ts.shape[0] < 6000, "flux criterion must fire (not hit decay_max_steps)"
+
+
+# --------------------------------------------------------------------------- #
+# Non-uniform (dz_profile) lane — the actual #388 fixture class is NU.
+# --------------------------------------------------------------------------- #
+def _nu_sim():
+    nz = 40
+    dz = np.full(nz, 1.5e-3)
+    dz[15:25] = 0.8e-3          # a graded fine band (triggers the NU chunked lane)
+    s = Simulation(freq_max=8e9, domain=(0.06, 0.06, 0.0), dx=1.5e-3, dz_profile=dz,
+                   boundary="cpml", cpml_layers=8, mode="3d")
+    s.add_source(position=(0.03, 0.03, 0.03), component="ez",
+                 waveform=GaussianPulse(f0=4e9, bandwidth=0.8))
+    s.add_probe((0.03, 0.03, 0.03), component="ez")
+    return s
+
+
+_NU_BOX = ((0.018, 0.018, 0.015), (0.042, 0.042, 0.045))
+
+
+def _nu_stop(radiated_flux_box):
+    kw = dict(until_decay=1e-3, decay_check_interval=100, decay_min_steps=600,
+              decay_max_steps=5000, skip_preflight=True)
+    if radiated_flux_box is not None:
+        kw["radiated_flux_box"] = radiated_flux_box
+    return np.asarray(_nu_sim().run(**kw).time_series)
+
+
+@pytest.mark.slow
+def test_flux_stops_while_energy_floors_nonuniform():
+    """The NU (chunked-scan) lane: flux criterion STOPS while the energy criterion FLOORS on a
+    dz_profile fixture — the flux stop is available on the real #388 mesh class, not just uniform."""
+    nE = _nu_stop(None).shape[0]
+    nF = _nu_stop(_NU_BOX).shape[0]
+    assert nE >= 4900, f"NU energy criterion should floor, stopped at {nE}"
+    assert nF < 2500, f"NU flux criterion should stop early, stopped at {nF}"
+    assert nF < nE
+
+
+@pytest.mark.slow
+def test_flux_stop_opt_out_byte_identical_nonuniform():
+    """NU opt-out (radiated_flux_box=None) is byte-identical to the NU energy run."""
+    a = _nu_stop(None)
+    b = _nu_stop(None)
+    assert a.shape == b.shape and np.array_equal(a, b)
