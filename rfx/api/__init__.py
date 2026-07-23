@@ -1506,13 +1506,20 @@ class Simulation(
 
         Parameters
         ----------
-        waveform : {"differentiated_gaussian", "modulated_gaussian"}
-            Pulse shape injected into the 1D auxiliary grid.
+        waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
+            Pulse shape injected into the 1D auxiliary grid. (``continuous_wave``
+            is only supported at normal incidence — ``angle_deg == 0``.)
 
             ``differentiated_gaussian`` (default, legacy rfx): baseband
             pulse with no carrier, DC-free, spectrum peaks near
             ``f0·bandwidth``. Good for broadband measurements but
             spectrum extends well below ``f0``.
+
+            ``continuous_wave``: a single-frequency sinusoid at ``f0`` with a
+            raised-cosine turn-on (~8 periods), then constant amplitude. Use for
+            steady-state / narrowband measurements that need a well-defined
+            time-average ``⟨E²⟩ = A²/2`` (e.g. the quantitative Kerr SPM oracle,
+            #446). Not for broadband S-parameters — it excites only ``f0``.
 
             ``modulated_gaussian``: carrier-modulated Gaussian matching
             Meep's ``GaussianSource(frequency=f0, fwidth=f0·bandwidth)``.
@@ -1546,10 +1553,15 @@ class Simulation(
             raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
         if abs(angle_deg) >= 90.0:
             raise ValueError(f"abs(angle_deg) must be < 90, got {angle_deg}")
-        if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+        if waveform == "continuous_wave" and abs(angle_deg) != 0.0:
             raise ValueError(
-                f"waveform must be 'differentiated_gaussian' or "
-                f"'modulated_gaussian', got {waveform!r}"
+                "waveform='continuous_wave' is only supported at normal incidence "
+                f"(angle_deg=0); got angle_deg={angle_deg}"
+            )
+        if waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
+            raise ValueError(
+                "waveform must be 'differentiated_gaussian', 'modulated_gaussian', "
+                f"or 'continuous_wave', got {waveform!r}"
             )
 
         self._tfsf = _TFSFEntry(

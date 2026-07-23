@@ -155,10 +155,10 @@ def init_tfsf(
     (TFSFConfig, TFSFState) for normal incidence, or
     (TFSF2DConfig, TFSF2DState) for oblique incidence (|angle_deg| > 0.01).
     """
-    if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+    if waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
         raise ValueError(
-            f"waveform must be 'differentiated_gaussian' or "
-            f"'modulated_gaussian', got {waveform!r}"
+            f"waveform must be 'differentiated_gaussian', "
+            f"'modulated_gaussian', or 'continuous_wave', got {waveform!r}"
         )
     # Dispatch to 2D auxiliary grid for oblique angles.
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
@@ -244,6 +244,12 @@ def init_tfsf(
         fwidth = f0 * bandwidth
         tau = 1.0 / (np.pi * fwidth)
         t0 = 5.0 * tau
+    elif waveform == "continuous_wave":
+        # Ramped CW: a raised-cosine turn-on over t0, then constant amplitude — for
+        # steady-state / narrowband measurements where a well-defined ⟨E²⟩=A²/2 is needed
+        # (e.g. the quantitative Kerr SPM oracle, #446). t0 is the ramp duration.
+        t0 = 8.0 / f0        # ~8-period smooth turn-on
+        tau = t0             # unused by the CW branch; kept finite for the config
     else:
         tau = 1.0 / (f0 * bandwidth * np.pi)
         t0 = 3.0 * tau
@@ -395,6 +401,10 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     if cfg.src_waveform == "modulated_gaussian":
         carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         src_val = cfg.src_amp * env * carrier
+    elif cfg.src_waveform == "continuous_wave":
+        # raised-cosine ramp 0->1 over src_t0, then constant amplitude
+        ramp = 0.5 * (1.0 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0.0, 1.0)))
+        src_val = cfg.src_amp * ramp * jnp.sin(2.0 * jnp.pi * cfg.src_fcen * t)
     else:
         src_val = cfg.src_amp * (-2.0 * arg) * env
     e1d = e1d.at[cfg.src_idx].add(src_val)
