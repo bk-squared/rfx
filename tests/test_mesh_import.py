@@ -127,27 +127,47 @@ def test_mesh_plugs_into_simulation():
 
 
 def test_mesh_preflight_underresolved_advisory():
-    """The preflight advisory fires when the mesh's smallest feature is below ~2 cells —
-    the safety net for silently-lost fine geometry (#358 acceptance). preflight() collects
-    messages into the returned PreflightReport."""
+    """The preflight advisory fires when the mesh's THINNEST dimension is below ~2 cells (a thin
+    plate/wall — the #330 class), and stays SILENT on a well-resolved part regardless of how finely
+    it is tessellated (the proxy is bbox extent, not triangle-edge, so smooth CAD doesn't cry wolf).
+    preflight() collects messages into the returned PreflightReport."""
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=0.006,
                      boundary="cpml", cpml_layers=6, mode="3d")
     sim.add_source((0.03, 0.03, 0.03), component="ez")
-    # finely tessellated sphere: smallest triangle edge (~0.83 mm) << 2·dx (12 mm)
+    # a thin plate: 0.8 mm thick << 2·dx (12 mm) — its thickness is lost by rasterisation
+    plate = trimesh.creation.box(extents=(0.03, 0.02, 0.0008))
+    plate.apply_translation([0.03, 0.03, 0.03])
+    sim.add(MeshShape(plate), material="pec")
     report = sim.preflight()
-    fine = MeshShape(trimesh.creation.icosphere(subdivisions=4, radius=0.012))
-    sim.add(fine, material="pec")
-    report = sim.preflight()
-    assert any("smallest feature" in str(m) and "below 2 cells" in str(m) for m in report), (
-        f"under-resolved mesh advisory did not fire; report={[str(m) for m in report]}")
+    assert any("thinnest dimension" in str(m) and "below 2 cells" in str(m) for m in report), (
+        f"under-resolved (thin-plate) mesh advisory did not fire; report={[str(m) for m in report]}")
 
-    # control: a coarse mesh (feature >> 2 cells) must NOT trip the advisory
+    # control: a finely-tessellated but WELL-RESOLVED sphere must NOT trip the advisory — its
+    # triangle edges are ~sub-mm, but its thinnest dimension (diameter 80 mm) spans many cells.
     sim2 = Simulation(freq_max=5e9, domain=(0.12, 0.12, 0.12), dx=0.002,
                       boundary="cpml", cpml_layers=6, mode="3d")
     sim2.add_source((0.06, 0.06, 0.06), component="ez")
-    sim2.add(MeshShape(trimesh.creation.icosphere(subdivisions=1, radius=0.04)), material="pec")
+    ball = trimesh.creation.icosphere(subdivisions=4, radius=0.04)
+    ball.apply_translation([0.06, 0.06, 0.06])
+    sim2.add(MeshShape(ball), material="pec")
     report2 = sim2.preflight()
-    assert not any("smallest feature" in str(m) for m in report2), (
-        "advisory false-fired on a well-resolved mesh")
+    assert not any("thinnest dimension" in str(m) for m in report2), (
+        "advisory false-fired on a finely-tessellated but well-resolved sphere (tessellation cry-wolf)")
+
+
+def test_mesh_rejects_traced_coordinates():
+    """MeshShape rasterises host-side (trimesh.contains) so it can't be traced/jitted — a traced
+    coordinate must raise a clear MeshShape error, not a cryptic JAX array-conversion failure."""
+    import jax
+    import jax.numpy as jnp
+
+    shape = MeshShape(trimesh.creation.icosphere(subdivisions=2, radius=0.01))
+    coords = jnp.linspace(-0.02, 0.02, 8)
+
+    def rasterize(c):
+        return shape.mask_on_coords(c, c, c).sum()
+
+    with pytest.raises(NotImplementedError, match="cannot be traced/jitted"):
+        jax.jit(rasterize)(coords)

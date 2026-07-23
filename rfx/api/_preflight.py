@@ -553,22 +553,23 @@ class _PreflightMixin:
             shape = entry.shape
             mat_name = entry.material_name
 
-            # Imported CAD mesh (#358): warn when the smallest triangle feature falls
-            # below ~2 cells — rasterisation is a cell-centre staircase, so sub-2-cell
-            # features (thin fillets, fine detail) are lost/aliased regardless of import.
+            # Imported CAD mesh (#358): warn when the thinnest dimension (bbox extent — a
+            # tessellation-independent proxy, e.g. a plate/wall thickness) falls below ~2 cells;
+            # rasterisation is a cell-centre staircase, so a sub-2-cell dimension is lost or
+            # misregistered (the #330 thin-conductor class).
             if hasattr(shape, "min_feature_size"):
                 try:
                     feat = float(shape.min_feature_size())
                     cell = float(min(min_dx, min_dy, min_dz))
                     if 0.0 < feat < 2.0 * cell:
                         _w.warn(PreflightWarning(
-                            f"Imported mesh (material '{mat_name}') smallest feature "
+                            f"Imported mesh (material '{mat_name}') thinnest dimension "
                             f"~{feat * 1e3:.3f} mm is below 2 cells "
                             f"(~{2 * cell * 1e3:.3f} mm at dx={cell * 1e3:.3f} mm); it will "
                             f"be lost or staircased by rasterisation. Refine the mesh region "
-                            f"(finer dx / subpixel smoothing) or simplify the feature.",
+                            f"(finer dx / subpixel smoothing) or thicken the feature.",
                             code="mesh_import_underresolved", source="_validate_mesh_quality"))
-                except Exception:
+                except (ValueError, AttributeError, TypeError):
                     pass
 
             # Get bounding box dimensions

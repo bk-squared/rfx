@@ -92,16 +92,32 @@ class MeshShape:
         return (tuple(float(v) for v in lo), tuple(float(v) for v in hi))
 
     def min_feature_size(self) -> float:
-        """Shortest triangle-edge length (metres) — a proxy for the smallest resolvable
-        feature, used by the preflight resolution advisory."""
-        return float(self._mesh.edges_unique_length.min())
+        """Thinnest bounding-box extent (metres) — a tessellation-INDEPENDENT proxy for the
+        smallest resolvable dimension (e.g. a thin wall/plate thickness), used by the preflight
+        under-resolution advisory. Deliberately NOT the shortest triangle edge: that tracks mesh
+        DENSITY, not geometry, so a finely-tessellated smooth surface would cry wolf even when the
+        part is well resolved."""
+        lo, hi = self.bounding_box()
+        return float(min(hi[i] - lo[i] for i in range(3)))
 
     def mask_on_coords(self, x, y, z):
         """(Nx, Ny, Nz) bool occupancy at cell centres via point-in-mesh containment.
 
         Only cell centres inside the mesh bounding box are ray-tested (the rest are
         trivially outside), so cost scales with the object's footprint, not the whole
-        domain."""
+        domain.
+
+        Host-side only: rasterisation runs through ``trimesh.contains``, so this cannot be
+        traced/jitted or used as a differentiable mesh — a traced coordinate raises a clear
+        error rather than a cryptic JAX array-conversion failure."""
+        from rfx.core.jax_utils import is_tracer
+        if any(is_tracer(c) for c in (x, y, z)):
+            raise NotImplementedError(
+                "MeshShape rasterises host-side via trimesh point-in-mesh containment; it "
+                "cannot be traced/jitted or used as a differentiable mesh. Rasterise eagerly "
+                "(run()/forward() without an outer jax.jit over geometry), or use a CSG "
+                "primitive (Box/Sphere/Cylinder) for gradient / mesh-as-DoF work."
+            )
         x = np.asarray(x, dtype=np.float64).ravel()
         y = np.asarray(y, dtype=np.float64).ravel()
         z = np.asarray(z, dtype=np.float64).ravel()
