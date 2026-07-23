@@ -293,16 +293,28 @@ def compute_rcs(
     dx = grid.dx
     dt = grid.dt
 
-    # Fail-loud guard (#404): a non-zero theta_inc silently dispatches init_tfsf
-    # to the 2D-aux oblique path, whose reflection accuracy is UNVALIDATED (the
-    # extracted |R| does not track the injection angle — issue #404, R2-STOP
-    # 2026-07-20). Only normal incidence is supported here; refuse rather than
-    # return an unvalidated oblique RCS.
+    # Fail-loud guard: oblique RCS is unimplemented + unvalidated. The original
+    # #404 rationale (2D-aux injection under-tilt) is now STALE — #414 fixed the
+    # oblique 3D-Bloch injection and #422/#428 validated oblique SLAB reflection.
+    # But oblique RCS remains blocked for deeper reasons (investigation 2026-07-23):
+    #   1. the NTFF accumulator is NOT envelope/Bloch-aware, so run() itself
+    #      fail-louds on oblique+NTFF (it would DFT the complex Bloch envelope, not
+    #      the physical field) — deleting this guard only relocates that failure;
+    #   2. the periodic-Bloch path #414 dispatches to is the wrong tool for an
+    #      OPEN-DOMAIN compact scatterer (it assumes lateral periodicity), which
+    #      needs a proper 3D open-domain oblique TFSF that does not yet exist;
+    #   3. the oblique two-run incident-leakage subtraction (#280/#299) is
+    #      validated only at normal incidence, and no angle-sensitive far-field
+    #      oracle (PO plate / MoM at oblique — the PEC sphere is rotation-blind)
+    #      is wired to certify an oblique pattern.
+    # compute_rcs_jax (the differentiable post-processor) and the NTFF transform
+    # are incidence-agnostic and ready; the gap is producing a validated oblique
+    # scattered field on the box. Refuse rather than return an unvalidated number.
     if abs(float(theta_inc)) > 1e-6:
         raise NotImplementedError(
             f"compute_rcs(theta_inc={theta_inc}) — oblique incidence is not "
-            "supported: the oblique TFSF path's reflection accuracy is "
-            "unvalidated (issue #404). Use theta_inc=0.0 (normal incidence)."
+            "supported: no envelope-aware NTFF / open-domain oblique TFSF / "
+            "angle-sensitive oracle yet (issue #404 arc). Use theta_inc=0.0."
         )
 
     # --- 1. Set up TFSF source ---
