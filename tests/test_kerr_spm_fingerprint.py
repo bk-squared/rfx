@@ -11,9 +11,11 @@ established, discriminating, and robust:
       gives 0. So Δk_x>0 discriminates the reactive Kerr.
   (2) FIRST-ORDER SPM: Δk_x/(χ³·A²) is CONSTANT across χ³ and A (measured ≈8.2, within 2.5%).
 
-NOT gated here: the ABSOLUTE magnitude vs textbook Δn=(3/8)χ³A². The increment operator
-underestimates it (~0.31× the naive ε_eff); the rigorous D-based update + a weak-regime absolute
-oracle are tracked in #446. Harness: docs/research_notes/experiments/kerr_cw_spm_oracle.py
+The ABSOLUTE magnitude vs textbook Δn=(3/8)χ³A² is gated separately in
+test_kerr_spm_absolute_oracle.py (#446), which uses a TRUE-CW source (waveform='continuous_wave')
+to remove the pulsed-⟨E²⟩ ambiguity and confirms the shipped D-based operator (#448) reaches
+ratio ≈0.95 (the pre-#448 increment operator underestimated it at ~0.33×).
+Harness: docs/research_notes/experiments/kerr_cw_spm_oracle.py
 """
 import numpy as np
 import pytest
