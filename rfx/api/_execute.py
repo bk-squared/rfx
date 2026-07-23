@@ -178,7 +178,9 @@ class _ExecuteMixin:
                         decay_check_interval: int = 50,
                         decay_min_steps: int = 100,
                         decay_max_steps: int = 50_000,
-                        decay_energy_consecutive: int = 2):
+                        decay_energy_consecutive: int = 2,
+                        radiated_flux_box: tuple | None = None,
+                        flux_env_checks: int = 4):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -215,6 +217,8 @@ class _ExecuteMixin:
             decay_min_steps=decay_min_steps,
             decay_max_steps=decay_max_steps,
             decay_energy_consecutive=decay_energy_consecutive,
+            radiated_flux_box=radiated_flux_box,
+            flux_env_checks=flux_env_checks,
         )
 
     @staticmethod
@@ -2787,6 +2791,8 @@ class _ExecuteMixin:
                 decay_min_steps=decay_min_steps,
                 decay_max_steps=decay_max_steps,
                 decay_energy_consecutive=decay_energy_consecutive,
+                radiated_flux_box=radiated_flux_box,
+                flux_env_checks=flux_env_checks,
             )
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(

@@ -1563,6 +1563,8 @@ def run_nonuniform_until_decay(
     min_steps: int = 100,
     max_steps: int = 50_000,
     decay_energy_consecutive: int = 2,
+    radiated_flux_box: tuple | None = None,
+    flux_env_checks: int = 4,
     pec_mask=None,
     pec_occupancy=None,
     sources: list = None,
@@ -1721,8 +1723,39 @@ def run_nonuniform_until_decay(
              + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
         return float(jnp.sum(u * _dV))
 
+    # #388 opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
+    # stop on the outgoing Poynting flux through a Huygens box instead of the interior energy,
+    # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
+    # near-Nyquist buzz do not stall the stop. Opt-in; default keeps the energy criterion.
+    use_flux_stop = radiated_flux_box is not None
+    if use_flux_stop:
+        _flo = position_to_index(grid, radiated_flux_box[0])
+        _fhi = position_to_index(grid, radiated_flux_box[1])
+        _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
+               min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
+               min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
+
+    def _radiated_power(state) -> float:
+        """Net outgoing Poynting flux ∮ (E×H)·n̂ over the box (co-located approx; a stop
+        criterion needs only the DECAY, so the half-cell stagger and per-cell dA are neglected
+        — they are fixed weightings that do not change the decay rate)."""
+        ex, ey, ez = state.ex, state.ey, state.ez
+        hx, hy, hz = state.hx, state.hy, state.hz
+        il, ih, jl, jh, kl, kh = _bl
+        jj, kk, ii = slice(jl, jh), slice(kl, kh), slice(il, ih)
+        p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
+        p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
+        p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
+        p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
+        p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
+        p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
+        return float(p)
+
     peak_U = 0.0           # running peak, updated at checks only
     energy_below = 0       # consecutive sub-threshold energy checks
+    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope (from first check)
+    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
+    flux_hist: list = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
     decay_checks: list = []
     ys_chunks = []
@@ -1738,9 +1771,23 @@ def run_nonuniform_until_decay(
         ys_chunks.append(ys)
         steps_done += this_chunk
 
-        # Interior-energy check at the chunk boundary (check-step-only —
-        # the whole-domain reduction is the expensive part).
-        if steps_done >= min_steps:
+        # Stop check at the chunk boundary (check-step-only — the whole-domain
+        # reduction / surface integral is the expensive part).
+        if use_flux_stop:
+            # RADIATED-FLUX stop: track the flux peak from the FIRST check (radiation peaks
+            # during the source drive), gate only the STOP on min_steps.
+            flux_hist.append(abs(_radiated_power(carry["fdtd"])))
+            env = max(flux_hist[-flux_env_checks:])
+            if env > peak_flux:
+                peak_flux = env
+            if steps_done >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
+                flux_below += 1
+                if flux_below >= decay_energy_consecutive:
+                    decayed_fired = True
+                    break
+            else:
+                flux_below = 0
+        elif steps_done >= min_steps:
             U = _interior_energy(carry["fdtd"])
             if U > peak_U:
                 peak_U = U
@@ -1758,7 +1805,7 @@ def run_nonuniform_until_decay(
     # the NU lane too, so a cap-hit without firing means the energy criterion could not
     # self-terminate — warn if the remnant is electrostatic). Function-local import avoids
     # a module-level simulation<->nonuniform cycle.
-    if not decayed_fired:
+    if not decayed_fired and not use_flux_stop:
         from rfx.simulation import _warn_static_remnant_cap_hit
         _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
