@@ -111,3 +111,24 @@ def test_rcs_jax_gradient_fd_convergence(rcs_run):
         errs.append(abs(g_ad - g_fd) / abs(g_ad))
     assert errs[1] < errs[0], f"central-FD not converging to AD: {errs}"
     assert errs[1] < 0.05, f"smallest-h FD error {errs[1]*100:.1f}% (AD={g_ad:.3e})"
+
+
+@pytest.mark.slow
+def test_rcs_jax_equals_numpy_on_oblique_observation_grid(rcs_run):
+    """compute_rcs_jax == the numpy far-field formula over a FULL (theta,phi)
+    OBSERVATION grid, not just the backscatter bin — closes the AD-path coverage
+    hole (compute_far_field_jax was pinned at a single direction). The NTFF
+    transform is incidence-agnostic (it only integrates the tangential fields on
+    the box), so this jax==numpy equivalence holds at every observation direction
+    regardless of the injection angle; it is a prerequisite for a future oblique
+    RCS objective, decoupled from the (still-fenced) oblique INJECTION path."""
+    g, box, e_inc, nd = rcs_run["grid"], rcs_run["box"], rcs_run["e_inc"], rcs_run["ntff_data"]
+    th = np.linspace(0.05, np.pi - 0.05, 7)      # 7 polar angles across the sphere
+    ph = np.linspace(0.0, 2 * np.pi, 9)[:-1]     # 8 azimuths (drop duplicate 2*pi)
+    ff = compute_far_field(nd, box, g, th, ph)
+    p = np.abs(np.asarray(ff.E_theta)) ** 2 + np.abs(np.asarray(ff.E_phi)) ** 2  # (nf,nθ,nφ)
+    sig_numpy = 4 * np.pi * p / (np.abs(e_inc) ** 2)[:, None, None]
+    sig_jax = np.asarray(compute_rcs_jax(nd, box, g, th, ph, e_inc))
+    assert sig_jax.shape == sig_numpy.shape == (len(FREQS), len(th), len(ph))
+    rel = np.abs(sig_jax - sig_numpy) / (np.abs(sig_numpy) + 1e-30)
+    assert np.max(rel) < 1e-4, f"max rel diff over (θ,φ) grid = {np.max(rel):.2e}"
