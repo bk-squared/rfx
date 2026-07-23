@@ -44,11 +44,12 @@ rfx-diagnose = "rfx.diagnostics:main"
 [project.optional-dependencies]
 optimization = ["optax>=0.1.7"]
 visualization = ["matplotlib>=3.7", "pillow"]
+cad = ["trimesh>=4", "rtree>=1"]  # MeshShape CAD/STL import (#358); rtree = watertight-contains backend
 dashboard = ["streamlit>=1.30", "pandas"]
 dev = ["pytest>=7.0", "pytest-xdist", "pytest-split", "ruff", "mypy>=1.10,<2", "httpx>=0.27", "build>=1,<2", "tomli>=2; python_version < '3.11'", "rfx-fdtd[studio]"]
 agent = ["mcp>=1.27,<2"]
 studio = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp>=1.27,<2", "openai>=2.17,<3"]
-all = ["rfx-fdtd[optimization,visualization,dashboard,agent,studio,dev]"]
+all = ["rfx-fdtd[optimization,visualization,dashboard,agent,studio,cad,dev]"]
 
 [project.urls]
 Homepage = "https://remilab.ai/rfx/"

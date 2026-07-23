@@ -553,6 +553,24 @@ class _PreflightMixin:
             shape = entry.shape
             mat_name = entry.material_name
 
+            # Imported CAD mesh (#358): warn when the smallest triangle feature falls
+            # below ~2 cells — rasterisation is a cell-centre staircase, so sub-2-cell
+            # features (thin fillets, fine detail) are lost/aliased regardless of import.
+            if hasattr(shape, "min_feature_size"):
+                try:
+                    feat = float(shape.min_feature_size())
+                    cell = float(min(min_dx, min_dy, min_dz))
+                    if 0.0 < feat < 2.0 * cell:
+                        _w.warn(PreflightWarning(
+                            f"Imported mesh (material '{mat_name}') smallest feature "
+                            f"~{feat * 1e3:.3f} mm is below 2 cells "
+                            f"(~{2 * cell * 1e3:.3f} mm at dx={cell * 1e3:.3f} mm); it will "
+                            f"be lost or staircased by rasterisation. Refine the mesh region "
+                            f"(finer dx / subpixel smoothing) or simplify the feature.",
+                            code="mesh_import_underresolved", source="_validate_mesh_quality"))
+                except Exception:
+                    pass
+
             # Get bounding box dimensions
             if hasattr(shape, "bounding_box"):
                 try:

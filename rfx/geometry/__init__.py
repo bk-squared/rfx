@@ -1,6 +1,7 @@
 """CSG geometry primitives for defining simulation structures."""
 
 from rfx.geometry.csg import Box, Cylinder, Sphere, union, difference, intersection, rasterize  # noqa: F401
+from rfx.geometry.mesh_import import MeshShape  # noqa: F401  (trimesh lazy-imported inside)
 from rfx.geometry.curved import CurvedPatch  # noqa: F401
 from rfx.geometry.via import Via  # noqa: F401
 from rfx.geometry.conformal import (
