@@ -169,28 +169,35 @@ def _kerr_setup():
     return state, e_prev, chi3_arr, eps_r_arr, E0, E_lin, target_factor
 
 
-def test_geoc1_kerr_ade_reactive_increment_solve():
-    """GEO-C1 (#437 redesign) — apply_kerr_ade scales the INCREMENT (reactive ε_eff),
-    NOT the whole field.
+def test_geoc1_kerr_ade_selfconsistent_solve():
+    """GEO-C1 (#446 D-based) — apply_kerr_ade solves the reactive-Kerr constitutive relation
+    SELF-CONSISTENTLY, not by scaling the increment.
 
-    Reactive Kerr is ε_eff = ε_r + χ³|E|² (lossless index change).  The correct update
-    scales only the newly-integrated increment::
+    Reactive Kerr is D = ε0(ε_r + χ³|E|²)E.  The D-based update advances the reconstructed
+    displacement linearly and recovers E from the cubic::
 
-        E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
+        D_target/ε0 = ε_r·E_lin + χ³·|E^n|²·E^n
+        solve  ε_r·E^{n+1} + χ³·|E^{n+1}|²·E^{n+1} = D_target      (fixed-point)
 
-    The pre-#437 code scaled the WHOLE field (E_lin/(1+factor)) — a nonlinear absorber
-    that reduced |E| with zero phase shift (docs/research_notes/2026-07-22_kerr_operator_defect.md).
-    This pins the reactive increment form and that it differs from the old dissipative one.
+    This is the rigorous reactive Kerr; the earlier increment scaling
+    E^n + (E_lin-E^n)/(1+factor) UNDERESTIMATES the SPM (~2.8×; #446). This pins the
+    self-consistent value and that it differs from both the increment and the pre-#437
+    dissipative (E_lin/(1+factor)) forms.
     """
     state, e_prev, chi3_arr, eps_r_arr, E0, E_lin, factor = _kerr_setup()
     out = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
     got = float(np.asarray(out.ex)[0, 0, 0])
 
-    reactive = E0 + (E_lin - E0) / (1.0 + factor)   # increment-scaled (correct)
-    dissipative = E_lin / (1.0 + factor)            # whole-field (the old bug)
-    assert got == pytest.approx(reactive, rel=1e-4)
-    # genuinely different from the old dissipative operator at factor=0.3
-    assert abs(got - dissipative) > 0.01 * E_lin
+    chi3 = float(np.asarray(chi3_arr)[0, 0, 0])
+    eps_r = float(np.asarray(eps_r_arr)[0, 0, 0])
+    D_target = eps_r * E_lin + chi3 * E0 ** 3        # ε_r·E_lin + χ³·|E^n|²·E^n
+    E = E_lin
+    for _ in range(4):
+        E = D_target / (eps_r + chi3 * E ** 2)
+    assert got == pytest.approx(E, rel=1e-3)         # the self-consistent constitutive solve
+    # genuinely different from the increment-scaling and the dissipative forms
+    increment = E0 + (E_lin - E0) / (1.0 + factor)
+    assert abs(got - increment) > 0.01 * E_lin
 
 
 # ===========================================================================
