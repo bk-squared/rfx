@@ -142,13 +142,18 @@ def init_tfsf(
         Number of cells in z (3D grid).  Required for oblique incidence
         with ey polarization (2D TEz auxiliary grid).  Ignored for
         normal incidence and ez polarization.
-    waveform : {"differentiated_gaussian", "modulated_gaussian"}
+    waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
         Pulse shape. ``differentiated_gaussian`` (default) is a
         baseband differentiated Gaussian with no carrier (legacy rfx
         behaviour). ``modulated_gaussian`` matches Meep's
         ``GaussianSource``:
         ``cos(2π·f0·(t-t0)) · exp(-((t-t0)/τ)²)`` with τ = 1/(π·fwidth)
-        and t0 = 5·τ (Meep default).
+        and t0 = 5·τ (Meep default). ``continuous_wave`` is a single-
+        frequency sinusoid at ``f0`` with a raised-cosine turn-on
+        (~8 periods) then constant amplitude — for steady-state /
+        narrowband measurements needing a well-defined ⟨E²⟩=A²/2 (e.g.
+        the #446 Kerr SPM oracle). NORMAL INCIDENCE ONLY (the oblique
+        2D-auxiliary path does not carry it).
 
     Returns
     -------
@@ -159,6 +164,14 @@ def init_tfsf(
         raise ValueError(
             f"waveform must be 'differentiated_gaussian', "
             f"'modulated_gaussian', or 'continuous_wave', got {waveform!r}"
+        )
+    # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
+    # oblique grid (init_tfsf_2d) has no waveform parameter, so reject it here rather than
+    # silently drop it (fail-loud, not right-guard-mis-gated).
+    if waveform == "continuous_wave" and abs(angle_deg) > 0.01:
+        raise ValueError(
+            "waveform='continuous_wave' is only supported at normal incidence "
+            f"(angle_deg=0); got angle_deg={angle_deg}"
         )
     # Dispatch to 2D auxiliary grid for oblique angles.
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.

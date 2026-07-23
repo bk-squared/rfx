@@ -42,8 +42,10 @@ STEADY_FRAC = 0.45          # DFT / envelope over the last 45% (steady window, p
 
 
 def _measure(chi3, amp, domx, slab, probes):
-    """(kx, ⟨A(x)²⟩): discrete wavenumber from the f0-phasor phase slope over the steady CW window,
-    plus the mean per-probe squared fundamental amplitude — χ³-only, ε_r=1 matched region."""
+    """(kx, ⟨A(x)²⟩, settle): discrete wavenumber from the f0-phasor phase slope over the steady CW
+    window, the mean per-probe squared fundamental amplitude, and a settling witness (the fractional
+    drift of the fundamental amplitude between the first and second half of the "steady" window —
+    small ⇒ genuinely steady, not a transient) — χ³-only, ε_r=1 matched region."""
     dom = (domx, 0.06, 0.006)
     grid = Grid(freq_max=10e9, domain=dom, dx=DX, cpml_layers=10)
     dt = grid.dt
@@ -65,14 +67,19 @@ def _measure(chi3, amp, domx, slab, probes):
     phas = np.sum(win * (np.exp(-1j * W * tw) * dt)[:, None], axis=0)
     kx = abs(np.polyfit(pidx * DX, np.unwrap(np.angle(phas)), 1)[0])
     a_local = 2.0 * np.abs(phas) / T                     # per-probe fundamental amplitude
-    return kx, float(np.mean(a_local ** 2))
+    # settling witness: the amplitude of the first vs second half of the window must agree
+    h = win.shape[0] // 2
+    amp_h1 = float(np.mean([np.max(np.abs(win[:h, i])) for i in range(win.shape[1])]))
+    amp_h2 = float(np.mean([np.max(np.abs(win[h:, i])) for i in range(win.shape[1])]))
+    settle = abs(amp_h2 - amp_h1) / amp_h1
+    return kx, float(np.mean(a_local ** 2)), settle
 
 
 def _ratio(chi3, amp, domx, slab, probes, kx0):
-    kx, mean_a2 = _measure(chi3, amp, domx, slab, probes)
+    kx, mean_a2, settle = _measure(chi3, amp, domx, slab, probes)
     dkx_meas = kx - kx0
     dkx_txt = (3.0 / 8.0) * chi3 * mean_a2 * K0
-    return dkx_meas, dkx_txt, dkx_meas / dkx_txt
+    return dkx_meas, dkx_txt, dkx_meas / dkx_txt, settle
 
 
 # geometry: χ³-only slab spanning most of a CPML-terminated x-domain; probes strictly inside it
@@ -83,8 +90,8 @@ _SHORT = dict(domx=0.45, slab=(0.06, 0.39), probes=(0.12, 0.33))
 @pytest.fixture(scope="module")
 def oracle():
     # χ³=0 baseline is operator-independent (both operators are identity at χ³=0) → shared.
-    kx0_L, _ = _measure(0.0, 1.0, **_LONG)
-    dkx_meas, dkx_txt, r_dbased = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
+    kx0_L, _, _ = _measure(0.0, 1.0, **_LONG)
+    dkx_meas, dkx_txt, r_dbased, settle = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
 
     # falsifier: the pre-#448 increment operator (scale the E-update increment) — must NOT pass.
     shipped = _nl.apply_kerr_ade
@@ -98,16 +105,16 @@ def oracle():
                               ez=ez_p + (state.ez - ez_p) * f)
     try:
         _nl.apply_kerr_ade = _increment                  # picked up by the lazy import in run()
-        _, _, r_increment = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
+        _, _, r_increment, _ = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
     finally:
         _nl.apply_kerr_ade = shipped
 
     # domain-size invariance (mandate: an ADDED gate needs a falsifier + domain-invariance)
-    kx0_S, _ = _measure(0.0, 1.0, **_SHORT)
-    _, _, r_short = _ratio(0.20, 1.0, **_SHORT, kx0=kx0_S)
+    kx0_S, _, _ = _measure(0.0, 1.0, **_SHORT)
+    _, _, r_short, _ = _ratio(0.20, 1.0, **_SHORT, kx0=kx0_S)
 
     return {"dkx_meas": dkx_meas, "dkx_txt": dkx_txt, "r_dbased": r_dbased,
-            "r_increment": r_increment, "r_short": r_short}
+            "r_increment": r_increment, "r_short": r_short, "settle": settle}
 
 
 @pytest.mark.slow
@@ -145,3 +152,13 @@ def test_kerr_spm_absolute_domain_invariant(oracle):
     assert abs(oracle["r_dbased"] - oracle["r_short"]) < 0.15, (
         f"ratio moved with domain size: long={oracle['r_dbased']:.3f} short={oracle['r_short']:.3f} "
         f"(an artifact would swing; physics is invariant)")
+
+
+@pytest.mark.slow
+def test_kerr_spm_measured_at_steady_state(oracle):
+    """Settling witness: the DFT/phase-slope window is genuinely steady CW, not a transient — the
+    fundamental amplitude drifts <5% between the first and second half of the window. Guards against
+    a future domain/num_periods change silently sampling the ramp/fill transient."""
+    assert oracle["settle"] < 0.05, (
+        f"steady window not settled: amplitude drift {oracle['settle']:.3f} between window halves "
+        f"(the ⟨E²⟩=A²/2 assumption requires a steady CW plateau)")
