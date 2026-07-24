@@ -1,5 +1,18 @@
 """Cross-solver validation 07: Sheen 1990 microstrip low-pass filter.
 
+!!! SUPERSEDED FRAMING — read the Palace referee before trusting the "first null"
+    metric below. A conformal-mesh Palace-FEM referee (VESSL, runs 369367248550 /
+    369367248558; scripts/diagnostics/build_sheen_lpf_palace_referee.py +
+    tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json) showed the stopband
+    is a DOUBLE transmission-zero (~7.0 AND ~8.0 GHz), not a single null. openEMS
+    resolves BOTH zeros and matches Palace to ~0.7%; rfx's coarse 200um mesh
+    DISTORTS the doublet (spurious ~6.6 GHz dip, no clean 8 GHz zero). So the
+    single-argmin "first null" comparison here (rfx 7.218 vs openEMS 7.983 = 9.6%)
+    is largely a COMPARATOR ARTIFACT — the argmin picks different doublet members
+    per solver and flips with mesh (Palace 7.02->8.05 GHz coarse->mid). The honest
+    three-way verdict (sides_with = openems) lives in the referee fixture; rfx is
+    the less structure-faithful solver on this doublet at this resolution.
+
 Reproduces the classic FDTD-microwave benchmark of
   D. M. Sheen, S. M. Ali, M. D. Abouzahra, J. A. Kong,
   "Application of the three-dimensional finite-difference time-domain method
