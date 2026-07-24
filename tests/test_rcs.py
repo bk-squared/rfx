@@ -319,18 +319,18 @@ class TestRCSResultStructure:
         print(f"  monostatic_rcs: {result.monostatic_rcs}")
 
 
-def test_compute_rcs_rejects_oblique_incidence():
-    """#404 fail-loud guard: a non-zero theta_inc must raise rather than silently
-    dispatch to the unvalidated oblique TFSF path."""
+def test_compute_rcs_oblique_fence_kept_for_unsupported():
+    """Post-#404-fork-(a): oblique ez now ROUTES through Method B (validated
+    specular pattern, tests/test_oblique_rcs_specular.py), but the fence is KEPT
+    for the combos Method B does not support — non-ez polarization and
+    non-uniform grids — which must still fail loud rather than return a number."""
     import pytest
     from rfx.core.yee import init_materials
 
     grid = Grid(freq_max=10e9, domain=(0.06, 0.06, 0.06), dx=0.003, cpml_layers=6)
     materials = init_materials(grid.shape)
-    with pytest.raises(NotImplementedError, match="oblique"):
+    # oblique + ey polarization is NOT supported -> must raise
+    with pytest.raises(NotImplementedError, match="ez"):
         compute_rcs(grid, materials, n_steps=10, f0=5e9, bandwidth=0.5,
-                    theta_inc=30.0, polarization="ez",
+                    theta_inc=30.0, polarization="ey",
                     theta_obs=np.array([1.0]), phi_obs=np.array([0.0]))
-    # normal incidence must NOT raise at the guard (reaches the TFSF setup)
-    # — cheap smoke: guard passes for theta_inc=0.0
-    assert abs(0.0) <= 1e-6
