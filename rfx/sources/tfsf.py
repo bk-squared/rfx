@@ -48,6 +48,20 @@ def is_tfsf_2d(cfg) -> bool:
     return isinstance(cfg, TFSF2DConfig)
 
 
+def is_tfsf_methodB(cfg) -> bool:
+    """Check if TFSF config is the open-domain oblique Method-B config.
+
+    Method B (``rfx/sources/tfsf_oblique_open.py``) injects an oblique plane
+    wave into an open (CPML) 2.5-D domain (k̂ in the xy-plane, thin-z periodic)
+    using a dispersion-matched 1D-aux-along-k̂ + a 4-edge TFSF box.  Its config
+    is a NEW NamedTuple (NOT a ``TFSF2DConfig``), so ``is_tfsf_2d`` is ``False``
+    and the fields stay real ``float32`` — the complex-Bloch/NTFF-reject lane
+    never fires and NTFF/probes read physical fields.
+    """
+    from rfx.sources.tfsf_oblique_open import MethodBConfig
+    return isinstance(cfg, MethodBConfig)
+
+
 class TFSFState(NamedTuple):
     """1D auxiliary FDTD state for TFSF plane-wave generation."""
     e1d: jnp.ndarray   # Ez incident (n_1d,)
@@ -104,6 +118,7 @@ def init_tfsf(
     ny: int | None = None,
     nz: int | None = None,
     waveform: str = "differentiated_gaussian",
+    method: str = "bloch",
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -160,7 +175,29 @@ def init_tfsf(
             f"waveform must be 'differentiated_gaussian' or "
             f"'modulated_gaussian', got {waveform!r}"
         )
-    # Dispatch to 2D auxiliary grid for oblique angles.
+    if method not in ("bloch", "methodB"):
+        raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
+    # Oblique open-domain Method B (real float32, 1D-aux-along-k̂ + 4-edge box).
+    # Angle alone cannot disambiguate this from the Bloch 2D-aux path, so it is
+    # selected explicitly via method='methodB'. angle_deg=0 falls through to the
+    # normal 1D-aux path below regardless of method (byte-unchanged).
+    if abs(angle_deg) > 0.01 and method == "methodB":
+        from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
+        if ny is None:
+            ny = nx
+        return init_tfsf_methodB(
+            nx, ny, dx, dt,
+            nz=nz,
+            cpml_layers=cpml_layers,
+            tfsf_margin=tfsf_margin,
+            f0=f0,
+            bandwidth=bandwidth,
+            amplitude=amplitude,
+            polarization=polarization,
+            direction=direction,
+            theta_deg=angle_deg,
+        )
+    # Dispatch to 2D auxiliary grid for oblique angles (Bloch field-transform).
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
     if abs(angle_deg) > 0.01:
         from rfx.sources.tfsf_2d import init_tfsf_2d
@@ -410,6 +447,10 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
     """
+    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
+    if is_tfsf_methodB(cfg):
+        from rfx.sources.tfsf_oblique_open import apply_methodB_e
+        return apply_methodB_e(state, cfg, tfsf_st, dx, dt)
     # Dispatch to 2D if config is TFSF2DConfig
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_e
@@ -442,6 +483,10 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
     """
+    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
+    if is_tfsf_methodB(cfg):
+        from rfx.sources.tfsf_oblique_open import apply_methodB_h
+        return apply_methodB_h(state, cfg, tfsf_st, dx, dt)
     # Dispatch to 2D if config is TFSF2DConfig
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_h
