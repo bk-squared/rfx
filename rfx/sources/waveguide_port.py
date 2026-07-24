@@ -1445,9 +1445,12 @@ def _compute_beta(
         arg = jnp.clip(0.5 * dx * jnp.sqrt(jnp.maximum(s_x_sq, 0.0)),
                        -1.0 + 1e-12, 1.0 - 1e-12)
         beta_prop = (2.0 / dx) * jnp.arcsin(arg)
-        # Evanescent branch: keep analytic imaginary form — these are not
-        # propagated and their magnitude is not used for plane-shift.
-        beta_evan = 1j * jnp.sqrt(jnp.maximum(-s_x_sq, 0.0)) * C0_LOCAL
+        # Evanescent branch: β = j·sqrt(-s_x_sq), units m⁻¹ (s_x_sq is m⁻²). The prior
+        # form multiplied by C0_LOCAL, giving s⁻¹ (~c× too large) and inconsistent with both
+        # beta_prop above and the non-dispersive fallback below — a spurious factor of c
+        # (RF-audit 2026-07-23, Codex pass). Below-cutoff bins are preflight-flagged invalid,
+        # but a c×-wrong |β| in the plane-shift exp(-jβ·d) would blow up to inf/nan.
+        beta_evan = 1j * jnp.sqrt(jnp.maximum(-s_x_sq, 0.0))
         return jnp.where(s_x_sq >= 0, beta_prop, beta_evan)
 
     k = omega / C0_LOCAL
@@ -2735,6 +2738,11 @@ def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
     """
     v_dft = np.array(_rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
     i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
+    # Yee half-step co-location: the H-derived current DFT carries a spurious exp(-jω·dt/2)
+    # (H sampled at (n+1/2)·dt, E at (n+1)·dt), so the raw V·conj(I) mixes reactive power
+    # Im(V·I*)·sin(ω·dt/2) into the real net power. Correct I before the product, exactly as the
+    # wave-decomposition extractors do (_extract_global_waves, the overlap path). RF-audit 2026-07-23.
+    i_dft = np.asarray(_co_located_current_spectrum(cfg, i_dft))
     return 0.5 * np.real(v_dft * np.conj(i_dft))
 
 

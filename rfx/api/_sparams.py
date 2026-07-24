@@ -907,6 +907,7 @@ class _SparamMixin:
                     port_mode_cfgs.append([raw])
 
             ref_shifts_mm = []
+            desired_refs_mm = []
             for entry, mode_cfgs in zip(entries, port_mode_cfgs):
                 first_cfg = mode_cfgs[0]
                 planes = waveguide_plane_positions(first_cfg)
@@ -916,6 +917,7 @@ class _SparamMixin:
                     else planes["source"]
                 )
                 ref_shifts_mm.append(desired_ref - planes["reference"])
+                desired_refs_mm.append(desired_ref)
 
             mm_pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
             if normalize == "flux":
@@ -969,7 +971,10 @@ class _SparamMixin:
                     conformal_weights=conformal_weights,
                     aniso_inv_eps=aniso_inv_eps,
                 )
-            reference_planes = np.array(ref_shifts_mm, dtype=float)
+            # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
+            # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the
+            # extractor's phase-shift input, not a plane coordinate (RF-audit 2026-07-23).
+            reference_planes = np.array(desired_refs_mm, dtype=float)
             # Build port names including mode indices
             port_names_mm = []
             port_directions_mm = []
@@ -1143,7 +1148,11 @@ class _SparamMixin:
             [
                 entry.reference_plane
                 if entry.reference_plane is not None
-                else waveguide_plane_positions(cfg)["reference"]
+                # Report the de-embed TARGET (the physical port/source plane, line 1042), not the
+                # internal raw-extraction plane. Previously reported ["reference"] = source +
+                # ref_offset·dx, so the metadata claimed a plane ref_offset cells off from where the
+                # S-params are actually referenced (RF-audit 2026-07-23; matches the NU sibling).
+                else waveguide_plane_positions(cfg)["source"]
                 for entry, cfg in zip(entries, cfgs)
             ],
             dtype=float,
@@ -1740,13 +1749,27 @@ class _SparamMixin:
                 z0_dev_max = float(z0_dev[k_z])
                 # Primary — V·I-split S11 boundedness (extraction soundness).
                 if s11_max > _S11_MAX:
+                    # Cross-reference the standing-wave-null reliability mask (computed above): if
+                    # the peak-|S11| bin is a flagged null, the correct root cause is the
+                    # ill-conditioned V·I ratio there (both phasors collapse), NOT a current
+                    # sign/scale error — attributing it to current mismeasurement misdiagnoses a
+                    # legitimate passive strong reflector (RF-audit 2026-07-23). The guard still
+                    # fires (the extracted value IS unreliable at that bin); only the cause differs.
+                    at_null = reliable is not None and not bool(np.asarray(reliable)[driven, k_s])
+                    cause = (
+                        "that bin is flagged by the standing-wave-null reliability mask: a deep "
+                        "node collapses both the V and I phasors, so the V·I ratio is "
+                        "ill-conditioned (a numerical blind spot, not necessarily a current "
+                        "sign/scale error)"
+                        if at_null else
+                        "the closed Ampere-loop current is likely mismeasured (sign/scale)"
+                    )
                     msg = (
                         f"compute_msl_s_matrix: V·I-split |S11| = "
                         f"{s11_max:.3f} > 1 for MSL port {pe.name!r} at "
                         f"f = {freqs_arr[k_s] / 1e9:.4f} GHz — non-physical "
-                        "for a passive structure. The closed Ampere-loop "
-                        "current is likely mismeasured (sign/scale); the "
-                        "extracted S11/S21 are UNRELIABLE."
+                        f"for a passive structure. {cause}; the extracted "
+                        "S11/S21 at this bin are UNRELIABLE."
                     )
                     if strict_extractor:
                         raise ValueError(msg)

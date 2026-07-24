@@ -306,8 +306,11 @@ def extract_floquet_modes(
 ) -> dict:
     """Extract Floquet mode amplitudes from accumulated DFT data.
 
-    The specular (0,0) mode is always extracted. Higher-order modes
-    (m,n) are included if n_modes > 1.
+    Only the specular ``(0,0)`` mode with **TE** polarization is implemented (the
+    extractor reads the (Ex, Hy) tangential pair and the TE wave impedance
+    ``eta0/cos(theta)``). ``n_modes > 1`` (higher-order grating lobes) and TM
+    polarization are NOT implemented and are rejected fail-loud rather than
+    silently returning wrong results (RF-audit 2026-07-23).
 
     Parameters
     ----------
@@ -331,6 +334,14 @@ def extract_floquet_modes(
         'modes' : list of (m, n) mode index tuples
         'freqs' : frequency array
     """
+    if int(n_modes) != 1:
+        raise NotImplementedError(
+            f"extract_floquet_modes only implements the specular (0,0) mode "
+            f"(n_modes=1); got n_modes={n_modes}. Higher-order Floquet grating "
+            f"lobes are not yet extracted — this fails loud instead of silently "
+            f"returning only the (0,0) mode."
+        )
+
     # Spatial averaging for the (0,0) mode = mean over the plane
     # This is the 2D spatial DFT at (kx=0, ky=0) normalized by area
     e1_avg = jnp.mean(acc.e_tang1_dft, axis=(1, 2))  # (n_freqs,)

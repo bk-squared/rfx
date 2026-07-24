@@ -1939,6 +1939,22 @@ class Simulation(
             raise ValueError(f"scan_theta must be in [0, 90), got {scan_theta}")
         if n_modes < 1:
             raise ValueError(f"n_modes must be >= 1, got {n_modes}")
+        # Only the specular (0,0) TE mode is implemented in extract_floquet_modes; n_modes>1 and
+        # TM were silently accepted and returned wrong results (higher-order lobes dropped; TM read
+        # the TE field pair + impedance). Fail loud until implemented (RF-audit 2026-07-23).
+        if n_modes > 1:
+            raise NotImplementedError(
+                f"add_floquet_port(n_modes={n_modes}): only the specular (0,0) Floquet mode is "
+                f"extracted; higher-order grating lobes are not implemented. Use n_modes=1."
+            )
+        if polarization == "tm":
+            raise NotImplementedError(
+                "add_floquet_port(polarization='tm'): TM Floquet S-parameter extraction is not "
+                "implemented — the extractor is hardwired to the TE (Ex,Hy) pair and TE wave "
+                "impedance, so a TM drive yields wrong S-parameters. Use polarization='te'. "
+                "(For a TM plane-wave field study without S-parameters, use add_tfsf_source, "
+                "which supports oblique TM incidence.)"
+            )
         if self._tfsf is not None:
             raise ValueError(
                 "Floquet ports are not supported together with TFSF sources"
