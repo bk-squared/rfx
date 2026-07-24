@@ -1105,6 +1105,7 @@ class _TFSFEntry:
     direction: str
     angle_deg: float
     waveform: str = "differentiated_gaussian"
+    method: str = "bloch"
 
 
 @dataclass(frozen=True)

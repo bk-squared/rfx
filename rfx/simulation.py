@@ -658,6 +658,10 @@ def _build_step_setup(
     # per-axis phase rides the periodic roll; the physical field is
     # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
     # incidence and every non-TFSF run stay real float32 and byte-identical.
+    # NOTE: gated strictly on the 2D-aux (Bloch) discriminator. Open-domain
+    # oblique Method B (MethodBConfig, NOT TFSF2DConfig) intentionally bypasses
+    # this lane: it stays real float32 and its NTFF/DFT/flux monitors read
+    # physical fields, so the fail-loud below must NOT be widened to angle != 0.
     _oblique_bloch = False
     if use_tfsf:
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early

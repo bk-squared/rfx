@@ -1496,6 +1496,7 @@ class Simulation(
         direction: str = "+x",
         angle_deg: float = 0.0,
         waveform: str = "differentiated_gaussian",
+        method: str = "bloch",
     ) -> "Simulation":
         """Add a normal-incidence plane-wave TFSF source.
 
@@ -1526,6 +1527,16 @@ class Simulation(
             Spectrum is a Gaussian centered at ``f0`` with 1/e
             half-width ``f0·bandwidth``. Use this for matched rfx-vs-Meep
             crossval comparisons.
+        method : {"bloch", "methodB"}
+            Oblique-incidence engine (ignored for ``angle_deg=0``, which always
+            uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband
+            complex-Bloch 2D-aux path (fields go complex64; frequency-domain
+            monitors are not transform-aware — see ``tfsf_2d.py``). ``"methodB"``
+            is the open-domain oblique path (real ``float32``, 1D-aux-along-k̂ +
+            4-edge box): the transverse axis becomes OPEN/CPML, z stays thin
+            periodic (2.5-D, z-invariant far field), and NTFF/DFT/flux monitors
+            read physical fields. ``"methodB"`` currently requires
+            ``polarization='ez'`` and a single-device uniform grid.
         """
         if self._boundary != "cpml":
             raise ValueError("TFSF plane-wave source requires boundary='cpml'")
@@ -1563,6 +1574,19 @@ class Simulation(
                 "waveform must be 'differentiated_gaussian', 'modulated_gaussian', "
                 f"or 'continuous_wave', got {waveform!r}"
             )
+        if method not in ("bloch", "methodB"):
+            raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
+        if method == "methodB":
+            if abs(angle_deg) <= 0.01:
+                raise ValueError(
+                    "method='methodB' is the open-domain OBLIQUE path; use a "
+                    "non-zero angle_deg (angle_deg=0 uses the normal 1D-aux path)"
+                )
+            if polarization != "ez":
+                raise NotImplementedError(
+                    "method='methodB' currently supports polarization='ez' "
+                    "(transverse=y) only; 'ey' is future work"
+                )
 
         self._tfsf = _TFSFEntry(
             f0=f0,
@@ -1573,6 +1597,7 @@ class Simulation(
             direction=direction,
             angle_deg=angle_deg,
             waveform=waveform,
+            method=method,
         )
         return self
 

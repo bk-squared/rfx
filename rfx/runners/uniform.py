@@ -499,10 +499,19 @@ def run_uniform(
             ny=grid.ny,
             nz=grid.nz,
             waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
+            method=getattr(sim._tfsf, 'method', 'bloch'),
         )
         sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        periodic = (False, True, True)
-        cpml_axes = "x"
+        # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
+        # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
+        # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
+        from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
+        if _is_methodB_ru(tfsf[0]):
+            periodic = (False, False, True)
+            cpml_axes = "xy"
+        else:
+            periodic = (False, True, True)
+            cpml_axes = "x"
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/

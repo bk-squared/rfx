@@ -1325,14 +1325,23 @@ class _ExecuteMixin:
                 ny=grid.ny,
                 nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
+                method=getattr(self._tfsf, "method", "bloch"),
             )
             # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
             # _auto_preflight on the concrete config; it is NOT re-run here because
             # `materials` may be a jax tracer under jax.grad (eps_override), and the
             # check concretizes.
-            periodic_bool = (False, True, True)
-            cpml_axes_run = "x"
-            pec_axes_run = ""
+            # Open-domain oblique Method B forces OPEN transverse y (CPML) with
+            # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
+            from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
+            if _is_methodB_fwd(tfsf_run[0]):
+                periodic_bool = (False, False, True)
+                cpml_axes_run = "xy"
+                pec_axes_run = ""
+            else:
+                periodic_bool = (False, True, True)
+                cpml_axes_run = "x"
+                pec_axes_run = ""
 
         # Stage 2 Kottke for AD-traceable PEC density (opt-in via env
         # ``RFX_PEC_OCC_KOTTKE=1``).  When enabled and
