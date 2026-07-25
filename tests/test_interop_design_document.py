@@ -23,6 +23,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -1192,6 +1193,285 @@ def test_non_portable_annotation_cannot_be_stripped():
 # ---------------------------------------------------------------------------
 # Governance
 # ---------------------------------------------------------------------------
+
+SCHEMA_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "docs/design_notes/schemas/rfx-design-ir-v1.schema.json"
+)
+
+
+@pytest.fixture(scope="module")
+def published_schema() -> dict:
+    return json.loads(SCHEMA_PATH.read_text())
+
+
+def _schema_at(schema: dict, path: str) -> dict:
+    """Resolve a dotted document path to its schema node, stepping into arrays."""
+    node = schema
+    for part in path.split("."):
+        node = node["properties"][part]
+        if node.get("type") == "array":
+            node = node["items"]
+    return node
+
+
+#: Document path -> the emitter's field registry for one entry at that path.
+#: This is the drift guard that key-set checks cannot give: it pins every
+#: recorded field of every entry family, so a field added to a builder record
+#: reds the schema test as well as the exporter test.
+_SCHEMA_ENTRY_REGISTRIES = [
+    ("geometry", "_GEOMETRY_FIELDS"),
+    ("thin_conductors", "_THIN_CONDUCTOR_FIELDS"),
+    ("excitations.soft_sources", "_SOFT_SOURCE_FIELDS"),
+    ("excitations.lumped_ports", "_LUMPED_PORT_FIELDS"),
+    ("excitations.msl_ports", "_MSL_PORT_FIELDS"),
+    ("excitations.waveguide_ports", "_WAVEGUIDE_PORT_FIELDS"),
+    ("excitations.coaxial_ports", "_COAXIAL_PORT_FIELDS"),
+    ("excitations.floquet_ports", "_FLOQUET_PORT_FIELDS"),
+    ("excitations.lumped_rlc", "_LUMPED_RLC_FIELDS"),
+    ("excitations.tfsf", "_TFSF_FIELDS"),
+    ("observables.probes", "_PROBE_FIELDS"),
+    ("observables.dft_planes", "_DFT_PLANE_FIELDS"),
+    ("observables.flux_monitors", "_FLUX_MONITOR_FIELDS"),
+    ("observables.ntff", "_NTFF_FIELDS"),
+    ("refinement", "_REFINEMENT_FIELDS"),
+]
+
+
+@pytest.mark.parametrize("path,registry_name", _SCHEMA_ENTRY_REGISTRIES)
+def test_schema_entry_fields_match_the_emitter_registry(
+    published_schema, path, registry_name
+):
+    """Every entry family's field set is pinned, not just the section names.
+
+    Runs without ``jsonschema``: it compares the schema document's own
+    ``required`` / ``properties`` against the exporter's field registries.
+    """
+    from rfx.interop import _design
+
+    registry = getattr(_design, registry_name)
+    node = _schema_at(published_schema, path)
+
+    assert set(node["required"]) == set(registry), (
+        f"{path}: schema required={sorted(node['required'])} but the emitter "
+        f"records {sorted(registry)}"
+    )
+    assert set(node["properties"]) == set(registry), (
+        f"{path}: schema properties={sorted(node['properties'])} but the "
+        f"emitter records {sorted(registry)}"
+    )
+    assert node["additionalProperties"] is False, (
+        f"{path}: the document is a closed world; the schema must say so"
+    )
+
+
+def test_schema_vocabularies_are_pinned_to_the_implementation(published_schema):
+    """The three closed vocabularies the codecs enforce.
+
+    If one of these grows upstream, this fails rather than the schema silently
+    rejecting a document the emitter legitimately produces.
+    """
+    from rfx.boundaries.spec import BOUNDARY_TOKENS
+    from rfx.interop import SUPPORTED_SHAPE_KINDS
+    from rfx.interop._design import _ARRAY_CONTAINERS
+
+    defs = published_schema["$defs"]
+    assert sorted(defs["shape"]["properties"]["kind"]["enum"]) == sorted(
+        SUPPORTED_SHAPE_KINDS
+    )
+    assert sorted(defs["waveform"]["properties"]["kind"]["enum"]) == sorted(
+        SUPPORTED_WAVEFORM_KINDS
+    )
+    assert sorted(defs["boundary_token"]["enum"]) == sorted(BOUNDARY_TOKENS)
+    assert sorted(defs["array_payload"]["properties"]["container"]["enum"]) == sorted(
+        _ARRAY_CONTAINERS
+    )
+
+
+@pytest.mark.parametrize("kind", sorted(_WAVEFORM_CODECS))
+def test_schema_waveform_params_match_the_codec(published_schema, kind):
+    branches = published_schema["$defs"]["waveform"]["allOf"]
+    branch = next(
+        b for b in branches if b["if"]["properties"]["kind"]["const"] == kind
+    )
+    node = branch["then"]["properties"]["params"]
+    if "$ref" in node:
+        ref = node["$ref"].removeprefix("#/$defs/")
+        node = published_schema["$defs"][ref]
+    assert set(node["required"]) == set(_WAVEFORM_CODECS[kind].fields)
+    assert node["additionalProperties"] is False
+
+
+def test_schema_shape_params_match_the_shape_codec(published_schema):
+    from rfx.interop import SUPPORTED_SHAPE_KINDS
+    from rfx.interop._shapes import shape_field_names
+
+    branches = published_schema["$defs"]["shape"]["allOf"]
+    by_kind = {b["if"]["properties"]["kind"]["const"]: b for b in branches}
+    assert set(by_kind) == set(SUPPORTED_SHAPE_KINDS), (
+        "the schema pins parameters for a different set of shape kinds than the "
+        f"codec supports: schema={sorted(by_kind)}, "
+        f"codec={sorted(SUPPORTED_SHAPE_KINDS)}"
+    )
+    for kind, branch in by_kind.items():
+        node = branch["then"]["properties"]["params"]
+        assert set(node["required"]) == set(shape_field_names(kind)), (
+            f"shape {kind!r}: schema required={sorted(node['required'])} but the "
+            f"codec records {sorted(shape_field_names(kind))}"
+        )
+        assert node["additionalProperties"] is False
+
+
+@pytest.mark.parametrize("name", sorted(DESIGN_BUILDERS))
+def test_emitted_document_validates_against_the_published_schema(
+    published_schema, name
+):
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(
+        instance=design_to_dict(DESIGN_BUILDERS[name]()), schema=published_schema
+    )
+
+
+def test_schema_is_not_vacuous(published_schema):
+    """Tamper a valid document; the schema must reject each case.
+
+    A schema whose sections are bare ``{"type": "array"}`` validates anything
+    and cannot catch emitter drift, so the strictness itself is worth pinning.
+    """
+    jsonschema = pytest.importorskip("jsonschema")
+
+    def rejects(mutate, label):
+        document = design_to_dict(_waveguide_with_dispersive_slab())
+        mutate(document)
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(instance=document, schema=published_schema)
+
+    def unknown_nested_key(d):
+        d["mesh"]["resolution"] = 20
+
+    def unknown_entry_field(d):
+        d["observables"]["probes"].append(
+            {"position": [0.0, 0.0, 0.0], "component": "ez", "gain": 1.0}
+        )
+
+    def summarised_profile(d):
+        # The rfx.artifacts._profile_summary shape, which cannot be rebuilt.
+        d["mesh"]["dz_profile"] = {
+            "present": True,
+            "shape": [75],
+            "min": 0.000381,
+            "max": 0.002,
+            "sum": 0.1278,
+        }
+
+    def dtype_free_numpy_array(d):
+        d["observables"]["ntff"]["freqs"] = {
+            "container": "numpy",
+            "values": [1e9, 2e9],
+        }
+
+    def dtype_on_a_plain_list(d):
+        d["observables"]["ntff"]["freqs"] = {
+            "container": "list",
+            "dtype": "float64",
+            "values": [1e9, 2e9],
+        }
+
+    def wrong_vector_width(d):
+        d["geometry"][0]["shape"]["params"]["corner_lo"] = [0.0, 0.0]
+
+    def unknown_shape_param(d):
+        d["geometry"][0]["shape"]["params"]["thickness"] = 1e-3
+
+    def unknown_waveform_kind(d):
+        d["excitations"]["soft_sources"] = [
+            {
+                "position": [0.0, 0.0, 0.0],
+                "component": "ez",
+                "waveform": {"kind": "custom_waveform", "params": {}},
+            }
+        ]
+
+    def stringified_number(d):
+        d["domain"]["freq_max"] = "1.2e10"
+
+    for mutate in (
+        unknown_nested_key,
+        unknown_entry_field,
+        summarised_profile,
+        dtype_free_numpy_array,
+        dtype_on_a_plain_list,
+        wrong_vector_width,
+        unknown_shape_param,
+        unknown_waveform_kind,
+        stringified_number,
+    ):
+        rejects(mutate, mutate.__name__)
+
+
+def test_schema_polyline_cardinality_matches_the_codec(published_schema):
+    """Whether an empty point list is legal is the codec's call, not the schema's.
+
+    Pinned as a property rather than a constant so the two cannot drift: the
+    codec is the authority, and the schema must agree with whatever it does.
+    """
+    from rfx.interop import shape_from_dict
+
+    payload = {"kind": "polyline_wire", "params": {"points": [], "radius": 1e-4}}
+    try:
+        shape_from_dict(payload)
+        codec_accepts_empty = True
+    except UnsupportedDesignFeature:
+        codec_accepts_empty = False
+
+    branch = next(
+        b
+        for b in published_schema["$defs"]["shape"]["allOf"]
+        if b["if"]["properties"]["kind"]["const"] == "polyline_wire"
+    )
+    declared_min = (
+        branch["then"]["properties"]["params"]["properties"]["points"].get("minItems", 0)
+    )
+    assert (declared_min == 0) is codec_accepts_empty, (
+        f"schema minItems={declared_min} but the codec "
+        f"{'accepts' if codec_accepts_empty else 'refuses'} an empty point list"
+    )
+
+
+def test_geometry_order_is_semantic_state():
+    """Entry order is a last-write-wins paint order, not presentation.
+
+    ``rfx/geometry/csg.py`` applies geometry in order with later shapes
+    overwriting earlier ones, so a document that reorders ``geometry``
+    describes a different structure. Canonical JSON sorts object keys but must
+    never sort this array.
+    """
+    sub = Box(corner_lo=(0.0, 0.0, 0.0), corner_hi=(0.010, 0.010, 0.002))
+    trace = Box(corner_lo=(0.002, 0.002, 0.001), corner_hi=(0.008, 0.008, 0.002))
+
+    first = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=5e-4, boundary="pec")
+    first.add_material("fr4", eps_r=4.3)
+    first.add(sub, material="fr4")
+    first.add(trace, material="pec")
+
+    second = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=5e-4, boundary="pec")
+    second.add_material("fr4", eps_r=4.3)
+    second.add(trace, material="pec")
+    second.add(sub, material="fr4")
+
+    doc_first = design_to_dict(first)
+    doc_second = design_to_dict(second)
+    assert [e["material_name"] for e in doc_first["geometry"]] == ["fr4", "pec"]
+    assert [e["material_name"] for e in doc_second["geometry"]] == ["pec", "fr4"]
+    assert design_to_json(first) != design_to_json(second), (
+        "the two paint orders produced the same document; geometry order was lost"
+    )
+
+    for original in (first, second):
+        assert_designs_equivalent(
+            original, simulation_from_design(design_to_dict(original))
+        )
+
 
 def test_design_helpers_are_not_added_to_the_pinned_rfx_surface():
     """``rfx.interop`` is the import path; ``rfx.__all__`` stays unchanged."""

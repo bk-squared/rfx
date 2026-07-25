@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://remilab.ai/rfx/schemas/rfx-design-ir-v1.schema.json",
   "title": "rfx design IR v1",
-  "description": "Round-trip-complete description of an rfx Simulation's DESIGN state, emitted by rfx.interop.design_to_dict and consumed by rfx.interop.simulation_from_design. This is the rfx-to-rfx profile: its gate is structural equality after a round trip. An external-solver projection is a SEPARATE, explicitly lossy artifact and is not described by this schema. Derived state (Grid, dt, axis_pads), preflight verdicts, results, and run-time controls (n_steps, until_decay, compute_s_params, eps_override, ...) are deliberately absent: a design description that carries them invites a reader to trust them. Anything that cannot be represented exactly is refused at export time with UnsupportedDesignFeature rather than approximated.",
+  "description": "Round-trip-complete description of an rfx Simulation's DESIGN state, emitted by rfx.interop.design_to_dict and consumed by rfx.interop.simulation_from_design. This is the rfx-to-rfx profile: its gate is structural equality after a round trip. An external-solver projection is a SEPARATE, explicitly lossy artifact and is not described by this schema. Derived state (Grid, dt, axis_pads), preflight verdicts, results, and run-time controls (n_steps, until_decay, compute_s_params, eps_override, ...) are deliberately absent: a design description that carries them invites a reader to trust them. Anything that cannot be represented exactly is refused at export time with UnsupportedDesignFeature rather than approximated. SCOPE OF A PASS: this schema pins the document LAYER — key sets, value types, and the closed vocabularies the codecs enforce (shape kind, waveform kind, boundary token, array container). It does NOT re-encode builder fences, which are enforced on import by the Simulation builders the importer drives. A schema-valid document can still be refused (a Floquet port with n_modes > 1 raises the builder's own NotImplementedError), so validating means 'well-formed', never 'physically supported'.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -28,23 +28,82 @@
     },
     "rfx_version": {
       "type": "string",
+      "minLength": 1,
       "description": "Provenance only. It records which rfx wrote the document; it is not a compatibility contract."
     },
     "domain": {
       "type": "object",
-      "description": "Physical extent and reduction mode. The extent is the USER domain: rfx adds CPML cells OUTSIDE it (measured: domain 10 mm at dx 1 mm gives grid 11 cells at cpml_layers=0 and 11+2N otherwise), so an external emitter must span domain + 2*cpml_layers*dx per absorbing axis."
+      "description": "Physical extent and reduction mode. The extent is the USER domain: rfx adds CPML cells OUTSIDE it (measured: domain 10 mm at dx 1 mm gives grid 11 cells at cpml_layers=0 and 11+2N otherwise), so an external emitter must span domain + 2*cpml_layers*dx per absorbing axis.",
+      "additionalProperties": false,
+      "required": ["freq_max", "extent", "mode"],
+      "properties": {
+        "freq_max": { "type": "number", "exclusiveMinimum": 0 },
+        "extent": { "$ref": "#/$defs/vec3" },
+        "mode": { "type": "string", "minLength": 1 }
+      }
     },
     "mesh": {
       "type": "object",
-      "description": "Cell size and optional per-axis graded profiles. Profiles are emitted value-by-value with their dtype and array namespace, never summarised: rfx synthesises the domain extent from float(np.sum(profile)), so a truncated profile silently changes the domain. A profile that is a JAX tracer is refused, because a traced profile is a differentiable design variable with no concrete value to record."
+      "description": "Cell size and optional per-axis graded profiles. Profiles are emitted value-by-value with their dtype and array namespace, never summarised: rfx synthesises the domain extent from float(np.sum(profile)), so a truncated profile silently changes the domain. A profile that is a JAX tracer is refused, because a traced profile is a differentiable design variable with no concrete value to record.",
+      "additionalProperties": false,
+      "required": ["dx", "dx_profile", "dy_profile", "dz_profile"],
+      "properties": {
+        "dx": {
+          "type": ["number", "null"],
+          "description": "Boundary cell size in metres. null is the auto-mesh path: the mesh choice is deferred to auto_configure inside run(), which writes back _dx, _dz_profile and _domain. Exporting the same script before and after a run therefore yields different documents, and both are faithful."
+        },
+        "dx_profile": { "$ref": "#/$defs/array_or_null" },
+        "dy_profile": { "$ref": "#/$defs/array_or_null" },
+        "dz_profile": { "$ref": "#/$defs/array_or_null" }
+      }
     },
     "boundary": {
       "type": "object",
-      "description": "Authoritative per-face BoundarySpec plus the derived legacy scalar view. _boundary, _pec_faces and _periodic_axes are derived from the spec, except that _periodic_axes is also mutated as a side effect by add_floquet_port, so it is emitted explicitly rather than re-derived on import."
+      "description": "Authoritative per-face BoundarySpec plus the derived legacy scalar view. _boundary, _pec_faces and _periodic_axes are derived from the spec, except that _periodic_axes is also mutated as a side effect by add_floquet_port, so it is emitted explicitly rather than re-derived on import.",
+      "additionalProperties": false,
+      "required": ["spec", "legacy"],
+      "properties": {
+        "spec": {
+          "type": "object",
+          "description": "BoundarySpec.to_dict() verbatim; authoritative.",
+          "additionalProperties": false,
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "$ref": "#/$defs/boundary_axis" },
+            "y": { "$ref": "#/$defs/boundary_axis" },
+            "z": { "$ref": "#/$defs/boundary_axis" }
+          }
+        },
+        "legacy": {
+          "type": "object",
+          "description": "The legacy views are NOT merely redundant, which is why the importer reads them rather than re-deriving everything from the spec. Measured: boundary='pec' leaves _pec_faces empty while BoundarySpec.uniform('pec') produces the identical _boundary_spec but derives all six faces; and set_periodic_axes('xyz') leaves _boundary='cpml' with a non-zero layer count while the all-periodic spec would derive 'pec' and 0. This section is what lets the importer reproduce the construction PATH, not just the spec.",
+          "additionalProperties": false,
+          "required": ["boundary", "cpml_layers", "cpml_kappa_max", "pec_faces", "periodic_axes"],
+          "properties": {
+            "boundary": { "type": "string", "minLength": 1 },
+            "cpml_layers": { "type": "integer", "minimum": 0 },
+            "cpml_kappa_max": { "type": "number" },
+            "pec_faces": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"] }
+            },
+            "periodic_axes": { "type": "string", "pattern": "^x?y?z?$" }
+          }
+        }
+      }
     },
     "solver": {
       "type": "object",
-      "description": "rfx-only solver controls (precision, solver, adi_cfl_factor, stencil_order). These round-trip in rfx and have no counterpart in openEMS/Meep/CST/HFSS; they appear in non_portable."
+      "description": "rfx-only solver controls (precision, solver, adi_cfl_factor, stencil_order). These round-trip in rfx and have no counterpart in openEMS/Meep/CST/HFSS; they appear in non_portable.",
+      "additionalProperties": false,
+      "required": ["precision", "solver", "adi_cfl_factor", "stencil_order"],
+      "properties": {
+        "precision": { "type": "string", "minLength": 1 },
+        "solver": { "type": "string", "minLength": 1 },
+        "adi_cfl_factor": { "type": "number" },
+        "stencil_order": { "type": "integer" }
+      }
     },
     "materials": {
       "type": "object",
@@ -88,7 +147,8 @@
     },
     "material_library": {
       "type": "object",
-      "description": "Library entries the design referenced, recorded so a document does not depend on the writer's library version."
+      "description": "Library entries the design referenced, recorded so a document does not depend on the writer's library version. Provenance, not applied state: the importer verifies each value against the live MATERIAL_LIBRARY and refuses on drift, but does not register them — the original design did not either. Same payload as `materials`.",
+      "additionalProperties": { "$ref": "#/properties/materials/additionalProperties" }
     },
     "geometry": {
       "type": "array",
@@ -105,7 +165,18 @@
     },
     "thin_conductors": {
       "type": "array",
-      "description": "Thin-conductor sheet entries (shape plus sigma_bulk / thickness / eps_r). Routed to a PEC mask when the effective conductivity is high enough."
+      "description": "Thin-conductor sheet entries (shape plus sigma_bulk / thickness / eps_r). Routed to a PEC mask when the effective conductivity is high enough.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["shape", "sigma_bulk", "thickness", "eps_r"],
+        "properties": {
+          "shape": { "$ref": "#/$defs/shape" },
+          "sigma_bulk": { "type": "number" },
+          "thickness": { "type": "number" },
+          "eps_r": { "type": "number" }
+        }
+      }
     },
     "excitations": {
       "type": "object",
@@ -125,29 +196,283 @@
         "lumped_rlc"
       ],
       "properties": {
-        "soft_sources": { "type": "array" },
-        "lumped_ports": { "type": "array" },
+        "soft_sources": {
+          "type": "array",
+          "description": "add_source() entries. Only the three fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["position", "component", "waveform"],
+            "properties": {
+              "position": { "$ref": "#/$defs/vec3" },
+              "component": { "type": "string", "minLength": 1 },
+              "waveform": { "$ref": "#/$defs/waveform_or_null" }
+            }
+          }
+        },
+        "lumped_ports": {
+          "type": "array",
+          "description": "add_port() entries: single-cell lumped ports (extent null) and multi-cell wire ports.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "position",
+              "component",
+              "impedance",
+              "waveform",
+              "extent",
+              "excite",
+              "direction",
+              "reference_plane_cells"
+            ],
+            "properties": {
+              "position": { "$ref": "#/$defs/vec3" },
+              "component": { "type": "string", "minLength": 1 },
+              "impedance": { "type": "number", "exclusiveMinimum": 0 },
+              "waveform": { "$ref": "#/$defs/waveform_or_null" },
+              "extent": { "type": ["number", "null"] },
+              "excite": { "type": "boolean" },
+              "direction": { "type": ["string", "null"] },
+              "reference_plane_cells": {
+                "type": ["integer", "null"],
+                "description": "NON-PORTABLE: a cell count, not a physical measurement-plane distance."
+              }
+            }
+          }
+        },
         "msl_ports": {
           "type": "array",
-          "description": "n_probe_offset and n_probe_spacing are CELL COUNTS derived from dx at registration time, not physical lengths; they appear in non_portable."
+          "description": "n_probe_offset and n_probe_spacing are CELL COUNTS derived from dx at registration time, not physical lengths; they appear in non_portable.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "position",
+              "width",
+              "height",
+              "direction",
+              "impedance",
+              "waveform",
+              "excite",
+              "n_probe_offset",
+              "n_probe_spacing",
+              "n_probes",
+              "mode",
+              "eps_r_sub"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "position": { "$ref": "#/$defs/vec3" },
+              "width": { "type": "number" },
+              "height": { "type": "number" },
+              "direction": { "type": "string", "minLength": 1 },
+              "impedance": { "type": "number" },
+              "waveform": { "$ref": "#/$defs/waveform_or_null" },
+              "excite": { "type": "boolean" },
+              "n_probe_offset": { "type": "integer" },
+              "n_probe_spacing": { "type": "integer" },
+              "n_probes": { "type": "integer" },
+              "mode": { "type": "string", "minLength": 1 },
+              "eps_r_sub": { "type": ["number", "null"] }
+            }
+          }
         },
-        "waveguide_ports": { "type": "array" },
-        "coaxial_ports": { "type": "array" },
+        "waveguide_ports": {
+          "type": "array",
+          "description": "probe_offset and ref_offset are cell counts from the source plane, not physical distances. `waveform` here is a waveform NAME (a string the runner resolves), not a waveform object like the lumped/MSL/coaxial families carry.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "x_position",
+              "y_range",
+              "z_range",
+              "x_range",
+              "mode",
+              "mode_type",
+              "direction",
+              "freqs",
+              "n_freqs",
+              "f0",
+              "bandwidth",
+              "amplitude",
+              "probe_offset",
+              "ref_offset",
+              "calibration_preset",
+              "reference_plane",
+              "probe_plane",
+              "n_modes",
+              "waveform",
+              "mode_profile"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "x_position": { "type": "number" },
+              "y_range": { "$ref": "#/$defs/vec2_or_null" },
+              "z_range": { "$ref": "#/$defs/vec2_or_null" },
+              "x_range": { "$ref": "#/$defs/vec2_or_null" },
+              "mode": { "$ref": "#/$defs/ivec2" },
+              "mode_type": { "type": "string", "minLength": 1 },
+              "direction": { "type": "string", "minLength": 1 },
+              "freqs": { "$ref": "#/$defs/array_or_null" },
+              "n_freqs": { "type": "integer" },
+              "f0": { "type": ["number", "null"] },
+              "bandwidth": { "type": "number" },
+              "amplitude": { "type": "number" },
+              "probe_offset": { "type": "integer" },
+              "ref_offset": { "type": "integer" },
+              "calibration_preset": { "type": ["string", "null"] },
+              "reference_plane": { "type": ["number", "null"] },
+              "probe_plane": { "type": ["number", "null"] },
+              "n_modes": { "type": "integer" },
+              "waveform": { "type": "string", "minLength": 1 },
+              "mode_profile": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "coaxial_ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "position",
+              "face",
+              "pin_length",
+              "pin_radius",
+              "outer_radius",
+              "impedance",
+              "excitation"
+            ],
+            "properties": {
+              "position": { "$ref": "#/$defs/vec3" },
+              "face": { "type": "string", "minLength": 1 },
+              "pin_length": { "type": "number" },
+              "pin_radius": { "type": "number" },
+              "outer_radius": { "type": "number" },
+              "impedance": { "type": "number" },
+              "excitation": { "$ref": "#/$defs/waveform_or_null" }
+            }
+          }
+        },
         "coaxial_matched_loads": {
           "type": "array",
-          "description": "Offsets are cell-relative, not physical coordinates; see non_portable."
+          "description": "Offsets are cell-relative, not physical coordinates; see non_portable. target_impedance is always the resolved number, never the add_coaxial_matched_load(target_impedance=None) sentinel that the builder fills from the port's closed-form Z_TEM.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["port_index", "target_impedance", "axial_offset_cells"],
+            "properties": {
+              "port_index": { "type": "integer", "minimum": 0 },
+              "target_impedance": { "type": "number" },
+              "axial_offset_cells": { "type": "integer" }
+            }
+          }
         },
-        "coaxial_open_terminations": { "type": "array" },
-        "coaxial_pec_end_caps": { "type": "array" },
+        "coaxial_open_terminations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["port_index", "pin_retract_cells"],
+            "properties": {
+              "port_index": { "type": "integer", "minimum": 0 },
+              "pin_retract_cells": { "type": "integer" }
+            }
+          }
+        },
+        "coaxial_pec_end_caps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["port_index", "axial_offset_cells"],
+            "properties": {
+              "port_index": { "type": "integer", "minimum": 0 },
+              "axial_offset_cells": { "type": "integer" }
+            }
+          }
+        },
         "floquet_ports": {
           "type": "array",
-          "description": "Import goes through add_floquet_port, so the builder's fences still fire: a document tampered to n_modes > 1 raises the builder's own NotImplementedError rather than widening the fence."
+          "description": "Import goes through add_floquet_port, so the builder's fences still fire: a document tampered to n_modes > 1 raises the builder's own NotImplementedError rather than widening the fence.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "position",
+              "axis",
+              "scan_theta",
+              "scan_phi",
+              "polarization",
+              "n_modes",
+              "freqs",
+              "n_freqs",
+              "f0",
+              "bandwidth",
+              "amplitude"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "position": { "type": "number" },
+              "axis": { "type": "string", "minLength": 1 },
+              "scan_theta": { "type": "number" },
+              "scan_phi": { "type": "number" },
+              "polarization": { "type": "string", "minLength": 1 },
+              "n_modes": { "type": "integer" },
+              "freqs": { "$ref": "#/$defs/array_or_null" },
+              "n_freqs": { "type": "integer" },
+              "f0": { "type": ["number", "null"] },
+              "bandwidth": { "type": "number" },
+              "amplitude": { "type": "number" }
+            }
+          }
         },
         "tfsf": {
           "type": ["object", "null"],
-          "description": "Total-field/scattered-field plane wave. Projecting this onto a commercial solver's plane-wave source is an approximation with a different absorber story, not a translation."
+          "description": "Total-field/scattered-field plane wave. Projecting this onto a commercial solver's plane-wave source is an approximation with a different absorber story, not a translation. `margin` is in cells, and `waveform` is a pulse-shape NAME resolved by the 1-D auxiliary grid.",
+          "additionalProperties": false,
+          "required": [
+            "f0",
+            "bandwidth",
+            "amplitude",
+            "margin",
+            "polarization",
+            "direction",
+            "angle_deg",
+            "waveform"
+          ],
+          "properties": {
+            "f0": { "type": ["number", "null"] },
+            "bandwidth": { "type": "number" },
+            "amplitude": { "type": "number" },
+            "margin": { "type": "integer" },
+            "polarization": { "type": "string", "minLength": 1 },
+            "direction": { "type": "string", "minLength": 1 },
+            "angle_deg": { "type": "number" },
+            "waveform": { "type": "string", "minLength": 1 }
+          }
         },
-        "lumped_rlc": { "type": "array" }
+        "lumped_rlc": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["R", "L", "C", "topology", "position", "component"],
+            "properties": {
+              "R": { "type": "number", "minimum": 0 },
+              "L": { "type": "number", "minimum": 0 },
+              "C": { "type": "number", "minimum": 0 },
+              "topology": { "type": "string", "minLength": 1 },
+              "position": { "$ref": "#/$defs/vec3" },
+              "component": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "observables": {
@@ -157,34 +482,163 @@
       "properties": {
         "probes": {
           "type": "array",
-          "description": "add_vector_probe expands to six flat entries inside rfx itself, so the vector grouping is already lost upstream; only the flat entries round-trip."
+          "description": "add_vector_probe expands to six flat entries inside rfx itself, so the vector grouping is already lost upstream; only the flat entries round-trip.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["position", "component"],
+            "properties": {
+              "position": { "$ref": "#/$defs/vec3" },
+              "component": { "type": "string", "minLength": 1 }
+            }
+          }
         },
-        "dft_planes": { "type": "array" },
-        "flux_monitors": { "type": "array" },
+        "dft_planes": {
+          "type": "array",
+          "description": "freqs is null when the design deferred the frequency grid to n_freqs; the (null, n_freqs) pair is emitted as-is because collapsing either way changes which bins are computed.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "axis", "coordinate", "component", "freqs", "n_freqs"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "axis": { "type": "string", "minLength": 1 },
+              "coordinate": { "type": "number" },
+              "component": { "type": "string", "minLength": 1 },
+              "freqs": { "$ref": "#/$defs/array_or_null" },
+              "n_freqs": { "type": "integer" }
+            }
+          }
+        },
+        "flux_monitors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "axis",
+              "coordinate",
+              "freqs",
+              "n_freqs",
+              "size",
+              "center",
+              "dft_window",
+              "dft_window_alpha"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "axis": { "type": "string", "minLength": 1 },
+              "coordinate": { "type": "number" },
+              "freqs": { "$ref": "#/$defs/array_or_null" },
+              "n_freqs": { "type": "integer" },
+              "size": { "$ref": "#/$defs/vec2_or_null" },
+              "center": { "$ref": "#/$defs/vec2_or_null" },
+              "dft_window": { "type": "string", "minLength": 1 },
+              "dft_window_alpha": { "type": "number" }
+            }
+          }
+        },
         "ntff": {
           "type": ["object", "null"],
-          "description": "freqs is emitted as an explicit array because n_freqs is defaulted at registration and is not recoverable from the stored tuple."
+          "description": "freqs is emitted as an explicit array because n_freqs is defaulted at registration and is not recoverable from the stored tuple. It is therefore never null here, unlike the deferred (null, n_freqs) pairs the DFT-plane and flux families allow.",
+          "additionalProperties": false,
+          "required": ["corner_lo", "corner_hi", "freqs"],
+          "properties": {
+            "corner_lo": { "$ref": "#/$defs/vec3" },
+            "corner_hi": { "$ref": "#/$defs/vec3" },
+            "freqs": { "$ref": "#/$defs/array_payload" }
+          }
         }
       }
     },
     "refinement": {
       "type": ["object", "null"],
-      "description": "SBP-SAT subgrid directives. Experimental and falsified in 3D (PR #90): round-trip inside rfx, never project outward."
+      "description": "SBP-SAT subgrid directives. Experimental and falsified in 3D (PR #90): round-trip inside rfx, never project outward.",
+      "additionalProperties": false,
+      "required": ["z_range", "ratio", "xy_margin", "tau", "validation", "topology"],
+      "properties": {
+        "z_range": { "$ref": "#/$defs/vec2" },
+        "ratio": { "type": "integer" },
+        "xy_margin": { "type": ["number", "null"] },
+        "tau": { "type": "number" },
+        "validation": { "type": "string", "minLength": 1 },
+        "topology": { "type": "string", "minLength": 1 }
+      }
     },
     "non_portable": {
       "type": "array",
-      "description": "DERIVED annotation, not independent state: the paths in this document whose meaning does not survive a translation, each with the reason. An external emitter must consult this and refuse or record an explicit approximation; it must not ship these silently.",
+      "description": "DERIVED annotation, not independent state: the paths in this document whose meaning does not survive a translation, each with the reason. An external emitter must consult this and refuse or record an explicit approximation; it must not ship these silently. Nothing is applied from it on import, but it IS verified — the importer re-exports and compares, so the list cannot be edited away to make rfx-only state look portable. Sorted by path.",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["path", "reason"],
         "properties": {
-          "path": { "type": "string" },
-          "reason": { "type": "string" }
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
         }
       }
     }
   },
   "$defs": {
+    "vec2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "vec2_or_null": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/vec2" }]
+    },
+    "vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "ivec2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "integer" }
+    },
+    "array_payload": {
+      "type": "object",
+      "description": "A 1-D numeric array recorded value by value, never summarised. The container and dtype are part of the record because Simulation.__init__ synthesises the domain extent from float(np.sum(profile)): a float32 profile reloaded as float64 shifts the extent in the last ULPs and breaks the repo's bit-identity gates. dtype is REQUIRED for the numpy and jax containers and FORBIDDEN for list and tuple, which carry no dtype. Contrast rfx.artifacts._profile_summary, which emits {present, shape, min, max, sum} — a summary that cannot be rebuilt.",
+      "additionalProperties": false,
+      "required": ["container", "values"],
+      "properties": {
+        "container": { "enum": ["list", "tuple", "numpy", "jax"] },
+        "dtype": { "type": "string", "minLength": 1 },
+        "values": { "type": "array", "items": { "type": "number" } }
+      },
+      "if": {
+        "properties": { "container": { "enum": ["numpy", "jax"] } },
+        "required": ["container"]
+      },
+      "then": { "required": ["container", "dtype", "values"] },
+      "else": { "not": { "required": ["dtype"] } }
+    },
+    "array_or_null": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/array_payload" }]
+    },
+    "boundary_axis": {
+      "type": "object",
+      "description": "Boundary.to_dict() for one axis. lo_thickness / hi_thickness appear only when set, and only absorbing faces may carry them; conformal appears only when true, and only on a symmetric PEC axis.",
+      "additionalProperties": false,
+      "required": ["lo", "hi"],
+      "properties": {
+        "lo": { "$ref": "#/$defs/boundary_token" },
+        "hi": { "$ref": "#/$defs/boundary_token" },
+        "lo_thickness": { "type": "integer", "minimum": 0 },
+        "hi_thickness": { "type": "integer", "minimum": 0 },
+        "conformal": { "const": true }
+      }
+    },
+    "boundary_token": {
+      "enum": ["cpml", "upml", "pec", "pmc", "periodic"],
+      "description": "rfx.boundaries.spec.BOUNDARY_TOKENS. pmc and the per-axis conformal flag are rfx-only."
+    },
     "shape": {
       "type": "object",
       "additionalProperties": false,
@@ -196,9 +650,168 @@
         },
         "params": {
           "type": "object",
-          "description": "Constructor arguments for the named kind. Vectors are JSON arrays of finite numbers; the importer restores the tuple types the primitives declare so a round-tripped frozen dataclass compares equal. NaN, infinity and JAX tracers are refused at the codec layer, where the parameter name is still known."
+          "description": "Constructor arguments for the named kind. Vectors are JSON arrays of finite numbers; the importer restores the tuple types the primitives declare so a round-tripped frozen dataclass compares equal. NaN, infinity and JAX tracers are refused at the codec layer, where the parameter name is still known. The allOf below pins the exact parameter set per kind, so a shape gaining or losing a constructor argument fails validation rather than passing as a loose object."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "box" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["corner_lo", "corner_hi"],
+                "properties": {
+                  "corner_lo": { "$ref": "#/$defs/vec3" },
+                  "corner_hi": { "$ref": "#/$defs/vec3" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "cylinder" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["center", "radius", "height", "axis"],
+                "properties": {
+                  "center": { "$ref": "#/$defs/vec3" },
+                  "radius": { "type": "number" },
+                  "height": { "type": "number" },
+                  "axis": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "sphere" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["center", "radius"],
+                "properties": {
+                  "center": { "$ref": "#/$defs/vec3" },
+                  "radius": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "polyline_wire" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["points", "radius"],
+                "properties": {
+                  "points": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+                  "radius": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "via" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["center", "drill_radius", "pad_radius", "layers", "material"],
+                "properties": {
+                  "center": { "$ref": "#/$defs/vec2" },
+                  "drill_radius": { "type": "number" },
+                  "pad_radius": { "type": "number" },
+                  "layers": { "type": "array", "items": { "$ref": "#/$defs/vec2" } },
+                  "material": {
+                    "type": "string",
+                    "description": "Via carries its OWN material in addition to the material= handed to Simulation.add(). Both are recorded; resolving the two is the caller's decision, not something the codec may silently pick."
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "curved_patch" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["center", "length", "width", "radius", "axis"],
+                "properties": {
+                  "center": { "$ref": "#/$defs/vec3" },
+                  "length": { "type": "number" },
+                  "width": { "type": "number" },
+                  "radius": { "type": "number" },
+                  "axis": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "waveform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "description": "An excitation waveform recorded as its dataclass parameters. CustomWaveform is deliberately absent: it wraps a Python callable, which has no serialisable form — and because add_polarized_source builds a CustomWaveform closure for a complex Jones vector, that also refuses a circularly polarised source (already unrecoverable from _ports inside rfx itself). Note the waveguide-port and TFSF families do NOT use this payload: they store a waveform NAME as a plain string.",
+      "properties": {
+        "kind": { "enum": ["cw_source", "gaussian_pulse", "modulated_gaussian"] },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "gaussian_pulse" } }, "required": ["kind"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/gaussian_params" } } }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "modulated_gaussian" } },
+            "required": ["kind"]
+          },
+          "then": { "properties": { "params": { "$ref": "#/$defs/gaussian_params" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "cw_source" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": ["f0", "amplitude", "ramp_steps"],
+                "properties": {
+                  "f0": { "type": "number" },
+                  "amplitude": { "type": "number" },
+                  "ramp_steps": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gaussian_params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["f0", "bandwidth", "amplitude", "cutoff"],
+      "properties": {
+        "f0": { "type": "number" },
+        "bandwidth": { "type": "number" },
+        "amplitude": { "type": "number" },
+        "cutoff": {
+          "type": "number",
+          "description": "Number of tau between t=0 and the pulse peak. Load-bearing, not cosmetic: the deposited-DC integral scales as e^(-cutoff^2) (issue #388), so dropping it would silently change the static source remnant."
         }
       }
+    },
+    "waveform_or_null": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/waveform" }]
     }
   }
 }
