@@ -1069,6 +1069,32 @@ def test_refuses_inconsistent_boundary_sections():
         simulation_from_design(document)
 
 
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("domain", "freq_max"), "20000000000.0"),
+        (("mesh", "dx"), "0.0005"),
+        (("boundary", "legacy", "cpml_layers"), "8"),
+        (("solver", "stencil_order"), "2"),
+    ],
+)
+def test_refuses_a_quoted_numeric(path, value):
+    """``float("1.2e10")`` succeeds, so a quoted numeric must be refused by name.
+
+    The round-trip self-check does catch these, but only with a message showing
+    two identical-looking numbers ('rebuilt 2e10 vs document "2e10"'), which
+    points the reader at the wrong thing. The coercion names the real cause.
+    """
+    document = design_to_dict(_graded_microstrip())
+    node = document
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+
+    with pytest.raises(UnsupportedDesignFeature, match="not a numb|not an integer"):
+        simulation_from_design(document)
+
+
 def test_refuses_a_non_mapping_document():
     with pytest.raises(UnsupportedDesignFeature, match="must be a mapping"):
         simulation_from_design([1, 2, 3])
