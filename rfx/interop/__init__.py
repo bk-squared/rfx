@@ -17,6 +17,12 @@ description and external-solver emitters are under construction.
 from __future__ import annotations
 
 from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop._materials import (
+    material_from_dict,
+    material_to_dict,
+    materials_from_dict,
+    materials_to_dict,
+)
 from rfx.interop._shapes import (
     SUPPORTED_SHAPE_TYPES,
     shape_field_names,
@@ -27,6 +33,10 @@ from rfx.interop._shapes import (
 __all__ = [
     "SUPPORTED_SHAPE_TYPES",
     "UnsupportedDesignFeature",
+    "material_from_dict",
+    "material_to_dict",
+    "materials_from_dict",
+    "materials_to_dict",
     "shape_field_names",
     "shape_from_dict",
     "shape_to_dict",
