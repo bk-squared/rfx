@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://remilab.ai/rfx/schemas/rfx-design-ir-v1.schema.json",
   "title": "rfx design IR v1",
-  "description": "Round-trip-complete description of an rfx Simulation's DESIGN state, emitted by rfx.interop.design_to_dict and consumed by rfx.interop.simulation_from_design. This is the rfx-to-rfx profile: its gate is structural equality after a round trip. An external-solver projection is a SEPARATE, explicitly lossy artifact and is not described by this schema. Derived state (Grid, dt, axis_pads), preflight verdicts, results, and run-time controls (n_steps, until_decay, compute_s_params, eps_override, ...) are deliberately absent: a design description that carries them invites a reader to trust them. Anything that cannot be represented exactly is refused at export time with UnsupportedDesignFeature rather than approximated. SCOPE OF A PASS: this schema pins the document LAYER — key sets, value types, and the closed vocabularies the codecs enforce (shape kind, waveform kind, boundary token, array container). It does NOT re-encode builder fences, which are enforced on import by the Simulation builders the importer drives. A schema-valid document can still be refused (a Floquet port with n_modes > 1 raises the builder's own NotImplementedError), so validating means 'well-formed', never 'physically supported'.",
+  "description": "Round-trip-complete description of an rfx Simulation's DESIGN state, emitted by rfx.interop.design_to_dict and consumed by rfx.interop.simulation_from_design. This is the rfx-to-rfx profile: its gate is structural equality after a round trip. An external-solver projection is a SEPARATE, explicitly lossy artifact and is not described by this schema. Derived state (Grid, dt, axis_pads), preflight verdicts, results, and run-time controls (n_steps, until_decay, compute_s_params, eps_override, ...) are deliberately absent: a design description that carries them invites a reader to trust them. Anything that cannot be represented exactly is refused at export time with UnsupportedDesignFeature rather than approximated. SCOPE OF A PASS: this schema pins the document LAYER \u2014 key sets, value types, and the closed vocabularies the codecs enforce (shape kind, waveform kind, boundary token, array container). It does NOT re-encode builder fences, which are enforced on import by the Simulation builders the importer drives. A schema-valid document can still be refused (a Floquet port with n_modes > 1 raises the builder's own NotImplementedError), so validating means 'well-formed', never 'physically supported'.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -35,60 +35,125 @@
       "type": "object",
       "description": "Physical extent and reduction mode. The extent is the USER domain: rfx adds CPML cells OUTSIDE it (measured: domain 10 mm at dx 1 mm gives grid 11 cells at cpml_layers=0 and 11+2N otherwise), so an external emitter must span domain + 2*cpml_layers*dx per absorbing axis.",
       "additionalProperties": false,
-      "required": ["freq_max", "extent", "mode"],
+      "required": [
+        "freq_max",
+        "extent",
+        "mode"
+      ],
       "properties": {
-        "freq_max": { "type": "number", "exclusiveMinimum": 0 },
-        "extent": { "$ref": "#/$defs/vec3" },
-        "mode": { "type": "string", "minLength": 1 }
+        "freq_max": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "extent": {
+          "$ref": "#/$defs/vec3"
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "mesh": {
       "type": "object",
       "description": "Cell size and optional per-axis graded profiles. Profiles are emitted value-by-value with their dtype and array namespace, never summarised: rfx synthesises the domain extent from float(np.sum(profile)), so a truncated profile silently changes the domain. A profile that is a JAX tracer is refused, because a traced profile is a differentiable design variable with no concrete value to record.",
       "additionalProperties": false,
-      "required": ["dx", "dx_profile", "dy_profile", "dz_profile"],
+      "required": [
+        "dx",
+        "dx_profile",
+        "dy_profile",
+        "dz_profile"
+      ],
       "properties": {
         "dx": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "Boundary cell size in metres. null is the auto-mesh path: the mesh choice is deferred to auto_configure inside run(), which writes back _dx, _dz_profile and _domain. Exporting the same script before and after a run therefore yields different documents, and both are faithful."
         },
-        "dx_profile": { "$ref": "#/$defs/array_or_null" },
-        "dy_profile": { "$ref": "#/$defs/array_or_null" },
-        "dz_profile": { "$ref": "#/$defs/array_or_null" }
+        "dx_profile": {
+          "$ref": "#/$defs/array_or_null"
+        },
+        "dy_profile": {
+          "$ref": "#/$defs/array_or_null"
+        },
+        "dz_profile": {
+          "$ref": "#/$defs/array_or_null"
+        }
       }
     },
     "boundary": {
       "type": "object",
       "description": "Authoritative per-face BoundarySpec plus the derived legacy scalar view. _boundary, _pec_faces and _periodic_axes are derived from the spec, except that _periodic_axes is also mutated as a side effect by add_floquet_port, so it is emitted explicitly rather than re-derived on import.",
       "additionalProperties": false,
-      "required": ["spec", "legacy"],
+      "required": [
+        "spec",
+        "legacy"
+      ],
       "properties": {
         "spec": {
           "type": "object",
           "description": "BoundarySpec.to_dict() verbatim; authoritative.",
           "additionalProperties": false,
-          "required": ["x", "y", "z"],
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
           "properties": {
-            "x": { "$ref": "#/$defs/boundary_axis" },
-            "y": { "$ref": "#/$defs/boundary_axis" },
-            "z": { "$ref": "#/$defs/boundary_axis" }
+            "x": {
+              "$ref": "#/$defs/boundary_axis"
+            },
+            "y": {
+              "$ref": "#/$defs/boundary_axis"
+            },
+            "z": {
+              "$ref": "#/$defs/boundary_axis"
+            }
           }
         },
         "legacy": {
           "type": "object",
           "description": "The legacy views are NOT merely redundant, which is why the importer reads them rather than re-deriving everything from the spec. Measured: boundary='pec' leaves _pec_faces empty while BoundarySpec.uniform('pec') produces the identical _boundary_spec but derives all six faces; and set_periodic_axes('xyz') leaves _boundary='cpml' with a non-zero layer count while the all-periodic spec would derive 'pec' and 0. This section is what lets the importer reproduce the construction PATH, not just the spec.",
           "additionalProperties": false,
-          "required": ["boundary", "cpml_layers", "cpml_kappa_max", "pec_faces", "periodic_axes"],
+          "required": [
+            "boundary",
+            "cpml_layers",
+            "cpml_kappa_max",
+            "pec_faces",
+            "periodic_axes"
+          ],
           "properties": {
-            "boundary": { "type": "string", "minLength": 1 },
-            "cpml_layers": { "type": "integer", "minimum": 0 },
-            "cpml_kappa_max": { "type": "number" },
+            "boundary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cpml_layers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cpml_kappa_max": {
+              "type": "number"
+            },
             "pec_faces": {
               "type": "array",
               "uniqueItems": true,
-              "items": { "enum": ["x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"] }
+              "items": {
+                "enum": [
+                  "x_lo",
+                  "x_hi",
+                  "y_lo",
+                  "y_hi",
+                  "z_lo",
+                  "z_hi"
+                ]
+              }
             },
-            "periodic_axes": { "type": "string", "pattern": "^x?y?z?$" }
+            "periodic_axes": {
+              "type": "string",
+              "pattern": "^x?y?z?$"
+            }
           }
         }
       }
@@ -97,12 +162,27 @@
       "type": "object",
       "description": "rfx-only solver controls (precision, solver, adi_cfl_factor, stencil_order). These round-trip in rfx and have no counterpart in openEMS/Meep/CST/HFSS; they appear in non_portable.",
       "additionalProperties": false,
-      "required": ["precision", "solver", "adi_cfl_factor", "stencil_order"],
+      "required": [
+        "precision",
+        "solver",
+        "adi_cfl_factor",
+        "stencil_order"
+      ],
       "properties": {
-        "precision": { "type": "string", "minLength": 1 },
-        "solver": { "type": "string", "minLength": 1 },
-        "adi_cfl_factor": { "type": "number" },
-        "stencil_order": { "type": "integer" }
+        "precision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "solver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adi_cfl_factor": {
+          "type": "number"
+        },
+        "stencil_order": {
+          "type": "integer"
+        }
       }
     },
     "materials": {
@@ -111,34 +191,72 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["eps_r", "sigma", "mu_r", "chi3", "debye_poles", "lorentz_poles"],
+        "required": [
+          "eps_r",
+          "sigma",
+          "mu_r",
+          "chi3",
+          "debye_poles",
+          "lorentz_poles"
+        ],
         "properties": {
-          "eps_r": { "type": "number" },
-          "sigma": { "type": "number" },
-          "mu_r": { "type": "number" },
-          "chi3": { "type": "number" },
+          "eps_r": {
+            "type": "number"
+          },
+          "sigma": {
+            "type": "number"
+          },
+          "mu_r": {
+            "type": "number"
+          },
+          "chi3": {
+            "type": "number"
+          },
           "debye_poles": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["delta_eps", "tau"],
+              "required": [
+                "delta_eps",
+                "tau"
+              ],
               "properties": {
-                "delta_eps": { "type": "number" },
-                "tau": { "type": "number" }
+                "delta_eps": {
+                  "type": "number"
+                },
+                "tau": {
+                  "type": "number"
+                }
               }
             }
           },
           "lorentz_poles": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["omega_0", "delta", "kappa"],
+              "required": [
+                "omega_0",
+                "delta",
+                "kappa"
+              ],
               "properties": {
-                "omega_0": { "type": "number" },
-                "delta": { "type": "number" },
-                "kappa": { "type": "number" }
+                "omega_0": {
+                  "type": "number"
+                },
+                "delta": {
+                  "type": "number"
+                },
+                "kappa": {
+                  "type": "number"
+                }
               }
             }
           }
@@ -147,8 +265,10 @@
     },
     "material_library": {
       "type": "object",
-      "description": "Library entries the design referenced, recorded so a document does not depend on the writer's library version. Provenance, not applied state: the importer verifies each value against the live MATERIAL_LIBRARY and refuses on drift, but does not register them — the original design did not either. Same payload as `materials`.",
-      "additionalProperties": { "$ref": "#/properties/materials/additionalProperties" }
+      "description": "Library entries the design referenced, recorded so a document does not depend on the writer's library version. Provenance, not applied state: the importer verifies each value against the live MATERIAL_LIBRARY and refuses on drift, but does not register them \u2014 the original design did not either. Same payload as `materials`.",
+      "additionalProperties": {
+        "$ref": "#/properties/materials/additionalProperties"
+      }
     },
     "geometry": {
       "type": "array",
@@ -156,10 +276,17 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["shape", "material_name"],
+        "required": [
+          "shape",
+          "material_name"
+        ],
         "properties": {
-          "shape": { "$ref": "#/$defs/shape" },
-          "material_name": { "type": "string" }
+          "shape": {
+            "$ref": "#/$defs/shape"
+          },
+          "material_name": {
+            "type": "string"
+          }
         }
       }
     },
@@ -169,12 +296,25 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["shape", "sigma_bulk", "thickness", "eps_r"],
+        "required": [
+          "shape",
+          "sigma_bulk",
+          "thickness",
+          "eps_r"
+        ],
         "properties": {
-          "shape": { "$ref": "#/$defs/shape" },
-          "sigma_bulk": { "type": "number" },
-          "thickness": { "type": "number" },
-          "eps_r": { "type": "number" }
+          "shape": {
+            "$ref": "#/$defs/shape"
+          },
+          "sigma_bulk": {
+            "type": "number"
+          },
+          "thickness": {
+            "type": "number"
+          },
+          "eps_r": {
+            "type": "number"
+          }
         }
       }
     },
@@ -202,11 +342,22 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["position", "component", "waveform"],
+            "required": [
+              "position",
+              "component",
+              "waveform"
+            ],
             "properties": {
-              "position": { "$ref": "#/$defs/vec3" },
-              "component": { "type": "string", "minLength": 1 },
-              "waveform": { "$ref": "#/$defs/waveform_or_null" }
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "component": {
+                "type": "string",
+                "minLength": 1
+              },
+              "waveform": {
+                "$ref": "#/$defs/waveform_or_null"
+              }
             }
           }
         },
@@ -227,15 +378,40 @@
               "reference_plane_cells"
             ],
             "properties": {
-              "position": { "$ref": "#/$defs/vec3" },
-              "component": { "type": "string", "minLength": 1 },
-              "impedance": { "type": "number", "exclusiveMinimum": 0 },
-              "waveform": { "$ref": "#/$defs/waveform_or_null" },
-              "extent": { "type": ["number", "null"] },
-              "excite": { "type": "boolean" },
-              "direction": { "type": ["string", "null"] },
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "component": {
+                "type": "string",
+                "minLength": 1
+              },
+              "impedance": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "waveform": {
+                "$ref": "#/$defs/waveform_or_null"
+              },
+              "extent": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "excite": {
+                "type": "boolean"
+              },
+              "direction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "reference_plane_cells": {
-                "type": ["integer", "null"],
+                "type": [
+                  "integer",
+                  "null"
+                ],
                 "description": "NON-PORTABLE: a cell count, not a physical measurement-plane distance."
               }
             }
@@ -263,19 +439,51 @@
               "eps_r_sub"
             ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "position": { "$ref": "#/$defs/vec3" },
-              "width": { "type": "number" },
-              "height": { "type": "number" },
-              "direction": { "type": "string", "minLength": 1 },
-              "impedance": { "type": "number" },
-              "waveform": { "$ref": "#/$defs/waveform_or_null" },
-              "excite": { "type": "boolean" },
-              "n_probe_offset": { "type": "integer" },
-              "n_probe_spacing": { "type": "integer" },
-              "n_probes": { "type": "integer" },
-              "mode": { "type": "string", "minLength": 1 },
-              "eps_r_sub": { "type": ["number", "null"] }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "direction": {
+                "type": "string",
+                "minLength": 1
+              },
+              "impedance": {
+                "type": "number"
+              },
+              "waveform": {
+                "$ref": "#/$defs/waveform_or_null"
+              },
+              "excite": {
+                "type": "boolean"
+              },
+              "n_probe_offset": {
+                "type": "integer"
+              },
+              "n_probe_spacing": {
+                "type": "integer"
+              },
+              "n_probes": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eps_r_sub": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
             }
           }
         },
@@ -309,27 +517,86 @@
               "mode_profile"
             ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "x_position": { "type": "number" },
-              "y_range": { "$ref": "#/$defs/vec2_or_null" },
-              "z_range": { "$ref": "#/$defs/vec2_or_null" },
-              "x_range": { "$ref": "#/$defs/vec2_or_null" },
-              "mode": { "$ref": "#/$defs/ivec2" },
-              "mode_type": { "type": "string", "minLength": 1 },
-              "direction": { "type": "string", "minLength": 1 },
-              "freqs": { "$ref": "#/$defs/array_or_null" },
-              "n_freqs": { "type": "integer" },
-              "f0": { "type": ["number", "null"] },
-              "bandwidth": { "type": "number" },
-              "amplitude": { "type": "number" },
-              "probe_offset": { "type": "integer" },
-              "ref_offset": { "type": "integer" },
-              "calibration_preset": { "type": ["string", "null"] },
-              "reference_plane": { "type": ["number", "null"] },
-              "probe_plane": { "type": ["number", "null"] },
-              "n_modes": { "type": "integer" },
-              "waveform": { "type": "string", "minLength": 1 },
-              "mode_profile": { "type": "string", "minLength": 1 }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x_position": {
+                "type": "number"
+              },
+              "y_range": {
+                "$ref": "#/$defs/vec2_or_null"
+              },
+              "z_range": {
+                "$ref": "#/$defs/vec2_or_null"
+              },
+              "x_range": {
+                "$ref": "#/$defs/vec2_or_null"
+              },
+              "mode": {
+                "$ref": "#/$defs/ivec2"
+              },
+              "mode_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "direction": {
+                "type": "string",
+                "minLength": 1
+              },
+              "freqs": {
+                "$ref": "#/$defs/array_or_null"
+              },
+              "n_freqs": {
+                "type": "integer"
+              },
+              "f0": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "bandwidth": {
+                "type": "number"
+              },
+              "amplitude": {
+                "type": "number"
+              },
+              "probe_offset": {
+                "type": "integer"
+              },
+              "ref_offset": {
+                "type": "integer"
+              },
+              "calibration_preset": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reference_plane": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "probe_plane": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "n_modes": {
+                "type": "integer"
+              },
+              "waveform": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode_profile": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
@@ -348,13 +615,28 @@
               "excitation"
             ],
             "properties": {
-              "position": { "$ref": "#/$defs/vec3" },
-              "face": { "type": "string", "minLength": 1 },
-              "pin_length": { "type": "number" },
-              "pin_radius": { "type": "number" },
-              "outer_radius": { "type": "number" },
-              "impedance": { "type": "number" },
-              "excitation": { "$ref": "#/$defs/waveform_or_null" }
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "face": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pin_length": {
+                "type": "number"
+              },
+              "pin_radius": {
+                "type": "number"
+              },
+              "outer_radius": {
+                "type": "number"
+              },
+              "impedance": {
+                "type": "number"
+              },
+              "excitation": {
+                "$ref": "#/$defs/waveform_or_null"
+              }
             }
           }
         },
@@ -364,11 +646,22 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["port_index", "target_impedance", "axial_offset_cells"],
+            "required": [
+              "port_index",
+              "target_impedance",
+              "axial_offset_cells"
+            ],
             "properties": {
-              "port_index": { "type": "integer", "minimum": 0 },
-              "target_impedance": { "type": "number" },
-              "axial_offset_cells": { "type": "integer" }
+              "port_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "target_impedance": {
+                "type": "number"
+              },
+              "axial_offset_cells": {
+                "type": "integer"
+              }
             }
           }
         },
@@ -377,10 +670,18 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["port_index", "pin_retract_cells"],
+            "required": [
+              "port_index",
+              "pin_retract_cells"
+            ],
             "properties": {
-              "port_index": { "type": "integer", "minimum": 0 },
-              "pin_retract_cells": { "type": "integer" }
+              "port_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pin_retract_cells": {
+                "type": "integer"
+              }
             }
           }
         },
@@ -389,10 +690,18 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["port_index", "axial_offset_cells"],
+            "required": [
+              "port_index",
+              "axial_offset_cells"
+            ],
             "properties": {
-              "port_index": { "type": "integer", "minimum": 0 },
-              "axial_offset_cells": { "type": "integer" }
+              "port_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "axial_offset_cells": {
+                "type": "integer"
+              }
             }
           }
         },
@@ -417,23 +726,56 @@
               "amplitude"
             ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "position": { "type": "number" },
-              "axis": { "type": "string", "minLength": 1 },
-              "scan_theta": { "type": "number" },
-              "scan_phi": { "type": "number" },
-              "polarization": { "type": "string", "minLength": 1 },
-              "n_modes": { "type": "integer" },
-              "freqs": { "$ref": "#/$defs/array_or_null" },
-              "n_freqs": { "type": "integer" },
-              "f0": { "type": ["number", "null"] },
-              "bandwidth": { "type": "number" },
-              "amplitude": { "type": "number" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "position": {
+                "type": "number"
+              },
+              "axis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scan_theta": {
+                "type": "number"
+              },
+              "scan_phi": {
+                "type": "number"
+              },
+              "polarization": {
+                "type": "string",
+                "minLength": 1
+              },
+              "n_modes": {
+                "type": "integer"
+              },
+              "freqs": {
+                "$ref": "#/$defs/array_or_null"
+              },
+              "n_freqs": {
+                "type": "integer"
+              },
+              "f0": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "bandwidth": {
+                "type": "number"
+              },
+              "amplitude": {
+                "type": "number"
+              }
             }
           }
         },
         "tfsf": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "Total-field/scattered-field plane wave. Projecting this onto a commercial solver's plane-wave source is an approximation with a different absorber story, not a translation. `margin` is in cells, and `waveform` is a pulse-shape NAME resolved by the 1-D auxiliary grid.",
           "additionalProperties": false,
           "required": [
@@ -447,14 +789,36 @@
             "waveform"
           ],
           "properties": {
-            "f0": { "type": ["number", "null"] },
-            "bandwidth": { "type": "number" },
-            "amplitude": { "type": "number" },
-            "margin": { "type": "integer" },
-            "polarization": { "type": "string", "minLength": 1 },
-            "direction": { "type": "string", "minLength": 1 },
-            "angle_deg": { "type": "number" },
-            "waveform": { "type": "string", "minLength": 1 }
+            "f0": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "bandwidth": {
+              "type": "number"
+            },
+            "amplitude": {
+              "type": "number"
+            },
+            "margin": {
+              "type": "integer"
+            },
+            "polarization": {
+              "type": "string",
+              "minLength": 1
+            },
+            "direction": {
+              "type": "string",
+              "minLength": 1
+            },
+            "angle_deg": {
+              "type": "number"
+            },
+            "waveform": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "lumped_rlc": {
@@ -462,14 +826,38 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["R", "L", "C", "topology", "position", "component"],
+            "required": [
+              "R",
+              "L",
+              "C",
+              "topology",
+              "position",
+              "component"
+            ],
             "properties": {
-              "R": { "type": "number", "minimum": 0 },
-              "L": { "type": "number", "minimum": 0 },
-              "C": { "type": "number", "minimum": 0 },
-              "topology": { "type": "string", "minLength": 1 },
-              "position": { "$ref": "#/$defs/vec3" },
-              "component": { "type": "string", "minLength": 1 }
+              "R": {
+                "type": "number",
+                "minimum": 0
+              },
+              "L": {
+                "type": "number",
+                "minimum": 0
+              },
+              "C": {
+                "type": "number",
+                "minimum": 0
+              },
+              "topology": {
+                "type": "string",
+                "minLength": 1
+              },
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "component": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         }
@@ -478,7 +866,12 @@
     "observables": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["probes", "dft_planes", "flux_monitors", "ntff"],
+      "required": [
+        "probes",
+        "dft_planes",
+        "flux_monitors",
+        "ntff"
+      ],
       "properties": {
         "probes": {
           "type": "array",
@@ -486,10 +879,18 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["position", "component"],
+            "required": [
+              "position",
+              "component"
+            ],
             "properties": {
-              "position": { "$ref": "#/$defs/vec3" },
-              "component": { "type": "string", "minLength": 1 }
+              "position": {
+                "$ref": "#/$defs/vec3"
+              },
+              "component": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
@@ -499,14 +900,36 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "axis", "coordinate", "component", "freqs", "n_freqs"],
+            "required": [
+              "name",
+              "axis",
+              "coordinate",
+              "component",
+              "freqs",
+              "n_freqs"
+            ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "axis": { "type": "string", "minLength": 1 },
-              "coordinate": { "type": "number" },
-              "component": { "type": "string", "minLength": 1 },
-              "freqs": { "$ref": "#/$defs/array_or_null" },
-              "n_freqs": { "type": "integer" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "axis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "coordinate": {
+                "type": "number"
+              },
+              "component": {
+                "type": "string",
+                "minLength": 1
+              },
+              "freqs": {
+                "$ref": "#/$defs/array_or_null"
+              },
+              "n_freqs": {
+                "type": "integer"
+              }
             }
           }
         },
@@ -527,55 +950,125 @@
               "dft_window_alpha"
             ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "axis": { "type": "string", "minLength": 1 },
-              "coordinate": { "type": "number" },
-              "freqs": { "$ref": "#/$defs/array_or_null" },
-              "n_freqs": { "type": "integer" },
-              "size": { "$ref": "#/$defs/vec2_or_null" },
-              "center": { "$ref": "#/$defs/vec2_or_null" },
-              "dft_window": { "type": "string", "minLength": 1 },
-              "dft_window_alpha": { "type": "number" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "axis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "coordinate": {
+                "type": "number"
+              },
+              "freqs": {
+                "$ref": "#/$defs/array_or_null"
+              },
+              "n_freqs": {
+                "type": "integer"
+              },
+              "size": {
+                "$ref": "#/$defs/vec2_or_null"
+              },
+              "center": {
+                "$ref": "#/$defs/vec2_or_null"
+              },
+              "dft_window": {
+                "type": "string",
+                "minLength": 1
+              },
+              "dft_window_alpha": {
+                "type": "number"
+              }
             }
           }
         },
         "ntff": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "freqs is emitted as an explicit array because n_freqs is defaulted at registration and is not recoverable from the stored tuple. It is therefore never null here, unlike the deferred (null, n_freqs) pairs the DFT-plane and flux families allow.",
           "additionalProperties": false,
-          "required": ["corner_lo", "corner_hi", "freqs"],
+          "required": [
+            "corner_lo",
+            "corner_hi",
+            "freqs"
+          ],
           "properties": {
-            "corner_lo": { "$ref": "#/$defs/vec3" },
-            "corner_hi": { "$ref": "#/$defs/vec3" },
-            "freqs": { "$ref": "#/$defs/array_payload" }
+            "corner_lo": {
+              "$ref": "#/$defs/vec3"
+            },
+            "corner_hi": {
+              "$ref": "#/$defs/vec3"
+            },
+            "freqs": {
+              "$ref": "#/$defs/array_payload"
+            }
           }
         }
       }
     },
     "refinement": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "SBP-SAT subgrid directives. Experimental and falsified in 3D (PR #90): round-trip inside rfx, never project outward.",
       "additionalProperties": false,
-      "required": ["z_range", "ratio", "xy_margin", "tau", "validation", "topology"],
+      "required": [
+        "z_range",
+        "ratio",
+        "xy_margin",
+        "tau",
+        "validation",
+        "topology"
+      ],
       "properties": {
-        "z_range": { "$ref": "#/$defs/vec2" },
-        "ratio": { "type": "integer" },
-        "xy_margin": { "type": ["number", "null"] },
-        "tau": { "type": "number" },
-        "validation": { "type": "string", "minLength": 1 },
-        "topology": { "type": "string", "minLength": 1 }
+        "z_range": {
+          "$ref": "#/$defs/vec2"
+        },
+        "ratio": {
+          "type": "integer"
+        },
+        "xy_margin": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tau": {
+          "type": "number"
+        },
+        "validation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "topology": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "non_portable": {
       "type": "array",
-      "description": "DERIVED annotation, not independent state: the paths in this document whose meaning does not survive a translation, each with the reason. An external emitter must consult this and refuse or record an explicit approximation; it must not ship these silently. Nothing is applied from it on import, but it IS verified — the importer re-exports and compares, so the list cannot be edited away to make rfx-only state look portable. Sorted by path.",
+      "description": "DERIVED annotation, not independent state: the paths in this document whose meaning does not survive a translation, each with the reason. An external emitter must consult this and refuse or record an explicit approximation; it must not ship these silently. Nothing is applied from it on import, but it IS verified \u2014 the importer re-exports and compares, so the list cannot be edited away to make rfx-only state look portable. Sorted by path.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "reason"],
+        "required": [
+          "path",
+          "reason"
+        ],
         "properties": {
-          "path": { "type": "string", "minLength": 1 },
-          "reason": { "type": "string", "minLength": 1 }
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     }
@@ -585,68 +1078,158 @@
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
-      "items": { "type": "number" }
+      "items": {
+        "type": "number"
+      }
     },
     "vec2_or_null": {
-      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/vec2" }]
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/vec2"
+        }
+      ]
     },
     "vec3": {
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
-      "items": { "type": "number" }
+      "items": {
+        "type": "number"
+      }
     },
     "ivec2": {
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
-      "items": { "type": "integer" }
+      "items": {
+        "type": "integer"
+      }
     },
     "array_payload": {
       "type": "object",
-      "description": "A 1-D numeric array recorded value by value, never summarised. The container and dtype are part of the record because Simulation.__init__ synthesises the domain extent from float(np.sum(profile)): a float32 profile reloaded as float64 shifts the extent in the last ULPs and breaks the repo's bit-identity gates. dtype is REQUIRED for the numpy and jax containers and FORBIDDEN for list and tuple, which carry no dtype. Contrast rfx.artifacts._profile_summary, which emits {present, shape, min, max, sum} — a summary that cannot be rebuilt.",
+      "description": "A 1-D numeric array recorded value by value, never summarised. The container and dtype are part of the record because Simulation.__init__ synthesises the domain extent from float(np.sum(profile)): a float32 profile reloaded as float64 shifts the extent in the last ULPs and breaks the repo's bit-identity gates. dtype is REQUIRED for the numpy and jax containers and FORBIDDEN for list and tuple, which carry no dtype. Contrast rfx.artifacts._profile_summary, which emits {present, shape, min, max, sum} \u2014 a summary that cannot be rebuilt.",
       "additionalProperties": false,
-      "required": ["container", "values"],
+      "required": [
+        "container",
+        "values"
+      ],
       "properties": {
-        "container": { "enum": ["list", "tuple", "numpy", "jax"] },
-        "dtype": { "type": "string", "minLength": 1 },
-        "values": { "type": "array", "items": { "type": "number" } }
+        "container": {
+          "enum": [
+            "list",
+            "tuple",
+            "numpy",
+            "jax"
+          ]
+        },
+        "dtype": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
       },
       "if": {
-        "properties": { "container": { "enum": ["numpy", "jax"] } },
-        "required": ["container"]
+        "properties": {
+          "container": {
+            "enum": [
+              "numpy",
+              "jax"
+            ]
+          }
+        },
+        "required": [
+          "container"
+        ]
       },
-      "then": { "required": ["container", "dtype", "values"] },
-      "else": { "not": { "required": ["dtype"] } }
+      "then": {
+        "required": [
+          "container",
+          "dtype",
+          "values"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "dtype"
+          ]
+        }
+      }
     },
     "array_or_null": {
-      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/array_payload" }]
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/array_payload"
+        }
+      ]
     },
     "boundary_axis": {
       "type": "object",
       "description": "Boundary.to_dict() for one axis. lo_thickness / hi_thickness appear only when set, and only absorbing faces may carry them; conformal appears only when true, and only on a symmetric PEC axis.",
       "additionalProperties": false,
-      "required": ["lo", "hi"],
+      "required": [
+        "lo",
+        "hi"
+      ],
       "properties": {
-        "lo": { "$ref": "#/$defs/boundary_token" },
-        "hi": { "$ref": "#/$defs/boundary_token" },
-        "lo_thickness": { "type": "integer", "minimum": 0 },
-        "hi_thickness": { "type": "integer", "minimum": 0 },
-        "conformal": { "const": true }
+        "lo": {
+          "$ref": "#/$defs/boundary_token"
+        },
+        "hi": {
+          "$ref": "#/$defs/boundary_token"
+        },
+        "lo_thickness": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hi_thickness": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conformal": {
+          "const": true
+        }
       }
     },
     "boundary_token": {
-      "enum": ["cpml", "upml", "pec", "pmc", "periodic"],
+      "enum": [
+        "cpml",
+        "upml",
+        "pec",
+        "pmc",
+        "periodic"
+      ],
       "description": "rfx.boundaries.spec.BOUNDARY_TOKENS. pmc and the per-axis conformal flag are rfx-only."
     },
     "shape": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "params"],
-      "description": "A geometry primitive recorded by its CONSTRUCTOR PARAMETERS. The kind vocabulary is snake_case, matching the two document layers that already name shapes (rfx/config/_shapes.py uses shape: \"box\", rfx/experiments/canonical.py uses kind: \"box\"). Recording parameters rather than a bounding box is the whole point: every other rfx serialisation layer keeps only a class name plus bounds, which cannot distinguish a cylinder from a box occupying the same box. MeshShape (CAD import, #358) is deliberately absent — a triangle mesh is not parameter-describable, so it is refused rather than degraded to bounds.",
+      "required": [
+        "kind",
+        "params"
+      ],
+      "description": "A geometry primitive recorded by its CONSTRUCTOR PARAMETERS. The kind vocabulary is snake_case, matching the two document layers that already name shapes (rfx/config/_shapes.py uses shape: \"box\", rfx/experiments/canonical.py uses kind: \"box\"). Recording parameters rather than a bounding box is the whole point: every other rfx serialisation layer keeps only a class name plus bounds, which cannot distinguish a cylinder from a box occupying the same box. MeshShape (CAD import, #358) is deliberately absent \u2014 a triangle mesh is not parameter-describable, so it is refused rather than degraded to bounds.",
       "properties": {
         "kind": {
-          "enum": ["box", "curved_patch", "cylinder", "polyline_wire", "sphere", "via"]
+          "enum": [
+            "box",
+            "curved_patch",
+            "cylinder",
+            "polyline_wire",
+            "sphere",
+            "via"
+          ]
         },
         "params": {
           "type": "object",
@@ -655,79 +1238,183 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "kind": { "const": "box" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "box"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["corner_lo", "corner_hi"],
+                "required": [
+                  "corner_lo",
+                  "corner_hi"
+                ],
                 "properties": {
-                  "corner_lo": { "$ref": "#/$defs/vec3" },
-                  "corner_hi": { "$ref": "#/$defs/vec3" }
+                  "corner_lo": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "corner_hi": {
+                    "$ref": "#/$defs/vec3"
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "cylinder" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cylinder"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["center", "radius", "height", "axis"],
+                "required": [
+                  "center",
+                  "radius",
+                  "height",
+                  "axis"
+                ],
                 "properties": {
-                  "center": { "$ref": "#/$defs/vec3" },
-                  "radius": { "type": "number" },
-                  "height": { "type": "number" },
-                  "axis": { "type": "string", "minLength": 1 }
+                  "center": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "radius": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "type": "number"
+                  },
+                  "axis": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "sphere" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sphere"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["center", "radius"],
+                "required": [
+                  "center",
+                  "radius"
+                ],
                 "properties": {
-                  "center": { "$ref": "#/$defs/vec3" },
-                  "radius": { "type": "number" }
+                  "center": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "radius": {
+                    "type": "number"
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "polyline_wire" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "polyline_wire"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["points", "radius"],
+                "required": [
+                  "points",
+                  "radius"
+                ],
                 "properties": {
-                  "points": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
-                  "radius": { "type": "number" }
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    },
+                    "minItems": 1,
+                    "description": "At least one element. The codec refuses an empty sequence: an empty point list or layer stack does not describe a structure, and accepting one is how a consumed one-shot iterator turned into a silently absent conductor in a schema-valid document."
+                  },
+                  "radius": {
+                    "type": "number"
+                  }
                 }
               }
             }
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "via" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "via"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["center", "drill_radius", "pad_radius", "layers", "material"],
+                "required": [
+                  "center",
+                  "drill_radius",
+                  "pad_radius",
+                  "layers",
+                  "material"
+                ],
                 "properties": {
-                  "center": { "$ref": "#/$defs/vec2" },
-                  "drill_radius": { "type": "number" },
-                  "pad_radius": { "type": "number" },
-                  "layers": { "type": "array", "items": { "$ref": "#/$defs/vec2" } },
+                  "center": {
+                    "$ref": "#/$defs/vec2"
+                  },
+                  "drill_radius": {
+                    "type": "number"
+                  },
+                  "pad_radius": {
+                    "type": "number"
+                  },
+                  "layers": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/vec2"
+                    },
+                    "minItems": 1,
+                    "description": "At least one element. The codec refuses an empty sequence: an empty point list or layer stack does not describe a structure, and accepting one is how a consumed one-shot iterator turned into a silently absent conductor in a schema-valid document."
+                  },
                   "material": {
                     "type": "string",
                     "description": "Via carries its OWN material in addition to the material= handed to Simulation.add(). Both are recorded; resolving the two is the caller's decision, not something the codec may silently pick."
@@ -738,18 +1425,44 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "curved_patch" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "curved_patch"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["center", "length", "width", "radius", "axis"],
+                "required": [
+                  "center",
+                  "length",
+                  "width",
+                  "radius",
+                  "axis"
+                ],
                 "properties": {
-                  "center": { "$ref": "#/$defs/vec3" },
-                  "length": { "type": "number" },
-                  "width": { "type": "number" },
-                  "radius": { "type": "number" },
-                  "axis": { "type": "string", "minLength": 1 }
+                  "center": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "length": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number"
+                  },
+                  "radius": {
+                    "type": "number"
+                  },
+                  "axis": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               }
             }
@@ -760,35 +1473,92 @@
     "waveform": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "params"],
-      "description": "An excitation waveform recorded as its dataclass parameters. CustomWaveform is deliberately absent: it wraps a Python callable, which has no serialisable form — and because add_polarized_source builds a CustomWaveform closure for a complex Jones vector, that also refuses a circularly polarised source (already unrecoverable from _ports inside rfx itself). Note the waveguide-port and TFSF families do NOT use this payload: they store a waveform NAME as a plain string.",
+      "required": [
+        "kind",
+        "params"
+      ],
+      "description": "An excitation waveform recorded as its dataclass parameters. CustomWaveform is deliberately absent: it wraps a Python callable, which has no serialisable form \u2014 and because add_polarized_source builds a CustomWaveform closure for a complex Jones vector, that also refuses a circularly polarised source (already unrecoverable from _ports inside rfx itself). Note the waveguide-port and TFSF families do NOT use this payload: they store a waveform NAME as a plain string.",
       "properties": {
-        "kind": { "enum": ["cw_source", "gaussian_pulse", "modulated_gaussian"] },
-        "params": { "type": "object" }
+        "kind": {
+          "enum": [
+            "cw_source",
+            "gaussian_pulse",
+            "modulated_gaussian"
+          ]
+        },
+        "params": {
+          "type": "object"
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "kind": { "const": "gaussian_pulse" } }, "required": ["kind"] },
-          "then": { "properties": { "params": { "$ref": "#/$defs/gaussian_params" } } }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gaussian_pulse"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/gaussian_params"
+              }
+            }
+          }
         },
         {
           "if": {
-            "properties": { "kind": { "const": "modulated_gaussian" } },
-            "required": ["kind"]
+            "properties": {
+              "kind": {
+                "const": "modulated_gaussian"
+              }
+            },
+            "required": [
+              "kind"
+            ]
           },
-          "then": { "properties": { "params": { "$ref": "#/$defs/gaussian_params" } } }
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/gaussian_params"
+              }
+            }
+          }
         },
         {
-          "if": { "properties": { "kind": { "const": "cw_source" } }, "required": ["kind"] },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cw_source"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "then": {
             "properties": {
               "params": {
                 "additionalProperties": false,
-                "required": ["f0", "amplitude", "ramp_steps"],
+                "required": [
+                  "f0",
+                  "amplitude",
+                  "ramp_steps"
+                ],
                 "properties": {
-                  "f0": { "type": "number" },
-                  "amplitude": { "type": "number" },
-                  "ramp_steps": { "type": "integer" }
+                  "f0": {
+                    "type": "number"
+                  },
+                  "amplitude": {
+                    "type": "number"
+                  },
+                  "ramp_steps": {
+                    "type": "integer"
+                  }
                 }
               }
             }
@@ -799,11 +1569,22 @@
     "gaussian_params": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["f0", "bandwidth", "amplitude", "cutoff"],
+      "required": [
+        "f0",
+        "bandwidth",
+        "amplitude",
+        "cutoff"
+      ],
       "properties": {
-        "f0": { "type": "number" },
-        "bandwidth": { "type": "number" },
-        "amplitude": { "type": "number" },
+        "f0": {
+          "type": "number"
+        },
+        "bandwidth": {
+          "type": "number"
+        },
+        "amplitude": {
+          "type": "number"
+        },
         "cutoff": {
           "type": "number",
           "description": "Number of tau between t=0 and the pulse peak. Load-bearing, not cosmetic: the deposited-DC integral scales as e^(-cutoff^2) (issue #388), so dropping it would silently change the static source remnant."
@@ -811,7 +1592,14 @@
       }
     },
     "waveform_or_null": {
-      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/waveform" }]
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/waveform"
+        }
+      ]
     }
   }
 }

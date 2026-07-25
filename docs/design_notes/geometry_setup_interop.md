@@ -50,8 +50,10 @@ sim.add(Cylinder(center=(0.010, 0.006, 0.0008), radius=3e-4,
  "material_name": "pec"}
 ```
 
-`radius`, `height`, `axis` and `center` are absent; the via is indistinguishable
-from a `Box` with the same bounds. That is the concrete gap this work closes.
+`radius`, `height`, `axis` and `center` are absent; the cylinder is
+indistinguishable from a `Box` with the same bounds. That is the concrete gap
+this work closes. (The quoted entry is the second geometry entry of a two-entry
+scene — a substrate box plus this cylinder — hence `geometry-1`.)
 
 ## Decisions
 
@@ -84,16 +86,30 @@ triangle mesh is not parameter-describable the way a CSG primitive is, and
 degrading it to a bounding box would produce a different structure under the
 same name.
 
-**D4a — Geometry order is semantic state, not presentation.** `Simulation.add`
-appends to an **ordered, last-write-wins paint list**: `rfx/geometry/csg.py:321`
-— *"Applied in order; later shapes overwrite earlier ones."* The boolean helpers
-`union` / `difference` / `intersection` exist in `rfx/geometry/csg.py` but are
-**not** used by the simulation path (no call sites in `rfx/api/` or `rfx/core/`;
-they are exported for direct use and exercised only in `tests/test_geometry.py`).
-Consequences: the document must preserve entry order exactly, and an emitter
-targeting a solver with a boolean solid model (HFSS) cannot translate overlaps
-mechanically — overlapping paint has no boolean equivalent, so the projection
-must either ask or refuse rather than silently pick a subtraction order.
+**D4a — Geometry order is semantic state, but the rule is not uniform
+last-write-wins.** Two distinct composition rules run in the same loop
+(`rfx/api/_compile.py:162-174`, the live path — note `rasterize()`'s
+"later shapes overwrite earlier ones" docstring at `rfx/geometry/csg.py:321`
+describes a function the simulation path never calls):
+
+- **Dielectric paint is last-write-wins.** `eps_r`/`sigma`/`mu_r` are written
+  with `jnp.where(mask, ...)`, so a later overlapping entry overwrites an
+  earlier one.
+- **PEC is a union and is order-independent.** When `mat.sigma >=
+  _PEC_SIGMA_THRESHOLD` the loop does `pec_mask = pec_mask | mask` and **skips
+  the dielectric paint entirely**; `pec_mask` is initialised once
+  (`_compile.py:139`) and only ever OR'd again (`:168`, `:234` for thin
+  conductors). So a dielectric added after an overlapping PEC shape does **not**
+  erase it — PEC wins regardless of order.
+
+An emitter built on uniform last-write-wins would therefore mistranslate every
+PEC-over-dielectric overlap, which is most PCB stackups. The conclusion stands
+and gets stronger: entry order is semantic state the document must preserve
+exactly, and an emitter targeting a boolean solid modeller (HFSS) must ask or
+refuse rather than silently pick a subtraction order. The boolean helpers
+`union` / `difference` / `intersection` are defined at `csg.py:298,302,306` and
+have **zero call sites anywhere in `rfx/`** — they are exercised only in
+`tests/test_geometry.py`.
 
 **D5 — The container decision is deferred, deliberately.**
 `CanonicalExperimentSpec` (`rfx-experiment/v2`) is the strongest existing

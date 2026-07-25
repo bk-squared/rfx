@@ -171,6 +171,16 @@ def _num(value: Any, *, what: str) -> float:
         )
     if isinstance(value, bool):
         raise _refuse(f"{what} must be a number, got a bool ({value!r})")
+    if isinstance(value, (str, bytes)):
+        # float("1.2e10") succeeds, so a quoted numeric in a hand-written
+        # document would be coerced silently. The round-trip self-check does
+        # catch it, but only with a message showing two identical-looking
+        # numbers, which sends the reader hunting the wrong thing.
+        raise _refuse(
+            f"{what} is the string {value!r}, not a number. A design document "
+            f"with quoted numerics is accepted silently by float() and would "
+            f"record a value nobody wrote"
+        )
     try:
         out = float(value)
     except (TypeError, ValueError) as exc:
@@ -188,6 +198,11 @@ def _integer(value: Any, *, what: str) -> int:
         raise _refuse(f"{what} must be an integer, got a bool ({value!r})")
     if is_tracer(value):
         raise _refuse(f"{what} is a JAX tracer; expected a concrete integer")
+    if isinstance(value, (str, bytes)):
+        raise _refuse(
+            f"{what} is the string {value!r}, not an integer; int() would have "
+            f"accepted it silently"
+        )
     try:
         out = int(value)
     except (TypeError, ValueError) as exc:

@@ -17,7 +17,7 @@ from typing import Any
 
 from rfx.api._spec import MaterialSpec
 from rfx.interop._errors import UnsupportedDesignFeature
-from rfx.interop._shapes import _checked_scalar
+from rfx.interop._validate import check_number, check_text
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 
@@ -56,7 +56,7 @@ def _dump_poles(kind: str, poles: Any) -> list[dict[str, float]] | None:
                 f"parameter meaning"
             )
         dumped.append({
-            name: _checked_scalar(
+            name: check_number(
                 getattr(pole, name), what=f"{kind}[{index}].{name}")
             for name in names
         })
@@ -86,7 +86,7 @@ def _load_poles(kind: str, payload: Any) -> list[Any] | None:
                 f"unknown={sorted(unknown)}"
             )
         poles.append(pole_cls(**{
-            name: _checked_scalar(
+            name: check_number(
                 item[name], what=f"{kind}[{index}].{name}")
             for name in names
         }))
@@ -119,7 +119,7 @@ def material_to_dict(material: Any) -> dict[str, Any]:
         )
 
     out: dict[str, Any] = {
-        name: _checked_scalar(getattr(material, name), what=f"material.{name}")
+        name: check_number(getattr(material, name), what=f"material.{name}")
         for name in _SCALAR_FIELDS
     }
     for kind in _POLE_FIELDS:
@@ -144,7 +144,7 @@ def material_from_dict(payload: dict[str, Any]) -> MaterialSpec:
         )
 
     kwargs: dict[str, Any] = {
-        name: _checked_scalar(payload[name], what=f"material.{name}") for name in _SCALAR_FIELDS
+        name: check_number(payload[name], what=f"material.{name}") for name in _SCALAR_FIELDS
     }
     for kind in _POLE_FIELDS:
         kwargs[kind] = _load_poles(kind, payload[kind])
@@ -153,7 +153,15 @@ def material_from_dict(payload: dict[str, Any]) -> MaterialSpec:
 
 def materials_to_dict(materials: dict[str, Any]) -> dict[str, Any]:
     """Serialise a name → :class:`MaterialSpec` mapping."""
-    return {str(name): material_to_dict(spec) for name, spec in materials.items()}
+    if not isinstance(materials, dict):
+        raise UnsupportedDesignFeature(
+            f"materials must be a mapping of name to MaterialSpec, got "
+            f"{type(materials).__name__}"
+        )
+    return {
+        check_text(name, what="material name"): material_to_dict(spec)
+        for name, spec in materials.items()
+    }
 
 
 def materials_from_dict(payload: dict[str, Any]) -> dict[str, MaterialSpec]:

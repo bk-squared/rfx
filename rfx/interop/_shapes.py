@@ -6,14 +6,20 @@ That is adequate for a review summary but cannot distinguish a ``Cylinder``
 from a ``Box`` occupying the same bounding box, so it cannot rebuild its own
 input and cannot drive an external solver.
 
-This module records the *constructor parameters* instead.  Every supported
-primitive survives a JSON round trip exactly; anything not in the registry is
-refused loudly (:class:`~rfx.interop._errors.UnsupportedDesignFeature`) rather
-than degraded to a bounding box.
+This module records the *constructor parameters* instead.  An unregistered shape
+class, and any value the layer cannot represent exactly, are refused loudly
+(:class:`~rfx.interop._errors.UnsupportedDesignFeature`) rather than degraded to
+a bounding box.
 
 JSON canonical form uses lists for vectors; the Python canonical form restores
-the tuples the primitives declare, so a round-tripped frozen dataclass compares
-equal to the original.
+the tuples the primitives declare.  Round-tripping is therefore **normalising,
+not identity**: a shape constructed with canonical containers (the tuples the
+classes declare, which is what every construction path in this repo uses)
+compares equal after a round trip, but one built with lists — ``Box(corner_lo=[0,
+0, 0], ...)`` is legal, since the primitives do not coerce in ``__init__`` —
+comes back with tuples and compares unequal while describing identical geometry.
+``Via.layers`` normalises to a ``list`` of tuples and ``PolylineWire.points`` to
+a ``tuple`` of tuples, matching what those classes declare.
 
 Vocabulary: the discriminator is ``kind`` with snake_case names, matching the
 two document layers that already name shapes — ``rfx/config/_shapes.py``
@@ -28,14 +34,18 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
-import math
 from typing import Any, Callable, NamedTuple
 
-from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Cylinder, PolylineWire, Sphere
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
 from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop._validate import (
+    check_number,
+    check_sequence,
+    check_text,
+    check_vector,
+)
 
 __all__ = [
     "SUPPORTED_SHAPE_KINDS",
@@ -53,82 +63,54 @@ class _Field(NamedTuple):
     load: Callable[[Any], Any]
 
 
-def _checked_scalar(value: Any, *, what: str) -> float:
-    """Coerce to a finite Python float, refusing tracers and NaN/inf.
-
-    A tracer means the parameter is a differentiable design variable with no
-    concrete value to record; NaN/inf would be written by ``json.dump`` only as
-    non-standard tokens (and ``allow_nan=False`` raises a bare ``ValueError``
-    far from the offending field), so both are refused here where the field name
-    is still known.
-    """
-    if is_tracer(value):
-        raise UnsupportedDesignFeature(
-            f"{what} is a JAX tracer, so it is a differentiable design variable "
-            f"with no concrete value to record. Export the design outside the "
-            f"traced/jax.grad context, or record the concrete design you want "
-            f"to hand to another tool"
-        )
-    try:
-        out = float(value)
-    except (TypeError, ValueError) as exc:
-        raise UnsupportedDesignFeature(
-            f"{what} must be a number, got {value!r}"
-        ) from exc
-    if not math.isfinite(out):
-        raise UnsupportedDesignFeature(
-            f"{what} is {out}, which is not a finite number; a design "
-            f"description with NaN/inf geometry does not describe a structure"
-        )
-    return out
-
-
-def _checked_vec(value: Any, n: int, *, what: str) -> tuple[float, ...]:
-    if is_tracer(value):
-        raise UnsupportedDesignFeature(
-            f"{what} is a JAX tracer, so it is a differentiable design variable "
-            f"with no concrete value to record. Export the design outside the "
-            f"traced/jax.grad context"
-        )
-    try:
-        components = tuple(value)
-    except TypeError as exc:
-        raise UnsupportedDesignFeature(
-            f"{what} must be a sequence of {n} numbers, got {value!r}"
-        ) from exc
-    if len(components) != n:
-        raise UnsupportedDesignFeature(
-            f"{what} must have exactly {n} components, got {len(components)}: "
-            f"{value!r}"
-        )
-    return tuple(
-        _checked_scalar(v, what=f"{what}[{i}]")
-        for i, v in enumerate(components)
-    )
-
-
 def _vec(n: int, *, what: str) -> _Field:
     return _Field(
-        dump=lambda v: list(_checked_vec(v, n, what=what)),
-        load=lambda v: _checked_vec(v, n, what=what),
+        dump=lambda v: list(check_vector(v, n, what=what)),
+        load=lambda v: check_vector(v, n, what=what),
     )
 
 
-def _vec_seq(n: int, *, what: str, container: Callable[[Any], Any]) -> _Field:
+def _vec_seq(
+    n: int,
+    *,
+    what: str,
+    container: Callable[[Any], Any],
+    min_length: int = 1,
+) -> _Field:
+    """A sequence of fixed-width vectors.
+
+    ``min_length`` defaults to 1: an empty point list or layer stack does not
+    describe a structure, and accepting one is how a consumed iterator used to
+    turn into a silently absent conductor.
+    """
+
+    def _items(value: Any) -> tuple:
+        return check_sequence(value, what=what, min_length=min_length)
+
     return _Field(
-        dump=lambda v: [list(_checked_vec(p, n, what=what)) for p in v],
-        load=lambda v: container(_checked_vec(p, n, what=what) for p in v),
+        dump=lambda v: [
+            list(check_vector(p, n, what=f"{what}[{i}]"))
+            for i, p in enumerate(_items(v))
+        ],
+        load=lambda v: container(
+            check_vector(p, n, what=f"{what}[{i}]")
+            for i, p in enumerate(_items(v))
+        ),
     )
 
 
 def _flt(*, what: str) -> _Field:
     return _Field(
-        dump=lambda v: _checked_scalar(v, what=what),
-        load=lambda v: _checked_scalar(v, what=what),
+        dump=lambda v: check_number(v, what=what),
+        load=lambda v: check_number(v, what=what),
     )
 
 
-_STR = _Field(dump=lambda v: str(v), load=lambda v: str(v))
+def _txt(*, what: str) -> _Field:
+    return _Field(
+        dump=lambda v: check_text(v, what=what),
+        load=lambda v: check_text(v, what=what),
+    )
 
 
 class _ShapeCodec(NamedTuple):
@@ -145,7 +127,7 @@ _CODECS: dict[str, _ShapeCodec] = {
         "center": _vec(3, what="cylinder.center"),
         "radius": _flt(what="cylinder.radius"),
         "height": _flt(what="cylinder.height"),
-        "axis": _STR,
+        "axis": _txt(what="cylinder.axis"),
     }),
     "sphere": _ShapeCodec(Sphere, {
         "center": _vec(3, what="sphere.center"),
@@ -163,14 +145,14 @@ _CODECS: dict[str, _ShapeCodec] = {
         "drill_radius": _flt(what="via.drill_radius"),
         "pad_radius": _flt(what="via.pad_radius"),
         "layers": _vec_seq(2, what="via.layers", container=list),
-        "material": _STR,
+        "material": _txt(what="via.material"),
     }),
     "curved_patch": _ShapeCodec(CurvedPatch, {
         "center": _vec(3, what="curved_patch.center"),
         "length": _flt(what="curved_patch.length"),
         "width": _flt(what="curved_patch.width"),
         "radius": _flt(what="curved_patch.radius"),
-        "axis": _STR,
+        "axis": _txt(what="curved_patch.axis"),
     }),
 }
 
@@ -212,11 +194,27 @@ def constructor_parameter_names(cls: type) -> tuple[str, ...]:
     Used by the contract test that pins the registry against the live classes,
     so that adding a parameter upstream fails a test instead of silently
     vanishing from exported designs.
+
+    Reads ``inspect.signature(cls.__init__)`` even for dataclasses, because
+    ``dataclasses.fields`` has blind spots in both directions: it **excludes**
+    ``InitVar`` (so an upstream ``units: InitVar[str] = "mm"`` consumed in
+    ``__post_init__`` would not show up, and every export would silently carry
+    values under an undeclared unit convention) and it **includes**
+    ``field(init=False)`` derived attributes, which are not constructor
+    parameters at all and must not be passed back on import.
     """
-    if dataclasses.is_dataclass(cls):
-        return tuple(f.name for f in dataclasses.fields(cls))
-    params = inspect.signature(cls.__init__).parameters
-    return tuple(name for name in params if name != "self")
+    signature_names = tuple(
+        name
+        for name in inspect.signature(cls.__init__).parameters
+        if name != "self"
+    )
+    if not dataclasses.is_dataclass(cls):
+        return signature_names
+    # Union both views, preserving signature order, so an InitVar shows up and a
+    # non-init field does not masquerade as a constructor parameter.
+    init_fields = tuple(f.name for f in dataclasses.fields(cls) if f.init)
+    extra = tuple(n for n in init_fields if n not in signature_names)
+    return signature_names + extra
 
 
 def _codec_for_kind(kind: str) -> _ShapeCodec:
@@ -229,10 +227,33 @@ def _codec_for_kind(kind: str) -> _ShapeCodec:
         ) from None
 
 
-def _instance_field_names(shape: Any) -> tuple[str, ...]:
+def _instance_state_names(shape: Any) -> tuple[str, ...]:
+    """Public instance state, for the "did this class grow a field?" check.
+
+    Leading-underscore names are excluded because they are caches and memos, not
+    design state — ``MeshShape.__init__`` already stamps ``self._mask_cache``
+    (``rfx/geometry/mesh_import.py:66``), and without this exclusion a shape
+    would become unexportable the moment it grew one, *after* having exported
+    fine a moment earlier.
+
+    Handles ``__slots__`` / NamedTuple classes, which have no ``__dict__``;
+    unreachable today because :func:`shape_kind_of` refuses unregistered classes
+    first, but ``rfx/geometry/thin_wire.py`` already defines a NamedTuple shape,
+    so this is a live trap for whoever registers one.
+    """
     if dataclasses.is_dataclass(shape):
-        return tuple(f.name for f in dataclasses.fields(shape))
-    return tuple(vars(shape))
+        names: tuple[str, ...] = tuple(f.name for f in dataclasses.fields(shape))
+    elif hasattr(shape, "_fields"):  # NamedTuple
+        names = tuple(shape._fields)
+    elif hasattr(shape, "__dict__"):
+        names = tuple(vars(shape))
+    else:  # __slots__ without __dict__
+        names = tuple(
+            slot
+            for klass in type(shape).__mro__
+            for slot in getattr(klass, "__slots__", ())
+        )
+    return tuple(name for name in names if not name.startswith("_"))
 
 
 def shape_to_dict(shape: Any) -> dict[str, Any]:
@@ -249,13 +270,12 @@ def shape_to_dict(shape: Any) -> dict[str, Any]:
     codec = _codec_for_kind(kind)
 
     recorded = set(codec.fields)
-    present = set(_instance_field_names(shape))
-    missing = present - recorded
-    if missing:
+    unrecorded = set(_instance_state_names(shape)) - recorded
+    if unrecorded:
         raise UnsupportedDesignFeature(
             f"{kind} carries state the design-interop registry does not "
-            f"record: {sorted(missing)}. Update rfx/interop/_shapes.py rather "
-            f"than exporting a partial shape"
+            f"record: {sorted(unrecorded)}. Update rfx/interop/_shapes.py "
+            f"rather than exporting a partial shape"
         )
 
     params: dict[str, Any] = {}
@@ -305,4 +325,16 @@ def shape_from_dict(payload: dict[str, Any]) -> Any:
         name: field.load(params[name])
         for name, field in codec.fields.items()
     }
-    return codec.cls(**kwargs)
+    try:
+        return codec.cls(**kwargs)
+    except UnsupportedDesignFeature:
+        raise
+    except (ValueError, TypeError) as exc:
+        # The primitive's own invariants (e.g. Via requires pad_radius >=
+        # drill_radius, rfx/geometry/via.py:49) would otherwise escape as a bare
+        # ValueError naming neither the kind nor the document. Note
+        # UnsupportedDesignFeature IS a ValueError, so a caller writing
+        # `except UnsupportedDesignFeature` would have missed those.
+        raise UnsupportedDesignFeature(
+            f"{kind} payload violates the primitive's own invariants: {exc}"
+        ) from exc
