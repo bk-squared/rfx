@@ -24,14 +24,15 @@ from rfx.interop._materials import (
     materials_to_dict,
 )
 from rfx.interop._shapes import (
-    SUPPORTED_SHAPE_TYPES,
+    SUPPORTED_SHAPE_KINDS,
     shape_field_names,
     shape_from_dict,
+    shape_kind_of,
     shape_to_dict,
 )
 
 __all__ = [
-    "SUPPORTED_SHAPE_TYPES",
+    "SUPPORTED_SHAPE_KINDS",
     "UnsupportedDesignFeature",
     "material_from_dict",
     "material_to_dict",
@@ -39,5 +40,6 @@ __all__ = [
     "materials_to_dict",
     "shape_field_names",
     "shape_from_dict",
+    "shape_kind_of",
     "shape_to_dict",
 ]

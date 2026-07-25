@@ -14,6 +14,14 @@ than degraded to a bounding box.
 JSON canonical form uses lists for vectors; the Python canonical form restores
 the tuples the primitives declare, so a round-tripped frozen dataclass compares
 equal to the original.
+
+Vocabulary: the discriminator is ``kind`` with snake_case names, matching the
+two document layers that already name shapes — ``rfx/config/_shapes.py``
+(``shape: "box"``) and ``rfx/experiments/canonical.py`` (``kind: "box"``) — so
+the repo does not grow a third name for the same primitive.  Parameter names
+are the *constructor* names, which is what makes the registry pinnable against
+each live class signature; per-layer spellings of a box (``bounds``,
+``bounds_m``) stay an adapter concern for those layers.
 """
 
 from __future__ import annotations
@@ -28,8 +36,9 @@ from rfx.geometry.via import Via
 from rfx.interop._errors import UnsupportedDesignFeature
 
 __all__ = [
-    "SUPPORTED_SHAPE_TYPES",
+    "SUPPORTED_SHAPE_KINDS",
     "shape_from_dict",
+    "shape_kind_of",
     "shape_to_dict",
     "shape_field_names",
 ]
@@ -80,36 +89,36 @@ class _ShapeCodec(NamedTuple):
 
 
 _CODECS: dict[str, _ShapeCodec] = {
-    "Box": _ShapeCodec(Box, {
-        "corner_lo": _vec(3, what="Box.corner_lo"),
-        "corner_hi": _vec(3, what="Box.corner_hi"),
+    "box": _ShapeCodec(Box, {
+        "corner_lo": _vec(3, what="box.corner_lo"),
+        "corner_hi": _vec(3, what="box.corner_hi"),
     }),
-    "Cylinder": _ShapeCodec(Cylinder, {
-        "center": _vec(3, what="Cylinder.center"),
+    "cylinder": _ShapeCodec(Cylinder, {
+        "center": _vec(3, what="cylinder.center"),
         "radius": _FLOAT,
         "height": _FLOAT,
         "axis": _STR,
     }),
-    "Sphere": _ShapeCodec(Sphere, {
-        "center": _vec(3, what="Sphere.center"),
+    "sphere": _ShapeCodec(Sphere, {
+        "center": _vec(3, what="sphere.center"),
         "radius": _FLOAT,
     }),
-    "PolylineWire": _ShapeCodec(PolylineWire, {
-        "points": _vec_seq(3, what="PolylineWire.points", container=tuple),
+    "polyline_wire": _ShapeCodec(PolylineWire, {
+        "points": _vec_seq(3, what="polyline_wire.points", container=tuple),
         "radius": _FLOAT,
     }),
     # ``Via`` carries its own ``material`` in addition to the ``material=``
     # handed to ``Simulation.add()``.  Both are recorded; resolving the two is
     # the caller's decision, not something this codec may silently pick.
-    "Via": _ShapeCodec(Via, {
-        "center": _vec(2, what="Via.center"),
+    "via": _ShapeCodec(Via, {
+        "center": _vec(2, what="via.center"),
         "drill_radius": _FLOAT,
         "pad_radius": _FLOAT,
-        "layers": _vec_seq(2, what="Via.layers", container=list),
+        "layers": _vec_seq(2, what="via.layers", container=list),
         "material": _STR,
     }),
-    "CurvedPatch": _ShapeCodec(CurvedPatch, {
-        "center": _vec(3, what="CurvedPatch.center"),
+    "curved_patch": _ShapeCodec(CurvedPatch, {
+        "center": _vec(3, what="curved_patch.center"),
         "length": _FLOAT,
         "width": _FLOAT,
         "radius": _FLOAT,
@@ -117,13 +126,36 @@ _CODECS: dict[str, _ShapeCodec] = {
     }),
 }
 
-SUPPORTED_SHAPE_TYPES: tuple[str, ...] = tuple(sorted(_CODECS))
+SUPPORTED_SHAPE_KINDS: tuple[str, ...] = tuple(sorted(_CODECS))
+
+_KIND_BY_CLASS: dict[type, str] = {
+    codec.cls: kind for kind, codec in _CODECS.items()
+}
 
 
-def shape_field_names(shape_type: str) -> tuple[str, ...]:
-    """Return the recorded parameter names for ``shape_type``."""
-    codec = _codec_for_type(shape_type)
+def shape_field_names(kind: str) -> tuple[str, ...]:
+    """Return the recorded parameter names for a shape ``kind``."""
+    codec = _codec_for_kind(kind)
     return tuple(codec.fields)
+
+
+def shape_kind_of(shape: Any) -> str:
+    """Return the IR ``kind`` for a shape instance.
+
+    Raises
+    ------
+    UnsupportedDesignFeature
+        If the shape's exact class is not registered.  Subclasses are refused
+        because they may carry state the registry cannot see.
+    """
+    try:
+        return _KIND_BY_CLASS[type(shape)]
+    except KeyError:
+        raise UnsupportedDesignFeature(
+            f"shape class {type(shape).__name__!r} is not supported by the "
+            f"design-interop layer; supported kinds are "
+            f"{', '.join(SUPPORTED_SHAPE_KINDS)}"
+        ) from None
 
 
 def constructor_parameter_names(cls: type) -> tuple[str, ...]:
@@ -139,13 +171,13 @@ def constructor_parameter_names(cls: type) -> tuple[str, ...]:
     return tuple(name for name in params if name != "self")
 
 
-def _codec_for_type(shape_type: str) -> _ShapeCodec:
+def _codec_for_kind(kind: str) -> _ShapeCodec:
     try:
-        return _CODECS[shape_type]
-    except KeyError:
+        return _CODECS[kind]
+    except (KeyError, TypeError):
         raise UnsupportedDesignFeature(
-            f"shape type {shape_type!r} is not supported by the design-interop "
-            f"layer; supported types are {', '.join(SUPPORTED_SHAPE_TYPES)}"
+            f"shape kind {kind!r} is not supported by the design-interop "
+            f"layer; supported kinds are {', '.join(SUPPORTED_SHAPE_KINDS)}"
         ) from None
 
 
@@ -165,21 +197,15 @@ def shape_to_dict(shape: Any) -> dict[str, Any]:
         state the registry does not know about (which would otherwise be
         dropped silently).
     """
-    shape_type = type(shape).__name__
-    codec = _codec_for_type(shape_type)
-    if type(shape) is not codec.cls:
-        raise UnsupportedDesignFeature(
-            f"{shape_type!r} resolves to {type(shape)!r}, which is not the "
-            f"registered {codec.cls!r}; subclasses may carry state the "
-            f"interop layer cannot see"
-        )
+    kind = shape_kind_of(shape)
+    codec = _codec_for_kind(kind)
 
     recorded = set(codec.fields)
     present = set(_instance_field_names(shape))
     missing = present - recorded
     if missing:
         raise UnsupportedDesignFeature(
-            f"{shape_type} carries state the design-interop registry does not "
+            f"{kind} carries state the design-interop registry does not "
             f"record: {sorted(missing)}. Update rfx/interop/_shapes.py rather "
             f"than exporting a partial shape"
         )
@@ -190,10 +216,10 @@ def shape_to_dict(shape: Any) -> dict[str, Any]:
             value = getattr(shape, name)
         except AttributeError as exc:
             raise UnsupportedDesignFeature(
-                f"{shape_type} is missing the recorded parameter {name!r}"
+                f"{kind} is missing the recorded parameter {name!r}"
             ) from exc
         params[name] = field.dump(value)
-    return {"type": shape_type, "params": params}
+    return {"kind": kind, "params": params}
 
 
 def shape_from_dict(payload: dict[str, Any]) -> Any:
@@ -203,28 +229,28 @@ def shape_from_dict(payload: dict[str, Any]) -> Any:
             f"shape payload must be a mapping, got {type(payload).__name__}"
         )
     try:
-        shape_type = payload["type"]
+        kind = payload["kind"]
     except KeyError:
         raise UnsupportedDesignFeature(
-            "shape payload is missing the 'type' key"
+            "shape payload is missing the 'kind' key"
         ) from None
 
-    codec = _codec_for_type(shape_type)
+    codec = _codec_for_kind(kind)
     params = payload.get("params", {})
     if not isinstance(params, dict):
         raise UnsupportedDesignFeature(
-            f"{shape_type} params must be a mapping, got {type(params).__name__}"
+            f"{kind} params must be a mapping, got {type(params).__name__}"
         )
 
     unknown = set(params) - set(codec.fields)
     if unknown:
         raise UnsupportedDesignFeature(
-            f"{shape_type} payload carries unknown parameters {sorted(unknown)}"
+            f"{kind} payload carries unknown parameters {sorted(unknown)}"
         )
     absent = set(codec.fields) - set(params)
     if absent:
         raise UnsupportedDesignFeature(
-            f"{shape_type} payload is missing parameters {sorted(absent)}"
+            f"{kind} payload is missing parameters {sorted(absent)}"
         )
 
     kwargs = {
