@@ -216,6 +216,46 @@ def test_wrong_vector_length_is_refused():
         shape_from_dict(payload)
 
 
+def test_long_point_sequences_are_never_truncated():
+    """artifacts.py degrades any array over 16 elements to metadata
+    (``_jsonable(max_array_values=16)``). The codec must emit every value.
+    """
+    points = tuple((i * 1e-4, (i % 3) * 1e-4, 1e-3) for i in range(64))
+    payload = shape_to_dict(PolylineWire(points=points, radius=5e-5))
+    assert len(payload["params"]["points"]) == 64
+
+    rebuilt = shape_from_dict(json.loads(json.dumps(payload)))
+    assert rebuilt.points == points
+
+
+def test_long_via_layer_stacks_are_never_truncated():
+    layers = [(i * 1e-4, (i + 1) * 1e-4) for i in range(40)]
+    payload = shape_to_dict(Via(center=(1e-3, 1e-3), drill_radius=5e-5,
+                                pad_radius=1e-4, layers=layers, material="pec"))
+    assert len(payload["params"]["layers"]) == 40
+
+    rebuilt = shape_from_dict(json.loads(json.dumps(payload)))
+    assert [tuple(v) for v in rebuilt.layers] == [tuple(v) for v in layers]
+
+
+def test_scene_artifact_really_does_lose_what_the_codec_keeps():
+    """Pins the motivating contrast, so the claim cannot rot silently."""
+    from rfx.artifacts import build_scene_artifact
+    from rfx import Simulation
+
+    points = tuple((i * 1e-4, 0.0, 1e-3) for i in range(64))
+    wire = PolylineWire(points=points, radius=5e-5)
+
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.004), dx=1e-4,
+                     boundary="cpml")
+    sim.add(wire, material="pec")
+    entry = build_scene_artifact(sim)["geometry"][0]
+
+    assert "bounding_box" in entry
+    assert "points" not in entry and "params" not in entry
+    assert len(shape_to_dict(wire)["params"]["points"]) == 64
+
+
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
 def test_non_finite_scalar_is_refused_at_the_codec(bad):
     """Not at json.dump time: allow_nan=False raises a bare ValueError with no
