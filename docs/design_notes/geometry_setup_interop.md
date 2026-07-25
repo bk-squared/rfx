@@ -84,6 +84,17 @@ triangle mesh is not parameter-describable the way a CSG primitive is, and
 degrading it to a bounding box would produce a different structure under the
 same name.
 
+**D4a — Geometry order is semantic state, not presentation.** `Simulation.add`
+appends to an **ordered, last-write-wins paint list**: `rfx/geometry/csg.py:321`
+— *"Applied in order; later shapes overwrite earlier ones."* The boolean helpers
+`union` / `difference` / `intersection` exist in `rfx/geometry/csg.py` but are
+**not** used by the simulation path (no call sites in `rfx/api/` or `rfx/core/`;
+they are exported for direct use and exercised only in `tests/test_geometry.py`).
+Consequences: the document must preserve entry order exactly, and an emitter
+targeting a solver with a boolean solid model (HFSS) cannot translate overlaps
+mechanically — overlapping paint has no boolean equivalent, so the projection
+must either ask or refuse rather than silently pick a subtraction order.
+
 **D5 — The container decision is deferred, deliberately.**
 `CanonicalExperimentSpec` (`rfx-experiment/v2`) is the strongest existing
 foundation — versioned, with schema migrations, a closed-world validator, an

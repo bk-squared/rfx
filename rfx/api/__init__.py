@@ -288,7 +288,7 @@ class Simulation(
     boundary : "pec", "cpml", or "upml"
         Boundary condition. Default "cpml".
     cpml_layers : int
-        Number of CPML layers per face. Default 12 (ignored for "pec").
+        Number of CPML layers per face. Default 16 (ignored for "pec").
     dx : float or None
         Cell size override (metres). Auto-computed if None.
     mode : str
