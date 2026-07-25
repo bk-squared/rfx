@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from pathlib import Path
 
 import pytest
 
@@ -54,15 +55,34 @@ def test_every_supported_kind_has_a_fixture():
 
 
 def test_kind_vocabulary_is_snake_case():
-    """The repo already names shapes in snake_case; do not grow a third name.
-
-    ``rfx/config/_shapes.py`` uses ``shape: "box"`` and
-    ``rfx/experiments/canonical.py`` uses ``kind: "box"``.
-    """
     for kind in SUPPORTED_SHAPE_KINDS:
         assert kind == kind.lower()
         assert " " not in kind and "-" not in kind
-    assert "box" in SUPPORTED_SHAPE_KINDS
+
+
+def test_kind_vocabulary_agrees_with_the_layers_it_claims_to_follow():
+    """Bind the vocabulary claim to the other layers instead of asserting a
+    literal written in this file.
+
+    ``rfx/config/_shapes.py`` names shapes under the key ``shape`` and
+    ``rfx/experiments/canonical.py`` under the key ``kind``; both spell the box
+    ``"box"``. The codec follows those *values*, so its own name for a box must
+    be importable-equal to theirs, not merely lowercase.
+    """
+    from rfx.config._shapes import _SUPPORTED_SHAPES
+
+    assert set(_SUPPORTED_SHAPES).issubset(set(SUPPORTED_SHAPE_KINDS)), (
+        "the config layer names a shape the codec cannot express"
+    )
+    assert "box" in _SUPPORTED_SHAPES and "box" in SUPPORTED_SHAPE_KINDS
+
+    # The canonical experiment layer rejects any geometry kind other than box;
+    # read its refusal rather than trusting a comment about it.
+    repo_root = Path(__file__).resolve().parents[1]
+    canonical = (repo_root / "rfx/experiments/canonical.py").read_text()
+    assert 'P0 supports box geometry' in canonical, (
+        "canonical.py's box-only fence moved; re-check the shared vocabulary"
+    )
 
 
 @pytest.mark.parametrize("kind", sorted(SHAPES))
