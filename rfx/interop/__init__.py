@@ -24,6 +24,11 @@ from rfx.interop._design import (
     simulation_from_design,
 )
 from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop.emitters.openems import (
+    OPENEMS_EMITTER_VERSION,
+    emit_openems_script,
+    plan_openems_projection,
+)
 from rfx.interop._materials import (
     material_from_dict,
     material_to_dict,
@@ -40,15 +45,18 @@ from rfx.interop._shapes import (
 
 __all__ = [
     "DESIGN_SCHEMA_VERSION",
+    "OPENEMS_EMITTER_VERSION",
     "SUPPORTED_SHAPE_KINDS",
     "SUPPORTED_WAVEFORM_KINDS",
     "UnsupportedDesignFeature",
     "design_to_dict",
     "design_to_json",
+    "emit_openems_script",
     "material_from_dict",
     "material_to_dict",
     "materials_from_dict",
     "materials_to_dict",
+    "plan_openems_projection",
     "shape_field_names",
     "shape_from_dict",
     "shape_kind_of",

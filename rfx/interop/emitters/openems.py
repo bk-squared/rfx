@@ -955,6 +955,23 @@ def _plan_ports(
             )
         )
 
+    if any(p.family == "msl" for p in plans):
+        notes.append(
+            f"[D7] MSL ports: msl_port_w_cells={msl_port_w_cells} sets the "
+            "MSLPort span along the propagation axis. That span has NO rfx "
+            "counterpart — rfx extracts through an N-probe spatial fit "
+            "downstream of a feed plane, while MSLPort launches and de-embeds "
+            "inside its own span — so the two measure at different planes and "
+            "no committed comparison in this repository pins the choice. The "
+            "span direction follows add_msl_port's documented meaning of "
+            "direction= (the direction the launched wave propagates), which is "
+            "the OPPOSITE reading from add_port's direction= (the outward "
+            "normal); if that reading is wrong the two ports swap ends. "
+            "openEMS may additionally log 'Unused primitive ... msl_feed_N' "
+            "when the design's own trace already covers the port span — benign, "
+            "and distinct from the port-dropped failure mode."
+        )
+
     if not any(p.excite for p in plans):
         raise _refuse(
             "a design whose every port has excite=False",
@@ -1466,6 +1483,24 @@ def _render_build(plan: OpenEMSPlan) -> list[str]:
         excite_expr = f"(1.0 if driven_number == {port.number} else 0.0)"
         if port.family == "msl":
             out.append(
+                "    # MSLPort builds its own launch-conductor sheet from this"
+            )
+            out.append(
+                "    # property. When the design's own trace already covers the"
+            )
+            out.append(
+                "    # port span with metal, that sheet is fully overridden and"
+            )
+            out.append(
+                "    # openEMS logs 'Unused primitive ... msl_feed_N'. That is"
+            )
+            out.append(
+                "    # benign (both are PEC) and is NOT the port-dropped failure"
+            )
+            out.append(
+                "    # mode -- the uf_inc guard below is what discriminates."
+            )
+            out.append(
                 f"    _metal_{port.number} = csx.AddMetal('msl_feed_{port.number}')"
             )
             out.append("    ports.append(MSLPort(")
@@ -1536,23 +1571,33 @@ def _run_one(driven_number, sim_root, threads):
             "silently drops an excitation whose edges miss the mesh lines; "
             "check %s for 'Unused primitive'." % (driven_number, peak, sim_dir)
         )
-    trace = os.path.join(sim_dir, "port_ut_%d" % driven_number)
+    # Independent witness on the time domain. The voltage-probe filenames come
+    # from the port object itself because they differ per family: a lumped port
+    # writes "port_ut_<n>", an MSLPort writes "port_ut_<n>A/B/C".
     trace_peak = None
-    if os.path.exists(trace):
+    for name in list(getattr(driven, "U_filenames", []) or []):
+        trace = os.path.join(sim_dir, name)
+        if not os.path.exists(trace):
+            continue
         raw = np.loadtxt(trace, comments="%")
-        if raw.size:
-            trace_peak = float(np.max(np.abs(np.atleast_2d(raw)[:, 1])))
-            if trace_peak == 0.0:
-                raise RuntimeError(
-                    "port %d time trace is identically zero: the excitation "
-                    "never entered the grid." % driven_number
-                )
+        if not raw.size:
+            continue
+        peak_here = float(np.max(np.abs(np.atleast_2d(raw)[:, 1])))
+        trace_peak = peak_here if trace_peak is None else max(trace_peak, peak_here)
+    if trace_peak == 0.0:
+        raise RuntimeError(
+            "port %d time trace is identically zero: the excitation never "
+            "entered the grid." % driven_number
+        )
 
     column = {}
     for port in ports:
         received = np.asarray(port.uf_ref, dtype=complex)
         column[port.number] = received / incident
-    z_ref = np.asarray(driven.Z_ref, dtype=complex)
+    # A lumped port's Z_ref is the scalar feed resistance; MSLPort's is an
+    # array over frequency. Normalise so the artifact shape does not depend on
+    # the port family.
+    z_ref = np.atleast_1d(np.asarray(driven.Z_ref, dtype=complex))
     return column, peak, trace_peak, z_ref
 
 
