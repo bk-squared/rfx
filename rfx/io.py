@@ -867,10 +867,19 @@ def export_radiation_pattern(path, ff_result, freq_idx=0):
 # =========================================================================
 
 def export_geometry_json(path, sim):
-    """Export simulation geometry as JSON for cross-validation or dataset indexing.
+    """Export a lightweight geometry *index* as JSON (bounding boxes only).
 
-    Captures materials, geometry entries, sources, probes, and grid config
-    in a tool-agnostic format.
+    Intended for dataset indexing and eyeball review. Each geometry entry is
+    recorded as its shape class name plus a bounding box, so a ``Cylinder`` and
+    a ``Box`` with the same bounds are indistinguishable here, and materials are
+    reduced to scalar ``eps_r``/``sigma``/``mu_r`` (dispersion poles are
+    dropped). Sources are recorded as position + component only.
+
+    This output therefore **cannot round-trip** and is not a design description:
+    do not drive an external solver from it. For a round-trip-complete design
+    document use :func:`rfx.interop.design_to_dict` /
+    :func:`rfx.interop.design_to_json`, which record constructor parameters and
+    refuse rather than degrade what they cannot represent.
 
     Parameters
     ----------
