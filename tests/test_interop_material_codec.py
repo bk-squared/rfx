@@ -127,6 +127,30 @@ def test_missing_field_in_payload_is_refused():
         material_from_dict(payload)
 
 
+@pytest.mark.parametrize("field", ["eps_r", "sigma", "mu_r", "chi3"])
+def test_non_finite_scalar_is_refused(field):
+    spec = MaterialSpec(**{field: float("nan")})
+    with pytest.raises(UnsupportedDesignFeature, match="not a finite number"):
+        material_to_dict(spec)
+
+
+def test_non_finite_pole_parameter_is_refused_naming_the_pole():
+    spec = MaterialSpec(
+        eps_r=1.0,
+        debye_poles=[DebyePole(delta_eps=1.0, tau=float("inf"))],
+    )
+    with pytest.raises(UnsupportedDesignFeature,
+                       match=r"debye_poles\[0\]\.tau is inf"):
+        material_to_dict(spec)
+
+
+def test_non_finite_is_refused_on_import_too():
+    payload = material_to_dict(_dispersive())
+    payload["lorentz_poles"][0]["kappa"] = float("nan")
+    with pytest.raises(UnsupportedDesignFeature, match="not a finite number"):
+        material_from_dict(payload)
+
+
 def test_unknown_field_in_payload_is_refused():
     payload = material_to_dict(_fr4())
     payload["tan_delta"] = 0.02

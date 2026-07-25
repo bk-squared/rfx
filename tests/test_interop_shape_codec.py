@@ -216,6 +216,79 @@ def test_wrong_vector_length_is_refused():
         shape_from_dict(payload)
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_scalar_is_refused_at_the_codec(bad):
+    """Not at json.dump time: allow_nan=False raises a bare ValueError with no
+    field name, so the refusal must name the parameter instead."""
+    with pytest.raises(UnsupportedDesignFeature, match="not a finite number"):
+        shape_to_dict(Sphere(center=(0.0, 0.0, 0.0), radius=bad))
+
+
+def test_non_finite_vector_component_is_refused_with_its_index():
+    with pytest.raises(UnsupportedDesignFeature, match=r"corner_hi\[0\] is nan"):
+        shape_to_dict(Box(corner_lo=(0.0, 0.0, 0.0),
+                          corner_hi=(float("nan"), 1.0, 1.0)))
+
+
+def test_non_finite_is_refused_on_import_too():
+    payload = shape_to_dict(SHAPES["sphere"])
+    payload["params"]["radius"] = float("inf")
+    with pytest.raises(UnsupportedDesignFeature, match="not a finite number"):
+        shape_from_dict(payload)
+
+
+def test_traced_scalar_parameter_is_refused_naming_the_tracer():
+    """A traced parameter means the geometry is a differentiable DoF, so there
+    is no concrete value to record. The message must say so rather than blame
+    the component count."""
+    jax = pytest.importorskip("jax")
+    captured = {}
+
+    def export_inside_trace(t):
+        shape = Sphere(center=(0.0, 0.0, 0.0), radius=t)
+        try:
+            shape_to_dict(shape)
+            captured["error"] = None
+        except UnsupportedDesignFeature as exc:
+            captured["error"] = str(exc)
+        return t * 2.0
+
+    jax.grad(export_inside_trace)(1e-3)
+
+    assert captured["error"] is not None, "a traced radius must be refused"
+    assert "JAX tracer" in captured["error"]
+    assert "components" not in captured["error"], (
+        "the refusal must not misattribute a tracer to a bad component count"
+    )
+
+
+def test_traced_vector_parameter_is_refused():
+    jax = pytest.importorskip("jax")
+    jnp = pytest.importorskip("jax.numpy")
+    captured = {}
+
+    def export_inside_trace(t):
+        corner = jnp.stack([t, t, t])
+        try:
+            shape_to_dict(Box(corner_lo=(0.0, 0.0, 0.0), corner_hi=corner))
+            captured["error"] = None
+        except UnsupportedDesignFeature as exc:
+            captured["error"] = str(exc)
+        return t * 2.0
+
+    jax.grad(export_inside_trace)(1e-3)
+    assert captured["error"] is not None
+    assert "JAX tracer" in captured["error"]
+
+
+def test_numpy_array_parameters_are_still_accepted():
+    """The tracer guard must not tighten into rejecting numpy input."""
+    np = pytest.importorskip("numpy")
+    payload = shape_to_dict(Box(corner_lo=np.array([0.0, 0.0, 0.0]),
+                                corner_hi=np.array([0.02, 0.012, 0.0015])))
+    assert payload["params"]["corner_hi"] == [0.02, 0.012, 0.0015]
+
+
 def test_payload_shape_is_json_serialisable_scalars_only():
     for shape in SHAPES.values():
         payload = shape_to_dict(shape)

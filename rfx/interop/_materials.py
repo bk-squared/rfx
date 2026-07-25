@@ -17,6 +17,7 @@ from typing import Any
 
 from rfx.api._spec import MaterialSpec
 from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop._shapes import _checked_scalar
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 
@@ -54,7 +55,11 @@ def _dump_poles(kind: str, poles: Any) -> list[dict[str, float]] | None:
                 f"{pole_cls.__name__}; the interop layer will not guess its "
                 f"parameter meaning"
             )
-        dumped.append({name: float(getattr(pole, name)) for name in names})
+        dumped.append({
+            name: _checked_scalar(
+                getattr(pole, name), what=f"{kind}[{index}].{name}")
+            for name in names
+        })
     return dumped
 
 
@@ -80,7 +85,11 @@ def _load_poles(kind: str, payload: Any) -> list[Any] | None:
                 f"{pole_cls.__name__}: missing={sorted(missing)}, "
                 f"unknown={sorted(unknown)}"
             )
-        poles.append(pole_cls(**{name: float(item[name]) for name in names}))
+        poles.append(pole_cls(**{
+            name: _checked_scalar(
+                item[name], what=f"{kind}[{index}].{name}")
+            for name in names
+        }))
     return poles
 
 
@@ -110,7 +119,8 @@ def material_to_dict(material: Any) -> dict[str, Any]:
         )
 
     out: dict[str, Any] = {
-        name: float(getattr(material, name)) for name in _SCALAR_FIELDS
+        name: _checked_scalar(getattr(material, name), what=f"material.{name}")
+        for name in _SCALAR_FIELDS
     }
     for kind in _POLE_FIELDS:
         out[kind] = _dump_poles(kind, getattr(material, kind))
@@ -134,7 +144,7 @@ def material_from_dict(payload: dict[str, Any]) -> MaterialSpec:
         )
 
     kwargs: dict[str, Any] = {
-        name: float(payload[name]) for name in _SCALAR_FIELDS
+        name: _checked_scalar(payload[name], what=f"material.{name}") for name in _SCALAR_FIELDS
     }
     for kind in _POLE_FIELDS:
         kwargs[kind] = _load_poles(kind, payload[kind])

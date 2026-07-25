@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import math
 from typing import Any, Callable, NamedTuple
 
+from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Cylinder, PolylineWire, Sphere
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
@@ -51,18 +53,58 @@ class _Field(NamedTuple):
     load: Callable[[Any], Any]
 
 
-def _checked_vec(value: Any, n: int, *, what: str) -> tuple[float, ...]:
+def _checked_scalar(value: Any, *, what: str) -> float:
+    """Coerce to a finite Python float, refusing tracers and NaN/inf.
+
+    A tracer means the parameter is a differentiable design variable with no
+    concrete value to record; NaN/inf would be written by ``json.dump`` only as
+    non-standard tokens (and ``allow_nan=False`` raises a bare ``ValueError``
+    far from the offending field), so both are refused here where the field name
+    is still known.
+    """
+    if is_tracer(value):
+        raise UnsupportedDesignFeature(
+            f"{what} is a JAX tracer, so it is a differentiable design variable "
+            f"with no concrete value to record. Export the design outside the "
+            f"traced/jax.grad context, or record the concrete design you want "
+            f"to hand to another tool"
+        )
     try:
-        seq = tuple(float(v) for v in value)
+        out = float(value)
     except (TypeError, ValueError) as exc:
+        raise UnsupportedDesignFeature(
+            f"{what} must be a number, got {value!r}"
+        ) from exc
+    if not math.isfinite(out):
+        raise UnsupportedDesignFeature(
+            f"{what} is {out}, which is not a finite number; a design "
+            f"description with NaN/inf geometry does not describe a structure"
+        )
+    return out
+
+
+def _checked_vec(value: Any, n: int, *, what: str) -> tuple[float, ...]:
+    if is_tracer(value):
+        raise UnsupportedDesignFeature(
+            f"{what} is a JAX tracer, so it is a differentiable design variable "
+            f"with no concrete value to record. Export the design outside the "
+            f"traced/jax.grad context"
+        )
+    try:
+        components = tuple(value)
+    except TypeError as exc:
         raise UnsupportedDesignFeature(
             f"{what} must be a sequence of {n} numbers, got {value!r}"
         ) from exc
-    if len(seq) != n:
+    if len(components) != n:
         raise UnsupportedDesignFeature(
-            f"{what} must have exactly {n} components, got {len(seq)}: {value!r}"
+            f"{what} must have exactly {n} components, got {len(components)}: "
+            f"{value!r}"
         )
-    return seq
+    return tuple(
+        _checked_scalar(v, what=f"{what}[{i}]")
+        for i, v in enumerate(components)
+    )
 
 
 def _vec(n: int, *, what: str) -> _Field:
@@ -79,7 +121,13 @@ def _vec_seq(n: int, *, what: str, container: Callable[[Any], Any]) -> _Field:
     )
 
 
-_FLOAT = _Field(dump=lambda v: float(v), load=lambda v: float(v))
+def _flt(*, what: str) -> _Field:
+    return _Field(
+        dump=lambda v: _checked_scalar(v, what=what),
+        load=lambda v: _checked_scalar(v, what=what),
+    )
+
+
 _STR = _Field(dump=lambda v: str(v), load=lambda v: str(v))
 
 
@@ -95,33 +143,33 @@ _CODECS: dict[str, _ShapeCodec] = {
     }),
     "cylinder": _ShapeCodec(Cylinder, {
         "center": _vec(3, what="cylinder.center"),
-        "radius": _FLOAT,
-        "height": _FLOAT,
+        "radius": _flt(what="cylinder.radius"),
+        "height": _flt(what="cylinder.height"),
         "axis": _STR,
     }),
     "sphere": _ShapeCodec(Sphere, {
         "center": _vec(3, what="sphere.center"),
-        "radius": _FLOAT,
+        "radius": _flt(what="sphere.radius"),
     }),
     "polyline_wire": _ShapeCodec(PolylineWire, {
         "points": _vec_seq(3, what="polyline_wire.points", container=tuple),
-        "radius": _FLOAT,
+        "radius": _flt(what="polyline_wire.radius"),
     }),
     # ``Via`` carries its own ``material`` in addition to the ``material=``
     # handed to ``Simulation.add()``.  Both are recorded; resolving the two is
     # the caller's decision, not something this codec may silently pick.
     "via": _ShapeCodec(Via, {
         "center": _vec(2, what="via.center"),
-        "drill_radius": _FLOAT,
-        "pad_radius": _FLOAT,
+        "drill_radius": _flt(what="via.drill_radius"),
+        "pad_radius": _flt(what="via.pad_radius"),
         "layers": _vec_seq(2, what="via.layers", container=list),
         "material": _STR,
     }),
     "curved_patch": _ShapeCodec(CurvedPatch, {
         "center": _vec(3, what="curved_patch.center"),
-        "length": _FLOAT,
-        "width": _FLOAT,
-        "radius": _FLOAT,
+        "length": _flt(what="curved_patch.length"),
+        "width": _flt(what="curved_patch.width"),
+        "radius": _flt(what="curved_patch.radius"),
         "axis": _STR,
     }),
 }
