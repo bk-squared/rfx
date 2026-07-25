@@ -138,6 +138,7 @@ from rfx.interop._materials import (
     materials_to_dict,
 )
 from rfx.interop._shapes import shape_from_dict, shape_to_dict
+from rfx.interop._validate import check_number, check_text, check_vector
 from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import ThinConductor
 from rfx.sources.coaxial_port import CoaxialPort
@@ -162,38 +163,23 @@ def _refuse(message: str) -> "UnsupportedDesignFeature":
     return UnsupportedDesignFeature(message)
 
 
-def _num(value: Any, *, what: str) -> float:
-    """Coerce to a finite Python float or refuse."""
-    if is_tracer(value):
-        raise _refuse(
-            f"{what} is a JAX tracer; a traced value has no concrete number "
-            f"to record. Export outside jit/grad, or pass a concrete value."
-        )
-    if isinstance(value, bool):
-        raise _refuse(f"{what} must be a number, got a bool ({value!r})")
-    if isinstance(value, (str, bytes)):
-        # float("1.2e10") succeeds, so a quoted numeric in a hand-written
-        # document would be coerced silently. The round-trip self-check does
-        # catch it, but only with a message showing two identical-looking
-        # numbers, which sends the reader hunting the wrong thing.
-        raise _refuse(
-            f"{what} is the string {value!r}, not a number. A design document "
-            f"with quoted numerics is accepted silently by float() and would "
-            f"record a value nobody wrote"
-        )
-    try:
-        out = float(value)
-    except (TypeError, ValueError) as exc:
-        raise _refuse(f"{what} must be a number, got {value!r}") from exc
-    if not math.isfinite(out):
-        raise _refuse(
-            f"{what} is {out!r}; the design document refuses non-finite "
-            f"numbers (JSON cannot represent them portably)"
-        )
-    return out
+# ``check_number`` / ``check_text`` / ``check_vector`` come from
+# ``rfx/interop/_validate.py`` — the shared leaf the shape and material codecs
+# also sit on. They refuse JAX tracers, ``bool`` (an int in Python, so
+# ``float(True)`` would silently record 1.0), ``str``/``bytes`` (a quoted
+# numeric in a hand-written document), one-shot iterators (consumed by the act
+# of exporting, so a second export would emit an empty sequence with no error)
+# and non-finite floats. The two coercions below are the ones the leaf does not
+# provide; they build on it rather than re-deriving its rules.
 
 
 def _integer(value: Any, *, what: str) -> int:
+    """Require an exact integer.
+
+    Not a wrapper around ``check_number``: cell counts, mode indices and
+    ``n_freqs`` must not silently accept 3.5 or come back as a float, and the
+    document distinguishes JSON integers from JSON numbers.
+    """
     if isinstance(value, bool):
         raise _refuse(f"{what} must be an integer, got a bool ({value!r})")
     if is_tracer(value):
@@ -212,26 +198,15 @@ def _integer(value: Any, *, what: str) -> int:
     return out
 
 
-def _text(value: Any, *, what: str) -> str:
-    if not isinstance(value, str):
-        raise _refuse(f"{what} must be a string, got {type(value).__name__}")
-    return value
-
-
 def _flag(value: Any, *, what: str) -> bool:
+    """Require an actual bool.
+
+    ``excite`` decides whether a port carries a source at all, so accepting a
+    truthy int here would turn a JSON ``1`` into an active excitation.
+    """
     if not isinstance(value, bool):
         raise _refuse(f"{what} must be a bool, got {type(value).__name__}")
     return value
-
-
-def _vector(value: Any, n: int, *, what: str) -> tuple[float, ...]:
-    if isinstance(value, (str, bytes)) or not hasattr(value, "__len__"):
-        raise _refuse(f"{what} must be a sequence of {n} numbers, got {value!r}")
-    if len(value) != n:
-        raise _refuse(
-            f"{what} must have exactly {n} components, got {len(value)}: {value!r}"
-        )
-    return tuple(_num(v, what=f"{what}[{i}]") for i, v in enumerate(value))
 
 
 def _integer_vector(value: Any, n: int, *, what: str) -> tuple[int, ...]:
@@ -289,7 +264,7 @@ def _array_to_dict(value: Any, *, what: str) -> dict[str, Any]:
             )
         payload["dtype"] = str(value.dtype)
     payload["values"] = [
-        _num(v, what=f"{what}[{i}]") for i, v in enumerate(np.asarray(value).tolist())
+        check_number(v, what=f"{what}[{i}]") for i, v in enumerate(np.asarray(value).tolist())
     ]
     return payload
 
@@ -309,14 +284,14 @@ def _array_from_dict(payload: Any, *, what: str) -> Any:
     raw = payload["values"]
     if not isinstance(raw, list):
         raise _refuse(f"{what}.values must be a list, got {type(raw).__name__}")
-    values = [_num(v, what=f"{what}.values[{i}]") for i, v in enumerate(raw)]
+    values = [check_number(v, what=f"{what}.values[{i}]") for i, v in enumerate(raw)]
 
     if container == "list":
         return values
     if container == "tuple":
         return tuple(values)
 
-    dtype = _text(payload["dtype"], what=f"{what}.dtype")
+    dtype = check_text(payload["dtype"], what=f"{what}.dtype")
     try:
         arr = np.asarray(values, dtype=np.dtype(dtype))
     except TypeError as exc:
@@ -391,7 +366,7 @@ def _waveform_to_dict(waveform: Any, *, what: str) -> dict[str, Any] | None:
         name: (
             _integer(getattr(waveform, name), what=f"{what}.{name}")
             if name in _WAVEFORM_INT_FIELDS
-            else _num(getattr(waveform, name), what=f"{what}.{name}")
+            else check_number(getattr(waveform, name), what=f"{what}.{name}")
         )
         for name in codec.fields
     }
@@ -404,7 +379,7 @@ def _waveform_from_dict(payload: Any, *, what: str) -> Any:
     if not isinstance(payload, dict):
         raise _refuse(f"{what} must be a mapping or null, got {type(payload).__name__}")
     _require_exact_keys(payload, {"kind", "params"}, what=what)
-    kind = _text(payload["kind"], what=f"{what}.kind")
+    kind = check_text(payload["kind"], what=f"{what}.kind")
     if kind not in _WAVEFORM_CODECS:
         raise _refuse(
             f"{what}.kind {kind!r} is not supported; supported kinds are "
@@ -419,7 +394,7 @@ def _waveform_from_dict(payload: Any, *, what: str) -> Any:
         name: (
             _integer(params[name], what=f"{what}.params.{name}")
             if name in _WAVEFORM_INT_FIELDS
-            else _num(params[name], what=f"{what}.params.{name}")
+            else check_number(params[name], what=f"{what}.params.{name}")
         )
         for name in codec.fields
     }
@@ -477,9 +452,9 @@ def _opt(field: _F) -> _F:
     )
 
 
-_NUM = _F(dump=lambda v, w: _num(v, what=w), load=lambda v, w: _num(v, what=w))
+_NUM = _F(dump=lambda v, w: check_number(v, what=w), load=lambda v, w: check_number(v, what=w))
 _INT = _F(dump=lambda v, w: _integer(v, what=w), load=lambda v, w: _integer(v, what=w))
-_STR = _F(dump=lambda v, w: _text(v, what=w), load=lambda v, w: _text(v, what=w))
+_STR = _F(dump=lambda v, w: check_text(v, what=w), load=lambda v, w: check_text(v, what=w))
 _BOOL = _F(dump=lambda v, w: _flag(v, what=w), load=lambda v, w: _flag(v, what=w))
 _SHAPE = _F(dump=lambda v, w: shape_to_dict(v), load=lambda v, w: shape_from_dict(v))
 _WAVEFORM = _F(
@@ -494,8 +469,8 @@ _ARRAY = _F(
 
 def _vec(n: int) -> _F:
     return _F(
-        dump=lambda v, w: list(_vector(v, n, what=w)),
-        load=lambda v, w: _vector(v, n, what=w),
+        dump=lambda v, w: list(check_vector(v, n, what=w)),
+        load=lambda v, w: check_vector(v, n, what=w),
     )
 
 
@@ -838,11 +813,11 @@ def _dump_boundary(sim: Any) -> dict[str, Any]:
         # scalar + set_periodic_axes() path, and _periodic_axes is also
         # mutated as a side effect by add_floquet_port.
         "legacy": {
-            "boundary": _text(sim._boundary, what="_boundary"),
+            "boundary": check_text(sim._boundary, what="_boundary"),
             "cpml_layers": _integer(sim._cpml_layers, what="_cpml_layers"),
-            "cpml_kappa_max": _num(sim._cpml_kappa_max, what="_cpml_kappa_max"),
-            "pec_faces": sorted(_text(f, what="_pec_faces entry") for f in sim._pec_faces),
-            "periodic_axes": _text(sim._periodic_axes, what="_periodic_axes"),
+            "cpml_kappa_max": check_number(sim._cpml_kappa_max, what="_cpml_kappa_max"),
+            "pec_faces": sorted(check_text(f, what="_pec_faces entry") for f in sim._pec_faces),
+            "periodic_axes": check_text(sim._periodic_axes, what="_periodic_axes"),
         },
     }
 
@@ -888,9 +863,9 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
         {"boundary", "cpml_layers", "cpml_kappa_max", "pec_faces", "periodic_axes"},
         what="boundary.legacy",
     )
-    scalar = _text(legacy["boundary"], what="boundary.legacy.boundary")
+    scalar = check_text(legacy["boundary"], what="boundary.legacy.boundary")
     cpml_layers = _integer(legacy["cpml_layers"], what="boundary.legacy.cpml_layers")
-    kappa = _num(legacy["cpml_kappa_max"], what="boundary.legacy.cpml_kappa_max")
+    kappa = check_number(legacy["cpml_kappa_max"], what="boundary.legacy.cpml_kappa_max")
     raw_faces = legacy["pec_faces"]
     if not isinstance(raw_faces, list):
         raise _refuse(
@@ -898,10 +873,10 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
             f"{type(raw_faces).__name__}"
         )
     pec_faces = {
-        _text(face, what=f"boundary.legacy.pec_faces[{i}]")
+        check_text(face, what=f"boundary.legacy.pec_faces[{i}]")
         for i, face in enumerate(raw_faces)
     }
-    periodic = _text(legacy["periodic_axes"], what="boundary.legacy.periodic_axes")
+    periodic = check_text(legacy["periodic_axes"], what="boundary.legacy.periodic_axes")
 
     common = {"cpml_kappa_max": kappa}
 
@@ -987,7 +962,7 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
             raise _refuse(
                 f"{what} is a {type(entry).__name__}, expected _PortEntry"
             )
-        if _num(entry.impedance, what=f"{what}.impedance") == 0.0:
+        if check_number(entry.impedance, what=f"{what}.impedance") == 0.0:
             for name, expected in _SOFT_SOURCE_PINNED_DEFAULTS.items():
                 actual = getattr(entry, name)
                 if actual != expected:
@@ -1027,7 +1002,7 @@ def _dump_coaxial_matched_loads(sim: Any) -> list[dict[str, Any]]:
         out.append(
             {
                 "port_index": _integer(port_index, what=f"{what}.port_index"),
-                "target_impedance": _num(impedance, what=f"{what}.target_impedance"),
+                "target_impedance": check_number(impedance, what=f"{what}.target_impedance"),
                 "axial_offset_cells": _integer(
                     offset, what=f"{what}.axial_offset_cells"
                 ),
@@ -1272,14 +1247,14 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         "schema": DESIGN_SCHEMA_VERSION,
         "rfx_version": _rfx_version(),
         "domain": {
-            "freq_max": _num(sim._freq_max, what="_freq_max"),
-            "extent": list(_vector(sim._domain, 3, what="_domain")),
-            "mode": _text(sim._mode, what="_mode"),
+            "freq_max": check_number(sim._freq_max, what="_freq_max"),
+            "extent": list(check_vector(sim._domain, 3, what="_domain")),
+            "mode": check_text(sim._mode, what="_mode"),
         },
         "mesh": {
             # dx is None on the auto-mesh path: "let rfx choose" is itself the
             # design decision, and it round-trips as null.
-            "dx": None if sim._dx is None else _num(sim._dx, what="_dx"),
+            "dx": None if sim._dx is None else check_number(sim._dx, what="_dx"),
             "dx_profile": (
                 None
                 if sim._dx_profile is None
@@ -1298,9 +1273,9 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         },
         "boundary": _dump_boundary(sim),
         "solver": {
-            "precision": _text(sim._precision, what="_precision"),
-            "solver": _text(sim._solver, what="_solver"),
-            "adi_cfl_factor": _num(sim._adi_cfl_factor, what="_adi_cfl_factor"),
+            "precision": check_text(sim._precision, what="_precision"),
+            "solver": check_text(sim._solver, what="_solver"),
+            "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
             "stencil_order": _integer(sim._stencil_order, what="_stencil_order"),
         },
         "materials": _dump_materials(sim),
@@ -1496,13 +1471,13 @@ def simulation_from_design(document: Any) -> Any:
         )
     _require_exact_keys(document, _TOP_LEVEL_KEYS, what="design document")
 
-    schema = _text(document["schema"], what="schema")
+    schema = check_text(document["schema"], what="schema")
     if schema != DESIGN_SCHEMA_VERSION:
         raise _refuse(
             f"schema {schema!r} is not {DESIGN_SCHEMA_VERSION!r}; this reader "
             f"does not translate between schema versions"
         )
-    _text(document["rfx_version"], what="rfx_version")
+    check_text(document["rfx_version"], what="rfx_version")
     if not isinstance(document["non_portable"], list):
         raise _refuse(
             f"non_portable must be a list, got "
@@ -1542,10 +1517,10 @@ def simulation_from_design(document: Any) -> Any:
     )
 
     sim = Simulation(
-        freq_max=_num(domain["freq_max"], what="domain.freq_max"),
-        domain=_vector(domain["extent"], 3, what="domain.extent"),
-        dx=None if mesh["dx"] is None else _num(mesh["dx"], what="mesh.dx"),
-        mode=_text(domain["mode"], what="domain.mode"),
+        freq_max=check_number(domain["freq_max"], what="domain.freq_max"),
+        domain=check_vector(domain["extent"], 3, what="domain.extent"),
+        dx=None if mesh["dx"] is None else check_number(mesh["dx"], what="mesh.dx"),
+        mode=check_text(domain["mode"], what="domain.mode"),
         dx_profile=(
             None
             if mesh["dx_profile"] is None
@@ -1561,9 +1536,9 @@ def simulation_from_design(document: Any) -> Any:
             if mesh["dz_profile"] is None
             else _array_from_dict(mesh["dz_profile"], what="mesh.dz_profile")
         ),
-        precision=_text(solver["precision"], what="solver.precision"),
-        solver=_text(solver["solver"], what="solver.solver"),
-        adi_cfl_factor=_num(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
+        precision=check_text(solver["precision"], what="solver.precision"),
+        solver=check_text(solver["solver"], what="solver.solver"),
+        adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
         stencil_order=_integer(solver["stencil_order"], what="solver.stencil_order"),
         **plan.kwargs,
     )
@@ -1636,7 +1611,7 @@ def simulation_from_design(document: Any) -> Any:
         )
         sim.add_coaxial_matched_load(
             _integer(payload["port_index"], what=f"{what}.port_index"),
-            target_impedance=_num(
+            target_impedance=check_number(
                 payload["target_impedance"], what=f"{what}.target_impedance"
             ),
             axial_offset_cells=_integer(

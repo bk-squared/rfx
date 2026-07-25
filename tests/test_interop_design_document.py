@@ -932,8 +932,43 @@ def test_refuses_non_finite_number():
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
     sim.add_probe((math.inf, 0.010, 0.010), "ez")
 
-    with pytest.raises(UnsupportedDesignFeature, match="non-finite"):
+    with pytest.raises(UnsupportedDesignFeature, match="not a finite number"):
         design_to_dict(sim)
+
+
+def test_refuses_a_one_shot_iterator_shape_parameter():
+    """A generator in a shape parameter must not silently vanish on re-export.
+
+    The failure this pins is a whole document, not a message: the first export
+    consumed the iterator, so the SECOND export emitted ``points: []`` and
+    produced a complete, schema-valid ``rfx-design-ir/v1`` document with the
+    wire simply absent — which then survived re-import. ``_SHAPE`` delegates to
+    the shape codec and does not re-validate, so the document inherited the
+    hole; it is closed in ``rfx/interop/_validate.check_sequence``. This test
+    lives at the document level because that is where the consequence was.
+    """
+    wire = PolylineWire(
+        points=(p for p in ((0.0, 0.0, 1e-3), (5e-3, 0.0, 1e-3))), radius=1e-4
+    )
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim.add(wire, material="pec")
+
+    with pytest.raises(UnsupportedDesignFeature, match="no length|one-shot"):
+        design_to_dict(sim)
+
+
+def test_a_second_export_never_loses_geometry():
+    """Export idempotence over every fixture, as a property.
+
+    A shape parameter that is consumed, cached, or lazily evaluated shows up
+    here as a document that shrinks on the second read.
+    """
+    for name, build in sorted(DESIGN_BUILDERS.items()):
+        sim = build()
+        first = design_to_dict(sim)
+        second = design_to_dict(sim)
+        assert len(second["geometry"]) == len(first["geometry"]), name
+        assert first == second, name
 
 
 def test_refuses_soft_source_that_no_builder_could_have_created():
