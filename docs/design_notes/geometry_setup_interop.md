@@ -210,6 +210,34 @@ pml_thickness`, which reads the absorber as living *inside* the domain — the
 opposite frame from the grid builder. The subgrid path is experimental and
 parked (PR #90), so this is recorded rather than chased.)
 
+### The ceiling on any emitted-setup agreement claim
+
+Port models differ **structurally** between rfx and openEMS, and the repo has
+already measured the size of it. This bounds what an emitter may claim, before
+any physics is in question:
+
+- rfx's wire/lumped port is a **point feed** (one vertical cell column from
+  ground to trace, the `extent`); openEMS's `MSLPort` occupies a **span** along
+  the propagation axis (6 cells in the upstream `MSL_NotchFilter.py` tutorial).
+  `port_w_cells` has **no rfx counterpart**, so it is an emitter parameter and an
+  assumption the reader must be shown, not a derived quantity.
+- The **direction convention inverts**: rfx's `direction` names the outward
+  (away-from-the-line) normal, while openEMS derives propagation from
+  `sign(stop - start)` with both ports pointing *into* the shared trace. A wrong
+  sign yields a plausible-looking S21 with the wrong reference sense.
+- **≈0.20 in |S| is the measured port-convention gap**
+  (`scripts/diagnostics/build_wire_openems_broad_envelope.py:12-16`: the
+  tolerance is deliberately loose "because the wire-port mid-cell convention has
+  known mismatch with openEMS's lumped-port multi-cell averaging", and broad
+  calibrated E5 still requires resolving the wire-port absolute calibration
+  convention).
+
+That 0.20 is **looser than the cv06b mean gate (0.13)** and comparable to its max
+gate (0.25). So: a passing comparison of an emitted setup is not evidence that
+the port models agree, and **structural equivalence of a generated setup is not
+evidence of physics agreement** at all. The emitter's job is to remove
+hand-porting divergence, not to produce agreement.
+
 ### Acceptance target for the first emitter (verified to exist)
 
 `tests/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
