@@ -928,3 +928,49 @@ def test_generated_script_runs_under_openems_and_is_finite_and_passive():
     # not, which is the failure mode this cheap case exists to catch.
     s11 = np.array([complex(re, im) for re, im in payload["s_matrix"]["S11"]])
     assert np.all(np.abs(s11) > 0.9)
+
+
+def test_upml_collapse_onto_pml_is_itemised():
+    """rfx has two absorber formulations; openEMS has one. Say so.
+
+    rfx refuses to mix CPML and UPML across faces (``rfx/boundaries/spec.py:182``
+    — "the update stencils differ"), so a design is all-one or all-the-other.
+    Both map to the same ``PML_<N>`` string, which is exactly why the collapse
+    has to be stated rather than inferred from the boundary list.
+    """
+    sim = Simulation(
+        freq_max=10e9, domain=(0.010, 0.010, 0.010), dx=1.0e-3,
+        boundary="upml", cpml_layers=8,
+    )
+    sim.add_port(position=(0.005, 0.005, 0.005), component="ez",
+                 impedance=50.0, waveform=_PULSE)
+    plan = plan_openems_projection(design_to_dict(sim))
+
+    assert plan.boundary == ("PML_8",) * 6
+    notes = [n for n in plan.approximations if "UPML faces" in n]
+    assert len(notes) == 1
+    assert "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi" in notes[0]
+    assert "The layer count survives; the absorber does not" in notes[0]
+
+    # A pure-cpml design must not carry it.
+    quiet = plan_openems_projection(design_to_dict(_thru()))
+    assert not [n for n in quiet.approximations if "UPML faces" in n]
+
+
+def test_differing_per_face_pml_depth_is_flagged_as_assumed_not_measured():
+    sim = Simulation(
+        freq_max=10e9, domain=(0.010, 0.010, 0.010), dx=1.0e-3,
+        boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml", lo_thickness=5),
+                              y="cpml", z="cpml"),
+        cpml_layers=12,
+    )
+    sim.add_port(position=(0.005, 0.005, 0.005), component="ez",
+                 impedance=50.0, waveform=_PULSE)
+    plan = plan_openems_projection(design_to_dict(sim))
+    notes = [n for n in plan.approximations if "per-face PML depths differ" in n]
+    assert len(notes) == 1
+    assert "not observed" in notes[0]
+
+    uniform = plan_openems_projection(design_to_dict(_thru()))
+    assert not [n for n in uniform.approximations
+                if "per-face PML depths differ" in n]

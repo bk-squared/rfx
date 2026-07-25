@@ -310,8 +310,8 @@ def _ident(prefix: str, name: str, used: set[str]) -> str:
 
 def _face_plan(
     boundary_spec: dict, cpml_layers: int, periodic_axes: str
-) -> tuple[dict[str, int], dict[str, str]]:
-    """Per-face absorber pad (cells) and openEMS boundary string.
+) -> tuple[dict[str, int], dict[str, str], list[str]]:
+    """Per-face absorber pad (cells), openEMS boundary string, and UPML faces.
 
     Mirrors ``Grid.__init__``'s ``_face_pad``: a ``pec`` / ``pmc`` / ``periodic``
     face gets ``pad = 0`` even when the axis participates in CPML, and an
@@ -323,6 +323,7 @@ def _face_plan(
     """
     pads: dict[str, int] = {}
     strings: dict[str, str] = {}
+    upml_faces: list[str] = []
     for axis in _AXES:
         axis_payload = _require_mapping(
             _get(boundary_spec, axis, "boundary.spec"), f"boundary.spec.{axis}"
@@ -383,9 +384,13 @@ def _face_plan(
                 # D3: parameterised from the design, not the scripts' PML_8.
                 # D4: MUR is never emitted.
                 strings[face] = f"PML_{layers}"
+                if token == "upml":
+                    # openEMS has one absorber. Collapsing rfx's two onto it is
+                    # a translation the reader must be told about, not a detail.
+                    upml_faces.append(face)
             else:
                 raise _refuse(f"boundary token {token!r} on face {face}", "unknown token")
-    return pads, strings
+    return pads, strings, upml_faces
 
 
 def _axis_lines_mm(
@@ -1188,7 +1193,7 @@ def plan_openems_projection(
     legacy = _require_mapping(_get(boundary, "legacy", "boundary"), "boundary.legacy")
     cpml_layers = int(_get(legacy, "cpml_layers", "boundary.legacy"))
     periodic_axes = str(_get(legacy, "periodic_axes", "boundary.legacy"))
-    pads, strings = _face_plan(spec, cpml_layers, periodic_axes)
+    pads, strings, upml_faces = _face_plan(spec, cpml_layers, periodic_axes)
 
     if _require_list(
         _get(document, "thin_conductors", "document"), "thin_conductors"
@@ -1285,6 +1290,22 @@ def plan_openems_projection(
         f"extent is {tuple(n_cells[i] * dx_m for i in range(3))} m and may exceed "
         f"the requested domain {tuple(float(v) for v in extent)} m."
     )
+    if upml_faces:
+        notes.append(
+            "[D3] rfx UPML faces (" + ", ".join(upml_faces) + ") are emitted as "
+            "PML_<N>, the same string a cpml face gets: openEMS has exactly one "
+            "absorber, so rfx's two distinct formulations collapse onto it. The "
+            "layer count survives; the absorber does not. Do not read a UPML-vs-"
+            "PML comparison as testing rfx's UPML implementation."
+        )
+    if len({s for s in strings.values() if s.startswith("PML_")}) > 1:
+        notes.append(
+            "[D3] per-face PML depths differ across faces "
+            f"({', '.join(f'{f}={strings[f]}' for f in sorted(strings) if strings[f].startswith('PML_'))}). "
+            "The PML_<N> string format is verified on this install, but only "
+            "uniform depths have been measured here; per-face independence is "
+            "assumed from the API shape (six independent strings), not observed."
+        )
     notes.append(
         "[D3/D4] absorbing faces are emitted as PML_<cpml_layers> taken from the "
         "design (not the scripts' hard-coded PML_8), and MUR is never emitted: "
