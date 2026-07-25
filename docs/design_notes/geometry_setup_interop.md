@@ -183,6 +183,33 @@ Measured in this environment, not assumed:
   live-session generator would licence-gate CI and be unusable for the actual
   workflow. Generation must need no licence.
 
+### The highest-severity translation hazard, measured
+
+**rfx adds CPML *outside* the user domain; openEMS PML consumes cells *inside*
+the mesh extent.** A naive translation therefore buries the structure in the
+absorber and compares against a different problem — the dominant historical
+failure class in this repo (comparator/fixture divergence, not solver physics).
+
+Measured with `domain=(0.01, 0.01, 0.01)`, `dx=1e-3`:
+
+| `cpml_layers` | grid shape | `axis_pads` |
+|---|---|---|
+| 0 | (11, 11, 11) | (0, 0, 0) |
+| 8 | (27, 27, 27) = 11 + 2×8 | (8, 8, 8) |
+| 16 | (43, 43, 43) = 11 + 2×16 | (16, 16, 16) |
+
+So the user's `domain` is entirely physical and the absorber is extra cells
+beyond it, consistent with `rfx/grid.py:133` — `(idx - axis_pads[ax]) * dx`
+recovers user-domain coordinates, i.e. index 0 lies outside the domain. An
+openEMS emitter must span `domain + 2 × cpml_layers × dx` per absorbing axis and
+let `PML_<N>` eat the added margin.
+
+(Noted while verifying: the subgrid PML-overlap warning at
+`rfx/api/__init__.py:627-650` tests `z_lo < pml_thickness` / `z_hi > domain_z -
+pml_thickness`, which reads the absorber as living *inside* the domain — the
+opposite frame from the grid builder. The subgrid path is experimental and
+parked (PR #90), so this is recorded rather than chased.)
+
 ### Acceptance target for the first emitter (verified to exist)
 
 `tests/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
