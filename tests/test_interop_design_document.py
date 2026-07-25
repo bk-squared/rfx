@@ -1220,7 +1220,47 @@ def test_non_portable_annotation_flags_subgridding():
 def test_non_portable_annotation_flags_graded_mesh_and_absorber():
     paths = {note["path"] for note in design_to_dict(_graded_microstrip())["non_portable"]}
     assert "mesh" in paths
-    assert "boundary.legacy.cpml_layers" in paths
+    # The absorber note is keyed on "boundary", not on the legacy scalar, because
+    # an absorber can be defined EITHER by legacy.cpml_layers OR by per-face
+    # lo_thickness/hi_thickness on a BoundarySpec. Keying it on the scalar meant a
+    # real 12-cell-per-face CPML with cpml_layers == 0 was annotated as fully
+    # portable; see test_non_portable_annotation_flags_a_per_face_absorber.
+    assert "boundary" in paths
+
+
+def test_non_portable_annotation_flags_a_per_face_absorber():
+    """An absorber defined only by per-face thickness must still be annotated."""
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, cpml_layers=0,
+        boundary=BoundarySpec(
+            x="pec", y="pec",
+            z=Boundary(lo="cpml", hi="cpml", lo_thickness=12, hi_thickness=12)),
+    )
+    sim.add(Box(corner_lo=(0.005, 0.005, 0.005),
+                corner_hi=(0.015, 0.015, 0.015)), material="pec")
+
+    document = design_to_dict(sim)
+    assert document["boundary"]["legacy"]["cpml_layers"] == 0, (
+        "fixture premise: the legacy scalar must be 0 so only the per-face "
+        "thickness defines the absorber"
+    )
+    notes = {note["path"]: note["reason"] for note in document["non_portable"]}
+    assert "boundary" in notes
+    assert "z_lo" in notes["boundary"] and "z_hi" in notes["boundary"]
+
+
+def test_non_portable_annotation_flags_conformal_pec_faces():
+    """rfx-only state the branch's own openEMS emitter refuses outright."""
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+        boundary=BoundarySpec(
+            x=Boundary(lo="pec", hi="pec", conformal=True), y="pmc", z="pmc"),
+    )
+    sim.add(Box(corner_lo=(0.005, 0.005, 0.005),
+                corner_hi=(0.015, 0.015, 0.015)), material="pec")
+
+    paths = {note["path"] for note in design_to_dict(sim)["non_portable"]}
+    assert "boundary.spec.x.conformal" in paths
 
 
 def test_non_portable_annotation_is_empty_for_a_plain_pec_design():

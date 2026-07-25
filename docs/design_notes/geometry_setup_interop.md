@@ -1,9 +1,11 @@
 # Geometry / setup export–import interop
 
-Status: **PROVISIONAL — under construction.** The primitive-level codecs are
-implemented and contract-tested; the design document, the external-solver
-emitters, and the import direction are not yet landed. Nothing here is a
-validated claim about agreement with another solver.
+Status: **PROVISIONAL.** The rfx⇄rfx design document and the first external
+emitter (openEMS) are implemented and contract-tested; the import direction is
+researched only. **Nothing here is a validated claim about agreement with
+another solver** — the openEMS emitter is proven *executable*, not *agreeing*,
+and the port models are known to differ by ~0.20 in |S| before any physics is in
+question (see the ceiling section below).
 Date: 2026-07-25. Branch: `feat/geometry-setup-interop`.
 
 ## Question
@@ -305,8 +307,11 @@ Both come from the target-API survey and neither has a defensible default:
 | shape codec, 6/6 primitives, registry pinned to live signatures | implemented, contract-tested |
 | material codec incl. dispersion poles | implemented, contract-tested |
 | `MeshShape` / subclass / impostor-class refusals | implemented, tested |
-| design document (`Simulation` ⇄ document) | **in progress** |
-| published JSON Schema for the document | **in progress** |
-| external-solver emitters (PyAEDT / CST VBA / openEMS / Meep) | **not started** |
+| design document (`Simulation` ⇄ document, `rfx-design-ir/v1`) | implemented; round trip gated over 16 fixtures by an all-attribute diff whose non-vacuity is itself proven by 7 mutation tests |
+| completeness ledgers | implemented: a new `Simulation.__init__` attribute or `add_*` method reds a test until a decision is recorded |
+| published JSON Schema for the document | implemented, pinned to the code and validated against every design fixture |
+| openEMS emitter | implemented; **executability** proven by an emitted script that actually runs under openEMS and returns finite, passive S-parameters. Shapes are limited to `box`/`cylinder` — the rest refuse because no translation of them has ever been checked against a known-good result in this repo |
+| CST VBA / PyAEDT / Meep emitters | **not started** (CST needs VBA emission; neither CST nor HFSS can be verified here without a licence) |
 | import direction (GDSII, CST history list, PyAEDT enumeration) | **researched only** |
 | consolidation of the four existing serialisers | **not started** |
+| physics agreement against `tests/fixtures/msl_notch_e4/` | **not attempted** — cv06b at dx = 50 µm is ~1.6M cells × 600k steps; a coarse run would not be evidence |

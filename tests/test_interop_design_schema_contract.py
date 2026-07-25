@@ -1,8 +1,14 @@
 """Contract tests pinning the published design-IR schema against the emitter.
 
 A schema that disagrees with the code it documents is worse than no schema: a
-reader validates against it, passes, and believes something false. These tests
-fail if either side drifts.
+reader validates against it, passes, and believes something false.
+
+Scope of what these tests actually pin: the top-level, excitation and observable
+key sets; the shape-kind vocabulary; the material payload including pole
+parameters; and validation of every design fixture in
+``tests/test_interop_design_document.py`` against the published schema. Entry
+field sets are pinned only insofar as a fixture populates that family — the
+coverage guard below names any family no fixture exercises.
 
 Pure structural checks — no FDTD.
 """
@@ -10,6 +16,7 @@ Pure structural checks — no FDTD.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +36,11 @@ from rfx.interop._shapes import SUPPORTED_SHAPE_KINDS
 from rfx.materials.debye import DebyePole
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# The design fixtures live in the sibling test module; reuse them rather than
+# maintaining a second, thinner set that would silently stop covering families.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_interop_design_document import DESIGN_BUILDERS  # noqa: E402
 SCHEMA_PATH = _REPO_ROOT / "docs/design_notes/schemas/rfx-design-ir-v1.schema.json"
 
 
@@ -122,6 +134,63 @@ def test_emitted_documents_validate_against_the_published_schema(
         schema, documents, index):
     jsonschema = pytest.importorskip("jsonschema")
     jsonschema.validate(instance=documents[index], schema=schema)
+
+
+@pytest.mark.parametrize("name", sorted(DESIGN_BUILDERS))
+def test_every_design_fixture_validates_against_the_published_schema(
+        schema, name):
+    """Validate the FULL fixture set, not three ad-hoc documents.
+
+    The three documents above carry no entries at all for most sections
+    (ports of every family, the coax termination lists, tfsf, lumped_rlc,
+    dft_planes, flux_monitors, ntff, thin_conductors, refinement), so they
+    exercised only the top level. The schema pins each entry family with
+    ``additionalProperties: false``, which means adding a field to a record
+    registry without updating the schema would leave every real document of
+    that family invalid while every unit test still passed. Driving the whole
+    builder set is what makes the schema's entry level load-bearing.
+    """
+    jsonschema = pytest.importorskip("jsonschema")
+    document = design_to_dict(DESIGN_BUILDERS[name]())
+    jsonschema.validate(instance=document, schema=schema)
+
+
+def test_the_fixture_set_actually_covers_the_entry_families(schema):
+    """Guard against the above becoming vacuous again.
+
+    If a section is never populated by any fixture, its schema branch is
+    unexercised and this test names it rather than letting the coverage quietly
+    rot.
+    """
+    populated: set[str] = set()
+    for build in DESIGN_BUILDERS.values():
+        document = design_to_dict(build())
+        for section in ("geometry", "thin_conductors"):
+            if document[section]:
+                populated.add(section)
+        for key, value in document["excitations"].items():
+            if value:
+                populated.add(f"excitations.{key}")
+        for key, value in document["observables"].items():
+            if value:
+                populated.add(f"observables.{key}")
+        if document["refinement"]:
+            populated.add("refinement")
+
+    expected = {
+        "geometry", "thin_conductors", "refinement",
+        "excitations.soft_sources", "excitations.lumped_ports",
+        "excitations.msl_ports", "excitations.waveguide_ports",
+        "excitations.coaxial_ports", "excitations.floquet_ports",
+        "excitations.tfsf", "excitations.lumped_rlc",
+        "observables.probes", "observables.dft_planes",
+        "observables.flux_monitors", "observables.ntff",
+    }
+    missing = sorted(expected - populated)
+    assert not missing, (
+        f"no design fixture populates {missing}, so the published schema's "
+        f"branch for each is validated by nothing"
+    )
 
 
 def test_documents_carry_no_derived_or_run_control_state(documents):

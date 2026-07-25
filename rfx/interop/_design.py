@@ -1054,13 +1054,38 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
             "all, so a profile must be re-meshed, never averaged to a scalar "
             "resolution",
         )
-    if document["boundary"]["legacy"]["cpml_layers"] > 0:
+    # The scalar is only one of two ways to define an absorber: a per-face
+    # BoundarySpec can carry cpml/upml tokens with their own lo/hi thickness
+    # while the legacy scalar stays 0. Gating on the scalar alone annotated a
+    # real 12-cell-per-face CPML as fully portable.
+    boundary_spec = document["boundary"]["spec"]
+    absorbing_faces = sorted(
+        f"{axis}_{side}"
+        for axis, faces in boundary_spec.items()
+        for side in ("lo", "hi")
+        if faces.get(side) in ("cpml", "upml")
+    )
+    if absorbing_faces or document["boundary"]["legacy"]["cpml_layers"] > 0:
         note(
-            "boundary.legacy.cpml_layers",
-            "absorber depth as a cell count; the remaining CPML knobs "
-            "(sigma_max, alpha_max, grading order) are hard-coded in "
-            "rfx/boundaries/cpml.py, so two solvers given the same layer "
-            "count build different absorbers",
+            "boundary",
+            "absorber depth is a cell count (legacy.cpml_layers and/or the "
+            "per-face lo_thickness/hi_thickness on "
+            f"{', '.join(absorbing_faces) or 'the absorbing faces'}); the "
+            "remaining CPML knobs (sigma_max, alpha_max, grading order) are "
+            "hard-coded in rfx/boundaries/cpml.py, so two solvers given the "
+            "same layer count build different absorbers",
+        )
+    conformal_axes = sorted(
+        axis for axis, faces in boundary_spec.items() if faces.get("conformal")
+    )
+    if conformal_axes:
+        note(
+            "boundary.spec." + "/".join(conformal_axes) + ".conformal",
+            "conformal PEC on a boundary face is rfx-only: openEMS has no "
+            "conformal PEC (this branch's own emitter refuses it rather than "
+            "emitting a staircased face, which would compare a different "
+            "structure), and rfx's own conformal treatment does not propagate "
+            "to the nonuniform or subgrid paths",
         )
 
     solver = document["solver"]

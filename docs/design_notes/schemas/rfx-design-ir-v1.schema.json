@@ -1210,7 +1210,7 @@
         "pmc",
         "periodic"
       ],
-      "description": "rfx.boundaries.spec.BOUNDARY_TOKENS. pmc and the per-axis conformal flag are rfx-only."
+      "description": "rfx.boundaries.spec.BOUNDARY_TOKENS. Portability differs per token: pec/pmc/cpml/upml all have openEMS counterparts (this branch's emitter maps pmc to 'PMC'), while the per-axis conformal flag is rfx-only and the emitter refuses it rather than emitting a staircased face. Note that a shared token name does not mean a shared formulation: rfx CPML and openEMS PML are different absorbers at the same layer count, which is why the absorber appears in non_portable."
     },
     "shape": {
       "type": "object",
