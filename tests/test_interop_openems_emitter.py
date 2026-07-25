@@ -485,8 +485,13 @@ def test_msl_port_span_and_direction():
     assert p0.stop_mm[2] == pytest.approx(0.0)
     assert p0.exc_dir == 2 and p0.prop_dir == 0
     assert plan.driven_port_numbers == (1,)
-    assert any("no rfx counterpart" in note or "msl" in note.lower()
-               for note in plan.approximations)
+    # The span, and the direction convention it depends on, must be itemised:
+    # nothing in this repository pins add_msl_port's direction against an
+    # openEMS measurement, so a silent choice here would be unreviewable.
+    msl_notes = [n for n in plan.approximations if "msl_port_w_cells" in n]
+    assert len(msl_notes) == 1
+    assert "NO rfx counterpart" in msl_notes[0]
+    assert "OPPOSITE reading" in msl_notes[0]
 
 
 def test_msl_port_w_cells_below_the_openems_assert_is_refused():
