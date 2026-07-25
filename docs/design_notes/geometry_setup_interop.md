@@ -256,7 +256,24 @@ the port models agree, and **structural equivalence of a generated setup is not
 evidence of physics agreement** at all. The emitter's job is to remove
 hand-porting divergence, not to produce agreement.
 
-### Acceptance target for the first emitter (verified to exist)
+### What the openEMS emitter was actually gated on
+
+**Not cv06b.** The emitter is gated on **executability**, on a coarse two-port
+PEC cavity: an emitted script is written to disk, run as a subprocess under
+openEMS, and the artifact is asserted to be finite, passive (≤ 1.05), to have a
+non-empty `approximations` list, to show a non-zero incident peak (so the ports
+really are on-grid — openEMS silently drops an off-grid excitation), and to give
+`|S11| > 0.9` as a lossless closed cavity must. Every one of those is a statement
+about the emitted artifact, not about rfx.
+
+A physics-agreement comparison against the committed cv06b reference was
+**deliberately not attempted**: dx = 50 µm over that domain is ~1.6 M cells ×
+600 k timesteps, and a coarse stand-in would not be evidence. The next
+well-defined step is cheaper and more diagnostic anyway — compare a *generated*
+openEMS setup against the repo's *hand-written* one at the same mesh, where any
+difference is emitter fidelity rather than solver physics.
+
+### The cv06b reference that a future physics comparison would use
 
 `tests/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
 already hold a committed physical openEMS dx = 50 µm reference for the cv06b
@@ -315,3 +332,43 @@ Both come from the target-API survey and neither has a defensible default:
 | import direction (GDSII, CST history list, PyAEDT enumeration) | **researched only** |
 | consolidation of the four existing serialisers | **not started** |
 | physics agreement against `tests/fixtures/msl_notch_e4/` | **not attempted** — cv06b at dx = 50 µm is ~1.6M cells × 600k steps; a coarse run would not be evidence |
+
+## Corrections to the target-API survey (found while implementing)
+
+The survey report was the emitter's specification, and implementing against it
+surfaced three errors in it. Recorded here because the report itself is a
+scratch artifact and these are the durable parts.
+
+1. **The two rfx port builders use OPPOSITE direction conventions.** The survey
+   claimed `add_msl_port(direction=...)` maps to an openEMS `MSLPort` whose
+   `stop - start` sign is the negation of the rfx direction. That is true for
+   `add_port` but **not** for `add_msl_port`:
+   - `add_port` — direction is the **outward normal**: *"Outward-normal
+     direction of the port (from the port cell into the external world)"*
+     (`rfx/api/__init__.py:1116`). openEMS propagation points *into* the line,
+     so the negation is correct here.
+   - `add_msl_port` — direction is the **propagation direction**: *"Direction
+     the launched wave propagates away from the feed plane"*
+     (`rfx/sources/msl_port.py:51`). No negation.
+   Getting this wrong yields a plausible-looking S21 with the wrong reference
+   sense, so it is pinned by a test asserting the physical consequence (both
+   spans land strictly inside the port-to-port interval) rather than an
+   arithmetic sign.
+2. **The survey's recommended excitation guard `uf_inc <= 1e-9` would
+   false-fire.** Measured `incident_peak_abs` on runs that produced correct
+   S-parameters: **1.93e-12** (PEC cavity) and **1.79e-13** (MSL thru). That
+   threshold is live in
+   `scripts/diagnostics/build_coaxial_line_openems_broad_comparison.py:214-223`
+   and is worth auditing before it is reused. The emitter instead tests for
+   zero/non-finite plus an independent port time-trace witness.
+3. **Pinning mesh lines at conductor faces is wrong for a faithful uniform-mesh
+   projection.** rfx rasterises geometry against the uniform grid, so inserting
+   lines at conductor faces hands openEMS a mesh rfx never used. Only *port*
+   edges are pinned (openEMS drops an off-grid excitation outright), snapped
+   with the same `round(pos/dx)` rule as `Grid.position_to_index`.
+
+Also worth knowing, because it is indistinguishable from a real failure in the
+log: openEMS prints `Unused primitive (type: Box) ... msl_feed_N` whenever the
+design's own trace already covers the MSL port span. Benign when both are PEC —
+but it is the *same* log line as the port-was-dropped failure mode, so the
+incident-peak witness is what actually discriminates.
