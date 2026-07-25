@@ -79,10 +79,26 @@ the branch's rfx→openEMS mapping report:
 ``D6``  ``priority`` has no rfx counterpart and is synthesised from paint
         order — see ``_plan_geometry`` for the derivation, which is stronger
         than the scripts' de-facto ladder.
-``D7``  Port-model span mismatch: rfx lumped ports are single-cell and rfx
-        wire ports are a point-feed column, while openEMS lumped ports average
-        over the span and ``MSLPort`` occupies a span along the propagation
-        axis.  ``msl_port_w_cells`` has no rfx counterpart.
+``D7``  Port-model span mismatch, and the direction convention.  rfx lumped
+        ports are single-cell and rfx wire ports are a **point** feed column,
+        while openEMS lumped ports average over the span and ``MSLPort``
+        occupies a span along the propagation axis.  ``msl_port_w_cells`` has
+        no rfx counterpart, so it is an explicit emitter parameter and appears
+        in the generated header as an assumption the reader accepts.  **The
+        measured size of this gap is ≈0.20 in |S|** — the deliberate tolerance
+        of ``build_wire_openems_broad_envelope.py:12-16``, set "because the
+        wire-port mid-cell convention has known mismatch with openEMS's
+        lumped-port multi-cell averaging".  That is the floor on any agreement
+        claim for an emitted lumped/wire setup, looser than the cv06b mean gate
+        (0.13) and comparable to its max gate (0.25).
+        The two rfx port builders use **opposite** ``direction=`` conventions,
+        so the emitter resolves the sense per builder from the implementation:
+        ``add_port``'s ``direction`` is the outward normal (so a wire port
+        needs the negation openEMS's ``sign(stop-start)`` implies), while
+        ``add_msl_port``'s is the propagation direction (so the MSL span
+        extends *along* it, with no negation).  Both readings are cited at
+        their code sites and pinned by tests.  ``add_port``'s ``direction`` has
+        no openEMS counterpart at all and is itemised as not carried.
 ``D8``  Reference planes differ; only magnitudes are comparable without an
         explicit de-embedding contract, which no script in this repo has.
 ``D9``  Units — openEMS geometry is in mm via ``SetDeltaUnit(1e-3)``.
@@ -772,6 +788,7 @@ def _plan_ports(
     required_lines: list[tuple[str, float]] = []
     plans: list[_PortPlan] = []
     snap_shifts: list[str] = []
+    direction_drops: list[str] = []
 
     def snap(value_m: float, label: str) -> float:
         cells = int(round(value_m / dx_m))
@@ -800,6 +817,7 @@ def _plan_ports(
         extent = _get(payload, "extent", what)
         impedance = float(_get(payload, "impedance", what))
         excite = bool(_get(payload, "excite", what))
+        rfx_direction = _get(payload, "direction", what)
         reference_plane_cells = _get(payload, "reference_plane_cells", what)
         if reference_plane_cells is not None:
             raise _refuse(
@@ -841,6 +859,12 @@ def _plan_ports(
                 )
             f0, fc, wf_notes = _gauss_from_waveform(waveform, what)
             notes.extend(wf_notes)
+
+        if rfx_direction is not None:
+            # NOT a refusal: the port's geometry is fully determined without
+            # it. But it is not carried either, and a silent drop is exactly
+            # what this emitter must not do.
+            direction_drops.append(f"{what}.direction={rfx_direction!r}")
 
         number = len(plans) + 1
         for axis_name, coordinate in zip(_AXES, start):
@@ -892,13 +916,32 @@ def _plan_ports(
                 "seed for the port; openEMS MSLPort launches its own line mode "
                 "and has no equivalent knob, so the launched profiles differ."
             )
-        # D7: MSLPort occupies a SPAN along the propagation axis; port_w_cells
-        # (6, inherited from upstream MSL_NotchFilter.py) has no rfx
-        # counterpart at all. rfx's add_msl_port documents `direction` as the
-        # direction the launched wave propagates, so the span extends that way
-        # — note this is the *opposite* reading from add_port()'s `direction`,
-        # which names the outward normal. Nothing in this repository pins the
-        # MSL case against a measurement, which is why it is itemised.
+        # D7 — the span, and its SENSE. Two separate facts:
+        #
+        # (a) MSLPort occupies a SPAN along the propagation axis, and
+        #     msl_port_w_cells has no rfx counterpart at all (rfx uses a feed
+        #     plane plus downstream probes). It is an emitter parameter, and it
+        #     is itemised in the generated header as an accepted assumption.
+        #
+        # (b) The span extends ALONG rfx's direction=, with NO negation. rfx's
+        #     two port builders disagree with each other here, so this is
+        #     resolved per builder from the implementation, not by analogy:
+        #       * add_port():     direction= is the OUTWARD normal
+        #                         (api/__init__.py:1116-1117), confirmed by
+        #                         refplane.py:196-198 / outboard_sign = -1 for
+        #                         '+'. A wire port DOES need the negation.
+        #       * add_msl_port(): direction= is 'the direction the launched
+        #                         wave propagates away from the feed plane'
+        #                         (msl_port.py:50-51), confirmed twice in the
+        #                         implementation — probes go to
+        #                         i_feed + sign*offset with sign=+1 for '+x',
+        #                         i.e. downstream into the line (:865, :894),
+        #                         and the TFSF auxiliary H plane sits BEHIND
+        #                         the feed at i-1 for '+x', the pattern that
+        #                         launches a +x wave (:733).
+        #     Negating here would launch both ports away from the shared trace
+        #     and give a plausible-looking S21 with the wrong reference sense.
+        #     test_msl_span_extends_along_the_rfx_propagation_direction pins it.
         sign = 1.0 if direction == "+x" else -1.0
         span_m = msl_port_w_cells * dx_m
         x_feed = snap(float(position[0]), f"{what}.position[0]")
@@ -958,18 +1001,38 @@ def _plan_ports(
     if any(p.family == "msl" for p in plans):
         notes.append(
             f"[D7] MSL ports: msl_port_w_cells={msl_port_w_cells} sets the "
-            "MSLPort span along the propagation axis. That span has NO rfx "
-            "counterpart — rfx extracts through an N-probe spatial fit "
-            "downstream of a feed plane, while MSLPort launches and de-embeds "
-            "inside its own span — so the two measure at different planes and "
-            "no committed comparison in this repository pins the choice. The "
-            "span direction follows add_msl_port's documented meaning of "
-            "direction= (the direction the launched wave propagates), which is "
-            "the OPPOSITE reading from add_port's direction= (the outward "
-            "normal); if that reading is wrong the two ports swap ends. "
-            "openEMS may additionally log 'Unused primitive ... msl_feed_N' "
-            "when the design's own trace already covers the port span — benign, "
-            "and distinct from the port-dropped failure mode."
+            "MSLPort span along the propagation axis. YOU ARE ACCEPTING THIS "
+            "AS AN ASSUMPTION: the span has NO rfx counterpart at all. rfx's "
+            "port is a feed plane plus an N-probe spatial fit downstream of "
+            "it, while MSLPort launches and de-embeds INSIDE its own span, so "
+            "the two measure at different planes; 6 cells is inherited from "
+            "upstream's MSL_NotchFilter.py and no committed comparison in this "
+            "repository pins it. openEMS may also log 'Unused primitive ... "
+            "msl_feed_N' when the design's own trace already covers the port "
+            "span — benign (both are PEC), and distinct from the port-dropped "
+            "failure mode that the uf_inc guard catches."
+        )
+        notes.append(
+            "[D7] MSL span SENSE: rfx's two port builders use OPPOSITE "
+            "direction= conventions and this emitter follows the one that is "
+            "verified for the builder in hand. add_port() documents direction= "
+            "as the OUTWARD normal 'from the port cell into the external "
+            "world' (rfx/api/__init__.py:1116-1117), and rfx/probes/refplane.py "
+            ":196-198 confirms it — 'The reference planes go the OPPOSITE way "
+            "(into the DUT)', implemented as outboard_sign = -1 for '+'. "
+            "add_msl_port() is the reverse: direction= is 'the direction the "
+            "launched wave propagates away from the feed plane' "
+            "(rfx/sources/msl_port.py:50-51), and TWO independent "
+            "implementation sites agree — probe placement puts the "
+            "de-embedding probes at i_feed + sign*offset with sign=+1 for "
+            "'+x', i.e. downstream INTO the line (msl_port.py:865, 894), and "
+            "the TFSF injector places the auxiliary H plane BEHIND the feed "
+            "(i-1) for '+x', the pattern that launches a +x wave "
+            "(msl_port.py:733). So for an MSL port the span extends ALONG "
+            "rfx's direction=, with NO negation. Negating it here (correct for "
+            "a wire port, wrong for this one) would launch both ports away "
+            "from the shared trace and yield a plausible-looking S21 with the "
+            "wrong reference sense — see the test that pins this sign."
         )
 
     if not any(p.excite for p in plans):
@@ -979,6 +1042,21 @@ def _plan_ports(
             "no S-parameter column exists",
         )
 
+    if direction_drops:
+        notes.append(
+            "[D7] rfx port direction= is NOT carried into openEMS: "
+            + ", ".join(direction_drops)
+            + ". For add_port() it is the OUTWARD normal 'from the port cell "
+            "into the external world' (rfx/api/__init__.py:1116-1117) and rfx "
+            "uses it only to orient its own V/I → (incoming, outgoing) wave "
+            "decomposition. openEMS's AddLumpedPort has no such knob: it "
+            "derives its own sense from sign(stop - start) along the "
+            "EXCITATION axis (the vertical feed), not along the line, and "
+            "decomposes with its own convention. The port geometry is "
+            "therefore fully determined without direction=, but the reference "
+            "SENSE of the off-diagonal terms is openEMS's, not rfx's — do not "
+            "compare S21 phase or sign across the two on this basis."
+        )
     if snap_shifts:
         notes.append(
             "port coordinates were snapped to the mesh the way "
@@ -1222,12 +1300,23 @@ def plan_openems_projection(
         "the faithful ordering — not a flat priority=index."
     )
     notes.append(
-        "[D7/D8] port models and reference planes differ. rfx's lumped port is "
-        "single-cell and its wire port is a point-feed column, while openEMS "
-        "averages over the port span; the repository's own wire-port envelope "
-        "measures that convention gap at about 0.20 in |S|. Compare magnitudes "
-        "only: phase, group delay and Z0 need a de-embedding contract that no "
-        "script in this repository has."
+        "[D7/D8] PORT MODELS ARE KNOWN TO DIFFER BY ABOUT 0.20 IN |S| BEFORE "
+        "ANY PHYSICS IS IN QUESTION. rfx's lumped port is single-cell and its "
+        "wire port is a POINT feed (a single vertical cell column from ground "
+        "to trace, the extent=), while openEMS's lumped port averages over its "
+        "span and MSLPort occupies a span along the propagation axis. "
+        "scripts/diagnostics/build_wire_openems_broad_envelope.py:12-16 sets "
+        "its per-case tolerance to max_mag_abs_diff <= 0.20 deliberately "
+        "'because the wire-port mid-cell convention has known mismatch with "
+        "openEMS's lumped-port multi-cell averaging', and states that broad "
+        "calibrated E5 still requires resolving the wire-port absolute "
+        "calibration convention. 0.20 is therefore the FLOOR on any agreement "
+        "claim for an emitted lumped/wire setup — looser than the cv06b mean "
+        "gate (0.13) and comparable to its max gate (0.25), so a passing "
+        "comparison at this tolerance is NOT evidence that the port models "
+        "agree. Reference planes differ too: compare magnitudes only, because "
+        "phase, group delay and Z0 need a de-embedding contract that no script "
+        "in this repository has."
     )
     notes.append(
         "[D9] all geometry coordinates in this script are millimetres "

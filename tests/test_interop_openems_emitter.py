@@ -485,13 +485,117 @@ def test_msl_port_span_and_direction():
     assert p0.stop_mm[2] == pytest.approx(0.0)
     assert p0.exc_dir == 2 and p0.prop_dir == 0
     assert plan.driven_port_numbers == (1,)
-    # The span, and the direction convention it depends on, must be itemised:
-    # nothing in this repository pins add_msl_port's direction against an
-    # openEMS measurement, so a silent choice here would be unreviewable.
+    # msl_port_w_cells has no rfx counterpart, so it must surface in the header
+    # as an assumption the reader is accepting — never buried as a literal.
     msl_notes = [n for n in plan.approximations if "msl_port_w_cells" in n]
     assert len(msl_notes) == 1
     assert "NO rfx counterpart" in msl_notes[0]
-    assert "OPPOSITE reading" in msl_notes[0]
+    assert "ACCEPTING THIS" in msl_notes[0]
+    assert "MSL_NotchFilter.py" in msl_notes[0]
+
+
+def test_msl_span_extends_along_the_rfx_propagation_direction():
+    """The MSL span sense, pinned against the rfx implementation.
+
+    rfx's two port builders use **opposite** ``direction=`` conventions, and
+    this test exists because getting the sense wrong yields a plausible-looking
+    S21 with the wrong reference sense rather than an obvious failure.
+
+    ``add_port``: outward normal — ``rfx/api/__init__.py:1116-1117`` ("from the
+    port cell into the external world"), confirmed by
+    ``rfx/probes/refplane.py:196-198`` ("The reference planes go the OPPOSITE
+    way (into the DUT)", ``outboard_sign = -1`` for ``'+'``).
+
+    ``add_msl_port``: propagation direction — ``rfx/sources/msl_port.py:50-51``
+    ("the direction the launched wave propagates away from the feed plane"),
+    confirmed twice in the implementation: probe placement at
+    ``i_feed + sign*offset`` with ``sign = +1`` for ``'+x'``, i.e. downstream
+    into the line (``:865``, ``:894``), and the TFSF auxiliary H plane behind
+    the feed at ``i-1`` for ``'+x'``, the pattern that launches a ``+x`` wave
+    (``:733``).
+
+    So for an MSL port the span extends ALONG ``direction=``, with no negation.
+    The asserted consequence is physical, not cosmetic: both ports' spans must
+    point INTO the shared trace, i.e. toward each other.
+    """
+    y_mid = _THRU_DOMAIN[1] / 2
+    sim = Simulation(
+        freq_max=10e9, domain=_THRU_DOMAIN, dx=_THRU_DX,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add(Box((_THRU_X1, y_mid - _THRU_W / 2, _THRU_H),
+                (_THRU_X2, y_mid + _THRU_W / 2, _THRU_H + _THRU_DX)),
+            material="pec")
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    # Left port launches +x (rightwards, into the line); right port launches
+    # -x (leftwards, into the line).
+    sim.add_msl_port((_THRU_X1, y_mid, 0.0), width=_THRU_W, height=_THRU_H,
+                     direction="+x", waveform=pulse)
+    sim.add_msl_port((_THRU_X2, y_mid, 0.0), width=_THRU_W, height=_THRU_H,
+                     direction="-x", excite=False)
+
+    plan = plan_openems_projection(design_to_dict(sim), msl_port_w_cells=6)
+    left, right = plan.ports
+    span = 6 * _THRU_DX / UNIT_M
+
+    # openEMS derives propagation from sign(stop - start) on the prop axis.
+    assert left.stop_mm[0] - left.start_mm[0] == pytest.approx(+span)
+    assert right.stop_mm[0] - right.start_mm[0] == pytest.approx(-span)
+
+    # The physical statement: both spans point into the trace, so each span's
+    # far end is strictly inside the port-to-port interval.
+    x_lo, x_hi = _THRU_X1 / UNIT_M, _THRU_X2 / UNIT_M
+    assert x_lo < left.stop_mm[0] < x_hi
+    assert x_lo < right.stop_mm[0] < x_hi
+    # ... and they approach each other rather than diverging.
+    assert left.stop_mm[0] < right.stop_mm[0]
+
+    sense = [n for n in plan.approximations if "MSL span SENSE" in n]
+    assert len(sense) == 1
+    assert "NO negation" in sense[0]
+    assert "msl_port_w_cells" not in sense[0], "the two facts stay separable"
+
+
+def test_wire_port_direction_is_reported_as_not_carried():
+    """``add_port``'s ``direction`` has no openEMS knob, so it must be itemised.
+
+    rfx uses it only to orient its own V/I → (incoming, outgoing) decomposition;
+    openEMS's lumped port derives its sense from ``sign(stop - start)`` along
+    the *excitation* axis and decomposes with its own convention.  The geometry
+    is fully determined without it, so this is not a refusal — but it is also
+    not something that may vanish silently.
+    """
+    plan = plan_openems_projection(design_to_dict(_thru()))
+    notes = [n for n in plan.approximations if "direction= is NOT carried" in n]
+    assert len(notes) == 1
+    assert "excitations.lumped_ports[0].direction='-x'" in notes[0]
+    assert "excitations.lumped_ports[1].direction='+x'" in notes[0]
+    assert "OUTWARD normal" in notes[0]
+
+    # A design that never set direction must not carry the note.
+    quiet = plan_openems_projection(_cavity_doc())
+    assert not [n for n in quiet.approximations if "direction= is NOT carried" in n]
+
+
+def test_header_states_the_measured_port_convention_gap():
+    """≈0.20 in |S| is the floor on any lumped/wire agreement claim."""
+    plan = plan_openems_projection(design_to_dict(_thru()))
+    gap = [n for n in plan.approximations if "0.20" in n]
+    assert len(gap) == 1
+    note = gap[0]
+    assert "build_wire_openems_broad_envelope.py:12-16" in note
+    assert "FLOOR on any agreement claim" in note
+    # Explicitly relate it to the cv06b gates so nobody reads a pass at this
+    # tolerance as evidence that the port models agree.
+    assert "0.13" in note and "0.25" in note
+    assert "NOT evidence that the port models" in note
+
+    # And it must reach the generated artifact, not just the plan.
+    script = emit_openems_script(design_to_dict(_thru()))
+    flat = " ".join(script.split())
+    assert "0.20 is therefore the FLOOR" in flat
 
 
 def test_msl_port_w_cells_below_the_openems_assert_is_refused():
