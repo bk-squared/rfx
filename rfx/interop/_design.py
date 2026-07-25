@@ -96,8 +96,11 @@ rediscover it:
 - non-uniform mesh profiles have no counterpart in a solver with a scalar
   resolution.
 
-``non_portable`` is an annotation derived from the document's own content.  It
-is not applied on import and carries no numbers.
+``non_portable`` is an annotation derived from the document's own content, so
+it carries no numbers and nothing is applied from it on import.  It is,
+however, **verified**: because the importer re-exports and compares, a document
+whose ``non_portable`` list has been edited is refused.  A downstream tool
+cannot strip the annotation to make rfx-only state look portable.
 
 Status: **provisional**.  Round-trip fidelity is gated by
 ``tests/test_interop_design_document.py``; no external emitter exists yet.
