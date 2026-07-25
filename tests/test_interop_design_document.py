@@ -305,6 +305,23 @@ def _legacy_periodic_axes() -> Simulation:
     return sim
 
 
+def _legacy_all_periodic() -> Simulation:
+    """The one design where the spec path cannot reproduce the legacy views.
+
+    ``set_periodic_axes("xyz")`` leaves ``_boundary == "cpml"`` and
+    ``_cpml_layers == 16``, but the all-periodic spec has no absorbing face, so
+    rebuilding through ``boundary=BoundarySpec(...)`` would derive
+    ``_boundary == "pec"`` and ``_cpml_layers == 0``.  The importer has to
+    reproduce the legacy construction path, not just the spec.
+    """
+    sim = Simulation(
+        freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=1e-3, boundary="cpml", cpml_layers=16
+    )
+    with pytest.warns(DeprecationWarning):
+        sim.set_periodic_axes("xyz")
+    return sim
+
+
 def _auto_mesh_design() -> Simulation:
     """``dx=None``: the mesh choice is deferred to auto_configure at run time."""
     sim = Simulation(freq_max=10e9, domain=(0.020, 0.020, 0.020), boundary="cpml")
@@ -363,6 +380,7 @@ DESIGN_BUILDERS = {
     "mixed_face_boundaries": _mixed_face_boundaries,
     "legacy_pec_faces": _legacy_pec_faces,
     "legacy_periodic_axes": _legacy_periodic_axes,
+    "legacy_all_periodic": _legacy_all_periodic,
     "auto_mesh": _auto_mesh_design,
     "nonuniform_xy": _nonuniform_xy_design,
     "adi_mixed_precision": _adi_mixed_precision,
@@ -537,6 +555,41 @@ def test_waveform_registry_is_pinned():
         )
     assert SUPPORTED_WAVEFORM_KINDS == tuple(sorted(_WAVEFORM_CODECS))
     assert CustomWaveform not in {c.cls for c in _WAVEFORM_CODECS.values()}
+
+
+def test_both_boundary_construction_paths_are_reproduced():
+    """The same ``BoundarySpec`` reached two ways is not the same builder state.
+
+    ``boundary="pec"`` and ``BoundarySpec.uniform("pec")`` produce an identical
+    ``_boundary_spec`` but different ``_pec_faces`` (empty vs all six faces), so
+    an importer that always hands the spec to the constructor would silently
+    change every legacy PEC cavity.  Both paths must round-trip.
+    """
+    legacy = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    spec = Simulation(
+        freq_max=10e9,
+        domain=(0.02, 0.02, 0.02),
+        dx=1e-3,
+        boundary=BoundarySpec.uniform("pec"),
+    )
+
+    assert legacy._boundary_spec == spec._boundary_spec
+    assert legacy._pec_faces == set()
+    assert spec._pec_faces == {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
+
+    for original in (legacy, spec):
+        assert_designs_equivalent(original, simulation_from_design(design_to_dict(original)))
+
+
+def test_all_periodic_legacy_design_keeps_its_absorber_fields():
+    """The legacy fallback branch: the spec alone would derive pec/0 layers."""
+    original = _legacy_all_periodic()
+    assert (original._boundary, original._cpml_layers) == ("cpml", 16)
+    assert original._boundary_spec.absorber_type is None
+
+    with pytest.warns(DeprecationWarning):
+        rebuilt = simulation_from_design(design_to_dict(original))
+    assert_designs_equivalent(original, rebuilt)
 
 
 def test_legacy_spec_mirror_matches_the_builder():
