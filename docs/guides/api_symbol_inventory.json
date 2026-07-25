@@ -2372,7 +2372,8 @@
       "polarization",
       "direction",
       "angle_deg",
-      "waveform"
+      "waveform",
+      "method"
     ],
     "add_thin_conductor": [
       "shape",
