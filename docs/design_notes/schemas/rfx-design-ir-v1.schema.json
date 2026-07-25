@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://remilab.ai/rfx/schemas/rfx-design-ir-v1.schema.json",
+  "title": "rfx design IR v1",
+  "description": "Round-trip-complete description of an rfx Simulation's DESIGN state, emitted by rfx.interop.design_to_dict and consumed by rfx.interop.simulation_from_design. This is the rfx-to-rfx profile: its gate is structural equality after a round trip. An external-solver projection is a SEPARATE, explicitly lossy artifact and is not described by this schema. Derived state (Grid, dt, axis_pads), preflight verdicts, results, and run-time controls (n_steps, until_decay, compute_s_params, eps_override, ...) are deliberately absent: a design description that carries them invites a reader to trust them. Anything that cannot be represented exactly is refused at export time with UnsupportedDesignFeature rather than approximated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "rfx_version",
+    "domain",
+    "mesh",
+    "boundary",
+    "solver",
+    "materials",
+    "material_library",
+    "geometry",
+    "thin_conductors",
+    "excitations",
+    "observables",
+    "refinement",
+    "non_portable"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rfx-design-ir/v1",
+      "description": "Schema identifier. A closed world: an unknown top-level key is an error on read, not a forward-compatible extension point."
+    },
+    "rfx_version": {
+      "type": "string",
+      "description": "Provenance only. It records which rfx wrote the document; it is not a compatibility contract."
+    },
+    "domain": {
+      "type": "object",
+      "description": "Physical extent and reduction mode. The extent is the USER domain: rfx adds CPML cells OUTSIDE it (measured: domain 10 mm at dx 1 mm gives grid 11 cells at cpml_layers=0 and 11+2N otherwise), so an external emitter must span domain + 2*cpml_layers*dx per absorbing axis."
+    },
+    "mesh": {
+      "type": "object",
+      "description": "Cell size and optional per-axis graded profiles. Profiles are emitted value-by-value with their dtype and array namespace, never summarised: rfx synthesises the domain extent from float(np.sum(profile)), so a truncated profile silently changes the domain. A profile that is a JAX tracer is refused, because a traced profile is a differentiable design variable with no concrete value to record."
+    },
+    "boundary": {
+      "type": "object",
+      "description": "Authoritative per-face BoundarySpec plus the derived legacy scalar view. _boundary, _pec_faces and _periodic_axes are derived from the spec, except that _periodic_axes is also mutated as a side effect by add_floquet_port, so it is emitted explicitly rather than re-derived on import."
+    },
+    "solver": {
+      "type": "object",
+      "description": "rfx-only solver controls (precision, solver, adi_cfl_factor, stencil_order). These round-trip in rfx and have no counterpart in openEMS/Meep/CST/HFSS; they appear in non_portable."
+    },
+    "materials": {
+      "type": "object",
+      "description": "Name to material payload. Each payload carries every MaterialSpec field including chi3 and the full Debye/Lorentz pole parameters. Contrast rfx.artifacts._material_summary, which reduces pole lists to {present, count} and would rebuild a dispersive material as a non-dispersive one with the same static eps_r. None and [] are kept distinct: no dispersion declared and dispersion declared empty are different design states.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eps_r", "sigma", "mu_r", "chi3", "debye_poles", "lorentz_poles"],
+        "properties": {
+          "eps_r": { "type": "number" },
+          "sigma": { "type": "number" },
+          "mu_r": { "type": "number" },
+          "chi3": { "type": "number" },
+          "debye_poles": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["delta_eps", "tau"],
+              "properties": {
+                "delta_eps": { "type": "number" },
+                "tau": { "type": "number" }
+              }
+            }
+          },
+          "lorentz_poles": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["omega_0", "delta", "kappa"],
+              "properties": {
+                "omega_0": { "type": "number" },
+                "delta": { "type": "number" },
+                "kappa": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "material_library": {
+      "type": "object",
+      "description": "Library entries the design referenced, recorded so a document does not depend on the writer's library version."
+    },
+    "geometry": {
+      "type": "array",
+      "description": "ORDERED paint list. Simulation.add appends and rasterisation applies entries in order with later shapes overwriting earlier ones (rfx/geometry/csg.py:321), so the array order is semantic state, not presentation. rfx has no boolean CSG tree on the simulation path: union/difference/intersection exist in rfx/geometry/csg.py but have no call sites in rfx/api or rfx/core. An emitter targeting a boolean solid modeller cannot translate overlapping paint mechanically.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["shape", "material_name"],
+        "properties": {
+          "shape": { "$ref": "#/$defs/shape" },
+          "material_name": { "type": "string" }
+        }
+      }
+    },
+    "thin_conductors": {
+      "type": "array",
+      "description": "Thin-conductor sheet entries (shape plus sigma_bulk / thickness / eps_r). Routed to a PEC mask when the effective conductivity is high enough."
+    },
+    "excitations": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Sources and ports, split by family. Note that rfx stores soft sources and lumped ports in ONE list (_ports) discriminated only by impedance == 0; the document splits them into named sections so the distinction is explicit rather than sentinel-encoded.",
+      "required": [
+        "soft_sources",
+        "lumped_ports",
+        "msl_ports",
+        "waveguide_ports",
+        "coaxial_ports",
+        "coaxial_matched_loads",
+        "coaxial_open_terminations",
+        "coaxial_pec_end_caps",
+        "floquet_ports",
+        "tfsf",
+        "lumped_rlc"
+      ],
+      "properties": {
+        "soft_sources": { "type": "array" },
+        "lumped_ports": { "type": "array" },
+        "msl_ports": {
+          "type": "array",
+          "description": "n_probe_offset and n_probe_spacing are CELL COUNTS derived from dx at registration time, not physical lengths; they appear in non_portable."
+        },
+        "waveguide_ports": { "type": "array" },
+        "coaxial_ports": { "type": "array" },
+        "coaxial_matched_loads": {
+          "type": "array",
+          "description": "Offsets are cell-relative, not physical coordinates; see non_portable."
+        },
+        "coaxial_open_terminations": { "type": "array" },
+        "coaxial_pec_end_caps": { "type": "array" },
+        "floquet_ports": {
+          "type": "array",
+          "description": "Import goes through add_floquet_port, so the builder's fences still fire: a document tampered to n_modes > 1 raises the builder's own NotImplementedError rather than widening the fence."
+        },
+        "tfsf": {
+          "type": ["object", "null"],
+          "description": "Total-field/scattered-field plane wave. Projecting this onto a commercial solver's plane-wave source is an approximation with a different absorber story, not a translation."
+        },
+        "lumped_rlc": { "type": "array" }
+      }
+    },
+    "observables": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["probes", "dft_planes", "flux_monitors", "ntff"],
+      "properties": {
+        "probes": {
+          "type": "array",
+          "description": "add_vector_probe expands to six flat entries inside rfx itself, so the vector grouping is already lost upstream; only the flat entries round-trip."
+        },
+        "dft_planes": { "type": "array" },
+        "flux_monitors": { "type": "array" },
+        "ntff": {
+          "type": ["object", "null"],
+          "description": "freqs is emitted as an explicit array because n_freqs is defaulted at registration and is not recoverable from the stored tuple."
+        }
+      }
+    },
+    "refinement": {
+      "type": ["object", "null"],
+      "description": "SBP-SAT subgrid directives. Experimental and falsified in 3D (PR #90): round-trip inside rfx, never project outward."
+    },
+    "non_portable": {
+      "type": "array",
+      "description": "DERIVED annotation, not independent state: the paths in this document whose meaning does not survive a translation, each with the reason. An external emitter must consult this and refuse or record an explicit approximation; it must not ship these silently.",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "properties": {
+          "path": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "description": "A geometry primitive recorded by its CONSTRUCTOR PARAMETERS. The kind vocabulary is snake_case, matching the two document layers that already name shapes (rfx/config/_shapes.py uses shape: \"box\", rfx/experiments/canonical.py uses kind: \"box\"). Recording parameters rather than a bounding box is the whole point: every other rfx serialisation layer keeps only a class name plus bounds, which cannot distinguish a cylinder from a box occupying the same box. MeshShape (CAD import, #358) is deliberately absent — a triangle mesh is not parameter-describable, so it is refused rather than degraded to bounds.",
+      "properties": {
+        "kind": {
+          "enum": ["box", "curved_patch", "cylinder", "polyline_wire", "sphere", "via"]
+        },
+        "params": {
+          "type": "object",
+          "description": "Constructor arguments for the named kind. Vectors are JSON arrays of finite numbers; the importer restores the tuple types the primitives declare so a round-tripped frozen dataclass compares equal. NaN, infinity and JAX tracers are refused at the codec layer, where the parameter name is still known."
+        }
+      }
+    }
+  }
+}
