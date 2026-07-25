@@ -160,6 +160,73 @@ crossval setup; `CLAUDE.md`: comparator first) identify comparator/fixture
 divergence — not solver physics — as the dominant historical failure class. A
 generated, single-source setup attacks that class directly.
 
+## Target order, and why openEMS is first
+
+Measured in this environment, not assumed:
+
+- **openEMS is installed and executes.** `/usr/bin/openEMS`, Python bindings
+  importable, and a 10-timestep 9261-cell run completes (1.24 MCells/s, writes
+  `et`/`ht`). It is therefore the **only** target whose generated script we can
+  verify end to end here. CST and HFSS cannot be verified at all without a
+  licence.
+- Boundary-condition string is `'PML_<N>'`, **not** `'PML-<N>'` — the hyphen form
+  raises "Unknown boundary condition". Confirmed by running it. `PML_<N>` is
+  parameterised, so `cpml_layers=16` → `'PML_16'`.
+- **CST is the closest *semantic* match** even though it cannot be verified
+  here: `DispModelEps` accepts `Debye1st`/`Debye2nd`/`Lorentz`/`NonLinearKerr`,
+  `FloquetPort` takes scan θ/φ directly, `Port.ReferencePlaneDistance` is
+  exactly rfx's de-embedding, and `Solver.SteadyStateLimit` is rfx's settling
+  criterion. But the CST Python API is a *driver*: models are built by pushing
+  **VBA** through `add_to_history`, so a CST emitter must emit VBA.
+- **Generated artifacts must be plain-text scripts, runnable later on a
+  licensed machine.** PyAEDT requires a legally licensed local AEDT, so a
+  live-session generator would licence-gate CI and be unusable for the actual
+  workflow. Generation must need no licence.
+
+### Acceptance target for the first emitter (verified to exist)
+
+`tests/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
+already hold a committed physical openEMS dx = 50 µm reference for the cv06b
+microstrip open-stub notch, alongside the rfx result at matched geometry. The
+test runs no FDTD (the ~65 min rfx run is committed as a fixture) and the whole
+gate family is green on this branch (13 tests, 0.12 s).
+
+Committed gates: notch-frequency agreement **≤ 7 %** (characterised ~6 %),
+off-notch |S21| mean abs diff **≤ 0.13** and max **≤ 0.25** over 2.5–6 GHz,
+passivity **≤ 1.05** for both solvers, notch depth **< −20 dB**, plus a sign
+constraint (rfx notch above openEMS — part of the committed characterisation).
+A Palace FEM referee lands at ~3.631 GHz, closest to rfx (+0.1 %), which
+retired the earlier open-end-fringing interpretation.
+
+The fixture's `meta` block carries the full parametric geometry
+(`eps_r=3.66`, `h_sub=0.254 mm`, `w_trace=0.6 mm`, `l_line=5.0 mm`,
+`l_stub=12.0 mm`, `dx=50 µm`, 2–7 GHz × 50 points, `nrts=600000`,
+`end_criteria=1e-4`, domain 7.0 × 16.232 × 1.754 mm), so the emitter has a
+numeric target to reproduce rather than a narrative one.
+
+## Decisions that need a human, not a default
+
+Both come from the target-API survey and neither has a defensible default:
+
+1. **HFSS paint-order → boolean rewriting.** rfx's overlapping paint (D4a) has
+   no boolean equivalent; choosing a subtraction order silently would change the
+   structure. Ask or refuse.
+2. **The MSL port recipe.** rfx extracts via an N-probe spatial fit; HFSS offers
+   wave vs lumped ports with v/h factors and a choice of `Zpi` / `Zwave` /
+   `Zpv`. Which of those rfx's number should be compared against is a physics
+   decision, not a mapping detail.
+
+## Verification status of the scaffolding (measured on this branch)
+
+- `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` → clean
+- codec contract tests → 53 passed
+- `python scripts/check_api_reference.py` → `api reference surface: OK`
+  (the pinned surface is untouched because nothing was added to `rfx/__init__.py`)
+- wheel build ships the package: `rfx/interop/{__init__,_errors,_materials,_shapes}.py`
+  present in `rfx_fdtd-1.6.6-py3-none-any.whl` (setuptools `include = ["rfx*"]`
+  auto-discovery, so no packaging change was needed)
+- cv06b gate family → 13 passed (the baseline the emitter work must not disturb)
+
 ## Status of each piece
 
 | piece | status |
