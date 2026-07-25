@@ -2485,6 +2485,7 @@
     "forward": [
       "eps_override",
       "sigma_override",
+      "mu_r_override",
       "pec_mask_override",
       "pec_occupancy_override",
       "n_steps",
