@@ -151,6 +151,28 @@ def test_materials_to_dict_refuses_a_non_mapping():
         materials_to_dict([MaterialSpec(eps_r=1.0)])
 
 
+def test_stray_top_level_key_in_a_shape_payload_is_refused():
+    """The unknown-key check covered `params` but not the payload itself, so a
+    stray sibling key was dropped without a word."""
+    payload = shape_to_dict(Box(corner_lo=(0.0, 0.0, 0.0),
+                                corner_hi=(1e-3, 1e-3, 1e-3)))
+    payload["note"] = "written by some other tool"
+    with pytest.raises(UnsupportedDesignFeature,
+                       match="unknown top-level keys"):
+        shape_from_dict(payload)
+
+
+def test_non_string_material_name_is_refused_on_import():
+    """Symmetric with the export side, which uses check_text: a numeric JSON key
+    must not quietly become a material named "5"."""
+    from rfx.interop import materials_from_dict, materials_to_dict as _dump
+
+    payload = _dump({"fr4": MaterialSpec(eps_r=4.3)})
+    payload[5] = payload.pop("fr4")
+    with pytest.raises(UnsupportedDesignFeature, match="must be a string"):
+        materials_from_dict(payload)
+
+
 # --------------------------------------------------------------------------
 # The pin test's blind spots.
 # --------------------------------------------------------------------------

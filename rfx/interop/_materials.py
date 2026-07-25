@@ -170,4 +170,10 @@ def materials_from_dict(payload: dict[str, Any]) -> dict[str, MaterialSpec]:
         raise UnsupportedDesignFeature(
             f"materials payload must be a mapping, got {type(payload).__name__}"
         )
-    return {str(name): material_from_dict(spec) for name, spec in payload.items()}
+    # Symmetric with materials_to_dict: a non-string key is refused rather than
+    # coerced, so a JSON object with numeric-looking keys cannot quietly become a
+    # material named "5".
+    return {
+        check_text(name, what="material name"): material_from_dict(spec)
+        for name, spec in payload.items()
+    }

@@ -296,6 +296,13 @@ def shape_from_dict(payload: dict[str, Any]) -> Any:
         raise UnsupportedDesignFeature(
             f"shape payload must be a mapping, got {type(payload).__name__}"
         )
+    stray = set(payload) - {"kind", "params"}
+    if stray:
+        raise UnsupportedDesignFeature(
+            f"shape payload carries unknown top-level keys {sorted(stray)}; "
+            f"a shape payload is exactly {{'kind', 'params'}} and dropping the "
+            f"rest would silently discard whatever a writer meant by them"
+        )
     try:
         kind = payload["kind"]
     except KeyError:
