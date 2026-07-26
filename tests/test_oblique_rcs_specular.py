@@ -39,7 +39,9 @@ block belongs to the other configuration). The two sets are not numerically
 comparable — see the helper's
 docstring for the exact NTFF-box construction difference. The gate's ±6°
 tolerance reflects a measured 3–7° peak-azimuth sensitivity to domain size at
-fixed dx/plate/CPML (PR #461 audit); it is an observed envelope on an
+fixed dx/plate/CPML (PR #461 audit, measured on the pre-corner-fix exclusive
+kernels; not re-measured in-tree on the inclusive ones); it is an observed
+envelope on an
 unconverged argmax observable, not a converged-accuracy claim. For scale: the
 2.2λ plate's physical-optics 3 dB specular beamwidth at θ=40 is ~30°
 (0.886·λ/(W·cosθ)), so ±6° is ~0.2 of the lobe the argmax sits in.

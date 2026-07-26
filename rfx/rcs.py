@@ -201,7 +201,9 @@ def compute_rcs(
         steps, public path, corner-inclusive kernels): peak error 0 deg at
         theta_inc=20 and 3 deg at theta_inc=40 (4 deg on the pre-fix exclusive
         kernels), gated at +/-6 deg, with a 3-7 deg peak-azimuth
-        sensitivity to domain size at fixed dx/plate/CPML (PR #461 audit) —
+        sensitivity to domain size at fixed dx/plate/CPML (PR #461 audit,
+        measured on the PRE-fix exclusive kernels; not re-measured in-tree
+        on the inclusive kernels) —
         i.e. the argmax azimuth of the broad specular lobe is NOT converged to
         ~1 deg. See ``tests/test_oblique_rcs_specular.py``. The absolute
         oblique sigma is NOT validated. Requires ``polarization='ez'`` and a
