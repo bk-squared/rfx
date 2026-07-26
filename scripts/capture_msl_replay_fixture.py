@@ -120,6 +120,11 @@ def main():
     result = sim.compute_msl_s_matrix(
         freqs=freqs_jnp,
         num_periods=8,
+        # The fixture's golden is recomputed from RAW accumulators, so the
+        # stored production S must be the raw assembly too — a projected S
+        # against a raw golden would bake in a false mismatch on the next
+        # recapture (review finding, PR #468).
+        enforce_passivity=False,
     )
 
     S_production = np.asarray(result.S, dtype=np.complex128)

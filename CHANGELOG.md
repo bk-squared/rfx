@@ -6,6 +6,25 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — `compute_msl_s_matrix` returns a passivity-enforced S by default (**BEHAVIOUR CHANGE**)
+
+- The returned `MSLSMatrixResult.S` now satisfies `||S(f)||_2 <= 1` at every
+  frequency: singular values are clipped to the passive bound per bin
+  (nearest passive matrix in spectral norm). Nothing is discarded — the raw
+  extraction is preserved in the new `S_raw` field, the per-bin clip amount
+  in `passivity_correction`, and a warning names the touched bins. Bins with
+  a large correction are measurement artifacts (check `reliable` /
+  `settling_db`); the projection bounds them, it does not certify them. Pass
+  `enforce_passivity=False` for the previous raw behaviour. EXEMPTION: on
+  the `eps_override` channel (traced or concrete) the projection is skipped
+  so finite-difference and `jax.grad` objectives see the same raw function.
+- New ring-down settling witness: `MSLSMatrixResult.settling_db` records the
+  worst end/peak `Ez^2` ratio (dB) over all port probe planes per driven
+  run, and a run above −40 dB warns loudly — a fixed `num_periods` record
+  that ends while the structure is still ringing produces truncation-artifact
+  S-parameters (measured: column-power poles up to ~1.8e3 on the Sheen-1990
+  LPF at `num_periods=20`).
+
 ### Changed — cross-validation scripts moved to `validation/crossval/` (repo layout only; no behaviour change)
 
 - `examples/crossval/` moved to `validation/crossval/` so that `examples/`

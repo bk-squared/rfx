@@ -116,6 +116,22 @@ where supported, then verify the actual observable separately. Closed PEC
 cavities do not decay through an absorber; use a fixed run and inspect the
 probe signal.
 
+**The −40 dB ring-down settling rule.** For a fixed-length record on an
+open (absorbing) domain, quote the end-of-record energy relative to the
+post-source peak before quoting any claims-bearing DFT-derived number
+(S-parameters, Harminv frequencies): `10·log10(end-window energy / peak
+energy)` must be below **−40 dB**, or the record was truncated while the
+structure was still ringing and the DFT integrates a cut transient —
+measured consequence on a resonant microstrip filter: spurious |S| poles up
+to column power ~1.8e3 that shrink monotonically with record length.
+`compute_msl_s_matrix` computes this mechanically as
+`MSLSMatrixResult.settling_db` (worst end/peak `Ez²` ratio over all port
+probe planes per driven run — multiple planes because a single plane is
+standing-wave-node sensitive, with a measured 18 dB spread across planes on
+one under-settled record) and warns when a run exceeds the line. The rule
+does not apply to closed PEC domains (energy conservation is correct there)
+or to CW drive.
+
 ## 7. Interpret the requested observable, not a convenient proxy
 
 - Remove source-dominated transients before applying Harminv or an FFT to a

@@ -29,7 +29,7 @@ sidebar:
 |---|---|---|
 | `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family |
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, and `.reliable` | specialized microstrip-line calculation; exclude driven-port columns marked unreliable |
+| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.settling_db`, `.S_raw`, `.passivity_correction` | specialized microstrip-line calculation. `.S` is passivity-enforced by default (`||S||₂ ≤ 1` per frequency; raw extraction kept in `.S_raw`, per-bin clip in `.passivity_correction` — large corrections mark measurement artifacts, not certified values; skipped on the `eps_override` channel so gradients see the raw function). Exclude driven-port columns marked unreliable, and check `.settling_db` (< −40 dB) before quoting any value |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
 | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | reflection with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for the self-contained model limits |
 | `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |

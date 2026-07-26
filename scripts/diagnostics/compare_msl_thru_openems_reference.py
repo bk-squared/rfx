@@ -107,6 +107,11 @@ def run_rfx_msl_thru(
     result = sim.compute_msl_s_matrix(
         n_freqs=n_freqs,
         num_periods=num_periods,
+        # Comparator-first: an external cross-check must see the RAW
+        # extraction. The passivity projection would pull rfx |S21| toward
+        # the openEMS value and let a genuinely non-passive leg pass the
+        # 0.85 <= mean|S21| <= 1.10 gate (review finding, PR #468).
+        enforce_passivity=False,
         raw_3probe_dump_path=(
             None if raw_3probe_dump_path is None else str(raw_3probe_dump_path)
         ),

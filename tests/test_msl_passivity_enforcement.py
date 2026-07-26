@@ -51,11 +51,15 @@ def test_projection_clips_only_the_nonpassive_bins():
     assert np.all(_sigma_max(S_pass) <= 1.0)
 
 
-def test_projection_bound_is_strict_at_float32():
-    """min(sigma, 1) alone reconstructs to 1 + O(eps); the margin clip must
-    keep the bound strict after the float32 round-trip."""
+@pytest.mark.parametrize("n_ports", [2, 8, 32])
+def test_projection_bound_is_strict_at_float32(n_ports):
+    """min(sigma, 1) alone reconstructs to 1 + O(eps), and the error GROWS
+    with n_ports — an 8*eps margin measured 1.0000000255 at n=8 and
+    1.0000006584 at n=32. The 64*eps margin must hold the strict bound after
+    the float32 round-trip across port counts."""
     rng = np.random.default_rng(7)
-    S = (rng.normal(size=(2, 2, 64)) + 1j * rng.normal(size=(2, 2, 64))).astype(np.complex64)
+    S = (rng.normal(size=(n_ports, n_ports, 64))
+         + 1j * rng.normal(size=(n_ports, n_ports, 64))).astype(np.complex64)
     S *= 2.0  # comfortably non-passive everywhere
     S_pass, _ = _project_passive(jnp.asarray(S))
     assert np.all(_sigma_max(np.asarray(S_pass)) <= 1.0)

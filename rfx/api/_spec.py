@@ -1291,8 +1291,11 @@ class MSLSMatrixResult:
         medians. S values at those bins are retained unchanged.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
-        over ports of ``10*log10(mean Ez^2 over the last 10% of the record /
-        peak Ez^2)`` at the port probe-0 planes. Values above −40 dB mean the
+        over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%
+        of the record / peak Ez^2)``. Multiple planes per port are sampled
+        because a single plane is standing-wave-node sensitive — measured
+        18.1 dB spread across planes on the same under-settled record, i.e.
+        a one-point witness can PASS at a node while the record is hot. Values above −40 dB mean the
         fixed-length record was truncated before the structure rang down, and
         the DFT-derived S-parameters of that run are suspect (measured on the
         Sheen-1990 LPF: num_periods=20 left the stopband ring unsettled and

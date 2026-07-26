@@ -186,7 +186,8 @@ def _project_passive(S):
     the honesty metric: 0 where the extraction was already passive, and
     exactly how non-physical the raw value was elsewhere.
 
-    jnp-native and batched so the eps_override AD path stays differentiable.
+    jnp-native and batched. NOTE: the AD (eps_override) path never calls
+    this — see the wiring comment at the call site.
     """
     s_t = jnp.transpose(S, (2, 0, 1))            # (n_freqs, n_ports, n_ports)
     u, sig, vh = jnp.linalg.svd(s_t, full_matrices=False)
@@ -196,7 +197,10 @@ def _project_passive(S):
     # sigma_max = 1 + O(eps), which violates the strict bound this exists
     # to guarantee).
     eps = jnp.finfo(sig.dtype).eps
-    sig_c = jnp.minimum(sig, 1.0 - 8.0 * eps)
+    # 64*eps, not 8*eps: the reconstruction error grows with n_ports and a
+    # measured f32 sweep showed 8*eps failing the strict bound from n=8
+    # (1.0000000255) through n=32 (1.0000006584); 64*eps holds through n=32.
+    sig_c = jnp.minimum(sig, 1.0 - 64.0 * eps)
     s_pass = jnp.einsum("fij,fj,fjk->fik", u, sig_c.astype(u.dtype), vh)
     return jnp.transpose(s_pass, (1, 2, 0)), correction
 
@@ -206,15 +210,19 @@ def _warn_if_passivity_projected(
 ) -> None:
     """One aggregate warning stating exactly what the projection removed."""
     corr = np.asarray(correction)
-    if not np.any(corr > 0.0):
+    finite = np.isfinite(corr)
+    if not np.any(corr[finite] > 0.0):
         return
 
     import warnings
 
     f = np.asarray(freqs)
-    n_touched = int((corr > 0.0).sum())
-    n_big = int((corr > envelope).sum())
-    k = int(np.argmax(corr))
+    n_touched = int((corr[finite] > 0.0).sum())
+    n_big = int((corr[finite] > envelope).sum())
+    # nanargmax: a NaN raw bin would otherwise be selected and the message
+    # would read "worst sigma_max = nan". NaN bins stay NaN in S (the
+    # finiteness self-check flags them); the bound claim applies to finite bins.
+    k = int(np.nanargmax(np.where(finite, corr, -np.inf)))
     warnings.warn(
         f"S-matrix projected onto the passive set (singular values clipped "
         f"to 1): {n_touched} of {corr.size} frequency bins were non-passive "
@@ -1622,20 +1630,28 @@ class _SparamMixin:
 
             # Ring-down settling witness (project rule: fixed-length
             # open-domain records must quote end/peak energy before any
-            # claims-bearing number). One point Ez time-series probe per
-            # port at the probe-0 plane, mid-substrate under the trace:
-            # for the PASSIVE ports of a run the whole record is response,
-            # so end/peak there is the textbook ring-down witness.
+            # claims-bearing number). Point Ez time-series probes at EVERY
+            # port probe plane, mid-substrate under the trace — a single
+            # plane is standing-wave-node sensitive (measured on the thru
+            # fixture at num_periods=6: 18.1 dB spread across planes, i.e.
+            # PASS at one plane and FAIL at another for the same record), so
+            # the witness takes the WORST plane. For the PASSIVE ports of a
+            # run the whole record is response, so end/peak there is the
+            # textbook ring-down witness.
             _witness_base = len(self._probes)
+            _witness_counts: list[int] = []
             for pe_w, pxs_w in zip(entries, probe_xs):
-                self.add_probe(
-                    position=(
-                        float(pxs_w[0]),
-                        float(pe_w.position[1]),
-                        float(pe_w.position[2]) + 0.5 * float(pe_w.height),
-                    ),
-                    component="ez",
-                )
+                for _x_w in pxs_w:
+                    self.add_probe(
+                        position=(
+                            float(_x_w),
+                            float(pe_w.position[1]),
+                            float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                        ),
+                        component="ez",
+                    )
+                _witness_counts.append(len(pxs_w))
+            _witness_total = sum(_witness_counts)
             settling_db_runs = np.full(n_ports, np.nan)
 
             for driven in range(n_ports):
@@ -1726,10 +1742,10 @@ class _SparamMixin:
                 _ts = getattr(_ts_result, "time_series", None)
                 if _ts is not None and not is_tracer(_ts):
                     _ts_np = np.asarray(
-                        _ts[:, _witness_base:_witness_base + n_ports],
+                        _ts[:, _witness_base:_witness_base + _witness_total],
                         dtype=float,
                     )
-                    if _ts_np.shape[0] >= 10 and _ts_np.shape[1] == n_ports:
+                    if _ts_np.shape[0] >= 10 and _ts_np.shape[1] == _witness_total:
                         _p = _ts_np ** 2
                         _tail = max(1, _p.shape[0] // 10)
                         _end = _p[-_tail:, :].mean(axis=0)
@@ -2020,13 +2036,15 @@ class _SparamMixin:
 
             s_raw = None
             passivity_correction = None
-            # Projection runs on the CONCRETE measurement path only. On the
-            # traced (eps_override AD) path min(sigma, 1) zeroes or deforms
-            # the objective's gradient wherever the clip is active — measured:
-            # it flipped the committed d|S|^2/d eps sign gate — and autodiff
-            # fidelity is this project's non-negotiable tie-breaker. Quoting
-            # is a concrete-path activity; gradients must see the raw physics.
-            if enforce_passivity and not is_tracer(S):
+            # Projection runs on the CONCRETE MEASUREMENT channel only:
+            # never under tracing (min(sigma,1) zeroes/deforms the objective
+            # gradient wherever the clip is active — measured, it flipped the
+            # committed d|S|^2/d-eps sign gate), and never on the
+            # eps_override channel even when concrete — otherwise a finite-
+            # difference objective sees the projected function while
+            # jax.grad sees the raw one, and the committed AD==FD gates
+            # compare two different functions (review finding, PR #468).
+            if enforce_passivity and eps_override is None and not is_tracer(S):
                 s_projected, correction = _project_passive(S)
                 if bool(np.any(np.asarray(correction) > 0.0)):
                     s_raw = S

@@ -74,6 +74,23 @@ def test_settled_record_passes_the_witness_silently():
     assert not [w for w in caught if "settling witness" in str(w.message)]
 
 
+def test_witness_survives_pre_existing_user_probes():
+    """The witness columns are indexed from len(self._probes) at call time; a
+    wrong base would silently measure a USER probe and produce a plausible
+    settling number — the worst failure class for a witness. Registering a
+    user probe first exercises exactly that offset."""
+    sim = _thru()
+    sim.add_probe(position=(0.006, 0.004, 0.0016), component="ez")
+    n_before = len(sim._probes)
+
+    res = sim.compute_msl_s_matrix(freqs=FREQS, num_periods=40.0)
+
+    assert len(sim._probes) == n_before, "user probes must survive untouched"
+    # A settled thru must still read deeply settled through the offset base.
+    assert res.settling_db is not None
+    assert np.all(res.settling_db < -60.0), res.settling_db
+
+
 def test_witness_probes_do_not_leak_into_the_simulation():
     sim = _thru()
     n_probes_before = len(sim._probes)
