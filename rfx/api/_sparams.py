@@ -1302,14 +1302,25 @@ class _SparamMixin:
         ``enforce_passivity=True`` (default) projects the assembled S(f) onto
         the passive set per frequency (singular values clipped to 1 — the
         nearest matrix in spectral norm with ``||S||_2 <= 1``), so the
-        returned ``S`` satisfies the passive bound at EVERY frequency. This
-        is constraint enforcement, not a physics fix: the unprojected matrix
-        is kept in ``S_raw``, the per-bin clip amount in
-        ``passivity_correction``, and a warning names the touched bins.
-        Bins with a large correction are measurement artifacts (see
+        returned ``S`` satisfies the passive bound at every frequency on the
+        plain measurement path. This is constraint enforcement, not a physics
+        fix: the unprojected matrix is kept in ``S_raw``, the per-bin clip
+        amount in ``passivity_correction``, and a warning names the touched
+        bins. Bins with a large correction are measurement artifacts (see
         ``reliable`` / ``settling_db`` for the cause) — the projection bounds
-        them, it does not make them trustworthy. Set ``False`` to get the
-        raw extraction in ``S`` unchanged.
+        them, it does not make them trustworthy, and it is NOT small where
+        the raw extraction is bad: on a thru fixture whose raw sigma_max ran
+        1.19-1.91, projecting moved |S21| 1.000 -> 0.61-0.72 and rotated its
+        phase by up to 17 degrees, while ``Z0`` and ``beta`` stay raw. Never
+        quote projected values as physics where ``passivity_correction`` is
+        large. Set ``False`` to get the raw extraction in ``S`` unchanged.
+
+        EXEMPTION: no projection is applied on the ``eps_override`` channel
+        (traced or concrete) so that finite-difference and ``jax.grad``
+        objectives see the same raw function; ``S`` is then the raw
+        extraction with ``S_raw``/``passivity_correction`` absent, no
+        projection warning fires, and ``S`` may exceed the bound (measured
+        sigma_max 1.18 on a coarse thru).
 
         For each registered MSL port, runs one FDTD simulation with that
         port driven and the others passive (matched termination). At

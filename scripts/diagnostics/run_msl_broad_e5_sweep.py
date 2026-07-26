@@ -292,6 +292,12 @@ def run_case(case: CaseSpec, *, num_periods: float = 40.0,
         freqs=freqs,
         num_periods=num_periods,
         strict_extractor=False,  # honesty warns only; envelope gate still checks
+        # This sweep IS the measurement that produces the documented MSL
+        # envelope (max_s11 / mean_s21 recorded below): it must see the RAW
+        # extraction. Under the projection default max_s11 cannot exceed 1
+        # by construction, so a refreshed envelope would be fabricated
+        # (review finding, PR #468).
+        enforce_passivity=False,
     )
     t_run = time.time() - t0
 
