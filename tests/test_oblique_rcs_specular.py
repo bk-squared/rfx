@@ -22,7 +22,9 @@ Scope: this validates the far-field PATTERN / specular DIRECTION only. The
 ABSOLUTE oblique σ is intentionally NOT asserted — the 2.5-D strip's 3-D RCS
 scales with the (arbitrary) NTFF z-box height because the two z-faces cancel for
 x-y-plane observation. See ``rfx/rcs.py`` (oblique routing block) for the full
-scope note. Validation witnesses (bigger 3λ plate, n_steps=1400): specular
+scope note. Validation witnesses (bigger 3λ plate, n_steps=1400; measured on
+the PRE-corner-fix exclusive-slice kernels and NOT re-measured on the shipped
+inclusive kernels — see the tfsf_oblique_open.py module docstring): specular
 180/161/140° vs predicted 180/160/140° at θ=0/20/40, settling −63…−66 dB, PO-sinc
 shape correlation 0.89–0.92, 3 dB beamwidth within ~1°, and RAW peak == SUBTRACTED
 peak (incident-leakage subtraction NOT needed — leakage steers to the forward
@@ -31,7 +33,10 @@ hemisphere φ≈θ, away from the specular lobe).
 NOTE those witness numbers come from a DIFFERENT configuration (3λ plate,
 1400 steps, the ``_methodB_pattern`` helper's NTFF box) than the committed gate
 below (2.2λ plate, 700 steps, public ``compute_rcs`` path, which measures
-180/160/144°). The two sets are not numerically comparable — see the helper's
+180/160/143° on the corner-inclusive kernels; 144° at θ=40 pre-fix, and the
+helper's θ=0 gate config settles at −52.3 dB — another marker that the witness
+block belongs to the other configuration). The two sets are not numerically
+comparable — see the helper's
 docstring for the exact NTFF-box construction difference. The gate's ±6°
 tolerance reflects a measured 3–7° peak-azimuth sensitivity to domain size at
 fixed dx/plate/CPML (PR #461 audit); it is an observed envelope on an
