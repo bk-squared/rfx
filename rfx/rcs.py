@@ -196,10 +196,16 @@ def compute_rcs(
         illumination in the x-y plane and route through the open-domain oblique
         Method-B TFSF (2.5-D: open transverse y, thin-periodic z). Only the
         far-field PATTERN / specular direction is validated at oblique incidence
-        (specular peak phi = 180 - theta_inc at theta_obs = 90 deg, tracked to
-        ~1 deg; see ``tests/test_oblique_rcs_specular.py``); the absolute oblique
-        sigma is NOT validated. Requires ``polarization='ez'`` and a uniform grid;
-        other combos raise ``NotImplementedError`` (issue #404 arc).
+        (specular peak phi = 180 - theta_inc at theta_obs = 90 deg). Measured
+        envelope on the committed gate configuration (2.2-lambda plate, 700
+        steps, public path): peak error 0 deg at theta_inc=20 and 4 deg at
+        theta_inc=40, gated at +/-6 deg, with a 3-7 deg peak-azimuth
+        sensitivity to domain size at fixed dx/plate/CPML (PR #461 audit) —
+        i.e. the argmax azimuth of the broad specular lobe is NOT converged to
+        ~1 deg. See ``tests/test_oblique_rcs_specular.py``. The absolute
+        oblique sigma is NOT validated. Requires ``polarization='ez'`` and a
+        uniform grid; other combos raise ``NotImplementedError`` (issue #404
+        arc).
     phi_inc : float
         Incident azimuth in degrees (reserved for future oblique support).
     polarization : str

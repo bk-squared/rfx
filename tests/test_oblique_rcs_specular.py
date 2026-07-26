@@ -27,6 +27,15 @@ scope note. Validation witnesses (bigger 3λ plate, n_steps=1400): specular
 shape correlation 0.89–0.92, 3 dB beamwidth within ~1°, and RAW peak == SUBTRACTED
 peak (incident-leakage subtraction NOT needed — leakage steers to the forward
 hemisphere φ≈θ, away from the specular lobe).
+
+NOTE those witness numbers come from a DIFFERENT configuration (3λ plate,
+1400 steps, the ``_methodB_pattern`` helper's NTFF box) than the committed gate
+below (2.2λ plate, 700 steps, public ``compute_rcs`` path, which measures
+180/160/144°). The two sets are not numerically comparable — see the helper's
+docstring for the exact NTFF-box construction difference. The gate's ±6°
+tolerance reflects a measured 3–7° peak-azimuth sensitivity to domain size at
+fixed dx/plate/CPML (PR #461 audit); it is an observed envelope on an
+unconverged argmax observable, not a converged-accuracy claim.
 """
 import numpy as np
 import jax.numpy as jnp
@@ -74,9 +83,17 @@ def _peak_phi_deg(sig_linear):
 
 def _methodB_pattern(theta_deg):
     """Build the 2.5-D open-domain Method-B pipeline directly (theta=0 allowed) and
-    return (peak_phi_deg, settling_db). Mirrors what compute_rcs does internally
-    for oblique, but exercises theta=0 (the normal-reduction limit) which
-    compute_rcs routes to the normal path."""
+    return (peak_phi_deg, settling_db).
+
+    NOT a mirror of ``compute_rcs``: same pipeline components, but the NTFF box
+    is constructed differently — here the y-faces are pinned to the TFSF box
+    (``cfg.y_lo - off`` / ``cfg.y_hi + off``) while the public path derives them
+    from the CPML faces (``fl["y_lo"] + ntff_offset`` / ``grid.ny - fl["y_hi"] -
+    ntff_offset``, rcs.py) and its ``i_hi`` carries an extra +1. So peak azimuths
+    from this helper differ from the public path by a few degrees and MUST NOT be
+    numerically compared against ``compute_rcs`` results; use it only for what it
+    is here: exercising theta=0, the normal-reduction limit that ``compute_rcs``
+    routes to the normal path."""
     grid = Grid(freq_max=F0 * 3, domain=_DOMAIN, dx=DX, cpml_layers=CPML)
     nx, ny, nz = grid.shape
     cfg, st = init_tfsf_methodB(nx, ny, DX, grid.dt, nz=nz, cpml_layers=CPML,
