@@ -140,7 +140,8 @@ def _warn_if_ringdown_truncated(
 ) -> None:
     """Emit one aggregate warning when a driven run's record is truncated.
 
-    The witness is the CLAUDE.md ring-down rule made mechanical: end/peak
+    The witness makes the project's ring-down settling rule mechanical
+    (docs/guides/simulation_methodology.md): end/peak
     Ez^2 at the port probe planes, per driven run. Above −40 dB the fixed
     ``num_periods`` record ended while the structure was still ringing, so
     the single-bin DFTs underlying V/I — and every S value of that run —
@@ -1619,7 +1620,7 @@ class _SparamMixin:
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
 
-            # Ring-down settling witness (CLAUDE.md rule: fixed-length
+            # Ring-down settling witness (project rule: fixed-length
             # open-domain records must quote end/peak energy before any
             # claims-bearing number). One point Ez time-series probe per
             # port at the probe-0 plane, mid-substrate under the trace:

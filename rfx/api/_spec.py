@@ -1297,8 +1297,9 @@ class MSLSMatrixResult:
         the DFT-derived S-parameters of that run are suspect (measured on the
         Sheen-1990 LPF: num_periods=20 left the stopband ring unsettled and
         produced |S| column-power poles up to ~1.8e3 that shrank monotonically
-        with record length). Compare against the −40 dB rule in CLAUDE.md
-        before quoting any S value from this result.
+        with record length). Compare against the project's −40 dB ring-down
+        settling rule (docs/guides/simulation_methodology.md) before quoting
+        any S value from this result.
     S_raw : (n_ports, n_ports, n_freqs) complex, optional
         The S-matrix exactly as extracted, BEFORE passivity projection.
         Stored whenever the projection changed anything, so no information
