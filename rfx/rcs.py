@@ -316,9 +316,13 @@ def compute_rcs(
     # VALIDATED by the specular-peak gate (tests/test_oblique_rcs_specular.py):
     # the bistatic far-field of a finite PEC plate (normal +x) peaks at the
     # reflection-law specular direction phi = pi - theta_inc (theta_obs = pi/2)
-    # and tracks theta_inc to ~1 deg across {0, 20, 40} deg; the theta->0 limit
-    # reduces to backscatter (= specular at normal); the specular-lobe SHAPE
-    # matches the physical-optics sinc (corr ~0.9, 3 dB beamwidth within ~1 deg).
+    # across {0, 20, 40} deg, within the measured envelope in the theta_inc
+    # parameter docstring above (peak error <= 4 deg, gated +/-6 deg, 3-7 deg
+    # domain-size sensitivity — NOT ~1 deg); the theta->0 limit reduces to
+    # backscatter (= specular at normal). The +/-6 deg tolerance is ~0.2 of the
+    # 2.2-lambda plate's ~30 deg physical-optics 3 dB specular lobe at
+    # theta_inc=40 (0.886*lambda/(W*cos(theta))) — argmax on a 1 deg grid
+    # inside a broad lobe, an envelope pin, not a loose bound.
     # SCOPE LIMIT: only the far-field PATTERN / specular DIRECTION is validated.
     # The ABSOLUTE oblique sigma is NOT validated — the 2.5-D strip's 3-D RCS
     # scales with the (arbitrary) NTFF z-box height because the two z-faces cancel
@@ -339,6 +343,24 @@ def compute_rcs(
                 "grids (Method B requires a uniform single-device grid). "
                 "Use a uniform Grid or theta_inc=0.0."
             )
+        # Method B is 2.5-D: z is thin + PERIODIC and the NTFF z-box is a
+        # 2-cell midplane span, so the returned sigma is for an infinite
+        # z-periodic replication of the target sampled at the midplane. Refuse
+        # a z-varying (genuinely 3-D) target rather than return that number
+        # silently (review F4 — "refuse rather than return an unvalidated
+        # number").
+        for _mname in ("eps_r", "sigma", "mu_r"):
+            _marr = np.asarray(getattr(materials, _mname))
+            if _marr.ndim == 3 and _marr.shape[2] > 1 and not np.array_equal(
+                _marr, np.broadcast_to(_marr[:, :, :1], _marr.shape)
+            ):
+                raise NotImplementedError(
+                    f"compute_rcs(theta_inc={theta_inc}): materials.{_mname} varies "
+                    "along z, but oblique incidence uses the 2.5-D Method-B path "
+                    "(thin-periodic z, midplane NTFF) which is only meaningful for "
+                    "z-invariant targets. Make the target z-invariant or use "
+                    "theta_inc=0.0."
+                )
 
     # --- 1. Set up TFSF source ---
     # angle_deg=0 ignores `method` (normal 1D-aux path, byte-identical); the

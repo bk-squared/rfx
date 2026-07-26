@@ -1,23 +1,30 @@
 """Stage-2 gate (b) witness: open-domain oblique TFSF (Method B) THROUGH run().
 
 Proves that the integrated ``Simulation.run()`` scan reproduces the standalone
-Method-B prototype physics (scripts/verify_methodB_jnp.py). Builds a Simulation
-with a method='methodB' oblique TFSF, runs it via ``sim.run(...)`` with a
-per-step field snapshot, and measures — with the SAME math as the standalone —
-the time-averaged Poynting injection angle and the TFSF leakage.
+Method-B physics (``rfx/sources/tfsf_oblique_open.py``) in THIS checkout — the
+script imports whatever ``rfx`` is on ``sys.path``; it inserts no private
+paths. Builds a Simulation with a method='methodB' oblique TFSF, runs it via
+``sim.run(...)`` with a per-step field snapshot, and measures the time-averaged
+Poynting injection angle and the TFSF leakage.
 
-Standalone baseline (numpy prototype, reproduced by the jnp module):
-  normal  theta_eff~0.06 deg, Sx>0, leak -35.8 dB
-  oblique 30/45/60 -> theta_eff 30.2/45.0/59.9, leak -37.6/-40.2/-41.5 dB
-  domain-invariant 45 -> 45.01 @ny60 / 45.00 @ny100
+Measured through run() on the committed corner-inclusive kernels
+(see the module docstring of tfsf_oblique_open.py; the pre-fix exclusive
+kernels leaked -37.6/-40.2/-41.5 dB at 30/45/60 deg):
+  oblique 30/45/60 -> theta_eff 30.17/45.00/59.88 deg, leak -62.7/-131.6/-58.7 dB
+  (45 deg is symmetric -> exact corner cancellation, float32 round-off floor;
+  30/60 deg residual is the linear-interp gather error)
+  domain-invariant 45 -> theta_eff 45.00 @ny60 / 45.00 @ny100 (leak -131.6/-130.4 dB)
 
-Gate (b): through run(), theta_eff ~= requested within ~1 deg AND leak < -25 dB
-(target ~ -40 dB), fields real float32.
+Gate (b): through run(), theta_eff ~= requested within 1.5 deg AND leak < -25 dB,
+fields real float32.
 """
 import os
 os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 import sys
-sys.path.insert(0, "/root/workspace/bk-workspace/rfx-oblique-rcs")
+# Verify THIS checkout's rfx (the repo the script ships in), not whatever rfx
+# happens to be installed — plain `python scripts/...` puts scripts/ (not the
+# repo root) on sys.path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 

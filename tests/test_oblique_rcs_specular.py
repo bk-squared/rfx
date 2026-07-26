@@ -35,7 +35,9 @@ below (2.2λ plate, 700 steps, public ``compute_rcs`` path, which measures
 docstring for the exact NTFF-box construction difference. The gate's ±6°
 tolerance reflects a measured 3–7° peak-azimuth sensitivity to domain size at
 fixed dx/plate/CPML (PR #461 audit); it is an observed envelope on an
-unconverged argmax observable, not a converged-accuracy claim.
+unconverged argmax observable, not a converged-accuracy claim. For scale: the
+2.2λ plate's physical-optics 3 dB specular beamwidth at θ=40 is ~30°
+(0.886·λ/(W·cosθ)), so ±6° is ~0.2 of the lobe the argmax sits in.
 """
 import numpy as np
 import jax.numpy as jnp

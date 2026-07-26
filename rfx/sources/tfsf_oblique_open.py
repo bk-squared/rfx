@@ -1,7 +1,8 @@
 """Open-domain oblique TFSF plane-wave source — Method B (JAX-scan-compatible).
 
-This is the ``jnp``/functional reimplementation of the *proven* numpy prototype
-``oblique_tfsf_methodB_v2.py``.  Method B injects an oblique plane wave into an
+This is the ``jnp``/functional reimplementation of a standalone numpy prototype
+(``oblique_tfsf_methodB_v2.py``, not committed).  Method B injects an oblique
+plane wave into an
 open (CPML) 2.5-D domain (``k̂`` in the xy-plane, thin-z periodic) using a
 **dispersion-matched 1D auxiliary FDTD along k̂** plus a **4-edge TFSF box**
 correction.  The incident field is a genuine discrete 1D FDTD solution whose
@@ -19,6 +20,15 @@ are ``jnp`` + functional (no numpy in-place, no python-data-dependent indexing;
 box indices are static Python ints; gather bases/weights are precomputed jnp
 arrays), so they drop straight into ``lax.scan`` in Stage 2.  This module does
 NOT touch rfx's scan / simulation.py.
+
+ONE deliberate deviation from the prototype: the transverse face extents are
+INCLUSIVE (``[y_lo, y_hi]`` / ``[x_lo, x_hi]``), not the prototype's exclusive
+``yl:yh`` / ``xl:xh``.  The exclusive slicing left the box corner nodes at
+``x_hi`` / ``y_hi`` uncorrected — 8 nodes per z-plane acting as coherent
+spurious line sources — and was itself the prototype's -37..-41 dB leakage
+floor (PR #461 review, F1).  With inclusive slices the through-run leakage
+drops to the linear-interp gather error (-59..-132 dB, exact cancellation at
+the symmetric 45 deg case); the injection angle is unchanged.
 
 Ported sign/staggering/timing verbatim from the prototype (the authoritative
 physics source):
@@ -55,9 +65,12 @@ class MethodBConfig(NamedTuple):
     and the 24 gather-table arrays are ``jnp`` (built once at init).
     """
     # --- static TFSF box indices (Python int -> compile-time slice bounds) ---
-    # Box spans x in [x_lo, x_hi) and y in [y_lo, y_hi) (prototype's exclusive
-    # yl:yh / xl:xh slicing). Corrections also touch x_lo-1, x_hi, y_lo-1, y_hi,
-    # x_hi+1, y_hi+1.
+    # Total-field region is INCLUSIVE: x in [x_lo, x_hi], y in [y_lo, y_hi] —
+    # the upper-face corrections (Hy[x_hi], Hx[.,y_hi], Ez[x_hi+1], Ez[.,y_hi+1])
+    # are only self-consistent if x_hi / y_hi are total-field nodes, so the
+    # transverse face slices must include them (see module docstring: the
+    # prototype's exclusive slicing skipped the corners and leaked).
+    # Corrections also touch x_lo-1, x_hi, y_lo-1, y_hi, x_hi+1, y_hi+1.
     x_lo: int
     x_hi: int
     y_lo: int
@@ -184,6 +197,15 @@ def init_tfsf_methodB(
         )
     if direction not in ("+x", "-x"):
         raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
+    if direction == "-x":
+        # direction_sign is stored but never consumed: the gather tables are
+        # built with +cosθ/+sinθ projections and the 1D source sits at the lo
+        # pad, so '-x' would silently inject a +x-travelling wave (review F2).
+        raise NotImplementedError(
+            "Method B supports direction='+x' only; '-x' is not wired into the "
+            "gather tables / 1D-aux layout yet. Use direction='+x' (mirror the "
+            "geometry) or the normal-incidence path."
+        )
     if not abs(theta_deg) < 90.0:
         raise ValueError(f"abs(theta_deg) must be < 90, got {theta_deg}")
     # NOTE: Method B's math is valid for the full range 0 <= |theta| < 90 (theta=0
@@ -244,8 +266,10 @@ def init_tfsf_methodB(
     def idx_H(ix, iy):
         return idx_E(ix, iy) - 0.5
 
-    iy_face = np.arange(y_lo, y_hi)      # x-faces vary iy over [y_lo, y_hi)
-    ix_face = np.arange(x_lo, x_hi)      # y-faces vary ix over [x_lo, x_hi)
+    # INCLUSIVE transverse extents — the corners x_hi / y_hi are total-field
+    # nodes and must receive their correction (module docstring, review F1).
+    iy_face = np.arange(y_lo, y_hi + 1)  # x-faces vary iy over [y_lo, y_hi]
+    ix_face = np.arange(x_lo, x_hi + 1)  # y-faces vary ix over [x_lo, x_hi]
 
     # H-face tables (gather e1d) — projection at the E-node coordinate.
     xlo_e = _gather_table(idx_E(x_lo,       iy_face), n_aux)
@@ -361,15 +385,15 @@ def apply_methodB_h(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
 
     # x-faces: Hy from Ez_inc (E-node projection at x_lo / x_hi+1)
     inc = _gather(e1d, cfg.xlo_e_base, cfg.xlo_e_w0, cfg.xlo_e_w1)
-    hy = hy.at[cfg.x_lo - 1, cfg.y_lo:cfg.y_hi, :].add((-ch * inc)[:, None])
+    hy = hy.at[cfg.x_lo - 1, cfg.y_lo:cfg.y_hi + 1, :].add((-ch * inc)[:, None])
     inc = _gather(e1d, cfg.xhi_e_base, cfg.xhi_e_w0, cfg.xhi_e_w1)
-    hy = hy.at[cfg.x_hi, cfg.y_lo:cfg.y_hi, :].add((ch * inc)[:, None])
+    hy = hy.at[cfg.x_hi, cfg.y_lo:cfg.y_hi + 1, :].add((ch * inc)[:, None])
 
     # y-faces: Hx from Ez_inc (E-node projection at y_lo / y_hi+1)
     inc = _gather(e1d, cfg.ylo_e_base, cfg.ylo_e_w0, cfg.ylo_e_w1)
-    hx = hx.at[cfg.x_lo:cfg.x_hi, cfg.y_lo - 1, :].add((ch * inc)[:, None])
+    hx = hx.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo - 1, :].add((ch * inc)[:, None])
     inc = _gather(e1d, cfg.yhi_e_base, cfg.yhi_e_w0, cfg.yhi_e_w1)
-    hx = hx.at[cfg.x_lo:cfg.x_hi, cfg.y_hi, :].add((-ch * inc)[:, None])
+    hx = hx.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_hi, :].add((-ch * inc)[:, None])
 
     return state._replace(hx=hx, hy=hy)
 
@@ -389,14 +413,14 @@ def apply_methodB_e(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
 
     # x-faces: Ez sees d(Hy)/dx ; Hy_inc = +cosθ·h1d
     inc = _gather(h1d, cfg.xlo_h_base, cfg.xlo_h_w0, cfg.xlo_h_w1)
-    ez = ez.at[cfg.x_lo, cfg.y_lo:cfg.y_hi, :].add((-ce * ct * inc)[:, None])
+    ez = ez.at[cfg.x_lo, cfg.y_lo:cfg.y_hi + 1, :].add((-ce * ct * inc)[:, None])
     inc = _gather(h1d, cfg.xhi_h_base, cfg.xhi_h_w0, cfg.xhi_h_w1)
-    ez = ez.at[cfg.x_hi + 1, cfg.y_lo:cfg.y_hi, :].add((ce * ct * inc)[:, None])
+    ez = ez.at[cfg.x_hi + 1, cfg.y_lo:cfg.y_hi + 1, :].add((ce * ct * inc)[:, None])
 
     # y-faces: Ez sees d(Hx)/dy ; Hx_inc = -sinθ·h1d
     inc = _gather(h1d, cfg.ylo_h_base, cfg.ylo_h_w0, cfg.ylo_h_w1)
-    ez = ez.at[cfg.x_lo:cfg.x_hi, cfg.y_lo, :].add((-ce * sn * inc)[:, None])
+    ez = ez.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo, :].add((-ce * sn * inc)[:, None])
     inc = _gather(h1d, cfg.yhi_h_base, cfg.yhi_h_w0, cfg.yhi_h_w1)
-    ez = ez.at[cfg.x_lo:cfg.x_hi, cfg.y_hi + 1, :].add((ce * sn * inc)[:, None])
+    ez = ez.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_hi + 1, :].add((ce * sn * inc)[:, None])
 
     return state._replace(ez=ez)
