@@ -1289,6 +1289,16 @@ class MSLSMatrixResult:
         Per-port wave-split reliability. False marks standing-wave-null bins
         where both voltage and current collapse below 10% of their band
         medians. S values at those bins are retained unchanged.
+    settling_db : (n_ports,) float, optional
+        Ring-down settling witness per driven-port run: the WORST (largest)
+        over ports of ``10*log10(mean Ez^2 over the last 10% of the record /
+        peak Ez^2)`` at the port probe-0 planes. Values above −40 dB mean the
+        fixed-length record was truncated before the structure rang down, and
+        the DFT-derived S-parameters of that run are suspect (measured on the
+        Sheen-1990 LPF: num_periods=20 left the stopband ring unsettled and
+        produced |S| column-power poles up to ~1.8e3 that shrank monotonically
+        with record length). Compare against the −40 dB rule in CLAUDE.md
+        before quoting any S value from this result.
     port_names : tuple[str, ...]
     """
     S: np.ndarray
@@ -1297,6 +1307,7 @@ class MSLSMatrixResult:
     beta: np.ndarray
     port_names: tuple[str, ...] = ()
     reliable: np.ndarray | None = None
+    settling_db: np.ndarray | None = None
 
 
 __all__ = [

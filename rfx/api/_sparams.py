@@ -19,6 +19,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.core.jax_utils import is_tracer
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.sources.waveguide_port import (
@@ -127,6 +128,49 @@ def _warn_msl_wave_split_unreliable(
         "S-parameters are unreliable there (blind spot of single-run "
         "reflection measurements of strong reflectors); see "
         "rfx-known-issues standing-wave-null entry",
+        stacklevel=2,
+    )
+
+
+_SETTLING_WITNESS_DB = -40.0
+
+
+def _warn_if_ringdown_truncated(
+    settling_db: np.ndarray, port_names: tuple, *, num_periods: float
+) -> None:
+    """Emit one aggregate warning when a driven run's record is truncated.
+
+    The witness is the CLAUDE.md ring-down rule made mechanical: end/peak
+    Ez^2 at the port probe planes, per driven run. Above −40 dB the fixed
+    ``num_periods`` record ended while the structure was still ringing, so
+    the single-bin DFTs underlying V/I — and every S value of that run —
+    integrate a truncated transient. Measured consequence on the Sheen-1990
+    LPF (dx=200 µm, resonant stopband): num_periods=20 left the witness hot
+    and produced |S| column-power poles up to ~1.8e3 that shrank
+    monotonically as the record grew (20→60 periods: worst pole 62→8.8),
+    while absorber depth (8→24 CPML layers) did not move them.
+    """
+    finite = np.isfinite(settling_db)
+    hot = finite & (settling_db > _SETTLING_WITNESS_DB)
+    if not bool(np.any(hot)):
+        return
+
+    import warnings
+
+    per_run = ", ".join(
+        f"port {port_names[i] if i < len(port_names) else i} driven: "
+        f"{settling_db[i]:+.1f} dB"
+        for i in np.flatnonzero(hot)
+    )
+    warnings.warn(
+        "ring-down settling witness FAILED (end/peak energy above "
+        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The num_periods="
+        f"{num_periods:g} record ended while the structure was still "
+        "ringing, so the DFT-based S-parameters of the affected run(s) are "
+        "truncation artifacts wherever the structure is resonant — expect "
+        "spurious |S| poles and passivity violations. Increase num_periods "
+        "until the witness is below −40 dB before quoting any S value "
+        "(see MSLSMatrixResult.settling_db).",
         stacklevel=2,
     )
 
@@ -1481,6 +1525,7 @@ class _SparamMixin:
         saved_dft = list(self._dft_planes)
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
+        saved_probes = list(self._probes)
         try:
             # Mutate self._dz_profile to the (possibly synthesised) grid dz only
             # now — inside the try — so the finally always restores it and the
@@ -1501,6 +1546,24 @@ class _SparamMixin:
             raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+
+            # Ring-down settling witness (CLAUDE.md rule: fixed-length
+            # open-domain records must quote end/peak energy before any
+            # claims-bearing number). One point Ez time-series probe per
+            # port at the probe-0 plane, mid-substrate under the trace:
+            # for the PASSIVE ports of a run the whole record is response,
+            # so end/peak there is the textbook ring-down witness.
+            _witness_base = len(self._probes)
+            for pe_w, pxs_w in zip(entries, probe_xs):
+                self.add_probe(
+                    position=(
+                        float(pxs_w[0]),
+                        float(pe_w.position[1]),
+                        float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                    ),
+                    component="ez",
+                )
+            settling_db_runs = np.full(n_ports, np.nan)
 
             for driven in range(n_ports):
                 # Re-instantiate a clean simulation by mutating in place:
@@ -1572,6 +1635,7 @@ class _SparamMixin:
                         checkpoint_segments=checkpoint_segments,
                     )
                     planes = fwd_result.dft_planes or {}
+                    _ts_result = fwd_result
                 else:
                     result = self.run(
                         n_steps=n_steps,
@@ -1579,6 +1643,29 @@ class _SparamMixin:
                         compute_s_params=False,
                     )
                     planes = result.dft_planes or {}
+                    _ts_result = result
+
+                # Settling witness for this driven run: worst end/peak
+                # Ez^2 ratio across the per-port witness probes. Host-side
+                # numpy on concrete values only — on the eps_override AD
+                # path time_series may be a tracer, in which case the
+                # witness is skipped (NaN) rather than concretised.
+                _ts = getattr(_ts_result, "time_series", None)
+                if _ts is not None and not is_tracer(_ts):
+                    _ts_np = np.asarray(
+                        _ts[:, _witness_base:_witness_base + n_ports],
+                        dtype=float,
+                    )
+                    if _ts_np.shape[0] >= 10 and _ts_np.shape[1] == n_ports:
+                        _p = _ts_np ** 2
+                        _tail = max(1, _p.shape[0] // 10)
+                        _end = _p[-_tail:, :].mean(axis=0)
+                        _peak = _p.max(axis=0)
+                        _tiny = np.finfo(float).tiny
+                        _ratio_db = 10.0 * np.log10(
+                            (_end + _tiny) / (_peak + _tiny)
+                        )
+                        settling_db_runs[driven] = float(np.max(_ratio_db))
 
                 # Helper: integrate V and I per port from the recorded planes.
                 v_per_port: list[list[np.ndarray]] = []
@@ -1865,6 +1952,12 @@ class _SparamMixin:
                 beta=beta_first,
                 port_names=tuple(pe.name for pe in entries),
                 reliable=reliable,
+                settling_db=settling_db_runs,
+            )
+            _warn_if_ringdown_truncated(
+                settling_db_runs,
+                tuple(pe.name for pe in entries),
+                num_periods=num_periods,
             )
             _warn_if_nonpassive_smatrix(
                 result,
@@ -1877,6 +1970,7 @@ class _SparamMixin:
             self._dft_planes = saved_dft
             self._msl_ports = saved_msl
             self._ports = saved_ports
+            self._probes = saved_probes
             self._dz_profile = _dz_profile_saved
 
     def compute_coaxial_s_matrix(
