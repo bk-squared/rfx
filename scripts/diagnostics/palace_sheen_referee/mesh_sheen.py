@@ -3,14 +3,14 @@
 
 Frequency-domain FEM (Palace) model of the classic Sheen low-pass filter, built
 to REFEREE the two FDTD references (rfx + openEMS) whose cv07 cross-check
-(``scripts/crossval/_sheen_results/{rfx,openems}.json``) locks a ~9-10% first-null
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~9-10% first-null
 split: rfx 7.218 GHz, openEMS 7.983 GHz. Both refs are staircased FDTD, so
 neither resolves the wide-patch open-end fringing exactly. Palace on a conformal
 tetrahedral mesh (no staircase) captures the fringing exactly, so it is the right
 independent arbiter of whether rfx's LOWER null is the expected staircase-fringing
 under-resolution.
 
-Geometry (mm) — locked to the EXACT domain frame of scripts/crossval/07_sheen_lpf.py
+Geometry (mm) — locked to the EXACT domain frame of validation/crossval/07_sheen_lpf.py
 (propagation x, transverse y, stack z; Sheen board mapped rfx_x = Sheen_y):
 
     substrate  eps_r = 2.2   h = 0.794 mm   (LOSSLESS — matches both FDTD refs)
@@ -55,7 +55,7 @@ import os
 
 import gmsh
 
-# --- geometry (mm) — locked to scripts/crossval/07_sheen_lpf.py domain frame ---
+# --- geometry (mm) — locked to validation/crossval/07_sheen_lpf.py domain frame ---
 X_LO, X_HI = 0.0, 27.472
 Y_LO, Y_HI = 0.0, 26.320
 H_SUB = 0.794                 # substrate thickness (z of the metal interface)

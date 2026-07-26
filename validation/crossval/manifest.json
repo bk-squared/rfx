@@ -136,6 +136,34 @@
       "failure_sentinel": null
     },
     {
+      "id": "07_sheen_lpf",
+      "script": "validation/crossval/07_sheen_lpf.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner", "external-manual"],
+      "evidence_levels": ["E4"],
+      "references": [
+        {"kind": "external-solver", "name": "openEMS matched-geometry Sheen 1990 LPF run (committed leg validation/crossval/_07_sheen_results/openems.json; required for a full run, and the reference's own passivity plus Re(Z0) sanity IS gated comparator-first)", "required_for_script_pass": true},
+        {"kind": "external-solver", "name": "Palace-FEM conformal-mesh referee — COMMITTED fixture tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json (three-solver verdict sides_with=openems; envelope-locked by tests/test_sheen_lpf_palace_referee_gates.py)", "required_for_script_pass": false}
+      ],
+      "claim_scope": "CHARACTERIZATION ONLY of the Sheen 1990 stepped-impedance LPF stopband — explicitly NOT an rfx accuracy claim. The Palace-FEM referee showed the stopband is a DOUBLE transmission zero (~7.0 and ~8.0 GHz): openEMS resolves both and matches Palace to ~0.7%, while rfx at dx=200 um (4 substrate cells) DISTORTS the doublet, so the referee records sides_with=openems and rfx is the less structure-faithful solver here. The single-argmin 'first null' distance (rfx 7.218 vs openEMS 7.983 GHz = 9.6%) is largely a COMPARATOR ARTIFACT because argmin picks a different doublet member per solver; it is reported, never gated. SEPARATELY, the committed rfx leg is NON-PASSIVE: 58 of 120 bins exceed the documented column-power <= 1.10 envelope (tests/test_sparam_passivity_guard.py), 29 of them inside the 5-15 GHz band the study reads its result from, worst bin 17.05 GHz at |S11|=15.3 / |S21|=39.5 / column power 1794.5 with Re(Z0) reaching -1.1 ohm. That is an MSL extraction/de-embedding defect, not physics, so NO |S| magnitude from the rfx leg is quotable. The configured gates accordingly lock (A) openEMS reference sanity comparator-first, (B) comparison shape, (C) the committed argmin nulls plus the referee verdict, and (D) the rfx non-passivity FOOTPRINT as a regression lock.",
+      "external_dependencies": ["openEMS", "CSXCAD"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": [
+        "validation/crossval/07_sheen_lpf.py",
+        "tests/test_sheen_lpf_palace_referee_gates.py"
+      ],
+      "artifact_paths": [
+        "validation/crossval/_07_sheen_results/rfx.json",
+        "validation/crossval/_07_sheen_results/openems.json",
+        "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json",
+        "scripts/diagnostics/build_sheen_lpf_palace_referee.py"
+      ],
+      "cpu_runner": {"order": 9},
+      "scheduled_external_order": null,
+      "failure_sentinel": "SOME CHECKS FAILED"
+    },
+    {
       "id": "09_half_symmetric_waveguide",
       "script": "validation/crossval/09_half_symmetric_waveguide.py",
       "role": "claims-bearing",
@@ -205,6 +233,49 @@
       "cpu_runner": {"order": 6},
       "scheduled_external_order": null,
       "failure_sentinel": null
+    },
+    {
+      "id": "14_rect_cavity_pozar",
+      "script": "validation/crossval/14_rect_cavity_pozar.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner"],
+      "evidence_levels": ["E2"],
+      "references": [
+        {"kind": "analytic", "name": "Pozar closed-form air-filled rectangular-cavity resonance f_mnl = (c/2)*sqrt((m/a)^2+(n/b)^2+(l/d)^2), RE-DERIVED in-file (pozar_cavity_freq) and importing no producer-side mode helper", "required_for_script_pass": true}
+      ],
+      "claim_scope": "Deliberately NARROW E2 envelope: the rfx source -> vector-probe -> run -> harminv eigenfrequency pipeline against an EXACT analytic oracle for ONE air-filled PEC cavity (a,b,d) = (50,30,40) mm on a dx = 1 mm mesh chosen as an exact divisor of all three extents, so wall registration contributes zero geometric-quantization error and the residual is pure 2nd-order Yee dispersion. Gated modes: TE101 (fundamental) < 1%, and at least one higher mode of TM110/TE011/TM111/TE201/TM210/TE102 < 2%. Closed lossless PEC is the correct configuration for a cavity, so the energy-based ring-down settling witness DOES NOT APPLY and is not claimed; harminv Q is a window-length artefact, printed but never gated — only the FREQUENCY is claims-bearing. No external solver and no meshing tolerance enter the oracle. This says nothing about open/CPML structures, lossy or dispersive fills, non-uniform meshes, or any other geometry.",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": ["validation/crossval/14_rect_cavity_pozar.py"],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 10},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
+    },
+    {
+      "id": "15_patch_antenna_rt5880",
+      "script": "validation/crossval/15_patch_antenna_rt5880.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner", "external-manual"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {"kind": "analytic", "name": "Balanis transmission-line patch resonance, re-derived in-file (printed anchor, NOT a pass gate)", "required_for_script_pass": false},
+        {"kind": "external-solver", "name": "openEMS canonical Simple_Patch_Antenna tutorial reproduce-gate at two mesh densities (comparator-first setup confirmation in `tutorial` mode; not a gate of the default compare run)", "required_for_script_pass": false},
+        {"kind": "external-solver", "name": "openEMS same-geometry RT/Duroid 5880 patch run (committed leg validation/crossval/_15_patch_results/openems.json; required for a full run)", "required_for_script_pass": true}
+      ],
+      "claim_scope": "INTEGRATION study on a DIFFERENT laminate from id 05: a probe-fed 40x50 mm patch on RT/Duroid 5880 (eps_r 2.2, h = 3.175 mm) built identically in rfx and openEMS on a UNIFORM dx = h/4 = 793.75 um mesh (no dz_profile, so the #325 graded-mesh class cannot arise; the script asserts the substrate rasterizes to exactly 4 z-cells before quoting any f0). It exercises probe/lumped feed + finite ground plane + CPML + ring-down harminv + NTFF directivity end-to-end and gates a same-geometry coarse-mesh envelope: rfx ring-down f0 vs the openEMS S11 dip within 8%, the -40 dB open-domain settling witness, passivity on BOTH legs (max|S11| <= 1.05), and broadside directivity within 3 dB. Patch ACCURACY is NOT claimed here and is NOT re-opened: it remains DELEGATED to id 05 and the committed tests that case names (test_patch_canonical_farfield_e4.py and friends), which stay authoritative. rfx reads a few % HIGH here (staircase patch edges + a 4-cell substrate under-resolve the edge fringing capacitance) while openEMS with thirds-rule meshing reads lower; that direction is discretisation, reported not hidden. The rfx single-cell lumped port gives a shallow (~-3 dB) |S11| dip, so f0 comes from the ring-down harminv and the dip is secondary.",
+      "external_dependencies": ["openEMS", "CSXCAD"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": ["validation/crossval/15_patch_antenna_rt5880.py"],
+      "artifact_paths": [
+        "validation/crossval/_15_patch_results/rfx.json",
+        "validation/crossval/_15_patch_results/openems.json"
+      ],
+      "cpu_runner": {"order": 11},
+      "scheduled_external_order": null,
+      "failure_sentinel": "SOME CHECKS FAILED"
     }
   ]
 }

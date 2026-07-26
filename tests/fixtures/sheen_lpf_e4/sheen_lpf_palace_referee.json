@@ -5,7 +5,7 @@
     "order": 2,
     "device": "GPU rtx4090",
     "cluster": "remilab-c0",
-    "geometry": "cv07 Sheen 1990 LPF, exact domain frame of scripts/crossval/07_sheen_lpf.py: eps_r=2.2 h=0.794mm substrate, 50-ohm feeds W=2.413mm, 20.320x2.540mm wide low-Z patch, domain 27.472x26.320x3.794mm; two 50-ohm lumped ports (ground->strip, +Z) at x=2.5 and x=24.972mm",
+    "geometry": "cv07 Sheen 1990 LPF, exact domain frame of validation/crossval/07_sheen_lpf.py: eps_r=2.2 h=0.794mm substrate, 50-ohm feeds W=2.413mm, 20.320x2.540mm wide low-Z patch, domain 27.472x26.320x3.794mm; two 50-ohm lumped ports (ground->strip, +Z) at x=2.5 and x=24.972mm",
     "substrate": "lossless eps_r=2.2 (matches both FDTD refs; LossTan=0)",
     "boundary": "first-order absorbing far box; PEC ground + metal",
     "port_note": "lumped ports radiate/leak (energy sum well below 1); absolute |S21| levels are NOT comparable to the FDTD wave-port runs -- only the zero FREQUENCIES are refereed",

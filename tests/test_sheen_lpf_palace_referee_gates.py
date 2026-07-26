@@ -22,7 +22,7 @@ fixture, and every gated number is re-derived (no CSV) by
 
 THE REFEREE LOCK (``test_referee_sides_with_structure``) reads the rfx and openEMS
 doublet zeros from their sibling committed cv07 fixtures
-(``scripts/crossval/_sheen_results/{rfx,openems}.json``), so tampering with either
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``), so tampering with either
 FDTD side (or with the Palace doublet) fails the gate.
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIX = _REPO_ROOT / "tests/fixtures/sheen_lpf_e4"
 _REFEREE = _FIX / "sheen_lpf_palace_referee.json"
-_SHEEN_RESULTS = _REPO_ROOT / "scripts/crossval/_sheen_results"
+_SHEEN_RESULTS = _REPO_ROOT / "validation/crossval/_07_sheen_results"
 sys.path.insert(0, str(_REPO_ROOT / "scripts/diagnostics"))
 from build_sheen_lpf_palace_referee import build_referee  # noqa: E402
 

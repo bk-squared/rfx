@@ -307,7 +307,6 @@ def main() -> int:
     errs = print_table(rows)
 
     # ---- OPTIONAL CONVERGENCE WITNESS: dx = 0.5 mm ----
-    conv = None
     if args.converge:
         print()
         print("-" * 92)
@@ -318,7 +317,6 @@ def main() -> int:
         rows2, _pf2, gi2, wall2 = run_leg(0.5e-3, args.num_periods)
         print(f"grid shape = {gi2[0]}   run wall = {wall2:.1f} s")
         errs2 = print_table(rows2)
-        conv = errs2
         print()
         print(f"{'mode':<8} {'err@1.0mm':>10} {'err@0.5mm':>10} {'ratio':>7}")
         for name in errs:

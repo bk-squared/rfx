@@ -6,7 +6,7 @@ cv07 rfx-vs-openEMS first-null split on the classic Sheen 1990 low-pass filter.
 ## What / why
 
 cv07's committed cross-check
-(`scripts/crossval/_sheen_results/{rfx,openems}.json`) locks a ~9-10% first-S21-null
+(`validation/crossval/_07_sheen_results/{rfx,openems}.json`) locks a ~9-10% first-S21-null
 split: **rfx 7.218 GHz, openEMS 7.983 GHz** (both FDTD, dx~200 um / 4-5 substrate
 cells). Both refs STAIRCASE the wide low-Z patch edges, so neither resolves the
 open-end / step fringing exactly. Open-end fringing lengthens the resonator
@@ -61,7 +61,7 @@ this directory is the *provenance* that generated them.
 ## Geometry lock
 
 `mesh_sheen.py` is hard-locked to the exact domain frame of
-`scripts/crossval/07_sheen_lpf.py` (propagation x, transverse y, stack z; the
+`validation/crossval/07_sheen_lpf.py` (propagation x, transverse y, stack z; the
 Sheen board mapped rfx_x = Sheen_y), in mm:
 
     substrate  eps_r = 2.2    h = 0.794 mm    LOSSLESS (LossTan = 0)

@@ -4,7 +4,7 @@
 THE REFEREE QUESTION (and what the referee actually found)
 ----------------------------------------------------------
 cv07's committed rfx-vs-openEMS cross-check
-(``scripts/crossval/_sheen_results/{rfx,openems}.json``) locks a ~10% split in the
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~10% split in the
 "first S21 null" (defined there as argmin|S21| over 5-15 GHz): rfx 7.218 GHz,
 openEMS 7.983 GHz. Both are staircased FDTD; the committed narrative asked whether
 one reads the null wrong because it under-resolves the wide-patch open-end / step
@@ -83,7 +83,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURES = _REPO_ROOT / "tests/fixtures/sheen_lpf_e4"
 _REFEREE_FIXTURE = "sheen_lpf_palace_referee.json"
 _ARTIFACTS = _REPO_ROOT / "scripts/diagnostics/_artifacts/palace_sheen/postpro"
-_SHEEN_RESULTS = _REPO_ROOT / "scripts/crossval/_sheen_results"
+_SHEEN_RESULTS = _REPO_ROOT / "validation/crossval/_07_sheen_results"
 
 # argmin "first null" search band [GHz] — matches the cv07 compare() default.
 _NULL_LO_GHZ, _NULL_HI_GHZ = 5.0, 15.0
@@ -269,7 +269,7 @@ def _meta(vessl_runs: dict[str, Any] | None = None) -> dict[str, Any]:
         "device": "GPU rtx4090",
         "cluster": "remilab-c0",
         "geometry": (
-            "cv07 Sheen 1990 LPF, exact domain frame of scripts/crossval/"
+            "cv07 Sheen 1990 LPF, exact domain frame of validation/crossval/"
             "07_sheen_lpf.py: eps_r=2.2 h=0.794mm substrate, 50-ohm feeds "
             "W=2.413mm, 20.320x2.540mm wide low-Z patch, domain "
             "27.472x26.320x3.794mm; two 50-ohm lumped ports (ground->strip, +Z) "
