@@ -172,10 +172,10 @@ a structure the other solver never built.
 The cross-solver validation campaign's cost centre is building each structure
 twice — once in rfx and once by hand in openEMS / Meep / Palace — and keeping
 the two identical. `scripts/diagnostics/build_sheen_lpf_palace_referee.py` and
-the Palace mesh builder are exactly that hand-porting. The repo's own rules
-(`.claude/rules/rfx-feature-discovery.md`: never hand-roll an external-solver
-crossval setup; `CLAUDE.md`: comparator first) identify comparator/fixture
-divergence — not solver physics — as the dominant historical failure class. A
+the Palace mesh builder are exactly that hand-porting. The project's standing rules (never hand-roll an external-solver crossval
+setup; comparator first — see `docs/guides/simulation_methodology.md` and the
+crossval manifest's evidence rule) identify comparator/fixture divergence —
+not solver physics — as the dominant historical failure class. A
 generated, single-source setup attacks that class directly.
 
 ## Target order, and why openEMS is first
@@ -309,12 +309,13 @@ Both come from the target-API survey and neither has a defensible default:
 ## Verification status of the scaffolding (measured on this branch)
 
 - `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` → clean
-- codec contract tests → 53 passed
+- codec contract tests → 71 passed (grew from 53 as the two in-development
+  reviews' value-validation and stray-key fixes landed with their tests)
 - `python scripts/check_api_reference.py` → `api reference surface: OK`
   (the pinned surface is untouched because nothing was added to `rfx/__init__.py`)
-- wheel build ships the package: `rfx/interop/{__init__,_errors,_materials,_shapes}.py`
-  present in `rfx_fdtd-1.6.6-py3-none-any.whl` (setuptools `include = ["rfx*"]`
-  auto-discovery, so no packaging change was needed)
+- wheel build ships the package: `rfx/interop/{__init__,_design,_errors,_materials,_shapes,_validate}.py`
+  and `rfx/interop/emitters/{__init__,openems}.py` (setuptools `include = ["rfx*"]`
+  auto-discovery picks up both subpackages, so no packaging change was needed)
 - cv06b gate family → 13 passed (the baseline the emitter work must not disturb)
 
 ## Status of each piece

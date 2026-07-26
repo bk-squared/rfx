@@ -9,9 +9,10 @@ Scope of v1 — read this before reading the code
 -----------------------------------------------
 The supported fence is **S-parameters from lumped / wire / MSL ports on a
 uniform mesh**.  That is not an accident of effort: it is the intersection of
-what this repository has actually exercised against openEMS (see the mapping
-census in the branch's emitter notes — 10 scripts call the openEMS API, and
-the port families they cover are lumped, wire and MSL) with what can be
+what this repository has actually exercised against openEMS (10 committed
+scripts call the openEMS API, and the port families they cover are lumped,
+wire and MSL; the durable mapping decisions live in
+docs/design_notes/geometry_setup_interop.md) with what can be
 translated without inventing a convention.  Everything else refuses.
 
 Generable
@@ -53,8 +54,9 @@ reference, quoted with its preflight context — a separate exercise.
 
 Divergences honoured
 --------------------
-Each is cited in the code at the point it is applied, using the numbering of
-the branch's rfx→openEMS mapping report:
+Each is cited in the code at the point it is applied, numbered ``D1``..``D16``
+and defined inline below (the durable rationale is also recorded in
+docs/design_notes/geometry_setup_interop.md):
 
 ``D1``  CPML padding direction — rfx adds absorber cells **outside** the user
         domain (``rfx/grid.py``: ``nx = ceil(Lx/dx) + 1 + pad_lo + pad_hi``,
