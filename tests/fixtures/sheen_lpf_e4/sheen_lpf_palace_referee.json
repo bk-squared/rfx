@@ -590,9 +590,9 @@
     },
     "fdtd_doublet_ghz": {
       "rfx": {
-        "lower_ghz": 7.275099,
-        "upper_ghz": 7.674772,
-        "argmin_first_null_ghz": 7.275099
+        "lower_ghz": 7.035949,
+        "upper_ghz": 7.843915,
+        "argmin_first_null_ghz": 7.843915
       },
       "openems": {
         "lower_ghz": 7.03067,
@@ -601,7 +601,7 @@
       }
     },
     "structure_distance_pct": {
-      "rfx": 4.6402,
+      "rfx": 2.5385,
       "openems": 0.6644
     },
     "convergence_shift_ghz": {
@@ -612,7 +612,7 @@
       "note": "metric-dependent: argmin picks the DEEPER member of the doublet, which differs by solver; do not read as a physical single-null disagreement",
       "palace_mid_ghz": 8.048223,
       "distances_pct": {
-        "rfx": 10.627,
+        "rfx": 2.6047,
         "openems": 0.6689
       },
       "nearest": "openems"

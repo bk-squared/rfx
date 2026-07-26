@@ -13,6 +13,20 @@
     three-way verdict (sides_with = openems) lives in the referee fixture; rfx is
     the less structure-faithful solver on this doublet at this resolution.
 
+    UPDATE 2026-07-26 — ROOT CAUSE FOUND AND FIXED (measured; PR #468). The rfx
+    leg's pathology was NOT solver physics: (a) num_periods=20 failed the
+    ring-down settling witness at -24.7/-24.3 dB (rule: -40) and produced
+    truncation-artifact |S| poles up to column power 1794; (b) the default
+    n_probe_offset=20 left the probes in the feed near-field (measured: doubling
+    the offset collapses the 16-20 GHz column power 8.75 -> 1.81). The committed
+    leg is regenerated with num_periods=60 (witness -70 dB) + n_probe_offset=40
+    + passivity-enforced S (strict ||S||_2 <= 1, raw excess recorded per bin).
+    With decontaminated probes the rfx argmin lands at 7.874 GHz — the ~8 GHz
+    doublet member, 1.4% from openEMS — CONFIRMING the referee's doublet
+    structure. What remains at dx=200um: raw sigma excess up to 0.40 (recorded
+    in passivity_correction; 81/120 bins > 0.05), which is the coarse-mesh
+    envelope, honestly bounded rather than quoted.
+
 Reproduces the classic FDTD-microwave benchmark of
   D. M. Sheen, S. M. Ali, M. D. Abouzahra, J. A. Kong,
   "Application of the three-dimensional finite-difference time-domain method
@@ -128,15 +142,27 @@ PASSIVITY_COLUMN_POWER_MAX = 1.10
 # Values re-derived from the committed _07_sheen_results/*.json artifacts.
 # ---------------------------------------------------------------------------
 COMMITTED = dict(
-    rfx_null_ghz=7.2185,        # argmin |S21| over 5-15 GHz
+    # Leg regenerated 2026-07-26 with the measured-correct recipe
+    # (num_periods=60, n_probe_offset=40, witness+enforcement rfx — see
+    # recipe_evidence inside _07_sheen_results/rfx.json and PR #468):
+    # the previous num_periods=20 leg FAILED the settling witness at
+    # -24.7/-24.3 dB and its argmin (7.2185 GHz) sat on a probe-
+    # contamination dip, not a doublet member.
+    rfx_null_ghz=7.8739,        # argmin |S21| over 5-15 GHz
     oems_null_ghz=7.9831,
     null_tol_pct=1.0,           # regression tolerance on the locked numbers
     rfx_nbins=120,
     oems_nbins=801,
-    rfx_bad_bins=58,            # bins exceeding PASSIVITY_COLUMN_POWER_MAX
-    rfx_worst_bad_ghz=17.050,
-    rfx_worst_column_power=1794.55,
-    rfx_bad_bins_in_null_band=29,   # of those, inside the 5-15 GHz search band
+    # Evidence-chain locks (gate D): witness, strict bound, correction footprint
+    rfx_settling_db=(-70.08, -70.61),   # per driven run; rule is < -40
+    rfx_corr_bins_over_005=81,          # passivity_correction > 0.05
+    rfx_corr_bins_in_null_band=34,      # of those, inside 5-15 GHz
+    rfx_worst_corr=0.3980,
+    rfx_worst_corr_ghz=18.197,
+    # S-data locks (falsifier coverage: a tampered s11/s21 array must go red
+    # even where the argmin and the stored side-channel fields survive)
+    rfx_passband_mean_s21=0.9252,   # over the CLI passband window, linear
+    rfx_max_column_power=0.9891,
     referee_sides_with="openems",
 )
 
@@ -236,12 +262,18 @@ def run_rfx(dx, num_periods, n_freqs):
     sim.add(Box((PATCH_X1, OUT_FEED_YC - W_FEED / 2, tz0),
                 (LX, OUT_FEED_YC + W_FEED / 2, tz1)), material="pec")
 
+    # n_probe_offset=40: the default (20 cells) leaves the probes inside the
+    # feed near-field; measured on this geometry it inflates the 16-20 GHz
+    # column power 1.81 -> 8.75 and drags the argmin null onto a spurious dip
+    # (7.22 GHz instead of the ~7.9 GHz doublet member). See PR #468.
     sim.add_msl_port(position=(PORT_MARGIN, IN_FEED_YC, 0.0),
                      width=W_FEED, height=H_SUB, direction="+x",
-                     impedance=50.0, eps_r_sub=EPS_R, name="p1")
+                     impedance=50.0, eps_r_sub=EPS_R, name="p1",
+                     n_probe_offset=40)
     sim.add_msl_port(position=(LX - PORT_MARGIN, OUT_FEED_YC, 0.0),
                      width=W_FEED, height=H_SUB, direction="-x",
-                     impedance=50.0, eps_r_sub=EPS_R, name="p2")
+                     impedance=50.0, eps_r_sub=EPS_R, name="p2",
+                     n_probe_offset=40)
 
     print("\n--- rfx preflight (verbatim) ---")
     buf = io.StringIO()
@@ -269,13 +301,26 @@ def run_rfx(dx, num_periods, n_freqs):
     esum = np.abs(s11) ** 2 + np.abs(s21) ** 2
     out = dict(
         solver="rfx", dx_um=dx * 1e6, n_sub_cells=n_sub,
-        num_periods=num_periods, runtime_s=dt,
+        num_periods=num_periods, n_probe_offset=40, runtime_s=dt,
         freqs_hz=f.tolist(),
         s11_mag=np.abs(s11).tolist(), s21_mag=np.abs(s21).tolist(),
         re_z0=np.real(z0).tolist(),
         energy_sum=esum.tolist(),
         preflight=preflight_txt,
     )
+    # Evidence chain (witness + passivity enforcement, PR #468). Absent on a
+    # pre-#468 rfx: the gates then fail closed via D0 rather than reading a
+    # leg that cannot prove it settled.
+    sett = getattr(res, "settling_db", None)
+    corr = getattr(res, "passivity_correction", None)
+    if sett is not None:
+        out["settling_db"] = np.asarray(sett).tolist()
+    if corr is not None:
+        out["passivity_correction"] = np.asarray(corr).tolist()
+    if sett is None or corr is None:
+        print("!! WARNING: this rfx lacks the settling witness / passivity "
+              "enforcement (PR #468); the committed evidence gates will fail "
+              "closed on this leg.")
     with open(os.path.join(RES_DIR, "rfx.json"), "w") as fp:
         json.dump(out, fp, indent=2)
     _quick_report("rfx", f, np.abs(s21), np.abs(s11), np.real(z0), esum)
@@ -573,11 +618,22 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
           f"= {dnull_pct:.1f} %")
     print(f"REPORTED (not gated) rfx-vs-openEMS passband |S21| mean abs diff "
           f"= {dpass:.3f}")
-    print("  ^ NOT an accuracy gate: the Palace referee (tests/fixtures/"
-          "sheen_lpf_e4/)")
-    print("    showed the stopband is a DOUBLE zero and the argmin picks a "
-          "different")
-    print("    doublet member per solver. sides_with = openems.")
+    print("  ^ NOT an accuracy gate. History of this number: the original "
+          "num_periods=20,")
+    print("    default-offset leg read 9.6% (7.218 vs 7.983 GHz); the Palace "
+          "referee showed")
+    print("    the stopband is a DOUBLE zero (~7.0 and ~8.0 GHz) and called "
+          "the distance a")
+    print("    comparator artifact. The 2026-07-26 regenerated leg "
+          "(num_periods=60, witness")
+    print("    -70 dB; n_probe_offset=40, probe decontamination measured "
+          "8.75->1.81) lands")
+    print("    the rfx argmin at 7.874 GHz — the ~8 GHz doublet member, "
+          "1.4% from openEMS —")
+    print("    confirming the artifact was PROBE NEAR-FIELD CONTAMINATION "
+          "plus record")
+    print("    truncation, not solver physics. sides_with = openems remains "
+          "on record.")
     if paper_null_ghz:
         print(f"rfx-vs-paper  null-freq distance = "
               f"{abs(fnull_r/1e9 - paper_null_ghz)/paper_null_ghz*100:.1f} %")
@@ -608,10 +664,10 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
     except Exception as e:
         print(f"(plot skipped: {e})")
 
-    return _gates(R, O, fr, fnull_r, fnull_o, pm_o, do, null_lo, null_hi)
+    return _gates(R, O, fr, fnull_r, fnull_o, pm_o, do, null_lo, null_hi, pm_r)
 
 
-def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi):
+def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi, pm_r):
     """The four configured gates. Returns True iff every one passed.
 
     Diagnostic-reporter gates: comparator sanity, comparison shape, the
@@ -658,52 +714,79 @@ def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi):
         d = abs(got - want) / want * 100.0
         gate(f"C1 {tag} argmin null reproduces committed value", d <= tol,
              f"{got:.4f} vs committed {want:.4f} GHz ({d:.2f}% <= {tol}%)")
+    d_pm = abs(pm_r - COMMITTED["rfx_passband_mean_s21"]) / \
+        COMMITTED["rfx_passband_mean_s21"] * 100.0
+    gate("C3 rfx passband mean |S21| reproduces committed value",
+         d_pm <= 1.0,
+         f"{pm_r:.4f} vs committed {COMMITTED['rfx_passband_mean_s21']:.4f} "
+         f"({d_pm:.2f}% <= 1%)")
     sides = _referee_sides_with()
     gate("C2 Palace referee verdict on record",
          sides == COMMITTED["referee_sides_with"],
          f"sides_with = {sides!r} (expected "
          f"{COMMITTED['referee_sides_with']!r})")
 
-    # --- Gate D: rfx non-passivity FOOTPRINT lock ----------------------
-    # NOT a passivity pass. The committed rfx MSL extraction is non-physical;
-    # this locks the defect so a silent change turns the case red.
+    # --- Gate D: rfx evidence-chain lock (witness / bound / corrections) ---
+    # The regenerated leg is passivity-ENFORCED (PR #468): S is projected onto
+    # the passive set per frequency and the raw excess is recorded per bin in
+    # passivity_correction. These gates lock that evidence chain so a leg
+    # produced without it (or a silent pipeline change) turns the case red.
     cp_r = _column_power(R)
-    bad = np.where(cp_r > PASSIVITY_COLUMN_POWER_MAX)[0]
-    worst = int(np.argmax(cp_r))
-    print(f"\n  !! rfx leg is NOT PASSIVE — {len(bad)}/{len(cp_r)} bins exceed "
-          f"column power {PASSIVITY_COLUMN_POWER_MAX}.")
-    print(f"  !! worst bin {fr[worst]/1e9:.3f} GHz: |S11|={R['s11_mag'][worst]:.3f}, "
-          f"|S21|={R['s21_mag'][worst]:.3f}, column power={cp_r[worst]:.2f}")
-    print(f"  !! min Re(Z0) = {min(R['re_z0']):.1f} ohm. This is an EXTRACTION "
-          "defect, not physics:")
-    print("  !! NO |S| magnitude from the rfx leg of this study is quotable.")
-    n_band = int((cp_r[(fr >= null_lo) & (fr <= null_hi)]
-                  > PASSIVITY_COLUMN_POWER_MAX).sum())
-    print(f"  !! {n_band} of those bins fall INSIDE the "
-          f"{null_lo/1e9:.0f}-{null_hi/1e9:.0f} GHz band this study reads its "
-          "result from.")
-    gate("D1 non-passive bin count matches committed footprint",
-         len(bad) == COMMITTED["rfx_bad_bins"],
-         f"{len(bad)} == {COMMITTED['rfx_bad_bins']}")
-    gate("D1b in-band non-passive bin count matches committed footprint",
-         n_band == COMMITTED["rfx_bad_bins_in_null_band"],
-         f"{n_band} == {COMMITTED['rfx_bad_bins_in_null_band']}")
-    d_worst = abs(fr[worst] / 1e9 - COMMITTED["rfx_worst_bad_ghz"])
-    gate("D2 worst non-passive bin at the committed frequency",
-         d_worst <= 0.05,
-         f"{fr[worst]/1e9:.3f} GHz vs committed "
-         f"{COMMITTED['rfx_worst_bad_ghz']:.3f} GHz")
-    d_cp = abs(cp_r[worst] - COMMITTED["rfx_worst_column_power"]) / \
-        COMMITTED["rfx_worst_column_power"] * 100.0
-    gate("D3 worst column power matches committed value", d_cp <= 5.0,
-         f"{cp_r[worst]:.2f} vs committed "
-         f"{COMMITTED['rfx_worst_column_power']:.2f} ({d_cp:.2f}% <= 5%)")
+    sett = R.get("settling_db")
+    corr = R.get("passivity_correction")
+    if sett is None or corr is None:
+        gate("D0 evidence fields present (settling_db, passivity_correction)",
+             False,
+             "leg lacks the witness/enforcement fields — regenerate with the "
+             "PR #468 pipeline (num_periods=60, n_probe_offset=40)")
+    else:
+        corr = np.asarray(corr)
+        gate("D1 strict passive bound on the quoted S",
+             cp_r.max() <= 1.0,
+             f"max column power {cp_r.max():.4f} <= 1.0")
+        d_cp = abs(cp_r.max() - COMMITTED["rfx_max_column_power"])
+        gate("D6 max column power reproduces committed value",
+             d_cp <= 1e-3,
+             f"{cp_r.max():.4f} vs committed "
+             f"{COMMITTED['rfx_max_column_power']:.4f}")
+        gate("D2 settling witness reproduces committed (< -40 dB rule)",
+             all(x < -40.0 for x in sett)
+             and all(abs(x - w) <= 10.0
+                     for x, w in zip(sett, COMMITTED["rfx_settling_db"])),
+             f"{[round(x, 1) for x in sett]} dB vs committed "
+             f"{list(COMMITTED['rfx_settling_db'])} (rule < -40, tol 10 dB)")
+        n005 = int((corr > 0.05).sum())
+        gate("D3 correction footprint matches committed",
+             n005 == COMMITTED["rfx_corr_bins_over_005"],
+             f"bins with correction > 0.05: {n005} == "
+             f"{COMMITTED['rfx_corr_bins_over_005']}")
+        kw = int(np.argmax(corr))
+        d_f = abs(fr[kw] / 1e9 - COMMITTED["rfx_worst_corr_ghz"])
+        d_c = abs(float(corr[kw]) - COMMITTED["rfx_worst_corr"]) / \
+            COMMITTED["rfx_worst_corr"] * 100.0
+        gate("D4 worst correction matches committed",
+             d_f <= 0.05 and d_c <= 5.0,
+             f"{float(corr[kw]):.4f} @ {fr[kw]/1e9:.3f} GHz vs committed "
+             f"{COMMITTED['rfx_worst_corr']:.4f} @ "
+             f"{COMMITTED['rfx_worst_corr_ghz']:.3f} GHz")
+        n_band = int((corr[(fr >= null_lo) & (fr <= null_hi)] > 0.05).sum())
+        gate("D5 in-band correction footprint matches committed",
+             n_band == COMMITTED["rfx_corr_bins_in_null_band"],
+             f"{n_band} == {COMMITTED['rfx_corr_bins_in_null_band']}")
+        print(f"\n  Quotability scope: quoted |S| is passivity-enforced "
+              f"(strict <= 1); {n005}/{len(corr)} bins carry a raw-excess "
+              f"correction > 0.05 (max {float(corr.max()):.3f} at "
+              f"{fr[int(np.argmax(corr))]/1e9:.2f} GHz) and remain "
+              f"artifact-class for MAGNITUDE claims at this dx=200um mesh. "
+              f"The argmin null POSITION and the passband/stopband STRUCTURE "
+              f"are the readable outputs.")
 
     print("\n" + ("ALL GATES PASSED — committed characterization reproduced."
                   if ok else "SOME CHECKS FAILED"))
     print("Scope: stopband STRUCTURE characterization only. This case makes NO "
-          "rfx accuracy claim\nand its rfx |S| magnitudes are non-physical "
-          "above ~16 GHz (see gate D).")
+          "rfx accuracy claim.\nQuoted |S| is passivity-enforced (strict <= 1); "
+          "bins with passivity_correction > 0.05\n(81/120, worst 0.398 @ 18.2 GHz) "
+          "remain artifact-class for magnitude claims at dx=200um.")
     return ok
 
 
@@ -727,7 +810,7 @@ def main():
     ap.add_argument("mode", nargs="?", default="compare",
                     choices=["tutorial", "openems", "rfx", "compare"])
     ap.add_argument("--dx-um", type=float, default=200.0)
-    ap.add_argument("--num-periods", type=float, default=20.0)
+    ap.add_argument("--num-periods", type=float, default=60.0)
     ap.add_argument("--n-freqs", type=int, default=120)
     ap.add_argument("--fmax-ghz", type=float, default=F_MAX / 1e9)
     ap.add_argument("--null-lo-ghz", type=float, default=5.0)
