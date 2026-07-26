@@ -1,4 +1,5 @@
-"""Cross-solver validation 05: line/probe-fed rectangular microstrip patch antenna.
+"""Cross-solver validation 15: probe-fed rectangular microstrip patch antenna
+on RT/Duroid 5880 (thick low-eps laminate, uniform mesh).
 
 rfx vs openEMS (local /usr/bin/openEMS), CPU-only. Validates the RESONANT
 frequency (S11 dip) against openEMS and an in-script analytic anchor, and
@@ -73,11 +74,29 @@ HONEST SCOPE (PI penalises overclaiming)
   - dB is always recomputed from raw |S|. Deltas are rfx-centric. |S11|>1 is
     flagged as an extraction/passivity artifact, not physics.
 
+RELATIONSHIP TO CASE 05 (patch ACCURACY is NOT claimed here)
+------------------------------------------------------------
+`validation/crossval/05_patch_antenna.py` remains the registered patch case and
+authoritative patch-accuracy evidence stays DELEGATED to the committed tests it
+names (`tests/test_patch_canonical_farfield_e4.py` and friends). This case 15 is
+a SEPARATE, differently-meshed integration study on a different laminate: it
+does not supersede id 05, does not reopen the #325/#378 demotion decision, and
+adds no patch-accuracy claim of its own.
+
+Exit contract (crossval registry, validation/crossval/manifest.json)
+-------------------------------------------------------------------
+    0 -> every configured gate passed (f0 envelope, settling, passivity,
+         broadside-D envelope)
+    1 -> a gate failed, or the rfx result leg is missing (execution gap)
+    2 -> the openEMS reference is unavailable (missing result file, or
+         CSXCAD/openEMS not importable for a solver mode): inconclusive
+
 Usage:
-    python 05_patch_antenna.py tutorial   # comparator-first: openEMS Simple_Patch
-    python 05_patch_antenna.py openems    # chosen patch in openEMS -> _patch_results/openems.json
-    python 05_patch_antenna.py rfx        # chosen patch in rfx     -> _patch_results/rfx.json
-    python 05_patch_antenna.py compare    # load both, print comparison + gates
+    python validation/crossval/15_patch_antenna_rt5880.py            # default: compare (gates)
+    python validation/crossval/15_patch_antenna_rt5880.py tutorial   # comparator-first: openEMS Simple_Patch
+    python validation/crossval/15_patch_antenna_rt5880.py openems    # chosen patch in openEMS -> _15_patch_results/openems.json
+    python validation/crossval/15_patch_antenna_rt5880.py rfx        # chosen patch in rfx     -> _15_patch_results/rfx.json
+    python validation/crossval/15_patch_antenna_rt5880.py compare    # load both, gate the comparison
 """
 import os
 import sys
@@ -85,12 +104,16 @@ import json
 import math
 import time
 import argparse
+from pathlib import Path
 
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = "/root/workspace/bk-workspace/rfx-oblique-rcs"
-RES_DIR = os.path.join(SCRIPT_DIR, "_patch_results")
+# Resolve `import rfx` from THIS checkout: a bare run would otherwise pick up
+# whatever rfx is installed or first on sys.path, which in a multi-worktree
+# setup is a DIFFERENT copy of the solver than the one under test.
+REPO_ROOT = str(Path(__file__).resolve().parents[2])
+RES_DIR = os.path.join(SCRIPT_DIR, "_15_patch_results")
 os.makedirs(RES_DIR, exist_ok=True)
 C0 = 2.99792458e8
 EPS0 = 8.8541878128e-12
@@ -342,7 +365,28 @@ def _rfx_gain(res):
 # ===========================================================================
 # openEMS side
 # ===========================================================================
+def _require_openems():
+    """Exit 2 (visible SKIP) if the openEMS reference solver is unavailable.
+
+    CSXCAD + openEMS are NOT rfx dependencies, so a machine without them cannot
+    produce the reference. That is an inconclusive crossval, never a pass.
+    """
+    try:
+        import CSXCAD  # noqa: F401
+        import openEMS  # noqa: F401
+    except ImportError as exc:
+        print("\n" + "!" * 72)
+        print("!! CROSSVAL 15 SKIPPED — CSXCAD / openEMS not installed")
+        print(f"!!   reason: {exc}")
+        print("!!   the openEMS reference cannot be produced, so this run is NOT")
+        print("!!   a crossval. Exiting 2 (inconclusive) so CI does not read it")
+        print("!!   as PASS.")
+        print("!" * 72)
+        raise SystemExit(2)
+
+
 def _oems_numpy_shim():
+    _require_openems()
     for _n in ("float", "int", "complex"):
         if not hasattr(np, _n):
             setattr(np, _n, {"float": float, "int": int, "complex": complex}[_n])
@@ -537,11 +581,36 @@ def run_openems(n_freqs, do_gain):
 # ===========================================================================
 # compare
 # ===========================================================================
-def compare(f0_env_pct):
-    with open(os.path.join(RES_DIR, "rfx.json")) as fp:
+def _load_legs():
+    """Load the two committed result legs, or exit with the right status.
+
+    Missing openEMS reference -> 2 (inconclusive, the reference is required for
+    a PASS). Missing rfx leg   -> 1 (the rfx side never ran: execution gap).
+    """
+    rfx_path = os.path.join(RES_DIR, "rfx.json")
+    oems_path = os.path.join(RES_DIR, "openems.json")
+    if not os.path.isfile(rfx_path):
+        print(f"!! CROSSVAL 15 FAILED — rfx result leg missing: {rfx_path}")
+        print(f"!!   run `python {os.path.basename(__file__)} rfx` first. "
+              "Exiting 1 (execution gap).")
+        raise SystemExit(1)
+    if not os.path.isfile(oems_path):
+        print("!" * 72)
+        print("!! CROSSVAL 15 SKIPPED — openEMS reference leg missing: "
+              f"{oems_path}")
+        print("!!   the reference is required for a PASS. Exiting 2 "
+              "(inconclusive).")
+        print("!" * 72)
+        raise SystemExit(2)
+    with open(rfx_path) as fp:
         R = json.load(fp)
-    with open(os.path.join(RES_DIR, "openems.json")) as fp:
+    with open(oems_path) as fp:
         O = json.load(fp)
+    return R, O
+
+
+def compare(f0_env_pct):
+    R, O = _load_legs()
     fr_an = R["f_analytic_hz"]
     # rfx PRIMARY f0 = ring-down Harminv (clean); openEMS f0 = its deep S11 dip.
     f_rfx = R.get("f_primary_hz") or R["f_dip_hz"]
@@ -593,18 +662,37 @@ def compare(f0_env_pct):
     print(f"openEMS-vs-analytic f0 distance   = {d_oe_an:.2f} %  "
           f"(openEMS {'LOW' if f_oe < fr_an else 'HIGH'})")
 
-    print(f"\nGATES (coarse-mesh envelope: f0 rfx-vs-openEMS <= {f0_env_pct:.0f}%):")
-    print(f"  f0 agreement (rfx ring-down vs openEMS): "
-          f"{'PASS' if d_rfx_oe <= f0_env_pct else 'FAIL'}  ({d_rfx_oe:.2f}%)")
-    print(f"  settling witness   : {'PASS' if R['settled'] else 'FAIL (f0 suspect)'}"
-          f"  ({R['settle_db']:.1f} dB, -40 dB bar)")
-    print(f"  passivity (|S11|<=1): {'PASS' if R['max_abs_s11'] <= 1.05 else 'FLAG'}"
-          f"  (max={R['max_abs_s11']:.3f})")
+    # --------------------------- GATES (fail-closed) ---------------------------
+    all_ok = True
+
+    def gate(name, passed, detail):
+        nonlocal all_ok
+        all_ok = all_ok and bool(passed)
+        print(f"  [{'PASS' if passed else 'FAIL'}] {name}: {detail}")
+
+    print(f"\nGATES (coarse-mesh integration envelope: f0 rfx-vs-openEMS "
+          f"<= {f0_env_pct:.0f}%)")
+    print("  NOTE: this is a same-geometry INTEGRATION envelope, not a patch")
+    print("  accuracy claim — accuracy stays delegated to case 05's committed")
+    print("  tests (see the module banner).")
+    gate("f0 agreement (rfx ring-down vs openEMS)", d_rfx_oe <= f0_env_pct,
+         f"{d_rfx_oe:.2f}% <= {f0_env_pct:.0f}%")
+    gate("settling witness (open CPML, -40 dB bar)", bool(R["settled"]),
+         f"{R['settle_db']:.1f} dB")
+    # Passivity is GATED on both legs: |S11| > ~1.05 on a passive radiator is an
+    # extraction defect, never physics (tests/test_sparam_passivity_guard.py).
+    gate("rfx passivity (max|S11| <= 1.05)", R["max_abs_s11"] <= 1.05,
+         f"max|S11| = {R['max_abs_s11']:.3f}")
+    gate("openEMS passivity (max|S11| <= 1.05)", O["max_abs_s11"] <= 1.05,
+         f"max|S11| = {O['max_abs_s11']:.3f}")
     if R.get("gain_dbi") is not None and O.get("gain_dbi") is not None:
         dg = abs(R["gain_dbi"] - O["gain_dbi"])
-        print(f"  broadside D envelope (<=3 dB, rfx near-field box): "
-              f"{'PASS' if dg <= 3.0 else 'FLAG'}  "
-              f"(rfx {R['gain_dbi']:.2f} vs oems {O['gain_dbi']:.2f} dBi, dD={dg:.2f})")
+        gate("broadside D envelope (<= 3 dB, rfx near-field box)", dg <= 3.0,
+             f"rfx {R['gain_dbi']:.2f} vs oems {O['gain_dbi']:.2f} dBi, "
+             f"dD = {dg:.2f} dB")
+    else:
+        print("  [skip] broadside D envelope: one or both legs have no NTFF "
+              "directivity (run with --gain)")
 
     # overlay figure
     try:
@@ -633,24 +721,39 @@ def compare(f0_env_pct):
     except Exception as e:
         print(f"(plot skipped: {e})")
 
+    print("\n" + ("ALL GATES PASSED" if all_ok else "SOME CHECKS FAILED"))
+    print("Scope: same-geometry rfx-vs-openEMS integration study on RT/Duroid "
+          "5880.\nPatch ACCURACY remains delegated to case 05's committed tests.")
+    return all_ok
+
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["tutorial", "openems", "rfx", "compare"])
+    ap = argparse.ArgumentParser(
+        description="Probe-fed RT/Duroid 5880 patch, rfx vs openEMS "
+                    "(diagnostic-reporter).")
+    # `compare` is the default so a bare `python 15_patch_antenna_rt5880.py`
+    # (how the crossval runner invokes every case) gates the committed
+    # comparison instead of dying in argparse.
+    ap.add_argument("mode", nargs="?", default="compare",
+                    choices=["tutorial", "openems", "rfx", "compare"])
     ap.add_argument("--num-periods", type=float, default=70.0)
     ap.add_argument("--n-freqs", type=int, default=181)
     ap.add_argument("--gain", action="store_true", help="compute NTFF broadside directivity")
     ap.add_argument("--f0-env-pct", type=float, default=8.0)
     a = ap.parse_args()
+    # Solver-producing modes write a result leg and are not themselves gated;
+    # only `compare` evaluates the configured gates and can return 1.
     if a.mode == "tutorial":
         run_openems_tutorial()
-    elif a.mode == "openems":
+        return 0
+    if a.mode == "openems":
         run_openems(a.n_freqs, a.gain)
-    elif a.mode == "rfx":
+        return 0
+    if a.mode == "rfx":
         run_rfx(a.num_periods, a.n_freqs, a.gain)
-    elif a.mode == "compare":
-        compare(a.f0_env_pct)
+        return 0
+    return 0 if compare(a.f0_env_pct) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

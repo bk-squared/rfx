@@ -45,23 +45,100 @@ have clean line downstream of the reference plane; this adds only linear phase,
 not |S21| structure (openEMS's own MSL tutorial uses 50 mm feeds for the same
 reason).
 
+WHAT THE GATES ACTUALLY LOCK (diagnostic-reporter, NOT an accuracy claim)
+------------------------------------------------------------------------
+Because the Palace referee overturned the single-null accuracy framing, the
+default ``compare`` mode does NOT gate rfx-vs-openEMS agreement. It gates:
+
+  A. comparator sanity   -- the openEMS REFERENCE is itself sound (passive
+     within the documented |S| <= 1.05 / column-power <= 1.10 envelope,
+     median Re(Z0) near 50 ohm, a real passband and a deep stopband zero).
+     Comparator-first: an unsound reference makes everything downstream
+     unreadable.
+  B. comparison shape    -- both result sets are present and cover the
+     characterized band with the committed bin counts.
+  C. characterization lock -- the committed argmin "first null" numbers and
+     the Palace referee's recorded verdict (sides_with = openems) reproduce.
+     This locks WHAT WAS CHARACTERIZED so a silent change goes red.
+  D. rfx non-passivity FOOTPRINT lock -- see below.
+
+KNOWN DEFECT IN THE COMMITTED rfx ARTIFACT (gate D, quoted not hidden)
+---------------------------------------------------------------------
+The committed rfx run is NOT passive. Its MSL de-embedding blows up toward the
+top of the swept band: worst bin 17.05 GHz with |S11| = 15.3, |S21| = 39.5,
+column power |S11|^2+|S21|^2 = 1794.5, and Re(Z0) even goes negative (-1.1
+ohm). 58 of 120 bins (4.43-20.0 GHz) exceed the documented passivity envelope
+(column power <= 1.10, tests/test_sparam_passivity_guard.py) -- including 29
+bins with excursions up to 1.56 INSIDE the 5-15 GHz doublet-search band that
+the study reads its result from. The 0.5-3 GHz passband is the only clean
+region (max column power 1.08, within envelope).
+
+Per the repo passivity rule this is an EXTRACTION defect, not physics, and it
+is NOT gated as a pass. Gate D instead locks the defect's footprint (violating
+bin count, worst bin location, worst column power) as a regression lock, so
+the case goes red if the defect changes. Consequence for the reader: NO |S|
+magnitude from the rfx leg of this study is quotable as physics. The study is
+registered for its stopband-STRUCTURE characterization only.
+
+Exit contract (crossval registry, validation/crossval/manifest.json)
+-------------------------------------------------------------------
+    0 -> every configured gate above passed
+    1 -> a gate failed, or the rfx result leg is missing (execution gap)
+    2 -> the openEMS reference is unavailable (missing result file, or
+         CSXCAD/openEMS not importable for a solver mode): inconclusive
+
 Usage:
-    python 07_sheen_lpf.py tutorial   # comparator-first: openEMS canonical MSL tutorial
-    python 07_sheen_lpf.py openems    # Sheen filter in openEMS  -> results/openems.json
-    python 07_sheen_lpf.py rfx        # Sheen filter in rfx      -> results/rfx.json
-    python 07_sheen_lpf.py compare    # load both, print comparison table
+    python validation/crossval/07_sheen_lpf.py            # default: compare (gates)
+    python validation/crossval/07_sheen_lpf.py tutorial   # comparator-first: openEMS canonical MSL tutorial
+    python validation/crossval/07_sheen_lpf.py openems    # Sheen filter in openEMS -> _07_sheen_results/openems.json
+    python validation/crossval/07_sheen_lpf.py rfx        # Sheen filter in rfx     -> _07_sheen_results/rfx.json
+    python validation/crossval/07_sheen_lpf.py compare    # load both, gate the committed characterization
 """
 import os
 import sys
 import json
 import argparse
+from pathlib import Path
 
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RES_DIR = os.path.join(SCRIPT_DIR, "_sheen_results")
+RES_DIR = os.path.join(SCRIPT_DIR, "_07_sheen_results")
 os.makedirs(RES_DIR, exist_ok=True)
+# Palace-FEM referee fixture (three-solver verdict; see the banner above).
+REFEREE_JSON = os.path.join(
+    SCRIPT_DIR, "..", "..", "tests", "fixtures", "sheen_lpf_e4",
+    "sheen_lpf_palace_referee.json",
+)
 C0 = 2.99792458e8
+
+# --- resolve `import rfx` from THIS checkout (a bare run would otherwise pick
+# --- up whatever rfx is installed or first on sys.path, which in a multi-
+# --- worktree setup is a DIFFERENT copy of the solver than the one under test).
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Documented single-run passivity envelope (tests/test_sparam_passivity_guard.py):
+# |S| <= ~1.05  <=>  column power |S11|^2 + |S21|^2 <= 1.10.
+PASSIVITY_COLUMN_POWER_MAX = 1.10
+
+# ---------------------------------------------------------------------------
+# COMMITTED CHARACTERIZATION (gates C and D lock these; see the banner above).
+# Values re-derived from the committed _07_sheen_results/*.json artifacts.
+# ---------------------------------------------------------------------------
+COMMITTED = dict(
+    rfx_null_ghz=7.2185,        # argmin |S21| over 5-15 GHz
+    oems_null_ghz=7.9831,
+    null_tol_pct=1.0,           # regression tolerance on the locked numbers
+    rfx_nbins=120,
+    oems_nbins=801,
+    rfx_bad_bins=58,            # bins exceeding PASSIVITY_COLUMN_POWER_MAX
+    rfx_worst_bad_ghz=17.050,
+    rfx_worst_column_power=1794.55,
+    rfx_bad_bins_in_null_band=29,   # of those, inside the 5-15 GHz search band
+    referee_sides_with="openems",
+)
 
 # ---------------------------------------------------------------------------
 # SHEEN geometry (metres). Native Sheen frame: x_S (transverse, patch length),
@@ -129,7 +206,6 @@ def _geom_banner():
 # rfx side
 # ===========================================================================
 def run_rfx(dx, num_periods, n_freqs):
-    sys.path.insert(0, "/root/workspace/bk-workspace/rfx-oblique-rcs")
     from rfx import Simulation, Box
     from rfx.boundaries.spec import Boundary, BoundarySpec
     import io
@@ -209,7 +285,28 @@ def run_rfx(dx, num_periods, n_freqs):
 # ===========================================================================
 # openEMS side
 # ===========================================================================
+def _require_openems():
+    """Exit 2 (visible SKIP) if the openEMS reference solver is unavailable.
+
+    CSXCAD + openEMS are NOT rfx dependencies, so a machine without them cannot
+    produce the reference. That is an inconclusive crossval, never a pass.
+    """
+    try:
+        import CSXCAD  # noqa: F401
+        import openEMS  # noqa: F401
+    except ImportError as exc:
+        print("\n" + "!" * 72)
+        print("!! CROSSVAL 07 SKIPPED — CSXCAD / openEMS not installed")
+        print(f"!!   reason: {exc}")
+        print("!!   the openEMS reference cannot be produced, so this run is NOT")
+        print("!!   a crossval. Exiting 2 (inconclusive) so CI does not read it")
+        print("!!   as PASS.")
+        print("!" * 72)
+        raise SystemExit(2)
+
+
 def _openems_common_setup(f_max):
+    _require_openems()
     import numpy as _np
     _np.int = int      # numpy 2.x shim: openEMS ports.py uses removed aliases
     _np.float = float
@@ -391,11 +488,42 @@ def _passband_mean(f, s21, lo, hi):
     return float(np.mean(s21[m])), float(np.mean(20 * np.log10(s21[m] + 1e-30)))
 
 
-def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
-    with open(os.path.join(RES_DIR, "rfx.json")) as fp:
+def _load_legs():
+    """Load the two committed result legs, or exit with the right status.
+
+    Missing openEMS reference -> 2 (inconclusive, the reference is required for
+    a PASS). Missing rfx leg   -> 1 (the rfx side never ran: execution gap).
+    """
+    rfx_path = os.path.join(RES_DIR, "rfx.json")
+    oems_path = os.path.join(RES_DIR, "openems.json")
+    if not os.path.isfile(rfx_path):
+        print("!! CROSSVAL 07 FAILED — rfx result leg missing: "
+              f"{rfx_path}\n!!   run `python {os.path.basename(__file__)} rfx` "
+              "first. Exiting 1 (execution gap).")
+        raise SystemExit(1)
+    if not os.path.isfile(oems_path):
+        print("!" * 72)
+        print("!! CROSSVAL 07 SKIPPED — openEMS reference leg missing: "
+              f"{oems_path}")
+        print("!!   the reference is required for a PASS. Exiting 2 "
+              "(inconclusive).")
+        print("!" * 72)
+        raise SystemExit(2)
+    with open(rfx_path) as fp:
         R = json.load(fp)
-    with open(os.path.join(RES_DIR, "openems.json")) as fp:
+    with open(oems_path) as fp:
         O = json.load(fp)
+    return R, O
+
+
+def _column_power(d):
+    """|S11|^2 + |S21|^2 per bin, recomputed from raw magnitudes (never trusted
+    from a producer-side 'energy_sum' field)."""
+    return np.array(d["s11_mag"]) ** 2 + np.array(d["s21_mag"]) ** 2
+
+
+def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
+    R, O = _load_legs()
     fr, s21r = np.array(R["freqs_hz"]), np.array(R["s21_mag"])
     fo, s21o = np.array(O["freqs_hz"]), np.array(O["s21_mag"])
     s11r, s11o = np.array(R["s11_mag"]), np.array(O["s11_mag"])
@@ -432,22 +560,29 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
     print(f"{'passband mean |S21| [dB]':<34}{pmdb_r:>12.2f}{pmdb_o:>12.2f}{'':>10}")
     print("-" * 68)
 
-    # gates (rfx-centric method distance)
+    # ------------------------------------------------------------------
+    # REPORTED, NOT GATED: the rfx-vs-openEMS "method distance".
+    # The Palace referee showed the argmin picks different members of a
+    # transmission-zero DOUBLET per solver, so this number is largely a
+    # comparator artifact. It is printed for continuity with the original
+    # study and deliberately carries NO gate.
+    # ------------------------------------------------------------------
     dnull_pct = abs(fnull_r - fnull_o) / fnull_o * 100.0
     dpass = abs(pm_r - pm_o)
-    print(f"\nrfx-vs-openEMS null-freq method distance = {dnull_pct:.1f} %")
-    print(f"rfx-vs-openEMS passband |S21| mean abs diff = {dpass:.3f}")
+    print(f"\nREPORTED (not gated) rfx-vs-openEMS null-freq method distance "
+          f"= {dnull_pct:.1f} %")
+    print(f"REPORTED (not gated) rfx-vs-openEMS passband |S21| mean abs diff "
+          f"= {dpass:.3f}")
+    print("  ^ NOT an accuracy gate: the Palace referee (tests/fixtures/"
+          "sheen_lpf_e4/)")
+    print("    showed the stopband is a DOUBLE zero and the argmin picks a "
+          "different")
+    print("    doublet member per solver. sides_with = openems.")
     if paper_null_ghz:
         print(f"rfx-vs-paper  null-freq distance = "
               f"{abs(fnull_r/1e9 - paper_null_ghz)/paper_null_ghz*100:.1f} %")
         print(f"oems-vs-paper null-freq distance = "
               f"{abs(fnull_o/1e9 - paper_null_ghz)/paper_null_ghz*100:.1f} %")
-    NULL_ENV, PASS_ENV = 10.0, 0.15   # stated envelopes (see docstring/report)
-    print(f"\nGATES (envelope: null <= {NULL_ENV:.0f}%, passband |S21| diff <= {PASS_ENV}):")
-    print(f"  null-freq agreement : {'PASS' if dnull_pct <= NULL_ENV else 'FAIL'}"
-          f"  ({dnull_pct:.1f}%)")
-    print(f"  passband agreement  : {'PASS' if dpass <= PASS_ENV else 'FAIL'}"
-          f"  ({dpass:.3f})")
 
     # overlay figure (dB recomputed from raw |S| here, not from any producer dB)
     try:
@@ -473,10 +608,124 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
     except Exception as e:
         print(f"(plot skipped: {e})")
 
+    return _gates(R, O, fr, fnull_r, fnull_o, pm_o, do, null_lo, null_hi)
+
+
+def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi):
+    """The four configured gates. Returns True iff every one passed.
+
+    Diagnostic-reporter gates: comparator sanity, comparison shape, the
+    committed characterization, and the rfx non-passivity FOOTPRINT. None of
+    them asserts rfx-vs-openEMS accuracy (see the module banner).
+    """
+    print("\n" + "=" * 72)
+    print("GATES (diagnostic-reporter — characterization locks, NOT accuracy)")
+    print("=" * 72)
+    ok = True
+
+    def gate(name, passed, detail):
+        nonlocal ok
+        ok = ok and bool(passed)
+        print(f"  [{'PASS' if passed else 'FAIL'}] {name}: {detail}")
+
+    # --- Gate A: comparator sanity (comparator-first) ------------------
+    cp_o = _column_power(O)
+    z0_o = float(np.median(O["re_z0"]))
+    pm_o_ok = pm_o >= 0.85
+    gate("A1 openEMS reference passive",
+         cp_o.max() <= PASSIVITY_COLUMN_POWER_MAX,
+         f"max column power {cp_o.max():.4f} <= {PASSIVITY_COLUMN_POWER_MAX}")
+    gate("A2 openEMS median Re(Z0) near 50 ohm",
+         40.0 < z0_o < 65.0, f"{z0_o:.2f} ohm in (40, 65)")
+    gate("A3 openEMS shows a passband", pm_o_ok,
+         f"passband mean |S21| {pm_o:.4f} >= 0.85")
+    gate("A4 openEMS shows a deep stopband zero", oems_null_db <= -20.0,
+         f"{oems_null_db:.2f} dB <= -20 dB")
+
+    # --- Gate B: comparison shape / presence ---------------------------
+    gate("B1 rfx bin count", len(R["freqs_hz"]) == COMMITTED["rfx_nbins"],
+         f"{len(R['freqs_hz'])} == {COMMITTED['rfx_nbins']}")
+    gate("B2 openEMS bin count", len(O["freqs_hz"]) == COMMITTED["oems_nbins"],
+         f"{len(O['freqs_hz'])} == {COMMITTED['oems_nbins']}")
+    in_band = ((fr >= null_lo) & (fr <= null_hi)).sum()
+    gate("B3 doublet-search band populated in both", in_band >= 10,
+         f"{in_band} rfx bins in {null_lo/1e9:.0f}-{null_hi/1e9:.0f} GHz")
+
+    # --- Gate C: committed characterization lock ----------------------
+    tol = COMMITTED["null_tol_pct"]
+    for tag, got, want in (("rfx", fnull_r / 1e9, COMMITTED["rfx_null_ghz"]),
+                           ("openEMS", fnull_o / 1e9, COMMITTED["oems_null_ghz"])):
+        d = abs(got - want) / want * 100.0
+        gate(f"C1 {tag} argmin null reproduces committed value", d <= tol,
+             f"{got:.4f} vs committed {want:.4f} GHz ({d:.2f}% <= {tol}%)")
+    sides = _referee_sides_with()
+    gate("C2 Palace referee verdict on record",
+         sides == COMMITTED["referee_sides_with"],
+         f"sides_with = {sides!r} (expected "
+         f"{COMMITTED['referee_sides_with']!r})")
+
+    # --- Gate D: rfx non-passivity FOOTPRINT lock ----------------------
+    # NOT a passivity pass. The committed rfx MSL extraction is non-physical;
+    # this locks the defect so a silent change turns the case red.
+    cp_r = _column_power(R)
+    bad = np.where(cp_r > PASSIVITY_COLUMN_POWER_MAX)[0]
+    worst = int(np.argmax(cp_r))
+    print(f"\n  !! rfx leg is NOT PASSIVE — {len(bad)}/{len(cp_r)} bins exceed "
+          f"column power {PASSIVITY_COLUMN_POWER_MAX}.")
+    print(f"  !! worst bin {fr[worst]/1e9:.3f} GHz: |S11|={R['s11_mag'][worst]:.3f}, "
+          f"|S21|={R['s21_mag'][worst]:.3f}, column power={cp_r[worst]:.2f}")
+    print(f"  !! min Re(Z0) = {min(R['re_z0']):.1f} ohm. This is an EXTRACTION "
+          "defect, not physics:")
+    print("  !! NO |S| magnitude from the rfx leg of this study is quotable.")
+    n_band = int((cp_r[(fr >= null_lo) & (fr <= null_hi)]
+                  > PASSIVITY_COLUMN_POWER_MAX).sum())
+    print(f"  !! {n_band} of those bins fall INSIDE the "
+          f"{null_lo/1e9:.0f}-{null_hi/1e9:.0f} GHz band this study reads its "
+          "result from.")
+    gate("D1 non-passive bin count matches committed footprint",
+         len(bad) == COMMITTED["rfx_bad_bins"],
+         f"{len(bad)} == {COMMITTED['rfx_bad_bins']}")
+    gate("D1b in-band non-passive bin count matches committed footprint",
+         n_band == COMMITTED["rfx_bad_bins_in_null_band"],
+         f"{n_band} == {COMMITTED['rfx_bad_bins_in_null_band']}")
+    d_worst = abs(fr[worst] / 1e9 - COMMITTED["rfx_worst_bad_ghz"])
+    gate("D2 worst non-passive bin at the committed frequency",
+         d_worst <= 0.05,
+         f"{fr[worst]/1e9:.3f} GHz vs committed "
+         f"{COMMITTED['rfx_worst_bad_ghz']:.3f} GHz")
+    d_cp = abs(cp_r[worst] - COMMITTED["rfx_worst_column_power"]) / \
+        COMMITTED["rfx_worst_column_power"] * 100.0
+    gate("D3 worst column power matches committed value", d_cp <= 5.0,
+         f"{cp_r[worst]:.2f} vs committed "
+         f"{COMMITTED['rfx_worst_column_power']:.2f} ({d_cp:.2f}% <= 5%)")
+
+    print("\n" + ("ALL GATES PASSED — committed characterization reproduced."
+                  if ok else "SOME CHECKS FAILED"))
+    print("Scope: stopband STRUCTURE characterization only. This case makes NO "
+          "rfx accuracy claim\nand its rfx |S| magnitudes are non-physical "
+          "above ~16 GHz (see gate D).")
+    return ok
+
+
+def _referee_sides_with():
+    """Read the Palace-FEM referee's recorded three-solver verdict."""
+    try:
+        with open(REFEREE_JSON) as fp:
+            return json.load(fp)["referee"]["sides_with"]
+    except (OSError, KeyError, ValueError) as exc:
+        print(f"  (referee fixture unreadable: {exc})")
+        return None
+
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["tutorial", "openems", "rfx", "compare"])
+    ap = argparse.ArgumentParser(
+        description="Sheen 1990 microstrip LPF cross-solver study "
+                    "(diagnostic-reporter).")
+    # `compare` is the default so a bare `python 07_sheen_lpf.py` (how the
+    # crossval runner invokes every case) gates the committed characterization
+    # instead of dying in argparse.
+    ap.add_argument("mode", nargs="?", default="compare",
+                    choices=["tutorial", "openems", "rfx", "compare"])
     ap.add_argument("--dx-um", type=float, default=200.0)
     ap.add_argument("--num-periods", type=float, default=20.0)
     ap.add_argument("--n-freqs", type=int, default=120)
@@ -487,17 +736,22 @@ def main():
     ap.add_argument("--pass-hi-ghz", type=float, default=3.0)
     ap.add_argument("--paper-null-ghz", type=float, default=0.0)
     a = ap.parse_args()
+    # Solver-producing modes write a result leg and are not themselves gated;
+    # only `compare` evaluates the configured gates and can return 1.
     if a.mode == "tutorial":
         run_openems_tutorial()
-    elif a.mode == "openems":
+        return 0
+    if a.mode == "openems":
         run_openems(a.fmax_ghz * 1e9)
-    elif a.mode == "rfx":
+        return 0
+    if a.mode == "rfx":
         run_rfx(a.dx_um * 1e-6, a.num_periods, a.n_freqs)
-    elif a.mode == "compare":
-        compare(a.null_lo_ghz * 1e9, a.null_hi_ghz * 1e9,
-                a.pass_lo_ghz * 1e9, a.pass_hi_ghz * 1e9,
-                a.paper_null_ghz or None)
+        return 0
+    all_ok = compare(a.null_lo_ghz * 1e9, a.null_hi_ghz * 1e9,
+                     a.pass_lo_ghz * 1e9, a.pass_hi_ghz * 1e9,
+                     a.paper_null_ghz or None)
+    return 0 if all_ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

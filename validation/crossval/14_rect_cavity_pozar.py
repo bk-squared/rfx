@@ -63,10 +63,17 @@ A Palace / eigenmode external solver on VESSL is a documented Tier-2 comparator
 for this structure class. It is NOT attempted here: the EXACT Pozar analytic is
 the Tier-1 gate for this session and needs no external solver.
 
+Exit contract (crossval registry, validation/crossval/manifest.json)
+-------------------------------------------------------------------
+    0 -> every configured gate passed (TE101 < 1%, >=1 higher mode < 2%)
+    1 -> a gate failed, or a target mode could not be extracted
+    (2 is not reachable: this case needs no external solver, only the
+     in-file analytic oracle, so a reference can never be "unavailable".)
+
 Usage
 -----
-    python 14_rect_cavity.py            # main gate table + verdict (dx=1mm)
-    python 14_rect_cavity.py --converge # also run dx=0.5mm convergence witness
+    python validation/crossval/14_rect_cavity_pozar.py            # gate table + verdict (dx=1mm)
+    python validation/crossval/14_rect_cavity_pozar.py --converge # + dx=0.5mm convergence witness
 """
 
 from __future__ import annotations
@@ -76,11 +83,14 @@ import io
 import sys
 import time
 from contextlib import redirect_stdout
+from pathlib import Path
 
 import numpy as np
 
-# --- resolve `import rfx` from this checkout (script may run from anywhere) ---
-_REPO_ROOT = "/root/workspace/bk-workspace/rfx-oblique-rcs"
+# --- resolve `import rfx` from THIS checkout (a bare run would otherwise pick
+# --- up whatever rfx is installed or first on sys.path, which in a multi-
+# --- worktree setup is a DIFFERENT copy of the solver than the one under test).
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
