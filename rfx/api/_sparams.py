@@ -175,6 +175,65 @@ def _warn_if_ringdown_truncated(
     )
 
 
+def _project_passive(S):
+    """Project S(f) onto the passive set by singular-value clipping.
+
+    Per frequency, ``S_pass = U · min(Σ, 1) · Vᴴ`` — the nearest matrix in
+    spectral norm with ‖S‖₂ ≤ 1 (standard passivity enforcement, as used in
+    macromodeling). Returns ``(S_pass, correction)`` where ``correction[k] =
+    max(σ_max(S(f_k)) − 1, 0)`` is the amount clipped at each frequency —
+    the honesty metric: 0 where the extraction was already passive, and
+    exactly how non-physical the raw value was elsewhere.
+
+    jnp-native and batched so the eps_override AD path stays differentiable.
+    """
+    s_t = jnp.transpose(S, (2, 0, 1))            # (n_freqs, n_ports, n_ports)
+    u, sig, vh = jnp.linalg.svd(s_t, full_matrices=False)
+    correction = jnp.maximum(sig[:, 0] - 1.0, 0.0)
+    # Clip a few ULPs below 1 so the bound still holds after the f32/f64
+    # reconstruction round-trip (a bare min(sig, 1) reconstructs to
+    # sigma_max = 1 + O(eps), which violates the strict bound this exists
+    # to guarantee).
+    eps = jnp.finfo(sig.dtype).eps
+    sig_c = jnp.minimum(sig, 1.0 - 8.0 * eps)
+    s_pass = jnp.einsum("fij,fj,fjk->fik", u, sig_c.astype(u.dtype), vh)
+    return jnp.transpose(s_pass, (1, 2, 0)), correction
+
+
+def _warn_if_passivity_projected(
+    correction, freqs, *, envelope: float = 0.05
+) -> None:
+    """One aggregate warning stating exactly what the projection removed."""
+    corr = np.asarray(correction)
+    if not np.any(corr > 0.0):
+        return
+
+    import warnings
+
+    f = np.asarray(freqs)
+    n_touched = int((corr > 0.0).sum())
+    n_big = int((corr > envelope).sum())
+    k = int(np.argmax(corr))
+    warnings.warn(
+        f"S-matrix projected onto the passive set (singular values clipped "
+        f"to 1): {n_touched} of {corr.size} frequency bins were non-passive "
+        f"as extracted, worst sigma_max = {1.0 + corr[k]:.3f} at "
+        f"{f[k] / 1e9:.3f} GHz. "
+        + (
+            f"{n_big} bins exceeded the {1.0 + envelope:.2f} extraction "
+            f"envelope — at those bins the RAW value is a measurement "
+            f"artifact (see reliable / settling_db for the cause) and the "
+            f"projected value inherits that uncertainty; do not quote them "
+            f"as physics. "
+            if n_big
+            else ""
+        )
+        + "Raw values are preserved in S_raw; corrections per bin in "
+        "passivity_correction.",
+        stacklevel=2,
+    )
+
+
 def _warn_if_nonpassive_smatrix(
     result,
     *,
@@ -1227,8 +1286,21 @@ class _SparamMixin:
         eps_override: "jnp.ndarray | None" = None,
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
+        enforce_passivity: bool = True,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using N-probe numerical de-embedding.
+
+        ``enforce_passivity=True`` (default) projects the assembled S(f) onto
+        the passive set per frequency (singular values clipped to 1 — the
+        nearest matrix in spectral norm with ``||S||_2 <= 1``), so the
+        returned ``S`` satisfies the passive bound at EVERY frequency. This
+        is constraint enforcement, not a physics fix: the unprojected matrix
+        is kept in ``S_raw``, the per-bin clip amount in
+        ``passivity_correction``, and a warning names the touched bins.
+        Bins with a large correction are measurement artifacts (see
+        ``reliable`` / ``settling_db`` for the cause) — the projection bounds
+        them, it does not make them trustworthy. Set ``False`` to get the
+        raw extraction in ``S`` unchanged.
 
         For each registered MSL port, runs one FDTD simulation with that
         port driven and the others passive (matched termination). At
@@ -1945,6 +2017,21 @@ class _SparamMixin:
                     driven_port_indices=np.arange(n_ports, dtype=np.int64),
                 )
 
+            s_raw = None
+            passivity_correction = None
+            # Projection runs on the CONCRETE measurement path only. On the
+            # traced (eps_override AD) path min(sigma, 1) zeroes or deforms
+            # the objective's gradient wherever the clip is active — measured:
+            # it flipped the committed d|S|^2/d eps sign gate — and autodiff
+            # fidelity is this project's non-negotiable tie-breaker. Quoting
+            # is a concrete-path activity; gradients must see the raw physics.
+            if enforce_passivity and not is_tracer(S):
+                s_projected, correction = _project_passive(S)
+                if bool(np.any(np.asarray(correction) > 0.0)):
+                    s_raw = S
+                    passivity_correction = correction
+                    S = s_projected
+
             result = MSLSMatrixResult(
                 S=S,
                 freqs=np.asarray(freqs_arr),
@@ -1953,14 +2040,26 @@ class _SparamMixin:
                 port_names=tuple(pe.name for pe in entries),
                 reliable=reliable,
                 settling_db=settling_db_runs,
+                S_raw=s_raw,
+                passivity_correction=passivity_correction,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,
                 tuple(pe.name for pe in entries),
                 num_periods=num_periods,
             )
+            if passivity_correction is not None and not is_tracer(passivity_correction):
+                _warn_if_passivity_projected(passivity_correction, freqs_arr)
+            # The raw-extraction self-check still audits what was MEASURED:
+            # run it on the unprojected matrix so the projection can never
+            # silence the artifact diagnosis.
+            import dataclasses as _dc
+
+            audit_result = (
+                result if s_raw is None else _dc.replace(result, S=s_raw)
+            )
             _warn_if_nonpassive_smatrix(
-                result,
+                audit_result,
                 extractor="compute_msl_s_matrix",
                 strict=strict_extractor,
                 passivity_tol=0.10,

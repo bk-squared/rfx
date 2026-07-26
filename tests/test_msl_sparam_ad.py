@@ -155,6 +155,11 @@ def _run_assembly_with_replay(acc_data: dict, freqs_replay: np.ndarray, *,
             n_steps=1,
             freqs=freqs_jnp,
             num_periods=1.0,
+            # The golden pins the RAW assembly (V/I integration +
+            # de-embedding). Passivity projection is a separate, later stage
+            # with its own tests (test_msl_passivity_enforcement.py); leaving
+            # it on would make this compare projection against assembly.
+            enforce_passivity=False,
         )
 
     return np.asarray(result.S, dtype=np.complex128)

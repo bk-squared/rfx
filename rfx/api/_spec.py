@@ -1299,6 +1299,17 @@ class MSLSMatrixResult:
         produced |S| column-power poles up to ~1.8e3 that shrank monotonically
         with record length). Compare against the −40 dB rule in CLAUDE.md
         before quoting any S value from this result.
+    S_raw : (n_ports, n_ports, n_freqs) complex, optional
+        The S-matrix exactly as extracted, BEFORE passivity projection.
+        Stored whenever the projection changed anything, so no information
+        is discarded by enforcing the bound.
+    passivity_correction : (n_freqs,) float, optional
+        Per-frequency amount clipped by the passivity projection:
+        ``max(sigma_max(S_raw(f)) - 1, 0)``. Zero where the extraction was
+        already passive. This is the honesty metric — a bin with a large
+        correction is a measurement artifact (check ``reliable`` and
+        ``settling_db`` for the cause), and its projected value inherits
+        that uncertainty.
     port_names : tuple[str, ...]
     """
     S: np.ndarray
@@ -1308,6 +1319,8 @@ class MSLSMatrixResult:
     port_names: tuple[str, ...] = ()
     reliable: np.ndarray | None = None
     settling_db: np.ndarray | None = None
+    S_raw: np.ndarray | None = None
+    passivity_correction: np.ndarray | None = None
 
 
 __all__ = [

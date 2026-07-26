@@ -2444,7 +2444,8 @@
       "strict_extractor",
       "eps_override",
       "checkpoint_every",
-      "checkpoint_segments"
+      "checkpoint_segments",
+      "enforce_passivity"
     ],
     "compute_waveguide_s_matrix": [
       "n_steps",
