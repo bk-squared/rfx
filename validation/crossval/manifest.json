@@ -304,6 +304,34 @@
       "cpu_runner": {"order": 12},
       "scheduled_external_order": null,
       "failure_sentinel": "SOME CHECKS FAILED"
+    },
+    {
+      "id": "17_dielectric_sphere_mie",
+      "script": "validation/crossval/17_dielectric_sphere_mie.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner"],
+      "evidence_levels": ["E2"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "Exact Bohren-Huffman dielectric-sphere Mie backscatter series (lossless m = 1.6), re-implemented twice with self-witnesses (Rayleigh / m->1 / n_max-convergence / unitarity in the script; unitarity again in the frozen gate test) — both legs share the B&H convention and scipy, stated rather than overclaimed as full independence",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "Lossless dielectric sphere (eps_r = 2.56) monostatic backscatter RCS vs exact Mie across ka 0.5-2.5, the material-path twin of 16_pec_sphere_mie_ka_sweep and the FIRST cross-method record of rfx's BINARY dielectric rasterize path (no sub-cell interface averaging exists; this is a measured envelope of that staircase, not a smooth-interface accuracy claim). Operating point: internal-wavelength resolution floor RES >= 24 = 15*m, cells-per-radius 6.4, two-run subtracted extraction, F0 = 3 GHz. GATED (single tier): coarse ka <= 1.25 within 6.3 dB = round-up(committed 7-point clearance-scan envelope 4.18 dB x 1.5) — a regression lock, deliberately framed as a diagnostic envelope. NO fine rung is gated, and that is a measured decision: the committed cpr-12.8 fine_rung_witness scan envelopes 3.75/3.04 dB, barely below the coarse 4.18, so doubled resolution does not buy a domain-robust tighter claim (the clear=20-only apparent convergence was the PR #475 F1 single-sample aliasing class, caught before commit). REPORTED, NOT GATED: every bin with ka >= 1.5 — domain-size-only spreads of 11.7 dB (ka=1.75) and 29.0 dB (ka=2.5), worse than the PEC twin; truncation and incident-leakage attributions FALSIFIED by direct probes, domain-size axis dominant. Non-FDTD corroboration (Bempp PMCHWT) is an offline follow-up; no Bempp leg exists for the dielectric case yet.",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "validation/crossval/17_dielectric_sphere_mie.py",
+        "tests/test_rcs_dielectric_sphere_mie_gates.py"
+      ],
+      "artifact_paths": [
+        "validation/crossval/_17_dielectric_results/rfx.json"
+      ],
+      "cpu_runner": {"order": 13},
+      "scheduled_external_order": null,
+      "failure_sentinel": "SOME CHECKS FAILED"
     }
   ]
 }
