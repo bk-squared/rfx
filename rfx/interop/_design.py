@@ -538,6 +538,10 @@ _TFSF_FIELDS: dict[str, _F] = {
     "direction": _STR,
     "angle_deg": _NUM,
     "waveform": _STR,
+    # PR #461: injection-algorithm selector ('bloch' periodic 2-D aux vs
+    # 'methodB' open-domain 1-D aux along k-hat). Design state, not run
+    # control — the two lanes assume different transverse boundary physics.
+    "method": _STR,
 }
 
 _DFT_PLANE_FIELDS: dict[str, _F] = {

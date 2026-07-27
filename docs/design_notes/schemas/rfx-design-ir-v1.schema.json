@@ -786,7 +786,8 @@
             "polarization",
             "direction",
             "angle_deg",
-            "waveform"
+            "waveform",
+            "method"
           ],
           "properties": {
             "f0": {
@@ -816,6 +817,10 @@
               "type": "number"
             },
             "waveform": {
+              "type": "string",
+              "minLength": 1
+            },
+            "method": {
               "type": "string",
               "minLength": 1
             }
