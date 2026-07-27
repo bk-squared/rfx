@@ -18,42 +18,75 @@ Operating point (derived, not tuned — see the fixture provenance):
     NTFF offset + scattered-field annulus); n_steps = max(700, 2.2 domain
     transits).
 
-WHAT IS GATED vs WHAT IS REPORTED (measured 2026-07-27, three domain
-realizations: clearance 20/30/40 cells)
+WHAT IS GATED vs WHAT IS REPORTED (measured 2026-07-27; three clearance
+realizations 20/30/40 cells PLUS a denser clearance scan after the PR #475
+review found the original 3-point sample ALIASED at ka = 4.0)
 ---------------------------------------------------------------------------
 GATED (exit-1 on failure):
-  * coarse bins ka {0.5, 0.75, 1.0, 1.25}: measured |rfx - Mie| envelope
-    2.1 dB across the three domains -> gate 3.2 dB (envelope x 1.5).
-  * fine rung (cells-per-radius 12.8) ka {2.0, 4.0}: measured envelope
-    2.35 dB across the three domains -> gate 3.5 dB (envelope x 1.5).
+  * coarse bins ka {0.5, 0.75, 1.0, 1.25}: |rfx - Mie| envelope over the
+    committed clearance scan -> gate = round-UP(envelope x 1.5) to 0.1 dB
+    (constants below; the gate test recomputes the envelope from the
+    fixture and asserts the relation, so neither number can drift alone).
+    ROUNDING CONVENTION CHANGE (deliberate, not drift): the first revision
+    rounded the x1.5 product DOWN (3.219 -> 3.2); this revision rounds UP
+    (3.267 -> 3.3) so a measured envelope never has margin shaved off by
+    rounding. Relative to the first revision this widens the coarse gate
+    by 0.1 dB — stated here explicitly per the no-silent-gate-loosening
+    rule (PR #475 review, caution 2).
+  * fine rung (cells-per-radius 12.8) at ka = 2.0 only: same posture.
+  * HEADROOM NOTE (PR #475 review, caution 3): the coarse envelope is
+    dominated by the fence-edge bin ka = 1.25 (-2.15/-2.18 dB at
+    clearances 30/45), and the domain spread rises monotonically toward
+    the fence (0.6 -> 2.5 dB across ka 0.5 -> 1.25, jumping to ~5 dB at
+    ka = 1.5). If a future clearance pushes ka = 1.25 past the gate, the
+    honest response is to move the coarse fence DOWN to ka <= 1.0, not to
+    widen the gate again.
 REPORTED, NOT GATED (documented-unconverged at this operating point):
-  * every coarse bin with ka >= 1.5, and the fine rung at ka = 3.0. Near the
-    deep Mie interference nulls (ka ~ 1.75 and ~ 3.0 on this grid) the
-    monostatic value swings up to 6.3 dB (coarse) / 5.4 dB (fine, ka=3) and
-    8.3 dB (fine, ka=1.75) under a domain-size-only change, and the rfx
-    sigma(ka) local-minimum POSITIONS also move with domain size — so neither
-    null magnitude nor null position is gateable here. Gating them anyway
-    would be tuned-tolerance theater.
-Attribution record (all witnessed in the fixture; five hypotheses tested):
-  * record truncation: FALSIFIED (2x steps moves deltas <= 0.07 dB);
+  * every coarse bin with ka >= 1.5, and the fine rung at ka = 3.0 AND
+    ka = 4.0. Near the deep Mie interference nulls the monostatic value
+    swings under a domain-size-only change by up to 8.0 dB (coarse,
+    ka=1.75) / 5.4 dB (fine, ka=3.0), and the rfx sigma(ka) local-minimum
+    POSITIONS also move with domain size — so neither null magnitude nor
+    null position is gateable here. ka=4.0 (fine) was GATED in the first
+    revision of this script on a 3-clearance sample {20,30,40} that
+    happened to hit passing values; the review's denser scan showed it
+    fails a 3.5 dB gate at 9 of 13 clearances (max 6.17 dB at clear=26)
+    and stays domain-unconverged at cpr 19.2/25.6 — it is fenced for the
+    same reason as ka=3.0. Gating it was exactly the tuned-tolerance
+    theater this script fences against; the committed clearance_scan
+    witness now exists so the aliasing cannot recur silently.
+Attribution record (five hypotheses tested; truncation + domain + clearance
+scans are committed fixture DATA, the remaining three are recorded as
+provenance of the 2026-07-27 offline probes — see F3 note in provenance):
+  * record truncation: FALSIFIED on the gated bins (fixture data: 2x steps
+    moves every gated-bin delta <= 0.07 dB);
   * volume/effective-radius: FALSIFIED (rasterized-volume ka_eff matches
     nominal to < 1%, and comparing against Mie(ka_eff) leaves deltas
-    unchanged);
+    unchanged) — offline probe, recorded in provenance;
   * TFSF incident leakage (#280 class): FALSIFIED at the monostatic bin
     (two-run subtract_incident_reference=True is bin-identical, consistent
-    with the documented backscatter leakage null);
-  * resolution: non-monotonic at nulls (6.4 -> 9.6 -> 12.8 cells/radius);
-  * domain size: the dominant axis (see numbers above) — consistent with
-    scattered-field/CPML re-reflection or NTFF proximity interference at
-    bins where the true backscatter is deep below the neighbors.
+    with the documented backscatter leakage null) — offline probe,
+    recorded in provenance;
+  * resolution: non-monotonic at nulls (6.4 -> 9.6 -> 12.8 cells/radius;
+    independently reproduced at cpr 19.2/25.6 in the PR #475 review) —
+    offline probe, recorded in provenance;
+  * domain size: the dominant axis — committed as domain_realizations +
+    clearance_scan fixture data.
+
+NOTE on preflight: this script drives the functional ``compute_rcs`` entry
+point, which runs NO preflight (unlike ``Simulation.run()``). The
+operating-point asserts above (cells-per-radius floor, clearance in cells,
+transit-scaled steps) are the hand-ported equivalents; there is no
+"All checks passed" line to quote, and this docstring says so rather than
+implying one (PR #475 review, F5).
 
 Usage:
   python validation/crossval/16_pec_sphere_mie_ka_sweep.py            # gated set (~1 min CPU)
   python validation/crossval/16_pec_sphere_mie_ka_sweep.py --full     # + 15-point diagnostic curve
   python validation/crossval/16_pec_sphere_mie_ka_sweep.py --write-fixture
-      # full 3-domain measurement + witnesses; regenerates
+      # full 3-domain measurement + clearance scan + witnesses; regenerates
       # validation/crossval/_16_ka_sweep_results/rfx.json AND
-      # tests/fixtures/rcs_mie_ka_sweep/fixture.json (~15 min CPU)
+      # tests/fixtures/rcs_mie_ka_sweep/fixture.json (~30 min CPU)
 
 Exit codes: 0 = all configured gates pass; 1 = oracle self-check or a gate
 failed. Failure prints the sentinel line "SOME CHECKS FAILED".
@@ -102,13 +135,19 @@ CLEAR_CELLS_DEFAULT = 20  # canonical domain; fixture also records 30 and 40
 
 KA_ALL = [round(0.5 + 0.25 * i, 2) for i in range(15)]      # 0.5 .. 4.0
 KA_GATED_COARSE = [0.5, 0.75, 1.0, 1.25]
-KA_FINE_GATED = [2.0, 4.0]
-KA_FINE_REPORTED = [3.0]
+KA_FINE_GATED = [2.0]
+KA_FINE_REPORTED = [3.0, 4.0]   # 4.0 fenced after PR #475 review (F1 aliasing)
+
+# Denser clearance scan for the GATED bins (the 3-point {20,30,40} sample
+# aliased at ka=4.0 — PR #475 review F1). The fixture commits this scan so
+# the envelope is auditable; the gate test recomputes it from the data.
+CLEARANCE_SCAN = [15, 20, 25, 30, 35, 40, 45]
 
 # Measured-envelope x 1.5 posture (no silent loosening — regenerate the
-# fixture and re-derive the envelope before ever touching these).
-GATE_COARSE_DB = 3.2   # measured envelope 2.1 dB over ka<=1.25 x 3 domains
-GATE_FINE_DB = 3.5     # measured envelope 2.35 dB over ka {2,4} x 3 domains
+# fixture, re-derive the envelope from the committed clearance_scan, and
+# write a root-cause before ever touching these).
+GATE_COARSE_DB = 3.3   # = round-up(measured clearance-scan envelope x 1.5)
+GATE_FINE_DB = 4.0     # = round-up(measured clearance-scan envelope x 1.5), ka=2.0 only
 
 
 def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
@@ -200,10 +239,12 @@ def main(argv):
             r = run_point(ka, COARSE_CPR, CLEAR_CELLS_DEFAULT)
             diagnostic.append(r)
             print(_fmt(r))
-        r3 = run_point(KA_FINE_REPORTED[0], FINE_CPR, CLEAR_CELLS_DEFAULT)
-        print("  fine rung ka=3.0 (REPORTED, not gated):")
-        print(_fmt(r3))
-        diagnostic.append(r3)
+        fine_reported = []
+        for ka in KA_FINE_REPORTED:
+            r3 = run_point(ka, FINE_CPR, CLEAR_CELLS_DEFAULT)
+            print(f"  fine rung ka={ka} (REPORTED, not gated):")
+            print(_fmt(r3))
+            fine_reported.append(r3)   # own key, NOT appended to the coarse curve (F7)
 
     if write_fixture:
         print("\n== fixture mode: domain realizations clear 30/40 + witnesses ==")
@@ -217,39 +258,102 @@ def main(argv):
             domains[f"{clear}_fine"] = fine_rows
             print(f"  fine rung   @ clear={clear}: deltas",
                   " ".join(f"{r['delta_db']:+.1f}" for r in fine_rows))
-        # truncation witness at two worst coarse bins
+
+        # Denser clearance scan over the GATED bins (anti-aliasing witness,
+        # PR #475 F1) + the fenced fine bins so the aliasing story is data.
+        print("\n== clearance scan (gated bins + fenced fine bins) ==")
+        scan = {"clearances": CLEARANCE_SCAN, "coarse": {}, "fine": {}}
+        for ka in KA_GATED_COARSE:
+            rows = [run_point(ka, COARSE_CPR, c) for c in CLEARANCE_SCAN]
+            scan["coarse"][str(ka)] = rows
+            print(f"  coarse ka={ka}: deltas",
+                  " ".join(f"{r['delta_db']:+.2f}" for r in rows))
+        for ka in KA_FINE_GATED + KA_FINE_REPORTED:
+            rows = [run_point(ka, FINE_CPR, c) for c in CLEARANCE_SCAN]
+            scan["fine"][str(ka)] = rows
+            print(f"  fine   ka={ka}: deltas",
+                  " ".join(f"{r['delta_db']:+.2f}" for r in rows))
+
+        # Measured envelopes over EVERYTHING committed for the gated bins
+        # (canonical run + 30/40 realizations + clearance scan). The gates
+        # must equal round-up(envelope x 1.5); the gate test re-asserts this
+        # from the fixture data (PR #475 F6).
+        coarse_deltas = [abs(r["delta_db"]) for r in gated]
+        coarse_deltas += [abs(r["delta_db"]) for c in ("30", "40")
+                          for r in domains[c] if r["ka"] <= max(KA_GATED_COARSE)]
+        coarse_deltas += [abs(r["delta_db"]) for ka in KA_GATED_COARSE
+                          for r in scan["coarse"][str(ka)]]
+        fine_deltas = [abs(r["delta_db"]) for r in fine]
+        fine_deltas += [abs(r["delta_db"]) for c in ("30_fine", "40_fine")
+                        for r in domains[c] if r["ka"] in KA_FINE_GATED]
+        fine_deltas += [abs(r["delta_db"]) for ka in KA_FINE_GATED
+                        for r in scan["fine"][str(ka)]]
+        env_coarse = max(coarse_deltas)
+        env_fine = max(fine_deltas)
+        print(f"\n  measured envelopes: coarse {env_coarse:.3f} dB "
+              f"(gate {GATE_COARSE_DB}), fine {env_fine:.3f} dB "
+              f"(gate {GATE_FINE_DB})")
+        if not (GATE_COARSE_DB >= env_coarse and
+                GATE_COARSE_DB <= np.ceil(env_coarse * 1.5 * 10) / 10 + 0.05):
+            print("  ENVELOPE/GATE MISMATCH (coarse) — fix GATE_COARSE_DB")
+            ok = False
+        if not (GATE_FINE_DB >= env_fine and
+                GATE_FINE_DB <= np.ceil(env_fine * 1.5 * 10) / 10 + 0.05):
+            print("  ENVELOPE/GATE MISMATCH (fine) — fix GATE_FINE_DB")
+            ok = False
+
+        # Truncation witness ON THE GATED BINS (PR #475 F4): 1x vs 2x steps.
         trunc = []
-        for ka in (2.0, 3.0):
-            r1 = run_point(ka, COARSE_CPR, CLEAR_CELLS_DEFAULT, steps_mult=1.0)
-            r2 = run_point(ka, COARSE_CPR, CLEAR_CELLS_DEFAULT, steps_mult=2.0)
-            trunc.append({"ka": ka, "delta_1x_db": r1["delta_db"],
+        for ka, cpr in ([(k, COARSE_CPR) for k in KA_GATED_COARSE]
+                        + [(k, FINE_CPR) for k in KA_FINE_GATED]):
+            r1 = run_point(ka, cpr, CLEAR_CELLS_DEFAULT, steps_mult=1.0)
+            r2 = run_point(ka, cpr, CLEAR_CELLS_DEFAULT, steps_mult=2.0)
+            trunc.append({"ka": ka, "cells_per_radius": cpr,
+                          "delta_1x_db": r1["delta_db"],
                           "delta_2x_db": r2["delta_db"]})
-            print(f"  truncation witness ka={ka}: 1x {r1['delta_db']:+.2f} "
-                  f"-> 2x {r2['delta_db']:+.2f} dB")
+            print(f"  truncation witness ka={ka} cpr={cpr}: "
+                  f"1x {r1['delta_db']:+.2f} -> 2x {r2['delta_db']:+.2f} dB")
 
         payload = {
             "schema": "rfx.rcs_mie_ka_sweep",
-            "schema_version": 1,
-            "campaign": "crossval item 1 (plans/crossval_campaign_real_structures.md)",
+            "schema_version": 2,
+            "campaign": (
+                "cross-solver validation campaign, item 1: PEC-sphere "
+                "exact-Mie ka sweep (extends the committed E4 ladder and "
+                "fine ka~1 fixtures)"
+            ),
             "claim_scope": (
-                "PEC-sphere monostatic backscatter RCS vs the independently "
-                "re-derived exact Mie series, ka 0.5-4.0 at a derived "
+                "PEC-sphere monostatic backscatter RCS vs the exact Mie "
+                "series (re-implemented twice against the same Ruck/"
+                "Bohren-Huffman convention: the committed self-witnessing "
+                "oracle in the script and scipy.special again in the "
+                "frozen gates; a four-way convention-independent check is "
+                "recorded in the PR #475 review), ka 0.5-4.0 at a derived "
                 "CPU-scale operating point (cells-per-radius 6.4 coarse / "
-                "12.8 fine, 20-cell clearance, F0=3 GHz). GATED: coarse ka "
-                "<= 1.25 (measured 3-domain envelope 2.1 dB, gate 3.2 dB) "
-                "and fine-rung ka {2.0, 4.0} (envelope 2.35 dB, gate 3.5 "
-                "dB). NOT GATED: every coarse bin with ka >= 1.5 and the "
-                "fine rung at ka=3.0 — near the deep Mie nulls the "
-                "monostatic value swings up to 6.3 dB (coarse) / 8.3 dB "
-                "(fine ka=1.75) under a domain-size-only change and the "
-                "rfx sigma(ka) local-minimum positions move with domain "
-                "size, so neither null magnitude nor null position is a "
-                "converged observable here. Attribution witnesses (record "
-                "truncation, effective radius, #280 incident leakage all "
-                "FALSIFIED; domain-size axis dominant) are frozen in this "
-                "fixture. Non-FDTD corroboration (Bempp EFIE) exists for "
-                "ka <= 2 in tests/fixtures/rcs_sphere_three_way/; "
-                "extending it above ka=2 is an offline follow-up."
+                "12.8 fine, 20-cell canonical clearance, F0=3 GHz). "
+                "GATED: coarse ka <= 1.25 and fine-rung ka=2.0 only, at "
+                "gate = round-up(measured clearance-scan envelope x 1.5) "
+                "— envelopes are recomputed from the committed "
+                "clearance_scan/domain_realizations data by the gate "
+                "test, so gate and envelope cannot drift apart. NOT "
+                "GATED: every coarse bin with ka >= 1.5 and the fine "
+                "rung at ka=3.0 and ka=4.0 — near the deep Mie nulls the "
+                "monostatic value swings under a domain-size-only change "
+                "by up to 8.0 dB (coarse, ka=1.75) / 5.4 dB (fine, "
+                "ka=3.0), the rfx sigma(ka) local-minimum positions move "
+                "with domain size, and fine ka=4.0 fails a 3.5 dB gate "
+                "at 9 of 13 clearances (max 6.17 dB at clearance 26; the "
+                "original 3-clearance sample {20,30,40} ALIASED onto "
+                "passing values — PR #475 review F1), so neither null "
+                "magnitude nor null position is a converged observable "
+                "here. Committed witnesses: domain_realizations, "
+                "clearance_scan, truncation_witness (gated bins). The "
+                "effective-radius, #280-leakage and 9.6-rung resolution "
+                "probes were offline (2026-07-27) and are recorded as "
+                "provenance, not data. Non-FDTD corroboration (Bempp "
+                "EFIE) exists for ka <= 2 in "
+                "tests/fixtures/rcs_sphere_three_way/; extending it "
+                "above ka=2 is an offline follow-up."
             ),
             "config": {
                 "f0_hz": F0, "bandwidth": BANDWIDTH,
@@ -261,28 +365,46 @@ def main(argv):
             },
             "gates": {
                 "coarse_ka": KA_GATED_COARSE, "coarse_gate_db": GATE_COARSE_DB,
-                "coarse_measured_envelope_db": 2.1,
+                "coarse_measured_envelope_db": round(env_coarse, 3),
                 "fine_ka": KA_FINE_GATED, "fine_gate_db": GATE_FINE_DB,
-                "fine_measured_envelope_db": 2.35,
-                "posture": "measured-envelope x 1.5; ka>=1.5 coarse and "
-                           "fine ka=3.0 are reported, never gated",
+                "fine_measured_envelope_db": round(env_fine, 3),
+                "posture": "gate = round-UP(measured clearance-scan envelope "
+                           "x 1.5) to 0.1 dB — round-up convention adopted "
+                           "deliberately in the PR #475 revision (the first "
+                           "revision rounded down; up never shaves margin "
+                           "off a measured envelope); coarse ka>=1.5 and "
+                           "fine ka=3.0/ka=4.0 are reported, never gated; "
+                           "if ka=1.25 ever exceeds its gate, move the "
+                           "coarse fence to ka<=1.0 rather than widen",
             },
             "gated_coarse": gated,
             "gated_fine": fine,
+            "fine_rung_reported": fine_reported,
             "diagnostic_curve_clear20": diagnostic,
             "domain_realizations": domains,
+            "clearance_scan": scan,
             "truncation_witness": trunc,
             "provenance": {
                 "generated_by": "validation/crossval/16_pec_sphere_mie_ka_sweep.py --write-fixture",
                 "oracle": "tests/fixtures/rcs_sphere_mie/mie_oracle.py "
                           "(witnesses re-run and printed above)",
-                "attribution_record": (
-                    "2026-07-27 probes: 2x-steps <= 0.07 dB; rasterized-volume "
-                    "ka_eff within 1% of nominal with deltas unchanged vs "
-                    "Mie(ka_eff); subtract_incident_reference=True "
-                    "bin-identical at backscatter; resolution ladder "
-                    "6.4/9.6/12.8 non-monotonic at nulls; domain clearance "
-                    "20/30/40 cells is the dominant swing axis."
+                "no_preflight_note": (
+                    "compute_rcs is a functional entry point with NO "
+                    "preflight; the operating-point asserts (cells-per-"
+                    "radius floor, cell-unit clearance, transit-scaled "
+                    "steps) are the hand-ported equivalents."
+                ),
+                "offline_probes_2026_07_27": (
+                    "NOT committed as data (recorded here as provenance "
+                    "only): rasterized-volume ka_eff within 1% of nominal "
+                    "with deltas unchanged vs Mie(ka_eff) at ka "
+                    "{1.75,2,3,4}; subtract_incident_reference=True "
+                    "bin-identical at backscatter (ka {1.75,3} x clear "
+                    "{20,30,40}); 6.4/9.6/12.8 resolution ladder "
+                    "non-monotonic at nulls (independently reproduced at "
+                    "cpr 19.2/25.6 in the PR #475 review). Committed data "
+                    "witnesses: domain_realizations, clearance_scan, "
+                    "truncation_witness."
                 ),
             },
         }

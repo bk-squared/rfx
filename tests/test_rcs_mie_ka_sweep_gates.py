@@ -3,19 +3,25 @@
 Locks the committed measurement record of
 ``validation/crossval/16_pec_sphere_mie_ka_sweep.py --write-fixture``
 (``tests/fixtures/rcs_mie_ka_sweep/fixture.json``) against an INDEPENDENT
-in-test re-derivation of the exact conducting-sphere Mie backscatter series
-(Ruck 1970, from ``scipy.special`` — not the producer's oracle module, so a
-producer-side error cannot self-certify).
+in-test re-implementation of the exact conducting-sphere Mie backscatter
+series (Ruck/Bohren-Huffman convention, from ``scipy.special`` — not the
+producer's oracle module, so a shared oracle bug cannot self-certify; a
+four-way convention-independent verification is recorded in the PR #475
+review).
 
-Two-tier posture (measured 2026-07-27, three domain realizations):
-  * GATED: coarse ka <= 1.25 (3-domain envelope 2.1 dB -> gate 3.2 dB) and
-    fine-rung ka {2.0, 4.0} (envelope 2.35 dB -> gate 3.5 dB).
-  * NOT GATED: coarse ka >= 1.5 and fine ka=3.0 — near the deep Mie nulls the
-    monostatic value swings up to 6.3-8.3 dB under a domain-size-only change
-    and the rfx local-minimum positions move with domain size. This module
-    PINS that fence (claim-scope docpin + witness-presence assertions) so it
-    cannot be silently converted into a gate, and conversely so the unconverged
-    bins cannot be silently quoted as validated.
+Two-tier posture (PR #475 revision — the original 3-clearance envelope
+ALIASED at fine ka=4.0, which failed a 3.5 dB gate at 9 of 13 clearances):
+  * GATED: coarse ka <= 1.25 and fine-rung ka = 2.0 only, at
+    gate = round-up(measured clearance-scan envelope x 1.5). The envelope is
+    RECOMPUTED HERE from the committed clearance_scan/domain_realizations
+    data and asserted against both the recorded envelope field and the gate,
+    so none of the three can drift alone (review F6).
+  * NOT GATED: coarse ka >= 1.5 and fine ka = 3.0 / ka = 4.0 — domain-size
+    unconverged near the deep Mie nulls (up to 8.0 dB coarse ka=1.75 /
+    5.4 dB fine ka=3.0 across the committed realizations; fine ka=4.0 max
+    6.17 dB in the review's 13-clearance scan). This module PINS that fence
+    (claim-scope docpin + witness-presence + fence-membership assertions) so
+    it can be neither silently gated nor silently quoted as validated.
 
 No FDTD runs here — the fixture is frozen evidence; live regeneration is the
 crossval script's job. These gates must not be re-tuned to look tighter than
@@ -24,6 +30,7 @@ the recorded physics (no-silent-gate-loosening rule).
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +40,10 @@ from scipy.special import spherical_jn, spherical_yn
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE = _REPO_ROOT / "tests/fixtures/rcs_mie_ka_sweep/fixture.json"
 _ARTIFACT = _REPO_ROOT / "validation/crossval/_16_ka_sweep_results/rfx.json"
+
+KA_GATED_COARSE = [0.5, 0.75, 1.0, 1.25]
+KA_FINE_GATED = [2.0]
+KA_FINE_REPORTED = [3.0, 4.0]
 
 
 def _mie_backscatter_over_pi_a2(ka: float) -> float:
@@ -56,6 +67,30 @@ def fixture() -> dict:
         return json.load(f)
 
 
+def _gated_coarse_deltas(fixture) -> list[float]:
+    """Every committed |delta| for the gated coarse bins, across canonical +
+    domain realizations + clearance scan (the envelope population)."""
+    out = [abs(r["delta_db"]) for r in fixture["gated_coarse"]]
+    for c in ("30", "40"):
+        out += [abs(r["delta_db"]) for r in fixture["domain_realizations"][c]
+                if r["ka"] <= max(KA_GATED_COARSE)]
+    for ka in KA_GATED_COARSE:
+        out += [abs(r["delta_db"])
+                for r in fixture["clearance_scan"]["coarse"][str(ka)]]
+    return out
+
+
+def _gated_fine_deltas(fixture) -> list[float]:
+    out = [abs(r["delta_db"]) for r in fixture["gated_fine"]]
+    for c in ("30_fine", "40_fine"):
+        out += [abs(r["delta_db"]) for r in fixture["domain_realizations"][c]
+                if r["ka"] in KA_FINE_GATED]
+    for ka in KA_FINE_GATED:
+        out += [abs(r["delta_db"])
+                for r in fixture["clearance_scan"]["fine"][str(ka)]]
+    return out
+
+
 def test_fixture_and_artifact_are_the_same_record(fixture):
     """The public crossval artifact and the test fixture must not drift apart."""
     with open(_ARTIFACT) as f:
@@ -63,64 +98,98 @@ def test_fixture_and_artifact_are_the_same_record(fixture):
     assert artifact == fixture
 
 
+def test_gate_equals_recomputed_envelope_times_1p5(fixture):
+    """Anti-drift for the AUDIT TRAIL itself (review F6): the recorded
+    envelope must equal the envelope recomputed from the committed data, and
+    each gate must equal round-up(envelope x 1.5) to 0.1 dB."""
+    g = fixture["gates"]
+    env_coarse = max(_gated_coarse_deltas(fixture))
+    env_fine = max(_gated_fine_deltas(fixture))
+    assert abs(g["coarse_measured_envelope_db"] - env_coarse) < 5e-3
+    assert abs(g["fine_measured_envelope_db"] - env_fine) < 5e-3
+    assert g["coarse_gate_db"] == pytest.approx(
+        math.ceil(env_coarse * 1.5 * 10) / 10, abs=1e-9)
+    assert g["fine_gate_db"] == pytest.approx(
+        math.ceil(env_fine * 1.5 * 10) / 10, abs=1e-9)
+
+
 def test_gated_coarse_bins_within_envelope_gate(fixture):
-    """ka <= 1.25 coarse: |rfx - Mie| <= 3.2 dB, Mie re-derived independently."""
+    """ka <= 1.25 coarse: every committed realization within the gate,
+    Mie re-derived independently in-test."""
     gate = float(fixture["gates"]["coarse_gate_db"])
-    assert gate == 3.2  # anti-loosening pin; regenerate + root-cause to change
     rows = fixture["gated_coarse"]
-    assert [r["ka"] for r in rows] == [0.5, 0.75, 1.0, 1.25]
+    assert [r["ka"] for r in rows] == KA_GATED_COARSE
     for r in rows:
         mie_over = _mie_backscatter_over_pi_a2(r["ka"])
         # independent Mie must agree with the recorded Mie leg (oracle check)
         assert abs(10 * np.log10(mie_over / r["mie_sigma_over_pi_a2"])) < 0.01
         delta = 10 * np.log10(r["rfx_sigma_over_pi_a2"] / mie_over)
         assert abs(delta) <= gate, (r["ka"], delta)
+    assert max(_gated_coarse_deltas(fixture)) <= gate
 
 
 def test_gated_fine_rung_within_envelope_gate(fixture):
-    """Fine rung (12.8 cells/radius) ka {2.0, 4.0}: |rfx - Mie| <= 3.5 dB."""
+    """Fine rung (12.8 cells/radius) ka=2.0: within the gate at every
+    committed realization; ka=3.0/4.0 must NOT be in the gated list."""
     gate = float(fixture["gates"]["fine_gate_db"])
-    assert gate == 3.5
     rows = fixture["gated_fine"]
-    assert [r["ka"] for r in rows] == [2.0, 4.0]
+    assert [r["ka"] for r in rows] == KA_FINE_GATED
     for r in rows:
         mie_over = _mie_backscatter_over_pi_a2(r["ka"])
         assert abs(10 * np.log10(mie_over / r["mie_sigma_over_pi_a2"])) < 0.01
         delta = 10 * np.log10(r["rfx_sigma_over_pi_a2"] / mie_over)
         assert abs(delta) <= gate, (r["ka"], delta)
+    assert max(_gated_fine_deltas(fixture)) <= gate
+    # F1 fence: the aliased bin stays out of the gated set
+    assert fixture["gates"]["fine_ka"] == KA_FINE_GATED
+    assert [r["ka"] for r in fixture["fine_rung_reported"]] == KA_FINE_REPORTED
 
 
 def test_null_region_is_fenced_not_gated(fixture):
-    """The unconverged bins must be present as diagnostics AND fenced in prose.
-
-    This is the docpin half: if someone converts the null region into a gate
-    (or deletes the diagnostics to hide it), this test goes red first.
-    """
+    """The unconverged bins must be present as diagnostics AND fenced in
+    prose. If someone converts the null region into a gate (or deletes the
+    diagnostics to hide it), this goes red first."""
     scope = " ".join(fixture["claim_scope"].split()).lower()
     assert "not gated" in scope
     assert "domain-size-only change" in scope
     assert "local-minimum positions move" in scope
-    # the diagnostic curve actually covers the fenced region
+    assert "ka=4.0 fails a 3.5 db gate" in scope       # the F1 aliasing record
+    assert "8.0 db (coarse, ka=1.75)" in scope         # F2-corrected maximum
+    # the diagnostic curve actually covers the fenced region (no fine rows
+    # smuggled in — review F7: fine reported rows live under their own key)
     kas = [r["ka"] for r in fixture["diagnostic_curve_clear20"]]
-    assert set(np.arange(6, 17) * 0.25) <= set(kas)  # 1.5 .. 4.0 present
-    # gates dict names the fence explicitly
+    assert len(kas) == len(set(kas)) == 15
+    assert set(np.arange(6, 17) * 0.25) <= set(kas)    # 1.5 .. 4.0 present
+    assert all(r["cells_per_radius"] == fixture["config"]["coarse_cells_per_radius"]
+               for r in fixture["diagnostic_curve_clear20"])
     assert "never gated" in fixture["gates"]["posture"]
 
 
 def test_attribution_witnesses_are_recorded(fixture):
-    """Truncation + domain-realization witnesses must ride with the record."""
+    """Committed witnesses must ride with the record — truncation ON THE
+    GATED BINS (review F4), domain realizations, and the anti-aliasing
+    clearance scan (review F1)."""
     trunc = fixture["truncation_witness"]
-    assert {t["ka"] for t in trunc} == {2.0, 3.0}
+    assert {t["ka"] for t in trunc} == set(KA_GATED_COARSE + KA_FINE_GATED)
     for t in trunc:
         assert abs(t["delta_1x_db"] - t["delta_2x_db"]) <= 0.3, t
-    # three domain realizations of the coarse curve exist (20 canonical + 30/40)
-    assert {"30", "40"} <= set(fixture["domain_realizations"])
+    assert {"30", "40", "30_fine", "40_fine"} <= set(fixture["domain_realizations"])
     assert len(fixture["domain_realizations"]["30"]) == 15
-    # and the measured envelopes quoted in the gates were not understated:
-    for clear in ("30", "40"):
-        for r in fixture["domain_realizations"][clear]:
-            if r["ka"] <= 1.25:
-                assert abs(r["delta_db"]) <= fixture["gates"]["coarse_gate_db"]
+    scan = fixture["clearance_scan"]
+    assert len(scan["clearances"]) >= 7
+    for ka in KA_GATED_COARSE:
+        assert len(scan["coarse"][str(ka)]) == len(scan["clearances"])
+    for ka in KA_FINE_GATED + KA_FINE_REPORTED:
+        assert len(scan["fine"][str(ka)]) == len(scan["clearances"])
+    # the fenced fine bins must show WHY they are fenced, in data:
+    ka4 = [abs(r["delta_db"]) for r in scan["fine"]["4.0"]]
+    assert max(ka4) > fixture["gates"]["fine_gate_db"], (
+        "fine ka=4.0 scan no longer exceeds the gate — if this is a real "
+        "physics improvement, promote it with a root-cause note, do not "
+        "just delete the fence")
+    # offline probes are provenance, not data — the wording must say so
+    prov = " ".join(fixture["provenance"]["offline_probes_2026_07_27"].split()).lower()
+    assert "not committed as data" in prov
 
 
 def test_operating_point_is_the_derived_one(fixture):
