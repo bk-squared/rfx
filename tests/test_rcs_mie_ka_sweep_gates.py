@@ -100,6 +100,24 @@ def test_fixture_and_artifact_are_the_same_record(fixture):
     assert artifact == fixture
 
 
+def test_script_claim_scope_literal_matches_fixture(fixture):
+    """Binds the script-source claim_scope to the committed fixture copy
+    (AST-extracted): the PR #476 F1 retraction was applied to this MERGED
+    fixture by hand-patching, so without this binding a later
+    --write-fixture would silently revert the corrected wording (and any
+    script prose edit would leave the fixture stale) while the suite stays
+    green — the prose analogue of the D2 constant binding."""
+    import ast
+    mod = ast.parse((_REPO_ROOT / "validation/crossval/16_pec_sphere_mie_ka_sweep.py"
+                     ).read_text(encoding="utf-8"))
+    lits = [ast.literal_eval(v)
+            for node in ast.walk(mod) if isinstance(node, ast.Dict)
+            for k, v in zip(node.keys, node.values)
+            if isinstance(k, ast.Constant) and k.value == "claim_scope"]
+    assert len(lits) == 1
+    assert " ".join(lits[0].split()) == " ".join(fixture["claim_scope"].split())
+
+
 def test_gate_equals_recomputed_envelope_times_1p5(fixture):
     """Anti-drift for the AUDIT TRAIL itself (review F6): the recorded
     envelope must equal the envelope recomputed from the committed data, and

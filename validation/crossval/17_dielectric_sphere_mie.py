@@ -13,12 +13,19 @@ interface handling.
 Design deltas vs the PEC sweep (derived, not tuned):
   * resolution floor uses the INTERNAL wavelength: RES(ka) = max(24,
     ceil(2*pi*CPR/ka)) with 24 = ceil(15 * m) — lambda_internal/15.
-  * two-run subtracted extraction (``subtract_incident_reference=True``) per
-    the campaign plan for translucent scatterers. (Witnessed: at the
-    monostatic bin it is delta-identical to the unsubtracted path, consistent
-    with the documented backscatter leakage null — kept because the plan
-    names it for this structure class and forward-hemisphere consumers of
-    the same fixture data need it.)
+  * single-run extraction. The campaign plan names the two-run subtracted
+    path for translucent scatterers, but ``monostatic_rcs`` — the ONLY
+    quantity this sweep extracts — is always computed from the raw
+    (unsubtracted) run BY CONSTRUCTION (rfx/rcs.py documents this), so
+    ``subtract_incident_reference=True`` is a no-op for every number here
+    at exactly 2x the compute. The first revision of this script ran with
+    the flag on and quoted the sub-vs-unsub identity as a "leakage
+    FALSIFIED" witness — that comparison compares the same array with
+    itself (the PR #476 review, F1: same tautology class as AD==FD).
+    Leakage at the monostatic bin is instead excluded by rcs.py's own
+    documented backscatter leakage null (~90 dB), not by any probe in
+    this script; the review measured the bistatic sub-vs-unsub difference
+    at <= 0.025 dB on this geometry for the record.
   * truncation witness on every gated bin from the start — the dielectric
     sphere stores internal energy; measured shifts are nonetheless <= 0.09 dB
     at 2x steps (700 steps is settled at these Q's).
@@ -52,21 +59,27 @@ REPORTED, NOT GATED (documented-unconverged at this operating point):
     delta swings across 11.7 dB (ka=1.75: +6.67/+3.99/-5.05 at clearance
     20/30/40) and 29.0 dB (ka=2.5: +6.31/+1.32/-22.65) — worse than the
     PEC case. Attribution mirrors item 1: truncation FALSIFIED (<= 0.09 dB
-    at 2x steps), two-run subtraction delta-identical (leakage FALSIFIED at
-    backscatter), resolution non-monotonic at ka >= 1.5 (ka=1.75:
-    +6.67/-11.58/+3.53 across cpr 6.4/9.6/12.8); the domain-size axis
-    dominates. Gating these bins would be tuned-tolerance theater.
+    at 2x steps), incident leakage EXCLUDED at the monostatic bin by
+    rcs.py's documented backscatter leakage null (NOT by a probe — see
+    the extraction note above), resolution non-monotonic at ka >= 1.5
+    (ka=1.75: +6.67/-11.58/+3.53 across cpr 6.4/9.6/12.8); the
+    domain-size axis dominates. Gating these bins would be
+    tuned-tolerance theater.
 HEADROOM NOTE: the coarse envelope is dominated by the fence-edge bin
 ka = 1.25 (-4.18 dB at clearance 30) and rises monotonically toward the
-fence (2.62 -> 4.18 across ka 0.5 -> 1.25, exploding to >= 11.7 dB at
-ka = 1.5). If ka = 1.25 ever exceeds its gate, move the coarse fence DOWN
-to ka <= 1.0 rather than widen the gate.
+fence — scan envelopes 2.62 -> 4.18 across ka 0.5 -> 1.25, and on the
+consistent 3-domain SPREAD metric 1.87/3.07/3.95/5.21 dB (gated) jumps to
+9.05 dB at the first fenced bin ka = 1.5 and 11.7 dB at ka = 1.75. If
+ka = 1.25 ever exceeds its gate, move the coarse fence DOWN to ka <= 1.0
+rather than widen the gate.
 
 NOTE on preflight: this script drives the functional ``compute_rcs`` entry
-point, which runs NO preflight. The operating-point asserts (internal-
+point, which runs NO preflight. The operating-point guarantees (internal-
 wavelength floor, cells-per-radius floor, cell-unit clearance, transit-scaled
-steps) are the hand-ported equivalents; there is no "All checks passed" line
-to quote and this docstring says so.
+steps) are enforced BY CONSTRUCTION inside ``run_point`` (max()/derived
+expressions, stronger than asserts — there is deliberately no `assert` to
+grep for); there is no "All checks passed" line to quote and this docstring
+says so.
 
 Usage:
   python validation/crossval/17_dielectric_sphere_mie.py            # gated set (~5 min CPU)
@@ -74,8 +87,8 @@ Usage:
   python validation/crossval/17_dielectric_sphere_mie.py --write-fixture
       # full 3-domain + clearance-scan measurement + witnesses; regenerates
       # validation/crossval/_17_dielectric_results/rfx.json AND
-      # tests/fixtures/rcs_dielectric_sphere_mie/fixture.json (~60 min CPU;
-      # every point is a two-run subtracted extraction)
+      # tests/fixtures/rcs_dielectric_sphere_mie/fixture.json (~25 min CPU,
+      # single-run extraction — see the extraction note above)
 
 Exit codes: 0 = all configured gates passed; 1 = oracle self-check or a gate
 failed. Failure prints the sentinel line "SOME CHECKS FAILED".
@@ -126,7 +139,6 @@ CLEARANCE_SCAN = [15, 20, 25, 30, 35, 40, 45]
 KA_ALL = [round(0.5 + 0.25 * i, 2) for i in range(9)]   # 0.5 .. 2.5
 KA_GATED_COARSE = [0.5, 0.75, 1.0, 1.25]
 KA_FINE_WITNESS = [0.75, 1.0]   # cpr-12.8 scan committed as WITNESS, not gated
-KA_FENCED = [1.5, 1.75, 2.0, 2.25, 2.5]
 
 # gate = round-UP(measured clearance-scan envelope x 1.5) to 0.1 dB.
 # The gate test hard-pins this AND recomputes the envelope AND binds this
@@ -212,7 +224,9 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
         theta_obs=np.array([np.pi / 2]), phi_obs=np.array([0.0, np.pi]),
         freqs=np.array([F0]),
         boundary="cpml", cpml_layers=CPML_LAYERS,
-        subtract_incident_reference=True,
+        # NO subtract_incident_reference: monostatic_rcs is always computed
+        # from the raw run by construction (rfx/rcs.py), so the flag is a
+        # no-op for this sweep at 2x the compute (PR #476 review, F1).
     )
     wall = time.time() - t0
     pi_a2 = np.pi * radius ** 2
@@ -339,9 +353,12 @@ def main(argv):
                 "/ unitarity checks, and again in the frozen gate test), "
                 "ka 0.5-2.5 at a derived CPU-scale operating point "
                 "(internal-wavelength resolution floor RES >= 24 = 15*m; "
-                "cells-per-radius 6.4 coarse / 12.8 fine; two-run "
-                "subtracted extraction; 20-cell canonical clearance; "
-                "F0 = 3 GHz). The path under test is rfx's BINARY "
+                "cells-per-radius 6.4 coarse / 12.8 fine; single-run "
+                "extraction — monostatic_rcs is computed from the raw run "
+                "by construction (rfx/rcs.py), so the campaign plan's "
+                "two-run subtracted path is a no-op for this observable "
+                "and is deliberately not paid for (PR #476 review F1); "
+                "20-cell canonical clearance; F0 = 3 GHz). The path under test is rfx's BINARY "
                 "dielectric rasterize (no sub-cell interface averaging "
                 "exists) — this is a measured envelope of that staircase, "
                 "not a smooth-interface accuracy claim. GATED: coarse ka "
@@ -363,12 +380,14 @@ def main(argv):
                 "+6.67/+3.99/-5.05 at clearance 20/30/40) and 29.0 dB "
                 "(ka=2.5: +6.31/+1.32/-22.65), worse than the PEC twin; "
                 "truncation is FALSIFIED (<= 0.09 dB at 2x steps), "
-                "two-run subtraction is delta-identical at backscatter "
-                "(leakage FALSIFIED), resolution is non-monotonic at "
-                "ka >= 1.5 (ka=1.75: +6.67/-11.58/+3.53 over cpr "
-                "6.4/9.6/12.8) while it GENUINELY converges inside the "
-                "gated region (ka=1.0: -3.28/+0.08/-0.97), and the "
-                "domain-size axis dominates. Non-FDTD corroboration "
+                "incident leakage at the monostatic bin is EXCLUDED by "
+                "rcs.py's documented backscatter leakage null (~90 dB) — "
+                "NOT by a sub-vs-unsub probe, which is a same-array "
+                "tautology for this observable (PR #476 review F1) — "
+                "resolution is non-monotonic at ka >= 1.5 (ka=1.75: "
+                "+6.67/-11.58/+3.53 over cpr 6.4/9.6/12.8) while "
+                "appearing convergent only at single clearances inside "
+                "the gated region, and the domain-size axis dominates. Non-FDTD corroboration "
                 "(Bempp PMCHWT) is an offline follow-up; no Bempp leg is "
                 "committed for the dielectric case yet."
             ),
@@ -381,7 +400,10 @@ def main(argv):
                 "clear_cells_canonical": CLEAR_CELLS_DEFAULT,
                 "cpml_layers": CPML_LAYERS,
                 "polarization": "ez",
-                "subtract_incident_reference": True,
+                "subtract_incident_reference": False,
+                "subtract_note": "monostatic_rcs is always computed from "
+                                 "the raw run (rfx/rcs.py); the flag would "
+                                 "be a no-op at 2x compute (PR #476 F1)",
             },
             "gates": {
                 "coarse_ka": KA_GATED_COARSE, "coarse_gate_db": GATE_COARSE_DB,
@@ -408,19 +430,26 @@ def main(argv):
                           "(re-run and printed above)",
                 "no_preflight_note": (
                     "compute_rcs is a functional entry point with NO "
-                    "preflight; the operating-point asserts (internal-"
+                    "preflight; the operating-point guarantees (internal-"
                     "wavelength floor, cells-per-radius floor, cell-unit "
-                    "clearance, transit-scaled steps) are the hand-ported "
-                    "equivalents."
+                    "clearance, transit-scaled steps) are enforced by "
+                    "construction inside run_point (max()/derived "
+                    "expressions — deliberately no assert to grep for)."
                 ),
                 "offline_probes_2026_07_27": (
                     "NOT committed as data (recorded here as provenance "
-                    "only): sub-vs-unsub delta-identical at backscatter "
-                    "(ka {1.75, 2.5}); resolution ladder cpr 6.4/9.6/12.8 "
-                    "non-monotonic at ka {1.75, 2.5} and convergent at "
-                    "ka=1.0; domain clearance 20/30/40 spreads 11.7 dB "
-                    "(ka=1.75) / 29.0 dB (ka=2.5). Committed data "
-                    "witnesses: domain_realizations, clearance_scan, "
+                    "only): resolution ladder cpr 6.4/9.6/12.8 "
+                    "non-monotonic at ka {1.75, 2.5} and apparently "
+                    "convergent at ka=1.0 only at single clearances; "
+                    "domain clearance 20/30/40 spreads 11.7 dB (ka=1.75) "
+                    "/ 29.0 dB (ka=2.5). The first revision also quoted a "
+                    "sub-vs-unsub identity as a leakage witness — "
+                    "RETRACTED as a same-array tautology (monostatic_rcs "
+                    "is unsubtracted by construction; PR #476 review F1); "
+                    "the review's bistatic sub-vs-unsub measurement "
+                    "(<= 0.025 dB on this geometry) is recorded there. "
+                    "Committed data witnesses: domain_realizations, "
+                    "clearance_scan, fine_rung_witness, "
                     "truncation_witness."
                 ),
             },

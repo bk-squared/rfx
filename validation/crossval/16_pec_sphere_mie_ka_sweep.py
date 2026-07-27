@@ -66,10 +66,13 @@ provenance of the 2026-07-27 offline probes — see F3 note in provenance):
   * volume/effective-radius: FALSIFIED (rasterized-volume ka_eff matches
     nominal to < 1%, and comparing against Mie(ka_eff) leaves deltas
     unchanged) — offline probe, recorded in provenance;
-  * TFSF incident leakage (#280 class): FALSIFIED at the monostatic bin
-    (two-run subtract_incident_reference=True is bin-identical, consistent
-    with the documented backscatter leakage null) — offline probe,
-    recorded in provenance;
+  * TFSF incident leakage (#280 class): EXCLUDED at the monostatic bin by
+    rcs.py's documented backscatter leakage null (~90 dB). CORRECTION
+    (PR #476 review, F1): the first revision quoted a sub-vs-unsub
+    bin-identity as a falsifying probe — that comparison is a same-array
+    tautology, because ``monostatic_rcs`` is ALWAYS computed from the raw
+    (unsubtracted) run by construction (rfx/rcs.py). The exclusion rests
+    on the documented null, not on that retracted probe;
   * resolution: non-monotonic at nulls (6.4 -> 9.6 -> 12.8 cells/radius;
     independently reproduced at cpr 19.2/25.6 in the PR #475 review) —
     offline probe, recorded in provenance;
@@ -354,9 +357,14 @@ def main(argv):
                 "review F1), so neither null magnitude nor null "
                 "position is a converged observable here. Committed witnesses: domain_realizations, "
                 "clearance_scan, truncation_witness (gated bins). The "
-                "effective-radius, #280-leakage and 9.6-rung resolution "
-                "probes were offline (2026-07-27) and are recorded as "
-                "provenance, not data. Non-FDTD corroboration (Bempp "
+                "effective-radius and 9.6-rung resolution probes were "
+                "offline (2026-07-27) and are recorded as provenance, "
+                "not data; incident leakage at the monostatic bin is "
+                "EXCLUDED by rcs.py's documented backscatter leakage "
+                "null, the formerly-quoted sub-vs-unsub probe having "
+                "been RETRACTED as a same-array tautology "
+                "(monostatic_rcs is unsubtracted by construction — "
+                "PR #476 review F1). Non-FDTD corroboration (Bempp "
                 "EFIE) exists for ka <= 2 in "
                 "tests/fixtures/rcs_sphere_three_way/; extending it "
                 "above ka=2 is an offline follow-up."
@@ -404,13 +412,17 @@ def main(argv):
                     "NOT committed as data (recorded here as provenance "
                     "only): rasterized-volume ka_eff within 1% of nominal "
                     "with deltas unchanged vs Mie(ka_eff) at ka "
-                    "{1.75,2,3,4}; subtract_incident_reference=True "
-                    "bin-identical at backscatter (ka {1.75,3} x clear "
-                    "{20,30,40}); 6.4/9.6/12.8 resolution ladder "
+                    "{1.75,2,3,4}; 6.4/9.6/12.8 resolution ladder "
                     "non-monotonic at nulls (independently reproduced at "
-                    "cpr 19.2/25.6 in the PR #475 review). Committed data "
-                    "witnesses: domain_realizations, clearance_scan, "
-                    "truncation_witness."
+                    "cpr 19.2/25.6 in the PR #475 review). RETRACTED "
+                    "(PR #476 review F1): the sub-vs-unsub bin-identity "
+                    "formerly quoted here as a leakage probe is a "
+                    "same-array tautology — monostatic_rcs is always "
+                    "computed from the raw run by construction "
+                    "(rfx/rcs.py); leakage exclusion at backscatter rests "
+                    "on rcs.py's documented ~90 dB leakage null. "
+                    "Committed data witnesses: domain_realizations, "
+                    "clearance_scan, truncation_witness."
                 ),
             },
         }

@@ -97,6 +97,22 @@ def test_fixture_and_artifact_are_the_same_record(fixture):
     assert artifact == fixture
 
 
+def test_script_claim_scope_literal_matches_fixture(fixture):
+    """Binds the script-source claim_scope to the committed fixture copy
+    (AST-extracted), so a hand-patched fixture cannot silently revert at the
+    next --write-fixture and a script edit cannot leave the fixture stale —
+    the prose analogue of the D2 constant binding (PR #476 review)."""
+    import ast
+    mod = ast.parse((_REPO_ROOT / "validation/crossval/17_dielectric_sphere_mie.py"
+                     ).read_text(encoding="utf-8"))
+    lits = [ast.literal_eval(v)
+            for node in ast.walk(mod) if isinstance(node, ast.Dict)
+            for k, v in zip(node.keys, node.values)
+            if isinstance(k, ast.Constant) and k.value == "claim_scope"]
+    assert len(lits) == 1
+    assert " ".join(lits[0].split()) == " ".join(fixture["claim_scope"].split())
+
+
 def test_gate_is_hard_pinned_and_equals_recomputed_envelope(fixture):
     """PR #475 D1 lesson baked in: hard ceiling AND derived relation, both."""
     g = fixture["gates"]
@@ -187,12 +203,78 @@ def test_attribution_witnesses_are_recorded(fixture):
     assert "not committed as data" in prov
 
 
-def test_operating_point_is_the_derived_one(fixture):
+def _all_rows(fixture):
+    """Every committed measurement row, across all families (review F2/F3)."""
+    rows = list(fixture["gated_coarse"]) + list(fixture["diagnostic_curve_clear20"])
+    for fam in fixture["domain_realizations"].values():
+        rows += list(fam)
+    for ka_rows in fixture["clearance_scan"]["coarse"].values():
+        rows += list(ka_rows)
+    for ka_rows in fixture["fine_rung_witness"]["fine"].values():
+        rows += list(ka_rows)
+    return rows
+
+
+def test_operating_point_is_the_derived_one_on_every_row(fixture):
+    """Review F2: the floors must hold on ALL row families — the 33 rows that
+    set the gate envelope, not just the 40 that display it."""
     cfg = fixture["config"]
     assert cfg["eps_r"] == 2.56
     assert cfg["resolution_floor"] == 24            # lambda_internal / 15
     assert cfg["coarse_cells_per_radius"] == 6.4
-    assert cfg["subtract_incident_reference"] is True
-    for r in fixture["gated_coarse"] + fixture["diagnostic_curve_clear20"]:
+    # F1 (review): the two-run flag is a no-op for monostatic_rcs (always
+    # computed from the raw run, rfx/rcs.py) — it must stay OFF, and the
+    # config must carry the note saying why.
+    assert cfg["subtract_incident_reference"] is False
+    assert "no-op" in cfg["subtract_note"]
+    rows = _all_rows(fixture)
+    assert len(rows) >= 70
+    for r in rows:
         assert r["a_over_dx"] >= 6.3, r
         assert r["resolution"] >= 24, r
+        expected_res = max(24, math.ceil(2 * math.pi * r["cells_per_radius"] / r["ka"]))
+        assert r["resolution"] == expected_res, r
+
+
+def test_every_row_is_internally_consistent_and_oracle_checked(fixture):
+    """Review F3: cross-check ALL rows against the independent Mie leg and
+    assert the three redundant encodings agree, so no delta_db anywhere in
+    the envelope population can be edited independently of its row."""
+    mie_cache = {}
+    for r in _all_rows(fixture):
+        ka = r["ka"]
+        if ka not in mie_cache:
+            mie_cache[ka] = _mie_backscatter_over_pi_a2(M_IDX, ka)
+        # recorded Mie leg vs independent re-implementation
+        assert abs(10 * np.log10(mie_cache[ka] / r["mie_sigma_over_pi_a2"])) < 0.01, r
+        # delta_db == rfx_dbsm - mie_dbsm (rounding tolerance)
+        assert abs(r["delta_db"] - (r["rfx_monostatic_dbsm"] - r["mie_dbsm"])) < 2e-3, r
+        # sigma fields consistent with dBsm fields (radius exact from ka)
+        lam = 299792458.0 / 3e9
+        radius = ka * lam / (2 * math.pi)
+        pi_a2 = math.pi * radius ** 2
+        # tolerance sits above the recorded-precision floor (the 1e-6
+        # sigma quantum is 2.5e-4 dB at ka=0.5; worst observed residual
+        # 0.0009 dB) so a regen's thread-order noise cannot flake it.
+        assert abs(r["rfx_monostatic_dbsm"]
+                   - 10 * np.log10(r["rfx_sigma_over_pi_a2"] * pi_a2)) < 1e-2, r
+        assert abs(r["mie_dbsm"]
+                   - 10 * np.log10(r["mie_sigma_over_pi_a2"] * pi_a2)) < 1e-2, r
+
+
+def test_scan_populations_carry_their_own_provenance(fixture):
+    """Review F4: a degenerate scan (one clearance run seven times) must not
+    be able to masquerade as the anti-aliasing population."""
+    scan = fixture["clearance_scan"]
+    clearances = scan["clearances"]
+    assert len(set(clearances)) == len(clearances) >= 7
+    for ka, rows in scan["coarse"].items():
+        assert [r["clear_cells"] for r in rows] == clearances, ka
+        assert all(r["cells_per_radius"] == 6.4 for r in rows), ka
+    fw = fixture["fine_rung_witness"]
+    assert len(set(fw["clearances"])) == len(fw["clearances"]) >= 7
+    for ka, rows in fw["fine"].items():
+        assert [r["clear_cells"] for r in rows] == fw["clearances"], ka
+        assert all(r["cells_per_radius"] == 12.8 for r in rows), ka
+    for c, fam in fixture["domain_realizations"].items():
+        assert all(r["clear_cells"] == int(c) for r in fam), c
