@@ -136,7 +136,11 @@ def run_one(dx: float, *, kill_port1_sigma: bool = False, num_periods: float = 1
     nx_total = int(round((L_LINE + 2 * PORT_MARGIN) / dx))
     print(f"\n[{label}] dx={dx*1e6:.0f}um  nz_sub={nz_sub}  ny_trace={ny_trace}  nx={nx_total}", flush=True)
     t0 = time.time()
-    res = sim.compute_msl_s_matrix(n_freqs=n_freqs, num_periods=num_periods)
+    # Diagnostics see the RAW extraction (issue #470 rule): clipping
+    # coarse-mesh points would compress the |S|-vs-dx trend this study
+    # exists to quantify.
+    res = sim.compute_msl_s_matrix(n_freqs=n_freqs, num_periods=num_periods,
+                                   enforce_passivity=False)
     dt = time.time() - t0
     s = _gate_stats(res)
     s.update(dx=dx, label=label, nz_sub=nz_sub, ny_trace=ny_trace,

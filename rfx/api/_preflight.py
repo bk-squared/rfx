@@ -297,6 +297,111 @@ class PreflightReport(list):
         return json.dumps(self.to_dict(), **options)
 
 
+# --------------------------------------------------------------------------
+# MSL probe-clearance geometry (module-level so compute_msl_s_matrix can
+# reuse the identical arithmetic for the issue-#469 interval solve).
+# --------------------------------------------------------------------------
+
+# Conservative ε_eff proxy → upper bound on β → lower bound on λ_g → most
+# stringent (smallest) recommended clearance. For air-only lines this is
+# overly conservative, but the cost of a false-positive advisory is low.
+MSL_EPS_EFF_PROXY = 5.0
+
+
+def msl_min_probe_clearance(freq_max: float) -> float:
+    """Minimum probe-to-reflector clearance: λ_g/4 at ``freq_max``.
+
+    At lower frequencies λ_g is larger and the same physical clearance
+    represents fewer cells of standing-wave-free zone — f_max is the
+    worst case.
+    """
+    c0 = 2.998e8
+    lambda_g_min = c0 / (float(freq_max) * (MSL_EPS_EFF_PROXY ** 0.5))
+    return 0.25 * lambda_g_min
+
+
+def msl_nearest_downstream_reflector(
+    geometry,
+    *,
+    x_probe: float,
+    x_feed: float,
+    y_feed: float,
+    w_trace: float,
+    dx: float,
+    domain_y: float,
+    direction: str,
+):
+    """Distance from ``x_probe`` to the nearest downstream PEC discontinuity.
+
+    Walks registered PEC ``Box`` shapes and returns ``(distance_m, label)``
+    for the nearest box edge at or beyond ``x_probe`` along the propagation
+    direction, or ``(inf, None)`` when nothing qualifies.
+
+    Exclusions (both are #469-arc corrections to the pre-existing
+    heuristic):
+
+    * **the line being measured** — any trace-width box
+      (|y-extent − w_trace| ≤ dx, y-range containing the feed centreline)
+      whose x-range contains the FEED plane. This covers the through-line
+      AND a port's own feed trace; the old rule (x-extent ≥ 80 % of an
+      inter-port-extent estimate) missed the latter for '-x' ports —
+      measured d=0 false positive against the port's OWN output feed
+      (validation/crossval/07_sheen_lpf.py known-residual note) — and its
+      '+x' extent estimate evaluated to the CPML thickness instead of the
+      far-wall coordinate (latent arithmetic bug, now moot: the estimate
+      is gone). A same-width series element that does NOT contain the
+      feed plane is a genuine discontinuity and is still counted.
+    * **ground-plane-like boxes** (y-extent ≥ 80 % of the domain y).
+    """
+    from rfx.geometry.csg import Box as _Box
+
+    sign = 1.0 if direction == "+x" else -1.0
+    nearest_d = float("inf")
+    nearest_label = None
+    for ge in geometry:
+        shape = getattr(ge, "shape", None)
+        mat = getattr(ge, "material_name", "")
+        if not isinstance(shape, _Box) or str(mat).lower() != "pec":
+            continue
+        lo, hi = shape.corner_lo, shape.corner_hi
+        box_x_lo, box_x_hi = float(lo[0]), float(hi[0])
+        box_y_lo, box_y_hi = float(lo[1]), float(hi[1])
+        box_y_extent = box_y_hi - box_y_lo
+        # Skip the line being measured (see docstring).
+        if (
+            abs(box_y_extent - w_trace) <= dx
+            and box_y_lo - dx <= y_feed <= box_y_hi + dx
+            and box_x_lo - dx <= x_feed <= box_x_hi + dx
+        ):
+            continue
+        # Skip ground-plane-like boxes.
+        if box_y_extent >= 0.8 * domain_y:
+            continue
+        # Distance from x_probe to the nearest edge of this box,
+        # measured ALONG the propagation direction.
+        if sign > 0:
+            if box_x_lo > x_probe:
+                d = box_x_lo - x_probe
+            elif box_x_hi < x_probe:
+                continue  # behind the probe
+            else:
+                d = 0.0
+        else:
+            if box_x_hi < x_probe:
+                d = x_probe - box_x_hi
+            elif box_x_lo > x_probe:
+                continue
+            else:
+                d = 0.0
+        if d < nearest_d:
+            nearest_d = d
+            nearest_label = (
+                f"PEC Box at x∈[{box_x_lo*1e3:.2f},{box_x_hi*1e3:.2f}]mm "
+                f"y∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
+            )
+    return nearest_d, nearest_label
+
+
 class _PreflightMixin:
     """Preflight / validation methods mixed into :class:`Simulation`."""
 
@@ -2195,7 +2300,17 @@ class _PreflightMixin:
     ) -> None:
         """P1.2/P1.3: Probe or source inside absorber region."""
         if cpml_thickness > 0:
-            for pe in self._probes:
+            _internal = getattr(self, "_internal_probe_indices", frozenset())
+            for _pi, pe in enumerate(self._probes):
+                if _pi in _internal:
+                    # Library-registered diagnostic probes (e.g. the MSL
+                    # settling-witness probes, issue #470): the library
+                    # placed them deliberately and must not warn about
+                    # itself — that self-noise buried the genuine MSL
+                    # port-clearance advisories. User probes are
+                    # unaffected (precedent: passive DFT probes are
+                    # excluded from the geometry-extent check, #303).
+                    continue
                 pos = pe.position
                 for ax, coord in enumerate(pos):
                     domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
@@ -2603,7 +2718,12 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
 
-        for pe in list(self._ports) + list(self._probes):
+        _internal = getattr(self, "_internal_probe_indices", frozenset())
+        _probe_entries = [
+            pe for _pi, pe in enumerate(self._probes) if _pi not in _internal
+        ]  # skip library-internal witness probes (issue #470; see
+        #    _validate_cfg_absorber_placement for the rationale)
+        for pe in list(self._ports) + _probe_entries:
             pos = pe.position
             component = (getattr(pe, "component", "") or "").lower()
             is_h_component = component in ("hx", "hy", "hz")
@@ -3206,8 +3326,8 @@ class _PreflightMixin:
                 )
 
             # ---- 4. Probe-to-reflector distance — standing-wave bias ----
-            # The 3-probe Z0 extractor in compute_msl_s_matrix assumes a
-            # CLEAN travelling-wave regime at the V1/V2/V3 probe locations.
+            # The N-probe Z0 extractor in compute_msl_s_matrix assumes a
+            # CLEAN travelling-wave regime at the probe locations.
             # When a strong reflector (PEC stub, open termination, mismatch)
             # sits within ≲ λ_g/4 of the probes, V_i contains substantial
             # standing-wave content and the recovered (α, γ, Z0) get
@@ -3215,94 +3335,62 @@ class _PreflightMixin:
             # demands full reflection.  Catches the cv06b-vs-Y2-demo
             # divergence (cv06b's L_LINE=30mm passes; Y2's L_LINE=5mm
             # fails by ~7 dB on |S11|@notch).
-            #
-            # Conservative ε_eff_proxy = 5.0 → upper bound on β → lower
-            # bound on λ_g → most stringent (smallest) recommended
-            # clearance.  For air-only lines this is overly conservative,
-            # but the cost of a false-positive warning is low.
-            EPS_EFF_PROXY = 5.0
-            f_max = float(self._freq_max)
-            c0 = 2.998e8
-            lambda_g_min = c0 / (f_max * (EPS_EFF_PROXY ** 0.5))
-            # Recommended: probe-to-reflector ≥ λ_g/4 at f_max.  At lower
-            # frequencies λ_g is larger and the same physical clearance
-            # represents fewer cells of standing-wave-free zone — but
-            # f_max is the worst case.
-            min_probe_clear = 0.25 * lambda_g_min
+            min_probe_clear = msl_min_probe_clearance(float(self._freq_max))
 
-            # Last 3-probe x-position (V₃, deepest into the line)
+            # Deepest probe position. Pre-#469 this used the legacy
+            # 3-probe V₃ convention (offset + 2·spacing) which UNDERCOUNTS
+            # the span for the default n_probes=5 (deepest probe sits at
+            # offset + (n_probes-1)·spacing, rfx/sources/msl_port.py) —
+            # the check now uses the true deepest probe (stricter/correct).
             n_off = pe.n_probe_offset if pe.n_probe_offset is not None else 5
             n_sp = pe.n_probe_spacing if pe.n_probe_spacing is not None else 3
+            n_pr = getattr(pe, "n_probes", 5) or 5
             sign = 1.0 if pe.direction == "+x" else -1.0
-            x_v3 = x_feed + sign * (n_off + 2 * n_sp) * dx
+            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * dx
 
-            # Walk geometry: find PEC Box reflectors between this port's
-            # V3 and the FAR end of the line.  Exclude the through-line
-            # trace itself — heuristic: the trace is a Box whose
-            # x-extent ≥ 80 % of the inter-port distance and whose
-            # y-extent equals the trace width.
-            x_far = (float(domain[0]) - x_abs_hi) if pe.direction == "+x" else x_abs_lo
-            inter_port_extent = abs(x_far - x_feed)
-            from rfx.geometry.csg import Box as _Box
-            nearest_d = float("inf")
-            nearest_label = None
-            for ge in getattr(self, "_geometry", []):
-                shape = getattr(ge, "shape", None)
-                mat = getattr(ge, "material_name", "")
-                if not isinstance(shape, _Box) or str(mat).lower() != "pec":
-                    continue
-                lo, hi = shape.corner_lo, shape.corner_hi
-                box_x_lo, box_x_hi = float(lo[0]), float(hi[0])
-                box_y_lo, box_y_hi = float(lo[1]), float(hi[1])
-                # Skip the through-line trace itself
-                box_x_extent = box_x_hi - box_x_lo
-                box_y_extent = box_y_hi - box_y_lo
-                if (box_x_extent >= 0.8 * inter_port_extent
-                        and abs(box_y_extent - w_trace) <= dx):
-                    continue
-                # Skip ground plane boxes (the box that spans both
-                # transversally AND below the substrate; identify by
-                # a thin z-extent below the substrate top)
-                if box_y_extent >= 0.8 * float(domain[1]):
-                    continue
-                # Distance from V3 to the nearest edge of this box,
-                # measured ALONG the propagation direction
-                if sign > 0:
-                    if box_x_lo > x_v3:
-                        d = box_x_lo - x_v3
-                    elif box_x_hi < x_v3:
-                        continue   # behind the probe
-                    else:
-                        d = 0.0
-                else:
-                    if box_x_hi < x_v3:
-                        d = x_v3 - box_x_hi
-                    elif box_x_lo > x_v3:
-                        continue
-                    else:
-                        d = 0.0
-                if d < nearest_d:
-                    nearest_d = d
-                    nearest_label = (
-                        f"PEC Box at x∈[{box_x_lo*1e3:.2f},{box_x_hi*1e3:.2f}]mm "
-                        f"y∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
-                    )
+            nearest_d, nearest_label = msl_nearest_downstream_reflector(
+                getattr(self, "_geometry", []),
+                x_probe=x_deep,
+                x_feed=x_feed,
+                y_feed=y_centre,
+                w_trace=w_trace,
+                dx=dx,
+                domain_y=float(domain[1]),
+                direction=pe.direction,
+            )
 
             if nearest_d < min_probe_clear and nearest_label is not None:
+                # Interval framing (issue #469): the compliant window is
+                # offset ∈ [offset_min, offset_max]. INCREASING the offset
+                # moves the probes TOWARD the reflector, so the pre-#469
+                # "bump n_probe_offset" mitigation pointed the wrong way
+                # on short feeds.
+                d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * dx
+                off_max = int((d_feed_to_refl - min_probe_clear) / dx) - (n_pr - 1) * n_sp
+                _hsub_cells = int(round(5.0 * h_sub / dx))
+                interval_txt = (
+                    f"compliant n_probe_offset interval ≈ "
+                    f"[{max(3, _hsub_cells)}, {off_max}] cells"
+                    if off_max >= max(3, _hsub_cells)
+                    else "no compliant n_probe_offset exists on this feed "
+                    "length (interval empty)"
+                )
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                        f"3-probe V₃ at x={x_v3*1e3:.2f}mm sits {nearest_d*1e6:.0f}µm "
+                        f"deepest probe at x={x_deep*1e3:.2f}mm sits "
+                        f"{nearest_d*1e6:.0f}µm "
                         f"from a strong reflector ({nearest_label}); recommended "
                         f"≥ {min_probe_clear*1e6:.0f}µm "
-                        f"(= λ_g/4 at f_max with ε_eff_proxy={EPS_EFF_PROXY:.1f}). "
+                        f"(= λ_g/4 at f_max with ε_eff_proxy={MSL_EPS_EFF_PROXY:.1f}). "
                         f"Standing-wave content at the probes will bias "
                         f"`compute_msl_s_matrix`'s Z₀ extraction and |S11|@notch — "
                         f"physical |S11|→1 at a quarter-wave open stub may read "
                         f"as -5 to -10 dB instead of 0 dB.  Mitigation: "
                         f"extend L_LINE so the line between port and reflector "
-                        f"is ≥ λ_g/2, OR bump n_probe_offset on add_msl_port to "
-                        f"push V₃ further into a clean travelling-wave region.",
+                        f"is ≥ λ_g/2, OR set n_probe_offset inside the "
+                        f"{interval_txt} (do NOT simply increase it — that "
+                        f"moves the probes closer to the reflector).",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

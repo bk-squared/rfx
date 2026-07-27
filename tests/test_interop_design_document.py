@@ -446,7 +446,16 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
     )
     mismatched = {}
-    for name in sorted(vars(original)):
+    # Issue #469 — deliberate representational asymmetry: the document
+    # records each AUTO port's RESOLVED n_probe_offset as an explicit,
+    # frozen value (reproducibility-first; see
+    # _msl_ports_with_resolved_offsets), so the rebuilt simulation does not
+    # reconstruct the auto bookkeeping. The BEHAVIORAL contract — rebuilt
+    # probe placement equals what the original would measure with — is
+    # pinned positively by
+    # test_auto_msl_offset_is_frozen_resolved_in_the_document.
+    skip_attrs = {"_msl_auto_offset_min"}
+    for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))
         if left != right:
@@ -1624,3 +1633,42 @@ def test_geometry_and_material_sections_share_the_existing_vocabulary():
     for payload in document["materials"].values():
         assert material_from_dict(payload) is not None
     assert set(document["material_library"]) <= set(MATERIAL_LIBRARY)
+
+
+def test_auto_msl_offset_is_frozen_resolved_in_the_document():
+    """Issue #469 representational contract, pinned positively: the document
+    records an AUTO port's RESOLVED n_probe_offset (the value the original
+    would measure with after the driver-time interval solve), NOT the
+    stored lower edge — so a rebuilt design reproduces the original's probe
+    placement with an explicit frozen value, and re-export is stable. The
+    corresponding census exemption lives in assert_designs_equivalent.
+
+    Geometry = the #469 Sheen-parameter case: stored lower edge 20 cells,
+    compliant interval [20, 33] -> resolved midpoint 26 (hand arithmetic in
+    tests/test_msl_probe_offset_interval.py)."""
+    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=2e-4,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")
+    sim.add(Box((0.001, 0.01316 - 0.0012065, 0.000794),
+                (0.012466, 0.01316 + 0.0012065, 0.000994)), material="pec")
+    sim.add(Box((0.012466, 0.003, 0.000794),
+                (0.015006, 0.02332, 0.000994)), material="pec")
+    sim.add_msl_port(position=(0.0025, 0.01316, 0.0), width=0.002413,
+                     height=0.000794, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="p1")
+
+    assert sim._msl_ports[0].n_probe_offset == 20      # stored lower edge
+    document = design_to_dict(sim)
+    (port_doc,) = document["excitations"]["msl_ports"]
+    assert port_doc["n_probe_offset"] == 26            # frozen RESOLVED value
+    # the original simulation is not mutated by the export
+    assert sim._msl_ports[0].n_probe_offset == 20
+    assert sim._msl_auto_offset_min == {"p1": 20}
+
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._msl_ports[0].n_probe_offset == 26  # explicit, frozen
+    assert rebuilt._msl_auto_offset_min == {}
+    # re-export is stable (the frozen value is explicit, no re-solve)
+    document2 = design_to_dict(rebuilt)
+    assert document2["excitations"]["msl_ports"][0]["n_probe_offset"] == 26

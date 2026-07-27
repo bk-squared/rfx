@@ -62,7 +62,9 @@ def run_one(dx: float) -> dict:
     sim.add_msl_port(position=(PORT_MARGIN + L_LINE, yc, 0.0), width=W_TRACE,
                      height=H_SUB, direction="-x", impedance=50.0)
     t0 = time.time()
-    res = sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
+    # Diagnostics see the RAW extraction (issue #470 rule).
+    res = sim.compute_msl_s_matrix(n_freqs=30, num_periods=12,
+                                   enforce_passivity=False)
     dt = time.time() - t0
     S = np.asarray(res.S)
     Z0 = np.asarray(res.Z0)

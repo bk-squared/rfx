@@ -535,6 +535,19 @@ class Simulation(
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []
+        # Issue #469/#470 runtime bookkeeping. Deliberately NOT entry
+        # fields: _MSLPortEntry's and _ProbeEntry's field sets are pinned
+        # by the interop design-IR contract (rfx/interop/_design.py
+        # _PINNED_RECORDS), and neither of these is design state.
+        #   _msl_auto_offset_min: port name -> the upstream-only lower
+        #     edge stored when n_probe_offset was auto-resolved; the #469
+        #     interval solve in compute_msl_s_matrix starts from it.
+        #   _internal_probe_indices: indices into self._probes of
+        #     library-registered diagnostic probes (MSL settling
+        #     witnesses); probe-placement preflight advisories and the
+        #     #332 tail advisory skip them (issue #470 self-noise).
+        self._msl_auto_offset_min: dict[str, int] = {}
+        self._internal_probe_indices: set[int] = set()
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
         self._lumped_rlc: list[LumpedRLCSpec] = []
@@ -1290,8 +1303,17 @@ class Simulation(
             dominates: clearing only (a) leaves probe 0 inside the fringing
             transient and corrupts the V·I-split S11 of a high-Q resonant
             load (issue #80 patch: |S11|=8.94/1.11 → passive ~0.99 once
-            cleared). Pass an explicit value to override; ``< 5*h_sub/dx``
-            triggers a preflight near-field warning.
+            cleared). These two terms are only the UPSTREAM (lower) edge:
+            at ``compute_msl_s_matrix`` time the auto default additionally
+            solves the DOWNSTREAM constraint (issue #469) — the deepest
+            probe must stay ≥ λ_g/4 (at ``freq_max``) clear of the nearest
+            reflector — picking the midpoint of the compliant interval
+            when a reflector bounds it, keeping the upstream edge when
+            none does, and warning loudly when the interval is empty (the
+            feed line is too short for a clean N-probe measurement).
+            Pass an explicit value to override (explicit values are never
+            adjusted); ``< 5*h_sub/dx`` triggers a preflight near-field
+            warning.
         n_probe_spacing : int, optional
             Distance (cells) between consecutive probe planes. When ``None``,
             bound so the total N-probe array span stays ~``lam_min_eff/8``
@@ -1377,7 +1399,18 @@ class Simulation(
         #      ``height`` is the port cross-section height = substrate h_sub.
         _lam_cells = int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
         _hsub_cells = int(round(5.0 * height / _dx))
+        _offset_is_auto = n_probe_offset is None
         if n_probe_offset is None:
+            # This is the UPSTREAM-only lower edge (offset_min). It has no
+            # notion of what sits downstream, and geometry registered after
+            # this call is invisible here — so the downstream (reflector
+            # λ_g/4) term of issue #469 is solved at compute_msl_s_matrix
+            # time, where the full geometry exists: auto ports get the
+            # midpoint of [offset_min, offset_max] when a downstream
+            # reflector bounds the interval, keep offset_min when none
+            # does (byte-identical to the pre-#469 default), and warn
+            # loudly when the interval is empty (feed too short for a
+            # clean measurement). Explicit offsets are never touched.
             n_probe_offset = max(3, _lam_cells, _hsub_cells)
         if n_probe_spacing is None:
             # Bind the default so the TOTAL N-probe array span stays
@@ -1411,6 +1444,14 @@ class Simulation(
 
         if name is None:
             name = f"msl_{len(self._msl_ports)}"
+
+        if _offset_is_auto:
+            # Runtime bookkeeping only (NOT an entry field — _MSLPortEntry's
+            # field set is pinned by the interop design-IR contract): the
+            # #469 interval solve in compute_msl_s_matrix re-derives the
+            # effective offset from THIS stored lower edge every call, so
+            # repeated calls do not drift.
+            self._msl_auto_offset_min[name] = int(n_probe_offset)
 
         self._msl_ports.append(_MSLPortEntry(
             name=name,

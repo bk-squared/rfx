@@ -769,15 +769,52 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_tfsf",
     "_thin_conductors",
     "_waveguide_ports",
+    # Issue #469: auto-offset lower edges. Accounted for by the dump via
+    # _msl_ports_with_resolved_offsets — the document records each auto
+    # port's RESOLVED n_probe_offset (frozen concrete value), so a rebuilt
+    # design reproduces the original's probe placement exactly; the
+    # bookkeeping itself is therefore not a document section.
+    "_msl_auto_offset_min",
+    # Issue #470: indices of library-internal witness probes. Populated and
+    # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
+    # construction and at dump time, so it contributes nothing to the
+    # document by construction.
+    "_internal_probe_indices",
 )
 
 #: Attributes deliberately absent from the document.  These are derived,
 #: transient, or run-time state — see the module docstring, rule 4.  A
-#: ``Simulation`` does not carry them at construction; they appear only after a
-#: preflight/run pass, which is exactly why they are not design state.
+#: ``Simulation`` does not carry them at construction (or carries them only
+#: as empty run-time bookkeeping); they matter only inside a
+#: preflight/driver pass, which is exactly why they are not design state.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_ntff_min_steps_hint",
 )
+
+
+def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
+    """MSL port entries with auto ``n_probe_offset`` resolved for export.
+
+    Auto offsets are solved at ``compute_msl_s_matrix`` time against the
+    registered geometry (issue #469 interval solve). The design document
+    must record the CONCRETE value that solve would use — recording the
+    stored lower edge would make a rebuilt design place its probes
+    differently from the original (silent structural divergence, the
+    exact class this layer refuses elsewhere). Resolving at dump time
+    freezes the same number the original would measure with, and the
+    solve is idempotent from the stored lower edge, so re-exporting a
+    rebuilt design is stable.
+    """
+    if not getattr(sim, "_msl_auto_offset_min", None):
+        return list(sim._msl_ports)
+    if getattr(sim, "_dz_profile", None) is not None:
+        # NU lane: the solve is defined for uniform grids only (the driver
+        # keeps the stored value there too) — dump the stored entries.
+        return list(sim._msl_ports)
+    from rfx.api._sparams import _resolve_msl_auto_offsets
+
+    grid = sim._build_grid()
+    return list(_resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid))
 
 
 # ---------------------------------------------------------------------------
@@ -1327,7 +1364,10 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "soft_sources": soft_sources,
             "lumped_ports": lumped_ports,
             "msl_ports": _dump_list(
-                sim._msl_ports, _MSL_PORT_FIELDS, _MSLPortEntry, what="_msl_ports"
+                _msl_ports_with_resolved_offsets(sim),
+                _MSL_PORT_FIELDS,
+                _MSLPortEntry,
+                what="_msl_ports",
             ),
             "waveguide_ports": _dump_list(
                 sim._waveguide_ports,

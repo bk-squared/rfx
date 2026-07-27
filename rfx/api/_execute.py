@@ -247,6 +247,18 @@ class _ExecuteMixin:
 
         time_series = getattr(result, "time_series", None)
         series = None if time_series is None else np.asarray(time_series)
+        # Issue #470: exclude library-internal witness probes (the MSL
+        # settling witnesses) — their record is judged by the MSL driver's
+        # own settling_db witness, so #332/#336 here speak for USER probes
+        # only and the two differently-defined witnesses never double-fire
+        # on the same columns. With only internal probes present this
+        # behaves as if no probe series was recorded (the pre-#468 state).
+        # Time-series columns are in probe registration order (the same
+        # convention the MSL driver's witness slice relies on).
+        _internal = getattr(self, "_internal_probe_indices", None)
+        if series is not None and series.ndim == 2 and _internal:
+            _keep = [i for i in range(series.shape[1]) if i not in _internal]
+            series = series[:, _keep] if _keep else None
         has_probe_series = series is not None and series.size > 0
 
         if has_probe_series:

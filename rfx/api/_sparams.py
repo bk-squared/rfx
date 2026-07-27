@@ -176,6 +176,90 @@ def _warn_if_ringdown_truncated(
     )
 
 
+def _resolve_msl_auto_offsets(sim, entries, grid):
+    """Issue #469: solve the probe-offset interval for AUTO-offset ports.
+
+    ``add_msl_port``'s auto-default is the UPSTREAM-only lower edge
+    (``offset_min = max(3, λ/(4π·dx), 5·h_sub/dx)``); the downstream
+    constraint — the deepest probe ≥ λ_g/4 (at f_max) clear of the nearest
+    reflector — needs the full registered geometry, which only exists at
+    driver time. Per auto port on a uniform grid:
+
+    * no downstream reflector  -> keep ``offset_min`` (byte-identical to
+      the pre-#469 default);
+    * finite reflector, interval ``[offset_min, offset_max]`` non-empty ->
+      midpoint (on the #469 Sheen measurement the old default sat at the
+      contaminated near edge and the old advisory pushed PAST the far
+      edge; the midpoint lands inside the measured-clean window);
+    * interval EMPTY -> warn loudly (the feed line is too short for a
+      clean N-probe measurement) and keep ``offset_min`` (upstream
+      priority — the fringing transient is the historically dominant
+      corruption, issue #80).
+
+    Explicit offsets are never touched; NU grids keep the stored value
+    (cell-counted intervals are ill-defined under graded dx). The solve
+    always starts from the STORED lower edge
+    (``sim._msl_auto_offset_min``), so repeated calls are idempotent.
+    Returns a new entries list; ``sim`` is not mutated.
+    """
+    if not sim._msl_auto_offset_min or getattr(grid, "dz", None) is not None:
+        return entries
+
+    import dataclasses
+    import warnings
+
+    from rfx.api._preflight import (
+        msl_min_probe_clearance,
+        msl_nearest_downstream_reflector,
+    )
+
+    dx_u = float(grid.dx)
+    clear = msl_min_probe_clearance(float(sim._freq_max))
+    resolved: list = []
+    for pe in entries:
+        off_min = sim._msl_auto_offset_min.get(pe.name)
+        if off_min is None:
+            resolved.append(pe)
+            continue
+        span = (int(pe.n_probes) - 1) * int(pe.n_probe_spacing)
+        d_refl, _ = msl_nearest_downstream_reflector(
+            getattr(sim, "_geometry", []),
+            x_probe=float(pe.position[0]),
+            x_feed=float(pe.position[0]),
+            y_feed=float(pe.position[1]),
+            w_trace=float(pe.width),
+            dx=dx_u,
+            domain_y=float(sim._domain[1]),
+            direction=pe.direction,
+        )
+        if not np.isfinite(d_refl):
+            resolved.append(pe)
+            continue
+        off_max = int((d_refl - clear) / dx_u) - span
+        if off_max >= off_min:
+            resolved.append(dataclasses.replace(
+                pe, n_probe_offset=(off_min + off_max) // 2,
+            ))
+        else:
+            warnings.warn(
+                f"MSL port {pe.name!r}: the upstream and downstream "
+                f"probe clearances are mutually unsatisfiable on this "
+                f"feed (upstream needs n_probe_offset >= {off_min} "
+                f"cells = max(λ/4π, 5·h_sub)/dx; downstream needs "
+                f"<= {off_max} cells to keep the deepest of "
+                f"{int(pe.n_probes)} probes ≥ "
+                f"{clear*1e6:.0f}µm (λ_g/4 at f_max) clear of the "
+                f"reflector {d_refl*1e3:.2f}mm from the feed). "
+                f"The feed line is too short for a clean N-probe "
+                f"measurement — keeping the upstream-priority offset "
+                f"{off_min}; expect standing-wave bias at the deep "
+                f"probes. Extend the feed line to fix (issue #469).",
+                stacklevel=3,
+            )
+            resolved.append(pe)
+    return resolved
+
+
 def _project_passive(S):
     """Project S(f) onto the passive set by singular-value clipping.
 
@@ -1481,6 +1565,11 @@ class _SparamMixin:
             freqs_arr = np.asarray(freqs)
         n_freqs_used = int(freqs_arr.shape[0])
 
+        # Issue #469: solve the probe-offset interval for AUTO ports (the
+        # downstream reflector term is only computable here, with the full
+        # geometry registered — see _resolve_msl_auto_offsets).
+        entries = _resolve_msl_auto_offsets(self, entries, grid)
+
         # Build MSLPort descriptors and probe x-coords once (geometry shared).
         msl_ports: list[MSLPort] = []
         for pe in entries:
@@ -1618,6 +1707,7 @@ class _SparamMixin:
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         saved_probes = list(self._probes)
+        saved_internal_probes = set(self._internal_probe_indices)
         try:
             # Mutate self._dz_profile to the (possibly synthesised) grid dz only
             # now — inside the try — so the finally always restores it and the
@@ -1663,6 +1753,14 @@ class _SparamMixin:
                     )
                 _witness_counts.append(len(pxs_w))
             _witness_total = sum(_witness_counts)
+            # Mark the witness probes as library-internal so probe-placement
+            # preflight advisories and the #332 tail advisory skip them
+            # (issue #470: 10 self-inflicted advisories per driven run on
+            # the 2-port thru buried the genuine MSL port-clearance
+            # advisories, and #332 double-fired next to settling_db).
+            self._internal_probe_indices.update(
+                range(_witness_base, _witness_base + _witness_total)
+            )
             settling_db_runs = np.full(n_ports, np.nan)
 
             for driven in range(n_ports):
@@ -2100,6 +2198,7 @@ class _SparamMixin:
             self._msl_ports = saved_msl
             self._ports = saved_ports
             self._probes = saved_probes
+            self._internal_probe_indices = saved_internal_probes
             self._dz_profile = _dz_profile_saved
 
     def compute_coaxial_s_matrix(
