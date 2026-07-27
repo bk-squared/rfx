@@ -332,8 +332,17 @@ sim.add_tfsf_source(
     polarization="ez",
     direction="+x",    # propagation direction (+x or -x)
     angle_deg=0.0,     # oblique incidence angle (|angle_deg| < 90, degrees from normal)
+    method="bloch",    # oblique path: "bloch" (periodic unit cell) or
+                       # "methodB" (open-domain compact scatterer)
 )
 ```
+
+For oblique incidence (`angle_deg != 0`) the `method` argument selects the
+transverse boundary-value problem: `"bloch"` is the laterally periodic
+(unit-cell / infinite-array) path, `"methodB"` is the open-domain 2.5-D path
+for a compact isolated scatterer (`polarization="ez"`, uniform grid, and
+`direction="+x"` only — `"-x"` raises `NotImplementedError` under
+`"methodB"`; mirror the geometry instead).
 
 !!! warning
     `add_tfsf_source` cannot be combined with lumped ports or waveguide ports.
