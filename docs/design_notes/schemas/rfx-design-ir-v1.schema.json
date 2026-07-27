@@ -821,8 +821,8 @@
               "minLength": 1
             },
             "method": {
-              "type": "string",
-              "minLength": 1
+              "enum": ["bloch", "methodB"],
+              "description": "Transverse boundary-value-problem lane: 'bloch' = laterally periodic (infinite array), 'methodB' = open transverse boundary (compact isolated scatterer). Required despite the builder default because the failure is asymmetric: defaulting an oblique isolated-scatterer document to 'bloch' would silently import it as an infinite periodic array. The labels are rfx-internal; the translatable semantic for an external emitter is transverse boundary = periodic vs absorbing, not the lane name."
             }
           }
         },

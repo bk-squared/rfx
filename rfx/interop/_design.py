@@ -538,9 +538,14 @@ _TFSF_FIELDS: dict[str, _F] = {
     "direction": _STR,
     "angle_deg": _NUM,
     "waveform": _STR,
-    # PR #461: injection-algorithm selector ('bloch' periodic 2-D aux vs
-    # 'methodB' open-domain 1-D aux along k-hat). Design state, not run
-    # control — the two lanes assume different transverse boundary physics.
+    # PR #461: transverse boundary-value-problem selector — 'bloch' runs
+    # periodic=(F,T,T)/cpml_axes="x" (laterally periodic: infinite array),
+    # 'methodB' runs periodic=(F,F,T)/cpml_axes="xy" (open transverse
+    # boundary: compact isolated scatterer). Design state, not run control:
+    # the two lanes describe different physical structures. The labels are
+    # rfx-internal; a future TFSF emitter should translate the semantic
+    # (transverse boundary = periodic vs absorbing), not hunt for another
+    # solver's "method B".
     "method": _STR,
 }
 

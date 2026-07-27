@@ -1179,6 +1179,26 @@ def test_import_does_not_widen_the_reference_plane_fence():
         simulation_from_design(document)
 
 
+def test_round_trip_preserves_the_tfsf_method_lane():
+    """The bloch/methodB lane selects the transverse boundary value problem
+    (infinite periodic array vs compact isolated scatterer) — the IR must
+    preserve it through a round trip. Pinned on the NON-default value: a codec
+    that ever defaulted `method` away would still round-trip 'bloch' cleanly
+    while silently importing an oblique isolated-scatterer design as a
+    periodic array (PR #461 x #463 drift, PR #472)."""
+    sim = Simulation(
+        freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=1e-3, boundary="cpml", cpml_layers=6
+    )
+    sim.add(Sphere(center=(0.010, 0.010, 0.010), radius=0.003), material="pec")
+    sim.add_tfsf_source(f0=5e9, polarization="ez", direction="+x", angle_deg=30.0, method="methodB")
+
+    document = design_to_dict(sim)
+    assert document["excitations"]["tfsf"]["method"] == "methodB"
+    restored = simulation_from_design(document)
+    assert restored._tfsf.method == "methodB"
+    assert restored._tfsf.angle_deg == 30.0
+
+
 def test_import_does_not_widen_the_tfsf_boundary_fence():
     document = design_to_dict(_tfsf_scatterer())
     document["boundary"]["spec"] = BoundarySpec.uniform("pec").to_dict()
