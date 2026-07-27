@@ -342,7 +342,8 @@ transverse boundary-value problem: `"bloch"` is the laterally periodic
 (unit-cell / infinite-array) path, `"methodB"` is the open-domain 2.5-D path
 for a compact isolated scatterer (`polarization="ez"`, uniform grid, and
 `direction="+x"` only — `"-x"` raises `NotImplementedError` under
-`"methodB"`; mirror the geometry instead).
+`"methodB"` at `run()` time, since the Simulation API defers TFSF
+construction to the run; mirror the geometry instead).
 
 !!! warning
     `add_tfsf_source` cannot be combined with lumped ports or waveguide ports.
