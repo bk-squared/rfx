@@ -245,6 +245,10 @@ def _run_openems_line_reference(term: str, R: float | None, *, sim_dir: Path,
             f"openEMS feed port time trace is identically zero for term={term!r}: "
             "the excitation never entered the grid (silently dropped port)."
         )
+    # Surface both witnesses (PR #473 review): the D5 guard this mirrors
+    # records them in its diagnostics JSON; here a log line is the artifact.
+    print(f"excitation-guard term={term!r}: max|uf_inc|={inc_peak:.3e} "
+          f"trace_peak={trace_peak if trace_peak is None else f'{trace_peak:.3e}'}")
     s11 = np.asarray(feed.uf_ref / uf_inc, dtype=np.complex128)
     # Fail loud on a blown-up / non-physical field: a stable lossless line has
     # |Gamma| <= 1; anything >> 1 (or non-finite) means the run diverged.

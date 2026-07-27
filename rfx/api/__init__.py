@@ -631,11 +631,18 @@ class Simulation(
         # recovers user coordinates (rfx/grid.py). The pre-#466 check used the
         # opposite frame (absorber inside the first/last N domain cells) and
         # so fired on geometry that was clear of the absorber. In the
-        # builder's frame a z_range overlaps the absorber only when it leaves
-        # the physical domain: z_lo < 0 into an absorbing z_lo face, or
-        # z_hi > domain_z into an absorbing z_hi face. Frame fix only — no
-        # new adjacency/clearance semantics (the subgrid lane is EXPERIMENTAL,
-        # PR #90).
+        # builder's frame a z_range meets the absorber only when it reaches
+        # the physical-domain edge of an ABSORBING face: z_lo <= 0 (touching
+        # or entering the z_lo padding) or z_hi >= domain_z. Touching counts —
+        # the SAT interface then sits directly against the CPML interface,
+        # and the authoritative static validator flags the same geometry as
+        # ``subgrid_overlaps_absorber`` (see
+        # test_production_boundary_terminated_rejects_refined_face_touching_cpml,
+        # which pins this warning for the touching case). What the frame fix
+        # REMOVES is the interior false positive: a z_range strictly inside
+        # (0, domain_z) is clear of the absorber no matter how close to the
+        # edge, because the absorber cells are padding outside. The subgrid
+        # lane stays EXPERIMENTAL (PR #90).
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             import warnings
             z_lo_kind = self._boundary_spec.z.lo if self._boundary_spec else self._boundary
@@ -644,15 +651,16 @@ class Simulation(
             zhi_absorbing = z_hi_kind in ("cpml", "upml")
             domain_z = self._domain[2] if len(self._domain) > 2 else 0
             z_lo, z_hi = z_range
-            if (zlo_absorbing and z_lo < 0.0) or (
-                zhi_absorbing and domain_z > 0 and z_hi > domain_z
+            if (zlo_absorbing and z_lo <= 0.0) or (
+                zhi_absorbing and domain_z > 0 and z_hi >= domain_z
             ):
                 warnings.warn(
-                    f"Subgrid z_range=({z_lo*1e3:.1f}, {z_hi*1e3:.1f})mm extends "
-                    f"outside the physical domain (0.0, {domain_z*1e3:.1f})mm "
-                    f"into the absorber padding (absorber lies OUTSIDE the "
-                    f"domain — rfx/grid.py convention). This causes late-time "
-                    f"energy growth. Keep z_range inside the physical domain.",
+                    f"Subgrid z_range=({z_lo*1e3:.1f}, {z_hi*1e3:.1f})mm overlaps PML "
+                    f"absorber padding: it reaches the edge of the physical domain "
+                    f"(0.0, {domain_z*1e3:.1f})mm on an absorbing z face (the "
+                    f"absorber lies OUTSIDE the domain — rfx/grid.py convention). "
+                    f"This causes late-time energy growth. Keep z_range strictly "
+                    f"inside the physical domain or use PEC z faces.",
                     stacklevel=2,
                 )
 
