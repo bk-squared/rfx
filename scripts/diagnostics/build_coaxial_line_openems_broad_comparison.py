@@ -214,12 +214,36 @@ def _run_openems_line_reference(term: str, R: float | None, *, sim_dir: Path,
     # Fail loud and fast: a port that never coupled (mesh-misaligned excitation)
     # yields uf_inc=0 -> S11=0/0=NaN.  Catch it on the FIRST termination instead
     # of running the whole panel to silent NaN.
+    #
+    # SCALE-FREE test (issue #465): the former `inc_peak <= 1e-9` threshold
+    # false-fires on CORRECT runs — measured max|uf_inc| on runs with correct
+    # S-parameters is 1.93e-12 (PEC-cavity two-port) / 1.79e-13 (MSL thru),
+    # 3-4 decades BELOW that constant (openEMS's excitation normalisation, not
+    # a property of the setup; #465 measurement table). The dropped-port
+    # symptom is exactly-zero / non-finite, so test that, plus an independent
+    # time-domain witness (the port voltage trace), mirroring the proven D5
+    # guard in rfx/interop/emitters/openems.py — no absolute scale assumed.
     inc_peak = float(np.max(np.abs(uf_inc))) if uf_inc.size else 0.0
-    if not np.isfinite(inc_peak) or inc_peak <= 1.0e-9:
+    if not np.isfinite(inc_peak) or inc_peak == 0.0:
         raise RuntimeError(
-            f"openEMS feed port injected ~0 incident energy (max|uf_inc|={inc_peak:.3e}) "
+            f"openEMS feed port injected NO incident wave (max|uf_inc|={inc_peak!r}) "
             f"for term={term!r}: excitation did not couple. Check that the radial port "
             f"edges land on mesh lines (SmoothMeshLines/fixed-line snap)."
+        )
+    trace_peak = None
+    for name in list(getattr(feed, "U_filenames", []) or []):
+        trace_path = sim_dir / name
+        if not trace_path.exists():
+            continue
+        raw = np.loadtxt(trace_path, comments="%")
+        if not raw.size:
+            continue
+        peak_here = float(np.max(np.abs(np.atleast_2d(raw)[:, 1])))
+        trace_peak = peak_here if trace_peak is None else max(trace_peak, peak_here)
+    if trace_peak == 0.0:
+        raise RuntimeError(
+            f"openEMS feed port time trace is identically zero for term={term!r}: "
+            "the excitation never entered the grid (silently dropped port)."
         )
     s11 = np.asarray(feed.uf_ref / uf_inc, dtype=np.complex128)
     # Fail loud on a blown-up / non-physical field: a stable lossless line has
