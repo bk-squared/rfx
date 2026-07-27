@@ -188,7 +188,12 @@ def init_tfsf_methodB(
     the dispersion-matched 1D cell size along k̂ at ``ω = 2π f0``.
 
     Source timing reproduces the prototype exactly: ``t0 = 40·dt``,
-    ``tau = 12·dt``, modulated Gaussian at carrier ``f0``.
+    ``tau = 12·dt``, modulated Gaussian at carrier ``f0``.  NOTE the injected
+    SOURCE spectrum is therefore resolution-dependent (``tau ∝ dt``) and its
+    launch response is angle-dependent (``d_aux`` is dispersion-matched per
+    theta); ``compute_rcs`` normalizes absolute sigma by the MEASURED aux
+    spectrum (:func:`measure_incident_spectrum`), which tracks both per run
+    (issue #471 F7).
     """
     if polarization != "ez":
         raise NotImplementedError(
@@ -424,3 +429,119 @@ def apply_methodB_e(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
     ez = ez.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_hi + 1, :].add((ce * sn * inc)[:, None])
 
     return state._replace(ez=ez)
+
+
+# ---------------------------------------------------------------------------
+# Boundary-plane vacuum validation (issue #471 F5)
+# ---------------------------------------------------------------------------
+
+def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
+    """Fail loud if any Method-B TFSF boundary plane is not vacuum.
+
+    The 4-edge box assumes vacuum on and immediately adjacent to ALL FOUR
+    transverse boundary planes — x AND y. The pre-#471 preflight check
+    validated only the x planes (it predates the 4-edge box), so a PEC strip
+    lying on the ``y_lo`` plane passed silently and corrupted the scattered
+    field (issue #471 F5). Called from both the uniform-runner preflight
+    validator and ``compute_rcs`` (which never ran the validator at all).
+    """
+    planes = (
+        ("x_lo-1", (slice(cfg.x_lo - 1, cfg.x_lo), slice(None))),
+        ("x_lo",   (slice(cfg.x_lo, cfg.x_lo + 1), slice(None))),
+        ("x_hi",   (slice(cfg.x_hi, cfg.x_hi + 1), slice(None))),
+        ("x_hi+1", (slice(cfg.x_hi + 1, cfg.x_hi + 2), slice(None))),
+        ("y_lo-1", (slice(None), slice(cfg.y_lo - 1, cfg.y_lo))),
+        ("y_lo",   (slice(None), slice(cfg.y_lo, cfg.y_lo + 1))),
+        ("y_hi",   (slice(None), slice(cfg.y_hi, cfg.y_hi + 1))),
+        ("y_hi+1", (slice(None), slice(cfg.y_hi + 1, cfg.y_hi + 2))),
+    )
+    for plane_name, (xs, ys) in planes:
+        eps = np.asarray(materials.eps_r[xs, ys, :])
+        sigma = np.asarray(materials.sigma[xs, ys, :])
+        mu = np.asarray(materials.mu_r[xs, ys, :])
+        if not (
+            np.allclose(eps, 1.0)
+            and np.allclose(sigma, 0.0)
+            and np.allclose(mu, 1.0)
+        ):
+            raise ValueError(
+                "Method-B oblique TFSF requires vacuum on and adjacent to all "
+                "four transverse TFSF boundary planes; non-vacuum material "
+                f"found at {plane_name} (max eps_r {float(np.max(eps)):.3g}, "
+                f"max sigma {float(np.max(sigma)):.3g}, "
+                f"max mu_r {float(np.max(mu)):.3g}). Shrink the target or "
+                "enlarge tfsf_margin."
+            )
+
+
+# ---------------------------------------------------------------------------
+# Measured incident spectrum — the absolute-sigma normalization (issue #471 F7)
+# ---------------------------------------------------------------------------
+
+def measure_incident_spectrum(
+    cfg: MethodBConfig,
+    state: MethodBState,
+    n_steps: int,
+    freqs,
+    dx: float,
+) -> np.ndarray:
+    """DFT of the ACTUAL 1D-aux incident field at the TFSF-box-centre projection.
+
+    Replays the Method-B 1D auxiliary FDTD standalone (a fresh zero state — the
+    caller's ``state`` is only a shape template and is never mutated) for
+    ``n_steps`` and DFTs the recorded ``e1d`` at the aux index onto which the
+    box centre projects.  This is the incident spectral amplitude the 4-edge
+    box actually injects, so using it as the RCS normalization captures what an
+    analytic waveform DFT cannot (all MEASURED, issue #471 F7 audit, gate grid
+    f0=5 GHz, dx=2 mm):
+
+    * the hardcoded ``t0=40·dt, tau=12·dt`` modulated Gaussian instead of the
+      normal path's assumed differentiated Gaussian (+8.83 dB at f0 — the
+      review's number, reproduced exactly), AND
+    * the source->aux launch/absorption response the review neglected
+      (-2.25 dB at theta=20 deg), which is THETA-DEPENDENT (-4.32 dB at 40 deg)
+      because ``d_aux`` is dispersion-matched per angle, so the pulse's spatial
+      extent vs the lo-CPML clearance changes with the angle.
+
+    Net assumed-vs-actual mismatch: +6.58 dB (20 deg) / +4.51 dB (40 deg) —
+    the pre-fix absolute-sigma inflation.  Cost: ``n_steps`` scans of the
+    ~O(500)-cell 1D aux (well under a second; runs once per compute_rcs call).
+
+    The DFT window equals the 3D run window (same ``n_steps``), so truncation
+    semantics match the NTFF far-field DFT it normalizes.
+    """
+    from jax import lax
+
+    zero = state._replace(
+        e1d=jnp.zeros_like(state.e1d),
+        h1d=jnp.zeros_like(state.h1d),
+        psi_e_lo=jnp.zeros_like(state.psi_e_lo),
+        psi_e_hi=jnp.zeros_like(state.psi_e_hi),
+        psi_h_lo=jnp.zeros_like(state.psi_h_lo),
+        psi_h_hi=jnp.zeros_like(state.psi_h_hi),
+        step=jnp.array(0, dtype=jnp.int32),
+    )
+    # Box-centre projection onto the aux line (same mapping as the gather
+    # tables: idx_E = (x*cos + y*sin)*dx/d_aux + src_idx). The plane-wave
+    # magnitude is position-independent, so the exact interior index is not
+    # critical; the centre is the semantically-right target location.
+    cx = 0.5 * (cfg.x_lo + cfg.x_hi)
+    cy = 0.5 * (cfg.y_lo + cfg.y_hi)
+    ref = int(round(((cx * cfg.cos_theta + cy * cfg.sin_theta) * dx)
+                    / cfg.d_aux + cfg.src_idx))
+
+    ts = jnp.arange(n_steps, dtype=jnp.float32) * cfg.dt
+
+    def _step(st, t):
+        st = update_tfsf_1d_h(cfg, st, cfg.dx_1d, cfg.dt)
+        st = update_tfsf_1d_e(cfg, st, cfg.dx_1d, cfg.dt, t)
+        return st, st.e1d[ref]
+
+    _, rec = lax.scan(_step, zero, ts)
+    rec = np.asarray(rec, dtype=np.float64)
+    times = np.arange(n_steps) * cfg.dt
+    freqs = np.asarray(freqs, dtype=np.float64)
+    out = np.empty(len(freqs), dtype=np.complex128)
+    for i, f in enumerate(freqs):
+        out[i] = np.sum(rec * np.exp(-1j * 2.0 * np.pi * f * times)) * cfg.dt
+    return out

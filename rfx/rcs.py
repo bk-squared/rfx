@@ -205,10 +205,26 @@ def compute_rcs(
         measured on the PRE-fix exclusive kernels; not re-measured in-tree
         on the inclusive kernels) —
         i.e. the argmax azimuth of the broad specular lobe is NOT converged to
-        ~1 deg. See ``tests/test_oblique_rcs_specular.py``. The absolute
-        oblique sigma is NOT validated. Requires ``polarization='ez'`` and a
-        uniform grid; other combos raise ``NotImplementedError`` (issue #404
-        arc).
+        ~1 deg. See ``tests/test_oblique_rcs_specular.py``.
+
+        ABSOLUTE oblique sigma (issue #471 F7, all numbers measured): the
+        normalization is the MEASURED 1D-aux incident spectrum (see
+        ``tfsf_oblique_open.measure_incident_spectrum``), which removed a
+        +6.58/+4.51 dB (theta 20/40 deg) inflation the analytic normal-path
+        spectrum caused. Against a PO uniform-aperture oracle on the gate
+        grid (dx=2 mm = lambda/30): specular-peak Delta +0.86/+0.85 dB
+        (theta 20/40), lobe-flat over +/-12 deg. The returned sigma is that
+        of an aperture of height ``h_eff = (k_hi - k_lo)*dx`` of the NTFF
+        z-box (span-doubling ratio 4.000 measured — sigma scales as
+        h_eff^2); the oblique path's hardcoded 2-cell midplane box means
+        h_eff = 2*dx, so scale by ``(L_z/h_eff)^2`` for a physical strip
+        height ``L_z``. CAVEAT (measured, pinned-geometry): halving dx to
+        lambda/60 moves Delta to -1.55 dB — a 2.4 dB resolution
+        sensitivity, so treat absolute oblique sigma as a +/-2 dB-class
+        number at lambda/30-lambda/60, NOT sub-dB (the committed test gates
+        |Delta| <= 1.5 dB at the fixed gate grid as a regression lock, not
+        an accuracy claim). Requires ``polarization='ez'`` and a uniform
+        grid; other combos raise ``NotImplementedError`` (issue #404 arc).
     phi_inc : float
         Incident azimuth in degrees (reserved for future oblique support).
     polarization : str
@@ -326,12 +342,16 @@ def compute_rcs(
     # 2.2-lambda plate's ~30 deg physical-optics 3 dB specular lobe at
     # theta_inc=40 (0.886*lambda/(W*cos(theta))) — argmax on a 1 deg grid
     # inside a broad lobe, an envelope pin, not a loose bound.
-    # SCOPE LIMIT: only the far-field PATTERN / specular DIRECTION is validated.
-    # The ABSOLUTE oblique sigma is NOT validated — the 2.5-D strip's 3-D RCS
-    # scales with the (arbitrary) NTFF z-box height because the two z-faces cancel
-    # for x-y-plane observation, and the incident-spectrum normalization below
-    # assumes the normal-path waveform. Kept fenced for combos Method B does not
-    # support: non-ez polarization and non-uniform / distributed grids.
+    # ABSOLUTE sigma (issue #471 F7): normalized by the MEASURED 1D-aux
+    # incident spectrum (measure_incident_spectrum below), validated vs a PO
+    # uniform-aperture oracle at the gate grid to +0.86/+0.85 dB (theta 20/40)
+    # with a measured 2.4 dB resolution sensitivity lambda/30 -> lambda/60 —
+    # a +/-2 dB-class calibration, envelope-pinned by
+    # tests/test_oblique_rcs_absolute_sigma.py. sigma corresponds to an
+    # aperture height h_eff = (k_hi-k_lo)*dx = 2*dx (z-faces cancel for
+    # x-y-plane observation; span-doubling ratio 4.000 measured). Kept fenced
+    # for combos Method B does not support: non-ez polarization and
+    # non-uniform / distributed grids.
     _oblique = abs(float(theta_inc)) > 1e-6
     if _oblique:
         if polarization != "ez":
@@ -385,6 +405,15 @@ def compute_rcs(
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
     )
+
+    if _oblique:
+        # #471 F5: compute_rcs never ran the preflight vacuum validator. Run
+        # the identical all-four-planes check here so a target crossing a
+        # TFSF boundary plane fails loud instead of corrupting the scattered
+        # field (the runner-side validator covers the Simulation API lane).
+        from rfx.sources.tfsf_oblique_open import validate_vacuum_boundary
+
+        validate_vacuum_boundary(materials, tfsf_cfg)
 
     # --- 2. Set up NTFF box just outside TFSF box ---
     # NTFF box must be in scattered-field region (outside TFSF box).
@@ -482,9 +511,22 @@ def compute_rcs(
         )
 
     # --- 5. Compute incident field spectrum for normalization ---
-    E_inc_spectrum = _incident_spectrum_amplitude(
-        f0, bandwidth, freqs_arr, dt, n_steps,
-    )
+    if _oblique:
+        # Method B hardcodes its own waveform (t0=40·dt, tau=12·dt modulated
+        # Gaussian) and its source->aux launch response is theta-dependent, so
+        # the analytic normal-path spectrum is the wrong denominator (issue
+        # #471 F7: sigma inflated +6.58 dB at theta=20 deg, +4.51 dB at 40 deg
+        # on the gate grid). Normalize by the MEASURED 1D-aux spectrum instead
+        # — a standalone replay of the same aux the box injects from.
+        from rfx.sources.tfsf_oblique_open import measure_incident_spectrum
+
+        E_inc_spectrum = measure_incident_spectrum(
+            tfsf_cfg, tfsf_st, n_steps, freqs_arr, dx,
+        )
+    else:
+        E_inc_spectrum = _incident_spectrum_amplitude(
+            f0, bandwidth, freqs_arr, dt, n_steps,
+        )
 
     # --- 6. Compute RCS ---
     # RCS = 4*pi * |E_far|^2 / |E_inc|^2

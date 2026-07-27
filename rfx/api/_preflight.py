@@ -302,12 +302,24 @@ class _PreflightMixin:
 
     @staticmethod
     def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
-        """Ensure the TFSF x-boundary planes remain vacuum.
+        """Ensure the TFSF boundary planes remain vacuum.
 
-        The current TFSF correction assumes vacuum on and immediately
-        adjacent to the TFSF x boundaries. Fail loudly instead of
-        allowing silently wrong scattered fields.
+        The TFSF correction assumes vacuum on and immediately adjacent to
+        the TFSF boundaries. Fail loudly instead of allowing silently wrong
+        scattered fields. For the 4-edge Method-B box this means the y planes
+        as well as the x planes (issue #471 F5: the x-only check let a PEC
+        strip on the y_lo plane pass silently); the check for that path lives
+        with the source in ``tfsf_oblique_open.validate_vacuum_boundary`` so
+        ``compute_rcs`` can run the identical check.
         """
+        from rfx.sources.tfsf import is_tfsf_methodB
+
+        if is_tfsf_methodB(tfsf_cfg):
+            from rfx.sources.tfsf_oblique_open import validate_vacuum_boundary
+
+            validate_vacuum_boundary(materials, tfsf_cfg)
+            return
+
         boundary_slices = (
             ("x_lo-1", slice(tfsf_cfg.x_lo - 1, tfsf_cfg.x_lo)),
             ("x_lo", slice(tfsf_cfg.x_lo, tfsf_cfg.x_lo + 1)),
