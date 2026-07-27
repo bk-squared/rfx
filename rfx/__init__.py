@@ -42,6 +42,7 @@ from rfx.jax_checks import (
 )
 from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
+from rfx.geometry.mesh_import import MeshShape
 from rfx.subgridding.validation import SubgridValidationIssue, SubgridValidationReport
 from rfx.geometry.via import Via
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian, CWSource, CustomWaveform
@@ -257,6 +258,7 @@ __all__ = [
     "check_bounds", "check_courant_number",
     # geometry
     "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
+    "MeshShape",
     "PCBLayer", "Stackup",
     # microstrip closed-form synthesis / analysis
     "microstrip_impedance", "microstrip_eps_eff", "microstrip_width",

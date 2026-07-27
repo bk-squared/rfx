@@ -145,6 +145,9 @@
     "MeshPlan": {
       "kind": "class"
     },
+    "MeshShape": {
+      "kind": "class"
+    },
     "ModulatedGaussian": {
       "kind": "class"
     },

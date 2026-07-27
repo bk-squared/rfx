@@ -21,6 +21,7 @@ listed in [Recommended Configuration](/rfx/validation/reference-lane/) and
 | `PolylineWire` | polyline-defined wire geometry | wire-like studies and routed conductors |
 | `Via` | `Via(center=..., drill_radius=..., pad_radius=..., layers=..., material="pec")` | PCB-style interconnects |
 | `CurvedPatch` | `CurvedPatch(center=..., length=..., width=..., radius=..., axis="x")` | curved-conductor studies; constructor arguments are keyword-only |
+| `MeshShape` | `MeshShape.from_file(path, scale=..., translate=(0,0,0))` | CAD import — STL/OBJ/PLY, plus STEP/STP via the `cad` extra. Rasterizes host-side (trimesh containment): NOT differentiable — a traced coordinate raises, so CAD geometry cannot carry gradients |
 
 ## Material registration
 

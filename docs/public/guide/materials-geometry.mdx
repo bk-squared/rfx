@@ -193,6 +193,25 @@ rod  = Cylinder((0.010, 0.025, 0.000), radius=0.001,  height=0.050, axis="x")
 sim.add(via, material="copper")
 ```
 
+### MeshShape (CAD import)
+
+```python
+from rfx import MeshShape  # needs: pip install "rfx-fdtd[cad]"
+
+# STL / OBJ / PLY natively; STEP / STP via the cad extra's OpenCASCADE backend.
+# scale converts the file's length unit to metres (STL in mm -> scale=1e-3;
+# STEP is converted to metres already -> scale=1.0).
+part = MeshShape.from_file("bracket.stl", scale=1e-3, translate=(0.01, 0.0, 0.0))
+sim.add(part, material="pec")
+```
+
+!!! warning "Not differentiable"
+    `MeshShape` rasterizes host-side via `trimesh` point-in-mesh containment
+    and **raises on traced coordinates** — CAD-imported geometry cannot carry
+    gradients through `forward()`/`optimize()`. Use the CSG primitives for
+    any shape that must be a design variable. The design-interop layer
+    (`rfx.interop`) likewise refuses `MeshShape` rather than approximating it.
+
 `Box`, `Sphere`, and `Cylinder` cover most structures. rfx also ships
 `PolylineWire`, `Via`, and `CurvedPatch`; see the
 [Geometry and Materials API reference](/rfx/api/geometry-materials/) for their
