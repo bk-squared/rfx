@@ -17,9 +17,10 @@ ALIASED at fine ka=4.0, which failed a 3.5 dB gate at 9 of 13 clearances):
     data and asserted against both the recorded envelope field and the gate,
     so none of the three can drift alone (review F6).
   * NOT GATED: coarse ka >= 1.5 and fine ka = 3.0 / ka = 4.0 — domain-size
-    unconverged near the deep Mie nulls (up to 8.0 dB coarse ka=1.75 /
-    5.4 dB fine ka=3.0 across the committed realizations; fine ka=4.0 max
-    6.17 dB in the review's 13-clearance scan). This module PINS that fence
+    unconverged near the deep Mie nulls (domain-to-domain SPREAD 8.0 dB at
+    coarse ka=1.75 and 14.5 dB at fine ka=3.0; worst single-point |delta|
+    11.1 dB coarse / 9.3 dB fine, both at ka=3.0; fine ka=4.0 max 6.17 dB
+    in the review's 13-clearance scan). This module PINS that fence
     (claim-scope docpin + witness-presence + fence-membership assertions) so
     it can be neither silently gated nor silently quoted as validated.
 
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -111,6 +113,26 @@ def test_gate_equals_recomputed_envelope_times_1p5(fixture):
         math.ceil(env_coarse * 1.5 * 10) / 10, abs=1e-9)
     assert g["fine_gate_db"] == pytest.approx(
         math.ceil(env_fine * 1.5 * 10) / 10, abs=1e-9)
+    # D1 (review): HARD numeric ceiling, deliberately redundant with the
+    # derived relation above. Without it a physics regression widens its own
+    # gate and stays green (the derived assert alone is self-ratifying).
+    # Widening either constant requires editing THIS line with a written
+    # root-cause — the no-silent-gate-loosening rule.
+    assert g["coarse_gate_db"] == 3.3
+    assert g["fine_gate_db"] == 4.0
+
+
+def test_script_live_gate_constants_match_fixture(fixture):
+    """D2 (review): the crossval script's LIVE gate constants are what CI
+    actually enforces; bind them to the fixture's recorded gates (and hence,
+    through the D1 pins, to the hard ceiling) so they cannot diverge."""
+    src = (_REPO_ROOT / "validation/crossval/16_pec_sphere_mie_ka_sweep.py"
+           ).read_text(encoding="utf-8")
+    m_coarse = re.search(r"^GATE_COARSE_DB = ([0-9.]+)", src, re.MULTILINE)
+    m_fine = re.search(r"^GATE_FINE_DB = ([0-9.]+)", src, re.MULTILINE)
+    assert m_coarse and m_fine, "gate constants not found in script source"
+    assert float(m_coarse.group(1)) == fixture["gates"]["coarse_gate_db"]
+    assert float(m_fine.group(1)) == fixture["gates"]["fine_gate_db"]
 
 
 def test_gated_coarse_bins_within_envelope_gate(fixture):
@@ -154,7 +176,10 @@ def test_null_region_is_fenced_not_gated(fixture):
     assert "domain-size-only change" in scope
     assert "local-minimum positions move" in scope
     assert "ka=4.0 fails a 3.5 db gate" in scope       # the F1 aliasing record
-    assert "8.0 db (coarse, ka=1.75)" in scope         # F2-corrected maximum
+    # D3 (review): metric named explicitly, both tiers, from committed data —
+    # docpins on BOTH strings so the fine figure cannot go stale again.
+    assert "8.0 db (coarse, at ka=1.75)" in scope
+    assert "14.5 db (fine, at ka=3.0" in scope
     # the diagnostic curve actually covers the fenced region (no fine rows
     # smuggled in — review F7: fine reported rows live under their own key)
     kas = [r["ka"] for r in fixture["diagnostic_curve_clear20"]]

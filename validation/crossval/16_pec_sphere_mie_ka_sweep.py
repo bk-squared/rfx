@@ -43,11 +43,14 @@ GATED (exit-1 on failure):
     widen the gate again.
 REPORTED, NOT GATED (documented-unconverged at this operating point):
   * every coarse bin with ka >= 1.5, and the fine rung at ka = 3.0 AND
-    ka = 4.0. Near the deep Mie interference nulls the monostatic value
-    swings under a domain-size-only change by up to 8.0 dB (coarse,
-    ka=1.75) / 5.4 dB (fine, ka=3.0), and the rfx sigma(ka) local-minimum
-    POSITIONS also move with domain size — so neither null magnitude nor
-    null position is gateable here. ka=4.0 (fine) was GATED in the first
+    ka = 4.0. Near the deep Mie interference nulls, under a domain-size-
+    only change (metric named explicitly, PR #475 review D3): the
+    domain-to-domain SPREAD reaches 8.0 dB at coarse ka=1.75 and 14.5 dB
+    at fine ka=3.0 (across the committed clearance scan), the worst
+    single-point |delta| is 11.1 dB (coarse ka=3.0, clearance 30) and
+    9.3 dB (fine ka=3.0, clearance 35), and the rfx sigma(ka)
+    local-minimum POSITIONS also move with domain size — so neither null
+    magnitude nor null position is gateable here. ka=4.0 (fine) was GATED in the first
     revision of this script on a 3-clearance sample {20,30,40} that
     happened to hit passing values; the review's denser scan showed it
     fails a 3.5 dB gate at 9 of 13 clearances (max 6.17 dB at clear=26)
@@ -337,16 +340,19 @@ def main(argv):
                 "clearance_scan/domain_realizations data by the gate "
                 "test, so gate and envelope cannot drift apart. NOT "
                 "GATED: every coarse bin with ka >= 1.5 and the fine "
-                "rung at ka=3.0 and ka=4.0 — near the deep Mie nulls the "
-                "monostatic value swings under a domain-size-only change "
-                "by up to 8.0 dB (coarse, ka=1.75) / 5.4 dB (fine, "
-                "ka=3.0), the rfx sigma(ka) local-minimum positions move "
-                "with domain size, and fine ka=4.0 fails a 3.5 dB gate "
-                "at 9 of 13 clearances (max 6.17 dB at clearance 26; the "
-                "original 3-clearance sample {20,30,40} ALIASED onto "
-                "passing values — PR #475 review F1), so neither null "
-                "magnitude nor null position is a converged observable "
-                "here. Committed witnesses: domain_realizations, "
+                "rung at ka=3.0 and ka=4.0 — near the deep Mie nulls, "
+                "under a domain-size-only change, the domain-to-domain "
+                "SPREAD reaches 8.0 dB (coarse, at ka=1.75) and 14.5 dB "
+                "(fine, at ka=3.0 across the committed clearance scan), "
+                "the worst single-point |delta| is 11.1 dB (coarse "
+                "ka=3.0, clearance 30) and 9.3 dB (fine ka=3.0, "
+                "clearance 35), the rfx sigma(ka) local-minimum "
+                "positions move with domain size, and fine ka=4.0 fails "
+                "a 3.5 dB gate at 9 of 13 clearances (max 6.17 dB at "
+                "clearance 26; the original 3-clearance sample "
+                "{20,30,40} ALIASED onto passing values — PR #475 "
+                "review F1), so neither null magnitude nor null "
+                "position is a converged observable here. Committed witnesses: domain_realizations, "
                 "clearance_scan, truncation_witness (gated bins). The "
                 "effective-radius, #280-leakage and 9.6-rung resolution "
                 "probes were offline (2026-07-27) and are recorded as "
