@@ -105,12 +105,25 @@ def test_script_claim_scope_literal_matches_fixture(fixture):
     import ast
     mod = ast.parse((_REPO_ROOT / "validation/crossval/17_dielectric_sphere_mie.py"
                      ).read_text(encoding="utf-8"))
-    lits = [ast.literal_eval(v)
+    lits = {k.value: ast.literal_eval(v)
             for node in ast.walk(mod) if isinstance(node, ast.Dict)
             for k, v in zip(node.keys, node.values)
-            if isinstance(k, ast.Constant) and k.value == "claim_scope"]
-    assert len(lits) == 1
-    assert " ".join(lits[0].split()) == " ".join(fixture["claim_scope"].split())
+            if isinstance(k, ast.Constant)
+            and k.value in ("claim_scope", "offline_probes_2026_07_27")}
+    assert set(lits) == {"claim_scope", "offline_probes_2026_07_27"}
+    assert " ".join(lits["claim_scope"].split()) == " ".join(fixture["claim_scope"].split())
+    # R1 (review): the provenance audit prose is bound the same way.
+    assert (" ".join(lits["offline_probes_2026_07_27"].split())
+            == " ".join(fixture["provenance"]["offline_probes_2026_07_27"].split()))
+
+
+def test_f1_retraction_is_content_pinned(fixture):
+    """R2 (review): the tautology retraction must be CONTENT-pinned, not just
+    consistent — a coherent script+fixture edit removing it must go red."""
+    scope = " ".join(fixture["claim_scope"].split()).lower()
+    assert "same-array tautology" in scope
+    prov = " ".join(fixture["provenance"]["offline_probes_2026_07_27"].split()).lower()
+    assert "retracted" in prov
 
 
 def test_gate_is_hard_pinned_and_equals_recomputed_envelope(fixture):
