@@ -778,7 +778,11 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     # Issue #470: indices of library-internal witness probes. Populated and
     # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
     # construction and at dump time, so it contributes nothing to the
-    # document by construction.
+    # document by construction. (Classification note: EXPORTED vs EXCLUDED
+    # is decided by "present at a fresh __init__", not by "appears in the
+    # document" — both #469/#470 attrs are constructed in __init__, so
+    # EXPORTED is the test-legal bucket even though neither maps to a
+    # document section of its own.)
     "_internal_probe_indices",
 )
 
@@ -807,9 +811,18 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     """
     if not getattr(sim, "_msl_auto_offset_min", None):
         return list(sim._msl_ports)
-    if getattr(sim, "_dz_profile", None) is not None:
-        # NU lane: the solve is defined for uniform grids only (the driver
-        # keeps the stored value there too) — dump the stored entries.
+    if any(
+        getattr(sim, name, None) is not None
+        for name in ("_dz_profile", "_dx_profile", "_dy_profile")
+    ):
+        # NU lane — MUST mirror the driver's is_nonuniform predicate (all
+        # THREE profiles, compute_msl_s_matrix): the solve is defined for
+        # uniform grids only and the driver keeps the stored value there,
+        # so the document must freeze the stored value too. A dz-only
+        # check here shipped a real divergence (dx/dy-profile-only MSL
+        # sims dumped a solved offset the driver never uses — PR #478
+        # review MAJOR, regression-locked in
+        # test_auto_offset_dump_matches_driver_on_dx_profile_nu).
         return list(sim._msl_ports)
     from rfx.api._sparams import _resolve_msl_auto_offsets
 

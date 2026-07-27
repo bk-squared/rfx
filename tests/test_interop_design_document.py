@@ -1672,3 +1672,31 @@ def test_auto_msl_offset_is_frozen_resolved_in_the_document():
     # re-export is stable (the frozen value is explicit, no re-solve)
     document2 = design_to_dict(rebuilt)
     assert document2["excitations"]["msl_ports"][0]["n_probe_offset"] == 26
+
+
+def test_auto_offset_dump_matches_driver_on_dx_profile_nu():
+    """PR #478 review MAJOR regression lock: the dump-time NU predicate must
+    mirror the DRIVER's (all three profiles). A dz-only check let a
+    dx_profile-only MSL sim dump a SOLVED offset (26) while the real driver
+    routes that sim through the NU lane and keeps the stored lower edge
+    (20) — a rebuilt design would place its probes where the original never
+    measured. The document must freeze the value the driver actually uses."""
+    DX = 2e-4
+    nx = int(round(0.020 / DX))
+    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=DX,
+                     boundary="cpml", cpml_layers=8,
+                     dx_profile=np.full(nx, DX))  # dx-profile-only NU
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")
+    sim.add(Box((0.001, 0.01316 - 0.0012065, 0.000794),
+                (0.012466, 0.01316 + 0.0012065, 0.000994)), material="pec")
+    sim.add(Box((0.012466, 0.003, 0.000794),
+                (0.015006, 0.02332, 0.000994)), material="pec")
+    sim.add_msl_port(position=(0.0025, 0.01316, 0.0), width=0.002413,
+                     height=0.000794, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="p1")
+
+    document = design_to_dict(sim)
+    (port_doc,) = document["excitations"]["msl_ports"]
+    # driver NU lane keeps the stored lower edge -> so must the document
+    assert port_doc["n_probe_offset"] == 20
