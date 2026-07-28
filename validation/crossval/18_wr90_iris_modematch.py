@@ -46,9 +46,11 @@ REPORTED, NOT GATED:
   * coarse rung (dx = a/30): 0.018-0.043 abs.
   * raw (normalize=False) record: worse than flux (gaps 0.021-0.054) with a
     pointwise |raw - flux| difference up to 0.033 at the wide aperture.
-  * residual detrended ripple: fine <= 0.0116, coarse <= 0.0166, both at the
-    wide aperture with the iris off-centre (down from 0.0706 before the
-    absorber fix).
+  * residual detrended ripple (quadratic detrend of |S11| MINUS the oracle,
+    so the oracle's own curvature is not counted — PR #480 R1): fine <=
+    0.0077, coarse <= 0.0158, both at the wide aperture with the iris
+    off-centre, down from the 0.0706 the review measured on the same basis
+    before the absorber fix.
   * phase: NOT claimed (magnitude-only lane posture).
 FENCED (never gated): everything beyond ONE symmetric inductive iris —
 multi-iris filters, posts, septa, off-centre apertures stay EXPERIMENTAL per
@@ -425,13 +427,19 @@ def main(argv):
                 rm = run_point(d_f, cells_f, normalize=True)
             fence_warns = [str(w.message) for w in _wrec
                            if "passivity" in str(w.message).lower()]
+            # accuracy rides with the retraction (PR #480 R2): a fence removed
+            # on passivity grounds alone would leave "no longer fenced"
+            # resting on an unstated accuracy inference.
+            rm["oracle_s11"] = oracles[str(d_f)]
+            rm["max_gap_abs"] = round(max(_gaps(rm, oracles[str(d_f)])), 4)
             modal_witness["rows"].append(
                 {"d_mm": round(d_f * 1e3, 3), "cells_per_a": cells_f,
                  "max_colpow": rm["max_colpow"],
-                 "extractor_warnings": fence_warns})
+                 "extractor_warnings": fence_warns,
+                 "s11": rm["s11"], "max_gap_abs": rm["max_gap_abs"]})
             print(f"  d={d_f*1e3:6.2f} a/{cells_f}: colpow "
-                  f"{rm['max_colpow']:.4f} ({len(fence_warns)} warnings)",
-                  flush=True)
+                  f"{rm['max_colpow']:.4f} gap {rm['max_gap_abs']:.4f} "
+                  f"({len(fence_warns)} warnings)", flush=True)
 
         print("\n== raw-extraction cross-record (normalize=False) ==")
         for d in D_APERTURES:
@@ -509,9 +517,12 @@ def main(argv):
                 "(0.018-0.043 abs); the raw normalize=False record, which "
                 "is WORSE than flux (gaps 0.021-0.054) with a pointwise "
                 "|raw - flux| difference up to 0.033 at the wide aperture; "
-                "residual detrended ripple (fine <= 0.0116, coarse <= "
-                "0.0166, both at the wide aperture with the iris "
-                "off-centre, down from 0.0706 before the absorber fix); "
+                "residual detrended ripple, i.e. a quadratic detrend of "
+                "|S11| MINUS the oracle so the oracle's own curvature is not "
+                "counted (fine <= 0.0077, coarse <= 0.0158, both at the wide "
+                "aperture with the iris off-centre, down from the 0.0706 the "
+                "PR #480 review measured on the same basis before the "
+                "absorber fix); "
                 "and phase (magnitude-only lane posture). FENCED, never "
                 "gated: everything beyond ONE symmetric inductive iris — "
                 "multi-iris filters, posts, septa and off-centre apertures "
@@ -540,9 +551,13 @@ def main(argv):
                 "that non-passivity was a symptom of defects (1)-(3) and "
                 "not a reflector-inflation property of the extractor — the "
                 "fence is withdrawn and the measurement is committed as "
-                "modal_extraction_witness. Palace WavePort corroboration "
-                "(stage S2) and a published multi-iris filter (stage S3) "
-                "are follow-on stages, not claimed here."
+                "modal_extraction_witness, which also records modal "
+                "ACCURACY so the retraction does not rest on passivity "
+                "alone: modal |S11| gaps come out comparable to flux and "
+                "consistently a little worse, which is why flux still "
+                "carries the gate. Palace WavePort corroboration (stage S2) "
+                "and a published multi-iris filter (stage S3) are follow-on "
+                "stages, not claimed here."
             ),
             "config": {
                 "a_m": A_WR90, "b_m": B_WR90, "t_m": T_IRIS,

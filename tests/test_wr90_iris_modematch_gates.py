@@ -120,10 +120,15 @@ def fixture() -> dict:
         return json.load(f)
 
 
-def _ripple_pp(s11):
-    """Quadratic-detrended peak-to-peak of a |S11| trace."""
-    x = np.arange(len(s11))
-    y = np.asarray(s11, dtype=float)
+def _residual_ripple_pp(row):
+    """Quadratic-detrended peak-to-peak of the RESIDUAL |S11| - oracle.
+
+    PR #480 R1: detrending the raw trace leaves the oracle's own curvature in
+    the number (0.0096 of it at the wide aperture), so a "residual ripple"
+    claim measured that way overstates the absorber artefact by ~50-80%.
+    """
+    y = np.asarray(row["s11"], dtype=float) - np.asarray(row["oracle_s11"], dtype=float)
+    x = np.arange(len(y))
     r = y - np.polyval(np.polyfit(x, y, 2), x)
     return float(r.max() - r.min())
 
@@ -234,11 +239,12 @@ def test_prose_numbers_are_recomputed_from_rows(fixture):
     scope = " ".join(fixture["claim_scope"].split())
     freqs = fixture["config"]["freqs_hz"]
     # ripple envelopes per tier
-    rip_fine = max(_ripple_pp(r["s11"]) for r in fixture["gated_fine"])
-    rip_coarse = max(_ripple_pp(r["s11"]) for r in fixture["coarse_diagnostic"])
-    assert rip_fine <= 0.0116 + 5e-4 and f"{rip_fine:.4f}"[:6] == "0.0116"
-    assert rip_coarse <= 0.0166 + 5e-4 and f"{rip_coarse:.4f}"[:6] == "0.0166"
-    assert "fine <= 0.0116" in scope and "coarse <= 0.0166" in scope
+    rip_fine = max(_residual_ripple_pp(r) for r in fixture["gated_fine"])
+    rip_coarse = max(_residual_ripple_pp(r) for r in fixture["coarse_diagnostic"])
+    assert f"{rip_fine:.4f}" == "0.0077", rip_fine
+    assert f"{rip_coarse:.4f}" == "0.0158", rip_coarse
+    assert "fine <= 0.0077, coarse <= 0.0158" in scope
+    assert "MINUS the oracle" in scope       # the metric is named, not implied
     # pointwise raw-vs-flux difference (NOT the max_gap statistic)
     diffs = []
     for raw in fixture["raw_extraction_record"]:
@@ -270,6 +276,20 @@ def test_modal_fence_is_retracted_with_data(fixture):
         assert r["max_colpow"] <= 1.05, r      # clean on the corrected setup
         assert r["extractor_warnings"] == []
     assert max(r["max_colpow"] for r in mw["rows"]) == pytest.approx(1.0207, abs=1e-3)
+    # PR #480 R2: accuracy rides with the retraction — modal must be recorded
+    # AND be comparable to flux (a little worse, which is why flux gates).
+    for r in mw["rows"]:
+        assert len(r["s11"]) == len(fixture["config"]["freqs_hz"])
+        fam = (fixture["gated_fine"] if r["cells_per_a"]
+               == fixture["config"]["fine_cells_per_a"]
+               else fixture["coarse_diagnostic"])
+        flux = next(x for x in fam if x["d_mm"] == r["d_mm"]
+                    and (x["glen_m"], x["iris_frac"])
+                    == (fixture["config"]["canonical_glen_m"],
+                        fixture["config"]["canonical_iris_frac"]))
+        delta = r["max_gap_abs"] - flux["max_gap_abs"]
+        assert 0.0 <= delta <= 0.01, (r["d_mm"], r["cells_per_a"], delta)
+    assert "ACCURACY" in scope and "little worse" in scope
     assert "RETRACTED" in " ".join(mw["note"].split())
     prov = " ".join(
         fixture["provenance"]["modal_fence_retraction_2026_07_28"].split())
