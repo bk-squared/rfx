@@ -131,6 +131,22 @@ def test_msl_ad_fd_converged_tight():
 
     If rel_err stays >10% this test will fail (deliberately — do NOT loosen
     the gate to force a pass; report as a gradient accuracy finding instead).
+
+    OWNERSHIP + measured comparator envelope (issue #477 root-cause,
+    2026-07-28 — all numbers measured, main @ 98c5e33):
+    This is a GPU-lane gate (gpu marker; VESSL harness). Do NOT treat a CPU
+    execution as a main-health signal: the FD comparator carries an f32
+    evaluation-noise envelope that straddles the 0.10 gate across platforms
+    while the AD side is platform-stable to 5 digits
+    (g_ad CPU −2.1104e-01 vs GPU −2.1105e-01; g_fd CPU −2.3746e-01 vs GPU
+    −2.3079e-01 at the same h=1e-3 → rel_err CPU 0.1113 / GPU 0.0855).
+    A CPU h-sweep (h ∈ [3e-4, 1e-2]) shows a 27% NON-monotone FD scatter —
+    evaluation noise, not h² truncation — so rel_err here compares AD
+    against a ±3–5%-noisy reference. Whether AD carries a genuine ~10%
+    systematic vs the true derivative is INDETERMINATE at f32; the f64
+    referee is blocked by the hardcoded complex64 DFT scan carries (x64
+    flip fails the scan dtype contract — measured). Full record with the
+    h-sweep table and both platform logs: issue #477.
     """
     t_start = time.perf_counter()
 
