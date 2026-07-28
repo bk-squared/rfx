@@ -1145,6 +1145,14 @@ class _ExecuteMixin:
                 make_msl_port_sources,
                 setup_msl_port,
             )
+            # Issue #483: static eps for the launch fixture, assembled ONCE
+            # for all ports (hoisted per PR #486 review — the per-port
+            # re-assembly was wasteful eager-mode compute) and only when
+            # some port needs the auto branch.
+            _static_eps_483 = None
+            if any(pe.eps_r_sub is None and getattr(pe, "mode", "uniform") == "laplace"
+                   for pe in self._msl_ports):
+                _static_eps_483 = self._assemble_materials(grid)[0].eps_r
             for pe in self._msl_ports:
                 x_feed, y_centre, z_lo = pe.position
                 mp = MSLPort(
@@ -1189,14 +1197,13 @@ class _ExecuteMixin:
                         # differentiated DIFFERENT functions (measured:
                         # 61.7% raw / 13.7% converged gradient deficit;
                         # with the fixture constant on both sides the same
-                        # f64 referee reads 0.01-0.09%). Re-assembling the
-                        # registered materials here is host-side,
-                        # concrete, and once per forward build — correct
+                        # f64 referee reads 0.01-0.09%). The registered materials are
+                        # re-assembled host-side once per forward build
+                        # (hoisted above the port loop) — correct
                         # for every caller (forward, topology,
                         # sparam_driver) without threading a handle.
-                        _static_eps = self._assemble_materials(grid)[0].eps_r
                         eps_r_sub = float(np.asarray(
-                            _static_eps[i_feed, j_centre, k_mid]
+                            _static_eps_483[i_feed, j_centre, k_mid]
                         ))
                     mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
                 elif port_mode == "eigenmode":

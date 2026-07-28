@@ -11,11 +11,14 @@ differentiated DIFFERENT functions. Measured on the f64 referee
 registered, concrete materials) so the fixture is the same constant on
 both sides for every caller (forward / topology / sparam_driver).
 
-The gate below is an f32 mini-referee: np=1, h=1e-2 central FD. The f32
-comparator noise (#477: +/-3-5% at h=1e-3, smaller at h=1e-2) and the
-np=1 truncation are both tiny against the 60%-class pre-fix defect, so
-rel_err < 0.15 discriminates with >4x margin on both sides (measured
-endpoints: pre-fix ~0.6, post-fix <0.05).
+The gate below is an f32 mini-referee: np=1, h=1e-2 central FD, probes
+in the air above the trace. Measured endpoints on THIS configuration
+(PR #486 review cycle — the first version put the probes inside the PEC
+trace and claimed unmeasured margins; both corrected here):
+pre-fix main 0.126, post-fix 0.0002; at np=3 the same referee reads
+0.358 vs 0.0000. The 0.03 gate therefore discriminates with ~4x margin
+on the fail side and ~100x on the pass side at np=1 cost (~40 s), well
+above the f32 comparator noise at h=1e-2 (sub-1%).
 """
 import warnings
 
@@ -56,15 +59,21 @@ def _msl_sim_auto_eps():
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
     # raw observables for the referee objective (forward() records
     # time_series only for registered point probes)
+    # Probes in the AIR above the trace (z = h_sub + 2*dx). The first
+    # version placed them INSIDE the PEC trace (z=300 um within the
+    # conductor span [254, 334] um) — preflight warned, the harness's
+    # warning suppression hid it, and the muted signal collapsed the
+    # test's discriminating power (PR #486 review finding: it PASSED on
+    # pre-fix main at rel_err 0.126).
     for x in (0.004, 0.005, 0.006):
-        sim.add_probe(position=(x, y_c, 0.0003), component="ez")
+        sim.add_probe(position=(x, y_c, _H_SUB + 2 * _DX), component="ez")
     return sim
 
 
 def test_auto_eps_msl_gradient_matches_fd_mini_referee():
     """f32 mini-referee (np=1, h=1e-2) on the auto-eps_r_sub MSL forward:
-    AD within 15% of central FD. Pre-#483 this read ~60% (the fixture
-    followed alpha under FD only); post-fix it reads <5%."""
+    AD within 3% of central FD. Measured: pre-#483 main reads 0.126 (the
+    fixture followed alpha under FD only); post-fix reads 0.0002."""
     sim = _msl_sim_auto_eps()
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
@@ -84,7 +93,7 @@ def test_auto_eps_msl_gradient_matches_fd_mini_referee():
     f_m = float(objective(jnp.float32(1.0 - h)))
     g_fd = (f_p - f_m) / (2.0 * h)
     rel = abs(g_ad - g_fd) / (abs(g_fd) + 1e-30)
-    assert rel < 0.15, (
+    assert rel < 0.03, (
         f"MSL auto-eps fixture gradient deficit is back: rel_err={rel:.3f} "
         f"(g_ad={g_ad:.4e}, g_fd={g_fd:.4e}) — the launch fixture must "
         "derive from registered materials on BOTH the FD and AD sides "
