@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
@@ -59,8 +60,14 @@ def init_dft_probe(
 ) -> DFTProbe:
     """Create a DFT probe at a point for given frequencies."""
     idx = grid.position_to_index(position)
+    # Accumulator dtype follows the x64 state (issue #477 residual): under
+    # x64 the per-step update (field * complex phase) is complex128, and a
+    # hardcoded complex64 accumulator breaks the scan-carry dtype contract.
+    # With x64 off this is complex64 — bit-identical to the previous
+    # behaviour. Same idiom as compute_msl_s_matrix's _complex_dtype.
+    _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
     return DFTProbe(
-        accumulator=jnp.zeros(len(freqs), dtype=jnp.complex64),
+        accumulator=jnp.zeros(len(freqs), dtype=_cdtype),
         freqs=freqs,
         index=idx,
         component=component,
@@ -430,7 +437,9 @@ def init_dft_plane_probe(
         plane_shape = (grid_shape[0], grid_shape[1])
 
     nf = len(freqs)
-    acc = jnp.zeros((nf,) + plane_shape, dtype=jnp.complex64)
+    # dtype follows the x64 state — see create_dft_probe (issue #477 residual).
+    _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+    acc = jnp.zeros((nf,) + plane_shape, dtype=_cdtype)
     return DFTPlaneProbe(
         accumulator=acc, freqs=freqs,
         component=component, axis=axis, index=index,

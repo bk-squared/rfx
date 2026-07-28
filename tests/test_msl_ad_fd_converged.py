@@ -143,10 +143,14 @@ def test_msl_ad_fd_converged_tight():
     A CPU h-sweep (h ∈ [3e-4, 1e-2]) shows a 27% NON-monotone FD scatter —
     evaluation noise, not h² truncation — so rel_err here compares AD
     against a ±3–5%-noisy reference. Whether AD carries a genuine ~10%
-    systematic vs the true derivative is INDETERMINATE at f32; the f64
-    referee is blocked by the hardcoded complex64 DFT scan carries (x64
-    flip fails the scan dtype contract — measured). Full record with the
-    h-sweep table and both platform logs: issue #477.
+    systematic vs the true derivative was initially INDETERMINATE at f32;
+    the f64 referee (unblocked by the accumulator-dtype fix, issue #483)
+    then DETERMINED it: f64 AD −2.1103e-01 vs f64 FD −2.4447e-01 →
+    **a genuine ~13.7% AD systematic** (the true derivative ≈ −0.244 per
+    three agreeing estimates; the GPU pass at 0.0855 was the noisy f32 FD
+    landing closer to AD than the truth). Treat eps_override MSL gradients
+    as ~±14%-class until #483 is attributed. Full record: issues #477 and
+    #483.
     """
     t_start = time.perf_counter()
 
