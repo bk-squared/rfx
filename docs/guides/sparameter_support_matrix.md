@@ -218,6 +218,29 @@ implementation nor gradient regression is RF validation.
   otherwise relative error is dominated by the numerical noise floor.
 - Choose `dx` so the slab length is an integer number of cells; staircase
   quantization directly perturbs the round-trip phase.
+- Draw interior PEC obstacles (irises, septa, posts) with their interior faces
+  on **cell midpoints**, not on node planes, and assert the realized footprint.
+  `Box` rasterizes half-open `[lo, hi)` over node coordinates, so a box drawn
+  between two node planes occupies one cell fewer than drawn, asymmetrically at
+  the `hi` face. Two facing fins drawn to leave a nominal opening `d` therefore
+  leave an electrical opening of `d + dx`; offsetting each interior face half a
+  cell the wrong way gives `d + 2*dx`. In the WR-90 single-iris lane the latter
+  inflated the `|S11|` difference against an analytic mode-matching oracle by
+  4-6x (0.0193 to 0.1262 at `d = 7.620 mm`, a/30). Because the error scales
+  with `dx` it mimics first-order convergence, and on a resonant structure it
+  shifts the passband instead of widening a magnitude tolerance. See the `Box`
+  docstring for the arithmetic and `run_point` in
+  `validation/crossval/18_wr90_iris_modematch.py` for the assert pattern.
+- Size the absorber from the guide wavelength at the **lowest** measured
+  frequency, where `lambda_g` is longest and the `cpml_layers=16` default is
+  weakest. `compute_waveguide_s_matrix` documents `>= 0.5 * lambda_g` and now
+  emits an advisory when the configured stack is thinner. That floor is a
+  minimum, not a target: at WR-90 band edge (8.2 GHz, `lambda_g` about 61 mm)
+  a 0.30 `lambda_g` stack left residual `|S11|` ripple 0.0706, 0.50 `lambda_g`
+  left 0.0366, and 0.75 `lambda_g` left 0.0093, so a 0.5 `lambda_g` absorber
+  can still set the accuracy envelope instead of discretization. Case 18
+  derives its depth as `ceil(0.75 * lambda_g(band edge) / dx)`; the validated
+  fixtures use 20-24 cells rather than the default 16.
 - Multimode `normalize=True` is unsupported.
 - Branch, T-junction, and septum calculations require per-port matched straight-
   guide references and far-port placement. Compact arbitrary junctions are not

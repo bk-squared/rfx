@@ -31,6 +31,12 @@ class Shape(Protocol):
     ) -> jnp.ndarray:
         """Evaluate shape occupancy on explicit 1D coordinate arrays.
 
+        Coordinates are **node** positions, and each shape defines its own
+        boundary rule; :class:`Box` is half-open ``[lo, hi)``, which makes a
+        drawn extent realize one cell shorter at the ``hi`` face. See the
+        :class:`Box` docstring before drawing a PEC obstacle to a nominal
+        physical dimension.
+
         Parameters
         ----------
         x, y, z : 1D arrays of physical coordinates (metres)
@@ -65,7 +71,55 @@ def _grid_coords(grid: Grid):
 
 @dataclass(frozen=True)
 class Box:
-    """Axis-aligned box defined by two corners (meters)."""
+    """Axis-aligned box defined by two corners (meters).
+
+    **Rasterization convention (read before drawing a PEC obstacle).**
+    On each axis the volume branch is **half-open** ``[lo, hi)`` over
+    **node** coordinates: node ``j`` at ``y_j = j * dx`` belongs to the box
+    iff ``lo <= y_j < hi``. The convention is deliberate and several paths
+    depend on it (see ``_axis_mask`` for the issue history), but it has two
+    consequences that bite when a box is drawn to a nominal physical size:
+
+    1. **The ``hi`` face contributes no cell.** A box whose corners both
+       land on node planes, ``lo = i*dx`` and ``hi = k*dx``, occupies nodes
+       ``i .. k-1``. Its realized extent between the first and last occupied
+       node plane is therefore ``(hi - lo) - dx``, one cell short of the
+       drawn extent, and the shortfall is entirely at the ``hi`` face — the
+       footprint is **asymmetric**, so the object is also displaced by
+       ``dx/2`` toward ``lo``.
+
+    2. **A corner exactly on a node plane is a knife edge.** Masks are
+       evaluated in the default float32 precision, where one ULP of the
+       corner value is ~5e-10 m at ``dx`` = 0.762 mm (6e-7 of a cell).
+       Perturbing ``hi`` by that single ULP moves the occupied-node count by
+       a whole cell, so a corner computed as ``a - n*dx`` may rasterize
+       differently from the algebraically identical ``m*dx``.
+
+    For a **PEC obstacle** the occupied nodes are where the tangential ``E``
+    is zeroed, so consequence (1) is an *electrical* dimension error, not a
+    sub-cell cosmetic one. Two facing fins drawn to leave a nominal opening
+    ``d`` leave an electrical opening of ``d + dx`` (measured, WR-90 iris at
+    a/30 and a/60); shifting each interior face half a cell the *wrong* way
+    — a natural attempt at (2) — gives ``d + 2*dx``. In PR #480's WR-90
+    single-iris lane that inflated the ``|S11|`` error against an analytic
+    mode-matching oracle by 4-6x, and because it scales with ``dx`` it is
+    easy to misread as first-order convergence. For a **resonant** structure
+    (multi-iris filter, cavity) it shifts the passband rather than widening
+    a magnitude tolerance, so it will not look like a discretization error
+    at all.
+
+    **Recipe.** To make node ``j`` the innermost occupied plane, put the
+    corner at the cell midpoint ``(j + 0.5) * dx`` rather than on a node
+    plane: any value in ``(j*dx, (j+1)*dx]`` selects the same footprint, and
+    the midpoint is the farthest point from both knife edges. Then assert
+    the realized footprint (count the occupied node planes) against the
+    intended one — see ``run_point`` in
+    ``validation/crossval/18_wr90_iris_modematch.py`` for the pattern.
+
+    A box thinner than one local cell takes a separate **thin-sheet**
+    branch (single nearest-centre node); the notes above apply to the
+    volume branch only.
+    """
 
     corner_lo: tuple[float, float, float]
     corner_hi: tuple[float, float, float]
@@ -74,6 +128,13 @@ class Box:
         return (self.corner_lo, self.corner_hi)
 
     def mask_on_coords(self, x, y, z):
+        """Occupancy on explicit node coordinates.
+
+        Volume branch is half-open ``[lo, hi)`` per axis, so the ``hi`` face
+        contributes no node and a drawn extent realizes as ``extent - dx``
+        between the outermost occupied planes. See the class docstring for
+        the PEC-obstacle consequences and the half-cell-offset recipe.
+        """
         def _axis_mask(coords, lo, hi):
             # Use LOCAL cell size at the geometry's midpoint — critical for
             # thin objects on a non-uniform axis. Using the first-cell dc
@@ -313,6 +374,16 @@ def rasterize(
     background_eps: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Rasterize shapes onto grid, producing (eps_r, sigma) arrays.
+
+    Shapes are sampled on **node** coordinates. :class:`Box` uses a
+    half-open ``[lo, hi)`` volume rule, so a box drawn between two node
+    planes realizes one cell short of its drawn extent, asymmetrically at
+    the ``hi`` face. For a PEC obstacle that is an electrical dimension
+    error — a nominal opening ``d`` between two facing boxes rasterizes to
+    ``d + dx``. Read the :class:`Box` docstring before drawing an obstacle
+    to a nominal physical size, and assert the realized footprint (this
+    function's ``sigma`` output is what the raster asserts in
+    ``validation/crossval/18_wr90_iris_modematch.py`` inspect).
 
     Parameters
     ----------

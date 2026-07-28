@@ -6,6 +6,64 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — thin-absorber advisory on every uniform waveguide S-matrix path (#494)
+
+- `compute_waveguide_s_matrix` documents a "Far-port discipline" requiring an
+  absorber `>= ~0.5 * lambda_g`, but nothing checked it on the plain two-port
+  path: the sibling `_warn_junction_cpml_thickness` advisory runs only on the
+  `port_reference_sims` junction path, and the functional entry points run no
+  `sim.preflight()`. A gated revision of crossval case 18 therefore shipped a
+  0.30-`lambda_g` stack in silence and the absorber, not discretization, set
+  the reported accuracy envelope. A new in-method ADVISORY (warning, never
+  raises) now fires whenever the absorber on a port's propagation axis is
+  thinner than `0.5 * lambda_g`, quoting both the configured thickness and the
+  requirement.
+- Evaluated at the **lowest** measured frequency, where `lambda_g` is longest
+  and the `cpml_layers=16` default weakest, because `lambda_g` diverges toward
+  cutoff — the existing junction advisory uses band centre, which is what let
+  the 0.30-`lambda_g` stack pass. The message reports the measured ripple
+  ladder (0.0706 at 0.30 `lambda_g`, 0.0366 at 0.50, 0.0093 at 0.75) so
+  `0.5 * lambda_g` reads as a floor, not a target, and names the `cpml_layers`
+  values for both 0.5 and 0.75.
+- Deliberately a LOWER bound, with three fences: silent when the band starts at
+  or below cutoff (`lambda_g` undefined; the `port_freqs_below_cutoff` preflight
+  owns that), silent when the propagation axis carries no absorbing face, and
+  evaluated on the port's lowest-cutoff mode (shortest `lambda_g`, least
+  demanding). Silent on a non-uniform mesh, where `cpml_layers * dx` is
+  ambiguous under a graded profile. Respects per-face
+  `Boundary.lo_thickness` / `.hi_thickness` overrides. No physics changed and no
+  gate or tolerance was touched. Firing and non-firing gates in
+  `tests/test_waveguide_geometry_hygiene.py`.
+
+### Changed — node-rasterization convention documented where obstacles get drawn (#493)
+
+- `Box`'s volume branch is half-open `[lo, hi)` over NODE coordinates, so a box
+  whose corners land on node planes occupies nodes `i..k-1`: the realized extent
+  is one cell short of the drawn extent, entirely at the `hi` face, which also
+  displaces the object by `dx/2`. For a PEC obstacle those nodes are where
+  tangential `E` is zeroed, so this is an ELECTRICAL dimension error — two
+  facing fins drawn to leave a nominal opening `d` leave `d + dx` (measured at
+  WR-90 a/30 and a/60), and a half-cell offset applied the wrong way gives
+  `d + 2*dx`, which inflated PR #480's `|S11|` error against an analytic
+  mode-matching oracle by 4-6x. Because it scales with `dx` it mimics
+  first-order convergence, and on a resonant structure it shifts the passband
+  instead of widening a magnitude tolerance.
+- The convention, its arithmetic, the float32 knife edge at a node plane (one
+  ULP — ~5e-10 m at `dx` = 0.762 mm — flips the footprint by a whole cell) and
+  the cell-midpoint recipe are now stated in the `Box` / `Shape.mask_on_coords`
+  / `rasterize` docstrings and in the waveguide setup restrictions of
+  `docs/guides/sparameter_support_matrix.md`. Characterization tests pin the
+  arithmetic in `tests/test_waveguide_geometry_hygiene.py`.
+- **The rasterization rule itself is unchanged** — it is deliberate and other
+  paths depend on it. No advisory was added: the predicate floated in #493
+  (fire when the rasterized opening differs from the drawn opening by >= 1 cell)
+  has no discriminating power, because the half-open rule shifts the realized
+  aperture by exactly one cell relative to the drawn faces regardless of where
+  they sit, reading +1 cell for the correct midpoint recipe and both defective
+  drawings alike. The defect is `realized != INTENDED`, and the intended
+  dimension is never communicated to the simulator. Pinned by
+  `test_drawn_vs_realized_gap_cannot_discriminate_a_correct_drawing`.
+
 ### Fixed — MSL `eps_override` gradient: 13.7% converged deficit attributed and removed
 
 - The auto-`eps_r_sub` launch fixture (mode profile / sigma loading / source
