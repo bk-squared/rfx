@@ -1,0 +1,733 @@
+{
+ "schema": "rfx.wr90_iris_modematch",
+ "schema_version": 1,
+ "campaign": "cross-solver validation campaign, item 3 stage S1: single symmetric inductive iris in WR-90 vs TEn0 mode-matching \u2014 the calibrated prerequisite for any multi-iris filter case",
+ "claim_scope": "One symmetric inductive PEC iris (thickness 1.524 mm = exactly 2 coarse cells, apertures 18.288/12.192/7.62 mm = grid-exact 24/16/10 coarse cells) in WR-90 at 8.2-12.4 GHz, flux-normalized |S11| vs a twice-re-implemented TEn0 mode-matching cascade oracle (unitarity/reciprocity/mode-convergence/Marcuvitz-thin-limit/limit witnesses; Marcuvitz leading-order anchor agrees 8.6-10.8% with the inductive sign). GATED: fine rung dx=a/60 within 0.22 abs (= round-up(0.143 x 1.5); the 0.143 envelope is domain-scanned \u2014 guide length 0.16/0.20/0.24 m and iris position 0.42/0.50 at the worst aperture \u2014 because the canonical config alone understates it at 0.110, the PR #475 F1 single-sample aliasing class caught before gating) and the Richardson extrapolation 2*S(a/60)-S(a/30) on the oracle within 0.06 abs (envelope 0.034), which cross-confirms the oracle and the FIRST-ORDER discretization attribution (fine/coarse gap ratio 0.38-0.64 committed across apertures and domain configs). REPORTED, NOT GATED: the coarse rung dx=a/30 (deficit up to 0.224 abs at the medium aperture with ~0.015 domain-scan spread \u2014 committed as data; the probe campaign's earlier +/-0.07 spread was ulp-lottery footprint variation, removed by the half-cell-offset corners); normalize=False raw extraction (agrees with flux to ~0.02, recorded); phase (magnitude-only lane posture). FENCED: normalize=True modal extraction on strong reflectors \u2014 measured column power 1.112 > 1.1 fired the extractor self-check (documented reflector-inflation class); and everything beyond ONE symmetric inductive iris (multi-iris filters, posts, septa) remains EXPERIMENTAL per docs/guides/support_matrix.md. A parasitic wall-slot bug (fins drawn to nominal width leave a 1-cell gap at the grid wall) was found during this campaign and is fenced by the contiguous-aperture raster assert in run_point.",
+ "config": {
+  "a_m": 0.02286,
+  "b_m": 0.01016,
+  "t_m": 0.001524,
+  "freqs_hz": [
+   8200000000.0,
+   8800000000.0,
+   9400000000.0,
+   10000000000.0,
+   10600000000.0,
+   11200000000.0,
+   11800000000.0,
+   12400000000.0
+  ],
+  "cpml_layers": 24,
+  "coarse_cells_per_a": 30,
+  "fine_cells_per_a": 60,
+  "canonical_glen_m": 0.2,
+  "canonical_iris_frac": 0.5,
+  "gated_normalize": "flux"
+ },
+ "gates": {
+  "fine_gate_abs": 0.22,
+  "fine_measured_envelope_abs": 0.1433,
+  "richardson_gate_abs": 0.06,
+  "richardson_measured_envelope_abs": 0.0343,
+  "first_order_ratios": [
+   0.608,
+   0.527,
+   0.377,
+   0.527,
+   0.542,
+   0.639
+  ],
+  "posture": "gate = round-UP(measured envelope x 1.5) (PR #475 convention); coarse rung, raw extraction and phase are reported, never gated; modal extraction and multi-iris structures are fenced, never gated"
+ },
+ "gated_fine": [
+  {
+   "d_mm": 18.288,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 49,
+   "thickness_cells": 4,
+   "s11": [
+    0.151,
+    0.14541,
+    0.11158,
+    0.10736,
+    0.08993,
+    0.0803,
+    0.07472,
+    0.06656
+   ],
+   "s21": [
+    0.98853,
+    0.98937,
+    0.99376,
+    0.99422,
+    0.99595,
+    0.99677,
+    0.9972,
+    0.99778
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 531.2,
+   "oracle_s11": [
+    0.23282,
+    0.19383,
+    0.16672,
+    0.14629,
+    0.13006,
+    0.11668,
+    0.10533,
+    0.09548
+   ],
+   "max_gap_abs": 0.0818
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 33,
+   "thickness_cells": 4,
+   "s11": [
+    0.77632,
+    0.71748,
+    0.65034,
+    0.6104,
+    0.54915,
+    0.51448,
+    0.46319,
+    0.43493
+   ],
+   "s21": [
+    0.63032,
+    0.69658,
+    0.75965,
+    0.79209,
+    0.83572,
+    0.8575,
+    0.88626,
+    0.90046
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 523.3,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.1105
+  },
+  {
+   "d_mm": 7.62,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 21,
+   "thickness_cells": 4,
+   "s11": [
+    0.98174,
+    0.97359,
+    0.96357,
+    0.95536,
+    0.9412,
+    0.93188,
+    0.91329,
+    0.90291
+   ],
+   "s21": [
+    0.19014,
+    0.22832,
+    0.26745,
+    0.29542,
+    0.33784,
+    0.36277,
+    0.40731,
+    0.42981
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 525.4,
+   "oracle_s11": [
+    0.99169,
+    0.98784,
+    0.98345,
+    0.97846,
+    0.97279,
+    0.96632,
+    0.95894,
+    0.9505
+   ],
+   "max_gap_abs": 0.0476
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.16,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 33,
+   "thickness_cells": 4,
+   "s11": [
+    0.77752,
+    0.71589,
+    0.65356,
+    0.60813,
+    0.55005,
+    0.51593,
+    0.45881,
+    0.42796
+   ],
+   "s21": [
+    0.62885,
+    0.69822,
+    0.75688,
+    0.79384,
+    0.83513,
+    0.85663,
+    0.88854,
+    0.90379
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 435.3,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.1106
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.24,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 33,
+   "thickness_cells": 4,
+   "s11": [
+    0.77955,
+    0.71178,
+    0.65091,
+    0.60762,
+    0.55188,
+    0.50105,
+    0.47657,
+    0.42459
+   ],
+   "s21": [
+    0.62632,
+    0.7024,
+    0.75915,
+    0.79423,
+    0.83393,
+    0.86542,
+    0.87914,
+    0.90537
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 589.1,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.1128
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 60,
+   "dx_mm": 0.381,
+   "glen_m": 0.2,
+   "iris_frac": 0.42,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 33,
+   "thickness_cells": 4,
+   "s11": [
+    0.7774,
+    0.6796,
+    0.69995,
+    0.5635,
+    0.5717,
+    0.50927,
+    0.45634,
+    0.45099
+   ],
+   "s21": [
+    0.62899,
+    0.73358,
+    0.7142,
+    0.82612,
+    0.82046,
+    0.8606,
+    0.88981,
+    0.89253
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 530.2,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.1433
+  }
+ ],
+ "coarse_diagnostic": [
+  {
+   "d_mm": 18.288,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 25,
+   "thickness_cells": 2,
+   "s11": [
+    0.09818,
+    0.09524,
+    0.07873,
+    0.05483,
+    0.07071,
+    0.03781,
+    0.06295,
+    0.02772
+   ],
+   "s21": [
+    0.99517,
+    0.99546,
+    0.99689,
+    0.9985,
+    0.9975,
+    0.99928,
+    0.99802,
+    0.99962
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 52.2,
+   "oracle_s11": [
+    0.23282,
+    0.19383,
+    0.16672,
+    0.14629,
+    0.13006,
+    0.11668,
+    0.10533,
+    0.09548
+   ],
+   "max_gap_abs": 0.1346,
+   "richardson_dev_abs": 0.029
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 17,
+   "thickness_cells": 2,
+   "s11": [
+    0.68206,
+    0.62174,
+    0.55177,
+    0.49708,
+    0.4621,
+    0.40584,
+    0.39123,
+    0.33543
+   ],
+   "s21": [
+    0.73129,
+    0.78323,
+    0.834,
+    0.8677,
+    0.88683,
+    0.91395,
+    0.92029,
+    0.94207
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 52.1,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.2097,
+   "richardson_dev_abs": 0.0343
+  },
+  {
+   "d_mm": 7.62,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 11,
+   "thickness_cells": 2,
+   "s11": [
+    0.96409,
+    0.95055,
+    0.93159,
+    0.91504,
+    0.89478,
+    0.87261,
+    0.85276,
+    0.82431
+   ],
+   "s21": [
+    0.26552,
+    0.31058,
+    0.36351,
+    0.40335,
+    0.44651,
+    0.48841,
+    0.5223,
+    0.56613
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 50.7,
+   "oracle_s11": [
+    0.99169,
+    0.98784,
+    0.98345,
+    0.97846,
+    0.97279,
+    0.96632,
+    0.95894,
+    0.9505
+   ],
+   "max_gap_abs": 0.1262,
+   "richardson_dev_abs": 0.031
+  }
+ ],
+ "coarse_domain_scan": [
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.16,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 17,
+   "thickness_cells": 2,
+   "s11": [
+    0.68575,
+    0.60995,
+    0.55568,
+    0.49696,
+    0.45661,
+    0.42065,
+    0.37407,
+    0.36185
+   ],
+   "s21": [
+    0.72784,
+    0.79244,
+    0.8314,
+    0.86777,
+    0.88967,
+    0.90722,
+    0.9274,
+    0.93225
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 44.5,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.2098
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.24,
+   "iris_frac": 0.5,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 17,
+   "thickness_cells": 2,
+   "s11": [
+    0.68989,
+    0.61467,
+    0.55352,
+    0.49873,
+    0.46109,
+    0.41587,
+    0.38032,
+    0.34963
+   ],
+   "s21": [
+    0.7239,
+    0.78878,
+    0.83284,
+    0.86675,
+    0.88735,
+    0.90943,
+    0.92485,
+    0.93689
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 56.0,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.2081
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.42,
+   "normalize": "flux",
+   "num_periods": 100.0,
+   "aperture_cells": 17,
+   "thickness_cells": 2,
+   "s11": [
+    0.69539,
+    0.58165,
+    0.56539,
+    0.51549,
+    0.43768,
+    0.41443,
+    0.40374,
+    0.30213
+   ],
+   "s21": [
+    0.71864,
+    0.81344,
+    0.82483,
+    0.8569,
+    0.89913,
+    0.91008,
+    0.91487,
+    0.95327
+   ],
+   "max_colpow": 1.0,
+   "wall_s": 49.9,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.2242
+  }
+ ],
+ "raw_extraction_record": [
+  {
+   "d_mm": 18.288,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "False",
+   "num_periods": 100.0,
+   "aperture_cells": 25,
+   "thickness_cells": 2,
+   "s11": [
+    0.09789,
+    0.15477,
+    0.05118,
+    0.08683,
+    0.07699,
+    0.05915,
+    0.04683,
+    0.06391
+   ],
+   "s21": [
+    0.99747,
+    0.98789,
+    0.99932,
+    0.99778,
+    0.99775,
+    0.99817,
+    0.99928,
+    0.99891
+   ],
+   "max_colpow": 1.0045,
+   "wall_s": 24.9,
+   "oracle_s11": [
+    0.23282,
+    0.19383,
+    0.16672,
+    0.14629,
+    0.13006,
+    0.11668,
+    0.10533,
+    0.09548
+   ],
+   "max_gap_abs": 0.1349
+  },
+  {
+   "d_mm": 12.192,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "False",
+   "num_periods": 100.0,
+   "aperture_cells": 17,
+   "thickness_cells": 2,
+   "s11": [
+    0.67734,
+    0.64407,
+    0.52912,
+    0.51003,
+    0.45205,
+    0.43575,
+    0.36145,
+    0.35248
+   ],
+   "s21": [
+    0.73734,
+    0.76491,
+    0.84891,
+    0.86152,
+    0.89263,
+    0.89989,
+    0.93273,
+    0.93674
+   ],
+   "max_colpow": 1.0025,
+   "wall_s": 25.3,
+   "oracle_s11": [
+    0.85612,
+    0.80513,
+    0.75531,
+    0.7068,
+    0.65965,
+    0.61387,
+    0.56946,
+    0.52637
+   ],
+   "max_gap_abs": 0.2262
+  },
+  {
+   "d_mm": 7.62,
+   "cells_per_a": 30,
+   "dx_mm": 0.762,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "normalize": "False",
+   "num_periods": 100.0,
+   "aperture_cells": 11,
+   "thickness_cells": 2,
+   "s11": [
+    0.96438,
+    0.95068,
+    0.93082,
+    0.9166,
+    0.88873,
+    0.88456,
+    0.84168,
+    0.82999
+   ],
+   "s21": [
+    0.26433,
+    0.31022,
+    0.36479,
+    0.40012,
+    0.45876,
+    0.4659,
+    0.53984,
+    0.55837
+   ],
+   "max_colpow": 1.0007,
+   "wall_s": 24.9,
+   "oracle_s11": [
+    0.99169,
+    0.98784,
+    0.98345,
+    0.97846,
+    0.97279,
+    0.96632,
+    0.95894,
+    0.9505
+   ],
+   "max_gap_abs": 0.1205
+  }
+ ],
+ "truncation_witness": [
+  {
+   "d_mm": 18.288,
+   "shift_abs": 1e-05
+  },
+  {
+   "d_mm": 12.192,
+   "shift_abs": 0.0
+  },
+  {
+   "d_mm": 7.62,
+   "shift_abs": 0.0
+  }
+ ],
+ "provenance": {
+  "generated_by": "validation/crossval/18_wr90_iris_modematch.py --write-fixture",
+  "oracle": "in-script TEn0 mode-matching cascade with unitarity/convergence/Marcuvitz/limit witnesses (re-run and printed above); re-derived again independently in the frozen gate test",
+  "no_preflight_note": "compute_waveguide_s_matrix runs its own extractor passivity self-check (warnings are part of this record) but no sim.preflight(); operating-point guarantees are the raster asserts in run_point.",
+  "modal_fence_record_2026_07_28": "normalize=True at d=7.62 mm measured max column power 1.112 (extractor warning fired verbatim: 'passivity_violation: max column power 1.11211 exceeds limit 1.1 at driven port 1'); modal extraction is therefore FENCED for strong reflectors in this case. NOT committed as data \u2014 the fence is the record."
+ }
+}

@@ -333,5 +333,34 @@
       "scheduled_external_order": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     }
+ ,
+    {
+      "id": "18_wr90_iris_modematch",
+      "script": "validation/crossval/18_wr90_iris_modematch.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner"],
+      "evidence_levels": ["E2"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "TEn0 mode-matching cascade for the thick symmetric inductive iris (two H-plane width-step junctions + below-cutoff section), re-implemented twice with self-witnesses (unitarity to machine precision, reciprocity, mode-count convergence with the relative-convergence ratio rule, thin-limit vs the Marcuvitz cot^2 closed form at 8.6-10.8% with the inductive sign, d->a and deep-constriction limits); the frozen gate test re-derives the cascade again and re-asserts unitarity on every evaluation",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "Single symmetric inductive PEC iris in WR-90 (t = 1.524 mm = exactly 2 coarse cells; apertures 18.288/12.192/7.62 mm grid-exact) at 8.2-12.4 GHz, flux-normalized |S11| vs a TEn0 mode-matching oracle — the FIRST calibrated evidence for a PEC obstacle in the rectangular-waveguide S-parameter lane (support_matrix pins iris/post/septum as experimental; this case establishes the single-iris envelope BEFORE any multi-iris filter, which stays fenced). GATED: fine rung dx = a/60 within 0.22 abs (= round-up(0.143 x 1.5); the envelope is domain-scanned across guide length 0.16/0.20/0.24 m and iris position 0.42/0.50 at the worst aperture because the canonical config alone understates it at 0.110 — the PR #475 F1 aliasing class caught before gating), and the Richardson extrapolation 2*S(a/60) - S(a/30) on the oracle within 0.06 abs (envelope 0.034), which cross-confirms the oracle and the first-order discretization attribution (fine/coarse gap ratios 0.38-0.64 committed). REPORTED, NOT GATED: the coarse rung (deficit to 0.224 abs with ~0.015 domain-scan spread, committed as data; the probe campaign's earlier +/-0.07 spread was ulp-lottery footprint variation between node-plane box corners, removed by the half-cell-offset corners — itself a recorded finding), the raw normalize=False record (agrees with flux to ~0.02), and phase (magnitude-only lane posture). FENCED: normalize=True modal extraction on strong reflectors (measured column power 1.112 fired the extractor self-check — the documented reflector-inflation class) and everything beyond one symmetric inductive iris. A parasitic wall-slot rasterization bug found during the campaign is fenced by a contiguous-aperture assert in run_point. Palace WavePort corroboration (stage S2) and a published multi-iris filter (stage S3) are follow-on stages, not claimed here.",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "validation/crossval/18_wr90_iris_modematch.py",
+        "tests/test_wr90_iris_modematch_gates.py"
+      ],
+      "artifact_paths": [
+        "validation/crossval/_18_wr90_iris_results/rfx.json"
+      ],
+      "cpu_runner": {"order": 14},
+      "scheduled_external_order": null,
+      "failure_sentinel": "SOME CHECKS FAILED"
+    }
   ]
 }
