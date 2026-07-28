@@ -1485,6 +1485,24 @@ class _ExecuteMixin:
                 "wire": result.wire_port_sparams,
                 "wire_refplane": result.wire_refplane_sparams,
                 "freqs": _raw_freqs,
+                # Mixed-family S-matrix hook (issue #488): the DFT plane
+                # probes and probe time series recorded in the SAME run, so
+                # compute_mixed_s_matrix can read MSL port planes + settling
+                # witnesses alongside the lumped/wire accumulators without a
+                # second pass. The name-keyed dict mirrors the run()/forward()
+                # ``ForwardResult.dft_planes`` contract below. PURE ADD — the
+                # lumped/wire scan driver reads only the keys above.
+                "dft_planes": (
+                    {
+                        entry.name: probe
+                        for entry, probe in zip(
+                            self._dft_planes,
+                            getattr(result, "dft_planes", None) or (),
+                        )
+                    }
+                    if self._dft_planes else None
+                ),
+                "time_series": getattr(result, "time_series", None),
             }
 
         s_params_out = getattr(result, "s_params", None)

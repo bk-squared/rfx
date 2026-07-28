@@ -1328,6 +1328,65 @@ class MSLSMatrixResult:
     passivity_correction: np.ndarray | None = None
 
 
+@dataclass
+class MixedSMatrixResult:
+    """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
+
+    Unlike the per-family extractors, ``S`` here is in the **Kurokawa
+    power-wave convention** (every wave amplitude divided by
+    ``sqrt(Re(Z0_port))``): with unequal reference impedances across
+    families a pseudo-wave ``b/a`` ratio is off by ``sqrt(Z_j/Z_i)``
+    (issue #460), so the mixed lane normalizes to power waves by
+    construction. Off-diagonal PHASE across families is provisional —
+    the lumped/wire cell and the MSL de-embedded plane are different
+    reference-plane conventions (magnitude is the validated observable).
+
+    Attributes
+    ----------
+    S : (n_ports, n_ports, n_freqs) complex
+        Power-wave S-matrix; ``S[i, j]`` = response at port *i* driving
+        port *j*. Port order: lumped/wire ports (registration order),
+        then MSL ports (registration order).
+    freqs : (n_freqs,) float
+        Frequency grid in Hz.
+    port_names : tuple of str
+        Combined port names (lumped/wire ports are auto-named
+        ``"lw<k>"``; MSL ports keep their registered names).
+    port_families : tuple of str
+        ``"lumped"`` / ``"wire"`` / ``"msl"`` per port, same order.
+    z0_ref : (n_ports,) float
+        Power-wave reference impedance per port: the registered port
+        impedance for lumped/wire, analytic Hammerstad-Jensen Z0 for MSL.
+    settling_db : (n_ports,) float, optional
+        Ring-down settling witness per driven-port run (worst end/peak
+        Ez^2 over the MSL probe planes, dB; above -40 dB = truncation
+        suspect, same convention as :class:`MSLSMatrixResult`).
+    s21_power_witness : np.ndarray | None
+        (n_msl, n_lw, n_freqs) real — extractor-independent |S21|
+        cross-check for lumped/wire-driven columns: the MSL arriving
+        power-wave magnitude over ``|a_drive|`` reconstructed from the
+        delivered power ``P_del = 0.5*Re(Z_in)*|I|^2`` and
+        ``(1 - |S_jj|^2)`` (does not trust the port-cell a-wave
+        magnitude; issue #313 triangulation).
+    reliable : np.ndarray | None
+        (n_msl, n_freqs) bool — MSL standing-wave-null reliability mask
+        from each MSL port's own driven run (False = ill-conditioned bin).
+    S_raw / passivity_correction :
+        As in :class:`MSLSMatrixResult` — set only when the passivity
+        projection touched at least one bin.
+    """
+    S: np.ndarray
+    freqs: np.ndarray
+    port_names: tuple[str, ...]
+    port_families: tuple[str, ...]
+    z0_ref: np.ndarray
+    settling_db: np.ndarray | None = None
+    s21_power_witness: np.ndarray | None = None
+    reliable: np.ndarray | None = None
+    S_raw: np.ndarray | None = None
+    passivity_correction: np.ndarray | None = None
+
+
 __all__ = [
     "MATERIAL_LIBRARY",
     "AD_MemoryEstimate",
@@ -1355,4 +1414,5 @@ __all__ = [
     "CoaxialLineReflectionResult",
     "_MSLPortEntry",
     "MSLSMatrixResult",
+    "MixedSMatrixResult",
 ]

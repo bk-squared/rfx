@@ -84,6 +84,7 @@ from rfx.api._spec import (  # noqa: E402
     CoaxialLineReflectionResult,
     _MSLPortEntry,
     MSLSMatrixResult,
+    MixedSMatrixResult,
 )
 from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
 
@@ -3725,4 +3726,5 @@ __all__ = [
     "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
     "MSLSMatrixResult",
+    "MixedSMatrixResult",
 ]
