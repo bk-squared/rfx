@@ -70,7 +70,20 @@ def test_v2_revision_linked_worker_survives_service_restart(tmp_path):
     runtime = field_payload["runtime"]
     assert runtime["python_version"]
     assert runtime["platform"]
-    assert runtime["packages"]["rfx-fdtd"] == "1.6.6"
+    # The contract is "the worker records the version resolution IT uses",
+    # not a specific number — a hardcoded literal here turned every version
+    # bump red (caught by the v1.6.7 release PR). Mirror the worker's own
+    # preference chain (installed distribution metadata, falling back to
+    # the source __version__) so the assertion is also robust to a dev box
+    # where an older wheel is installed while the source checkout is newer.
+    import importlib.metadata
+
+    try:
+        _rfx_version = importlib.metadata.version("rfx-fdtd")
+    except importlib.metadata.PackageNotFoundError:
+        from rfx import __version__ as _rfx_version
+
+    assert runtime["packages"]["rfx-fdtd"] == _rfx_version
     assert runtime["source"]["kind"] in {"source-checkout", "wheel"}
     assert runtime["seed"]["value"] is None
     assert "no stochastic operator" in runtime["seed"]["policy"]
