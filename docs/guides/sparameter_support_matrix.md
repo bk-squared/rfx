@@ -219,17 +219,25 @@ implementation nor gradient regression is RF validation.
 - Choose `dx` so the slab length is an integer number of cells; staircase
   quantization directly perturbs the round-trip phase.
 - Draw interior PEC obstacles (irises, septa, posts) with their interior faces
-  on **cell midpoints**, not on node planes, and assert the realized footprint.
-  `Box` rasterizes half-open `[lo, hi)` over node coordinates, so a box drawn
-  between two node planes occupies one cell fewer than drawn, asymmetrically at
-  the `hi` face. Two facing fins drawn to leave a nominal opening `d` therefore
-  leave an electrical opening of `d + dx`; offsetting each interior face half a
-  cell the wrong way gives `d + 2*dx`. In the WR-90 single-iris lane the latter
-  inflated the `|S11|` difference against an analytic mode-matching oracle by
-  4-6x (0.0193 to 0.1262 at `d = 7.620 mm`, a/30). Because the error scales
-  with `dx` it mimics first-order convergence, and on a resonant structure it
-  shifts the passband instead of widening a magnitude tolerance. See the `Box`
-  docstring for the arithmetic and `run_point` in
+  on **cell midpoints**, keep the metal depth an exact number of cells, and
+  assert the realized footprint. `Box` rasterizes half-open `[lo, hi)` over node
+  coordinates, so a box drawn between two node planes occupies one cell fewer
+  than drawn, asymmetrically at the `hi` face. Two facing fins drawn to leave a
+  nominal opening `d` therefore leave an electrical opening of `d + dx` **or
+  `d + 2*dx`, and which one is not predictable from the nominal dimensions** —
+  one cell from the convention, a second whenever the far fin's corner misses
+  its node under float32 rounding. Measured on WR-90 at both a/30 and a/60:
+  7.620 mm and 18.288 mm give `d + dx`, 12.192 mm gives `d + 2*dx`. Offsetting
+  each interior face half a cell the wrong way gives `d + 2*dx` uniformly. In
+  the WR-90 single-iris lane this inflated the `|S11|` difference against an
+  analytic mode-matching oracle by 4-6x (0.0193 to 0.1262 at `d = 7.620 mm`,
+  a/30). Because the error scales with `dx` it mimics first-order convergence,
+  and on a resonant structure it shifts the passband instead of widening a
+  magnitude tolerance. Midpoint corners are rounding-independent, and with
+  `(cells - d_cells)` even the realized opening equals the nominal one exactly;
+  at odd parity a symmetric opening of that width is not representable on the
+  grid and costs one cell however it is drawn. See the `Box` docstring for the
+  arithmetic and `run_point` in
   `validation/crossval/18_wr90_iris_modematch.py` for the assert pattern.
 - Size the absorber from the guide wavelength at the **lowest** measured
   frequency, where `lambda_g` is longest and the `cpml_layers=16` default is

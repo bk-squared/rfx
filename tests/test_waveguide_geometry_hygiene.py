@@ -6,9 +6,12 @@ exposed them:
 
 * **#493** — ``Box``'s volume branch is half-open ``[lo, hi)`` over NODE
   coordinates, so a PEC obstacle drawn to its nominal physical dimension
-  rasterizes one cell short at its ``hi`` face. The tests below pin that
-  arithmetic (including the float32 knife edge at a node plane) so the
-  convention is executable documentation rather than folklore. They are
+  rasterizes short at its ``hi`` face. The tests below pin that arithmetic
+  (including the float32 rounding that decides whether the cost is one cell
+  or two) so the convention is executable documentation rather than
+  folklore. They derive node coordinates from a real ``Grid``, never from an
+  f64 ``arange``, because the two disagree by enough to change the answer.
+  They are
   CHARACTERIZATION tests: the convention is deliberate and other paths
   depend on it, so a change here is a deliberate behaviour change and must
   be reviewed as one, not silenced.
@@ -31,7 +34,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.api._sparams import _warn_thin_absorber_vs_guide_wavelength
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, _grid_coords
 
 
 ADVISORY_KEY = "far-port discipline"
@@ -41,7 +44,36 @@ ADVISORY_KEY = "far-port discipline"
 # #493 — half-open node rasterization of PEC obstacles
 # --------------------------------------------------------------------------- #
 A_WR90 = 22.86e-3
+B_WR90 = 10.16e-3
 _ZERO = np.array([0.0])
+_COORD_CACHE: dict = {}
+
+
+def _real_node_coords(cells: int):
+    """y-node coordinates from a REAL ``Grid`` — the production f32 path.
+
+    Deliberately NOT ``np.arange(ny) * dx``. ``_grid_coords`` computes
+    ``(jnp.arange(ny) - pad) * dx`` in float32, so every node is
+    ``f32(f32(i) * f32(dx))`` — double-rounded — whereas a ``Box`` corner is
+    computed by the caller in float64 and cast once. An f64 construction
+    differs from production on 30 of 31 nodes by up to 1.12e-9 m, which is
+    enough to flip a whole cell of metal: an earlier revision of these tests
+    built coordinates in f64 and consequently pinned ``d + dx`` at every
+    aperture, while production gives ``d + 2*dx`` at ``d`` = 12.192 mm.
+    Deriving coordinates from a real grid is what keeps these tests from
+    drifting away from the code they document.
+    """
+    if cells not in _COORD_CACHE:
+        dx = A_WR90 / cells
+        sim = Simulation(
+            freq_max=14e9, domain=(0.05, A_WR90, B_WR90), dx=dx,
+            boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
+                                  y=Boundary(lo="pec", hi="pec"),
+                                  z=Boundary(lo="pec", hi="pec")),
+            cpml_layers=10)
+        y = np.asarray(_grid_coords(sim._build_grid())[1])
+        _COORD_CACHE[cells] = (y, dx)
+    return _COORD_CACHE[cells]
 
 
 def _occupied(hi_face: float, coords: np.ndarray) -> np.ndarray:
@@ -51,152 +83,213 @@ def _occupied(hi_face: float, coords: np.ndarray) -> np.ndarray:
     return np.nonzero(np.asarray(m)[0, :, 0])[0]
 
 
-def _fin_pair_aperture(hi_face: float, coords: np.ndarray, dx: float):
-    """Electrical aperture between two facing fins, in metres.
+def _fin_pair(hi_face: float, coords: np.ndarray, dx: float):
+    """Electrical aperture between two facing fins.
 
-    Returns ``(aperture_m, free_node_indices)``. The aperture is the span
-    between the innermost OCCUPIED (zeroed-tangential-E) node planes.
+    Returns ``(aperture_cells, free_node_indices)``. The aperture is the span
+    between the innermost OCCUPIED node planes, i.e. between the innermost
+    planes where tangential E is zeroed. That is the same convention under
+    which the guide itself measures ``a``: with PEC on the outermost node
+    planes 0 and ``cells``, the width is ``cells * dx`` = 22.86 mm exactly,
+    and the free-node count is ``width/dx - 1``.
     """
     lo_fin = Box((-1.0, -1.0, -1.0), (1.0, float(hi_face), 1.0))
     hi_fin = Box((-1.0, A_WR90 - float(hi_face), -1.0), (1.0, 1.0, 1.0))
     metal = (np.asarray(lo_fin.mask_on_coords(_ZERO, coords, _ZERO))[0, :, 0]
              | np.asarray(hi_fin.mask_on_coords(_ZERO, coords, _ZERO))[0, :, 0])
     free = np.nonzero(~metal)[0]
-    return ((free[-1] + 1) - (free[0] - 1)) * dx, free
+    return int((free[-1] + 1) - (free[0] - 1)), free
 
 
-@pytest.mark.parametrize("cells", [30, 60])
-def test_box_volume_branch_is_half_open_and_asymmetric_over_nodes(cells):
-    """A box between two node planes occupies nodes ``i..k-1``, not ``i..k``.
-
-    The drawn extent realizes as ``extent - dx`` between the outermost
-    occupied planes, and the shortfall is entirely at the ``hi`` face — the
-    footprint is asymmetric, which displaces the object by ``dx/2``.
-    """
-    dx = A_WR90 / cells
-    coords = np.arange(cells + 1) * dx
-    occ = _occupied(8 * dx, coords)
-
-    assert occ[0] == 0
-    assert occ[-1] == 7, "hi face at node 8 must contribute no cell"
-    assert len(occ) == 8
-    realized = (occ[-1] - occ[0]) * dx
-    assert realized == pytest.approx(8 * dx - dx, rel=1e-6), (
-        "realized extent must be one cell short of the drawn extent")
-
-
-@pytest.mark.parametrize("cells", [30, 60])
-@pytest.mark.parametrize("d_phys", [7.620e-3, 12.192e-3, 18.288e-3])
-def test_fins_drawn_to_nominal_aperture_open_one_cell_too_wide(cells, d_phys):
-    """Drawing to the nominal opening yields an ELECTRICAL opening d + dx.
-
-    This is the #493 mechanism. It also displaces the aperture by half a
-    cell, because the shortfall sits only at the lo fin's ``hi`` face.
-    """
-    dx = A_WR90 / cells
-    coords = np.arange(cells + 1) * dx
+def _iris(cells: int, d_phys: float):
+    y, dx = _real_node_coords(cells)
     d_c = int(round(d_phys / dx))
+    return y, dx, d_c, (cells - d_c) // 2
+
+
+@pytest.mark.parametrize("cells", [30, 60])
+def test_guide_width_fixes_the_zeroed_plane_convention(cells):
+    """The convention under which the guide itself measures ``a`` exactly.
+
+    Anchors every aperture number below: distance between the bounding
+    zeroed node planes, NOT the span of open nodes (which would call WR-90
+    22.098 mm at a/30).
+    """
+    y, dx = _real_node_coords(cells)
+    assert len(y) == cells + 1
+    assert cells * dx == pytest.approx(A_WR90, rel=1e-9)
+    assert (cells - 1) == (cells * dx) / dx - 1
+
+
+@pytest.mark.parametrize("cells", [30, 60])
+def test_box_volume_branch_excludes_the_hi_node_plane(cells):
+    """Half-open ``[lo, hi)``: the ``hi`` face contributes no cell.
+
+    ``hi`` is taken from the realized node value so the comparison is an
+    exact equality and the result cannot depend on rounding — the rule
+    itself, isolated from the float32 effects tested separately below.
+    """
+    y, _ = _real_node_coords(cells)
+    for k in (8, 12):
+        occ = _occupied(float(y[k]), y)
+        assert occ[-1] == k - 1, f"node {k} must be excluded"
+        assert len(occ) == k
+
+
+def test_production_node_coords_differ_from_an_f64_construction():
+    """Why these tests must derive coordinates from a real grid.
+
+    Pins the float32 double-rounding finding: production nodes are
+    ``f32(f32(i) * f32(dx))``, an f64 construction is ``f32(i * dx)``, and
+    they disagree on almost every node. The magnitude is ~1e-9 m — 1e-6 of a
+    cell — yet it changes the rasterized footprint (see the nominal-drawing
+    table below, where 12.192 mm lands on a different cell count than the
+    other two apertures).
+    """
+    for cells in (30, 60):
+        y, dx = _real_node_coords(cells)
+        y_f64 = np.arange(len(y)) * dx
+        delta = np.abs(y - y_f64)
+        assert (delta > 0).sum() >= cells, "expected almost every node to differ"
+        assert 0 < delta.max() < 1e-8
+        assert delta.max() / dx < 1e-5
+
+
+# Measured on the production f32 coordinate path. The nominal drawing is NOT
+# predictable from the nominal dimensions: 12.192 mm lands on d + 2*dx while
+# the other two apertures land on d + 1*dx, at BOTH mesh rungs. Pinned as a
+# characterization table so a change in the rounding behaviour is visible.
+_NOMINAL_EXCESS = {
+    (30, 7.620): 1, (30, 12.192): 2, (30, 18.288): 1,
+    (60, 7.620): 1, (60, 12.192): 2, (60, 18.288): 1,
+}
+
+
+@pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
+def test_fins_drawn_to_nominal_aperture_are_one_or_two_cells_too_wide(
+        cells, d_mm):
+    """#493's mechanism, with the measured per-config value.
+
+    Drawing to the nominal opening never yields the nominal ELECTRICAL
+    opening, and how much it overshoots is config-dependent: one cell from
+    the convention itself, plus a second whenever the hi fin's lo corner
+    fails to capture its node under float32 rounding.
+    """
+    d_phys = d_mm * 1e-3
+    y, dx, d_c, fin_c = _iris(cells, d_phys)
+    aperture_cells, _ = _fin_pair(fin_c * dx, y, dx)
+
+    excess = aperture_cells - d_c
+    assert excess == _NOMINAL_EXCESS[(cells, d_mm)]
+    assert excess in (1, 2), "the drawn-to-nominal defect is 1 or 2 cells"
+    assert aperture_cells * dx > d_phys, "must never be the nominal opening"
+
+
+@pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
+def test_midpoint_recipe_is_exact_at_even_parity(cells, d_mm):
+    """The documented recipe, and the non-firing control for the test above.
+
+    Interior faces on cell midpoints sit half a cell from either edge, so the
+    footprint is rounding-independent. Every case-18 configuration has
+    ``(cells - d_c)`` even and lands on the nominal aperture exactly.
+    """
+    d_phys = d_mm * 1e-3
+    y, dx, d_c, fin_c = _iris(cells, d_phys)
+    assert (cells - d_c) % 2 == 0, "case-18 configs are even-parity by design"
+
+    aperture_cells, free = _fin_pair((fin_c + 0.5) * dx, y, dx)
+
+    assert aperture_cells == d_c
+    assert aperture_cells * dx == pytest.approx(d_phys, rel=1e-6)
+    assert len(free) == d_c - 1, "free-node count == aperture/dx - 1"
+    assert 0.5 * (free[0] + free[-1]) == pytest.approx(cells / 2), "centred"
+
+
+@pytest.mark.parametrize("cells", [30, 60])
+def test_midpoint_recipe_costs_a_cell_at_odd_parity(cells):
+    """A representability limit, not a rasterization defect.
+
+    ``fin_c = (cells - d_c)//2`` truncates, so when ``(cells - d_c)`` is odd
+    a SYMMETRIC iris of that aperture cannot be placed on the node grid at
+    all and the opening is one cell wide regardless of how it is drawn. Keep
+    ``(cells - d_c)`` even, i.e. the fin depth an exact number of cells.
+    """
+    y, dx = _real_node_coords(cells)
+    d_c = 3
+    assert (cells - d_c) % 2 == 1
     fin_c = (cells - d_c) // 2
 
-    aperture, free = _fin_pair_aperture(fin_c * dx, coords, dx)
+    aperture_cells, _ = _fin_pair((fin_c + 0.5) * dx, y, dx)
 
-    assert aperture == pytest.approx(d_phys + dx, rel=1e-6), (
-        f"expected d + dx, got d + {(aperture - d_phys) / dx:.2f}*dx")
-    # Asymmetry witness: the free span's centre is half a cell below the
-    # guide centre node.
-    assert 0.5 * (free[0] + free[-1]) == pytest.approx(cells / 2 - 0.5)
+    assert aperture_cells == d_c + 1
 
 
-@pytest.mark.parametrize("cells", [30, 60])
-@pytest.mark.parametrize("d_phys", [7.620e-3, 12.192e-3, 18.288e-3])
-def test_half_cell_outward_offset_restores_nominal_electrical_aperture(
-        cells, d_phys):
-    """The documented recipe: interior faces on cell midpoints.
+@pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
+def test_half_cell_inward_offset_opens_two_cells_too_wide(cells, d_mm):
+    """Offsetting interior faces the WRONG way gives d + 2*dx everywhere.
 
-    Non-firing control for the test above — same geometry, corrected
-    corners, aperture exactly nominal and centred.
+    Unlike the nominal drawing this one is uniform across the table: the
+    corner sits half a cell from either edge, so it is rounding-independent
+    and the two cells are structural.
     """
-    dx = A_WR90 / cells
-    coords = np.arange(cells + 1) * dx
-    d_c = int(round(d_phys / dx))
-    fin_c = (cells - d_c) // 2
+    d_phys = d_mm * 1e-3
+    y, dx, d_c, fin_c = _iris(cells, d_phys)
 
-    aperture, free = _fin_pair_aperture((fin_c + 0.5) * dx, coords, dx)
+    aperture_cells, _ = _fin_pair((fin_c - 0.5) * dx, y, dx)
 
-    assert aperture == pytest.approx(d_phys, rel=1e-6)
-    assert 0.5 * (free[0] + free[-1]) == pytest.approx(cells / 2)
-
-
-def test_half_cell_inward_offset_opens_two_cells_too_wide():
-    """Offsetting interior faces the WRONG way gives d + 2*dx.
-
-    This is the variant that produced #493's headline 4-6x |S11| envelope
-    inflation: a half-cell offset applied to make footprints deterministic,
-    but toward the metal instead of into the opening.
-    """
-    cells, d_phys = 30, 12.192e-3
-    dx = A_WR90 / cells
-    coords = np.arange(cells + 1) * dx
-    fin_c = (cells - int(round(d_phys / dx))) // 2
-
-    aperture, _ = _fin_pair_aperture((fin_c - 0.5) * dx, coords, dx)
-
-    assert aperture == pytest.approx(d_phys + 2 * dx, rel=1e-6)
+    assert aperture_cells == d_c + 2
 
 
 def test_node_plane_corner_is_a_single_float32_ulp_knife_edge():
     """Why the recipe says "cell midpoint" and not "on the node plane".
 
-    Masks are evaluated at float32 precision (x64 is off by design), so one
-    ULP of the corner value — ~5e-10 m at dx = 0.762 mm, 6e-7 of a cell —
-    moves the footprint by a whole cell. A corner computed as ``a - n*dx``
-    can therefore rasterize differently from an algebraically identical
-    ``m*dx``. Midpoint corners sit half a cell from either edge.
+    Masks are evaluated at float32 (x64 is off by design), so one ULP of the
+    corner — ~5e-10 m at dx = 0.762 mm, 6e-7 of a cell — moves the footprint
+    by a whole cell. Combined with the double-rounded node coordinates, this
+    is why a corner computed as ``a - n*dx`` can rasterize differently from
+    an algebraically identical ``m*dx``. Midpoint corners sit half a cell
+    from either edge and are immune.
     """
-    dx = 0.762e-3
-    coords = np.arange(31) * dx
-    node8 = np.float32(8 * dx)
-    ulp = float(np.nextafter(node8, np.float32(1)) - node8)
-    assert ulp < 1e-9 * 1.0, ulp  # sanity: sub-nanometre
+    y, dx = _real_node_coords(30)
+    node = np.float32(y[8])
+    ulp = float(np.nextafter(node, np.float32(1)) - node)
+    assert 0 < ulp < 1e-9
 
-    below = _occupied(float(np.nextafter(node8, np.float32(0))), coords)
-    above = _occupied(float(np.nextafter(node8, np.float32(1))), coords)
+    below = _occupied(float(np.nextafter(node, np.float32(0))), y)
+    above = _occupied(float(np.nextafter(node, np.float32(1))), y)
 
     assert below[-1] == 7
     assert above[-1] == 8, "one float32 ULP must flip the footprint by a cell"
-    # And the midpoint recipe is insensitive to that perturbation.
-    mid = 8 * dx + 0.5 * dx
-    assert _occupied(mid, coords)[-1] == _occupied(mid + 8 * ulp, coords)[-1]
+    mid = float(y[8]) + 0.5 * dx
+    assert _occupied(mid, y)[-1] == _occupied(mid + 8 * ulp, y)[-1]
 
 
-def test_drawn_vs_realized_gap_cannot_discriminate_a_correct_drawing():
+def test_drawn_vs_realized_gap_is_ambiguous_between_correct_and_defective():
     """Why #493 ships as documentation and not as a rasterized-vs-drawn check.
 
     Issue #493 floated an advisory that fires when a PEC volume's rasterized
-    opening differs from its drawn opening by >= 1 cell. That predicate has
-    no discriminating power: the half-open rule shifts the realized aperture
-    up by exactly one cell relative to the gap between the drawn faces
-    REGARDLESS of where those faces sit, so it reads +1 cell for the correct
-    midpoint recipe and for both defective drawings alike. The defect is
+    opening differs from its drawn opening by >= 1 cell. The reading is
+    AMBIGUOUS: at d = 7.620 mm the defective nominal drawing and the correct
+    midpoint recipe both read +1 cell, so +1 cell cannot support a defect
+    conclusion — and +1 cell is the common case. The defect is
     ``realized != INTENDED``, and the intended dimension is never
-    communicated to the simulator, so it cannot be recovered from geometry.
+    communicated to the simulator, so it is not recoverable from geometry.
     """
-    cells, d_phys = 30, 12.192e-3
-    dx = A_WR90 / cells
-    coords = np.arange(cells + 1) * dx
-    fin_c = (cells - int(round(d_phys / dx))) // 2
-
-    diffs = {}
-    for label, hi_face in (("nominal", fin_c * dx),
-                           ("inward", (fin_c - 0.5) * dx),
-                           ("outward", (fin_c + 0.5) * dx)):
-        realized, _ = _fin_pair_aperture(hi_face, coords, dx)
+    def drawn_vs_realized(cells, d_mm, offset):
+        d_phys = d_mm * 1e-3
+        y, dx, d_c, fin_c = _iris(cells, d_phys)
+        hi_face = (fin_c + offset) * dx
+        aperture_cells, _ = _fin_pair(hi_face, y, dx)
         drawn = (A_WR90 - hi_face) - hi_face
-        diffs[label] = (realized - drawn) / dx
+        return (aperture_cells * dx - drawn) / dx
 
-    assert diffs["outward"] == pytest.approx(1.0, abs=1e-6)
-    assert diffs["nominal"] == pytest.approx(1.0, abs=1e-6)
-    assert diffs["inward"] == pytest.approx(1.0, abs=1e-6)
+    # The collision that kills the predicate: same reading, opposite verdicts.
+    assert drawn_vs_realized(30, 7.620, 0.0) == pytest.approx(1.0, abs=1e-6)
+    assert drawn_vs_realized(30, 7.620, 0.5) == pytest.approx(1.0, abs=1e-6)
+    # Elsewhere the readings do differ, so the predicate is not merely
+    # constant — it is unreliable, which is worse for a guard.
+    assert drawn_vs_realized(30, 12.192, 0.0) == pytest.approx(2.0, abs=1e-6)
+    assert drawn_vs_realized(30, 12.192, 0.5) == pytest.approx(1.0, abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #

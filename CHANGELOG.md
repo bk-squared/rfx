@@ -42,27 +42,46 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   is one cell short of the drawn extent, entirely at the `hi` face, which also
   displaces the object by `dx/2`. For a PEC obstacle those nodes are where
   tangential `E` is zeroed, so this is an ELECTRICAL dimension error — two
-  facing fins drawn to leave a nominal opening `d` leave `d + dx` (measured at
-  WR-90 a/30 and a/60), and a half-cell offset applied the wrong way gives
-  `d + 2*dx`, which inflated PR #480's `|S11|` error against an analytic
-  mode-matching oracle by 4-6x. Because it scales with `dx` it mimics
-  first-order convergence, and on a resonant structure it shifts the passband
-  instead of widening a magnitude tolerance.
-- The convention, its arithmetic, the float32 knife edge at a node plane (one
-  ULP — ~5e-10 m at `dx` = 0.762 mm — flips the footprint by a whole cell) and
-  the cell-midpoint recipe are now stated in the `Box` / `Shape.mask_on_coords`
-  / `rasterize` docstrings and in the waveguide setup restrictions of
+  facing fins drawn to leave a nominal opening `d` leave `d + dx` **or
+  `d + 2*dx`, and which one is not predictable from the nominal dimensions**:
+  one cell from the convention, a second whenever the far fin's corner misses
+  its node under float32 rounding. Measured on WR-90 at both a/30 and a/60,
+  7.620 mm and 18.288 mm give `d + dx` while 12.192 mm gives `d + 2*dx`; a
+  half-cell offset applied toward the metal gives `d + 2*dx` uniformly. This
+  inflated PR #480's `|S11|` error against an analytic mode-matching oracle by
+  4-6x. Because it scales with `dx` it mimics first-order convergence, and on a
+  resonant structure it shifts the passband instead of widening a magnitude
+  tolerance.
+- The float32 effect is sharper than a single ULP of the corner value: node
+  coordinates are themselves double-rounded, `f32(f32(i) * f32(dx))` in
+  `_grid_coords`, while a caller's corner is computed in float64 and cast once.
+  An f64 reconstruction of the nodes disagrees with production on 30 of 31 WR-90
+  nodes by up to 1.1e-9 m (1e-6 of a cell) — enough to move the footprint by a
+  whole cell, which is precisely what separates 12.192 mm from the other two
+  apertures.
+- The recipe therefore has two conditions: interior corners on **cell
+  midpoints** (rounding-independent) AND the metal depth an exact number of
+  cells, i.e. `(cells - d_cells)` even. Under both, the realized opening equals
+  the nominal one exactly (100% of ~50k even-parity combinations measured). At
+  odd parity a symmetric opening of that width is not representable on the grid
+  and costs one cell however it is drawn — a representability limit, not a
+  rasterization defect.
+- All of the above is now stated in the `Box` / `Shape.mask_on_coords` /
+  `rasterize` docstrings and in the waveguide setup restrictions of
   `docs/guides/sparameter_support_matrix.md`. Characterization tests pin the
-  arithmetic in `tests/test_waveguide_geometry_hygiene.py`.
+  arithmetic in `tests/test_waveguide_geometry_hygiene.py`, deriving node
+  coordinates from a real `Grid` rather than an f64 `arange` — an earlier
+  revision of those tests used f64 coordinates and consequently pinned
+  `d + dx` at every aperture, which is wrong at 12.192 mm.
 - **The rasterization rule itself is unchanged** — it is deliberate and other
   paths depend on it. No advisory was added: the predicate floated in #493
   (fire when the rasterized opening differs from the drawn opening by >= 1 cell)
-  has no discriminating power, because the half-open rule shifts the realized
-  aperture by exactly one cell relative to the drawn faces regardless of where
-  they sit, reading +1 cell for the correct midpoint recipe and both defective
-  drawings alike. The defect is `realized != INTENDED`, and the intended
-  dimension is never communicated to the simulator. Pinned by
-  `test_drawn_vs_realized_gap_cannot_discriminate_a_correct_drawing`.
+  gives an AMBIGUOUS reading. At `d = 7.620 mm` the defective nominal drawing
+  and the correct midpoint recipe both read +1 cell, so +1 cell cannot support a
+  defect conclusion — and +1 cell is the common case. The defect is
+  `realized != INTENDED`, and the intended dimension is never communicated to
+  the simulator, so it is not recoverable from geometry. Pinned by
+  `test_drawn_vs_realized_gap_is_ambiguous_between_correct_and_defective`.
 
 ### Fixed — MSL `eps_override` gradient: 13.7% converged deficit attributed and removed
 

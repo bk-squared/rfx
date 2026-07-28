@@ -89,31 +89,54 @@ class Box:
        ``dx/2`` toward ``lo``.
 
     2. **A corner exactly on a node plane is a knife edge.** Masks are
-       evaluated in the default float32 precision, where one ULP of the
-       corner value is ~5e-10 m at ``dx`` = 0.762 mm (6e-7 of a cell).
-       Perturbing ``hi`` by that single ULP moves the occupied-node count by
-       a whole cell, so a corner computed as ``a - n*dx`` may rasterize
-       differently from the algebraically identical ``m*dx``.
+       evaluated in the default float32 precision, and the node coordinates
+       are themselves double-rounded: :func:`_grid_coords` computes
+       ``f32(f32(i) * f32(dx))`` while a caller's corner is computed in
+       float64 and cast once. Algebraically equal values therefore land on
+       opposite sides of the comparison — on a real WR-90 grid an f64
+       reconstruction of the nodes disagrees with production on 30 of 31
+       nodes by up to 1.1e-9 m (1e-6 of a cell), which is enough to move the
+       occupied-node count by a whole cell. A corner computed as ``a - n*dx``
+       may thus rasterize differently from the algebraically identical
+       ``m*dx``.
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
     is zeroed, so consequence (1) is an *electrical* dimension error, not a
     sub-cell cosmetic one. Two facing fins drawn to leave a nominal opening
-    ``d`` leave an electrical opening of ``d + dx`` (measured, WR-90 iris at
-    a/30 and a/60); shifting each interior face half a cell the *wrong* way
-    — a natural attempt at (2) — gives ``d + 2*dx``. In PR #480's WR-90
-    single-iris lane that inflated the ``|S11|`` error against an analytic
-    mode-matching oracle by 4-6x, and because it scales with ``dx`` it is
-    easy to misread as first-order convergence. For a **resonant** structure
-    (multi-iris filter, cavity) it shifts the passband rather than widening
-    a magnitude tolerance, so it will not look like a discretization error
-    at all.
+    ``d`` leave an electrical opening of **``d + dx`` or ``d + 2*dx``, and
+    which one is not predictable from the nominal dimensions** — one cell
+    comes from the convention itself, and a second appears whenever the far
+    fin's corner fails to capture its node under (2). Measured on WR-90 at
+    both a/30 and a/60: ``d`` = 7.620 and 18.288 mm give ``d + dx``, while
+    ``d`` = 12.192 mm gives ``d + 2*dx``. Over ~99k (guide, mesh, aperture)
+    combinations the split is 82% / 9% / 8% across ``d + dx`` / ``d + 2*dx``
+    / ``d`` at even parity, shifting one cell up at odd parity (see the
+    recipe). Shifting each interior face half a cell the *wrong* way (toward
+    the metal) gives ``d + 2*dx`` uniformly. In PR #480's WR-90 single-iris
+    lane this inflated the ``|S11|`` error against an analytic mode-matching
+    oracle by 4-6x, and because it scales with ``dx`` it is easy to misread
+    as first-order convergence. For a **resonant** structure (multi-iris
+    filter, cavity) it shifts the passband rather than widening a magnitude
+    tolerance, so it will not look like a discretization error at all.
 
-    **Recipe.** To make node ``j`` the innermost occupied plane, put the
-    corner at the cell midpoint ``(j + 0.5) * dx`` rather than on a node
-    plane: any value in ``(j*dx, (j+1)*dx]`` selects the same footprint, and
-    the midpoint is the farthest point from both knife edges. Then assert
-    the realized footprint (count the occupied node planes) against the
-    intended one — see ``run_point`` in
+    **Recipe**, two conditions, both needed:
+
+    * Put interior corners on **cell midpoints**, ``(j + 0.5) * dx``, to make
+      node ``j`` the innermost occupied plane. Any value in
+      ``(j*dx, (j+1)*dx]`` selects the same footprint, and the midpoint is
+      the farthest point from both knife edges, so the footprint becomes
+      rounding-independent.
+    * Keep the metal depth an exact number of cells, i.e. for a symmetric
+      obstacle keep ``(cells - d_cells)`` **even**. When it is odd,
+      ``fin_depth = (cells - d_cells)//2`` truncates and a symmetric opening
+      of that width is simply not representable on the grid: the opening is
+      one cell wide however it is drawn. That is a representability limit,
+      not a rasterization defect.
+
+    Under both conditions the realized opening equals the nominal one
+    exactly (measured, 100% of ~50k even-parity combinations). Then still
+    assert the realized footprint (count the occupied node planes) against
+    the intended one — see ``run_point`` in
     ``validation/crossval/18_wr90_iris_modematch.py`` for the pattern.
 
     A box thinner than one local cell takes a separate **thin-sheet**
