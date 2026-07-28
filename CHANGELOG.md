@@ -6,6 +6,94 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-07-28
+
+### Added — open-domain oblique RCS (Method-B TFSF) with calibrated absolute sigma
+
+- `compute_rcs(theta_inc != 0)` now routes a compact scatterer through the
+  open-domain Method-B oblique TFSF (`ez` polarization, uniform grid;
+  other combos fail loud). The specular direction is validated (reflection
+  law tracked across 0/20/40 deg); absolute sigma is normalized by the
+  MEASURED 1D-aux incident spectrum and validated against a PO
+  uniform-aperture oracle to +0.9 dB at the gate grid — with a measured
+  2.4 dB resolution sensitivity, so treat absolute oblique sigma as a
+  +/-2 dB-class number (docstrings carry the full envelope). A 4-plane
+  vacuum guard now protects all Method-B TFSF boundaries in both the
+  runner validator and `compute_rcs`. (#461, #474, #471)
+
+### Added — differentiable plane-wave design lane extensions
+
+- Oblique plane waves in `run()` via opt-in complex-Bloch TFSF (#414) and
+  the differentiable `forward()`+TFSF uniform lane (#415); complex Fresnel
+  reflection helper `rfx.probes.fresnel_reflection_coefficient` (#418,
+  #419); `compute_rcs_jax` differentiable far-field post-processor (#421);
+  `mu_r_override` as a differentiable DoF on `forward()` (#449); analytic
+  TMM-gated multilayer/magnetic RAM inverse-design batteries (#445, #449).
+
+### Changed — MSL auto `n_probe_offset` solves BOTH clearances (**BEHAVIOUR CHANGE**)
+
+- The auto default previously sat at the upstream (fringing) lower edge and
+  the reflector advisory pushed probes the wrong way on short feeds. At
+  `compute_msl_s_matrix` time the auto offset now solves the compliant
+  interval: unchanged when no downstream reflector exists, midpoint when
+  one bounds it, and a loud "mutually unsatisfiable" warning (upstream-
+  priority fallback) when the feed is too short. Explicit offsets are never
+  adjusted. Library-internal settling-witness probes no longer pollute the
+  preflight record (measured 14 -> 4 advisories/run) and no longer
+  double-fire the #332 tail advisory next to `settling_db`. (#478,
+  #469, #470)
+
+### Added — CAD import (`rfx.MeshShape`) — STL/OBJ/PLY + STEP
+
+- Voxelized mesh import with occupancy caching; STEP via the `cad` extra.
+  Top-level export + docs; NOT differentiable (host-side rasterization —
+  traced coordinates raise). (#453, #456, #473, #358, #467)
+
+### Added — Kerr nonlinearity validated at absolute magnitude
+
+- D-based self-consistent Kerr update (fixes the reactive-operator defect)
+  and a TRUE-CW TFSF waveform enabling an absolute-magnitude SPM oracle:
+  measured phase-shift ratio 0.955 +/- 0.03 vs closed form, independently
+  confirmed against Meep. (#440, #441, #448, #450, #452, #446, #437)
+
+### Added — design-document interop (`rfx.interop`) with an openEMS emitter
+
+- `rfx-design-ir/v1`: dump a Simulation to a validated design document and
+  emit a runnable openEMS script (mesh/boundary/port semantics carried
+  explicitly; refuses non-representable constructs rather than
+  approximating). Auto MSL offsets are recorded as their RESOLVED frozen
+  values. (#463, #472, #478)
+
+### Added — `until_decay` radiated-flux stop criterion
+
+- `run(until_decay=..., radiated_flux_box=...)` stops on radiated energy
+  flux instead of the domain-energy floor (which a static charge pins high)
+  — both uniform and non-uniform lanes; static-floor advisories route to
+  the flux-stop remedy. (#442, #443, #454, #388)
+
+### Fixed — 7 RF-core extractor defects (dual-audit sweep)
+
+- Includes the multimode-flux |S| half-step co-location in
+  `_modal_net_power` (reactive->real leak), a sub-cutoff beta scale factor,
+  reference-plane metadata, and Floquet fail-loud API validation
+  (n_modes>1 / TM rejected explicitly). (#459, #404)
+
+### Added — real-structure cross-validation campaign (governed)
+
+- PEC-sphere and dielectric-sphere Mie ka-sweeps, rectangular PEC cavity
+  vs exact Pozar, Sheen-1990 LPF vs openEMS with a Palace-FEM referee
+  (three-solver doublet finding), and an RT5880 patch — all registered in
+  the crossval manifest with honest roles and fail-closed evidence chains.
+  (#462, #475, #476)
+
+### Changed — MSL-FD-TIGHT gradient gate: ownership + measured comparator envelope
+
+- The converged AD-vs-FD gate is GPU-lane-owned; its FD comparator carries
+  an f32 evaluation-noise envelope (+/-3-5%) that straddles the 0.10 gate
+  across platforms while AD is platform-stable. Docstring records the
+  measured numbers; gate value unchanged. (#479, #477)
+
+
 ### Changed — `compute_msl_s_matrix` returns a passivity-enforced S by default (**BEHAVIOUR CHANGE**)
 
 - The returned `MSLSMatrixResult.S` now satisfies `||S(f)||_2 <= 1` at every
