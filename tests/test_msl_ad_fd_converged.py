@@ -144,13 +144,15 @@ def test_msl_ad_fd_converged_tight():
     evaluation noise, not h² truncation — so rel_err here compares AD
     against a ±3–5%-noisy reference. Whether AD carries a genuine ~10%
     systematic vs the true derivative was initially INDETERMINATE at f32;
-    the f64 referee (unblocked by the accumulator-dtype fix, issue #483)
-    then DETERMINED it: f64 AD −2.1103e-01 vs f64 FD −2.4447e-01 →
-    **a genuine ~13.7% AD systematic** (the true derivative ≈ −0.244 per
-    three agreeing estimates; the GPU pass at 0.0855 was the noisy f32 FD
-    landing closer to AD than the truth). Treat eps_override MSL gradients
-    as ~±14%-class until #483 is attributed. Full record: issues #477 and
-    #483.
+    the f64 referee (unblocked by the accumulator-dtype fix) then measured
+    a genuine ~13.7% AD systematic — ATTRIBUTED AND FIXED (issue #483):
+    the auto-eps_r_sub launch fixture sampled the override under FD while
+    the tape saw it frozen. Post-fix the same converged f64 referee reads
+    rel_err = 0.00011 (f64 AD −2.11425e-01 vs FD −2.11449e-01) — the MSL
+    eps_override gradient now matches the repo's best lanes. What remains
+    in THIS f32 gate is only the #477 comparator-noise envelope (±3–5%),
+    so the 0.10 threshold now carries real margin. Full record: issues
+    #477 and #483.
     """
     t_start = time.perf_counter()
 
