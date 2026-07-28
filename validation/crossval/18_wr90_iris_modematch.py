@@ -29,49 +29,72 @@ Geometry discipline (grid-exact, comparator-first — the #325/#475 classes):
     slot at the far wall. run_point asserts the rasterized iris is 2 cells
     thick with one CONTIGUOUS aperture, so that bug class cannot recur.
 
-WHAT IS GATED vs WHAT IS REPORTED (measured 2026-07-28; domain axis scanned
-at BOTH rungs before gating — the #475 F1 lesson: the canonical fine config
-alone understates the envelope 0.110 -> 0.143)
+WHAT IS GATED vs WHAT IS REPORTED (measured 2026-07-28 on the corrected
+setup; every axis scanned BEFORE gating)
 ---------------------------------------------------------------------------
-GATED (exit-1 on failure), gates = round-UP(measured envelope x 1.5):
-  * fine rung (dx = a/60), flux extraction, |S11| vs oracle, all three
-    apertures + the worst-aperture domain scan (guide length 0.16/0.20/0.24 m,
-    iris at 0.42/0.50 of the guide): envelope 0.143 abs -> GATE_FINE_ABS 0.22.
-  * Richardson witness: 2*S_fine - S_coarse lands on the oracle to
-    envelope 0.034 abs (canonical config, per aperture) -> GATE_RICH_ABS 0.06.
-    This cross-confirms the oracle and the first-order attribution at once.
+GATED (exit-1 on failure), gates = round-UP(measured envelope x 1.5), and the
+--write-fixture self-check demands EXACT equality with that rule:
+  * fine rung (dx = a/60), flux extraction, |S11| vs oracle over 8 configs
+    (3 apertures x {centred, iris off-centre at 0.42} + 2 extra guide
+    lengths): every config within 0.023 -> envelope 0.0232 -> gate 0.04.
+    No single configuration sets the envelope any more.
+  * Richardson witness at EVERY one of those 8 fine/coarse pairs (not just
+    the canonical one): 2*S_fine - S_coarse lands on the oracle within
+    0.0051 -> gate 0.01. Cross-confirms the oracle AND the first-order
+    attribution (fine/coarse gap ratios 0.527-0.604 = textbook first order).
 REPORTED, NOT GATED:
-  * coarse rung (dx = a/30): first-order discretization deficit up to
-    0.224 abs at the medium aperture with only ~0.015 spread across the
-    domain scan — committed as data (the first-order RATIO fine/coarse gap
-    in [0.38, 0.64] across apertures AND domain configs is the attribution
-    witness). NOTE: the probe campaign's earlier +/-0.07 "domain
-    sensitivity" was mostly ULP-LOTTERY FOOTPRINT VARIATION between
-    configs (box corners on node planes); the half-cell-offset corners
-    removed it, which is itself a recorded finding.
-  * normalize=True (two-run modal): FENCED for strong reflectors — measured
-    column power 1.112 > 1.1 (extractor self-check warning fired; the
-    documented +/-10-20% reflector inflation class). raw (normalize=False)
-    and flux agree to ~0.02 and are both recorded; flux carries the gate.
-  * phase: NOT claimed (magnitude-only, matching the lane posture).
-  * anything beyond ONE symmetric inductive iris: multi-iris filters,
-    off-center apertures, posts, septa remain EXPERIMENTAL.
-Truncation witness: num_periods 100 -> 200 shifts |S11| by 0.0000 (settled;
-committed per gated aperture).
+  * coarse rung (dx = a/30): 0.018-0.043 abs.
+  * raw (normalize=False) record: worse than flux (gaps 0.021-0.054) with a
+    pointwise |raw - flux| difference up to 0.033 at the wide aperture.
+  * residual detrended ripple: fine <= 0.0116, coarse <= 0.0166, both at the
+    wide aperture with the iris off-centre (down from 0.0706 before the
+    absorber fix).
+  * phase: NOT claimed (magnitude-only lane posture).
+FENCED (never gated): everything beyond ONE symmetric inductive iris —
+multi-iris filters, posts, septa, off-centre apertures stay EXPERIMENTAL per
+docs/guides/support_matrix.md.
+Truncation witness: num_periods 100 -> 200 shifts |S11| by <= 0.00001 at
+every gated aperture AND at the asymmetric configuration.
+
+THREE SETUP DEFECTS were found during this campaign; each had corrupted an
+earlier revision's numbers, and each is now fenced by an assert or a derived
+setting:
+ (1) parasitic wall-slot — fins drawn to the NOMINAL guide width leave a
+     1-cell gap at the actual grid wall (fins now drawn past the walls, the
+     rasterizer clips; contiguous-aperture assert).
+ (2) node-plane box corners are half-ulp fragile because the volume mask is
+     half-open over NODE coordinates: a fine config rasterized 3 thickness
+     nodes instead of 4, and an apparent +/-0.07 "domain sensitivity" was
+     that ulp lottery. All interior corners now sit half a cell off the node
+     planes; the footprint asserts are exact.
+ (3) the fin footprint made the ELECTRICAL aperture d + 2*dx instead of d,
+     which alone inflated the envelope 4-6x, and a 0.5*lambda_g absorber
+     left the envelope set by CPML reflection rather than discretization
+     (PR #480 review, B2/B3). Fins now cover nodes 0..fin_c so the
+     electrical aperture equals the nominal d, and CPML = 0.75*lambda_g at
+     the 8.2 GHz band edge (60 coarse / 120 fine).
+
+RETRACTED: an earlier revision FENCED normalize=True modal extraction on the
+strength of a measured column power 1.112-1.164. On the corrected setup modal
+extraction is passivity-CLEAN at every aperture and both rungs (max column
+power 1.0207 at d=7.62/a-30, 1.0013 at d=18.288, ZERO extractor warnings), so
+that non-passivity was a symptom of defects (1)-(3) rather than a
+reflector-inflation property of the extractor. The fence is withdrawn and the
+measurement is committed as modal_extraction_witness.
 
 NOTE on preflight: compute_waveguide_s_matrix runs the extractor's own
 passivity/finiteness self-check (its warnings are part of this record) but
 the functional path here runs NO sim.preflight(); the operating-point
-guarantees (grid-exact dims, wall-reaching fins, contiguous aperture,
-transit-scaled record) are enforced by construction + the raster asserts in
-run_point.
+guarantees (grid-exact dims, wall-reaching fins, exact footprint, CPML depth
+from the band-edge guide wavelength, transit-scaled record) are enforced by
+construction plus the raster asserts in run_point.
 
 Usage:
-  python validation/crossval/18_wr90_iris_modematch.py            # gated set (~30 min CPU)
+  python validation/crossval/18_wr90_iris_modematch.py            # gated set (~2.5 h CPU)
   python validation/crossval/18_wr90_iris_modematch.py --write-fixture
-      # + coarse tier, domain scans, truncation + ratio witnesses; regenerates
+      # + coarse tier, modal + raw + truncation witnesses; regenerates
       # validation/crossval/_18_wr90_iris_results/rfx.json AND
-      # tests/fixtures/wr90_iris_modematch/fixture.json (~90 min CPU)
+      # tests/fixtures/wr90_iris_modematch/fixture.json (~2.8 h CPU)
 
 Exit codes: 0 = all configured gates passed; 1 = oracle self-check, a raster
 assert, or a gate failed. Failure prints "SOME CHECKS FAILED".
@@ -109,20 +132,30 @@ MU0 = 4e-7 * np.pi
 A_WR90 = 22.86e-3
 B_WR90 = 10.16e-3
 T_IRIS = 1.524e-3
-FREQS = np.linspace(8.2e9, 12.4e9, 8)
-CPML_LAYERS = 24
+FREQS = np.linspace(8.2e9, 12.4e9, 29)   # 0.15 GHz — resolves the residual ripple (R480 B2)
+CPML_DEPTH = 45.7e-3   # 0.75*lambda_g at the 8.2 GHz band edge — R480 measured
+# that 0.5*lambda_g removes only ~half the residual ripple (0.0706->0.0366),
+# while 0.75*lambda_g collapses it to ~0.009, making the envelope genuinely
+# discretization-dominated instead of absorber-limited.
+def cpml_layers_for(dx):
+    return int(np.ceil(CPML_DEPTH / dx))   # 60 coarse / 120 fine
 COARSE_CELLS = 30            # dx = a/30 = 0.762 mm
 FINE_CELLS = 60              # dx = a/60 = 0.381 mm
 D_APERTURES = [18.288e-3, 12.192e-3, 7.62e-3]   # 24/16/10 coarse cells
-D_WORST = 12.192e-3          # medium aperture dominates the envelope
-DOMAIN_SCAN = [(0.16, 0.50), (0.20, 0.50), (0.24, 0.50), (0.20, 0.42)]
+D_WORST = 12.192e-3          # worst-GAP aperture (anchors the guide-length scan;
+                             # post-footprint-fix the worst RIPPLE moved to d=18.288,
+                             # which is why ASYM_CONFIG scans all apertures — R480)
+GLEN_SCAN = [(0.16, 0.50), (0.24, 0.50)]        # guide-length axis (worst-gap aperture)
+ASYM_CONFIG = (0.20, 0.42)                       # iris-position axis: ALL apertures
+# (R480 follow-up: with the footprint fixed the worst ripple moved from the
+# medium to the WIDE aperture, so the asymmetric axis is scanned everywhere)
 CANONICAL = (0.20, 0.50)
 
 # gates = round-UP(measured envelope x 1.5); the gate test hard-pins these,
 # recomputes the envelopes from the committed data, and regex-binds these
 # constants (PR #475 D1/D2 + #476 prose-binding discipline).
-GATE_FINE_ABS = 0.22    # fine-rung |S11 - oracle| envelope 0.143 (domain-scanned)
-GATE_RICH_ABS = 0.06    # Richardson |2*fine - coarse - oracle| envelope 0.034
+GATE_FINE_ABS = 0.04    # = round-up(measured fine envelope 0.0232 x 1.5)
+GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0051 x 1.5)
 
 
 # --------------------------------------------------------------------------- #
@@ -256,7 +289,7 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=CPML_LAYERS)
+        cpml_layers=cpml_layers_for(DX))
     big = 1.0   # fins drawn PAST the walls; rasterizer clips (slot-bug fence)
     # The volume mask is HALF-OPEN [lo, hi) over NODE coordinates i*DX, so a
     # box corner landing exactly on a node is half-ulp fragile (a fine-rung
@@ -267,7 +300,7 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
     # the rasterized footprint exact regardless of float rounding.
     x_lo = (iris_lo - 0.5) * DX
     x_hi = (iris_lo + t_c - 0.5) * DX
-    fin_hi_y = (fin_c - 0.5) * DX
+    fin_hi_y = (fin_c + 0.5) * DX   # metal on nodes 0..fin_c: aperture == d (R480 B3)
     sim.add(Box((x_lo, -big, -big), (x_hi, fin_hi_y, big)), material="pec")
     sim.add(Box((x_lo, A_WR90 - fin_hi_y, -big), (x_hi, big, big)), material="pec")
     for x, dr, nm in ((p1 * DX, "+x", "P1"), (p2 * DX, "-x", "P2")):
@@ -288,7 +321,7 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
     # deterministic with the half-cell-offset fin edges: d_c + 1 open E-node
     # columns between the innermost conductor node planes (the half-cell
     # effective-aperture ambiguity is part of the measured first-order gap)
-    assert len(open_y) == d_c + 1, ("aperture nodes", len(open_y), d_c + 1)
+    assert len(open_y) == d_c - 1, ("aperture nodes", len(open_y), d_c - 1)
 
     t0 = time.time()
     res = sim.compute_waveguide_s_matrix(normalize=normalize,
@@ -332,7 +365,8 @@ def main(argv):
     print(f"\n== GATED fine rung dx=a/{FINE_CELLS} flux (gate {GATE_FINE_ABS} abs) ==")
     fine_rows = []
     fine_configs = ([(d, CANONICAL) for d in D_APERTURES]
-                    + [(D_WORST, c) for c in DOMAIN_SCAN if c != CANONICAL])
+                    + [(d, ASYM_CONFIG) for d in D_APERTURES]
+                    + [(D_WORST, c) for c in GLEN_SCAN])
     for d, (glen, frac) in fine_configs:
         r = run_point(d, FINE_CELLS, glen=glen, iris_frac=frac)
         r["oracle_s11"] = oracles[str(d)]
@@ -345,41 +379,59 @@ def main(argv):
               f"max|dS11|={gap:.3f} colpow={r['max_colpow']:.3f} "
               f"({r['wall_s']:.0f}s) {'PASS' if passed else 'FAIL'}", flush=True)
 
-    # --- coarse rung (diagnostic) + Richardson gate at canonical -------------
-    print(f"\n== coarse rung dx=a/{COARSE_CELLS} (diagnostic) + Richardson "
+    # --- coarse rung + Richardson gate, DOMAIN-SCANNED (R480 B1: the
+    # Richardson witness is evaluated at EVERY committed fine/coarse pair,
+    # not just the canonical configuration) ------------------------------
+    print(f"\n== coarse rung dx=a/{COARSE_CELLS} + Richardson over ALL pairs "
           f"(gate {GATE_RICH_ABS} abs) ==")
     coarse_rows = []
-    for d in D_APERTURES:
-        r = run_point(d, COARSE_CELLS)
+    for d, (glen, frac) in fine_configs:
+        r = run_point(d, COARSE_CELLS, glen=glen, iris_frac=frac)
         r["oracle_s11"] = oracles[str(d)]
         r["max_gap_abs"] = round(max(_gaps(r, oracles[str(d)])), 4)
-        coarse_rows.append(r)
-        fine_canon = next(fr for fr in fine_rows
-                          if fr["d_mm"] == round(d * 1e3, 3)
-                          and (fr["glen_m"], fr["iris_frac"]) == CANONICAL)
-        rich = [2 * f_ - c_ for f_, c_ in zip(fine_canon["s11"], r["s11"])]
+        fine_mate = next(fr for fr in fine_rows
+                         if (fr["d_mm"], fr["glen_m"], fr["iris_frac"])
+                         == (r["d_mm"], glen, frac))
+        rich = [2 * f_ - c_ for f_, c_ in zip(fine_mate["s11"], r["s11"])]
         rich_dev = max(abs(a - b) for a, b in zip(rich, oracles[str(d)]))
         r["richardson_dev_abs"] = round(rich_dev, 4)
+        coarse_rows.append(r)
         passed = rich_dev <= GATE_RICH_ABS
         ok &= passed
-        print(f"  d={d*1e3:6.2f}: coarse max|dS11|={r['max_gap_abs']:.3f} "
+        print(f"  d={d*1e3:6.2f} glen={glen:.2f} frac={frac:.2f}: "
+              f"coarse max|dS11|={r['max_gap_abs']:.3f} "
               f"richardson dev={rich_dev:.3f} ({r['wall_s']:.0f}s) "
               f"{'PASS' if passed else 'FAIL'}", flush=True)
 
-    domains_coarse = []
     trunc = []
     raw_rows = []
+    modal_witness = None
     if write_fixture:
-        print("\n== coarse domain scan (diagnostic, worst aperture) ==")
-        for glen, frac in DOMAIN_SCAN:
-            if (glen, frac) == CANONICAL:
-                continue
-            r = run_point(D_WORST, COARSE_CELLS, glen=glen, iris_frac=frac)
-            r["oracle_s11"] = oracles[str(D_WORST)]
-            r["max_gap_abs"] = round(max(_gaps(r, oracles[str(D_WORST)])), 4)
-            domains_coarse.append(r)
-            print(f"  glen={glen:.2f} frac={frac:.2f}: "
-                  f"max|dS11|={r['max_gap_abs']:.3f}", flush=True)
+        print("\n== modal-extraction witness (normalize=True; both rungs, "
+              "3 apertures) ==")
+        import warnings as _warnings
+        modal_witness = {
+            "rows": [],
+            "note": "passivity-CLEAN at every aperture and both rungs on the "
+                    "corrected setup — the earlier 1.112-1.164 fence evidence "
+                    "did not survive the footprint/absorber fixes, so the "
+                    "modal fence is RETRACTED (PR #480)",
+        }
+        fence_set = ([(7.62e-3, COARSE_CELLS), (7.62e-3, FINE_CELLS),
+                      (12.192e-3, COARSE_CELLS), (18.288e-3, COARSE_CELLS)])
+        for d_f, cells_f in fence_set:
+            with _warnings.catch_warnings(record=True) as _wrec:
+                _warnings.simplefilter("always")
+                rm = run_point(d_f, cells_f, normalize=True)
+            fence_warns = [str(w.message) for w in _wrec
+                           if "passivity" in str(w.message).lower()]
+            modal_witness["rows"].append(
+                {"d_mm": round(d_f * 1e3, 3), "cells_per_a": cells_f,
+                 "max_colpow": rm["max_colpow"],
+                 "extractor_warnings": fence_warns})
+            print(f"  d={d_f*1e3:6.2f} a/{cells_f}: colpow "
+                  f"{rm['max_colpow']:.4f} ({len(fence_warns)} warnings)",
+                  flush=True)
 
         print("\n== raw-extraction cross-record (normalize=False) ==")
         for d in D_APERTURES:
@@ -390,20 +442,26 @@ def main(argv):
             print(f"  d={d*1e3:6.2f}: raw max|dS11|={r['max_gap_abs']:.3f} "
                   f"colpow={r['max_colpow']:.3f}", flush=True)
 
-        print("\n== truncation witness (gated apertures, 1x/2x periods) ==")
-        for d in D_APERTURES:
-            r1 = run_point(d, COARSE_CELLS, num_periods=100.0)
-            r2 = run_point(d, COARSE_CELLS, num_periods=200.0)
+        print("\n== truncation witness (gated apertures + asymmetric config, "
+              "1x/2x periods) ==")
+        trunc_configs = ([(d, CANONICAL) for d in D_APERTURES]
+                         + [(D_WORST, (0.20, 0.42))])   # R480 B2: test the config
+        for d, (glen, frac) in trunc_configs:
+            r1 = run_point(d, COARSE_CELLS, glen=glen, iris_frac=frac,
+                           num_periods=100.0)
+            r2 = run_point(d, COARSE_CELLS, glen=glen, iris_frac=frac,
+                           num_periods=200.0)
             shift = max(abs(a - b) for a, b in zip(r1["s11"], r2["s11"]))
-            trunc.append({"d_mm": round(d * 1e3, 3),
-                          "shift_abs": round(shift, 5)})
-            print(f"  d={d*1e3:6.2f}: 1x->2x shift {shift:.5f}", flush=True)
+            trunc.append({"d_mm": round(d * 1e3, 3), "glen_m": glen,
+                          "iris_frac": frac, "shift_abs": round(shift, 5)})
+            print(f"  d={d*1e3:6.2f} frac={frac:.2f}: 1x->2x shift {shift:.5f}",
+                  flush=True)
 
         env_fine = max(r["max_gap_abs"] for r in fine_rows)
         env_rich = max(r["richardson_dev_abs"] for r in coarse_rows)
         ratios = []
         for fr in fine_rows:
-            for cr in coarse_rows + domains_coarse:
+            for cr in coarse_rows:
                 if (fr["d_mm"], fr["glen_m"], fr["iris_frac"]) == (
                         cr["d_mm"], cr["glen_m"], cr["iris_frac"]):
                     ratios.append(round(fr["max_gap_abs"] / cr["max_gap_abs"], 3))
@@ -412,8 +470,10 @@ def main(argv):
               f"first-order ratios {ratios}")
         for gate, env, tier in ((GATE_FINE_ABS, env_fine, "fine"),
                                 (GATE_RICH_ABS, env_rich, "richardson")):
-            if not (gate >= env and gate <= np.ceil(env * 1.5 * 100) / 100 + 0.005):
-                print(f"  ENVELOPE/GATE MISMATCH ({tier}) — fix the constant")
+            required = np.ceil(env * 1.5 * 100) / 100
+            if abs(gate - required) > 1e-9:   # EXACT ceil(x1.5) — R480
+                print(f"  ENVELOPE/GATE MISMATCH ({tier}): gate {gate} "
+                      f"must equal round-up(env x 1.5) = {required}")
                 ok = False
 
         payload = {
@@ -425,45 +485,72 @@ def main(argv):
                 "the calibrated prerequisite for any multi-iris filter case"
             ),
             "claim_scope": (
-                "One symmetric inductive PEC iris (thickness 1.524 mm = "
-                "exactly 2 coarse cells, apertures 18.288/12.192/7.62 mm = "
-                "grid-exact 24/16/10 coarse cells) in WR-90 at 8.2-12.4 GHz, "
-                "flux-normalized |S11| vs a twice-re-implemented TEn0 "
-                "mode-matching cascade oracle (unitarity/reciprocity/mode-"
-                "convergence/Marcuvitz-thin-limit/limit witnesses; Marcuvitz "
-                "leading-order anchor agrees 8.6-10.8% with the inductive "
-                "sign). GATED: fine rung dx=a/60 within 0.22 abs "
-                "(= round-up(0.143 x 1.5); the 0.143 envelope is domain-"
-                "scanned — guide length 0.16/0.20/0.24 m and iris position "
-                "0.42/0.50 at the worst aperture — because the canonical "
-                "config alone understates it at 0.110, the PR #475 F1 "
-                "single-sample aliasing class caught before gating) and the "
-                "Richardson extrapolation 2*S(a/60)-S(a/30) on the oracle "
-                "within 0.06 abs (envelope 0.034), which cross-confirms the "
-                "oracle and the FIRST-ORDER discretization attribution "
-                "(fine/coarse gap ratio 0.38-0.64 committed across apertures "
-                "and domain configs). REPORTED, NOT GATED: the coarse rung "
-                "dx=a/30 (deficit up to 0.224 abs at the medium aperture "
-                "with ~0.015 domain-scan spread — committed as data; the "
-                "probe campaign's earlier +/-0.07 spread was ulp-lottery "
-                "footprint variation, removed by the half-cell-offset "
-                "corners); "
-                "normalize=False raw extraction (agrees with flux to ~0.02, "
-                "recorded); phase (magnitude-only lane posture). FENCED: "
-                "normalize=True modal extraction on strong reflectors — "
-                "measured column power 1.112 > 1.1 fired the extractor "
-                "self-check (documented reflector-inflation class); and "
-                "everything beyond ONE symmetric inductive iris (multi-iris "
-                "filters, posts, septa) remains EXPERIMENTAL per "
-                "docs/guides/support_matrix.md. A parasitic wall-slot bug "
-                "(fins drawn to nominal width leave a 1-cell gap at the "
-                "grid wall) was found during this campaign and is fenced by "
-                "the contiguous-aperture raster assert in run_point."
+                "One symmetric inductive PEC iris (t = 1.524 mm = exactly 2 "
+                "coarse / 4 fine cells; apertures 18.288/12.192/7.62 mm, "
+                "grid-exact) in WR-90 over 8.2-12.4 GHz on 29 frequency "
+                "points, flux-normalized |S11| vs a twice-implemented TEn0 "
+                "mode-matching cascade oracle (self-witnesses: unitarity "
+                "1.1e-16, mode convergence 4.3e-5, Marcuvitz cot^2 "
+                "thin-limit anchor 10.8% with the inductive sign, d->a and "
+                "deep-constriction limits; the PR #480 review reproduced "
+                "the oracle with a formulation-independent 2-D H-plane "
+                "FDFD to 6e-4 and measured rfx's same-geometry agreement "
+                "at <= 0.02 — attributed, not imported). GATED: fine rung "
+                "dx = a/60 within 0.04 abs = round-up(measured envelope "
+                "0.0232 x 1.5) over 8 configs (3 apertures x {centred, "
+                "iris off-centre at 0.42 of the guide} + 2 extra guide "
+                "lengths; every config lands within 0.023, so no single "
+                "configuration sets the envelope), and the Richardson "
+                "extrapolation 2*S(a/60) - S(a/30) on the oracle within "
+                "0.01 abs (envelope 0.0051) at EVERY one of those 8 pairs, "
+                "which cross-confirms the oracle and the first-order "
+                "attribution (gap ratios 0.527-0.604 = textbook first "
+                "order). REPORTED, NOT GATED: the coarse rung dx = a/30 "
+                "(0.018-0.043 abs); the raw normalize=False record, which "
+                "is WORSE than flux (gaps 0.021-0.054) with a pointwise "
+                "|raw - flux| difference up to 0.033 at the wide aperture; "
+                "residual detrended ripple (fine <= 0.0116, coarse <= "
+                "0.0166, both at the wide aperture with the iris "
+                "off-centre, down from 0.0706 before the absorber fix); "
+                "and phase (magnitude-only lane posture). FENCED, never "
+                "gated: everything beyond ONE symmetric inductive iris — "
+                "multi-iris filters, posts, septa and off-centre apertures "
+                "stay EXPERIMENTAL per docs/guides/support_matrix.md. "
+                "THREE SETUP DEFECTS were found during this campaign, each "
+                "having corrupted an earlier revision's numbers and each "
+                "now fenced by an assert or a derived setting: (1) a "
+                "parasitic wall-slot (fins drawn to the NOMINAL guide "
+                "width leave a 1-cell gap at the actual grid wall); (2) "
+                "node-plane box corners are half-ulp fragile because the "
+                "volume mask is half-open over NODE coordinates — one fine "
+                "config rasterized 3 thickness nodes instead of 4, and an "
+                "apparent +/-0.07 'domain sensitivity' was that ulp "
+                "lottery; (3) the fin footprint made the ELECTRICAL "
+                "aperture d + 2*dx instead of d, which alone inflated the "
+                "envelope 4-6x, and a 0.5*lambda_g absorber left the "
+                "envelope set by CPML reflection rather than "
+                "discretization (PR #480 review B2/B3; CPML is now "
+                "0.75*lambda_g at the band edge = 60 coarse / 120 fine). "
+                "RETRACTED: an earlier revision fenced normalize=True "
+                "modal extraction on the strength of a measured column "
+                "power 1.112-1.164; on the corrected setup modal "
+                "extraction is passivity-CLEAN at every aperture and both "
+                "rungs (max column power 1.0207 at d = 7.62 mm / a-30, "
+                "1.0013 at d = 18.288 mm, ZERO extractor warnings), so "
+                "that non-passivity was a symptom of defects (1)-(3) and "
+                "not a reflector-inflation property of the extractor — the "
+                "fence is withdrawn and the measurement is committed as "
+                "modal_extraction_witness. Palace WavePort corroboration "
+                "(stage S2) and a published multi-iris filter (stage S3) "
+                "are follow-on stages, not claimed here."
             ),
             "config": {
                 "a_m": A_WR90, "b_m": B_WR90, "t_m": T_IRIS,
                 "freqs_hz": [float(f) for f in FREQS],
-                "cpml_layers": CPML_LAYERS,
+                "cpml_layers_rule": "ceil(0.75*lambda_g(8.2 GHz)/dx) = 60 coarse / "
+                                     "120 fine — PR #480 B2 measured that 0.5*lambda_g "
+                                     "left the envelope absorber-limited (ripple 0.0366 "
+                                     "vs 0.0093 at 0.75)",
                 "coarse_cells_per_a": COARSE_CELLS,
                 "fine_cells_per_a": FINE_CELLS,
                 "canonical_glen_m": CANONICAL[0],
@@ -476,15 +563,18 @@ def main(argv):
                 "richardson_gate_abs": GATE_RICH_ABS,
                 "richardson_measured_envelope_abs": round(env_rich, 4),
                 "first_order_ratios": ratios,
-                "posture": "gate = round-UP(measured envelope x 1.5) "
-                           "(PR #475 convention); coarse rung, raw "
-                           "extraction and phase are reported, never gated; "
-                           "modal extraction and multi-iris structures are "
-                           "fenced, never gated",
+                "posture": "gate = round-UP(measured envelope x 1.5), "
+                           "enforced as EXACT equality by the write-fixture "
+                           "self-check (PR #475 convention, PR #480 "
+                           "tightening); coarse rung, raw extraction, ripple "
+                           "and phase are reported, never gated; modal "
+                           "extraction is no longer fenced (retracted, see "
+                           "provenance) but structures beyond one symmetric "
+                           "inductive iris remain fenced, never gated",
             },
             "gated_fine": fine_rows,
+            "modal_extraction_witness": modal_witness,
             "coarse_diagnostic": coarse_rows,
-            "coarse_domain_scan": domains_coarse,
             "raw_extraction_record": raw_rows,
             "truncation_witness": trunc,
             "provenance": {
@@ -499,13 +589,20 @@ def main(argv):
                     "record) but no sim.preflight(); operating-point "
                     "guarantees are the raster asserts in run_point."
                 ),
-                "modal_fence_record_2026_07_28": (
-                    "normalize=True at d=7.62 mm measured max column power "
-                    "1.112 (extractor warning fired verbatim: 'passivity_"
-                    "violation: max column power 1.11211 exceeds limit 1.1 "
-                    "at driven port 1'); modal extraction is therefore "
-                    "FENCED for strong reflectors in this case. NOT "
-                    "committed as data — the fence is the record."
+                "modal_fence_retraction_2026_07_28": (
+                    "An earlier revision of this case FENCED normalize=True "
+                    "modal extraction, citing measured max column power "
+                    "1.112 (later 1.15374 at driven port 0 coarse / "
+                    "1.16407 at driven port 1 fine, with a second "
+                    "per-frequency advisory referencing issue #337). Those "
+                    "runs carried the d + 2*dx electrical aperture and a "
+                    "0.5*lambda_g absorber. On the corrected setup the "
+                    "same runs are passivity-CLEAN (see "
+                    "modal_extraction_witness: 1.0207 / 1.0101 / 1.0144 / "
+                    "1.0013, zero extractor warnings), so the fence is "
+                    "RETRACTED: the non-passivity was a setup symptom, not "
+                    "an extractor property. Recorded so the withdrawn "
+                    "claim stays auditable."
                 ),
             },
         }
