@@ -92,17 +92,24 @@ class Box:
        load-bearing one — see the facing-pair discussion below, where it
        cancels in one case and not the other.
 
-    2. **A corner exactly on a node plane is a knife edge.** Masks are
-       evaluated in the default float32 precision, and the node coordinates
-       are themselves double-rounded: :func:`_grid_coords` computes
-       ``f32(f32(i) * f32(dx))`` while a caller's corner is computed in
-       float64 and cast once. Algebraically equal values therefore land on
-       opposite sides of the comparison — on a real WR-90 grid an f64
-       reconstruction of the nodes disagrees with production on 30 of 31
-       nodes by up to 1.1e-9 m (1e-6 of a cell), which is enough to move the
-       occupied-node count by a whole cell. A corner computed as ``a - n*dx``
-       may thus rasterize differently from the algebraically identical
-       ``m*dx``.
+    2. **A corner exactly on a node plane is a knife edge.** What you can
+       observe: *the same drawing recipe, on the same grid, gives a
+       one-cell-too-wide opening at one aperture and a two-cell-too-wide
+       opening at another* — WR-90 fins drawn to the nominal opening give
+       ``d + dx`` at ``d`` = 7.620 and 18.288 mm but ``d + 2*dx`` at
+       12.192 mm, at both a/30 and a/60. Nothing about the nominal
+       dimensions predicts which.
+
+       Why: masks are evaluated in the default float32 precision, and the
+       node coordinates are themselves double-rounded.
+       :func:`_grid_coords` computes ``f32(f32(i) * f32(dx))`` while a
+       caller's corner is computed in float64 and cast once, so
+       **algebraically equal values land on opposite sides of the
+       comparison**. On a real WR-90 grid an f64 reconstruction of the nodes
+       disagrees with production on 30 of 31 nodes by up to 1.1e-9 m (1e-6
+       of a cell), which is enough to move the occupied-node count by a
+       whole cell. A corner computed as ``a - n*dx`` may thus rasterize
+       differently from the algebraically identical ``m*dx``.
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
     is zeroed, so consequence (1) is an *electrical* dimension error, not a
