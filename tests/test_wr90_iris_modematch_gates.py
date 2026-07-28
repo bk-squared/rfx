@@ -278,6 +278,7 @@ def test_modal_fence_is_retracted_with_data(fixture):
     assert max(r["max_colpow"] for r in mw["rows"]) == pytest.approx(1.0207, abs=1e-3)
     # PR #480 R2: accuracy rides with the retraction — modal must be recorded
     # AND be comparable to flux (a little worse, which is why flux gates).
+    deltas = []
     for r in mw["rows"]:
         assert len(r["s11"]) == len(fixture["config"]["freqs_hz"])
         fam = (fixture["gated_fine"] if r["cells_per_a"]
@@ -288,7 +289,17 @@ def test_modal_fence_is_retracted_with_data(fixture):
                     == (fixture["config"]["canonical_glen_m"],
                         fixture["config"]["canonical_iris_frac"]))
         delta = r["max_gap_abs"] - flux["max_gap_abs"]
-        assert 0.0 <= delta <= 0.01, (r["d_mm"], r["cells_per_a"], delta)
+        # Per-row: modal must stay CLOSE to flux (that is what makes the
+        # retraction safe on accuracy grounds). The lower bound carries a
+        # small negative tolerance because the tightest committed row has
+        # only 0.0002 of margin (modal 0.0099 vs flux 0.0097) — a benign
+        # regen shift must not red CI with "modal is better than flux"
+        # (PR #480 re-review, optional robustness note).
+        deltas.append(delta)
+        assert -0.002 <= delta <= 0.01, (r["d_mm"], r["cells_per_a"], delta)
+    # The "flux is the better extractor" claim is pinned on the MAXIMUM
+    # delta, which is a robust 0.0055 rather than a 0.0002 knife-edge.
+    assert max(deltas) >= 0.003, deltas
     assert "ACCURACY" in scope and "little worse" in scope
     assert "RETRACTED" in " ".join(mw["note"].split())
     prov = " ".join(
