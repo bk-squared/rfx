@@ -86,12 +86,19 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   the crossval manifest with honest roles and fail-closed evidence chains.
   (#462, #475, #476)
 
-### Changed — MSL-FD-TIGHT gradient gate: ownership + measured comparator envelope
+### Changed — MSL-FD-TIGHT gradient gate: ownership, comparator envelope, and an f64-determined AD finding
 
 - The converged AD-vs-FD gate is GPU-lane-owned; its FD comparator carries
   an f32 evaluation-noise envelope (+/-3-5%) that straddles the 0.10 gate
   across platforms while AD is platform-stable. Docstring records the
   measured numbers; gate value unchanged. (#479, #477)
+- An f64 referee (enabled by making the DFT accumulators follow the x64
+  state) subsequently DETERMINED the question the noise left open: the MSL
+  `eps_override` AD gradient reads ~13.7% below the clean f64 finite
+  difference on this objective (true derivative ~ -0.244 by three agreeing
+  estimates). Until issue #483 attributes the mechanism, treat
+  `compute_msl_s_matrix(eps_override=...)` gradients as a +/-14%-class
+  quantity. Forward S-parameters are unaffected. (#483)
 
 
 ### Changed — `compute_msl_s_matrix` returns a passivity-enforced S by default (**BEHAVIOUR CHANGE**)
