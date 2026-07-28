@@ -84,9 +84,13 @@ class Box:
        land on node planes, ``lo = i*dx`` and ``hi = k*dx``, occupies nodes
        ``i .. k-1``. Its realized extent between the first and last occupied
        node plane is therefore ``(hi - lo) - dx``, one cell short of the
-       drawn extent, and the shortfall is entirely at the ``hi`` face — the
-       footprint is **asymmetric**, so the object is also displaced by
-       ``dx/2`` toward ``lo``.
+       drawn extent, and the shortfall is entirely at the ``hi`` face, so a
+       **single box** is also displaced by ``dx/2`` toward ``lo``. Note the
+       two faces are NOT interchangeable: ``lo`` is inclusive and ``hi`` is
+       exclusive. Whether that per-box displacement survives in a
+       multi-object structure depends on which face of each object is the
+       load-bearing one — see the facing-pair discussion below, where it
+       cancels in one case and not the other.
 
     2. **A corner exactly on a node plane is a knife edge.** Masks are
        evaluated in the default float32 precision, and the node coordinates
@@ -102,30 +106,54 @@ class Box:
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
     is zeroed, so consequence (1) is an *electrical* dimension error, not a
-    sub-cell cosmetic one. Two facing fins drawn to leave a nominal opening
-    ``d`` leave an electrical opening of **``d + dx`` or ``d + 2*dx``, and
-    which one is not predictable from the nominal dimensions** — one cell
-    comes from the convention itself, and a second appears whenever the far
-    fin's corner fails to capture its node under (2). Measured on WR-90 at
-    both a/30 and a/60: ``d`` = 7.620 and 18.288 mm give ``d + dx``, while
-    ``d`` = 12.192 mm gives ``d + 2*dx``. Over ~99k (guide, mesh, aperture)
-    combinations the split is 82% / 9% / 8% across ``d + dx`` / ``d + 2*dx``
-    / ``d`` at even parity, shifting one cell up at odd parity (see the
-    recipe). Shifting each interior face half a cell the *wrong* way (toward
-    the metal) gives ``d + 2*dx`` uniformly. In PR #480's WR-90 single-iris
-    lane this inflated the ``|S11|`` error against an analytic mode-matching
-    oracle by 4-6x, and because it scales with ``dx`` it is easy to misread
-    as first-order convergence. For a **resonant** structure (multi-iris
-    filter, cavity) it shifts the passband rather than widening a magnitude
-    tolerance, so it will not look like a discretization error at all.
+    sub-cell cosmetic one. The electrical opening is measured between the
+    innermost ZEROED node planes, i.e. ``(n_open + 1) * dx`` — the same
+    measure that reproduces the guide's own width, ``a = cells * dx``
+    exactly (counting open nodes alone would call WR-90 22.098 mm instead of
+    22.86 at a/30).
+
+    **A facing pair is not symmetric under this rule, because its two
+    interior faces are different kinds of corner.** For fins drawn from each
+    wall inward, the lo fin's interior face is a ``hi`` corner, which
+    half-openness **always** drops, so that fin always retreats one cell.
+    The hi fin's interior face is a ``lo`` corner, which ``coords >= lo``
+    normally **keeps** — it retreats only when (2) puts the node just below
+    the corner. Hence the realized opening is:
+
+    * ``d + dx`` when only the lo fin retreated. The opening is then
+      **asymmetric**: its centre sits ``dx/2`` below the guide centre.
+    * ``d + 2*dx`` when rounding made the hi fin retreat as well. The two
+      retreats cancel and the opening is **symmetric**.
+
+    Which one you get is **not predictable from the nominal dimensions**.
+    Measured on WR-90 at both a/30 and a/60: ``d`` = 7.620 and 18.288 mm
+    give ``d + dx`` (centre offset -0.5 cell), while ``d`` = 12.192 mm gives
+    ``d + 2*dx`` (centred). Over ~99k (guide, mesh, aperture) combinations
+    the split is 82% / 9% / 8% across ``d + dx`` / ``d + 2*dx`` / ``d`` at
+    even parity, shifting one cell up at odd parity (see the recipe).
+    Shifting each interior face half a cell the *wrong* way (toward the
+    metal) retreats both faces by construction rather than by luck, giving
+    ``d + 2*dx`` deterministically at every aperture — that is the drawing
+    case 18's blocked revision used, and it is why re-comparing that
+    revision against ``oracle(d + 2*dx)`` collapsed every row.
+
+    In PR #480's WR-90 single-iris lane this inflated the ``|S11|`` error
+    against an analytic mode-matching oracle by 4-6x, and because it scales
+    with ``dx`` it is easy to misread as first-order convergence. For a
+    **resonant** structure (multi-iris filter, cavity) it shifts the
+    passband rather than widening a magnitude tolerance, so it will not look
+    like a discretization error at all.
 
     **Recipe**, two conditions, both needed:
 
     * Put interior corners on **cell midpoints**, ``(j + 0.5) * dx``, to make
-      node ``j`` the innermost occupied plane. Any value in
-      ``(j*dx, (j+1)*dx]`` selects the same footprint, and the midpoint is
-      the farthest point from both knife edges, so the footprint becomes
-      rounding-independent.
+      node ``j`` the innermost occupied plane. Every corner value in a
+      one-cell-wide interval selects the same footprint (``(j*dx, (j+1)*dx]``
+      for a ``hi`` corner, ``[j*dx, (j+1)*dx)`` for a ``lo`` corner), and the
+      midpoint is that interval's **centre** — not merely a safe nudge away
+      from the node. That is precisely why it is immune to the float32
+      effects in (2), which only ever perturb a corner by a fraction of a
+      cell.
     * Keep the metal depth an exact number of cells, i.e. for a symmetric
       obstacle keep ``(cells - d_cells)`` **even**. When it is odd,
       ``fin_depth = (cells - d_cells)//2`` truncates and a symmetric opening

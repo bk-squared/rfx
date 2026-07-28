@@ -40,18 +40,26 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 - `Box`'s volume branch is half-open `[lo, hi)` over NODE coordinates, so a box
   whose corners land on node planes occupies nodes `i..k-1`: the realized extent
   is one cell short of the drawn extent, entirely at the `hi` face, which also
-  displaces the object by `dx/2`. For a PEC obstacle those nodes are where
-  tangential `E` is zeroed, so this is an ELECTRICAL dimension error — two
-  facing fins drawn to leave a nominal opening `d` leave `d + dx` **or
-  `d + 2*dx`, and which one is not predictable from the nominal dimensions**:
-  one cell from the convention, a second whenever the far fin's corner misses
-  its node under float32 rounding. Measured on WR-90 at both a/30 and a/60,
-  7.620 mm and 18.288 mm give `d + dx` while 12.192 mm gives `d + 2*dx`; a
-  half-cell offset applied toward the metal gives `d + 2*dx` uniformly. This
-  inflated PR #480's `|S11|` error against an analytic mode-matching oracle by
-  4-6x. Because it scales with `dx` it mimics first-order convergence, and on a
-  resonant structure it shifts the passband instead of widening a magnitude
-  tolerance.
+  displaces a SINGLE box by `dx/2`. For a PEC obstacle those nodes are where
+  tangential `E` is zeroed, so this is an ELECTRICAL dimension error, measured
+  between the innermost zeroed planes as `(n_open + 1) * dx` — the measure that
+  reproduces the guide's own `a = cells * dx` exactly.
+- A facing pair does NOT simply inherit that per-box displacement, because its
+  two interior faces are different corner types: the lo fin's is a `hi` corner,
+  which half-openness always drops (so it always retreats one cell), while the
+  hi fin's is a `lo` corner, which is kept unless float32 rounding puts the node
+  just below it. One retreat gives `d + dx` with the opening **asymmetric**
+  (centre `dx/2` low); two retreats cancel and give `d + 2*dx` **centred**.
+  Which one occurs is **not predictable from the nominal dimensions**: measured
+  on WR-90 at both a/30 and a/60, 7.620 mm and 18.288 mm give `d + dx`
+  off-centre while 12.192 mm gives `d + 2*dx` centred. A half-cell offset toward
+  the metal retreats both faces by construction rather than by luck, giving
+  `d + 2*dx` deterministically at every aperture — the drawing case 18's blocked
+  revision used, and why re-comparing it against `oracle(d + 2*dx)` collapsed
+  every row. This inflated PR #480's `|S11|` error against an analytic
+  mode-matching oracle by 4-6x. Because it scales with `dx` it mimics
+  first-order convergence, and on a resonant structure it shifts the passband
+  instead of widening a magnitude tolerance.
 - The float32 effect is sharper than a single ULP of the corner value: node
   coordinates are themselves double-rounded, `f32(f32(i) * f32(dx))` in
   `_grid_coords`, while a caller's corner is computed in float64 and cast once.

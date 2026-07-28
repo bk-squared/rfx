@@ -224,11 +224,19 @@ implementation nor gradient regression is RF validation.
   coordinates, so a box drawn between two node planes occupies one cell fewer
   than drawn, asymmetrically at the `hi` face. Two facing fins drawn to leave a
   nominal opening `d` therefore leave an electrical opening of `d + dx` **or
-  `d + 2*dx`, and which one is not predictable from the nominal dimensions** —
-  one cell from the convention, a second whenever the far fin's corner misses
-  its node under float32 rounding. Measured on WR-90 at both a/30 and a/60:
-  7.620 mm and 18.288 mm give `d + dx`, 12.192 mm gives `d + 2*dx`. Offsetting
-  each interior face half a cell the wrong way gives `d + 2*dx` uniformly. In
+  `d + 2*dx`, and which one is not predictable from the nominal dimensions**.
+  The pair's two interior faces are different corner types: the lo fin's is a
+  `hi` corner, which half-openness always drops, so it always retreats one
+  cell; the hi fin's is a `lo` corner, which is kept unless float32 rounding
+  puts the node just below it. One retreat gives `d + dx` with the opening
+  **asymmetric** (centre `dx/2` low); two retreats give `d + 2*dx`, **centred**.
+  Measured on WR-90 at both a/30 and a/60: 7.620 mm and 18.288 mm give
+  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. The electrical
+  opening is measured between the innermost zeroed planes, `(n_open + 1) * dx`
+  — the measure that reproduces `a = cells * dx` exactly. Offsetting each
+  interior face half a cell the wrong way retreats both faces by construction
+  rather than by luck, giving `d + 2*dx` deterministically at every aperture;
+  that is the drawing case 18's blocked revision used. In
   the WR-90 single-iris lane this inflated the `|S11|` difference against an
   analytic mode-matching oracle by 4-6x (0.0193 to 0.1262 at `d = 7.620 mm`,
   a/30). Because the error scales with `dx` it mimics first-order convergence,

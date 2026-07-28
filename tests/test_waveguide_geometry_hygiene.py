@@ -186,6 +186,45 @@ def test_fins_drawn_to_nominal_aperture_are_one_or_two_cells_too_wide(
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
+def test_which_interior_face_retreats_decides_the_symmetry(cells, d_mm):
+    """The two interior faces of a facing pair are different corner types.
+
+    The lo fin's interior face is a ``hi`` corner, which half-openness ALWAYS
+    drops — so that fin always retreats one cell. The hi fin's interior face
+    is a ``lo`` corner, which ``coords >= lo`` KEEPS, unless float32 rounding
+    puts the node just below it. Hence excess 1 cell means only the lo fin
+    retreated and the opening is asymmetric (centre ``dx/2`` low), while
+    excess 2 cells means both retreated, the retreats cancel, and the opening
+    is symmetric.
+
+    Pinned because an unconditional "the obstacle is asymmetric" claim would
+    send the next reader hunting a bug that is not there at the apertures
+    where it is centred (PR #495 review, item 2).
+    """
+    d_phys = d_mm * 1e-3
+    y, dx, d_c, fin_c = _iris(cells, d_phys)
+    lo_metal = _occupied(fin_c * dx, y)
+    hi_fin = Box((-1.0, A_WR90 - fin_c * dx, -1.0), (1.0, 1.0, 1.0))
+    hi_metal = np.nonzero(
+        np.asarray(hi_fin.mask_on_coords(_ZERO, y, _ZERO))[0, :, 0])[0]
+    aperture_cells, free = _fin_pair(fin_c * dx, y, dx)
+    excess = aperture_cells - d_c
+
+    # The lo fin's interior face is a hi corner: it always loses exactly one.
+    assert lo_metal[-1] == fin_c - 1
+    # The hi fin's interior face is a lo corner: it loses one only under (2).
+    hi_retreat = int(hi_metal[0] - (cells - fin_c))
+    assert hi_retreat == excess - 1, (hi_retreat, excess)
+
+    centre_offset = 0.5 * (free[0] + free[-1]) - cells / 2
+    if excess == 1:
+        assert centre_offset == pytest.approx(-0.5), "one retreat => asymmetric"
+    else:
+        assert excess == 2
+        assert centre_offset == pytest.approx(0.0), "two retreats => symmetric"
+
+
+@pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
 def test_midpoint_recipe_is_exact_at_even_parity(cells, d_mm):
     """The documented recipe, and the non-firing control for the test above.
 
