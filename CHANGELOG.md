@@ -13,7 +13,7 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   `stop_gradient`, so finite differences and `jax.grad` differentiated
   DIFFERENT functions. The fixture now derives from the registered
   materials on both sides; the converged f64 AD-vs-FD referee moves from
-  13.7% to 0.000110 (num_periods=20, full extraction). Regression-locked
+  13.7% to 0.011% (rel_err 0.000110; num_periods=20, full extraction). Regression-locked
   by a committed mini-referee. (#483, #486)
 
 ### Changed — DFT accumulator dtype follows the x64 state
