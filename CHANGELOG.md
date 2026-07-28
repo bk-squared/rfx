@@ -6,6 +6,23 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — MSL `eps_override` gradient: 13.7% converged deficit attributed and removed
+
+- The auto-`eps_r_sub` launch fixture (mode profile / sigma loading / source
+  amplitude) sampled the possibly-overridden materials through
+  `stop_gradient`, so finite differences and `jax.grad` differentiated
+  DIFFERENT functions. The fixture now derives from the registered
+  materials on both sides; the converged f64 AD-vs-FD referee moves from
+  13.7% to 0.000110 (num_periods=20, full extraction). Regression-locked
+  by a committed mini-referee. (#483, #486)
+
+### Changed — DFT accumulator dtype follows the x64 state
+
+- Point/plane DFT accumulators were hardcoded complex64, breaking the scan
+  carry the moment x64 was enabled — no f64 gradient referee could run.
+  Both constructors now follow `jax.config.x64_enabled`; the f32 path is
+  bit-identical. (#484, #477)
+
 ## [1.6.7] - 2026-07-28
 
 ### Added — open-domain oblique RCS (Method-B TFSF) with calibrated absolute sigma

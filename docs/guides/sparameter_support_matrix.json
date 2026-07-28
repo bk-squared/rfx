@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updated": "2026-07-13",
+  "updated": "2026-07-28",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -139,7 +139,8 @@
         "outside JAX tracing, reliable[p,k]=false invalidates S[:,p,k] for physical interpretation; true is not an accuracy guarantee",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
         "strong-reflector |S11| has a characterized staircase-Z0 floor of about 0.16--0.22",
-        "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee"
+        "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
+        "the auto n_probe_offset solves the upstream/downstream clearance interval at driver time and warns loudly when a short feed cannot satisfy both (#469); library witness probes are excluded from preflight advisories and the #332 tail advisory (#470)"
       ],
       "evidence_level": "E5-narrow/eigenmode-blocked",
       "validation_gaps": [
@@ -151,13 +152,15 @@
         "tests/test_msl_null_reliability_mask.py",
         "tests/fixtures/msl_replay_accumulators.npz",
         "tests/fixtures/msl_notch_e4/comparison_summary.json",
-        "validation/crossval/06b_msl_notch_filter_uniform.py"
+        "validation/crossval/06b_msl_notch_filter_uniform.py",
+        "tests/test_msl_source_fixture_static.py"
       ],
       "numeric_metrics": [
         "uniform thru-line: |S21| in (0.90, 1.05) and Re(Z0) in (40, 65) ohm for the cited dx=80 um setup",
         "analytic notch case: frequency error 1.63%, notch depth -34.3 dB, median Re(Z0) 48.6 ohm",
         "committed OpenEMS notch comparison at dx=50 um: notch frequency difference 5.8%, S21 linear-magnitude mean difference 0.105 and maximum difference 0.2172 over 2.5--6 GHz",
-        "raw three-probe replay: max_abs_diff 0 over 30 frequencies"
+        "raw three-probe replay: max_abs_diff 0 over 30 frequencies",
+        "eps_override gradient: converged f64 AD-vs-FD rel_err 0.000110 (num_periods=20, full extraction; #483/#486)"
       ],
       "validated_scope": "Uniform Yee laplace/quasi-TEM MSL calculator for the cited thru and notch configurations. Nonuniform mode is experimental and eigenmode is unsupported.",
       "caveats": [
@@ -166,7 +169,7 @@
         "do not generalize matched/thru/notch evidence to strong reflectors or arbitrary launches"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient and tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end"
+      "ad_evidence": "Converged f64 AD-vs-FD referee: rel_err 0.000110 at num_periods=20 through the full extraction (issues #483/#486, fixed 2026-07-28 — the auto-eps_r_sub launch fixture previously sampled the override under FD while the tape saw it frozen, a 13.7% converged deficit). Launch-fixture staticness is regression-locked by tests/test_msl_source_fixture_static.py (pre-fix 0.126 vs gate 0.03 at num_periods=1); smoke/end-to-end: tests/test_msl_sparam_ad.py and tests/test_sparam_ad_end_to_end.py."
     },
     {
       "primitive": "add_waveguide_port(...)",

@@ -41,7 +41,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD validated (converged f64 referee 0.000110) |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
@@ -134,6 +134,11 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   `tests/fixtures/msl_notch_e4/comparison_summary.json`.
 - Raw three-probe replay matches the production matrix with
   `max_abs_diff=0` over 30 frequencies.
+- The `eps_override` gradient is validated by a converged f64 AD-vs-FD
+  referee: rel_err `0.000110` at `num_periods=20` through the full
+  extraction (#483/#486). The launch fixture derives from registered
+  materials on both the FD and AD sides; staticness is regression-locked
+  by `tests/test_msl_source_fixture_static.py`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
 during JAX tracing. Its exact driven-port-column meaning and the conservative
@@ -151,6 +156,10 @@ A `True` entry is not an accuracy guarantee.
   this calculation.
 - Strong-reflector `|S11|` has a roughly 0.16--0.22 staircase-Z0 floor in the
   characterized regime; do not generalize the matched/thru/notch evidence.
+- The auto `n_probe_offset` solves the upstream/downstream clearance interval
+  at driver time (midpoint with a reflector, unchanged without one) and warns
+  loudly when a short feed cannot satisfy both clearances (#469). Library
+  witness probes are excluded from preflight advisories (#470).
 
 ## Rectangular-waveguide port
 
