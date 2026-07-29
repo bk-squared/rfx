@@ -312,3 +312,41 @@ sim.preflight_sparameters(calculator="waveguide")
 
 The returned issues check API compatibility, not mesh/time convergence or RF
 accuracy. Use `strict=True` when the setup should fail on any reported issue.
+
+## Mixed port families — EXPERIMENTAL, not in the validated set
+
+The per-extractor restrictions above are accurate: `compute_msl_s_matrix`, the
+lumped/wire scan driver, and the coaxial calculators each reject foreign port
+families. They should not be read as "rfx cannot compute across port families
+at all" — a separate, explicitly experimental method exists:
+
+```python
+res = sim.compute_mixed_s_matrix(freqs=freqs)   # lumped/wire + MSL, uniform mesh
+```
+
+`compute_mixed_s_matrix` drives each port in turn, takes its diagonals from the
+per-family validated extractors, and takes off-diagonal **magnitudes** from
+Poynting flux (`magnitude_channel="flux"`, the default), normalizing incident
+power as `P_net / (1 - |S_jj|^2)`. No characteristic-impedance anchor enters the
+magnitude.
+
+What this is and is not:
+
+| aspect | status |
+|---|---|
+| off-diagonal magnitude | experimental; internal reciprocity witness 9% on the probe-fed MSL fixture (55% on the wave channel) |
+| absolute magnitude | **NOT validated** — no external-solver referee has been run |
+| off-diagonal phase | provisional (mixes two reference-plane conventions) |
+| per-column power | an algebraic identity on the flux channel — **not** a passivity check |
+
+Because the flux normalization makes column power identically 1 whenever the
+arriving power equals the net launched power, a green passivity result on this
+lane carries no information. Reciprocity is the only independent internal
+witness, and the method warns when it exceeds `reciprocity_tol`.
+
+Everything outside the first supported pair is rejected loudly: waveguide,
+Floquet, coaxial and TFSF registrations, bare sources and 0-ohm ports, mixed
+lumped+wire sets, `reference_plane_cells`, non-uniform meshes, SBP-SAT, and ADI.
+The flux channel additionally requires a PEC `z_lo` ground and vertical
+(`component="ez"`) lumped/wire ports, since the per-port flux box omits its
+bottom face and treats the port extent as a height.

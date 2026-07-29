@@ -1252,10 +1252,20 @@ class _ExecuteMixin:
 
         # Flux monitors — same configs the run() lane builds, so the
         # issue-#488 mixed-family magnitude channel can read Poynting
-        # flux through this low-level lane too (PURE ADD: empty list
-        # when nothing is registered, exactly the prior behavior).
-        from rfx.runners.uniform import build_flux_monitor_cfgs
-        flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps)
+        # flux through this low-level lane too.
+        #
+        # GATED to the raw-hook path on purpose. This lane's
+        # ``ForwardResult`` has never carried flux monitors, so an
+        # existing ``forward()``/``optimize()`` caller with
+        # ``add_flux_monitor()`` registered would pay for flux DFT
+        # accumulation inside the differentiable scan (memory on the AD
+        # tape included) and never see the result — a silent cost
+        # regression, not a feature. Only ``_return_raw_port_sparams``
+        # consumers read these back.
+        flux_monitor_cfgs = []
+        if _return_raw_port_sparams and self._flux_monitors:
+            from rfx.runners.uniform import build_flux_monitor_cfgs
+            flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps)
 
         # DFT plane probes — mirror runners/uniform.py:340-359 so the
         # JIT scan body actually accumulates plane-resolved DFT, then

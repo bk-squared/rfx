@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updated": "2026-07-28",
+  "updated": "2026-07-29",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -443,6 +443,47 @@
         "does not define a port impedance or S-matrix reference"
       ],
       "ad_traceable": "not_applicable"
+    },
+    {
+      "primitive": "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)",
+      "family": "mixed_lumped_wire_msl",
+      "is_port": true,
+      "support_status": "experimental_diagnostic_not_in_validated_set",
+      "calculation_api": "Simulation.compute_mixed_s_matrix(...)",
+      "result_type": "MixedSMatrixResult",
+      "supported_configurations": [
+        "uniform second-order Yee mesh only",
+        "one homogeneous lumped OR wire set (component='ez', vertical) plus one or more MSL ports",
+        "PEC z_lo ground required for magnitude_channel='flux' (the default)",
+        "imperative forward path only (no eps_override AD channel)"
+      ],
+      "validation_status": "EXPERIMENTAL. Diagonals come from the per-family validated extractors; off-diagonal MAGNITUDES come from Poynting flux with the incident power normalized as P_net/(1-|S_jj|^2). Internal reciprocity witness measured 9% on the probe-fed MSL fixture (the wave channel measured 55% on the same fixture). NO external-solver referee has been run, so ABSOLUTE magnitude is NOT validated. Off-diagonal PHASE mixes two reference-plane conventions and is provisional. Do not cite this family as validation.",
+      "known_limits": [
+        "absolute |S| unvalidated — openEMS referee pending",
+        "off-diagonal phase provisional (cross-family reference-plane mismatch)",
+        "per-column power is an ALGEBRAIC IDENTITY on the flux channel and is not a passivity check; reciprocity is the only independent internal witness",
+        "residual reciprocity disagreement traced to a driven-port diagonal; which diagonal is open (issue #313 wire port-cell vs the MSL analytic Z0 anchor)",
+        "waveguide, Floquet, coaxial, TFSF, bare sources, 0-ohm ports, mixed lumped+wire sets, reference_plane_cells, non-uniform meshes, SBP-SAT and ADI are all rejected loudly"
+      ],
+      "evidence_level": "experimental/internal-witness-only",
+      "validation_gaps": [
+        "no external-solver cross-check of any mixed-family |S|",
+        "no mesh-convergence study",
+        "single fixture class (vertical probe feed onto a microstrip line)"
+      ],
+      "evidence_artifacts": [
+        "tests/test_mixed_port_sparam.py"
+      ],
+      "numeric_metrics": [
+        "reciprocity deviation 9.0% (flux channel) vs 55% (wave channel), probe-fed MSL fixture, dx=63.5um, settling -101/-100 dB"
+      ],
+      "validated_scope": "NONE — this family is a diagnostic surface, not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
+      "caveats": [
+        "quote the preflight output and settling_db with any number from this lane",
+        "a green passivity/column-power result here is structurally uninformative"
+      ],
+      "ad_traceable": false,
+      "ad_evidence": "not wired to the differentiable forward lane (imperative only)"
     }
   ],
   "physics_evidence_rule": "docs/guides/physics_validation_evidence_rule.md",

@@ -770,6 +770,29 @@ def _assemble_mixed_power_wave_s(
     return S, s21_power
 
 
+def _mixed_reciprocity_deviation(S):
+    """Worst relative |S_ij| vs |S_ji| disagreement (issue #488).
+
+    Magnitude-only by design: cross-family phase mixes two reference-plane
+    conventions on this lane, so a complex comparison would misfire.
+    Returns ``((i, j), max_relative_deviation)`` over all off-diagonal
+    pairs and frequencies, or ``None`` for a 1-port / tracer input.
+    """
+    s = np.abs(np.asarray(jax.lax.stop_gradient(S)))
+    n = int(s.shape[0])
+    if n < 2 or not np.all(np.isfinite(s)):
+        return None
+    worst_pair, worst = None, 0.0
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = s[i, j, :], s[j, i, :]
+            denom = np.maximum(np.maximum(a, b), 1e-12)
+            dev = float(np.max(np.abs(a - b) / denom))
+            if dev >= worst:
+                worst, worst_pair = dev, (i, j)
+    return worst_pair, worst
+
+
 def _mixed_flux_magnitude_override(
     S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
     ill_cond_floor=0.05,
@@ -792,17 +815,21 @@ def _mixed_flux_magnitude_override(
     the #313 port-cell V*I accounting and the analytic-vs-measured MSL Z0
     divergence drop out).
 
-    Returns (S_out, ill_cond_cols, neg_pnet_cols): boolean per-column
-    masks marking bins where 1-|S_jj|^2 < ill_cond_floor (normalization
-    unreliable — near-total reflection) and where the raw P_net was
-    negative (sign/accounting defect; clipped to 0).
+    Returns (S_out, ill_cond, neg_power): boolean ``(n_ports, n_freqs)``
+    masks. ``ill_cond[j]`` marks bins where ``1-|S_jj|^2 <
+    ill_cond_floor`` (normalization unreliable — near-total reflection at
+    driven port j). ``neg_power[i]`` marks bins where a raw power at port
+    i came out negative and was clipped to zero — tracked for BOTH the
+    driven port's net launched power and every receive port's arriving
+    power, because either sign defect silently produces a plausible
+    ``|S| = 0`` instead of failing loudly.
     """
     S_wave = jnp.asarray(S_wave)
     n_tot = int(S_wave.shape[0])
     n_freqs = int(S_wave.shape[-1])
     S_out = S_wave
     ill_cond = np.zeros((n_tot, n_freqs), dtype=bool)
-    neg_pnet = np.zeros((n_tot, n_freqs), dtype=bool)
+    neg_power = np.zeros((n_tot, n_freqs), dtype=bool)
     for run_idx, (fam, loc) in enumerate(drive_plan):
         col = loc if fam == "lw" else n_lw + loc
         s_jj = np.asarray(jax.lax.stop_gradient(S_wave[col, col, :]))
@@ -812,7 +839,7 @@ def _mixed_flux_magnitude_override(
             p_net = box_lw[run_idx, loc, :]
         else:
             p_net = msl_away_signs[loc] * plane_msl[run_idx, loc, :]
-        neg_pnet[col, :] = p_net < 0.0
+        neg_power[col, :] |= p_net < 0.0
         p_inc = np.clip(p_net, 0.0, None) / np.clip(one_minus, ill_cond_floor, None)
         safe_pinc = np.where(p_inc > 0.0, p_inc, np.inf)
         for i in range(n_tot):
@@ -822,12 +849,18 @@ def _mixed_flux_magnitude_override(
                 p_arr = -box_lw[run_idx, i, :]          # inward = -outward
             else:
                 p_arr = -msl_away_signs[i - n_lw] * plane_msl[run_idx, i - n_lw, :]
+            # Symmetric with the driven-port tracking above: a negative
+            # ARRIVING power is also a sign/accounting defect, and
+            # clipping it silently yields |S_ij| = 0 — a plausible-looking
+            # number that reads as "no coupling" instead of "broken
+            # measurement".
+            neg_power[i, :] |= p_arr < 0.0
             mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
             ph = jnp.exp(1j * jnp.angle(S_wave[i, col, :]))
             S_out = S_out.at[i, col, :].set(
                 (jnp.asarray(mag) * ph).astype(S_wave.dtype)
             )
-    return S_out, ill_cond, neg_pnet
+    return S_out, ill_cond, neg_power
 
 
 class _SparamMixin:
@@ -2423,6 +2456,7 @@ class _SparamMixin:
         skip_preflight: bool = False,
         return_diagnostics: bool = False,
         magnitude_channel: str = "flux",
+        reciprocity_tol: float = 0.15,
     ) -> "MixedSMatrixResult":
         """Mixed-family S-matrix: lumped/wire ports + MSL ports (issue #488).
 
@@ -2776,6 +2810,39 @@ class _SparamMixin:
                 "compute_mixed_s_matrix: magnitude_channel must be 'flux' "
                 f"(default) or 'wave', got {magnitude_channel!r}."
             )
+        if magnitude_channel == "flux":
+            # The per-port flux box is CLOSED by the z-lo PEC ground: it
+            # has five faces and omits the bottom because flux through a
+            # PEC face is identically zero. It also treats pe.extent as a
+            # VERTICAL height. Both are physical preconditions, so check
+            # them instead of assuming (review finding: a user with an
+            # open z-lo boundary or a horizontal port would otherwise get
+            # a silently wrong P_net on the DEFAULT channel).
+            _pec_faces = (
+                self._boundary_spec.pec_faces()
+                if self._boundary_spec is not None else set()
+            )
+            if "z_lo" not in _pec_faces:
+                raise NotImplementedError(
+                    "compute_mixed_s_matrix(magnitude_channel='flux') "
+                    "requires a PEC z_lo boundary: the per-port flux box "
+                    "omits its bottom face because flux through a PEC "
+                    "ground is identically zero. Your z_lo face is "
+                    f"{sorted(_pec_faces) or 'not PEC'}, so the box would "
+                    "not be closed and P_net would be wrong. Use "
+                    "BoundarySpec(z=Boundary(lo='pec', ...)), or pass "
+                    "magnitude_channel='wave' (which carries the #313 "
+                    "port-cell deflation instead)."
+                )
+            _bad = [pe for pe in lw_entries if pe.component != "ez"]
+            if _bad:
+                raise NotImplementedError(
+                    "compute_mixed_s_matrix(magnitude_channel='flux') "
+                    "supports vertical (component='ez') lumped/wire ports "
+                    "only: the flux box is built assuming the port extent "
+                    "is a z height above the ground plane. Offending "
+                    f"component(s): {sorted({pe.component for pe in _bad})}."
+                )
 
         drive_plan = [("lw", j) for j in range(n_lw)] + \
                      [("msl", d) for d in range(n_msl)]
@@ -3028,20 +3095,34 @@ class _SparamMixin:
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
 
-            # ---- Measured line Zc for the MSL diagonals ----------------
-            # Documented deviation from compute_msl_s_matrix's analytic
-            # z0_hj anchor: on the mixed lane's interface-aligned fixtures
-            # the analytic anchor diverged from the discretized line
-            # (arch-A battery: an understated |S22| broke lossless-
-            # reciprocal consistency |S11| == |S22| and carried the whole
-            # 9% reciprocity residual). The N-probe least-squares fit
-            # measures Zc(f) from the recorded ez ladder; per-bin fallback
-            # to z0_hj where the fit is unreliable.
+            # ---- N-probe line Zc: DIAGNOSTIC ONLY (issue #488) ---------
+            # This lane does NOT substitute a fitted Zc into the MSL
+            # diagonal. An earlier revision did, and it was withdrawn
+            # after review: the fit's sign is not stable here, so the
+            # substitution silently fell back to the analytic anchor and
+            # looked like a confirmed measurement.
+            #
+            # Mechanism (why a sign fix would not be enough): the model
+            # V_n = alpha*exp(-j beta x_n) + gamma*exp(+j beta x_n) is
+            # invariant under (beta -> -beta, alpha <-> gamma), so a beta
+            # scan that lands on the wrong branch SWAPS the two wave
+            # roles and flips the sign of (alpha - gamma) — and therefore
+            # of z0 = (alpha - gamma)/I1. Measured on one fixture: the
+            # fitted sign differs between num_periods=4 and 20. On top of
+            # that, `msl_loop_current`'s docstring (rfx/sources/
+            # msl_port.py, "the returned I is positive for a forward
+            # quasi-TEM wave") and compute_msl_s_matrix's #140 dir_sign
+            # comment ("a -x port's fitted z0 inherits a negative sign")
+            # describe OPPOSITE conventions; that contradiction is
+            # unresolved and is tracked as a follow-up, not papered over
+            # here.
+            #
+            # The fit is still computed and EXPOSED (return_diagnostics)
+            # because it is the only handle on the open 30-vs-48 ohm
+            # question, but it never feeds a shipped number, and its
+            # magnitude is reported without a sign claim.
             from rfx.probes.msl_wave_decomp import extract_msl_nprobe
-            z0_msl_meas = np.tile(
-                np.asarray(z0_hj_per_port, dtype=float)[:, None],
-                (1, n_freqs_used),
-            )
+            z0_msl_fit = np.full((n_msl, n_freqs_used), np.nan)
             for d in range(n_msl):
                 run_d = n_lw + d
                 n_p = len(probe_xs[d])
@@ -3052,49 +3133,27 @@ class _SparamMixin:
                     jnp.asarray(beta0_per_port[d]),
                     z0_hj=z0_hj_per_port[d],
                 )
-                # #140 sign convention: msl_loop_current negates only for
-                # "+x" ports; mirror so the reported Zc is positive-real.
-                dir_sign = 1.0 if entries[d].direction == "+x" else -1.0
-                zc = np.real(np.asarray(
+                z0_msl_fit[d, :] = np.abs(np.asarray(
                     jax.lax.stop_gradient(res_fit["z0"])
-                )) * dir_sign
-                ok = np.isfinite(zc) & (zc > 5.0) & (zc < 500.0)
-                z0_msl_meas[d, :] = np.where(ok, zc, z0_hj_per_port[d])
-                # Soft caveat, mirroring compute_msl_s_matrix's _Z0_TOL
-                # pattern: the [5, 500] ohm guard above is a sanity floor,
-                # NOT a settling check — measured on this lane, the same
-                # fixture fits 47.9 ohm at num_periods=40 but scatters over
-                # 57-82 ohm at num_periods=4. A large deviation from the
-                # analytic anchor therefore usually means the record is
-                # under-settled (check settling_db), not that the line is
-                # exotic. Warn; never clamp the measurement to the
-                # assumption.
+                ).astype(np.complex128))
                 _dev = float(np.max(
-                    np.abs(z0_msl_meas[d, :] - z0_hj_per_port[d])
+                    np.abs(z0_msl_fit[d, :] - z0_hj_per_port[d])
                     / z0_hj_per_port[d]
                 ))
                 if _dev > 0.10:
                     import warnings as _wz
                     _wz.warn(
-                        f"compute_mixed_s_matrix: measured line Zc for MSL "
-                        f"port {entries[d].name!r} deviates up to "
+                        f"compute_mixed_s_matrix: the N-probe |Zc| fit for "
+                        f"MSL port {entries[d].name!r} deviates up to "
                         f"{_dev * 100:.1f}% from analytic Hammerstad-Jensen "
-                        f"{z0_hj_per_port[d]:.2f} ohm. The N-probe fit needs "
-                        "a SETTLED record (same fixture: 47.9 ohm at "
-                        "num_periods=40 vs 57-82 ohm at num_periods=4) — "
-                        "check settling_db before trusting the MSL "
-                        "diagonal, and on coarse meshes expect genuine "
-                        "Yee-staircase Z0 bias on top.",
+                        f"{z0_hj_per_port[d]:.2f} ohm. The MSL diagonal "
+                        "here uses the ANALYTIC anchor, so this does not "
+                        "change the returned S — it is a diagnostic that "
+                        "the record may be under-settled (check "
+                        "settling_db) or the discretized line genuinely "
+                        "differs (Yee staircase on coarse meshes).",
                         stacklevel=2,
                     )
-                v_d = v0_msl[run_d, d, :]
-                i_d = i_msl[run_d, d, :]
-                den = v_d + z0_msl_meas[d, :] * i_d
-                den = np.where(np.abs(den) > 0, den, 1e-30)
-                s_dd = (v_d - z0_msl_meas[d, :] * i_d) / den
-                S = S.at[n_lw + d, n_lw + d, :].set(
-                    jnp.asarray(s_dd).astype(_complex_dtype)
-                )
             s_wave_full = None
 
             if magnitude_channel == "flux":
@@ -3103,7 +3162,7 @@ class _SparamMixin:
                 msl_away = [
                     (+1.0 if pe.direction == "+x" else -1.0) for pe in entries
                 ]
-                S, _ill_cond, _neg_pnet = _mixed_flux_magnitude_override(
+                S, _ill_cond, _neg_power = _mixed_flux_magnitude_override(
                     S, box_lw, plane_msl, drive_plan, msl_away, n_lw,
                 )
                 S = jnp.asarray(S, dtype=_complex_dtype)
@@ -3120,16 +3179,19 @@ class _SparamMixin:
                             "are UNRELIABLE at those bins.",
                             stacklevel=2,
                         )
-                    n_neg = int(_neg_pnet[col].sum())
+                    n_neg = int(_neg_power[col].sum())
                     if n_neg:
                         _wf.warn(
-                            f"compute_mixed_s_matrix: NET flux at driven "
-                            f"port index {col} is NEGATIVE at "
+                            f"compute_mixed_s_matrix: flux power at port "
+                            f"index {col} came out NEGATIVE at "
                             f"{n_neg}/{n_freqs_used} bins — a sign or "
-                            "accounting defect in the flux surfaces (power "
-                            "cannot flow INTO a driven passive-terminated "
-                            "port net). Clipped to zero; treat the column "
-                            "as an extraction failure, not physics.",
+                            "accounting defect in that port's flux "
+                            "surface (net launched power cannot flow INTO "
+                            "a driven port, and arriving power cannot be "
+                            "negative at a receive port). Clipped to zero, "
+                            "which reports |S| = 0 rather than failing: "
+                            "treat those bins as an extraction failure, "
+                            "not as an absence of coupling.",
                             stacklevel=2,
                         )
 
@@ -3201,6 +3263,37 @@ class _SparamMixin:
                 strict=strict_extractor,
                 passivity_tol=0.10,
             )
+            # RECIPROCITY WITNESS — the only independent runtime check on
+            # the flux channel (review finding: the shared passivity audit
+            # above is structurally inert here, because column power is an
+            # identity under the flux normalization; and
+            # validate_port_smatrix's own reciprocity option compares
+            # COMPLEX S, which would misfire on this lane where
+            # cross-family phase is provisional by construction).
+            # S_ij and S_ji come from different drive runs with different
+            # normalizations, so their MAGNITUDE agreement is real
+            # evidence — and it is exactly the check that would have
+            # caught a wrong diagonal feeding the flux normalization.
+            _rec = _mixed_reciprocity_deviation(S)
+            if _rec is not None:
+                _pair, _dev_max = _rec
+                if _dev_max > reciprocity_tol:
+                    import warnings as _wr
+                    _wr.warn(
+                        f"compute_mixed_s_matrix: reciprocity deviation "
+                        f"max {_dev_max * 100:.1f}% between |S[{_pair[0]},"
+                        f"{_pair[1]}]| and |S[{_pair[1]},{_pair[0]}]| "
+                        f"(tolerance {reciprocity_tol * 100:.0f}%). For a "
+                        "reciprocal structure these must agree; a "
+                        "disagreement means one DRIVEN-port diagonal is "
+                        "wrong (the diagonals set the incident-power "
+                        "normalization P_inc = P_net/(1-|S_jj|^2)), or a "
+                        "flux surface is mis-signed. Note the per-column "
+                        "power sum CANNOT detect this — it is an identity "
+                        "on this channel. Inspect the diagonals and "
+                        "settling_db before quoting any |S|.",
+                        stacklevel=2,
+                    )
             if return_diagnostics:
                 # R5 inspection surface: the raw per-run phasors behind
                 # every wave, so a suspicious |S| can be traced to V/I
@@ -3211,7 +3304,10 @@ class _SparamMixin:
                     "v0_msl": v0_msl, "i_msl": i_msl,
                     "drive_plan": drive_plan,
                     "z0_hj_msl": np.asarray(z0_hj_per_port),
-                    "z0_msl_measured": z0_msl_meas,
+                    # |Zc| from the N-probe fit — DIAGNOSTIC ONLY, never
+                    # substituted into S (sign unstable; see the block
+                    # above). Magnitude only: no sign claim is made.
+                    "z0_msl_fit_abs": z0_msl_fit,
                     "box_lw_flux": box_lw,
                     "plane_msl_flux": plane_msl,
                 }

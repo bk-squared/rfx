@@ -324,6 +324,123 @@ def test_flux_override_masks_ill_conditioned_and_negative():
     assert ill[0].all() and neg[0].all()
 
 
+def test_reciprocity_witness_catches_a_wrong_diagonal():
+    """The runtime witness must catch what column power structurally cannot.
+
+    A wrong driven-port diagonal corrupts the incident-power
+    normalization `P_inc = P_net/(1-|S_jj|^2)` on that column only, so
+    |S21| and |S12| stop agreeing. Column power cannot see it (it is an
+    identity — see the anti-gate-lock test); reciprocity can. This is the
+    exact failure class that reached review in the first revision of this
+    lane.
+    """
+    from rfx.api._sparams import (
+        _mixed_flux_magnitude_override,
+        _mixed_reciprocity_deviation,
+    )
+    # Symmetric lossless 2-port: both ports launch 1.0 and receive 1.0.
+    box_lw = np.zeros((2, 1, 1))
+    plane_msl = np.zeros((2, 1, 1))
+    # "-x" MSL port: away_sign = -1, so the code reads net launched power
+    # as -plane and arriving power as +plane.
+    box_lw[0, 0, :] = 1.0            # run 0: lw driven, net outward
+    plane_msl[0, 0, :] = 1.0         # ...arrives at the msl plane
+    plane_msl[1, 0, :] = -1.0        # run 1: msl driven, net away
+    box_lw[1, 0, :] = -1.0           # ...arrives back at lw (inward)
+    plan = [("lw", 0), ("msl", 0)]
+
+    def run(s11, s22):
+        S = np.zeros((2, 2, 1), dtype=np.complex64)
+        S[0, 0, :], S[1, 1, :] = s11, s22
+        out, _, _ = _mixed_flux_magnitude_override(
+            S, box_lw, plane_msl, plan, msl_away_signs=[-1.0], n_lw=1,
+        )
+        return _mixed_reciprocity_deviation(out)[1]
+
+    # Matching diagonals -> reciprocity holds.
+    assert run(0.4, 0.4) == pytest.approx(0.0, abs=1e-5)
+    # A wrong diagonal on ONE port breaks it, and by a large margin.
+    assert run(0.4, 0.03) > 0.05
+
+
+def test_guard_requires_pec_ground_for_flux_channel():
+    """Flux box omits its bottom face; that needs a PEC z_lo (review)."""
+    from rfx.boundaries.spec import Boundary as _B, BoundarySpec as _BS
+    lx, ly, lz = 8e-3, 3e-3, 754e-6
+    sim = Simulation(
+        freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
+        boundary=_BS(x="cpml", y="cpml", z=_B(lo="cpml", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=_EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
+                (lx, y_c + _W_TRACE / 2, _H_SUB + _DX)), material="pec")
+    _add_feed(sim, y_c)
+    _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
+    with pytest.raises(NotImplementedError, match="PEC z_lo"):
+        sim.compute_mixed_s_matrix(skip_preflight=True)
+    # The wave channel makes no such assumption and must still build.
+    sim.compute_mixed_s_matrix(
+        freqs=np.linspace(1e9, 2e9, 2), num_periods=1.0,
+        skip_preflight=True, magnitude_channel="wave",
+    )
+
+
+def test_guard_rejects_horizontal_port_on_flux_channel():
+    """`pe.extent` is treated as a z height by the box builder (review)."""
+    sim, y_c = _base_sim()
+    sim.add_port(position=(2e-3, y_c, _H_SUB / 2), component="ex",
+                 impedance=50.0, extent=_H_SUB)
+    _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
+    with pytest.raises(NotImplementedError, match="component='ez'"):
+        sim.compute_mixed_s_matrix(skip_preflight=True)
+
+
+def test_negative_arriving_power_is_tracked_not_only_driven():
+    """A receive-side sign defect must be flagged, not silently |S|=0."""
+    from rfx.api._sparams import _mixed_flux_magnitude_override
+    S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
+    box_lw = np.zeros((1, 1, 1))
+    plane_msl = np.zeros((1, 1, 1))
+    box_lw[0, 0, :] = 1.0            # healthy driven net power
+    plane_msl[0, 0, :] = -1.0        # mis-signed: reads as arriving < 0
+    S_out, _, neg = _mixed_flux_magnitude_override(
+        S_wave, box_lw, plane_msl, [("lw", 0)],
+        msl_away_signs=[-1.0], n_lw=1,
+    )
+    assert neg[1].all(), "receive-side negative power went untracked"
+    assert float(np.abs(np.asarray(S_out)[1, 0, 0])) == 0.0
+
+
+def test_forward_does_not_pay_for_flux_monitors(monkeypatch):
+    """Registering flux monitors must not change the plain forward() lane.
+
+    `ForwardResult` has never carried flux monitors, so accumulating them
+    inside the differentiable scan would be pure cost (including AD-tape
+    memory) with no visible result — a silent regression for existing
+    AD callers. The build is therefore gated to the raw-hook consumer.
+    """
+    import jax.numpy as jnp
+    import rfx.runners.uniform as _uni
+
+    calls = []
+    real = _uni.build_flux_monitor_cfgs
+    monkeypatch.setattr(
+        _uni, "build_flux_monitor_cfgs",
+        lambda *a, **k: (calls.append(1), real(*a, **k))[1],
+    )
+    sim = Simulation(freq_max=10e9, domain=(4e-3, 2e-3, 1e-3),
+                     dx=100e-6, cpml_layers=4)
+    sim.add_port(position=(1e-3, 1e-3, 0.5e-3), component="ez",
+                 impedance=50.0)
+    sim.add_flux_monitor(axis="x", coordinate=2e-3,
+                         freqs=jnp.asarray(np.array([5e9])))
+    sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
+                skip_preflight=True)
+    assert calls == [], "forward() built flux monitors it cannot return"
+
+
 def test_guard_rejects_cpml_adjacent_probe_ladder():
     """Regression lock for the #488 attempt-1 defect D3.
 
