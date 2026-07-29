@@ -74,7 +74,7 @@ def _asymmetric_reciprocal(z0, n_f):
 
     Needed because the through line (S22 = 0) and the shunt resistor
     (S11 = S22) are both degenerate for the defect family in
-    ``test_both_drive_swap_is_NOT_caught_by_either_witness`` — with those
+    ``test_both_drive_swap_gap_requires_the_downstream_passivity_handle`` — with those
     fixtures the defect happens to collapse to a singular matrix and gets
     caught by accident rather than by design.
     """
@@ -91,6 +91,38 @@ def _asymmetric_reciprocal(z0, n_f):
     s21 = 2.0 / den
     s12 = 2.0 * (a * d - b * c) / den
     return (s11 * one, s12 * one, s21 * one, s22 * one)
+
+
+# ---------------------------------------------------------------------------
+# Ground truth must itself be checked — every test below depends on it
+# ---------------------------------------------------------------------------
+
+def test_asymmetric_fixture_is_what_it_claims():
+    """Verify the asymmetric DUT independently, by node analysis.
+
+    The review that produced this fixture found the previous battery passing
+    for the wrong reason: both older fixtures were DEGENERATE for the defect
+    they were supposed to discriminate, and nothing said so. A fixture whose
+    properties are assumed rather than checked is how that happens, so this
+    one is derived a second way — plain node analysis of the series-shunt-
+    series network — and compared against the ABCD formula it ships with.
+    """
+    z0 = 48.5914
+    z1, z2, y = 30.0, 12.0, 1.0 / 80.0
+    s11, s12, s21, s22 = (v[0] for v in _asymmetric_reciprocal(z0, 1))
+
+    zp = 1.0 / (y + 1.0 / (z2 + z0))          # shunt 1/y || (z2 + Z0)
+    zin = z1 + zp
+    v1 = zin / (z0 + zin)                      # unit EMF behind series Z0
+    v2 = (v1 * zp / (z1 + zp)) * z0 / (z2 + z0)
+    zin2 = z2 + 1.0 / (y + 1.0 / (z1 + z0))
+    np.testing.assert_allclose(s11.real, (zin - z0) / (zin + z0), atol=1e-12)
+    np.testing.assert_allclose(s21.real, 2.0 * v2, atol=1e-12)
+    np.testing.assert_allclose(s22.real, (zin2 - z0) / (zin2 + z0), atol=1e-12)
+
+    assert np.isclose(s12, s21, atol=1e-14), "fixture must be reciprocal"
+    assert not np.isclose(abs(s11), abs(s22)), "fixture must be ASYMMETRIC"
+    assert abs(s11) ** 2 + abs(s21) ** 2 < 1.0, "fixture must be passive"
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +221,7 @@ def test_swapped_receive_amplitude_one_drive_is_caught():
     assert np.all(np.abs(bad.s_params[1, 0]) < 0.2), np.abs(bad.s_params[1, 0])
 
 
-def test_both_drive_swap_is_NOT_caught_by_either_witness():
+def test_both_drive_swap_gap_requires_the_downstream_passivity_handle():
     """DOCUMENTED GAP: the systematic a/b mislabel evades both local witnesses.
 
     A real implementation bug mislabels incident vs outgoing at one port
