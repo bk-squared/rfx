@@ -31,6 +31,12 @@ class Shape(Protocol):
     ) -> jnp.ndarray:
         """Evaluate shape occupancy on explicit 1D coordinate arrays.
 
+        Coordinates are **node** positions, and each shape defines its own
+        boundary rule; :class:`Box` is half-open ``[lo, hi)``, which makes a
+        drawn extent realize one cell shorter at the ``hi`` face. See the
+        :class:`Box` docstring before drawing a PEC obstacle to a nominal
+        physical dimension.
+
         Parameters
         ----------
         x, y, z : 1D arrays of physical coordinates (metres)
@@ -65,7 +71,113 @@ def _grid_coords(grid: Grid):
 
 @dataclass(frozen=True)
 class Box:
-    """Axis-aligned box defined by two corners (meters)."""
+    """Axis-aligned box defined by two corners (meters).
+
+    **Rasterization convention (read before drawing a PEC obstacle).**
+    On each axis the volume branch is **half-open** ``[lo, hi)`` over
+    **node** coordinates: node ``j`` at ``y_j = j * dx`` belongs to the box
+    iff ``lo <= y_j < hi``. The convention is deliberate and several paths
+    depend on it (see ``_axis_mask`` for the issue history), but it has two
+    consequences that bite when a box is drawn to a nominal physical size:
+
+    1. **The ``hi`` face contributes no cell.** A box whose corners both
+       land on node planes, ``lo = i*dx`` and ``hi = k*dx``, occupies nodes
+       ``i .. k-1``. Its realized extent between the first and last occupied
+       node plane is therefore ``(hi - lo) - dx``, one cell short of the
+       drawn extent, and the shortfall is entirely at the ``hi`` face, so a
+       **single box** is also displaced by ``dx/2`` toward ``lo``. Note the
+       two faces are NOT interchangeable: ``lo`` is inclusive and ``hi`` is
+       exclusive. Whether that per-box displacement survives in a
+       multi-object structure depends on which face of each object is the
+       load-bearing one — see the facing-pair discussion below, where it
+       cancels in one case and not the other.
+
+    2. **A corner exactly on a node plane is a knife edge.** What you can
+       observe: *the same drawing recipe, on the same grid, gives a
+       one-cell-too-wide opening at one aperture and a two-cell-too-wide
+       opening at another* — WR-90 fins drawn to the nominal opening give
+       ``d + dx`` at ``d`` = 7.620 and 18.288 mm but ``d + 2*dx`` at
+       12.192 mm, at both a/30 and a/60. Nothing about the nominal
+       dimensions predicts which.
+
+       Why: masks are evaluated in the default float32 precision, and the
+       node coordinates are themselves double-rounded.
+       :func:`_grid_coords` computes ``f32(f32(i) * f32(dx))`` while a
+       caller's corner is computed in float64 and cast once, so
+       **algebraically equal values land on opposite sides of the
+       comparison**. On a real WR-90 grid an f64 reconstruction of the nodes
+       disagrees with production on 30 of 31 nodes by up to 1.1e-9 m (1e-6
+       of a cell), which is enough to move the occupied-node count by a
+       whole cell. A corner computed as ``a - n*dx`` may thus rasterize
+       differently from the algebraically identical ``m*dx``.
+
+    For a **PEC obstacle** the occupied nodes are where the tangential ``E``
+    is zeroed, so consequence (1) is an *electrical* dimension error, not a
+    sub-cell cosmetic one. The electrical opening is measured between the
+    innermost ZEROED node planes, i.e. ``(n_open + 1) * dx`` — the same
+    measure that reproduces the guide's own width, ``a = cells * dx``
+    exactly (counting open nodes alone would call WR-90 22.098 mm instead of
+    22.86 at a/30).
+
+    **A facing pair is not symmetric under this rule, because its two
+    interior faces are different kinds of corner.** For fins drawn from each
+    wall inward, the lo fin's interior face is a ``hi`` corner, which
+    half-openness **always** drops, so that fin always retreats one cell.
+    The hi fin's interior face is a ``lo`` corner, which ``coords >= lo``
+    normally **keeps** — it retreats only when (2) puts the node just below
+    the corner. Hence the realized opening is:
+
+    * ``d + dx`` when only the lo fin retreated. The opening is then
+      **asymmetric**: its centre sits ``dx/2`` below the guide centre.
+    * ``d + 2*dx`` when rounding made the hi fin retreat as well. The two
+      retreats cancel and the opening is **symmetric**.
+
+    Which one you get is **not predictable from the nominal dimensions**.
+    Measured on WR-90 at both a/30 and a/60: ``d`` = 7.620 and 18.288 mm
+    give ``d + dx`` (centre offset -0.5 cell), while ``d`` = 12.192 mm gives
+    ``d + 2*dx`` (centred). Over ~99k (guide, mesh, aperture) combinations
+    the split is 82% / 9% / 8% across ``d + dx`` / ``d + 2*dx`` / ``d`` at
+    even parity, shifting one cell up at odd parity (see the recipe).
+    Shifting each interior face half a cell the *wrong* way (toward the
+    metal) retreats both faces by construction rather than by luck, giving
+    ``d + 2*dx`` deterministically at every aperture — that is the drawing
+    case 18's blocked revision used, and it is why re-comparing that
+    revision against ``oracle(d + 2*dx)`` collapsed every row.
+
+    In PR #480's WR-90 single-iris lane this inflated the ``|S11|`` error
+    against an analytic mode-matching oracle by 4-6x, and because it scales
+    with ``dx`` it is easy to misread as first-order convergence. For a
+    **resonant** structure (multi-iris filter, cavity) it shifts the
+    passband rather than widening a magnitude tolerance, so it will not look
+    like a discretization error at all.
+
+    **Recipe**, two conditions, both needed:
+
+    * Put interior corners on **cell midpoints**, ``(j + 0.5) * dx``, to make
+      node ``j`` the innermost occupied plane. Every corner value in a
+      one-cell-wide interval selects the same footprint (``(j*dx, (j+1)*dx]``
+      for a ``hi`` corner, ``[j*dx, (j+1)*dx)`` for a ``lo`` corner), and the
+      midpoint is that interval's **centre** — not merely a safe nudge away
+      from the node. That is precisely why it is immune to the float32
+      effects in (2), which only ever perturb a corner by a fraction of a
+      cell.
+    * Keep the metal depth an exact number of cells, i.e. for a symmetric
+      obstacle keep ``(cells - d_cells)`` **even**. When it is odd,
+      ``fin_depth = (cells - d_cells)//2`` truncates and a symmetric opening
+      of that width is simply not representable on the grid: the opening is
+      one cell wide however it is drawn. That is a representability limit,
+      not a rasterization defect.
+
+    Under both conditions the realized opening equals the nominal one
+    exactly (measured, 100% of ~50k even-parity combinations). Then still
+    assert the realized footprint (count the occupied node planes) against
+    the intended one — see ``run_point`` in
+    ``validation/crossval/18_wr90_iris_modematch.py`` for the pattern.
+
+    A box thinner than one local cell takes a separate **thin-sheet**
+    branch (single nearest-centre node); the notes above apply to the
+    volume branch only.
+    """
 
     corner_lo: tuple[float, float, float]
     corner_hi: tuple[float, float, float]
@@ -74,6 +186,13 @@ class Box:
         return (self.corner_lo, self.corner_hi)
 
     def mask_on_coords(self, x, y, z):
+        """Occupancy on explicit node coordinates.
+
+        Volume branch is half-open ``[lo, hi)`` per axis, so the ``hi`` face
+        contributes no node and a drawn extent realizes as ``extent - dx``
+        between the outermost occupied planes. See the class docstring for
+        the PEC-obstacle consequences and the half-cell-offset recipe.
+        """
         def _axis_mask(coords, lo, hi):
             # Use LOCAL cell size at the geometry's midpoint — critical for
             # thin objects on a non-uniform axis. Using the first-cell dc
@@ -313,6 +432,16 @@ def rasterize(
     background_eps: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Rasterize shapes onto grid, producing (eps_r, sigma) arrays.
+
+    Shapes are sampled on **node** coordinates. :class:`Box` uses a
+    half-open ``[lo, hi)`` volume rule, so a box drawn between two node
+    planes realizes one cell short of its drawn extent, asymmetrically at
+    the ``hi`` face. For a PEC obstacle that is an electrical dimension
+    error — a nominal opening ``d`` between two facing boxes rasterizes to
+    ``d + dx``. Read the :class:`Box` docstring before drawing an obstacle
+    to a nominal physical size, and assert the realized footprint (this
+    function's ``sigma`` output is what the raster asserts in
+    ``validation/crossval/18_wr90_iris_modematch.py`` inspect).
 
     Parameters
     ----------

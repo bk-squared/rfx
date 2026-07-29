@@ -6,6 +6,91 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — thin-absorber advisory on every uniform waveguide S-matrix path (#494)
+
+- `compute_waveguide_s_matrix` documents a "Far-port discipline" requiring an
+  absorber `>= ~0.5 * lambda_g`, but nothing checked it on the plain two-port
+  path: the sibling `_warn_junction_cpml_thickness` advisory runs only on the
+  `port_reference_sims` junction path, and the functional entry points run no
+  `sim.preflight()`. A gated revision of crossval case 18 therefore shipped a
+  0.30-`lambda_g` stack in silence and the absorber, not discretization, set
+  the reported accuracy envelope. A new in-method ADVISORY (warning, never
+  raises) now fires whenever the absorber on a port's propagation axis is
+  thinner than `0.5 * lambda_g`, quoting both the configured thickness and the
+  requirement.
+- Evaluated at the **lowest** measured frequency, where `lambda_g` is longest
+  and the `cpml_layers=16` default weakest, because `lambda_g` diverges toward
+  cutoff — the existing junction advisory uses band centre, which is what let
+  the 0.30-`lambda_g` stack pass. The message reports the measured ripple
+  ladder (0.0706 at 0.30 `lambda_g`, 0.0366 at 0.50, 0.0093 at 0.75) so
+  `0.5 * lambda_g` reads as a floor, not a target, and names the `cpml_layers`
+  values for both 0.5 and 0.75.
+- Deliberately a LOWER bound, with three fences: silent when the band starts at
+  or below cutoff (`lambda_g` undefined; the `port_freqs_below_cutoff` preflight
+  owns that), silent when the propagation axis carries no absorbing face, and
+  evaluated on the port's lowest-cutoff mode (shortest `lambda_g`, least
+  demanding). Silent on a non-uniform mesh, where `cpml_layers * dx` is
+  ambiguous under a graded profile. Respects per-face
+  `Boundary.lo_thickness` / `.hi_thickness` overrides. No physics changed and no
+  gate or tolerance was touched. Firing and non-firing gates in
+  `tests/test_waveguide_geometry_hygiene.py`.
+
+### Changed — node-rasterization convention documented where obstacles get drawn (#493)
+
+- `Box`'s volume branch is half-open `[lo, hi)` over NODE coordinates, so a box
+  whose corners land on node planes occupies nodes `i..k-1`: the realized extent
+  is one cell short of the drawn extent, entirely at the `hi` face, which also
+  displaces a SINGLE box by `dx/2`. For a PEC obstacle those nodes are where
+  tangential `E` is zeroed, so this is an ELECTRICAL dimension error, measured
+  between the innermost zeroed planes as `(n_open + 1) * dx` — the measure that
+  reproduces the guide's own `a = cells * dx` exactly.
+- A facing pair does NOT simply inherit that per-box displacement, because its
+  two interior faces are different corner types: the lo fin's is a `hi` corner,
+  which half-openness always drops (so it always retreats one cell), while the
+  hi fin's is a `lo` corner, which is kept unless float32 rounding puts the node
+  just below it. One retreat gives `d + dx` with the opening **asymmetric**
+  (centre `dx/2` low); two retreats cancel and give `d + 2*dx` **centred**.
+  Which one occurs is **not predictable from the nominal dimensions**: measured
+  on WR-90 at both a/30 and a/60, 7.620 mm and 18.288 mm give `d + dx`
+  off-centre while 12.192 mm gives `d + 2*dx` centred. A half-cell offset toward
+  the metal retreats both faces by construction rather than by luck, giving
+  `d + 2*dx` deterministically at every aperture — the drawing case 18's blocked
+  revision used, and why re-comparing it against `oracle(d + 2*dx)` collapsed
+  every row. This inflated PR #480's `|S11|` error against an analytic
+  mode-matching oracle by 4-6x. Because it scales with `dx` it mimics
+  first-order convergence, and on a resonant structure it shifts the passband
+  instead of widening a magnitude tolerance.
+- The float32 effect is sharper than a single ULP of the corner value: node
+  coordinates are themselves double-rounded, `f32(f32(i) * f32(dx))` in
+  `_grid_coords`, while a caller's corner is computed in float64 and cast once.
+  An f64 reconstruction of the nodes disagrees with production on 30 of 31 WR-90
+  nodes by up to 1.1e-9 m (1e-6 of a cell) — enough to move the footprint by a
+  whole cell, which is precisely what separates 12.192 mm from the other two
+  apertures.
+- The recipe therefore has two conditions: interior corners on **cell
+  midpoints** (rounding-independent) AND the metal depth an exact number of
+  cells, i.e. `(cells - d_cells)` even. Under both, the realized opening equals
+  the nominal one exactly (100% of ~50k even-parity combinations measured). At
+  odd parity a symmetric opening of that width is not representable on the grid
+  and costs one cell however it is drawn — a representability limit, not a
+  rasterization defect.
+- All of the above is now stated in the `Box` / `Shape.mask_on_coords` /
+  `rasterize` docstrings and in the waveguide setup restrictions of
+  `docs/guides/sparameter_support_matrix.md`. Characterization tests pin the
+  arithmetic in `tests/test_waveguide_geometry_hygiene.py`, deriving node
+  coordinates from a real `Grid` rather than an f64 `arange` — an earlier
+  revision of those tests used f64 coordinates and consequently pinned
+  `d + dx` at every aperture, which is wrong at 12.192 mm.
+- **The rasterization rule itself is unchanged** — it is deliberate and other
+  paths depend on it. No advisory was added: the predicate floated in #493
+  (fire when the rasterized opening differs from the drawn opening by >= 1 cell)
+  gives an AMBIGUOUS reading. At `d = 7.620 mm` the defective nominal drawing
+  and the correct midpoint recipe both read +1 cell, so +1 cell cannot support a
+  defect conclusion — and +1 cell is the common case. The defect is
+  `realized != INTENDED`, and the intended dimension is never communicated to
+  the simulator, so it is not recoverable from geometry. Pinned by
+  `test_drawn_vs_realized_gap_is_ambiguous_between_correct_and_defective`.
+
 ### Fixed — MSL `eps_override` gradient: 13.7% converged deficit attributed and removed
 
 - The auto-`eps_r_sub` launch fixture (mode profile / sigma loading / source

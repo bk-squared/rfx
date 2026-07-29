@@ -862,6 +862,109 @@ def _mixed_flux_magnitude_override(
             )
     return S_out, ill_cond, neg_power
 
+def _warn_thin_absorber_vs_guide_wavelength(
+    grid, cfgs, freqs, cpml_layers, boundary_spec,
+):
+    """Advisory: absorber depth vs guide wavelength at the LOWEST measured freq.
+
+    ``compute_waveguide_s_matrix``'s "Far-port discipline" requires an absorber
+    ``>= ~0.5 * lambda_g``, but nothing checked it on the plain two-port path:
+    the ``port_reference_sims`` sibling advisory
+    (:func:`_warn_junction_cpml_thickness`) only runs on the junction path, and
+    the functional entry points run no ``sim.preflight()`` at all. A gated
+    revision of crossval case 18 therefore shipped a 0.30 ``lambda_g`` stack in
+    silence, and the absorber — not discretization — set the reported accuracy
+    envelope (issue #494).
+
+    Evaluated at the **lowest** measured frequency, where ``lambda_g`` is
+    longest and the ``cpml_layers=16`` default is weakest, because
+    ``lambda_g`` diverges as ``f`` approaches cutoff. Three deliberate
+    false-positive fences, each of which makes this a *lower* bound on the
+    real requirement:
+
+    * Skipped when the lowest measured frequency is at or below the mode's
+      own cutoff. ``lambda_g`` is undefined there and the band itself is
+      invalid — ``_check_waveguide_port_evanescent`` (preflight code
+      ``port_freqs_below_cutoff``) owns that failure, and warning about the
+      absorber on top of it would be noise. Note this means a band that
+      starts below cutoff gets **no** absorber advisory.
+    * Skipped when the port's propagation axis carries no absorbing face
+      (a PEC-closed or periodic axis has no absorber to under-drain).
+    * Uses the port's lowest-cutoff mode, whose ``lambda_g`` is the shortest
+      and so the least demanding; higher-order content sitting nearer its own
+      cutoff needs a thicker stack than this check asks for.
+
+    Emits one ``warnings.warn`` per distinct (propagation axis, cutoff);
+    does not raise. Pure NumPy, no FDTD.
+    """
+    import warnings
+
+    if boundary_spec is None:
+        return
+    f_arr = np.asarray(freqs, dtype=float)
+    if f_arr.size == 0:
+        return
+    f_lo = float(f_arr.min())
+    dx = float(grid.dx)
+    seen: set = set()
+    for cfg in cfgs:
+        # A multimode port arrives as a list of per-mode configs; the
+        # lowest-cutoff mode carries the least demanding requirement.
+        modes = cfg if isinstance(cfg, list) else [cfg]
+        if not modes:
+            continue
+        c = min(modes, key=lambda m: float(m.f_cutoff))
+        axis = str(c.normal_axis)
+        fc = float(c.f_cutoff)
+        key = (axis, round(fc, 3))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if fc <= 0.0 or f_lo <= fc:
+            continue
+        axis_boundary = getattr(boundary_spec, axis, None)
+        if axis_boundary is None:
+            continue
+        faces = []
+        for side in ("lo", "hi"):
+            if getattr(axis_boundary, side, None) not in ("cpml", "upml"):
+                continue
+            override = getattr(axis_boundary, f"{side}_thickness", None)
+            n_cells = int(cpml_layers if override is None else override)
+            if n_cells > 0:
+                faces.append((side, n_cells))
+        if not faces:
+            continue
+
+        lambda_g = (_C0_SPARAMS / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
+        required_m = 0.5 * lambda_g
+        thin = [(side, n) for side, n in faces if n * dx < required_m]
+        if not thin:
+            continue
+        detail = ", ".join(
+            f"{axis}-{side} {n} cells = {n * dx * 1e3:.1f} mm "
+            f"({n * dx / lambda_g:.2f} lambda_g)"
+            for side, n in thin
+        )
+        warnings.warn(
+            f"compute_waveguide_s_matrix: absorber on the {axis} propagation "
+            f"axis is thinner than the documented 0.5 guide-wavelength "
+            f"far-port discipline at the lowest measured frequency "
+            f"{f_lo / 1e9:.3f} GHz (mode cutoff {fc / 1e9:.3f} GHz, "
+            f"lambda_g = {lambda_g * 1e3:.1f} mm): {detail}, against a "
+            f"required {required_m * 1e3:.1f} mm. A thin absorber reflects "
+            f"guided energy and can set the accuracy envelope instead of "
+            f"discretization: in the WR-90 iris lane (issue #494) residual "
+            f"|S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and "
+            f"0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. "
+            f"Raise cpml_layers to at least "
+            f"{int(np.ceil(required_m / dx))} (0.75 lambda_g needs "
+            f"{int(np.ceil(0.75 * lambda_g / dx))}).",
+            UserWarning,
+            stacklevel=2,
+        )
+
 
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
@@ -982,8 +1085,27 @@ class _SparamMixin:
             matched reference fixes |S11| (1.86 → 0.49, physical) but the overall
             matrix stays non-physical (residual max|S|~3.9); the two in-method
             advisories (probe clearance, CPML thickness) warn when the far-port
-            discipline is not met. This enables junction measurements UNDER the
-            documented discipline; it does NOT make arbitrary compact junctions
+            discipline is not met.
+
+            The absorber half of that discipline is checked on **every**
+            uniform path, not just this one: an in-method advisory (issue
+            #494) fires whenever the absorber on a port's propagation axis is
+            thinner than ``0.5 * lambda_g`` at the **lowest** measured
+            frequency, which is where ``lambda_g`` is longest and the
+            ``cpml_layers=16`` default weakest. It is checked in-method
+            because the functional entry points run no ``sim.preflight()``.
+            Treat ``0.5 * lambda_g`` as a floor, not a target: at the WR-90
+            band edge the measured residual ``|S11|`` ripple was 0.0706 at
+            0.30 ``lambda_g``, 0.0366 at 0.50 and 0.0093 at 0.75, so a
+            0.5-``lambda_g`` absorber can still set the accuracy envelope
+            instead of discretization. The advisory is silent on a
+            non-uniform mesh (``cpml_layers * dx`` is ambiguous under a
+            graded profile) and on a band that starts at or below cutoff
+            (``lambda_g`` is undefined there; the ``port_freqs_below_cutoff``
+            preflight owns that case).
+
+            This enables junction measurements UNDER the documented
+            discipline; it does NOT make arbitrary compact junctions
             valid. See the skipped ``test_api.py`` T-junction reciprocity test
             and the companion evidence gate test
             ``tests/test_waveguide_tjunction_e4e5_gates.py``.
@@ -1214,6 +1336,15 @@ class _SparamMixin:
                 else [c._replace(src_t0=ref_t0, src_tau=ref_tau) for c in cfg]
                 for cfg in raw_cfgs
             ]
+
+        # Far-port absorber advisory for EVERY uniform two-port path (issue
+        # #494). Emitted here, before the FDTD runs and before the
+        # single-mode / multimode split, because the functional entry points
+        # run no sim.preflight() and the port_reference_sims advisory below
+        # covers only the junction path.
+        _warn_thin_absorber_vs_guide_wavelength(
+            grid, raw_cfgs, freqs, self._cpml_layers, self._boundary_spec,
+        )
 
         # Compute Kottke per-component smoothed permittivity if requested.
         # Shared by both single-mode and multi-mode paths.
