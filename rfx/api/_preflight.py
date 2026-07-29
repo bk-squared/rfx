@@ -735,8 +735,23 @@ class _PreflightMixin:
                     # Check if this is a PEC material that could use thin sheet
                     mat = self._resolve_material(mat_name)
                     is_pec = mat.sigma >= self._PEC_SIGMA_THRESHOLD
+                    # This used to advise add_thin_conductor() here. Measured:
+                    # for a PEC material that advice is a NO-OP — a sub-cell PEC
+                    # Box and add_thin_conductor() on the same footprint produce
+                    # a BIT-IDENTICAL pec_mask (verified in
+                    # tests/test_thin_conductor_honesty.py). Neither models a
+                    # sub-cell thickness; both give one cell of mask, which
+                    # rfx/boundaries/pec.py treats as a surface. Say what is
+                    # actually true instead of offering a change that changes
+                    # nothing (issue #504).
                     hint = (
-                        " Use add_thin_conductor() for sub-cell PEC sheet."
+                        " A conductor thinner than a cell is modelled as a "
+                        "one-cell PEC surface — tangential E is zeroed on it "
+                        "and the normal component survives as surface charge. "
+                        "That is usually what you want for metal many skin "
+                        "depths thick, and switching to add_thin_conductor() "
+                        "would not change it; but it means the sheet carries "
+                        "no conductor loss and its thickness is not modelled."
                         if is_pec else
                         " Use non-uniform mesh or reduce dx."
                     )
