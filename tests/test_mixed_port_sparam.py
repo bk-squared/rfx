@@ -224,6 +224,106 @@ def test_guard_rejects_mixed_lumped_and_wire():
         sim.compute_mixed_s_matrix(skip_preflight=True)
 
 
+def test_flux_magnitude_override_math():
+    """Arch-A unit falsifier: flux ratios replace off-diagonal magnitudes.
+
+    P_net = 0.75 at a drive with |S11| = 0.5 gives P_inc = 1.0; a receive
+    plane carrying 0.36 toward the port must read |S21| = 0.6 with the
+    WAVE phase preserved and the diagonal untouched — regardless of how
+    wrong the wave-channel magnitude was (the #313 class).
+    """
+    from rfx.api._sparams import _mixed_flux_magnitude_override
+    n_freqs = 3
+    S_wave = np.zeros((2, 2, n_freqs), dtype=np.complex64)
+    S_wave[0, 0, :] = 0.5                       # validated diagonal
+    S_wave[1, 0, :] = 1.7j                      # wrong magnitude, known phase
+    S_wave[1, 1, :] = 0.1
+    S_wave[0, 1, :] = -0.2                      # wrong magnitude, phase pi
+    box_lw = np.zeros((2, 1, n_freqs))
+    plane_msl = np.zeros((2, 1, n_freqs))
+    box_lw[0, 0, :] = 0.75                      # run 0: lw driven, net out
+    plane_msl[0, 0, :] = 0.36                   # +x toward the "-x" port
+    plane_msl[1, 0, :] = -0.99                  # run 1: msl driven, away=-x
+    box_lw[1, 0, :] = -0.25                     # inward 0.25 at the lw box
+    S_out, ill, neg = _mixed_flux_magnitude_override(
+        S_wave, box_lw, plane_msl, [("lw", 0), ("msl", 0)],
+        msl_away_signs=[-1.0], n_lw=1,
+    )
+    S_out = np.asarray(S_out)
+    np.testing.assert_allclose(S_out[0, 0, :], 0.5, atol=1e-6)   # untouched
+    np.testing.assert_allclose(np.abs(S_out[1, 0, :]), 0.6, rtol=1e-5)
+    np.testing.assert_allclose(np.angle(S_out[1, 0, :]), np.pi / 2, atol=1e-5)
+    # msl-driven column: P_net = (-1)*(-0.99) = 0.99, |S22|=0.1 ->
+    # P_inc = 1.0; lw receive inward = 0.25 -> |S12| = 0.5, phase pi.
+    np.testing.assert_allclose(np.abs(S_out[0, 1, :]), 0.5, rtol=1e-5)
+    np.testing.assert_allclose(np.abs(np.angle(S_out[0, 1, :])), np.pi, atol=1e-5)
+    assert not ill.any() and not neg.any()
+
+
+def test_flux_column_power_is_an_identity_not_a_passivity_check():
+    """ANTI-GATE LOCK (issue #488): do not gate passivity on this channel.
+
+    With |S_ij|^2 = P_arr,i / (P_net,j / (1 - |S_jj|^2)), the column sum
+    collapses to |S_jj|^2 + (P_arr/P_net)(1 - |S_jj|^2), which is exactly
+    1 whenever the arriving power equals the net launched power — for ANY
+    diagonal. A green column-power check therefore binds an algebraic
+    identity, not physics (feedback: a gate can bind an artifact). The
+    independent internal witness on the flux channel is RECIPROCITY,
+    because S_ij and S_ji come from different runs.
+
+    This test asserts the identity holds across wildly different
+    diagonals so that anyone tempted to promote column power to a
+    passivity gate here sees why it cannot discriminate.
+    """
+    from rfx.api._sparams import _mixed_flux_magnitude_override
+    for s11_mag in (0.03, 0.41, 0.90):
+        S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
+        S_wave[0, 0, :] = s11_mag
+        S_wave[1, 1, :] = 0.5
+        S_wave[1, 0, :] = 0.123          # arbitrary wrong wave magnitude
+        box_lw = np.zeros((2, 1, 1))
+        plane_msl = np.zeros((2, 1, 1))
+        box_lw[0, 0, :] = 0.4            # net launched
+        plane_msl[0, 0, :] = 0.4         # all of it arrives (lossless)
+        S_out, _, _ = _mixed_flux_magnitude_override(
+            S_wave, box_lw, plane_msl, [("lw", 0)],
+            msl_away_signs=[-1.0], n_lw=1,
+        )
+        col_power = float(
+            np.abs(np.asarray(S_out)[0, 0, 0]) ** 2
+            + np.abs(np.asarray(S_out)[1, 0, 0]) ** 2
+        )
+        assert col_power == pytest.approx(1.0, abs=1e-6), (
+            f"identity broken for |S11|={s11_mag}: {col_power}"
+        )
+    # Power GAIN is still detectable — that is all this quantity tests.
+    S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
+    S_wave[0, 0, :] = 0.0
+    box_lw = np.zeros((2, 1, 1))
+    plane_msl = np.zeros((2, 1, 1))
+    box_lw[0, 0, :] = 0.4
+    plane_msl[0, 0, :] = 0.8             # twice as much arrives: gain
+    S_out, _, _ = _mixed_flux_magnitude_override(
+        S_wave, box_lw, plane_msl, [("lw", 0)],
+        msl_away_signs=[-1.0], n_lw=1,
+    )
+    assert float(np.abs(np.asarray(S_out)[1, 0, 0]) ** 2) > 1.5
+
+
+def test_flux_override_masks_ill_conditioned_and_negative():
+    from rfx.api._sparams import _mixed_flux_magnitude_override
+    S_wave = np.zeros((2, 2, 2), dtype=np.complex64)
+    S_wave[0, 0, :] = 0.999                     # near-total reflection
+    box_lw = np.zeros((2, 1, 2))
+    plane_msl = np.zeros((2, 1, 2))
+    box_lw[0, 0, :] = -1e-3                     # negative net at the drive
+    _, ill, neg = _mixed_flux_magnitude_override(
+        S_wave, box_lw, plane_msl, [("lw", 0), ("msl", 0)],
+        msl_away_signs=[-1.0], n_lw=1,
+    )
+    assert ill[0].all() and neg[0].all()
+
+
 def test_guard_rejects_cpml_adjacent_probe_ladder():
     """Regression lock for the #488 attempt-1 defect D3.
 
@@ -275,6 +375,8 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert 20.0 < res.z0_ref[1] < 120.0          # HJ analytic, sane band
     assert res.s21_power_witness.shape == (1, 1, 5)
     assert np.all(np.isfinite(res.s21_power_witness))
+    assert res.magnitude_channel == "flux"
+    assert res.S_wave is not None and res.S_wave.shape == S.shape
     assert res.settling_db is not None and np.all(np.isfinite(res.settling_db))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0

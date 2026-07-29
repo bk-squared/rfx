@@ -59,6 +59,71 @@ def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
     return sim_result._replace(state=new_state, time_series=new_ts)
 
 
+def build_flux_monitor_cfgs(sim, grid, n_steps):
+    """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
+
+    Mechanical extraction of the historical ``run_uniform`` inline block so
+    the low-level forward lane (``_forward_from_materials``, issue-#488
+    mixed-family flux magnitude channel) can register the SAME monitors
+    the run() lane does. Pure function of (sim registrations, grid,
+    n_steps) — keep byte-identical to the pre-extraction block.
+    """
+    axis_to_index = {"x": 0, "y": 1, "z": 2}
+    flux_monitors = []
+    for pe in getattr(sim, '_flux_monitors', []):
+        axis_idx = axis_to_index[pe.axis]
+        plane_pos = [0.0, 0.0, 0.0]
+        plane_pos[axis_idx] = pe.coordinate
+        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+        freqs_arr = (
+            pe.freqs
+            if pe.freqs is not None
+            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+        )
+        # Compute tangential index bounds from size (finite flux region)
+        tangential_axes = [a for a in range(3) if a != axis_idx]
+        domain_sizes = [sim._domain[a] for a in tangential_axes]
+        grid_ns = [grid.shape[a] for a in tangential_axes]
+        if pe.size is not None:
+            # User-specified or default center (domain midpoint)
+            user_center = pe.center if hasattr(pe, 'center') and pe.center is not None else None
+            bounds = []
+            for idx_t, (s, dom, n) in enumerate(zip(pe.size, domain_sizes, grid_ns)):
+                c = user_center[idx_t] if user_center is not None else dom / 2.0
+                pad = getattr(
+                    grid,
+                    ['pad_x_lo', 'pad_y_lo', 'pad_z_lo'][tangential_axes[idx_t]],
+                    0,
+                )
+                # Convert physical coordinate to grid index (add CPML padding offset)
+                lo = max(0, int(round(c / grid.dx - s / (2.0 * grid.dx))) + pad)
+                hi = min(n, int(round(c / grid.dx + s / (2.0 * grid.dx))) + pad)
+                bounds.append((lo, hi))
+            lo1, hi1 = bounds[0]
+            lo2, hi2 = bounds[1]
+        else:
+            lo1, hi1 = 0, grid_ns[0]
+            lo2, hi2 = 0, grid_ns[1]
+        flux_monitors.append(
+            init_flux_monitor(
+                axis=axis_idx,
+                index=grid_index,
+                freqs=freqs_arr,
+                grid_shape=grid.shape,
+                # Grid is cubic (single dx) — both tangential cell sizes
+                # equal grid.dx. If Grid ever becomes non-cubic, select
+                # the two tangential sizes by axis_idx here.
+                d1=grid.dx,
+                d2=grid.dx,
+                dft_total_steps=n_steps,
+                dft_window=getattr(pe, 'dft_window', 'rect'),
+                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
+                lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+            )
+        )
+    return flux_monitors
+
+
 def run_uniform(
     sim,
     *,
@@ -417,58 +482,7 @@ def run_uniform(
         )
 
     # Flux monitors (Poynting flux through plane)
-    flux_monitors = []
-    for pe in getattr(sim, '_flux_monitors', []):
-        axis_idx = axis_to_index[pe.axis]
-        plane_pos = [0.0, 0.0, 0.0]
-        plane_pos[axis_idx] = pe.coordinate
-        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
-        freqs_arr = (
-            pe.freqs
-            if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-        )
-        # Compute tangential index bounds from size (finite flux region)
-        tangential_axes = [a for a in range(3) if a != axis_idx]
-        domain_sizes = [sim._domain[a] for a in tangential_axes]
-        grid_ns = [grid.shape[a] for a in tangential_axes]
-        if pe.size is not None:
-            # User-specified or default center (domain midpoint)
-            user_center = pe.center if hasattr(pe, 'center') and pe.center is not None else None
-            bounds = []
-            for idx_t, (s, dom, n) in enumerate(zip(pe.size, domain_sizes, grid_ns)):
-                c = user_center[idx_t] if user_center is not None else dom / 2.0
-                pad = getattr(
-                    grid,
-                    ['pad_x_lo', 'pad_y_lo', 'pad_z_lo'][tangential_axes[idx_t]],
-                    0,
-                )
-                # Convert physical coordinate to grid index (add CPML padding offset)
-                lo = max(0, int(round(c / grid.dx - s / (2.0 * grid.dx))) + pad)
-                hi = min(n, int(round(c / grid.dx + s / (2.0 * grid.dx))) + pad)
-                bounds.append((lo, hi))
-            lo1, hi1 = bounds[0]
-            lo2, hi2 = bounds[1]
-        else:
-            lo1, hi1 = 0, grid_ns[0]
-            lo2, hi2 = 0, grid_ns[1]
-        flux_monitors.append(
-            init_flux_monitor(
-                axis=axis_idx,
-                index=grid_index,
-                freqs=freqs_arr,
-                grid_shape=grid.shape,
-                # Grid is cubic (single dx) — both tangential cell sizes
-                # equal grid.dx. If Grid ever becomes non-cubic, select
-                # the two tangential sizes by axis_idx here.
-                d1=grid.dx,
-                d2=grid.dx,
-                dft_total_steps=n_steps,
-                dft_window=getattr(pe, 'dft_window', 'rect'),
-                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
-                lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-            )
-        )
+    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps)
 
     if sim._waveguide_ports:
         cpml_axes = grid.cpml_axes

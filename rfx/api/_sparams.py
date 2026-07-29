@@ -770,6 +770,66 @@ def _assemble_mixed_power_wave_s(
     return S, s21_power
 
 
+def _mixed_flux_magnitude_override(
+    S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
+    ill_cond_floor=0.05,
+):
+    """Replace off-diagonal MAGNITUDES with Poynting-flux ratios (issue #488).
+
+    Pure function (unit-testable without FDTD). Per driven column j:
+
+        P_inc,j  = max(P_net,j, 0) / max(1 - |S_jj|^2, floor)
+        |S_ij|   = sqrt(max(P_arr,i, 0) / P_inc,j)
+        S_out[i,j] = |S_ij| * exp(1j * arg(S_wave[i,j]))   (phase kept)
+
+    with P_net,j the net flux leaving the driven port through its own
+    surface (outward box for lumped/wire; away-signed plane for MSL) and
+    P_arr,i the toward-port flux at receive port i (inward box / toward-
+    signed plane). Diagonals are NOT touched — they stay on the validated
+    per-family channels. The identity P_net = P_inc*(1-|S_jj|^2) holds for
+    the net flow at ANY closed surface / cross-section around the driven
+    port, so no Z0 anchor enters the magnitude (the point of arch A: both
+    the #313 port-cell V*I accounting and the analytic-vs-measured MSL Z0
+    divergence drop out).
+
+    Returns (S_out, ill_cond_cols, neg_pnet_cols): boolean per-column
+    masks marking bins where 1-|S_jj|^2 < ill_cond_floor (normalization
+    unreliable — near-total reflection) and where the raw P_net was
+    negative (sign/accounting defect; clipped to 0).
+    """
+    S_wave = jnp.asarray(S_wave)
+    n_tot = int(S_wave.shape[0])
+    n_freqs = int(S_wave.shape[-1])
+    S_out = S_wave
+    ill_cond = np.zeros((n_tot, n_freqs), dtype=bool)
+    neg_pnet = np.zeros((n_tot, n_freqs), dtype=bool)
+    for run_idx, (fam, loc) in enumerate(drive_plan):
+        col = loc if fam == "lw" else n_lw + loc
+        s_jj = np.asarray(jax.lax.stop_gradient(S_wave[col, col, :]))
+        one_minus = 1.0 - np.abs(s_jj) ** 2
+        ill_cond[col, :] = one_minus < ill_cond_floor
+        if fam == "lw":
+            p_net = box_lw[run_idx, loc, :]
+        else:
+            p_net = msl_away_signs[loc] * plane_msl[run_idx, loc, :]
+        neg_pnet[col, :] = p_net < 0.0
+        p_inc = np.clip(p_net, 0.0, None) / np.clip(one_minus, ill_cond_floor, None)
+        safe_pinc = np.where(p_inc > 0.0, p_inc, np.inf)
+        for i in range(n_tot):
+            if i == col:
+                continue
+            if i < n_lw:
+                p_arr = -box_lw[run_idx, i, :]          # inward = -outward
+            else:
+                p_arr = -msl_away_signs[i - n_lw] * plane_msl[run_idx, i - n_lw, :]
+            mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
+            ph = jnp.exp(1j * jnp.angle(S_wave[i, col, :]))
+            S_out = S_out.at[i, col, :].set(
+                (jnp.asarray(mag) * ph).astype(S_wave.dtype)
+            )
+    return S_out, ill_cond, neg_pnet
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
@@ -2362,6 +2422,7 @@ class _SparamMixin:
         enforce_passivity: bool = True,
         skip_preflight: bool = False,
         return_diagnostics: bool = False,
+        magnitude_channel: str = "flux",
     ) -> "MixedSMatrixResult":
         """Mixed-family S-matrix: lumped/wire ports + MSL ports (issue #488).
 
@@ -2381,13 +2442,51 @@ class _SparamMixin:
         ``sqrt(Z_j/Z_i)`` (issue #460); reciprocity of a reciprocal
         structure is the committed internal falsifier for this choice.
 
+        MAGNITUDE CHANNEL (``magnitude_channel``, default ``"flux"``):
+        the #488 falsifier battery + an independent Poynting-flux referee
+        measured the port-cell V*I accounting undercounting delivered
+        power ~3x at a wire probe feed (the OPEN issue-#313 class) and
+        the analytic Hammerstad-Jensen Z0 anchor diverging from the
+        measured line ratio on an interface-aligned mesh. Off-diagonal
+        MAGNITUDES are therefore taken from Poynting flux by default:
+        auto-registered surfaces (a closed 5-face box around each
+        lumped/wire port over the z-lo ground; a full cross-section plane
+        at each MSL port's probe-0 x) give per-drive net powers, and
+
+            |S_ij|^2 = P_arrive,i / (P_net,j / (1 - |S_jj|^2))
+
+        with the VALIDATED per-family diagonal S_jj (a local ratio at one
+        cell — immune to the #313 magnitude class) supplying the
+        reflection correction; no Z0 anchor enters the magnitude.
+        Off-diagonal PHASE still comes from the wave channel (see below).
+        ``magnitude_channel="wave"`` keeps the raw power-wave magnitudes
+        (diagnostic; carries the #313 deflation at lumped/wire ports).
+
         HONESTY NOTES (read before quoting numbers):
 
-        * Off-diagonal magnitudes that RECEIVE at a lumped/wire port cell
-          inherit the issue-#313 near-field deflation of the default
-          port-cell waves. The returned ``s21_power_witness`` cross-checks
-          the MSL-receiving direction against an extractor-independent
-          delivered-power normalization; quote it alongside ``|S|``.
+        * The flux magnitudes inherit a flux-accounting envelope (box
+          leakage + finite DFT; the Phase-0 referee class measured ~1.3%
+          on the canonical thru) and an ill-conditioning guard: when
+          ``1 - |S_jj|^2`` is small (near-total reflection at the driven
+          port) the normalization is unreliable and a warning names the
+          column.
+        * **A per-column power sum near 1 is NOT evidence on this
+          channel.** Substituting the definition gives
+          ``sum_i |S_ij|^2 = |S_jj|^2 + (P_arr/P_net)(1 - |S_jj|^2)``,
+          which is identically 1 whenever the arriving power equals the
+          net launched power — for ANY value of the diagonal. The flux
+          normalization makes passivity an identity, not a measurement,
+          so do not quote column power as a passivity check here (it
+          still detects power GAIN, i.e. ``P_arr > P_net``). The
+          independent internal check on this channel is RECIPROCITY:
+          ``S_ij`` and ``S_ji`` come from different runs with different
+          normalizations, so their agreement is real evidence.
+        * With ``magnitude_channel="wave"``, off-diagonal magnitudes that
+          RECEIVE at a lumped/wire port cell inherit the issue-#313
+          near-field deflation of the default port-cell waves. The
+          returned ``s21_power_witness`` cross-checks the MSL-receiving
+          direction against a delivered-power normalization; quote it
+          alongside ``|S|``.
         * Cross-family off-diagonal PHASE mixes two reference-plane
           conventions (port cell vs de-embedded MSL probe plane) and a
           component-mixing ±1 (probes.py sign-convention fence);
@@ -2605,6 +2704,9 @@ class _SparamMixin:
         # mirrors compute_msl_s_matrix: explicit eps_r_sub > rasterised
         # eps_r at the trace-centre substrate cell).
         z0_hj_per_port: list[float] = []
+        beta0_per_port: list[np.ndarray] = []
+        from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
+        _c0_mixed = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
         for p_idx, pe in enumerate(entries):
             meta = port_idx_meta[p_idx]
             if pe.eps_r_sub is not None:
@@ -2615,10 +2717,14 @@ class _SparamMixin:
                 eps_r_ref = float(np.asarray(
                     materials.eps_r[i_feed_p, meta["j_centre"], k_mid]
                 ))
-            z0_hj, _eps_eff = hammerstad_jensen_z0_eps_eff(
+            z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
                 pe.width, pe.height, eps_r_ref
             )
             z0_hj_per_port.append(float(z0_hj))
+            beta0_per_port.append(
+                2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj))
+                / _c0_mixed
+            )
 
         # Trace-conductor z-cell span (closed Ampere loop needs the PEC
         # trace; mirrors compute_msl_s_matrix issue #80 stage S1).
@@ -2665,6 +2771,12 @@ class _SparamMixin:
             # per drive run — 2*n_ports repeats of the same advisories).
             self.preflight()
 
+        if magnitude_channel not in ("flux", "wave"):
+            raise ValueError(
+                "compute_mixed_s_matrix: magnitude_channel must be 'flux' "
+                f"(default) or 'wave', got {magnitude_channel!r}."
+            )
+
         drive_plan = [("lw", j) for j in range(n_lw)] + \
                      [("msl", d) for d in range(n_msl)]
         n_runs = len(drive_plan)
@@ -2677,6 +2789,7 @@ class _SparamMixin:
         saved_ports = list(self._ports)
         saved_probes = list(self._probes)
         saved_internal = set(self._internal_probe_indices)
+        saved_flux = list(self._flux_monitors)
         try:
             # Ring-down settling witness probes at every MSL probe plane,
             # mid-substrate (worst plane wins — a single plane is
@@ -2699,11 +2812,60 @@ class _SparamMixin:
             )
             witness_probes = list(self._probes)
 
+            # Flux surfaces for the magnitude channel (registered once —
+            # geometry is drive-independent). Lumped/wire port p: a closed
+            # 5-face box over the z-lo ground plane (flux through the PEC
+            # ground face is identically zero); outward-signed face list.
+            # MSL port p: one full-cross-section x-plane at probe 0 (its
+            # de-embedding reference plane).
+            flux_faces_lw: list[list[tuple[str, float]]] = []
+            flux_names_msl: list[str] = []
+            if magnitude_channel == "flux":
+                _m = 3.0 * float(grid.dx)
+                for p, pe in enumerate(lw_entries):
+                    x0_p, y0_p, _z0p = (float(c) for c in pe.position)
+                    z_top = float(pe.extent or grid.dx) + _m
+                    faces = []
+                    for ax, coord, size, center, sgn in (
+                        ("x", x0_p - _m, (2 * _m, z_top), (y0_p, z_top / 2), -1.0),
+                        ("x", x0_p + _m, (2 * _m, z_top), (y0_p, z_top / 2), +1.0),
+                        ("y", y0_p - _m, (2 * _m, z_top), (x0_p, z_top / 2), -1.0),
+                        ("y", y0_p + _m, (2 * _m, z_top), (x0_p, z_top / 2), +1.0),
+                        ("z", z_top, (2 * _m, 2 * _m), (x0_p, y0_p), +1.0),
+                    ):
+                        nm = f"_mixed_flux_lw{p}_{ax}{'+' if sgn > 0 else '-'}{coord:.6g}"
+                        self.add_flux_monitor(
+                            axis=ax, coordinate=float(coord),
+                            freqs=jnp.asarray(freqs_arr),
+                            size=(float(size[0]), float(size[1])),
+                            center=(float(center[0]), float(center[1])),
+                            name=nm,
+                        )
+                        faces.append((nm, sgn))
+                    flux_faces_lw.append(faces)
+                for p, pxs in enumerate(probe_xs):
+                    nm = f"_mixed_flux_msl{p}"
+                    self.add_flux_monitor(
+                        axis="x", coordinate=float(pxs[0]),
+                        freqs=jnp.asarray(freqs_arr), name=nm,
+                    )
+                    flux_names_msl.append(nm)
+
             v_lw = np.zeros((n_runs, n_lw, n_freqs_used), dtype=np.complex128)
             i_lw = np.zeros((n_runs, n_lw, n_freqs_used), dtype=np.complex128)
             v0_msl = np.zeros((n_runs, n_msl, n_freqs_used), dtype=np.complex128)
             i_msl = np.zeros((n_runs, n_msl, n_freqs_used), dtype=np.complex128)
+            _n_probes_max = max(len(pxs) for pxs in probe_xs)
+            v_lad = np.zeros(
+                (n_runs, n_msl, _n_probes_max, n_freqs_used),
+                dtype=np.complex128,
+            )
             settling_db_runs = np.full(n_runs, np.nan)
+            # Signed per-run flux accountings (magnitude_channel="flux"):
+            # box_lw[run, p]  = net OUTWARD box flux at lumped/wire port p
+            # plane_msl[run, p] = raw +x-directed flux at MSL port p's plane
+            box_lw = np.zeros((n_runs, n_lw, n_freqs_used))
+            plane_msl = np.zeros((n_runs, n_msl, n_freqs_used))
 
             for run_idx, (fam, loc) in enumerate(drive_plan):
                 # Excite exactly one port; every other port keeps its
@@ -2734,10 +2896,16 @@ class _SparamMixin:
                 names = []
                 for p_idx, pxs in enumerate(probe_xs):
                     nm = f"_mixed_run{run_idx}_p{p_idx}"
-                    self.add_dft_plane_probe(
-                        axis="x", coordinate=float(pxs[0]), component="ez",
-                        freqs=jnp.asarray(freqs_arr), name=nm + "_ez",
-                    )
+                    # Full ez ladder: probe 0 feeds the V*I wave split;
+                    # the N-probe least-squares fit (measured line Zc for
+                    # the MSL diagonal — see the z0_fit block below) needs
+                    # every plane.
+                    for q_idx, x_c in enumerate(pxs):
+                        self.add_dft_plane_probe(
+                            axis="x", coordinate=float(x_c), component="ez",
+                            freqs=jnp.asarray(freqs_arr),
+                            name=nm + f"_ez{q_idx}",
+                        )
                     self.add_dft_plane_probe(
                         axis="x", coordinate=float(pxs[0]), component="hy",
                         freqs=jnp.asarray(freqs_arr), name=nm + "_hy",
@@ -2775,6 +2943,28 @@ class _SparamMixin:
                         "is out of sync with _forward_from_materials."
                     )
 
+                if magnitude_channel == "flux":
+                    from rfx.probes.probes import flux_spectrum
+                    fmon = raw.get("flux_monitors")
+                    if not fmon:
+                        raise RuntimeError(
+                            "compute_mixed_s_matrix: the production scan "
+                            "returned no flux monitors — the issue-#488 "
+                            "flux hook is out of sync with "
+                            "_forward_from_materials."
+                        )
+                    for p, faces in enumerate(flux_faces_lw):
+                        acc = np.zeros(n_freqs_used)
+                        for nm, sgn in faces:
+                            acc = acc + sgn * np.asarray(
+                                flux_spectrum(fmon[nm]), dtype=np.float64
+                            )
+                        box_lw[run_idx, p, :] = acc
+                    for p, nm in enumerate(flux_names_msl):
+                        plane_msl[run_idx, p, :] = np.asarray(
+                            flux_spectrum(fmon[nm]), dtype=np.float64
+                        )
+
                 # Settling witness from the probe time series (worst
                 # end/peak Ez^2 across the MSL probe planes).
                 _ts = raw.get("time_series")
@@ -2804,11 +2994,16 @@ class _SparamMixin:
                 )
                 for p_idx, meta in enumerate(port_idx_meta):
                     nm = names[p_idx]
-                    ez_plane = jnp.asarray(planes[nm + "_ez"].accumulator)
-                    v_f = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-                    for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                        v_f = v_f + ez_plane[:, meta["j_centre"], k] \
-                            * float(dz_arr[k])
+                    for q_idx in range(len(probe_xs[p_idx])):
+                        ez_plane = jnp.asarray(
+                            planes[nm + f"_ez{q_idx}"].accumulator
+                        )
+                        v_q = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
+                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
+                            v_q = v_q + ez_plane[:, meta["j_centre"], k] \
+                                * float(dz_arr[k])
+                        v_lad[run_idx, p_idx, q_idx, :] = np.asarray(v_q)
+                    v_f = jnp.asarray(v_lad[run_idx, p_idx, 0, :])
                     hy_plane = jnp.asarray(planes[nm + "_hy"].accumulator)
                     hz_plane = jnp.asarray(planes[nm + "_hz"].accumulator)
                     hy_plane = hy_plane * _hs_phase[:, None, None].astype(hy_plane.dtype)
@@ -2832,6 +3027,111 @@ class _SparamMixin:
                 wire_mode, drive_plan,
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
+
+            # ---- Measured line Zc for the MSL diagonals ----------------
+            # Documented deviation from compute_msl_s_matrix's analytic
+            # z0_hj anchor: on the mixed lane's interface-aligned fixtures
+            # the analytic anchor diverged from the discretized line
+            # (arch-A battery: an understated |S22| broke lossless-
+            # reciprocal consistency |S11| == |S22| and carried the whole
+            # 9% reciprocity residual). The N-probe least-squares fit
+            # measures Zc(f) from the recorded ez ladder; per-bin fallback
+            # to z0_hj where the fit is unreliable.
+            from rfx.probes.msl_wave_decomp import extract_msl_nprobe
+            z0_msl_meas = np.tile(
+                np.asarray(z0_hj_per_port, dtype=float)[:, None],
+                (1, n_freqs_used),
+            )
+            for d in range(n_msl):
+                run_d = n_lw + d
+                n_p = len(probe_xs[d])
+                res_fit = extract_msl_nprobe(
+                    jnp.asarray(v_lad[run_d, d, :n_p, :].T),
+                    jnp.asarray(np.asarray(probe_xs[d], dtype=float)),
+                    jnp.asarray(i_msl[run_d, d, :]),
+                    jnp.asarray(beta0_per_port[d]),
+                    z0_hj=z0_hj_per_port[d],
+                )
+                # #140 sign convention: msl_loop_current negates only for
+                # "+x" ports; mirror so the reported Zc is positive-real.
+                dir_sign = 1.0 if entries[d].direction == "+x" else -1.0
+                zc = np.real(np.asarray(
+                    jax.lax.stop_gradient(res_fit["z0"])
+                )) * dir_sign
+                ok = np.isfinite(zc) & (zc > 5.0) & (zc < 500.0)
+                z0_msl_meas[d, :] = np.where(ok, zc, z0_hj_per_port[d])
+                # Soft caveat, mirroring compute_msl_s_matrix's _Z0_TOL
+                # pattern: the [5, 500] ohm guard above is a sanity floor,
+                # NOT a settling check — measured on this lane, the same
+                # fixture fits 47.9 ohm at num_periods=40 but scatters over
+                # 57-82 ohm at num_periods=4. A large deviation from the
+                # analytic anchor therefore usually means the record is
+                # under-settled (check settling_db), not that the line is
+                # exotic. Warn; never clamp the measurement to the
+                # assumption.
+                _dev = float(np.max(
+                    np.abs(z0_msl_meas[d, :] - z0_hj_per_port[d])
+                    / z0_hj_per_port[d]
+                ))
+                if _dev > 0.10:
+                    import warnings as _wz
+                    _wz.warn(
+                        f"compute_mixed_s_matrix: measured line Zc for MSL "
+                        f"port {entries[d].name!r} deviates up to "
+                        f"{_dev * 100:.1f}% from analytic Hammerstad-Jensen "
+                        f"{z0_hj_per_port[d]:.2f} ohm. The N-probe fit needs "
+                        "a SETTLED record (same fixture: 47.9 ohm at "
+                        "num_periods=40 vs 57-82 ohm at num_periods=4) — "
+                        "check settling_db before trusting the MSL "
+                        "diagonal, and on coarse meshes expect genuine "
+                        "Yee-staircase Z0 bias on top.",
+                        stacklevel=2,
+                    )
+                v_d = v0_msl[run_d, d, :]
+                i_d = i_msl[run_d, d, :]
+                den = v_d + z0_msl_meas[d, :] * i_d
+                den = np.where(np.abs(den) > 0, den, 1e-30)
+                s_dd = (v_d - z0_msl_meas[d, :] * i_d) / den
+                S = S.at[n_lw + d, n_lw + d, :].set(
+                    jnp.asarray(s_dd).astype(_complex_dtype)
+                )
+            s_wave_full = None
+
+            if magnitude_channel == "flux":
+                import warnings as _wf
+                s_wave_full = np.asarray(jax.lax.stop_gradient(S))
+                msl_away = [
+                    (+1.0 if pe.direction == "+x" else -1.0) for pe in entries
+                ]
+                S, _ill_cond, _neg_pnet = _mixed_flux_magnitude_override(
+                    S, box_lw, plane_msl, drive_plan, msl_away, n_lw,
+                )
+                S = jnp.asarray(S, dtype=_complex_dtype)
+                for col in range(n_lw + n_msl):
+                    n_ill = int(_ill_cond[col].sum())
+                    if n_ill:
+                        _wf.warn(
+                            f"compute_mixed_s_matrix: flux magnitude for "
+                            f"driven port index {col} is ill-conditioned at "
+                            f"{n_ill}/{n_freqs_used} bins "
+                            f"(1 - |S_jj|^2 < 0.05 — near-total reflection; "
+                            "the incident-power reconstruction divides by "
+                            "almost nothing). Off-diagonals of that column "
+                            "are UNRELIABLE at those bins.",
+                            stacklevel=2,
+                        )
+                    n_neg = int(_neg_pnet[col].sum())
+                    if n_neg:
+                        _wf.warn(
+                            f"compute_mixed_s_matrix: NET flux at driven "
+                            f"port index {col} is NEGATIVE at "
+                            f"{n_neg}/{n_freqs_used} bins — a sign or "
+                            "accounting defect in the flux surfaces (power "
+                            "cannot flow INTO a driven passive-terminated "
+                            "port net). Clipped to zero; treat the column "
+                            "as an extraction failure, not physics.",
+                            stacklevel=2,
+                        )
 
             # MSL standing-wave-null reliability from each MSL port's own
             # driven run (mirrors compute_msl_s_matrix issue #337).
@@ -2883,6 +3183,8 @@ class _SparamMixin:
                 reliable=reliable,
                 S_raw=s_raw,
                 passivity_correction=passivity_correction,
+                S_wave=s_wave_full,
+                magnitude_channel=magnitude_channel,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs, port_names, num_periods=num_periods,
@@ -2909,6 +3211,9 @@ class _SparamMixin:
                     "v0_msl": v0_msl, "i_msl": i_msl,
                     "drive_plan": drive_plan,
                     "z0_hj_msl": np.asarray(z0_hj_per_port),
+                    "z0_msl_measured": z0_msl_meas,
+                    "box_lw_flux": box_lw,
+                    "plane_msl_flux": plane_msl,
                 }
             return result
         finally:
@@ -2917,6 +3222,7 @@ class _SparamMixin:
             self._ports = saved_ports
             self._probes = saved_probes
             self._internal_probe_indices = saved_internal
+            self._flux_monitors = saved_flux
 
     def compute_coaxial_s_matrix(
         self,

@@ -1250,6 +1250,13 @@ class _ExecuteMixin:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # Flux monitors — same configs the run() lane builds, so the
+        # issue-#488 mixed-family magnitude channel can read Poynting
+        # flux through this low-level lane too (PURE ADD: empty list
+        # when nothing is registered, exactly the prior behavior).
+        from rfx.runners.uniform import build_flux_monitor_cfgs
+        flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps)
+
         # DFT plane probes — mirror runners/uniform.py:340-359 so the
         # JIT scan body actually accumulates plane-resolved DFT, then
         # carry the result back through ForwardResult.dft_planes for
@@ -1467,6 +1474,7 @@ class _ExecuteMixin:
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             dft_planes=dft_planes if dft_planes else None,
+            flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
             return_state=False,
             stencil_order=self._stencil_order,
         )
@@ -1503,6 +1511,18 @@ class _ExecuteMixin:
                     if self._dft_planes else None
                 ),
                 "time_series": getattr(result, "time_series", None),
+                # Flux monitors for the issue-#488 arch-A magnitude channel
+                # (same name-keyed contract the runner uses for run()).
+                "flux_monitors": (
+                    {
+                        entry.name: fmv
+                        for entry, fmv in zip(
+                            self._flux_monitors,
+                            getattr(result, "flux_monitors", None) or (),
+                        )
+                    }
+                    if self._flux_monitors else None
+                ),
             }
 
         s_params_out = getattr(result, "s_params", None)

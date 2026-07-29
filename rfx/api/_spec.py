@@ -1385,6 +1385,11 @@ class MixedSMatrixResult:
     reliable: np.ndarray | None = None
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
+    # Arch-A magnitude channel (issue #488): off-diagonal magnitudes come
+    # from Poynting flux by default; ``S_wave`` keeps the raw power-wave
+    # matrix for comparison (None when magnitude_channel="wave").
+    S_wave: np.ndarray | None = None
+    magnitude_channel: str = "wave"
 
 
 __all__ = [
