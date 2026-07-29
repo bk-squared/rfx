@@ -1833,7 +1833,8 @@ def solve_two_port_from_wave_amplitudes(
     40.8 on an asymmetric DUT, 4% of the default ``cond_warn``) so the
     degeneracy guard is silent as well. What DOES catch it is **passivity**:
     ``S'22 = 1/S22`` explodes for any well-matched passive DUT (measured
-    ``|S22'| = 32.8``, column power 27). **Anything built on this solve must
+    ``|S22'| = 32.8``, column power 317 against a passive limit of 1).
+    **Anything built on this solve must
     therefore route its result through the repo's passivity self-check** —
     that check is not optional decoration here, it is the only handle on this
     defect family.

@@ -260,7 +260,12 @@ def test_both_drive_swap_gap_requires_the_downstream_passivity_handle():
         np.abs(bad.s_params[1, 1]), 1.0 / np.abs(s_true[3]), rtol=1e-9
     )
     col_power = np.abs(bad.s_params[0, 0]) ** 2 + np.abs(bad.s_params[1, 0]) ** 2
-    assert np.all(col_power > 1.1), col_power
+    # Measured 317 against a passive limit of 1 — the defect is not marginal,
+    # it is two orders of magnitude out. The floor is well below the measured
+    # value but far above 1, so it stays meaningful if the fixture is retuned
+    # while still failing loudly if the defect ever stopped being gross. The
+    # docstring quotes this number; a drift here should force re-reading it.
+    assert np.all(col_power > 100.0), col_power
 
 
 @pytest.mark.parametrize("scale", [1.05, 1.5, 0.8])
