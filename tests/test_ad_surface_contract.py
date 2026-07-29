@@ -59,6 +59,12 @@ AD_CLASSIFICATION = {
         "tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient, "
         "tests/test_sparam_ad_end_to_end.py::test_msl_s_matrix_ad_end_to_end",
     ),
+    "Simulation.compute_mixed_s_matrix": (
+        NOT_TRACEABLE,
+        "issue #488 mixed lumped/wire+MSL lane: host-side numpy flux and V/I "
+        "accumulation per drive run, and the flux magnitude override reads "
+        "concrete powers — no eps_override/AD channel is wired",
+    ),
     "Simulation.compute_coaxial_s_matrix": (
         NOT_TRACEABLE,
         "deprecated single-plane V/I path; numpy extraction, no differentiable input",

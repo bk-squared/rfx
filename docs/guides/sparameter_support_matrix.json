@@ -484,7 +484,7 @@
         "quote the preflight output and settling_db with any number from this lane",
         "a green passivity/column-power result here is structurally uninformative"
       ],
-      "ad_traceable": false,
+      "ad_traceable": "no",
       "ad_evidence": "not wired to the differentiable forward lane (imperative only)"
     }
   ],
