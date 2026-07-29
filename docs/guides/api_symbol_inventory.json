@@ -148,6 +148,9 @@
     "MeshShape": {
       "kind": "class"
     },
+    "MixedSMatrixResult": {
+      "kind": "class"
+    },
     "ModulatedGaussian": {
       "kind": "class"
     },
@@ -2438,6 +2441,18 @@
       "signal_floor",
       "reference_plane_axial_index_offset",
       "strict_passivity"
+    ],
+    "compute_mixed_s_matrix": [
+      "n_steps",
+      "num_periods",
+      "freqs",
+      "n_freqs",
+      "strict_extractor",
+      "enforce_passivity",
+      "skip_preflight",
+      "return_diagnostics",
+      "magnitude_channel",
+      "reciprocity_tol"
     ],
     "compute_msl_s_matrix": [
       "n_steps",
