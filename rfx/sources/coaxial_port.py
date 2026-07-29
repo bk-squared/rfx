@@ -1733,6 +1733,126 @@ def coaxial_line_reflection_from_plane_voltages(
     )
 
 
+class TwoPortWaveSolve(NamedTuple):
+    """Result of :func:`solve_two_port_from_wave_amplitudes` (issue #489).
+
+    ``s_params`` has shape ``(2, 2, n_freqs)`` with ``S[j, i]`` the response at
+    port *j* when driving port *i*. ``cond_a`` is the per-frequency 2-norm
+    condition number of the incident-wave matrix that was inverted; it is the
+    honest reliability witness for this solve, because everything else here is
+    exact linear algebra.
+    """
+
+    s_params: np.ndarray
+    cond_a: np.ndarray
+
+
+def solve_two_port_from_wave_amplitudes(
+    a_inc: np.ndarray,
+    b_out: np.ndarray,
+    *,
+    cond_warn: float = 1.0e3,
+) -> TwoPortWaveSolve:
+    """Two-drive 2x2 S-matrix solve from measured wave amplitudes (issue #489).
+
+    Parameters
+    ----------
+    a_inc, b_out : (2, 2, n_freqs) complex
+        ``a_inc[j, i]`` / ``b_out[j, i]`` are the incident / outgoing wave
+        amplitudes measured AT port ``j`` during the run that DRIVES port ``i``,
+        both referred to port ``j``'s own reference plane.
+    cond_warn : float
+        Emit a warning when the incident matrix's condition number exceeds this
+        at any frequency. The solve is still returned — ``cond_a`` carries the
+        per-frequency number so a caller can mask bins itself.
+
+    Returns
+    -------
+    TwoPortWaveSolve
+
+    Notes
+    -----
+    Why a two-DRIVE solve rather than the obvious ``S[j, i] = b_j / a_i``:
+    that ratio silently assumes the non-driven port receives nothing, so a
+    terminator reflection ``Gamma_t`` lands entirely in the reported ``S11``.
+    On a through line this makes ``|1 + S11 - S21| = |Gamma_t|`` exactly — a
+    floor of 0.08 with rfx's validated matched terminator
+    (``tests/test_coaxial_line_calibration.py`` asserts ``|Gamma| < 0.08``),
+    independent of how good the implementation is.
+
+    Both drives together give four equations in four unknowns::
+
+        A = [[a1(1), a1(2)],        B = [[b1(1), b1(2)],
+             [a2(1), a2(2)]]             [b2(1), b2(2)]]
+
+        S = B @ inv(A)
+
+    which needs no assumption about the terminator at all — the non-driven
+    port's incident wave is one of the measured inputs. Measured (analytic
+    fields through the production extractor): the recovered ``|S21|`` stays
+    exact to ~1e-15 for terminator reflections up to ``|Gamma_t| = 0.5``,
+    where ``cond(A)`` is still only ~2.4.
+
+    This function is pure linear algebra on amplitudes someone else measured.
+    It cannot detect a mis-measured amplitude — that is what the reciprocity
+    and analytic-DUT checks around it are for.
+
+    **What reciprocity around this solve can and cannot catch.** Any per-port
+    factor ``c`` applied to both ``a`` and ``b`` at one port is the similarity
+    ``S -> D S D^-1`` with ``D = diag(1, c)``, which sends ``S21 -> c*S21``
+    and ``S12 -> S12/c``:
+
+    * ``|c| != 1`` (an amplitude-calibration error) moves the ratio
+      ``|S21|/|S12|`` by ``c^2`` — reciprocity SEES it, including a 5% error.
+    * ``|c| == 1`` (a wave-split sign flip, or a reference-plane shift) leaves
+      both magnitudes untouched — reciprocity is structurally BLIND to it.
+
+    So a magnitude-only reciprocity witness must not be advertised as covering
+    orientation-sign or reference-plane mistakes; those need an independent
+    handle. Pinned in ``tests/test_coax_two_port_solve.py``.
+    """
+    a = np.asarray(a_inc, dtype=np.complex128)
+    b = np.asarray(b_out, dtype=np.complex128)
+    if a.shape != b.shape:
+        raise ValueError(
+            f"a_inc and b_out must have the same shape, got {a.shape} vs {b.shape}."
+        )
+    if a.ndim != 3 or a.shape[0] != 2 or a.shape[1] != 2:
+        raise ValueError(
+            "a_inc/b_out must have shape (2, 2, n_freqs) indexed "
+            f"[measured_port, driven_port, freq]; got {a.shape}."
+        )
+    n_f = int(a.shape[2])
+    s = np.full((2, 2, n_f), np.nan + 1j * np.nan, dtype=np.complex128)
+    cond = np.full(n_f, np.inf, dtype=np.float64)
+    for k in range(n_f):
+        A = a[:, :, k]
+        B = b[:, :, k]
+        if not (np.all(np.isfinite(A)) and np.all(np.isfinite(B))):
+            continue
+        cond[k] = float(np.linalg.cond(A))
+        if not np.isfinite(cond[k]):
+            continue
+        try:
+            s[:, :, k] = B @ np.linalg.inv(A)
+        except np.linalg.LinAlgError:
+            pass
+    bad = int(np.sum(~np.isfinite(cond) | (cond > float(cond_warn))))
+    if bad:
+        import warnings as _w
+
+        _w.warn(
+            f"solve_two_port_from_wave_amplitudes: the incident-wave matrix is "
+            f"ill-conditioned at {bad}/{n_f} frequencies (cond > {cond_warn:g}; "
+            f"worst {np.nanmax(cond):.3g}). The two drives are then nearly "
+            "linearly dependent — usually both ports seeing essentially the "
+            "same field, e.g. a symmetric structure driven identically, or one "
+            "drive that failed to excite. S at those bins is unreliable.",
+            stacklevel=2,
+        )
+    return TwoPortWaveSolve(s_params=s, cond_a=cond)
+
+
 def stamp_coaxial_line(
     grid: Grid,
     materials,
