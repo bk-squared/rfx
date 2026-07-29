@@ -1111,7 +1111,8 @@ class Simulation(
         at dx = 84.67 µm, one cell gives Re(Z0) = 38.8 Ω and two cells 41.9 Ω,
         i.e. the *thicker* strip reads *higher* impedance, which is backwards
         for a fringing-capacitance effect and is the signature of the boundary
-        condition changing.
+        condition changing. Reproduce with
+        ``scripts/diagnostics/thin_conductor_cell_thickness_probe.py``.
 
         Conductor LOSS is therefore unavailable for metals through this API.
         On the lanes this repo gates that is a small omission — copper loss on
@@ -1141,14 +1142,11 @@ class Simulation(
             warnings.warn(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
                 f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
-                f"this shape is modelled as a LOSSLESS PEC sheet.{_asked} on "
-                f"this path, and neither is eps_r — only the shape's own "
-                f"rasterisation matters. Conductor loss and a sub-cell "
-                f"thickness are not available for metals here; every real "
-                f"metal is above this threshold, so 'use a lower sigma_bulk' "
-                f"would mean modelling a different material, not thinner "
-                f"copper. If you need conductor loss, that is a known gap "
-                f"(issue #504), not a setting.",
+                f"this is a LOSSLESS PEC sheet.{_asked} here, nor is eps_r — "
+                f"only the shape's rasterisation. No conductor loss and no "
+                f"sub-cell thickness for metals: every metal is above this "
+                f"threshold, so a lower sigma_bulk would be a different "
+                f"material, not thinner copper (known gap, issue #504).",
                 stacklevel=2,
             )
         self._thin_conductors.append(tc)

@@ -40,24 +40,37 @@ def _warn_for(**kw):
 # The behaviour being disclosed
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("thickness", [1e-9, 17e-6, 35e-6, 68e-6, 1e-3])
-def test_thickness_does_not_affect_a_metal_sheet(thickness):
-    """Six orders of magnitude of `thickness` produce the same PEC mask.
+def test_thickness_does_not_affect_a_metal_sheet():
+    """Six orders of magnitude of `thickness` produce the SAME PEC mask.
 
     This is the fact the warning exists to disclose. If a future change makes
     thickness load-bearing on the PEC path, this test fails and the warning
     must be rewritten rather than silently left in place.
+
+    Deliberately NOT parametrized. The first version of this test was, and
+    compared each case against a `ref` initialised inside the same call — so
+    every case compared itself to itself and the test could not fail. A
+    reviewer proved it by making the mask grow with thickness; all five cases
+    still passed. The comparison has to happen ACROSS thicknesses, in one
+    call, which is what this does.
     """
-    ref = None
-    sim = _sim()
-    sim.add_thin_conductor(_sheet(), sigma_bulk=5.8e7, thickness=thickness)
-    grid = sim._build_grid()
-    mask = np.asarray(sim._assemble_materials(grid)[3])
-    got = (int(mask.sum()), tuple(np.unique(np.nonzero(mask)[2]).tolist()))
-    if ref is None:
-        ref = got
-    assert got[0] > 0, "sheet did not rasterise at all"
-    assert got == ref
+    masks = {}
+    for thickness in (1e-9, 17e-6, 35e-6, 68e-6, 1e-3):
+        sim = _sim()
+        sim.add_thin_conductor(_sheet(), sigma_bulk=5.8e7, thickness=thickness)
+        mask = np.asarray(sim._assemble_materials(sim._build_grid())[3])
+        assert mask.sum() > 0, f"sheet did not rasterise at t={thickness}"
+        masks[thickness] = mask
+
+    ref_t, ref = next(iter(masks.items()))
+    for t, m in masks.items():
+        assert np.array_equal(m, ref), (
+            f"thickness became load-bearing on the PEC path: t={t} gives "
+            f"{int(m.sum())} cells on z-layers "
+            f"{np.unique(np.nonzero(m)[2]).tolist()}, but t={ref_t} gives "
+            f"{int(ref.sum())} on {np.unique(np.nonzero(ref)[2]).tolist()}. "
+            "The warning text now understates what the parameter does."
+        )
 
 
 def test_every_real_metal_is_on_the_pec_side():
@@ -159,6 +172,10 @@ def test_warning_does_not_offer_advice_that_does_not_work():
     m = _warn_for(sigma_bulk=5.8e7, thickness=35e-6)[0]
     if "lower sigma_bulk" in m:
         assert "different material" in m
+
+    # Length is part of usability: a 500-character advisory buries its own
+    # first sentence, and this repo has been burned by advisory burial (#470).
+    assert len(m) < 420, f"message grew back to {len(m)} chars"
 
 
 def test_preflight_hint_does_not_recommend_a_no_op():
