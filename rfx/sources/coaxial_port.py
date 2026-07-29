@@ -1738,9 +1738,14 @@ class TwoPortWaveSolve(NamedTuple):
 
     ``s_params`` has shape ``(2, 2, n_freqs)`` with ``S[j, i]`` the response at
     port *j* when driving port *i*. ``cond_a`` is the per-frequency 2-norm
-    condition number of the incident-wave matrix that was inverted; it is the
-    honest reliability witness for this solve, because everything else here is
-    exact linear algebra.
+    condition number of the incident-wave matrix that was inverted.
+
+    ``cond_a`` bounds DEGENERACY of the two drives — it is not a reliability
+    score. It is blind to a systematic incident/outgoing mislabel (stays ~40 on
+    a defect that puts ``|S21|`` at 16), and it does not bound accuracy either,
+    since it multiplies whatever noise rides on the caller's amplitudes. See
+    ``solve_two_port_from_wave_amplitudes`` for the full witness/blind-spot
+    table; passivity is the required downstream check.
     """
 
     s_params: np.ndarray
@@ -1819,9 +1824,25 @@ def solve_two_port_from_wave_amplitudes(
     * ``|c| == 1`` (a wave-split sign flip, or a reference-plane shift) leaves
       both magnitudes untouched — reciprocity is structurally BLIND to it.
 
-    So a magnitude-only reciprocity witness must not be advertised as covering
-    orientation-sign or reference-plane mistakes; those need an independent
-    handle. Pinned in ``tests/test_coax_two_port_solve.py``.
+    **And one more family, non-diagonal, that neither local witness sees.**
+    Mislabelling incident vs outgoing at one port CONSISTENTLY (i.e. on both
+    drives — what an actual wiring bug looks like, as opposed to a one-off) is
+    ``S' = N M^-1`` with ``M = [[1,0],[S21,S22]]`` and ``N = [[S11,S12],[0,1]]``,
+    giving ``S'21 = -S21/S22`` and ``S'12 = S12/S22``. Those share a magnitude,
+    so reciprocity is exactly blind to it, and ``cond(A)`` stays small (measured
+    40.8 on an asymmetric DUT, 4% of the default ``cond_warn``) so the
+    degeneracy guard is silent as well. What DOES catch it is **passivity**:
+    ``S'22 = 1/S22`` explodes for any well-matched passive DUT (measured
+    ``|S22'| = 32.8``, column power 27). **Anything built on this solve must
+    therefore route its result through the repo's passivity self-check** —
+    that check is not optional decoration here, it is the only handle on this
+    defect family.
+
+    Note that a symmetric fixture hides this: a through line (``S22 = 0``) or a
+    shunt element (``S11 = S22``) makes ``M`` singular, so the defect collapses
+    and appears "caught" by accident. Discriminating it needs an ASYMMETRIC DUT.
+
+    All three families are pinned in ``tests/test_coax_two_port_solve.py``.
     """
     a = np.asarray(a_inc, dtype=np.complex128)
     b = np.asarray(b_out, dtype=np.complex128)
