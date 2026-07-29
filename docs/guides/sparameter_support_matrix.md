@@ -231,9 +231,18 @@ implementation nor gradient regression is RF validation.
   puts the node just below it. One retreat gives `d + dx` with the opening
   **asymmetric** (centre `dx/2` low); two retreats give `d + 2*dx`, **centred**.
   Measured on WR-90 at both a/30 and a/60: 7.620 mm and 18.288 mm give
-  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. The electrical
-  opening is measured between the innermost zeroed planes, `(n_open + 1) * dx`
-  — the measure that reproduces `a = cells * dx` exactly. Offsetting each
+  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. **Transverse** to
+  the propagation direction the electrical dimension is the span between the
+  innermost zeroed planes, `(n_open + 1) * dx` — the measure that reproduces
+  `a = cells * dx` exactly, and an independent refit of 16 committed
+  single-iris configurations across two meshes pins the realized aperture to
+  within 1/20 of a cell of it. **That identity does not carry into the
+  propagation direction:** an obstacle's electrical *thickness* is set by field
+  interaction with the discontinuity rather than by a cutoff, is measured to
+  fall between `t_cells * dx` and `(t_cells - 1) * dx` so neither integer rule
+  holds, and is not settled — treat it as an unknown of order half a cell and
+  fold the sensitivity into the reported envelope instead of picking a rule.
+  Offsetting each
   interior face half a cell the wrong way retreats both faces by construction
   rather than by luck, giving `d + 2*dx` deterministically at every aperture;
   that is the drawing case 18's blocked revision used. In
@@ -244,7 +253,15 @@ implementation nor gradient regression is RF validation.
   magnitude tolerance. Midpoint corners are rounding-independent, and with
   `(cells - d_cells)` even the realized opening equals the nominal one exactly;
   at odd parity a symmetric opening of that width is not representable on the
-  grid and costs one cell however it is drawn. See the `Box` docstring for the
+  grid and costs one cell **more** however it is drawn. Odd parity is a fork
+  rather than a dead end — change `dx`/the aperture so the parity works, or
+  place the fins asymmetrically on purpose and accept a recorded half-cell
+  offset instead of rounding the aperture (the quantity that sets the cutoff)
+  to the wrong parity. Neither is recommended here, because the cost of the
+  offset has not been measured; what is required is that the offset be recorded
+  and representable by the comparator, since an off-centre aperture compared
+  against a centred oracle silently becomes comparator error. See the `Box`
+  docstring for the
   arithmetic and `run_point` in
   `validation/crossval/18_wr90_iris_modematch.py` for the assert pattern.
 - Size the absorber from the guide wavelength at the **lowest** measured

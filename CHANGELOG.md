@@ -6,6 +6,34 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — the #493 electrical-dimension identity is scoped to the transverse direction
+
+- The `Box` / support-matrix text from #493 stated the electrical dimension as the
+  span between innermost zeroed planes, `(n_open + 1) * dx`, in a way that could be
+  read as holding on any axis. It is now explicitly scoped to **transverse** to the
+  propagation direction — aperture and guide widths, anything setting a cutoff —
+  where an independent refit of 16 committed single-iris configurations across two
+  meshes pins the realized aperture to within 1/20 of a cell of it.
+- The docs now warn **not** to carry that identity into the propagation direction.
+  An obstacle's electrical *thickness* is set by field interaction with the
+  discontinuity rather than by a cutoff condition, and is measured to fall between
+  `t_cells * dx` and `(t_cells - 1) * dx` — so neither integer rule holds, and the
+  residual is a fixed per-face offset rather than a discretization error that
+  shrinks with `dx`. The longitudinal convention is recorded as **not settled**:
+  treat it as an unknown of order half a cell and fold that sensitivity into the
+  reported envelope instead of adopting a rule. (Measured during the stage-S3 /
+  #499 review; no committed record carries it yet, so it is documented as a caution
+  rather than as a number to build on.)
+- Odd `(cells - d_cells)` parity is now presented as a **fork rather than a dead
+  end**: change `dx`/the aperture so the parity works, or place fins asymmetrically
+  on purpose and accept a recorded half-cell offset instead of rounding the aperture
+  — the quantity that sets the cutoff — to the wrong parity. Neither option is
+  recommended, because the cost of the offset has not been measured. What is
+  required is that the offset be recorded and **representable by the comparator**,
+  since an off-centre aperture compared against a centred oracle silently becomes
+  comparator error. Also fixes a typo in the merged #493 text, which said the
+  odd-parity opening is "one cell wide" where it is one cell **wider**.
+
 ### Added — thin-absorber advisory on every uniform waveguide S-matrix path (#494)
 
 - `compute_waveguide_s_matrix` documents a "Far-port discipline" requiring an
