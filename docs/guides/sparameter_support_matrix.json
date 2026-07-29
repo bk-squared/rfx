@@ -447,9 +447,11 @@
     {
       "primitive": "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)",
       "family": "mixed_lumped_wire_msl",
-      "is_port": true,
+      "is_port": false,
       "support_status": "experimental_diagnostic_not_in_validated_set",
-      "calculation_api": "Simulation.compute_mixed_s_matrix(...)",
+      "calculation_api": [
+        "Simulation.compute_mixed_s_matrix(...)"
+      ],
       "result_type": "MixedSMatrixResult",
       "supported_configurations": [
         "uniform second-order Yee mesh only",
@@ -479,7 +481,7 @@
         "reciprocity deviation 9.0% (flux channel) vs 55% (wave channel), probe-fed MSL fixture, dx=63.5um, settling -101/-100 dB",
         "reciprocity witness default tolerance 0.06, set BELOW the 9% reference-fixture residual so that fixture warns rather than passing silently"
       ],
-      "validated_scope": "NONE — this family is a diagnostic surface, not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
+      "validated_scope": "NONE — this is a diagnostic CALCULATION over the already-registered lumped/wire and microstrip_line port families, not a new port primitive and not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
       "caveats": [
         "quote the preflight output and settling_db with any number from this lane",
         "a green passivity/column-power result here is structurally uninformative"
