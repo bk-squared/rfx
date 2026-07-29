@@ -457,9 +457,10 @@
         "PEC z_lo ground required for magnitude_channel='flux' (the default)",
         "imperative forward path only (no eps_override AD channel)"
       ],
-      "validation_status": "EXPERIMENTAL. Diagonals come from the per-family validated extractors; off-diagonal MAGNITUDES come from Poynting flux with the incident power normalized as P_net/(1-|S_jj|^2). Internal reciprocity witness measured 9% on the probe-fed MSL fixture (the wave channel measured 55% on the same fixture). NO external-solver referee has been run, so ABSOLUTE magnitude is NOT validated. Off-diagonal PHASE mixes two reference-plane conventions and is provisional. Do not cite this family as validation.",
+      "validation_status": "EXPERIMENTAL. Diagonals come from the per-family extractors but are NOT verified on this lane (both the wire port-cell V*I accounting and the MSL analytic-Z0 anchor are open), and the shipped values are additionally rewritten by the passivity projection when the raw matrix is non-passive. off-diagonal MAGNITUDES come from Poynting flux with the incident power normalized as P_net/(1-|S_jj|^2). Internal reciprocity witness measured 9% on the probe-fed MSL fixture (the wave channel measured 55% on the same fixture). NO external-solver referee has been run, so ABSOLUTE magnitude is NOT validated. Off-diagonal PHASE mixes two reference-plane conventions and is provisional. Do not cite this family as validation.",
       "known_limits": [
         "absolute |S| unvalidated — openEMS referee pending",
+        "with enforce_passivity=True (default) the returned diagonal is a JOINT SVD-projected value, not the raw per-family measurement — measured ~4x its unprojected value on the committed test fixture; read S_raw/passivity_correction for what was measured",
         "off-diagonal phase provisional (cross-family reference-plane mismatch)",
         "per-column power is an ALGEBRAIC IDENTITY on the flux channel and is not a passivity check; reciprocity is the only independent internal witness",
         "residual reciprocity disagreement traced to a driven-port diagonal; which diagonal is open (issue #313 wire port-cell vs the MSL analytic Z0 anchor)",
@@ -475,7 +476,8 @@
         "tests/test_mixed_port_sparam.py"
       ],
       "numeric_metrics": [
-        "reciprocity deviation 9.0% (flux channel) vs 55% (wave channel), probe-fed MSL fixture, dx=63.5um, settling -101/-100 dB"
+        "reciprocity deviation 9.0% (flux channel) vs 55% (wave channel), probe-fed MSL fixture, dx=63.5um, settling -101/-100 dB",
+        "reciprocity witness default tolerance 0.06, set BELOW the 9% reference-fixture residual so that fixture warns rather than passing silently"
       ],
       "validated_scope": "NONE — this family is a diagnostic surface, not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
       "caveats": [

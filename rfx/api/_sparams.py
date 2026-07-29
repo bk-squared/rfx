@@ -2587,7 +2587,7 @@ class _SparamMixin:
         skip_preflight: bool = False,
         return_diagnostics: bool = False,
         magnitude_channel: str = "flux",
-        reciprocity_tol: float = 0.15,
+        reciprocity_tol: float = 0.06,
     ) -> "MixedSMatrixResult":
         """Mixed-family S-matrix: lumped/wire ports + MSL ports (issue #488).
 
@@ -2620,14 +2620,31 @@ class _SparamMixin:
 
             |S_ij|^2 = P_arrive,i / (P_net,j / (1 - |S_jj|^2))
 
-        with the VALIDATED per-family diagonal S_jj (a local ratio at one
-        cell — immune to the #313 magnitude class) supplying the
-        reflection correction; no Z0 anchor enters the magnitude.
-        Off-diagonal PHASE still comes from the wave channel (see below).
+        where ``S_jj`` is the per-family diagonal supplying the reflection
+        correction; no Z0 anchor enters the magnitude. Off-diagonal PHASE
+        still comes from the wave channel (see below).
         ``magnitude_channel="wave"`` keeps the raw power-wave magnitudes
         (diagnostic; carries the #313 deflation at lumped/wire ports).
 
         HONESTY NOTES (read before quoting numbers):
+
+        * **Neither diagonal is verified on this lane, and the returned
+          diagonal is not always the measured one.** Two separate
+          findings: (a) the wire port-cell V*I accounting was measured
+          undercounting delivered power ~3x against an independent
+          Poynting referee (the open issue #313 reaching the diagonal at
+          a near-field-dominated vertical probe), and on an end-fed
+          fixture the MSL probe plane's local ``V/I`` was ~591 ohm and
+          strongly reactive while the reported ``|S22|`` was 0.03 — those
+          cannot both be right. (b) With ``enforce_passivity=True`` (the
+          default), ``_project_passive`` is a JOINT SVD clip: when any
+          entry is non-passive it rewrites others as a side effect.
+          Measured on the committed test fixture, the shipped MSL
+          diagonal came out ~4x its unprojected value. So ``result.S``'s
+          diagonal is a projected quantity, not a raw per-family
+          measurement — read ``S_raw`` and ``passivity_correction`` for
+          what was actually measured, and treat any diagonal-derived
+          conclusion accordingly.
 
         * The flux magnitudes inherit a flux-accounting envelope (box
           leakage + finite DFT; the Phase-0 referee class measured ~1.3%
@@ -2645,7 +2662,10 @@ class _SparamMixin:
           still detects power GAIN, i.e. ``P_arr > P_net``). The
           independent internal check on this channel is RECIPROCITY:
           ``S_ij`` and ``S_ji`` come from different runs with different
-          normalizations, so their agreement is real evidence.
+          normalizations, so their agreement is real evidence. It runs
+          automatically on every extraction (see ``reciprocity_tol``),
+          audits the RAW matrix, and is the check that a wrong diagonal
+          trips.
         * With ``magnitude_channel="wave"``, off-diagonal magnitudes that
           RECEIVE at a lumped/wire port cell inherit the issue-#313
           near-field deflation of the default port-cell waves. The
@@ -2664,7 +2684,21 @@ class _SparamMixin:
         0-ohm ports (they would fire in every drive run), no
         ``reference_plane_cells`` wire ports, no mixed lumped+wire set
         (same fence as the production scan driver), imperative only (no
-        ``eps_override`` AD channel).
+        ``eps_override`` AD channel). The default ``"flux"`` channel adds
+        two more, because the per-port flux box omits its bottom face and
+        treats the port extent as a height: a **PEC ``z_lo`` boundary**
+        and **vertical (``component="ez"``) lumped/wire ports** are
+        required. ``magnitude_channel="wave"`` makes neither assumption.
+
+        Parameters
+        ----------
+        reciprocity_tol : float, default 0.06
+            Relative ``|S_ij|`` vs ``|S_ji|`` disagreement above which the
+            reciprocity witness warns. Deliberately set BELOW the 9%
+            residual measured on this lane's own reference fixture, so
+            that fixture warns rather than passing silently: a tolerance
+            above the known residual would document the check and never
+            fire it.
 
         Returns
         -------
@@ -3405,7 +3439,17 @@ class _SparamMixin:
             # normalizations, so their MAGNITUDE agreement is real
             # evidence — and it is exactly the check that would have
             # caught a wrong diagonal feeding the flux normalization.
-            _rec = _mixed_reciprocity_deviation(S)
+            #
+            # Audited on the RAW (unprojected) matrix for the same reason
+            # the passivity self-check above is: `_project_passive` is a
+            # joint SVD clip, so it moves entries TOWARD each other and
+            # would understate the disagreement actually measured. It
+            # also rewrites diagonals as a side effect (measured on the
+            # test fixture: a shipped MSL diagonal ~4x its raw value),
+            # which is precisely what this witness exists to surface.
+            _rec = _mixed_reciprocity_deviation(
+                S if s_raw is None else s_raw
+            )
             if _rec is not None:
                 _pair, _dev_max = _rec
                 if _dev_max > reciprocity_tol:

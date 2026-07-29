@@ -389,3 +389,16 @@ lumped+wire sets, `reference_plane_cells`, non-uniform meshes, SBP-SAT, and ADI.
 The flux channel additionally requires a PEC `z_lo` ground and vertical
 (`component="ez"`) lumped/wire ports, since the per-port flux box omits its
 bottom face and treats the port extent as a height.
+
+Two further cautions on this lane, both measured rather than anticipated:
+
+- **Neither diagonal is verified.** The wire port-cell V·I accounting was measured
+  undercounting delivered power ~3× against an independent Poynting referee, and on an
+  end-fed fixture the MSL probe plane's local `V/I` was ~591 Ω and strongly reactive
+  while the reported `|S22|` was 0.03. Those cannot both be right, and which one is
+  wrong is open.
+- **The returned diagonal is not always the measured one.** With
+  `enforce_passivity=True` (the default), `_project_passive` is a joint SVD clip: when
+  any entry is non-passive it rewrites others as a side effect. On the committed test
+  fixture the shipped MSL diagonal came out ~4× its unprojected value. Read `S_raw` and
+  `passivity_correction` for what was actually measured.

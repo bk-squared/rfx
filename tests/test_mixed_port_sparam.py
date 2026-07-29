@@ -359,8 +359,23 @@ def test_reciprocity_witness_catches_a_wrong_diagonal():
 
     # Matching diagonals -> reciprocity holds.
     assert run(0.4, 0.4) == pytest.approx(0.0, abs=1e-5)
-    # A wrong diagonal on ONE port breaks it, and by a large margin.
-    assert run(0.4, 0.03) > 0.05
+    # A wrong diagonal on ONE port breaks it. Assert against the SHIPPED
+    # DEFAULT tolerance, not an ad-hoc constant: a review round found the
+    # first version of this test asserting > 0.05 while the runtime
+    # default was 0.15, so the test proved the helper discriminates but
+    # NOT that the warning a user actually gets would ever fire.
+    import inspect
+
+    default_tol = inspect.signature(
+        Simulation.compute_mixed_s_matrix
+    ).parameters["reciprocity_tol"].default
+    assert run(0.4, 0.03) > default_tol, (
+        f"a wrong diagonal deviates by {run(0.4, 0.03):.3f}, which the "
+        f"shipped default tolerance {default_tol} would NOT warn about"
+    )
+    # And the observed real-fixture residual (9%) must also trip it —
+    # the tolerance has to sit below the known residual, not above it.
+    assert default_tol < 0.09
 
 
 def test_guard_requires_pec_ground_for_flux_channel():
