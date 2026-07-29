@@ -1766,6 +1766,14 @@ def solve_two_port_from_wave_amplitudes(
         at any frequency. The solve is still returned — ``cond_a`` carries the
         per-frequency number so a caller can mask bins itself.
 
+        **This threshold flags DEGENERACY, not accuracy, and a value below it
+        is not a reliability certificate.** The recovered ``S`` inherits the
+        caller's amplitude-measurement noise amplified by ``cond(A)``: measured
+        on this solve, a 1e-4 relative perturbation of ``A`` gives ~1.3e-3
+        relative error in ``S`` at ``cond = 19`` and ~1.3e-2 at ``cond = 199``,
+        both far below this default. Bounding that is the caller's job, because
+        only the caller knows its own noise floor.
+
     Returns
     -------
     TwoPortWaveSolve
@@ -1788,10 +1796,14 @@ def solve_two_port_from_wave_amplitudes(
         S = B @ inv(A)
 
     which needs no assumption about the terminator at all — the non-driven
-    port's incident wave is one of the measured inputs. Measured (analytic
-    fields through the production extractor): the recovered ``|S21|`` stays
-    exact to ~1e-15 for terminator reflections up to ``|Gamma_t| = 0.5``,
-    where ``cond(A)`` is still only ~2.4.
+    port's incident wave is one of the measured inputs. Measured: the recovered
+    ``|S21|`` stays exact to ~1e-13 for terminator reflections up to
+    ``|Gamma_t| = 0.5``. For an ideal planted through line the conditioning has
+    the closed form ``cond(A) = (1+|Gamma_t|)/(1-|Gamma_t|)``, i.e. exactly 3.0
+    at ``|Gamma_t| = 0.5``; a run through the production extractor at 12 GHz
+    (where propagation phase enters) measured 2.4 for the same terminator.
+    Either way the matrix is nowhere near singular, which is why no terminator
+    improvement is a prerequisite for issue #489.
 
     This function is pure linear algebra on amplitudes someone else measured.
     It cannot detect a mis-measured amplitude — that is what the reciprocity
@@ -1842,12 +1854,16 @@ def solve_two_port_from_wave_amplitudes(
         import warnings as _w
 
         _w.warn(
-            f"solve_two_port_from_wave_amplitudes: the incident-wave matrix is "
-            f"ill-conditioned at {bad}/{n_f} frequencies (cond > {cond_warn:g}; "
-            f"worst {np.nanmax(cond):.3g}). The two drives are then nearly "
-            "linearly dependent — usually both ports seeing essentially the "
-            "same field, e.g. a symmetric structure driven identically, or one "
-            "drive that failed to excite. S at those bins is unreliable.",
+            f"solve_two_port_from_wave_amplitudes: the two drives are nearly "
+            f"linearly dependent at {bad}/{n_f} "
+            f"frequencies (cond > {cond_warn:g}; worst {np.nanmax(cond):.3g}) "
+            "— usually both ports seeing essentially the same field, e.g. a "
+            "symmetric structure driven identically, or one drive that failed "
+            "to excite. S at those bins is degenerate. NOTE this threshold "
+            "flags DEGENERACY only: cond below it is NOT a reliability "
+            "certificate, because cond(A) also multiplies whatever noise is on "
+            "the measured amplitudes (~1.3e-2 relative error in S from 1e-4 "
+            "noise at cond=199, which never trips this warning).",
             stacklevel=2,
         )
     return TwoPortWaveSolve(s_params=s, cond_a=cond)

@@ -8,9 +8,13 @@ as executable facts rather than prose:
     cannot be made accurate by improving the implementation;
   * the two-drive solve removes that floor entirely, staying exact to ~1e-13
     even at |Gamma_t| = 0.5;
-  * the two most likely implementation defects (consuming the wrong amplitude
-    at the receive array, and a wave-split orientation flip) are separated from
-    a correct implementation by a wide margin.
+  * which implementation defects the local witnesses DO and DO NOT separate.
+    Two of the three families are invisible to both witnesses here, and that
+    is recorded as an explicit gap rather than left for someone to discover:
+    a per-port unit-modulus factor (sign flip / reference-plane shift) is a
+    diagonal similarity, and a systematic both-drive a/b mislabel is a
+    non-diagonal one that preserves |S21| = |S12| exactly. Only PASSIVITY
+    catches the latter.
 
 All fields are planted analytically from a signal-flow solve, so the "truth"
 here is exact and independent of any rfx extraction path.
@@ -65,6 +69,30 @@ def _shunt_resistor(r_ohm, z0, n_f):
     return (s11, s21, s21, s11)
 
 
+def _asymmetric_reciprocal(z0, n_f):
+    """A reciprocal but ASYMMETRIC 2-port: series Z1, shunt Y, series Z2.
+
+    Needed because the through line (S22 = 0) and the shunt resistor
+    (S11 = S22) are both degenerate for the defect family in
+    ``test_both_drive_swap_is_NOT_caught_by_either_witness`` — with those
+    fixtures the defect happens to collapse to a singular matrix and gets
+    caught by accident rather than by design.
+    """
+    one = np.ones(n_f, dtype=np.complex128)
+    z1, z2, y = 30.0 + 0j, 12.0 + 0j, 1.0 / (80.0 + 0j)
+    # ABCD of series-shunt-series (reciprocal: AD - BC = 1).
+    a = 1.0 + z1 * y
+    b = z1 + z2 + z1 * y * z2
+    c = y
+    d = 1.0 + y * z2
+    den = a + b / z0 + c * z0 + d
+    s11 = (a + b / z0 - c * z0 - d) / den
+    s22 = (-a + b / z0 - c * z0 + d) / den
+    s21 = 2.0 / den
+    s12 = 2.0 * (a * d - b * c) / den
+    return (s11 * one, s12 * one, s21 * one, s22 * one)
+
+
 # ---------------------------------------------------------------------------
 # Why the obvious rule was rejected
 # ---------------------------------------------------------------------------
@@ -108,9 +136,13 @@ def test_conditioning_grows_slowly_with_terminator_reflection():
     for gamma_t in (0.0, 0.08, 0.5):
         a, b = _plant(_through(n_f), gamma_t, n_f)
         conds[gamma_t] = float(solve_two_port_from_wave_amplitudes(a, b).cond_a[0])
-    assert conds[0.0] == pytest.approx(1.0, abs=1e-9)
-    assert conds[0.08] < 1.3
-    assert 2.0 < conds[0.5] < 3.0
+    # Closed form for this planted through line: cond = (1+|Gt|)/(1-|Gt|).
+    # Assert against that, not a hand-picked bound: the |Gt|=0.5 value is
+    # EXACTLY 3.0, and a bare `< 3.0` passed only because this platform's SVD
+    # rounds to 2.999999999999999 — a LAPACK/numpy change could flip it
+    # (cross-machine float flake class, project_ci_slow_suite_fixes).
+    for gt, c in conds.items():
+        assert c == pytest.approx((1.0 + gt) / (1.0 - gt), rel=1e-9, abs=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -136,12 +168,16 @@ def test_recovers_shunt_resistor_exactly_despite_terminator():
 # Defect discrimination — a gate that cannot fail a broken input is not a gate
 # ---------------------------------------------------------------------------
 
-def test_swapped_receive_amplitude_is_caught():
-    """Consuming the wrong amplitude at the receive array (defect D2).
+def test_swapped_receive_amplitude_one_drive_is_caught():
+    """Consuming the wrong amplitude at the receive array, ONE drive only.
 
     The receive array holds a large transmitted wave and a small one returning
-    off its terminator; taking the small one is the single most likely wiring
-    mistake. It must not look like a plausible result.
+    off its terminator; taking the small one is a likely wiring mistake. This
+    one-sided variant collapses |S21| and is easy to catch.
+
+    NOTE: the realistic SYSTEMATIC version of this mistake — the same mislabel
+    applied to BOTH drives — behaves completely differently and is NOT caught
+    here. See the next test; do not read this one as covering that.
     """
     n_f = len(_FREQS)
     a, b = _plant(_through(n_f), 0.08, n_f)
@@ -151,6 +187,48 @@ def test_swapped_receive_amplitude_is_caught():
     bad = solve_two_port_from_wave_amplitudes(a_bad, b_bad)
     assert np.all(np.abs(good.s_params[1, 0]) > 0.99)
     assert np.all(np.abs(bad.s_params[1, 0]) < 0.2), np.abs(bad.s_params[1, 0])
+
+
+def test_both_drive_swap_is_NOT_caught_by_either_witness():
+    """DOCUMENTED GAP: the systematic a/b mislabel evades both local witnesses.
+
+    A real implementation bug mislabels incident vs outgoing at one port
+    CONSISTENTLY, i.e. for both drives. That is the non-diagonal transform
+    ``S' = N M^-1`` with ``M = [[1,0],[S21,S22]]``, ``N = [[S11,S12],[0,1]]``,
+    giving ``S'21 = -S21/S22`` and ``S'12 = S12/S22``. Because the two share a
+    magnitude, **magnitude reciprocity is exactly blind to it**, and the
+    matrix stays well conditioned, so the ill-conditioning guard is silent too.
+
+    The through line (S22=0) and the shunt resistor (S11=S22) are DEGENERATE
+    for this defect — it collapses to a singular matrix there and gets caught
+    by accident. That accident is why the original battery looked complete.
+    An asymmetric DUT exposes the truth.
+
+    The independent handle is PASSIVITY, not anything in this module:
+    ``S'22 = 1/S22`` explodes for any well-matched passive DUT. Whatever ships
+    on top of this solve must route through the repo's passivity self-check.
+    """
+    n_f = len(_FREQS)
+    s_true = _asymmetric_reciprocal(48.5914, n_f)
+    assert not np.isclose(abs(s_true[0][0]), abs(s_true[3][0]))  # truly asymmetric
+    a, b = _plant(s_true, 0.05, n_f)
+    a_bad, b_bad = a.copy(), b.copy()
+    a_bad[1, :], b_bad[1, :] = b[1, :].copy(), a[1, :].copy()
+    bad = solve_two_port_from_wave_amplitudes(a_bad, b_bad)
+
+    # 1. reciprocity: blind (this is the finding)
+    np.testing.assert_allclose(
+        np.abs(bad.s_params[1, 0]), np.abs(bad.s_params[0, 1]), atol=1e-9
+    )
+    # 2. conditioning guard: silent — nowhere near the 1e3 default
+    assert np.all(bad.cond_a < 1.0e2), bad.cond_a
+    # 3. the recovered S is nonetheless grossly wrong, and PASSIVITY sees it
+    assert np.all(np.abs(bad.s_params[1, 0]) > 2.0)
+    np.testing.assert_allclose(
+        np.abs(bad.s_params[1, 1]), 1.0 / np.abs(s_true[3]), rtol=1e-9
+    )
+    col_power = np.abs(bad.s_params[0, 0]) ** 2 + np.abs(bad.s_params[1, 0]) ** 2
+    assert np.all(col_power > 1.1), col_power
 
 
 @pytest.mark.parametrize("scale", [1.05, 1.5, 0.8])
@@ -223,9 +301,13 @@ def test_ill_conditioned_drives_warn_and_are_reported():
     a[0, 0], a[1, 0] = 1.0, 1.0
     a[0, 1], a[1, 1] = 1.0, 1.0 + 1e-12    # second drive ~ first
     b[:, :] = 0.5
-    with pytest.warns(UserWarning, match="ill-conditioned"):
+    with pytest.warns(UserWarning, match="nearly linearly dependent") as rec:
         out = solve_two_port_from_wave_amplitudes(a, b)
     assert np.all(out.cond_a > 1e3)
+    # The warning must NOT read as "below this threshold is trustworthy" —
+    # cond(A) also multiplies the caller's amplitude noise (review finding).
+    msg = str(rec[0].message).lower()
+    assert "degeneracy only" in msg and "not a reliability certificate" in msg
 
 
 def test_shape_and_finiteness_contract():
