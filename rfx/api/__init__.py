@@ -1142,8 +1142,9 @@ class Simulation(
             warnings.warn(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
                 f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
-                f"this is a LOSSLESS PEC sheet.{_asked} here, nor is eps_r — "
-                f"only the shape's rasterisation. No conductor loss and no "
+                f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
+                f"eps_r; only the shape's rasterisation counts. No "
+                f"conductor loss and no "
                 f"sub-cell thickness for metals: every metal is above this "
                 f"threshold, so a lower sigma_bulk would be a different "
                 f"material, not thinner copper (known gap, issue #504).",

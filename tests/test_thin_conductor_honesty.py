@@ -173,9 +173,31 @@ def test_warning_does_not_offer_advice_that_does_not_work():
     if "lower sigma_bulk" in m:
         assert "different material" in m
 
-    # Length is part of usability: a 500-character advisory buries its own
-    # first sentence, and this repo has been burned by advisory burial (#470).
-    assert len(m) < 420, f"message grew back to {len(m)} chars"
+
+def test_warning_stays_short_enough_to_read():
+    """Length is part of usability, and the LONG branch is the one to guard.
+
+    The message this replaced was 526 characters, long enough to bury its own
+    first sentence — the advisory-burial problem (#470). But the first version
+    of this check only rendered the DEFAULT-thickness branch (399 chars) while
+    the branch nearest the limit is the one that echoes a caller's
+    non-default thickness back at them. A reviewer caught that the assertion
+    was not guarding the case it was meant to.
+
+    Limit derived from measurement, not picked: the long branch measures 428
+    characters today, so 460 leaves ~7% headroom while staying far below the
+    526 that caused the complaint.
+    """
+    default_branch = _warn_for(sigma_bulk=5.8e7, thickness=35e-6)[0]
+    long_branch = _warn_for(sigma_bulk=5.8e7, thickness=9.99e-6)[0]
+
+    assert "You passed thickness=" in long_branch, (
+        "the long branch no longer echoes the caller's thickness — this test "
+        "is measuring the wrong branch again"
+    )
+    assert len(long_branch) > len(default_branch), "branches did not diverge"
+    for m in (default_branch, long_branch):
+        assert len(m) < 460, f"message grew to {len(m)} chars (was 526 once)"
 
 
 def test_preflight_hint_does_not_recommend_a_no_op():
