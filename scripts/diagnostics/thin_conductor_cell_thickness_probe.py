@@ -13,30 +13,59 @@ the normal component is preserved (represents surface charge)."
 
 So a ONE-cell trace is a surface and a TWO-cell trace is a volume conductor.
 Going from one cell to two does not make the strip "thicker" within one model —
-it swaps the model. The giveaway is the direction of the impedance shift: a
-genuinely thicker strip has MORE fringing capacitance and therefore LOWER Z0
-(Wheeler / Hammerstad thickness correction), so a *higher* Z0 for the thicker
-stamp cannot be a thickness effect.
+it swaps the model. That follows from ``apply_pec_mask`` directly and does not
+need a measurement.
 
-MEASURED (2026-07-29, this script, CPU)
----------------------------------------
+WHAT THIS PROBE NO LONGER SHOWS (revised 2026-07-30)
+----------------------------------------------------
+The model change was originally argued from the DIRECTION of the impedance
+shift: a genuinely thicker strip has more fringing capacitance and therefore
+LOWER Z0 (Wheeler / Hammerstad thickness correction), so the one-cell reading
+of 38.77 ohm against the two-cell 41.86 ohm looked backwards and hence
+non-geometric.
+
+That inversion was an extractor artifact (issue #511). The modal voltage summed
+one Ez edge too many, and the extra edge lives in the trace cell — which a
+TWO-cell stamp masks and a ONE-cell stamp does not. So only the one-cell number
+was biased, by about 12%. With the voltage corrected the one-cell reading is
+44.11 ohm and the ordering is the ordinary one.
+
+The 2.25 ohm step is now consistent with EITHER a model change or a real
+thickness effect, so this measurement no longer discriminates between them.
+The model change remains true on the boundary-condition argument alone.
+
+MEASURED (2026-07-30, this script, CPU, post-#511/#507)
+-------------------------------------------------------
 Fixture: MSL thru, RO4350B-like eps_r=3.66, h_sub=254 um, w=600 um, L=10 mm,
 dx=84.67 um (= h_sub/3), ports at both ends, band 3.0-4.5 GHz,
 ``compute_msl_s_matrix(n_freqs=30, num_periods=12, enforce_passivity=False)``.
 
     trace stamp        PEC z-layers   mean|S11|   mean|S21|   Re(Z0)
-    1 cell (surface)        1           0.2233      1.0195     38.77 ohm
-    2 cells (volume)        2           0.2017      1.0100     41.86 ohm
+    1 cell (surface)        1           0.0501      0.9991     44.11 ohm
+    2 cells (volume)        2           0.0830      0.9968     41.86 ohm
 
-The thicker stamp reads the HIGHER impedance (+3.09 ohm, +8.0%), i.e. backwards
-for a thickness effect — consistent with the boundary condition changing.
+The thicker stamp now reads the LOWER impedance (-2.25 ohm, -5.1%) — the
+ordinary direction. Settling -110.0/-113.3 dB (1 cell), -105.5/-102.4 dB
+(2 cells).
 
-Two further observations recorded rather than chased here:
-  * Re(Z0) = 38.8 ohm sits 19% below the analytic Hammerstad-Jensen anchor of
-    47.89 ohm that the extractor normalises S11 against, which alone accounts
-    for |Gamma| = 0.105, about 47% of the measured 0.2233 floor.
-  * mean|S21| > 1 on a lossless passive thru at both stamps. Non-physical;
-    an extraction/normalisation matter, not geometry.
+For the record, the pre-fix values from the same script on 2026-07-29, because
+the DIFFERENCE between the two rows is the falsifier that confirmed #511:
+
+    1 cell   mean|S11|=0.2233  mean|S21|=1.0195  Re(Z0)=38.77 ohm
+    2 cells  mean|S11|=0.2017  mean|S21|=1.0100  Re(Z0)=41.86 ohm
+
+The two-cell Re(Z0) is UNCHANGED across the fix (41.86 -> 41.86) while the
+one-cell value moved 13.8%, which is exactly what the mechanism predicts: the
+spurious Ez edge is in the trace cell, and only the two-cell stamp masks it.
+Both stamps' |S11|/|S21| changed, because the multi-drive S solve (#507) is
+independent of the voltage path. Each fix moves what it should and nothing else.
+
+Two earlier observations here are now RESOLVED, not open:
+  * "Re(Z0) sits 19% below the analytic Hammerstad-Jensen anchor" — that gap was
+    this defect. Corrected, 44.11 vs 47.89 is -7.9%, inside the fixture's own
+    preflight staircase advisory.
+  * "mean|S21| > 1 on a lossless passive thru" — the single-ratio assembly rule
+    (#507); the far port's echo was counted twice. Now 0.9991 / 0.9968.
 
 RUNTIME
 -------

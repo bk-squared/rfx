@@ -1107,12 +1107,23 @@ class Simulation(
         zeroes a tangential E component only where the mask has a neighbour
         along that component's axis, so the normal component survives as
         surface charge. Stamping the same conductor TWO cells thick therefore
-        changes the model rather than the thickness — measured on an MSL thru
-        at dx = 84.67 µm, one cell gives Re(Z0) = 38.8 Ω and two cells 41.9 Ω,
-        i.e. the *thicker* strip reads *higher* impedance, which is backwards
-        for a fringing-capacitance effect and is the signature of the boundary
-        condition changing. Reproduce with
+        changes the model rather than the thickness. Measured on an MSL thru at
+        dx = 84.67 µm: one cell gives Re(Z0) = 44.1 Ω and two cells 41.9 Ω.
+        Reproduce with
         ``scripts/diagnostics/thin_conductor_cell_thickness_probe.py``.
+
+        Note this pair no longer *proves* the model change on its own. Until
+        issue #511 was fixed the one-cell reading was 38.8 Ω, so the thicker
+        stamp appeared to read the HIGHER impedance — backwards for a
+        fringing-capacitance effect, which is how the model change was first
+        argued. That inversion was an extractor artifact: the modal voltage
+        summed one Ez edge too many, and a two-cell stamp happens to mask that
+        edge, so only the one-cell number was biased. With both corrected the
+        ordering is the ordinary one (thicker → lower Z0) and the 2.25 Ω step
+        is consistent with either a model change or a genuine thickness
+        effect. The model change is still real — it follows from
+        ``apply_pec_mask`` directly — but this measurement no longer
+        discriminates between the two.
 
         Conductor LOSS is therefore unavailable for metals through this API.
         On the lanes this repo gates that is a small omission — copper loss on
