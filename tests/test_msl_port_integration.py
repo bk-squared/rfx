@@ -106,32 +106,35 @@ def test_msl_thru_line_passive_gate():
     left UNCHANGED throughout — it was never weakened to make this pass.
     See ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
 
-    CALIBRATION REFRESHED 2026-07-30 (issues #511, #507). Bounds untouched;
-    only the recorded measured values move, because two extractor defects
-    were fixed:
+    CALIBRATION REFRESHED 2026-07-30 (issues #511/#507 + PR #516 review
+    finding F2). Bounds untouched — never weakened or moved; only the
+    recorded measured values:
 
-        quantity        was      now
-        mean|S11|       0.118    0.0746
-        mean|S21|       0.972    0.9970
-        mean Re(Z0)     ~57 Ω    42.41 Ω
+        quantity        pre-#511    final (trace-anchored V, PR #516)
+        mean|S11|       0.118       0.1160
+        mean|S21|       0.972       0.9930
+        mean Re(Z0)     ~57 Ω       57.58 Ω
 
-    The prose here used to explain the ~57-vs-48 Ω gap as "the documented
-    Yee-staircase bias at 3 substrate cells". Most of it was not: the modal
-    voltage summed one Ez edge too many (#511), and the off-diagonal used
-    the single-ratio rule (#507).
+    (An intermediate PR #516 state read 0.0746 / 42.41 Ω here; that was the
+    review's finding F2 — a V span anchored on ``round(h_sub/dx)``, one
+    substrate edge short of the RASTERIZED trace on this mesh — and is
+    retired. Its apparent agreement with the aligned-mesh sibling was
+    cancellation.)
 
     Worth knowing before touching this fixture: ``h_sub/dx = 254/80 =
-    3.175``, so the substrate boundary BISECTS cell k=3 and preflight flags
-    it as the mixed-cell danger zone. Two consequences:
+    3.175``, so the substrate boundary bisects cell k=3 (preflight's
+    mixed-cell danger zone) and the trace rasterizes at node 4 — the
+    structure this mesh actually simulates has the strip at z = 320 µm over
+    a 254 µm dielectric plus a 66 µm air gap. Its Z0 of 57.58 Ω is the
+    faithful extraction of THAT geometry, not extractor error: the aligned
+    dx = 84.67 µm sibling rasterizes the intended structure and reads
+    44.11 Ω. The cross-mesh difference is geometry quantization.
 
-      * even the corrected voltage covers only ``3·80/254 = 94.5%`` of the
-        substrate here, which is why Z0 reads 42.41 Ω against 44.11 Ω on the
-        aligned dx = 84.67 µm (= h_sub/3) sibling — a 3.9% spread that the
-        coverage fraction alone predicts to within 1.7%;
-      * before #511 the two meshes disagreed by **48.5%** (38.77 vs 57.58 Ω)
-        and sat on opposite sides of the analytic anchor, because the
-        spurious edge is all-trace at dx = 84.67 and 17.5% substrate at
-        dx = 80, so its contribution changed SIGN between them.
+    Margin note (2026-07-30): the sibling length-invariance lock's
+    cross-length Z0 spread measures 4.96% against its 5% bound, dominated
+    by the L = 6 mm leg under EITHER V span — effectively margin-less.
+    Investigate the short-line N-probe fit conditioning before re-pinning
+    anything here.
 
     A future refinement of this fixture should prefer dx = h_sub/3 or
     h_sub/4 (84.7 / 63.5 µm), which preflight already recommends.
