@@ -150,8 +150,16 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     measured ``|a_passive/a_driven| = 0.07-0.51`` across three fixtures — and
     the exact algebra ``b_1/a_1 = S11 + S12·(a_2/a_1)`` holds to machine
     precision, so the far port's echo was reported as the structure's own
-    reflection.  That also makes ``|S11|² + |S21|² = 1 + |S11|²``, the same
-    power counted twice, which is the passivity violation #507 opened on.
+    reflection.
+
+    Unitarity is therefore lost.  How it is lost depends on phase: expanding
+    for a symmetric ``S`` gives
+    ``(1+γ²)(|S11|²+|S21|²) + 4γ·Re(S11·conj(S21))`` with ``γ = a_2/a_1``, so
+    the old rule can push column power either side of 1.  In the NEAR-MATCHED
+    case that the thru fixtures are (true ``S11 ≈ 0``) it reduces to
+    ``|S11|² + |S21|² = 1 + γ²`` — the same power counted twice — which is the
+    passivity violation #507 opened on.  Both cases are pinned in
+    ``tests/test_msl_modal_voltage_and_wave_solve.py``.
 
     ``cond_a`` bounds DEGENERACY of the drive system only — it is not a
     reliability score.  Same contract as the coax lane's
