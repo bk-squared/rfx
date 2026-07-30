@@ -361,7 +361,9 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
         by up to 5.2e-2 on this fixture — the first red, 2026-07-27, #509);
       * #511/#507 (PR #516) corrected the modal-voltage span and replaced the
         single-ratio assembly with the multi-drive solve (measured deviation
-        vs the old golden: 2.93e-1, max rel 4.79 — not f32 rounding, and not
+        vs the old golden: 1.07e-1 as shipped (an intermediate PR state
+        measured 2.93e-1 before review finding F2 re-anchored the V span) —
+        not f32 rounding, and not
         meant to be).
 
     A frozen old-algorithm capture cannot survive deliberate algorithm

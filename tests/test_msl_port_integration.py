@@ -406,8 +406,16 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
        to a few percent.
 
     Tolerances tie to the 2026-06-14 #140 verify-only measurement (|Z0| ~57.5 Ω,
-    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124); the
-    5% spread gate is ~10x the measured spread for cross-machine robustness.
+    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124).
+
+    MARGIN WARNING (2026-07-30, post PR #516): the measured cross-length
+    spread is now **4.96% against the 5% bound** — margin-less, NOT the ~10x
+    headroom the 0.49% record suggested. Measured [60.23, 57.34, 57.58] Ω for
+    L = 6/8/10 mm; the L = 6 mm leg is the outlier under BOTH V-span choices
+    tried that day, so the spread is short-line N-probe fit conditioning,
+    not the extractor change. Any red here is as likely that conditioning as
+    a real regression — investigate the L = 6 mm fit window before touching
+    the bound (tracked follow-up issue).
     @slow: three full FDTD thru-line runs.
     """
     # Lengths chosen so the largest domain (L + 2*PORT_MARGIN = 14 mm) matches the
