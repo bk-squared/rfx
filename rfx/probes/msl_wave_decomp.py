@@ -309,7 +309,32 @@ def register_msl_plane_probes(
 
 
 def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
-    """V_f = ∫ Ez dz along substrate column at j=j_centre on this plane."""
+    """V_f = ∫ Ez dz along substrate column at j=j_centre on this plane.
+
+    .. warning::
+
+       DIVERGED from the production extractor, and deliberately NOT
+       half-fixed. Two defects are present here and they partially cancel:
+
+       * this slice spans ``k_lo .. k_hi`` = ``n+1`` Ez edges over an
+         ``n``-cell substrate, so V reads about 12% LOW (issue #511, fixed in
+         ``rfx.api._sparams.msl_modal_voltage``); and
+       * :func:`_i_from_plane` integrates a single Hy slab rather than the
+         closed Ampère loop, the pre-issue-#80 definition that
+         :func:`rfx.sources.msl_port.msl_loop_current` records as
+         undercounting ``I`` by about 1.5x.
+
+       Since ``Z0 = V/I``, fixing only the voltage would unbalance a
+       partially-cancelling pair and move this path further from the truth,
+       not closer. Repairing it properly needs the closed loop, which needs
+       Hz plane probes this module never registers. Tracked separately; the
+       production S-matrix path does its own integration and does not call
+       this.
+
+       Callers today: ``tests/test_msl_plane_primitives_smoke.py`` and
+       ``validation/tap_paper/msl_stub_notch_tuning.py`` (whose full-res
+       headline numbers are projected targets, not committed validation).
+    """
     plane = fr.dft_planes[plane_name].accumulator     # (n_freqs, ny, nz)
     column = jax.lax.dynamic_slice_in_dim(
         plane[:, p.j_centre, :], p.k_lo, p.k_hi - p.k_lo + 1, axis=-1,

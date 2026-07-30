@@ -49,7 +49,16 @@ docstring claim checkable.
 
 from __future__ import annotations
 
+import sys
 import warnings
+from pathlib import Path
+
+# Import the rfx in THIS checkout, not whatever is pip-installed. Running a
+# script file puts the script's own directory on sys.path, never the cwd, so
+# `import rfx` silently resolved to the installed package — which cost a
+# session's worth of confusion during issue #511 when this probe reported
+# pre-fix numbers from a post-fix tree.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 

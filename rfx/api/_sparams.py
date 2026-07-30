@@ -88,6 +88,98 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     return np.full(n, float(grid.dx), dtype=float)
 
 
+def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
+                      dz_arr, dtype=None):
+    """Modal voltage ``V = -∫E·dz`` from ground to the trace underside.
+
+    ``ez_plane`` is an ``(n_freqs, ny, nz)`` x-normal DFT accumulator.  The
+    integral runs over the SUBSTRATE z-edges only: ``k_lo .. k_hi-1``.
+
+    ``k_hi`` is the TRACE cell, not the last substrate cell.
+    :func:`rfx.sources.msl_port._msl_yz_cells` builds an inclusive cell span
+    from ``position_to_index(z_lo)`` to ``position_to_index(z_hi=h_sub)`` =
+    ``round(h_sub/dx)``, and ``k_top = k_hi`` is where the PEC trace search
+    starts.  Since ``Ez[k]`` occupies the z-edge ``[k·dz, (k+1)·dz]``,
+    ground→trace-underside is ``k_lo .. k_hi-1`` — ``n`` edges for an
+    ``n``-cell substrate.
+
+    Issue #511: this used to be ``range(k_lo, k_hi + 1)``, i.e. ``n+1``
+    edges.  The extra edge lies inside the one-cell PEC trace, where
+    :func:`rfx.boundaries.pec.apply_pec_mask` deliberately preserves the
+    NORMAL E component as surface charge (documented at
+    ``rfx/boundaries/pec.py:90-93``) — a correct boundary condition that is
+    wrong to sum into a ground-to-trace potential difference.  It was live
+    and contributed about −12% (measured ``|V_extra/V| = 0.120-0.121`` at
+    ``∠ −177°…−179°``), so every quantity derived from ``V`` — ``Z0``,
+    ``S11``, ``S21``, the N-probe fit, the two-plane invariant — carried a
+    common-mode bias.  The extractor-independent witness is the Poynting
+    flux: ``Re(V·conj(I)) / flux_spectrum`` measured 0.881-0.885 with the
+    old range and 1.006-1.009 with this one, over 7 planes × 12
+    frequencies.
+    """
+    if k_hi <= k_lo:
+        raise ValueError(
+            f"msl_modal_voltage: need at least one substrate edge, got "
+            f"k_lo={k_lo}, k_hi={k_hi}. k_hi is the trace cell, so a port "
+            f"whose height rasterises to zero substrate cells cannot define "
+            f"a modal voltage — refine the mesh or raise the port height."
+        )
+    v = jnp.zeros(ez_plane.shape[0],
+                  dtype=ez_plane.dtype if dtype is None else dtype)
+    for k in range(k_lo, k_hi):
+        v = v + ez_plane[:, j_centre, k] * float(dz_arr[k])
+    return v
+
+
+def msl_solve_s_from_waves(wave_a, wave_b):
+    """Solve ``S = B·A⁻¹`` from wave amplitudes recorded on every drive.
+
+    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs,)`` forward / backward
+    wave amplitudes at port ``j`` while port ``d`` was driven.  With every
+    port driven the system ``b = S a`` is square:
+
+        ``A[j, d] = a_j`` during drive ``d``,  ``B[j, d] = b_j`` likewise
+        ``S = B · A⁻¹``
+
+    Returns ``(S, cond_a)`` with ``S`` shaped ``(n_ports, n_ports, n_freqs)``
+    indexed ``[receiver, driven, freq]``, and ``cond_a`` the per-frequency
+    condition number of ``A`` (``None`` under tracing).
+
+    Issue #507: the superseded rule ``S[j, d] = b_j / a_d`` is the ``d``-th
+    column of this only when ``a_j = 0`` at every passive port.  It is not —
+    measured ``|a_passive/a_driven| = 0.07-0.51`` across three fixtures — and
+    the exact algebra ``b_1/a_1 = S11 + S12·(a_2/a_1)`` holds to machine
+    precision, so the far port's echo was reported as the structure's own
+    reflection.  That also makes ``|S11|² + |S21|² = 1 + |S11|²``, the same
+    power counted twice, which is the passivity violation #507 opened on.
+
+    ``cond_a`` bounds DEGENERACY of the drive system only — it is not a
+    reliability score.  Same contract as the coax lane's
+    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
+    (issue #489), generalised to ``n`` ports.
+    """
+    n_ports = len(wave_a)
+    A = jnp.stack([
+        jnp.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)                                   # (n_freqs, n_ports, n_ports)
+    B = jnp.stack([
+        jnp.stack([wave_b[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    # S = B A⁻¹  <=>  Sᵀ = (Aᵀ)⁻¹ Bᵀ, batched over frequency.
+    S_solved = jnp.swapaxes(
+        jnp.linalg.solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2)),
+        -1, -2,
+    )
+    cond_a = None
+    if not is_tracer(A):
+        _sv = np.linalg.svd(
+            np.asarray(jax.lax.stop_gradient(A)), compute_uv=False)
+        cond_a = np.asarray(_sv[..., 0] / np.maximum(_sv[..., -1], 1e-300))
+    return jnp.moveaxis(S_solved, 0, -1), cond_a
+
+
 def _msl_wave_split_reliability(
     voltages: object,
     currents: object,
@@ -1781,11 +1873,16 @@ class _SparamMixin:
         sigma_max 1.18 on a coarse thru).
 
         For each registered MSL port, runs one FDTD simulation with that
-        port driven and the others passive (matched termination). At
-        each port ``n_probes`` downstream DFT plane probes record Ez and
-        the first probe also records Hy; β, Z0 and the wave amplitudes
-        are extracted post-scan via the N-probe least-squares
-        wave-decomposition extractor (issue #80 Fix C — SVD lstsq fit of
+        port driven and the others passive.  The passive ports are NOT
+        assumed matched — measured ``|a_passive/a_driven| = 0.07-0.51``
+        across three fixtures, so the S-matrix is recovered by solving the
+        full wave system ``S = B·A⁻¹`` over all drives rather than by the
+        per-column ratio ``b_j/a_d`` (issue #507; the ratio reported the far
+        port's echo as the structure's own reflection).  At each port
+        ``n_probes`` downstream DFT plane probes record Ez and the first
+        probe also records Hy; β, Z0 and the wave amplitudes are extracted
+        post-scan via the N-probe least-squares wave-decomposition
+        extractor (issue #80 Fix C — SVD lstsq fit of
         ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` anchored on the analytic
         Hammerstad-Jensen β guess) and assembled into the full S-matrix.
         The N-probe extractor removes the 3-probe quadratic's q→1
@@ -2102,6 +2199,11 @@ class _SparamMixin:
             raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            # Wave amplitudes per (driven, port) for the multi-drive solve
+            # (issue #507). Python lists of jnp arrays, not a stacked array,
+            # so eps_override tracers stay on the AD tape.
+            wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
+            wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
             # Ring-down settling witness (project rule: fixed-length
             # open-domain records must quote end/peak energy before any
@@ -2247,10 +2349,11 @@ class _SparamMixin:
                     for nm in ez_probe_names[p_idx]:
                         ez_plane = jnp.asarray(planes[nm].accumulator)
                         # ez_plane shape: (n_freqs, ny, nz)
-                        v_f = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                            v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
-                        vs.append(v_f)
+                        vs.append(msl_modal_voltage(
+                            ez_plane, j_centre=meta["j_centre"],
+                            k_lo=meta["k_lo"], k_hi=meta["k_hi"],
+                            dz_arr=dz_arr, dtype=_complex_dtype,
+                        ))
                     v_per_port.append(vs)
                     # G-AD-WIRE: keep on JAX tape when eps_override is
                     # set. np.asarray() would concretise a JAX tracer and
@@ -2349,6 +2452,14 @@ class _SparamMixin:
                 # would launch. For a transmitted wave arriving at a port
                 # whose forward reference faces the other way, a~0 and b~V;
                 # using a gave the non-physical |S21|~0.08, b gives ~1.
+                #
+                # RETAINED as the fallback only. This single-ratio rule is
+                # exact only when a_j = 0 at every passive port, and it is
+                # not: measured |a_passive/a_driven| = 0.07-0.51 across
+                # three fixtures, so the far port's echo is reported as the
+                # structure's own reflection (issue #507). The wave
+                # amplitudes recorded below feed the multi-drive solve that
+                # replaces this after the drive loop.
                 for j in range(n_ports):
                     if j == driven:
                         continue
@@ -2357,6 +2468,69 @@ class _SparamMixin:
                         v0_p - z0_hj_per_port[j] * i_first_per_port[j]
                     )
                     S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
+
+                # Record the FULL (a, b) pair at every port for this drive
+                # (issue #507). ``a`` at a passive port is what the
+                # single-ratio rule above assumes away.
+                for j in range(n_ports):
+                    v0_j = v_per_port[j][0]
+                    z0_j = z0_hj_per_port[j]
+                    i_j = i_first_per_port[j]
+                    wave_a[driven][j] = jnp.asarray(
+                        0.5 * (v0_j + z0_j * i_j), dtype=_complex_dtype)
+                    wave_b[driven][j] = jnp.asarray(
+                        0.5 * (v0_j - z0_j * i_j), dtype=_complex_dtype)
+
+            # ---- Multi-drive S solve (issue #507) -----------------------
+            # Every port was driven, so the full wave system is recorded:
+            #     A[j, d] = a_j during drive d      B[j, d] = b_j during d
+            #     b = S a   for every drive   =>    S = B · A⁻¹
+            # The single-ratio rule above (S[j,d] = b_j/a_d) is the d-th
+            # column of this only when a_j = 0 at every passive port. It is
+            # not: the far port reflects, and the exact algebra
+            # b_1/a_1 = S11 + S12·(a_2/a_1) holds to machine precision, so
+            # the echo was reported as the structure's own reflection. That
+            # also makes |S11|²+|S21|² = 1 + |S11|² — the same power counted
+            # twice — which is the passivity violation #507 opened on.
+            # Same algebra as the coax lane's
+            # solve_two_port_from_wave_amplitudes (#489), generalised to n
+            # ports. cond(A) bounds DEGENERACY only; it is not a
+            # reliability score.
+            if all(wave_a[d][j] is not None
+                   for d in range(n_ports) for j in range(n_ports)):
+                import warnings as _w507
+                S_solved, cond_a = msl_solve_s_from_waves(wave_a, wave_b)
+                _bad = False
+                if cond_a is not None:
+                    _bad = bool(np.any(~np.isfinite(
+                        np.asarray(jax.lax.stop_gradient(S_solved))
+                    )))
+                    if _bad:
+                        _w507.warn(
+                            "compute_msl_s_matrix: the multi-drive S solve "
+                            f"(issue #507) produced non-finite entries with "
+                            f"cond(A) up to {float(np.max(cond_a)):.3g}; "
+                            "keeping the single-ratio S for this run, which "
+                            "carries the far port's echo in S11 (so expect "
+                            "|S11|^2+|S21|^2 above 1). The drive matrix is "
+                            "degenerate — check that each drive actually "
+                            "excited its port and that the ports are not "
+                            "mutually shadowed.",
+                            stacklevel=2,
+                        )
+                    elif float(np.max(cond_a)) > 1.0e3:
+                        _w507.warn(
+                            "compute_msl_s_matrix: the multi-drive S solve "
+                            f"(issue #507) has cond(A) up to "
+                            f"{float(np.max(cond_a)):.3g}. That bounds "
+                            "DEGENERACY of the drive system, not accuracy: "
+                            "the drive columns are nearly dependent, so S is "
+                            "sensitive to the recorded wave amplitudes. "
+                            "Check port isolation and settling_db.",
+                            stacklevel=2,
+                        )
+                if not _bad:
+                    S = S_solved.astype(_complex_dtype)
 
             # A deep standing-wave node can collapse both phasors at the
             # driven port plane.  The V·I ratio is then numerically ill
@@ -2383,16 +2557,20 @@ class _SparamMixin:
                 pass
 
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
-            # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
-            # is bounded |S11| <= 1 for a passive structure whenever the
-            # closed Ampere-loop current is sound. A V·I-split |S11| > 1 is
-            # therefore the primary red flag — it means the current was
-            # mismeasured (sign/scale), so S11/S21 are untrustworthy; this
-            # is what raises under strict_extractor=True. The reported Z0
-            # and beta still ride on the retained N-probe fit, which can be
-            # noisy per-frequency on coarse meshes, so a Z0 deviation from
+            # S11/S21 come from the OpenEMS-style V·I wave amplitudes, now
+            # combined by the multi-drive solve (issue #507). |S11| > 1 on a
+            # passive structure remains the primary red flag, but read it
+            # correctly: the single-plane split itself was bounded by
+            # construction, whereas the solve is not — it can exceed 1 when
+            # the recorded wave system is inconsistent (a mismeasured
+            # current's sign or scale, a degenerate drive matrix, or an
+            # under-settled record). That is what raises under
+            # strict_extractor=True, and cond(A) plus settling_db are the
+            # two handles for telling those apart. The reported Z0 and beta
+            # still ride on the retained N-probe fit, which can be noisy
+            # per-frequency on coarse meshes, so a Z0 deviation from
             # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-            # caveat — it does not impugn the V·I-split S11/S21.
+            # caveat — it does not impugn S11/S21.
             import warnings as _w
 
             _S11_MAX = 1.0 + 0.05
@@ -3230,10 +3408,11 @@ class _SparamMixin:
                         ez_plane = jnp.asarray(
                             planes[nm + f"_ez{q_idx}"].accumulator
                         )
-                        v_q = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                            v_q = v_q + ez_plane[:, meta["j_centre"], k] \
-                                * float(dz_arr[k])
+                        v_q = msl_modal_voltage(
+                            ez_plane, j_centre=meta["j_centre"],
+                            k_lo=meta["k_lo"], k_hi=meta["k_hi"],
+                            dz_arr=dz_arr, dtype=_complex_dtype,
+                        )
                         v_lad[run_idx, p_idx, q_idx, :] = np.asarray(v_q)
                     v_f = jnp.asarray(v_lad[run_idx, p_idx, 0, :])
                     hy_plane = jnp.asarray(planes[nm + "_hy"].accumulator)
