@@ -293,11 +293,16 @@ def _compute_numpy_f64_golden_s1(
             # Voltage at probe 0: integral Ez dz in centre column.
             ez_plane = _get(ez_probe_names[p_idx][0])  # (n_freqs, ny, nz), c128
             v_f = np.zeros(n_freqs, dtype=np.complex128)
-            # SUBSTRATE edges only, k_lo..k_hi-1 — k_hi is the TRACE cell.
-            # Mirror of rfx.api._sparams.msl_modal_voltage (issue #511); this
-            # numpy reference exists to prove structural equivalence with the
-            # jnp assembly, so it must implement the SAME range.
-            for k in range(meta["k_lo"], meta["k_hi"]):
+            # Every Ez edge strictly below the RASTERIZED trace conductor:
+            # k_lo .. trace_k_lo-1, anchored on the same PEC search the
+            # Ampere loop uses — NOT on meta["k_hi"] = round(h_sub/dx),
+            # which is one edge short whenever frac(h_sub/dx) in (0, 0.5)
+            # (this fixture: dx=80um, trace node 4, rounding proxy 3 —
+            # PR #516 review finding F2). Mirror of
+            # rfx.api._sparams.msl_modal_voltage; this numpy reference
+            # exists to prove structural equivalence with the jnp assembly,
+            # so it must implement the SAME span.
+            for k in range(meta["k_lo"], trace_k_per_port[p_idx][0]):
                 v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
             v0_per_port.append(v_f)
 

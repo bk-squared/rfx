@@ -1290,6 +1290,15 @@ class MSLSMatrixResult:
         Per-port wave-split reliability. False marks standing-wave-null bins
         where both voltage and current collapse below 10% of their band
         medians. S values at those bins are retained unchanged.
+
+        Blast radius under the multi-drive solve (issue #507): S is
+        ``B·A⁻¹`` over ALL drives, so a collapsed wave pair at port ``p``
+        contaminates the ENTIRE frequency slice ``S[:, :, k]`` — not just
+        the column ``S[:, p, k]`` that the pre-#507 single-ratio assembly
+        confined it to. ``reliable[p, k]`` still tells you WHICH port's
+        plane collapsed; the only safe per-bin filter is
+        ``np.all(reliable, axis=0)``. A True entry is not an accuracy
+        guarantee.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
         over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%

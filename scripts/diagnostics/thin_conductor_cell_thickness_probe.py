@@ -167,11 +167,24 @@ def main() -> None:
     d_z0 = rows[1]["re_z0"] - rows[0]["re_z0"]
     print(
         f"\nVERDICT: two cells read {d_z0:+.2f} ohm "
-        f"({100 * d_z0 / rows[0]['re_z0']:+.1f}%) vs one cell. A genuinely "
-        "thicker strip would read LOWER Z0 (more fringing capacitance), so a "
-        "positive shift is the signature of the PEC boundary condition "
-        "changing from surface to volume — not of thickness."
+        f"({100 * d_z0 / rows[0]['re_z0']:+.1f}%) vs one cell."
     )
+    if d_z0 < 0:
+        print(
+            "  The ordinary direction for a thicker strip (more fringing "
+            "capacitance -> lower Z0). Post-#511/#507 this step is consistent "
+            "with EITHER the surface->volume model change or a genuine "
+            "thickness effect — this measurement no longer discriminates "
+            "between them (see the docstring; the pre-fix inverted ordering "
+            "that used to 'prove' the model change was the #511 artifact)."
+        )
+    else:
+        print(
+            "  INVERTED ordering (thicker reads HIGHER): with the corrected "
+            "extractor this is unexpected — before concluding anything, "
+            "check for a #511-class V-span defect (the pre-fix code produced "
+            "exactly this inversion as an artifact)."
+        )
 
 
 if __name__ == "__main__":

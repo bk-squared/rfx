@@ -93,36 +93,48 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
     """Modal voltage ``V = -∫E·dz`` from ground to the trace underside.
 
     ``ez_plane`` is an ``(n_freqs, ny, nz)`` x-normal DFT accumulator.  The
-    integral runs over the SUBSTRATE z-edges only: ``k_lo .. k_hi-1``.
+    integral sums the z-edges ``k_lo .. k_hi-1`` — every Ez edge strictly
+    below the trace conductor.
 
-    ``k_hi`` is the TRACE cell, not the last substrate cell.
-    :func:`rfx.sources.msl_port._msl_yz_cells` builds an inclusive cell span
-    from ``position_to_index(z_lo)`` to ``position_to_index(z_hi=h_sub)`` =
-    ``round(h_sub/dx)``, and ``k_top = k_hi`` is where the PEC trace search
-    starts.  Since ``Ez[k]`` occupies the z-edge ``[k·dz, (k+1)·dz]``,
-    ground→trace-underside is ``k_lo .. k_hi-1`` — ``n`` edges for an
-    ``n``-cell substrate.
+    ``k_hi`` is EXCLUSIVE and must be the **bottom node of the rasterized
+    trace conductor** — in the S-matrix lanes, ``trace_k_per_port[p][0]``,
+    i.e. the same PEC-mask search the Ampère-loop current uses, so V and I
+    reference one conductor plane by construction.
 
-    Issue #511: this used to be ``range(k_lo, k_hi + 1)``, i.e. ``n+1``
-    edges.  The extra edge lies inside the one-cell PEC trace, where
+    Do NOT pass ``round(h_sub/dx)`` (the port-height rounding,
+    ``port_idx_meta["k_hi"]``) as a proxy.  ``Box`` rasterization is
+    half-open over node coordinates, so for ``frac(h_sub/dx) ∈ (0, 0.5)``
+    the trace lands at ``ceil(h_sub/dx) = round(h_sub/dx) + 1`` and the
+    proxy is one substrate edge SHORT.  Measured on the dx = 80 µm gate
+    fixture (``h_sub/dx = 3.175``): trace node 4, proxy 3 — the proxy span
+    dropped the in-phase edge 3 and anchored V and I on different conductor
+    planes (PR #516 review, finding F2).  On node-aligned meshes
+    (``h_sub/dx`` integral, e.g. dx = h_sub/3 = 84.67 µm) the two agree.
+
+    Issue #511: before this helper existed the span was
+    ``range(k_lo, k_hi + 1)`` with the rounding proxy — on aligned meshes
+    that is ``n+1`` edges for an ``n``-cell substrate, and the extra edge
+    lies inside the one-cell PEC trace, where
     :func:`rfx.boundaries.pec.apply_pec_mask` deliberately preserves the
-    NORMAL E component as surface charge (documented at
-    ``rfx/boundaries/pec.py:90-93``) — a correct boundary condition that is
-    wrong to sum into a ground-to-trace potential difference.  It was live
-    and contributed about −12% (measured ``|V_extra/V| = 0.120-0.121`` at
-    ``∠ −177°…−179°``), so every quantity derived from ``V`` — ``Z0``,
-    ``S11``, ``S21``, the N-probe fit, the two-plane invariant — carried a
+    NORMAL E component as surface charge (``rfx/boundaries/pec.py:90-93``)
+    — a correct boundary condition that is wrong to sum into a
+    ground-to-trace potential difference.  It contributed roughly −12% at
+    ``∠ ≈ 180°``, so every quantity derived from ``V`` (``Z0``, ``S11``,
+    ``S21``, the N-probe fit, the two-plane invariant) carried a
     common-mode bias.  The extractor-independent witness is the Poynting
     flux: ``Re(V·conj(I)) / flux_spectrum`` measured 0.881-0.885 with the
-    old range and 1.006-1.009 with this one, over 7 planes × 12
-    frequencies.
+    old span and 1.006-1.009 with the corrected span, over 7 planes × 12
+    frequencies — **on the aligned dx = 84.67 µm mesh**; that identity is
+    the falsifier for THIS span (ground→trace underside) and holds only
+    when the top anchor is the true trace node.
     """
     if k_hi <= k_lo:
         raise ValueError(
             f"msl_modal_voltage: need at least one substrate edge, got "
-            f"k_lo={k_lo}, k_hi={k_hi}. k_hi is the trace cell, so a port "
-            f"whose height rasterises to zero substrate cells cannot define "
-            f"a modal voltage — refine the mesh or raise the port height."
+            f"k_lo={k_lo}, k_hi={k_hi}. k_hi is the rasterized trace's "
+            f"bottom node (exclusive), so a port whose height rasterises "
+            f"to zero substrate cells cannot define a modal voltage — "
+            f"refine the mesh or raise the port height."
         )
     v = jnp.zeros(ez_plane.shape[0],
                   dtype=ez_plane.dtype if dtype is None else dtype)
@@ -182,8 +194,13 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     )
     cond_a = None
     if not is_tracer(A):
+        # f64 BEFORE the ratio: for a complex64 A the SVD returns float32,
+        # where the 1e-300 floor underflows to 0.0 (NEP-50 weak promotion
+        # keeps float32) and a singular A divides by zero instead of
+        # saturating. Same failure class as the #497 NEP-50 fallback.
         _sv = np.linalg.svd(
-            np.asarray(jax.lax.stop_gradient(A)), compute_uv=False)
+            np.asarray(jax.lax.stop_gradient(A)), compute_uv=False
+        ).astype(np.float64)
         cond_a = np.asarray(_sv[..., 0] / np.maximum(_sv[..., -1], 1e-300))
     return jnp.moveaxis(S_solved, 0, -1), cond_a
 
@@ -730,6 +747,22 @@ def _assemble_mixed_power_wave_s(
 
     Pure function of the recorded phasors so the cross-impedance
     normalization is unit-testable without an FDTD run.
+
+    .. warning::
+
+       KNOWN #507 RESIDUE, deliberately not half-fixed here (issue #517).
+       This assembly still forms ``S[i, j] = b_i / a_j`` per drive — the
+       single-ratio rule the pure-MSL lane replaced with the multi-drive
+       solve ``S = B·A⁻¹`` — so a passive port's echo is reported as the
+       driven port's own response whenever ``a_passive != 0`` (measured
+       0.07-0.51 on the pure-MSL fixtures). The driven-MSL diagonal is
+       exactly that contaminated quantity, and it feeds the DEFAULT flux
+       channel via ``P_inc = P_net / (1 - |S_jj|^2)``, so the residue
+       propagates into the flux magnitudes too; it is a live candidate for
+       this lane's 9% reciprocity residual (#488/#498). Extending the solve
+       needs the Kurokawa cross-family ``sqrt(Z)`` composition worked out
+       first — see #517 for the measurement-first plan. Lane remains fenced
+       experimental with a running reciprocity witness.
 
     Wave conventions (each mirrored line-for-line from the validated
     per-family extractors — do NOT re-derive here):
@@ -2357,9 +2390,22 @@ class _SparamMixin:
                     for nm in ez_probe_names[p_idx]:
                         ez_plane = jnp.asarray(planes[nm].accumulator)
                         # ez_plane shape: (n_freqs, ny, nz)
+                        # Top of the V span = the RASTERIZED trace's bottom
+                        # node, not round(h_sub/dx) (= meta["k_hi"]): Box
+                        # rasterization is half-open over node coordinates,
+                        # so for frac(h_sub/dx) in (0, 0.5) the trace lands
+                        # at ceil = k_hi + 1 and the k_hi anchor is one
+                        # substrate edge SHORT — V and the Ampere-loop
+                        # current would reference different conductor
+                        # planes (PR #516 review, finding F2; measured on
+                        # the dx=80um gate fixture: trace node 4, k_hi 3).
+                        # trace_k_per_port is the same PEC search the
+                        # current integration uses, so V and I share one
+                        # conductor plane by construction.
                         vs.append(msl_modal_voltage(
                             ez_plane, j_centre=meta["j_centre"],
-                            k_lo=meta["k_lo"], k_hi=meta["k_hi"],
+                            k_lo=meta["k_lo"],
+                            k_hi=trace_k_per_port[p_idx][0],
                             dz_arr=dz_arr, dtype=_complex_dtype,
                         ))
                     v_per_port.append(vs)
@@ -3416,9 +3462,13 @@ class _SparamMixin:
                         ez_plane = jnp.asarray(
                             planes[nm + f"_ez{q_idx}"].accumulator
                         )
+                        # Anchor the V-span top on the rasterized trace
+                        # node, not round(h_sub/dx) — see the sibling
+                        # comment in compute_msl_s_matrix (PR #516 F2).
                         v_q = msl_modal_voltage(
                             ez_plane, j_centre=meta["j_centre"],
-                            k_lo=meta["k_lo"], k_hi=meta["k_hi"],
+                            k_lo=meta["k_lo"],
+                            k_hi=trace_k_per_port[p_idx][0],
                             dz_arr=dz_arr, dtype=_complex_dtype,
                         )
                         v_lad[run_idx, p_idx, q_idx, :] = np.asarray(v_q)

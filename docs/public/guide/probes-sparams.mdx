@@ -196,16 +196,21 @@ the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 
 During normal Python execution outside JAX tracing,
 `MSLSMatrixResult.reliable[p, k]` is `False` if both measured `|V|` and `|I|`
-at the **driven** port `p`, frequency index `k`, fall below 10% of their
-per-port band medians. This condition can occur near a strong-reflector
-measurement null, but the mask does not diagnose the cause. Because full
-S-matrices use `S[receiver_port, driven_port, frequency_index]`, a false entry
-means that `S[:, p, k]` should not be plotted, fitted, or optimized as physical
-data. The values remain present for diagnosis. A true entry only means that the
-low-signal threshold was not triggered; it is not an accuracy guarantee.
+at port `p`, frequency index `k`, fall below 10% of their per-port band
+medians. This condition can occur near a strong-reflector measurement null,
+but the mask does not diagnose the cause.
 
-The following conservative filter keeps only frequencies that are usable for
-every driven-port column:
+The S-matrix is solved from the wave amplitudes of **all** drives at once
+(`S = B·A⁻¹`), so a collapsed wave pair at any one port contaminates the
+entire frequency slice `S[:, :, k]` — not just that port's column. A false
+entry at any port therefore means the whole S-matrix at that frequency should
+not be plotted, fitted, or optimized as physical data; `reliable[p, k]` tells
+you *which* port's probe plane collapsed. The values remain present for
+diagnosis. A true entry only means that the low-signal threshold was not
+triggered; it is not an accuracy guarantee.
+
+The only safe per-bin filter is the one that requires every port to be
+reliable at that frequency:
 
 ```python
 import numpy as np

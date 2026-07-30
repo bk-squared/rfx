@@ -19,7 +19,12 @@ charge, so it was live and contributed about -12%.
 
 import numpy as np
 import pytest
-from jax.experimental import enable_x64
+
+try:
+    # Modern JAX (scoped x64 context manager promoted to top-level).
+    from jax import enable_x64
+except ImportError:  # older JAX — jax.experimental.enable_x64 removed in 0.8
+    from jax.experimental import enable_x64
 
 from rfx.api._sparams import msl_modal_voltage, msl_solve_s_from_waves
 
@@ -113,7 +118,7 @@ def test_zero_substrate_span_fails_loudly():
     """A port whose height rasterises to no substrate cell must raise."""
     dz = np.full(NZ, 1.0)
     ez = _ez_plane({0: 1.0})
-    with pytest.raises(ValueError, match="trace cell"):
+    with pytest.raises(ValueError, match="trace"):
         msl_modal_voltage(ez, j_centre=J_CENTRE, k_lo=2, k_hi=2, dz_arr=dz)
 
 
@@ -297,3 +302,125 @@ def test_solve_handles_a_one_port_system():
         S_out = np.asarray(S_out)
     assert S_out.shape == (1, 1, n_f)
     np.testing.assert_allclose(S_out[0, 0], 0.3, rtol=F64_TOL)
+
+
+# --------------------------------------------------------------------------
+# F2 (PR #516 review) — the WIRING: the assembly must anchor the V span on
+# the RASTERIZED trace node, not on round(h_sub/dx)
+# --------------------------------------------------------------------------
+#
+# The helper tests above cannot catch a call-site defect: msl_modal_voltage
+# sums whatever span it is given. These two tests drive the REAL
+# compute_msl_s_matrix setup (real grid, real PEC rasterization, real trace
+# search) with synthetic z-profiled Ez planes and read back raw_v, pinning
+# which Ez edges the production V actually contains on both mesh classes:
+#
+#   dx = 84.67 um (h_sub/dx = 2.9999, aligned):   trace node 3 -> edges 0..2
+#   dx = 80.00 um (h_sub/dx = 3.1750, bisecting): trace node 4 -> edges 0..3
+#
+# Together they kill both known bad rules: the pre-#511 inclusive span
+# (includes the trace-node edge -> fails the ALIGNED case) and the
+# round(h_sub/dx) proxy (drops edge 3 -> fails the BISECTING case).
+
+from types import MethodType, SimpleNamespace
+
+import jax.numpy as jnp
+
+from rfx.api import Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.geometry.csg import Box
+from rfx.probes.probes import DFTPlaneProbe
+
+_EPS_R, _H_SUB, _W_TRACE = 3.66, 254e-6, 600e-6
+_L_LINE, _MARGIN, _F_MAX = 10e-3, 2e-3, 5e9
+# Loud, distinct markers per z-node: edges 0..2 quiet, edge 3 loud positive,
+# the node-4 edge loud negative. Inclusion/exclusion is unambiguous.
+_MARKER = {0: 1.0, 1: 1.0, 2: 1.0, 3: 10.0, 4: -1000.0}
+
+
+def _fake_run_z_profile(nz_markers):
+    """sim.run stub: every ez plane carries a fixed per-z-node profile."""
+
+    def fake_run(self, *, n_steps=None, num_periods=1.0,
+                 compute_s_params=False):
+        del n_steps, num_periods, compute_s_params
+        grid = self._build_grid()
+        planes = {}
+        for entry in self._dft_planes:
+            acc = jnp.zeros((1, grid.ny, grid.nz), dtype=jnp.complex64)
+            if entry.component == "ez":
+                prof = jnp.asarray(
+                    [complex(nz_markers.get(k, 0.0)) for k in range(grid.nz)],
+                    dtype=jnp.complex64,
+                )
+                acc = jnp.broadcast_to(
+                    prof[None, None, :], (1, grid.ny, grid.nz)
+                )
+            elif entry.component == "hy":
+                acc = acc + (0.018 + 0.004j)
+            else:  # hz
+                acc = acc + (0.005 + 0.001j)
+            planes[entry.name] = DFTPlaneProbe(
+                accumulator=acc, freqs=entry.freqs,
+                component=entry.component, axis=0, index=0,
+                total_steps=1, window="rect", window_alpha=0.25,
+            )
+        return SimpleNamespace(dft_planes=planes)
+
+    return fake_run
+
+
+def _raw_v_for_dx(dx, tmp_path):
+    lx = _L_LINE + 2 * _MARGIN
+    ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
+    lz = _H_SUB + 1.5e-3
+    sim = Simulation(
+        freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=_EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
+                (lx, y_c + _W_TRACE / 2, _H_SUB + dx)), material="pec")
+    for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
+        sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
+                         height=_H_SUB, direction=d, impedance=50.0)
+    sim.run = MethodType(_fake_run_z_profile(_MARKER), sim)
+    dump = str(tmp_path / f"wiring_{int(dx*1e9)}.npz")
+    with pytest.warns(UserWarning):
+        sim.compute_msl_s_matrix(
+            n_steps=1, freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
+            num_periods=1.0, enforce_passivity=False,
+            raw_3probe_dump_path=dump,
+        )
+    d = np.load(dump, allow_pickle=True)
+    return complex(np.asarray(d["raw_v"])[0, 0, 0, 0]), dx
+
+
+def test_v_span_on_aligned_mesh_stops_below_the_trace_node(tmp_path):
+    """dx = h_sub/3: trace at node 3 -> V = edges 0..2 exactly.
+
+    Fails if the pre-#511 inclusive span ever returns (it would add the
+    -1000-weighted node... at this mesh the trace node is 3, so the
+    inclusive span adds marker[3] = +10).
+    """
+    v, dx = _raw_v_for_dx(84.67e-6, tmp_path)
+    expected = (1.0 + 1.0 + 1.0) * dx
+    np.testing.assert_allclose(v.real, expected, rtol=1e-5)
+    assert abs(v.imag) < 1e-12
+
+
+def test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace(tmp_path):
+    """dx = 80 um: trace rasterizes at node 4 -> V = edges 0..3.
+
+    This is the F2 case. The round(h_sub/dx) proxy gives k_hi = 3 and
+    silently drops edge 3; the correct anchor is the PEC-search trace node.
+    A wrong span here is off by the loud marker[3] = 10 x dz, not a
+    tolerance-level slip.
+    """
+    v, dx = _raw_v_for_dx(80e-6, tmp_path)
+    expected = (1.0 + 1.0 + 1.0 + 10.0) * dx
+    np.testing.assert_allclose(v.real, expected, rtol=1e-5)
+    assert abs(v.imag) < 1e-12

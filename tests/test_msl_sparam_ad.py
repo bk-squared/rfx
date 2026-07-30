@@ -348,23 +348,38 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 
 @pytest.mark.slow
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
-    """End-to-end: full FDTD + new jnp assembly vs GENUINE pre-change S1 golden.
+    """End-to-end drift lock: full FDTD + assembly vs the committed golden.
 
-    The golden (tests/fixtures/msl_s_matrix_golden.npy) is the verified,
-    pre-change S1 numpy output captured BEFORE the assembly was converted to
-    jnp.  It must NOT be regenerated from post-change code.
+    RE-BASELINED 2026-07-30 (PR #516; decision required by that PR's review,
+    finding F4, and recorded here + in issue #509). The original golden was a
+    pre-jnp-conversion S1 capture whose contract said it "must NOT be
+    regenerated from post-change code" — that contract existed to prove a pure
+    REFACTOR was precision-only. Two deliberate algorithm changes then made
+    the premise unsatisfiable:
 
-    The new production path runs in float32 while the pre-change numpy ran in
-    float64 (np.zeros(dtype=complex) is complex128), so the end-to-end deviation
-    is PURE float32 rounding: the structural check
-    (test_replay_float64_equivalence) proves jnp-f64 == numpy-f64 to ~1e-8, so
-    any end-to-end gap is precision-only, not a logic divergence.  The S1 V·I
-    de-embedding (closed-loop ∮H·dl current + 3-probe split, ill-conditioned
-    near resonance) amplifies f32 rounding to ~1.2e-3 on real FDTD data — larger
-    than the simpler pre-S1 code, but still ~0.1 % of |S|, far below the >5 %
-    MSL Z0 staircase physics floor at DX=80µm.  Tolerance is therefore the
-    measured f32 production delta (rtol=5e-3, atol=2e-3), NOT machine epsilon;
-    AD/inverse-design uses the proven-correct f64 path.
+      * #468 made ``enforce_passivity=True`` the default (projection moves S
+        by up to 5.2e-2 on this fixture — the first red, 2026-07-27, #509);
+      * #511/#507 (PR #516) corrected the modal-voltage span and replaced the
+        single-ratio assembly with the multi-drive solve (measured deviation
+        vs the old golden: 2.93e-1, max rel 4.79 — not f32 rounding, and not
+        meant to be).
+
+    A frozen old-algorithm capture cannot survive deliberate algorithm
+    changes, and keeping it red hides real regressions behind an expected
+    one. The golden is therefore now a capture of the CURRENT pipeline
+    (fixture, freqs, ``num_periods=12``, default ``enforce_passivity`` —
+    exactly this test's invocation; capture script recorded in PR #516), and
+    this test's job is narrower and honest: catch UNINTENDED cross-version
+    drift. Any future red here is a real change to the MSL S-matrix and must
+    be either root-caused or re-baselined with its reason written in this
+    docstring — never silently.
+
+    Structural correctness (jnp == numpy on the SAME algorithm) is proven
+    separately by test_replay_float64_equivalence against the replay golden.
+    Tolerance stays rtol=5e-3/atol=2e-3: it must absorb cross-machine float
+    noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality),
+    and every deliberate algorithm change to date has exceeded it by >10x, so
+    the lock still discriminates.
     """
     golden = np.load(E2E_GOLDEN_PATH)
     sim = _build_thru_line_sim()

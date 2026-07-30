@@ -141,8 +141,10 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   by `tests/test_msl_source_fixture_static.py`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
-during JAX tracing. Its exact driven-port-column meaning and the conservative
-filtering example are documented in
+during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at
+any port contaminates the entire frequency slice `S[:, :, k]`, so the only safe
+per-bin filter is `np.all(reliable, axis=0)`; the per-port index tells you which
+probe plane collapsed. Details and the filtering example:
 [Low-signal MSL bins](../public/guide/probes-sparams.mdx#low-signal-msl-bins).
 A `True` entry is not an accuracy guarantee.
 
