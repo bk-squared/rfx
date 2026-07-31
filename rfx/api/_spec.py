@@ -1291,14 +1291,23 @@ class MSLSMatrixResult:
         where both voltage and current collapse below 10% of their band
         medians. S values at those bins are retained unchanged.
 
-        Blast radius under the multi-drive solve (issue #507): S is
-        ``B·A⁻¹`` over ALL drives, so a collapsed wave pair at port ``p``
-        contaminates the ENTIRE frequency slice ``S[:, :, k]`` — not just
-        the column ``S[:, p, k]`` that the pre-#507 single-ratio assembly
-        confined it to. ``reliable[p, k]`` still tells you WHICH port's
-        plane collapsed; the only safe per-bin filter is
-        ``np.all(reliable, axis=0)``. A True entry is not an accuracy
-        guarantee.
+        SCOPE — read both halves, they pull in opposite directions.
+
+        *What a False entry condemns*: more than it used to. S is ``B·A⁻¹``
+        over ALL drives (issue #507), so a collapsed wave pair anywhere
+        contaminates the ENTIRE frequency slice ``S[:, :, k]``, not just
+        the column ``S[:, p, k]`` the pre-#507 single-ratio assembly
+        confined it to. Drop the whole bin, not one column.
+
+        *What a True entry does NOT certify*: this mask is computed from
+        the OWN-DRIVE records only — ``raw_v[p, p, 0, :]`` and
+        ``raw_i1[p, p, :]`` — while the solve consumes the wave pair at
+        every (driven, port) combination. A collapse at a PASSIVE port's
+        plane during some other port's drive is therefore invisible here
+        and still corrupts the slice. ``np.all(reliable, axis=0)`` is
+        necessary but NOT sufficient, and the index ``p`` does not
+        reliably attribute which plane collapsed. Tracked as a coverage
+        gap; until it closes, treat this mask as a one-sided detector.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
         over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%

@@ -136,7 +136,7 @@
       "known_limits": [
         "nonuniform mode=laplace or mode=uniform has no external comparison",
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
-        "outside JAX tracing, reliable[p,k]=false invalidates S[:,p,k] for physical interpretation; true is not an accuracy guarantee",
+        "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); true is neither an accuracy guarantee nor full coverage - the mask watches own-drive records only, so a passive-port plane collapse is invisible to it",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
         "strong-reflector |S11| has a characterized staircase-Z0 floor of about 0.16--0.22",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",

@@ -139,8 +139,11 @@ or to CW drive.
 - Treat Harminv frequency and Q as estimates from the supplied time window;
   compare stability across windows and meshes.
 - For MSL S-parameters, `reliable[p, k] == False` means the voltage/current
-  split for driven port `p` is too weak at bin `k`; exclude column `S[:, p, k]`
-  from RF interpretation. `True` is not a general accuracy guarantee.
+  split for port `p` is too weak at bin `k`; exclude the whole slice
+  `S[:, :, k]` from RF interpretation, since S is solved jointly across drives
+  (#507). `True` is neither a general accuracy guarantee nor full coverage — the
+  mask watches own-drive records only, so a passive-port plane collapse at that
+  bin is invisible to it.
 - On nonuniform MSL models, use the supported normalization documented by the
   calculator. Do not assume a uniform-grid normalization option is accepted.
 - For RCS, subtract an incident-only reference field before forming scattered
