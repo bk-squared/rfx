@@ -1291,23 +1291,28 @@ class MSLSMatrixResult:
         where both voltage and current collapse below 10% of their band
         medians. S values at those bins are retained unchanged.
 
-        SCOPE — read both halves, they pull in opposite directions.
+        ``reliable[p, k]`` is False when PORT ``p``'s probe plane collapsed
+        at bin ``k`` in AT LEAST ONE drive.  Every ``(driven, port)`` record
+        the solve consumes is covered, not only the own-drive diagonal
+        (issue #522) — a collapse at a *passive* port's plane during
+        someone else's drive used to be invisible here while still
+        corrupting the result.
 
-        *What a False entry condemns*: more than it used to. S is ``B·A⁻¹``
-        over ALL drives (issue #507), so a collapsed wave pair anywhere
-        contaminates the ENTIRE frequency slice ``S[:, :, k]``, not just
-        the column ``S[:, p, k]`` the pre-#507 single-ratio assembly
-        confined it to. Drop the whole bin, not one column.
+        *What a False entry condemns*: the ENTIRE frequency slice
+        ``S[:, :, k]``, not just the column ``S[:, p, k]`` the pre-#507
+        single-ratio assembly confined it to.  ``S`` is ``B·A⁻¹`` over all
+        drives, so one collapsed wave pair contaminates the whole slice.
+        Drop the bin; the index tells you which plane to investigate.
 
-        *What a True entry does NOT certify*: this mask is computed from
-        the OWN-DRIVE records only — ``raw_v[p, p, 0, :]`` and
-        ``raw_i1[p, p, :]`` — while the solve consumes the wave pair at
-        every (driven, port) combination. A collapse at a PASSIVE port's
-        plane during some other port's drive is therefore invisible here
-        and still corrupts the slice. ``np.all(reliable, axis=0)`` is
-        necessary but NOT sufficient, and the index ``p`` does not
-        reliably attribute which plane collapsed. Tracked as a coverage
-        gap; until it closes, treat this mask as a one-sided detector.
+        *What a True entry does not certify*: accuracy.  It means the
+        low-signal threshold did not fire, nothing more.  The threshold is
+        relative to each record's OWN band median, so a port sitting in a
+        deep stopband is not flagged wholesale — only a bin that collapses
+        relative to its own record is.
+
+        ``np.all(reliable, axis=0)`` is therefore the right per-bin screen:
+        it keeps exactly the bins where no plane the solve reads had
+        collapsed.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
         over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%

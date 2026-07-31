@@ -97,9 +97,9 @@ absence of a warning is not a passivity, convergence, or accuracy result.
 
 For MSL results, `reliable[p, k] = False` excludes the whole frequency slice
 `S[:, :, k]` from physical interpretation — not just the driven-port column —
-because S is solved jointly across drives (`S = B·A⁻¹`, #507). A `True` entry is
-neither an accuracy guarantee nor full coverage: the mask is computed from
-own-drive records only, so a passive-port plane collapse is invisible to it. See
+because S is solved jointly across drives (`S = B·A⁻¹`, #507); the mask covers
+every driven/port record the solve consumes (#522). A `True` entry is not an
+accuracy guarantee. See
 [Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
 threshold and filtering example.
 

@@ -2608,16 +2608,40 @@ class _SparamMixin:
             # per-port metadata (issue #337 follow-up).
             reliable = None
             try:
-                v_port = np.stack([
-                    np.asarray(jax.lax.stop_gradient(raw_v[p, p, 0, :]))
-                    for p in range(n_ports)
+                # Cover EVERY (driven, port) record, not just the own-drive
+                # diagonal (issue #522). The solve consumes the wave pair at
+                # all n_drives x n_ports probe planes, so a collapse at a
+                # PASSIVE port's plane during someone else's drive corrupts
+                # the whole slice S[:, :, k] — and the diagonal-only mask
+                # never saw it. Measured on a synthetic witness: poisoning
+                # only the (drive 0, port 1) record moved |S21| by 0.92 at
+                # that bin with the mask all-True, cond(A) = 1.28, S finite
+                # and the honesty guard silent.
+                #
+                # Shape is unchanged, (n_ports, n_freqs), and so is the
+                # meaning of the index: reliable[p, k] is False when PORT
+                # p's plane collapsed at bin k in AT LEAST ONE drive. That
+                # makes np.all(reliable, axis=0) genuinely sufficient for
+                # "no plane the solve reads collapsed at this bin".
+                #
+                # The criterion is relative to each record's OWN band median
+                # (see _msl_wave_split_reliability), so a uniformly small
+                # passive record — a port sitting in a deep stopband — is
+                # not flagged wholesale; only a bin that collapses relative
+                # to its own row is.
+                v_all = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_v[d, p, 0, :]))
+                    for d in range(n_ports) for p in range(n_ports)
                 ])
-                i_port = np.stack([
-                    np.asarray(jax.lax.stop_gradient(raw_i1[p, p, :]))
-                    for p in range(n_ports)
+                i_all = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_i1[d, p, :]))
+                    for d in range(n_ports) for p in range(n_ports)
                 ])
-                reliable = _msl_wave_split_reliability(
-                    v_port, i_port, freqs_arr
+                reliable = np.all(
+                    _msl_wave_split_reliability(
+                        v_all, i_all, freqs_arr
+                    ).reshape(n_ports, n_ports, -1),
+                    axis=0,
                 )
                 _warn_msl_wave_split_unreliable(reliable, freqs_arr)
             except (jax.errors.ConcretizationTypeError, TypeError):

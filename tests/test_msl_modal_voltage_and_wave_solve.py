@@ -484,7 +484,7 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
     return fake_run
 
 
-def _run_with(fake_run, tmp_path, tag, **kw):
+def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
     dx = 84.67e-6
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
@@ -507,7 +507,8 @@ def _run_with(fake_run, tmp_path, tag, **kw):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = sim.compute_msl_s_matrix(
-            n_steps=1, freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
+            n_steps=1,
+            freqs=jnp.asarray(list(freqs_hz), dtype=jnp.float32),
             num_periods=1.0, raw_3probe_dump_path=dump, **kw,
         )
     return res, dump
@@ -577,3 +578,104 @@ def test_assembly_marker_is_none_under_tracing(tmp_path):
         return jnp.array(0.0)
 
     jax.grad(f)(jnp.asarray(1.0, dtype=jnp.float32))
+
+
+# --------------------------------------------------------------------------
+# #522 — the reliability mask must cover every record the solve consumes
+# --------------------------------------------------------------------------
+#
+# FIRE and CLEAR, per the repo's gate-can-bind-an-artifact rule: a mask test
+# that only checks the healthy case cannot tell coverage from silence.
+
+
+def _fake_run_collapse(collapse):
+    """sim.run stub that can collapse ONE (driven, port) ez record at one bin.
+
+    ``collapse`` is ``(run, port)`` or None. Two frequency bins; the collapsed
+    record is driven to ~0 at bin 1 only, which is exactly the standing-wave
+    null the mask exists to catch.
+    """
+    import re
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+
+    def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
+        del n_steps, num_periods, compute_s_params
+        grid = self._build_grid()
+        planes = {}
+        for entry in self._dft_planes:
+            m = name_re.fullmatch(entry.name)
+            run_i = int(m.group("run")) if m else 0
+            port_i = int(m.group("port")) if m else 0
+            base = 1.0 + 0.31 * run_i + 0.17 * port_i
+            # bin 0 healthy; bin 1 collapsed only for the targeted record
+            scale = jnp.asarray(
+                [base, 1e-6 * base if collapse == (run_i, port_i) else base],
+                dtype=jnp.complex64,
+            )
+            if entry.component == "ez":
+                prof = jnp.asarray(
+                    [complex(_MARKER.get(k, 0.0)) for k in range(grid.nz)],
+                    dtype=jnp.complex64,
+                )
+                acc = prof[None, None, :] * scale[:, None, None]
+                acc = jnp.broadcast_to(acc, (2, grid.ny, grid.nz))
+            else:
+                # A UNIFORM H plane makes the closed Ampere loop cancel to
+                # exactly zero, and the mask's criterion needs BOTH |V| and
+                # |I| to collapse -- with I == 0 it can never fire at all.
+                # Give H a z-dependence so the bottom and top legs differ.
+                amp = (0.018 + 0.004j) if entry.component == "hy" else (0.005 + 0.001j)
+                zramp = jnp.asarray(
+                    [1.0 + 0.6 * k for k in range(grid.nz)], dtype=jnp.complex64)
+                acc = (scale[:, None, None] * amp
+                       * zramp[None, None, :])
+                acc = jnp.broadcast_to(acc, (2, grid.ny, grid.nz))
+            planes[entry.name] = DFTPlaneProbe(
+                accumulator=acc, freqs=entry.freqs,
+                component=entry.component, axis=0, index=0,
+                total_steps=1, window="rect", window_alpha=0.25,
+            )
+        return SimpleNamespace(dft_planes=planes)
+
+    return fake_run
+
+
+def _reliable_for(collapse, tmp_path):
+    res, _ = _run_with(
+        _fake_run_collapse(collapse), tmp_path,
+        f"mask_{collapse}", freqs_hz=(1.0e9, 2.0e9), enforce_passivity=False,
+    )
+    return np.asarray(res.reliable)
+
+
+def test_mask_CLEARS_when_every_record_is_healthy(tmp_path):
+    """No collapse anywhere -> nothing flagged. The other half of the pair."""
+    rel = _reliable_for(None, tmp_path)
+    assert rel.shape == (2, 2), rel.shape
+    assert rel.all(), f"healthy fixture should not flag anything, got {rel}"
+
+
+def test_mask_FIRES_on_a_passive_port_plane_collapse(tmp_path):
+    """The #522 case: collapse (drive 0, port 1) — a PASSIVE port's plane.
+
+    The pre-#522 mask read only own-drive records (raw_v[p, p, ...]), so this
+    collapse was invisible while still corrupting the whole solved slice.
+    Measured on a synthetic witness before the fix: |S21| moved 0.920 ->
+    0.0008 at that bin with the mask all-True.
+    """
+    rel = _reliable_for((0, 1), tmp_path)
+    assert not rel[1, 1], (
+        "port 1's plane collapsed during drive 0 and the mask did not flag it "
+        "— this is issue #522; the mask must cover every (driven, port) record"
+    )
+    # bin 0 stays clean, so the flag is per-bin and not a blanket condemnation
+    assert rel[1, 0], f"bin 0 was healthy and must stay True, got {rel}"
+    # ... and the documented per-bin screen now actually excludes the bad bin
+    usable = np.all(rel, axis=0)
+    assert usable[0] and not usable[1], f"np.all screen wrong: {usable}"
+
+
+def test_mask_still_fires_on_an_own_drive_collapse(tmp_path):
+    """Widening coverage must not lose the case that already worked."""
+    rel = _reliable_for((1, 1), tmp_path)
+    assert not rel[1, 1] and rel[1, 0]
