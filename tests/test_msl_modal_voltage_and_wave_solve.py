@@ -17,6 +17,10 @@ charge, so it was live and contributed about -12%.
 ``a_j = 0`` at every passive port. Measured ``|a_passive/a_driven| = 0.07-0.51``.
 """
 
+import json
+import warnings
+
+import jax
 import numpy as np
 import pytest
 
@@ -424,3 +428,152 @@ def test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace(tmp_path):
     expected = (1.0 + 1.0 + 1.0 + 10.0) * dx
     np.testing.assert_allclose(v.real, expected, rtol=1e-5)
     assert abs(v.imag) < 1e-12
+
+
+# --------------------------------------------------------------------------
+# #523 — which assembly produced S must be RECORDED, not just warned about
+# --------------------------------------------------------------------------
+#
+# The fallback is invisible in the numbers: with the default
+# enforce_passivity=True the projection clips exactly the >1 column power that
+# the fallback warning tells the user to expect. So a caller who reads only S
+# cannot tell a solved result from a fallback one. These tests pin the marker,
+# and — the gap the post-merge sweep found — give the SOLVE branch its first
+# fast end-to-end coverage: the pre-existing wiring fixture feeds identical
+# planes to every drive, so A is exactly singular and only the fallback ran.
+
+
+def _fake_run_drive_dependent(nz_markers, scale_by_run):
+    """sim.run stub whose ez planes DIFFER per driven run.
+
+    Distinct drives make A non-singular, so the multi-drive solve is the
+    branch under test. ``scale_by_run[i]`` scales run i's ez plane.
+    """
+    import re
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+
+    def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
+        del n_steps, num_periods, compute_s_params
+        grid = self._build_grid()
+        planes = {}
+        for entry in self._dft_planes:
+            m = name_re.fullmatch(entry.name)
+            run_i = int(m.group("run")) if m else 0
+            port_i = int(m.group("port")) if m else 0
+            acc = jnp.zeros((1, grid.ny, grid.nz), dtype=jnp.complex64)
+            if entry.component == "ez":
+                prof = jnp.asarray(
+                    [complex(nz_markers.get(k, 0.0)) for k in range(grid.nz)],
+                    dtype=jnp.complex64,
+                )
+                # per-(run, port) amplitude => independent drive columns
+                amp = scale_by_run[run_i] * (1.0 + 0.37 * port_i)
+                acc = jnp.broadcast_to(
+                    (prof * amp)[None, None, :], (1, grid.ny, grid.nz))
+            elif entry.component == "hy":
+                acc = acc + (0.018 + 0.004j) * scale_by_run[run_i]
+            else:
+                acc = acc + (0.005 + 0.001j) * scale_by_run[run_i]
+            planes[entry.name] = DFTPlaneProbe(
+                accumulator=acc, freqs=entry.freqs,
+                component=entry.component, axis=0, index=0,
+                total_steps=1, window="rect", window_alpha=0.25,
+            )
+        return SimpleNamespace(dft_planes=planes)
+
+    return fake_run
+
+
+def _run_with(fake_run, tmp_path, tag, **kw):
+    dx = 84.67e-6
+    lx = _L_LINE + 2 * _MARGIN
+    ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
+    lz = _H_SUB + 1.5e-3
+    sim = Simulation(
+        freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=_EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
+                (lx, y_c + _W_TRACE / 2, _H_SUB + dx)), material="pec")
+    for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
+        sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
+                         height=_H_SUB, direction=d, impedance=50.0)
+    sim.run = MethodType(fake_run, sim)
+    dump = str(tmp_path / f"{tag}.npz")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = sim.compute_msl_s_matrix(
+            n_steps=1, freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
+            num_periods=1.0, raw_3probe_dump_path=dump, **kw,
+        )
+    return res, dump
+
+
+def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
+    """Drive-dependent planes -> A non-singular -> the SOLVE runs.
+
+    First fast end-to-end coverage of the solve branch inside
+    compute_msl_s_matrix (the older wiring fixture feeds identical planes to
+    every drive, so A is exactly singular and only the fallback ever ran).
+    """
+    res, dump = _run_with(
+        _fake_run_drive_dependent(_MARKER, {0: 1.0, 1: 0.41 - 0.23j}),
+        tmp_path, "solved", enforce_passivity=False)
+    assert res.assembly == "multi_drive_solve", (
+        f"expected the solve branch, got {res.assembly!r}"
+    )
+    assert res.cond_a is not None and np.all(np.isfinite(res.cond_a))
+    meta = json.loads(str(np.load(dump, allow_pickle=True)["metadata_json"]))
+    assert meta["production_smatrix_assembly"] == "multi_drive_solve"
+    assert meta["schema_version"] >= 3
+
+
+def test_fallback_is_recorded_even_though_the_numbers_hide_it(tmp_path):
+    """Identical planes per drive -> A singular -> fallback, and it SHOWS.
+
+    The mutation twin for #523: with the default passivity projection the
+    fallback's own symptom (column power > 1) is clipped away, so this test
+    asserts the MARKER, not the numbers — and checks that the numbers really
+    do look innocent, which is why the marker has to exist.
+    """
+    res, dump = _run_with(_fake_run_z_profile(_MARKER), tmp_path, "fell_back")
+    assert res.assembly == "single_ratio_fallback", (
+        f"expected the fallback, got {res.assembly!r}"
+    )
+    meta = json.loads(str(np.load(dump, allow_pickle=True)["metadata_json"]))
+    assert meta["production_smatrix_assembly"] == "single_ratio_fallback"
+
+    # ... and the reason a marker is needed: after the default projection the
+    # returned S carries no >1 column power to betray the fallback.
+    col = np.abs(np.asarray(res.S)[:, 0, :]) ** 2
+    assert float(np.sum(col, axis=0).max()) <= 1.0 + 1e-5, (
+        "if this ever fails the projection stopped hiding the symptom — "
+        "good news, but this test's premise needs rewriting"
+    )
+
+
+def test_assembly_marker_is_none_under_tracing(tmp_path):
+    """Under a tracer the finiteness test cannot run, so no claim is made.
+
+    Mirrors `reliable`'s documented None-while-tracing contract rather than
+    asserting a rule that was never checked.
+    """
+    from rfx.api._sparams import msl_solve_s_from_waves
+    n_f = 2
+    a = [[jnp.ones(n_f, dtype=jnp.complex64) * (1.0 + 0.2 * d + 0.1 * j)
+          for j in range(2)] for d in range(2)]
+    b = [[jnp.ones(n_f, dtype=jnp.complex64) * (0.3 - 0.05 * d + 0.02 * j)
+          for j in range(2)] for d in range(2)]
+
+    def f(scale):
+        aa = [[x * scale for x in row] for row in a]
+        _, cond = msl_solve_s_from_waves(aa, b)
+        # cond_a is exactly what gates the assembly marker upstream
+        assert cond is None, "cond_a must be None under tracing"
+        return jnp.array(0.0)
+
+    jax.grad(f)(jnp.asarray(1.0, dtype=jnp.float32))

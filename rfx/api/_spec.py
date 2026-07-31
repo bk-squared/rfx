@@ -1325,6 +1325,29 @@ class MSLSMatrixResult:
         ``settling_db`` for the cause), and its projected value inherits
         that uncertainty.
     port_names : tuple[str, ...]
+    assembly : str, optional
+        Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
+        ``S = B·A⁻¹`` over all drives, issue #507) or
+        ``"single_ratio_fallback"``. The fallback is taken when the solve
+        returns non-finite entries on a degenerate drive system; it is the
+        SUPERSEDED per-column rule ``S[j, d] = b_j / a_d``, which reports a
+        passive port's echo as the driven port's own reflection whenever
+        that port is not matched.
+
+        **Read this before trusting a fallback result.** The fallback's
+        characteristic symptom is column power above 1 — and with the
+        default ``enforce_passivity=True`` the projection clips exactly
+        that symptom away, so the returned ``S`` can look healthy. Check
+        this field, not the numbers. ``None`` while tracing (the finiteness
+        test cannot run on a tracer, so the solve result is taken as-is —
+        see ``cond_a``).
+    cond_a : (n_freqs,) float, optional
+        Per-frequency condition number of the drive matrix ``A``. Bounds
+        DEGENERACY of the drive system only — it is **not** a reliability
+        or accuracy score, and a low value does not certify the result
+        (same contract as the coax lane's
+        :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`).
+        ``None`` while tracing.
     """
     S: np.ndarray
     freqs: np.ndarray
@@ -1335,6 +1358,8 @@ class MSLSMatrixResult:
     settling_db: np.ndarray | None = None
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
+    assembly: str | None = None
+    cond_a: np.ndarray | None = None
 
 
 @dataclass

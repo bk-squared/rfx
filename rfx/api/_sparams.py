@@ -2550,6 +2550,8 @@ class _SparamMixin:
             # solve_two_port_from_wave_amplitudes (#489), generalised to n
             # ports. cond(A) bounds DEGENERACY only; it is not a
             # reliability score.
+            msl_assembly: str | None = None
+            msl_cond_a = None
             if all(wave_a[d][j] is not None
                    for d in range(n_ports) for j in range(n_ports)):
                 import warnings as _w507
@@ -2585,6 +2587,19 @@ class _SparamMixin:
                         )
                 if not _bad:
                     S = S_solved.astype(_complex_dtype)
+                # Persist WHICH rule produced S (issue #523). A transient
+                # warning is not enough: with the default
+                # enforce_passivity=True the projection clips away the
+                # fallback's own symptom (column power > 1), so a fallback
+                # result can look healthy in every number a caller reads.
+                # None while tracing — _bad cannot be evaluated on a tracer,
+                # so the solve result is taken as-is and no claim is made.
+                msl_assembly = (
+                    None if cond_a is None
+                    else ("single_ratio_fallback" if _bad
+                          else "multi_drive_solve")
+                )
+                msl_cond_a = cond_a
 
             # A deep standing-wave node can collapse both phasors at the
             # driven port plane.  The V·I ratio is then numerically ill
@@ -2688,8 +2703,17 @@ class _SparamMixin:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 metadata = {
                     "schema": "rfx.msl_nprobe_dump",
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
+                    # v3 (issue #523): production_smatrix is no longer always
+                    # the N-probe-fit-derived S. Record WHICH assembly made
+                    # it, so a replayed dump cannot be misattributed — a
+                    # fallback dump is otherwise indistinguishable from a
+                    # solved one once the default passivity projection has
+                    # clipped the fallback's own >1 column-power symptom.
+                    "production_smatrix_assembly": (
+                        "unknown" if msl_assembly is None else msl_assembly
+                    ),
                     "raw_v_shape": "(n_driven, n_ports, n_probes_max, n_freqs)",
                     "raw_i1_shape": "(n_driven, n_ports, n_freqs)",
                     "n_probes_per_port": [int(n) for n in n_probes_per_port],
@@ -2701,10 +2725,16 @@ class _SparamMixin:
                     ),
                     "deembedding": (
                         "N equally spaced voltage probes plus current at "
-                        "probe 0; the N-probe least-squares wave-decomposition "
-                        "extractor (issue #80 Fix C) fits V_n = alpha*exp(-j "
-                        "beta x_n) + gamma*exp(+j beta x_n) by SVD lstsq, "
-                        "recovering q, alpha, gamma, S11, Sij from raw phasors"
+                        "probe 0. The reported Z0/beta come from the N-probe "
+                        "least-squares wave-decomposition extractor (issue #80 "
+                        "Fix C), which fits V_n = alpha*exp(-j beta x_n) + "
+                        "gamma*exp(+j beta x_n) by SVD lstsq. The production "
+                        "S-matrix does NOT come from that fit: it is solved "
+                        "from the probe-0 wave amplitudes over all drives, "
+                        "S = B @ inv(A) (issue #507), with the modal voltage "
+                        "spanning ground to the rasterized trace node (#511) "
+                        "-- see production_smatrix_assembly for which rule "
+                        "actually produced this dump's S"
                     ),
                     "grid": {
                         "dx_m": float(grid.dx),
@@ -2776,6 +2806,8 @@ class _SparamMixin:
                 settling_db=settling_db_runs,
                 S_raw=s_raw,
                 passivity_correction=passivity_correction,
+                assembly=msl_assembly,
+                cond_a=msl_cond_a,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,
