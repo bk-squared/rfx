@@ -204,13 +204,20 @@ The S-matrix is solved from the wave amplitudes of **all** drives at once
 (`S = B·A⁻¹`), so a collapsed wave pair at any one port contaminates the
 entire frequency slice `S[:, :, k]` — not just that port's column. A false
 entry at any port therefore means the whole S-matrix at that frequency should
-not be plotted, fitted, or optimized as physical data; `reliable[p, k]` tells
-you *which* port's probe plane collapsed. The values remain present for
-diagnosis. A true entry only means that the low-signal threshold was not
-triggered; it is not an accuracy guarantee.
+not be plotted, fitted, or optimized as physical data. The values remain
+present for diagnosis.
 
-The only safe per-bin filter is the one that requires every port to be
-reliable at that frequency:
+A true entry certifies less than it looks like it does, in two ways. It means
+the low-signal threshold was not triggered — never that the result is
+accurate. And the mask is computed from the **own-drive records only**
+(`raw_v[p, p, 0, :]`, `raw_i1[p, p, :]`), while the solve consumes the wave
+pair at every driven/port combination: a collapse at a *passive* port's plane
+during another port's drive is invisible to this mask and still corrupts the
+slice. So the index `p` does not reliably attribute which plane collapsed.
+
+The filter below is therefore **necessary but not sufficient** — it is the
+strongest screen this mask supports, not a guarantee that the surviving bins
+are clean:
 
 ```python
 import numpy as np

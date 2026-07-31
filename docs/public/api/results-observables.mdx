@@ -95,9 +95,11 @@ The ring-down advisory likewise requires a probe time series and is not a
 direct NTFF or DFT convergence test. Inspect unguarded arrays explicitly. The
 absence of a warning is not a passivity, convergence, or accuracy result.
 
-For MSL results, `reliable[p, k] = False` excludes the driven-port column
-`S[:, p, k]` from physical interpretation because the measured signal is too
-low for a stable wave split. A `True` entry is not an accuracy guarantee. See
+For MSL results, `reliable[p, k] = False` excludes the whole frequency slice
+`S[:, :, k]` from physical interpretation — not just the driven-port column —
+because S is solved jointly across drives (`S = B·A⁻¹`, #507). A `True` entry is
+neither an accuracy guarantee nor full coverage: the mask is computed from
+own-drive records only, so a passive-port plane collapse is invisible to it. See
 [Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
 threshold and filtering example.
 
