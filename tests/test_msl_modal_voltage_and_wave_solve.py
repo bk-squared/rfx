@@ -466,14 +466,34 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
                     [complex(nz_markers.get(k, 0.0)) for k in range(grid.nz)],
                     dtype=jnp.complex64,
                 )
-                # per-(run, port) amplitude => independent drive columns
-                amp = scale_by_run[run_i] * (1.0 + 0.37 * port_i)
+                # The amplitude must depend on (run, port) JOINTLY. Any
+                # fixture whose amplitude factorises as f(run)*g(port) gives
+                # a_j(d) = g(j)*f(d), i.e. a RANK-1 drive matrix, no matter
+                # how the factors are chosen — the solve then runs at
+                # cond >> 1/eps and tests nothing (PR #526 review, F3).
+                # Mimic the physical case instead: the driven port carries
+                # the incident wave, the passive port a small echo.
+                amp = scale_by_run[run_i] * (
+                    1.0 if run_i == port_i else 0.23 + 0.11j)
                 acc = jnp.broadcast_to(
                     (prof * amp)[None, None, :], (1, grid.ny, grid.nz))
-            elif entry.component == "hy":
-                acc = acc + (0.018 + 0.004j) * scale_by_run[run_i]
             else:
-                acc = acc + (0.005 + 0.001j) * scale_by_run[run_i]
+                # z-RAMP, not a uniform plane. A uniform H makes the closed
+                # Ampere loop cancel to EXACTLY zero -> I == 0 -> a == b at
+                # every record -> A is rank-1 and the "solve" runs at
+                # cond ~ 3e8, i.e. zero significant f32 digits. This is the
+                # same trap documented for the #522 fixture below; it was
+                # left unapplied here and made this test unable to detect a
+                # wrong solve at all (PR #526 review, F3).
+                amp = (0.018 + 0.004j) if entry.component == "hy" else (0.005 + 0.001j)
+                zramp = jnp.asarray(
+                    [1.0 + 0.6 * k for k in range(grid.nz)], dtype=jnp.complex64)
+                # per-port phase too, so the drive columns are independent in
+                # DIRECTION and not merely in scale
+                amp = amp * (1.0 if run_i == port_i else 0.23 + 0.11j)
+                acc = (amp * scale_by_run[run_i]
+                       * zramp[None, None, :])
+                acc = jnp.broadcast_to(acc, (1, grid.ny, grid.nz))
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=acc, freqs=entry.freqs,
                 component=entry.component, axis=0, index=0,
@@ -504,14 +524,16 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
                          height=_H_SUB, direction=d, impedance=50.0)
     sim.run = MethodType(fake_run, sim)
     dump = str(tmp_path / f"{tag}.npz")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(
             n_steps=1,
             freqs=jnp.asarray(list(freqs_hz), dtype=jnp.float32),
             num_periods=1.0, raw_3probe_dump_path=dump, **kw,
         )
-    return res, dump
+    # Return the warnings instead of discarding them: a blanket ignore here
+    # swallowed the honesty guard's own verdict (PR #526 review, F3).
+    return res, dump, [str(w.message) for w in caught]
 
 
 def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
@@ -521,16 +543,53 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     compute_msl_s_matrix (the older wiring fixture feeds identical planes to
     every drive, so A is exactly singular and only the fallback ever ran).
     """
-    res, dump = _run_with(
+    res, dump, warns = _run_with(
         _fake_run_drive_dependent(_MARKER, {0: 1.0, 1: 0.41 - 0.23j}),
         tmp_path, "solved", enforce_passivity=False)
     assert res.assembly == "multi_drive_solve", (
         f"expected the solve branch, got {res.assembly!r}"
     )
-    assert res.cond_a is not None and np.all(np.isfinite(res.cond_a))
     meta = json.loads(str(np.load(dump, allow_pickle=True)["metadata_json"]))
     assert meta["production_smatrix_assembly"] == "multi_drive_solve"
     assert meta["schema_version"] >= 3
+
+    # The drive system must be genuinely well-posed, or "the solve ran" is
+    # meaningless: a rank-1 A (uniform-H fixture -> I == 0 -> a == b) solves at
+    # cond ~ 3e8, which is 40x past 1/eps_f32 — zero significant digits, and
+    # the earlier version of this test passed with a REVERTED solve because of
+    # it (PR #526 review, F3).
+    assert res.cond_a is not None and np.all(np.isfinite(res.cond_a))
+    assert float(np.max(res.cond_a)) < 1.0e3, (
+        f"drive matrix is near-degenerate (cond={float(np.max(res.cond_a)):.3g}); "
+        "this fixture cannot test the solve"
+    )
+    assert not any("degenerate" in w or "cond(A)" in w for w in warns), (
+        f"production warned about the drive system: {warns}"
+    )
+
+    # THE BINDING ASSERTION: the returned S must equal what the solve helper
+    # produces from the recorded waves. Without this the test only checks
+    # branch selection and marker plumbing — the review demonstrated that
+    # reverting to the #507 single-ratio rule, or scaling S by 2, both left
+    # the old version green.
+    d = np.load(dump, allow_pickle=True)
+    v = np.asarray(d["raw_v"])[:, :, 0, :].astype(np.complex128)
+    i = np.asarray(d["raw_i1"]).astype(np.complex128)
+    assert float(np.max(np.abs(i))) > 0.0, (
+        "recorded current is identically zero — the Ampere loop cancelled, so "
+        "a == b and the drive matrix is rank-1 by construction"
+    )
+    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+    z0, _ = hammerstad_jensen_z0_eps_eff(_W_TRACE, _H_SUB, _EPS_R)
+    wave_a = [[0.5 * (v[dd, pp] + z0 * i[dd, pp]) for pp in range(2)]
+              for dd in range(2)]
+    wave_b = [[0.5 * (v[dd, pp] - z0 * i[dd, pp]) for pp in range(2)]
+              for dd in range(2)]
+    S_expected = np.asarray(msl_solve_s_from_waves(wave_a, wave_b)[0])
+    np.testing.assert_allclose(
+        np.asarray(res.S), S_expected, rtol=F32_TOL, atol=F32_TOL,
+        err_msg="returned S is not the multi-drive solve of the recorded waves",
+    )
 
 
 def test_fallback_is_recorded_even_though_the_numbers_hide_it(tmp_path):
@@ -541,7 +600,7 @@ def test_fallback_is_recorded_even_though_the_numbers_hide_it(tmp_path):
     asserts the MARKER, not the numbers — and checks that the numbers really
     do look innocent, which is why the marker has to exist.
     """
-    res, dump = _run_with(_fake_run_z_profile(_MARKER), tmp_path, "fell_back")
+    res, dump, _warns = _run_with(_fake_run_z_profile(_MARKER), tmp_path, "fell_back")
     assert res.assembly == "single_ratio_fallback", (
         f"expected the fallback, got {res.assembly!r}"
     )
@@ -641,7 +700,7 @@ def _fake_run_collapse(collapse):
 
 
 def _reliable_for(collapse, tmp_path):
-    res, _ = _run_with(
+    res, _dump, _warns = _run_with(
         _fake_run_collapse(collapse), tmp_path,
         f"mask_{collapse}", freqs_hz=(1.0e9, 2.0e9), enforce_passivity=False,
     )

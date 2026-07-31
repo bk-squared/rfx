@@ -1305,10 +1305,19 @@ class MSLSMatrixResult:
         Drop the bin; the index tells you which plane to investigate.
 
         *What a True entry does not certify*: accuracy.  It means the
-        low-signal threshold did not fire, nothing more.  The threshold is
-        relative to each record's OWN band median, so a port sitting in a
-        deep stopband is not flagged wholesale — only a bin that collapses
-        relative to its own record is.
+        low-signal threshold did not fire, nothing more.
+
+        *Cost of the widened coverage, measured*: the threshold is relative
+        to each record's OWN band median, so a port sitting in a deep
+        stopband is not flagged wholesale — but individual deep bins ARE
+        flagged.  On the repo's committed real runs the criterion flags 2
+        bins of 100 on the ``msl_notch_e4`` fixture and 12 of 120 on the
+        Sheen LPF leg, and the notch fixture's two ARE the notch centre
+        (committed meta: 3.6273 GHz, −30.66 dB).  That is not a false alarm
+        — at a −30 dB notch the passive port's wave split really is
+        low-signal and the extractor cannot certify the depth — but a filter
+        user loses exactly the bin they care about and should read the depth
+        from ``S_raw`` or the flux channel with that caveat.
 
         ``np.all(reliable, axis=0)`` is therefore the right per-bin screen:
         it keeps exactly the bins where no plane the solve reads had
@@ -1349,12 +1358,17 @@ class MSLSMatrixResult:
         that port is not matched.
 
         **Read this before trusting a fallback result.** The fallback's
-        characteristic symptom is column power above 1 — and with the
-        default ``enforce_passivity=True`` the projection clips exactly
-        that symptom away, so the returned ``S`` can look healthy. Check
-        this field, not the numbers. ``None`` while tracing (the finiteness
-        test cannot run on a tracer, so the solve result is taken as-is —
-        see ``cond_a``).
+        characteristic symptom is column power above 1, and with the default
+        ``enforce_passivity=True`` that symptom is clipped out of ``S`` — but
+        it is not erased from the result: ``passivity_correction`` records
+        how much was clipped and ``S_raw`` keeps the unprojected matrix, and
+        the run also emits both a fallback warning and a passivity-guard
+        warning. So a fallback is not silent; this field is simply the
+        *specific* signal. Column power above 1 has several causes (an
+        under-settled record, a standing-wave null, a mis-scaled current) and
+        only one of them is the fallback — that is what this field
+        disambiguates. ``None`` while tracing (the finiteness test cannot run
+        on a tracer, so the solve result is taken as-is — see ``cond_a``).
     cond_a : (n_freqs,) float, optional
         Per-frequency condition number of the drive matrix ``A``. Bounds
         DEGENERACY of the drive system only — it is **not** a reliability

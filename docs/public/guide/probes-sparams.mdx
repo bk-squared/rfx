@@ -212,9 +212,17 @@ least one drive: every driven/port record the solve consumes is covered, so the
 index does attribute which plane to investigate.
 
 A true entry certifies that the low-signal threshold did not fire — never that
-the result is accurate. The threshold is relative to each record's own band
-median, so a port sitting in a deep stopband is not flagged wholesale; only a
-bin that collapses relative to its own record is.
+the result is accurate.
+
+The threshold is relative to each record's own band median, so a port sitting in
+a deep stopband is not flagged wholesale — but individual deep bins are. Measured
+on rfx's own committed filter runs: 2 flagged bins of 100 on the microstrip notch
+fixture and 12 of 120 on the Sheen low-pass leg — and the notch fixture's two are
+the notch centre itself (3.6273 GHz, −30 dB). That is not a false alarm: at a
+−30 dB notch the passive port's wave split really is low-signal, so the extractor
+cannot certify the depth there. It does mean a filter measurement loses its most
+interesting bin to the screen; read the depth from `.S_raw` or a flux monitor
+with that caveat rather than treating the screen as free.
 
 The filter below is therefore the right per-bin screen — it keeps exactly the
 bins where no plane the solve reads had collapsed:

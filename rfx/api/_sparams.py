@@ -2624,11 +2624,15 @@ class _SparamMixin:
                 # makes np.all(reliable, axis=0) genuinely sufficient for
                 # "no plane the solve reads collapsed at this bin".
                 #
-                # The criterion is relative to each record's OWN band median
-                # (see _msl_wave_split_reliability), so a uniformly small
-                # passive record — a port sitting in a deep stopband — is
-                # not flagged wholesale; only a bin that collapses relative
-                # to its own row is.
+                # The criterion is relative to each record's OWN band
+                # median (see _msl_wave_split_reliability), so a uniformly
+                # small passive record is not flagged wholesale — but deep
+                # individual bins ARE. Measured on the committed real runs:
+                # 2/100 bins on msl_notch_e4 (and they are the notch centre,
+                # 3.6273 GHz / -30.66 dB) and 12/120 on the Sheen LPF leg.
+                # Correct behaviour — the split really is low-signal at a
+                # -30 dB notch — but it costs a filter user their most
+                # interesting bin; see the reliable docstring.
                 v_all = np.stack([
                     np.asarray(jax.lax.stop_gradient(raw_v[d, p, 0, :]))
                     for d in range(n_ports) for p in range(n_ports)
@@ -2729,12 +2733,21 @@ class _SparamMixin:
                     "schema": "rfx.msl_nprobe_dump",
                     "schema_version": 3,
                     "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
+                    "production_smatrix_stage": (
+                        "PRE-passivity-projection raw extraction; "
+                        "MSLSMatrixResult.S is the post-projection value "
+                        "when enforce_passivity=True (default)"
+                    ),
                     # v3 (issue #523): production_smatrix is no longer always
                     # the N-probe-fit-derived S. Record WHICH assembly made
-                    # it, so a replayed dump cannot be misattributed — a
-                    # fallback dump is otherwise indistinguishable from a
-                    # solved one once the default passivity projection has
-                    # clipped the fallback's own >1 column-power symptom.
+                    # it, so a replayed dump cannot be misattributed.
+                    #
+                    # NB production_smatrix is written PRE-projection, so a
+                    # fallback dump does still carry the >1 column power
+                    # (MSLSMatrixResult.S is post-projection and does not).
+                    # The marker is not a substitute for that symptom — it is
+                    # more specific: >1 column power has several causes, only
+                    # one of which is the fallback.
                     "production_smatrix_assembly": (
                         "unknown" if msl_assembly is None else msl_assembly
                     ),
