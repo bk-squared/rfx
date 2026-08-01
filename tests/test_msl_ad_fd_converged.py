@@ -206,7 +206,9 @@ def test_msl_ad_fd_converged_tight():
     is not: f32 AD 59.1s, f64 FD 41.7s and 37.7s per h (two forwards each),
     i.e. ~19s per f64 forward against ~15s for f32. This FDTD is
     memory-bandwidth-bound, so the RTX4090's 1/64 float64 throughput barely
-    shows; the whole gate runs in ~140s. On CPU the same forward takes ~500s,
+    shows. The gate's own measured total is 117.5s (AD 55.8s, FD 41.8s) on
+    VESSL 369367250794 — an earlier draft said "~140s", which was summed from
+    referee timings rather than measured on the gate itself. On CPU the same forward takes ~500s,
     which is why the decision was made from a measurement on the lane the gate
     actually runs in rather than from a local timing.
 
@@ -233,17 +235,29 @@ def test_msl_ad_fd_converged_tight():
 
     The 0.10 threshold is UNCHANGED. Nothing here loosens a gate.
 
-    WHAT THIS GATE DOES NOT ESTABLISH (issue #530). Passivity bounds
-    sum_ij|S_ij|^2 at 2 per frequency, so 16 over 8 bins — and the measured loss
-    is 16.00599, which sits 0.037% ABOVE that ceiling. The residue this gate
-    differentiates is therefore dominated by extraction/numerical error, not by
-    physical loss. That is a valid AD-vs-FD consistency test — AD must match the
-    FD of whatever the code computes, and it does, to 0.4% on CPU — but it is a
-    weak test of anything physical, and its signal will shrink again the next
-    time an extractor fix lands. The comparator floor above now makes that
-    failure mode loud instead of silent. Choosing an objective with real dynamic
-    range is tracked separately; it needs its own evidence, not a rider on a
-    comparator repair.
+    WHAT THIS GATE DOES NOT ESTABLISH (issue #530). For a passive network
+    S^dag S <= I, so each column of S has norm <= 1 and sum_ij|S_ij|^2 <= 2 per
+    frequency — 16 over 8 bins. The measured loss is 16.00599, i.e. 0.037% ABOVE
+    that ceiling, which puts the residue's LEVEL on the non-physical side: net
+    = (extraction error) - (physical loss) > 0 requires the extraction error to
+    exceed the physical loss in magnitude.
+
+    Note what that does and does not say. It is a statement about the level.
+    This gate differentiates the residue, and nothing measured here separates
+    d(extraction error)/d(alpha) from d(physical loss)/d(alpha) — alpha scales
+    eps over the whole grid, so guided wavelength, port match and radiation are
+    all genuinely alpha-sensitive while the extraction error may be comparatively
+    alpha-flat. The derivative's composition is UNMEASURED, not attributed.
+
+    The case for changing the objective does not rest on that attribution
+    anyway: it rests on dynamic range. 0.037% of this objective is signal riding
+    on a structural constant, which is why the gate went blind when #516 moved
+    |S| closer to unitary, and why it will go blind again the next time an
+    extractor fix does the same. The comparator floor above makes that failure
+    mode loud instead of silent. Meanwhile this remains a valid AD-vs-FD
+    consistency test — AD must reproduce the FD of whatever the code computes,
+    and it does, to 0.4% on CPU. Tracked as #530; it needs its own evidence,
+    not a rider on a comparator repair.
     """
     t_start = time.perf_counter()
 
