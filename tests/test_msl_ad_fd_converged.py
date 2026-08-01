@@ -22,6 +22,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.experimental import enable_x64  # SCOPED x64 — never flip it at module level
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -97,6 +98,16 @@ _FD_H = 1e-3
 # Tolerance: start at 0.10; tighten to 0.05 if converged value lands there.
 _REL_ERR_THRESHOLD = 0.10
 
+# Minimum resolving power the FD reference must have before its disagreement
+# with AD means anything: |f(+h) - f(-h)| expressed in ULPs of the loss.
+# The loss is a float, so it can only move in whole ULPs — a difference N ULPs
+# wide is quantised to ~1/N relative resolution no matter how exact the solver
+# is. The shipped float32 comparator ran at N = 4.4 (issue #527), i.e. ~23%
+# resolution against a 10% gate, and every value in a 7-point h-sweep came back
+# an exact integer multiple of ULP/(2h). 1e4 ULP is 0.01% resolution, 1000x
+# inside the gate's bound; the float64 comparator measures 2.4e9.
+_MIN_FD_ULP_SPAN = 1.0e4
+
 
 def _closest_divisor(n: int, target: int) -> int:
     """Divisor of ``n`` nearest ``target`` (for checkpoint_segments, which must
@@ -149,10 +160,38 @@ def test_msl_ad_fd_converged_tight():
     the auto-eps_r_sub launch fixture sampled the override under FD while
     the tape saw it frozen. Post-fix the same converged f64 referee reads
     rel_err = 0.00011 (f64 AD −2.11425e-01 vs FD −2.11449e-01) — the MSL
-    eps_override gradient now matches the repo's best lanes. What remains
-    in THIS f32 gate is only the #477 comparator-noise envelope (±3–5%),
-    so the 0.10 threshold now carries real margin. Full record: issues
-    #477 and #483.
+    eps_override gradient now matches the repo's best lanes. Full record:
+    issues #477 and #483.
+
+    COMPARATOR REBUILT (issue #527, 2026-08-01 — all numbers measured):
+    The sentence that used to end this block — "what remains in THIS f32 gate
+    is only the #477 comparator-noise envelope (±3–5%), so the 0.10 threshold
+    now carries real margin" — was false, and PR #516 exposed it. That fix
+    moved |S11| from 0.2233 to ~0.05, and since sum|S|² is pinned near the
+    passivity value 2·n_freqs = 16 (measured loss 16.00599, i.e. 0.037% of
+    signal on top of a structural constant), the gradient it differentiates
+    collapsed 50x, from −2.1143e-01 to −4.2425e-03. The loss magnitude — and
+    therefore its float32 ULP, 1.9073e-06 — did not move. The FD signal
+    2h·|g| fell from ~222 ULP to 4.4 ULP and the comparator stopped resolving:
+
+        f32 comparator, gate settings, gate's h    rel_err 0.8519
+        f64 comparator, gate settings, gate's h    rel_err 0.0035
+
+    A 7-point h-sweep on this fixture (VESSL 369367250742) returned FD values
+    that were EXACT integer multiples of ULP/(2h) at every h — 14, 1, −30, −7,
+    −31, −52, −76 — so the f32 "gradient" was counting quantisation steps, and
+    at h = 5e-4 the whole measurement was one single ULP. Raising h does not
+    fix it: 1% resolution needs h > 0.0225, where h² truncation takes over.
+
+    The FD reference therefore runs in float64 under a SCOPED enable_x64(), and
+    the resolving-power assert below runs BEFORE the accuracy gate so that a
+    comparator failure is reported as a comparator failure. That assert is the
+    check whose absence let #527 be filed against the AD path — the honest
+    reading of a 0.85 rel_err on a 4.4-ULP reference is "the instrument is
+    broken", not "the gradient is wrong". Harness:
+    scripts/msl_ad_fd_f64_referee.py.
+
+    The 0.10 threshold is UNCHANGED. Nothing here loosens a gate.
     """
     t_start = time.perf_counter()
 
@@ -232,10 +271,28 @@ def test_msl_ad_fd_converged_tight():
         "tape may still be broken."
     )
 
-    # --- Central finite-difference -------------------------------------------
+    # --- Central finite-difference, float64 reference -------------------------
+    # The two loss evaluations run under a SCOPED x64 context. Never flip x64 at
+    # module level: it is process-global, flips at pytest collection, and reds
+    # every same-process pytest-split shard. rfx/probes/probes.py already keys
+    # its DFT accumulator dtype off jax.config.x64_enabled, so x64 reaches S.
     t_fd_start = time.perf_counter()
-    f_plus = float(objective(jnp.float32(float(alpha0) + _FD_H)))
-    f_minus = float(objective(jnp.float32(float(alpha0) - _FD_H)))
+    with enable_x64():
+        sim64 = _build_msl_sim()
+        eps64 = jnp.ones(grid.shape, dtype=jnp.float64)
+
+        def objective64(alpha):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                r = sim64.compute_msl_s_matrix(
+                    n_freqs=_N_FREQS, num_periods=_NUM_PERIODS,
+                    eps_override=eps64 * alpha,
+                    checkpoint_segments=checkpoint_segments,
+                )
+            return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
+
+        f_plus = float(objective64(jnp.float64(1.0 + _FD_H)))
+        f_minus = float(objective64(jnp.float64(1.0 - _FD_H)))
     t_fd = time.perf_counter() - t_fd_start
     g_fd = (f_plus - f_minus) / (2.0 * _FD_H)
     print(f"[MSL-FD-TIGHT] g_fd = {g_fd:.6e}  (FD wall-time: {t_fd:.1f}s, h={_FD_H})")
@@ -243,6 +300,26 @@ def test_msl_ad_fd_converged_tight():
     assert abs(g_fd) > 1e-10, (
         f"[MSL-FD-TIGHT] FD gradient is effectively zero ({g_fd:.3e}): "
         "objective may be constant w.r.t. alpha at num_periods={_NUM_PERIODS}."
+    )
+
+    # --- COMPARATOR VALIDITY (must precede the accuracy gate) ----------------
+    # A reference that cannot resolve the quantity it is judging turns every
+    # verdict into noise. This is the check whose absence made #527 read as a
+    # gradient defect for four investigation rounds: the f32 comparator was
+    # running at 4.4 ULP and the gate reported 0.85 rel_err as if it were
+    # physics. Assert the reference's resolving power BEFORE comparing to AD,
+    # so a comparator failure is reported as a comparator failure.
+    ulp = float(np.spacing(abs(0.5 * (f_plus + f_minus))))
+    fd_ulp_span = abs(f_plus - f_minus) / ulp
+    print(f"[MSL-FD-TIGHT] FD reference resolving power: "
+          f"{fd_ulp_span:.3g} ULP of the loss (floor {_MIN_FD_ULP_SPAN:.0e})")
+    assert fd_ulp_span >= _MIN_FD_ULP_SPAN, (
+        f"[MSL-FD-TIGHT] the FD REFERENCE cannot resolve this gradient: "
+        f"f(+h)-f(-h) spans only {fd_ulp_span:.3g} ULP of the loss "
+        f"(need >= {_MIN_FD_ULP_SPAN:.0e}). This is a COMPARATOR failure, not "
+        "an AD failure — do not touch the extractor or the tape on the "
+        "strength of it. Raise h, raise the loss precision, or pick an "
+        "objective with more dynamic range. See issue #527."
     )
 
     # --- Accuracy gate -------------------------------------------------------
@@ -273,3 +350,43 @@ def test_msl_ad_fd_converged_tight():
     )
 
     print("[MSL-FD-TIGHT] PASS")
+
+
+def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
+    """The resolving-power floor must reject the comparator #527 shipped.
+
+    ``_MIN_FD_ULP_SPAN`` is only worth having if it fires on the exact
+    configuration that made this gate report a comparator artefact as a
+    gradient defect. A floor set too low would let that configuration through
+    and the new assert would be decoration.
+
+    Fast and deterministic — no simulation. It replays the MEASURED numbers
+    from the gate's own fixture (loss 16.00599, g_ad -4.2425e-03 on CPU;
+    16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250742) through the
+    same ULP arithmetic the gate uses, and pins the floor from BOTH sides: it
+    must reject float32 and accept float64. If someone later lowers the floor
+    to quiet a red, this test tells them what they are re-admitting.
+    """
+    loss, g_true = 16.00599, 4.2425e-03
+    signal = 2.0 * _FD_H * g_true            # |f(+h) - f(-h)|
+
+    span32 = signal / float(np.spacing(np.float32(loss)))
+    span64 = signal / float(np.spacing(np.float64(loss)))
+
+    assert span32 < 10.0, (
+        f"sanity: the f32 comparator should span a handful of ULP, got {span32:.3g}"
+    )
+    assert span32 < _MIN_FD_ULP_SPAN, (
+        f"the floor ({_MIN_FD_ULP_SPAN:.0e}) does NOT reject the float32 "
+        f"comparator that caused #527 ({span32:.3g} ULP). Lowering it this far "
+        "re-admits a reference whose every h-sweep value was an exact integer "
+        "multiple of ULP/(2h)."
+    )
+    assert span64 >= _MIN_FD_ULP_SPAN, (
+        f"the floor ({_MIN_FD_ULP_SPAN:.0e}) rejects the float64 comparator too "
+        f"({span64:.3g} ULP) — it is set so high the gate can never run."
+    )
+    # margin, so a future edit that halves the headroom is visible here
+    assert span64 / _MIN_FD_ULP_SPAN > 1.0e4, (
+        f"float64 headroom above the floor has shrunk to {span64/_MIN_FD_ULP_SPAN:.3g}x"
+    )
