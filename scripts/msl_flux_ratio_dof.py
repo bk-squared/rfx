@@ -12,11 +12,12 @@ The S-matrix is assembled from the pair SEPARATELY, against a FIXED reference:
 
     a = 0.5 * (v0 + z0_hj * i_f)          rfx/api/_sparams.py:2497-2499
     b = 0.5 * (v0 - z0_hj * i_f)
-    S = B · A^-1  over the same pairs      rfx/api/_sparams.py:2533-2540
+    S = msl_solve_s_from_waves(...)        rfx/api/_sparams.py:2560, 2591
+    over the same wave pairs recorded at    rfx/api/_sparams.py:2533-2540
 
 and so does the separately reported characteristic impedance:
 
-    z0 = (alpha - gamma) / (i1 + eps)      rfx/probes/msl_wave_decomp.py:565
+    z0 = (alpha - gamma) / (i1 + eps)      rfx/probes/msl_wave_decomp.py:566
     "Characteristic impedance extracted via 3-probe de-embedding"
                                            rfx/api/_spec.py:1284-1286
 
@@ -50,11 +51,16 @@ PRE-DECLARED
         constrain the ratio, e.g. (alpha-gamma)/I against a closed form on a
         settled, matched line.
   D2 R tracks |V|/|I|
-     => the DOF argument is wrong; reopen.
+     => NOT "the DOF argument is wrong". That argument is algebra (R is a
+        function of Re(V I*) and the flux alone) plus a code fact (S is
+        assembled from the pair separately), and no field measurement can
+        falsify either. Reaching D2 would mean the EXTRACTOR or the FLUX
+        MONITOR is defective — a useful check in its own right. What the sweep
+        contributes to the DOF claim is MAGNITUDE, not proof.
 
 RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
 
-    settling witness (end/peak Ez^2, 95% tail) = -105.4 dB   PASS
+    settling witness (peak-of-tail / peak Ez^2, 95% tail) = -99.9 dB   PASS
 
       x_mm     R@3.0G    R@4.5G   |V/I|@3.0G   |V/I|@4.5G
       3.50    1.00671   1.00732        42.36        57.34
@@ -62,30 +68,59 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
       7.32    1.00905   1.00905        33.03        35.69
       9.23    1.00857   1.00854        30.98        29.93
      10.50    1.00710   1.00716        30.79        28.97
-     (12 planes total; the full ladder is monotone at both frequencies)
+     (12 planes; monotone at 4.5 GHz, monotone at 3.0 GHz except the last
+      step, 30.78 -> 30.79)
 
     3.0 GHz : |V|/|I| swings 30.78 -> 42.36 ohm (1.38x), R varies 0.232%
     4.5 GHz : |V|/|I| swings 28.97 -> 57.34 ohm (1.98x), R varies 0.194%
 
-  D1 CONFIRMED. A real, physically caused 1.98x excursion along the ratio
-  direction — the standing-wave envelope of an imperfectly matched line — moves
-  R by 0.194%. Nothing algebraic is doing the work here: |V|, |I| and the flux
-  all change substantially from plane to plane, and R is flat because the guided
-  power is what it tracks. R would have to be ~10x more sensitive than this
-  before it could resolve the ratio at all.
+  Each frequency is paired with ITS OWN R. (An earlier version maximised the
+  swing and the R variation over frequency independently and printed them in one
+  sentence, reporting a pair that never occurred.)
 
-  The |V|/|I| ladder above is the standing-wave envelope, NOT Z0 — on an
-  unmatched line |V|/|I| oscillates about Z0 rather than equalling it, so none
-  of these numbers is an impedance measurement and none should be quoted as
-  extractor error.
+  WHAT IS CONSERVED, measured:
 
-  NOT MEASURED HERE, attributed: the PR #531 reviewer independently reports that
-  on this same settled fixture the extracted Z0 = (alpha-gamma)/I comes out
-  ~44.1 ohm, constant to ~0.2% across 12 planes, i.e. -7.9% vs Hammerstad-Jensen
-  and inside the >5% Yee-staircase envelope preflight warns about for a
-  3-substrate-cell mesh (their /tmp/pr531_z0_8k.log). I have not re-derived it.
-  If it holds, the configuration is HEALTHY and R = 1.008 on it is correct and
-  unremarkable — which is the point: R would read the same either way.
+    3.0 GHz : |V| 1.212x  |I| 1.136x  |  Re(V I*) 0.158%  flux 0.223%
+    4.5 GHz : |V| 1.447x  |I| 1.368x  |  Re(V I*) 0.153%  flux 0.203%
+                                         [|V||I| 6.5% / 9.0% — NOT conserved:
+                                          the standing wave moves the V-I phase,
+                                          so the power factor varies while the
+                                          real power does not]
+
+  So R is flat because BOTH its numerator and its denominator are conserved
+  along a lossless line — not because "the flux changes and R does not", which
+  an earlier version claimed and the data above refutes. Stated correctly the
+  demonstration is sharper: THE PLANE SWEEP IS A PHYSICAL TRAVERSAL OF R's
+  INVARIANCE SET. Every plane carries the same guided power, so every plane has
+  the same Re(V I*), while |V|/|I| spans 1.98x. Nature hands over a
+  one-parameter family of (V, I) pairs with constant product and a factor-2
+  range of ratios, and R cannot tell them apart. What is measured is the SIZE of
+  the blind direction on a real fixture: 98% of ratio range maps to 0.194% of R,
+  a sensitivity gap of ~506x.
+
+  D1 CONFIRMED at 4.5 GHz.
+
+  TWO-WAVE FIT on the same planes (computed here, not cited — a committed record
+  must not point at a /tmp log, which is the #520 failure):
+
+    3.0 GHz : Z0 = (alpha-gamma)/I = 45.21 ohm, plane spread 0.47%,
+              |Gamma| = 0.189, fit residual 3.3e-03, vs HJ 47.89 ohm (-5.6%)
+    4.5 GHz : Z0 = 45.16 ohm, spread 0.94%, |Gamma| = 0.215,
+              residual 5.1e-03, vs HJ (-5.7%)
+
+  Z0 is constant along the line to ~0.5-0.9% and sits 5.6-5.7% below the closed
+  form — inside the ">5% expected" Yee-staircase envelope preflight warns about
+  for a 3-substrate-cell mesh. The configuration is HEALTHY; R = 1.008 on it is
+  correct and unremarkable. That is the point: R would read the same either way.
+
+  METHOD NOTE, because the number is fit-dependent: this fit PINS beta to the
+  Hammerstad-Jensen eps_eff (2.869). The PR #531 reviewer, FITTING beta on the
+  same plane set, gets eps_eff ~ 3.035 and Z0 = 43.86/43.82 ohm (-8.5% vs HJ).
+  Both land inside the staircase envelope, but they differ by ~3%, which bounds
+  what this fit can resolve. Neither is quoted as the true Z0.
+
+  The |V|/|I| ladder is the standing-wave envelope, NOT Z0, and is not an
+  extractor-error measurement.
 
 SETTLING IS PART OF THE RESULT. An earlier version of this script ran 4000
 steps inside warnings.simplefilter("ignore"), which suppressed the extractor's
@@ -165,9 +200,11 @@ def main() -> int:
 
     ts = np.asarray(res.time_series)[:, 0]
     tail = ts[int(0.95 * len(ts)):]
-    settle = 10 * np.log10(max(float(np.mean(tail ** 2)), 1e-300)
+    # max-of-tail, not mean-of-tail: the repo convention, and the one the label
+    # names. mean is ~5.6 dB more lenient here (PR #531 review).
+    settle = 10 * np.log10(max(float(np.max(tail ** 2)), 1e-300)
                            / max(float(np.max(ts ** 2)), 1e-300))
-    print(f"\nsettling witness (end/peak Ez^2, 95% tail): {settle:.1f} dB "
+    print(f"\nsettling witness (peak-of-tail/peak Ez^2, 95% tail): {settle:.1f} dB "
           f"[{'PASS' if settle <= SETTLING_DB else 'FAIL'}, need <= {SETTLING_DB}]")
     if settle > SETTLING_DB:
         print("ABORT: record is not settled. Every ratio below would be a")
@@ -196,7 +233,7 @@ def main() -> int:
 
     print(f"{'x_mm':>6} " + "".join(f"{'R@%.1fG' % (f/1e9):>10}" for f in freqs)
           + "".join(f"{'|V/I|@%.1fG' % (f/1e9):>13}" for f in freqs))
-    Rs, ZZ = [], []
+    Rs, ZZ, VV, II, FF, Vcpx, Icpx = [], [], [], [], [], [], []
     for p, x in enumerate(xs):
         ez = jnp.asarray(res.dft_planes[f"ez{p}"].accumulator)
         hy = jnp.asarray(res.dft_planes[f"hy{p}"].accumulator) * hs[:, None, None]
@@ -209,32 +246,85 @@ def main() -> int:
         F = np.asarray(flux_spectrum(res.flux_monitors[f"F{p}"]))
         R = np.real(V * np.conj(I)) / F
         Z = np.abs(V) / np.abs(I)
-        Rs.append(R)
-        ZZ.append(Z)
+        Rs.append(R); ZZ.append(Z)
+        VV.append(np.abs(V)); II.append(np.abs(I)); FF.append(F)
+        Vcpx.append(V); Icpx.append(I)
         print(f"{x*1e3:6.2f} " + "".join(f"{r:10.5f}" for r in R)
               + "".join(f"{z:13.2f}" for z in Z))
 
     Rs, ZZ = np.array(Rs), np.array(ZZ)
+    VV, II, FF = np.array(VV), np.array(II), np.array(FF)
+    xs_a = np.array(xs)
+
+    # --- what is conserved and what is not -------------------------------
+    # R is flat because BOTH its numerator and denominator are conserved on a
+    # lossless line, not because "the flux changes and R doesn't". Saying so
+    # requires measuring it (PR #531 review, MAJOR 2).
+    print()
+    def sp(a):
+        return float(np.ptp(a) / np.mean(a) * 100)
+
+    for k, f in enumerate(freqs):
+        # Re(V conj(I)) — the ACTUAL numerator of R, and the conserved one.
+        # |V|*|I| is NOT it and varies several percent: the standing wave moves
+        # the V-I phase angle, so the power factor changes while the real power
+        # does not. Printing the magnitude product next to a claim about the
+        # real part invites exactly the wrong reading (PR #531 review class).
+        rp = np.array([float(np.real(Vcpx[j][k] * np.conj(Icpx[j][k])))
+                       for j in range(len(xs))])
+        mp = VV[:, k] * II[:, k]
+        print(f"{f/1e9:.1f} GHz conservation: |V| {VV[:,k].max()/VV[:,k].min():.3f}x  "
+              f"|I| {II[:,k].max()/II[:,k].min():.3f}x  |  "
+              f"Re(V I*) ptp/mean {sp(rp):.3f}%  flux ptp/mean {sp(FF[:,k]):.3f}%  "
+              f"[|V||I| {sp(mp):.2f}% — NOT conserved, power factor varies]")
+
+    # --- Z0 from a two-wave fit, computed HERE rather than cited ----------
+    # V(x) = a e^{-j b x} + g e^{+j b x};  Z0 = (alpha_x - gamma_x)/I(x).
+    # Self-contained so the record does not point at a /tmp log (#520).
     print()
     for k, f in enumerate(freqs):
-        r_spread = float(np.ptp(Rs[:, k]) / np.mean(Rs[:, k]))
-        z_swing = float(ZZ[:, k].max() / ZZ[:, k].min())
-        print(f"{f/1e9:.1f} GHz : |V|/|I| swings {ZZ[:,k].min():.2f} -> "
-              f"{ZZ[:,k].max():.2f} ohm ({z_swing:.2f}x) while R varies "
-              f"{r_spread*100:.3f}% (R in [{Rs[:,k].min():.5f}, {Rs[:,k].max():.5f}])")
+        beta = 2 * np.pi * f * float(np.sqrt(eps_eff)) / 2.99792458e8
+        ez_ph = np.array([np.exp(-1j * beta * xx) for xx in xs_a])
+        M = np.stack([ez_ph, np.conj(ez_ph)], axis=1)
+        Vc = np.array([np.asarray(v)[k] for v in Vcpx])
+        Ic = np.array([np.asarray(i)[k] for i in Icpx])
+        (a_w, g_w), *_ = np.linalg.lstsq(M, Vc, rcond=None)
+        alpha_x, gamma_x = a_w * ez_ph, g_w * np.conj(ez_ph)
+        z0_x = (alpha_x - gamma_x) / Ic
+        resid = float(np.linalg.norm(M @ np.array([a_w, g_w]) - Vc) / np.linalg.norm(Vc))
+        print(f"{f/1e9:.1f} GHz two-wave fit: Z0 = (alpha-gamma)/I = "
+              f"{np.abs(z0_x).mean():.2f} ohm (spread {np.ptp(np.abs(z0_x))/np.abs(z0_x).mean()*100:.2f}%), "
+              f"|Gamma| = {abs(g_w/a_w):.4f}, fit resid = {resid:.2e}, "
+              f"vs HJ {float(z0_hj):.2f} ohm ({(np.abs(z0_x).mean()-float(z0_hj))/float(z0_hj)*100:+.1f}%)")
 
-    worst_z = float(max(ZZ[:, k].max() / ZZ[:, k].min() for k in range(len(freqs))))
-    worst_r = float(max(np.ptp(Rs[:, k]) / np.mean(Rs[:, k]) for k in range(len(freqs))))
+    # --- verdict: pair each frequency with ITSELF -------------------------
+    # The previous version maximised the ratio swing and the R variation over
+    # frequency INDEPENDENTLY and printed them in one sentence, so it reported
+    # a (swing, variation) pair that never occurred (PR #531 review, MAJOR 1).
     print()
-    if worst_z >= 1.5 and worst_r <= 0.01:
-        print(f"D1: a real {worst_z:.2f}x excursion in the RATIO direction moves R by")
-        print(f"    only {worst_r*100:.3f}%. R constrains the product, not the pair.")
-        print("    No oracle of this form exists; a sufficient one must also")
-        print("    constrain the ratio — e.g. (alpha-gamma)/I vs a closed form,")
-        print("    on a settled and matched line.")
+    swings = np.array([ZZ[:, k].max() / ZZ[:, k].min() for k in range(len(freqs))])
+    spreads = np.array([np.ptp(Rs[:, k]) / np.mean(Rs[:, k]) for k in range(len(freqs))])
+    kw = int(np.argmax(swings))
+    for k, f in enumerate(freqs):
+        print(f"{f/1e9:.1f} GHz : |V|/|I| swings {ZZ[:,k].min():.2f} -> {ZZ[:,k].max():.2f} ohm "
+              f"({swings[k]:.2f}x) while R varies {spreads[k]*100:.3f}% "
+              f"(R in [{Rs[:,k].min():.5f}, {Rs[:,k].max():.5f}])")
+    print()
+    if swings[kw] >= 1.5 and spreads[kw] <= 0.01:
+        print(f"D1 at {freqs[kw]/1e9:.1f} GHz (the largest swing, paired with ITS OWN R):")
+        print("    the plane sweep is a physical traversal of R's invariance set —")
+        print("    every plane carries the same guided power, so Re(V I*) and the flux")
+        print(f"    are both conserved, while |V|/|I| spans {swings[kw]:.2f}x. R moves")
+        print(f"    {spreads[kw]*100:.3f}%, i.e. {swings[kw]-1:.0%} of ratio range maps to")
+        print(f"    {spreads[kw]*100:.3f}% of R: a sensitivity gap of ~{(swings[kw]-1)/spreads[kw]:.0f}x.")
+        print("    R constrains the product; the S assembly and the reported Z0 use the")
+        print("    pair separately. No oracle of this form exists.")
     else:
-        print(f"D2: ratio swing {worst_z:.2f}x, R variation {worst_r*100:.3f}% — "
-              "the pre-declared separation did not appear; re-examine.")
+        print(f"D2 at {freqs[kw]/1e9:.1f} GHz: swing {swings[kw]:.2f}x, R variation "
+              f"{spreads[kw]*100:.3f}% — R tracked the ratio. Since the DOF argument is")
+        print("    algebra plus a code fact, no field measurement can falsify it; reaching")
+        print("    here means the EXTRACTOR or the FLUX MONITOR is defective. Investigate")
+        print("    those, not the argument.")
     return 0
 
 
