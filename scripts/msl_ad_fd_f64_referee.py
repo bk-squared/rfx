@@ -16,20 +16,30 @@ A float32 value near ``loss = 16.005951`` can only move in steps of one ULP,
 ``2h|g| = 8.4723e-06`` — **4.4 ULP wide**. The subtraction therefore returns an
 integer number of quantisation steps, not a derivative.
 
-Measured on the gate's own fixture (VESSL 369367250742, gpu-rtx4090), every
-value in an h-sweep came back an EXACT integer multiple of ``ULP/(2h)``:
+Measured on the gate's own fixture (VESSL 369367250742, gpu-rtx4090), the span
+stayed between 1 and 76 ULP across the whole sweep, while the FD value scattered
+2017% and changed sign:
 
-    h        g_fd            ULP/(2h)      g_fd / quantum
-    3.0e-04  +4.450480e-02   3.1789e-03    14.0000
-    5.0e-04  +1.907349e-03   1.9073e-03     1.0000   <- one single ULP
-    1.0e-03  -2.861023e-02   9.5367e-04   -30.0000   <- the gate's h
-    2.0e-03  -3.337860e-03   4.7684e-04    -7.0000
-    5.0e-03  -5.912781e-03   1.9073e-04   -31.0000
-    1.0e-02  -4.959106e-03   9.5367e-05   -52.0000
-    2.0e-02  -3.623962e-03   4.7684e-05   -76.0000
+    h        g_fd            span (ULP)
+    3.0e-04  +4.450480e-02       14
+    5.0e-04  +1.907349e-03        1     <- the entire measurement is ONE ULP
+    1.0e-03  -2.861023e-02       30     <- the gate's h
+    2.0e-03  -3.337860e-03        7
+    5.0e-03  -5.912781e-03       31
+    1.0e-02  -4.959106e-03       52
+    2.0e-02  -3.623962e-03       76
 
-Seven for seven. The sign flip that looked like a physics puzzle is just which
-side of a representable value each evaluation landed on.
+The sign flip that looked like a physics puzzle is just which side of a
+representable value each evaluation landed on.
+
+CAUTION for anyone reusing this reasoning: those spans are exact integers, and
+an earlier draft of this docstring offered that integrality as the proof. It is
+not evidence of anything — ANY two float32 values in the same binade differ by
+an integer number of ULPs (200k random pairs, including deliberately
+well-resolved ones 47186 ULP apart, all reproduce it). Integrality shows only
+that the values were float32. The load-bearing fact is the MAGNITUDE of the
+span. Do not carry the integer-multiple test forward as a diagnostic; it fires
+on healthy comparators too.
 
 No h repairs this: 1% quantisation resolution needs ``2h|g| > 100 ULP``, i.e.
 ``h > 0.0225`` — a 2.3% perturbation of ``alpha``, where ``h^2`` truncation

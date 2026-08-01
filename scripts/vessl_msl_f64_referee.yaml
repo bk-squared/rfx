@@ -25,7 +25,7 @@ run: |-
   export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
-  echo "=== #527 h-sweep on the gate's own fixture ==="
+  echo "=== #527 f64 FD referee at the gate's own settings ==="
   out=".omx/msl-f64-referee/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
   mkdir -p "$out"
   set +e

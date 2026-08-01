@@ -103,10 +103,25 @@ _REL_ERR_THRESHOLD = 0.10
 # The loss is a float, so it can only move in whole ULPs — a difference N ULPs
 # wide is quantised to ~1/N relative resolution no matter how exact the solver
 # is. The shipped float32 comparator ran at N = 4.4 (issue #527), i.e. ~23%
-# resolution against a 10% gate, and every value in a 7-point h-sweep came back
-# an exact integer multiple of ULP/(2h). 1e4 ULP is 0.01% resolution, 1000x
-# inside the gate's bound; the float64 comparator measures 2.4e9.
+# resolution against a 10% gate. 1e4 ULP is 0.01% resolution, 1000x inside the
+# gate's bound; the float64 comparator measures 2.4e9.
 _MIN_FD_ULP_SPAN = 1.0e4
+
+
+def _fd_ulp_span(f_plus: float, f_minus: float, dtype) -> float:
+    """Resolving power of a central difference, in ULPs of ``dtype``.
+
+    ``dtype`` is the dtype the LOSS was computed in, not the container the
+    values arrived in. ``float(jnp_scalar)`` always yields a Python float, so
+    keying off the value alone silently measures float64 even for a float32
+    loss — which is how the first version of this check passed on the exact
+    configuration it exists to reject (PR #529 review).
+
+    The gate and its falsifier both call this, so the test exercises the
+    expression the gate actually evaluates rather than a re-derivation of it.
+    """
+    ulp = float(np.spacing(np.asarray(abs(0.5 * (f_plus + f_minus)), dtype=dtype)))
+    return abs(f_plus - f_minus) / ulp
 
 
 def _closest_divisor(n: int, target: int) -> int:
@@ -177,11 +192,13 @@ def test_msl_ad_fd_converged_tight():
         f32 comparator, gate settings, gate's h    rel_err 0.8519
         f64 comparator, gate settings, gate's h    rel_err 0.0331
 
-    Both measured ON THIS LANE (gpu-rtx4090, VESSL 369367250775) — a CPU run of
-    the same referee reads 0.0035 with a 0.19% h-spread, so the GPU's f64 FD is
-    the noisier of the two and the number above is the conservative one. The
-    reference's own h-spread fell from 2017% (f32) to 3.4% (f64, GPU) and its
-    resolving power rose from 4.4 to 2.31e+09 ULP.
+    Both measured ON THIS LANE (gpu-rtx4090, VESSL 369367250775), so the number
+    quoted is the one the gate will actually read. A 4-point CPU run of the same
+    referee reads rel_err {0.0035, 0.0053, 0.0040, 0.0044} over
+    h ∈ {1e-3, 2e-3, 5e-3, 1e-2} with a 0.972% h-spread — the GPU's f64 FD is
+    the noisier of the two platforms, so 0.0331 is the conservative figure. The
+    reference's own h-spread fell from 2017% (f32) to 3.4% (GPU) / 0.97% (CPU),
+    and its resolving power rose from 4.4 to 2.31e+09 ULP.
 
     COST, measured on the lane, since a float64 reference sounds expensive and
     is not: f32 AD 59.1s, f64 FD 41.7s and 37.7s per h (two forwards each),
@@ -191,11 +208,18 @@ def test_msl_ad_fd_converged_tight():
     which is why the decision was made from a measurement on the lane the gate
     actually runs in rather than from a local timing.
 
-    A 7-point h-sweep on this fixture (VESSL 369367250742) returned FD values
-    that were EXACT integer multiples of ULP/(2h) at every h — 14, 1, −30, −7,
-    −31, −52, −76 — so the f32 "gradient" was counting quantisation steps, and
-    at h = 5e-4 the whole measurement was one single ULP. Raising h does not
-    fix it: 1% resolution needs h > 0.0225, where h² truncation takes over.
+    A 7-point h-sweep on this fixture (VESSL 369367250742) put the span between
+    1 and 76 ULP across h ∈ [3e-4, 2e-2] — at h = 5e-4 the whole measurement
+    was ONE single ULP — while the FD value scattered 2017% and changed sign.
+    Raising h does not fix it: 1% resolution needs h > 0.0225, where h²
+    truncation takes over.
+
+    (An earlier draft of this block offered "every sweep value was an exact
+    integer multiple of ULP/(2h)" as the proof. That is a tautology — ANY two
+    float32 values in the same binade differ by an integer number of ULPs, and
+    200k random well-resolved pairs reproduce it. It shows only that the values
+    were float32. The load-bearing fact is the MAGNITUDE of the span, which is
+    what this block and _MIN_FD_ULP_SPAN now use.)
 
     The FD reference therefore runs in float64 under a SCOPED enable_x64(), and
     the resolving-power assert below runs BEFORE the accuracy gate so that a
@@ -290,6 +314,13 @@ def test_msl_ad_fd_converged_tight():
     # module level: it is process-global, flips at pytest collection, and reds
     # every same-process pytest-split shard. rfx/probes/probes.py already keys
     # its DFT accumulator dtype off jax.config.x64_enabled, so x64 reaches S.
+    #
+    # `grid` and `checkpoint_segments` are computed OUTSIDE this context and
+    # reused inside it. Verified identical under both configs — shape
+    # (142, 54, 19), n_steps 26226, cseg 141, same dt and dx — and a divergence
+    # could not be silent anyway: a mismatched grid.shape would blow up on the
+    # eps_override broadcast, and a cseg that stopped dividing n_steps hard-errors
+    # in the segmented scan (plus the local assert above).
     t_fd_start = time.perf_counter()
     with enable_x64():
         sim64 = _build_msl_sim()
@@ -305,8 +336,23 @@ def test_msl_ad_fd_converged_tight():
                 )
             return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
 
-        f_plus = float(objective64(jnp.float64(1.0 + _FD_H)))
-        f_minus = float(objective64(jnp.float64(1.0 - _FD_H)))
+        # Keep the ARRAYS. float() would widen them to Python floats — always
+        # float64 — and the resolving-power check below would then measure the
+        # ULP of the container instead of the dtype the loss was computed in.
+        # That was a real defect in the first version of this block: fed the
+        # pre-#527 float32 configuration it read 2.4e+09 ULP instead of 4.4 and
+        # sailed through the assert it exists to trip (PR #529 review).
+        f_plus_arr = objective64(jnp.float64(1.0 + _FD_H))
+        f_minus_arr = objective64(jnp.float64(1.0 - _FD_H))
+        loss_dtype = f_plus_arr.dtype
+        assert loss_dtype == f_minus_arr.dtype == jnp.float64, (
+            "[MSL-FD-TIGHT] the FD reference did NOT run in float64 "
+            f"(got {loss_dtype}). Scoped x64 failed to engage — check "
+            "jax.experimental.enable_x64 and the jax.config.x64_enabled keying "
+            "in rfx/probes/probes.py. Do NOT read the rel_err below as physics."
+        )
+        f_plus = float(f_plus_arr)
+        f_minus = float(f_minus_arr)
     t_fd = time.perf_counter() - t_fd_start
     g_fd = (f_plus - f_minus) / (2.0 * _FD_H)
     print(f"[MSL-FD-TIGHT] g_fd = {g_fd:.6e}  (FD wall-time: {t_fd:.1f}s, h={_FD_H})")
@@ -323,8 +369,11 @@ def test_msl_ad_fd_converged_tight():
     # running at 4.4 ULP and the gate reported 0.85 rel_err as if it were
     # physics. Assert the reference's resolving power BEFORE comparing to AD,
     # so a comparator failure is reported as a comparator failure.
-    ulp = float(np.spacing(abs(0.5 * (f_plus + f_minus))))
-    fd_ulp_span = abs(f_plus - f_minus) / ulp
+    #
+    # The ULP MUST be taken at loss_dtype, not at the Python float the values
+    # were widened into. The loss can only move in whole ULPs OF THE DTYPE IT
+    # WAS COMPUTED IN, so that is the quantity that bounds the resolution.
+    fd_ulp_span = _fd_ulp_span(f_plus, f_minus, loss_dtype)
     print(f"[MSL-FD-TIGHT] FD reference resolving power: "
           f"{fd_ulp_span:.3g} ULP of the loss (floor {_MIN_FD_ULP_SPAN:.0e})")
     assert fd_ulp_span >= _MIN_FD_ULP_SPAN, (
@@ -371,36 +420,76 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
 
     ``_MIN_FD_ULP_SPAN`` is only worth having if it fires on the exact
     configuration that made this gate report a comparator artefact as a
-    gradient defect. A floor set too low would let that configuration through
-    and the new assert would be decoration.
+    gradient defect. Two things this test is careful about, both of which the
+    first version got wrong (PR #529 review):
+
+    * it calls ``_fd_ulp_span`` — the SAME expression the gate evaluates —
+      rather than re-deriving the arithmetic, so green here says something
+      about the gate's own code path;
+    * it passes the DTYPE, because ``float(jnp_scalar)`` is always a Python
+      float and a value-only check reads float64 ULP for a float32 loss. Fed
+      that way the first version read 2.4e+09 ULP for the f32 reference
+      instead of 4.4 and passed.
 
     Fast and deterministic — no simulation. It replays the MEASURED numbers
     from the gate's own fixture (loss 16.00599, g_ad -4.2425e-03 on CPU;
-    16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250742) through the
-    same ULP arithmetic the gate uses, and pins the floor from BOTH sides: it
-    must reject float32 and accept float64. If someone later lowers the floor
-    to quiet a red, this test tells them what they are re-admitting.
+    16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250775).
     """
     loss, g_true = 16.00599, 4.2425e-03
-    signal = 2.0 * _FD_H * g_true            # |f(+h) - f(-h)|
+    f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true
 
-    span32 = signal / float(np.spacing(np.float32(loss)))
-    span64 = signal / float(np.spacing(np.float64(loss)))
+    span32 = _fd_ulp_span(f_plus, f_minus, np.float32)
+    span64 = _fd_ulp_span(f_plus, f_minus, np.float64)
 
     assert span32 < 10.0, (
         f"sanity: the f32 comparator should span a handful of ULP, got {span32:.3g}"
     )
     assert span32 < _MIN_FD_ULP_SPAN, (
         f"the floor ({_MIN_FD_ULP_SPAN:.0e}) does NOT reject the float32 "
-        f"comparator that caused #527 ({span32:.3g} ULP). Lowering it this far "
-        "re-admits a reference whose every h-sweep value was an exact integer "
-        "multiple of ULP/(2h)."
+        f"comparator that caused #527 ({span32:.3g} ULP)."
     )
     assert span64 >= _MIN_FD_ULP_SPAN, (
         f"the floor ({_MIN_FD_ULP_SPAN:.0e}) rejects the float64 comparator too "
         f"({span64:.3g} ULP) — it is set so high the gate can never run."
     )
-    # margin, so a future edit that halves the headroom is visible here
+
+    # ANCHOR THE FLOOR TO THE GATE, not to the one number it must reject.
+    # A span of N ULP quantises the difference to ~1/N relative resolution, so
+    # judging a threshold T needs 1/N << T. Requiring N*T >= 100 buys 100x
+    # margin. Without this, a floor of 5.0 satisfies every assert above while
+    # giving 20% resolution against a 10% gate — the review measured that the
+    # unanchored version admitted any floor in (4.449, 2.388e5), 4.7 decades.
+    assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0, (
+        f"floor {_MIN_FD_ULP_SPAN:.0e} gives only "
+        f"{1.0 / _MIN_FD_ULP_SPAN:.2e} relative resolution against a "
+        f"{_REL_ERR_THRESHOLD} gate; need span*threshold >= 100."
+    )
     assert span64 / _MIN_FD_ULP_SPAN > 1.0e4, (
         f"float64 headroom above the floor has shrunk to {span64/_MIN_FD_ULP_SPAN:.3g}x"
+    )
+
+
+def test_fd_ulp_span_is_dtype_sensitive_not_container_sensitive():
+    """The span helper must key off the loss dtype, not the Python container.
+
+    Direct regression lock on the PR #529 blocking defect. Both arguments are
+    Python floats in every call — as they are in the gate, after
+    ``float(jnp_scalar)`` — so if the helper ever goes back to inferring
+    precision from the value it will read the same number for both dtypes and
+    this fails.
+    """
+    loss, g_true = 16.00599, 4.2425e-03
+    f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true
+
+    span32 = _fd_ulp_span(f_plus, f_minus, np.float32)
+    span64 = _fd_ulp_span(f_plus, f_minus, np.float64)
+    assert span64 / span32 > 1.0e6, (
+        f"the helper is not dtype-sensitive: f32 {span32:.4g} vs f64 "
+        f"{span64:.4g} ULP for identical Python-float inputs. It is measuring "
+        "the container, so it cannot tell a float32 reference from a float64 "
+        "one — the exact defect that let the first version of this gate pass "
+        "on the configuration it exists to reject."
+    )
+    assert abs(span32 - 4.449) < 0.01, (
+        f"f32 span drifted from the measured 4.449 ULP to {span32:.4g}"
     )
