@@ -185,7 +185,8 @@ msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
 S = msl.S          # (n_ports, n_ports, n_freqs)
 freqs = msl.freqs  # (n_freqs,) Hz
 Z0 = msl.Z0        # extracted characteristic impedance
-reliable = msl.reliable  # (driven_port, frequency), or None while tracing
+reliable = msl.reliable  # (port, frequency), or None while tracing
+                         # `port` indexes the PROBE PLANE, not the driven port
 ```
 
 `num_periods=40` is the docstring default; values below that may under-settle
@@ -195,10 +196,13 @@ the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 #### Low-signal MSL bins
 
 During normal Python execution outside JAX tracing,
-`MSLSMatrixResult.reliable[p, k]` is `False` if both measured `|V|` and `|I|`
-at port `p`, frequency index `k`, fall below 10% of their per-port band
-medians. This condition can occur near a strong-reflector measurement null,
-but the mask does not diagnose the cause.
+`MSLSMatrixResult.reliable[p, k]` is `False` if, **in any one of the drives**,
+both measured `|V|` and `|I|` on port `p`'s plane at frequency index `k` fall
+below 10% of that individual `(driven, port)` record's own band median. The
+mask is screened per record and then reduced over the drive axis, so `p`
+identifies the probe plane to investigate — not which drive was running. This
+condition can occur near a strong-reflector measurement null, but the mask does
+not diagnose the cause.
 
 The S-matrix is solved from the wave amplitudes of **all** drives at once
 (`S = B·A⁻¹`), so a collapsed wave pair at any one port contaminates the
@@ -215,10 +219,13 @@ A true entry certifies that the low-signal threshold did not fire — never that
 the result is accurate.
 
 The threshold is relative to each record's own band median, so a port sitting in
-a deep stopband is not flagged wholesale — but individual deep bins are. Measured
-on rfx's own committed filter runs: 2 flagged bins of 100 on the microstrip notch
-fixture and 12 of 120 on the Sheen low-pass leg — and the notch fixture's two are
-the notch centre itself (3.6273 GHz, −30 dB). That is not a false alarm: at a
+a deep stopband is not flagged wholesale — but individual deep bins are. Live
+extractor runs on rfx's two filter geometries flagged 2 bins of 100 on the
+microstrip notch fixture and 12 of 120 on the Sheen low-pass leg — and the notch
+fixture's two are the notch centre itself, 3.6273 GHz, which its committed
+fixture records at −30.66 dB. The two counts are not recomputable from the
+committed fixtures, which store S magnitudes only with no V/I dump; checking them
+means re-running the extractor and reading `reliable`. That is not a false alarm: at a
 −30 dB notch the passive port's wave split really is low-signal, so the extractor
 cannot certify the depth there. It does mean a filter measurement loses its most
 interesting bin to the screen; read the depth from `.S_raw` or a flux monitor

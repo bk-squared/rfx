@@ -1310,10 +1310,15 @@ class MSLSMatrixResult:
         *Cost of the widened coverage, measured*: the threshold is relative
         to each record's OWN band median, so a port sitting in a deep
         stopband is not flagged wholesale — but individual deep bins ARE
-        flagged.  On the repo's committed real runs the criterion flags 2
+        flagged.  Live extractor runs on the two filter geometries flagged 2
         bins of 100 on the ``msl_notch_e4`` fixture and 12 of 120 on the
-        Sheen LPF leg, and the notch fixture's two ARE the notch centre
-        (committed meta: 3.6273 GHz, −30.66 dB).  That is not a false alarm
+        Sheen LPF leg (``validation/crossval/07_sheen_lpf.py`` at its
+        ``--n-freqs`` default), and the notch fixture's two ARE the notch
+        centre — 3.6273 GHz, which the committed fixture meta records at
+        −30.66 dB.  The two COUNTS are not recomputable from the committed
+        JSON: those fixtures store S magnitudes only, with no V/I dump, so
+        checking them means re-running the extractor and reading
+        ``reliable``.  That is not a false alarm
         — at a −30 dB notch the passive port's wave split really is
         low-signal and the extractor cannot certify the depth — but a filter
         user loses exactly the bin they care about and should read the depth

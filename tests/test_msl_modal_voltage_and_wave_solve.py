@@ -443,6 +443,15 @@ def test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace(tmp_path):
 # planes to every drive, so A is exactly singular and only the fallback ran.
 
 
+# Off-diagonal (drive != port) mixing for the E and H planes. They must NOT be
+# equal: a shared factor makes V and I scale together, so B = diag(b_j/a_j)*A
+# and S = B*A^-1 is exactly diagonal. A diagonal S is symmetric and has nothing
+# in its off-diagonals, so a transposed [receiver, driven] assembly or a dropped
+# transmission term survives every comparison (PR #526 re-review, finding 2).
+_MIX_E = 0.23 + 0.11j
+_MIX_H = -0.37 + 0.42j
+
+
 def _fake_run_drive_dependent(nz_markers, scale_by_run):
     """sim.run stub whose ez planes DIFFER per driven run.
 
@@ -473,8 +482,14 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
                 # cond >> 1/eps and tests nothing (PR #526 review, F3).
                 # Mimic the physical case instead: the driven port carries
                 # the incident wave, the passive port a small echo.
+                #
+                # E and H must ALSO mix differently (see _MIX_H below), or V
+                # and I share one (drive, port) factor, B = diag(b_j/a_j)*A,
+                # and the solved S comes out exactly DIAGONAL — which no
+                # transpose or dropped-transmission mutation can disturb
+                # (PR #526 re-review, finding 2).
                 amp = scale_by_run[run_i] * (
-                    1.0 if run_i == port_i else 0.23 + 0.11j)
+                    1.0 if run_i == port_i else _MIX_E)
                 acc = jnp.broadcast_to(
                     (prof * amp)[None, None, :], (1, grid.ny, grid.nz))
             else:
@@ -489,8 +504,10 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
                 zramp = jnp.asarray(
                     [1.0 + 0.6 * k for k in range(grid.nz)], dtype=jnp.complex64)
                 # per-port phase too, so the drive columns are independent in
-                # DIRECTION and not merely in scale
-                amp = amp * (1.0 if run_i == port_i else 0.23 + 0.11j)
+                # DIRECTION and not merely in scale -- and a DIFFERENT mix
+                # from E's, so that b_j/a_j varies with the drive and S is
+                # not forced diagonal (see the ez branch).
+                amp = amp * (1.0 if run_i == port_i else _MIX_H)
                 acc = (amp * scale_by_run[run_i]
                        * zramp[None, None, :])
                 acc = jnp.broadcast_to(acc, (1, grid.ny, grid.nz))
@@ -542,6 +559,12 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     First fast end-to-end coverage of the solve branch inside
     compute_msl_s_matrix (the older wiring fixture feeds identical planes to
     every drive, so A is exactly singular and only the fallback ever ran).
+
+    NOT PHYSICS. The planes are synthetic, so the resulting S is non-physical
+    (|S22| ~ 5, column power ~ 24, and the honesty guard fires on it). This
+    test pins the ALGEBRA — that the returned S is the multi-drive solve of the
+    recorded waves — and nothing about microstrip behaviour. Do not cite it as
+    solve-branch physics coverage.
     """
     res, dump, warns = _run_with(
         _fake_run_drive_dependent(_MARKER, {0: 1.0, 1: 0.41 - 0.23j}),
@@ -586,6 +609,26 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     wave_b = [[0.5 * (v[dd, pp] - z0 * i[dd, pp]) for pp in range(2)]
               for dd in range(2)]
     S_expected = np.asarray(msl_solve_s_from_waves(wave_a, wave_b)[0])
+
+    # PRECONDITION GUARD. The comparison above is only as strong as the shape
+    # of S_expected. If S is diagonal, a transposed [receiver, driven]
+    # assembly and a zeroed transmission term both compare EQUAL and ship
+    # broken; a diagonal S is also symmetric, so S == S.T proves nothing.
+    # Assert the fixture actually produced the off-diagonal structure that
+    # makes those mutations visible, rather than trusting _MIX_E != _MIX_H to
+    # have had the intended effect (PR #526 re-review, finding 2).
+    off = np.abs(S_expected[0, 1]) + np.abs(S_expected[1, 0])
+    diag = np.abs(S_expected[0, 0]) + np.abs(S_expected[1, 1])
+    assert float(np.min(off / diag)) > 1e-2, (
+        f"S_expected is (near-)diagonal (off/diag = {float(np.min(off/diag)):.2e}); "
+        "a transpose or a dropped transmission term would be invisible here"
+    )
+    asym = np.abs(S_expected[0, 1] - S_expected[1, 0])
+    assert float(np.min(asym / diag)) > 1e-2, (
+        f"S_expected is (near-)symmetric (asym/diag = {float(np.min(asym/diag)):.2e}); "
+        "a transposed [receiver, driven] assembly would be invisible here"
+    )
+
     np.testing.assert_allclose(
         np.asarray(res.S), S_expected, rtol=F32_TOL, atol=F32_TOL,
         err_msg="returned S is not the multi-drive solve of the recorded waves",

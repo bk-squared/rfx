@@ -116,9 +116,18 @@ def main() -> None:
     print(f"best rel_err       : {rels.min():.4f} at h = {H_LIST[int(rels.argmin())]:.1e}")
     print(f"gate's h rel_err   : {rels[H_LIST.index(1e-3)]:.4f}")
     print(f"g_ad inside FD band: {bool(fds.min() <= g_ad <= fds.max())}")
-    if rels.min() <= 0.10:
-        print("\nVERDICT: some h agrees with AD inside the gate's own 10% bound "
-              "-> the AD is sound and the gate's SINGLE h = 1e-3 is the defect.")
+    # BOTH halves of the pre-declared read, not just the rel_err half: a lone
+    # h landing inside 10% while the FD scatters wildly is a coincidence, not
+    # a convergence. Require the reference to be stable too (PR #526
+    # re-review, finding 5).
+    if rels.min() <= 0.10 and spread < 0.15:
+        print("\nVERDICT: the FD is stable across h AND some h agrees with AD "
+              "inside the gate's own 10% bound -> the AD is sound and the "
+              "gate's SINGLE h = 1e-3 is the defect.")
+    elif rels.min() <= 0.10:
+        print(f"\nVERDICT: an h agrees within 10% but the FD scatters "
+              f"{spread*100:.0f}% across h -> that agreement is a coincidence, "
+              "not convergence. Treat as FD-unstable.")
     elif spread < 0.15:
         print("\nVERDICT: FD is stable across h and still disagrees "
               "-> the disagreement is real; the AD path is the suspect.")

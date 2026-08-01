@@ -216,7 +216,9 @@ def _msl_wave_split_reliability(
     freqs_arr = np.asarray(freqs)
     if v_abs.shape != i_abs.shape or v_abs.ndim != 2:
         raise ValueError(
-            "MSL reliability phasors must have matching (n_ports, n_freqs) shapes"
+            "MSL reliability phasors must have matching (n_records, n_freqs) "
+            "shapes; the production caller passes n_records = n_ports**2, one "
+            "row per (driven, port) pair"
         )
     if v_abs.shape[1:] != freqs_arr.shape:
         raise ValueError("MSL reliability phasors and frequency grid do not align")
@@ -2627,9 +2629,12 @@ class _SparamMixin:
                 # The criterion is relative to each record's OWN band
                 # median (see _msl_wave_split_reliability), so a uniformly
                 # small passive record is not flagged wholesale — but deep
-                # individual bins ARE. Measured on the committed real runs:
-                # 2/100 bins on msl_notch_e4 (and they are the notch centre,
-                # 3.6273 GHz / -30.66 dB) and 12/120 on the Sheen LPF leg.
+                # individual bins ARE. Live extractor runs on the two filter
+                # geometries: 2/100 bins on msl_notch_e4 (and they are the
+                # notch centre, 3.6273 GHz, recorded at -30.66 dB in the
+                # committed fixture meta) and 12/120 on the Sheen LPF leg.
+                # The counts need a re-run to check — the committed fixtures
+                # store S magnitudes only, no V/I dump.
                 # Correct behaviour — the split really is low-signal at a
                 # -30 dB notch — but it costs a filter user their most
                 # interesting bin; see the reliable docstring.
