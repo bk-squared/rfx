@@ -1,27 +1,28 @@
-"""#525 decisive check: is R = Re(V·conj(I))/flux BLIND to the extractor's Z0?
+"""#525 decisive check: does R = Re(V·conj(I))/flux constrain what S depends on?
 
 The workflow's three refutation lenses all reached the same structural claim:
 R is a transverse-profile consistency check whose numerator and denominator are
 built from the SAME plane's accumulators, so it is invariant under the
 power-preserving rescaling (V, I) -> (aV, I/a) while Z0 = V/I moves by a^2.
-If true, R cannot certify the quantity the MSL extractor exists to produce, and
-#525 must be closed with that finding rather than with a ratio.
+If true, R constrains only ONE of the two degrees of freedom in (V, I) — the
+product — while the wave split depends on both, so R cannot certify the S-matrix
+and #525 must be closed with that finding rather than with a ratio.
 
 That is algebra, but the lenses also made an EMPIRICAL claim I have not verified:
-that on this fixture the extracted Z0 sits 24-32% from Hammerstad-Jensen while R
-sits flat at ~1.01. This script tests both on ONE run so the pairing is not in
+that on this fixture |V|/|I| sits 24-32% from Hammerstad-Jensen while R sits flat
+at ~1.01. This script tests both on ONE run so the pairing is not in
 doubt, using the PRODUCTION trace-node anchoring rather than the round(h/dx)
 proxy the design script used (that proxy IS the #511 defect; it is only safe here
 because dx = h_sub/3 divides exactly).
 
 PRE-DECLARED
-  B1 R stays within 0.5% under the degenerate rescale while Z0 moves by a^2
-     => R is structurally blind to the impedance direction. #525's ratio cannot
-        be an extractor oracle; close it with that, and point any future oracle
-        at Z0-vs-closed-form instead.
+  B1 R stays within 0.5% under the degenerate rescale while V/I moves by a^2
+     => R constrains the product only, not the ratio. #525's ratio cannot be an
+        extractor oracle; close it with that. Any future oracle must constrain
+        the ratio direction too (V/I against a closed form, on a MATCHED line).
   B2 R moves with a
-     => the invariance argument is wrong and the ratio does carry impedance
-        information; re-open the design.
+     => the invariance argument is wrong and R does constrain the ratio too;
+        re-open the design.
   Separately reported (not pre-declared, observational): |V|/|I| against the
   Hammerstad-Jensen closed form, and R itself.
 
@@ -32,6 +33,17 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 4000 steps, CPU):
 
   B1 CONFIRMED, and not merely "within tolerance" — the change is EXACTLY zero.
   R is algebraically independent of the rescale: Re(aV * conj(I/a)) = Re(V I*).
+
+  PRECISION NOTE (the first draft of this file got the framing wrong). The MSL
+  wave split does NOT extract Z0 — rfx/api/_spec.py:1426 documents z0_ref as
+  "analytic Hammerstad-Jensen Z0 for MSL", set at _sparams.py:2185. So "R is
+  blind to the EXTRACTED Z0" names something that does not exist. The correct
+  statement is about degrees of freedom: R constrains ONE real combination, the
+  product Re(V I*) against the flux. The wave split a = (V + Z0_ref I)/2,
+  b = (V - Z0_ref I)/2 depends on V and I SEPARATELY against a fixed reference.
+  A defect that moves the ratio V/I at constant product therefore changes every
+  S entry while leaving R exactly unchanged. That is why R cannot certify the
+  extractor, and it does not depend on any Z0 being measured.
 
     plane   f(GHz)      R      |V|/|I|   vs HJ 47.895 ohm
      5 mm    3.00   1.00881    36.16       -24.5%
@@ -45,7 +57,10 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 4000 steps, CPU):
   cannot speak for.
 
 CAVEAT, stated because the number invites the wrong reading: |V|/|I| at a plane
-is NOT Z0 unless the line is matched. On a line carrying any standing wave it
+is NOT Z0 unless the line is matched, and it is NOT what the wave split uses —
+that uses the fixed Hammerstad-Jensen value. What the gap does show is that the
+line's actual measured V/I sits far from the reference impedance the split
+assumes, and that R reads 1.009 either way. On a line carrying any standing wave it
 oscillates about Z0, so the 24-36% figure is NOT an extractor-error measurement
 and must not be quoted as one. Its variation ALONG x is the informative part:
 36.16 -> 32.08 ohm at 3.0 GHz over 4 mm (-11.3%) where a matched line would be
@@ -170,10 +185,13 @@ def main():
           f"({(A**2-1)*100:+.1f}%)")
     print()
     if dR_max < 0.5:
-        print("B1: R is STRUCTURALLY BLIND to the impedance direction. A rescale that")
-        print("    moves Z0 by 69% leaves R unchanged to machine precision. R cannot")
-        print("    certify the MSL extractor's Z0; it can only catch ONE-SIDED defects")
-        print("    (which is exactly what #511 was). Close #525 on this finding.")
+        print("B1: R constrains the PRODUCT Re(V I*) only, not the ratio V/I. A")
+        print("    rescale that moves V/I by 69% leaves R unchanged to machine")
+        print("    precision. The wave split a=(V+Z0_ref I)/2, b=(V-Z0_ref I)/2")
+        print("    depends on V and I SEPARATELY, so a defect in the ratio direction")
+        print("    changes every S entry while R does not move. R can only catch")
+        print("    ONE-SIDED defects (which is exactly what #511 was).")
+        print("    Close #525 on this finding.")
     else:
         print("B2: R moved with the rescale — the invariance argument is WRONG.")
 
