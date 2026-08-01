@@ -14,11 +14,16 @@ and converging to the AD gradient within 4.2% at h = 1e-2. That fixture cannot
 speak for the gate's converged settings; this script runs the identical sweep on
 the gate's OWN fixture (``_build_msl_sim``, ``num_periods=20``, ``n_freqs=8``).
 
-Reads, pre-declared:
-  * curve converges to g_ad at large h AND min rel_err <= 0.10
+Reads, pre-declared. "Stable" below means the FD reference agrees with ITSELF
+across h (spread < 15%) — the reference's own self-consistency, which has to be
+established before its disagreement with AD means anything:
+  * FD stable AND min rel_err <= 0.10
         -> the AD is fine; #527 is an h-selection defect in the comparator.
-  * rel_err >= ~0.5 at every h with a STABLE FD
+  * FD stable AND rel_err >= ~0.5 at every h
         -> the disagreement is real; the AD path is the suspect.
+  * FD UNSTABLE but some h lands inside 10%
+        -> that agreement is a coincidence of scatter, not convergence. Read it
+           as the unstable case, not as a pass.
   * FD unstable at every h
         -> this fixture cannot support a finite-difference reference at all;
            the gate needs a different comparator (complex-step, f64 referee).
