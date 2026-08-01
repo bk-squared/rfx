@@ -78,14 +78,16 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
   swing and the R variation over frequency independently and printed them in one
   sentence, reporting a pair that never occurred.)
 
-  WHAT IS CONSERVED, measured:
+  WHAT IS CONSERVED, measured (all ptp/mean, one unit — an earlier version
+  mixed "1.212x" with "6.47%" and made |V| look like the smaller variation):
 
-    3.0 GHz : |V| 1.212x  |I| 1.136x  |  Re(V I*) 0.158%  flux 0.223%
-    4.5 GHz : |V| 1.447x  |I| 1.368x  |  Re(V I*) 0.153%  flux 0.203%
-                                         [|V||I| 6.5% / 9.0% — NOT conserved:
-                                          the standing wave moves the V-I phase,
-                                          so the power factor varies while the
-                                          real power does not]
+    3.0 GHz : |V| 19.6%  |I| 12.5%  |V||I| 6.5%  |  Re(V I*) 0.158%  flux 0.223%
+    4.5 GHz : |V| 37.5%  |I| 30.0%  |V||I| 9.0%  |  Re(V I*) 0.153%  flux 0.203%
+
+  A clean monotone story: the individual magnitudes swing hardest, their product
+  less (they anti-correlate), and the real part is conserved. |V||I| is NOT
+  conserved because the standing wave moves the V-I phase, so the power factor
+  varies while the real power does not.
 
   So R is flat because BOTH its numerator and its denominator are conserved
   along a lossless line — not because "the flux changes and R does not", which
@@ -100,24 +102,33 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
 
   D1 CONFIRMED at 4.5 GHz.
 
-  TWO-WAVE FIT on the same planes (computed here, not cited — a committed record
-  must not point at a /tmp log, which is the #520 failure):
+  THE PRODUCTION EXTRACTOR on the same planes (extract_msl_nprobe, called
+  directly — not a hand-rolled fit, and not a citation of someone's /tmp log):
 
-    3.0 GHz : Z0 = (alpha-gamma)/I = 45.21 ohm, plane spread 0.47%,
-              |Gamma| = 0.189, fit residual 3.3e-03, vs HJ 47.89 ohm (-5.6%)
-    4.5 GHz : Z0 = 45.16 ohm, spread 0.94%, |Gamma| = 0.215,
-              residual 5.1e-03, vs HJ (-5.7%)
+    3.0 GHz : Z0 = 44.01 +0.35j ohm  (vs HJ 47.89, -8.1%)  |S11| = 0.1780
+              eps_eff_fit = 3.0320 (HJ 2.8694)   residual = 2.3e-15
+    4.5 GHz : Z0 = 44.01 +0.59j ohm  (-8.1%)               |S11| = 0.2081
+              eps_eff_fit = 3.0345                residual = 2.9e-16
 
-  Z0 is constant along the line to ~0.5-0.9% and sits 5.6-5.7% below the closed
-  form — inside the ">5% expected" Yee-staircase envelope preflight warns about
-  for a 3-substrate-cell mesh. The configuration is HEALTHY; R = 1.008 on it is
-  correct and unremarkable. That is the point: R would read the same either way.
+  Z0 is constant to the printed digits across frequency, its reactive part is
+  ~0.5-1.3% of the real part, and it sits 8.1% below the closed form — inside
+  the ">5% expected" Yee-staircase envelope preflight warns about for a
+  3-substrate-cell mesh (_sparams.py:2479 records ~20-27% for this class). The
+  configuration is HEALTHY. R = 1.008 on it is correct and unremarkable; the
+  point is that R would read the same either way.
 
-  METHOD NOTE, because the number is fit-dependent: this fit PINS beta to the
-  Hammerstad-Jensen eps_eff (2.869). The PR #531 reviewer, FITTING beta on the
-  same plane set, gets eps_eff ~ 3.035 and Z0 = 43.86/43.82 ohm (-8.5% vs HJ).
-  Both land inside the staircase envelope, but they differ by ~3%, which bounds
-  what this fit can resolve. Neither is quoted as the true Z0.
+  WHY THE PRODUCTION PATH AND NOT A HAND-ROLLED FIT. An earlier version fitted
+  with beta PINNED to HJ's eps_eff, got Z0 = 45.2 ohm (-5.6%), found a free-beta
+  fit disagreeing by ~3%, and recorded that as an unresolvable "method spread".
+  It was resolvable, three ways: the free fit has 9-21% lower residual; it makes
+  Z0 flatter plane-to-plane (0.29% vs 0.47%); and — decisively — PRODUCTION DOES
+  NOT PIN BETA. msl_wave_decomp.py:559-561 calls _estimate_beta, whose docstring
+  reads "Robust beta estimate: residual scan around the analytic guess +
+  refine"; HJ is only the scan anchor beta0. The production eps_eff lands at
+  3.032/3.034, not 2.869, and its residual is 2e-15 against the pinned fit's
+  3e-3 — twelve orders. Reporting -5.6% as the extractor's behaviour answered a
+  different question than the sentence around it asked. Recording a decidable
+  question as undecidable is itself an inaccuracy (PR #531 review).
 
   The |V|/|I| ladder is the standing-wave envelope, NOT Z0, and is not an
   extractor-error measurement.
@@ -273,29 +284,44 @@ def main() -> int:
         rp = np.array([float(np.real(Vcpx[j][k] * np.conj(Icpx[j][k])))
                        for j in range(len(xs))])
         mp = VV[:, k] * II[:, k]
-        print(f"{f/1e9:.1f} GHz conservation: |V| {VV[:,k].max()/VV[:,k].min():.3f}x  "
-              f"|I| {II[:,k].max()/II[:,k].min():.3f}x  |  "
-              f"Re(V I*) ptp/mean {sp(rp):.3f}%  flux ptp/mean {sp(FF[:,k]):.3f}%  "
-              f"[|V||I| {sp(mp):.2f}% — NOT conserved, power factor varies]")
+        # One unit (ptp/mean %) across the whole row: mixing "1.212x" with
+        # "6.47%" invited the reading that |V| varies LESS than |V||I|. It
+        # varies more (PR #531 review).
+        print(f"{f/1e9:.1f} GHz conservation (all ptp/mean): "
+              f"|V| {sp(VV[:,k]):.1f}%  |I| {sp(II[:,k]):.1f}%  "
+              f"|V||I| {sp(mp):.1f}% [NOT conserved — power factor varies]  |  "
+              f"Re(V I*) {sp(rp):.3f}%  flux {sp(FF[:,k]):.3f}%")
 
-    # --- Z0 from a two-wave fit, computed HERE rather than cited ----------
-    # V(x) = a e^{-j b x} + g e^{+j b x};  Z0 = (alpha_x - gamma_x)/I(x).
-    # Self-contained so the record does not point at a /tmp log (#520).
+    # --- Z0 from the PRODUCTION extractor, not a hand-rolled fit ----------
+    # An earlier version fitted V(x) = a e^{-jbx} + g e^{+jbx} with beta PINNED
+    # to the Hammerstad-Jensen eps_eff, and recorded the disagreement with a
+    # free-beta fit as an unresolvable "method spread". It is not unresolvable:
+    # production SCANS beta (msl_wave_decomp.py:559-561 -> _estimate_beta,
+    # "residual scan around the analytic guess + refine"), using HJ only as the
+    # anchor beta0. Pinning answers a different question than the one the
+    # surrounding sentence asks, so this calls the production path itself
+    # (PR #531 review, the seventh error of the same family).
+    from rfx.probes.msl_wave_decomp import extract_msl_nprobe
+
+    v_arr = jnp.asarray(np.stack([np.asarray(v) for v in Vcpx], axis=1))  # (nf, N)
+    x_arr = jnp.asarray(xs_a)
+    i1_arr = jnp.asarray(np.asarray(Icpx[0]))                             # at probe 0
+    beta0 = jnp.asarray(2 * np.pi * freqs * float(np.sqrt(eps_eff)) / 2.99792458e8)
+    dec = extract_msl_nprobe(v_arr, x_arr, i1_arr, beta0, z0_hj=float(z0_hj))
+    z0_n = np.asarray(dec["z0"])
+    beta_n = np.asarray(dec["beta"])
     print()
     for k, f in enumerate(freqs):
-        beta = 2 * np.pi * f * float(np.sqrt(eps_eff)) / 2.99792458e8
-        ez_ph = np.array([np.exp(-1j * beta * xx) for xx in xs_a])
-        M = np.stack([ez_ph, np.conj(ez_ph)], axis=1)
-        Vc = np.array([np.asarray(v)[k] for v in Vcpx])
-        Ic = np.array([np.asarray(i)[k] for i in Icpx])
-        (a_w, g_w), *_ = np.linalg.lstsq(M, Vc, rcond=None)
-        alpha_x, gamma_x = a_w * ez_ph, g_w * np.conj(ez_ph)
-        z0_x = (alpha_x - gamma_x) / Ic
-        resid = float(np.linalg.norm(M @ np.array([a_w, g_w]) - Vc) / np.linalg.norm(Vc))
-        print(f"{f/1e9:.1f} GHz two-wave fit: Z0 = (alpha-gamma)/I = "
-              f"{np.abs(z0_x).mean():.2f} ohm (spread {np.ptp(np.abs(z0_x))/np.abs(z0_x).mean()*100:.2f}%), "
-              f"|Gamma| = {abs(g_w/a_w):.4f}, fit resid = {resid:.2e}, "
-              f"vs HJ {float(z0_hj):.2f} ohm ({(np.abs(z0_x).mean()-float(z0_hj))/float(z0_hj)*100:+.1f}%)")
+        ee_fit = float((np.real(beta_n[k]) * 2.99792458e8 / (2 * np.pi * f)) ** 2)
+        # Re AND Im, never abs(): a magnitude cannot show a sign flip or a large
+        # reactive part, and this repo carries an MSL Z0 sign-normalisation
+        # history (_sparams.py:2471-2479, the dir_sign block).
+        print(f"{f/1e9:.1f} GHz production extract_msl_nprobe: "
+              f"Z0 = {z0_n[k].real:.2f} {z0_n[k].imag:+.2f}j ohm "
+              f"(vs HJ {float(z0_hj):.2f}, {(z0_n[k].real-float(z0_hj))/float(z0_hj)*100:+.1f}%)  "
+              f"|S11| = {abs(np.asarray(dec['s11'])[k]):.4f}  "
+              f"eps_eff_fit = {ee_fit:.4f} (HJ {float(eps_eff):.4f})  "
+              f"resid = {float(np.asarray(dec['residual'])[k]):.2e}")
 
     # --- verdict: pair each frequency with ITSELF -------------------------
     # The previous version maximised the ratio swing and the R variation over
