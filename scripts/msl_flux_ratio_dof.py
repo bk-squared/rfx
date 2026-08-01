@@ -125,10 +125,16 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
   NOT PIN BETA. msl_wave_decomp.py:559-561 calls _estimate_beta, whose docstring
   reads "Robust beta estimate: residual scan around the analytic guess +
   refine"; HJ is only the scan anchor beta0. The production eps_eff lands at
-  3.032/3.034, not 2.869, and its residual is 2e-15 against the pinned fit's
-  3e-3 — twelve orders. Reporting -5.6% as the extractor's behaviour answered a
-  different question than the sentence around it asked. Recording a decidable
+  3.032/3.034, not 2.869. Reporting -5.6% as the extractor's behaviour answered
+  a different question than the sentence around it asked. Recording a decidable
   question as undecidable is itself an inaccuracy (PR #531 review).
+
+  (A draft of this paragraph added "and its residual is 2e-15 against the pinned
+  fit's 3e-3 — twelve orders". That compared an ABSOLUTE L2 norm in volts —
+  msl_wave_decomp.py:425 returns sqrt(sum(|v-pred|^2)) — against a RELATIVE
+  norm(.)/norm(V). With ||V|| ~ 7.7e-13 V the "twelve orders" was the
+  normalisation. Like for like the scan gains 9.0% / 21.1%, which the sentence
+  above already said. Deleted.)
 
   The |V|/|I| ladder is the standing-wave envelope, NOT Z0, and is not an
   extractor-error measurement.
@@ -321,7 +327,8 @@ def main() -> int:
               f"(vs HJ {float(z0_hj):.2f}, {(z0_n[k].real-float(z0_hj))/float(z0_hj)*100:+.1f}%)  "
               f"|S11| = {abs(np.asarray(dec['s11'])[k]):.4f}  "
               f"eps_eff_fit = {ee_fit:.4f} (HJ {float(eps_eff):.4f})  "
-              f"resid = {float(np.asarray(dec['residual'])[k]):.2e}")
+              f"resid = {float(np.asarray(dec['residual'])[k]):.2e} V "
+              f"({float(np.asarray(dec['residual'])[k]) / float(np.linalg.norm(np.asarray(v_arr)[k])):.2e} relative)")
 
     # --- verdict: pair each frequency with ITSELF -------------------------
     # The previous version maximised the ratio swing and the R variation over
