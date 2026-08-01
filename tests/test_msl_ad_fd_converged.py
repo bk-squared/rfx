@@ -3,8 +3,8 @@
 MSL-FD-TIGHT (2026-05-25) adds a slow-marked test that runs
 compute_msl_s_matrix(eps_override=...) at num_periods=20 (converged DFT)
 and asserts jax.grad agrees with a central finite-difference to a tight
-tolerance (rel_err <= 0.10, tightened to 0.05 if the converged value lands
-there).
+tolerance (rel_err <= 0.10). The reference itself runs in float64 and must
+clear a resolving-power floor before its verdict is read — see issue #527.
 
 This converts the "AD tape flows + roughly right" evidence from
 test_sparam_ad_end_to_end.py (num_periods=3, rel_err=16%) into
@@ -95,7 +95,9 @@ def _build_msl_sim() -> Simulation:
 _NUM_PERIODS = 20
 _N_FREQS = 8
 _FD_H = 1e-3
-# Tolerance: start at 0.10; tighten to 0.05 if converged value lands there.
+# The one tolerance, printed and enforced. A "tighten to 0.05" variable used
+# to be computed here and never read by the assert, so the gate printed 0.05
+# while enforcing 0.10 (PR #529 review).
 _REL_ERR_THRESHOLD = 0.10
 
 # Minimum resolving power the FD reference must have before its disagreement
@@ -230,6 +232,18 @@ def test_msl_ad_fd_converged_tight():
     scripts/msl_ad_fd_f64_referee.py.
 
     The 0.10 threshold is UNCHANGED. Nothing here loosens a gate.
+
+    WHAT THIS GATE DOES NOT ESTABLISH (issue #530). Passivity bounds
+    sum_ij|S_ij|^2 at 2 per frequency, so 16 over 8 bins — and the measured loss
+    is 16.00599, which sits 0.037% ABOVE that ceiling. The residue this gate
+    differentiates is therefore dominated by extraction/numerical error, not by
+    physical loss. That is a valid AD-vs-FD consistency test — AD must match the
+    FD of whatever the code computes, and it does, to 0.4% on CPU — but it is a
+    weak test of anything physical, and its signal will shrink again the next
+    time an extractor fix lands. The comparator floor above now makes that
+    failure mode loud instead of silent. Choosing an objective with real dynamic
+    range is tracked separately; it needs its own evidence, not a rider on a
+    comparator repair.
     """
     t_start = time.perf_counter()
 
@@ -342,17 +356,28 @@ def test_msl_ad_fd_converged_tight():
         # That was a real defect in the first version of this block: fed the
         # pre-#527 float32 configuration it read 2.4e+09 ULP instead of 4.4 and
         # sailed through the assert it exists to trip (PR #529 review).
-        f_plus_arr = objective64(jnp.float64(1.0 + _FD_H))
-        f_minus_arr = objective64(jnp.float64(1.0 - _FD_H))
-        loss_dtype = f_plus_arr.dtype
-        assert loss_dtype == f_minus_arr.dtype == jnp.float64, (
-            "[MSL-FD-TIGHT] the FD reference did NOT run in float64 "
-            f"(got {loss_dtype}). Scoped x64 failed to engage — check "
-            "jax.experimental.enable_x64 and the jax.config.x64_enabled keying "
-            "in rfx/probes/probes.py. Do NOT read the rel_err below as physics."
-        )
-        f_plus = float(f_plus_arr)
-        f_minus = float(f_minus_arr)
+        #
+        # Materialize each forward BEFORE dispatching the next. float() blocks;
+        # .dtype does not. Issuing both first would let two f64 field sets hold
+        # device buffers concurrently under JAX async dispatch — harmless here
+        # (~10^2 MB, forward-only, no AD tape) but a deviation from the strictly
+        # sequential profile the referee measured on the lane, and there is no
+        # reason to pay for it.
+        def _f64_loss(alpha):
+            arr = objective64(jnp.float64(alpha))
+            assert arr.dtype == jnp.float64, (
+                "[MSL-FD-TIGHT] the FD reference did NOT run in float64 "
+                f"(got {arr.dtype}). JAX truncates a float64 request to "
+                "float32 when x64 is off, so the scoped context failed to "
+                "engage — check jax.experimental.enable_x64 and the "
+                "jax.config.x64_enabled keying in rfx/probes/probes.py. Do NOT "
+                "read the rel_err below as physics: an f32 reference here spans "
+                "~4 ULP and cannot resolve the 10% gate."
+            )
+            return float(arr), arr.dtype
+
+        f_plus, loss_dtype = _f64_loss(1.0 + _FD_H)
+        f_minus, _ = _f64_loss(1.0 - _FD_H)
     t_fd = time.perf_counter() - t_fd_start
     g_fd = (f_plus - f_minus) / (2.0 * _FD_H)
     print(f"[MSL-FD-TIGHT] g_fd = {g_fd:.6e}  (FD wall-time: {t_fd:.1f}s, h={_FD_H})")
@@ -387,13 +412,15 @@ def test_msl_ad_fd_converged_tight():
 
     # --- Accuracy gate -------------------------------------------------------
     rel_err = abs(g_ad - g_fd) / (abs(g_fd) + 1e-30)
-    # Tighten threshold if the converged value lands well below 0.10
-    threshold = _REL_ERR_THRESHOLD
-    if rel_err < 0.05:
-        threshold = 0.05
-
+    # The "tighten to 0.05 if it lands there" variable this block used to build
+    # was never read by the assert below — the gate printed "threshold: 0.05"
+    # while enforcing 0.10. Removed rather than wired up: at the measured GPU
+    # rel_err 0.0331 against a 3.4% reference h-spread, enforcing 0.05 would be
+    # 1.5x margin, i.e. a silent tightening of a live gate. Print what is
+    # actually enforced (PR #529 review).
     t_total = time.perf_counter() - t_start
-    print(f"[MSL-FD-TIGHT] rel_err = {rel_err:.4f}  (threshold: {threshold:.2f})")
+    print(f"[MSL-FD-TIGHT] rel_err = {rel_err:.4f} "
+          f"(threshold: {_REL_ERR_THRESHOLD:.2f}, enforced below)")
     print(f"[MSL-FD-TIGHT] sign agreement: g_ad={g_ad:.4e} g_fd={g_fd:.4e}")
     print(f"[MSL-FD-TIGHT] total wall-time: {t_total:.1f}s")
     print(f"[MSL-FD-TIGHT] num_periods={_NUM_PERIODS}, n_freqs={_N_FREQS}")
@@ -491,5 +518,9 @@ def test_fd_ulp_span_is_dtype_sensitive_not_container_sensitive():
         "on the configuration it exists to reject."
     )
     assert abs(span32 - 4.449) < 0.01, (
-        f"f32 span drifted from the measured 4.449 ULP to {span32:.4g}"
+        f"f32 span drifted from the measured 4.449 ULP to {span32:.4g}. This "
+        f"number is a function of _FD_H (currently {_FD_H:g}) as well as the "
+        "loss and gradient, so if you just changed h this is expected — but "
+        "the recorded measurement no longer applies and the docstring numbers "
+        "above need re-measuring, not just this constant nudged."
     )
