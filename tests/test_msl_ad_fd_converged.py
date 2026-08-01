@@ -175,7 +175,21 @@ def test_msl_ad_fd_converged_tight():
     2h·|g| fell from ~222 ULP to 4.4 ULP and the comparator stopped resolving:
 
         f32 comparator, gate settings, gate's h    rel_err 0.8519
-        f64 comparator, gate settings, gate's h    rel_err 0.0035
+        f64 comparator, gate settings, gate's h    rel_err 0.0331
+
+    Both measured ON THIS LANE (gpu-rtx4090, VESSL 369367250775) — a CPU run of
+    the same referee reads 0.0035 with a 0.19% h-spread, so the GPU's f64 FD is
+    the noisier of the two and the number above is the conservative one. The
+    reference's own h-spread fell from 2017% (f32) to 3.4% (f64, GPU) and its
+    resolving power rose from 4.4 to 2.31e+09 ULP.
+
+    COST, measured on the lane, since a float64 reference sounds expensive and
+    is not: f32 AD 59.1s, f64 FD 41.7s and 37.7s per h (two forwards each),
+    i.e. ~19s per f64 forward against ~15s for f32. This FDTD is
+    memory-bandwidth-bound, so the RTX4090's 1/64 float64 throughput barely
+    shows; the whole gate runs in ~140s. On CPU the same forward takes ~500s,
+    which is why the decision was made from a measurement on the lane the gate
+    actually runs in rather than from a local timing.
 
     A 7-point h-sweep on this fixture (VESSL 369367250742) returned FD values
     that were EXACT integer multiples of ULP/(2h) at every h — 14, 1, −30, −7,
