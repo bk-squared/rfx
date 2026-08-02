@@ -27,6 +27,11 @@ from rfx.sources.sources import GaussianPulse
 # short-terminated. Kept minimal so the reverse-mode tape fits in memory.
 N_STEPS = 1500
 FREQ = jnp.asarray([8.0e9], dtype=jnp.float32)
+# This short z-domain fits 9 of the default 12 probe planes. Until af167a9 the
+# extractor silently dropped the planes that did not fit, so every recorded
+# result of this fixture was measured on 9 planes; the fail-loud layout check
+# now requires the count to be requested explicitly. Same measurement, declared.
+PROBE_COUNT = 9
 
 
 def _build_sim():
@@ -44,6 +49,7 @@ def _s11_mag2(deps):
     eps_scale = jnp.ones(grid.shape, dtype=jnp.float32).at[:, :, nz // 2 - 3: nz // 2 + 3].add(deps)
     res = sim.compute_coaxial_line_reflection(
         termination="short", n_steps=N_STEPS, freqs=FREQ, eps_scale=eps_scale,
+        probe_count=PROBE_COUNT,
     )
     return jnp.abs(res.s11[0]) ** 2
 
@@ -69,12 +75,14 @@ def test_coax_eps_scale_unity_matches_concrete_path():
     ``eps_scale=None`` (validated numpy path) in |S11|."""
     sim_a = _build_sim()
     res_a = sim_a.compute_coaxial_line_reflection(
-        termination="short", n_steps=N_STEPS, freqs=FREQ)
+        termination="short", n_steps=N_STEPS, freqs=FREQ,
+        probe_count=PROBE_COUNT)
     sim_b = _build_sim()
     grid = sim_b._build_grid()
     res_b = sim_b.compute_coaxial_line_reflection(
         termination="short", n_steps=N_STEPS, freqs=FREQ,
-        eps_scale=jnp.ones(grid.shape, dtype=jnp.float32))
+        eps_scale=jnp.ones(grid.shape, dtype=jnp.float32),
+        probe_count=PROBE_COUNT)
     sa = np.asarray(res_a.s11)
     sb = np.asarray(res_b.s11)
     assert np.all(np.isfinite(sa)) and np.all(np.isfinite(sb))

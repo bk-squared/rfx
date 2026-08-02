@@ -28,12 +28,12 @@ from rfx.sources.coaxial_port import (
 BAND = jnp.asarray([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
 
-def _run(termination, freq_max=40.0e9, n_steps=5000):
+def _run(termination, freq_max=40.0e9, n_steps=5000, **kwargs):
     sim = Simulation(domain=(0.008, 0.008, 0.040), freq_max=freq_max, boundary="cpml")
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
                          waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
     return sim.compute_coaxial_line_reflection(
-        termination=termination, n_steps=n_steps, freqs=BAND)
+        termination=termination, n_steps=n_steps, freqs=BAND, **kwargs)
 
 
 @pytest.mark.slow_physics
@@ -89,7 +89,12 @@ def test_resistive_load_reflection_magnitude():
 @pytest.mark.slow_physics
 def test_under_resolved_annulus_is_flagged():
     # freq_max=20 GHz -> dx~0.75 mm -> ~1.9-cell annulus (below the >=4 recipe).
-    res = _run("short", freq_max=20.0e9, n_steps=1500)
+    # At this dx the z domain fits 9 of the default 12 probe planes. Until
+    # af167a9 the extractor silently dropped the surplus planes, so this test
+    # always measured on 9; the fail-loud layout check now requires the count
+    # to be requested explicitly. The observable under test (the under_resolved
+    # flag) is independent of the probe count.
+    res = _run("short", freq_max=20.0e9, n_steps=1500, probe_count=9)
     assert res.annulus_cells < 3.5
     assert res.status == "under_resolved"
 

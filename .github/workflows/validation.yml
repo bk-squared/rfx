@@ -11,7 +11,9 @@ permissions:
 jobs:
   slow-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
+    # suite grows weekly; the 60-min ceiling left <15% headroom.
+    timeout-minutes: 90
     strategy:
       # Shard the full "not gpu" suite across parallel jobs. Each shard is a
       # FRESH process running its slice serially, so the cumulative JAX/XLA
@@ -35,9 +37,13 @@ jobs:
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
 
+      # -v (not -q): per-test result lines stream to the log as each test
+      # finishes, so when a runner is shut down mid-run (2026-07-27, shards 1+3)
+      # the identities of already-failed tests survive in the partial log.
+      # -q's failure summary prints only at session end and dies with the runner.
       - name: Run slow suite — shard ${{ matrix.group }} of 4
         run: >
-          pytest -q -ra
+          pytest -v -ra
           -m "not gpu"
           --splits 4 --group ${{ matrix.group }}
           --ignore=tests/test_meep_crossval.py
