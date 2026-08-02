@@ -88,15 +88,15 @@ no-op. This correction is appended per the #535 rule (do not edit the frozen
 block above; append instead) after an adversarial review of PR #536 caught
 the false claim.
 
-HONESTY NOTE ON THE FREEZE ITSELF: unlike Lane 1 (whose phase envelope
-landed in an earlier commit before its falsifier/domain-invariance work, so
-git history plus background-job timestamps corroborate the stated order of
-operations), this file's pre-declaration above and its 3 measurement runs'
-results were committed together in ONE commit. Git history alone cannot
-prove the pre-declaration was actually written before the runs executed --
-that ordering rests on the author's account, not on an independently
-checkable artifact. Stated plainly per the same adversarial review, not
-hidden.
+HONESTY NOTE ON THE FREEZE ITSELF: this file's pre-declaration above and
+its 3 measurement runs' results were committed together in ONE commit —
+as was Lane 1's phase envelope (both lanes share this limitation). Git
+history alone cannot prove the pre-declaration was actually written before
+the runs executed -- that ordering rests on the author's account, not on an
+independently checkable artifact. (Lane 1's provenance is stronger for a
+different reason: its underlying data predates this session by six weeks
+and its falsifier is a deterministic re-analysis anyone can re-run.)
+Stated plainly per the same adversarial review, not hidden.
 """
 from __future__ import annotations
 import argparse
