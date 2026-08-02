@@ -34,14 +34,19 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 # Gate thresholds — kept here so a regression bump is one diff.
-# WARNING: thru_max_s11=0.10 is an artifact-derived threshold and is
-# physically UNREACHABLE on a clean mesh. The MSL thru mesh-convergence
-# diagnostic (scripts/diagnostics/msl_thru_mesh_convergence.py, PR #183)
-# measured the clean-alignment matched-thru floor at ~0.16-0.22; the
-# old "0.118" figure was a mixed-cell-danger-zone artifact, not a
-# validated clean-mesh result. The MSL thru broad-E5 lane is blocked
-# pending the Z0-staircase-bias fix. Do NOT present thru_max_s11=0.10
-# as a met criterion — this lane cannot pass on a clean mesh at present.
+# WARNING: thru_max_s11=0.10 is an artifact-derived threshold. The
+# 0.16-0.22 "clean-alignment matched-thru floor" this comment used to cite
+# (scripts/diagnostics/msl_thru_mesh_convergence.py, PR #183) is RETIRED
+# (issue #487) — it was substantially the #511 modal-voltage-span and #507
+# far-port-echo single-ratio-assembly extractor defects, fixed in PR #516
+# (f95240f), not a mesh property. Post-fix spot measurements on the same
+# fixture class are much smaller (mean|S11| ~0.05-0.12 depending on mesh
+# alignment; scripts/diagnostics/msl_z0_bias_floor_sweep.py), but THIS
+# envelope has not been regenerated against the corrected extractor — that
+# regeneration is #519/#520's scope, not this comment's. The MSL thru
+# broad-E5 lane remains blocked pending that regeneration. Do NOT present
+# thru_max_s11=0.10 as a met criterion, and do NOT read the pre-#511/#507
+# 0.16-0.22 figure as current.
 THRESH = dict(
     thru_mean_s21_min=0.95,
     thru_max_s11=0.10,

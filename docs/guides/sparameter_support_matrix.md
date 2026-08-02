@@ -158,8 +158,17 @@ A `True` entry is not an accuracy guarantee.
 - `mode="eigenmode"` is unsupported and raises `NotImplementedError`.
 - SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported for
   this calculation.
-- Strong-reflector `|S11|` has a roughly 0.16--0.22 staircase-Z0 floor in the
-  characterized regime; do not generalize the matched/thru/notch evidence.
+- Strong-reflector `|S11|`'s roughly 0.16--0.22 "staircase-Z0 floor" this
+  document used to cite is **RETIRED** (issue #487) — it was substantially
+  the #511 modal-voltage span and #507 far-port-echo single-ratio assembly
+  extractor defects, fixed in PR #516 (`f95240f`), not a mesh property. A
+  smaller floor survives whose mechanism is the mismatch between the
+  rasterized line's own Z0 and the analytic Hammerstad-Jensen anchor `S` is
+  normalized against; no single envelope number is published here because
+  the #487 re-sweep (`scripts/diagnostics/msl_z0_bias_floor_sweep.py`,
+  committed JSON) found that mismatch does not explain the floor once it
+  gets small on a fine, well-aligned mesh — see that script for the
+  measured points. Do not generalize the matched/thru/notch evidence.
 - The auto `n_probe_offset` solves the upstream/downstream clearance interval
   at driver time (midpoint with a reflector, unchanged without one) and warns
   loudly when a short feed cannot satisfy both clearances (#469). Library

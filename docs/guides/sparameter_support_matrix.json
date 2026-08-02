@@ -138,7 +138,7 @@
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
         "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); the mask covers every driven/port record the solve consumes (#522); true is not an accuracy guarantee",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
-        "strong-reflector |S11| has a characterized staircase-Z0 floor of about 0.16--0.22",
+        "strong-reflector |S11|'s ~0.16--0.22 staircase-Z0 floor is RETIRED (#511/#507 extractor defects, PR #516/f95240f, issue #487); a smaller floor survives (Z0-vs-Hammerstad-Jensen-anchor mismatch) but no single envelope number is published -- the #487 re-sweep found the mismatch does not explain the floor at a fine aligned mesh; see scripts/diagnostics/msl_z0_bias_floor_sweep.py",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the auto n_probe_offset solves the upstream/downstream clearance interval at driver time and warns loudly when a short feed cannot satisfy both (#469); library witness probes are excluded from preflight advisories and the #332 tail advisory (#470)"
       ],
