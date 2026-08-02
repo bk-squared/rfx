@@ -1,0 +1,44 @@
+======================================================================
+External RCWA referee for rfx issue #491 -- COMPARATOR LEG ONLY
+No rfx code is exercised by this script. See module docstring
+for the R2-STOP scope fence (rfx drive-isolation is NOT in scope).
+======================================================================
+
+--- Step 1: reproduce-gate (grcwa's own S4 regression) ---
+  source: grcwa tests/test_rcwa.py::test_rcwa (grcwa 0.1.2, https://github.com/weiliangjinca/grcwa/blob/master/tests/test_rcwa.py)
+  documented reference: S4 (https://github.com/victorliu/S4), per grcwa's own tolS4=1e-3 comparison
+  p-pol T: reproduced=0.85317304967 expected=0.85249901083 rel_err=7.91e-04 (tol 1e-03)
+  s-pol T: reproduced=0.83965428139 expected=0.83900479940 rel_err=7.74e-04 (tol 1e-03)
+  reproduce-gate PASSED: True
+
+--- Step 2: Tier-A cross-anchor (uniform slab vs closed-form Fresnel) ---
+    1.00 GHz  R_rcwa=0.085232 R_analytic=0.085232  T_rcwa=0.914768 T_analytic=0.914768  R+T=1.000000
+    2.00 GHz  R_rcwa=0.237201 R_analytic=0.237201  T_rcwa=0.762799 T_analytic=0.762799  R+T=1.000000
+    3.00 GHz  R_rcwa=0.337337 R_analytic=0.337337  T_rcwa=0.662663 T_analytic=0.662663  R+T=1.000000
+    4.00 GHz  R_rcwa=0.357418 R_analytic=0.357418  T_rcwa=0.642582 T_analytic=0.642582  R+T=1.000000
+    5.00 GHz  R_rcwa=0.296366 R_analytic=0.296366  T_rcwa=0.703634 T_analytic=0.703634  R+T=1.000000
+    6.00 GHz  R_rcwa=0.162088 R_analytic=0.162088  T_rcwa=0.837912 T_analytic=0.837912  R+T=1.000000
+    7.00 GHz  R_rcwa=0.023313 R_analytic=0.023313  T_rcwa=0.976687 T_analytic=0.976687  R+T=1.000000
+    8.00 GHz  R_rcwa=0.024228 R_analytic=0.024228  T_rcwa=0.975772 T_analytic=0.975772  R+T=1.000000
+    9.00 GHz  R_rcwa=0.163660 R_analytic=0.163660  T_rcwa=0.836340 T_analytic=0.836340  R+T=1.000000
+   10.00 GHz  R_rcwa=0.297375 R_analytic=0.297375  T_rcwa=0.702625 T_analytic=0.702625  R+T=1.000000
+   11.00 GHz  R_rcwa=0.357619 R_analytic=0.357619  T_rcwa=0.642381 T_analytic=0.642381  R+T=1.000000
+   12.00 GHz  R_rcwa=0.336726 R_analytic=0.336726  T_rcwa=0.663274 T_analytic=0.663274  R+T=1.000000
+   13.00 GHz  R_rcwa=0.235834 R_analytic=0.235834  T_rcwa=0.764166 T_analytic=0.764166  R+T=1.000000
+   14.00 GHz  R_rcwa=0.083769 R_analytic=0.083769  T_rcwa=0.916231 T_analytic=0.916231  R+T=1.000000
+   15.00 GHz  R_rcwa=0.000010 R_analytic=0.000010  T_rcwa=0.999990 T_analytic=0.999990  R+T=1.000000
+   16.00 GHz  R_rcwa=0.086703 R_analytic=0.086703  T_rcwa=0.913297 T_analytic=0.913297  R+T=1.000000
+   17.00 GHz  R_rcwa=0.238562 R_analytic=0.238562  T_rcwa=0.761438 T_analytic=0.761438  R+T=1.000000
+   18.00 GHz  R_rcwa=0.337940 R_analytic=0.337940  T_rcwa=0.662060 T_analytic=0.662060  R+T=1.000000
+   19.00 GHz  R_rcwa=0.357210 R_analytic=0.357210  T_rcwa=0.642790 T_analytic=0.642790  R+T=1.000000
+   20.00 GHz  R_rcwa=0.295350 R_analytic=0.295350  T_rcwa=0.704650 T_analytic=0.704650  R+T=1.000000
+  max|R_rcwa-R_analytic| = 3.886e-16
+  max|T_rcwa-T_analytic| = 6.661e-16
+  max energy-conservation deviation |R+T-1| = 6.661e-16
+  Tier-A PASSED: True
+
+Artifact written: validation/research/floquet/rcwa_referee_artifact.json
+
+======================================================================
+ALL CHECKS PASSED (referee instrument calibration only -- this is NOT an rfx Floquet comparison)
+======================================================================
