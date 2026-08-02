@@ -188,7 +188,7 @@
         "uniform_yee_rf",
         "nonuniform_transverse_dx_dy_restricted"
       ],
-      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Phase and junction evidence are narrower. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
+      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Issue #490 Lane 1 adds an Airy PHASE envelope over the SAME five WR bands and 20 mesh/geometry cases (reference-plane-corrected; max phase diff 11.99 degrees against a measured gate of 15.0 degrees), re-analyzing the identical committed complex S-parameters used for the magnitude envelope (no new FDTD run for that sweep). Issue #490 Lane 3 adds a near-cutoff group-delay gate on a purpose-built empty WR-340 fixture (f/fc in [1.15, 1.50]): -d(angle(S21))/d(omega) matches the analytic L_eff/v_g(f) oracle to 0.025 ns against a measured gate of 0.032 ns. Junction and other-configuration phase/group-delay evidence remain narrower -- see caveats. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
       "known_limits": [
         "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
         "multimode normalize=True is unsupported",
@@ -198,10 +198,11 @@
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee"
       ],
-      "evidence_level": "E5-broad-magnitude/E4-external/phase-narrow",
+      "evidence_level": "E5-broad-magnitude/E4-external/phase-e5-slab-broad/group-delay-e2-near-cutoff",
       "validation_gaps": [
         "broader external comparisons for other nonuniform profiles, bands, modes, phase, and junctions",
-        "missing broad phase validation across the magnitude-tested uniform configurations",
+        "phase evidence covers only the single-dielectric-slab configuration across the five WR bands; PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized",
+        "group delay is gated only on the WR-340 empty-guide near-cutoff oracle (f/fc 1.15-1.50); other bands, obstacles, and multimode group delay are not covered",
         "missing multimode and arbitrary-junction validation"
       ],
       "evidence_artifacts": [
@@ -215,6 +216,20 @@
         "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json",
+        "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json",
+        "tests/test_waveguide_broad_e5_phase_gates.py",
+        "tests/test_waveguide_broad_e5_phase_tolerance_envelope.py",
+        "tests/test_waveguide_group_delay_near_cutoff.py",
+        "scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
+        "scripts/diagnostics/waveguide_phase_falsifier_and_domain_invariance.py",
+        "scripts/diagnostics/build_waveguide_near_cutoff_group_delay.py",
+        "scripts/diagnostics/build_waveguide_group_delay_envelope.py",
         "tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json",
         "tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json",
         "tests/fixtures/waveguide_tjunction_e4/waveguide_tjunction_meep_external_comparison.json",
@@ -226,12 +241,15 @@
         "cv11 gates: band-mean linear-magnitude difference < 0.10 for S11 and < 0.07 for S21; masked band-mean phase difference < 60 degrees where reference magnitude >= 0.30; maximum complex-S difference < 0.30",
         "uniform Palace WR-90 empty/PEC-short/slab comparison over 8.2--12.4 GHz: max_mag_abs_diff 0.0707 and mean_mag_abs_diff 0.00943",
         "uniform analytic WR-band slabs with normalize=flux: per-case |S11| differences 0.005--0.041",
+        "issue #490 Lane 1 broad-E5 Airy PHASE (same 5 WR bands / 20 cases as the magnitude envelope, reference-plane-corrected): max phase diff 11.99 degrees against a measured-envelope gate of 15.0 degrees; planted-defect falsifier (the wrong pre-session S21 reference-plane formula) reds at 179.87 degrees; domain-size invariance witness (WR-340, +100mm growth) holds the pass verdict (8.92 -> 7.73 degrees)",
+        "issue #490 Lane 3 near-cutoff group delay (empty WR-340, f/fc in [1.15, 1.50], L_eff=0.320m): -d(angle(S21))/d(omega) central-difference vs analytic L_eff/v_g(f), max interior diff 0.025 ns against a measured-envelope gate of 0.032 ns; record-length settling witness (num_periods 60 vs 120) agrees to 0.000 ns; domain-size invariance witness (+100mm growth) holds the pass verdict; 3 independent falsifiers (skip-unwrap, dropped sign, conjugate flip) all red at >=3.9 ns",
         "nonuniform analytic characterization over grading ratios 1--3, eps_r 2 and 4, and 8.2--12.4 GHz: max_mag_abs_diff 0.01561",
         "stored nonuniform Palace characterization for WR-90 empty/PEC-short/slab: max_mag_abs_diff 0.07009 and mean_mag_abs_diff 0.01042; nonuniform RF status remains experimental"
       ],
-      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz. Other nonuniform profiles, bands, phase, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
+      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Phase is validated for the single-dielectric-slab configuration across the same five WR bands (issue #490 Lane 1). Group delay is validated only for the WR-340 empty-guide near-cutoff oracle (issue #490 Lane 3). Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz. Other nonuniform profiles, bands, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
       "caveats": [
-        "broad uniform magnitude evidence does not imply equally broad phase accuracy",
+        "phase evidence now matches the magnitude envelope's breadth for the single-dielectric-slab configuration across the same 5 WR bands (max residual 11.99 degrees vs a 15.0 degree gate); PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized -- do not infer phase accuracy for those configurations",
+        "group delay is gated only on one purpose-built WR-340 empty-guide fixture near cutoff (f/fc 1.15-1.50, max diff 0.025 ns vs a 0.032 ns gate); other bands, obstacles, dielectric slabs, and multimode group delay are not covered",
         "the stored nonuniform Palace result validates only its stated magnitude configurations; AD regression is not RF validation",
         "junction results require the documented matched-reference geometry and far-port clearance",
         "choose slab length and frequencies away from analytic reflection nulls and make slab length an integer number of cells"
