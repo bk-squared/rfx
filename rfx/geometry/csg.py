@@ -121,7 +121,9 @@ class Box:
     would call WR-90 22.098 mm instead of 22.86 at a/30). An independent
     refit of 16 committed WR-90 single-iris configurations across two meshes
     pins the realized transverse aperture offset to within 1/20 of a cell of
-    that identity.
+    that identity (measured during the stage-S3 / issue #499 review; no
+    committed record carries the refit yet, so like the longitudinal caution
+    below it is a recorded observation, not a number to build on).
 
     **Do not carry that identity into the propagation direction.** The
     electrical *thickness* of an obstacle (an iris's extent along the guide
@@ -136,7 +138,12 @@ class Box:
     thickness, make the sensitivity to that half cell part of the reported
     envelope rather than picking a rule. (Measured during the stage-S3 /
     issue #499 review; no committed record carries it yet, so it is stated
-    here as a caution, not as a number to build on.)
+    here as a caution, not as a number to build on.) This measured
+    *effective* thickness is a different quantity from a cascade
+    comparator's electrical-length bookkeeping — issue #499's comparator
+    deliberately draws ``t_c = round(t/dx) + 1`` so that ``(t_c - 1)*dx``
+    conserves the cascade's total electrical length; that bookkeeping choice
+    answers a different question and is not contradicted by this caution.
 
     **A facing pair is not symmetric under this rule, because its two
     interior faces are different kinds of corner.** For fins drawn from each

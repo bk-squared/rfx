@@ -236,12 +236,19 @@ implementation nor gradient regression is RF validation.
   innermost zeroed planes, `(n_open + 1) * dx` — the measure that reproduces
   `a = cells * dx` exactly, and an independent refit of 16 committed
   single-iris configurations across two meshes pins the realized aperture to
-  within 1/20 of a cell of it. **That identity does not carry into the
+  within 1/20 of a cell of it (a stage-S3 / issue #499 review observation; no
+  committed record carries the refit yet — a caution-grade number, like the
+  longitudinal one below). **That identity does not carry into the
   propagation direction:** an obstacle's electrical *thickness* is set by field
   interaction with the discontinuity rather than by a cutoff, is measured to
   fall between `t_cells * dx` and `(t_cells - 1) * dx` so neither integer rule
   holds, and is not settled — treat it as an unknown of order half a cell and
   fold the sensitivity into the reported envelope instead of picking a rule.
+  (This measured *effective* thickness is a different quantity from a cascade
+  comparator's electrical-length bookkeeping — issue #499's comparator draws
+  `t_c = round(t/dx) + 1` so `(t_c - 1)*dx` conserves total electrical
+  length; that choice answers a different question and is not contradicted
+  here.)
   Offsetting each
   interior face half a cell the wrong way retreats both faces by construction
   rather than by luck, giving `d + 2*dx` deterministically at every aperture;
