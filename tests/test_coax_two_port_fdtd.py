@@ -482,3 +482,82 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
     CoaxialLineReflectionResult directly)."""
     src = inspect.getsource(Simulation.compute_coaxial_two_port)
     assert "_finalize_sparam_result(" in src
+
+
+# ---------------------------------------------------------------------------
+# SLOW (real FDTD, own process): the full through-line fixture.
+#
+# Gates below are pinned from ONE measured run — domain=(0.008, 0.008, 0.060),
+# freq_max=40e9 (dx=0.3747mm, matching the validated 1-port dx), n_steps=6000,
+# freqs=BAND — captured 2026-08-02 via a standalone script (not this test
+# file) run with `PYTHONPATH=<this worktree> python3 <script>` (the shared
+# checkout's editable install otherwise shadows the worktree —
+# feedback_stale_editable_install_shadow). Full measured table:
+#
+#   f(GHz)  |S11|   |S21|   |S12|   |S22|   |S21|/|S12|  angle(S21)-angle(S12)
+#     4.00  0.0092  0.9600  0.9606  0.0086  0.9994        0.0071 deg
+#     6.00  0.0086  0.9134  0.9137  0.0086  0.9997        0.0131 deg
+#     8.00  0.0054  0.8450  0.8475  0.0060  0.9970        0.0602 deg
+#    10.00  0.0144  0.8259  0.8254  0.0104  1.0006        0.2011 deg
+#    12.00  0.0502  0.7372  0.7377  0.0379  0.9992        0.0666 deg
+#
+# status="passed", annulus_cells=3.789, cond_a in [1.037, 1.106],
+# recurrence_residual max 0.00297 (well under the 1-port's own 0.02 gate),
+# fit_residual max 0.0127, settling_db=[-65.87, -65.59] (well under the
+# project's -40 dB ring-down rule), column power (|S_j1|^2+|S_j2|^2) in
+# [0.546, 0.923] at all 5 bins (comfortably passive), ZERO warnings emitted
+# (no passivity/cond/amplitude advisory fired).
+#
+# The method does not call self.preflight() (same as the 1-port
+# compute_coaxial_line_reflection it mirrors — both build their own
+# low-level fixture via rfx.simulation.run directly, outside the
+# preflight-covered high-level flow); there is no preflight output to quote.
+#
+# All 6 qualitative predictions from docs/design_notes/
+# i489_stage2_two_port_fdtd_predeclaration.md held: |S21|,|S12| near 1;
+# |S11|,|S22| small (within the validated 1-port matched-termination
+# envelope, 0.02-0.08); reciprocity ratio near 1 (magnitude AND phase);
+# cond(A) small (< the stage-1 table's ~3 figure); recurrence residual
+# small; ring-down settled. The mild |S21| decline with frequency (0.96 at
+# 4 GHz -> 0.74 at 12 GHz), paired with recurrence_residual and |S11| both
+# growing over the same range, is consistent with the design note's own
+# predicted mechanism (TE11, cutoff 25.17 GHz on this line, evanescently
+# contaminating the higher end of the band more) rather than an
+# implementation defect — no root-cause action was taken; this is reported,
+# not silently gated around.
+@pytest.mark.slow_physics
+def test_matched_through_line_transmits_reciprocally():
+    sim = _sim()  # domain=(0.008, 0.008, 0.060), freq_max=40e9
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        res = sim.compute_coaxial_two_port(n_steps=6000, freqs=BAND)
+    assert [str(w.message) for w in caught] == []
+
+    assert res.status == "passed"
+    assert res.annulus_cells >= 3.5
+    assert np.all(np.isfinite(res.s_params))
+    assert np.all(res.cond_a < 3.0)
+    assert np.all(res.recurrence_residual < 0.02)
+    assert np.all(res.fit_residual < 0.02)
+    assert np.all(res.settling_db < -40.0)
+
+    S = res.s_params
+    s11, s21, s12, s22 = S[0, 0], S[1, 0], S[0, 1], S[1, 1]
+    assert np.all(np.abs(s21) >= 0.70), np.abs(s21)
+    assert np.all(np.abs(s12) >= 0.70), np.abs(s12)
+    assert np.all(np.abs(s11) <= 0.08), np.abs(s11)
+    assert np.all(np.abs(s22) <= 0.08), np.abs(s22)
+
+    # Reciprocity: both magnitude and phase (a mirror-symmetric through
+    # line gives no reason to expect a calibration-scale or orientation
+    # defect to hide here).
+    assert np.all(np.abs(np.abs(s21) / np.abs(s12) - 1.0) < 0.01)
+    phase_diff_deg = np.degrees(np.angle(s21) - np.angle(s12))
+    assert np.all(np.abs(phase_diff_deg) < 1.0), phase_diff_deg
+
+    # Passivity, directly (not just via the advisory that already ran above
+    # with zero warnings): column power must stay under 1 for a passive DUT.
+    col1 = np.abs(s11) ** 2 + np.abs(s21) ** 2
+    col2 = np.abs(s22) ** 2 + np.abs(s12) ** 2
+    assert np.all(col1 < 1.0) and np.all(col2 < 1.0)

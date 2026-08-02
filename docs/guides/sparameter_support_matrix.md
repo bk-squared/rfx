@@ -32,6 +32,7 @@ the full column-power check. Lumped/wire results are checked only for non-finite
 or excessive individual `|S|` values, not column power. The public
 `compute_coaxial_line_reflection(...)` result has no shared automatic passivity
 guard. An absent warning therefore cannot be compared across port families.
+(`compute_coaxial_two_port(...)`, below, does route through the shared guard.)
 
 ## API summary
 
@@ -46,6 +47,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
+| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **experimental** (issue #489 stage 2) — two-drive through-line 2-port solve; every DUT it can currently gate against is azimuthally symmetric (TM0n only); no external referee; no phase claim |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
 
@@ -338,6 +340,19 @@ Boundary specifications without positive CPML on both z faces, non-z
 unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
 requests.
 The older `compute_coaxial_s_matrix(...)` path is deprecated and experimental.
+
+`compute_coaxial_two_port(...)` (issue #489 stage 2) extends the same
+transmission-line method to two ports: it builds a single through line with a
+matched annular-resistor feed near each z end, drives each end's own TEM TFSF
+source in turn (two FDTD runs), and assembles the S-matrix via a two-drive
+solve that does not assume the non-driven port sees zero incident wave. It is
+**experimental**: every DUT it can currently gate against (none, a matched
+feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only
+TM0n modes, while the transition discontinuities issue #489 targets excite
+TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to
+the first probe plane). No external referee has run against this method and
+no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
+measured single-run envelope and its provenance.
 
 ## Floquet/Bloch and non-port observables
 
