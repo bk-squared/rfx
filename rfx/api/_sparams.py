@@ -3590,8 +3590,10 @@ class _SparamMixin:
             # quasi-TEM wave") and compute_msl_s_matrix's #140 dir_sign
             # comment ("a -x port's fitted z0 inherits a negative sign")
             # describe OPPOSITE conventions; that contradiction is
-            # unresolved and is tracked as a follow-up, not papered over
-            # here.
+            # unresolved and is tracked in issue #524 (together with the
+            # two orphaned #507 loose ends: the passive port's ~30 ohm
+            # termination reading and the 0.194-vs-0.073 drive
+            # asymmetry), not papered over here.
             #
             # The fit is still computed and EXPOSED (return_diagnostics)
             # because it is the only handle on the open 30-vs-48 ohm
