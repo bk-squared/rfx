@@ -3238,21 +3238,32 @@ class _PreflightMixin:
            0.0033 is nearly zero (the rasterized Z0 crosses the analytic
            anchor between n=5 and n=6) while mean|S11| stays at order
            0.006. Below that scale this sweep cannot RESOLVE whether the
-           floor~=headroom*|Gamma_implied| mechanism still holds, for
-           three reasons, so this is reported as a resolution limit of
+           floor~=headroom*|Gamma_implied| mechanism still holds (headroom
+           being that same ~0.95-1.27x ratio: floor / |Gamma_implied|),
+           for three reasons, so this is reported as a resolution limit of
            the sweep, not a confirmed second mechanism: (1) Gamma_implied
            is one BAND-MEAN Z0 compared against a band-MEAN |S11|(f); the
            artifact has no per-bin Z0(f), and whenever Gamma(f) changes
            sign inside the band — exactly this case — mean|S11(f)|
            generically exceeds |Gamma(mean Z0)| by Jensen's inequality
            alone; (2) the two sides come from different estimators — the
-           fitted-Z0 honesty guard (``_sparams.py:2100-2102``) only calls
-           Z0 healthy to +/-10%, and at the misaligned 80um point the two
-           per-port Z0 reads differ by 0.17 ohm, over half of the ENTIRE
-           n=6 signal (Z0-Z0_HJ = 0.315 ohm); (3) only ONE point departs
-           — h_sub/5 (Gamma_implied=0.0063) is fully consistent with
-           floor=|Gamma_implied| (ratio 0.95). This single-point ratio
-           breakdown is why no derived-dB formula ships from this sweep.
+           fitted-Z0's own honesty guard (``strict_extractor``, the
+           documented +/-10% fitted-Z0 health bound) only calls Z0 healthy
+           to that tolerance, and at the COARSEST MISALIGNED mesh (80um,
+           not n=6) the two per-port Z0 reads — each that port's own
+           max-deviation frequency bin, not the same frequency, so this
+           is an order-of-magnitude reference, not a same-mesh
+           measurement — differ by 0.17 ohm, already over half of the
+           ENTIRE n=6 signal (Z0-Z0_HJ = 0.315 ohm). A coarser, misaligned
+           mesh plausibly has MORE estimator noise than the much finer,
+           aligned n=6 point, so 0.17 ohm likely OVERSTATES the true n=6
+           noise floor — using it anyway is the conservative (cautious)
+           choice for an argument that only needs to show noise CANNOT be
+           excluded, not that it explains n=6 exactly; (3) only ONE point
+           departs — h_sub/5 (Gamma_implied=0.0063) is fully consistent
+           with floor=|Gamma_implied| (ratio 0.95). This single-point
+           ratio breakdown is why no derived-dB formula ships from this
+           sweep.
 
            No MEASURED-dB advisory ships either, for a separate reason:
            even where the mechanism DOES hold, the measured floors

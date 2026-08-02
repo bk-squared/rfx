@@ -191,13 +191,9 @@
       0.00328
     ],
     "c_misalignment_shifts_floor_at_comparable_cells": true,
-    "c_gamma_check": true,
-    "c_floor_check": true,
     "c_witness_pair": {
       "misaligned_60um_abs_gamma": 0.05226,
-      "aligned_h_sub_4_abs_gamma": 0.01911,
-      "misaligned_60um_mean_s11_raw": 0.06566,
-      "aligned_h_sub_4_mean_s11_raw": 0.02228
+      "aligned_h_sub_4_abs_gamma": 0.01911
     }
   }
 }
