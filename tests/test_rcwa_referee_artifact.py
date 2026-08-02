@@ -22,7 +22,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import sys
 from types import ModuleType
 from typing import Final
 
@@ -33,6 +32,14 @@ FLOQUET_DIR: Final = (
 )
 ARTIFACT_PATH: Final = FLOQUET_DIR / "rcwa_referee_artifact.json"
 SCRIPT_PATH: Final = FLOQUET_DIR / "rcwa_referee.py"
+
+# These are the ONLY externally-sourced numbers in this harness -- grcwa's own
+# S4-cross-validated regression constants (tests/test_rcwa.py::test_rcwa in
+# the grcwa 0.1.2 sdist). Pinned here so a silent edit of the anchor (e.g.
+# regenerating the gate against a different, undocumented reference) fails
+# loudly instead of passing via a self-consistent but wrong rel_err.
+EXPECTED_T_P_S4: Final = 0.85249901083265
+EXPECTED_T_S_S4: Final = 0.83900479939861
 
 
 def _load_artifact() -> dict:
@@ -45,10 +52,10 @@ def _load_artifact() -> dict:
 
 
 def _load_referee_module() -> ModuleType:
+    """Load the referee script as a throwaway module (not registered in sys.modules)."""
     spec = importlib.util.spec_from_file_location("_rcwa_referee", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -59,6 +66,20 @@ def test_artifact_scope_is_comparator_leg_only():
     assert "comparator leg only" in artifact["scope"]
     assert "rfx-known-issues.md" in artifact["r2_stop_pointer"]
     assert "drive-isolation" in artifact["r2_stop_pointer"]
+
+
+def test_artifact_reproduce_gate_pins_the_s4_anchor_constants():
+    """The two S4 reference numbers must match grcwa's own documented values.
+
+    These are the only externally-sourced numbers in the PR; nothing else
+    binds them, so a drifted anchor (e.g. `expected_T` regenerated against a
+    different, undocumented reference) would otherwise pass silently as long
+    as `reproduced_T` drifted the same way.
+    """
+    artifact = _load_artifact()
+    gate = artifact["reproduce_gate"]
+    assert gate["p_pol"]["expected_T"] == EXPECTED_T_P_S4
+    assert gate["s_pol"]["expected_T"] == EXPECTED_T_S_S4
 
 
 def test_artifact_reproduce_gate_is_internally_consistent():
@@ -73,17 +94,17 @@ def test_artifact_reproduce_gate_is_internally_consistent():
     assert gate["passed"] is True
 
 
-def test_artifact_tier_a_slab_check_is_internally_consistent():
+def test_artifact_referee_calibration_slab_check_is_internally_consistent():
     artifact = _load_artifact()
-    tier_a = artifact["tier_a_slab_check"]
-    assert tier_a["rows"], "Tier-A table must not be empty"
-    threshold = tier_a["gate_threshold"]
-    assert tier_a["max_dev_R"] < threshold
-    assert tier_a["max_dev_T"] < threshold
-    assert tier_a["max_energy_conservation_dev"] < threshold
-    assert tier_a["passed"] is True
+    calibration = artifact["referee_calibration_slab_check"]
+    assert calibration["rows"], "referee-calibration slab table must not be empty"
+    threshold = calibration["gate_threshold"]
+    assert calibration["max_dev_R"] < threshold
+    assert calibration["max_dev_T"] < threshold
+    assert calibration["max_energy_conservation_dev"] < threshold
+    assert calibration["passed"] is True
 
-    for row in tier_a["rows"]:
+    for row in calibration["rows"]:
         # lossless slab: energy conservation must hold at every frequency,
         # not just in the aggregate max
         assert abs(row["R_plus_T_rcwa"] - 1.0) < threshold
@@ -94,7 +115,8 @@ def test_artifact_tier_a_slab_check_is_internally_consistent():
 def test_artifact_overall_passed_matches_both_gates():
     artifact = _load_artifact()
     assert artifact["overall_passed"] == (
-        artifact["reproduce_gate"]["passed"] and artifact["tier_a_slab_check"]["passed"]
+        artifact["reproduce_gate"]["passed"]
+        and artifact["referee_calibration_slab_check"]["passed"]
     )
 
 
@@ -120,16 +142,17 @@ def test_grcwa_unavailable_skips_cleanly(monkeypatch):
     assert module.main() == 2
 
 
-@pytest.mark.parametrize("dummy", [None])
-def test_live_grcwa_reproduces_committed_numbers(dummy):
+def test_live_grcwa_reproduces_committed_numbers():
     """Opportunistic live re-check -- NOT a CI dependency, skips if grcwa is absent."""
     pytest.importorskip("grcwa", reason="grcwa required for the live RCWA referee re-check")
     module = _load_referee_module()
 
     reproduce = module._reproduce_grcwa_s4_regression()
     assert reproduce["passed"] is True
+    assert reproduce["p_pol"]["expected_T"] == EXPECTED_T_P_S4
+    assert reproduce["s_pol"]["expected_T"] == EXPECTED_T_S_S4
 
-    tier_a = module.run_tier_a_slab_check([6.0e9, 15.0e9])
-    assert tier_a["passed"] is True
-    assert tier_a["max_dev_R"] < 1e-9
-    assert tier_a["max_dev_T"] < 1e-9
+    calibration = module.run_referee_calibration_slab_check([6.0e9, 15.0e9])
+    assert calibration["passed"] is True
+    assert calibration["max_dev_R"] < 1e-9
+    assert calibration["max_dev_T"] < 1e-9

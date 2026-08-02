@@ -11,7 +11,7 @@ for the R2-STOP scope fence (rfx drive-isolation is NOT in scope).
   s-pol T: reproduced=0.83965428139 expected=0.83900479940 rel_err=7.74e-04 (tol 1e-03)
   reproduce-gate PASSED: True
 
---- Step 2: Tier-A cross-anchor (uniform slab vs closed-form Fresnel) ---
+--- Step 2: referee-calibration slab check (uniform slab vs closed-form Fresnel; instrument-plumbing pin, NOT RCWA-fidelity evidence -- see module docstring RESCOPE) ---
     1.00 GHz  R_rcwa=0.085232 R_analytic=0.085232  T_rcwa=0.914768 T_analytic=0.914768  R+T=1.000000
     2.00 GHz  R_rcwa=0.237201 R_analytic=0.237201  T_rcwa=0.762799 T_analytic=0.762799  R+T=1.000000
     3.00 GHz  R_rcwa=0.337337 R_analytic=0.337337  T_rcwa=0.662663 T_analytic=0.662663  R+T=1.000000
@@ -35,7 +35,7 @@ for the R2-STOP scope fence (rfx drive-isolation is NOT in scope).
   max|R_rcwa-R_analytic| = 3.886e-16
   max|T_rcwa-T_analytic| = 6.661e-16
   max energy-conservation deviation |R+T-1| = 6.661e-16
-  Tier-A PASSED: True
+  referee-calibration slab check PASSED: True
 
 Artifact written: validation/research/floquet/rcwa_referee_artifact.json
 

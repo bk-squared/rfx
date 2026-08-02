@@ -25,7 +25,7 @@
     },
     "passed": true
   },
-  "tier_a_slab_check": {
+  "referee_calibration_slab_check": {
     "eps_slab": 4.0,
     "d_slab_m": 0.01,
     "rows": [
