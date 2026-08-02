@@ -65,6 +65,45 @@ def test_compute_coaxial_s_matrix_returns_canonical_result_shape():
     assert res.status in {"passed", "degraded"}
 
 
+def test_reference_planes_reports_pin_center_not_gap_position_on_cpml():
+    """Regression lock for the #489-stage-2 review's defect-1 fix.
+
+    ``reference_planes`` used to be derived from ``port.position`` (the gap
+    cell) with the grid-PADDED index left in — wrong by
+    ``direction*pin_length/2`` (the ``pin_center`` offset) AND by
+    ``pad_z_lo*dx`` (``position_to_index`` already adds ``pad_z_lo``; the old
+    formula multiplied that padded index by ``dx`` directly instead of
+    subtracting the padding back out first, exactly mirroring how every
+    other reference-plane report in this codebase converts a grid index back
+    to a physical position). The ``boundary="pec"`` fixture used elsewhere in
+    this file has ``pad_z_lo=0`` (no absorbing boundary layers), so it cannot
+    exercise the padding half of the fix — only a CPML fixture can.
+    """
+    sim = Simulation(
+        freq_max=10.0e9, domain=(0.020, 0.020, 0.020), boundary="cpml", cpml_layers=8,
+    )
+    sim.add_coaxial_port((0.010, 0.010, 0.015), face="top", pin_length=5.0e-3)
+    grid = sim._build_grid()
+    port = sim._coaxial_ports[0]
+    assert int(grid.pad_z_lo) > 0, "fixture must have positive padding to exercise the fix"
+
+    # pin_center for face='top' (direction=-1): position offset by
+    # -pin_length/2 along z (rfx.sources.coaxial_port._coaxial_port_geometry).
+    pin_center_z = port.position[2] - port.pin_length / 2.0
+    expected_index = int(round(pin_center_z / grid.dx)) + int(grid.pad_z_lo)
+    expected_plane_m = (expected_index - int(grid.pad_z_lo)) * float(grid.dx)
+    # The OLD (buggy) formula: the padded gap-position index multiplied by
+    # dx directly, without subtracting pad_z_lo back out.
+    old_buggy_plane_m = float(grid.position_to_index(port.position)[2]) * float(grid.dx)
+    assert abs(expected_plane_m - old_buggy_plane_m) > 1e-4, (
+        "fixture does not discriminate the fix; adjust geometry"
+    )
+
+    res = sim.compute_coaxial_s_matrix(n_steps=2, n_freqs=1)
+
+    np.testing.assert_allclose(res.reference_planes, [expected_plane_m], atol=1e-12)
+
+
 def test_z_tem_matches_closed_form_helper():
     sim = _make_one_port_sim()
     res = sim.compute_coaxial_s_matrix(n_steps=200, n_freqs=3)

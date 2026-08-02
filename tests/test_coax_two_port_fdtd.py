@@ -108,10 +108,17 @@ def _voltages_from_ab(a, b, *, gamma, z_planes_m, ref_m, load_below):
     the actual extraction (matrix-pencil fit of gamma, then this same
     extrapolation) is exercised for real by
     ``_assemble_coaxial_two_port_from_voltages``.
+
+    ``gamma`` may be a scalar (same propagation constant at every frequency)
+    or an array matching ``a``/``b``'s length (a DIFFERENT propagation
+    constant per frequency — used to de-degenerate the planted fixture so a
+    per-frequency indexing bug in the assembly loop would be caught, not
+    just a per-array/per-drive one).
     """
     z_planes_m = np.asarray(z_planes_m, dtype=np.float64)
     a = np.atleast_1d(np.asarray(a, dtype=np.complex128))
     b = np.atleast_1d(np.asarray(b, dtype=np.complex128))
+    gamma = np.broadcast_to(np.asarray(gamma, dtype=np.complex128), a.shape)
     z0 = float(z_planes_m.mean())
     zr = ref_m - z0
     # Real extractor: a_wave = A*exp(+gamma*zr) ("travels -z"),
@@ -127,10 +134,10 @@ def _voltages_from_ab(a, b, *, gamma, z_planes_m, ref_m, load_below):
         A = a * np.exp(-gamma * zr)   # backward_amp = a_wave = A*exp(gamma*zr) = a (target)
         B = b * np.exp(+gamma * zr)   # forward_amp = b_wave = B*exp(-gamma*zr) = b (target)
     zc = z_planes_m - z0
-    # shape (n_planes, n_freqs)
+    # shape (n_planes, n_freqs); gamma varies per frequency (per column).
     return (
-        np.exp(+gamma * zc)[:, None] * A[None, :]
-        + np.exp(-gamma * zc)[:, None] * B[None, :]
+        np.exp(np.multiply.outer(zc, gamma)) * A[None, :]
+        + np.exp(np.multiply.outer(zc, -gamma)) * B[None, :]
     )
 
 
@@ -146,24 +153,35 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     ``test_coax_two_port_solve.py::
     test_both_drive_swap_gap_requires_the_downstream_passivity_handle``), so
     this is the one witness capable of catching that defect family before
-    any FDTD time is spent.
+    any FDTD time is spent. ``s_true`` and ``gamma`` are DIFFERENT at each
+    of the 3 planted frequencies (not the same value broadcast via
+    ``np.full``) so a per-frequency indexing bug in the assembly loop (e.g.
+    a transposed or fixed frequency index) would show up as a mismatch
+    rather than passing by coincidence.
     """
     n_f = 3
     s_true = (
-        np.full(n_f, 0.15 + 0.05j),
-        np.full(n_f, 0.75 - 0.20j),   # S12
-        np.full(n_f, 0.75 - 0.20j),   # S21 == S12 (reciprocal)
-        np.full(n_f, -0.10 + 0.08j),
+        np.array([0.15 + 0.05j, 0.20 - 0.03j, -0.05 + 0.10j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),   # S12
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),   # S21 == S12 (reciprocal)
+        np.array([-0.10 + 0.08j, 0.05 - 0.12j, 0.15 + 0.02j]),
     )
-    # Passivity sanity check on the planted truth (not required by the
-    # algebra under test, but keeps the fixture physically plausible).
-    s_mat = np.array([[s_true[0][0], s_true[1][0]], [s_true[2][0], s_true[3][0]]])
-    assert np.all(np.linalg.svd(s_mat, compute_uv=False) <= 1.0)
+    # Passivity sanity check on the planted truth, per frequency (not
+    # required by the algebra under test, but keeps the fixture physically
+    # plausible at every one of the 3 distinct frequency points).
+    s_mat_per_freq = [
+        np.array([[s_true[0][fi], s_true[1][fi]], [s_true[2][fi], s_true[3][fi]]])
+        for fi in range(n_f)
+    ]
+    for s_mat_fi in s_mat_per_freq:
+        assert np.all(np.linalg.svd(s_mat_fi, compute_uv=False) <= 1.0)
 
     gamma_t = 0.05  # each feed's own residual self-mismatch (validated envelope 0.02-0.08)
     a_true, b_true = _plant_ab(s_true, gamma_t, n_f)
 
-    gamma = 1j * 50.0  # lossless synthetic propagation constant, beta=50 rad/m
+    # Lossless synthetic propagation constant, a DIFFERENT beta per
+    # frequency (rad/m) — not the same value broadcast across all 3.
+    gamma = 1j * np.array([40.0, 50.0, 65.0])
     z_planes_top_m = np.array([0.10, 0.11, 0.12, 0.13, 0.14, 0.15])
     z_planes_bot_m = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
     ref_top_m = 0.17    # ABOVE probes_top -> load_below=False (port 1, +z end)
@@ -191,14 +209,15 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     )
 
     for fi in range(n_f):
-        np.testing.assert_allclose(s_params[:, :, fi], s_mat, atol=1e-9)
+        np.testing.assert_allclose(s_params[:, :, fi], s_mat_per_freq[fi], atol=1e-9)
     assert np.all(np.isfinite(rec_resid)) and np.all(rec_resid < 1e-9)
     assert np.all(np.isfinite(fit_resid)) and np.all(fit_resid < 1e-9)
     assert np.all(cond_a < 3.0)
-    # The matrix-pencil fit itself recovers the planted propagation constant
-    # exactly on this clean synthetic field (no reference-plane extrapolation
-    # involved) — a sanity check on the newly-exposed `gamma` return.
-    np.testing.assert_allclose(gamma_fit, gamma, atol=1e-6)
+    # The matrix-pencil fit itself recovers the planted (per-frequency)
+    # propagation constant exactly on this clean synthetic field (no
+    # reference-plane extrapolation involved) — a sanity check on the
+    # newly-exposed `gamma` return.
+    np.testing.assert_allclose(gamma_fit, np.broadcast_to(gamma, gamma_fit.shape), atol=1e-6)
 
 
 def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
@@ -492,12 +511,19 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
 # ---------------------------------------------------------------------------
 # SLOW (real FDTD, own process): the full through-line fixture.
 #
-# Gates below are pinned from ONE measured run — domain=(0.008, 0.008, 0.060),
-# freq_max=40e9 (dx=0.3747mm, matching the validated 1-port dx), n_steps=6000,
-# freqs=BAND — captured 2026-08-02 via a standalone script (not this test
-# file) run with `PYTHONPATH=<this worktree> python3 <script>` (the shared
-# checkout's editable install otherwise shadows the worktree —
-# feedback_stale_editable_install_shadow). Full measured table:
+# The run below is domain=(0.008, 0.008, 0.060), freq_max=40e9 (dx=0.3747mm,
+# matching the validated 1-port dx), n_steps=6000, freqs=BAND — captured
+# 2026-08-02 via a standalone script (not this test file) run with
+# `PYTHONPATH=<this worktree> python3 <script>` (the shared checkout's
+# editable install otherwise shadows the worktree —
+# feedback_stale_editable_install_shadow). Some gates below are pinned fresh
+# from this measurement with margin (|S21|,|S12| >= 0.70; reciprocity
+# <1%/<1deg); others are INHERITED numbers reused from the 1-port method or
+# the stage-1 table rather than independently derived from this run
+# (cond_a < 3.0; recurrence_residual < 0.02; |S11|,|S22| <= 0.08; settling_db
+# < -40.0; fit_residual < 0.02 borrows the recurrence gate's number by
+# convenience) — see the inline comment on each assertion below for which is
+# which. Full measured table:
 #
 #   f(GHz)  |S11|   |S21|   |S12|   |S22|   |S21|/|S12|  angle(S21)-angle(S12)
 #     4.00  0.0092  0.9600  0.9606  0.0086  0.9994        0.0071 deg
@@ -525,22 +551,39 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
 # cond(A) small (< the stage-1 table's ~3 figure); recurrence residual
 # small; ring-down settled.
 #
-# MECHANISM CHECK (R5, pre-declared before this check ran — a lossless
-# through line with |S11|<=0.05 cannot have |S21|=0.74 unless the discrete
-# line itself attenuates): the |S21| decline (0.96->0.74, 4-12 GHz) is
-# QUANTITATIVELY predicted by the matrix-pencil-fitted Re(gamma) the
-# extractor already measures, not merely qualitatively plausible. Per
-# frequency, `|S21_solved| * exp(+Re(gamma_bar) * L12)` (L12 = distance
-# between the two reference planes, from res.reference_planes; gamma_bar =
-# mean of all 4 available fits — both arrays x both drives) landed in
-# [0.979, 0.992] at all 5 band points (measured 2026-08-02) — inside the
-# pre-declared [0.95, 1.05] CONFIRM window. Verdict: CONFIRMED as measured
-# numerical line attenuation of the discrete (3.79-cell annulus) fixture,
-# not an extraction/referral defect. The under-resolved-annulus recipe
-# (>=4 cells) that this repo already documents for REFLECTION accuracy
-# (compute_coaxial_line_reflection) evidently applies to TRANSMISSION
-# magnitude here too, even though status reports "passed" (annulus_cells
-# only gates under 3.5).
+# MECHANISM CHECK (R5, a POST-HOC consistency check run AFTER this |S21|
+# decline was measured — no committed artifact predates it — with a
+# disclosed estimator choice made after seeing the own/other split below;
+# a lossless through line with |S11|<=0.05 cannot have |S21|=0.74 unless
+# the discrete line itself attenuates): the |S21| decline (0.96->0.74,
+# 4-12 GHz) equals what the matrix-pencil-fitted Re(gamma) the extractor
+# already measures predicts over the reported port separation, not merely
+# qualitatively plausible. Per frequency, `|S21_solved| *
+# exp(+Re(gamma_bar) * L12)` (L12 = distance between the two reference
+# planes, from res.reference_planes; gamma_bar = mean of all 4 available
+# fits — both arrays x both drives) landed in [0.979, 0.992] at all 5 band
+# points (measured 2026-08-02) — inside the [0.95, 1.05] window this check
+# treats as consistent.
+#
+# WHAT THIS CHECK BINDS AND WHAT IT DOES NOT (do not overclaim it as a
+# blanket "not an extraction/referral defect" — it is not that broad): it
+# is sensitive to SCALE-type deficits — amplitude mis-normalization, mode
+# conversion, a bad wave split — because `gamma` is fit from the field's
+# SHAPE along z, not its absolute scale, so a scale bug in |S21| would not
+# be echoed by a matching shift in the fitted `gamma`. It is structurally
+# BLIND to reference-plane REFERRAL errors: a referral error `delta` at
+# either plane scales the wave amplitude by `exp(+/-gamma*delta)` while
+# `L12` grows by the same `delta`, so the compensation factor absorbs a
+# referral error EXACTLY (independently verified to five decimal places
+# even at +30 cells of injected referral error — a wrong reference plane
+# passes this check unchanged). So: this check is evidence the |S21|
+# deficit is a scale-consistent, shape-explained line attenuation rather
+# than an amplitude/mode-conversion/wave-split bug; it says nothing about
+# whether either reference plane is correctly placed. The
+# under-resolved-annulus recipe (>=4 cells) that this repo already
+# documents for REFLECTION accuracy (compute_coaxial_line_reflection)
+# evidently applies to TRANSMISSION magnitude here too, even though status
+# reports "passed" (annulus_cells only gates under 3.5).
 #
 # IMPORTANT NUANCE, surfaced rather than smoothed over: the 4 individual
 # gamma measurements that go into gamma_bar are NOT mutually consistent —
@@ -580,15 +623,36 @@ def test_matched_through_line_transmits_reciprocally():
     assert res.status == "passed"
     assert res.annulus_cells >= 3.5
     assert np.all(np.isfinite(res.s_params))
+    # cond_a < 3.0: INHERITED from the stage-1 table's own measured "~3"
+    # figure (rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes
+    # docstring), not pinned fresh from this run (measured max 1.106 here).
     assert np.all(res.cond_a < 3.0)
+    # recurrence_residual < 0.02: INHERITED verbatim from the 1-port
+    # calibration's own gate (tests/test_coaxial_line_calibration.py),
+    # not pinned fresh from this run (measured max 0.00297 here).
     assert np.all(res.recurrence_residual < 0.02)
+    # fit_residual < 0.02: the NUMBER is borrowed from the recurrence gate
+    # above for convenience (same repo, same 2-decimal round number, ~1.6x
+    # margin over the measured max 0.0127) — this is not an independently
+    # pinned-from-measurement gate for fit_residual specifically; the
+    # 1-port method has no fit_residual gate to inherit from.
     assert np.all(res.fit_residual < 0.02)
+    # settling_db < -40.0: INHERITED, the project's general ring-down
+    # settling rule (docs/guides/simulation_methodology.md), not pinned
+    # from this run (measured [-65.87, -65.59] here).
     assert np.all(res.settling_db < -40.0)
 
     S = res.s_params
     s11, s21, s12, s22 = S[0, 0], S[1, 0], S[0, 1], S[1, 1]
+    # |S21|,|S12| >= 0.70: PINNED fresh from this measurement (min measured
+    # 0.7372/0.7377 at 12 GHz, with margin down to 0.70).
     assert np.all(np.abs(s21) >= 0.70), np.abs(s21)
     assert np.all(np.abs(s12) >= 0.70), np.abs(s12)
+    # |S11|,|S22| <= 0.08: INHERITED from the validated 1-port
+    # matched-termination envelope (tests/test_coaxial_line_calibration.py,
+    # 0.02-0.08), not pinned fresh from this run — it happens to coincide
+    # with this run's own max (measured 0.0502/0.0379 here) but the number
+    # itself is reused, not independently derived from this measurement.
     assert np.all(np.abs(s11) <= 0.08), np.abs(s11)
     assert np.all(np.abs(s22) <= 0.08), np.abs(s22)
 
@@ -599,12 +663,14 @@ def test_matched_through_line_transmits_reciprocally():
     phase_diff_deg = np.degrees(np.angle(s21) - np.angle(s12))
     assert np.all(np.abs(phase_diff_deg) < 1.0), phase_diff_deg
 
-    # Mechanism-anchored consistency gate (R5): the |S21| decline must be
-    # QUANTITATIVELY explained by the extractor's own matrix-pencil Re(gamma)
-    # fits, not merely asserted plausible. gamma_bar averages all 4 available
-    # fits (both arrays x both drives) — see the pre-declaration comment
-    # above for why averaging all 4, not a subset, is the physically
-    # motivated reading (additive bulk-line + receiving-feed loss).
+    # Mechanism-anchored consistency gate (R5, post-hoc — see the comment
+    # above): the |S21| decline must equal what the extractor's own
+    # matrix-pencil Re(gamma) fits predict over L12, not merely be asserted
+    # plausible. gamma_bar averages all 4 available fits (both arrays x
+    # both drives) — see the comment above for why averaging all 4, not a
+    # subset, is the physically motivated (disclosed, chosen after seeing
+    # the own/other split) reading, and for what this check does and does
+    # not bind (scale-sensitive, referral-blind).
     L12 = float(res.reference_planes[0] - res.reference_planes[1])
     gamma_bar = np.mean(res.gamma.real, axis=(0, 1))  # (n_freqs,)
     compensated_s21 = np.abs(s21) * np.exp(gamma_bar * L12)

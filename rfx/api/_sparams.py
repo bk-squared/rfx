@@ -1161,15 +1161,23 @@ def _assemble_coaxial_two_port_from_voltages(
         fits agree with each other to ~2%; recurrence_residual stays <0.003
         throughout (the two-wave fit itself is clean at every one of the 4
         measurements — this is not a bad fit, it is two different, both
-        internally-consistent, local decay-rate estimates). Averaging all 4
-        gives a `|S21|*exp(+Re(gamma_bar)*L12)` that reproduces the measured
-        `|S21|` to within 2.1% across 4-12 GHz (see
+        internally-consistent, local decay-rate estimates). A post-hoc
+        consistency check (run after this measurement, with the
+        all-4-average estimator chosen after seeing the own/other split —
+        not predeclared) found `|S21|*exp(+Re(gamma_bar)*L12)` reproduces
+        the measured `|S21|` to within 2.1% across 4-12 GHz (see
         ``tests/test_coax_two_port_fdtd.py::
         test_matched_through_line_transmits_reciprocally``), consistent with
         combined bulk-line attenuation (captured by the lower, own-drive
         estimate) plus additional loss/scattering concentrated at the
         RECEIVING feed's own discontinuity (captured by the higher,
-        other-drive estimate) — not a single uniform per-metre loss.
+        other-drive estimate) — not a single uniform per-metre loss. This
+        check is sensitive to SCALE-type deficits (amplitude
+        mis-normalization, mode conversion, a bad wave split) but
+        structurally BLIND to reference-plane referral errors: a referral
+        error at either plane scales the wave amplitude by
+        ``exp(+/-gamma*delta)`` while ``L12`` grows by the same ``delta``,
+        so the compensation factor absorbs a referral error exactly.
 
     Notes
     -----
@@ -4702,7 +4710,8 @@ class _SparamMixin:
 
         .. warning::
             **EXPERIMENTAL — not in the validated set**
-            (``docs/guides/support_matrix.md``). Every DUT this method can
+            (``docs/guides/sparameter_support_matrix.md``, the S-parameter
+            family companion where this row lives). Every DUT this method can
             currently gate against is azimuthally symmetric (TM0n only); it
             has no external referee and makes no phase claim. See the class
             docstring on the returned :class:`CoaxialTwoPortResult` for the

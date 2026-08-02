@@ -1253,7 +1253,10 @@ class CoaxialTwoPortResult:
     """Two-drive coaxial 2-port S-parameters on a through line (issue #489 stage 2).
 
     STATUS: **EXPERIMENTAL — not in the validated set**
-    (``docs/guides/support_matrix.md``). This extends the validated 1-port
+    (``docs/guides/sparameter_support_matrix.md``, the S-parameter-family
+    companion where this row lives — see also
+    ``docs/guides/sparameter_support_matrix.json``, its machine-readable
+    twin). This extends the validated 1-port
     coax-line method (:meth:`compute_coaxial_line_reflection`) to two ports by
     building a single through line with a matched annular-resistor feed near
     EACH z end, driving each end's own TEM TFSF source in turn (two separate
@@ -1309,9 +1312,21 @@ class CoaxialTwoPortResult:
     validated 60 mm / 40 GHz fixture, the discrete (3.79-cell annulus)
     through line itself attenuates the transmitted wave — measured
     ``|S21|`` 0.96 (4 GHz) down to 0.74 (12 GHz) even with ``|S11|`` <= 0.05
-    throughout. This is confirmed (not merely asserted) by comparing
-    ``|S21|`` against the independently matrix-pencil-fitted ``exp(-Re(gamma)
-    * L12)`` (see ``gamma`` above) — the under-resolved-annulus recipe
+    throughout. A post-hoc consistency check (run after this measurement,
+    not predeclared) compares ``|S21|`` against the independently
+    matrix-pencil-fitted ``exp(-Re(gamma) * L12)`` (see ``gamma`` above): the
+    ``|S21|`` deficit equals what the local decay-rate fits predict over the
+    reported port separation. **What this check catches and what it does
+    not**: it is sensitive to SCALE-type deficits (amplitude
+    mis-normalization, mode conversion, a bad wave split — ``gamma`` is
+    fit from the field's shape along z, not its absolute scale, so a scale
+    bug in ``|S21|`` would not be echoed by a matching shift in the fitted
+    ``gamma``). It is structurally BLIND to reference-plane referral errors:
+    a referral error ``delta`` at either plane scales the wave amplitude by
+    ``exp(+/-gamma*delta)`` while ``L12`` grows by the same ``delta``, so the
+    compensation factor absorbs a referral error exactly (verified to five
+    decimal places even at +30 cells of injected error) — a wrong reference
+    plane passes this check unchanged. The under-resolved-annulus recipe
     (>=4 cells) that this repo already documents for reflection accuracy
     (``compute_coaxial_line_reflection``) applies to TRANSMISSION magnitude
     here too, even when ``status`` reports ``"passed"``.

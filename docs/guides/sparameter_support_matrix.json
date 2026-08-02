@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updated": "2026-07-29",
+  "updated": "2026-08-02",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -246,16 +246,18 @@
       "support_status": "limited_one_port_line_reflection",
       "calculation_api": [
         "Simulation.compute_coaxial_line_reflection(...)",
-        "Simulation.compute_coaxial_s_matrix(...) (deprecated and experimental)"
+        "Simulation.compute_coaxial_s_matrix(...) (deprecated and experimental)",
+        "Simulation.compute_coaxial_two_port(...) (experimental, issue #489 stage 2)"
       ],
       "result_type": [
         "CoaxialLineReflectionResult",
-        "CoaxialSMatrixResult (deprecated and experimental)"
+        "CoaxialSMatrixResult (deprecated and experimental)",
+        "CoaxialTwoPortResult (experimental)"
       ],
       "supported_configurations": [
         "3d_float32_second_order_uniform_yee_positive_z_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental.",
+      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, EXPERIMENTAL two-drive through-line extension — not covered by the 1-port evidence above; see its own known_limits entry and tests/test_coax_two_port_fdtd.py.",
       "known_limits": [
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
@@ -268,7 +270,8 @@
         "compute_coaxial_s_matrix(...) can report non-physical |S11| > 1 for a lossless short",
         "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
         "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
-        "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation"
+        "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation",
+        "compute_coaxial_two_port(...) is EXPERIMENTAL (issue #489 stage 2): every DUT it can currently gate against (none, a matched feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only TM0n modes, while the transition discontinuities issue #489 targets excite TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to the first probe plane); no external referee has run against it and no phase claim is made; unlike compute_coaxial_line_reflection(...) its result IS routed through the shared automatic passivity guard"
       ],
       "evidence_level": "E5-broad/E4-broad/differentiable",
       "validation_gaps": [
@@ -282,13 +285,17 @@
         "tests/test_coaxial_line_extraction.py",
         "tests/test_coax_end_to_end_ad.py",
         "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
-        "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json"
+        "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json",
+        "rfx/api/_sparams.py::Simulation.compute_coaxial_two_port",
+        "rfx/api/_spec.py::CoaxialTwoPortResult",
+        "tests/test_coax_two_port_fdtd.py"
       ],
       "numeric_metrics": [
         "analytic 4--12 GHz short/open/matched/resistive 25/100 ohm checks at Z0 48.6 and 63 ohm: method max |Gamma| deviation 0.0372 <= 0.05 and max recurrence residual 0.00588 <= 0.03",
         "matched single-cell resistor fixture is reported separately with max |Gamma| deviation 0.0929",
         "MEEP short/open comparison over 4--12 GHz: max_mag_abs_diff 0.0628 and mean_mag_abs_diff 0.0235",
-        "end-to-end eps_scale AD versus finite difference discrepancy 2.6%"
+        "end-to-end eps_scale AD versus finite difference discrepancy 2.6%",
+        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.05, reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)"
       ],
       "validated_scope": "The self-contained TEM coaxial-line model using the documented Simulation, port, and method arguments, in float32 precision on a three-dimensional, second-order uniform Yee grid with positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, no periodic boundary axes, exactly one face='top' coaxial port, at least three requested probe planes that all fit before the source, and the termination, frequency, characteristic-impedance, and mesh ranges in the committed fixtures. Separately registered geometry, sources, monitors, termination helpers, arbitrary launches, face='bottom', mixed port families, and multi-port networks are outside this result.",
       "caveats": [
@@ -297,7 +304,7 @@
         "MEEP covers short/open; resistive cases are covered by the analytic transmission-line fixture"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent"
+      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (compute_coaxial_line_reflection only; compute_coaxial_s_matrix (deprecated) and compute_coaxial_two_port (issue #489 stage 2, experimental) are NOT traceable — concrete numpy extraction, no eps_scale/traced-input channel wired; see tests/test_ad_surface_contract.py::AD_CLASSIFICATION for the per-calculator classification this family-level field cannot express)"
     },
     {
       "primitive": "add_floquet_port(...)",

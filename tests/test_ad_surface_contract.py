@@ -77,6 +77,18 @@ AD_CLASSIFICATION = {
         "composition AD-vs-FD gate: "
         "tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent",
     ),
+    "Simulation.compute_coaxial_two_port": (
+        NOT_TRACEABLE,
+        "issue #489 stage 2 two-drive through-line lane: modal voltages are "
+        "pulled off the DFT-plane accumulators as concrete numpy arrays and "
+        "run through the concrete path of coaxial_line_reflection_from_"
+        "plane_voltages (matrix-pencil fit) and solve_two_port_from_wave_"
+        "amplitudes (numpy matrix inverse per frequency) — no eps_scale or "
+        "other traced-input channel is wired (unlike compute_coaxial_line_"
+        "reflection's eps_scale path). Same NOT_TRACEABLE reasoning as "
+        "compute_mixed_s_matrix above. AD wiring, if ever pursued, would be "
+        "issue #489's stage-3 home.",
+    ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (
         NOT_TRACEABLE,

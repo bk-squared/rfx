@@ -356,12 +356,20 @@ measured single-run envelope and its provenance.
 
 Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
 0.96 -> 0.74 on the 60 mm / 40 GHz fixture over 4-12 GHz even though `|S11|`
-stays at or below 0.05 throughout; this is confirmed against the extractor's
-own matrix-pencil-fitted `Re(gamma)` (`|S21|` matches `exp(-Re(gamma)*L12)`
-to within about 2% at every measured frequency), not asserted from the
-magnitude alone. The under-resolved-annulus recipe (at least 4 cells) that
-this repo already documents for reflection accuracy applies to transmission
-magnitude here too, even when `status` reports `"passed"` (`annulus_cells`
+stays at or below 0.05 throughout. A post-hoc consistency check (run after
+this measurement; the estimator was chosen after seeing an own/other-drive
+split described below, not predeclared) found the `|S21|` deficit equals
+what the extractor's own matrix-pencil-fitted `Re(gamma)` predicts over the
+reported port separation (within about 2% at every measured frequency,
+`|S21|` against `exp(-Re(gamma)*L12)`). That check is sensitive to
+SCALE-type deficits (amplitude mis-normalization, mode conversion, a bad
+wave split — `gamma` is fit from shape, not scale) and is structurally
+BLIND to reference-plane referral errors (a referral error scales the wave
+amplitude and `L12` by the same factor, so the compensation cancels it
+exactly — verified to five decimal places at +30 cells of injected error).
+The under-resolved-annulus recipe (at least 4 cells) that this repo already
+documents for reflection accuracy applies to transmission magnitude here
+too, even when `status` reports `"passed"` (`annulus_cells`
 only gates below 3.5).
 
 ## Floquet/Bloch and non-port observables
