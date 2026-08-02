@@ -37,6 +37,7 @@ from rfx.api._spec import (
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
+    CoaxialTwoPortResult,
     MSLSMatrixResult,
     MixedSMatrixResult,
     _WaveguidePortEntry,
@@ -1108,6 +1109,104 @@ def _warn_thin_absorber_vs_guide_wavelength(
             UserWarning,
             stacklevel=2,
         )
+
+
+def _assemble_coaxial_two_port_from_voltages(
+    *,
+    z_planes_bot_m,
+    z_planes_top_m,
+    ref_bot_m: float,
+    ref_top_m: float,
+    v_bot_by_drive,
+    v_top_by_drive,
+    cond_warn: float = 1.0e3,
+):
+    """Pure post-FDTD assembly: per-array V(z) -> (a_inc,b_out) -> 2x2 S (#489 stage 2).
+
+    Isolated from :meth:`_SparamMixin.compute_coaxial_two_port` so the
+    convention wiring below can be exercised with PLANTED analytic V(z)
+    values (no FDTD) — see
+    ``tests/test_coax_two_port_fdtd.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
+
+    Parameters
+    ----------
+    z_planes_bot_m, z_planes_top_m : (n_bot,), (n_top,) float
+        Equally spaced axial probe-plane positions (metres) for the bottom
+        (port 2) and top (port 1) arrays.
+    ref_bot_m, ref_top_m : float
+        Each port's own reference plane (its feed's axial position).
+    v_bot_by_drive, v_top_by_drive : (2, n_bot, n_freqs), (2, n_top, n_freqs) complex
+        Modal voltage ``V(z)`` at every probe plane, per drive (index 0 =
+        port 1 driven, index 1 = port 2 driven) and frequency.
+    cond_warn : float
+        Forwarded to :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`.
+
+    Returns
+    -------
+    s_params, cond_a, recurrence_residual, fit_residual
+        ``s_params`` is ``(2, 2, n_freqs)``; ``recurrence_residual`` /
+        ``fit_residual`` are ``(2, 2, n_freqs)`` indexed
+        ``[port_array, drive, freq]`` (port 0 = top/port1, port 1 = bot/port2).
+
+    Notes
+    -----
+    **The sign convention this function encodes**: for BOTH port arrays,
+    ``a_port = result.backward_amp`` and ``b_port = result.forward_amp``
+    (from :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`).
+    This holds specifically for the dual-duty-feed geometry
+    :meth:`compute_coaxial_two_port` builds, where each port's own feed sits
+    exterior of its own probe array — on the scattered-only side of that
+    drive's own TFSF boundary, so ``load_below`` evaluates False for the top
+    array and True for the bottom array. The derivation (global "A-branch
+    travels -z / B-branch travels +z" convention, applied per port's own
+    "into/out of the network" direction) is in ``docs/design_notes/
+    i489_stage2_two_port_fdtd_predeclaration.md``. This is NOT a general
+    fact of the extractor — a different feed placement would need a
+    different mapping.
+    """
+    from rfx.sources.coaxial_port import (
+        coaxial_line_reflection_from_plane_voltages,
+        solve_two_port_from_wave_amplitudes,
+    )
+
+    z_planes_bot_m = np.asarray(z_planes_bot_m, dtype=np.float64)
+    z_planes_top_m = np.asarray(z_planes_top_m, dtype=np.float64)
+    v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
+    v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
+    if v_bot_by_drive.shape[0] != 2 or v_top_by_drive.shape[0] != 2:
+        raise ValueError(
+            "v_bot_by_drive / v_top_by_drive must have a leading axis of "
+            f"size 2 (one per drive); got {v_bot_by_drive.shape} / "
+            f"{v_top_by_drive.shape}."
+        )
+    n_f = int(v_bot_by_drive.shape[-1])
+
+    a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
+    b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
+    rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    fit_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+
+    for drive_idx in range(2):
+        for fi in range(n_f):
+            out_bot = coaxial_line_reflection_from_plane_voltages(
+                z_planes_bot_m, v_bot_by_drive[drive_idx, :, fi],
+                reference_plane_m=ref_bot_m,
+            )
+            out_top = coaxial_line_reflection_from_plane_voltages(
+                z_planes_top_m, v_top_by_drive[drive_idx, :, fi],
+                reference_plane_m=ref_top_m,
+            )
+            a_inc[0, drive_idx, fi] = out_top.backward_amp
+            b_out[0, drive_idx, fi] = out_top.forward_amp
+            a_inc[1, drive_idx, fi] = out_bot.backward_amp
+            b_out[1, drive_idx, fi] = out_bot.forward_amp
+            rec_resid[0, drive_idx, fi] = out_top.recurrence_residual
+            fit_resid[0, drive_idx, fi] = out_top.fit_residual
+            rec_resid[1, drive_idx, fi] = out_bot.recurrence_residual
+            fit_resid[1, drive_idx, fi] = out_bot.fit_residual
+
+    solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
+    return solve.s_params, solve.cond_a, rec_resid, fit_resid
 
 
 class _SparamMixin:
@@ -4102,11 +4201,19 @@ class _SparamMixin:
                         np.nan + 1j * np.nan,
                     )
 
+        # Report the plane actually measured (``plane_indices``, derived from
+        # each port's ``pin_center`` — see ``_coaxial_port_geometry``), not
+        # ``port.position``: the two differ by ``direction*pin_length/2``
+        # whenever ``pin_length != 0``, and ``position_to_index`` already adds
+        # ``pad_z_lo``, so multiplying that padded index by ``dx`` directly
+        # (the previous formula) double-counted the padding offset too.
+        # Neither defect is pinned by a committed test (only the array SHAPE
+        # is asserted in test_coaxial_s_matrix.py) — see #489 stage-2 design
+        # note, incidental defect 1.
         reference_planes = np.asarray(
             [
-                float(grid.position_to_index(p.position)[2] + reference_plane_axial_index_offset)
-                * float(grid.dx)
-                for p in ports
+                (float(plane_indices[p_idx]) - float(grid.pad_z_lo)) * float(grid.dx)
+                for p_idx in range(n_ports)
             ],
             dtype=float,
         )
@@ -4548,6 +4655,421 @@ class _SparamMixin:
             z0_numerical_ohm=z0_num,
             termination=termination,
             status=status,
+        )
+
+    def compute_coaxial_two_port(
+        self,
+        *,
+        n_steps: int = 6000,
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 11,
+        field_scale: float = 1.0e4,
+        cpml_axes: str = "z",
+        probe_count: int = 12,
+        probe_start_cells: int = 8,
+        probe_spacing_cells: int = 4,
+        feed_impedance: float | None = None,
+        cond_warn: float = 1.0e3,
+        strict_passivity: bool = False,
+    ) -> "CoaxialTwoPortResult":
+        """EXPERIMENTAL two-drive coaxial 2-port S-parameters (#489 stage 2).
+
+        .. warning::
+            **EXPERIMENTAL — not in the validated set**
+            (``docs/guides/support_matrix.md``). Every DUT this method can
+            currently gate against is azimuthally symmetric (TM0n only); it
+            has no external referee and makes no phase claim. See the class
+            docstring on the returned :class:`CoaxialTwoPortResult` for the
+            full scope limitation — transition discontinuities that excite
+            TE11 are the target use case and are NOT covered by any battery
+            built on the symmetric DUTs available today.
+
+        Builds ONE through coax line spanning the z axis with a matched
+        annular-resistor feed near EACH z end (mirroring the validated
+        1-port :meth:`compute_coaxial_line_reflection` layout at both ends:
+        each feed sits between that end's own TEM TFSF source and that end's
+        own CPML, i.e. strictly on the scattered-only side of that drive's
+        TFSF boundary — never in the path of that drive's own launched
+        wave), then drives each end's source in turn (two separate FDTD
+        runs). A probe array of ``probe_count`` equally spaced planes near
+        each end recovers that array's local two-wave decomposition
+        (matrix-pencil, Z0-free, same machinery as the 1-port method); the
+        forward/back amplitudes are evaluated at each port's OWN reference
+        plane (its feed's axial position) and assembled into a full 2x2
+        S-matrix via :func:`rfx.sources.coaxial_port.
+        solve_two_port_from_wave_amplitudes` — the two-drive solve that does
+        NOT assume the non-driven port sees zero incident wave (unlike the
+        naive ``S[j,i] = b_j/a_i`` ratio, which has a hard terminator-
+        reflection floor on a through line; see that function's docstring
+        and ``docs/research_notes/20260729_i489_coax_two_port_design.md``).
+
+        Port 1 is the +z end (mirrors the 1-port fixture's own ``face='top'``
+        orientation); port 2 is the -z end (mirror image, ``face='bottom'``).
+        Both drives share the SAME registered ``add_coaxial_port(...)``
+        geometry (x/y centre, pin/outer radii) and excitation waveform; the
+        registered port's own ``position``/``face``/``pin_length`` do not
+        place either end of the line (mirrors the 1-port method's own
+        contract). Requires ``port.face == 'top'`` (arbitrary but consistent
+        with the 1-port method; the value is not otherwise used to orient
+        this method's own internally-built fixture).
+
+        Unlike the 1-port method, the returned result is routed through
+        :func:`_finalize_sparam_result` (which runs the passivity/finiteness
+        self-check via :func:`_warn_if_nonpassive_smatrix`) before being
+        returned — the 1-port ``CoaxialLineReflectionResult`` bypasses that
+        check (design-note incidental defect 3); this result does not.
+
+        This method constructs its own coaxial line, TEM sources, DFT
+        planes, and feeds. Do not add separate geometry, thin conductors,
+        lumped RLC elements, probes or field monitors, NTFF boxes, TFSF
+        sources, or ``add_coaxial_*`` termination helpers; those
+        registrations are rejected rather than ignored.
+
+        Same solver/precision/boundary contract as
+        :meth:`compute_coaxial_line_reflection` (float32, 3D uniform Yee,
+        ``boundary='cpml'`` with positive CPML on all six faces,
+        ``cpml_axes='z'``, no periodic axes, no non-uniform mesh, no
+        refinement).
+        """
+
+        if self._boundary != "cpml" or self._cpml_layers <= 0:
+            raise ValueError(
+                "compute_coaxial_two_port() requires boundary='cpml' "
+                "with cpml_layers > 0 for its absorbing feeds."
+            )
+        z_boundary = self._boundary_spec.z
+        if (
+            z_boundary.lo != "cpml"
+            or z_boundary.hi != "cpml"
+            or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
+            or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() requires positive CPML "
+                "thickness on both z faces."
+            )
+        if cpml_axes != "z":
+            raise ValueError(
+                "compute_coaxial_two_port() requires cpml_axes='z'."
+            )
+        if self._periodic_axes:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support periodic "
+                "boundary axes."
+            )
+        if any(token != "cpml" for _, _, token in self._boundary_spec.faces()):
+            raise ValueError(
+                "compute_coaxial_two_port() requires CPML tokens on all "
+                "six boundary faces; mixed BoundarySpec faces are not "
+                "supported."
+            )
+        if self._mode != "3d":
+            raise ValueError(
+                "compute_coaxial_two_port() requires mode='3d'."
+            )
+        if self._solver != "yee":
+            raise ValueError(
+                "compute_coaxial_two_port() supports solver='yee' only; "
+                "solver='adi' is not supported."
+            )
+        if self._precision != "float32":
+            raise ValueError(
+                "compute_coaxial_two_port() requires precision='float32'."
+            )
+        if self._stencil_order != 2:
+            raise ValueError(
+                "compute_coaxial_two_port() requires stencil_order=2."
+            )
+        if self._tfsf is not None:
+            raise ValueError(
+                "compute_coaxial_two_port() creates its own TEM TFSF "
+                "sources and does not accept an existing TFSF source."
+            )
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() supports only a uniform Yee "
+                "grid; dx_profile, dy_profile, and dz_profile are not "
+                "supported."
+            )
+        if self._refinement is not None:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support SBP-SAT "
+                "refinement; remove add_refinement() from this simulation."
+            )
+        if self._geometry or self._thin_conductors:
+            raise ValueError(
+                "compute_coaxial_two_port() constructs the complete line "
+                "geometry; registered geometry and thin conductors are not "
+                "supported. Use the documented Simulation, port, and "
+                "method arguments instead."
+            )
+        if self._lumped_rlc:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support registered "
+                "lumped RLC elements."
+            )
+        if self._probes or self._dft_planes or self._flux_monitors or self._ntff:
+            raise ValueError(
+                "compute_coaxial_two_port() does not consume registered "
+                "probes, DFT planes, flux monitors, or NTFF boxes."
+            )
+        if (
+            self._coaxial_terminations
+            or self._coaxial_open_terminations
+            or self._coaxial_pec_end_caps
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() does not consume registered "
+                "add_coaxial_* termination helpers; use feed_impedance= "
+                "instead."
+            )
+        if isinstance(probe_count, bool) or not isinstance(
+            probe_count, (int, np.integer)
+        ):
+            raise ValueError("probe_count must be an integer of at least 3.")
+        requested_probe_count = int(probe_count)
+        if requested_probe_count < 3:
+            raise ValueError("probe_count must be at least 3.")
+        if len(self._coaxial_ports) != 1:
+            raise ValueError(
+                "compute_coaxial_two_port() is built from exactly one "
+                "add_coaxial_port() (its x/y centre, radii, and excitation "
+                "waveform are shared by both drives); register exactly one."
+            )
+        if (
+            self._ports or self._waveguide_ports or self._floquet_ports or self._msl_ports
+        ):
+            raise NotImplementedError(
+                "compute_coaxial_two_port() is defined only for a single "
+                "add_coaxial_port(...) family."
+            )
+        port = self._coaxial_ports[0]
+        if port.face != "top":
+            raise NotImplementedError(
+                "compute_coaxial_two_port() currently requires the "
+                "registered port's face='top' (the value is not otherwise "
+                "used to orient this method's own internally-built "
+                "two-ended fixture; kept for contract consistency with "
+                "compute_coaxial_line_reflection)."
+            )
+
+        from rfx.probes.probes import init_dft_plane_probe
+        from rfx.simulation import run as _run, ProbeSpec
+        from rfx.sources.coaxial_port import (
+            CoaxialPort as _CoaxPort,
+            build_coaxial_tem_plane_source_specs,
+            coaxial_line_plane_voltage,
+            coaxial_tem_characteristic_impedance,
+            stamp_coaxial_line,
+            stamp_coaxial_annular_resistor,
+        )
+
+        grid = self._build_grid()
+        nz = grid.shape[2]
+        dz = float(grid.dx)
+        center_xy = (float(port.position[0]), float(port.position[1]))
+        a, b = float(port.pin_radius), float(port.outer_radius)
+
+        # Axial layout: two mirrored 1-port-style ends (source, feed, probe
+        # array) sharing ONE continuous stamped line — no DUT break. Offsets
+        # (2/1/3 cells) mirror compute_coaxial_line_reflection's own
+        # (z_hi_coax, z_feed, z_src) spacing exactly, just doubled and
+        # mirror-imaged. See docs/design_notes/
+        # i489_stage2_two_port_fdtd_predeclaration.md for the derivation of
+        # why each feed sits strictly on the scattered-only side of its own
+        # drive's TFSF boundary.
+        z_hi_coax_top = nz - int(grid.pad_z_hi) - 2
+        z_feed_top = z_hi_coax_top - 1
+        z_src_top = z_hi_coax_top - 3
+        z_lo_coax_bot = int(grid.pad_z_lo) + 2
+        z_feed_bot = z_lo_coax_bot + 1
+        z_src_bot = z_lo_coax_bot + 3
+
+        probes_top = sorted(
+            z_src_top - int(probe_start_cells) - int(probe_spacing_cells) * k
+            for k in range(requested_probe_count)
+        )
+        probes_bot = sorted(
+            z_src_bot + int(probe_start_cells) + int(probe_spacing_cells) * k
+            for k in range(requested_probe_count)
+        )
+        if z_lo_coax_bot >= z_hi_coax_top or probes_bot[0] <= z_lo_coax_bot:
+            raise ValueError(
+                "compute_coaxial_two_port(): domain too short for the "
+                "two-feed line layout; increase the z domain."
+            )
+        if probes_bot[-1] >= probes_top[0]:
+            raise ValueError(
+                "compute_coaxial_two_port(): the two probe arrays overlap "
+                f"(bottom array reaches index {probes_bot[-1]}, top array "
+                f"starts at {probes_top[0]}); increase the z domain or "
+                "reduce probe_count/probe_start_cells/probe_spacing_cells."
+            )
+
+        z_tem = coaxial_tem_characteristic_impedance(a, b)
+        R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+
+        materials, _, _ = self._build_materials(grid)
+        materials, shell_inner = stamp_coaxial_line(
+            grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
+            z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
+            outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed_bot, pin_radius=a,
+            outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        )
+
+        if freqs is None:
+            freqs = jnp.linspace(
+                0.1 * self._freq_max, 0.6 * self._freq_max, int(n_freqs), dtype=jnp.float32
+            )
+        else:
+            freqs = jnp.asarray(freqs, dtype=jnp.float32)
+        n_f = int(freqs.shape[0])
+
+        # TEM TFSF sources: port 1 (+z end) mirrors the 1-port fixture's own
+        # face='top' source exactly; port 2 (-z end) is the mirror image,
+        # face='bottom'.
+        src_port_top = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
+            face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        src_port_bot = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
+            face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        spec_top = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port_top, n_steps=int(n_steps),
+            field_scale=float(field_scale), magnetic_ratio=1.0,
+        )
+        spec_bot = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port_bot, n_steps=int(n_steps),
+            field_scale=float(field_scale), magnetic_ratio=1.0,
+        )
+
+        n_bot = len(probes_bot)
+        n_top = len(probes_top)
+        all_probes_z = list(probes_bot) + list(probes_top)
+
+        # Settling witness: one point probe per array (ex, mid-annulus on the
+        # +x ray), at each array's middle plane. Same worst end/peak E^2 (dB)
+        # convention as the MSL/mixed lanes (rfx.api._sparams module docstring
+        # of _warn_if_ringdown_truncated); -40 dB is the project's ring-down
+        # settling rule (docs/guides/simulation_methodology.md).
+        x_mid = center_xy[0] + 0.5 * (a + b)
+        i_probe = int(round(x_mid / dz)) + int(grid.pad_x_lo)
+        j_probe = int(grid.pad_y_lo) + int(round(center_xy[1] / dz))
+        witness_probes = [
+            ProbeSpec(i=i_probe, j=j_probe, k=int(probes_bot[n_bot // 2]), component="ex"),
+            ProbeSpec(i=i_probe, j=j_probe, k=int(probes_top[n_top // 2]), component="ex"),
+        ]
+
+        z_planes_bot_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_bot], dtype=np.float64)
+        z_planes_top_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_top], dtype=np.float64)
+        ref_top_m = (z_feed_top - grid.pad_z_lo) * dz
+        ref_bot_m = (z_feed_bot - grid.pad_z_lo) * dz
+        annulus_cells = float((b - a) / dz)
+
+        v_bot_by_drive = np.zeros((2, n_bot, n_f), dtype=np.complex128)
+        v_top_by_drive = np.zeros((2, n_top, n_f), dtype=np.complex128)
+        settling_db = np.full(2, np.nan, dtype=np.float64)
+
+        # drive_idx 0 drives port 1 (top); drive_idx 1 drives port 2 (bot).
+        for drive_idx, spec in enumerate((spec_top, spec_bot)):
+            planes = []
+            for z in all_probes_z:
+                for comp in ("ex", "ey"):
+                    planes.append(
+                        init_dft_plane_probe(
+                            axis=2, index=int(z), component=comp, freqs=freqs,
+                            grid_shape=grid.shape, dft_total_steps=int(n_steps),
+                        )
+                    )
+            result = _run(
+                grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
+                sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
+                probes=witness_probes, dft_planes=planes, return_state=False,
+            )
+            if result.dft_planes is None:
+                raise RuntimeError(
+                    "compute_coaxial_two_port(): runner returned no DFT planes"
+                )
+
+            v_bot_by_drive[drive_idx] = np.stack(
+                [
+                    coaxial_line_plane_voltage(
+                        grid, result.dft_planes[pi * 2 + 0].accumulator,
+                        result.dft_planes[pi * 2 + 1].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                    for pi in range(n_bot)
+                ],
+                axis=0,
+            )  # (n_bot, n_freqs)
+            top_off = n_bot * 2
+            v_top_by_drive[drive_idx] = np.stack(
+                [
+                    coaxial_line_plane_voltage(
+                        grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
+                        result.dft_planes[top_off + pi * 2 + 1].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                    for pi in range(n_top)
+                ],
+                axis=0,
+            )  # (n_top, n_freqs)
+
+            ts = np.asarray(result.time_series, dtype=float)
+            if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
+                power = ts ** 2
+                tail = max(1, power.shape[0] // 10)
+                end = power[-tail:, :].mean(axis=0)
+                peak = power.max(axis=0)
+                tiny = np.finfo(float).tiny
+                ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
+                settling_db[drive_idx] = float(np.max(ratio_db))
+
+        s_params, cond_a, rec_resid, fit_resid = _assemble_coaxial_two_port_from_voltages(
+            z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
+            ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
+            v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
+            cond_warn=float(cond_warn),
+        )
+
+        if annulus_cells < 3.5:
+            status = "under_resolved"
+        elif float(np.max(rec_resid)) > 0.1:
+            status = "contaminated"
+        else:
+            status = "passed"
+
+        reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
+        result_obj = CoaxialTwoPortResult(
+            s_params=s_params,
+            freqs=np.asarray(freqs, dtype=float),
+            port_names=("port1", "port2"),
+            reference_planes=reference_planes,
+            cond_a=cond_a,
+            recurrence_residual=rec_resid,
+            fit_residual=fit_resid,
+            annulus_cells=annulus_cells,
+            settling_db=settling_db,
+            status=status,
+        )
+        return _finalize_sparam_result(
+            result_obj,
+            extractor="compute_coaxial_two_port",
+            strict=strict_passivity,
         )
 
     def _compute_waveguide_s_matrix_nu(

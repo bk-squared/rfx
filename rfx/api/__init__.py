@@ -86,6 +86,7 @@ from rfx.api._spec import (  # noqa: E402
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
+    CoaxialTwoPortResult,
     _MSLPortEntry,
     MSLSMatrixResult,
     MixedSMatrixResult,
@@ -3788,6 +3789,7 @@ __all__ = [
     "WaveguideSMatrixResult",
     "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
+    "CoaxialTwoPortResult",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
 ]

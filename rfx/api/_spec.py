@@ -1248,6 +1248,63 @@ class CoaxialLineReflectionResult(NamedTuple):
     status: str
 
 
+@dataclass
+class CoaxialTwoPortResult:
+    """Two-drive coaxial 2-port S-parameters on a through line (issue #489 stage 2).
+
+    STATUS: **EXPERIMENTAL — not in the validated set**
+    (``docs/guides/support_matrix.md``). This extends the validated 1-port
+    coax-line method (:meth:`compute_coaxial_line_reflection`) to two ports by
+    building a single through line with a matched annular-resistor feed near
+    EACH z end, driving each end's own TEM TFSF source in turn (two separate
+    FDTD runs), and recovering each port's own forward/back wave amplitudes
+    (not assuming the non-driven port sees zero incident wave — see
+    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes` for
+    why the naive ``S[j,i]=b_j/a_i`` ratio has a hard terminator-reflection
+    floor that this two-drive solve removes).
+
+    **Scope limitation that must not be silently dropped**: every DUT this
+    method can currently gate against (none / a matched feed / a coaxial
+    dielectric plug) is azimuthally symmetric and excites only TM0n modes.
+    Issue #489 exists for TRANSITION designers whose discontinuities excite
+    TE11 (cutoff 25.17 GHz on the validated SMA line — inside the 4-12 GHz
+    band's evanescent tail, surviving to the first probe plane at roughly
+    0.10 of its launch amplitude). A battery built only on symmetric DUTs
+    certifies a class that EXCLUDES the target class. No external referee has
+    run against this method, and no phase claim is made.
+
+    ``s_params[j, i, :]`` is the response measured at port ``j`` while port
+    ``i`` is driven (standard S-matrix convention), referenced to each port's
+    OWN reference plane (its feed resistor's axial plane — see
+    ``reference_planes``). ``cond_a`` is the per-frequency condition number of
+    the incident-wave matrix inverted by the two-drive solve: it bounds
+    DEGENERACY of the two drives only, and is blind to a systematic
+    incident/outgoing mislabel at one port (see the cited function's
+    docstring) — passivity (checked downstream by
+    ``_warn_if_nonpassive_smatrix`` via ``_finalize_sparam_result``, NOT
+    bypassed here) is the only handle on that defect family.
+    ``recurrence_residual`` / ``fit_residual`` are per (port array, drive,
+    frequency) — 0 means a clean single-TEM-mode field at that array during
+    that drive; ``annulus_cells`` is the shared resolution metric (same
+    convention as the 1-port method, below ~3.5 cells is under-resolved).
+    ``settling_db`` is a per-drive ring-down witness (worst end/peak E^2 ratio,
+    dB, over one point probe per array — same convention as the MSL/mixed
+    lanes; above -40 dB suggests the fixed-length record may have been
+    truncated before the structure rang down).
+    """
+
+    s_params: np.ndarray
+    freqs: np.ndarray
+    port_names: tuple[str, ...]
+    reference_planes: np.ndarray
+    cond_a: np.ndarray
+    recurrence_residual: np.ndarray
+    fit_residual: np.ndarray
+    annulus_cells: float
+    settling_db: np.ndarray
+    status: str
+
+
 @dataclass(frozen=True)
 class _MSLPortEntry:
     """Internal bookkeeping for a microstrip line port.
@@ -1484,6 +1541,7 @@ __all__ = [
     "WaveguideSMatrixResult",
     "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
+    "CoaxialTwoPortResult",
     "_MSLPortEntry",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
