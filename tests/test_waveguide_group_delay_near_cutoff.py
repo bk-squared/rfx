@@ -16,6 +16,22 @@ via a central-difference stencil (O(domega^2)) at the 9 interior frequency
 points, one-sided (O(domega)) at the 2 band-edge points (reported, not
 gated).
 
+Comparator (adversarial review of PR #536, finding M3): the gate compares
+the measured finite-difference tau_g against the analytic phase run through
+the IDENTICAL finite-difference stencil, not the exact closed-form
+derivative -- otherwise the stencil's own truncation error (opposite sign to
+the true residual here) partially cancels it and flatters the headline
+number. See ``build_waveguide_group_delay_envelope.py`` for the derivation
+and ``test_waveguide_group_delay_tolerance_envelope.py`` for the pinned,
+non-tautological tolerance constant.
+
+Falsifiers (finding M2): three genuinely independent defects -- skipping the
+phase-unwrap step, dropping the tau_g leading minus sign, and using the WRONG
+L_eff (domain length instead of reference-plane separation) in the analytic
+comparator. An earlier ``conjugate_flip`` falsifier was found to be
+IDENTICAL to ``wrong_sign`` on this derivation chain (6.7e-16) and has been
+replaced.
+
 Pure-Python contract (no FDTD) -- replays the committed JSON.
 """
 from __future__ import annotations
@@ -47,7 +63,13 @@ def test_group_delay_gate_passes():
 
 def test_qualitative_expectations_hold():
     """Pre-declared expectations (frozen before the run): monotonic decrease,
-    and the measured near/far-cutoff ratio is close to the analytic one."""
+    and the measured near/far-cutoff ratio is close to the analytic one.
+
+    LOW(d), adversarial review of PR #536: the ratio check uses the INTERIOR
+    bins (indices 1 and 9), not the band-edge endpoints (0 and 10) -- a
+    sibling test (``test_endpoints_are_reported_but_not_gated``) asserts the
+    endpoints use a lower-order stencil and are not gated, so this qualitative
+    check should not lean on them either."""
     env = _load()
     q = env["qualitative_expectations"]
     assert q["monotonic_decrease"] is True, (
@@ -55,10 +77,10 @@ def test_qualitative_expectations_hold():
         "failed; per the frozen stop rule this should have been reported, not "
         "silently tuned"
     )
-    meas = q["measured_ratio_tau0_over_tauN"]
-    ana = q["analytic_ratio_tau0_over_tauN"]
+    meas = q["measured_ratio_tau1_over_tau9_interior"]
+    ana = q["analytic_exact_ratio_tau1_over_tau9_interior"]
     assert abs(meas - ana) / ana < 0.15, (
-        f"measured tau0/tauN ratio {meas:.3f} vs analytic {ana:.3f} -- "
+        f"measured interior tau1/tau9 ratio {meas:.3f} vs analytic {ana:.3f} -- "
         f">15% off the pre-declared order-of-magnitude/sign check"
     )
 
@@ -97,13 +119,15 @@ def test_domain_invariance_witness_does_not_flip_verdict():
     assert not inv["verdict_flipped"], inv
 
 
-@pytest.mark.parametrize("name", ["skip_unwrap", "wrong_sign", "conjugate_flip"])
+@pytest.mark.parametrize("name", ["skip_unwrap", "wrong_sign", "wrong_l_eff"])
 def test_falsifier_reds_the_gate(name):
-    """Mandate: a planted defect must red the gate. Three independent
-    defects are checked -- skipping the unwrap step, dropping the tau_g
-    leading minus sign, and a conjugate (time-convention) flip on S21, the
-    same convention-mismatch class as Lane 1's falsifier and the historical
-    cv11/WR-90 comparator bugs."""
+    """Mandate: a planted defect must red the gate. Three genuinely
+    independent defects are checked -- skipping the unwrap step, dropping the
+    tau_g leading minus sign, and using the WRONG L_eff (domain length
+    instead of reference-plane separation) in the analytic comparator. (An
+    earlier ``conjugate_flip`` falsifier was found, on adversarial review, to
+    be identical to ``wrong_sign`` on this derivation chain -- 6.7e-16 apart,
+    not an independent defect -- and was replaced with ``wrong_l_eff``.)"""
     env = _load()
     f = env["falsifiers"][name]
     assert f["gate_reds"] is True, (

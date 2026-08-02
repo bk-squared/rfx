@@ -76,6 +76,27 @@ full per-bin phase/tau_g trace, and report -- do not adjust the band or
 domain to make it pass.
 
 --- end of frozen pre-declaration ---
+
+POST-RUN CORRECTION (2026-08-02): the no-op claim is false -- the absolute
+phase (-387 deg across the band) wraps once even though per-bin steps are
+~36 deg; the skip_unwrap falsifier demonstrates the consequence at 8.35 ns;
+'verified in the report' referenced no artifact and is retracted. Measured
+directly: the raw (wrapped) angle(S21) crosses the +-180 deg boundary
+exactly once across the 11-point band, and ``np.unwrap`` applies a 360 deg
+correction there -- unwrapping is load-bearing for this fixture, not a
+no-op. This correction is appended per the #535 rule (do not edit the frozen
+block above; append instead) after an adversarial review of PR #536 caught
+the false claim.
+
+HONESTY NOTE ON THE FREEZE ITSELF: unlike Lane 1 (whose phase envelope
+landed in an earlier commit before its falsifier/domain-invariance work, so
+git history plus background-job timestamps corroborate the stated order of
+operations), this file's pre-declaration above and its 3 measurement runs'
+results were committed together in ONE commit. Git history alone cannot
+prove the pre-declaration was actually written before the runs executed --
+that ordering rests on the author's account, not on an independently
+checkable artifact. Stated plainly per the same adversarial review, not
+hidden.
 """
 from __future__ import annotations
 import argparse

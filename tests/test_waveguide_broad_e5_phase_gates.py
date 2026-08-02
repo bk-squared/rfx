@@ -7,10 +7,11 @@ magnitude gate this lane extends):
 1. **Committed-fixture re-derivation** -- load every band's phase envelope
    JSON under ``tests/fixtures/waveguide_broad_e5/*_phase_envelope.json``
    (produced by ``scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py``
-   from the SAME committed npz/manifest data as the magnitude envelope -- no
-   new FDTD run for the 5-band/20-case sweep, see that script's docstring for
-   the full convention note and provenance) and re-assert the phase verdict
-   from the committed per-case numbers.
+   from the npz/manifest pair that produced the committed magnitude envelope
+   -- restored locally for that analysis, since ``.omx`` is gitignored and
+   not present in the tree; no new FDTD run for the 5-band/20-case sweep, see
+   that script's docstring for the full convention note and provenance) and
+   re-assert the phase verdict from the committed per-case numbers.
 2. **Gate-semantics lock** -- drives the real ``airy_slab`` + the corrected
    reference-plane phase transform with synthetic ideal/perturbed phases.
 3. **Falsifier** (mandate: a planted defect must red the gate) -- replays the
@@ -84,10 +85,19 @@ def test_committed_band_phase_envelope_passes_broad_e5(path: Path) -> None:
         max(per_case_max), abs=1e-9
     )
     assert summ["max_phase_diff_deg_across_cases"] <= MAX_PHASE_TOL_DEG
-    # Honesty: this session's fixtures measure ZERO masked bins (the bands
-    # were designed to avoid Fabry-Perot nulls) -- if that ever changes,
-    # masking silently hiding a real regression should be visible, not mute.
-    assert summ["total_masked_bins"] >= 0
+    # Honesty (LOW-b, adversarial review of PR #536: the prior ">= 0" version
+    # of this assertion was vacuous -- masked_bin_count is a non-negative
+    # count by construction and can never fail it). The 5 committed bands
+    # were deliberately designed (see run_waveguide_band_broad_e5_flux_sweep.py
+    # comments) to avoid Fabry-Perot nulls, and measurement confirms ZERO
+    # masked bins across all 20 cases -- pin that fact so a future change
+    # that silently starts masking real bins is caught, not muted.
+    assert summ["total_masked_bins"] == 0, (
+        f"{path.name}: expected 0 masked bins (bands are designed to avoid "
+        f"Fabry-Perot nulls) but got {summ['total_masked_bins']} -- masking "
+        f"is now hiding real bins; verify PHASE_MAG_FLOOR is not silently "
+        f"swallowing a regression before loosening this assertion"
+    )
 
 
 def _synthetic_case(eps_r: float = 2.0, L: float = 3.0e-3, fc_v: float = 9.488e9,

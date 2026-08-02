@@ -47,17 +47,22 @@ def test_max_phase_tol_is_a_bounded_measured_envelope():
     )
 
 
-def test_phase_residual_same_order_as_magnitude_residual():
-    """Cross-check: phase residual should track the KNOWN magnitude-residual
-    story (T2.4: dielectric-contrast/staircasing dominated, not grid
-    dispersion), not be a wildly different scale that suggests a separate,
-    unexplained error source.
+def test_phase_residual_is_far_from_the_old_convention_masking_scale():
+    """Tripwire: the worst-case phase residual must sit far below the OLD
+    cv11 gate's 60-degree window, which existed specifically to mask a
+    convention bug (not a physical residual) rather than measure one.
 
-    The committed magnitude MAX_TOL is 0.05 (T2.4); a ~4% amplitude error and
-    a several-degree phase error are the same order of magnitude for a
-    Yee-discretized/staircased dielectric interface (both trace to the same
-    interface-discretization mechanism), so this is a plausibility bound, not
-    a tight physical derivation.
+    M5 (adversarial review of PR #536): an earlier version of this docstring
+    additionally claimed phase and magnitude residuals "share one mechanism"
+    (interface discretization/staircasing). That claim is UNSUPPORTED and is
+    retracted here rather than repeated: measured across the 20 committed
+    cases, magnitude diff and phase diff are essentially uncorrelated
+    (Pearson r = -0.010) and their worst-case orderings invert (the worst
+    magnitude case is WR-15 dx=32um eps_r=4; the worst phase case is WR-28
+    dx=100um eps_r=2 -- different cases entirely). The 60-degree tripwire
+    below is kept on its own merits (it is far above the measured worst case
+    and would catch a reintroduced convention bug), not because of a shared
+    mechanism with magnitude.
     """
     diffs = _all_case_phase_diffs()
     worst = max(diffs)

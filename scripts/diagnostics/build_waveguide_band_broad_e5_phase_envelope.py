@@ -86,9 +86,9 @@ from build_waveguide_band_broad_e5_envelope import airy_slab, _commit_hash  # no
 
 C0 = 299_792_458.0
 
-# Weak-signal mask floor (mirrors cv11's phase_mag_floor=0.30). Bins with
-# |S_ref| below this fraction of... no, this is an ABSOLUTE floor on the
-# reference magnitude (0..1 scale, same units as |S11|/|S21|), matching cv11.
+# Weak-signal mask floor (mirrors cv11's phase_mag_floor=0.30): an ABSOLUTE
+# floor on the reference magnitude (0..1 scale, same units as |S11|/|S21|),
+# matching cv11 -- NOT a fraction of the band peak.
 PHASE_MAG_FLOOR = 0.30
 
 # Measured-envelope tolerance (T2.4-style derivation, NOT a round number):
@@ -201,8 +201,13 @@ def build_phase_envelope(manifest_path: Path, band_token: str, band_label: str):
             "magnitude) versus analytic Airy reference, reference-plane-corrected "
             "per the module convention note, spanning the same mesh (dx), "
             "frequency, and geometry (eps_r) axes as the committed magnitude "
-            "envelope for this band. Re-analysis of the identical committed "
-            "complex S-parameter data used for that envelope -- no new FDTD run."
+            "envelope for this band. Re-analysis of the npz/manifest pair that "
+            "produced that committed magnitude envelope (.omx is gitignored; "
+            "restored locally for this analysis, not present in the tree) -- "
+            "no new FDTD run. Caveat: d_left equals d_right in this fixture "
+            "(the slab sits centered between symmetric reference planes), so "
+            "this evidence cannot distinguish the S21 formula's d_left and "
+            "d_right terms separately -- only their sum is exercised."
         ),
         "commit_hash": _commit_hash(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -213,10 +218,12 @@ def build_phase_envelope(manifest_path: Path, band_token: str, band_label: str):
         ),
         "phase_mag_floor": PHASE_MAG_FLOOR,
         "source_data_provenance": (
-            "SAME npz/manifest as the committed magnitude envelope for this band "
-            "(gpu-rtx4090, VESSL 369367242914) -- no fresh FDTD run for this "
-            "5-band/20-case sweep; phase is a re-analysis of already-captured "
-            "complex S-parameters."
+            "the npz/manifest pair that produced the currently-committed "
+            "magnitude envelope for this band (gpu-rtx4090, VESSL 369367242914) "
+            "-- restored locally for this analysis; .omx is gitignored so it is "
+            "not present in the tree. No fresh FDTD run for this 5-band/20-case "
+            "sweep; phase is a re-analysis of already-captured complex "
+            "S-parameters."
         ),
         "convention_note_ref": (
             "see this script's module docstring for the full e^{+jwt}/"

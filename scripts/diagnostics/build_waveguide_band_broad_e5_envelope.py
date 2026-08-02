@@ -96,6 +96,7 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
     manifest = json.loads(manifest_path.read_text())
     fc_v = float(manifest["fc_te10_hz"])
     ref_left = float(manifest["reference_planes_x_m"][0])
+    ref_right = float(manifest["reference_planes_x_m"][1])
     port_left = float(manifest["ports_x_m"][0])
     port_right = float(manifest["ports_x_m"][1])
     slab_center = 0.5 * (port_left + port_right)
@@ -113,8 +114,22 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
         s11_e, s21_e = airy_slab(freqs, case_eps_r, case_slab_L, fc_v)
         beta_v = (2 * np.pi * freqs / C0) * np.sqrt(1.0 - (fc_v / freqs) ** 2)
         d_left = slab_center - 0.5 * case_slab_L - ref_left
+        d_right = ref_right - (slab_center + 0.5 * case_slab_L)
         s11_ref = s11_e * np.exp(-2j * beta_v * d_left)
-        s21_ref = s21_e * np.exp(+1j * beta_v * case_slab_L)
+        # Reference-plane-corrected S21 phase (single forward pass through the
+        # vacuum gap on BOTH sides of the slab -- see the Lane 1 phase
+        # producer's convention note, build_waveguide_band_broad_e5_phase_envelope.py,
+        # for the full derivation). This term is PROVABLY magnitude-output-
+        # neutral here (|exp(i*anything)| == 1, so it never changes
+        # s21_diff = |s21| - |s21_ref| below) -- it is phase-load-bearing only
+        # in the phase producer, which is why the old
+        # exp(+1j*beta_v*case_slab_L) placeholder (wrong sign AND wrong
+        # distance) shipped for a long time without any magnitude gate
+        # catching it. Fixed at the source per issue #490 Lane 1 review
+        # (adversarial review M4); the phase producer and its falsifier keep
+        # their own independent formula/inline-bug copies and do not depend
+        # on this line.
+        s21_ref = s21_e * np.exp(-1j * beta_v * (d_left + d_right))
         s11_diff = np.abs(np.abs(s11) - np.abs(s11_ref))
         s21_diff = np.abs(np.abs(s21) - np.abs(s21_ref))
         case_max = max(float(s11_diff.max()), float(s21_diff.max()))

@@ -44,12 +44,21 @@ WR340_DIR = REPO / ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr340_sband-
 
 
 def _case_max_phase(s11, s21, s11_ref, s21_ref):
+    """LOW-c (adversarial review of PR #536): mirrors the producer's fail-loud
+    behavior on a fully-masked leg (build_waveguide_band_broad_e5_phase_envelope.py)
+    instead of silently substituting 0.0, which would report a vacuous
+    'perfect' phase match when there was actually no signal to compare."""
     m11 = np.abs(s11_ref) >= PHASE_MAG_FLOOR
     m21 = np.abs(s21_ref) >= PHASE_MAG_FLOOR
+    if not m11.any() or not m21.any():
+        raise RuntimeError(
+            f"every bin of S11 or S21 fell below PHASE_MAG_FLOOR={PHASE_MAG_FLOOR} "
+            f"-- a fully-masked leg would silently report a vacuous 0-degree "
+            f"diff, which is worse than failing loudly (R5: a mask must not "
+            f"hide the absence of signal)"
+        )
     d11 = _wrapped_phase_diff_deg(s11, s11_ref)[m11]
     d21 = _wrapped_phase_diff_deg(s21, s21_ref)[m21]
-    d11 = d11 if d11.size else np.array([0.0])
-    d21 = d21 if d21.size else np.array([0.0])
     return max(float(d11.max()), float(d21.max()))
 
 
