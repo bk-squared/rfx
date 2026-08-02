@@ -113,6 +113,59 @@ def test_mixed_cell_warning_fires_at_dx_80():
     assert "snap" in mixed[0].lower() or "Snap" in mixed[0] or "h_sub/" in mixed[0]
 
 
+# ---------------------------------------------------------------------------
+# Issue #487: the "<5% Z0 bias at 4+ cells" promise (check 2) and the
+# mixed-cell danger zone (check 2b) both got a sweep-grounded correction —
+# the promise holds only on an ALIGNED mesh; misalignment is 2.6-2.9x worse
+# in Z0-bias magnitude than refinement alone predicts. Numbers come from the
+# committed scripts/diagnostics/msl_z0_bias_floor_sweep.py artifact, NOT a
+# derived per-mesh formula (leg-1 expectation (a) broke at the finest
+# aligned point, so no continuous dB advisory was added — see that script's
+# docstring and _check_msl_port_geometry's class docstring).
+# ---------------------------------------------------------------------------
+def test_substrate_resolution_warning_names_alignment_requirement():
+    """Check 2's fix must fire only for an ALIGNED refinement target, and
+    must cite the sweep-measured bias numbers, not just the bare '<5%'."""
+    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
+    msgs = _msl_warnings(sim)
+    sub = [m for m in msgs if "substrate cell" in m]
+    assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
+    assert "an integer (aligned)" in sub[0], sub[0]
+    assert "-3.8%" in sub[0] and "+11%" in sub[0], sub[0]
+    assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
+
+
+def test_substrate_resolution_warning_silent_wording_at_6_cells():
+    """No substrate-cell warning (hence no alignment-caveat text) at 6
+    aligned cells -- mirrors test_substrate_resolution_silent_at_6_cells."""
+    sim = _build_sim(dx=40e-6, ly=W_TRACE + 8 * H_SUB)
+    msgs = _msl_warnings(sim)
+    sub = [m for m in msgs if "an integer (aligned)" in m]
+    assert len(sub) == 0, f"expected no alignment-caveat text, got: {sub}"
+
+
+def test_mixed_cell_warning_names_z0_bias_magnitude():
+    """Check 2b must state that Hard PEC is exempt from the |S21|² bug but
+    NOT from the larger Z0 bias -- the 2026-08-02 sweep found +20.2%/+11.0%
+    misaligned vs -7.9%/-3.8% aligned at comparable cell counts."""
+    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
+    msgs = _msl_warnings(sim)
+    mixed = [m for m in msgs if "mixed-cell danger zone" in m]
+    assert len(mixed) >= 1, f"expected mixed-cell warning at dx=80, got: {msgs}"
+    assert "2.6-2.9x worse" in mixed[0], mixed[0]
+    assert "+20.2%" in mixed[0] and "-7.9%" in mixed[0], mixed[0]
+    assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
+
+
+def test_mixed_cell_silent_wording_at_clean_alignment():
+    """No mixed-cell warning (hence no Z0-bias-magnitude text) at a clean
+    alignment -- mirrors test_mixed_cell_silent_at_dx_127_clean_alignment."""
+    sim = _build_sim(dx=127e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
+    msgs = _msl_warnings(sim)
+    mixed = [m for m in msgs if "2.6-2.9x worse" in m]
+    assert len(mixed) == 0, f"expected no Z0-bias-magnitude text, got: {mixed}"
+
+
 def test_mixed_cell_silent_at_dx_127_clean_alignment():
     """h_sub/dx = 2.000 exactly — substrate boundary at a cell face,
     no mixed cell."""

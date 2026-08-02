@@ -1,0 +1,199 @@
+{
+  "rows": [
+    {
+      "label": "aligned h_sub/3",
+      "dx_um": 84.667,
+      "n_z_sub_exact": 3.0,
+      "frac": 0.0,
+      "mixed_cell_danger_zone": false,
+      "z0_measured_ohm": 44.108,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": -0.04115,
+      "abs_gamma_implied": 0.04115,
+      "mean_s11_raw": 0.05005,
+      "mean_s11_default_projected": 0.04998,
+      "max_passivity_correction": 0.00097,
+      "mean_s21_raw": 0.99907,
+      "ratio_floor_over_gamma": 1.2161,
+      "mean_s11_raw_db": -26.01,
+      "settling_db": [
+        -109.9,
+        -113.5
+      ],
+      "wallclock_s": 312.5,
+      "preflight_warnings": [
+        "[run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 84.67\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.",
+        "[run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 84.67\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry"
+      ]
+    },
+    {
+      "label": "aligned h_sub/4",
+      "dx_um": 63.5,
+      "n_z_sub_exact": 4.0,
+      "frac": 0.0,
+      "mixed_cell_danger_zone": false,
+      "z0_measured_ohm": 46.098,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": -0.01911,
+      "abs_gamma_implied": 0.01911,
+      "mean_s11_raw": 0.02228,
+      "mean_s11_default_projected": 0.02219,
+      "max_passivity_correction": 0.00113,
+      "mean_s21_raw": 1.00015,
+      "ratio_floor_over_gamma": 1.1659,
+      "mean_s11_raw_db": -33.04,
+      "settling_db": [
+        -112.0,
+        -114.4
+      ],
+      "wallclock_s": 679.8,
+      "preflight_warnings": [
+        "[run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 63.5\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "[run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 63.5\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry"
+      ]
+    },
+    {
+      "label": "aligned h_sub/5",
+      "dx_um": 50.8,
+      "n_z_sub_exact": 5.0,
+      "frac": 0.0,
+      "mixed_cell_danger_zone": false,
+      "z0_measured_ohm": 47.3,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": -0.00625,
+      "abs_gamma_implied": 0.00625,
+      "mean_s11_raw": 0.00592,
+      "mean_s11_default_projected": 0.00564,
+      "max_passivity_correction": 0.00125,
+      "mean_s21_raw": 1.00043,
+      "ratio_floor_over_gamma": 0.9469,
+      "mean_s11_raw_db": -44.56,
+      "settling_db": [
+        -113.7,
+        -115.3
+      ],
+      "wallclock_s": 1262.8,
+      "preflight_warnings": [
+        "[run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 50.8\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "[run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 50.8\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry"
+      ]
+    },
+    {
+      "label": "aligned h_sub/6",
+      "dx_um": 42.333,
+      "n_z_sub_exact": 6.0,
+      "frac": 0.0,
+      "mixed_cell_danger_zone": false,
+      "z0_measured_ohm": 48.21,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": 0.00328,
+      "abs_gamma_implied": 0.00328,
+      "mean_s11_raw": 0.00642,
+      "mean_s11_default_projected": 0.00619,
+      "max_passivity_correction": 0.00126,
+      "mean_s21_raw": 1.00044,
+      "ratio_floor_over_gamma": 1.9583,
+      "mean_s11_raw_db": -43.85,
+      "settling_db": [
+        -113.1,
+        -115.0
+      ],
+      "wallclock_s": 2221.3,
+      "preflight_warnings": [
+        "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +y absorbing boundary = 508\u00b5m < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +y absorbing boundary = 508\u00b5m < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
+        "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +y absorbing boundary = 508\u00b5m < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +y absorbing boundary = 508\u00b5m < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry"
+      ]
+    },
+    {
+      "label": "misaligned 80um",
+      "dx_um": 80.0,
+      "n_z_sub_exact": 3.175,
+      "frac": 0.175,
+      "mixed_cell_danger_zone": true,
+      "z0_measured_ohm": 57.576,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": 0.09179,
+      "abs_gamma_implied": 0.09179,
+      "mean_s11_raw": 0.11609,
+      "mean_s11_default_projected": 0.11598,
+      "max_passivity_correction": 0.00144,
+      "mean_s21_raw": 0.99372,
+      "ratio_floor_over_gamma": 1.2648,
+      "mean_s11_raw_db": -18.7,
+      "settling_db": [
+        -98.3,
+        -102.8
+      ],
+      "wallclock_s": 375.3,
+      "preflight_warnings": [
+        "[run] preflight found 7 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 80\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_0': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_1': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).",
+        "[run] preflight found 7 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 80\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_0': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) for <5% Z0 bias.\n  - MSL port 'msl_1': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry",
+        "compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 57.60 ohm deviates 20.3% from analytic Hammerstad-Jensen 47.89 ohm at f = 3.7586 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V\u00b7I-split S11/S21 are unaffected.",
+        "compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 57.77 ohm deviates 20.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V\u00b7I-split S11/S21 are unaffected."
+      ]
+    },
+    {
+      "label": "misaligned 60um",
+      "dx_um": 60.0,
+      "n_z_sub_exact": 4.2333,
+      "frac": 0.2333,
+      "mixed_cell_danger_zone": true,
+      "z0_measured_ohm": 53.177,
+      "z0_hj_ohm": 47.895,
+      "eps_eff_hj": 2.8694,
+      "gamma_implied": 0.05226,
+      "abs_gamma_implied": 0.05226,
+      "mean_s11_raw": 0.06566,
+      "mean_s11_default_projected": 0.06557,
+      "max_passivity_correction": 0.00139,
+      "mean_s21_raw": 0.99834,
+      "ratio_floor_over_gamma": 1.2565,
+      "mean_s11_raw_db": -23.65,
+      "settling_db": [
+        -103.0,
+        -103.3
+      ],
+      "wallclock_s": 834.9,
+      "preflight_warnings": [
+        "[run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 60\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': h_sub/dx = 4.233 (fractional part 0.233) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 50.8\u00b5m (= h_sub/5) or 63.5\u00b5m (= h_sub/4).\n  - MSL port 'msl_1': h_sub/dx = 4.233 (fractional part 0.233) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 50.8\u00b5m (= h_sub/5) or 63.5\u00b5m (= h_sub/4).",
+        "[run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 60\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': h_sub/dx = 4.233 (fractional part 0.233) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 50.8\u00b5m (= h_sub/5) or 63.5\u00b5m (= h_sub/4).\n  - MSL port 'msl_1': h_sub/dx = 4.233 (fractional part 0.233) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` is unaffected. To snap onto a safe alignment, set dx = 50.8\u00b5m (= h_sub/5) or 63.5\u00b5m (= h_sub/4).",
+        "standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry",
+        "compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 53.18 ohm deviates 11.1% from analytic Hammerstad-Jensen 47.89 ohm at f = 4.3793 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V\u00b7I-split S11/S21 are unaffected.",
+        "compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 53.32 ohm deviates 11.3% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V\u00b7I-split S11/S21 are unaffected."
+      ]
+    }
+  ],
+  "verdict": {
+    "a_floor_matches_gamma_within_1p3x": false,
+    "a_ratios": [
+      1.2161,
+      1.1659,
+      0.9469,
+      1.9583,
+      1.2648,
+      1.2565
+    ],
+    "b_refinement_reduces_gamma_in_aligned_class": true,
+    "b_aligned_gammas_coarse_to_fine": [
+      0.04115,
+      0.01911,
+      0.00625,
+      0.00328
+    ],
+    "c_misalignment_shifts_floor_at_comparable_cells": true,
+    "c_witness_pair": {
+      "misaligned_60um_abs_gamma": 0.05226,
+      "aligned_h_sub_4_abs_gamma": 0.01911
+    }
+  }
+}

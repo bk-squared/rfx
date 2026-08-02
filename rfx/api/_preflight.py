@@ -3215,10 +3215,27 @@ class _PreflightMixin:
            keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
            sweep, 2026-05-04 — see rfx-known-issues.md).
 
-        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells.
-           Yee staircase at the dielectric interface is O(dx) (not
-           O(dx²)) for inhomogeneous ε; <4 cells gives Z0 staircase
-           error >5%.
+        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells, on an
+           ALIGNED mesh (h_sub/dx integer). Yee staircase at the
+           dielectric interface is O(dx) (not O(dx²)) for inhomogeneous
+           ε; <4 cells gives Z0 staircase error >5%. Re-verified post-
+           #511/#507 by ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``
+           (2026-08-02, committed artifact under that directory): aligned
+           dx=h_sub/{3,4,5,6} measured Z0 bias -7.9%/-3.8%/-1.2%/+0.7%
+           vs the analytic Hammerstad-Jensen anchor — the "<5% at 4+
+           cells" promise holds, but ONLY when aligned. A misaligned mesh
+           (h_sub/dx fractional part in [0.10, 0.40], check 2b) measured
+           +20.2%/+11.0% at comparable ~3/~4 cells respectively — 2.6-2.9x
+           worse in magnitude than the aligned case at the same cell
+           count, so refining cell count alone does not fix it (see 2b).
+           A wider sweep testing whether alignment class shifts the
+           |S11| floor itself, not just Z0, found the mechanism story
+           incomplete at fine well-aligned meshes (issue #487; the
+           |S11| floor does not track |Gamma_implied| = |(Z0-Z0_HJ)/
+           (Z0+Z0_HJ)| once Gamma_implied gets very small — a separate,
+           Gamma-independent residual of order 0.006 dominates there) —
+           so no derived-dB advisory is published; the sweep JSON is the
+           artifact of record.
 
         3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
            Source-side CPML reflection inflates |S11| if the port is
@@ -3271,8 +3288,15 @@ class _PreflightMixin:
                         f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
                         f"Yee staircase at dielectric interface is O(dx) — "
                         f"Z0 staircase error >5% expected. Refine to dx ≤ "
-                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) for "
-                        f"<5% Z0 bias.",
+                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) AND keep "
+                        f"h_sub/dx an integer (aligned) for <5% Z0 bias — "
+                        f"measured post-#511/#507 at -3.8%/-1.2%/+0.7% for "
+                        f"h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py). Refining WITHOUT "
+                        f"alignment does not reach that: a mixed-cell mesh "
+                        f"at a similar cell count measured +11% (h_sub/dx="
+                        f"4.233) — see the mixed-cell-danger-zone check "
+                        f"below.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -3292,6 +3316,15 @@ class _PreflightMixin:
             # lengths at dx ∈ [75, 82]µm with h_sub=254µm).  Snap dx
             # so h_sub/dx is integer or its fractional part is > 0.6 to
             # stay in a safe alignment window.
+            #
+            # Hard PEC is unaffected by that |S21|² bug, but NOT by Z0
+            # bias itself (issue #487, scripts/diagnostics/
+            # msl_z0_bias_floor_sweep.py, 2026-08-02): on the SAME
+            # committed thru fixture, a mixed-cell mesh measured +20.2%/
+            # +11.0% Z0 bias vs the analytic Hammerstad-Jensen anchor at
+            # ~3/~4 substrate cells, against -7.9%/-3.8% aligned at the
+            # same cell counts — 2.6-2.9x worse in magnitude, so cell
+            # count alone (check 2) does not predict this.
             frac = (h_sub / dx) - int(h_sub / dx)
             if 0.10 <= frac <= 0.40:
                 # Snap suggestions: nearest integer above and below.
@@ -3308,8 +3341,14 @@ class _PreflightMixin:
                         f"that holds the trace; AD-traceable "
                         f"``pec_occupancy_override`` zeros the whole cell "
                         f"and produces unphysical |S21|² > 1 in this regime. "
-                        f"Hard ``Box(material='pec')`` is unaffected. To "
-                        f"snap onto a safe alignment, set dx = "
+                        f"Hard ``Box(material='pec')`` avoids that specific "
+                        f"bug, but Z0 bias itself is still 2.6-2.9x worse "
+                        f"than an aligned mesh at a comparable cell count "
+                        f"(measured +20.2% vs -7.9% at ~3 cells, +11.0% vs "
+                        f"-3.8% at ~4 cells; scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py) — refining cell count "
+                        f"alone will not reach the aligned-mesh bias. To "
+                        f"snap onto a safe alignment regardless, set dx = "
                         f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
                         f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
                         code="msl_port_geometry",
