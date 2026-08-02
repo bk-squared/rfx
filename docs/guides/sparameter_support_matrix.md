@@ -164,11 +164,21 @@ A `True` entry is not an accuracy guarantee.
   extractor defects, fixed in PR #516 (`f95240f`), not a mesh property. A
   smaller floor survives whose mechanism is the mismatch between the
   rasterized line's own Z0 and the analytic Hammerstad-Jensen anchor `S` is
-  normalized against; no single envelope number is published here because
-  the #487 re-sweep (`scripts/diagnostics/msl_z0_bias_floor_sweep.py`,
-  committed JSON) found that mismatch does not explain the floor once it
-  gets small on a fine, well-aligned mesh — see that script for the
-  measured points. Do not generalize the matched/thru/notch evidence.
+  normalized against, tracking `|Gamma_implied| = |(Z0-Z0_HJ)/(Z0+Z0_HJ)|`
+  within ~1.3x over 5 of 6 points of the #487 re-sweep
+  (`scripts/diagnostics/msl_z0_bias_floor_sweep.py`, committed JSON). No
+  single envelope number is published, for two reasons: (1) below
+  `|Gamma_implied| ~ 0.006` (the finest aligned sweep point) the sweep
+  cannot resolve whether the mechanism still holds — it compares one
+  band-mean Z0 against a band-mean `|S11|(f)`, with no per-bin trace to
+  exclude a Jensen's-inequality artifact, against a fitted-Z0 estimator
+  the library's own honesty guard calls healthy only to +/-10% — so this
+  is reported as a resolution limit of the sweep, not a confirmed second
+  mechanism (see the script for the full breakdown); (2) even where the
+  mechanism does hold, the measured floors are specific to that one thru
+  fixture, and generalizing them to a dB promise for arbitrary MSL ports
+  would itself be the overclaim the next sentence forbids. Do not
+  generalize the matched/thru/notch evidence.
 - The auto `n_probe_offset` solves the upstream/downstream clearance interval
   at driver time (midpoint with a reflector, unchanged without one) and warns
   loudly when a short feed cannot satisfy both clearances (#469). Library

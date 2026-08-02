@@ -116,12 +116,16 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # ---------------------------------------------------------------------------
 # Issue #487: the "<5% Z0 bias at 4+ cells" promise (check 2) and the
 # mixed-cell danger zone (check 2b) both got a sweep-grounded correction —
-# the promise holds only on an ALIGNED mesh; misalignment is 2.6-2.9x worse
-# in Z0-bias magnitude than refinement alone predicts. Numbers come from the
-# committed scripts/diagnostics/msl_z0_bias_floor_sweep.py artifact, NOT a
-# derived per-mesh formula (leg-1 expectation (a) broke at the finest
-# aligned point, so no continuous dB advisory was added — see that script's
-# docstring and _check_msl_port_geometry's class docstring).
+# the promise holds only on an ALIGNED mesh; misalignment is 2.56-2.94x
+# worse in Z0-bias magnitude than refinement alone predicts. Numbers come
+# from the committed scripts/diagnostics/msl_z0_bias_floor_sweep.py
+# artifact, NOT a derived per-mesh formula (leg-1 expectation (a) broke at
+# the finest aligned point, so no continuous dB advisory was added — see
+# that script's docstring and _check_msl_port_geometry's class docstring).
+#
+# Every numeric constant quoted in both messages gets its own assertion
+# below (adversarial-review finding: an unbound constant can drift silently
+# — the #494->#502 coverage-hole class).
 # ---------------------------------------------------------------------------
 def test_substrate_resolution_warning_names_alignment_requirement():
     """Check 2's fix must fire only for an ALIGNED refinement target, and
@@ -131,14 +135,21 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     sub = [m for m in msgs if "substrate cell" in m]
     assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
     assert "an integer (aligned)" in sub[0], sub[0]
-    assert "-3.8%" in sub[0] and "+11%" in sub[0], sub[0]
+    assert "-3.8%" in sub[0], sub[0]
+    assert "-1.2%" in sub[0], sub[0]
+    assert "+0.7%" in sub[0], sub[0]
+    assert "+11%" in sub[0], sub[0]
+    assert "4.233" in sub[0], sub[0]
     assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
 
 
 def test_substrate_resolution_warning_silent_wording_at_6_cells():
     """No substrate-cell warning (hence no alignment-caveat text) at 6
-    aligned cells -- mirrors test_substrate_resolution_silent_at_6_cells."""
-    sim = _build_sim(dx=40e-6, ly=W_TRACE + 8 * H_SUB)
+    TRULY aligned cells. Uses dx=h_sub/6, not the existing suite's
+    dx=40um -- that reads 6.35 cells (frac 0.35, itself inside the
+    [0.10, 0.40] mixed-cell danger zone), so it is not actually an
+    aligned control (adversarial-review finding)."""
+    sim = _build_sim(dx=H_SUB / 6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
     sub = [m for m in msgs if "an integer (aligned)" in m]
     assert len(sub) == 0, f"expected no alignment-caveat text, got: {sub}"
@@ -152,8 +163,11 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "mixed-cell danger zone" in m]
     assert len(mixed) >= 1, f"expected mixed-cell warning at dx=80, got: {msgs}"
-    assert "2.6-2.9x worse" in mixed[0], mixed[0]
-    assert "+20.2%" in mixed[0] and "-7.9%" in mixed[0], mixed[0]
+    assert "2.56-2.94x worse" in mixed[0], mixed[0]
+    assert "+20.2%" in mixed[0], mixed[0]
+    assert "-7.9%" in mixed[0], mixed[0]
+    assert "+11.0%" in mixed[0], mixed[0]
+    assert "-3.8%" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
 
 

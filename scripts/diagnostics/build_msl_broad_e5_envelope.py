@@ -40,9 +40,14 @@ REPO = Path(__file__).resolve().parents[2]
 # (issue #487) — it was substantially the #511 modal-voltage-span and #507
 # far-port-echo single-ratio-assembly extractor defects, fixed in PR #516
 # (f95240f), not a mesh property. Post-fix spot measurements on the same
-# fixture class are much smaller (mean|S11| ~0.05-0.12 depending on mesh
-# alignment; scripts/diagnostics/msl_z0_bias_floor_sweep.py), but THIS
-# envelope has not been regenerated against the corrected extractor — that
+# fixture class are much smaller: band-MEAN |S11| spans 0.0059-0.1161
+# across the full 6-point dx sweep, 0.0059-0.0223 restricted to the
+# aligned 4-6-substrate-cell points (scripts/diagnostics/
+# msl_z0_bias_floor_sweep.py). Note the STATISTIC differs from the gate
+# below — the sweep records band-MEAN |S11|, this envelope's
+# thru_max_s11 gate is a band-MAX, so the two are not directly
+# comparable point-for-point. THIS envelope has not been regenerated
+# against the corrected extractor — that
 # regeneration is #519/#520's scope, not this comment's. The MSL thru
 # broad-E5 lane remains blocked pending that regeneration. Do NOT present
 # thru_max_s11=0.10 as a met criterion, and do NOT read the pre-#511/#507

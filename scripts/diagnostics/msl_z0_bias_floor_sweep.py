@@ -62,7 +62,10 @@ passivity-projected) mean|S11| are recorded per point from ONE FDTD run per
 mesh point (the projection in ``_project_passive`` is a post-hoc SVD clip of
 the already-computed raw S -- no second FDTD run needed). Z0 and beta are
 never projected (see ``compute_msl_s_matrix`` docstring), so Gamma_implied
-uses the same Z0 in both columns.
+uses the same Z0 in both columns. The projection's own effect is small
+across this sweep -- max_passivity_correction <= 0.00144 at every point
+(see the committed JSON) -- so "raw" and "default" mean|S11| differ by at
+most that much; the analysis below reads the raw column throughout.
 
 RUNTIME
 -------
@@ -199,15 +202,30 @@ def _check_expectations(rows: list[dict]) -> dict:
     aligned = [r for r in rows if r["label"].startswith("aligned")]
     aligned_sorted = sorted(aligned, key=lambda r: -r["dx_um"])  # coarse -> fine
     gammas = [r["abs_gamma_implied"] for r in aligned_sorted]
-    # near-monotone non-increasing (allow tiny numerical wiggle)
-    exp_b = all(gammas[i + 1] <= gammas[i] + 0.01 for i in range(len(gammas) - 1))
+    # near-monotone non-increasing: a RELATIVE (2%) tolerance, not an
+    # absolute one. An absolute 0.01 epsilon is ~3x the finest measured
+    # |Gamma| (0.00328) and would silently pass a real reversal at that
+    # end of the sweep -- caught in adversarial review.
+    exp_b = all(
+        gammas[i + 1] <= gammas[i] * 1.02 for i in range(len(gammas) - 1)
+    )
 
     by_label = {r["label"]: r for r in rows}
     r_60 = by_label.get("misaligned 60um")
     r_h4 = by_label.get("aligned h_sub/4")
-    exp_c = None
+    exp_c_gamma = None
+    exp_c_floor = None
     if r_60 is not None and r_h4 is not None:
-        exp_c = r_60["abs_gamma_implied"] > r_h4["abs_gamma_implied"]
+        exp_c_gamma = r_60["abs_gamma_implied"] > r_h4["abs_gamma_implied"]
+        # The prose (issue #487) claims alignment class shifts the |S11|
+        # FLOOR itself, not just its Gamma_implied proxy -- code that claim
+        # directly too (adversarial review: (c) was coded weaker than its
+        # own prose).
+        exp_c_floor = r_60["mean_s11_raw"] > r_h4["mean_s11_raw"]
+    exp_c = (
+        None if exp_c_gamma is None or exp_c_floor is None
+        else bool(exp_c_gamma and exp_c_floor)
+    )
 
     return {
         "a_floor_matches_gamma_within_1p3x": exp_a,
@@ -215,9 +233,13 @@ def _check_expectations(rows: list[dict]) -> dict:
         "b_refinement_reduces_gamma_in_aligned_class": exp_b,
         "b_aligned_gammas_coarse_to_fine": gammas,
         "c_misalignment_shifts_floor_at_comparable_cells": exp_c,
+        "c_gamma_check": exp_c_gamma,
+        "c_floor_check": exp_c_floor,
         "c_witness_pair": {
             "misaligned_60um_abs_gamma": r_60["abs_gamma_implied"] if r_60 else None,
             "aligned_h_sub_4_abs_gamma": r_h4["abs_gamma_implied"] if r_h4 else None,
+            "misaligned_60um_mean_s11_raw": r_60["mean_s11_raw"] if r_60 else None,
+            "aligned_h_sub_4_mean_s11_raw": r_h4["mean_s11_raw"] if r_h4 else None,
         },
     }
 

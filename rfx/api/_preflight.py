@@ -3225,17 +3225,45 @@ class _PreflightMixin:
            vs the analytic Hammerstad-Jensen anchor — the "<5% at 4+
            cells" promise holds, but ONLY when aligned. A misaligned mesh
            (h_sub/dx fractional part in [0.10, 0.40], check 2b) measured
-           +20.2%/+11.0% at comparable ~3/~4 cells respectively — 2.6-2.9x
-           worse in magnitude than the aligned case at the same cell
-           count, so refining cell count alone does not fix it (see 2b).
-           A wider sweep testing whether alignment class shifts the
-           |S11| floor itself, not just Z0, found the mechanism story
-           incomplete at fine well-aligned meshes (issue #487; the
-           |S11| floor does not track |Gamma_implied| = |(Z0-Z0_HJ)/
-           (Z0+Z0_HJ)| once Gamma_implied gets very small — a separate,
-           Gamma-independent residual of order 0.006 dominates there) —
-           so no derived-dB advisory is published; the sweep JSON is the
-           artifact of record.
+           +20.2%/+11.0% at comparable ~3/~4 cells respectively —
+           2.56-2.94x worse in magnitude than the aligned case at the
+           comparable cell count, so refining cell count alone does not
+           fix it (see 2b).
+
+           The same sweep also asked whether alignment class shifts the
+           |S11| floor itself, not just Z0 (issue #487). |S11|_floor
+           tracks |Gamma_implied| = |(Z0-Z0_HJ)/(Z0+Z0_HJ)| within ~1.3x
+           over 5 of 6 points (ratio 0.95-1.27), but BREAKS at the finest
+           aligned point (h_sub/6, ratio 1.96), where Gamma_implied =
+           0.0033 is nearly zero (the rasterized Z0 crosses the analytic
+           anchor between n=5 and n=6) while mean|S11| stays at order
+           0.006. Below that scale this sweep cannot RESOLVE whether the
+           floor~=headroom*|Gamma_implied| mechanism still holds, for
+           three reasons, so this is reported as a resolution limit of
+           the sweep, not a confirmed second mechanism: (1) Gamma_implied
+           is one BAND-MEAN Z0 compared against a band-MEAN |S11|(f); the
+           artifact has no per-bin Z0(f), and whenever Gamma(f) changes
+           sign inside the band — exactly this case — mean|S11(f)|
+           generically exceeds |Gamma(mean Z0)| by Jensen's inequality
+           alone; (2) the two sides come from different estimators — the
+           fitted-Z0 honesty guard (``_sparams.py:2100-2102``) only calls
+           Z0 healthy to +/-10%, and at the misaligned 80um point the two
+           per-port Z0 reads differ by 0.17 ohm, over half of the ENTIRE
+           n=6 signal (Z0-Z0_HJ = 0.315 ohm); (3) only ONE point departs
+           — h_sub/5 (Gamma_implied=0.0063) is fully consistent with
+           floor=|Gamma_implied| (ratio 0.95). This single-point ratio
+           breakdown is why no derived-dB formula ships from this sweep.
+
+           No MEASURED-dB advisory ships either, for a separate reason:
+           even where the mechanism DOES hold, the measured floors
+           (-26.0 dB at 3 aligned cells, -33.0 dB at 4) are specific to
+           THIS thru fixture, and the support matrix explicitly forbids
+           generalizing thru/matched/notch evidence to other structures
+           — quoting those numbers as an engineer-facing dB promise for
+           an arbitrary MSL port would be exactly that overclaim. They
+           are cited here as fixture-specific informational context only.
+           The sweep JSON (``scripts/diagnostics/msl_z0_bias_floor_sweep/
+           msl_z0_bias_floor_sweep.json``) is the artifact of record.
 
         3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
            Source-side CPML reflection inflates |S11| if the port is
@@ -3323,8 +3351,8 @@ class _PreflightMixin:
             # committed thru fixture, a mixed-cell mesh measured +20.2%/
             # +11.0% Z0 bias vs the analytic Hammerstad-Jensen anchor at
             # ~3/~4 substrate cells, against -7.9%/-3.8% aligned at the
-            # same cell counts — 2.6-2.9x worse in magnitude, so cell
-            # count alone (check 2) does not predict this.
+            # comparable cell counts — 2.56-2.94x worse in magnitude, so
+            # cell count alone (check 2) does not predict this.
             frac = (h_sub / dx) - int(h_sub / dx)
             if 0.10 <= frac <= 0.40:
                 # Snap suggestions: nearest integer above and below.
@@ -3342,7 +3370,7 @@ class _PreflightMixin:
                         f"``pec_occupancy_override`` zeros the whole cell "
                         f"and produces unphysical |S21|² > 1 in this regime. "
                         f"Hard ``Box(material='pec')`` avoids that specific "
-                        f"bug, but Z0 bias itself is still 2.6-2.9x worse "
+                        f"bug, but Z0 bias itself is still 2.56-2.94x worse "
                         f"than an aligned mesh at a comparable cell count "
                         f"(measured +20.2% vs -7.9% at ~3 cells, +11.0% vs "
                         f"-3.8% at ~4 cells; scripts/diagnostics/"
