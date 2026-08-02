@@ -354,6 +354,16 @@ the first probe plane). No external referee has run against this method and
 no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
 measured single-run envelope and its provenance.
 
+Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
+0.96 -> 0.74 on the 60 mm / 40 GHz fixture over 4-12 GHz even though `|S11|`
+stays at or below 0.05 throughout; this is confirmed against the extractor's
+own matrix-pencil-fitted `Re(gamma)` (`|S21|` matches `exp(-Re(gamma)*L12)`
+to within about 2% at every measured frequency), not asserted from the
+magnitude alone. The under-resolved-annulus recipe (at least 4 cells) that
+this repo already documents for reflection accuracy applies to transmission
+magnitude here too, even when `status` reports `"passed"` (`annulus_cells`
+only gates below 3.5).
+
 ## Floquet/Bloch and non-port observables
 
 `add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay, and

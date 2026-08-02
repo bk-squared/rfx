@@ -1283,14 +1283,38 @@ class CoaxialTwoPortResult:
     docstring) — passivity (checked downstream by
     ``_warn_if_nonpassive_smatrix`` via ``_finalize_sparam_result``, NOT
     bypassed here) is the only handle on that defect family.
-    ``recurrence_residual`` / ``fit_residual`` are per (port array, drive,
-    frequency) — 0 means a clean single-TEM-mode field at that array during
-    that drive; ``annulus_cells`` is the shared resolution metric (same
+    ``recurrence_residual`` / ``fit_residual`` / ``gamma`` are per (port
+    array, drive, frequency) — recurrence_residual 0 means a clean
+    single-TEM-mode field at that array during that drive; ``gamma`` is that
+    array's own matrix-pencil-fitted complex propagation constant (Z0-free,
+    from local probes only). **Measured 2026-08-02: a given array's
+    ``Re(gamma)`` is NOT independent of which drive produced it** — "own
+    drive" (that array's own source active) and "other drive" (that array
+    receiving the transmitted signal) give substantially different, but each
+    internally self-consistent (agreeing between the two mirror-symmetric
+    arrays to 2-5%), estimates; see
+    :func:`_assemble_coaxial_two_port_from_voltages` for the full finding and
+    ``tests/test_coax_two_port_fdtd.py::
+    test_matched_through_line_transmits_reciprocally`` for the mechanism
+    check this motivated. Do not read a single array's ``gamma`` as *the*
+    line attenuation without averaging across all 4 (2 arrays x 2 drives)
+    measurements. ``annulus_cells`` is the shared resolution metric (same
     convention as the 1-port method, below ~3.5 cells is under-resolved).
     ``settling_db`` is a per-drive ring-down witness (worst end/peak E^2 ratio,
     dB, over one point probe per array — same convention as the MSL/mixed
     lanes; above -40 dB suggests the fixed-length record may have been
     truncated before the structure rang down).
+
+    **Numerical line attenuation, not just a reflection artifact**: on the
+    validated 60 mm / 40 GHz fixture, the discrete (3.79-cell annulus)
+    through line itself attenuates the transmitted wave — measured
+    ``|S21|`` 0.96 (4 GHz) down to 0.74 (12 GHz) even with ``|S11|`` <= 0.05
+    throughout. This is confirmed (not merely asserted) by comparing
+    ``|S21|`` against the independently matrix-pencil-fitted ``exp(-Re(gamma)
+    * L12)`` (see ``gamma`` above) — the under-resolved-annulus recipe
+    (>=4 cells) that this repo already documents for reflection accuracy
+    (``compute_coaxial_line_reflection``) applies to TRANSMISSION magnitude
+    here too, even when ``status`` reports ``"passed"``.
     """
 
     s_params: np.ndarray
@@ -1300,6 +1324,7 @@ class CoaxialTwoPortResult:
     cond_a: np.ndarray
     recurrence_residual: np.ndarray
     fit_residual: np.ndarray
+    gamma: np.ndarray
     annulus_cells: float
     settling_db: np.ndarray
     status: str

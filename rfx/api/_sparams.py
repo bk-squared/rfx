@@ -1143,10 +1143,33 @@ def _assemble_coaxial_two_port_from_voltages(
 
     Returns
     -------
-    s_params, cond_a, recurrence_residual, fit_residual
+    s_params, cond_a, recurrence_residual, fit_residual, gamma
         ``s_params`` is ``(2, 2, n_freqs)``; ``recurrence_residual`` /
-        ``fit_residual`` are ``(2, 2, n_freqs)`` indexed
+        ``fit_residual`` / ``gamma`` are ``(2, 2, n_freqs)`` indexed
         ``[port_array, drive, freq]`` (port 0 = top/port1, port 1 = bot/port2).
+        ``gamma`` is the matrix-pencil-fitted complex propagation constant
+        from each array's OWN local probes during that drive (Z0-free,
+        independent of the reference-plane extrapolation). Measured
+        2026-08-02: the SAME array's ``Re(gamma)`` differs substantially
+        (~2-8x, growing with frequency) between "own drive" (that array's
+        own source active — dominant field is the large launched wave, only
+        weakly perturbed by the nearby feed) and "other drive" (that array
+        receiving the transmitted signal — dominant field has just crossed
+        the whole line and is comparably perturbed by the array's OWN nearby
+        feed, which is now absorbing much more incident power). The two
+        "own-drive" fits agree with each other to ~5%; the two "other-drive"
+        fits agree with each other to ~2%; recurrence_residual stays <0.003
+        throughout (the two-wave fit itself is clean at every one of the 4
+        measurements — this is not a bad fit, it is two different, both
+        internally-consistent, local decay-rate estimates). Averaging all 4
+        gives a `|S21|*exp(+Re(gamma_bar)*L12)` that reproduces the measured
+        `|S21|` to within 2.1% across 4-12 GHz (see
+        ``tests/test_coax_two_port_fdtd.py::
+        test_matched_through_line_transmits_reciprocally``), consistent with
+        combined bulk-line attenuation (captured by the lower, own-drive
+        estimate) plus additional loss/scattering concentrated at the
+        RECEIVING feed's own discontinuity (captured by the higher,
+        other-drive estimate) — not a single uniform per-metre loss.
 
     Notes
     -----
@@ -1185,6 +1208,7 @@ def _assemble_coaxial_two_port_from_voltages(
     b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
     rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
     fit_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    gamma = np.zeros((2, 2, n_f), dtype=np.complex128)
 
     for drive_idx in range(2):
         for fi in range(n_f):
@@ -1204,9 +1228,11 @@ def _assemble_coaxial_two_port_from_voltages(
             fit_resid[0, drive_idx, fi] = out_top.fit_residual
             rec_resid[1, drive_idx, fi] = out_bot.recurrence_residual
             fit_resid[1, drive_idx, fi] = out_bot.fit_residual
+            gamma[0, drive_idx, fi] = out_top.gamma
+            gamma[1, drive_idx, fi] = out_bot.gamma
 
     solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
-    return solve.s_params, solve.cond_a, rec_resid, fit_resid
+    return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
 
 
 class _SparamMixin:
@@ -5039,7 +5065,7 @@ class _SparamMixin:
                 ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
                 settling_db[drive_idx] = float(np.max(ratio_db))
 
-        s_params, cond_a, rec_resid, fit_resid = _assemble_coaxial_two_port_from_voltages(
+        s_params, cond_a, rec_resid, fit_resid, gamma = _assemble_coaxial_two_port_from_voltages(
             z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
             ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
             v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
@@ -5062,6 +5088,7 @@ class _SparamMixin:
             cond_a=cond_a,
             recurrence_residual=rec_resid,
             fit_residual=fit_resid,
+            gamma=gamma,
             annulus_cells=annulus_cells,
             settling_db=settling_db,
             status=status,
