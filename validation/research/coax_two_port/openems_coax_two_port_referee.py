@@ -877,35 +877,49 @@ def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
         return logf.read()
 
 
-_EXCITATION_ENERGY_FLOOR = 1e-13
-"""Run-2 fix (2026-08-03, PR #546 follow-up review after VESSL
-369367251627): the FIRST floor (1e-6) was mis-scaled by ~6 ORDERS OF
-MAGNITUDE and rejected a genuinely healthy, converged Stage A REAL run
--- run-2's own artifact (.omx/coax-two-port-referee/20260803T171906Z/)
-shows the exception fired from ``_run_stage_a_reproduce_gate``'s call on
-``port1`` AFTER the real (not smoke) FDTD run and its own ``CalcPort``,
-reading uf_inc=1.241e-12 -- a value that lands squarely inside the
-healthy band the #540 round-1 review itself recorded for REAL runs in
-openEMS's own raw (non-normalized) units: 1.79e-13 to 1.93e-12. The
-recorded FAILURE mode (do-not-repeat file, a different port class) is
-6e-14 -- only ~3x below that healthy-min, not the ~7-8 orders of margin
-1e-6 assumed. This floor (1e-13) sits ~1.8x below the recorded
-healthy-min and ~1.7x above the recorded failure: a CHEAP, HONEST
-tripwire with only ~3x historical separation, not a precise
-discriminator. The load-bearing checks for genuine coupling quality are
-downstream: Stage A's ZL gate (port1.Z_ref vs the analytic closed form)
-and the matched-through witness (|S21|, phase, group delay) -- both
-fail LOUD and specifically if the excitation is subtly wrong in a way
-this coarse floor cannot catch. Do not tighten this floor without a
-freshly measured band from a real run; do not loosen it below the
-recorded failure value either.
-"""
-
-
 def _check_excitation_and_trace(port, sim_path: str, label: str, *,
-                                channel: str = "uf_inc",
-                                is_smoke: bool = False) -> tuple[float, int]:
+                                channel: str = "uf_inc") -> tuple[float, int]:
     """Hand-ported sanity checks (a) + (b): nonzero energy + nonzero trace.
+
+    SCALE-FREE by design (run-2 fix, 2026-08-03, PR #547 review): no
+    absolute floor on ``inc_peak``, only exact-zero/non-finite, plus the
+    independent time-domain trace witness below. This is NOT a new
+    invention -- it mirrors the proven ``[D5]`` guard in
+    ``rfx/interop/emitters/openems.py`` (lines ~1673-1678) verbatim:
+    "No absolute floor is used on purpose: a verified-good small run on
+    this install peaked at |uf_inc| ~ 3e-14, so the 1e-9 floor some
+    hand-written comparators use would false-fire here." That 3e-14
+    verified-GOOD value sits BELOW both this script's own two
+    successively-tried floors (1e-6, then 1e-13) -- the healthy and
+    broken populations OVERLAP in openEMS's raw units, so no absolute
+    scale separates them.
+
+    This exact problem was already found and fixed ONCE in this repo:
+    issue #465 (closed via PR #473, ``8578fcd``) diagnosed precisely
+    this false-fire (a `uf_inc <= 1e-9` guard rejecting a normal run
+    measured at 1.9e-12) and the fix that shipped is this same
+    scale-free pattern -- ``docs/design_notes/geometry_setup_interop.md``
+    records both the healthy measurements (1.93e-12 PEC-cavity, 1.79e-13
+    MSL-thru) AND its own conclusion: "That threshold is live in
+    scripts/diagnostics/build_coaxial_line_openems_broad_comparison.py
+    ... and is worth auditing before it is reused. The emitter instead
+    tests for zero/non-finite plus an independent port time-trace
+    witness." ``build_coaxial_line_openems_broad_comparison.py`` (the
+    SAME do-not-repeat file this module's own header cites) was itself
+    updated by that fix and now carries the identical scale-free guard
+    with a comment naming issue #465 directly. Two rounds of this
+    module's own floor-tuning (1e-6, then a "corrected" 1e-13) took the
+    healthy/failure NUMBERS from these records without their own
+    concluding sentence -- this round removes the floor entirely rather
+    than re-tuning it a third time.
+
+    Weak/marginal coupling that is NOT exact-zero is NOT this function's
+    job to catch -- it is caught downstream, where it has to show up in
+    the actual physics: Stage A's ZL gate (port1.Z_ref vs the analytic
+    closed form) and matched-through witness (|S21|, phase, group
+    delay), and Stage B's passivity/reciprocity witnesses. Those fail
+    loud and specifically; an absolute floor here cannot, because it has
+    no scale to be specific about.
 
     ``channel`` selects WHICH of the port's own two wave components is
     the one THIS DRIVE actually launched (M1 fix, PR #546 review): for
@@ -916,34 +930,16 @@ def _check_excitation_and_trace(port, sim_path: str, label: str, *,
     (NOT uf_inc_self)"). Checking ``uf_inc`` unconditionally, as before,
     silently verified the WRONG channel for the reverse drive.
 
-    ``is_smoke`` (run-2 fix): a smoke run's own excitation is
-    DELIBERATELY truncated (``min(200, nrts)`` timesteps, per
-    ``_run_stage_a_reproduce_gate``/``_run_one_drive``) -- a near-zero
-    reading there is EXPECTED, not a defect, so ``is_smoke=True`` only
-    rejects an exact-zero or non-finite reading (the original, pre-M1
-    check), never the floor above. No current caller passes
-    ``is_smoke=True`` (neither Stage A's nor Stage B's smoke build ever
-    calls ``CalcPort`` on its own discarded ports, so this function is
-    never actually invoked on smoke data today) -- the parameter exists
-    so the exemption is a tested, enforced invariant if a smoke-time
-    excitation check is ever wired in, not an assumption.
-
     Works generically across port classes: ``CoaxialPort.U_filenames``
     holds 3 entries (its 3-plane differential probe), ``AddLumpedPort``
     held 1 -- this function just iterates whatever list is there.
     """
     launched = np.asarray(getattr(port, channel), dtype=np.complex128)
     inc_peak = float(np.max(np.abs(launched))) if launched.size else 0.0
-    if is_smoke:
-        broken = not np.isfinite(inc_peak) or inc_peak == 0.0
-    else:
-        broken = not np.isfinite(inc_peak) or inc_peak < _EXCITATION_ENERGY_FLOOR
-    if broken:
-        floor_desc = "0 (smoke)" if is_smoke else repr(_EXCITATION_ENERGY_FLOOR)
+    if not np.isfinite(inc_peak) or inc_peak == 0.0:
         raise RuntimeError(
-            f"[{label}] openEMS port injected/received NO (or near-zero) "
-            f"wave energy on its own launched channel ({channel}="
-            f"{inc_peak!r} < floor {floor_desc}): "
+            f"[{label}] openEMS port injected/received NO wave energy on "
+            f"its own launched channel ({channel}={inc_peak!r}): "
             f"excitation did not couple or the port never saw the wave."
         )
     n_samples = 0
