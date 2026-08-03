@@ -1,5 +1,5 @@
 name: rfx-coax-two-port-referee
-description: "#489 stage 3: source-built openEMS referee for the coax two-port through-line fixture (comparator leg only -- brackets, does not judge rfx's own PR #534 numbers). On-demand, not a fixed cadence; standing lane per docs/agent-memory/task_recipes/vessl_external_referee_lane.md -- submit whenever the coax two-port geometry or extractor changes, or when #489 stage 3 review needs fresh evidence: vessl run create -f scripts/vessl_coax_two_port_referee.yaml"
+description: "#489 stage 3: source-built openEMS referee for the coax two-port through-line fixture (comparator leg only -- brackets, does not judge rfx's own PR #534 numbers). This lane mounts and tests the PRIMARY checkout (/root/workspace/byungkwan-workspace/research/rfx), NOT a git clone (vessl_external_referee_lane.md) -- the referee script must be MERGED TO MAIN before submitting, or this run will execute whatever is on main, not your branch. On-demand, not a fixed cadence; standing lane per docs/agent-memory/task_recipes/vessl_external_referee_lane.md -- submit whenever the coax two-port geometry or extractor changes, or when #489 stage 3 review needs fresh evidence: vessl run create -f scripts/vessl_coax_two_port_referee.yaml"
 tags: [rfx, coax-two-port, i489, external-referee, w25]
 resources:
   cluster: remilab-c0
@@ -9,7 +9,12 @@ image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
-  OMP_NUM_THREADS: "4"
+  # OMP_NUM_THREADS=1: openEMS's own --threads/numThreads (passed explicitly
+  # below, matching resources.cpu=16) does the parallelism; leaving OMP at
+  # its own default would oversubscribe against openEMS's internal thread
+  # pool (L3 review fix -- align cpu / OMP_NUM_THREADS / numThreads instead
+  # of three independently-chosen numbers).
+  OMP_NUM_THREADS: "1"
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
 mount:
@@ -70,11 +75,15 @@ run: |-
   # -- Stage A + Stage B, sequential inside the script itself (Stage B is
   # skipped by the script if Stage A's reproduce-gate fails). Exit-code
   # convention (docs/agent-memory/task_recipes/vessl_external_referee_
-  # lane.md): 0 self-checks passed, 1 a self-check failed, 2 openEMS
-  # missing (should not fire here -- the build above just proved it isn't). --
+  # lane.md, extended by the script's own module docstring): 0 self-checks
+  # passed, 1 a physics/self-check gate failed, 2 openEMS missing (should
+  # not fire here -- the build above just proved it isn't), 3 an internal
+  # config/layout bug in the script itself (distinct from 1 on purpose --
+  # M2 review fix). --threads matches resources.cpu above (L3 fix). --
   set +e
   timeout 5400 "$PY" validation/research/coax_two_port/openems_coax_two_port_referee.py \
     --output "$out/openems_coax_two_port.json" \
+    --threads 16 \
     > "$out/run.log" 2>&1
   rc=$?
   set -e
@@ -87,6 +96,7 @@ run: |-
     0) echo "PASS: reproduce-gate + Stage B self-checks both passed (comparator-leg only -- see JSON for the actual bracket, no verdict on rfx agreement)" ;;
     1) echo "SELF-CHECK FAILED: reproduce-gate or a Stage B sanity/physical guard failed -- inspect $out/run.log before trusting any number in the JSON" ;;
     2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding -- investigate the build/import path" ;;
+    3) echo "CONFIG ERROR: an internal layout/geometry assertion in the script itself failed -- this is a script bug, NOT a physics finding; fix the script before resubmitting" ;;
     *) echo "ERROR: unexpected exit code $rc" ;;
   esac
   exit "$rc"

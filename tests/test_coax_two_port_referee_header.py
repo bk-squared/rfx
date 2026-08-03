@@ -5,15 +5,18 @@ COMPARATOR-leg-only, VESSL-only harness for rfx issue #489 stage 3 (see its
 module docstring for the full scope fence): openEMS is not installed in
 this environment, so it has never actually run. This test does NOT require
 openEMS -- it checks that the script's reproduce-gate record is committed
-in an honest, fail-loud state: fields exist and are explicitly marked
-UNRUN, not silently populated with unverifiable numbers.
+in an honest, fail-loud state, that its Stage B layout arithmetic is
+self-consistent (testable without openEMS -- see ``_stage_b_layout()``),
+and that the exit-code split between a physics/self-check failure and an
+internal config bug is real (not just documented).
 
-Design (per the task's fail-loud-honest requirement): this test PASSES on
-the current, never-run placeholder state. It is designed to go RED only if
-someone later claims reproduced numbers (``status`` != "UNRUN") without
-also supplying a real, existing log path -- i.e. it enforces the
-invariant, not a specific pinned number that would need updating after
-every VESSL run.
+Design (per the task's fail-loud-honest requirement, M1/M3 review fixes):
+this test PASSES on the current, never-run placeholder state. It checks
+the record's FIELDS' semantics (UNRUN <=> no numbers, no log path; a
+filled record needs a log path under .omx/ or
+docs/research_notes/vessl_logs/) rather than pinning a specific finding
+as fact -- the record's own content (which tutorial, which geometry) is
+free to evolve without this test needing to be rewritten each time.
 """
 
 from __future__ import annotations
@@ -22,6 +25,8 @@ import importlib.util
 import pathlib
 from types import ModuleType
 from typing import Final
+
+import numpy as np
 
 REFEREE_DIR: Final = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -56,27 +61,45 @@ def test_reproduce_gate_record_has_required_fields():
     module = _load_referee_module()
     record = module.REPRODUCE_GATE_RECORD
     required_fields = {
-        "stage", "no_canonical_tutorial_found", "tutorials_checked",
-        "checked_on", "fallback", "nearest_starting_point", "oracle",
-        "gate", "status", "reproduced_short_mag", "reproduced_matched_mag",
-        "log_path", "vessl_run_id",
+        "stage", "tutorial", "do_not_repeat", "geometry", "documented_check",
+        "expected_zl_a_ohm", "gate", "status", "reproduced_zl_mean_ohm",
+        "reproduced_zl_max_dev_ohm", "log_path", "vessl_run_id",
     }
     missing = required_fields - set(record.keys())
     assert not missing, f"REPRODUCE_GATE_RECORD missing fields: {missing}"
 
+    tutorial = record["tutorial"]
+    tutorial_fields = {"repo", "path", "verified_present_on", "verified_via", "submodule_pin_note"}
+    missing_tutorial = tutorial_fields - set(tutorial.keys())
+    assert not missing_tutorial, f"tutorial sub-record missing fields: {missing_tutorial}"
 
-def test_no_canonical_tutorial_finding_is_declared_and_dated():
-    """The 'no canonical openEMS coax tutorial exists' finding is an audit
-    artifact, not prose -- it must name what was checked and when."""
+
+def test_tutorial_citation_is_verifiable():
+    """The reproduce-gate must cite a REAL, checkable tutorial path -- not
+    an assertion that no tutorial exists (M1 fix: the first version wrongly
+    claimed no canonical openEMS coax tutorial exists; PR #540 review
+    found matlab/examples/waveguide/Coax.m). This test checks the citation
+    has the shape of something a reviewer could independently verify
+    (repo + path + how it was checked + when), not that any PARTICULAR
+    tutorial is named -- the record's own content should be free to
+    evolve without this test needing a rewrite."""
     module = _load_referee_module()
-    record = module.REPRODUCE_GATE_RECORD
-    assert record["no_canonical_tutorial_found"] is True
-    checked = record["tutorials_checked"]
-    assert "thliebig/openEMS python/Tutorials" in checked
-    assert len(checked["thliebig/openEMS python/Tutorials"]) >= 5
-    assert "thliebig/openEMS matlab/examples/transmission_lines" in checked
-    assert record["checked_on"]  # non-empty date string
-    assert "coax" not in " ".join(checked["thliebig/openEMS python/Tutorials"]).lower()
+    tutorial = module.REPRODUCE_GATE_RECORD["tutorial"]
+    assert tutorial["repo"], "tutorial citation needs a repo"
+    assert tutorial["path"].endswith(".m") or tutorial["path"].endswith(".py"), (
+        "tutorial citation should point at a real source file"
+    )
+    assert tutorial["verified_present_on"], "tutorial citation needs a verification date"
+    assert tutorial["verified_via"], "tutorial citation needs a verification method"
+
+
+def test_do_not_repeat_cites_the_recorded_failure():
+    """R1/R2 class: the rebuild must name the specific recorded failure it
+    avoids repeating, not just assert a new approach in the abstract."""
+    module = _load_referee_module()
+    do_not_repeat = module.REPRODUCE_GATE_RECORD["do_not_repeat"]
+    assert "build_coaxial_line_openems_broad_comparison.py" in do_not_repeat
+    assert "AddLumpedPort" in do_not_repeat
 
 
 def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
@@ -84,24 +107,29 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
 
     This is the test that must go RED if someone later claims reproduced
     numbers without a log path pointing at the run that produced them --
-    not a pinned number that rots after the first real VESSL run.
+    not a pinned number that rots after the first real VESSL run. M3 fix:
+    a filled-in log_path must live under .omx/ or
+    docs/research_notes/vessl_logs/ AND actually exist on disk.
     """
     module = _load_referee_module()
     record = module.REPRODUCE_GATE_RECORD
 
     if record["status"] == "UNRUN":
-        assert record["reproduced_short_mag"] is None
-        assert record["reproduced_matched_mag"] is None
+        assert record["reproduced_zl_mean_ohm"] is None
+        assert record["reproduced_zl_max_dev_ohm"] is None
         assert record["log_path"] is None
     else:
-        # Once a real run fills this in, it must be backed by an artifact
-        # that actually exists on disk -- a claimed number with no log is
-        # worse than an honest UNRUN placeholder (feedback_summary_
-        # compression_audit.md).
-        assert record["reproduced_short_mag"] is not None
-        assert record["reproduced_matched_mag"] is not None
-        assert record["log_path"], "a filled-in reproduce_gate_record needs a log_path"
-        log_path = REPO_ROOT / record["log_path"]
+        assert record["reproduced_zl_mean_ohm"] is not None
+        assert record["reproduced_zl_max_dev_ohm"] is not None
+        log_path_str = record["log_path"]
+        assert log_path_str, "a filled-in reproduce_gate_record needs a log_path"
+        assert log_path_str.startswith(".omx/") or log_path_str.startswith(
+            "docs/research_notes/vessl_logs/"
+        ), (
+            f"log_path {log_path_str!r} must live under .omx/ or "
+            f"docs/research_notes/vessl_logs/ (M3 fix)"
+        )
+        log_path = REPO_ROOT / log_path_str
         assert log_path.exists(), (
             f"reproduce_gate_record claims status={record['status']!r} but its "
             f"log_path {log_path} does not exist -- a claimed number needs a "
@@ -116,34 +144,102 @@ def test_declared_question_and_governance_notes_present():
     assert "REPRODUCE_GATE_RECORD" in module.MUST_MOVE_WHEN_VALIDATED
 
 
-def test_geometry_constants_match_the_rfx_fixture():
-    """Pins the numbers this script's header claims were read off the live
-    rfx grid-construction path -- a regression lock so a future edit can't
-    silently drift the target geometry away from the rfx fixture without
-    the test noticing."""
+def test_stage_a_matches_coaxm_tutorial_constants():
+    """Regression lock on Coax.m's own literal parameters -- a future edit
+    that silently drifts Stage A away from the tutorial (defeating the
+    whole point of a reproduce-gate) should fail this test."""
     module = _load_referee_module()
-    assert module.A_MM == 0.635
-    assert module.B_MM == 2.055
-    assert module.PTFE_EPS_R == 2.1
-    assert abs(module.DX_MM - 3.7474057249999997e-4 * 1e3) < 1e-9
-    assert module.CPML_CELLS == 16
-    assert abs(module.L12_MM - 58.4595293) < 1e-4
+    assert module.A_LENGTH_MM == 1000.0
+    assert module.A_R_I_MM == 100.0
+    assert module.A_R_O_MM == 230.0
+    assert module.A_R_OS_MM == 240.0
+    assert module.A_MESH_RES_MM == 5.0
+    assert module.A_F0_HZ == module.A_FC_HZ == 0.5e9
+    assert module.A_N_FREQS == 201
+    assert module.A_NUM_TS == 5000
+    assert module.A_END_CRITERIA == 1.0e-5
+    assert module.A_FEEDSHIFT_MM == 50.0  # 10 * mesh_res(1)
+
+
+def test_zl_a_analytic_matches_coaxm_formula():
+    """Independently recompute Coax.m's own ZL_a = Z0/2/pi/sqrt(epsR)*log(r_o/r_i)
+    (epsR=1, r_o=230, r_i=100) and check it matches the module's constant --
+    a regression lock on the reproduce-gate's own oracle."""
+    module = _load_referee_module()
+    eta0 = 376.73031346177066
+    expected = (eta0 / (2.0 * np.pi)) * np.log(230.0 / 100.0)
+    assert abs(module.ZL_A_ANALYTIC_OHM - expected) < 1e-9
+    assert 45.0 < module.ZL_A_ANALYTIC_OHM < 55.0  # sanity: coax Z0 is a ~50ohm-class number
+    assert module.REPRODUCE_GATE_RECORD["expected_zl_a_ohm"] == float(module.ZL_A_ANALYTIC_OHM)
+
+
+def test_geometry_constants_match_the_rasterized_rfx_fixture():
+    """Pins the numbers this script's header claims were read off the live
+    rfx grid-construction path -- including the RASTERIZED cell-count fix
+    (B3 review fix: the nominal domain= argument, not the rasterized
+    interior, was the pre-review bug)."""
+    module = _load_referee_module()
+    assert module.B_A_MM == 0.635
+    assert module.B_B_MM == 2.055
+    assert module.B_PTFE_EPS_R == 2.1
+    assert abs(module.B_DX_MM - 3.7474057249999997e-4 * 1e3) < 1e-9
+    assert module.B_CPML_CELLS == 16
+    assert abs(module.B_L12_MM - 58.4595293) < 1e-4
+
+    # B3 fix: rasterized interior cell counts, NOT the nominal domain= arg
+    # (23 transverse / 162 axial cells at dz=0.37474mm).
+    assert module.B_INTERIOR_X_CELLS == 23
+    assert module.B_INTERIOR_Z_CELLS == 162
+    assert abs(module.B_CLEAR_X_MM - 23 * module.B_DX_MM) < 1e-9
+    assert abs(module.B_CLEAR_Z_MM - 162 * module.B_DX_MM) < 1e-9
+    # the rasterized value must NOT equal the nominal domain= argument --
+    # if it did, the B3 fix would have silently regressed back to the bug.
+    assert abs(module.B_CLEAR_X_MM - 8.0) > 0.1
+    assert abs(module.B_CLEAR_Z_MM - 60.0) > 0.1
+
     # Z0 = sqrt(L'/C') closed form must land close to the standard SMA/PTFE
     # value (~48.6 ohm) this repo's other coax lanes all cite.
-    assert 48.0 < module.Z0_OHM < 49.0
+    assert 48.0 < module.B_Z0_OHM < 49.0
+
+
+def test_stage_b_layout_is_self_consistent_and_openems_free():
+    """``_stage_b_layout()`` must be callable (and its own assertions must
+    pass) WITHOUT openEMS -- this is the function whose failure should map
+    to exit 3 (config bug), distinct from a physics-gate failure (exit 1)."""
+    module = _load_referee_module()
+    layout = module._stage_b_layout()  # must not raise
+
+    required = {
+        "lx_mm", "ly_mm", "lz_mm", "cx_mm", "cy_mm",
+        "z_lo_coax_bot_mm", "z_hi_coax_top_mm", "z_feed_bot_mm", "z_feed_top_mm",
+        "z_split_mm", "ref_plane_shift_port1_mm", "ref_plane_shift_port2_mm",
+    }
+    assert required <= set(layout.keys())
+
+    # Both ports' referral distance to rfx's own feed plane is exactly 1
+    # cell (module docstring "REFERENCE-PLANE REFERRAL" derivation).
+    assert abs(layout["ref_plane_shift_port1_mm"] - module.B_DX_MM) < 1e-6
+    assert abs(layout["ref_plane_shift_port2_mm"] - module.B_DX_MM) < 1e-6
+
+    # ordering sanity: both line edges outside the PML, z_split strictly
+    # between them.
+    assert layout["z_lo_coax_bot_mm"] > module.B_PML_DEPTH_MM
+    assert layout["z_hi_coax_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
+    assert layout["z_lo_coax_bot_mm"] < layout["z_split_mm"] < layout["z_hi_coax_top_mm"]
 
 
 def test_openems_unavailable_exits_2(monkeypatch):
     """main() must return exit code 2 (declared skip), not raise, when the
     openEMS Python bindings are absent -- lane convention (vessl_external_
-    referee_lane.md): 0=self-checks passed, 1=self-check failed, 2=missing."""
+    referee_lane.md): 0=self-checks passed, 1=self-check failed, 2=missing,
+    3=internal config error."""
     module = _load_referee_module()
     import builtins
 
     real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):
-        if name in ("CSXCAD.CSXCAD", "openEMS.openEMS", "CSXCAD", "openEMS"):
+        if name in ("CSXCAD.CSXCAD", "openEMS.openEMS", "openEMS.ports", "CSXCAD", "openEMS"):
             raise ImportError("simulated: openEMS not installed")
         return real_import(name, *args, **kwargs)
 
@@ -151,11 +247,27 @@ def test_openems_unavailable_exits_2(monkeypatch):
     assert module.main([]) == 2
 
 
+def test_config_error_exits_3_distinct_from_physics_failure(monkeypatch):
+    """M2 review fix: an internal config/layout bug must NOT be reported
+    with the same exit code as a physics/self-check gate failure. This
+    simulates a layout bug (by monkeypatching ``_stage_b_layout`` to raise
+    AssertionError, as it would if rfx's geometry drifted and the
+    hard-coded constants above were not updated) and checks main() reports
+    exit 3, not 1 or a raw traceback."""
+    module = _load_referee_module()
+
+    def _broken_layout():
+        raise AssertionError("simulated: rfx geometry drifted")
+
+    monkeypatch.setattr(module, "_stage_b_layout", _broken_layout)
+    assert module.main([]) == 3
+
+
 def test_freqs_overlap_the_rfx_band():
-    """The referee's frequency grid must cover the rfx BAND points
+    """The referee's Stage B frequency grid must cover the rfx BAND points
     ([4,6,8,10,12] GHz, tests/test_coax_two_port_fdtd.py) it will be
     compared against by hand."""
     module = _load_referee_module()
-    freqs_ghz = set(round(float(f), 6) for f in module.FREQS_GHZ)
+    freqs_ghz = set(round(float(f), 6) for f in module.B_FREQS_GHZ)
     for f in (4.0, 6.0, 8.0, 10.0, 12.0):
         assert f in freqs_ghz, f"{f} GHz missing from referee frequency grid"
