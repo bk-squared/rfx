@@ -553,11 +553,20 @@ REPRODUCE_GATE_RECORD: dict = {
     ),
     "expected_zl_a_ohm": float(ZL_A_ANALYTIC_OHM),
     "gate": {"zl_re_tol_ohm": 5.0, "zl_im_tol_ohm": 5.0, "s21_thru_band": [0.5, 1.3]},
-    "status": "UNRUN",
-    "reproduced_zl_mean_ohm": None,
-    "reproduced_zl_max_dev_ohm": None,
-    "log_path": None,
-    "vessl_run_id": None,
+    # RUN (2026-08-03): Stage A has now passed this reproduce-gate on all
+    # three live runs to date (run-1 VESSL 369367251366, run-2 369367251627,
+    # run-3 369367251629) -- the numbers below are run-3's, the most recent,
+    # with its own log path as the checkable artifact (M3 fix: log_path
+    # must actually exist on disk). Stage A's own gate has never once
+    # failed across any of the topology/excitation/phase-witness fixes
+    # made to Stage B in the same period -- this record is untouched by
+    # any of that (module docstring "RUN-3 RESULT").
+    "status": "RUN",
+    "reproduced_zl_mean_ohm": 50.432,
+    "reproduced_zl_max_dev_ohm": 0.511,
+    "log_path": ".omx/coax-two-port-referee/20260803T182559Z/run.log",
+    "vessl_run_id": "369367251629",
+    "verified_on": "2026-08-03",
 }
 
 DECLARED_QUESTION = (

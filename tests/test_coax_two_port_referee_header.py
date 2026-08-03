@@ -3,20 +3,25 @@
 ``validation/research/coax_two_port/openems_coax_two_port_referee.py`` is a
 COMPARATOR-leg-only, VESSL-only harness for rfx issue #489 stage 3 (see its
 module docstring for the full scope fence): openEMS is not installed in
-this environment, so it has never actually run. This test does NOT require
-openEMS -- it checks that the script's reproduce-gate record is committed
-in an honest, fail-loud state, that its Stage B layout arithmetic is
-self-consistent (testable without openEMS -- see ``_stage_b_layout()``),
-and that the exit-code split between a physics/self-check failure and an
-internal config bug is real (not just documented).
+THIS test environment (this test does not need it -- it only loads the
+module and inspects Python-level data). The referee itself HAS since run
+on VESSL, three times (run-1 VESSL 369367251366, run-2 369367251627,
+run-3 369367251629) -- ``REPRODUCE_GATE_RECORD`` reflects that (``status:
+"RUN"``, run-3's own numbers and log path). This test checks that its
+Stage B layout arithmetic is self-consistent (testable without openEMS --
+see ``_stage_b_layout()``), and that the exit-code split between a
+physics/self-check failure and an internal config bug is real (not just
+documented).
 
 Design (per the task's fail-loud-honest requirement, M1/M3 review fixes):
-this test PASSES on the current, never-run placeholder state. It checks
-the record's FIELDS' semantics (UNRUN <=> no numbers, no log path; a
-filled record needs a log path under .omx/ or
-docs/research_notes/vessl_logs/) rather than pinning a specific finding
-as fact -- the record's own content (which tutorial, which geometry) is
-free to evolve without this test needing to be rewritten each time.
+this test PASSES on EITHER the never-run placeholder state OR a
+legitimately-filled one (run-3 fix, PR #548 review: a test must check the
+record's CONTRACT shape, not cement one particular state -- UNRUN <=> no
+numbers, no log path; RUN <=> numbers present AND a log path under
+.omx/ or docs/research_notes/vessl_logs/ that actually exists on disk)
+rather than pinning a specific finding as fact -- the record's own
+content (which tutorial, which geometry, which run's numbers) is free to
+evolve without this test needing to be rewritten each time.
 """
 
 from __future__ import annotations
