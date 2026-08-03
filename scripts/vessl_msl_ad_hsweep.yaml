@@ -1,0 +1,38 @@
+name: rfx-msl-ad-hsweep
+description: "#527: sweep the FD step h for the MSL AD-vs-FD gate on its own fixture (report-only)"
+tags: [rfx, issue-527, ad-fd, comparator]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx #527 MSL AD-vs-FD h-sweep (report-only diagnostic) ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== #527 h-sweep on the gate's own fixture ==="
+  out=".omx/msl-ad-hsweep/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  set +e
+  timeout 5400 python -u scripts/msl_ad_hsweep.py > "$out/hsweep.log" 2>&1
+  rc=$?
+  set -e
+  cat "$out/hsweep.log"
+  echo "$rc" > "$out/hsweep.rc"
+  echo "artifacts: $out"
+  exit "$rc"

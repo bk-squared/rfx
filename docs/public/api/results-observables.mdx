@@ -29,7 +29,7 @@ sidebar:
 |---|---|---|
 | `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family |
 | `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.settling_db`, `.S_raw`, `.passivity_correction` | specialized microstrip-line calculation. `.S` is passivity-enforced by default (`||S||₂ ≤ 1` per frequency; raw extraction kept in `.S_raw`, per-bin clip in `.passivity_correction` — large corrections mark measurement artifacts, not certified values; skipped on the `eps_override` channel so gradients see the raw function). Exclude driven-port columns marked unreliable, and check `.settling_db` (< −40 dB) before quoting any value |
+| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.settling_db`, `.S_raw`, `.passivity_correction` | specialized microstrip-line calculation. `.S` is passivity-enforced by default (`||S||₂ ≤ 1` per frequency; raw extraction kept in `.S_raw`, per-bin clip in `.passivity_correction` — large corrections mark measurement artifacts, not certified values; skipped on the `eps_override` channel so gradients see the raw function). Exclude the whole frequency slice `S[:, :, k]` wherever any `reliable[p, k]` is false — not just that port's column, since S is solved jointly across drives — and check `.settling_db` (< −40 dB) before quoting any value. `.assembly` records which rule produced `.S`; `.cond_a` bounds drive-system degeneracy only |
 | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
 | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | reflection with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for the self-contained model limits |
 | `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
@@ -95,9 +95,11 @@ The ring-down advisory likewise requires a probe time series and is not a
 direct NTFF or DFT convergence test. Inspect unguarded arrays explicitly. The
 absence of a warning is not a passivity, convergence, or accuracy result.
 
-For MSL results, `reliable[p, k] = False` excludes the driven-port column
-`S[:, p, k]` from physical interpretation because the measured signal is too
-low for a stable wave split. A `True` entry is not an accuracy guarantee. See
+For MSL results, `reliable[p, k] = False` excludes the whole frequency slice
+`S[:, :, k]` from physical interpretation — not just the driven-port column —
+because S is solved jointly across drives (`S = B·A⁻¹`, #507); the mask covers
+every driven/port record the solve consumes (#522). A `True` entry is not an
+accuracy guarantee. See
 [Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
 threshold and filtering example.
 

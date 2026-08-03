@@ -46,8 +46,18 @@ example examples/lowpass.py. See SHEEN geometry block below.
 
 HONEST SCOPE (do NOT overclaim):
   - The rfx MSL lane is documented "limited / E5-narrow" (see
-    docs/guides/sparameter_support_matrix.md). Strong-reflector |S11| rides a
-    0.16-0.22 staircase-Z0 floor, so the deep-null DEPTH is NOT gated here.
+    docs/guides/sparameter_support_matrix.md). The deep-null DEPTH is NOT
+    gated here -- not because of the old "strong-reflector |S11| rides a
+    0.16-0.22 staircase-Z0 floor" figure this comment used to cite. That
+    number is RETIRED (issue #487): it was substantially the #511/#507
+    extractor defects, fixed in PR #516 (f95240f), not a mesh property --
+    see scripts/diagnostics/msl_z0_bias_floor_sweep.py for the corrected-
+    extractor measurements. The real reason the depth stays ungated is
+    that THIS leg's own committed rfx numbers still describe the
+    pre-#511/#507 extractor and have not been regenerated against the fix
+    (issues #519/#520, "stale evidence chains" / "verification debt").
+    Ungating is still the right call until that regeneration lands; do
+    not read the retired 0.16-0.22 number as the reason.
   - We gate the first-null FREQUENCY (few-% envelope) and the passband band-mean
     |S21|. All deltas are stated rfx-centric ("method distance"); openEMS is a
     reference, not ground truth.

@@ -113,11 +113,37 @@ class Box:
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
     is zeroed, so consequence (1) is an *electrical* dimension error, not a
-    sub-cell cosmetic one. The electrical opening is measured between the
-    innermost ZEROED node planes, i.e. ``(n_open + 1) * dx`` — the same
-    measure that reproduces the guide's own width, ``a = cells * dx``
-    exactly (counting open nodes alone would call WR-90 22.098 mm instead of
-    22.86 at a/30).
+    sub-cell cosmetic one. **Transverse to the propagation direction** — an
+    aperture width, a guide width, anything that sets a cutoff — the
+    electrical dimension is the span between the innermost ZEROED node
+    planes, ``(n_open + 1) * dx``, the same measure that reproduces the
+    guide's own width ``a = cells * dx`` exactly (counting open nodes alone
+    would call WR-90 22.098 mm instead of 22.86 at a/30). An independent
+    refit of 16 committed WR-90 single-iris configurations across two meshes
+    pins the realized transverse aperture offset to within 1/20 of a cell of
+    that identity (measured during the stage-S3 / issue #499 review; no
+    committed record carries the refit yet, so like the longitudinal caution
+    below it is a recorded observation, not a number to build on).
+
+    **Do not carry that identity into the propagation direction.** The
+    electrical *thickness* of an obstacle (an iris's extent along the guide
+    axis) is not the zeroed-plane span: it is set by how the fields interact
+    with the discontinuity, not by a cutoff condition. Measured on a
+    single-iris geometry at four drawn thicknesses, the effective thickness
+    lands consistently **between** ``t_cells * dx`` and
+    ``(t_cells - 1) * dx``, so *neither* integer rule is right and the
+    residual is a fixed per-face offset rather than a discretization error
+    that shrinks with ``dx``. The longitudinal convention is **not settled**;
+    treat it as an unknown of order half a cell, and if a comparator needs a
+    thickness, make the sensitivity to that half cell part of the reported
+    envelope rather than picking a rule. (Measured during the stage-S3 /
+    issue #499 review; no committed record carries it yet, so it is stated
+    here as a caution, not as a number to build on.) This measured
+    *effective* thickness is a different quantity from a cascade
+    comparator's electrical-length bookkeeping — issue #499's comparator
+    deliberately draws ``t_c = round(t/dx) + 1`` so that ``(t_c - 1)*dx``
+    conserves the cascade's total electrical length; that bookkeeping choice
+    answers a different question and is not contradicted by this caution.
 
     **A facing pair is not symmetric under this rule, because its two
     interior faces are different kinds of corner.** For fins drawn from each
@@ -165,14 +191,35 @@ class Box:
       obstacle keep ``(cells - d_cells)`` **even**. When it is odd,
       ``fin_depth = (cells - d_cells)//2`` truncates and a symmetric opening
       of that width is simply not representable on the grid: the opening is
-      one cell wide however it is drawn. That is a representability limit,
-      not a rasterization defect.
+      one cell **wider** however it is drawn. That is a representability
+      limit, not a rasterization defect.
 
     Under both conditions the realized opening equals the nominal one
     exactly (measured, 100% of ~50k even-parity combinations). Then still
     assert the realized footprint (count the occupied node planes) against
     the intended one — see ``run_point`` in
     ``validation/crossval/18_wr90_iris_modematch.py`` for the pattern.
+
+    **Odd parity is a fork, not a dead end.** Symmetric fins can only realize
+    apertures whose cell count has the parity of ``cells``, so when the
+    aperture you want has the wrong parity you must choose, and both options
+    cost something:
+
+    * change ``dx`` (or the aperture) so the parity works, which moves every
+      other dimension on that axis; or
+    * place the fins **asymmetrically** on purpose, accepting a known
+      half-cell offset of the opening rather than rounding the aperture to
+      the wrong parity — which would change the aperture itself, the quantity
+      that sets the cutoff.
+
+    This docstring does **not** recommend one over the other: how much the
+    half-cell offset costs has not been measured here, so treat it as an
+    open trade rather than a cheap escape. What is *not* optional is that the
+    offset be recorded and **representable by whatever you compare against** —
+    an off-centre aperture only stays a known quantity if the oracle can model
+    it. If your comparator assumes a centred obstacle, an intentional offset
+    silently becomes comparator error, which is the failure mode this whole
+    docstring exists to prevent.
 
     A box thinner than one local cell takes a separate **thin-sheet**
     branch (single nearest-centre node); the notes above apply to the

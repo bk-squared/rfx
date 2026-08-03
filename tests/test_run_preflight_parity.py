@@ -15,10 +15,29 @@ from rfx.api import Simulation
 
 
 def _sim_with_probe_in_cpml():
-    # Probe + source pushed to the very edge => preflight flags CPML overlap.
+    # Probe placed past the domain edge, genuinely inside the (exterior-
+    # padded) CPML => preflight flags absorber_overlap. Issue #500: CPML
+    # pads EXTERIOR to the requested domain (see rfx-known-issues.md
+    # #500 / tests/test_preflight_absorber_frame.py), so a probe merely
+    # near an edge but still within [0, 0.02] no longer trips this check
+    # (z=0.018 here used to false-fire under the pre-#500 interior-frame
+    # bug this file doesn't otherwise care about — it only needs ANY one
+    # real preflight warning to exercise the run()-parity/consolidation
+    # mechanism this file tests, and absorber_overlap is the original,
+    # still-legitimate, and cheapest trigger to construct).
+    #
+    # Node arithmetic (review finding L7): this domain (0.02m, freq_max=
+    # 10e9, default cpml_layers=16) auto-resolves dx~=1.499mm, giving
+    # nz=47 with pad_z_lo=pad_z_hi=16 -> interior absolute indices 16..30
+    # (last interior node 30 = z~=20.99mm). z=0.021 rounds to node 30
+    # (round(0.021/dx)+16 = 30) -- still the LAST INTERIOR node, so it
+    # only "fired" via _absorber_boundary_for_axis's up-to-one-cell
+    # hi-side conservatism (see that helper's docstring), not because it
+    # was genuinely exterior. z=0.0225 rounds to node 31, the first node
+    # outside the interior slice -- genuinely in the absorber.
     sim = Simulation(domain=(0.02, 0.02, 0.02), freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
-    sim.add_probe((0.01, 0.01, 0.018), component="ez")
+    sim.add_probe((0.01, 0.01, 0.0225), component="ez")
     return sim
 
 

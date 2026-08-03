@@ -32,6 +32,7 @@ the full column-power check. Lumped/wire results are checked only for non-finite
 or excessive individual `|S|` values, not column power. The public
 `compute_coaxial_line_reflection(...)` result has no shared automatic passivity
 guard. An absent warning therefore cannot be compared across port families.
+(`compute_coaxial_two_port(...)`, below, does route through the shared guard.)
 
 ## API summary
 
@@ -46,6 +47,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
+| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **experimental** (issue #489 stage 2) — two-drive through-line 2-port solve; every DUT it can currently gate against is azimuthally symmetric (TM0n only); no external referee; no phase claim |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
 
@@ -141,8 +143,10 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   by `tests/test_msl_source_fixture_static.py`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
-during JAX tracing. Its exact driven-port-column meaning and the conservative
-filtering example are documented in
+during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at
+any port contaminates the entire frequency slice `S[:, :, k]`, so the only safe
+per-bin filter is `np.all(reliable, axis=0)`; the per-port index tells you which
+probe plane collapsed. Details and the filtering example:
 [Low-signal MSL bins](../public/guide/probes-sparams.mdx#low-signal-msl-bins).
 A `True` entry is not an accuracy guarantee.
 
@@ -154,8 +158,27 @@ A `True` entry is not an accuracy guarantee.
 - `mode="eigenmode"` is unsupported and raises `NotImplementedError`.
 - SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported for
   this calculation.
-- Strong-reflector `|S11|` has a roughly 0.16--0.22 staircase-Z0 floor in the
-  characterized regime; do not generalize the matched/thru/notch evidence.
+- Strong-reflector `|S11|`'s roughly 0.16--0.22 "staircase-Z0 floor" this
+  document used to cite is **RETIRED** (issue #487) — it was substantially
+  the #511 modal-voltage span and #507 far-port-echo single-ratio assembly
+  extractor defects, fixed in PR #516 (`f95240f`), not a mesh property. A
+  smaller floor survives whose mechanism is the mismatch between the
+  rasterized line's own Z0 and the analytic Hammerstad-Jensen anchor `S` is
+  normalized against, tracking `|Gamma_implied| = |(Z0-Z0_HJ)/(Z0+Z0_HJ)|`
+  within ~1.3x over 5 of 6 points of the #487 re-sweep
+  (`scripts/diagnostics/msl_z0_bias_floor_sweep.py`, committed JSON). No
+  single envelope number is published, for two reasons: (1) below
+  `|Gamma_implied| ~ 0.006` (the finest aligned sweep point) the sweep
+  cannot resolve whether the mechanism still holds — it compares one
+  band-mean Z0 against a band-mean `|S11|(f)`, with no per-bin trace to
+  exclude a Jensen's-inequality artifact, against a fitted-Z0 estimator
+  the library's own honesty guard calls healthy only to +/-10% — so this
+  is reported as a resolution limit of the sweep, not a confirmed second
+  mechanism (see the script for the full breakdown); (2) even where the
+  mechanism does hold, the measured floors are specific to that one thru
+  fixture, and generalizing them to a dB promise for arbitrary MSL ports
+  would itself be the overclaim the next sentence forbids. Do not
+  generalize the matched/thru/notch evidence.
 - The auto `n_probe_offset` solves the upstream/downstream clearance interval
   at driver time (midpoint with a reflector, unchanged without one) and warns
   loudly when a short feed cannot satisfy both clearances (#469). Library
@@ -184,7 +207,65 @@ ports are required. `run()` provides only per-port diagnostics.
 
 This supports broad magnitude use inside the documented uniform, single-mode
 rectangular-guide limits. Phase evidence covers fewer configurations; do not
-infer equally broad phase accuracy from the magnitude status.
+infer equally broad phase accuracy from the magnitude status for anything
+outside the single-dielectric-slab configuration described next.
+
+**Phase and group-delay evidence (issue #490, Lanes 1 and 3):**
+
+- Lane 1 adds an analytic-Airy **phase** envelope over the SAME five WR bands
+  and 20 mesh/geometry cases as the magnitude envelope above, re-analyzing the
+  npz/manifest pair that produced the committed magnitude envelope (restored
+  locally for this analysis -- `.omx` is gitignored and not present in the
+  tree; no new FDTD run for that 5-band/20-case sweep -- phase and magnitude
+  are two projections of the same measurement). Reference-plane phase is
+  corrected per a written convention
+  (`e^{+jwt}` time convention; S11 reflection is a round trip through the
+  vacuum gap between the reference plane and the slab, `exp(-2j*beta*d)`; S21
+  transmission is a single forward pass through the gap on BOTH sides of the
+  slab, `exp(-1j*beta*(d_left+d_right))`) documented in
+  `scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py`.
+  Maximum phase difference across all 20 cases is `11.99 degrees` against a
+  measured-envelope gate of `15.0 degrees`. A planted-defect falsifier (the
+  wrong S21 reference-plane formula that was sitting, unexercised, in the
+  magnitude-only envelope builder before this session -- invisible to a
+  magnitude gate because `|exp(i*anything)| == 1`) reds at `179.87 degrees`.
+  A fresh domain-size invariance run (WR-340, domain grown `+100 mm`) holds
+  the pass verdict (`8.92 -> 7.73 degrees`). See
+  `tests/test_waveguide_broad_e5_phase_gates.py` and
+  `tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json`.
+  Caveat: `d_left == d_right` in all five slab fixtures (the slab sits
+  centered between symmetric reference planes), so this evidence cannot
+  distinguish the S21 formula's `d_left` and `d_right` terms separately --
+  only their sum (`d_left + d_right`) is exercised.
+- Lane 3 adds a **group-delay** gate on a purpose-built, empty WR-340 fixture
+  near cutoff (`f/fc` in `[1.152, 1.498]`, chosen far enough from cutoff to
+  keep the CPU run affordable and honest -- true near-cutoff divergence is
+  out of scope). `tau_g = -d(unwrap(angle(S21)))/d(omega)` (central
+  difference, 9 interior points; 2 band-edge points use a lower-order
+  one-sided difference and are reported but not gated) is compared against
+  the analytic `L_eff / v_g(f)` oracle (`L_eff = 0.320 m`) run through the
+  SAME finite-difference stencil, so the comparator is like-for-like (the
+  stencil's own truncation error, 0.0072 ns at the worst point, has the
+  opposite sign from the true residual and would otherwise flatter it by
+  29%): max interior diff `0.0320 ns` against a pinned-constant gate of
+  `0.042 ns` (the raw diff against the exact closed-form derivative,
+  `0.0248 ns`, is recorded for context but is not the gated number). A
+  record-length settling witness (`num_periods` 60 vs 120 --
+  `compute_waveguide_s_matrix` has no built-in energy-based `settling_db`
+  for the waveguide port family, unlike the MSL calculator) agrees to
+  `0.000 ns`. A domain-size invariance run (`+100 mm` growth) holds the pass
+  verdict (`0.0266 ns`, still under the gate). Three genuinely independent
+  falsifiers (skipping the phase-unwrap step, dropping the leading minus
+  sign, and using the wrong `L_eff` -- domain length instead of
+  reference-plane separation -- in the analytic comparator) all red at
+  `>= 1.5 ns`. See `tests/test_waveguide_group_delay_near_cutoff.py`,
+  `tests/test_waveguide_group_delay_tolerance_envelope.py`, and
+  `tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json`.
+- Neither lane covers PEC-short, T-junction, nonuniform, or multimode
+  configurations for phase or group delay -- those remain uncharacterized.
+- MSL de-embedded phase vs an external (openEMS) referee with the convention
+  mismatch resolved (issue #490 Lane 2) is explicitly OUT of scope for both
+  lanes above; the microstrip-line section below is unchanged.
 
 **Nonuniform transverse mesh:** single-mode `normalize=True` and
 `normalize="flux"` run. Analytic Airy fixtures cover grading ratios 1--3,
@@ -231,9 +312,25 @@ implementation nor gradient regression is RF validation.
   puts the node just below it. One retreat gives `d + dx` with the opening
   **asymmetric** (centre `dx/2` low); two retreats give `d + 2*dx`, **centred**.
   Measured on WR-90 at both a/30 and a/60: 7.620 mm and 18.288 mm give
-  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. The electrical
-  opening is measured between the innermost zeroed planes, `(n_open + 1) * dx`
-  — the measure that reproduces `a = cells * dx` exactly. Offsetting each
+  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. **Transverse** to
+  the propagation direction the electrical dimension is the span between the
+  innermost zeroed planes, `(n_open + 1) * dx` — the measure that reproduces
+  `a = cells * dx` exactly, and an independent refit of 16 committed
+  single-iris configurations across two meshes pins the realized aperture to
+  within 1/20 of a cell of it (a stage-S3 / issue #499 review observation; no
+  committed record carries the refit yet — a caution-grade number, like the
+  longitudinal one below). **That identity does not carry into the
+  propagation direction:** an obstacle's electrical *thickness* is set by field
+  interaction with the discontinuity rather than by a cutoff, is measured to
+  fall between `t_cells * dx` and `(t_cells - 1) * dx` so neither integer rule
+  holds, and is not settled — treat it as an unknown of order half a cell and
+  fold the sensitivity into the reported envelope instead of picking a rule.
+  (This measured *effective* thickness is a different quantity from a cascade
+  comparator's electrical-length bookkeeping — issue #499's comparator draws
+  `t_c = round(t/dx) + 1` so `(t_c - 1)*dx` conserves total electrical
+  length; that choice answers a different question and is not contradicted
+  here.)
+  Offsetting each
   interior face half a cell the wrong way retreats both faces by construction
   rather than by luck, giving `d + 2*dx` deterministically at every aperture;
   that is the drawing case 18's blocked revision used. In
@@ -244,7 +341,15 @@ implementation nor gradient regression is RF validation.
   magnitude tolerance. Midpoint corners are rounding-independent, and with
   `(cells - d_cells)` even the realized opening equals the nominal one exactly;
   at odd parity a symmetric opening of that width is not representable on the
-  grid and costs one cell however it is drawn. See the `Box` docstring for the
+  grid and costs one cell **more** however it is drawn. Odd parity is a fork
+  rather than a dead end — change `dx`/the aperture so the parity works, or
+  place the fins asymmetrically on purpose and accept a recorded half-cell
+  offset instead of rounding the aperture (the quantity that sets the cutoff)
+  to the wrong parity. Neither is recommended here, because the cost of the
+  offset has not been measured; what is required is that the offset be recorded
+  and representable by the comparator, since an off-centre aperture compared
+  against a centred oracle silently becomes comparator error. See the `Box`
+  docstring for the
   arithmetic and `run_point` in
   `validation/crossval/18_wr90_iris_modematch.py` for the assert pattern.
 - Size the absorber from the guide wavelength at the **lowest** measured
@@ -312,6 +417,37 @@ Boundary specifications without positive CPML on both z faces, non-z
 unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
 requests.
 The older `compute_coaxial_s_matrix(...)` path is deprecated and experimental.
+
+`compute_coaxial_two_port(...)` (issue #489 stage 2) extends the same
+transmission-line method to two ports: it builds a single through line with a
+matched annular-resistor feed near each z end, drives each end's own TEM TFSF
+source in turn (two FDTD runs), and assembles the S-matrix via a two-drive
+solve that does not assume the non-driven port sees zero incident wave. It is
+**experimental**: every DUT it can currently gate against (none, a matched
+feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only
+TM0n modes, while the transition discontinuities issue #489 targets excite
+TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to
+the first probe plane). No external referee has run against this method and
+no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
+measured single-run envelope and its provenance.
+
+Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
+0.96 -> 0.74 on the 60 mm / 40 GHz fixture over 4-12 GHz even though `|S11|`
+stays at or below 0.05 throughout. A post-hoc consistency check (run after
+this measurement; the estimator was chosen after seeing an own/other-drive
+split described below, not predeclared) found the `|S21|` deficit equals
+what the extractor's own matrix-pencil-fitted `Re(gamma)` predicts over the
+reported port separation (within about 2% at every measured frequency,
+`|S21|` against `exp(-Re(gamma)*L12)`). That check is sensitive to
+SCALE-type deficits (amplitude mis-normalization, mode conversion, a bad
+wave split — `gamma` is fit from shape, not scale) and is structurally
+BLIND to reference-plane referral errors (a referral error scales the wave
+amplitude and `L12` by the same factor, so the compensation cancels it
+exactly — verified to five decimal places at +30 cells of injected error).
+The under-resolved-annulus recipe (at least 4 cells) that this repo already
+documents for reflection accuracy applies to transmission magnitude here
+too, even when `status` reports `"passed"` (`annulus_cells`
+only gates below 3.5).
 
 ## Floquet/Bloch and non-port observables
 

@@ -39,6 +39,8 @@ import numpy as np
 import pytest
 from scipy.special import spherical_jn, spherical_yn
 
+from tests._gate_policy import gate_from_envelope
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE = _REPO_ROOT / "tests/fixtures/rcs_dielectric_sphere_mie/fixture.json"
 _ARTIFACT = _REPO_ROOT / "validation/crossval/_17_dielectric_results/rfx.json"
@@ -132,7 +134,7 @@ def test_gate_is_hard_pinned_and_equals_recomputed_envelope(fixture):
     env = max(_gated_coarse_deltas(fixture))
     assert abs(g["coarse_measured_envelope_db"] - env) < 5e-3
     assert g["coarse_gate_db"] == pytest.approx(
-        math.ceil(env * 1.5 * 10) / 10, abs=1e-9)
+        gate_from_envelope(env, quantum=10), abs=1e-9)
     # HARD pin — widening requires editing this line with a root-cause.
     assert g["coarse_gate_db"] == 6.3
 

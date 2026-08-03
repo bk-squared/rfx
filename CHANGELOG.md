@@ -6,6 +6,73 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — the #494 advisory's test coverage was bound at one point in a five-dimensional option space
+
+- An independent mutation battery against the merged #495 suite found **40 of 67
+  meaningful mutations survived** (60%), where the author's own three-mutation
+  battery had found 3/3 caught — all three had landed in the one well-covered
+  region. The advisory half was the weak half: 33 of 53 survived.
+- The worst survivor: gating the advisory's call site on `if not self._geometry:`
+  or `if normalize != "flux":` left all 40 tests green, and **both are the actual
+  settings of `validation/crossval/18_wr90_iris_modematch.py`** — the script that
+  motivated #494. A one-line regression restoring precisely the #494 blind spot on
+  precisely the motivating script was invisible, because the only end-to-end test
+  used `normalize=False` with an empty domain.
+- Coverage added for each unbound branch point: `normalize` in `(False, "flux")`
+  with a PEC obstacle registered; a z-propagating port pair (the axis was
+  previously hardcodable to `"x"` with no test noticing); a multimode port binding
+  the lowest-cutoff mode (fence (c) had zero coverage); a two-axis sim asserting
+  two warnings and a shared-cutoff cube sim plus a two-mode single-axis sim, which
+  together bind both components of the `(axis, cutoff)` dedupe key; a mirrored
+  per-face test with the thin face on `hi`; and the `port_reference_sims` junction
+  path, which must not lose the band-edge check to its band-centre sibling.
+- Every number the advisory prints is now recomputed independently from the port
+  geometry and asserted, including the ripple ladder it quotes as evidence. Six of
+  seven were previously unasserted — notably its only actionable output, where a
+  mutant advising `cpml_layers` of 1 instead of 13 passed. The warning category is
+  pinned via `pytest.warns(UserWarning)`, since `DeprecationWarning` would be
+  suppressed under Python's default filters and previously survived.
+- `0.5` is now the module constant `_FAR_PORT_LAMBDA_G_FRACTION`, used both to
+  compute the requirement and to render the message. It was two independent
+  literals, so a factor change produced a message stating 0.5 while enforcing
+  something else; the factor was also only pinned to a 1.6x window (0.394-0.630).
+- The `#493` characterization table gains an independent oracle. A coherent author
+  could previously mutate the rasterization rule AND re-pin `_NOMINAL_EXCESS` in
+  one commit and stay green — which silently falsified the ambiguity docstring and
+  left the asymmetric branch of the symmetry test dead in every parametrization.
+  The expected excess is now derived from the retreat mechanism and cross-checked
+  against the table, and a guard asserts both the one- and two-cell cases occur.
+- Re-verified: all 18 previously-surviving mutations are now caught, including the
+  two that survived the first round of fixes.
+
+### Changed — the #493 electrical-dimension identity is scoped to the transverse direction
+
+- The `Box` / support-matrix text from #493 stated the electrical dimension as the
+  span between innermost zeroed planes, `(n_open + 1) * dx`, in a way that could be
+  read as holding on any axis. It is now explicitly scoped to **transverse** to the
+  propagation direction — aperture and guide widths, anything setting a cutoff —
+  where an independent refit of 16 committed single-iris configurations across two
+  meshes pins the realized aperture to within 1/20 of a cell of it.
+- The docs now warn **not** to carry that identity into the propagation direction.
+  An obstacle's electrical *thickness* is set by field interaction with the
+  discontinuity rather than by a cutoff condition, and is measured to fall between
+  `t_cells * dx` and `(t_cells - 1) * dx` — so neither integer rule holds, and the
+  residual is a fixed per-face offset rather than a discretization error that
+  shrinks with `dx`. The longitudinal convention is recorded as **not settled**:
+  treat it as an unknown of order half a cell and fold that sensitivity into the
+  reported envelope instead of adopting a rule. (Measured during the stage-S3 /
+  #499 review; no committed record carries it yet, so it is documented as a caution
+  rather than as a number to build on.)
+- Odd `(cells - d_cells)` parity is now presented as a **fork rather than a dead
+  end**: change `dx`/the aperture so the parity works, or place fins asymmetrically
+  on purpose and accept a recorded half-cell offset instead of rounding the aperture
+  — the quantity that sets the cutoff — to the wrong parity. Neither option is
+  recommended, because the cost of the offset has not been measured. What is
+  required is that the offset be recorded and **representable by the comparator**,
+  since an off-centre aperture compared against a centred oracle silently becomes
+  comparator error. Also fixes a typo in the merged #493 text, which said the
+  odd-parity opening is "one cell wide" where it is one cell **wider**.
+
 ### Added — thin-absorber advisory on every uniform waveguide S-matrix path (#494)
 
 - `compute_waveguide_s_matrix` documents a "Far-port discipline" requiring an

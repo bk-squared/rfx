@@ -38,7 +38,11 @@ from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 from rfx.lumped import LumpedRLCSpec
-from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor  # noqa: F401
+from rfx.materials.thin_conductor import (  # noqa: F401
+    _PEC_SIGMA_THRESHOLD,
+    ThinConductor,
+    apply_thin_conductor,
+)
 from rfx.sources.waveguide_port import (
     WaveguidePort,  # noqa: F401
     extract_waveguide_s_matrix,  # noqa: F401
@@ -82,6 +86,7 @@ from rfx.api._spec import (  # noqa: E402
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
+    CoaxialTwoPortResult,
     _MSLPortEntry,
     MSLSMatrixResult,
     MixedSMatrixResult,
@@ -1078,24 +1083,83 @@ class Simulation(
             Geometric region of the conductor.
         sigma_bulk : float
             Bulk conductivity (S/m). Default: copper (5.8e7).
+
+            **This single value decides the model.** At or above 1e6 S/m the
+            shape becomes a PEC sheet and ``thickness`` and ``eps_r`` are
+            never read (:func:`rfx.materials.thin_conductor.apply_thin_conductor`
+            returns the material arrays untouched and only ORs the mask). Below
+            1e6 S/m the shape becomes a lossy sheet whose conductivity is
+            ``sigma_bulk * thickness / dx``, where ``thickness`` IS load-bearing.
+            Every real metal — copper 5.8e7, aluminium 3.5e7, even stainless
+            steel 1.4e6 — is on the PEC side, so for metals this call models a
+            lossless perfect sheet and nothing else.
         thickness : float
             Physical thickness (metres). Default: 35 µm (1 oz copper).
+            **Only used on the lossy path** (``sigma_bulk < 1e6``); ignored
+            entirely for metals — see ``sigma_bulk`` above.
         eps_r : float
-            Relative permittivity (default 1.0).
+            Relative permittivity (default 1.0). Lossy path only, same as
+            ``thickness``.
+
+        Notes
+        -----
+        A PEC sheet occupying ONE cell is modelled as a surface, not as a
+        conductor of that cell's thickness: :func:`rfx.boundaries.pec.apply_pec_mask`
+        zeroes a tangential E component only where the mask has a neighbour
+        along that component's axis, so the normal component survives as
+        surface charge. Stamping the same conductor TWO cells thick therefore
+        changes the model rather than the thickness. Measured on an MSL thru at
+        dx = 84.67 µm: one cell gives Re(Z0) = 44.1 Ω and two cells 41.9 Ω.
+        Reproduce with
+        ``scripts/diagnostics/thin_conductor_cell_thickness_probe.py``.
+
+        Note this pair no longer *proves* the model change on its own. Until
+        issue #511 was fixed the one-cell reading was 38.8 Ω, so the thicker
+        stamp appeared to read the HIGHER impedance — backwards for a
+        fringing-capacitance effect, which is how the model change was first
+        argued. That inversion was an extractor artifact: the modal voltage
+        summed one Ez edge too many, and a two-cell stamp happens to mask that
+        edge, so only the one-cell number was biased. With both corrected the
+        ordering is the ordinary one (thicker → lower Z0) and the 2.25 Ω step
+        is consistent with either a model change or a genuine thickness
+        effect. The model change is still real — it follows from
+        ``apply_pec_mask`` directly — but this measurement no longer
+        discriminates between the two.
+
+        Conductor LOSS is therefore unavailable for metals through this API.
+        On the lanes this repo gates that is a small omission — copper loss on
+        a 10 mm 50 Ω microstrip is 0.04-0.05 dB at 3-4.5 GHz against a 0.45 dB
+        gate budget, and the metal is 26-36 skin depths thick so its geometry
+        is electromagnetically a half-space — but it is a real limit for
+        anything whose loss budget IS the conductor, e.g. resonator Q.
         """
         tc = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk,
             thickness=thickness, eps_r=eps_r,
         )
-        # P0.1: Warn if thin conductor will be routed to PEC mask
+        # Tell the caller which model they actually got. The predicate is
+        # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
+        # version of this warning printed sigma_bulk*thickness/dx and claimed
+        # it "exceeds 1e6", which was a false statement for ordinary inputs
+        # (e.g. aluminium at 17 um and dx = 1 mm gives 5.95e5, announced as
+        # exceeding 1e6 while the conductor was routed to PEC anyway).
         if tc.is_pec:
             import warnings
-            dx_est = self._dx or C0 / self._freq_max / 20.0
-            sigma_eff = sigma_bulk * thickness / dx_est
+            _thin_dflt = 35e-6
+            _asked = (
+                f" You passed thickness={thickness:.3g} m, which is not used"
+                if thickness != _thin_dflt else
+                " thickness is not used"
+            )
             warnings.warn(
-                f"Thin conductor sigma_eff={sigma_eff:.2e} S/m exceeds PEC "
-                f"threshold (1e6). Will be routed to PEC mask, not "
-                f"conductivity. Use lower sigma_bulk for lossy behavior.",
+                f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
+                f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
+                f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
+                f"eps_r; only the shape's rasterisation counts. No "
+                f"conductor loss and no "
+                f"sub-cell thickness for metals: every metal is above this "
+                f"threshold, so a lower sigma_bulk would be a different "
+                f"material, not thinner copper (known gap, issue #504).",
                 stacklevel=2,
             )
         self._thin_conductors.append(tc)
@@ -3725,6 +3789,7 @@ __all__ = [
     "WaveguideSMatrixResult",
     "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
+    "CoaxialTwoPortResult",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
 ]

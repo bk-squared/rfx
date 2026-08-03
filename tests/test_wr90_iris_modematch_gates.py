@@ -29,12 +29,13 @@ from __future__ import annotations
 
 import ast
 import json
-import math
 import re
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+from tests._gate_policy import gate_from_envelope
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE = _REPO_ROOT / "tests/fixtures/wr90_iris_modematch/fixture.json"
@@ -168,9 +169,9 @@ def test_gates_are_hard_pinned_and_equal_recomputed_envelopes(fixture):
     assert abs(g["fine_measured_envelope_abs"] - env_fine) < 5e-4
     assert abs(g["richardson_measured_envelope_abs"] - env_rich) < 5e-4
     assert g["fine_gate_abs"] == pytest.approx(
-        math.ceil(env_fine * 1.5 * 100) / 100, abs=1e-9)
+        gate_from_envelope(env_fine, quantum=100), abs=1e-9)
     assert g["richardson_gate_abs"] == pytest.approx(
-        math.ceil(env_rich * 1.5 * 100) / 100, abs=1e-9)
+        gate_from_envelope(env_rich, quantum=100), abs=1e-9)
     assert g["fine_gate_abs"] == 0.04       # hard pin — root-cause to change
     assert g["richardson_gate_abs"] == 0.01
 

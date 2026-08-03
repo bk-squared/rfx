@@ -64,6 +64,98 @@ def _fmt_freq(hz: float) -> str:
     return f"{hz:.4g}Hz"
 
 
+def _absorber_boundary_for_axis(
+    domain_extent: float, ct_lo: float, ct_hi: float,
+) -> tuple[float | None, float | None]:
+    """The single canonical frame for "is/how-far a coordinate from the
+    CPML/UPML absorber" on one axis (issue #500).
+
+    Ground truth (proved in ``tests/test_preflight_absorber_frame.py`` for
+    both the uniform (``rfx/grid.py`` ``Grid.__init__``: ``nx =
+    ceil(domain/dx) + 1 + pad_lo + pad_hi``) and non-uniform
+    (``rfx/nonuniform.py`` ``make_nonuniform_grid``: ``dz_profile`` covers
+    only the physical domain and CPML cells are appended EXTERIOR to it via
+    ``_pad_profile``) grid builders: the absorber is padded OUTSIDE the
+    requested domain, never inside it. ``Grid.position_to_index`` maps node
+    ``pad_{axis}_lo`` to user coordinate 0, so the absorber occupies user
+    coordinates ``< 0`` (lo side) and ``> domain_extent`` (hi side); the
+    requested ``[0, domain_extent]`` is absorber-FREE by construction.
+
+    Every ``_validate_cfg_*`` / ``_check_msl_port_geometry`` consumer of
+    ``cpml_thick_lo`` / ``cpml_thick_hi`` used to compare user coordinates
+    against an INTERIOR reading instead (``[0, ct_lo]`` /
+    ``[domain_extent - ct_hi, domain_extent]``) — verified false positives
+    on geometry nowhere near the absorber (waveguide ports comfortably
+    inside the domain, an NTFF box, a probe at the domain centre). This
+    helper is the one place that encodes the correct (exterior) frame;
+    every membership-style consumer must convert through it rather than
+    re-deriving the comparison.
+
+    Returns ``(lo_boundary, hi_boundary)``: the user-coordinate position at
+    which the lo-side / hi-side absorber begins, or ``None`` on a side with
+    no active absorber there (``ct <= 0`` — PEC/PMC/periodic face, 2D-z, or
+    a non-absorbing global boundary). When active, the position is
+    conservative by up to one cell (lo: ``0.0``; hi: ``domain_extent``) —
+    NOT exactly the true interior/absorber interface. ``Grid.nx`` is sized
+    from ``ceil(domain_extent/dx)``, so on the hi side the true last
+    interior node can sit up to one ``dx`` past ``domain_extent`` (e.g.
+    domain_extent=0.0101, dx=1e-3 -> ceil(10.1)=11 -> true interior extends
+    to 0.011, one cell beyond the nominal 0.0101); a coordinate in that
+    residual band reads as "in the absorber" here even though the real
+    grid still treats it as interior. This makes every consumer
+    conservative (may warn slightly early) rather than permissive (never
+    silently misses a genuine overlap) — the thickness itself is not
+    needed for a membership test, only whether it is active.
+    """
+    lo_boundary = 0.0 if ct_lo > 0 else None
+    hi_boundary = domain_extent if ct_hi > 0 else None
+    return lo_boundary, hi_boundary
+
+
+def _coord_in_absorber(
+    coord: float, domain_extent: float, ct_lo: float, ct_hi: float,
+) -> bool:
+    """True iff ``coord`` (one axis, user coordinates) is inside the
+    EXTERIOR-padded absorber on that axis. See
+    :func:`_absorber_boundary_for_axis` for the frame this rests on."""
+    lo_b, hi_b = _absorber_boundary_for_axis(domain_extent, ct_lo, ct_hi)
+    return (lo_b is not None and coord < lo_b) or (hi_b is not None and coord > hi_b)
+
+
+# Proximity-advisory margin for _validate_cfg_absorber_placement (issue
+# #500 review finding M3 / H1). NOT a dedicated calibration sweep like the
+# MSL 8*dx buffer below (_check_msl_port_geometry) — #510 established that
+# probe-to-absorber clearance is a real, previously-ungated hazard class
+# (an MSL probe span could sit inside the CPML or past another port's feed
+# with preflight silent), and #478 is the PR that introduced the
+# internal/external probe distinction (`_internal_probe_indices`) this
+# advisory must respect so library witness probes stay exempt. Neither
+# pins a specific cell count for a GENERIC (non-MSL) probe/source
+# proximity check, so 2 cells is a deliberately modest, conservative
+# default: large enough that the helper's own up-to-one-cell hi-side
+# conservatism (see _absorber_boundary_for_axis) cannot by itself trigger
+# it for a genuinely-interior placement, small enough to stay a "you are
+# suspiciously close to the edge" advisory rather than a broad interior
+# band.
+_ABSORBER_PROXIMITY_CELLS = 2
+
+
+def _coord_near_absorber(
+    coord: float, domain_extent: float, ct_lo: float, ct_hi: float,
+    dx: float, n_cells: int = _ABSORBER_PROXIMITY_CELLS,
+) -> bool:
+    """True iff ``coord`` is NOT in the absorber (see
+    :func:`_coord_in_absorber`) but sits within ``n_cells * dx`` of the
+    boundary where an active absorber begins. Callers should check
+    :func:`_coord_in_absorber` first — the two are meant to be mutually
+    exclusive (membership is the more severe finding)."""
+    lo_b, hi_b = _absorber_boundary_for_axis(domain_extent, ct_lo, ct_hi)
+    margin = n_cells * dx
+    near_lo = lo_b is not None and lo_b <= coord < lo_b + margin
+    near_hi = hi_b is not None and hi_b - margin < coord <= hi_b
+    return near_lo or near_hi
+
+
 class PreflightWarning(UserWarning):
     """Base for structured preflight findings carried on the warning instance.
 
@@ -735,8 +827,23 @@ class _PreflightMixin:
                     # Check if this is a PEC material that could use thin sheet
                     mat = self._resolve_material(mat_name)
                     is_pec = mat.sigma >= self._PEC_SIGMA_THRESHOLD
+                    # This used to advise add_thin_conductor() here. Measured:
+                    # for a PEC material that advice is a NO-OP — a sub-cell PEC
+                    # Box and add_thin_conductor() on the same footprint produce
+                    # a BIT-IDENTICAL pec_mask (verified in
+                    # tests/test_thin_conductor_honesty.py). Neither models a
+                    # sub-cell thickness; both give one cell of mask, which
+                    # rfx/boundaries/pec.py treats as a surface. Say what is
+                    # actually true instead of offering a change that changes
+                    # nothing (issue #504).
                     hint = (
-                        " Use add_thin_conductor() for sub-cell PEC sheet."
+                        " A conductor thinner than a cell is modelled as a "
+                        "one-cell PEC surface — tangential E is zeroed on it "
+                        "and the normal component survives as surface charge. "
+                        "That is usually what you want for metal many skin "
+                        "depths thick, and switching to add_thin_conductor() "
+                        "would not change it; but it means the sheet carries "
+                        "no conductor loss and its thickness is not modelled."
                         if is_pec else
                         " Use non-uniform mesh or reduce dx."
                     )
@@ -1854,7 +1961,7 @@ class _PreflightMixin:
         self._validate_cfg_upml_refinement()
         self._validate_cfg_floquet_nonuniform()
         self._validate_cfg_absorber_placement(
-            _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
+            _w, dx, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
         )
         self._validate_cfg_source_on_reflector_plane(_w, dx, _pmc_faces_set)
         self._validate_cfg_ntff_absorber_overlap(
@@ -1862,7 +1969,7 @@ class _PreflightMixin:
         )
         self._validate_cfg_ntff_min_steps(dx)
         self._validate_cfg_geometry_in_cpml(
-            _w, dx, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
+            _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
         )
         self._validate_cfg_port_inside_pec(_w, dx)
         self._validate_cfg_floating_single_cell_port(_w)
@@ -2293,12 +2400,44 @@ class _PreflightMixin:
     def _validate_cfg_absorber_placement(
         self,
         _w,
+        dx: float,
         cpml_thickness: float,
         cpml_thick_lo: list[float],
         cpml_thick_hi: list[float],
         absorber_label: str,
     ) -> None:
-        """P1.2/P1.3: Probe or source inside absorber region."""
+        """P1.2/P1.3: Probe or source inside, or suspiciously close to, the
+        absorber region.
+
+        Issue #500: membership goes through :func:`_coord_in_absorber` —
+        the requested domain ``[0, domain_extent]`` is absorber-free by
+        construction (exterior padding), so a probe/port is only ever
+        "inside" the absorber when its coordinate is genuinely outside
+        that interval (previously this compared against an interior
+        reading of the CPML thickness and false-fired on geometry
+        anywhere within roughly the outer half of the thickness from an
+        edge, e.g. a probe at the domain centre — verified false positive
+        in #500 repro 2).
+
+        Review finding M3 / H1: dropping the interior-frame comparison
+        also removed the only proximity coverage the pre-#500 code
+        happened to provide — a probe genuinely INSIDE the domain but
+        right at its edge used to warn (for the wrong reason) and, after
+        the #500 fix alone, went silent. Two regressions surfaced this as
+        load-bearing: ``tests/test_run_preflight_parity.py`` (a probe one
+        cell inside a 0.02m domain was the run()-parity fixture's only
+        warning trigger) and ``tests/test_msl_internal_probe_advisories.py::
+        test_user_probe_advisories_and_332_still_fire`` (the #470
+        regression lock's "user probe near the x-CPML" case, node 9 of a
+        pad=8 grid — one cell inside). :func:`_coord_near_absorber`
+        restores this honestly: a coordinate that is interior but within
+        ``_ABSORBER_PROXIMITY_CELLS`` cells of an active absorber boundary
+        gets a distinct, lower-severity ``absorber_proximity`` advisory
+        instead of being silently indistinguishable from a comfortably
+        interior placement — fields that close to the boundary still
+        carry CPML fringe/reflection error even though they are not
+        literally inside the absorbing medium.
+        """
         if cpml_thickness > 0:
             _internal = getattr(self, "_internal_probe_indices", frozenset())
             for _pi, pe in enumerate(self._probes):
@@ -2317,7 +2456,7 @@ class _PreflightMixin:
                     ax_i = min(ax, 2)
                     ct_lo = cpml_thick_lo[ax_i]
                     ct_hi = cpml_thick_hi[ax_i]
-                    if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
+                    if _coord_in_absorber(coord, domain_extent, ct_lo, ct_hi):
                         _w.warn(
                             PreflightWarning(
                                 f"Probe at {pos} is near/inside {absorber_label} region "
@@ -2325,6 +2464,21 @@ class _PreflightMixin:
                                 f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                                 f"Signal will be attenuated. Move probe to interior.",
                                 code="absorber_overlap",
+                                source="_validate_cfg_absorber_placement",
+                            ),
+                            stacklevel=3,
+                        )
+                        break
+                    if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                        _w.warn(
+                            PreflightWarning(
+                                f"Probe at {pos} is within "
+                                f"{_ABSORBER_PROXIMITY_CELLS} cells "
+                                f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
+                                f"{absorber_label} absorber along the {'xyz'[ax]}-axis. "
+                                f"Fields there carry CPML fringe/reflection error; move "
+                                f"inward for claims-bearing measurement.",
+                                code="absorber_proximity",
                                 source="_validate_cfg_absorber_placement",
                             ),
                             stacklevel=3,
@@ -2338,7 +2492,7 @@ class _PreflightMixin:
                     ax_i = min(ax, 2)
                     ct_lo = cpml_thick_lo[ax_i]
                     ct_hi = cpml_thick_hi[ax_i]
-                    if coord < ct_lo * 0.5 or coord > domain_extent - ct_hi * 0.5:
+                    if _coord_in_absorber(coord, domain_extent, ct_lo, ct_hi):
                         _w.warn(
                             PreflightWarning(
                                 f"Source/port at {pos} is near/inside {absorber_label} region "
@@ -2346,6 +2500,21 @@ class _PreflightMixin:
                                 f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                                 f"Energy will be absorbed. Move source to interior.",
                                 code="absorber_overlap",
+                                source="_validate_cfg_absorber_placement",
+                            ),
+                            stacklevel=3,
+                        )
+                        break
+                    if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                        _w.warn(
+                            PreflightWarning(
+                                f"Source/port at {pos} is within "
+                                f"{_ABSORBER_PROXIMITY_CELLS} cells "
+                                f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
+                                f"{absorber_label} absorber along the {'xyz'[ax]}-axis. "
+                                f"Fields there carry CPML fringe/reflection error; move "
+                                f"inward for claims-bearing measurement.",
+                                code="absorber_proximity",
                                 source="_validate_cfg_absorber_placement",
                             ),
                             stacklevel=3,
@@ -2473,7 +2642,13 @@ class _PreflightMixin:
         cpml_thick_hi: list[float],
         absorber_label: str,
     ) -> None:
-        """P1.4: NTFF box overlap with absorber."""
+        """P1.4: NTFF box overlap with absorber.
+
+        Issue #500: uses :func:`_absorber_boundary_for_axis` — the CPML
+        pad is EXTERIOR to ``[0, domain_extent]`` (see that helper), so an
+        NTFF corner is only in the absorber when it is genuinely outside
+        the requested domain, not merely within ``ct_{lo,hi}`` of an edge.
+        """
         if self._ntff is not None and cpml_thickness > 0:
             corner_lo, corner_hi, _ = self._ntff
             for ax in range(3):
@@ -2481,7 +2656,10 @@ class _PreflightMixin:
                 ax_i = min(ax, 2)
                 ct_lo = cpml_thick_lo[ax_i]
                 ct_hi = cpml_thick_hi[ax_i]
-                if corner_lo[ax] < ct_lo or corner_hi[ax] > domain_ext - ct_hi:
+                lo_b, hi_b = _absorber_boundary_for_axis(domain_ext, ct_lo, ct_hi)
+                if (lo_b is not None and corner_lo[ax] < lo_b) or (
+                    hi_b is not None and corner_hi[ax] > hi_b
+                ):
                     _w.warn(
                         PreflightWarning(
                             f"NTFF box extends into {absorber_label} region along "
@@ -2515,7 +2693,6 @@ class _PreflightMixin:
     def _validate_cfg_geometry_in_cpml(
         self,
         _w,
-        dx: float,
         cpml_thickness: float,
         cpml_thick_lo: list[float],
         cpml_thick_hi: list[float],
@@ -2529,6 +2706,20 @@ class _PreflightMixin:
         Periodic axes have no CPML (see _build_grid — issue #68), so
         the per-axis thresholds above already carry `cpml_thick_xyz[ax]
         == 0` on those axes and the check naturally skips.
+
+        Issue #500 rewrite: the pre-#500 version treated the CPML as
+        occupying ``[0, thick_lo]`` / ``[d - thick_hi, d]`` *inside* the
+        requested domain (an "intentional full-domain edge" heuristic
+        existed specifically to claw back the resulting false positives
+        on the canonical transmission-line/MSL-substrate pattern —
+        ``Box((0,0,0), (LX,LY,H_SUB))``). That frame was wrong: every rfx
+        grid builder pads CPML EXTERIOR to the requested domain (see
+        :func:`_absorber_boundary_for_axis`), so a Box entirely within
+        ``[0, d]`` can never touch the absorber regardless of how close it
+        sits to an edge — the heuristic is now unnecessary rather than
+        merely refined. The only genuine issue-#61 case left is a Box
+        whose bounding box extends to a NEGATIVE coordinate or past
+        ``domain_extent`` — i.e. literally drawn into the exterior pad.
         """
         if cpml_thickness > 0 and self._boundary == "cpml":
             for entry in self._geometry:
@@ -2541,43 +2732,9 @@ class _PreflightMixin:
                             if thick_lo <= 0 and thick_hi <= 0:
                                 continue
                             d = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
-                            # FP3 refinement (2026-05-06): a Box whose
-                            # lo/hi edge sits exactly at 0/L_domain
-                            # (within ½·dx) is an *intentional*
-                            # full-domain extension — the canonical
-                            # transmission-line / MSL-substrate
-                            # pattern.  Do not warn on those edges;
-                            # only warn on edges that drift INTO the
-                            # CPML region without explicitly reaching
-                            # the boundary (the original issue #61
-                            # leak-into-absorber footgun).
-                            # 2026-06 fix: "touches the edge" alone is not
-                            # enough — a thin slab buried ENTIRELY inside the
-                            # absorber also starts at the edge. An edge-touching
-                            # box is an intentional full-domain extension only if
-                            # it reaches PAST the CPML into the physical interior
-                            # (c2 > thick_lo); a slab contained within the CPML is
-                            # the issue-#61 footgun and must warn (regression:
-                            # test_preflight_still_warns_on_non_periodic_z_axis).
-                            # BUT when the CPML spans (nearly) the whole axis there
-                            # is no interior to reach and no footgun to flag — the
-                            # warning is meaningless, so the edge touch stays
-                            # intentional (degenerate full-CPML axis, e.g. the
-                            # thin-substrate false-positive test where
-                            # layers·dx ≈ L_axis).
-                            has_interior = (thick_lo + thick_hi) < d - dx * 0.5
-                            intentional_lo = c1[ax] <= dx * 0.5 and (
-                                c2[ax] > thick_lo or not has_interior
-                            )
-                            intentional_hi = c2[ax] >= d - dx * 0.5 and (
-                                c1[ax] < d - thick_hi or not has_interior
-                            )
-                            lo_hit = (thick_lo > 0
-                                      and c1[ax] < thick_lo * 0.3
-                                      and not intentional_lo)
-                            hi_hit = (thick_hi > 0
-                                      and c2[ax] > d - thick_hi * 0.3
-                                      and not intentional_hi)
+                            lo_b, hi_b = _absorber_boundary_for_axis(d, thick_lo, thick_hi)
+                            lo_hit = lo_b is not None and c1[ax] < lo_b
+                            hi_hit = hi_b is not None and c2[ax] > hi_b
                             if lo_hit or hi_hit:
                                 _w.warn(
                                     PreflightWarning(
@@ -3135,14 +3292,33 @@ class _PreflightMixin:
                         code="waveguide_reference_plane",
                         source="_validate_cfg_waveguide_reference_plane",
                     )
-                if effective < ct_lo or effective > domain_ext - ct_hi:
+                # Issue #500: this used to compare `effective` against an
+                # INTERIOR reading of the CPML thickness
+                # (`[0, ct_lo]`/`[domain_ext-ct_hi, domain_ext]`) —
+                # verified false positive (repro 1: WR-90 ports at 20mm /
+                # 70.678mm on a 90.678mm domain, comfortably interior,
+                # warned anyway). The exterior-padding frame
+                # (:func:`_absorber_boundary_for_axis`) makes the absorber
+                # boundary exactly `0.0` / `domain_ext` — identical to the
+                # hard bounds check immediately above, which already
+                # raises `PreflightConfigError` for any `effective` this
+                # branch could otherwise catch. So this warning is now
+                # provably unreachable on both the uniform and
+                # non-uniform (dz_profile) lanes; kept (routed through the
+                # canonical helper, not deleted) as a documented no-op —
+                # same precedent as the P2.7 anchor above — in case a
+                # future change decouples the hard check from this one.
+                lo_b, hi_b = _absorber_boundary_for_axis(domain_ext, ct_lo, ct_hi)
+                if (lo_b is not None and effective < lo_b) or (
+                    hi_b is not None and effective > hi_b
+                ):
                     _w.warn(
                         PreflightWarning(
                             f"waveguide_port reference plane = {effective*1e3:.3g} mm is "
                             f"inside the CPML absorbing region along the "
-                            f"{direction[-1]}-axis (CPML extent: "
-                            f"[0, {ct_lo*1e3:.3g}] and "
-                            f"[{(domain_ext - ct_hi)*1e3:.3g}, {domain_ext*1e3:.3g}] mm). "
+                            f"{direction[-1]}-axis (CPML extent (exterior pad): "
+                            f"[{-ct_lo*1e3:.3g}, 0] and "
+                            f"[{domain_ext*1e3:.3g}, {(domain_ext + ct_hi)*1e3:.3g}] mm). "
                             f"S-matrix phase will be distorted by CPML stretching. "
                             f"Move x_position / reference_plane to the interior or "
                             f"reduce cpml_layers.",
@@ -3200,10 +3376,98 @@ class _PreflightMixin:
            keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
            sweep, 2026-05-04 — see rfx-known-issues.md).
 
-        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells.
-           Yee staircase at the dielectric interface is O(dx) (not
-           O(dx²)) for inhomogeneous ε; <4 cells gives Z0 staircase
-           error >5%.
+           Issue #500 / review finding MH2: the reference position is
+           ``_absorber_boundary_for_axis``'s exterior-frame edge (y=0 /
+           y=domain[1], x=0 / x=domain[0] when that face is CPML/UPML- or
+           PEC/PMC-backed) PLUS an EXPLICIT, separately-calibrated buffer
+           equal to the active CPML depth on that face
+           (``cpml_thick_{lo,hi}`` = n_cpml·dx). The buffer is not a
+           restatement of "where the absorber starts" (that question is
+           answered by the helper alone, and the absorber does start
+           exactly at the edge — issue #500's core finding still holds);
+           it is a SEPARATE, empirically-measured MSL-specific margin.
+           the maintainer's internal issue ledger (primary checkout
+           only, not in this public tree), "Status 2026-05-04
+           (CALIBRATED, OpenEMS-class)" entry: with the pre-calibration
+           ``LY = W + 6·dx`` at dx=80µm, cpml_layers=8, "the trace ended
+           up INSIDE the CPML overlap region (negative clearance)" and
+           Z0 drifted UP with mesh refinement (54→60Ω) instead of
+           converging to Hammerstad's 47.89Ω; the fix widened the
+           required geometry to ``LY >= W + 2·(2·h_sub + 8·dx)`` — i.e.
+           per-side clearance >= ``2·h_sub`` beyond a buffer of
+           ``8·dx`` = ``cpml_layers·dx`` in that fixture (the "8" is
+           that calibration's ``cpml_layers``, not a hardcoded constant
+           — this reads it back out as ``cpml_thick_{lo,hi}`` so it
+           scales with whatever ``cpml_layers`` is actually configured).
+           A PEC/PMC face (``cpml_thick=0`` there) gets no buffer: the
+           calibration's concern is CPML near-field stretching, which
+           does not apply to a hard reflector. Dropping this buffer
+           entirely (as an earlier #500 pass did) silently re-admits the
+           negative-clearance configuration the 2026-05-04 calibration
+           closed — measured on this repo's own
+           ``tests/test_msl_port_preflight.py`` fixture: 3 advisories at
+           base (pre-drop), 0 on the buffer-dropped branch.
+
+        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells, on an
+           ALIGNED mesh (h_sub/dx integer). Yee staircase at the
+           dielectric interface is O(dx) (not O(dx²)) for inhomogeneous
+           ε; <4 cells gives Z0 staircase error >5%. Re-verified post-
+           #511/#507 by ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``
+           (2026-08-02, committed artifact under that directory): aligned
+           dx=h_sub/{3,4,5,6} measured Z0 bias -7.9%/-3.8%/-1.2%/+0.7%
+           vs the analytic Hammerstad-Jensen anchor — the "<5% at 4+
+           cells" promise holds, but ONLY when aligned. A misaligned mesh
+           (h_sub/dx fractional part in [0.10, 0.40], check 2b) measured
+           +20.2%/+11.0% at comparable ~3/~4 cells respectively —
+           2.56-2.94x worse in magnitude than the aligned case at the
+           comparable cell count, so refining cell count alone does not
+           fix it (see 2b).
+
+           The same sweep also asked whether alignment class shifts the
+           |S11| floor itself, not just Z0 (issue #487). |S11|_floor
+           tracks |Gamma_implied| = |(Z0-Z0_HJ)/(Z0+Z0_HJ)| within ~1.3x
+           over 5 of 6 points (ratio 0.95-1.27), but BREAKS at the finest
+           aligned point (h_sub/6, ratio 1.96), where Gamma_implied =
+           0.0033 is nearly zero (the rasterized Z0 crosses the analytic
+           anchor between n=5 and n=6) while mean|S11| stays at order
+           0.006. Below that scale this sweep cannot RESOLVE whether the
+           floor~=headroom*|Gamma_implied| mechanism still holds (headroom
+           being that same ~0.95-1.27x ratio: floor / |Gamma_implied|),
+           for three reasons, so this is reported as a resolution limit of
+           the sweep, not a confirmed second mechanism: (1) Gamma_implied
+           is one BAND-MEAN Z0 compared against a band-MEAN |S11|(f); the
+           artifact has no per-bin Z0(f), and whenever Gamma(f) changes
+           sign inside the band — exactly this case — mean|S11(f)|
+           generically exceeds |Gamma(mean Z0)| by Jensen's inequality
+           alone; (2) the two sides come from different estimators — the
+           fitted-Z0's own honesty guard (``strict_extractor``, the
+           documented +/-10% fitted-Z0 health bound) only calls Z0 healthy
+           to that tolerance, and at the COARSEST MISALIGNED mesh (80um,
+           not n=6) the two per-port Z0 reads — each that port's own
+           max-deviation frequency bin, not the same frequency, so this
+           is an order-of-magnitude reference, not a same-mesh
+           measurement — differ by 0.17 ohm, already over half of the
+           ENTIRE n=6 signal (Z0-Z0_HJ = 0.315 ohm). A coarser, misaligned
+           mesh plausibly has MORE estimator noise than the much finer,
+           aligned n=6 point, so 0.17 ohm likely OVERSTATES the true n=6
+           noise floor — using it anyway is the conservative (cautious)
+           choice for an argument that only needs to show noise CANNOT be
+           excluded, not that it explains n=6 exactly; (3) only ONE point
+           departs — h_sub/5 (Gamma_implied=0.0063) is fully consistent
+           with floor=|Gamma_implied| (ratio 0.95). This single-point
+           ratio breakdown is why no derived-dB formula ships from this
+           sweep.
+
+           No MEASURED-dB advisory ships either, for a separate reason:
+           even where the mechanism DOES hold, the measured floors
+           (-26.0 dB at 3 aligned cells, -33.0 dB at 4) are specific to
+           THIS thru fixture, and the support matrix explicitly forbids
+           generalizing thru/matched/notch evidence to other structures
+           — quoting those numbers as an engineer-facing dB promise for
+           an arbitrary MSL port would be exactly that overclaim. They
+           are cited here as fixture-specific informational context only.
+           The sweep JSON (``scripts/diagnostics/msl_z0_bias_floor_sweep/
+           msl_z0_bias_floor_sweep.json``) is the artifact of record.
 
         3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
            Source-side CPML reflection inflates |S11| if the port is
@@ -3223,24 +3487,35 @@ class _PreflightMixin:
             trace_y_lo = y_centre - w_trace / 2.0
             trace_y_hi = y_centre + w_trace / 2.0
             ly = float(domain[1])
-            # Effective absorbing boundary positions on each y side
-            y_abs_lo = float(cpml_thick_lo[1])           # CPML extent from y=0
-            y_abs_hi = ly - float(cpml_thick_hi[1])      # CPML extent from y=LY
+            # Reference position on each y side = the exterior-frame edge
+            # (_absorber_boundary_for_axis; None on an inactive/periodic
+            # face, treated as the plain domain edge) PLUS the explicit
+            # calibrated buffer (issue #500 / MH2 — see class docstring):
+            # cpml_thick_{lo,hi} = n_cpml*dx, zero on a PEC/PMC face.
+            _ly_lo_b, _ly_hi_b = _absorber_boundary_for_axis(
+                ly, cpml_thick_lo[1], cpml_thick_hi[1]
+            )
+            y_abs_lo = (_ly_lo_b if _ly_lo_b is not None else 0.0) + cpml_thick_lo[1]
+            y_abs_hi = (_ly_hi_b if _ly_hi_b is not None else ly) - cpml_thick_hi[1]
             clearance_lo = trace_y_lo - y_abs_lo
             clearance_hi = y_abs_hi - trace_y_hi
-            for side, c in (("−y", clearance_lo), ("+y", clearance_hi)):
+            for side, c, buf in (
+                ("−y", clearance_lo, cpml_thick_lo[1]),
+                ("+y", clearance_hi, cpml_thick_hi[1]),
+            ):
                 if c < recommended:
                     pct = max(0.0, (1.0 - c / recommended)) * 15.0
                     _w.warn(
                         PreflightWarning(
                             f"MSL port '{pe.name}' (trace W={w_trace*1e6:.0f}µm, "
                             f"h_sub={h_sub*1e6:.0f}µm): lateral clearance to "
-                            f"{side} absorbing boundary = {c*1e6:.0f}µm < "
-                            f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
-                            f"Fringing field will be clipped → Z0 may be biased "
-                            f"HIGH by ~{pct:.0f}%, mesh-conv may diverge. "
-                            f"Increase domain y-extent OR move port further from "
-                            f"sidewall.",
+                            f"{side} absorbing boundary = {c*1e6:.0f}µm "
+                            f"(domain edge + {_fmt_len(buf)} calibrated CPML "
+                            f"buffer) < recommended {recommended*1e6:.0f}µm "
+                            f"(= 2·h_sub). Fringing field will be clipped → Z0 "
+                            f"may be biased HIGH by ~{pct:.0f}%, mesh-conv may "
+                            f"diverge. Increase domain y-extent OR move port "
+                            f"further from sidewall.",
                             code="msl_port_geometry",
                             source="_check_msl_port_geometry",
                         ),
@@ -3256,8 +3531,15 @@ class _PreflightMixin:
                         f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
                         f"Yee staircase at dielectric interface is O(dx) — "
                         f"Z0 staircase error >5% expected. Refine to dx ≤ "
-                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) for "
-                        f"<5% Z0 bias.",
+                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) AND keep "
+                        f"h_sub/dx an integer (aligned) for <5% Z0 bias — "
+                        f"measured post-#511/#507 at -3.8%/-1.2%/+0.7% for "
+                        f"h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py). Refining WITHOUT "
+                        f"alignment does not reach that: a mixed-cell mesh "
+                        f"at a similar cell count measured +11% (h_sub/dx="
+                        f"4.233) — see the mixed-cell-danger-zone check "
+                        f"below.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -3277,6 +3559,15 @@ class _PreflightMixin:
             # lengths at dx ∈ [75, 82]µm with h_sub=254µm).  Snap dx
             # so h_sub/dx is integer or its fractional part is > 0.6 to
             # stay in a safe alignment window.
+            #
+            # Hard PEC is unaffected by that |S21|² bug, but NOT by Z0
+            # bias itself (issue #487, scripts/diagnostics/
+            # msl_z0_bias_floor_sweep.py, 2026-08-02): on the SAME
+            # committed thru fixture, a mixed-cell mesh measured +20.2%/
+            # +11.0% Z0 bias vs the analytic Hammerstad-Jensen anchor at
+            # ~3/~4 substrate cells, against -7.9%/-3.8% aligned at the
+            # comparable cell counts — 2.56-2.94x worse in magnitude, so
+            # cell count alone (check 2) does not predict this.
             frac = (h_sub / dx) - int(h_sub / dx)
             if 0.10 <= frac <= 0.40:
                 # Snap suggestions: nearest integer above and below.
@@ -3293,8 +3584,14 @@ class _PreflightMixin:
                         f"that holds the trace; AD-traceable "
                         f"``pec_occupancy_override`` zeros the whole cell "
                         f"and produces unphysical |S21|² > 1 in this regime. "
-                        f"Hard ``Box(material='pec')`` is unaffected. To "
-                        f"snap onto a safe alignment, set dx = "
+                        f"Hard ``Box(material='pec')`` avoids that specific "
+                        f"bug, but Z0 bias itself is still 2.56-2.94x worse "
+                        f"than an aligned mesh at a comparable cell count "
+                        f"(measured +20.2% vs -7.9% at ~3 cells, +11.0% vs "
+                        f"-3.8% at ~4 cells; scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py) — refining cell count "
+                        f"alone will not reach the aligned-mesh bias. To "
+                        f"snap onto a safe alignment regardless, set dx = "
                         f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
                         f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
                         code="msl_port_geometry",
@@ -3304,21 +3601,32 @@ class _PreflightMixin:
                 )
 
             # ---- 3. Port-to-CPML distance in x ----
-            x_abs_lo = float(cpml_thick_lo[0])
-            x_abs_hi = float(domain[0]) - float(cpml_thick_hi[0])
+            # Issue #500 / MH2: same reference as check 1 — exterior-frame
+            # edge PLUS the explicit calibrated buffer.
+            _lx_lo_b, _lx_hi_b = _absorber_boundary_for_axis(
+                float(domain[0]), cpml_thick_lo[0], cpml_thick_hi[0]
+            )
+            x_abs_lo = (_lx_lo_b if _lx_lo_b is not None else 0.0) + cpml_thick_lo[0]
+            x_abs_hi = (
+                (_lx_hi_b if _lx_hi_b is not None else float(domain[0]))
+                - cpml_thick_hi[0]
+            )
             x_clearance = (
                 x_feed - x_abs_lo if pe.direction == "+x"
                 else x_abs_hi - x_feed
             )
             if x_clearance < recommended:
+                _x_buf = cpml_thick_lo[0] if pe.direction == "+x" else cpml_thick_hi[0]
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}' at x={x_feed*1e3:.2f}mm, "
                         f"direction={pe.direction!r}: distance to nearest "
-                        f"x-CPML = {x_clearance*1e6:.0f}µm < recommended "
-                        f"{recommended*1e6:.0f}µm (= 2·h_sub). Source-side "
-                        f"CPML reflection may inflate |S11|. Move port further "
-                        f"from boundary OR increase domain x-extent.",
+                        f"x-CPML = {x_clearance*1e6:.0f}µm (domain edge + "
+                        f"{_fmt_len(_x_buf)} calibrated CPML buffer) < "
+                        f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
+                        f"Source-side CPML reflection may inflate |S11|. Move "
+                        f"port further from boundary OR increase domain "
+                        f"x-extent.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

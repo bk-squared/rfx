@@ -65,20 +65,41 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
 
 def test_user_probe_advisories_and_332_still_fire():
     """USER probes keep pre-#470 behavior during the same MSL run: a probe
-    inside the CPML still draws its placement advisory, and an interior
+    near the x-CPML still draws a placement advisory, and an interior
     user probe's hot tail still fires #332 on the truncated record (the
-    fail-safe test_issue80_patch_s11_regression depends on)."""
+    fail-safe test_issue80_patch_s11_regression depends on).
+
+    Issue #500 / review finding H1: on this fixture (dx=2e-4, cpml_layers=8
+    -> pad=8) the second probe sits at x=200um = node 9, one cell inside
+    the domain (pad=8 is node 8, the first interior node) -- genuinely
+    interior under the #500 exterior-padding frame, so it no longer trips
+    the absorber_overlap ("near/inside") advisory the pre-#500 code fired
+    (for the wrong, interior-frame reason). It is exactly the
+    _ABSORBER_PROXIMITY_CELLS=2 case the #500 review's H1 finding restored:
+    within 2 cells of the boundary, so it draws the distinct
+    absorber_proximity advisory instead. This test and
+    tests/test_run_preflight_parity.py's near-identical fixture were the
+    two regressions that surfaced the removed proximity coverage as
+    load-bearing (see _validate_cfg_absorber_placement's docstring)."""
     sim = _thru()
     # interior probe above the trace: sees real signal -> hot tail at
     # num_periods=2 -> #332 must fire on the USER column
     sim.add_probe(position=(0.006, 0.004, 0.0012), component="ez")
-    # probe deep in the x-CPML -> placement advisory must fire
+    # one cell inside the domain (node 9 of pad=8) -> absorber_proximity
     sim.add_probe(position=(0.0002, 0.004, 0.0012), component="ez")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         sim.compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
     msgs = [str(w.message) for w in caught]
-    assert any("Probe at" in m for m in msgs), msgs
+    # compute_msl_s_matrix folds individual preflight findings into ONE
+    # consolidated "[run] preflight found N advisory issue(s)" UserWarning
+    # (issue #66 parity), so absorber_proximity's own .code is not visible
+    # on the outer warning object here -- match its text instead, the way
+    # this test always has.
+    assert any(
+        "within 2 cells" in m and "CPML absorber" in m and "fringe/reflection" in m
+        for m in msgs
+    ), msgs
     assert any("issue #332" in m for m in msgs), msgs
     # user probes survive the call
     assert len(sim._probes) == 2

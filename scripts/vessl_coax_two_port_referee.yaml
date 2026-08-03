@@ -1,0 +1,102 @@
+name: rfx-coax-two-port-referee
+description: "#489 stage 3: source-built openEMS referee for the coax two-port through-line fixture (comparator leg only -- brackets, does not judge rfx's own PR #534 numbers). This lane mounts and tests the PRIMARY checkout (/root/workspace/byungkwan-workspace/research/rfx), NOT a git clone (vessl_external_referee_lane.md) -- the referee script must be MERGED TO MAIN before submitting, or this run will execute whatever is on main, not your branch. On-demand, not a fixed cadence; standing lane per docs/agent-memory/task_recipes/vessl_external_referee_lane.md -- submit whenever the coax two-port geometry or extractor changes, or when #489 stage 3 review needs fresh evidence: vessl run create -f scripts/vessl_coax_two_port_referee.yaml"
+tags: [rfx, coax-two-port, i489, external-referee, w25]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own --threads/numThreads (passed explicitly
+  # below, matching resources.cpu=16) does the parallelism; leaving OMP at
+  # its own default would oversubscribe against openEMS's internal thread
+  # pool (L3 review fix -- align cpu / OMP_NUM_THREADS / numThreads instead
+  # of three independently-chosen numbers).
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  # pytorch runtime image: dash shell (no bashisms) and git via apt below.
+  echo "=== rfx #489 stage 3: openEMS coax two-port referee ==="
+  date
+
+  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
+  # to scripts/vessl_crossval_external.yaml's build block (imitated, not
+  # reinvented -- both lanes need the SAME source-built openEMS). --
+  apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git \
+    libhdf5-dev libtinyxml-dev \
+    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
+    libboost-serialization-dev \
+    libcgal-dev libvtk7-dev \
+    python3-dev python3-numpy python3-scipy python3-matplotlib \
+    python3-setuptools python3-h5py 2>&1 | tail -3
+  cd /tmp
+  git clone --recursive https://github.com/thliebig/openEMS-Project.git
+  cd openEMS-Project
+  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
+  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
+  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
+  ldconfig
+  export CSXCAD_INSTALL_PATH=/usr/local
+  export OPENEMS_INSTALL_PATH=/usr/local
+  # Same conda-python rationale as vessl_crossval_external.yaml: this
+  # script only needs openEMS + numpy (no rfx import at all -- comparator
+  # leg only, see the script's module docstring), but the base image's
+  # /usr/bin/python3 is 3.8 and the bindings' setup.py wants a modern pip
+  # resolver; use the image's conda python for consistency with the other
+  # external-referee lane.
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
+  cd CSXCAD/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  cd openEMS/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+
+  # -- provenance (this script never imports rfx, but the referee's
+  # geometry constants were read off the LIVE rfx checkout at authoring
+  # time -- record which commit that was, per vessl_external_referee_
+  # lane.md's "both lanes test the LIVE primary checkout" discipline). --
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+
+  out=".omx/coax-two-port-referee/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$out"
+
+  # -- Stage A + Stage B, sequential inside the script itself (Stage B is
+  # skipped by the script if Stage A's reproduce-gate fails). Exit-code
+  # convention (docs/agent-memory/task_recipes/vessl_external_referee_
+  # lane.md, extended by the script's own module docstring): 0 self-checks
+  # passed, 1 a physics/self-check gate failed, 2 openEMS missing (should
+  # not fire here -- the build above just proved it isn't), 3 an internal
+  # config/layout bug in the script itself (distinct from 1 on purpose --
+  # M2 review fix). --threads matches resources.cpu above (L3 fix). --
+  set +e
+  timeout 5400 "$PY" validation/research/coax_two_port/openems_coax_two_port_referee.py \
+    --output "$out/openems_coax_two_port.json" \
+    --threads 16 \
+    > "$out/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$out/exit_code"
+  tail -n 60 "$out/run.log" || true
+  echo "coax_two_port_referee_rc=$rc"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: reproduce-gate + Stage B self-checks both passed (comparator-leg only -- see JSON for the actual bracket, no verdict on rfx agreement)" ;;
+    1) echo "SELF-CHECK FAILED: reproduce-gate or a Stage B sanity/physical guard failed -- inspect $out/run.log before trusting any number in the JSON" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding -- investigate the build/import path" ;;
+    3) echo "CONFIG ERROR: an internal layout/geometry assertion in the script itself failed -- this is a script bug, NOT a physics finding; fix the script before resubmitting" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"

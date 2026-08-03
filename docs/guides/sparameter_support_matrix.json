@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "updated": "2026-07-29",
+  "updated": "2026-08-02",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -136,9 +136,9 @@
       "known_limits": [
         "nonuniform mode=laplace or mode=uniform has no external comparison",
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
-        "outside JAX tracing, reliable[p,k]=false invalidates S[:,p,k] for physical interpretation; true is not an accuracy guarantee",
+        "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); the mask covers every driven/port record the solve consumes (#522); true is not an accuracy guarantee",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
-        "strong-reflector |S11| has a characterized staircase-Z0 floor of about 0.16--0.22",
+        "strong-reflector |S11|'s ~0.16--0.22 staircase-Z0 floor is RETIRED (#511/#507 extractor defects, PR #516/f95240f, issue #487); a smaller floor survives, tracking |Gamma_implied|=|(Z0-Z0_HJ)/(Z0+Z0_HJ)| within ~1.3x over 5 of 6 #487 re-sweep points, but below |Gamma_implied|~0.006 the sweep cannot resolve whether the mechanism still holds (band-mean-Z0 vs band-mean-|S11| comparison, no per-bin trace, fitted-Z0 estimator only +/-10% healthy) -- a resolution limit, not a confirmed second mechanism; no single envelope number is published either way, since even where it holds the floors are fixture-specific; see scripts/diagnostics/msl_z0_bias_floor_sweep.py",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the auto n_probe_offset solves the upstream/downstream clearance interval at driver time and warns loudly when a short feed cannot satisfy both (#469); library witness probes are excluded from preflight advisories and the #332 tail advisory (#470)"
       ],
@@ -188,7 +188,7 @@
         "uniform_yee_rf",
         "nonuniform_transverse_dx_dy_restricted"
       ],
-      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Phase and junction evidence are narrower. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
+      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Issue #490 Lane 1 adds an Airy PHASE envelope over the SAME five WR bands and 20 mesh/geometry cases (reference-plane-corrected; max phase diff 11.99 degrees against a measured gate of 15.0 degrees), re-analyzing the npz/manifest pair that produced the committed magnitude envelope (restored locally for that analysis -- .omx is gitignored and not present in the tree; no new FDTD run for that sweep). Issue #490 Lane 3 adds a near-cutoff group-delay gate on a purpose-built empty WR-340 fixture (f/fc in [1.15, 1.50]): -d(angle(S21))/d(omega), compared against the analytic L_eff/v_g(f) oracle run through the SAME finite-difference stencil (a like-for-like comparator), matches to 0.0320 ns against a pinned gate of 0.042 ns. Junction and other-configuration phase/group-delay evidence remain narrower -- see caveats. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
       "known_limits": [
         "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
         "multimode normalize=True is unsupported",
@@ -198,10 +198,11 @@
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee"
       ],
-      "evidence_level": "E5-broad-magnitude/E4-external/phase-narrow",
+      "evidence_level": "E5-broad-magnitude/E4-external/phase-e5-slab-broad/group-delay-e2-near-cutoff",
       "validation_gaps": [
         "broader external comparisons for other nonuniform profiles, bands, modes, phase, and junctions",
-        "missing broad phase validation across the magnitude-tested uniform configurations",
+        "phase evidence covers only the single-dielectric-slab configuration across the five WR bands; PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized",
+        "group delay is gated only on the WR-340 empty-guide near-cutoff oracle (f/fc 1.15-1.50); other bands, obstacles, and multimode group delay are not covered",
         "missing multimode and arbitrary-junction validation"
       ],
       "evidence_artifacts": [
@@ -215,6 +216,21 @@
         "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr15_vband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_phase_envelope.json",
+        "tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json",
+        "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json",
+        "tests/test_waveguide_broad_e5_phase_gates.py",
+        "tests/test_waveguide_broad_e5_phase_tolerance_envelope.py",
+        "tests/test_waveguide_group_delay_near_cutoff.py",
+        "tests/test_waveguide_group_delay_tolerance_envelope.py",
+        "scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
+        "scripts/diagnostics/waveguide_phase_falsifier_and_domain_invariance.py",
+        "scripts/diagnostics/build_waveguide_near_cutoff_group_delay.py",
+        "scripts/diagnostics/build_waveguide_group_delay_envelope.py",
         "tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json",
         "tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json",
         "tests/fixtures/waveguide_tjunction_e4/waveguide_tjunction_meep_external_comparison.json",
@@ -226,12 +242,16 @@
         "cv11 gates: band-mean linear-magnitude difference < 0.10 for S11 and < 0.07 for S21; masked band-mean phase difference < 60 degrees where reference magnitude >= 0.30; maximum complex-S difference < 0.30",
         "uniform Palace WR-90 empty/PEC-short/slab comparison over 8.2--12.4 GHz: max_mag_abs_diff 0.0707 and mean_mag_abs_diff 0.00943",
         "uniform analytic WR-band slabs with normalize=flux: per-case |S11| differences 0.005--0.041",
+        "issue #490 Lane 1 broad-E5 Airy PHASE (same 5 WR bands / 20 cases as the magnitude envelope, reference-plane-corrected): max phase diff 11.99 degrees against a measured-envelope gate of 15.0 degrees; planted-defect falsifier (the wrong pre-session S21 reference-plane formula) reds at 179.87 degrees; domain-size invariance witness (WR-340, +100mm growth) holds the pass verdict (8.92 -> 7.73 degrees)",
+        "issue #490 Lane 3 near-cutoff group delay (empty WR-340, f/fc in [1.15, 1.50], L_eff=0.320m): -d(angle(S21))/d(omega) central-difference vs analytic L_eff/v_g(f) run through the SAME stencil (like-for-like comparator), max interior diff 0.0320 ns against a pinned-constant gate of 0.042 ns (raw diff vs the exact closed-form derivative is 0.0248 ns, recorded for context but not gated -- the stencil's own 0.0072 ns truncation error has the opposite sign and would otherwise flatter the headline); record-length settling witness (num_periods 60 vs 120) agrees to 0.000 ns; domain-size invariance witness (+100mm growth) holds the pass verdict (0.0266 ns); 3 genuinely independent falsifiers (skip-unwrap, dropped sign, wrong L_eff) all red at >=1.5 ns",
         "nonuniform analytic characterization over grading ratios 1--3, eps_r 2 and 4, and 8.2--12.4 GHz: max_mag_abs_diff 0.01561",
         "stored nonuniform Palace characterization for WR-90 empty/PEC-short/slab: max_mag_abs_diff 0.07009 and mean_mag_abs_diff 0.01042; nonuniform RF status remains experimental"
       ],
-      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz. Other nonuniform profiles, bands, phase, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
+      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Phase is validated for the single-dielectric-slab configuration across the same five WR bands (issue #490 Lane 1). Group delay is validated only for the WR-340 empty-guide near-cutoff oracle (issue #490 Lane 3). Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz. Other nonuniform profiles, bands, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
       "caveats": [
-        "broad uniform magnitude evidence does not imply equally broad phase accuracy",
+        "phase evidence now matches the magnitude envelope's breadth for the single-dielectric-slab configuration across the same 5 WR bands (max residual 11.99 degrees vs a 15.0 degree gate); PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized -- do not infer phase accuracy for those configurations",
+        "d_left equals d_right in all five slab fixtures (the slab sits centered between symmetric reference planes), so the phase evidence cannot distinguish the S21 formula's d_left and d_right terms separately -- only their sum is exercised",
+        "group delay is gated only on one purpose-built WR-340 empty-guide fixture near cutoff (f/fc 1.15-1.50, max like-for-like diff 0.0320 ns vs a pinned 0.042 ns gate); other bands, obstacles, dielectric slabs, and multimode group delay are not covered",
         "the stored nonuniform Palace result validates only its stated magnitude configurations; AD regression is not RF validation",
         "junction results require the documented matched-reference geometry and far-port clearance",
         "choose slab length and frequencies away from analytic reflection nulls and make slab length an integer number of cells"
@@ -246,16 +266,18 @@
       "support_status": "limited_one_port_line_reflection",
       "calculation_api": [
         "Simulation.compute_coaxial_line_reflection(...)",
-        "Simulation.compute_coaxial_s_matrix(...) (deprecated and experimental)"
+        "Simulation.compute_coaxial_s_matrix(...) (deprecated and experimental)",
+        "Simulation.compute_coaxial_two_port(...) (experimental, issue #489 stage 2)"
       ],
       "result_type": [
         "CoaxialLineReflectionResult",
-        "CoaxialSMatrixResult (deprecated and experimental)"
+        "CoaxialSMatrixResult (deprecated and experimental)",
+        "CoaxialTwoPortResult (experimental)"
       ],
       "supported_configurations": [
         "3d_float32_second_order_uniform_yee_positive_z_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental.",
+      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, EXPERIMENTAL two-drive through-line extension — not covered by the 1-port evidence above; see its own known_limits entry and tests/test_coax_two_port_fdtd.py.",
       "known_limits": [
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
@@ -268,7 +290,8 @@
         "compute_coaxial_s_matrix(...) can report non-physical |S11| > 1 for a lossless short",
         "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
         "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
-        "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation"
+        "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation",
+        "compute_coaxial_two_port(...) is EXPERIMENTAL (issue #489 stage 2): every DUT it can currently gate against (none, a matched feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only TM0n modes, while the transition discontinuities issue #489 targets excite TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to the first probe plane); no external referee has run against it and no phase claim is made; unlike compute_coaxial_line_reflection(...) its result IS routed through the shared automatic passivity guard"
       ],
       "evidence_level": "E5-broad/E4-broad/differentiable",
       "validation_gaps": [
@@ -282,13 +305,17 @@
         "tests/test_coaxial_line_extraction.py",
         "tests/test_coax_end_to_end_ad.py",
         "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
-        "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json"
+        "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json",
+        "rfx/api/_sparams.py::Simulation.compute_coaxial_two_port",
+        "rfx/api/_spec.py::CoaxialTwoPortResult",
+        "tests/test_coax_two_port_fdtd.py"
       ],
       "numeric_metrics": [
         "analytic 4--12 GHz short/open/matched/resistive 25/100 ohm checks at Z0 48.6 and 63 ohm: method max |Gamma| deviation 0.0372 <= 0.05 and max recurrence residual 0.00588 <= 0.03",
         "matched single-cell resistor fixture is reported separately with max |Gamma| deviation 0.0929",
         "MEEP short/open comparison over 4--12 GHz: max_mag_abs_diff 0.0628 and mean_mag_abs_diff 0.0235",
-        "end-to-end eps_scale AD versus finite difference discrepancy 2.6%"
+        "end-to-end eps_scale AD versus finite difference discrepancy 2.6%",
+        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.05, reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)"
       ],
       "validated_scope": "The self-contained TEM coaxial-line model using the documented Simulation, port, and method arguments, in float32 precision on a three-dimensional, second-order uniform Yee grid with positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, no periodic boundary axes, exactly one face='top' coaxial port, at least three requested probe planes that all fit before the source, and the termination, frequency, characteristic-impedance, and mesh ranges in the committed fixtures. Separately registered geometry, sources, monitors, termination helpers, arbitrary launches, face='bottom', mixed port families, and multi-port networks are outside this result.",
       "caveats": [
@@ -297,7 +324,7 @@
         "MEEP covers short/open; resistive cases are covered by the analytic transmission-line fixture"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent"
+      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (compute_coaxial_line_reflection only; compute_coaxial_s_matrix (deprecated) and compute_coaxial_two_port (issue #489 stage 2, experimental) are NOT traceable — concrete numpy extraction, no eps_scale/traced-input channel wired; see tests/test_ad_surface_contract.py::AD_CLASSIFICATION for the per-calculator classification this family-level field cannot express)"
     },
     {
       "primitive": "add_floquet_port(...)",

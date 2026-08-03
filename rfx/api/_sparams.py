@@ -37,6 +37,7 @@ from rfx.api._spec import (
     WaveguideSMatrixResult,
     CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
+    CoaxialTwoPortResult,
     MSLSMatrixResult,
     MixedSMatrixResult,
     _WaveguidePortEntry,
@@ -88,6 +89,123 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     return np.full(n, float(grid.dx), dtype=float)
 
 
+def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
+                      dz_arr, dtype=None):
+    """Modal voltage ``V = -∫E·dz`` from ground to the trace underside.
+
+    ``ez_plane`` is an ``(n_freqs, ny, nz)`` x-normal DFT accumulator.  The
+    integral sums the z-edges ``k_lo .. k_hi-1`` — every Ez edge strictly
+    below the trace conductor.
+
+    ``k_hi`` is EXCLUSIVE and must be the **bottom node of the rasterized
+    trace conductor** — in the S-matrix lanes, ``trace_k_per_port[p][0]``,
+    i.e. the same PEC-mask search the Ampère-loop current uses, so V and I
+    reference one conductor plane by construction.
+
+    Do NOT pass ``round(h_sub/dx)`` (the port-height rounding,
+    ``port_idx_meta["k_hi"]``) as a proxy.  ``Box`` rasterization is
+    half-open over node coordinates, so for ``frac(h_sub/dx) ∈ (0, 0.5)``
+    the trace lands at ``ceil(h_sub/dx) = round(h_sub/dx) + 1`` and the
+    proxy is one substrate edge SHORT.  Measured on the dx = 80 µm gate
+    fixture (``h_sub/dx = 3.175``): trace node 4, proxy 3 — the proxy span
+    dropped the in-phase edge 3 and anchored V and I on different conductor
+    planes (PR #516 review, finding F2).  On node-aligned meshes
+    (``h_sub/dx`` integral, e.g. dx = h_sub/3 = 84.67 µm) the two agree.
+
+    Issue #511: before this helper existed the span was
+    ``range(k_lo, k_hi + 1)`` with the rounding proxy — on aligned meshes
+    that is ``n+1`` edges for an ``n``-cell substrate, and the extra edge
+    lies inside the one-cell PEC trace, where
+    :func:`rfx.boundaries.pec.apply_pec_mask` deliberately preserves the
+    NORMAL E component as surface charge (``rfx/boundaries/pec.py:90-93``)
+    — a correct boundary condition that is wrong to sum into a
+    ground-to-trace potential difference.  It contributed roughly −12% at
+    ``∠ ≈ 180°``, so every quantity derived from ``V`` (``Z0``, ``S11``,
+    ``S21``, the N-probe fit, the two-plane invariant) carried a
+    common-mode bias.  The extractor-independent witness is the Poynting
+    flux: ``Re(V·conj(I)) / flux_spectrum`` measured 0.881-0.885 with the
+    old span and 1.006-1.009 with the corrected span, over 7 planes × 12
+    frequencies — **on the aligned dx = 84.67 µm mesh**; that identity is
+    the falsifier for THIS span (ground→trace underside) and holds only
+    when the top anchor is the true trace node.
+    """
+    if k_hi <= k_lo:
+        raise ValueError(
+            f"msl_modal_voltage: need at least one substrate edge, got "
+            f"k_lo={k_lo}, k_hi={k_hi}. k_hi is the rasterized trace's "
+            f"bottom node (exclusive), so a port whose height rasterises "
+            f"to zero substrate cells cannot define a modal voltage — "
+            f"refine the mesh or raise the port height."
+        )
+    v = jnp.zeros(ez_plane.shape[0],
+                  dtype=ez_plane.dtype if dtype is None else dtype)
+    for k in range(k_lo, k_hi):
+        v = v + ez_plane[:, j_centre, k] * float(dz_arr[k])
+    return v
+
+
+def msl_solve_s_from_waves(wave_a, wave_b):
+    """Solve ``S = B·A⁻¹`` from wave amplitudes recorded on every drive.
+
+    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs,)`` forward / backward
+    wave amplitudes at port ``j`` while port ``d`` was driven.  With every
+    port driven the system ``b = S a`` is square:
+
+        ``A[j, d] = a_j`` during drive ``d``,  ``B[j, d] = b_j`` likewise
+        ``S = B · A⁻¹``
+
+    Returns ``(S, cond_a)`` with ``S`` shaped ``(n_ports, n_ports, n_freqs)``
+    indexed ``[receiver, driven, freq]``, and ``cond_a`` the per-frequency
+    condition number of ``A`` (``None`` under tracing).
+
+    Issue #507: the superseded rule ``S[j, d] = b_j / a_d`` is the ``d``-th
+    column of this only when ``a_j = 0`` at every passive port.  It is not —
+    measured ``|a_passive/a_driven| = 0.07-0.51`` across three fixtures — and
+    the exact algebra ``b_1/a_1 = S11 + S12·(a_2/a_1)`` holds to machine
+    precision, so the far port's echo was reported as the structure's own
+    reflection.
+
+    Unitarity is therefore lost.  How it is lost depends on phase: expanding
+    for a symmetric ``S`` gives
+    ``(1+γ²)(|S11|²+|S21|²) + 4γ·Re(S11·conj(S21))`` with ``γ = a_2/a_1``, so
+    the old rule can push column power either side of 1.  In the NEAR-MATCHED
+    case that the thru fixtures are (true ``S11 ≈ 0``) it reduces to
+    ``|S11|² + |S21|² = 1 + γ²`` — the same power counted twice — which is the
+    passivity violation #507 opened on.  Both cases are pinned in
+    ``tests/test_msl_modal_voltage_and_wave_solve.py``.
+
+    ``cond_a`` bounds DEGENERACY of the drive system only — it is not a
+    reliability score.  Same contract as the coax lane's
+    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
+    (issue #489), generalised to ``n`` ports.
+    """
+    n_ports = len(wave_a)
+    A = jnp.stack([
+        jnp.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)                                   # (n_freqs, n_ports, n_ports)
+    B = jnp.stack([
+        jnp.stack([wave_b[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    # S = B A⁻¹  <=>  Sᵀ = (Aᵀ)⁻¹ Bᵀ, batched over frequency.
+    S_solved = jnp.swapaxes(
+        jnp.linalg.solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2)),
+        -1, -2,
+    )
+    cond_a = None
+    if not is_tracer(A):
+        # f64 BEFORE the ratio: for a complex64 A the SVD returns float32,
+        # where the 1e-300 floor underflows to 0.0 (NEP-50 weak promotion
+        # keeps float32) and a singular A divides by zero instead of
+        # saturating. Same failure class as the #497 NEP-50 fallback.
+        _sv = np.linalg.svd(
+            np.asarray(jax.lax.stop_gradient(A)), compute_uv=False
+        ).astype(np.float64)
+        cond_a = np.asarray(_sv[..., 0] / np.maximum(_sv[..., -1], 1e-300))
+    return jnp.moveaxis(S_solved, 0, -1), cond_a
+
+
 def _msl_wave_split_reliability(
     voltages: object,
     currents: object,
@@ -99,7 +217,9 @@ def _msl_wave_split_reliability(
     freqs_arr = np.asarray(freqs)
     if v_abs.shape != i_abs.shape or v_abs.ndim != 2:
         raise ValueError(
-            "MSL reliability phasors must have matching (n_ports, n_freqs) shapes"
+            "MSL reliability phasors must have matching (n_records, n_freqs) "
+            "shapes; the production caller passes n_records = n_ports**2, one "
+            "row per (driven, port) pair"
         )
     if v_abs.shape[1:] != freqs_arr.shape:
         raise ValueError("MSL reliability phasors and frequency grid do not align")
@@ -631,6 +751,22 @@ def _assemble_mixed_power_wave_s(
     Pure function of the recorded phasors so the cross-impedance
     normalization is unit-testable without an FDTD run.
 
+    .. warning::
+
+       KNOWN #507 RESIDUE, deliberately not half-fixed here (issue #517).
+       This assembly still forms ``S[i, j] = b_i / a_j`` per drive — the
+       single-ratio rule the pure-MSL lane replaced with the multi-drive
+       solve ``S = B·A⁻¹`` — so a passive port's echo is reported as the
+       driven port's own response whenever ``a_passive != 0`` (measured
+       0.07-0.51 on the pure-MSL fixtures). The driven-MSL diagonal is
+       exactly that contaminated quantity, and it feeds the DEFAULT flux
+       channel via ``P_inc = P_net / (1 - |S_jj|^2)``, so the residue
+       propagates into the flux magnitudes too; it is a live candidate for
+       this lane's 9% reciprocity residual (#488/#498). Extending the solve
+       needs the Kurokawa cross-family ``sqrt(Z)`` composition worked out
+       first — see #517 for the measurement-first plan. Lane remains fenced
+       experimental with a running reciprocity witness.
+
     Wave conventions (each mirrored line-for-line from the validated
     per-family extractors — do NOT re-derive here):
 
@@ -862,6 +998,13 @@ def _mixed_flux_magnitude_override(
             )
     return S_out, ill_cond, neg_power
 
+# Far-port discipline: minimum absorber depth as a fraction of the guide
+# wavelength at the LOWEST measured frequency. The message quotes this value,
+# so it MUST NOT be duplicated as a literal there — a mismatch would report one
+# threshold while enforcing another (PR #495 review, finding 5).
+_FAR_PORT_LAMBDA_G_FRACTION = 0.5
+
+
 def _warn_thin_absorber_vs_guide_wavelength(
     grid, cfgs, freqs, cpml_layers, boundary_spec,
 ):
@@ -938,7 +1081,7 @@ def _warn_thin_absorber_vs_guide_wavelength(
             continue
 
         lambda_g = (_C0_SPARAMS / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
-        required_m = 0.5 * lambda_g
+        required_m = _FAR_PORT_LAMBDA_G_FRACTION * lambda_g
         thin = [(side, n) for side, n in faces if n * dx < required_m]
         if not thin:
             continue
@@ -949,7 +1092,8 @@ def _warn_thin_absorber_vs_guide_wavelength(
         )
         warnings.warn(
             f"compute_waveguide_s_matrix: absorber on the {axis} propagation "
-            f"axis is thinner than the documented 0.5 guide-wavelength "
+            f"axis is thinner than the documented "
+            f"{_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength "
             f"far-port discipline at the lowest measured frequency "
             f"{f_lo / 1e9:.3f} GHz (mode cutoff {fc / 1e9:.3f} GHz, "
             f"lambda_g = {lambda_g * 1e3:.1f} mm): {detail}, against a "
@@ -957,13 +1101,146 @@ def _warn_thin_absorber_vs_guide_wavelength(
             f"guided energy and can set the accuracy envelope instead of "
             f"discretization: in the WR-90 iris lane (issue #494) residual "
             f"|S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and "
-            f"0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. "
+            f"0.0093 at 0.75, so {_FAR_PORT_LAMBDA_G_FRACTION:g} lambda_g "
+            f"is a floor and not a target. "
             f"Raise cpml_layers to at least "
             f"{int(np.ceil(required_m / dx))} (0.75 lambda_g needs "
             f"{int(np.ceil(0.75 * lambda_g / dx))}).",
             UserWarning,
             stacklevel=2,
         )
+
+
+def _assemble_coaxial_two_port_from_voltages(
+    *,
+    z_planes_bot_m,
+    z_planes_top_m,
+    ref_bot_m: float,
+    ref_top_m: float,
+    v_bot_by_drive,
+    v_top_by_drive,
+    cond_warn: float = 1.0e3,
+):
+    """Pure post-FDTD assembly: per-array V(z) -> (a_inc,b_out) -> 2x2 S (#489 stage 2).
+
+    Isolated from :meth:`_SparamMixin.compute_coaxial_two_port` so the
+    convention wiring below can be exercised with PLANTED analytic V(z)
+    values (no FDTD) — see
+    ``tests/test_coax_two_port_fdtd.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
+
+    Parameters
+    ----------
+    z_planes_bot_m, z_planes_top_m : (n_bot,), (n_top,) float
+        Equally spaced axial probe-plane positions (metres) for the bottom
+        (port 2) and top (port 1) arrays.
+    ref_bot_m, ref_top_m : float
+        Each port's own reference plane (its feed's axial position).
+    v_bot_by_drive, v_top_by_drive : (2, n_bot, n_freqs), (2, n_top, n_freqs) complex
+        Modal voltage ``V(z)`` at every probe plane, per drive (index 0 =
+        port 1 driven, index 1 = port 2 driven) and frequency.
+    cond_warn : float
+        Forwarded to :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`.
+
+    Returns
+    -------
+    s_params, cond_a, recurrence_residual, fit_residual, gamma
+        ``s_params`` is ``(2, 2, n_freqs)``; ``recurrence_residual`` /
+        ``fit_residual`` / ``gamma`` are ``(2, 2, n_freqs)`` indexed
+        ``[port_array, drive, freq]`` (port 0 = top/port1, port 1 = bot/port2).
+        ``gamma`` is the matrix-pencil-fitted complex propagation constant
+        from each array's OWN local probes during that drive (Z0-free,
+        independent of the reference-plane extrapolation). Measured
+        2026-08-02: the SAME array's ``Re(gamma)`` differs substantially
+        (~2-8x, growing with frequency) between "own drive" (that array's
+        own source active — dominant field is the large launched wave, only
+        weakly perturbed by the nearby feed) and "other drive" (that array
+        receiving the transmitted signal — dominant field has just crossed
+        the whole line and is comparably perturbed by the array's OWN nearby
+        feed, which is now absorbing much more incident power). The two
+        "own-drive" fits agree with each other to ~5%; the two "other-drive"
+        fits agree with each other to ~2%; recurrence_residual stays <0.003
+        throughout (the two-wave fit itself is clean at every one of the 4
+        measurements — this is not a bad fit, it is two different, both
+        internally-consistent, local decay-rate estimates). A post-hoc
+        consistency check (run after this measurement, with the
+        all-4-average estimator chosen after seeing the own/other split —
+        not predeclared) found `|S21|*exp(+Re(gamma_bar)*L12)` reproduces
+        the measured `|S21|` to within 2.1% across 4-12 GHz (see
+        ``tests/test_coax_two_port_fdtd.py::
+        test_matched_through_line_transmits_reciprocally``), consistent with
+        combined bulk-line attenuation (captured by the lower, own-drive
+        estimate) plus additional loss/scattering concentrated at the
+        RECEIVING feed's own discontinuity (captured by the higher,
+        other-drive estimate) — not a single uniform per-metre loss. This
+        check is sensitive to SCALE-type deficits (amplitude
+        mis-normalization, mode conversion, a bad wave split) but
+        structurally BLIND to reference-plane referral errors: a referral
+        error at either plane scales the wave amplitude by
+        ``exp(+/-gamma*delta)`` while ``L12`` grows by the same ``delta``,
+        so the compensation factor absorbs a referral error exactly.
+
+    Notes
+    -----
+    **The sign convention this function encodes**: for BOTH port arrays,
+    ``a_port = result.backward_amp`` and ``b_port = result.forward_amp``
+    (from :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`).
+    This holds specifically for the dual-duty-feed geometry
+    :meth:`compute_coaxial_two_port` builds, where each port's own feed sits
+    exterior of its own probe array — on the scattered-only side of that
+    drive's own TFSF boundary, so ``load_below`` evaluates False for the top
+    array and True for the bottom array. The derivation (global "A-branch
+    travels -z / B-branch travels +z" convention, applied per port's own
+    "into/out of the network" direction) is in ``docs/design_notes/
+    i489_stage2_two_port_fdtd_predeclaration.md``. This is NOT a general
+    fact of the extractor — a different feed placement would need a
+    different mapping.
+    """
+    from rfx.sources.coaxial_port import (
+        coaxial_line_reflection_from_plane_voltages,
+        solve_two_port_from_wave_amplitudes,
+    )
+
+    z_planes_bot_m = np.asarray(z_planes_bot_m, dtype=np.float64)
+    z_planes_top_m = np.asarray(z_planes_top_m, dtype=np.float64)
+    v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
+    v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
+    if v_bot_by_drive.shape[0] != 2 or v_top_by_drive.shape[0] != 2:
+        raise ValueError(
+            "v_bot_by_drive / v_top_by_drive must have a leading axis of "
+            f"size 2 (one per drive); got {v_bot_by_drive.shape} / "
+            f"{v_top_by_drive.shape}."
+        )
+    n_f = int(v_bot_by_drive.shape[-1])
+
+    a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
+    b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
+    rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    fit_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    gamma = np.zeros((2, 2, n_f), dtype=np.complex128)
+
+    for drive_idx in range(2):
+        for fi in range(n_f):
+            out_bot = coaxial_line_reflection_from_plane_voltages(
+                z_planes_bot_m, v_bot_by_drive[drive_idx, :, fi],
+                reference_plane_m=ref_bot_m,
+            )
+            out_top = coaxial_line_reflection_from_plane_voltages(
+                z_planes_top_m, v_top_by_drive[drive_idx, :, fi],
+                reference_plane_m=ref_top_m,
+            )
+            a_inc[0, drive_idx, fi] = out_top.backward_amp
+            b_out[0, drive_idx, fi] = out_top.forward_amp
+            a_inc[1, drive_idx, fi] = out_bot.backward_amp
+            b_out[1, drive_idx, fi] = out_bot.forward_amp
+            rec_resid[0, drive_idx, fi] = out_top.recurrence_residual
+            fit_resid[0, drive_idx, fi] = out_top.fit_residual
+            rec_resid[1, drive_idx, fi] = out_bot.recurrence_residual
+            fit_resid[1, drive_idx, fi] = out_bot.fit_residual
+            gamma[0, drive_idx, fi] = out_top.gamma
+            gamma[1, drive_idx, fi] = out_bot.gamma
+
+    solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
+    return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
 
 
 class _SparamMixin:
@@ -1781,11 +2058,16 @@ class _SparamMixin:
         sigma_max 1.18 on a coarse thru).
 
         For each registered MSL port, runs one FDTD simulation with that
-        port driven and the others passive (matched termination). At
-        each port ``n_probes`` downstream DFT plane probes record Ez and
-        the first probe also records Hy; β, Z0 and the wave amplitudes
-        are extracted post-scan via the N-probe least-squares
-        wave-decomposition extractor (issue #80 Fix C — SVD lstsq fit of
+        port driven and the others passive.  The passive ports are NOT
+        assumed matched — measured ``|a_passive/a_driven| = 0.07-0.51``
+        across three fixtures, so the S-matrix is recovered by solving the
+        full wave system ``S = B·A⁻¹`` over all drives rather than by the
+        per-column ratio ``b_j/a_d`` (issue #507; the ratio reported the far
+        port's echo as the structure's own reflection).  At each port
+        ``n_probes`` downstream DFT plane probes record Ez and the first
+        probe also records Hy; β, Z0 and the wave amplitudes are extracted
+        post-scan via the N-probe least-squares wave-decomposition
+        extractor (issue #80 Fix C — SVD lstsq fit of
         ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` anchored on the analytic
         Hammerstad-Jensen β guess) and assembled into the full S-matrix.
         The N-probe extractor removes the 3-probe quadratic's q→1
@@ -2102,6 +2384,11 @@ class _SparamMixin:
             raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            # Wave amplitudes per (driven, port) for the multi-drive solve
+            # (issue #507). Python lists of jnp arrays, not a stacked array,
+            # so eps_override tracers stay on the AD tape.
+            wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
+            wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
             # Ring-down settling witness (project rule: fixed-length
             # open-domain records must quote end/peak energy before any
@@ -2247,10 +2534,24 @@ class _SparamMixin:
                     for nm in ez_probe_names[p_idx]:
                         ez_plane = jnp.asarray(planes[nm].accumulator)
                         # ez_plane shape: (n_freqs, ny, nz)
-                        v_f = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                            v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
-                        vs.append(v_f)
+                        # Top of the V span = the RASTERIZED trace's bottom
+                        # node, not round(h_sub/dx) (= meta["k_hi"]): Box
+                        # rasterization is half-open over node coordinates,
+                        # so for frac(h_sub/dx) in (0, 0.5) the trace lands
+                        # at ceil = k_hi + 1 and the k_hi anchor is one
+                        # substrate edge SHORT — V and the Ampere-loop
+                        # current would reference different conductor
+                        # planes (PR #516 review, finding F2; measured on
+                        # the dx=80um gate fixture: trace node 4, k_hi 3).
+                        # trace_k_per_port is the same PEC search the
+                        # current integration uses, so V and I share one
+                        # conductor plane by construction.
+                        vs.append(msl_modal_voltage(
+                            ez_plane, j_centre=meta["j_centre"],
+                            k_lo=meta["k_lo"],
+                            k_hi=trace_k_per_port[p_idx][0],
+                            dz_arr=dz_arr, dtype=_complex_dtype,
+                        ))
                     v_per_port.append(vs)
                     # G-AD-WIRE: keep on JAX tape when eps_override is
                     # set. np.asarray() would concretise a JAX tracer and
@@ -2349,6 +2650,14 @@ class _SparamMixin:
                 # would launch. For a transmitted wave arriving at a port
                 # whose forward reference faces the other way, a~0 and b~V;
                 # using a gave the non-physical |S21|~0.08, b gives ~1.
+                #
+                # RETAINED as the fallback only. This single-ratio rule is
+                # exact only when a_j = 0 at every passive port, and it is
+                # not: measured |a_passive/a_driven| = 0.07-0.51 across
+                # three fixtures, so the far port's echo is reported as the
+                # structure's own reflection (issue #507). The wave
+                # amplitudes recorded below feed the multi-drive solve that
+                # replaces this after the drive loop.
                 for j in range(n_ports):
                     if j == driven:
                         continue
@@ -2358,6 +2667,84 @@ class _SparamMixin:
                     )
                     S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
+                # Record the FULL (a, b) pair at every port for this drive
+                # (issue #507). ``a`` at a passive port is what the
+                # single-ratio rule above assumes away.
+                for j in range(n_ports):
+                    v0_j = v_per_port[j][0]
+                    z0_j = z0_hj_per_port[j]
+                    i_j = i_first_per_port[j]
+                    wave_a[driven][j] = jnp.asarray(
+                        0.5 * (v0_j + z0_j * i_j), dtype=_complex_dtype)
+                    wave_b[driven][j] = jnp.asarray(
+                        0.5 * (v0_j - z0_j * i_j), dtype=_complex_dtype)
+
+            # ---- Multi-drive S solve (issue #507) -----------------------
+            # Every port was driven, so the full wave system is recorded:
+            #     A[j, d] = a_j during drive d      B[j, d] = b_j during d
+            #     b = S a   for every drive   =>    S = B · A⁻¹
+            # The single-ratio rule above (S[j,d] = b_j/a_d) is the d-th
+            # column of this only when a_j = 0 at every passive port. It is
+            # not: the far port reflects, and the exact algebra
+            # b_1/a_1 = S11 + S12·(a_2/a_1) holds to machine precision, so
+            # the echo was reported as the structure's own reflection. That
+            # also makes |S11|²+|S21|² = 1 + |S11|² — the same power counted
+            # twice — which is the passivity violation #507 opened on.
+            # Same algebra as the coax lane's
+            # solve_two_port_from_wave_amplitudes (#489), generalised to n
+            # ports. cond(A) bounds DEGENERACY only; it is not a
+            # reliability score.
+            msl_assembly: str | None = None
+            msl_cond_a = None
+            if all(wave_a[d][j] is not None
+                   for d in range(n_ports) for j in range(n_ports)):
+                import warnings as _w507
+                S_solved, cond_a = msl_solve_s_from_waves(wave_a, wave_b)
+                _bad = False
+                if cond_a is not None:
+                    _bad = bool(np.any(~np.isfinite(
+                        np.asarray(jax.lax.stop_gradient(S_solved))
+                    )))
+                    if _bad:
+                        _w507.warn(
+                            "compute_msl_s_matrix: the multi-drive S solve "
+                            f"(issue #507) produced non-finite entries with "
+                            f"cond(A) up to {float(np.max(cond_a)):.3g}; "
+                            "keeping the single-ratio S for this run, which "
+                            "carries the far port's echo in S11 (so expect "
+                            "|S11|^2+|S21|^2 above 1). The drive matrix is "
+                            "degenerate — check that each drive actually "
+                            "excited its port and that the ports are not "
+                            "mutually shadowed.",
+                            stacklevel=2,
+                        )
+                    elif float(np.max(cond_a)) > 1.0e3:
+                        _w507.warn(
+                            "compute_msl_s_matrix: the multi-drive S solve "
+                            f"(issue #507) has cond(A) up to "
+                            f"{float(np.max(cond_a)):.3g}. That bounds "
+                            "DEGENERACY of the drive system, not accuracy: "
+                            "the drive columns are nearly dependent, so S is "
+                            "sensitive to the recorded wave amplitudes. "
+                            "Check port isolation and settling_db.",
+                            stacklevel=2,
+                        )
+                if not _bad:
+                    S = S_solved.astype(_complex_dtype)
+                # Persist WHICH rule produced S (issue #523). A transient
+                # warning is not enough: with the default
+                # enforce_passivity=True the projection clips away the
+                # fallback's own symptom (column power > 1), so a fallback
+                # result can look healthy in every number a caller reads.
+                # None while tracing — _bad cannot be evaluated on a tracer,
+                # so the solve result is taken as-is and no claim is made.
+                msl_assembly = (
+                    None if cond_a is None
+                    else ("single_ratio_fallback" if _bad
+                          else "multi_drive_solve")
+                )
+                msl_cond_a = cond_a
+
             # A deep standing-wave node can collapse both phasors at the
             # driven port plane.  The V·I ratio is then numerically ill
             # conditioned even though the underlying reflector is passive.
@@ -2365,16 +2752,47 @@ class _SparamMixin:
             # per-port metadata (issue #337 follow-up).
             reliable = None
             try:
-                v_port = np.stack([
-                    np.asarray(jax.lax.stop_gradient(raw_v[p, p, 0, :]))
-                    for p in range(n_ports)
+                # Cover EVERY (driven, port) record, not just the own-drive
+                # diagonal (issue #522). The solve consumes the wave pair at
+                # all n_drives x n_ports probe planes, so a collapse at a
+                # PASSIVE port's plane during someone else's drive corrupts
+                # the whole slice S[:, :, k] — and the diagonal-only mask
+                # never saw it. Measured on a synthetic witness: poisoning
+                # only the (drive 0, port 1) record moved |S21| by 0.92 at
+                # that bin with the mask all-True, cond(A) = 1.28, S finite
+                # and the honesty guard silent.
+                #
+                # Shape is unchanged, (n_ports, n_freqs), and so is the
+                # meaning of the index: reliable[p, k] is False when PORT
+                # p's plane collapsed at bin k in AT LEAST ONE drive. That
+                # makes np.all(reliable, axis=0) genuinely sufficient for
+                # "no plane the solve reads collapsed at this bin".
+                #
+                # The criterion is relative to each record's OWN band
+                # median (see _msl_wave_split_reliability), so a uniformly
+                # small passive record is not flagged wholesale — but deep
+                # individual bins ARE. Live extractor runs on the two filter
+                # geometries: 2/100 bins on msl_notch_e4 (and they are the
+                # notch centre, 3.6273 GHz, recorded at -30.66 dB in the
+                # committed fixture meta) and 12/120 on the Sheen LPF leg.
+                # The counts need a re-run to check — the committed fixtures
+                # store S magnitudes only, no V/I dump.
+                # Correct behaviour — the split really is low-signal at a
+                # -30 dB notch — but it costs a filter user their most
+                # interesting bin; see the reliable docstring.
+                v_all = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_v[d, p, 0, :]))
+                    for d in range(n_ports) for p in range(n_ports)
                 ])
-                i_port = np.stack([
-                    np.asarray(jax.lax.stop_gradient(raw_i1[p, p, :]))
-                    for p in range(n_ports)
+                i_all = np.stack([
+                    np.asarray(jax.lax.stop_gradient(raw_i1[d, p, :]))
+                    for d in range(n_ports) for p in range(n_ports)
                 ])
-                reliable = _msl_wave_split_reliability(
-                    v_port, i_port, freqs_arr
+                reliable = np.all(
+                    _msl_wave_split_reliability(
+                        v_all, i_all, freqs_arr
+                    ).reshape(n_ports, n_ports, -1),
+                    axis=0,
                 )
                 _warn_msl_wave_split_unreliable(reliable, freqs_arr)
             except (jax.errors.ConcretizationTypeError, TypeError):
@@ -2383,16 +2801,20 @@ class _SparamMixin:
                 pass
 
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
-            # S1 moved S11/S21 onto the OpenEMS-style V·I wave split, which
-            # is bounded |S11| <= 1 for a passive structure whenever the
-            # closed Ampere-loop current is sound. A V·I-split |S11| > 1 is
-            # therefore the primary red flag — it means the current was
-            # mismeasured (sign/scale), so S11/S21 are untrustworthy; this
-            # is what raises under strict_extractor=True. The reported Z0
-            # and beta still ride on the retained N-probe fit, which can be
-            # noisy per-frequency on coarse meshes, so a Z0 deviation from
+            # S11/S21 come from the OpenEMS-style V·I wave amplitudes, now
+            # combined by the multi-drive solve (issue #507). |S11| > 1 on a
+            # passive structure remains the primary red flag, but read it
+            # correctly: the single-plane split itself was bounded by
+            # construction, whereas the solve is not — it can exceed 1 when
+            # the recorded wave system is inconsistent (a mismeasured
+            # current's sign or scale, a degenerate drive matrix, or an
+            # under-settled record). That is what raises under
+            # strict_extractor=True, and cond(A) plus settling_db are the
+            # two handles for telling those apart. The reported Z0 and beta
+            # still ride on the retained N-probe fit, which can be noisy
+            # per-frequency on coarse meshes, so a Z0 deviation from
             # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-            # caveat — it does not impugn the V·I-split S11/S21.
+            # caveat — it does not impugn S11/S21.
             import warnings as _w
 
             _S11_MAX = 1.0 + 0.05
@@ -2456,8 +2878,26 @@ class _SparamMixin:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 metadata = {
                     "schema": "rfx.msl_nprobe_dump",
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
+                    "production_smatrix_stage": (
+                        "PRE-passivity-projection raw extraction; "
+                        "MSLSMatrixResult.S is the post-projection value "
+                        "when enforce_passivity=True (default)"
+                    ),
+                    # v3 (issue #523): production_smatrix is no longer always
+                    # the N-probe-fit-derived S. Record WHICH assembly made
+                    # it, so a replayed dump cannot be misattributed.
+                    #
+                    # NB production_smatrix is written PRE-projection, so a
+                    # fallback dump does still carry the >1 column power
+                    # (MSLSMatrixResult.S is post-projection and does not).
+                    # The marker is not a substitute for that symptom — it is
+                    # more specific: >1 column power has several causes, only
+                    # one of which is the fallback.
+                    "production_smatrix_assembly": (
+                        "unknown" if msl_assembly is None else msl_assembly
+                    ),
                     "raw_v_shape": "(n_driven, n_ports, n_probes_max, n_freqs)",
                     "raw_i1_shape": "(n_driven, n_ports, n_freqs)",
                     "n_probes_per_port": [int(n) for n in n_probes_per_port],
@@ -2469,10 +2909,16 @@ class _SparamMixin:
                     ),
                     "deembedding": (
                         "N equally spaced voltage probes plus current at "
-                        "probe 0; the N-probe least-squares wave-decomposition "
-                        "extractor (issue #80 Fix C) fits V_n = alpha*exp(-j "
-                        "beta x_n) + gamma*exp(+j beta x_n) by SVD lstsq, "
-                        "recovering q, alpha, gamma, S11, Sij from raw phasors"
+                        "probe 0. The reported Z0/beta come from the N-probe "
+                        "least-squares wave-decomposition extractor (issue #80 "
+                        "Fix C), which fits V_n = alpha*exp(-j beta x_n) + "
+                        "gamma*exp(+j beta x_n) by SVD lstsq. The production "
+                        "S-matrix does NOT come from that fit: it is solved "
+                        "from the probe-0 wave amplitudes over all drives, "
+                        "S = B @ inv(A) (issue #507), with the modal voltage "
+                        "spanning ground to the rasterized trace node (#511) "
+                        "-- see production_smatrix_assembly for which rule "
+                        "actually produced this dump's S"
                     ),
                     "grid": {
                         "dx_m": float(grid.dx),
@@ -2544,6 +2990,8 @@ class _SparamMixin:
                 settling_db=settling_db_runs,
                 S_raw=s_raw,
                 passivity_correction=passivity_correction,
+                assembly=msl_assembly,
+                cond_a=msl_cond_a,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,
@@ -3230,10 +3678,15 @@ class _SparamMixin:
                         ez_plane = jnp.asarray(
                             planes[nm + f"_ez{q_idx}"].accumulator
                         )
-                        v_q = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-                        for k in range(meta["k_lo"], meta["k_hi"] + 1):
-                            v_q = v_q + ez_plane[:, meta["j_centre"], k] \
-                                * float(dz_arr[k])
+                        # Anchor the V-span top on the rasterized trace
+                        # node, not round(h_sub/dx) — see the sibling
+                        # comment in compute_msl_s_matrix (PR #516 F2).
+                        v_q = msl_modal_voltage(
+                            ez_plane, j_centre=meta["j_centre"],
+                            k_lo=meta["k_lo"],
+                            k_hi=trace_k_per_port[p_idx][0],
+                            dz_arr=dz_arr, dtype=_complex_dtype,
+                        )
                         v_lad[run_idx, p_idx, q_idx, :] = np.asarray(v_q)
                     v_f = jnp.asarray(v_lad[run_idx, p_idx, 0, :])
                     hy_plane = jnp.asarray(planes[nm + "_hy"].accumulator)
@@ -3279,8 +3732,10 @@ class _SparamMixin:
             # quasi-TEM wave") and compute_msl_s_matrix's #140 dir_sign
             # comment ("a -x port's fitted z0 inherits a negative sign")
             # describe OPPOSITE conventions; that contradiction is
-            # unresolved and is tracked as a follow-up, not papered over
-            # here.
+            # unresolved and is tracked in issue #524 (together with the
+            # two orphaned #507 loose ends: the passive port's ~30 ohm
+            # termination reading and the 0.194-vs-0.073 drive
+            # asymmetry), not papered over here.
             #
             # The fit is still computed and EXPOSED (return_diagnostics)
             # because it is the only handle on the open 30-vs-48 ohm
@@ -3780,11 +4235,19 @@ class _SparamMixin:
                         np.nan + 1j * np.nan,
                     )
 
+        # Report the plane actually measured (``plane_indices``, derived from
+        # each port's ``pin_center`` — see ``_coaxial_port_geometry``), not
+        # ``port.position``: the two differ by ``direction*pin_length/2``
+        # whenever ``pin_length != 0``, and ``position_to_index`` already adds
+        # ``pad_z_lo``, so multiplying that padded index by ``dx`` directly
+        # (the previous formula) double-counted the padding offset too.
+        # Neither defect is pinned by a committed test (only the array SHAPE
+        # is asserted in test_coaxial_s_matrix.py) — see #489 stage-2 design
+        # note, incidental defect 1.
         reference_planes = np.asarray(
             [
-                float(grid.position_to_index(p.position)[2] + reference_plane_axial_index_offset)
-                * float(grid.dx)
-                for p in ports
+                (float(plane_indices[p_idx]) - float(grid.pad_z_lo)) * float(grid.dx)
+                for p_idx in range(n_ports)
             ],
             dtype=float,
         )
@@ -4226,6 +4689,423 @@ class _SparamMixin:
             z0_numerical_ohm=z0_num,
             termination=termination,
             status=status,
+        )
+
+    def compute_coaxial_two_port(
+        self,
+        *,
+        n_steps: int = 6000,
+        freqs: jnp.ndarray | None = None,
+        n_freqs: int = 11,
+        field_scale: float = 1.0e4,
+        cpml_axes: str = "z",
+        probe_count: int = 12,
+        probe_start_cells: int = 8,
+        probe_spacing_cells: int = 4,
+        feed_impedance: float | None = None,
+        cond_warn: float = 1.0e3,
+        strict_passivity: bool = False,
+    ) -> "CoaxialTwoPortResult":
+        """EXPERIMENTAL two-drive coaxial 2-port S-parameters (#489 stage 2).
+
+        .. warning::
+            **EXPERIMENTAL — not in the validated set**
+            (``docs/guides/sparameter_support_matrix.md``, the S-parameter
+            family companion where this row lives). Every DUT this method can
+            currently gate against is azimuthally symmetric (TM0n only); it
+            has no external referee and makes no phase claim. See the class
+            docstring on the returned :class:`CoaxialTwoPortResult` for the
+            full scope limitation — transition discontinuities that excite
+            TE11 are the target use case and are NOT covered by any battery
+            built on the symmetric DUTs available today.
+
+        Builds ONE through coax line spanning the z axis with a matched
+        annular-resistor feed near EACH z end (mirroring the validated
+        1-port :meth:`compute_coaxial_line_reflection` layout at both ends:
+        each feed sits between that end's own TEM TFSF source and that end's
+        own CPML, i.e. strictly on the scattered-only side of that drive's
+        TFSF boundary — never in the path of that drive's own launched
+        wave), then drives each end's source in turn (two separate FDTD
+        runs). A probe array of ``probe_count`` equally spaced planes near
+        each end recovers that array's local two-wave decomposition
+        (matrix-pencil, Z0-free, same machinery as the 1-port method); the
+        forward/back amplitudes are evaluated at each port's OWN reference
+        plane (its feed's axial position) and assembled into a full 2x2
+        S-matrix via :func:`rfx.sources.coaxial_port.
+        solve_two_port_from_wave_amplitudes` — the two-drive solve that does
+        NOT assume the non-driven port sees zero incident wave (unlike the
+        naive ``S[j,i] = b_j/a_i`` ratio, which has a hard terminator-
+        reflection floor on a through line; see that function's docstring
+        and ``docs/research_notes/20260729_i489_coax_two_port_design.md``).
+
+        Port 1 is the +z end (mirrors the 1-port fixture's own ``face='top'``
+        orientation); port 2 is the -z end (mirror image, ``face='bottom'``).
+        Both drives share the SAME registered ``add_coaxial_port(...)``
+        geometry (x/y centre, pin/outer radii) and excitation waveform; the
+        registered port's own ``position``/``face``/``pin_length`` do not
+        place either end of the line (mirrors the 1-port method's own
+        contract). Requires ``port.face == 'top'`` (arbitrary but consistent
+        with the 1-port method; the value is not otherwise used to orient
+        this method's own internally-built fixture).
+
+        Unlike the 1-port method, the returned result is routed through
+        :func:`_finalize_sparam_result` (which runs the passivity/finiteness
+        self-check via :func:`_warn_if_nonpassive_smatrix`) before being
+        returned — the 1-port ``CoaxialLineReflectionResult`` bypasses that
+        check (design-note incidental defect 3); this result does not.
+
+        This method constructs its own coaxial line, TEM sources, DFT
+        planes, and feeds. Do not add separate geometry, thin conductors,
+        lumped RLC elements, probes or field monitors, NTFF boxes, TFSF
+        sources, or ``add_coaxial_*`` termination helpers; those
+        registrations are rejected rather than ignored.
+
+        Same solver/precision/boundary contract as
+        :meth:`compute_coaxial_line_reflection` (float32, 3D uniform Yee,
+        ``boundary='cpml'`` with positive CPML on all six faces,
+        ``cpml_axes='z'``, no periodic axes, no non-uniform mesh, no
+        refinement).
+        """
+
+        if self._boundary != "cpml" or self._cpml_layers <= 0:
+            raise ValueError(
+                "compute_coaxial_two_port() requires boundary='cpml' "
+                "with cpml_layers > 0 for its absorbing feeds."
+            )
+        z_boundary = self._boundary_spec.z
+        if (
+            z_boundary.lo != "cpml"
+            or z_boundary.hi != "cpml"
+            or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
+            or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() requires positive CPML "
+                "thickness on both z faces."
+            )
+        if cpml_axes != "z":
+            raise ValueError(
+                "compute_coaxial_two_port() requires cpml_axes='z'."
+            )
+        if self._periodic_axes:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support periodic "
+                "boundary axes."
+            )
+        if any(token != "cpml" for _, _, token in self._boundary_spec.faces()):
+            raise ValueError(
+                "compute_coaxial_two_port() requires CPML tokens on all "
+                "six boundary faces; mixed BoundarySpec faces are not "
+                "supported."
+            )
+        if self._mode != "3d":
+            raise ValueError(
+                "compute_coaxial_two_port() requires mode='3d'."
+            )
+        if self._solver != "yee":
+            raise ValueError(
+                "compute_coaxial_two_port() supports solver='yee' only; "
+                "solver='adi' is not supported."
+            )
+        if self._precision != "float32":
+            raise ValueError(
+                "compute_coaxial_two_port() requires precision='float32'."
+            )
+        if self._stencil_order != 2:
+            raise ValueError(
+                "compute_coaxial_two_port() requires stencil_order=2."
+            )
+        if self._tfsf is not None:
+            raise ValueError(
+                "compute_coaxial_two_port() creates its own TEM TFSF "
+                "sources and does not accept an existing TFSF source."
+            )
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() supports only a uniform Yee "
+                "grid; dx_profile, dy_profile, and dz_profile are not "
+                "supported."
+            )
+        if self._refinement is not None:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support SBP-SAT "
+                "refinement; remove add_refinement() from this simulation."
+            )
+        if self._geometry or self._thin_conductors:
+            raise ValueError(
+                "compute_coaxial_two_port() constructs the complete line "
+                "geometry; registered geometry and thin conductors are not "
+                "supported. Use the documented Simulation, port, and "
+                "method arguments instead."
+            )
+        if self._lumped_rlc:
+            raise ValueError(
+                "compute_coaxial_two_port() does not support registered "
+                "lumped RLC elements."
+            )
+        if self._probes or self._dft_planes or self._flux_monitors or self._ntff:
+            raise ValueError(
+                "compute_coaxial_two_port() does not consume registered "
+                "probes, DFT planes, flux monitors, or NTFF boxes."
+            )
+        if (
+            self._coaxial_terminations
+            or self._coaxial_open_terminations
+            or self._coaxial_pec_end_caps
+        ):
+            raise ValueError(
+                "compute_coaxial_two_port() does not consume registered "
+                "add_coaxial_* termination helpers; use feed_impedance= "
+                "instead."
+            )
+        if isinstance(probe_count, bool) or not isinstance(
+            probe_count, (int, np.integer)
+        ):
+            raise ValueError("probe_count must be an integer of at least 3.")
+        requested_probe_count = int(probe_count)
+        if requested_probe_count < 3:
+            raise ValueError("probe_count must be at least 3.")
+        if len(self._coaxial_ports) != 1:
+            raise ValueError(
+                "compute_coaxial_two_port() is built from exactly one "
+                "add_coaxial_port() (its x/y centre, radii, and excitation "
+                "waveform are shared by both drives); register exactly one."
+            )
+        if (
+            self._ports or self._waveguide_ports or self._floquet_ports or self._msl_ports
+        ):
+            raise NotImplementedError(
+                "compute_coaxial_two_port() is defined only for a single "
+                "add_coaxial_port(...) family."
+            )
+        port = self._coaxial_ports[0]
+        if port.face != "top":
+            raise NotImplementedError(
+                "compute_coaxial_two_port() currently requires the "
+                "registered port's face='top' (the value is not otherwise "
+                "used to orient this method's own internally-built "
+                "two-ended fixture; kept for contract consistency with "
+                "compute_coaxial_line_reflection)."
+            )
+
+        from rfx.probes.probes import init_dft_plane_probe
+        from rfx.simulation import run as _run, ProbeSpec
+        from rfx.sources.coaxial_port import (
+            CoaxialPort as _CoaxPort,
+            build_coaxial_tem_plane_source_specs,
+            coaxial_line_plane_voltage,
+            coaxial_tem_characteristic_impedance,
+            stamp_coaxial_line,
+            stamp_coaxial_annular_resistor,
+        )
+
+        grid = self._build_grid()
+        nz = grid.shape[2]
+        dz = float(grid.dx)
+        center_xy = (float(port.position[0]), float(port.position[1]))
+        a, b = float(port.pin_radius), float(port.outer_radius)
+
+        # Axial layout: two mirrored 1-port-style ends (source, feed, probe
+        # array) sharing ONE continuous stamped line — no DUT break. Offsets
+        # (2/1/3 cells) mirror compute_coaxial_line_reflection's own
+        # (z_hi_coax, z_feed, z_src) spacing exactly, just doubled and
+        # mirror-imaged. See docs/design_notes/
+        # i489_stage2_two_port_fdtd_predeclaration.md for the derivation of
+        # why each feed sits strictly on the scattered-only side of its own
+        # drive's TFSF boundary.
+        z_hi_coax_top = nz - int(grid.pad_z_hi) - 2
+        z_feed_top = z_hi_coax_top - 1
+        z_src_top = z_hi_coax_top - 3
+        z_lo_coax_bot = int(grid.pad_z_lo) + 2
+        z_feed_bot = z_lo_coax_bot + 1
+        z_src_bot = z_lo_coax_bot + 3
+
+        probes_top = sorted(
+            z_src_top - int(probe_start_cells) - int(probe_spacing_cells) * k
+            for k in range(requested_probe_count)
+        )
+        probes_bot = sorted(
+            z_src_bot + int(probe_start_cells) + int(probe_spacing_cells) * k
+            for k in range(requested_probe_count)
+        )
+        if z_lo_coax_bot >= z_hi_coax_top or probes_bot[0] <= z_lo_coax_bot:
+            raise ValueError(
+                "compute_coaxial_two_port(): domain too short for the "
+                "two-feed line layout; increase the z domain."
+            )
+        if probes_bot[-1] >= probes_top[0]:
+            raise ValueError(
+                "compute_coaxial_two_port(): the two probe arrays overlap "
+                f"(bottom array reaches index {probes_bot[-1]}, top array "
+                f"starts at {probes_top[0]}); increase the z domain or "
+                "reduce probe_count/probe_start_cells/probe_spacing_cells."
+            )
+
+        z_tem = coaxial_tem_characteristic_impedance(a, b)
+        R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+
+        materials, _, _ = self._build_materials(grid)
+        materials, shell_inner = stamp_coaxial_line(
+            grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
+            z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
+            outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed_bot, pin_radius=a,
+            outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        )
+
+        if freqs is None:
+            freqs = jnp.linspace(
+                0.1 * self._freq_max, 0.6 * self._freq_max, int(n_freqs), dtype=jnp.float32
+            )
+        else:
+            freqs = jnp.asarray(freqs, dtype=jnp.float32)
+        n_f = int(freqs.shape[0])
+
+        # TEM TFSF sources: port 1 (+z end) mirrors the 1-port fixture's own
+        # face='top' source exactly; port 2 (-z end) is the mirror image,
+        # face='bottom'.
+        src_port_top = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
+            face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        src_port_bot = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
+            face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        spec_top = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port_top, n_steps=int(n_steps),
+            field_scale=float(field_scale), magnetic_ratio=1.0,
+        )
+        spec_bot = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port_bot, n_steps=int(n_steps),
+            field_scale=float(field_scale), magnetic_ratio=1.0,
+        )
+
+        n_bot = len(probes_bot)
+        n_top = len(probes_top)
+        all_probes_z = list(probes_bot) + list(probes_top)
+
+        # Settling witness: one point probe per array (ex, mid-annulus on the
+        # +x ray), at each array's middle plane. Same worst end/peak E^2 (dB)
+        # convention as the MSL/mixed lanes (rfx.api._sparams module docstring
+        # of _warn_if_ringdown_truncated); -40 dB is the project's ring-down
+        # settling rule (docs/guides/simulation_methodology.md).
+        x_mid = center_xy[0] + 0.5 * (a + b)
+        i_probe = int(round(x_mid / dz)) + int(grid.pad_x_lo)
+        j_probe = int(grid.pad_y_lo) + int(round(center_xy[1] / dz))
+        witness_probes = [
+            ProbeSpec(i=i_probe, j=j_probe, k=int(probes_bot[n_bot // 2]), component="ex"),
+            ProbeSpec(i=i_probe, j=j_probe, k=int(probes_top[n_top // 2]), component="ex"),
+        ]
+
+        z_planes_bot_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_bot], dtype=np.float64)
+        z_planes_top_m = np.array([(z - grid.pad_z_lo) * dz for z in probes_top], dtype=np.float64)
+        ref_top_m = (z_feed_top - grid.pad_z_lo) * dz
+        ref_bot_m = (z_feed_bot - grid.pad_z_lo) * dz
+        annulus_cells = float((b - a) / dz)
+
+        v_bot_by_drive = np.zeros((2, n_bot, n_f), dtype=np.complex128)
+        v_top_by_drive = np.zeros((2, n_top, n_f), dtype=np.complex128)
+        settling_db = np.full(2, np.nan, dtype=np.float64)
+
+        # drive_idx 0 drives port 1 (top); drive_idx 1 drives port 2 (bot).
+        for drive_idx, spec in enumerate((spec_top, spec_bot)):
+            planes = []
+            for z in all_probes_z:
+                for comp in ("ex", "ey"):
+                    planes.append(
+                        init_dft_plane_probe(
+                            axis=2, index=int(z), component=comp, freqs=freqs,
+                            grid_shape=grid.shape, dft_total_steps=int(n_steps),
+                        )
+                    )
+            result = _run(
+                grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
+                sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
+                probes=witness_probes, dft_planes=planes, return_state=False,
+            )
+            if result.dft_planes is None:
+                raise RuntimeError(
+                    "compute_coaxial_two_port(): runner returned no DFT planes"
+                )
+
+            v_bot_by_drive[drive_idx] = np.stack(
+                [
+                    coaxial_line_plane_voltage(
+                        grid, result.dft_planes[pi * 2 + 0].accumulator,
+                        result.dft_planes[pi * 2 + 1].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                    for pi in range(n_bot)
+                ],
+                axis=0,
+            )  # (n_bot, n_freqs)
+            top_off = n_bot * 2
+            v_top_by_drive[drive_idx] = np.stack(
+                [
+                    coaxial_line_plane_voltage(
+                        grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
+                        result.dft_planes[top_off + pi * 2 + 1].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                    for pi in range(n_top)
+                ],
+                axis=0,
+            )  # (n_top, n_freqs)
+
+            ts = np.asarray(result.time_series, dtype=float)
+            if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
+                power = ts ** 2
+                tail = max(1, power.shape[0] // 10)
+                end = power[-tail:, :].mean(axis=0)
+                peak = power.max(axis=0)
+                tiny = np.finfo(float).tiny
+                ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
+                settling_db[drive_idx] = float(np.max(ratio_db))
+
+        s_params, cond_a, rec_resid, fit_resid, gamma = _assemble_coaxial_two_port_from_voltages(
+            z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
+            ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
+            v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
+            cond_warn=float(cond_warn),
+        )
+
+        if annulus_cells < 3.5:
+            status = "under_resolved"
+        elif float(np.max(rec_resid)) > 0.1:
+            status = "contaminated"
+        else:
+            status = "passed"
+
+        reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
+        result_obj = CoaxialTwoPortResult(
+            s_params=s_params,
+            freqs=np.asarray(freqs, dtype=float),
+            port_names=("port1", "port2"),
+            reference_planes=reference_planes,
+            cond_a=cond_a,
+            recurrence_residual=rec_resid,
+            fit_residual=fit_resid,
+            gamma=gamma,
+            annulus_cells=annulus_cells,
+            settling_db=settling_db,
+            status=status,
+        )
+        return _finalize_sparam_result(
+            result_obj,
+            extractor="compute_coaxial_two_port",
+            strict=strict_passivity,
         )
 
     def _compute_waveguide_s_matrix_nu(

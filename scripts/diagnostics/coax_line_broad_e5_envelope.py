@@ -46,6 +46,12 @@ def run(term, fmax, a, b, R=None):
                          waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
     kw = dict(termination=("matched" if term in ("matched", "res") else term),
               n_steps=NS[fmax], freqs=BAND)
+    if fmax <= 20.0e9:
+        # At fmax=20 GHz (dz~0.75 mm) this z-domain fits 9 of the default 12
+        # probe planes; the silent drop of the surplus planes became fail-loud
+        # in af167a90, so the count the sweep always ran on must be requested
+        # explicitly (same reasoning as tests/test_coaxial_line_calibration.py).
+        kw["probe_count"] = 9
     if term == "res":
         kw["dut_impedance"] = R
     return sim.compute_coaxial_line_reflection(**kw)

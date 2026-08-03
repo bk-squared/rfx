@@ -267,6 +267,8 @@ def _compute_numpy_f64_golden_s1(
         ))
 
     S = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
+    wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
     for driven in range(n_ports):
         def _get(name: str) -> np.ndarray:
@@ -291,7 +293,16 @@ def _compute_numpy_f64_golden_s1(
             # Voltage at probe 0: integral Ez dz in centre column.
             ez_plane = _get(ez_probe_names[p_idx][0])  # (n_freqs, ny, nz), c128
             v_f = np.zeros(n_freqs, dtype=np.complex128)
-            for k in range(meta["k_lo"], meta["k_hi"] + 1):
+            # Every Ez edge strictly below the RASTERIZED trace conductor:
+            # k_lo .. trace_k_lo-1, anchored on the same PEC search the
+            # Ampere loop uses — NOT on meta["k_hi"] = round(h_sub/dx),
+            # which is one edge short whenever frac(h_sub/dx) in (0, 0.5)
+            # (this fixture: dx=80um, trace node 4, rounding proxy 3 —
+            # PR #516 review finding F2). Mirror of
+            # rfx.api._sparams.msl_modal_voltage; this numpy reference
+            # exists to prove structural equivalence with the jnp assembly,
+            # so it must implement the SAME span.
+            for k in range(meta["k_lo"], trace_k_per_port[p_idx][0]):
                 v_f = v_f + ez_plane[:, meta["j_centre"], k] * float(dz_arr[k])
             v0_per_port.append(v_f)
 
@@ -333,7 +344,29 @@ def _compute_numpy_f64_golden_s1(
             b_out_p = 0.5 * (v0_p - z0hj_p * i_p)
             S[j, driven, :] = b_out_p / (a_fwd_d + 1e-30)
 
-    return S
+        # Full (a, b) per port for the multi-drive solve below (issue #507).
+        for j in range(n_ports):
+            z0hj_j = z0_hj_per_port[j]
+            wave_a[driven][j] = 0.5 * (v0_per_port[j] + z0hj_j * i_per_port[j])
+            wave_b[driven][j] = 0.5 * (v0_per_port[j] - z0hj_j * i_per_port[j])
+
+    # Multi-drive solve S = B·A⁻¹, A[j,d] = a_j during drive d (issue #507).
+    # MIRROR of rfx/api/_sparams.py: this numpy reference exists to prove
+    # structural equivalence with the jnp assembly, so it must implement the
+    # same algorithm, not the superseded single-ratio rule above.
+    A_w = np.stack([
+        np.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)                                  # (n_freqs, n_ports, n_ports)
+    B_w = np.stack([
+        np.stack([wave_b[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    S_solved = np.swapaxes(
+        np.linalg.solve(np.swapaxes(A_w, -1, -2), np.swapaxes(B_w, -1, -2)),
+        -1, -2,
+    )
+    return np.moveaxis(S_solved, 0, -1)
 
 
 if __name__ == "__main__":

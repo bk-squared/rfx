@@ -34,11 +34,16 @@ from build_waveguide_band_broad_e5_envelope import (  # type: ignore  # noqa: E4
     _committed_noise_floor,
 )
 
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
+
 # Margin ceiling: MAX_TOL may exceed the worst measured diff by at most this
 # factor. This is a GOVERNANCE choice (how much slack a reviewer tolerates), NOT
 # a physical bound. 0.05 / 0.0414 = 1.21, so 1.5 leaves headroom but rejects a
 # slack round-up (e.g. bumping MAX_TOL to 0.08 -> 1.93x would breach it).
-MARGIN_CEIL = 1.5
+# Issue #528: this is the SAME repo-wide multiplier the quantized-gate cases
+# derive from (tests/_gate_policy.py) -- imported rather than restated so a
+# relaxation here is visible alongside theirs, not a fresh local literal.
+MARGIN_CEIL = ENVELOPE_GATE_MULTIPLIER
 
 
 def _all_case_diffs() -> list[float]:

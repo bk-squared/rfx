@@ -75,8 +75,10 @@ Use the calculator that matches the port family:
 
 During normal Python execution outside JAX tracing,
 `compute_msl_s_matrix()` returns `MSLSMatrixResult.reliable`. If
-`reliable[p, k]` is `False`, exclude the driven-port column `S[:, p, k]` from
-physical interpretation; `True` is not an accuracy guarantee. During tracing,
+`reliable[p, k]` is `False`, exclude the whole frequency slice `S[:, :, k]` from
+physical interpretation (S is solved jointly across drives, #507); the mask
+covers every driven/port record the solve consumes (#522), and `True` is not an
+accuracy guarantee. During tracing,
 `.reliable` is `None`. See
 [Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
 threshold, array shape, and filtering example.

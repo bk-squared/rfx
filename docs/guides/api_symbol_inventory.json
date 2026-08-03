@@ -2442,6 +2442,19 @@
       "reference_plane_axial_index_offset",
       "strict_passivity"
     ],
+    "compute_coaxial_two_port": [
+      "n_steps",
+      "freqs",
+      "n_freqs",
+      "field_scale",
+      "cpml_axes",
+      "probe_count",
+      "probe_start_cells",
+      "probe_spacing_cells",
+      "feed_impedance",
+      "cond_warn",
+      "strict_passivity"
+    ],
     "compute_mixed_s_matrix": [
       "n_steps",
       "num_periods",

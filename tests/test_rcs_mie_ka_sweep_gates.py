@@ -31,13 +31,14 @@ the recorded physics (no-silent-gate-loosening rule).
 from __future__ import annotations
 
 import json
-import math
 import re
 from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy.special import spherical_jn, spherical_yn
+
+from tests._gate_policy import gate_from_envelope
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE = _REPO_ROOT / "tests/fixtures/rcs_mie_ka_sweep/fixture.json"
@@ -141,9 +142,9 @@ def test_gate_equals_recomputed_envelope_times_1p5(fixture):
     assert abs(g["coarse_measured_envelope_db"] - env_coarse) < 5e-3
     assert abs(g["fine_measured_envelope_db"] - env_fine) < 5e-3
     assert g["coarse_gate_db"] == pytest.approx(
-        math.ceil(env_coarse * 1.5 * 10) / 10, abs=1e-9)
+        gate_from_envelope(env_coarse, quantum=10), abs=1e-9)
     assert g["fine_gate_db"] == pytest.approx(
-        math.ceil(env_fine * 1.5 * 10) / 10, abs=1e-9)
+        gate_from_envelope(env_fine, quantum=10), abs=1e-9)
     # D1 (review): HARD numeric ceiling, deliberately redundant with the
     # derived relation above. Without it a physics regression widens its own
     # gate and stays green (the derived assert alone is self-ratifying).

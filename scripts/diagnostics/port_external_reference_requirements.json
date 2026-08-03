@@ -98,7 +98,7 @@
       "ad_fd_test": "tests/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
       "ad_fd_test_note": "AD-vs-FD converged on the MSL S-matrix; @pytest.mark.gpu (runs on the gpu suite, not CPU CI).",
       "target_ceiling": "broad-E5-regime-restricted",
-      "usage_rule": "Matched / thru-line / notch-filter microstrip (quasi-TEM, Hammerstad-Jensen oracle). broad-E5 reachable in the MATCHED regime only; strong-reflector |S11| has a ~0.16-0.22 Yee-staircase-Z0 floor (mesh-conv #183; the earlier 0.118 was a danger-zone artifact) and the eigenmode port is a falsified dead-end (do not pursue)."
+      "usage_rule": "Matched / thru-line / notch-filter microstrip (quasi-TEM, Hammerstad-Jensen oracle). broad-E5 reachable in the MATCHED regime only; the eigenmode port is a falsified dead-end (do not pursue). The ~0.16-0.22 Yee-staircase-Z0 floor formerly cited here (mesh-conv #183) is RETIRED (issue #487, PR #516/f95240f) -- it was substantially the #511/#507 extractor defects, not a mesh property; see scripts/diagnostics/msl_z0_bias_floor_sweep.py for the corrected-extractor measurements and why no replacement single-number floor is published."
     },
     {
       "family": "rectangular_waveguide_port",

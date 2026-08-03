@@ -102,12 +102,42 @@ def test_msl_thru_line_passive_gate():
     here. The de-embedded Z0 used to read ~74 Ω because the line current
     was an open single-leg ``∑Hy·dy`` integral that undercounted ``I`` by
     ~1.5x. ``compute_msl_s_matrix`` now measures the closed Ampère-loop
-    current ``∮H·dl`` (``msl_loop_current``) and extracts S-parameters via
-    the OpenEMS-style V·I wave split; Z0 lands at ~57 Ω, inside the gate
-    band (the ~57-vs-48 residual is the documented Yee-staircase bias at
-    3 substrate cells). The (40, 65) bound is left UNCHANGED — it was
-    never weakened to make this pass. See
-    ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
+    current ``∮H·dl`` (``msl_loop_current``). The (40, 65) bound has been
+    left UNCHANGED throughout — it was never weakened to make this pass.
+    See ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
+
+    CALIBRATION REFRESHED 2026-07-30 (issues #511/#507 + PR #516 review
+    finding F2). Bounds untouched — never weakened or moved; only the
+    recorded measured values:
+
+        quantity        pre-#511    final (trace-anchored V, PR #516)
+        mean|S11|       0.118       0.1160
+        mean|S21|       0.972       0.9930
+        mean Re(Z0)     ~57 Ω       57.58 Ω
+
+    (An intermediate PR #516 state read 0.0746 / 42.41 Ω here; that was the
+    review's finding F2 — a V span anchored on ``round(h_sub/dx)``, one
+    substrate edge short of the RASTERIZED trace on this mesh — and is
+    retired. Its apparent agreement with the aligned-mesh sibling was
+    cancellation.)
+
+    Worth knowing before touching this fixture: ``h_sub/dx = 254/80 =
+    3.175``, so the substrate boundary bisects cell k=3 (preflight's
+    mixed-cell danger zone) and the trace rasterizes at node 4 — the
+    structure this mesh actually simulates has the strip at z = 320 µm over
+    a 254 µm dielectric plus a 66 µm air gap. Its Z0 of 57.58 Ω is the
+    faithful extraction of THAT geometry, not extractor error: the aligned
+    dx = 84.67 µm sibling rasterizes the intended structure and reads
+    44.11 Ω. The cross-mesh difference is geometry quantization.
+
+    Margin note (2026-07-30): the sibling length-invariance lock's
+    cross-length Z0 spread measures 4.96% against its 5% bound, dominated
+    by the L = 6 mm leg under EITHER V span — effectively margin-less.
+    Investigate the short-line N-probe fit conditioning before re-pinning
+    anything here.
+
+    A future refinement of this fixture should prefer dx = h_sub/3 or
+    h_sub/4 (84.7 / 63.5 µm), which preflight already recommends.
     """
 
     sim = Simulation(
@@ -376,8 +406,16 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
        to a few percent.
 
     Tolerances tie to the 2026-06-14 #140 verify-only measurement (|Z0| ~57.5 Ω,
-    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124); the
-    5% spread gate is ~10x the measured spread for cross-machine robustness.
+    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124).
+
+    MARGIN WARNING (2026-07-30, post PR #516): the measured cross-length
+    spread is now **4.96% against the 5% bound** — margin-less, NOT the ~10x
+    headroom the 0.49% record suggested. Measured [60.23, 57.34, 57.58] Ω for
+    L = 6/8/10 mm; the L = 6 mm leg is the outlier under BOTH V-span choices
+    tried that day, so the spread is short-line N-probe fit conditioning,
+    not the extractor change. Any red here is as likely that conditioning as
+    a real regression — investigate the L = 6 mm fit window before touching
+    the bound (tracked follow-up issue).
     @slow: three full FDTD thru-line runs.
     """
     # Lengths chosen so the largest domain (L + 2*PORT_MARGIN = 14 mm) matches the

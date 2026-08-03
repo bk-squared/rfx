@@ -50,15 +50,20 @@ command is verified to return at least one hit on the current tree.
 | Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
 | Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
 | Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
-| S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection" rfx/api/` | `rfx/api/_sparams.py`, `rfx/ports/` |
+| S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port" rfx/api/` | `rfx/api/_sparams.py`, `rfx/ports/` |
 | S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/api/__init__.py rfx/probes/probes.py` | `rfx/ports/` |
 
 ## Current port-family caveat
 
-For coaxial workflows, use `Simulation.compute_coaxial_line_reflection(...)`
-inside its documented one-port transmission-line envelope. The older
-`Simulation.compute_coaxial_s_matrix(...)` path remains deprecated/experimental
-and must not be presented as the promoted coaxial claims surface.
+For coaxial one-port workflows, use `Simulation.compute_coaxial_line_reflection(...)`
+inside its documented one-port transmission-line envelope. For coaxial 2-port
+workflows, `Simulation.compute_coaxial_two_port(...)` (issue #489 stage 2) exists
+but is **EXPERIMENTAL — not in the validated set**: every DUT it can currently gate
+against is azimuthally symmetric (TM0n only), it has no external referee, and it
+makes no phase claim (see its docstring / `CoaxialTwoPortResult` for the full scope
+limitation). The older `Simulation.compute_coaxial_s_matrix(...)` path remains
+deprecated/experimental and must not be presented as the promoted coaxial claims
+surface.
 
 ## What NOT to do
 

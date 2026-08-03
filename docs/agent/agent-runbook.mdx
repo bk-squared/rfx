@@ -1,0 +1,72 @@
+---
+title: Agent runbook — commands, lanes and cadences
+---
+
+# Agent runbook
+
+Operational reference for agents working in this repo: the exact commands, which lane
+owns which validation, and how often each runs. The *rules* live in the repo-local
+agent operating guide (untracked in this public tree); this file holds what those
+rules point at, so the always-loaded file stays short.
+
+Numbers here are checkable, not authoritative — where a live command is given, run it
+rather than trusting the figure beside it.
+
+## Test and lint
+
+| what | command |
+|---|---|
+| test | `pytest` — live count: `python -m pytest --collect-only -q \| tail -1` |
+| lint | `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` |
+| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/api/_preflight.py` for the live set |
+
+Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR. Note CI lints
+`rfx/ tests/ validation/`; `scripts/` is out of scope.
+
+## GPU validation
+
+`scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m gpu -q -ra`
+on gpu-rtx4090:
+
+```
+vessl run create -f scripts/vessl_gpu_suite.yaml
+```
+
+**Cadence**: per release tag AND after any GPU-touching merge. Record pass/fail counts in
+the release notes or research note.
+
+One-off investigation YAMLs live in `scripts/archive/`. Do not resurrect them — write a
+new YAML off the gpu_suite template.
+
+The `distributed` pytest marker is declared but has zero tests; distributed coverage runs
+in the fast suite via in-file XLA host-device sentinels.
+
+## External cross-validation
+
+Two lanes:
+
+1. **Weekly CI** — `crossval-external` in `validation.yml`, conda-forge Meep.
+   Exit-2 = visible SKIP, exit-1 = red.
+2. **On-demand source-built openEMS** — `scripts/vessl_crossval_external.yaml`
+   (cv05 + cv11) on the free `remilab-c0` cluster:
+   ```
+   vessl run create -f scripts/vessl_crossval_external.yaml
+   ```
+   Run it per release tag and after any change to the cv05/cv11 physics paths.
+
+Environment gotchas for that lane (the conda python 3.10 requirement, the cv05
+exit-guard history) and its green-baseline record live in the maintainer's internal
+issue ledger and run-log archive — both local to the primary checkout, not in this
+public tree.
+
+## Where the role fences live
+
+Per-script crossval **status** lives in the maintainer's internal issue ledger
+(primary checkout only, not in this public tree). Machine-readable **roles** are in
+`validation/crossval/manifest.json`, contract-tested by
+`tests/test_crossval_manifest_contract.py`.
+
+The manifest globs `validation/crossval/*.py` only. Anything outside that directory —
+notably the cv12/13 subgrid prototypes moved to `validation/research/subgrid/` by
+PR #357 — cannot be registered there, so the prose fence in the repo-local agent
+operating guide is its only registry.

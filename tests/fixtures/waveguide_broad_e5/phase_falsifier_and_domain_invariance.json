@@ -1,0 +1,124 @@
+{
+  "schema": "rfx.waveguide_broad_e5_phase_falsifier_and_invariance",
+  "schema_version": 1,
+  "falsifier": {
+    "falsifier": "wrong_s21_reference_plane_formula (pre-session bug: exp(+1j*beta_v*slab_length_m) instead of exp(-1j*beta_v*(d_left+d_right))",
+    "gate_tol_deg": 15.0,
+    "worst_case_phase_diff_deg": 179.87236032380008,
+    "gate_reds": true,
+    "per_case": [
+      {
+        "band": "wr28_kaband",
+        "tag": "dx50_slab_er2",
+        "max_phase_diff_deg": 172.78886898764554
+      },
+      {
+        "band": "wr28_kaband",
+        "tag": "dx50_slab_er4",
+        "max_phase_diff_deg": 172.96160421409337
+      },
+      {
+        "band": "wr28_kaband",
+        "tag": "dx100_slab_er2",
+        "max_phase_diff_deg": 175.5404910707178
+      },
+      {
+        "band": "wr28_kaband",
+        "tag": "dx100_slab_er4",
+        "max_phase_diff_deg": 175.98945407100317
+      },
+      {
+        "band": "wr62_kuband",
+        "tag": "dx200_slab_er2",
+        "max_phase_diff_deg": 164.89611688518096
+      },
+      {
+        "band": "wr62_kuband",
+        "tag": "dx200_slab_er4",
+        "max_phase_diff_deg": 164.93347564211587
+      },
+      {
+        "band": "wr62_kuband",
+        "tag": "dx250_slab_er2",
+        "max_phase_diff_deg": 170.457687404699
+      },
+      {
+        "band": "wr62_kuband",
+        "tag": "dx250_slab_er4",
+        "max_phase_diff_deg": 170.43439930694572
+      },
+      {
+        "band": "wr15_vband",
+        "tag": "dx25_slab_er2",
+        "max_phase_diff_deg": 173.45932701352552
+      },
+      {
+        "band": "wr15_vband",
+        "tag": "dx25_slab_er4",
+        "max_phase_diff_deg": 171.77888839563198
+      },
+      {
+        "band": "wr15_vband",
+        "tag": "dx32_slab_er2",
+        "max_phase_diff_deg": 173.10938861639224
+      },
+      {
+        "band": "wr15_vband",
+        "tag": "dx32_slab_er4",
+        "max_phase_diff_deg": 171.03054639798577
+      },
+      {
+        "band": "wr340_sband",
+        "tag": "dx1000_slab_er2",
+        "max_phase_diff_deg": 179.8325797963074
+      },
+      {
+        "band": "wr340_sband",
+        "tag": "dx1000_slab_er4",
+        "max_phase_diff_deg": 179.7892880684486
+      },
+      {
+        "band": "wr340_sband",
+        "tag": "dx1500_slab_er2",
+        "max_phase_diff_deg": 179.87236032380008
+      },
+      {
+        "band": "wr340_sband",
+        "tag": "dx1500_slab_er4",
+        "max_phase_diff_deg": 179.76614553040048
+      },
+      {
+        "band": "wr10_wband",
+        "tag": "dx25_slab_er2",
+        "max_phase_diff_deg": 172.2390840975449
+      },
+      {
+        "band": "wr10_wband",
+        "tag": "dx25_slab_er4",
+        "max_phase_diff_deg": 172.41523816336988
+      },
+      {
+        "band": "wr10_wband",
+        "tag": "dx40_slab_er2",
+        "max_phase_diff_deg": 172.77959778619027
+      },
+      {
+        "band": "wr10_wband",
+        "tag": "dx40_slab_er4",
+        "max_phase_diff_deg": 173.03251528296119
+      }
+    ],
+    "n_cases": 20
+  },
+  "domain_invariance": {
+    "baseline_domain_m": 0.4,
+    "grown_domain_m": 0.5,
+    "baseline_max_phase_diff_deg": 8.916394101430928,
+    "grown_max_phase_diff_deg": 7.730264831623885,
+    "gate_tol_deg": 15.0,
+    "baseline_verdict": "passed",
+    "grown_verdict": "passed",
+    "verdict_flipped": false,
+    "wallclock_s": 233.44848704338074
+  }
+}

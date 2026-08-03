@@ -1,0 +1,38 @@
+name: rfx-msl-f64-referee
+description: "#527: f64 FD referee at the gate settings — measures agreement AND the f64 GPU cost"
+tags: [rfx, issue-527, ad-fd, comparator]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx #527 f64 FD referee — agreement + f64 GPU cost at gate settings ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== #527 f64 FD referee at the gate's own settings ==="
+  out=".omx/msl-f64-referee/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  set +e
+  timeout 5400 python -u scripts/msl_ad_fd_f64_referee.py --h 1e-3 2e-3 > "$out/referee.log" 2>&1
+  rc=$?
+  set -e
+  cat "$out/referee.log"
+  echo "$rc" > "$out/referee.rc"
+  echo "artifacts: $out"
+  exit "$rc"

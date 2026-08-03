@@ -1,0 +1,130 @@
+{
+  "schema": "rfx.waveguide_wr340_near_cutoff_group_delay_envelope",
+  "schema_version": 2,
+  "status": "passed",
+  "evidence_level": "E2-analytic-oracle-group-delay-near-cutoff-wr340",
+  "claim": "rfx compute_waveguide_s_matrix(normalize='flux') S21 group delay (-d(angle(S21))/d(omega), central difference) on an empty WR-340 guide over f/fc in [1.152, 1.498] matches the analytic L_eff/v_g(f) oracle (same finite-difference stencil applied to both sides, M3) to 0.0420 ns (max interior diff 0.0320 ns).",
+  "fc_te10_hz": 1735713628.994905,
+  "l_eff_m": 0.32,
+  "freqs_hz": [
+    2000000000.0,
+    2060000000.0,
+    2120000000.0,
+    2180000000.0,
+    2240000000.0,
+    2300000000.0,
+    2360000000.0,
+    2420000000.0,
+    2480000000.0,
+    2540000000.0,
+    2600000000.0
+  ],
+  "fc_ratio": [
+    1.1522637605667114,
+    1.1868317127227783,
+    1.2213996648788452,
+    1.2559674978256226,
+    1.2905354499816895,
+    1.3251034021377563,
+    1.3596712350845337,
+    1.3942391872406006,
+    1.4288071393966675,
+    1.4633749723434448,
+    1.4979429244995117
+  ],
+  "tau_g_measured_ns": [
+    2.0232484576609977,
+    1.9571133602624968,
+    1.8418032654565764,
+    1.7496406545802756,
+    1.6740795416581022,
+    1.6164456440037611,
+    1.5678064402280256,
+    1.5233745376264096,
+    1.486566869601802,
+    1.45688017205714,
+    1.4431482675547613
+  ],
+  "tau_g_analytic_via_stencil_ns": [
+    2.060628556677102,
+    1.9891257529991435,
+    1.863667220547427,
+    1.7673905672310752,
+    1.6909089683991851,
+    1.6285581772024216,
+    1.5766901118041687,
+    1.5328344149523332,
+    1.4952569182824504,
+    1.4626921895910527,
+    1.4475272092084879
+  ],
+  "tau_g_analytic_exact_ns": [
+    2.1484994888305664,
+    1.981916904449463,
+    1.859025239944458,
+    1.7642040252685547,
+    1.6886171102523804,
+    1.6268489360809326,
+    1.5753772258758545,
+    1.531803011894226,
+    1.494429349899292,
+    1.4620200395584106,
+    1.4336512088775635
+  ],
+  "endpoints_gated": false,
+  "interior_indices": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "max_abs_diff_ns": 0.03201239273664669,
+  "mean_abs_diff_ns": 0.014823759503852015,
+  "max_abs_diff_ns_vs_exact_oracle_not_gated": 0.024803492593150622,
+  "stencil_truncation_error_ns_max_not_gated": 0.0072089001434960664,
+  "comparator_note": "max_abs_diff_ns is the GATED, like-for-like metric (measured finite-difference tau_g vs the analytic phase run through the IDENTICAL finite-difference stencil). max_abs_diff_ns_vs_exact_oracle_not_gated compares against the exact closed-form derivative instead and is NOT gated -- it is smaller here only because the stencil's own truncation error partially cancels the true residual with opposite sign (adversarial review of PR #536, finding M3); do not use it as the headline number.",
+  "max_group_delay_tol_ns": 0.042,
+  "tol_provenance": "pinned module constant MAX_GROUP_DELAY_TOL_NS=0.042 (NOT derived from this run's own residual -- see the module docstring / tolerance-envelope test for the measured-envelope derivation across all 3 committed cases)",
+  "qualitative_expectations": {
+    "monotonic_decrease": true,
+    "measured_ratio_tau1_over_tau9_interior": 1.3433591847838926,
+    "analytic_exact_ratio_tau1_over_tau9_interior": 1.3556016683578491
+  },
+  "settling_witness": {
+    "method": "record-length convergence (num_periods 60 vs 120); compute_waveguide_s_matrix has no built-in energy-based settling_db for the waveguide port family",
+    "max_abs_diff_ns_np60_vs_np120": 1.0436096431476471e-05
+  },
+  "domain_invariance_witness": {
+    "baseline_domain_m": 0.56,
+    "grown_domain_m": 0.66,
+    "baseline_max_abs_diff_ns": 0.03201239273664669,
+    "grown_max_abs_diff_ns": 0.026632474003918105,
+    "baseline_verdict": "passed",
+    "grown_verdict": "passed",
+    "verdict_flipped": false
+  },
+  "falsifiers": {
+    "skip_unwrap": {
+      "worst_abs_diff_ns": 8.35108016072894,
+      "gate_reds": true
+    },
+    "wrong_sign": {
+      "worst_abs_diff_ns": 3.9462391132616403,
+      "gate_reds": true
+    },
+    "wrong_l_eff": {
+      "worst_abs_diff_ns": 1.5238557082852822,
+      "gate_reds": true
+    }
+  },
+  "wallclock_s": {
+    "baseline": 310.82644176483154,
+    "settling": 587.8033821582794,
+    "grown": 339.4607267379761
+  }
+}

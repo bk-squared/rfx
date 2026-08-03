@@ -466,3 +466,345 @@ def test_thin_absorber_advisory_honours_per_face_thickness_overrides():
     assert len(hits) == 1
     assert "x-lo 4 cells" in hits[0], hits[0]
     assert "x-hi" not in hits[0], hits[0]
+
+
+# --------------------------------------------------------------------------- #
+# #494 advisory — coverage added after an independent mutation battery
+#
+# The original fixture exercised the advisory at ONE point in its option space
+# (normalize=False, empty geometry, one x-propagating single-mode port pair,
+# both absorbing faces equally thin), so single-value substitutions at five
+# separate branch points all survived. The worst of them: gating the call site
+# on ``if not self._geometry`` or ``if normalize != "flux"`` left all 40 tests
+# green, and BOTH of those conditions are the actual settings of
+# ``validation/crossval/18_wr90_iris_modematch.py`` — the script that motivated
+# issue #494. A one-line regression restoring precisely the #494 blind spot on
+# precisely the motivating script was invisible.
+# --------------------------------------------------------------------------- #
+def _two_port_with_obstacle(cpml_layers, *, freqs=_FREQS, dx=0.004):
+    """A two-port sim that is NOT empty — mirrors a real crossval setup."""
+    sim = _two_port(cpml_layers, freqs=freqs, dx=dx)
+    # A PEC obstacle, as every real waveguide device has.
+    sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
+    sim.add(Box((0.058, 0.0, 0.0), (0.062, 0.012, 0.02)), material="pec_like")
+    return sim
+
+
+@pytest.mark.parametrize("normalize", [False, "flux"])
+def test_advisory_fires_with_geometry_present_and_under_flux(normalize):
+    """The option combination the motivating crossval script actually uses.
+
+    ``18_wr90_iris_modematch.py`` runs `normalize="flux"` with PEC boxes
+    registered. Gating the advisory on either condition must not hide it.
+    """
+    sim = _two_port_with_obstacle(10)
+    assert sim._geometry, "fixture must be non-empty to bind the geometry gate"
+    with pytest.warns(UserWarning, match=ADVISORY_KEY):
+        sim.compute_waveguide_s_matrix(normalize=normalize, num_periods=6.0)
+
+
+def test_advisory_message_recomputes_every_number_it_quotes():
+    """Bind the quoted numbers, not merely the strings around them.
+
+    Six of the seven numbers the advisory prints were unasserted, including its
+    only actionable output ("Raise cpml_layers to at least N"): a mutant that
+    advised raising it to 1 instead of 13 passed. Each value here is derived
+    independently from the port geometry rather than copied from the message.
+    """
+    sim = _two_port(10)
+    grid = sim._build_grid()
+    dx = float(grid.dx)
+    cfg = sim._build_waveguide_port_config(
+        sim._waveguide_ports[0], grid, jnp.asarray(_FREQS), 2000)
+    fc = float(cfg.f_cutoff)
+    f_lo = float(np.min(_FREQS))
+    c0 = 299792458.0
+    lambda_g = (c0 / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
+    required = 0.5 * lambda_g
+
+    hits = _advisories(sim)
+    assert len(hits) == 1
+    msg = hits[0]
+
+    assert f"{10 * dx * 1e3:.1f} mm" in msg              # what you have
+    assert f"against a required {required * 1e3:.1f} mm" in msg
+    assert f"lambda_g = {lambda_g * 1e3:.1f} mm" in msg
+    assert f"mode cutoff {fc / 1e9:.3f} GHz" in msg
+    assert f"({10 * dx / lambda_g:.2f} lambda_g)" in msg
+    assert (f"Raise cpml_layers to at least {int(np.ceil(required / dx))} "
+            f"(0.75 lambda_g needs "
+            f"{int(np.ceil(0.75 * lambda_g / dx))})") in msg
+    # The quoted threshold must be the one actually enforced, not a second
+    # copy of the constant that can drift from it.
+    from rfx.api._sparams import _FAR_PORT_LAMBDA_G_FRACTION
+    assert f"documented {_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength" in msg
+    # The #494 ripple ladder is a claims-bearing measurement quoted as fact, so
+    # it is pinned too: prose numbers were freely corruptible otherwise.
+    assert ("residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, "
+            "and 0.0093 at 0.75") in msg
+
+
+def _z_two_port(cpml_layers, *, freqs=_FREQS, dx=0.004):
+    """Ports propagating along z, so the axis cannot be hardcoded to 'x'."""
+    sim = Simulation(
+        freq_max=float(freqs[-1]), domain=(0.04, 0.02, 0.12), dx=dx,
+        boundary=BoundarySpec(x="pec", y="pec",
+                              z=Boundary(lo="cpml", hi="cpml")),
+        cpml_layers=cpml_layers,
+    )
+    for z, direction in ((0.02, "+z"), (0.10, "-z")):
+        sim.add_waveguide_port(
+            z, direction=direction, mode=(1, 0), mode_type="TE",
+            freqs=jnp.asarray(freqs), f0=float(np.mean(freqs)), bandwidth=0.6,
+        )
+    return sim
+
+
+def test_advisory_names_the_actual_propagation_axis_not_always_x():
+    """Every original fixture propagated along x, so `axis = "x"` survived.
+
+    Also binds the PEC-closed fence in the direction a hardcoded axis would
+    NOT satisfy: here x/y are PEC and only z absorbs.
+    """
+    hits = _advisories(_z_two_port(10))
+    assert len(hits) == 1
+    assert "on the z propagation axis" in hits[0], hits[0]
+    assert "z-lo 10 cells" in hits[0] and "z-hi 10 cells" in hits[0]
+    assert "x-" not in hits[0] and "y-" not in hits[0]
+
+
+def test_advisory_dedupes_per_axis_and_still_reports_both_axes():
+    """Binds the ENUMERATION, not just the deduped count.
+
+    `len(hits) == 1` on a same-axis two-port is satisfied both by working
+    dedupe and by looking at only the first port. Pairing it with a two-axis
+    sim that must yield TWO warnings distinguishes them.
+    """
+    # Four ports on two absorbing axes. The y-extent sets the x-normal ports'
+    # cutoff (2.932 GHz) and the x-extent sets the z-normal ports' (1.208 GHz),
+    # so both bands are above cutoff and cpml=6 (24.0 mm) is thin against both
+    # requirements (43.9 mm and 34.6 mm) — i.e. all four ports have something
+    # to report, and correct dedupe collapses them to one per axis.
+    dx = 0.004
+    sim = Simulation(
+        freq_max=float(_FREQS[-1]), domain=(0.12, 0.05, 0.12), dx=dx,
+        boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"), y="pec",
+                              z=Boundary(lo="cpml", hi="cpml")),
+        cpml_layers=6,
+    )
+    for pos, direction in ((0.02, "+x"), (0.10, "-x"),
+                           (0.02, "+z"), (0.10, "-z")):
+        sim.add_waveguide_port(
+            pos, direction=direction, mode=(1, 0), mode_type="TE",
+            freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
+    assert len(sim._waveguide_ports) == 4
+
+    hits = _advisories(sim)
+    assert len(hits) == 2, hits
+    axes = sorted(h.split("on the ")[1].split(" propagation")[0] for h in hits)
+    assert axes == ["x", "z"], axes
+
+
+def test_advisory_dedupe_key_keeps_axes_apart_when_their_cutoffs_coincide():
+    """Binds the AXIS component of the dedupe key specifically.
+
+    On a cube domain the x-normal and z-normal ports have the SAME cutoff, so a
+    key of `(cutoff,)` alone would collapse two physically distinct axes into
+    one warning. `(axis, cutoff)` must keep them separate.
+    """
+    sim = Simulation(
+        freq_max=float(_FREQS[-1]), domain=(0.12, 0.12, 0.12), dx=0.004,
+        boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"), y="pec",
+                              z=Boundary(lo="cpml", hi="cpml")),
+        cpml_layers=6,
+    )
+    for pos, direction in ((0.02, "+x"), (0.02, "+z")):
+        sim.add_waveguide_port(
+            pos, direction=direction, mode=(1, 0), mode_type="TE",
+            freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
+
+    grid = sim._build_grid()
+    cfgs = [sim._build_waveguide_port_config(e, grid, jnp.asarray(_FREQS), 2000)
+            for e in sim._waveguide_ports]
+    cutoffs = {round(float(c.f_cutoff), 3) for c in cfgs}
+    assert len(cutoffs) == 1, ("fixture must share one cutoff", cutoffs)
+
+    hits = _advisories(sim)
+    assert len(hits) == 2, hits
+    assert sorted(h.split("on the ")[1].split(" propagation")[0]
+                  for h in hits) == ["x", "z"]
+
+
+def test_advisory_reports_a_thin_hi_face_behind_a_thick_lo_face():
+    """Mirror of the per-face test — the original only made the LO face thin.
+
+    `for side in ("lo", "hi")` -> `("lo",)` survived because no fixture had an
+    independently thin hi face.
+    """
+    sim = _two_port(
+        40,
+        boundary=BoundarySpec(
+            x=Boundary(lo="cpml", hi="cpml", lo_thickness=40, hi_thickness=4),
+            y="cpml", z="cpml"),
+    )
+    hits = _advisories(sim)
+    assert len(hits) == 1
+    assert "x-hi 4 cells" in hits[0], hits[0]
+    assert "x-lo" not in hits[0], hits[0]
+
+
+def test_advisory_reports_both_faces_when_both_are_thin():
+    """`thin[:1]` (report only the first thin face) survived otherwise."""
+    hits = _advisories(_two_port(10))
+    assert len(hits) == 1
+    assert "x-lo 10 cells" in hits[0] and "x-hi 10 cells" in hits[0], hits[0]
+
+
+def test_advisory_uses_the_lowest_cutoff_mode_of_a_multimode_port():
+    """Fence (c) had zero coverage: every port was single-mode.
+
+    With n_modes=2 the config is a LIST, so `min`, `max` and `modes[-1]` become
+    distinguishable. The documented behaviour is the lowest-cutoff mode (TE10),
+    which is the least demanding.
+    """
+    dx = 0.004
+    sim = Simulation(
+        freq_max=float(_FREQS[-1]), domain=(0.12, 0.04, 0.02), dx=dx,
+        boundary="cpml", cpml_layers=10,
+    )
+    for pos, direction in ((0.02, "+x"), (0.10, "-x")):
+        sim.add_waveguide_port(
+            pos, direction=direction, mode=(1, 0), mode_type="TE", n_modes=2,
+            freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
+
+    grid = sim._build_grid()
+    cfgs = [sim._build_waveguide_port_config(e, grid, jnp.asarray(_FREQS), 2000)
+            for e in sim._waveguide_ports]
+    assert isinstance(cfgs[0], list) and len(cfgs[0]) == 2, "need a multimode cfg"
+    cutoffs = sorted(float(c.f_cutoff) for c in cfgs[0])
+    assert cutoffs[0] < cutoffs[1]
+
+    hits = _advisories(sim)
+    assert len(hits) == 1
+    assert f"mode cutoff {cutoffs[0] / 1e9:.3f} GHz" in hits[0], (hits[0], cutoffs)
+    assert f"mode cutoff {cutoffs[1] / 1e9:.3f} GHz" not in hits[0]
+
+
+def test_advisory_is_a_userwarning_so_the_default_filter_shows_it():
+    """The category was unbound: UserWarning -> DeprecationWarning survived.
+
+    A DeprecationWarning raised into library-caller code is suppressed under
+    Python's default filters, which would silently mute an advisory that exists
+    precisely because the functional entry points run no preflight.
+    """
+    sim = _two_port(10)
+    grid = sim._build_grid()
+    cfgs = [sim._build_waveguide_port_config(e, grid, jnp.asarray(_FREQS), 2000)
+            for e in sim._waveguide_ports]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _warn_thin_absorber_vs_guide_wavelength(
+            grid, cfgs, _FREQS, sim._cpml_layers, sim._boundary_spec)
+    hits = [w for w in caught if ADVISORY_KEY in str(w.message)]
+    assert len(hits) == 1
+    assert hits[0].category is UserWarning, hits[0].category
+
+
+# --------------------------------------------------------------------------- #
+# #493 characterization — independent oracle for the pinned excess table
+#
+# `_NOMINAL_EXCESS` is a table of measured constants, so a coherent author could
+# mutate the rasterization rule AND re-pin the table in one commit and stay
+# green. Verified: `(coords >= lo)` -> `(coords > lo)` plus five numeric edits
+# passed 40/40, which silently falsified the ambiguity docstring and left the
+# asymmetric branch of the symmetry test dead in every parametrization.
+# --------------------------------------------------------------------------- #
+def _predicted_excess(cells: int, d_phys: float) -> int:
+    """Excess in cells, derived from the mechanism rather than measured.
+
+    The lo fin's interior face is a ``hi`` corner, which half-openness always
+    drops: one cell, unconditionally. The hi fin's interior face is a ``lo``
+    corner, kept unless float32 rounding puts its node strictly below it.
+    """
+    y, dx = _real_node_coords(cells)
+    d_c = int(round(d_phys / dx))
+    fin_c = (cells - d_c) // 2
+    hi_corner = np.float32(A_WR90 - fin_c * dx)
+    node = np.float32(y[cells - fin_c])
+    return 1 + (1 if node < hi_corner else 0)
+
+
+@pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
+def test_pinned_excess_matches_an_independently_derived_prediction(cells, d_mm):
+    """The table and the mechanism must agree, so neither can be re-pinned alone."""
+    predicted = _predicted_excess(cells, d_mm * 1e-3)
+    assert predicted == _NOMINAL_EXCESS[(cells, d_mm)], (
+        cells, d_mm, predicted, _NOMINAL_EXCESS[(cells, d_mm)])
+
+
+def test_excess_table_exercises_both_the_one_and_two_cell_cases():
+    """Keeps the symmetry test's asymmetric branch from going dead.
+
+    If every pinned excess became 2, `if excess == 1: assert centre == -0.5`
+    would never execute and the suite would still report green.
+    """
+    values = set(_NOMINAL_EXCESS.values())
+    assert values == {1, 2}, values
+
+
+def test_advisory_dedupe_key_keeps_cutoffs_apart_on_one_axis():
+    """Binds the CUTOFF component of the dedupe key.
+
+    Two ports on the SAME axis with different modes (TE10 and TE20) have
+    different cutoffs and therefore different `lambda_g` requirements, so each
+    deserves its own line. A key of `(axis,)` alone would collapse them. The
+    guide is widened so BOTH modes propagate at the lowest measured frequency,
+    otherwise the below-cutoff fence would hide the TE20 port.
+    """
+    sim = Simulation(
+        freq_max=float(_FREQS[-1]), domain=(0.12, 0.08, 0.02), dx=0.004,
+        boundary="cpml", cpml_layers=6,
+    )
+    for pos, direction, mode in ((0.02, "+x", (1, 0)), (0.10, "-x", (2, 0))):
+        sim.add_waveguide_port(
+            pos, direction=direction, mode=mode, mode_type="TE",
+            freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
+
+    grid = sim._build_grid()
+    cfgs = [sim._build_waveguide_port_config(e, grid, jnp.asarray(_FREQS), 2000)
+            for e in sim._waveguide_ports]
+    cutoffs = sorted(round(float(c.f_cutoff), 3) for c in cfgs)
+    assert len(set(cutoffs)) == 2, ("fixture needs two cutoffs", cutoffs)
+    assert float(np.min(_FREQS)) > cutoffs[-1], "both modes must propagate"
+
+    hits = _advisories(sim)
+    assert len(hits) == 2, hits
+    for fc in cutoffs:
+        assert any(f"mode cutoff {fc / 1e9:.3f} GHz" in h for h in hits), (fc, hits)
+
+
+def test_advisory_also_fires_on_the_port_reference_sims_junction_path():
+    """The junction path must not lose the LOWEST-frequency check.
+
+    That path already has a sibling advisory
+    (``_warn_junction_cpml_thickness``), but it evaluates at BAND CENTRE — the
+    very weakness issue #494 was filed about, since `lambda_g` is longest at
+    the band edge. Gating this advisory on ``port_reference_sims is None``
+    therefore silently drops the band-edge check exactly where junction
+    geometry needs it most, and previously left the suite green.
+    """
+    def build():
+        sim = _two_port(10)
+        return sim
+
+    device = build()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        device.compute_waveguide_s_matrix(
+            normalize="flux", num_periods=6.0,
+            port_reference_sims=[build(), build()])
+    hits = [str(w.message) for w in caught if ADVISORY_KEY in str(w.message)]
+
+    assert len(hits) == 1, [str(w.message) for w in caught]
+    # It is the band-EDGE check, distinct from the sibling's band-centre one.
+    assert "lowest measured frequency 4.500 GHz" in hits[0], hits[0]
