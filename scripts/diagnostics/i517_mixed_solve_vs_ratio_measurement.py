@@ -108,6 +108,61 @@ SOLVE numbers below as a diagnostic signal, not a validated replacement.
      hypothesis than "does a linear solve remove the single-ratio residue".
   3. Falsifier: expectation (a) above — the solve's reciprocity deviation
      vs the shipped path's, on the SAME recorded data.
+
+## RESULT (2026-08-03, one run, settling -122.6 / -119.9 dB — clean, not
+   truncated; preflight and warnings quoted verbatim in the JSON artifact)
+
+  Both pre-declared expectations FAIL on this construction:
+
+  (a) FAIL. Wave-channel (pre-flux-override) reciprocity deviation:
+      SHIPPED (single-ratio) = 64.4%, SOLVE (multi-drive) = 92.3% — the
+      solve makes reciprocity WORSE, not better, over 1-4 GHz (5 points).
+      (For scale: the shipped DEFAULT result's own runtime witness — on
+      the flux-magnitude channel, a different, later step — independently
+      warned "reciprocity deviation max 10.5%" on this SAME run, close to
+      the historically-quoted ~9% figure; that number is NOT what (a)
+      above measures, see "Construction caveat" and the note below.)
+  (b) FAIL by the task's <10 bar: cond(A) = 27.1 / 12.2 / 3.6 / 2.5 / 24.9
+      across the band (U-shaped, worst at the edges). Not catastrophic by
+      the pure-MSL lane's own precedent threshold (<1e3,
+      `test_msl_modal_voltage_and_wave_solve.py`), but far from O(1).
+  (c) Diagonals MOVED a lot, asymmetrically: |S_lw0,lw0| shipped 0.38-0.40
+      -> solve ~0.382 (small change); |S_msl0,msl0| shipped 0.018-0.034 ->
+      solve 0.72-0.72 (~20-40x). No gate, recorded per the pre-declaration.
+
+  DIAGNOSIS (from the algebra, not a new run): of the four (a, b) matrix
+  entries the solve needs, three reuse ALREADY-VALIDATED shipped quantities
+  byte-for-byte (the lw port's own driven-run a/diagonal-b; the msl port's
+  a/b at every run, identical to what `_b_msl` already computes uniformly
+  today). Only ONE entry is new: the lw port's own (a, b) evaluated from
+  ITS OWN (V, I) during the run where it is PASSIVE (matched-terminated) —
+  the "naive first-pass" quantity flagged in the Construction caveat above.
+  The msl diagonal blowing up (0.03 -> 0.72) despite the msl port's own
+  formulas being untouched shows the 2x2 matrix inverse propagates that one
+  suspect entry into EVERY output. This is consistent with (not proof of) a
+  specific physical reading: a matched-Z0-terminated port's local V/I sits
+  close to Z0 by construction of the termination, so the local-Zin-based
+  "b" this script computes there is dominated by measurement noise, not a
+  real reflected-wave signal — exactly the composition gap #517 names and
+  defers ("how it composes ... is the actual work, not the linear algebra").
+
+  VERDICT vs the task's framing: the measurement does NOT support "the
+  single-ratio rule is the dominant source of the ~9% flux-channel
+  residual" via this naive solve construction — it shows the opposite
+  under the only mechanically-available generalization. It does NOT rule
+  out a properly-derived composition (this script's LW-passive-port entry
+  is explicitly not validated); it shows that skipping the composition
+  question and reusing the shipped diagonal formula at passive ports is
+  not a viable shortcut.
+
+  RECOMMENDATION: do not extend the solve to the mixed lane on this
+  construction. If #517 is pursued further, the prerequisite is a
+  validated formula for the lumped/wire "a" (and independently, "b") at a
+  PASSIVE, matched-terminated port from its own (V, I) — which does not
+  currently exist anywhere in the codebase (grepped: `decompose_lumped_s_
+  matrix` / `decompose_wire_s_matrix` in `rfx/probes/probes.py` also only
+  ever evaluate "a" at a port's OWN drive, never at a passive port) — that
+  is a new falsifier, not a rerun of this one (R2).
 """
 from __future__ import annotations
 
