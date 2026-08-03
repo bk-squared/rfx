@@ -19,9 +19,14 @@ FIXTURES = REPO / "tests" / "fixtures" / "waveguide_broad_e5"
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from build_waveguide_band_broad_e5_phase_envelope import MAX_PHASE_TOL_DEG  # type: ignore  # noqa: E402
 
-# Same governance margin ceiling as the magnitude lane's MARGIN_CEIL=1.5.
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
+
+# Same governance margin ceiling as the magnitude lane's MARGIN_CEIL (1.5).
 # 15.0 / 11.99 = 1.25, well inside 1.5.
-MARGIN_CEIL = 1.5
+# Issue #528: imported from tests/_gate_policy.py (the shared repo-wide
+# multiplier) instead of restated, so a relaxation here is visible alongside
+# every other consumer rather than a fresh local literal.
+MARGIN_CEIL = ENVELOPE_GATE_MULTIPLIER
 
 
 def _all_case_phase_diffs() -> list[float]:

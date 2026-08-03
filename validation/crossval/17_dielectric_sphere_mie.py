@@ -109,6 +109,8 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 
+from tests._gate_policy import gate_from_envelope  # noqa: E402
+
 import rfx  # noqa: E402
 
 _RFX_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
@@ -323,7 +325,7 @@ def main(argv):
               f"(gate {GATE_COARSE_DB}); fine WITNESS {env_fine_witness:.3f} dB "
               f"(not gated)")
         if not (GATE_COARSE_DB >= env_coarse and
-                GATE_COARSE_DB <= np.ceil(env_coarse * 1.5 * 10) / 10 + 0.05):
+                GATE_COARSE_DB <= gate_from_envelope(env_coarse, quantum=10) + 0.05):
             print("  ENVELOPE/GATE MISMATCH (coarse) — fix the constant")
             ok = False
 

@@ -116,6 +116,8 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 
+from tests._gate_policy import gate_from_envelope  # noqa: E402
+
 import rfx  # noqa: E402
 
 _RFX_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
@@ -478,7 +480,7 @@ def main(argv):
               f"first-order ratios {ratios}")
         for gate, env, tier in ((GATE_FINE_ABS, env_fine, "fine"),
                                 (GATE_RICH_ABS, env_rich, "richardson")):
-            required = np.ceil(env * 1.5 * 100) / 100
+            required = gate_from_envelope(env, quantum=100)
             if abs(gate - required) > 1e-9:   # EXACT ceil(x1.5) — R480
                 print(f"  ENVELOPE/GATE MISMATCH ({tier}): gate {gate} "
                       f"must equal round-up(env x 1.5) = {required}")

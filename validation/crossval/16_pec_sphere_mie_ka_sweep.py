@@ -113,6 +113,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "tests", "fixtures", "rcs_sphere_mie"))
 
+from tests._gate_policy import gate_from_envelope  # noqa: E402
+
 import rfx  # noqa: E402
 
 _RFX_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
@@ -300,11 +302,11 @@ def main(argv):
               f"(gate {GATE_COARSE_DB}), fine {env_fine:.3f} dB "
               f"(gate {GATE_FINE_DB})")
         if not (GATE_COARSE_DB >= env_coarse and
-                GATE_COARSE_DB <= np.ceil(env_coarse * 1.5 * 10) / 10 + 0.05):
+                GATE_COARSE_DB <= gate_from_envelope(env_coarse, quantum=10) + 0.05):
             print("  ENVELOPE/GATE MISMATCH (coarse) — fix GATE_COARSE_DB")
             ok = False
         if not (GATE_FINE_DB >= env_fine and
-                GATE_FINE_DB <= np.ceil(env_fine * 1.5 * 10) / 10 + 0.05):
+                GATE_FINE_DB <= gate_from_envelope(env_fine, quantum=10) + 0.05):
             print("  ENVELOPE/GATE MISMATCH (fine) — fix GATE_FINE_DB")
             ok = False
 

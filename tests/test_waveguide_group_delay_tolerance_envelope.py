@@ -30,9 +30,14 @@ ENVELOPE = REPO / "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from build_waveguide_group_delay_envelope import MAX_GROUP_DELAY_TOL_NS  # type: ignore  # noqa: E402
 
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
+
 # Same governance margin ceiling as the magnitude (1.5) and phase (1.5) lanes.
 # 0.042 / 0.0320 = 1.31, well inside 1.5.
-MARGIN_CEIL = 1.5
+# Issue #528: imported from tests/_gate_policy.py (the shared repo-wide
+# multiplier) instead of restated, so a relaxation here is visible alongside
+# every other consumer rather than a fresh local literal.
+MARGIN_CEIL = ENVELOPE_GATE_MULTIPLIER
 
 
 def _load():
