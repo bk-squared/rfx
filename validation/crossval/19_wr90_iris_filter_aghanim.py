@@ -132,6 +132,8 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 
+from tests._gate_policy import gate_from_envelope  # noqa: E402
+
 import rfx  # noqa: E402
 
 _RFX_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
@@ -1058,7 +1060,7 @@ def main(argv):
             print("    WARNING: no leg fails the settling criterion, so the "
                   "criterion is untested by this record")
         print(f"  envelope {env_f0:.2f} MHz -> gate {GATE_F0_MHZ} MHz")
-        required = np.ceil(max(env_f0, 1e-9) * 1.5)
+        required = gate_from_envelope(max(env_f0, 1e-9), quantum=1)
         if abs(GATE_F0_MHZ - required) > 1e-9:
             print(f"  ENVELOPE/GATE MISMATCH (f0): gate {GATE_F0_MHZ} must equal "
                   f"round-up(env x 1.5) = {required}")

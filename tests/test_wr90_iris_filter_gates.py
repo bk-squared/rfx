@@ -90,14 +90,16 @@ _SCRIPT = _REPO_ROOT / "validation/crossval/19_wr90_iris_filter_aghanim.py"
 C0 = 299792458.0
 MU0 = 4e-7 * np.pi
 A = 22.86e-3
-# The gate is `envelope x _GATE_MULTIPLIER`. The envelope is anchored to
-# data; the MULTIPLIER was not anchored to anything, which is a second and
-# independent degree of freedom -- an independent battery found that a
-# find-replace of 1.5 -> 3.0 plus three constants doubles the gate with
-# every guard still passing. Named once here, pinned in the script's guard,
-# and cross-checked against the other gated cases, so a local widening
-# becomes a visible cross-case divergence.
-_GATE_MULTIPLIER = 1.5
+# The gate is `envelope x multiplier`. The envelope is anchored to data; the
+# multiplier used to be a second, unanchored degree of freedom -- an
+# independent battery found that a find-replace of 1.5 -> 3.0 plus three
+# constants doubles the gate with every guard still passing. That finding
+# became issue #528, and #539 gave the multiplier ONE repo-wide definition,
+# tests/_gate_policy.py, which this case consumes like every other gated
+# case. The falsifiers in tests/test_gate_policy_is_shared.py re-derive this
+# case's gate from the shared constant (discovered via the fixture glob), so
+# a local widening is caught from OUTSIDE this file.
+from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -493,7 +495,7 @@ def test_f0_envelope_is_recomputed_from_its_population(fixture):
         "population size changed", sorted(residuals), g["f0_envelope_population"])
     env = max(abs(d) for d in residuals.values())
     assert g["f0_measured_envelope_mhz"] == pytest.approx(env, abs=5e-3)
-    assert g["f0_gate_mhz"] == math.ceil(max(env, 1e-9) * _GATE_MULTIPLIER)
+    assert g["f0_gate_mhz"] == gate_from_envelope(max(env, 1e-9), quantum=1)
     for entry in g["f0_envelope_population"]:
         assert any(abs(entry["d_f0_mhz"] - d) < 5e-3 for d in residuals.values()), (
             "committed population entry not reproducible", entry)
@@ -623,8 +625,8 @@ def test_gate_is_hard_pinned_and_equals_the_derived_relation(fixture):
     g = fixture["gates"]
     assert g["f0_gate_mhz"] == _PIN_F0_GATE_MHZ
     assert g["f0_measured_envelope_mhz"] == pytest.approx(_PIN_F0_ENV_MHZ, abs=1e-4)
-    assert g["f0_gate_mhz"] == math.ceil(
-        max(g["f0_measured_envelope_mhz"], 1e-9) * _GATE_MULTIPLIER)
+    assert g["f0_gate_mhz"] == gate_from_envelope(
+        max(g["f0_measured_envelope_mhz"], 1e-9), quantum=1)
     # band edges and bandwidth are carried as REPORTED residuals, so a gate key
     # for them must not reappear without a fresh sensitivity argument
     assert "edge_gate_mhz" not in g and "bw_gate_mhz" not in g, (
@@ -653,44 +655,49 @@ def test_script_live_gate_constant_matches_fixture(fixture, script_src):
         assert not isinstance(g_node.test, ast.Constant), (
             "the self-check was disabled with a constant condition")
 
-    # Asserting the guard EXISTS does not check WHICH multiplier it uses: editing
-    # 1.5 inside the guard leaves it present and passing while doubling the gate.
-    assert re.search(rf"np\.ceil\(.*\*\s*{_GATE_MULTIPLIER}\)", script_src), (
-        "the script's self-check no longer multiplies by the pinned multiplier")
+    # Asserting the guard EXISTS does not check WHICH multiplier it uses: a
+    # local literal inside the guard can be edited with the guard still present
+    # and passing. The script must derive `required` through the shared
+    # repo-wide policy (#528/#539), not a fresh local literal.
+    assert "from tests._gate_policy import gate_from_envelope" in script_src, (
+        "the script no longer imports the shared gate policy helper")
+    assert re.search(r"required\s*=\s*gate_from_envelope\(", script_src), (
+        "the script's self-check no longer derives the gate through "
+        "tests._gate_policy.gate_from_envelope")
+    assert re.search(r"required\s*=\s*np\.ceil", script_src) is None, (
+        "a local ceil derivation reappeared in the script's self-check "
+        "alongside (or instead of) the shared helper")
 
 
 # --------------------------------------------------------------------------- #
 # The comparator's INPUTS — the failure this stage actually hit.
 # --------------------------------------------------------------------------- #
-def test_gate_multiplier_matches_every_other_gated_case():
-    """The multiplier is a repo-wide convention; make a local widening visible.
+def test_case_is_discovered_and_bound_by_the_shared_gate_policy(fixture):
+    """The multiplier is a repo-wide convention with ONE definition (#528/#539).
 
-    Every gated crossval case hardcodes its own `1.5` and nothing cross-checks
-    them, so widening it here would be invisible as a divergence from the rule
-    this case claims to follow — both the hard pin and the derived relation live
-    in this one file, so a coherent editor is already editing both. This test
-    puts the invariant somewhere that editor is not.
+    This test's predecessor scanned sibling gate tests for their local `1.5`
+    literals; #539 removed every one of those by design (they all consume
+    tests/_gate_policy.py now), which turned the scan into a guaranteed
+    failure on any merge with main. The binding this file needs is different:
+    that THIS case is inside the shared policy's blast radius. The falsifiers
+    in tests/test_gate_policy_is_shared.py re-derive every discovered case's
+    gate from the shared constant and prove a widened multiplier moves them
+    all together -- being discovered there is what makes a local widening
+    here visible from outside this file.
     """
-    siblings = sorted(
-        q for q in (_REPO_ROOT / "tests").glob("test_*_gates.py")
-        if q.name != Path(__file__).name)
-    checked = {}
-    for path in siblings:
-        found = set()
-        for line in path.read_text().splitlines():
-            if "math.ceil" in line:
-                found.update(float(m) for m in
-                             re.findall(r"\*\s*([0-9]+\.[0-9]+)", line))
-        if found:
-            checked[path.name] = found
-    assert len(checked) >= 2, (
-        "fewer than two sibling gated cases to cross-check against, so the "
-        f"convention cannot be verified: {sorted(checked)}")
-    for name, found in checked.items():
-        assert any(abs(v - _GATE_MULTIPLIER) < 1e-12 for v in found), (
-            f"{name} uses a different envelope multiplier than this case "
-            f"({_GATE_MULTIPLIER}): the repo-wide convention has diverged and "
-            "one of the two is a silent gate widening", sorted(found))
+    from tests.test_gate_policy_is_shared import _REAL_CASES
+    me = ("tests/fixtures/wr90_iris_filter/fixture.json",
+          ("gates", "f0_measured_envelope_mhz"),
+          ("gates", "f0_gate_mhz"),
+          1)
+    assert me in _REAL_CASES, (
+        "case 19 is no longer discovered by the shared gate-policy "
+        "falsifiers -- its fixture keys or the discovery pattern drifted, so "
+        "the shared-multiplier guarantee no longer covers this case",
+        _REAL_CASES)
+    g = fixture["gates"]
+    assert g["f0_gate_mhz"] == gate_from_envelope(
+        g["f0_measured_envelope_mhz"], quantum=1)
 
 
 def test_electrical_geometry_is_rederived_from_committed_node_indices(fixture):

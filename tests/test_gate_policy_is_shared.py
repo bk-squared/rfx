@@ -51,9 +51,11 @@ _QUANTIZED_GATE_FILES = [
     REPO / "tests" / "test_wr90_iris_modematch_gates.py",
     REPO / "tests" / "test_rcs_mie_ka_sweep_gates.py",
     REPO / "tests" / "test_rcs_dielectric_sphere_mie_gates.py",
+    REPO / "tests" / "test_wr90_iris_filter_gates.py",
     REPO / "validation" / "crossval" / "16_pec_sphere_mie_ka_sweep.py",
     REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
+    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against
@@ -70,10 +72,12 @@ _CROSSVAL_SCRIPTS = [
     REPO / "validation" / "crossval" / "16_pec_sphere_mie_ka_sweep.py",
     REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
+    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
 ]
 
-_ENVELOPE_KEY_RE = re.compile(r"^(?P<prefix>.+)_measured_envelope_(?P<suffix>abs|db)$")
-_QUANTUM_BY_SUFFIX = {"abs": 100, "db": 10}
+_ENVELOPE_KEY_RE = re.compile(
+    r"^(?P<prefix>.+)_measured_envelope_(?P<suffix>abs|db|mhz)$")
+_QUANTUM_BY_SUFFIX = {"abs": 100, "db": 10, "mhz": 1}
 
 
 def _discover_real_cases() -> list[tuple[str, tuple[str, str], tuple[str, str], int]]:
@@ -81,12 +85,16 @@ def _discover_real_cases() -> list[tuple[str, tuple[str, str], tuple[str, str], 
     ``<prefix>_gate_<abs|db>`` sibling across every committed
     ``tests/fixtures/**/fixture.json`` -- derived from the glob rather than
     hand-maintained (#528 review MEDIUM 2), so a new quantized-gate case
-    (e.g. #499's case 19 fixture, once that PR lands) is picked up
-    automatically instead of needing this file edited too.
+    is picked up automatically instead of needing this file edited too --
+    modulo the suffix map: #499's case 19 (anticipated here before it
+    landed) gates in integer MHz, which required adding ``mhz`` -> 1 to
+    ``_QUANTUM_BY_SUFFIX`` in the same PR; a future case reusing an
+    existing suffix costs nothing.
 
     Descriptive, not authoritative: as of this writing this discovers
-    exactly 5 cases -- wr90_iris_modematch {fine, richardson},
-    rcs_mie_ka_sweep {coarse, fine}, rcs_dielectric_sphere_mie {coarse}.
+    exactly 6 cases -- wr90_iris_modematch {fine, richardson},
+    rcs_mie_ka_sweep {coarse, fine}, rcs_dielectric_sphere_mie {coarse},
+    wr90_iris_filter {f0}.
     Four OTHER committed fixture.json files exist
     (rcs280_reference_subtraction, rcs_cube_bem, rcs_sphere_mie,
     rcs_sphere_three_way) and are correctly excluded: none has a top-level
@@ -177,8 +185,8 @@ def test_gate_policy_module_defines_exactly_one_multiplier():
 def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
     """#528 review MEDIUM 2: an empty or broken glob must not silently pass
     every other assertion in this file (they'd vacuously succeed over zero
-    cases) -- assert a floor AND that today's 5 known cases are all in it."""
-    assert len(_REAL_CASES) >= 5, (
+    cases) -- assert a floor AND that today's 6 known cases are all in it."""
+    assert len(_REAL_CASES) >= 6, (
         f"only {len(_REAL_CASES)} real gated cases discovered via the "
         f"fixture glob -- an empty or broken glob would silently pass "
         f"every other case-driven assertion in this file"
@@ -195,6 +203,8 @@ def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
          ("gates", "fine_measured_envelope_db")),
         ("tests/fixtures/rcs_dielectric_sphere_mie/fixture.json",
          ("gates", "coarse_measured_envelope_db")),
+        ("tests/fixtures/wr90_iris_filter/fixture.json",
+         ("gates", "f0_measured_envelope_mhz")),
     }
     assert expected <= discovered
 
