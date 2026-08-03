@@ -1335,25 +1335,39 @@ def test_passivity_is_gated_on_the_gated_row_and_bounded_elsewhere(fixture):
     configuration fail the suite, which inverts the posture — the coarse rung is
     committed as evidence for the mesh choice, not as a claim.
     """
+    # TWO SEPARATE QUESTIONS, two separate instruments (the reviewer's
+    # correction to an earlier revision that had tightened the bound to 1.05):
+    #
+    # 1) "Is this row grossly non-passive?" -- the PHYSICAL bound, kept
+    #    generous (1.02 gated / 1.10 coarse) because the coarse over-unity is
+    #    a documented Yee/near-cutoff discretisation artefact that is not
+    #    physically pinned: a legitimate reconfiguration could move it, and a
+    #    tightened bound would then red a healthy regeneration and invite the
+    #    forbidden loosening dynamic. Measured reach of the 1.10 bound under
+    #    coherent editing: it stops discriminating below ~x1.04 of coarse
+    #    |S11| inflation.
+    # 2) "Has this row been ALTERED?" -- an EXACT pin of the committed value,
+    #    which catches x1.005 (recomputed colpow 1.0418), far tighter than any
+    #    defensible tolerance, with zero over-fit risk: a legitimate
+    #    regeneration re-pins it deliberately in the same commit, exactly as
+    #    _PIN_TRACE_SHA256 works. Same guarantee class as the digest --
+    #    alteration becomes deliberate and visible, not impossible.
     assert fixture["gated_rfx"]["max_colpow"] <= 1.02
+    assert fixture["gated_rfx"]["max_colpow"] == pytest.approx(
+        _PIN_GATED_MAX_COLPOW, abs=1e-6)
     coarse = fixture.get("coarse_diagnostic")
     if coarse:
-        # 1.05, not the earlier arbitrary 1.10: the committed coarse value is
-        # 1.0315 and two independent full generations reproduced it
-        # bit-identically, so the headroom covers nothing real. STATED REACH,
-        # measured by an independently designed battery with the digest
-        # re-pinned (the coherent-regeneration move): the 1.10 bound stopped
-        # discriminating between x1.02 and x1.04 of coarse |S11| inflation;
-        # at 1.05 the same scan catches x1.02. Below the bound the digest is
-        # the only guard, and that residual risk is accepted for a REPORTED
-        # row -- stated here rather than discovered.
-        assert coarse["max_colpow"] <= 1.05, coarse["max_colpow"]
+        assert coarse["max_colpow"] <= 1.10, coarse["max_colpow"]
+        assert coarse["max_colpow"] == pytest.approx(
+            _PIN_COARSE_MAX_COLPOW, abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #
 # Hard numeric pins — filled from the committed fixture, never re-tuned.
 # --------------------------------------------------------------------------- #
 _PIN_F0_GATE_MHZ = 19.0
+_PIN_GATED_MAX_COLPOW = 1.0065
+_PIN_COARSE_MAX_COLPOW = 1.0315
 _PIN_F0_ENV_MHZ = 12.1230
 _PIN_TRACE_SHA256 = (
     "25faa7447a1451f81c578fbbd73b0c7c256e2dbba4fae46696a79c885eff3044")
