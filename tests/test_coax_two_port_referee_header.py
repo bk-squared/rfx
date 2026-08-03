@@ -219,16 +219,20 @@ def test_stage_b_layout_is_self_consistent_and_openems_free():
     }
     assert required <= set(layout.keys())
 
-    # H2' fix: both ports' OUTER ends now sit exactly at the domain edges
-    # (into the PML), not retracted from it.
+    # H2''/H2' fix: both ports' OUTER ends sit exactly at the domain edges
+    # -- H2'' (2026-08-03 run-1 diagnosis) made those edges MUR, not
+    # PML_16 (see the referee's "LINE TERMINATION TOPOLOGY" docstring
+    # section), but the conductor extent itself is unchanged from H2'.
     assert layout["z_port1_start_mm"] == 0.0
     assert layout["z_port2_stop_mm"] == layout["lz_mm"]
 
-    # The TARGET reference planes (not the bare conductor extent, which
-    # legitimately reaches the domain edges per H2') must stay safely
-    # inside the clear, non-PML region.
-    assert layout["z_feed_bot_mm"] > module.B_PML_DEPTH_MM
-    assert layout["z_feed_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
+    # The TARGET reference planes must stay strictly inside the domain,
+    # on the correct side of the shared midpoint. H2'' fix: no PML depth
+    # to stay clear of in z any more (MUR consumes none), so the
+    # meaningful check is ordering against z_split, not a PML-depth
+    # clearance.
+    assert 0.0 < layout["z_feed_bot_mm"] < layout["z_split_mm"]
+    assert layout["z_split_mm"] < layout["z_feed_top_mm"] < layout["lz_mm"]
     assert layout["z_port1_start_mm"] < layout["z_split_mm"] < layout["z_port2_stop_mm"]
 
     # FeedShift/MeasPlaneShift must land strictly inside each port's own
@@ -353,6 +357,48 @@ def test_extract_two_port_s_synthetic_forward_and_reverse_drive():
     # given result came from without re-deriving it.
     assert fwd["reverse_drive"] is False
     assert rev["reverse_drive"] is True
+
+
+def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
+    """Forensics fix (2026-08-03, run-1 diagnosis): the FIRST live run
+    (VESSL 369367251366) raised out of the non-physical-field guard with
+    only a single scalar (max|S|=280.7) ever reaching the JSON artifact
+    -- the per-bin S-matrices and per-drive diagnostics that would have
+    let a reviewer distinguish "channel-inversion bug" from "genuine
+    field blow-up" from run.log alone were never recorded anywhere. This
+    test pins that a RuntimeError raised inside ``_run_stage_b`` (via the
+    non-physical-field guard) now carries a ``partial_stage_b_data``
+    attribute with the S-matrices computed before the guard tripped, so
+    ``main()``'s RuntimeError handler can write them into the failure
+    artifact instead of losing them."""
+    module = _load_referee_module()
+
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+        # port1 (forward) drive: s_self deliberately non-physical (>2.0),
+        # mirroring the recorded run-1 failure signature ([s11] blow-up).
+        s_self = np.array([300.0 + 0j]) if drive == "port1" else np.array([0.05 + 0j])
+        return {
+            "extracted": {"s_self": s_self, "s_thru": np.array([0.9 + 0j])},
+            "z0_port1": np.array([50.0 + 0j]), "z0_port2": np.array([50.0 + 0j]),
+            "beta_port1": np.array([1.0 + 0j]), "beta_port2": np.array([1.0 + 0j]),
+            "max_uf_inc": 1.0, "n_trace_samples": 100, "nrts_cap": nrts,
+            "truncated_suspected": False, "elapsed_s": 1.0,
+        }
+
+    monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
+    monkeypatch.setattr(module, "_run_one_drive", fake_run_one_drive)
+
+    try:
+        module._run_stage_b(sim_root="/tmp/_unused_forensics_test", threads=1,
+                            nrts=100, end_criteria=1e-4)
+        assert False, "expected the non-physical-field guard to raise on s11=300"
+    except RuntimeError as exc:
+        assert "[s11]" in str(exc)
+        partial = getattr(exc, "partial_stage_b_data", None)
+        assert partial is not None, "RuntimeError must carry partial_stage_b_data"
+        assert partial["s11_mag"] == [300.0]
+        assert partial["s21_mag"] == [0.9]
+        assert "drive1_diagnostics" in partial and "drive2_diagnostics" in partial
 
 
 def test_stage_b_matched_through_band_and_group_delay():
