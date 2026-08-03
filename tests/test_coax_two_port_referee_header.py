@@ -274,6 +274,87 @@ def test_stage_b_port_directions_are_both_positive():
     assert mutated_direction == -1.0, "mutation sanity check itself is broken"
 
 
+def test_extract_two_port_s_synthetic_forward_and_reverse_drive():
+    """Round-3 fix (BLOCKING): the round-2 fix flipped only the ``s_thru``
+    numerator for the reverse drive and left ``s_self`` as ``uf_ref_self/
+    uf_inc_self`` unconditionally -- WRONG, since ``uf_inc_self`` is not
+    the reverse drive's own launched wave. The reviewer verified this with
+    openEMS's own ``CalcPort`` formulas on synthetic wave amplitudes,
+    entirely WITHOUT openEMS installed (plain complex arithmetic): the
+    round-2 code reported S22 as 1/S22_true and S12 as S21_true/S22_true
+    (both traced to the same wrong denominator). This test imitates that
+    approach as a real, permanent unit test feeding fake port objects
+    with known ``uf_inc``/``uf_ref`` values through ``_extract_two_port_s``
+    for BOTH drives (item (c) of the round-3 review -- the previous
+    ``reverse_drive``/``thru_uses_ref`` flag was unpinned by any test;
+    mutating it stayed green).
+
+    Wave-amplitude construction (matches ``_extract_two_port_s``'s own
+    docstring derivation): for a KNOWN reciprocal 2x2 S-matrix (S12=S21),
+    normalize each drive's own launched-wave amplitude to 1 --
+      forward (a1=1, a2=0): b1=S11*a1, b2=S21*a1 (b2 is +z at port2, so
+        IS uf_inc2 under the shared +z convention).
+      reverse (a2'=1, a1'=0): b2'=S22*a2', b1'=S12*a2' (a2' is -z at
+        port2, so IS uf_ref2; b1' is -z at port1, so IS uf_ref1).
+    """
+    module = _load_referee_module()
+
+    class _FakePort:
+        def __init__(self, uf_inc, uf_ref):
+            self.uf_inc = np.asarray(uf_inc, dtype=np.complex128)
+            self.uf_ref = np.asarray(uf_ref, dtype=np.complex128)
+
+    s11_true = 0.15 + 0.05j
+    s21_true = 0.85 - 0.30j   # |s21_true| ~= 0.90, mirrors the reviewer's "0.9"
+    s12_true = s21_true       # reciprocal
+    s22_true = 0.03 + 0.04j   # |s22_true| == 0.05, mirrors the reviewer's "0.051"
+
+    # forward drive: a1=1 (port1's own launched wave, +z=uf_inc1), a2=0
+    uf_inc1_fwd = np.array([1.0 + 0j])
+    uf_ref1_fwd = s11_true * uf_inc1_fwd
+    uf_inc2_fwd = s21_true * uf_inc1_fwd
+    uf_ref2_fwd = np.array([0.0 + 0j])
+    port1_fwd = _FakePort(uf_inc1_fwd, uf_ref1_fwd)
+    port2_fwd = _FakePort(uf_inc2_fwd, uf_ref2_fwd)
+
+    # reverse drive: a2'=1 (port2's own launched wave, -z=uf_ref2), a1'=0
+    uf_ref2_rev = np.array([1.0 + 0j])
+    uf_inc2_rev = s22_true * uf_ref2_rev
+    uf_ref1_rev = s12_true * uf_ref2_rev
+    uf_inc1_rev = np.array([0.0 + 0j])
+    port2_rev = _FakePort(uf_inc2_rev, uf_ref2_rev)
+    port1_rev = _FakePort(uf_inc1_rev, uf_ref1_rev)
+
+    fwd = module._extract_two_port_s(port1_fwd, port2_fwd, reverse_drive=False)
+    rev = module._extract_two_port_s(port2_rev, port1_rev, reverse_drive=True)
+
+    tol = 1e-9
+    assert abs(fwd["s_self"][0] - s11_true) < tol, f"S11: got {fwd['s_self'][0]}, want {s11_true}"
+    assert abs(fwd["s_thru"][0] - s21_true) < tol, f"S21: got {fwd['s_thru'][0]}, want {s21_true}"
+    assert abs(rev["s_self"][0] - s22_true) < tol, f"S22: got {rev['s_self'][0]}, want {s22_true}"
+    assert abs(rev["s_thru"][0] - s12_true) < tol, f"S12: got {rev['s_thru'][0]}, want {s12_true}"
+
+    # Discrimination check: the OLD (round-2) buggy formula -- unconditional
+    # uf_ref_self/uf_inc_self and thru/uf_inc_self -- must NOT match the
+    # truth for the reverse drive (proving this test actually catches the
+    # regression, not just tautologically confirms the current code).
+    old_buggy_s22 = port2_rev.uf_ref[0] / port2_rev.uf_inc[0]
+    old_buggy_s12 = port1_rev.uf_ref[0] / port2_rev.uf_inc[0]
+    assert abs(old_buggy_s22 - (1.0 / s22_true)) < tol, "old-bug reconstruction itself is wrong"
+    assert abs(old_buggy_s12 - (s21_true / s22_true)) < tol, "old-bug reconstruction itself is wrong"
+    assert abs(old_buggy_s22 - s22_true) > 1.0, (
+        "old buggy S22 formula coincidentally matches truth -- test not discriminating"
+    )
+    assert abs(old_buggy_s12 - s12_true) > 1.0, (
+        "old buggy S12 formula coincidentally matches truth -- test not discriminating"
+    )
+
+    # reverse_drive is recorded so a reviewer can tell which branch a
+    # given result came from without re-deriving it.
+    assert fwd["reverse_drive"] is False
+    assert rev["reverse_drive"] is True
+
+
 def test_stage_b_matched_through_band_and_group_delay():
     """B5' fix (round-2 review, BLOCKING): Stage B's own matched-through
     band must differ from Stage A's ideal-lossless band (rfx's raw |S21|

@@ -171,22 +171,35 @@ so Stage A's validated ``s21 = uf_inc[thru]/uf_inc[self]`` convention
 transfers unchanged for the port1-driven case.
 
 This same-direction (not mirror-symmetric) topology has a DERIVED
-consequence for the port2-driven case that Coax.m itself never exercises
-(Coax.m only ever drives port 1): the "thru" channel choice depends on
-which physical direction the wave arrives at the RECEIVING port relative
-to THAT port's own (now globally-shared) +z convention --
-  - driving port 1 (bottom), receiving port 2 (top): the wave arrives at
-    port 2 travelling +z, ALIGNED with port 2's own +z convention ->
-    port 2's ``uf_inc`` channel (Coax.m's own formula, unchanged).
-  - driving port 2 (top), receiving port 1 (bottom): the wave arrives at
-    port 1 travelling -z, OPPOSED to port 1's own +z convention -> port
-    1's ``uf_ref`` channel, NOT ``uf_inc`` (see ``_extract_two_port_s``'s
-    docstring for the full derivation). This is REASONED from the SAME
-    local-(V,I)-based split formula the reviewer used to find the
-    original bug, applied symmetrically to the reverse direction -- it
-    has NOT been independently checked against openEMS's own formulas
-    the way the forward (Coax.m-matching) direction was, and is flagged
-    here as the residual open item for the next review pass.
+consequence for the port2-driven (REVERSE) case that Coax.m itself never
+exercises (Coax.m only ever drives port 1): BOTH the thru numerator AND
+the self denominator depend on which physical direction is "into the
+device" from the driven port's own location, not just the numerator --
+  - FORWARD drive (port 1, bottom): +z IS into the device, so port 1's
+    own launched wave is ``uf_inc_self``. s_self (S11) = ``uf_ref_self/
+    uf_inc_self`` (Coax.m's own formula, unchanged). s_thru (S21) =
+    ``uf_inc_thru/uf_inc_self`` -- the wave arrives at port 2 travelling
+    +z, ALIGNED with port 2's own convention.
+  - REVERSE drive (port 2, top): +z is AWAY from the device, so port 2's
+    own launched wave is ``uf_ref_self`` (NOT ``uf_inc_self``). s_self
+    (S22) = ``uf_inc_self/uf_ref_self``. s_thru (S12) = ``uf_ref_thru/
+    uf_ref_self`` -- the wave arrives at port 1 travelling -z, OPPOSED to
+    port 1's own convention, AND the denominator is port 2's own launched
+    (-z) wave, not its +z one.
+
+ROUND-3 FIX (2026-08-03): an earlier version of this rebuild flipped
+ONLY the thru numerator for the reverse drive and left s_self as
+``uf_ref_self/uf_inc_self`` unconditionally -- WRONG, since
+``uf_inc_self`` is not the reverse drive's launched wave. The reviewer's
+synthetic check (plain complex arithmetic on fake ``uf_inc``/``uf_ref``
+values, no openEMS needed -- see ``_extract_two_port_s``'s docstring and
+``tests/test_coax_two_port_referee_header.py::
+test_extract_two_port_s_synthetic_forward_and_reverse_drive``) caught it:
+the numerator-only fix reported S22 as 1/S22_true (0.051 -> 19.61) and
+S12 scaled by the same inverted factor (0.9 -> 17.65). Both directions
+are now confirmed by that synthetic check (the forward direction was
+already confirmed by Coax.m's own source; the reverse direction, which
+Coax.m never exercises, by the reviewer's CalcPort-formula arithmetic).
 
 Both ports' computed directions are pinned by
 ``tests/test_coax_two_port_referee_header.py::
@@ -1050,32 +1063,53 @@ def _build_stage_b_drive(ContinuousStructure, openEMS, CoaxialPort, drive: str, 
     return fdtd, port1, port2, layout
 
 
-def _extract_two_port_s(port_self, port_thru, *, thru_uses_ref: bool) -> dict:
+def _extract_two_port_s(port_self, port_thru, *, reverse_drive: bool) -> dict:
     """S_self/S_thru for one drive.
 
-    S_self is ALWAYS ``uf_ref/uf_inc`` (Coax.m's own s11 formula, standard
-    1-port reflection, unaffected by which port or which drive).
+    Both Stage B ports share direction=+1 (B4' fix, module docstring
+    "PORT CLASS"): ``uf_inc_k`` ALWAYS tracks the +z-travelling component
+    AT PORT k, ``uf_ref_k`` the -z component -- a purely local, geometry-
+    based split that does not by itself know which port is driven. What
+    flips between drives is which physical direction is "into the
+    device" FROM the driven port's own location -- and BOTH the
+    numerator (thru) and the denominator (self) depend on that, not just
+    the numerator:
 
-    S_thru's channel depends on which physical direction the wave arrives
-    at the RECEIVING (``port_thru``) port relative to THAT port's own
-    +z convention -- both Stage B ports now share direction=+1 (B4' fix,
-    module docstring "PORT CLASS"), so unlike a mirror-symmetric layout
-    there is no per-port orientation mismatch to worry about, but the
-    GLOBAL wave direction still flips between the two drives:
-      - driving port 1 (bottom), receiving port 2 (top): the wave arrives
-        at port 2 travelling +z, ALIGNED with port 2's own convention ->
-        ``uf_inc`` (``thru_uses_ref=False``) -- Coax.m's own formula,
-        confirmed by the tutorial's source, not derived from first
-        principles.
-      - driving port 2 (top), receiving port 1 (bottom): the wave arrives
-        at port 1 travelling -z, OPPOSED to port 1's own convention ->
-        ``uf_ref`` (``thru_uses_ref=True``). Coax.m never exercises this
-        direction (it only ever drives port 1); this is REASONED from the
-        SAME local-(V,I)-based ``uf_inc``/``uf_ref`` split the round-2
-        review used to find the original B4 bug, applied symmetrically to
-        the reverse direction -- NOT independently checked against
-        openEMS's own formulas the way the forward direction was. Flagged
-        as the residual open item for the next review pass.
+      - FORWARD drive (port 1, bottom): +z IS into the device (toward
+        port 2), so port 1's own launched wave is its +z component,
+        ``uf_inc_self``. ``s_self`` (S11) = ``uf_ref_self/uf_inc_self``
+        (Coax.m's own formula: what bounces back / what was launched).
+        ``s_thru`` (S21) = ``uf_inc_thru/uf_inc_self`` -- the wave
+        arrives at port 2 travelling +z, ALIGNED with port 2's own
+        convention.
+      - REVERSE drive (port 2, top): +z is AWAY from the device (toward
+        the top PML) -- port 2's own launched wave into the device is
+        its -z component, ``uf_ref_self`` (NOT ``uf_inc_self``).
+        ``s_self`` (S22) = ``uf_inc_self/uf_ref_self`` (what bounces
+        back -- +z at port 2 -- over what was actually launched -- -z at
+        port 2). ``s_thru`` (S12) = ``uf_ref_thru/uf_ref_self`` -- the
+        wave arrives at port 1 travelling -z, OPPOSED to port 1's own
+        convention (``uf_ref_thru``), and the DENOMINATOR is port 2's
+        own launched wave, ``uf_ref_self``, not ``uf_inc_self``.
+
+    Fixed 2026-08-03 (round-3 review of PR #540): the previous version
+    flipped ONLY the ``s_thru`` numerator for the reverse drive
+    (``thru_uses_ref``) and left ``s_self`` as ``uf_ref_self/
+    uf_inc_self`` unconditionally -- WRONG for the reverse drive, where
+    ``uf_inc_self`` is not the launched wave. The reviewer's synthetic
+    check (plain complex arithmetic on fake ``uf_inc``/``uf_ref`` values
+    -- no openEMS needed, see ``tests/test_coax_two_port_referee_header.
+    py::test_extract_two_port_s_synthetic_forward_and_reverse_drive``)
+    caught it: the old code reported S22 as 1/S22_true (0.051 -> 19.61)
+    and S12 scaled by the SAME inverted factor (0.9 -> 17.65) -- both
+    errors traced to the same wrong denominator, not two separate bugs.
+
+    CHANNEL-INVERSION SIGNATURE (for a future reviewer reading a failed
+    run): if this split is ever wrong again, the SELF ratio (S11 or S22)
+    blows up to roughly 1/(true value) -- a passivity violation or
+    non-physical-field-guard failure on the SELF ratio, at
+    ~1/S-magnitude scale, IS the tell. Check this split first, before
+    doubting the fixture geometry or the FDTD run itself.
 
     Both channels are always recorded (``s_thru`` / ``s_thru_alternate_
     channel``) so a reviewer can recover the other reading without
@@ -1086,14 +1120,22 @@ def _extract_two_port_s(port_self, port_thru, *, thru_uses_ref: bool) -> dict:
     uf_inc_thru = np.asarray(port_thru.uf_inc, dtype=np.complex128)
     uf_ref_thru = np.asarray(port_thru.uf_ref, dtype=np.complex128)
 
-    primary_thru = uf_ref_thru if thru_uses_ref else uf_inc_thru
-    alternate_thru = uf_inc_thru if thru_uses_ref else uf_ref_thru
+    if reverse_drive:
+        denom_self = uf_ref_self          # port 2's own launched wave (-z)
+        numer_self = uf_inc_self          # what bounces back (+z at port 2)
+        numer_thru = uf_ref_thru          # arrives at port 1 travelling -z
+        alternate_thru = uf_inc_thru
+    else:
+        denom_self = uf_inc_self          # port 1's own launched wave (+z)
+        numer_self = uf_ref_self          # what bounces back (-z at port 1)
+        numer_thru = uf_inc_thru          # arrives at port 2 travelling +z
+        alternate_thru = uf_ref_thru
 
     return {
-        "s_self": uf_ref_self / uf_inc_self,
-        "s_thru": primary_thru / uf_inc_self,
-        "s_thru_alternate_channel": alternate_thru / uf_inc_self,
-        "thru_uses_ref": thru_uses_ref,
+        "s_self": numer_self / denom_self,
+        "s_thru": numer_thru / denom_self,
+        "s_thru_alternate_channel": alternate_thru / denom_self,
+        "reverse_drive": reverse_drive,
         "uf_inc_self": uf_inc_self, "uf_ref_self": uf_ref_self,
         "uf_inc_thru": uf_inc_thru, "uf_ref_thru": uf_ref_thru,
     }
@@ -1126,14 +1168,15 @@ def _run_one_drive(ContinuousStructure, openEMS, CoaxialPort, *, drive: str, sim
     inc_peak, n_samples = _check_excitation_and_trace(driven_port, sim_dir, f"stage_b_drive_{drive}")
     truncated = bool(nrts > 0 and n_samples >= nrts)
 
-    # thru_uses_ref: see _extract_two_port_s's docstring. Driving port1
-    # (bottom), the wave arrives at port2 travelling +z (aligned with
-    # port2's own convention) -> uf_inc. Driving port2 (top), the wave
-    # arrives at port1 travelling -z (opposed) -> uf_ref.
+    # reverse_drive: see _extract_two_port_s's docstring. Driving port1
+    # (bottom) is the FORWARD drive (both numerator and denominator use
+    # the +z/uf_inc convention); driving port2 (top) is the REVERSE drive
+    # (both numerator and denominator flip to the -z/uf_ref convention,
+    # since +z at port2 points AWAY from the device).
     if drive == "port1":
-        extracted = _extract_two_port_s(port1, port2, thru_uses_ref=False)
+        extracted = _extract_two_port_s(port1, port2, reverse_drive=False)
     else:
-        extracted = _extract_two_port_s(port2, port1, thru_uses_ref=True)
+        extracted = _extract_two_port_s(port2, port1, reverse_drive=True)
 
     return {
         "extracted": extracted,
@@ -1175,13 +1218,24 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
     # B5' fix (round-2 review, BLOCKING): the SAME one-sided matched-
     # through witness Stage A uses, re-parameterized for Stage B's own
     # (lossy, rfx-matched) fixture -- wired into sanity_passed, not just
-    # recorded. A channel inversion in _extract_two_port_s (e.g. the
-    # reasoned-but-unverified reverse-direction thru_uses_ref logic)
-    # reads |S21|~=0 here against an expected ~[0.5,1.1], failing
-    # one-sidedly rather than agreeing with an equally-wrong S12.
-    matched_thru = _matched_through_witness(
+    # recorded. A channel-inversion bug in _extract_two_port_s reads
+    # |S21|~=0 here against an expected ~[0.5,1.1], failing one-sidedly
+    # rather than agreeing with an equally-wrong S12.
+    #
+    # Round-3 fix: BOTH drives now get this witness, not just the
+    # forward one -- s21 alone left the REVERSE drive's own channel
+    # selection (denom_self=uf_ref_self, round-3 fix above) covered only
+    # by the passivity ceiling, which a 1/S-scale channel-inversion can
+    # still satisfy in some regimes. s12 must land in the SAME
+    # [0.5, 1.1] band with the SAME ~282.57 ps group delay BY
+    # RECIPROCITY (a reciprocal 2-port has S12=S21) -- this is the
+    # one-sided witness for the reverse leg specifically.
+    matched_thru_s21 = _matched_through_witness(
         B_FREQS_HZ, s21, L_m=B_L12_MM * 1e-3, eps_r=B_PTFE_EPS_R,
-        mag_band=B_S21_THRU_BAND, label="stage_b")
+        mag_band=B_S21_THRU_BAND, label="stage_b_s21")
+    matched_thru_s12 = _matched_through_witness(
+        B_FREQS_HZ, s12, L_m=B_L12_MM * 1e-3, eps_r=B_PTFE_EPS_R,
+        mag_band=B_S21_THRU_BAND, label="stage_b_s12")
 
     recip_mag_dev = float(np.max(np.abs(np.abs(s21) - np.abs(s12))))
     recip_phase_dev_deg = float(np.max(np.abs(np.degrees(np.angle(s21) - np.angle(s12)))))
@@ -1191,7 +1245,7 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
     sanity_passed = bool(
         not drive1["truncated_suspected"] and not drive2["truncated_suspected"]
         and passivity_drive1["passed"] and passivity_drive2["passed"]
-        and matched_thru["passed"]
+        and matched_thru_s21["passed"] and matched_thru_s12["passed"]
     )
 
     return {
@@ -1207,7 +1261,8 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
         "reciprocity_max_mag_dev": recip_mag_dev,
         "reciprocity_max_phase_dev_deg": recip_phase_dev_deg,
         "passivity_drive1": passivity_drive1, "passivity_drive2": passivity_drive2,
-        "matched_through_witness": matched_thru,
+        "matched_through_witness": matched_thru_s21,
+        "matched_through_witness_s12": matched_thru_s12,
         "z0_port1_drive1": [[float(c.real), float(c.imag)] for c in drive1["z0_port1"]],
         "beta_port1_drive1": [[float(c.real), float(c.imag)] for c in drive1["beta_port1"]],
         "alternate_channel_s21": [[float(c.real), float(c.imag)]
@@ -1286,8 +1341,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  |S11| band: {min(stage_b['s11_mag']):.4f} - {max(stage_b['s11_mag']):.4f}")
             print(f"  reciprocity max mag dev: {stage_b['reciprocity_max_mag_dev']:.4f}, "
                   f"max phase dev: {stage_b['reciprocity_max_phase_dev_deg']:.2f} deg")
-            print(f"  matched-through witness passed: "
+            print(f"  matched-through witness (s21) passed: "
                   f"{stage_b['matched_through_witness']['passed']}")
+            print(f"  matched-through witness (s12) passed: "
+                  f"{stage_b['matched_through_witness_s12']['passed']}")
             print(f"  sanity_passed: {stage_b['sanity_passed']}")
         elif not stage_a["passed"]:
             print("\nStage A FAILED its reproduce-gate -- skipping Stage B "
