@@ -3386,7 +3386,8 @@ class _PreflightMixin:
            answered by the helper alone, and the absorber does start
            exactly at the edge — issue #500's core finding still holds);
            it is a SEPARATE, empirically-measured MSL-specific margin.
-           `docs/agent-memory/rfx-known-issues.md`, "Status 2026-05-04
+           the maintainer's internal issue ledger (primary checkout
+           only, not in this public tree), "Status 2026-05-04
            (CALIBRATED, OpenEMS-class)" entry: with the pre-calibration
            ``LY = W + 6·dx`` at dx=80µm, cpml_layers=8, "the trace ended
            up INSIDE the CPML overlap region (negative clearance)" and
