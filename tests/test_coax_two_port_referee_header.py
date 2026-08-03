@@ -500,20 +500,29 @@ def test_check_excitation_and_trace_uses_drive_correct_channel():
     near-zero (the launched channel for a reverse drive) and checks the
     function catches it when told to look at uf_ref, and does NOT catch
     it (wrongly reports healthy) when defaulted to uf_inc -- proving the
-    ``channel`` parameter actually changes behavior, not just exists."""
+    ``channel`` parameter actually changes behavior, not just exists.
+
+    Run-2 fix: fake values are now at openEMS's own REAL scale (a
+    healthy real run reads ~1.79e-13 to 1.93e-12, per the #540 round-1
+    review), not an assumed O(1) -- the ORIGINAL version of this test
+    used uf_inc=1.0, which is exactly the wrong-scale assumption that let
+    the first floor (1e-6) go unnoticed as mis-scaled by ~6 orders.
+    """
     module = _load_referee_module()
 
     class _FakePort:
         U_filenames: list = []
-        uf_inc = np.array([1.0 + 0j])       # healthy
-        uf_ref = np.array([1e-14 + 0j])     # near-zero -- the launched
+        uf_inc = np.array([5.0e-13 + 0j])   # healthy, real openEMS scale
+        uf_ref = np.array([6.0e-14 + 0j])   # near-zero -- the RECORDED
+                                             # failure value (do-not-repeat
+                                             # file), also the launched
                                              # channel for a reverse drive
 
     port = _FakePort()
 
-    # Default (uf_inc) must NOT raise -- uf_inc is healthy.
+    # Default (uf_inc) must NOT raise -- uf_inc is healthy at real scale.
     inc_peak, _ = module._check_excitation_and_trace(port, "/tmp/_unused", "test")
-    assert inc_peak == 1.0
+    assert inc_peak == 5.0e-13
 
     # channel="uf_ref" (the reverse-drive's own launched channel) MUST
     # raise -- this is the near-zero one, mirroring the do-not-repeat
@@ -523,6 +532,94 @@ def test_check_excitation_and_trace_uses_drive_correct_channel():
         assert False, "expected near-zero uf_ref to raise when channel='uf_ref'"
     except RuntimeError as exc:
         assert "uf_ref" in str(exc)
+
+
+def test_excitation_floor_discriminates_recorded_healthy_and_failure_band():
+    """Run-2 fix (2026-08-03, PR #546 follow-up after VESSL 369367251627):
+    the FIRST floor (1e-6) rejected a genuinely healthy, converged Stage A
+    REAL run -- run-2's own artifact shows uf_inc=1.241e-12 tripping it,
+    a value squarely inside the healthy band the #540 round-1 review
+    itself recorded for real runs (1.79e-13 to 1.93e-12). This test pins
+    the corrected floor (``_EXCITATION_ENERGY_FLOOR``) against that exact
+    recorded band: the historical healthy-minimum must PASS, the
+    do-not-repeat file's own recorded failure (6e-14) must FAIL -- not
+    just "some floor exists", but that IT SITS BETWEEN the two recorded
+    numbers.
+    """
+    module = _load_referee_module()
+
+    class _FakePort:
+        U_filenames: list = []
+
+        def __init__(self, uf_inc):
+            self.uf_inc = np.array([uf_inc + 0j])
+
+    # Recorded healthy-minimum (#540 round-1 review) -- must PASS.
+    healthy = _FakePort(1.79e-13)
+    inc_peak, _ = module._check_excitation_and_trace(healthy, "/tmp/_unused", "healthy")
+    assert inc_peak == 1.79e-13
+
+    # Recorded failure (do-not-repeat file, "uf_inc~6e-14") -- must FAIL.
+    broken = _FakePort(6.0e-14)
+    try:
+        module._check_excitation_and_trace(broken, "/tmp/_unused", "broken")
+        assert False, "expected the recorded failure value (6e-14) to raise"
+    except RuntimeError:
+        pass
+
+    # The floor itself must sit strictly between the two recorded values
+    # -- a regression that moves it outside this band (either direction)
+    # should fail here even if the two cases above coincidentally still
+    # pass/fail correctly for some other reason.
+    assert 6.0e-14 < module._EXCITATION_ENERGY_FLOOR < 1.79e-13
+
+
+def test_excitation_check_smoke_mode_exempts_the_floor():
+    """Run-2 fix: a smoke run's own excitation is DELIBERATELY truncated
+    (200 timesteps, ``end_criteria=0.0``) -- a near-zero reading there is
+    EXPECTED, not a defect. ``is_smoke=True`` must only reject an exact
+    zero or non-finite reading (the pre-M1 check), never the real-run
+    floor -- this is what run-2 needed: NOT because a current caller
+    routes smoke data through this function (neither Stage A's nor Stage
+    B's smoke build ever calls ``CalcPort`` on its own ports, so none
+    currently does -- verified by reading both call sites), but because
+    the exemption must be a tested, correct invariant for whenever a
+    smoke-time check like this is wired in, and because the DEFAULT
+    (``is_smoke=False``) must still apply the real floor unchanged.
+    """
+    module = _load_referee_module()
+
+    class _FakePort:
+        U_filenames: list = []
+
+        def __init__(self, uf_inc):
+            self.uf_inc = np.array([uf_inc + 0j])
+
+    # A near-zero (but nonzero, finite) reading -- exactly what a
+    # deliberately-truncated smoke pulse would plausibly leave behind.
+    near_zero = _FakePort(1e-14)
+
+    # is_smoke=True: must NOT raise -- near-zero is expected on a smoke run.
+    inc_peak, _ = module._check_excitation_and_trace(
+        near_zero, "/tmp/_unused", "smoke", is_smoke=True)
+    assert inc_peak == 1e-14
+
+    # The SAME value, is_smoke=False (default): MUST raise -- this is
+    # exactly run-2's regression class if the smoke flag were forgotten.
+    try:
+        module._check_excitation_and_trace(near_zero, "/tmp/_unused", "real")
+        assert False, "expected the real-run floor to reject this near-zero value"
+    except RuntimeError:
+        pass
+
+    # is_smoke=True must still reject a TRUE zero or non-finite reading
+    # -- the exemption is for "near-zero", not "anything at all".
+    dead = _FakePort(0.0)
+    try:
+        module._check_excitation_and_trace(dead, "/tmp/_unused", "smoke", is_smoke=True)
+        assert False, "expected an exact-zero reading to raise even under is_smoke=True"
+    except RuntimeError:
+        pass
 
 
 def test_main_writes_valid_json_on_stage_b_physics_gate_failure(monkeypatch, tmp_path):
