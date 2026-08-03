@@ -1771,13 +1771,18 @@ def _make_step_fn(ctx):
             return ex_arr, ey_arr, ez_arr
 
         def _inject_coarse_sources(ex_arr, ey_arr, ez_arr):
+            # Same leak as _inject_fine_sources above (issue #485): src_vals_c
+            # is built from jnp.array(waveform) (jit_runner.py ~2627), which
+            # tracks x64, while ex/ey/ez_arr stay float32 regardless
+            # (init_state's field_dtype default). Cast explicitly to the
+            # destination array's own dtype for the same reason.
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta_c):
                 if sc == "ez":
-                    ez_arr = ez_arr.at[si, sj, sk].add(src_vals_c[idx_s])
+                    ez_arr = ez_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ez_arr.dtype))
                 elif sc == "ex":
-                    ex_arr = ex_arr.at[si, sj, sk].add(src_vals_c[idx_s])
+                    ex_arr = ex_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ex_arr.dtype))
                 elif sc == "ey":
-                    ey_arr = ey_arr.at[si, sj, sk].add(src_vals_c[idx_s])
+                    ey_arr = ey_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ey_arr.dtype))
             return ex_arr, ey_arr, ez_arr
 
         if sync_coarse_shadow_from_fine and is_full_xy_z_slab:
