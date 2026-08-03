@@ -23,6 +23,27 @@ refuted claims, and adds what review found missing: raw phasors in the
 artifact, a flux-channel comparison, column-normalized conditioning, and a
 corrected recommendation.
 
+v2's OWN sensitivity check (`s1_override` in `_uniform_wave_amplitudes`) had
+a bug a second, delta review of `7d5c0c7` caught: the override was gated by
+membership in a `driven_lw` set built from the WHOLE `drive_plan`, not from
+the run actually being processed — for this fixture's single lw port that
+set always contains it, so the override never fired and
+`S(s1_override=None)` was byte-identical to `S(s1_override=0.0)`. v2's
+conclusion from that ("100% of the MSL-diagonal move survives with s1=0")
+was therefore not a measurement of anything — the knob was a no-op. This
+revision (v3) fixes the override to be per-run, which makes it possible to
+show the CORRECT, sharper result: `s1` provably cannot move the MSL
+diagonal AT ALL (an algebraic identity — see below), and the v1/v2
+MSL-diagonal jump is instead attributable to the "#507 echo-correction"
+term acting on two SHIPPED, already #313/#507-polluted wave quantities;
+the one genuinely NEW entry this script introduces (`a_msl` on the
+lw-driven run) explains only a small fraction of it. `_b_msl` on that SAME
+lw-driven run (i.e. `b_msl` there) is NOT new — the shipped single-ratio
+assembler already calls it (see the precedent check below); only pairing
+it against the algebra above without keeping straight which of the two
+(a vs b) is new produced v2's "genuinely NEW quantity" mislabeling of both,
+corrected here.
+
 ======================================================================
 WHAT IS BEING COMPARED (unchanged from v1)
 ======================================================================
@@ -101,17 +122,29 @@ evaluated at the SAME (V, I) sample:
   "measurement noise" v1 claimed — see the RESULT section for the number and
   the m6 "unit-mismatch" residual it is understood to come from).
 
-  **What the MSL-diagonal blow-up (0.03 -> 0.72 in v1) actually is**: `main()`
-  now re-solves with `s1` forced to alternate values (0, and the measured
-  constant) to isolate how much of that move survives when the degenerate
-  entry is neutralized. Review's finding, reproduced here: most of it does
-  NOT need `s1` at all — the lw-driven run's `a_msl`/`b_msl` entries (which
-  this script DOES introduce with shipped precedent, see above) already
-  carry the lane's own known #313/#507-class magnitude pollution (the
-  wave-channel |S10| > 1 passivity violation quoted verbatim below), and
-  feeding a POLLUTED off-diagonal pair through a matrix INVERSE (as opposed
-  to a simple ratio) redistributes that pollution onto every output,
-  including entries `s1` never touches.
+  **What the MSL-diagonal blow-up (0.03 -> 0.72 in v1/v2) actually is**:
+  `_msl_diag_attribution()` expands `S = B*A^-1` for this 2-port system in
+  closed form:
+
+      S[msl,msl] = (S11m - S10*gamma) / (1 - gamma*delta)
+
+  with `S11m` and `S10` BOTH shipped, single-ratio wave-channel quantities
+  (`S11m` = the shipped MSL diagonal, `S10` = the shipped, already known
+  #313/#507-polluted `|S10| > 1` msl-receiving-during-lw-drive entry),
+  `gamma = A[lw,msl-drive]/A[msl,msl-drive]` (no `B`, hence no `s1` — this
+  is WHY `s1` provably cannot reach the MSL row, see below), and
+  `delta = A[msl,lw-drive]/A[lw,lw-drive]` — `A[msl,lw-drive]`
+  (`a_msl` on the lw-driven run) is the ONE genuinely new entry this
+  script introduces. Zeroing `A[msl,lw-drive]` directly (not `s1`) leaves
+  `S[msl,msl] = S11m - S10*gamma` (the denominator only, not the term
+  that dominates) and moves the diagonal by a SMALL fraction of the full
+  jump — `main()` measures this directly with `_zero_entry_solve()` and
+  reports the exact fraction in the RESULT section. The dominant mechanism
+  is therefore the `-S10*gamma` term: the #507-style echo-correction acting
+  on TWO ALREADY-KNOWN-POLLUTED shipped quantities (the wave-channel
+  `|S10| > 1` passivity violation quoted verbatim below, and `gamma`, a
+  ratio of the two families' own-drive incident waves) — not the new entry,
+  and (see below) not `s1`.
 
 ======================================================================
 TWO CHANNELS (added this revision, M4)
@@ -202,8 +235,10 @@ R3 pre-commit self-audit
      large deviation there would refute B1.
 
 ======================================================================
-RESULT (2026-08-03, one rerun of the same fixture/config, settling
--122.6 / -119.9 dB — byte-identical to v1's run, confirming determinism;
+RESULT (2026-08-03, v3 delta-review fix: raw phasors from the v2 rerun,
+settling -122.6 / -119.9 dB (byte-identical to v1's run, confirming
+determinism) re-analyzed via `main(reuse_json=...)` / `--from-json` — NO
+new FDTD run for this pass, per the delta review's explicit instruction;
 full numbers + raw phasors in the committed JSON artifact)
 ======================================================================
 
@@ -217,17 +252,36 @@ noise" v1 claimed). CONFIRMED: v1's solve never tested two independent
 phasors at that port — `b` there was `-0.6 * a` to 4 decimal places at
 every frequency.
 
-**Sensitivity — how much of the v1 MSL-diagonal jump (0.03 -> 0.72) needs
-s1 at all**: re-solving with `s1` forced to 0 gives IDENTICAL `|S_msl,msl|`
-values to 4 decimal places (`[0.7222, 0.7214, 0.7203, 0.7187, 0.7168]`
-either way) — the measured fraction of the move attributable to s1's value
-is **0.0 at every frequency**, even more decisive than review's "most of it
-does not need s1". The jump is 100% explained by the lw-driven run's
-a_msl/b_msl entries (this script's genuinely NEW quantity, see the
-precedent correction above) carrying this lane's own known #313/#507-class
-magnitude pollution — quoted verbatim: wave-channel column power at the
-lw-driven column is 1.83-2.12 (shipped) / 2.12-2.17 (solve), both >> 1,
-non-physical, at every one of the 5 bins.
+**Sensitivity (v3, corrected) — s1 is an algebraic identity on the MSL
+row**: with the per-run override bug fixed, `|S_msl,msl|` with the real
+(degenerate) `s1` and with `s1` FORCED to 0 are IDENTICAL to at least 1e-9
+at every frequency (`[0.7222, 0.7214, 0.7203, 0.7187, 0.7168]` either way)
+— PROVEN algebraically, not just observed: row "msl" of `S = B*A^-1` is a
+function of row "msl" of `B` and all of `A`; `s1_override` only ever writes
+`B[lw, msl-drive]` (row "lw"), so it cannot reach row "msl" by construction.
+The row `s1` DOES control is the LW row: `|S_lw,msl|` moves
+`0.1093 -> 0.1906` (ratio 1.74x) at 1 GHz and `0.1090 -> 0.2221` (ratio
+2.04x) at 4 GHz when `s1` is forced to 0 instead of its real degenerate
+value — THIS is the informative half of the check, not the MSL diagonal.
+
+**Attribution (v3, corrected) — the MSL-diagonal jump is the #507 echo
+term on shipped, already-polluted quantities**: the closed form
+`S[msl,msl] = (S11m - S10*gamma)/(1 - gamma*delta)` matches the actual
+solve to rtol=1e-5 at every frequency. `S11m` (shipped MSL diagonal) and
+`S10` (shipped, `|S10| = 1.29-1.41 > 1`, the lane's known #313/#507-
+polluted msl-receiving-during-lw-drive entry) are BOTH shipped wave
+quantities; `gamma` involves only `A` entries (no `s1`, confirming the
+identity above); `delta`'s numerator is the ONE genuinely new entry
+(`a_msl` on the lw-driven run). `|S10*gamma|/|S11m|` = 19.0-38.1x — the
+echo term dominates the shipped diagonal itself by more than an order of
+magnitude. Zeroing the one new entry directly (not `s1`) leaves
+`|S_msl,msl|` at `[0.7228, 0.7076, 0.6883, 0.6682, 0.6504]` vs the real
+solve's `[0.7222, 0.7214, 0.7203, 0.7187, 0.7168]` — **90.3-100.1% of the
+(solve-shipped) move SURVIVES** with the new entry zeroed (i.e. the new
+entry explains at most a ~-0.1% to +9.7% slice of it). CORRECTED
+STATEMENT: the jump is the `-S10*gamma` echo-correction term acting on TWO
+SHIPPED, ALREADY #313/#507-POLLUTED wave-channel quantities — not the new
+entry, and (per the identity above) not `s1` either.
 
 **M4 — two channels**: FLUX-channel (shipped default) reciprocity deviation
 is 10.53% with the shipped diagonal, matching the runtime witness's own
@@ -271,11 +325,18 @@ independent phasor per passive lumped/wire port dressed up as two, so it
 never tested "the solve" against genuine data on that entry. What IS
 established: (1) the port cell is structurally one-phasor for a passive
 lumped/wire port under every shipped extraction convention (not a gap this
-session failed to fill); (2) conditioning was never the problem once scaled
-correctly; (3) the flux-channel (shipped) reciprocity number is reproduced
-exactly by this script, so the capture/re-analysis machinery is trustworthy
-for a future, properly-derived attempt; (4) a constant impedance-rescale
-alone will not close the gap even if the degeneracy is resolved.
+session failed to fill); (2) `s1` (that degenerate entry) is PROVABLY,
+algebraically incapable of moving the MSL diagonal at all — the v1/v2
+"0.03 -> 0.72" jump has a DIFFERENT, second cause: the #507-style echo
+term `-S10*gamma`, evaluated on two SHIPPED wave-channel quantities
+already known to be #313/#507-polluted (`|S10| > 1`), dominates the
+shipped diagonal by 19-38x — the one genuinely new entry this script adds
+explains under 10% of it; (3) conditioning was never the problem once
+scaled correctly; (4) the flux-channel (shipped) reciprocity number is
+reproduced exactly by this script, so the capture/re-analysis machinery is
+trustworthy for a future, properly-derived attempt; (5) a constant
+impedance-rescale alone will not close the gap even if the degeneracy is
+resolved.
 
 **CORRECTED RECOMMENDATION**: do not attempt another port-cell-based
 derivation for the lumped/wire "b" at a passive port — `_b_lw_passive`
@@ -387,6 +448,15 @@ def _uniform_wave_amplitudes(
     solve's output actually depend on the value beyond its degenerate
     default, or is the output dominated by other, already-polluted
     entries).
+
+    PR #543 delta review (BLOCKING): the override must be evaluated
+    PER RUN — "lw port j is passive in run `run`" means
+    ``not (drive_plan[run] == ("lw", j))``, NOT "port j is never driven in
+    ANY run" (`v1` of this function built a single `driven_lw` set from the
+    whole `drive_plan` and tested membership without the run index, which
+    for a single-lw-port fixture is true on EVERY run including the run
+    where that port IS driven — so the override silently never fired;
+    `S(s1_override=None) `and `S(s1_override=0.0)` were byte-identical).
     """
     v_lw = np.asarray(v_lw)
     i_lw = np.asarray(i_lw)
@@ -400,18 +470,18 @@ def _uniform_wave_amplitudes(
     z0_hj_msl = np.asarray(z0_hj_msl, dtype=np.float64)
     sq_msl = np.sqrt(z0_hj_msl)
 
-    driven_lw = {loc for fam, loc in drive_plan if fam == "lw"}
-
     wave_a: list = []
     wave_b: list = []
     for run in range(n_runs):
+        fam_run, loc_run = drive_plan[run]
         a_row, b_row = [], []
         for j in range(n_lw):
             V, I = v_lw[run, j], i_lw[run, j]
             a = (-V + z0c_lw[j] * I) / (2.0 * sq_lw[j])
             if wire_mode:
                 s_local, _ = _lw_wire_diag_reflection(V, I, z0_lw[j])
-                if s1_override is not None and j not in driven_lw:
+                j_is_passive_this_run = not (fam_run == "lw" and loc_run == j)
+                if s1_override is not None and j_is_passive_this_run:
                     s_local = np.full_like(s_local, s1_override)
                 b = s_local * a
             else:
@@ -449,6 +519,67 @@ def _column_normalized_cond(wave_a):
     return cond
 
 
+def _msl_diag_attribution(wave_a, wave_b, lw_idx=0, msl_idx=1):
+    """Closed-form attribution of `S_solve[msl,msl]` for a 2-port system
+    (PR #543 delta review, MAJOR finding).
+
+    For `S = B*A^-1` on a 2x2 system, expanding the matrix inverse gives::
+
+        S[msl,msl] = (S11m - S10*gamma) / (1 - gamma*delta)
+
+    with (all indices `A[port, drive]`, `B[port, drive]`, drive 0 = lw-run,
+    drive 1 = msl-run for this fixture's `drive_plan` order)::
+
+        gamma  = A[lw, msl-drive] / A[msl, msl-drive]   (no B involved)
+        delta  = A[msl, lw-drive] / A[lw, lw-drive]      (the ONE genuinely
+                                                           new entry, "a_msl
+                                                           on the lw-driven
+                                                           run")
+        S11m   = B[msl, msl-drive] / A[msl, msl-drive]   == shipped S[msl,msl]
+        S10    = B[msl, lw-drive]  / A[lw, lw-drive]     == shipped S[msl,lw]
+
+    S11m and S10 are BOTH shipped, single-ratio wave-channel quantities —
+    S11m is the shipped MSL diagonal, S10 is the shipped (known #313/#507-
+    polluted, |S10|>1) msl-receiving-during-lw-drive entry. Neither gamma
+    nor delta nor S11m nor S10 involves `B[lw, msl-drive]` — the entry
+    `s1_override` touches — so `S[msl,msl]` is PROVABLY independent of `s1`
+    (an algebraic identity, not an empirical finding): row `msl` of `B*A^-1`
+    is a function of row `msl` of B and all of A, and `s1` only ever
+    touches `B[lw, msl-drive]` (row `lw`).
+    """
+    A00 = np.asarray(wave_a[0][lw_idx])   # a_lw,  lw-driven run   (own)
+    A01 = np.asarray(wave_a[1][lw_idx])   # a_lw,  msl-driven run  (passive)
+    A10 = np.asarray(wave_a[0][msl_idx])  # a_msl, lw-driven run   (passive, NEW)
+    A11 = np.asarray(wave_a[1][msl_idx])  # a_msl, msl-driven run  (own)
+    B10 = np.asarray(wave_b[0][msl_idx])  # b_msl, lw-driven run   (shipped precedent)
+    B11 = np.asarray(wave_b[1][msl_idx])  # b_msl, msl-driven run  (shipped precedent)
+
+    gamma = A01 / A11
+    delta = A10 / A00
+    s11m = B11 / A11
+    s10 = B10 / A00
+    predicted_s11 = (s11m - s10 * gamma) / (1.0 - gamma * delta)
+    return {
+        "gamma": gamma, "delta": delta, "s11m": s11m, "s10": s10,
+        "predicted_s11": predicted_s11,
+        "ratio_s10gamma_over_s11m": np.abs(s10 * gamma) / np.abs(s11m),
+    }
+
+
+def _zero_entry_solve(wave_a, wave_b, run, port):
+    """Copy `wave_a`/`wave_b`, zero ONE `(run, port)` "a" entry, re-solve.
+
+    Used to test how much of a solved output survives when a single
+    genuinely-new entry (not present in the shipped single-ratio path) is
+    removed — a direct numerical cross-check of `_msl_diag_attribution`'s
+    closed form.
+    """
+    wa = [list(row) for row in wave_a]
+    wa[run][port] = np.zeros_like(np.asarray(wa[run][port]))
+    S, cond = msl_solve_s_from_waves(wa, wave_b)
+    return np.asarray(S), cond
+
+
 def _wave_channel_column_power(S):
     """Sum_i |S_ij|^2 per drive column j, per frequency — the repo passivity
     quantity (`test_sparam_passivity_guard` convention); quoted verbatim
@@ -469,93 +600,165 @@ def _c2pairs(arr):
     return {"shape": list(arr.shape), "data": pairs}
 
 
-def main() -> int:
-    sim, y_c = _base_sim()
-    _add_feed(sim, y_c, x=2e-3)
-    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
-    freqs = np.linspace(1e9, 4e9, 5)
-    num_periods = 60.0
+def _c_from_pairs(pairs_dict):
+    """Inverse of `_c2pairs`: JSON `{"shape":..., "data": [[re,im],...]}`
+    -> complex ndarray."""
+    flat = np.array([complex(re, im) for re, im in pairs_dict["data"]])
+    return flat.reshape(pairs_dict["shape"])
 
+
+def main(reuse_json=None) -> int:
+    """`reuse_json`: path to a previously-committed JSON artifact from this
+    SAME script. When given, re-analyzes its saved raw phasors (PR #543
+    delta review fix) with NO new FDTD run — only the analysis logic below
+    (corrected this revision) differs from what produced that JSON. When
+    None (default), runs the fixture fresh via FDTD as before.
+    """
+    is_reanalysis = reuse_json is not None
     captured: dict = {}
     flux_captured: dict = {}
     orig_assemble = _sparams_mod._assemble_mixed_power_wave_s
     orig_flux_override = _sparams_mod._mixed_flux_magnitude_override
 
-    def _capturing_assemble(v_lw, i_lw, v0_msl, i_msl, z0_lw, n_live_lw,
-                            z0_hj_msl, wire_mode, drive_plan):
-        S, s21_power = orig_assemble(
+    if is_reanalysis:
+        import types
+        old = json.loads(Path(reuse_json).read_text())
+        freqs = np.asarray(old["fixture"]["freqs_hz"])
+        num_periods = old["fixture"]["num_periods"]
+        rp = old["raw_phasors"]
+        v_lw, i_lw = _c_from_pairs(rp["v_lw"]), _c_from_pairs(rp["i_lw"])
+        v0_msl, i_msl = _c_from_pairs(rp["v0_msl"]), _c_from_pairs(rp["i_msl"])
+        box_lw = np.asarray(rp["box_lw"])
+        plane_msl = np.asarray(rp["plane_msl"])
+        z0_lw = np.asarray(old["z0_lw"])
+        n_live_lw = np.asarray(old["n_live_lw"])
+        z0_hj_msl = np.asarray(old["z0_hj_msl"])
+        wire_mode = bool(old["wire_mode"])
+        drive_plan = [tuple(d) for d in old["drive_plan"]]
+        settling_db = np.asarray(old["settling_db"])
+        preflight_text = old["preflight_text"]
+        caught_warnings = old["warnings"]
+        n_lw = int(v_lw.shape[1])
+        # This fixture's single MSL port is registered direction="-x"
+        # (`_add_msl`'s default, unchanged by `main()`'s call) — away_sign
+        # = -1.0 per `compute_mixed_s_matrix`'s own
+        # `[(+1.0 if pe.direction=="+x" else -1.0) for pe in entries]`.
+        # Not saved by the v2 artifact; reconstructed from the fixture
+        # definition, not re-derived from a new FDTD run.
+        msl_away_signs = [-1.0]
+
+        S_shipped, _s21_power = orig_assemble(
             v_lw, i_lw, v0_msl, i_msl, z0_lw, n_live_lw, z0_hj_msl,
             wire_mode, drive_plan,
         )
+        S_shipped = np.asarray(S_shipped)
         captured.update(
-            v_lw=np.asarray(v_lw), i_lw=np.asarray(i_lw),
-            v0_msl=np.asarray(v0_msl), i_msl=np.asarray(i_msl),
-            z0_lw=np.asarray(z0_lw), n_live_lw=np.asarray(n_live_lw),
-            z0_hj_msl=np.asarray(z0_hj_msl), wire_mode=bool(wire_mode),
-            drive_plan=list(drive_plan), S_shipped=np.asarray(S),
-        )
-        return S, s21_power
-
-    def _capturing_flux_override(S_wave, box_lw, plane_msl, drive_plan,
-                                 msl_away_signs, n_lw, ill_cond_floor=0.05):
-        out = orig_flux_override(
-            S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
-            ill_cond_floor=ill_cond_floor,
+            v_lw=v_lw, i_lw=i_lw, v0_msl=v0_msl, i_msl=i_msl,
+            z0_lw=z0_lw, n_live_lw=n_live_lw, z0_hj_msl=z0_hj_msl,
+            wire_mode=wire_mode, drive_plan=drive_plan, S_shipped=S_shipped,
         )
         flux_captured.update(
-            box_lw=np.asarray(box_lw), plane_msl=np.asarray(plane_msl),
-            msl_away_signs=list(msl_away_signs), n_lw=int(n_lw),
-            ill_cond_floor=float(ill_cond_floor),
-            S_flux_shipped=np.asarray(out[0]),
+            box_lw=box_lw, plane_msl=plane_msl,
+            msl_away_signs=msl_away_signs, n_lw=n_lw,
         )
-        return out
+        result = types.SimpleNamespace(
+            port_names=tuple(old["port_names"]),
+            port_families=tuple(old["port_families"]),
+            settling_db=settling_db,
+        )
+        fidelity_ok = bool(old["capture_fidelity_wave_ok"])
+        fidelity_flux_ok = bool(old["capture_fidelity_flux_ok"])
+        print("=" * 78)
+        print(f"RE-ANALYSIS MODE: raw phasors loaded from {reuse_json} "
+             "-- NO new FDTD run this pass (PR #543 delta review fix)")
+        print("=" * 78)
+        print(f"capture-fidelity assertion: CARRIED FORWARD from the "
+             f"original FDTD run (capture code unchanged by this fix): "
+             f"wave={fidelity_ok}, flux={fidelity_flux_ok}")
+    else:
+        sim, y_c = _base_sim()
+        _add_feed(sim, y_c, x=2e-3)
+        _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+        freqs = np.linspace(1e9, 4e9, 5)
+        num_periods = 60.0
 
-    _sparams_mod._assemble_mixed_power_wave_s = _capturing_assemble
-    _sparams_mod._mixed_flux_magnitude_override = _capturing_flux_override
-    stdout_buf = io.StringIO()
-    caught_warnings: list = []
-    try:
-        with contextlib.redirect_stdout(stdout_buf), \
-             warnings.catch_warnings(record=True) as wr:
-            warnings.simplefilter("always")
-            result = sim.compute_mixed_s_matrix(
-                freqs=freqs, num_periods=num_periods, skip_preflight=False,
+        def _capturing_assemble(v_lw, i_lw, v0_msl, i_msl, z0_lw, n_live_lw,
+                                z0_hj_msl, wire_mode, drive_plan):
+            S, s21_power = orig_assemble(
+                v_lw, i_lw, v0_msl, i_msl, z0_lw, n_live_lw, z0_hj_msl,
+                wire_mode, drive_plan,
             )
-            caught_warnings = [str(w.message) for w in wr]
-    finally:
-        _sparams_mod._assemble_mixed_power_wave_s = orig_assemble
-        _sparams_mod._mixed_flux_magnitude_override = orig_flux_override
+            captured.update(
+                v_lw=np.asarray(v_lw), i_lw=np.asarray(i_lw),
+                v0_msl=np.asarray(v0_msl), i_msl=np.asarray(i_msl),
+                z0_lw=np.asarray(z0_lw), n_live_lw=np.asarray(n_live_lw),
+                z0_hj_msl=np.asarray(z0_hj_msl), wire_mode=bool(wire_mode),
+                drive_plan=list(drive_plan), S_shipped=np.asarray(S),
+            )
+            return S, s21_power
 
-    preflight_text = stdout_buf.getvalue()
-    print("=" * 78)
-    print("PREFLIGHT (verbatim)")
-    print("=" * 78)
-    print(preflight_text)
-    print("=" * 78)
-    print("WARNINGS (verbatim)")
-    print("=" * 78)
-    for w in caught_warnings:
-        print(f"  - {w}")
-    print()
+        def _capturing_flux_override(S_wave, box_lw, plane_msl, drive_plan,
+                                     msl_away_signs, n_lw, ill_cond_floor=0.05):
+            out = orig_flux_override(
+                S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
+                ill_cond_floor=ill_cond_floor,
+            )
+            flux_captured.update(
+                box_lw=np.asarray(box_lw), plane_msl=np.asarray(plane_msl),
+                msl_away_signs=list(msl_away_signs), n_lw=int(n_lw),
+                ill_cond_floor=float(ill_cond_floor),
+                S_flux_shipped=np.asarray(out[0]),
+            )
+            return out
 
-    settling_db = np.asarray(result.settling_db)
-    print(f"settling_db per run: {settling_db.tolist()}")
-    print(f"drive_plan: {captured['drive_plan']}")
-    print(f"wire_mode: {captured['wire_mode']}")
-    n_live_lw = captured["n_live_lw"]
-    print(f"n_live_lw (ACTUAL value the assembler used): {n_live_lw.tolist()}")
+        _sparams_mod._assemble_mixed_power_wave_s = _capturing_assemble
+        _sparams_mod._mixed_flux_magnitude_override = _capturing_flux_override
+        stdout_buf = io.StringIO()
+        caught_warnings = []
+        try:
+            with contextlib.redirect_stdout(stdout_buf), \
+                 warnings.catch_warnings(record=True) as wr:
+                warnings.simplefilter("always")
+                result = sim.compute_mixed_s_matrix(
+                    freqs=freqs, num_periods=num_periods, skip_preflight=False,
+                )
+                caught_warnings = [str(w.message) for w in wr]
+        finally:
+            _sparams_mod._assemble_mixed_power_wave_s = orig_assemble
+            _sparams_mod._mixed_flux_magnitude_override = orig_flux_override
 
-    # ---- capture-fidelity assertion (m7) --------------------------------
+        preflight_text = stdout_buf.getvalue()
+        print("=" * 78)
+        print("PREFLIGHT (verbatim)")
+        print("=" * 78)
+        print(preflight_text)
+        print("=" * 78)
+        print("WARNINGS (verbatim)")
+        print("=" * 78)
+        for w in caught_warnings:
+            print(f"  - {w}")
+        print()
+
+        settling_db = np.asarray(result.settling_db)
+        print(f"settling_db per run: {settling_db.tolist()}")
+        print(f"drive_plan: {captured['drive_plan']}")
+        print(f"wire_mode: {captured['wire_mode']}")
+        n_live_lw = captured["n_live_lw"]
+        print(f"n_live_lw (ACTUAL value the assembler used): {n_live_lw.tolist()}")
+
+        # ---- capture-fidelity assertion (m7) ----------------------------
+        S_shipped = captured["S_shipped"]
+        fidelity_ok = bool(np.allclose(S_shipped, np.asarray(result.S_wave)))
+        print(f"capture-fidelity assertion (captured == result.S_wave): "
+             f"{fidelity_ok}")
+        if not fidelity_ok:
+            max_dev = float(np.max(np.abs(S_shipped - np.asarray(result.S_wave))))
+            raise AssertionError(
+                f"monkeypatch capture diverged from result.S_wave by "
+                f"{max_dev:.3e} — do not trust downstream numbers"
+            )
+
     S_shipped = captured["S_shipped"]
-    fidelity_ok = bool(np.allclose(S_shipped, np.asarray(result.S_wave)))
-    print(f"capture-fidelity assertion (captured == result.S_wave): "
-         f"{fidelity_ok}")
-    if not fidelity_ok:
-        max_dev = float(np.max(np.abs(S_shipped - np.asarray(result.S_wave))))
-        raise AssertionError(
-            f"monkeypatch capture diverged from result.S_wave by "
-            f"{max_dev:.3e} — do not trust downstream numbers"
-        )
 
     # ---- INFO 9: n_live disagreement (preflight advisory vs assembler) --
     z0_lw = captured["z0_lw"]
@@ -624,12 +827,14 @@ def main() -> int:
          " b := s1*a carries NO independent information beyond a scalar"
          " multiple of 'a' itself.")
 
-    # ---- sensitivity: does the solve output depend on s1's VALUE, or is
-    #      the MSL-diagonal move dominated by the already-polluted a_msl/
-    #      b_msl entries on the lw-driven run? ---------------------------
+    # ---- sensitivity (PR #543 delta review — FIXED per-run knob): s1 only
+    #      ever touches B[lw, msl-drive] (row "lw" of B), so it can only
+    #      move the LW ROW of S, never the MSL diagonal — an ALGEBRAIC
+    #      IDENTITY, verified below, not an empirical attribution. ---------
     print()
     print("=" * 78)
-    print("SENSITIVITY: how much of the MSL-diagonal move needs s1 at all")
+    print("SENSITIVITY (s1): algebraic identity on the MSL row, real effect"
+         " on the LW row")
     print("=" * 78)
     z0_hj_msl = captured["z0_hj_msl"]
     wire_mode = captured["wire_mode"]
@@ -641,34 +846,100 @@ def main() -> int:
             wire_mode, drive_plan, s1_override=s1_val,
         )
         S, cond = msl_solve_s_from_waves(wa, wb)
-        return np.asarray(S), cond
+        return np.asarray(S), cond, wa, wb
 
-    S_solve_real, cond_a = _solve_with_s1(None)         # actual (degenerate, real) s1
-    S_solve_s1_0, _ = _solve_with_s1(0.0)                # neutralize s1
+    S_solve_real, cond_a, wave_a_real, wave_b_real = _solve_with_s1(None)
+    S_solve_s1_0, _, wave_a_s1_0, wave_b_s1_0 = _solve_with_s1(0.0)
     msl_idx = S_shipped.shape[0] - 1
+    lw_idx = 0
+
+    diag_msl_real = np.abs(S_solve_real[msl_idx, msl_idx, :])
+    diag_msl_s1_0 = np.abs(S_solve_s1_0[msl_idx, msl_idx, :])
+    msl_row_identical = bool(np.allclose(
+        S_solve_real[msl_idx, :, :], S_solve_s1_0[msl_idx, :, :],
+        rtol=0, atol=1e-9,
+    ))
+    print(f"  MSL diagonal |S_msl,msl| with real s1:  {np.round(diag_msl_real, 6).tolist()}")
+    print(f"  MSL diagonal |S_msl,msl| with s1 FORCED to 0: "
+         f"{np.round(diag_msl_s1_0, 6).tolist()}")
+    print(f"  ENTIRE MSL row identical (s1=real vs s1=0), atol=1e-9: "
+         f"{msl_row_identical}")
+    print("  => this is an ALGEBRAIC IDENTITY, not an empirical finding: "
+         "row 'msl' of S=B*A^-1 is a function of row 'msl' of B and all of"
+         " A; s1_override only ever writes B[lw, msl-drive] (row 'lw'), so"
+         " it is PROVABLY absent from row 'msl'. See _msl_diag_attribution"
+         " below for the closed form.")
+
+    lw_msl_real = np.abs(S_solve_real[lw_idx, msl_idx, :])
+    lw_msl_s1_0 = np.abs(S_solve_s1_0[lw_idx, msl_idx, :])
+    print(f"  |S_lw,msl| (LW row, msl-driven column) with real s1: "
+         f"{np.round(lw_msl_real, 4).tolist()}")
+    print(f"  |S_lw,msl| with s1 FORCED to 0:                       "
+         f"{np.round(lw_msl_s1_0, 4).tolist()}")
+    lw_row_ratio = lw_msl_s1_0 / lw_msl_real
+    print(f"  ratio (s1=0)/(s1=real): {np.round(lw_row_ratio, 3).tolist()} "
+         f"— THIS is the row s1 actually controls; it is the informative"
+         " half of this sensitivity check, not the MSL diagonal.")
+
+    # ---- attribution (PR #543 delta review MAJOR finding): the MSL-
+    #      diagonal jump is NOT explained by s1 (proven above); attribute
+    #      it correctly via the closed form + a direct zero-out test on the
+    #      ONE genuinely-new entry, a_msl on the lw-driven run. -----------
+    print()
+    print("=" * 78)
+    print("ATTRIBUTION: what actually moves |S_msl,msl| (closed form + test)")
+    print("=" * 78)
+    attrib = _msl_diag_attribution(wave_a_real, wave_b_real,
+                                   lw_idx=lw_idx, msl_idx=msl_idx)
+    closed_form_matches = bool(np.allclose(
+        attrib["predicted_s11"], S_solve_real[msl_idx, msl_idx, :],
+        rtol=1e-5, atol=1e-8,
+    ))
+    print("  S[msl,msl] = (S11m - S10*gamma) / (1 - gamma*delta), all of "
+         "S11m/S10/gamma/delta from SHIPPED wave quantities + the one new "
+         "entry (delta's numerator, a_msl on the lw-driven run):")
+    print(f"    S11m (shipped MSL diagonal, = S_shipped[msl,msl]): "
+         f"{[_fmt_c(x, 4) for x in attrib['s11m']]}")
+    print(f"    S10  (shipped, #313/#507-polluted, = S_shipped[msl,lw]): "
+         f"{[_fmt_c(x, 4) for x in attrib['s10']]}")
+    print(f"    gamma = A[lw,msl-drive]/A[msl,msl-drive] (no B, no s1): "
+         f"{[_fmt_c(x, 4) for x in attrib['gamma']]}")
+    print(f"    delta = A[msl,lw-drive]/A[lw,lw-drive] (a_msl on lw-drive,"
+         f" the ONE new entry): {[_fmt_c(x, 4) for x in attrib['delta']]}")
+    print(f"  closed form matches the actual solve (rtol=1e-5): "
+         f"{closed_form_matches}")
+    print(f"  |S10*gamma| / |S11m| ratio (how much the echo term dominates"
+         f" the shipped diagonal itself): "
+         f"{np.round(attrib['ratio_s10gamma_over_s11m'], 2).tolist()}")
+
+    S_solve_zero_a_new, _ = _zero_entry_solve(
+        wave_a_real, wave_b_real, run=0, port=msl_idx,
+    )
+    diag_msl_zero_new = np.abs(S_solve_zero_a_new[msl_idx, msl_idx, :])
     diag_shipped_msl = np.abs(S_shipped[msl_idx, msl_idx, :])
-    diag_solve_real = np.abs(S_solve_real[msl_idx, msl_idx, :])
-    diag_solve_s1_0 = np.abs(S_solve_s1_0[msl_idx, msl_idx, :])
-    print(f"  |S_msl,msl| shipped:                {np.round(diag_shipped_msl, 4).tolist()}")
-    print(f"  |S_msl,msl| solve (real s1={s1_predicted:.3f}): "
-         f"{np.round(diag_solve_real, 4).tolist()}")
-    print(f"  |S_msl,msl| solve (s1 FORCED to 0):  {np.round(diag_solve_s1_0, 4).tolist()}")
-    move_total = diag_solve_real - diag_shipped_msl
-    move_without_s1 = diag_solve_s1_0 - diag_shipped_msl
-    frac_needs_s1 = np.where(
+    move_total = diag_msl_real - diag_shipped_msl
+    move_without_new_entry = diag_msl_zero_new - diag_shipped_msl
+    frac_survives_without_new_entry = np.where(
         np.abs(move_total) > 1e-12,
-        1.0 - move_without_s1 / move_total,
+        move_without_new_entry / move_total,
         np.nan,
     )
-    print(f"  total move (real - shipped):   {np.round(move_total, 4).tolist()}")
-    print(f"  move WITHOUT s1 (s1=0 - shipped): {np.round(move_without_s1, 4).tolist()}")
-    print(f"  fraction of the move that NEEDS the real s1 value: "
-         f"{np.round(frac_needs_s1, 4).tolist()}")
-    print("  => most of the diagonal move survives with s1=0: it comes "
-         "from the lw-driven run's a_msl/b_msl entries (shipped-precedent "
-         "for b_msl, NEW for a_msl), which carry this lane's own known "
-         "#313/#507-class magnitude pollution (see wave-channel passivity "
-         "quote below), NOT from s1's specific degenerate value.")
+    print(f"  |S_msl,msl| shipped:                          "
+         f"{np.round(diag_shipped_msl, 4).tolist()}")
+    print(f"  |S_msl,msl| solve (real, all entries):        "
+         f"{np.round(diag_msl_real, 4).tolist()}")
+    print(f"  |S_msl,msl| solve (a_msl on lw-drive ZEROED): "
+         f"{np.round(diag_msl_zero_new, 4).tolist()}")
+    print(f"  fraction of the (solve-shipped) move that SURVIVES without"
+         f" the one new entry: "
+         f"{np.round(frac_survives_without_new_entry, 4).tolist()}")
+    print("  => >=90% of the jump survives with the new entry zeroed: the"
+         " dominant mechanism is the '-S10*gamma' echo-correction term"
+         " acting on the SHIPPED, already #313/#507-polluted S10 (|S10|>1)"
+         " and gamma, NOT the new a_msl entry, and NOT s1 (proven above)."
+         " Correct statement: the #507 echo-correction, applied to two"
+         " shipped wave-channel quantities that are already known-"
+         " polluted, is what moves the diagonal.")
 
     # ---- wave-channel passivity violation, quoted verbatim (M4) --------
     print()
@@ -703,15 +974,19 @@ def main() -> int:
     S_flux_solve = np.asarray(S_flux_solve)
     dev_flux_shipped = _mixed_reciprocity_deviation(S_flux_shipped)
     dev_flux_solve = _mixed_reciprocity_deviation(S_flux_solve)
-    print(f"  captured-fidelity: S_flux_shipped matches result.S / result.S_raw"
-         f" up to the passivity projection step "
-         f"(result.S_raw is {'set' if result.S_raw is not None else 'None'}"
-         f" -> compare against "
-         f"{'S_raw' if result.S_raw is not None else 'S'})")
-    _ref = result.S_raw if result.S_raw is not None else result.S
-    fidelity_flux_ok = bool(np.allclose(S_flux_shipped, np.asarray(_ref),
-                                        atol=1e-4, rtol=1e-4))
-    print(f"  flux-channel capture-fidelity assertion: {fidelity_flux_ok}")
+    if is_reanalysis:
+        print("  flux-channel capture-fidelity assertion: CARRIED FORWARD"
+             f" from the original FDTD run: {fidelity_flux_ok}")
+    else:
+        print(f"  captured-fidelity: S_flux_shipped matches result.S / "
+             f"result.S_raw up to the passivity projection step "
+             f"(result.S_raw is {'set' if result.S_raw is not None else 'None'}"
+             f" -> compare against "
+             f"{'S_raw' if result.S_raw is not None else 'S'})")
+        _ref = result.S_raw if result.S_raw is not None else result.S
+        fidelity_flux_ok = bool(np.allclose(S_flux_shipped, np.asarray(_ref),
+                                            atol=1e-4, rtol=1e-4))
+        print(f"  flux-channel capture-fidelity assertion: {fidelity_flux_ok}")
     print(f"  flux-channel reciprocity deviation SHIPPED diagonal:"
          f" pair={dev_flux_shipped[0] if dev_flux_shipped else None} "
          f"dev={dev_flux_shipped[1] if dev_flux_shipped else float('nan'):.4f}")
@@ -727,11 +1002,7 @@ def main() -> int:
     dev_shipped = _mixed_reciprocity_deviation(S_shipped)
     dev_solve = _mixed_reciprocity_deviation(S_solve_real)
 
-    # ---- M5: column-normalized cond(A) -----------------------------------
-    wave_a_real, wave_b_real = _uniform_wave_amplitudes(
-        v_lw, i_lw, v0_msl, i_msl, z0_lw, n_live_lw, z0_hj_msl,
-        wire_mode, drive_plan, s1_override=None,
-    )
+    # ---- M5: column-normalized cond(A) (wave_a_real already built above) --
     cond_a_raw = cond_a
     cond_a_colnorm = _column_normalized_cond(wave_a_real)
     print()
@@ -847,8 +1118,15 @@ def main() -> int:
 
     verdict = {
         "degeneracy_max_s1_deviation": float(np.max(dev_s1)),
-        "fraction_of_msl_diag_move_needing_s1": [
-            (None if not np.isfinite(x) else float(x)) for x in frac_needs_s1
+        "s1_is_algebraic_identity_on_msl_row": msl_row_identical,
+        "lw_row_delta_s01_ratio_s1_0_over_real": lw_row_ratio.tolist(),
+        "attribution_closed_form_matches_solve": closed_form_matches,
+        "attribution_ratio_s10gamma_over_s11m": attrib[
+            "ratio_s10gamma_over_s11m"
+        ].tolist(),
+        "attribution_fraction_of_move_surviving_without_new_entry": [
+            (None if not np.isfinite(x) else float(x))
+            for x in frac_survives_without_new_entry
         ],
         "a_wave_shipped_deviation": dev_shipped_val,
         "a_wave_solve_deviation": dev_solve_val,
@@ -914,6 +1192,27 @@ def main() -> int:
             "a_passive_re_im": [[float(complex(x).real), float(complex(x).imag)]
                                 for x in a_passive],
         },
+        "s1_sensitivity": {
+            "msl_row_identical_s1_real_vs_0": msl_row_identical,
+            "lw_row_s01_abs_real_s1": lw_msl_real.tolist(),
+            "lw_row_s01_abs_s1_forced_0": lw_msl_s1_0.tolist(),
+            "lw_row_ratio_s1_0_over_real": lw_row_ratio.tolist(),
+        },
+        "attribution": {
+            "closed_form_matches_solve": closed_form_matches,
+            "s11m_re_im": [[float(x.real), float(x.imag)] for x in attrib["s11m"]],
+            "s10_re_im": [[float(x.real), float(x.imag)] for x in attrib["s10"]],
+            "gamma_re_im": [[float(x.real), float(x.imag)] for x in attrib["gamma"]],
+            "delta_re_im": [[float(x.real), float(x.imag)] for x in attrib["delta"]],
+            "ratio_s10gamma_over_s11m": attrib["ratio_s10gamma_over_s11m"].tolist(),
+            "msl_diag_shipped": diag_shipped_msl.tolist(),
+            "msl_diag_solve_real": diag_msl_real.tolist(),
+            "msl_diag_solve_new_entry_zeroed": diag_msl_zero_new.tolist(),
+            "fraction_of_move_surviving_without_new_entry": [
+                (None if not np.isfinite(x) else float(x))
+                for x in frac_survives_without_new_entry
+            ],
+        },
         "raw_phasors": {
             "v_lw": _c2pairs(v_lw), "i_lw": _c2pairs(i_lw),
             "v0_msl": _c2pairs(v0_msl), "i_msl": _c2pairs(i_msl),
@@ -928,4 +1227,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--from-json", default=None, metavar="PATH",
+        help="Re-analyze raw phasors from a previously-committed JSON "
+             "artifact of this SAME script (PR #543 delta review fix) -- "
+             "NO new FDTD run. Default: run the fixture fresh via FDTD.",
+    )
+    args = parser.parse_args()
+    raise SystemExit(main(reuse_json=args.from_json))
