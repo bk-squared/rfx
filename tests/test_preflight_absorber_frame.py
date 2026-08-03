@@ -23,6 +23,37 @@ This file:
    filter review that triggered #500) hit: WR-90 waveguide ports
    comfortably inside a valid 90.678mm domain must not warn.
 
+Post-review additions (adversarial review of PR #542 caught two real
+findings the first pass missed):
+
+- **H1 / review finding M3** — dropping the interior-frame comparison
+  from consumer 1 (``_validate_cfg_absorber_placement``) also silently
+  dropped the only proximity coverage the pre-#500 (wrong-reason) code
+  happened to provide: a probe genuinely INSIDE the domain but right at
+  its edge used to warn. Two regressions surfaced this as load-bearing —
+  ``tests/test_run_preflight_parity.py`` (its only warning trigger was a
+  probe one grid cell inside the domain) and
+  ``tests/test_msl_internal_probe_advisories.py::
+  test_user_probe_advisories_and_332_still_fire`` (the #470 regression
+  lock's "user probe near the x-CPML" case, one cell inside a pad=8
+  grid). The fix is a distinct, honestly-scoped ``absorber_proximity``
+  advisory (:func:`_coord_near_absorber` /
+  ``_ABSORBER_PROXIMITY_CELLS``) for a coordinate that is interior but
+  within 2 cells of an active absorber boundary — see both consumers'
+  fire/non-fire pairs in section 2 below.
+- **MH2 / review finding M5** — consumer 5 (``_check_msl_port_geometry``
+  checks 1 & 3) turned out NOT to be a plain instance of the #500 bug:
+  dropping ``cpml_thick_lo``/``cpml_thick_hi`` from it also dropped an
+  EXPLICIT, separately-calibrated buffer the 2026-05-04 MSL geometry rule
+  requires on top of the exterior-frame domain edge (`docs/agent-memory/
+  rfx-known-issues.md`, "Status 2026-05-04 (CALIBRATED, OpenEMS-class)":
+  ``LY >= W + 2*(2*h_sub + 8*dx)``). The buffer is restored explicitly,
+  reads ``cpml_layers*dx`` off the same ``cpml_thick_{lo,hi}`` inputs so
+  it scales with the configured ``cpml_layers`` rather than the ledger's
+  literal "8", and is added ON TOP OF (not instead of)
+  ``_absorber_boundary_for_axis``'s exterior-frame boundary — see section
+  6's ledger-reproduction tests.
+
 Non-uniform lane (issue #500 "Not verified" item): ``_validate_simulation_config``
 (``rfx/api/_preflight.py``) calls all five consumers unconditionally —
 there is no ``dz_profile`` gate on the whole check family, unlike the
@@ -36,12 +67,38 @@ same frame and the same fix apply on both lanes; there is no separate NU
 code path to special-case.
 
 Mutation falsifier (manual, recorded here rather than left as a permanent
-CI assertion): with ``_absorber_boundary_for_axis`` locally edited so
-``lo_boundary = domain_extent if ct_lo > 0 else None`` (swapping the lo/hi
-roles), every firing test in this file went RED — each one no longer
-detected its geometry as "in the absorber" on the side it actually put it
-on. Reverted; see the PR body / rfx-known-issues.md #500 entry for the
-recorded run.
+CI assertion; re-run after the H1/MH2 additions above): with
+``_absorber_boundary_for_axis`` locally edited so
+``lo_boundary = domain_extent if ct_lo > 0 else None`` / ``hi_boundary =
+0.0 if ct_hi > 0 else None`` (swapping the lo/hi roles), 16 tests went
+RED — correctly the NON-FIRING controls plus the helper's own unit test,
+not the firing tests (an earlier draft of this docstring had this
+inverted: the firing tests stay green because the swap makes the
+membership/clearance tests over-inclusive on an already-interior
+coordinate, not blind to a genuinely exterior one). In this file (10):
+``test_absorber_boundary_helper_matches_ground_truth``,
+``test_absorber_placement_silent_on_domain_centre_probe``,
+``test_absorber_placement_proximity_advisory_fires_within_2_cells``,
+``test_absorber_placement_silent_past_the_proximity_margin``,
+``test_geometry_in_cpml_silent_when_entirely_interior``,
+``test_ntff_absorber_overlap_silent_when_box_interior``,
+``test_waveguide_reference_plane_silent_on_wr90_ports_in_valid_domain``,
+``test_waveguide_reference_plane_silent_at_mixin_level_near_edge``,
+``test_msl_x_cpml_clearance_silent_once_past_buffer_plus_recommended``,
+``test_msl_y_clearance_silent_on_ledger_calibrated_ly``. Outside this
+file (6, confirming M5 that the mutation now also reaches the MSL and
+proximity paths): ``test_msl_port_preflight.py::
+test_clearance_silent_on_wide_ly``, ``test_msl_port_preflight.py::
+test_well_setup_msl_port_zero_warnings``,
+``test_msl_internal_probe_advisories.py::
+test_user_probe_advisories_and_332_still_fire``,
+``test_preflight_structured_and_guards.py::
+test_absorber_overlap_no_false_positive_on_2d_collapsed_z``,
+``test_preflight_false_positives.py::
+test_full_domain_dielectric_silent_on_cpml_extension``,
+``test_farfield_asymmetric_cpml.py::
+test_ntff_box_outside_cpml_has_no_absorber_overlap``. Reverted; see the
+PR body / rfx-known-issues.md #500 entry for the recorded run.
 """
 
 from __future__ import annotations
@@ -166,6 +223,33 @@ def test_absorber_placement_fires_on_probe_genuinely_in_absorber():
     issues = _absorber_placement_sim(-0.001).preflight(strict=False)
     hits = [m for m in issues if "is near/inside" in m and "Probe" in m]
     assert hits, f"probe in the exterior absorber must warn; got {issues!r}"
+
+
+def test_absorber_placement_proximity_advisory_fires_within_2_cells():
+    """Review finding H1: a probe genuinely INSIDE the domain but within
+    _ABSORBER_PROXIMITY_CELLS=2 cells (dx=1mm -> 2mm margin here) of the
+    z=0 boundary gets the distinct absorber_proximity advisory, not
+    silence and not the absorber_overlap membership warning. This is the
+    coverage tests/test_run_preflight_parity.py and
+    tests/test_msl_internal_probe_advisories.py's #470 lock both turned
+    out to depend on."""
+    issues = _absorber_placement_sim(0.0005).preflight(strict=False)
+    overlap = [m for m in issues if "is near/inside" in m and "Probe" in m]
+    proximity = [
+        m for m in issues
+        if "Probe" in m and "within 2 cells" in m and "CPML absorber" in m
+    ]
+    assert not overlap, f"a probe within 2mm of the edge is not IN the absorber; got {overlap}"
+    assert proximity, f"expected a proximity advisory for a probe 0.5mm from the edge; got {issues!r}"
+
+
+def test_absorber_placement_silent_past_the_proximity_margin():
+    """Non-firing control: a probe 3mm from the z=0 edge (past the 2mm /
+    2-cell proximity margin) draws neither the overlap nor the proximity
+    advisory."""
+    issues = _absorber_placement_sim(0.003).preflight(strict=False)
+    hits = [m for m in issues if "Probe" in m and ("near/inside" in m or "within 2 cells" in m)]
+    assert not hits, f"a probe 3mm from the edge must draw neither advisory; got {hits}"
 
 
 # --------------------------------------------------------------------- #
@@ -298,6 +382,20 @@ def test_waveguide_reference_plane_silent_at_mixin_level_near_edge():
 # --------------------------------------------------------------------- #
 # 6. Consumer 5 — _check_msl_port_geometry (checks 1 & 3: distance to
 #    the nearest absorbing/reflecting boundary).
+#
+# Review finding MH2: unlike consumers 1-4, this one is NOT a plain
+# instance of the #500 interior-frame bug. The reference position is the
+# exterior-frame domain edge (_absorber_boundary_for_axis) PLUS an
+# EXPLICIT, separately-calibrated buffer (cpml_thick_{lo,hi} = n_cpml*dx)
+# — docs/agent-memory/rfx-known-issues.md "Status 2026-05-04 (CALIBRATED,
+# OpenEMS-class)": with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
+# ended up INSIDE the CPML overlap region (negative clearance)" and Z0
+# drifted UP with refinement instead of converging to Hammerstad's
+# 47.89 Ohm; the fix requires LY >= W + 2*(2*h_sub + 8*dx). An earlier
+# pass of this PR dropped the buffer entirely (treating this consumer as
+# the same bug class as the other four), which silently re-admitted that
+# exact negative-clearance configuration — verified below against the
+# ledger's own numbers.
 # --------------------------------------------------------------------- #
 
 _EPS_R = 3.66
@@ -306,10 +404,10 @@ _W_TRACE = 600e-6
 _LX = 14e-3
 
 
-def _msl_x_clearance_sim(dx: float, port_x: float) -> Simulation:
+def _msl_x_clearance_sim(dx: float, port_x: float, cpml_layers: int = 8) -> Simulation:
     ly = _W_TRACE + 8 * _H_SUB
     sim = Simulation(
-        freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=8,
+        freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)
@@ -322,21 +420,82 @@ def _msl_x_clearance_sim(dx: float, port_x: float) -> Simulation:
     return sim
 
 
-def test_msl_x_cpml_clearance_silent_on_former_false_positive():
-    """Former false positive: dx=100um, cpml_layers=8 -> CPML thickness
-    800um. Port at x=600um: the pre-#500 interior-frame check measured
-    clearance = 600 - 800 = -200um (< the 508um=2*h_sub recommendation)
-    and fired. The real clearance to the domain edge (x=0, where the
-    absorber actually begins) is 600um > 508um -> must be silent."""
-    issues = _msl_x_clearance_sim(dx=100e-6, port_x=0.6e-3).preflight(strict=False)
+def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulation:
+    """Mirrors docs/agent-memory/rfx-known-issues.md's 2026-05-04 mesh-conv
+    fixture (LY parametrized, port_x fixed comfortably clear of x-CPML)."""
+    sim = Simulation(
+        freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
+        boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("ro4350b", eps_r=_EPS_R)
+    sim.add(Box((0, 0, 0), (_LX, ly, _H_SUB)), material="ro4350b")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - _W_TRACE / 2, _H_SUB), (_LX, y_c + _W_TRACE / 2, _H_SUB + dx)),
+            material="pec")
+    sim.add_msl_port(position=(2e-3, y_c, 0), width=_W_TRACE, height=_H_SUB,
+                     direction="+x", impedance=50.0)
+    return sim
+
+
+def test_msl_x_cpml_clearance_fires_on_ledger_negative_clearance_case():
+    """The exact 2026-05-04 ledger regression: dx=80um, cpml_layers=8 ->
+    calibrated buffer 640um; port at x=600um is INSIDE the buffered
+    margin (clearance = 600 - 640 = -40um < 0), the "trace ended up
+    INSIDE the CPML overlap region" case the calibration fixed. Dropping
+    the buffer (an earlier pass of this PR) silently went silent here."""
+    issues = _msl_x_clearance_sim(dx=80e-6, port_x=0.6e-3).preflight(strict=False)
     hits = [m for m in issues if "x-CPML" in m]
-    assert not hits, f"port with real 600um clearance must not warn; got {hits}"
+    assert hits, f"port inside the calibrated buffer must warn; got {issues!r}"
+    assert any("calibrated CPML buffer" in m for m in hits), hits
+
+
+def test_msl_x_cpml_clearance_silent_once_past_buffer_plus_recommended():
+    """Non-firing control: dx=100um, cpml_layers=8 -> buffer=800um,
+    recommended=2*h_sub=508um, total=1308um. Port at x=1400um clears
+    both -> silent."""
+    issues = _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3).preflight(strict=False)
+    hits = [m for m in issues if "x-CPML" in m]
+    assert not hits, f"port past buffer+recommended must not warn; got {hits}"
 
 
 def test_msl_x_cpml_clearance_fires_when_genuinely_too_close():
-    """Positive control: port at x=300um genuinely has only 300um of
-    real clearance to the x=0 domain edge (< 508um recommended) —
-    must still warn under both the old and corrected frame."""
+    """Positive control: port at x=300um is inside the buffer alone
+    (dx=100um, cpml_layers=8 -> buffer=800um) — must warn."""
     issues = _msl_x_clearance_sim(dx=100e-6, port_x=0.3e-3).preflight(strict=False)
     hits = [m for m in issues if "x-CPML" in m]
     assert hits, f"port with real 300um clearance must warn; got {issues!r}"
+
+
+def test_msl_y_clearance_fires_on_ledger_ly_w_plus_6dx():
+    """Ledger reproduction: the PRE-calibration ``LY = W + 6*dx`` geometry
+    (dx=80um, cpml_layers=8) that motivated the 2026-05-04 fix must still
+    warn under the restored buffer."""
+    ly = _W_TRACE + 6 * 80e-6
+    issues = _msl_y_clearance_sim(dx=80e-6, ly=ly).preflight(strict=False)
+    hits = [m for m in issues if "lateral clearance" in m]
+    assert hits, f"pre-calibration LY=W+6dx must warn; got {issues!r}"
+    assert any("calibrated CPML buffer" in m for m in hits), hits
+
+
+def test_msl_y_clearance_silent_on_ledger_calibrated_ly():
+    """Ledger reproduction: the CALIBRATED ``LY >= W + 2*(2*h_sub + 8*dx)``
+    geometry must be silent."""
+    ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * 80e-6)
+    issues = _msl_y_clearance_sim(dx=80e-6, ly=ly).preflight(strict=False)
+    hits = [m for m in issues if "lateral clearance" in m]
+    assert not hits, f"calibrated LY must not warn; got {hits}"
+
+
+def test_msl_clearance_buffer_scales_with_cpml_layers_not_hardcoded_8():
+    """MH2: the ledger's "8*dx" is that specific fixture's cpml_layers=8,
+    not a hardcoded constant — doubling cpml_layers must double the
+    buffer and therefore still fire at a clearance that would clear a
+    fixed-800um buffer."""
+    # dx=100um, cpml_layers=16 -> buffer=1600um. Port at x=1400um cleared
+    # an 800um buffer (see the silent-control above) but not a 1600um one.
+    issues = _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3, cpml_layers=16).preflight(
+        strict=False
+    )
+    hits = [m for m in issues if "x-CPML" in m]
+    assert hits, f"doubled cpml_layers must double the buffer and warn; got {issues!r}"
+    assert any("1.6mm calibrated CPML buffer" in m for m in hits), hits

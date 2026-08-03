@@ -25,9 +25,19 @@ def _sim_with_probe_in_cpml():
     # real preflight warning to exercise the run()-parity/consolidation
     # mechanism this file tests, and absorber_overlap is the original,
     # still-legitimate, and cheapest trigger to construct).
+    #
+    # Node arithmetic (review finding L7): this domain (0.02m, freq_max=
+    # 10e9, default cpml_layers=16) auto-resolves dx~=1.499mm, giving
+    # nz=47 with pad_z_lo=pad_z_hi=16 -> interior absolute indices 16..30
+    # (last interior node 30 = z~=20.99mm). z=0.021 rounds to node 30
+    # (round(0.021/dx)+16 = 30) -- still the LAST INTERIOR node, so it
+    # only "fired" via _absorber_boundary_for_axis's up-to-one-cell
+    # hi-side conservatism (see that helper's docstring), not because it
+    # was genuinely exterior. z=0.0225 rounds to node 31, the first node
+    # outside the interior slice -- genuinely in the absorber.
     sim = Simulation(domain=(0.02, 0.02, 0.02), freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
-    sim.add_probe((0.01, 0.01, 0.021), component="ez")
+    sim.add_probe((0.01, 0.01, 0.0225), component="ez")
     return sim
 
 

@@ -27,7 +27,7 @@ from rfx.geometry.csg import Box
 # ---------------------------------------------------------------- (a) records
 def test_preflight_returns_back_compatible_structured_issues():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     assert report, "expected a preflight finding for a source/probe in CPML"
@@ -49,7 +49,7 @@ def test_preflight_report_is_a_list_with_canonical_api():
     """PreflightReport IS a list (back-compat) AND mirrors the in-repo report
     idiom (.issues/.errors/.warnings/.ok/.format()/.to_dict()/.to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     assert isinstance(report, PreflightReport) and isinstance(report, list)
@@ -73,7 +73,7 @@ def test_codes_set_at_check_site():
     emitting check.
     """
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     absorber = report.by_code("absorber_overlap")
@@ -154,7 +154,7 @@ def test_lossy_dielectric_silent():
 # ------------------------------------------------ (d) Phase A meta-coverage
 def _bad_sim_probe_in_cpml():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     return sim
 
@@ -259,7 +259,7 @@ def test_strict_aggregates_all_issues_in_one_raise():
     raise), not fail-on-first — preserving the historical 'strict escalates any
     issue' contract while reporting all problems at once."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")     # in exterior CPML (#500)
     # strict=False shows >= 2 findings...
     report = sim.preflight()
