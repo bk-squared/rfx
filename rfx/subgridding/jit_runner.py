@@ -1753,14 +1753,25 @@ def _make_step_fn(ctx):
         ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = carry["f"]
 
         def _inject_fine_sources(ex_arr, ey_arr, ez_arr):
-            # src_vals is built from jnp.array(waveform) (jit_runner.py ~2615),
-            # which tracks x64: float32 with x64 off (matches ex/ey/ez_arr's
-            # init_state default), float64 once x64 is scoped on. ex/ey/ez_arr
-            # stay float32 regardless (init_state's field_dtype default), so
-            # the x64-on scatter mismatches dtypes and JAX raises a
-            # cast-safety FutureWarning (issue #485). Cast explicitly to the
-            # destination array's own dtype: a no-op under the float32
-            # default (bit-identical), and a safe explicit downcast under x64.
+            # src_vals (this scan's xs, built from the "Precompute source
+            # waveforms matrix" src_waveforms = jnp.stack([jnp.array(s[4])
+            # ...]) below) is ALREADY float64 by the time it gets here, once
+            # x64 is scoped on: s[4] is a host numpy array built in
+            # rfx/runners/subgridded.py's _run_subgridded_once as
+            # np.array(waveform) * fine_source_scale, and dt there comes from
+            # a plain np.sqrt(...) -- numpy always defaults to float64 on the
+            # host, independent of the JAX x64 flag -- which promotes the
+            # downstream jax.vmap(waveform)(times) computation to genuine
+            # float64 once x64 is enabled (under x64 off, JAX's own
+            # canonicalization keeps that same computation at float32
+            # instead). jnp.array(...)/jnp.stack(...) here PRESERVES that
+            # host dtype rather than promoting it. ex/ey/ez_arr stay float32
+            # regardless (init_state's field_dtype default is
+            # x64-independent), so the x64-on scatter mismatches dtypes and
+            # JAX raises a cast-safety FutureWarning (issue #485). Cast
+            # explicitly to the destination array's own dtype: a no-op under
+            # the float32 default (bit-identical), and a safe explicit
+            # downcast under x64.
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
                 if sc == "ez":
                     ez_arr = ez_arr.at[si, sj, sk].add(src_vals[idx_s].astype(ez_arr.dtype))
@@ -1771,11 +1782,14 @@ def _make_step_fn(ctx):
             return ex_arr, ey_arr, ez_arr
 
         def _inject_coarse_sources(ex_arr, ey_arr, ez_arr):
-            # Same leak as _inject_fine_sources above (issue #485): src_vals_c
-            # is built from jnp.array(waveform) (jit_runner.py ~2627), which
-            # tracks x64, while ex/ey/ez_arr stay float32 regardless
-            # (init_state's field_dtype default). Cast explicitly to the
-            # destination array's own dtype for the same reason.
+            # Same leak as _inject_fine_sources above (issue #485), same
+            # mechanism: src_vals_c's host array (np.array(waveform) *
+            # coarse_shadow_source_scale, built in _run_subgridded_once) is
+            # already float64 once x64 is scoped on; the src_waveforms_c =
+            # jnp.stack([jnp.array(s[4]) ...]) below preserves that dtype
+            # rather than promoting it, while ex/ey/ez_arr stay float32
+            # regardless (init_state's field_dtype default). Cast explicitly
+            # to the destination array's own dtype for the same reason.
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta_c):
                 if sc == "ez":
                     ez_arr = ez_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ez_arr.dtype))
