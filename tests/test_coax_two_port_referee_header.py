@@ -219,20 +219,20 @@ def test_stage_b_layout_is_self_consistent_and_openems_free():
     }
     assert required <= set(layout.keys())
 
-    # H2''/H2' fix: both ports' OUTER ends sit exactly at the domain edges
-    # -- H2'' (2026-08-03 run-1 diagnosis) made those edges MUR, not
-    # PML_16 (see the referee's "LINE TERMINATION TOPOLOGY" docstring
-    # section), but the conductor extent itself is unchanged from H2'.
+    # H2 fix (restored 2026-08-03, PR #546 review after a diagnosis
+    # reversal -- see the referee's "LINE TERMINATION TOPOLOGY" docstring
+    # section): both ports' OUTER ends sit exactly at the domain edges,
+    # INTO PML_16 -- a MUR z-boundary was tried in between and reverted
+    # (MUR-on-PTFE is a RECORDED-unstable combination in this repo's own
+    # do-not-repeat history, not a fix).
     assert layout["z_port1_start_mm"] == 0.0
     assert layout["z_port2_stop_mm"] == layout["lz_mm"]
 
-    # The TARGET reference planes must stay strictly inside the domain,
-    # on the correct side of the shared midpoint. H2'' fix: no PML depth
-    # to stay clear of in z any more (MUR consumes none), so the
-    # meaningful check is ordering against z_split, not a PML-depth
-    # clearance.
-    assert 0.0 < layout["z_feed_bot_mm"] < layout["z_split_mm"]
-    assert layout["z_split_mm"] < layout["z_feed_top_mm"] < layout["lz_mm"]
+    # The TARGET reference planes (not the bare conductor extent, which
+    # legitimately reaches the domain edges, into the PML) must stay
+    # safely inside the clear, non-PML region.
+    assert layout["z_feed_bot_mm"] > module.B_PML_DEPTH_MM
+    assert layout["z_feed_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
     assert layout["z_port1_start_mm"] < layout["z_split_mm"] < layout["z_port2_stop_mm"]
 
     # FeedShift/MeasPlaneShift must land strictly inside each port's own
@@ -245,6 +245,71 @@ def test_stage_b_layout_is_self_consistent_and_openems_free():
     assert 0.0 < layout["feedshift_port2_mm"] < port2_span
     assert abs(layout["measplane_port1_mm"] - layout["feedshift_port1_mm"]) > module.B_DX_MM
     assert abs(layout["measplane_port2_mm"] - layout["feedshift_port2_mm"]) > module.B_DX_MM
+
+
+def test_stage_b_feed_measure_ordering_matches_coaxm(monkeypatch):
+    """M1/M2/M3 fix (PR #546 review, BLOCKING): FeedShift must sit near
+    the wall (past the PML's own inner edge) and MeasPlaneShift must sit
+    FURTHER from the wall than FeedShift (Coax.m's own ordering) -- the
+    REVERSE of the pre-review scheme, where MeasPlaneShift was only 2
+    cells short of the target and FeedShift sat further out still. That
+    backwards ordering is the sharper lead hypothesis for run-1's
+    |S11|=280: CoaxialPort's own 3-line probe stencil, sitting between
+    the wall and the feed, samples mostly boundary-reflected energy, a
+    vanishing-denominator artifact as the absorber improves (module
+    docstring "REFERENCE-PLANE REFERRAL" has the full derivation).
+
+    This test pins the ordering NUMERICALLY (not just via
+    ``_stage_b_layout()``'s own internal assertions, which a narrowly
+    circumvented "fix" could still satisfy) by reading each port's own
+    feed/measure distance from ITS OWN wall directly -- symmetric for
+    both ports by construction, since port2's wall is at its `stop`, not
+    its `start` (B4').
+    """
+    module = _load_referee_module()
+    layout = module._stage_b_layout()
+    cell = module.B_DX_MM
+    pml_cells = module.B_CPML_CELLS
+
+    port2_span = layout["z_port2_stop_mm"] - layout["z_port2_start_mm"]
+
+    feed1_from_wall_cells = layout["feedshift_port1_mm"] / cell
+    meas1_from_wall_cells = layout["measplane_port1_mm"] / cell
+    # port2's wall is at `stop`, so distance-from-wall = span - offset-from-start.
+    feed2_from_wall_cells = (port2_span - layout["feedshift_port2_mm"]) / cell
+    meas2_from_wall_cells = (port2_span - layout["measplane_port2_mm"]) / cell
+
+    for name, feed_cells, meas_cells in (
+        ("port1", feed1_from_wall_cells, meas1_from_wall_cells),
+        ("port2", feed2_from_wall_cells, meas2_from_wall_cells),
+    ):
+        # M2: FEED must clear the PML (never inside the absorber).
+        assert feed_cells > pml_cells, (
+            f"{name} FeedShift does not clear the PML -- got {feed_cells:.1f} "
+            f"cells from wall, PML is {pml_cells} cells (M2 regression)"
+        )
+        # M1: MEASURE must be device-side of FEED (Coax.m's own ordering),
+        # not the reverse.
+        assert meas_cells > feed_cells, (
+            f"{name} MeasPlaneShift ({meas_cells:.1f} cells from wall) is not "
+            f"device-side of FeedShift ({feed_cells:.1f} cells) -- M1 regression, "
+            f"the exact backwards ordering diagnosed as run-1's sharper cause"
+        )
+        # M3: MEASURE needs a stencil-safety margin past the PML edge so
+        # CoaxialPort's own 3-line probe snap cannot land back on a
+        # PML-adjacent mesh line.
+        assert meas_cells > pml_cells + module.B_MEAS_STENCIL_MARGIN_CELLS, (
+            f"{name} MeasPlaneShift stencil margin too thin -- got "
+            f"{meas_cells:.1f} cells from wall (M3 regression)"
+        )
+
+    # Mutation check: this test must actually discriminate -- feeding it
+    # the OLD (pre-review) backwards ordering must fail the M1 assertion.
+    old_feed1_cells = 8.0   # pre-review: feedshift ~= ref_plane_shift + 5 cells
+    old_meas1_cells = 1.0   # pre-review: measplane ~= ref_plane_shift - 2 cells
+    assert not (old_meas1_cells > old_feed1_cells), (
+        "old backwards ordering coincidentally passes -- test not discriminating"
+    )
 
 
 def test_stage_b_port_directions_are_both_positive():
@@ -359,6 +424,22 @@ def test_extract_two_port_s_synthetic_forward_and_reverse_drive():
     assert rev["reverse_drive"] is True
 
 
+def _fake_stage_b_drive_dict(drive: str, nrts: int) -> dict:
+    """Shared fake ``_run_one_drive`` return value for the partial-data
+    tests below. z0/beta use NONZERO imaginary parts deliberately -- a
+    zero imaginary part could accidentally round-trip through a broken
+    serializer (e.g. one that only handles real floats) and hide B2."""
+    s_self = np.array([300.0 + 0j]) if drive == "port1" else np.array([0.05 + 0j])
+    return {
+        "extracted": {"s_self": s_self, "s_thru": np.array([0.9 + 0j])},
+        "z0_port1": np.array([50.0 + 1.5j]), "z0_port2": np.array([48.0 - 2.0j]),
+        "beta_port1": np.array([12.0 + 0.1j]), "beta_port2": np.array([12.0 - 0.1j]),
+        "max_uf_inc": 1.0, "n_trace_samples": 100, "nrts_cap": nrts,
+        "truncated_suspected": False, "elapsed_s": 1.0,
+        "end_criteria_not_reached": True,
+    }
+
+
 def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
     """Forensics fix (2026-08-03, run-1 diagnosis): the FIRST live run
     (VESSL 369367251366) raised out of the non-physical-field guard with
@@ -370,20 +451,20 @@ def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
     non-physical-field guard) now carries a ``partial_stage_b_data``
     attribute with the S-matrices computed before the guard tripped, so
     ``main()``'s RuntimeError handler can write them into the failure
-    artifact instead of losing them."""
+    artifact instead of losing them.
+
+    Scope note (B3, PR #546 review): this test checks the attribute IN
+    MEMORY only -- it does not exercise ``json.dump`` at all, which is
+    exactly how the B2 serialization bug (complex128 ndarrays in
+    ``drive{1,2}_diagnostics``) slipped past it. See
+    ``test_main_writes_valid_json_on_stage_b_physics_gate_failure`` below
+    for the end-to-end check that actually calls ``json.load()`` on the
+    written file.
+    """
     module = _load_referee_module()
 
     def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
-        # port1 (forward) drive: s_self deliberately non-physical (>2.0),
-        # mirroring the recorded run-1 failure signature ([s11] blow-up).
-        s_self = np.array([300.0 + 0j]) if drive == "port1" else np.array([0.05 + 0j])
-        return {
-            "extracted": {"s_self": s_self, "s_thru": np.array([0.9 + 0j])},
-            "z0_port1": np.array([50.0 + 0j]), "z0_port2": np.array([50.0 + 0j]),
-            "beta_port1": np.array([1.0 + 0j]), "beta_port2": np.array([1.0 + 0j]),
-            "max_uf_inc": 1.0, "n_trace_samples": 100, "nrts_cap": nrts,
-            "truncated_suspected": False, "elapsed_s": 1.0,
-        }
+        return _fake_stage_b_drive_dict(drive, nrts)
 
     monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
     monkeypatch.setattr(module, "_run_one_drive", fake_run_one_drive)
@@ -399,6 +480,93 @@ def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
         assert partial["s11_mag"] == [300.0]
         assert partial["s21_mag"] == [0.9]
         assert "drive1_diagnostics" in partial and "drive2_diagnostics" in partial
+
+        # B2 fix: z0/beta must already be [re, im] pairs here (via
+        # _json_safe_diagnostics), not raw complex128 ndarrays.
+        z0_port1 = partial["drive1_diagnostics"]["z0_port1"]
+        assert z0_port1 == [[50.0, 1.5]], f"z0_port1 not JSON-safe: {z0_port1!r}"
+        assert isinstance(z0_port1, list) and isinstance(z0_port1[0], list)
+
+
+def test_check_excitation_and_trace_uses_drive_correct_channel():
+    """M1 fix (PR #546 review): ``_check_excitation_and_trace`` must
+    check the channel the DRIVE actually launched -- ``uf_inc`` for the
+    forward drive (port1), ``uf_ref`` for the reverse drive (port2, per
+    ``_extract_two_port_s``'s own documented convention: "port 2's own
+    launched wave into the device is its -z component, uf_ref_self (NOT
+    uf_inc_self)"). Checking ``uf_inc`` unconditionally, as before,
+    would silently verify the WRONG channel for the reverse drive --
+    this test builds a fake port where uf_inc is healthy but uf_ref is
+    near-zero (the launched channel for a reverse drive) and checks the
+    function catches it when told to look at uf_ref, and does NOT catch
+    it (wrongly reports healthy) when defaulted to uf_inc -- proving the
+    ``channel`` parameter actually changes behavior, not just exists."""
+    module = _load_referee_module()
+
+    class _FakePort:
+        U_filenames: list = []
+        uf_inc = np.array([1.0 + 0j])       # healthy
+        uf_ref = np.array([1e-14 + 0j])     # near-zero -- the launched
+                                             # channel for a reverse drive
+
+    port = _FakePort()
+
+    # Default (uf_inc) must NOT raise -- uf_inc is healthy.
+    inc_peak, _ = module._check_excitation_and_trace(port, "/tmp/_unused", "test")
+    assert inc_peak == 1.0
+
+    # channel="uf_ref" (the reverse-drive's own launched channel) MUST
+    # raise -- this is the near-zero one, mirroring the do-not-repeat
+    # file's own recorded "uf_inc~6e-14" failure signature.
+    try:
+        module._check_excitation_and_trace(port, "/tmp/_unused", "test", channel="uf_ref")
+        assert False, "expected near-zero uf_ref to raise when channel='uf_ref'"
+    except RuntimeError as exc:
+        assert "uf_ref" in str(exc)
+
+
+def test_main_writes_valid_json_on_stage_b_physics_gate_failure(monkeypatch, tmp_path):
+    """B3 fix (PR #546 review, BLOCKING): the regression test above only
+    checked ``partial_stage_b_data`` IN MEMORY -- it never called
+    ``json.dump``/``json.load`` at all, which is exactly how B2 (complex
+    ndarrays in ``drive{1,2}_diagnostics``) slipped past it (reviewer-
+    reproduced: the failure-path writer crashed with ``TypeError``,
+    leaving a truncated or missing artifact). This test drives
+    ``main()`` all the way through a Stage B physics-gate failure and
+    asserts the written file actually PARSES.
+    """
+    import json
+
+    module = _load_referee_module()
+
+    def fake_run_stage_a(*, sim_root, threads, use_pml):
+        return {
+            "passed": True, "zl_mean_ohm": 50.0, "zl_max_dev_ohm": 0.1,
+            "passivity": {"passed": True}, "matched_through_witness": {"passed": True},
+        }
+
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+        return _fake_stage_b_drive_dict(drive, nrts)
+
+    monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
+    monkeypatch.setattr(module, "_run_stage_a_reproduce_gate", fake_run_stage_a)
+    monkeypatch.setattr(module, "_run_one_drive", fake_run_one_drive)
+
+    out_path = tmp_path / "out.json"
+    rc = module.main(["--output", str(out_path)])
+
+    assert rc == 1, f"expected exit 1 (physics-gate failure), got {rc}"
+    assert out_path.exists(), "main() must write a JSON artifact even on failure"
+
+    with open(out_path) as f:
+        artifact = json.load(f)  # must not raise -- this is what B2 broke
+
+    assert artifact["error"]
+    assert "stage_b_partial" in artifact
+    partial = artifact["stage_b_partial"]
+    assert partial["s11_mag"] == [300.0]
+    assert partial["drive1_diagnostics"]["z0_port1"] == [[50.0, 1.5]]
+    assert partial["drive1_diagnostics"]["end_criteria_not_reached"] is True
 
 
 def test_stage_b_matched_through_band_and_group_delay():
