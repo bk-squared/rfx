@@ -555,16 +555,24 @@ REPRODUCE_GATE_RECORD: dict = {
     "gate": {"zl_re_tol_ohm": 5.0, "zl_im_tol_ohm": 5.0, "s21_thru_band": [0.5, 1.3]},
     # RUN (2026-08-03): Stage A has now passed this reproduce-gate on all
     # three live runs to date (run-1 VESSL 369367251366, run-2 369367251627,
-    # run-3 369367251629) -- the numbers below are run-3's, the most recent,
-    # with its own log path as the checkable artifact (M3 fix: log_path
-    # must actually exist on disk). Stage A's own gate has never once
-    # failed across any of the topology/excitation/phase-witness fixes
-    # made to Stage B in the same period -- this record is untouched by
-    # any of that (module docstring "RUN-3 RESULT").
+    # run-3 369367251629) -- the numbers below are run-3's, the most recent.
+    # Stage A's own gate has never once failed across any of the topology/
+    # excitation/phase-witness fixes made to Stage B in the same period --
+    # this record is untouched by any of that (module docstring "RUN-3
+    # RESULT"). log_path fix (PR #548 review): the FIRST fill pointed at
+    # .omx/coax-two-port-referee/20260803T182559Z/run.log, which is
+    # gitignored runtime state -- present on the machine that ran the VESSL
+    # job, absent from any other clone/CI checkout, so the fill-contract
+    # test (test_reproduce_gate_record_is_committed_unrun_and_self_
+    # consistent) went red everywhere else the instant status became
+    # "RUN" (reviewer-reproduced: 23/24 in a fresh worktree). A claimed
+    # number needs a log a reviewer OUTSIDE this machine can actually open
+    # -- run-3's run.log is committed verbatim (solver stdout, no secrets,
+    # scanned before adding) at the TRACKED path below instead.
     "status": "RUN",
     "reproduced_zl_mean_ohm": 50.432,
     "reproduced_zl_max_dev_ohm": 0.511,
-    "log_path": ".omx/coax-two-port-referee/20260803T182559Z/run.log",
+    "log_path": "validation/research/coax_two_port/logs/run3_369367251629_run.log",
     "vessl_run_id": "369367251629",
     "verified_on": "2026-08-03",
 }
@@ -1077,23 +1085,65 @@ def _matched_through_witness(freqs_hz: np.ndarray, s21: np.ndarray, *, L_m: floa
     measured directly by CalcPort (``port.beta``) from the SAME field
     data ``s21``/``s12`` came from. When given, it REPLACES the
     idealized analytic ``2*pi*f*sqrt(eps_r)/c`` for both the phase and
-    group-delay expectations. Run-3's own committed data showed why this
-    matters: the analytic assumption was ~12% too slow for this
-    fixture's coax cross-section on this mesh (measured/analytic beta
-    ratio 1.1202-1.1222 across 4-12 GHz, from all 4 available
-    measurements -- port1 and port2, both drives -- agreeing with each
-    other to ~0.01%, i.e. a real, reproducible property of the
-    simulated line, not measurement noise). This is Yee-staircasing of
-    the coax's a-to-b PTFE annulus: only ~3.8 cells span (2.055-
-    0.635mm)/dx=0.375mm -- the SAME class of effect this repo's own MSL
-    preflight already documents for a comparably coarse dielectric gap
-    ("Yee staircase at dielectric interface is O(dx) -- Z0 staircase
-    error >5% expected"), not a solver defect. Using the measured beta
-    collapsed the phase deviation from 111.38 deg (max, analytic
-    assumption -- the reported run-3 failure) to under 1.04 deg across
-    the WHOLE 4-12 GHz band (under 0.44 deg inside the gated central
-    band) -- confirmed by direct recomputation against the committed
-    run-3 S-parameters, not merely argued.
+    group-delay expectations.
+
+    EVIDENCE (not merely argued -- PR #548 review, non-blocking
+    strengthening): a naive 2-free-parameter fit of the run-3 deviation
+    (constant offset + linear-in-f slope) lands within 0.53 deg (max
+    residual) of the data -- unremarkable on its own, 2 free parameters
+    fitting 9 points. The MEASURED beta, in contrast, is a ZERO-free-
+    parameter PREDICTION (nothing tuned against this S-parameter data --
+    it comes from CalcPort's own independent field measurement) and
+    lands within 1.04 deg -- within 2x of the FITTED curve's own
+    residual. A parameter-free physical measurement landing this close
+    to a 2-parameter empirical fit is the strong form of the argument
+    that beta mismatch is the actual mechanism, not merely "a" fit that
+    happens to work.
+
+    Linearity of the deviation with frequency alone does NOT
+    discriminate a length error (delta-L) from a beta error
+    (delta-beta): both produce a phase deviation linear in f
+    (deviation = beta*delta_L for a fixed beta, or delta_beta*L for a
+    fixed L -- indistinguishable from S21's phase alone). What DOES
+    discriminate here:
+      (a) MAGNITUDE -- the naive fit's own implied length mismatch,
+          ~+19.40 cells, matches NO discrete referral-cell candidate in
+          this script's own geometry (17, 34, or any combination -- see
+          module docstring "REFERENCE-PLANE REFERRAL" for why those were
+          checked and ruled out, including the WRONG SIGN a missing
+          referral would predict). A genuine referral bug lands on an
+          exact cell count; this doesn't.
+      (b) DISPERSION -- the measured/analytic beta ratio itself DRIFTS
+          mildly across the band (1.1202 at 4 GHz to 1.1222 at 12 GHz,
+          not perfectly flat). Only the beta-mismatch model reproduces
+          that drift: a pure length error multiplies a CORRECT,
+          frequency-independent beta by a constant, so its own
+          measured/analytic ratio (if one existed) would stay flat, not
+          drift -- length errors have no mechanism to produce this.
+
+    Run-3's own committed data showed why this matters: the analytic
+    assumption was ~12% too slow for this fixture's coax cross-section
+    on this mesh (measured/analytic beta ratio 1.1202-1.1222 across
+    4-12 GHz, from all 4 available measurements -- port1 and port2,
+    both drives -- agreeing with each other to ~0.01%, i.e. a real,
+    reproducible property of the simulated line, not measurement
+    noise). This is Yee-staircasing of the coax's a-to-b PTFE annulus:
+    only ~3.8 cells span (2.055-0.635mm)/dx=0.375mm -- the SAME class of
+    effect this repo's own MSL preflight already documents for a
+    comparably coarse dielectric gap ("Yee staircase at dielectric
+    interface is O(dx) -- Z0 staircase error >5% expected"), not a
+    solver defect. Using the measured beta collapsed the phase
+    deviation from 111.38 deg (max, analytic assumption -- the reported
+    run-3 failure) to under 1.04 deg across the WHOLE 4-12 GHz band
+    (under 0.44 deg inside the gated central band) -- confirmed by
+    direct recomputation against the committed run-3 S-parameters, not
+    merely argued.
+
+    The result dict's own ``beta_ratio_measured_over_analytic`` field
+    (populated only when ``beta`` is given) keeps this ratio visible
+    per-bin, over the SAME gated band the pass/fail decision uses -- a
+    future ~2x drift in the same direction should be inspectable at a
+    glance, not require re-deriving raw arrays from a JSON archive.
 
     Stage A's own call site leaves this at the default (``None``): it is
     air-filled (eps_r=1.0, so v=c exactly, no dielectric to stair-case)
@@ -1114,10 +1164,19 @@ def _matched_through_witness(freqs_hz: np.ndarray, s21: np.ndarray, *, L_m: floa
     mag_lo, mag_hi = mag_band
     mag_ok = bool(np.all((s21_band >= mag_lo) & (s21_band <= mag_hi)))
 
+    beta_analytic = 2.0 * np.pi * freqs_hz * np.sqrt(eps_r) / _C0
     if beta is None:
-        beta_use = 2.0 * np.pi * freqs_hz * np.sqrt(eps_r) / _C0
+        beta_use = beta_analytic
+        beta_ratio_report = None
     else:
         beta_use = np.real(np.asarray(beta, dtype=np.complex128))
+        # Non-blocking review fix (PR #548): keep the measured/analytic
+        # ratio visible per-bin, over the SAME gated band the pass/fail
+        # decision uses -- see this function's own ``beta`` docstring
+        # ("EVIDENCE") for why the ratio's own drift across the band (not
+        # just its mean) is part of the diagnostic, not a detail to
+        # discard.
+        beta_ratio_report = (beta_use[idx] / beta_analytic[idx]).tolist()
 
     expected_phase = -beta_use * L_m
     measured_phase = np.unwrap(np.angle(s21))
@@ -1170,6 +1229,7 @@ def _matched_through_witness(freqs_hz: np.ndarray, s21: np.ndarray, *, L_m: floa
         "group_delay_dev_ps": gd_dev_ps, "gd_tol_ps": gd_tol_ps, "gd_ok": gd_ok,
         "expected_group_delay_ps": expected_gd_report_ps,
         "beta_source": "measured" if beta is not None else "analytic",
+        "beta_ratio_measured_over_analytic": beta_ratio_report,
         "passed": passed,
     }
     if not passed:

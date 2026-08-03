@@ -42,6 +42,14 @@ examples/gpu_benchmark_results.json
 # Generated artifacts (runtime output — never commit)
 dist/
 logs/
+# Exception (PR #548 review): committed external-referee run logs are
+# EVIDENCE, not runtime output -- REPRODUCE_GATE_RECORD's log_path must
+# be git-tracked so a reviewer outside this machine can open it (the
+# whole point of the fill-contract test in
+# tests/test_coax_two_port_referee_header.py). The broad "logs/" rule
+# above would otherwise silently swallow this directory too.
+!validation/research/coax_two_port/logs/
+!validation/research/coax_two_port/logs/*
 **/*.png
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png

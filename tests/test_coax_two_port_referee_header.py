@@ -112,9 +112,27 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
 
     This is the test that must go RED if someone later claims reproduced
     numbers without a log path pointing at the run that produced them --
-    not a pinned number that rots after the first real VESSL run. M3 fix:
-    a filled-in log_path must live under .omx/ or
-    docs/research_notes/vessl_logs/ AND actually exist on disk.
+    not a pinned number that rots after the first real VESSL run.
+
+    TRACKED-PATH fix (PR #548 review, correcting PR #548's OWN first
+    fill): a filled-in (``status != "UNRUN"``) record's ``log_path`` must
+    live under a GIT-TRACKED prefix --
+    ``validation/research/coax_two_port/logs/`` -- not merely "exists on
+    disk on the machine that ran the job". The original M3 fix's allowed
+    prefixes, ``.omx/`` and ``docs/research_notes/vessl_logs/``, are
+    BOTH gitignored in this repo -- accepting either one here let the
+    VERY FIRST real fill (``status="RUN"``, ``log_path`` under ``.omx/``)
+    go red in every clone/CI checkout except the one machine that
+    happened to still have that VESSL job's local artifact
+    (reviewer-reproduced: 23/24 in a fresh worktree). Gitignored
+    prefixes are recognized below only as historical/documentation
+    record of the pre-#548 design's intent -- REJECTED for an actually
+    filled record, whose whole point is that "a reviewer outside this
+    machine can open the log a claimed number came from". There is no
+    parallel leniency for UNRUN: that branch requires ``log_path is
+    None`` regardless, so "which prefix is OK" never arises for an
+    unfilled placeholder -- the distinction that matters is FILLED (must
+    be tracked) vs UNFILLED (no path at all, any prefix moot).
     """
     module = _load_referee_module()
     record = module.REPRODUCE_GATE_RECORD
@@ -128,11 +146,19 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
         assert record["reproduced_zl_max_dev_ohm"] is not None
         log_path_str = record["log_path"]
         assert log_path_str, "a filled-in reproduce_gate_record needs a log_path"
-        assert log_path_str.startswith(".omx/") or log_path_str.startswith(
-            "docs/research_notes/vessl_logs/"
-        ), (
-            f"log_path {log_path_str!r} must live under .omx/ or "
-            f"docs/research_notes/vessl_logs/ (M3 fix)"
+
+        gitignored_prefixes = (".omx/", "docs/research_notes/vessl_logs/")
+        tracked_prefixes = ("validation/research/coax_two_port/logs/",)
+        assert not log_path_str.startswith(gitignored_prefixes), (
+            f"log_path {log_path_str!r} lives under a GITIGNORED prefix -- "
+            f"fine for the pre-#548 design's own history, but a FILLED "
+            f"(status != 'UNRUN') record needs a log a reviewer OUTSIDE "
+            f"this machine can open; use a tracked prefix instead: "
+            f"{tracked_prefixes!r} (PR #548 review)"
+        )
+        assert log_path_str.startswith(tracked_prefixes), (
+            f"log_path {log_path_str!r} must live under a TRACKED prefix "
+            f"{tracked_prefixes!r} once status is RUN (PR #548 review)"
         )
         log_path = REPO_ROOT / log_path_str
         assert log_path.exists(), (
@@ -785,6 +811,27 @@ def test_matched_through_witness_run3_regression_measured_vs_analytic_beta():
     assert result_s21["max_phase_dev_deg"] < 1.0
     assert result_s12["max_phase_dev_deg"] < 1.0
     assert result_s21["beta_source"] == "measured"
+
+    # Non-blocking review fix (PR #548): the ratio must be VISIBLE per-bin
+    # (not just implied by a passing phase check) and must land in the
+    # ~12% band this diagnosis measured -- a future ~2x drift in the same
+    # direction should trip this directly, without raw-array archaeology.
+    ratio = result_s21["beta_ratio_measured_over_analytic"]
+    assert ratio is not None and len(ratio) == 4  # the gated central band
+    assert all(1.10 < r < 1.14 for r in ratio), f"beta ratio out of the recorded ~12% band: {ratio}"
+
+    # The analytic path (beta=None) must not report a measured ratio at
+    # all -- there is nothing "measured" to ratio against. Use a
+    # synthetic, perfectly-matched-to-the-analytic-model S21 (zero
+    # deviation by construction) so this passes cleanly and isolates the
+    # field check from any real data's own imperfections.
+    beta_analytic = 2.0 * np.pi * freqs_hz * np.sqrt(module.B_PTFE_EPS_R) / module._C0
+    s21_synthetic = np.exp(-1j * beta_analytic * module.B_L12_MM * 1e-3)
+    result_analytic = module._matched_through_witness(
+        freqs_hz, s21_synthetic, L_m=module.B_L12_MM * 1e-3, eps_r=module.B_PTFE_EPS_R,
+        mag_band=module.B_S21_THRU_BAND, label="ratio_none_check")
+    assert result_analytic["passed"] is True
+    assert result_analytic["beta_ratio_measured_over_analytic"] is None
 
 
 def test_run_stage_b_passes_end_to_end_on_run3_data_with_the_fix(monkeypatch):
