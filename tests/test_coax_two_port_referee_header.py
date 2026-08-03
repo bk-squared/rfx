@@ -211,21 +211,140 @@ def test_stage_b_layout_is_self_consistent_and_openems_free():
 
     required = {
         "lx_mm", "ly_mm", "lz_mm", "cx_mm", "cy_mm",
-        "z_lo_coax_bot_mm", "z_hi_coax_top_mm", "z_feed_bot_mm", "z_feed_top_mm",
-        "z_split_mm", "ref_plane_shift_port1_mm", "ref_plane_shift_port2_mm",
+        "z_port1_start_mm", "z_port1_stop_mm", "z_port2_start_mm", "z_port2_stop_mm",
+        "z_feed_bot_mm", "z_feed_top_mm", "z_split_mm",
+        "ref_plane_shift_port1_mm", "ref_plane_shift_port2_mm",
+        "measplane_port1_mm", "feedshift_port1_mm",
+        "measplane_port2_mm", "feedshift_port2_mm",
     }
     assert required <= set(layout.keys())
 
-    # Both ports' referral distance to rfx's own feed plane is exactly 1
-    # cell (module docstring "REFERENCE-PLANE REFERRAL" derivation).
-    assert abs(layout["ref_plane_shift_port1_mm"] - module.B_DX_MM) < 1e-6
-    assert abs(layout["ref_plane_shift_port2_mm"] - module.B_DX_MM) < 1e-6
+    # H2' fix: both ports' OUTER ends now sit exactly at the domain edges
+    # (into the PML), not retracted from it.
+    assert layout["z_port1_start_mm"] == 0.0
+    assert layout["z_port2_stop_mm"] == layout["lz_mm"]
 
-    # ordering sanity: both line edges outside the PML, z_split strictly
-    # between them.
-    assert layout["z_lo_coax_bot_mm"] > module.B_PML_DEPTH_MM
-    assert layout["z_hi_coax_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
-    assert layout["z_lo_coax_bot_mm"] < layout["z_split_mm"] < layout["z_hi_coax_top_mm"]
+    # The TARGET reference planes (not the bare conductor extent, which
+    # legitimately reaches the domain edges per H2') must stay safely
+    # inside the clear, non-PML region.
+    assert layout["z_feed_bot_mm"] > module.B_PML_DEPTH_MM
+    assert layout["z_feed_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
+    assert layout["z_port1_start_mm"] < layout["z_split_mm"] < layout["z_port2_stop_mm"]
+
+    # FeedShift/MeasPlaneShift must land strictly inside each port's own
+    # span and stay separated from each other.
+    port1_span = layout["z_port1_stop_mm"] - layout["z_port1_start_mm"]
+    port2_span = layout["z_port2_stop_mm"] - layout["z_port2_start_mm"]
+    assert 0.0 < layout["measplane_port1_mm"] < port1_span
+    assert 0.0 < layout["feedshift_port1_mm"] < port1_span
+    assert 0.0 < layout["measplane_port2_mm"] < port2_span
+    assert 0.0 < layout["feedshift_port2_mm"] < port2_span
+    assert abs(layout["measplane_port1_mm"] - layout["feedshift_port1_mm"]) > module.B_DX_MM
+    assert abs(layout["measplane_port2_mm"] - layout["feedshift_port2_mm"]) > module.B_DX_MM
+
+
+def test_stage_b_port_directions_are_both_positive():
+    """B4' fix (round-2 review, BLOCKING, hole-closer): both Stage B ports
+    must be built stop>start (direction=+1), matching Coax.m's own
+    same-direction layout -- CoaxialPort's current probe is direction-
+    signed, so a mirror-symmetric (direction=-1) port 2 makes
+    |uf_inc2/uf_inc1| read ~0 for a genuine forward wave instead of ~1
+    (verified by the reviewer against openEMS's own CalcPort formulas on
+    a synthetic forward TEM wave). All 13 round-1 tests stayed GREEN
+    after the reviewer mutated port 2's orientation back to direction=-1
+    -- this test closes that hole by pinning the sign directly from the
+    SAME layout fields ``_build_stage_b_drive`` consumes to build the
+    real ``CoaxialPort`` objects (single source of truth, not a
+    duplicated/independent computation that could itself drift)."""
+    module = _load_referee_module()
+    layout = module._stage_b_layout()
+
+    direction_port1 = 1.0 if (layout["z_port1_stop_mm"] - layout["z_port1_start_mm"]) > 0 else -1.0
+    direction_port2 = 1.0 if (layout["z_port2_stop_mm"] - layout["z_port2_start_mm"]) > 0 else -1.0
+    assert direction_port1 == 1.0, "port1 direction must be +1"
+    assert direction_port2 == 1.0, "port2 direction must be +1 (B4' regression)"
+
+    # Mutation check: flipping port2's start/stop (the EXACT round-1
+    # regression) must be caught -- both by _stage_b_layout()'s own
+    # assertion (AssertionError, exit 3) and by this test reading the
+    # same fields a different way.
+    mutated_direction = (
+        1.0 if (layout["z_port2_start_mm"] - layout["z_port2_stop_mm"]) > 0 else -1.0
+    )
+    assert mutated_direction == -1.0, "mutation sanity check itself is broken"
+
+
+def test_stage_b_matched_through_band_and_group_delay():
+    """B5' fix (round-2 review, BLOCKING): Stage B's own matched-through
+    band must differ from Stage A's ideal-lossless band (rfx's raw |S21|
+    profile is 0.960->0.737, a real lossy line), and the expected group
+    delay (L12*sqrt(eps_r)/c) must land near the reviewer's own
+    independently-stated ~282 ps for L12=58.4595mm, eps_r=2.1."""
+    module = _load_referee_module()
+    assert module.B_S21_THRU_BAND == (0.5, 1.1)
+    assert module.B_S21_THRU_BAND != module.REPRODUCE_GATE_RECORD["gate"]["s21_thru_band"]
+
+    expected_gd_s = module.B_L12_MM * 1e-3 * (module.B_PTFE_EPS_R ** 0.5) / module._C0
+    assert abs(expected_gd_s * 1e12 - 282.0) < 5.0
+
+
+def test_stage_a_wires_its_own_num_ts_and_end_criteria_into_openems(monkeypatch):
+    """H1' fix (round-2 review, BLOCKING): A_NUM_TS/A_END_CRITERIA were
+    DEFINED and pinned by test_stage_a_matches_coaxm_tutorial_constants
+    (above) but never actually reached ``openEMS(...)`` -- Stage A silently
+    ran whatever ``--nrts``/``--end-criteria`` Stage B's CLI flags carried
+    (default 200000/1e-4) against Coax.m's MUR boundaries, where run
+    length controls reflected-energy accumulation. That constants test
+    passed before AND after the bug existed -- it only checked the
+    constants' OWN values, never that anything downstream used them. This
+    test asserts the WIRING: it captures what
+    ``_build_stage_a_coax_tutorial`` is actually called with, via
+    ``_run_stage_a_reproduce_gate`` (which, post-fix, no longer even
+    accepts nrts/end_criteria as its own parameters -- there is no longer
+    a code path for a caller-supplied CLI value to reach Stage A at all).
+    """
+    module = _load_referee_module()
+    calls = []
+
+    class _FakeFdtd:
+        def Run(self, *args, **kwargs):
+            pass  # no-op: _run_openems_capturing_stdout just needs this to not raise
+
+    def fake_build(ContinuousStructure, openEMS, CoaxialPort, *, nrts, end_criteria, use_pml):
+        calls.append({"nrts": nrts, "end_criteria": end_criteria})
+        if len(calls) < 2:
+            # let the smoke-run call through so the real (second) call --
+            # the one this test actually cares about -- is reached too.
+            return _FakeFdtd(), None, None
+        raise RuntimeError("stub: stop here, only checking the wiring")
+
+    monkeypatch.setattr(module, "_build_stage_a_coax_tutorial", fake_build)
+    monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
+
+    try:
+        module._run_stage_a_reproduce_gate(sim_root="/tmp/_unused_h1prime", threads=1, use_pml=False)
+    except RuntimeError:
+        pass
+
+    assert calls, "_build_stage_a_coax_tutorial was never called"
+    assert any(c["end_criteria"] == module.A_END_CRITERIA for c in calls), (
+        f"no call used A_END_CRITERIA={module.A_END_CRITERIA}; got {calls}"
+    )
+    assert any(c["nrts"] == module.A_NUM_TS for c in calls), (
+        f"no call used A_NUM_TS={module.A_NUM_TS}; got {calls}"
+    )
+    # the smoke run must NOT silently use Stage B's 200000/1e-4 CLI
+    # defaults either -- it is min(200, A_NUM_TS), always derived FROM
+    # A_NUM_TS, never an independent value.
+    assert all(c["nrts"] in (module.A_NUM_TS, min(200, module.A_NUM_TS)) for c in calls), (
+        f"a call used an nrts unrelated to A_NUM_TS; got {calls}"
+    )
+    assert 200000 not in [c["nrts"] for c in calls], (
+        "Stage A used Stage B's CLI --nrts default (200000) -- H1' regression"
+    )
+    assert 1e-4 not in [c["end_criteria"] for c in calls], (
+        "Stage A used Stage B's CLI --end-criteria default (1e-4) -- H1' regression"
+    )
 
 
 def test_openems_unavailable_exits_2(monkeypatch):

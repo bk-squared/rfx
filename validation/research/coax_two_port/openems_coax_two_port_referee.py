@@ -146,41 +146,88 @@ and that PR #534's numbers came from.
 
 PORT CLASS: ``CoaxialPort`` (not ``AddLumpedPort`` -- do-not-repeat above).
 Each drive builds TWO ``CoaxialPort`` instances that together span the
-rasterized clear line, split at an arbitrary shared midpoint
-(``Z_SPLIT``) -- mirroring the mirror-symmetric "each port looks INTO the
-line from its own end" convention rfx itself uses (port 1 = the "top"/+z
-end, port 2 = the "bottom"/-z end), NOT Coax.m's own same-direction
-cascaded-segments layout (Coax.m's two ports both point +z, because
-they're sequential SEGMENTS of one propagating wave, not two opposing
-feeds of a mirror-symmetric 2-port device the way rfx's fixture is).
+FULL domain in z (H2' fix below), split at the domain's own geometric
+midpoint (``z_split``). BOTH ports have ``direction=+1`` (port 1:
+start=z=0, stop=z_split; port 2: start=z_split, stop=lz) -- Coax.m's OWN
+same-direction cascaded-segments layout (Coax.m's two ports both point
++z, sequential SEGMENTS of one propagating wave), NOT the mirror-
+symmetric "each port looks into the line from its own end" convention
+rfx itself uses internally.
 
-LINE TERMINATION TOPOLOGY (H2 fix): the previous version retracted the
-coax conductors 2 cells short of the CPML AND left that retraction as an
-open, disconnected gap with a separate lumped port sitting in it -- an
-open-stub artifact the tutorial's own topology does not have. This
-version's conductors run to EXACTLY rfx's own z_lo_coax_bot / z_hi_coax_top
-(the ACTUAL extent rfx's ``stamp_coaxial_line`` itself stamps, 2 cells
-inside the CPML per rfx's own documented "PEC into CPML is
-numerically-unstable, verified" rule in ``stamp_coaxial_line``'s
-docstring) -- no further retraction, no gap, and (matching Coax.m's own
-default ``Feed_R=inf``) no extra termination cap is added at either end:
-each port's own natural "open end" behavior at its own ``start`` is all
-that's there, exactly matching how Coax.m's ports work.
+B4' FIX (round-2 review, BLOCKING): v2 built port 2 with stop<start
+(direction=-1), mirroring rfx's own port-orientation convention. This
+was WRONG for ``CoaxialPort`` specifically: its current probe is
+direction-SIGNED (``CSX.AddProbe(..., weight=self.direction, ...)`` in
+``python/openEMS/ports.py``'s ``CoaxialPort.__init__``), so a port's own
+``uf_inc``/``uf_ref`` split is tied to ITS OWN geometric direction, not
+to a convention shared across ports regardless of orientation. The
+reviewer ran openEMS's own ``CalcPort`` formulas on a synthetic forward
+TEM wave: Coax.m's own same-direction layout gives
+``|uf_inc2/uf_inc1|=1.0`` (correct); the mirror-symmetric (direction=-1
+port 2) layout this script previously used gives ``|uf_inc2/uf_inc1|=0.0``
+-- Coax.m's validated convention does NOT transfer across an orientation
+flip. Fix: both ports now share direction=+1, exactly matching Coax.m,
+so Stage A's validated ``s21 = uf_inc[thru]/uf_inc[self]`` convention
+transfers unchanged for the port1-driven case.
+
+This same-direction (not mirror-symmetric) topology has a DERIVED
+consequence for the port2-driven case that Coax.m itself never exercises
+(Coax.m only ever drives port 1): the "thru" channel choice depends on
+which physical direction the wave arrives at the RECEIVING port relative
+to THAT port's own (now globally-shared) +z convention --
+  - driving port 1 (bottom), receiving port 2 (top): the wave arrives at
+    port 2 travelling +z, ALIGNED with port 2's own +z convention ->
+    port 2's ``uf_inc`` channel (Coax.m's own formula, unchanged).
+  - driving port 2 (top), receiving port 1 (bottom): the wave arrives at
+    port 1 travelling -z, OPPOSED to port 1's own +z convention -> port
+    1's ``uf_ref`` channel, NOT ``uf_inc`` (see ``_extract_two_port_s``'s
+    docstring for the full derivation). This is REASONED from the SAME
+    local-(V,I)-based split formula the reviewer used to find the
+    original bug, applied symmetrically to the reverse direction -- it
+    has NOT been independently checked against openEMS's own formulas
+    the way the forward (Coax.m-matching) direction was, and is flagged
+    here as the residual open item for the next review pass.
+
+Both ports' computed directions are pinned by
+``tests/test_coax_two_port_referee_header.py::
+test_stage_b_port_directions_are_both_positive`` (closes the round-1
+hole: a mutated orientation previously left all 13 tests green).
+
+LINE TERMINATION TOPOLOGY (H2' fix, round-2 review -- a modelling
+decision, not a bug fix): v2 retracted the coax conductors 2 cells short
+of the CPML, copying rfx's OWN "PEC into CPML is numerically-unstable"
+rule verbatim. That rule governs rfx's CPML implementation; it does NOT
+govern openEMS's PML, a different absorber implementation with different
+stability properties. ``CoaxialPort`` has no matched-impedance
+``Feed_R`` (only 0=short or inf=open are implemented -- finite Feed_R>0
+raises ``NotImplementedError``), so a line simply CONTINUING into the
+absorber is the only matched-like termination openEMS's own primitives
+offer -- and it is exactly what Coax.m does (conductors run straight to
+the MUR boundary) and what this repo's other openEMS MSL tutorials/
+precedents do too. Stage B's ports now span ``z=[0, z_split]`` and
+``z=[z_split, lz]`` -- i.e. their outer ends run INTO the PML at both
+domain edges, matching Coax.m's own topology, not rfx's retracted one.
+DELTA (documented, not resolved -- both tools are being followed
+correctly on their own terms): rfx retracts 2 cells from its own CPML;
+Stage B extends its conductors into openEMS's PML. Different absorber
+implementations, each per that tool's own documented discipline.
 
 REFERENCE-PLANE REFERRAL (the capability this referee exists to exercise):
-each port's own default field-probe geometry (mirroring Coax.m's
-``FeedShift``/default ``MeasPlaneShift``) sits at a modest, well-
-conditioned interior offset from that port's own ``start`` -- NOT
-necessarily at rfx's own feed plane. ``CalcPort(ref_plane_shift=...)``
-then does the referral: both ports need only ``ref_plane_shift =
-DX_MM`` (ONE cell, computed programmatically as the distance from each
-port's own ``start`` to rfx's own z_feed_bot / z_feed_top respectively --
-see ``_stage_b_layout()``), because rfx's OWN z_feed_bot/z_feed_top sit
-exactly 1 cell inside its own z_lo_coax_bot/z_hi_coax_top. This referral
-distance is SMALL (1 cell) and well-conditioned precisely because each
-port's own natural geometric end (``start``) already sits close to rfx's
-target reference plane -- a large, poorly-conditioned referral was
-deliberately avoided by construction, not by accident.
+each port's own field-probe geometry (``FeedShift``/``MeasPlaneShift``,
+both computed in ``_stage_b_layout()``) sits near, but not exactly at,
+rfx's own feed plane. ``CalcPort(ref_plane_shift=...)`` does the
+referral. Because H2' moved each port's own ``start`` all the way to a
+domain edge (inside the PML), the raw "distance from start to target" is
+no longer a small number the way it was in v2 (1 cell) -- port 1's is
+~7.12mm, port 2's ~29.23mm (see ``_stage_b_layout()``'s
+``ref_plane_shift_port{1,2}_mm``). What stays SMALL and well-conditioned
+is the ACTUAL correction ``CalcPort`` has to apply: each port's
+``MeasPlaneShift`` is placed only 2 cells short of that same target (not
+literally at it, so ``ref_plane_shift`` is exercised meaningfully, not
+as a no-op), giving a small, controlled 2-cell residual rotation
+regardless of how far the absolute "distance from start" number is --
+conditioning depends on the CORRECTION distance, not on either absolute
+number alone.
 
 DELTA LIST (every remaining way this openEMS model differs from the rfx
 fixture):
@@ -210,11 +257,12 @@ fixture):
      distributed excitation, unlike the do-not-repeat's single-angle
      ``AddLumpedPort``, but still launches BIDIRECTIONALLY along the
      line's axis (toward BOTH ends) rather than rfx's directional TFSF
-     split. The short backward-going lobe (toward each port's own nearby
-     line-edge / CPML) is expected to be absorbed quickly and not
-     contaminate the forward-going measurement, mirroring how Coax.m's
-     OWN excitation (identical mechanism) works with its own nearby MUR
-     boundary -- not verified against a running openEMS instance.
+     split. The backward-going lobe (toward each port's own domain edge,
+     now running straight into the PML per H2') is expected to be
+     absorbed and not contaminate the forward-going measurement,
+     mirroring how Coax.m's OWN excitation (identical mechanism) works
+     with its own nearby MUR boundary -- not verified against a running
+     openEMS instance.
   4. MESH: rfx auto-derives dx=dy=dz=3.7474057249999997e-4 m from
      freq_max=40e9. Stage B uses the SAME cell size on all three axes.
   5. CPML DEPTH / DOMAIN CONVENTION: rfx pads 16 cells BEYOND its
@@ -227,9 +275,11 @@ fixture):
   6. PORT-TO-PORT SPAN: both ports' referred reference planes sit at
      rfx's own z=1.1242217175mm and z=59.58375102749999mm (pad-relative
      frame), L12=58.4595293mm exactly -- via ``ref_plane_shift``, not by
-     physically building the ports at those exact locations (delta from
-     v1, which physically built ports there; here the ports physically
-     span the whole rasterized line and the referral does the rest).
+     physically building the ports at those exact locations. The ports
+     THEMSELVES physically span the FULL domain edge-to-edge (H2' fix,
+     into the PML at both ends) -- much longer than L12 -- with the
+     referral doing all the work of landing the REPORTED S-parameters at
+     rfx's own, much shorter, feed-to-feed span.
   7. EXCITATION WAVEFORM: rfx uses a differentiated Gaussian pulse
      (fractional bandwidth 1.2, f0=8 GHz -- issue #386). Stage B's
      openEMS ``SetGaussExcite`` uses f0=8 GHz (matching rfx's own f0) and
@@ -258,20 +308,31 @@ Hand-ported sanity checks (external scripts get no rfx preflight --
       "Submission discipline"): a short smoke run before every real run,
       openEMS's OS-level stdout captured and scanned for mesh/port-parse
       warning classes.
-  (h) B5 witnesses, WIRED INTO ``passed`` (not just recorded):
+  (h) B5/B5' witnesses, WIRED INTO ``passed``/``sanity_passed`` (not just
+      recorded):
       - per-bin passivity: |S11|^2+|S21|^2 <= 1+tol (hard upper bound for
         any passive structure; a lower bound is NOT gated since the true
-        loss is not known a priori -- only recorded).
+        loss is not known a priori -- only recorded). Stage A's own
+        passivity gate is computed over the SAME central frequency
+        sub-band as the matched-through witness below (M1' fix -- Z_ref/
+        beta are ill-conditioned at DC and the sweep's own edges, and
+        Coax.m's own ``linspace(0, 2*f0, 201)`` starts AT f=0).
       - Stage-A matched-through expectation: |S21|~=1 with phase~=-beta*L
         and group delay~=L/c (Coax.m's line is air-filled, lossless,
         non-dispersive TEM) over a central frequency sub-band, away from
         f=0 and the sweep's own edges. ONE-SIDED per the review: this
         compares against an INDEPENDENTLY-known expected value (~1), not
         against another internally-derived quantity like S12 -- a
-        systematic channel-convention error (e.g. reading ``uf_ref``
-        instead of ``uf_inc`` for port 2) would read close to 0 here,
-        which a symmetric reciprocity check could fail to catch if the
-        SAME error affected both drives identically.
+        systematic channel-convention error (e.g. reading the wrong
+        channel for port 2) would read close to 0 here, which a
+        symmetric reciprocity check could fail to catch if the SAME error
+        affected both drives identically.
+      - Stage-B matched-through expectation (B5' fix, round-2 review):
+        the SAME one-sided witness, re-parameterized for Stage B's own
+        fixture -- |S21| in [0.5, 1.1] (rfx's own raw profile is
+        0.960->0.737, PR #534) and group delay ~= L12*sqrt(eps_r)/c ~=
+        282 ps (L12=58.4595mm, eps_r=2.1) -- wired into Stage B's own
+        ``sanity_passed``, not just Stage A's ``passed``.
       - Stage A's truncation witness (c) is now included in ``passed``.
 
 Exit codes (lane convention, ``docs/agent-memory/task_recipes/
@@ -437,19 +498,19 @@ B_CLEAR_Y_MM = B_INTERIOR_Y_CELLS * B_DX_MM
 B_CLEAR_Z_MM = B_INTERIOR_Z_CELLS * B_DX_MM   # 60.707972745 mm (NOT 60.0)
 
 # rfx's own pad-relative z positions (from the live grid-construction code
-# path; z_lo_coax_bot/z_hi_coax_top are the ACTUAL stamped-line extent,
-# z_feed_bot/z_feed_top the feed/reference planes 1 cell further in).
+# path). z_lo_coax_bot/z_hi_coax_top are the extent rfx ITSELF stamps
+# (2 cells inside its own CPML, per its "PEC into CPML is numerically-
+# unstable" rule) -- kept here as DOCUMENTATION for how close rfx's own
+# feed planes sit to its own line edge; they no longer drive Stage B's
+# own port span directly (H2' fix: Stage B's ports run to the ACTUAL
+# domain edges, into openEMS's PML, not rfx's retracted extent -- see
+# _stage_b_layout()). z_feed_bot/z_feed_top ARE still the exact rfx
+# target reference planes ref_plane_shift referral lands on.
 B_Z_LO_COAX_BOT_REL_MM = 0.749481145
 B_Z_HI_COAX_TOP_REL_MM = 59.958491599999995
 B_Z_FEED_BOT_REL_MM = 1.1242217174999998
 B_Z_FEED_TOP_REL_MM = 59.58375102749999
 B_L12_MM = B_Z_FEED_TOP_REL_MM - B_Z_FEED_BOT_REL_MM  # 58.4595293 mm, port-to-port
-
-# Both ports' referral distance from their own `start` to rfx's own feed
-# plane is exactly 1 cell (verified: both differences below equal
-# B_DX_MM to float precision) -- see module docstring "REFERENCE-PLANE
-# REFERRAL".
-B_REF_PLANE_SHIFT_MM = B_DX_MM
 
 # Z0 = sqrt(L'/C') closed form for the rfx PTFE-filled cross-section,
 # matches rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance
@@ -470,13 +531,25 @@ B_FREQS_HZ = B_FREQS_GHZ * 1e9
 B_F0_GHZ = 0.5 * (B_F_START_GHZ + B_F_STOP_GHZ)  # 8.0 GHz -- matches rfx's f0=8e9
 B_FC_GHZ = B_F_STOP_GHZ * 0.85                    # 10.2 GHz -- thru_openems.py pattern
 
-# MeasPlaneShift / FeedShift for Stage B's own ports, in cells from each
-# port's own `start` -- mirrors the SPATIAL ORDER rfx itself uses (its
-# reference/feed plane sits closer to the line's own edge than its
-# source): a small, well-conditioned measurement offset (3 cells) with
-# the excitation further in (8 cells), clearly separated from it.
-B_MEASPLANE_SHIFT_CELLS = 3
-B_FEEDSHIFT_CELLS = 8
+# B5' fix (round-2 review): Stage B's own one-sided matched-through
+# expectation band. Rfx's own RAW |S21| profile is 0.960->0.737 over
+# 4-12 GHz (PR #534) -- a real, lossy line, unlike Stage A's ideal
+# lossless air-filled Coax.m tutorial (whose band is [0.5, 1.3]). [0.5,
+# 1.1] brackets rfx's own measured range with margin on both sides while
+# still catching a channel-inversion (~0) one-sidedly.
+B_S21_THRU_BAND = (0.5, 1.1)
+
+# MeasPlaneShift/FeedShift offsets, in cells, measured FROM the target
+# reference plane (not from each port's own `start` -- H2' moved `start`
+# to a domain edge, far from the target; see _stage_b_layout()). Mirrors
+# the spatial ORDER rfx itself uses (its own excitation sits further
+# from the line's outer edge -- more "central" -- than its own feed/
+# reference plane): MeasPlaneShift sits 2 cells short of the target
+# (small, well-conditioned ref_plane_shift residual); FeedShift sits
+# further inward still (5 cells clear of MeasPlaneShift), on the
+# MORE-CENTRAL side of the target for both ports.
+B_TARGET_TO_MEASPLANE_CELLS = 2
+B_MEASPLANE_TO_FEEDSHIFT_CELLS = 5
 
 
 def _stage_b_layout() -> dict:
@@ -488,41 +561,89 @@ def _stage_b_layout() -> dict:
     RuntimeError -> exit 1 -- this function is where the former would
     originate, and its assertions are checked by
     tests/test_coax_two_port_referee_header.py without needing openEMS).
+
+    H2' fix: both ports' outer ends now sit at the domain's own edges
+    (z=0, z=lz_mm) -- INTO openEMS's PML, not retracted from it (module
+    docstring "LINE TERMINATION TOPOLOGY" has the full rationale).
+    B4' fix: port 2 spans [z_split, lz_mm] (start < stop, direction=+1),
+    NOT [lz_mm, z_split] -- both ports now share direction=+1, matching
+    Coax.m's own same-direction layout (module docstring "PORT CLASS").
     """
     pml_mm = B_PML_DEPTH_MM
     lx_mm = ly_mm = B_CLEAR_X_MM + 2.0 * pml_mm
     lz_mm = B_CLEAR_Z_MM + 2.0 * pml_mm
     cx_mm = lx_mm / 2.0
     cy_mm = ly_mm / 2.0
-    z_lo_coax_bot_mm = pml_mm + B_Z_LO_COAX_BOT_REL_MM
-    z_hi_coax_top_mm = pml_mm + B_Z_HI_COAX_TOP_REL_MM
+
+    z_port1_start_mm = 0.0     # domain floor -- INTO the PML (H2')
+    z_port2_stop_mm = lz_mm    # domain ceiling -- INTO the PML (H2')
+    z_split_mm = 0.5 * lz_mm   # arbitrary shared midpoint, both ports meet here
+    z_port1_stop_mm = z_split_mm
+    z_port2_start_mm = z_split_mm
+
+    # rfx's own reference/feed planes -- UNCHANGED by H2'/B4', still
+    # safely inside the clear (non-PML) region.
     z_feed_bot_mm = pml_mm + B_Z_FEED_BOT_REL_MM
     z_feed_top_mm = pml_mm + B_Z_FEED_TOP_REL_MM
-    z_split_mm = 0.5 * (z_lo_coax_bot_mm + z_hi_coax_top_mm)
+
+    # Distance from each port's own `start` to its own target -- LARGE
+    # now (H2' moved `start` to a domain edge), but the conditioning that
+    # matters is the residual correction below, not this raw number.
+    ref_plane_shift_port1_mm = z_feed_bot_mm - z_port1_start_mm
+    ref_plane_shift_port2_mm = z_feed_top_mm - z_port2_start_mm
+
+    cell = B_DX_MM
+    measplane_port1_mm = ref_plane_shift_port1_mm - B_TARGET_TO_MEASPLANE_CELLS * cell
+    feedshift_port1_mm = measplane_port1_mm + (
+        B_TARGET_TO_MEASPLANE_CELLS + B_MEASPLANE_TO_FEEDSHIFT_CELLS
+    ) * cell
+    measplane_port2_mm = ref_plane_shift_port2_mm - B_TARGET_TO_MEASPLANE_CELLS * cell
+    feedshift_port2_mm = measplane_port2_mm - B_MEASPLANE_TO_FEEDSHIFT_CELLS * cell
 
     layout = {
         "lx_mm": lx_mm, "ly_mm": ly_mm, "lz_mm": lz_mm,
         "cx_mm": cx_mm, "cy_mm": cy_mm,
-        "z_lo_coax_bot_mm": z_lo_coax_bot_mm, "z_hi_coax_top_mm": z_hi_coax_top_mm,
-        "z_feed_bot_mm": z_feed_bot_mm, "z_feed_top_mm": z_feed_top_mm,
+        "z_port1_start_mm": z_port1_start_mm, "z_port1_stop_mm": z_port1_stop_mm,
+        "z_port2_start_mm": z_port2_start_mm, "z_port2_stop_mm": z_port2_stop_mm,
         "z_split_mm": z_split_mm,
-        "ref_plane_shift_port1_mm": z_feed_bot_mm - z_lo_coax_bot_mm,
-        "ref_plane_shift_port2_mm": z_hi_coax_top_mm - z_feed_top_mm,
+        "z_feed_bot_mm": z_feed_bot_mm, "z_feed_top_mm": z_feed_top_mm,
+        "ref_plane_shift_port1_mm": ref_plane_shift_port1_mm,
+        "ref_plane_shift_port2_mm": ref_plane_shift_port2_mm,
+        "measplane_port1_mm": measplane_port1_mm, "feedshift_port1_mm": feedshift_port1_mm,
+        "measplane_port2_mm": measplane_port2_mm, "feedshift_port2_mm": feedshift_port2_mm,
     }
 
     # Clearance / config assertions -- an AssertionError here is a BUG in
     # this script's own geometry math (exit 3), not a physics finding.
-    assert z_lo_coax_bot_mm > pml_mm, "Stage B port1 line-edge inside PML"
-    assert z_hi_coax_top_mm < lz_mm - pml_mm, "Stage B port2 line-edge inside PML"
-    assert z_split_mm > z_lo_coax_bot_mm, "Stage B z_split not above port1's line edge"
-    assert z_split_mm < z_hi_coax_top_mm, "Stage B z_split not below port2's line edge"
-    assert abs(layout["ref_plane_shift_port1_mm"] - B_REF_PLANE_SHIFT_MM) < 1e-6, (
-        "Stage B port1 referral distance != B_REF_PLANE_SHIFT_MM (rfx geometry drift?)"
-    )
-    assert abs(layout["ref_plane_shift_port2_mm"] - B_REF_PLANE_SHIFT_MM) < 1e-6, (
-        "Stage B port2 referral distance != B_REF_PLANE_SHIFT_MM (rfx geometry drift?)"
-    )
+    #
+    # B4' hole-closer: both ports' computed DIRECTION must be +1 (matching
+    # Coax.m -- the whole point of the B4' fix). A silent reintroduction
+    # of the mirror-symmetric (direction=-1 port 2) layout must fail HERE,
+    # not just in the test that reads these same fields.
+    direction_port1 = 1.0 if (z_port1_stop_mm - z_port1_start_mm) > 0 else -1.0
+    direction_port2 = 1.0 if (z_port2_stop_mm - z_port2_start_mm) > 0 else -1.0
+    assert direction_port1 == 1.0, "Stage B port1 direction != +1 (B4' regression)"
+    assert direction_port2 == 1.0, "Stage B port2 direction != +1 (B4' regression)"
+
+    # Reference-plane clearance: the TARGET planes (not the bare
+    # conductor extent, which now legitimately reaches the domain edges
+    # per H2') must sit safely inside the clear, non-PML region.
+    assert z_feed_bot_mm > pml_mm, "Stage B port1 target reference plane inside PML"
+    assert z_feed_top_mm < lz_mm - pml_mm, "Stage B port2 target reference plane inside PML"
+    assert z_port1_start_mm < z_split_mm < z_port2_stop_mm, "Stage B port ordering broken"
     assert abs((z_feed_top_mm - z_feed_bot_mm) - B_L12_MM) < 1e-6, "L12 mismatch vs rfx fixture"
+
+    # FeedShift/MeasPlaneShift must land strictly inside each port's own
+    # span (not past z_split, not past the domain edge) and stay
+    # positively separated from each other (no near-field overlap).
+    for name, meas, feed, span in (
+        ("port1", measplane_port1_mm, feedshift_port1_mm, z_port1_stop_mm - z_port1_start_mm),
+        ("port2", measplane_port2_mm, feedshift_port2_mm, z_port2_stop_mm - z_port2_start_mm),
+    ):
+        assert 0.0 < meas < span, f"Stage B {name} MeasPlaneShift outside its own span"
+        assert 0.0 < feed < span, f"Stage B {name} FeedShift outside its own span"
+        assert abs(meas - feed) > cell, f"Stage B {name} FeedShift/MeasPlaneShift too close"
+
     return layout
 
 
@@ -633,15 +754,37 @@ def _non_physical_guard(s_mag: np.ndarray, label: str) -> None:
         )
 
 
-def _passivity_witness(s11: np.ndarray, s21: np.ndarray, label: str, *, tol: float = 0.05) -> dict:
+def _central_band_idx(n: int) -> slice:
+    """The central 50% of an n-point frequency sweep, skipping bin 0.
+
+    M1' fix (round-2 review): Z_ref/beta (and anything derived from them,
+    including the passivity witness) are ill-conditioned at DC and at a
+    sweep's own edges -- Coax.m's own ``linspace(0, 2*f0, 201)`` STARTS
+    at f=0 exactly. This slice is now shared by the ZL gate, Stage A's
+    passivity witness, AND the matched-through witness (previously only
+    the latter excluded these bins).
+    """
+    lo, hi = int(0.25 * n), int(0.75 * n)
+    return slice(max(lo, 1), max(hi, lo + 1))
+
+
+def _passivity_witness(s11: np.ndarray, s21: np.ndarray, label: str, *,
+                       tol: float = 0.05, idx: slice | None = None) -> dict:
     """B5(a): per-bin energy balance |S11|^2+|S21|^2 <= 1+tol, HARD gate.
 
     Only the upper bound is enforced (any passive structure must satisfy
     it); the lower bound (how far below 1, i.e. how lossy) is recorded
     but NOT gated -- the true loss of either fixture is not known a
     priori, so gating a lower bound would be an unverified assumption.
+
+    ``idx`` (M1' fix): restrict the gate to a caller-supplied frequency
+    sub-band (typically ``_central_band_idx(n)``) -- Stage A's own sweep
+    includes f=0 and its own edges, where Z_ref/beta (and anything that
+    depends on a well-conditioned wave decomposition) are noisy; Stage
+    B's sweep has no DC point and passes ``idx=None`` (full band).
     """
-    balance = np.abs(s11) ** 2 + np.abs(s21) ** 2
+    balance_full = np.abs(s11) ** 2 + np.abs(s21) ** 2
+    balance = balance_full[idx] if idx is not None else balance_full
     max_balance = float(np.max(balance))
     passed = bool(max_balance <= 1.0 + tol)
     if not passed:
@@ -649,35 +792,50 @@ def _passivity_witness(s11: np.ndarray, s21: np.ndarray, label: str, *, tol: flo
             f"[{label}] passivity witness failed: max(|S11|^2+|S21|^2)="
             f"{max_balance:.4f} > {1.0 + tol} -- non-physical energy gain."
         )
-    return {"balance": balance.tolist(), "max_balance": max_balance, "tol": tol, "passed": passed}
+    return {
+        "balance": balance.tolist(), "max_balance": max_balance, "tol": tol,
+        "band_restricted": idx is not None, "passed": passed,
+    }
 
 
 def _matched_through_witness(freqs_hz: np.ndarray, s21: np.ndarray, *, L_m: float,
-                             eps_r: float, label: str) -> dict:
-    """B5(b): Stage-A-only, one-sided matched-through expectation.
+                             eps_r: float, mag_band: tuple[float, float], label: str) -> dict:
+    """B5/B5': one-sided matched-through expectation (Stage A AND Stage B).
 
-    |S21|~=1, phase~=-beta*L, group delay~=L*sqrt(eps_r)/c over a central
-    frequency sub-band (away from f=0 and the sweep's own edges, where a
-    Gaussian-pulse spectrum is weak and DFT noise dominates). ONE-SIDED
-    per the review: compared against an INDEPENDENTLY-known expected
-    value, not against another internally-derived quantity (e.g. S12) --
-    catches a systematic channel-convention error that a symmetric
-    reciprocity check could miss if it affected both drives identically.
+    |S21|~=1 (or, for Stage B's lossy fixture, within ``mag_band``),
+    phase~=-beta*L, group delay~=L*sqrt(eps_r)/c over the SAME central
+    frequency sub-band ``_passivity_witness``/the ZL gate now use (M1'
+    fix -- away from f=0 and the sweep's own edges, where a Gaussian-
+    pulse spectrum is weak and DFT noise dominates). ONE-SIDED per the
+    review: compared against an INDEPENDENTLY-known expected value, not
+    against another internally-derived quantity (e.g. S12) -- catches a
+    systematic channel-convention error that a symmetric reciprocity
+    check could miss if it affected both drives identically.
+
+    ``mag_band`` is caller-supplied (not read from ``REPRODUCE_GATE_
+    RECORD`` unconditionally) so Stage A (ideal lossless Coax.m line,
+    [0.5, 1.3]) and Stage B (rfx's own lossy fixture, [0.5, 1.1] --
+    B5' fix) can each use their own physically-appropriate band.
     """
-    n = freqs_hz.size
-    lo, hi = int(0.25 * n), int(0.75 * n)
-    idx = slice(max(lo, 1), max(hi, lo + 1))  # skip f=0 and the extreme edges
+    idx = _central_band_idx(freqs_hz.size)
 
     s21_mag = np.abs(s21)
     s21_band = s21_mag[idx]
-    mag_lo, mag_hi = REPRODUCE_GATE_RECORD["gate"]["s21_thru_band"]
+    mag_lo, mag_hi = mag_band
     mag_ok = bool(np.all((s21_band >= mag_lo) & (s21_band <= mag_hi)))
 
     beta = 2.0 * np.pi * freqs_hz * np.sqrt(eps_r) / _C0
     expected_phase = -beta * L_m
     measured_phase = np.unwrap(np.angle(s21))
-    # Compare modulo 2*pi (absolute phase reference is convention-
-    # dependent; the SLOPE / relative behavior is what beta predicts).
+    # Wrap the DIFFERENCE to (-pi, pi] purely to avoid a spurious 2*pi*n
+    # branch-cut artefact from np.unwrap's own arbitrary starting branch.
+    # This does NOT make the check tolerant of an arbitrary constant
+    # phase offset (LOW fix -- the previous comment overclaimed
+    # "slope/relative behavior only"): it compares measured vs -beta*L at
+    # EVERY frequency point, so it pins the ABSOLUTE phase reference too,
+    # not just its rate of change with frequency -- CalcPort's own
+    # uf_inc/uf_ref split ties phase directly to the physical excitation,
+    # with no free additive constant to calibrate away.
     phase_dev_rad = np.angle(np.exp(1j * (measured_phase - expected_phase)))
     max_phase_dev_deg = float(np.degrees(np.max(np.abs(phase_dev_rad[idx]))))
 
@@ -748,8 +906,15 @@ def _build_stage_a_coax_tutorial(ContinuousStructure, openEMS, CoaxialPort, *,
     return fdtd, port1, port2
 
 
-def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int, nrts: int,
-                                end_criteria: float, use_pml: bool) -> dict:
+def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int, use_pml: bool) -> dict:
+    """H1' fix (round-2 review, BLOCKING): Stage A's NrTS/EndCriteria are
+    ALWAYS Coax.m's own A_NUM_TS/A_END_CRITERIA -- they no longer accept
+    caller-supplied ``nrts``/``end_criteria`` at all (the round-1 bug was
+    that this function silently took the Stage-B CLI values, 200000/1e-4,
+    instead of the tutorial's own 5000/1e-5, against MUR boundaries where
+    run length controls reflected-energy accumulation). ``--nrts``/
+    ``--end-criteria`` on the command line now govern Stage B only.
+    """
     ContinuousStructure, openEMS, CoaxialPort = _import_openems()
 
     sim_dir = os.path.join(sim_root, "stage_a_coax_tutorial")
@@ -757,13 +922,13 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int, nrts: int,
 
     smoke_fdtd, _sp1, _sp2 = _build_stage_a_coax_tutorial(
         ContinuousStructure, openEMS, CoaxialPort,
-        nrts=min(200, nrts), end_criteria=0.0, use_pml=use_pml)
+        nrts=min(200, A_NUM_TS), end_criteria=0.0, use_pml=use_pml)
     smoke_log = _run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
     _scan_stdout_for_bad_patterns(smoke_log, "stage_a_smoke")
 
     fdtd, port1, port2 = _build_stage_a_coax_tutorial(
         ContinuousStructure, openEMS, CoaxialPort,
-        nrts=nrts, end_criteria=end_criteria, use_pml=use_pml)
+        nrts=A_NUM_TS, end_criteria=A_END_CRITERIA, use_pml=use_pml)
 
     t0 = time.time()
     real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
@@ -774,32 +939,40 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int, nrts: int,
     port2.CalcPort(sim_dir, A_FREQS_HZ)
 
     inc_peak, n_samples = _check_excitation_and_trace(port1, sim_dir, "stage_a")
-    truncated = bool(nrts > 0 and n_samples >= nrts)
+    truncated = bool(A_NUM_TS > 0 and n_samples >= A_NUM_TS)
+
+    # M1' fix: ZL gate + passivity witness restricted to the SAME central
+    # band the matched-through witness already used -- Coax.m's own sweep
+    # starts at f=0 exactly, where Z_ref/beta are ill-conditioned.
+    idx = _central_band_idx(A_FREQS_HZ.size)
 
     zl = np.asarray(port1.Z_ref, dtype=np.complex128)
-    zl_dev = np.abs(zl.real - ZL_A_ANALYTIC_OHM)
+    zl_dev_full = np.abs(zl.real - ZL_A_ANALYTIC_OHM)
+    zl_dev = zl_dev_full[idx]
     zl_re_ok = bool(np.max(zl_dev) < REPRODUCE_GATE_RECORD["gate"]["zl_re_tol_ohm"])
-    zl_im_ok = bool(np.max(np.abs(zl.imag)) < REPRODUCE_GATE_RECORD["gate"]["zl_im_tol_ohm"])
+    zl_im_ok = bool(np.max(np.abs(zl.imag[idx])) < REPRODUCE_GATE_RECORD["gate"]["zl_im_tol_ohm"])
 
     s11 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port1.uf_inc, dtype=np.complex128)
     s21 = np.asarray(port2.uf_inc, dtype=np.complex128) / np.asarray(port1.uf_inc, dtype=np.complex128)
     _non_physical_guard(np.abs(s11), "stage_a_s11")
     _non_physical_guard(np.abs(s21), "stage_a_s21")
 
-    passivity = _passivity_witness(s11, s21, "stage_a")
+    passivity = _passivity_witness(s11, s21, "stage_a", idx=idx)
+    mag_lo, mag_hi = REPRODUCE_GATE_RECORD["gate"]["s21_thru_band"]
     matched_thru = _matched_through_witness(
-        A_FREQS_HZ, s21, L_m=A_L_THRU_MM * 1e-3, eps_r=1.0, label="stage_a")
+        A_FREQS_HZ, s21, L_m=A_L_THRU_MM * 1e-3, eps_r=1.0,
+        mag_band=(mag_lo, mag_hi), label="stage_a")
 
     passed = bool(zl_re_ok and zl_im_ok and not truncated
                  and passivity["passed"] and matched_thru["passed"])
 
     return {
         "zl_real_ohm": zl.real.tolist(), "zl_imag_ohm": zl.imag.tolist(),
-        "zl_mean_ohm": float(np.mean(zl.real)), "zl_max_dev_ohm": float(np.max(zl_dev)),
+        "zl_mean_ohm": float(np.mean(zl.real[idx])), "zl_max_dev_ohm": float(np.max(zl_dev)),
         "zl_re_ok": zl_re_ok, "zl_im_ok": zl_im_ok,
         "s11_mag": np.abs(s11).tolist(), "s21_mag": np.abs(s21).tolist(),
         "passivity": passivity, "matched_through_witness": matched_thru,
-        "max_uf_inc": inc_peak, "n_trace_samples": n_samples, "nrts_cap": nrts,
+        "max_uf_inc": inc_peak, "n_trace_samples": n_samples, "nrts_cap": A_NUM_TS,
         "truncated_suspected": truncated, "elapsed_s": round(elapsed, 1),
         "passed": passed,
     }
@@ -829,9 +1002,16 @@ def _build_stage_b_drive(ContinuousStructure, openEMS, CoaxialPort, drive: str, 
         0.0, layout["lx_mm"], cx_mm, cx_mm - B_A_MM, cx_mm + B_A_MM,
         cx_mm - B_B_MM, cx_mm + B_B_MM, cx_mm - r_os_mm, cx_mm + r_os_mm,
     })
+    # z lines: domain edges, the shared split, and every feed/measure/
+    # target plane -- so CoaxialPort's own measurement-plane mesh-line
+    # snap (mesh.GetLines(prop_ny) inside its constructor) lands cleanly.
     fixed_z = sorted({
-        0.0, layout["lz_mm"], layout["z_lo_coax_bot_mm"], layout["z_hi_coax_top_mm"],
-        layout["z_split_mm"],
+        layout["z_port1_start_mm"], layout["z_port2_stop_mm"], layout["z_split_mm"],
+        layout["z_feed_bot_mm"], layout["z_feed_top_mm"],
+        layout["z_port1_start_mm"] + layout["measplane_port1_mm"],
+        layout["z_port1_start_mm"] + layout["feedshift_port1_mm"],
+        layout["z_port2_start_mm"] + layout["measplane_port2_mm"],
+        layout["z_port2_start_mm"] + layout["feedshift_port2_mm"],
     })
     mesh.AddLine("x", fixed_xy)
     mesh.AddLine("y", fixed_xy)
@@ -843,47 +1023,77 @@ def _build_stage_b_drive(ContinuousStructure, openEMS, CoaxialPort, drive: str, 
 
     excite1 = 1.0 if drive == "port1" else 0.0
     excite2 = 1.0 if drive == "port2" else 0.0
-    feedshift_mm = B_FEEDSHIFT_CELLS * dx_mm
-    measplane_mm = B_MEASPLANE_SHIFT_CELLS * dx_mm
 
-    # port1: bottom, start at the line's own low edge, pointing +z (into
-    # the line, toward z_split). port2: top, start at the line's own high
-    # edge, pointing -z (into the line, toward z_split) -- mirror-
-    # symmetric, matching rfx's own "each port looks into the line from
-    # its own end" convention (NOT Coax.m's same-direction layout).
+    # B4' fix: port 2 now start=z_split, stop=z_port2_stop_mm (domain
+    # ceiling) -- direction=+1, SAME as port 1, matching Coax.m's own
+    # cascaded-segments layout (module docstring "PORT CLASS" / B4' has
+    # the full derivation of why the previous mirror-symmetric,
+    # direction=-1 port 2 broke CoaxialPort's direction-signed current
+    # probe). H2' fix: both ports' outer ends now reach the domain's own
+    # edges (into the PML), not rfx's retracted extent.
     port1 = CoaxialPort(
         csx, port_nr=1, pec_prop=copper, mat_prop=ptfe,
-        start=[cx_mm, cy_mm, layout["z_lo_coax_bot_mm"]],
-        stop=[cx_mm, cy_mm, layout["z_split_mm"]],
+        start=[cx_mm, cy_mm, layout["z_port1_start_mm"]],
+        stop=[cx_mm, cy_mm, layout["z_port1_stop_mm"]],
         prop_dir="z", r_i=B_A_MM, r_o=B_B_MM, r_os=r_os_mm,
-        excite_amp=excite1, FeedShift=feedshift_mm, MeasPlaneShift=measplane_mm,
-        priority=10,
+        excite_amp=excite1, FeedShift=layout["feedshift_port1_mm"],
+        MeasPlaneShift=layout["measplane_port1_mm"], priority=10,
     )
     port2 = CoaxialPort(
         csx, port_nr=2, pec_prop=copper, mat_prop=ptfe,
-        start=[cx_mm, cy_mm, layout["z_hi_coax_top_mm"]],
-        stop=[cx_mm, cy_mm, layout["z_split_mm"]],
+        start=[cx_mm, cy_mm, layout["z_port2_start_mm"]],
+        stop=[cx_mm, cy_mm, layout["z_port2_stop_mm"]],
         prop_dir="z", r_i=B_A_MM, r_o=B_B_MM, r_os=r_os_mm,
-        excite_amp=excite2, FeedShift=feedshift_mm, MeasPlaneShift=measplane_mm,
-        priority=10,
+        excite_amp=excite2, FeedShift=layout["feedshift_port2_mm"],
+        MeasPlaneShift=layout["measplane_port2_mm"], priority=10,
     )
     return fdtd, port1, port2, layout
 
 
-def _extract_two_port_s(port_self, port_thru, freqs_hz: np.ndarray) -> dict:
-    """S_self/S_thru for one drive, per Coax.m's OWN convention: s21 =
-    port{2}.uf.inc ./ port{1}.uf.inc (confirmed by the tutorial's source,
-    not derived from first principles as v1 had to -- see the module
-    docstring's Stage A section)."""
+def _extract_two_port_s(port_self, port_thru, *, thru_uses_ref: bool) -> dict:
+    """S_self/S_thru for one drive.
+
+    S_self is ALWAYS ``uf_ref/uf_inc`` (Coax.m's own s11 formula, standard
+    1-port reflection, unaffected by which port or which drive).
+
+    S_thru's channel depends on which physical direction the wave arrives
+    at the RECEIVING (``port_thru``) port relative to THAT port's own
+    +z convention -- both Stage B ports now share direction=+1 (B4' fix,
+    module docstring "PORT CLASS"), so unlike a mirror-symmetric layout
+    there is no per-port orientation mismatch to worry about, but the
+    GLOBAL wave direction still flips between the two drives:
+      - driving port 1 (bottom), receiving port 2 (top): the wave arrives
+        at port 2 travelling +z, ALIGNED with port 2's own convention ->
+        ``uf_inc`` (``thru_uses_ref=False``) -- Coax.m's own formula,
+        confirmed by the tutorial's source, not derived from first
+        principles.
+      - driving port 2 (top), receiving port 1 (bottom): the wave arrives
+        at port 1 travelling -z, OPPOSED to port 1's own convention ->
+        ``uf_ref`` (``thru_uses_ref=True``). Coax.m never exercises this
+        direction (it only ever drives port 1); this is REASONED from the
+        SAME local-(V,I)-based ``uf_inc``/``uf_ref`` split the round-2
+        review used to find the original B4 bug, applied symmetrically to
+        the reverse direction -- NOT independently checked against
+        openEMS's own formulas the way the forward direction was. Flagged
+        as the residual open item for the next review pass.
+
+    Both channels are always recorded (``s_thru`` / ``s_thru_alternate_
+    channel``) so a reviewer can recover the other reading without
+    rerunning, regardless of which one this function selected.
+    """
     uf_inc_self = np.asarray(port_self.uf_inc, dtype=np.complex128)
     uf_ref_self = np.asarray(port_self.uf_ref, dtype=np.complex128)
     uf_inc_thru = np.asarray(port_thru.uf_inc, dtype=np.complex128)
     uf_ref_thru = np.asarray(port_thru.uf_ref, dtype=np.complex128)
 
+    primary_thru = uf_ref_thru if thru_uses_ref else uf_inc_thru
+    alternate_thru = uf_inc_thru if thru_uses_ref else uf_ref_thru
+
     return {
         "s_self": uf_ref_self / uf_inc_self,
-        "s_thru": uf_inc_thru / uf_inc_self,  # Coax.m convention, confirmed
-        "s_thru_alternate_channel": uf_ref_thru / uf_inc_self,  # recorded, not used
+        "s_thru": primary_thru / uf_inc_self,
+        "s_thru_alternate_channel": alternate_thru / uf_inc_self,
+        "thru_uses_ref": thru_uses_ref,
         "uf_inc_self": uf_inc_self, "uf_ref_self": uf_ref_self,
         "uf_inc_thru": uf_inc_thru, "uf_ref_thru": uf_ref_thru,
     }
@@ -916,10 +1126,14 @@ def _run_one_drive(ContinuousStructure, openEMS, CoaxialPort, *, drive: str, sim
     inc_peak, n_samples = _check_excitation_and_trace(driven_port, sim_dir, f"stage_b_drive_{drive}")
     truncated = bool(nrts > 0 and n_samples >= nrts)
 
+    # thru_uses_ref: see _extract_two_port_s's docstring. Driving port1
+    # (bottom), the wave arrives at port2 travelling +z (aligned with
+    # port2's own convention) -> uf_inc. Driving port2 (top), the wave
+    # arrives at port1 travelling -z (opposed) -> uf_ref.
     if drive == "port1":
-        extracted = _extract_two_port_s(port1, port2, B_FREQS_HZ)
+        extracted = _extract_two_port_s(port1, port2, thru_uses_ref=False)
     else:
-        extracted = _extract_two_port_s(port2, port1, B_FREQS_HZ)
+        extracted = _extract_two_port_s(port2, port1, thru_uses_ref=True)
 
     return {
         "extracted": extracted,
@@ -958,6 +1172,17 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
     passivity_drive1 = _passivity_witness(s11, s21, "stage_b_drive1")
     passivity_drive2 = _passivity_witness(s22, s12, "stage_b_drive2")
 
+    # B5' fix (round-2 review, BLOCKING): the SAME one-sided matched-
+    # through witness Stage A uses, re-parameterized for Stage B's own
+    # (lossy, rfx-matched) fixture -- wired into sanity_passed, not just
+    # recorded. A channel inversion in _extract_two_port_s (e.g. the
+    # reasoned-but-unverified reverse-direction thru_uses_ref logic)
+    # reads |S21|~=0 here against an expected ~[0.5,1.1], failing
+    # one-sidedly rather than agreeing with an equally-wrong S12.
+    matched_thru = _matched_through_witness(
+        B_FREQS_HZ, s21, L_m=B_L12_MM * 1e-3, eps_r=B_PTFE_EPS_R,
+        mag_band=B_S21_THRU_BAND, label="stage_b")
+
     recip_mag_dev = float(np.max(np.abs(np.abs(s21) - np.abs(s12))))
     recip_phase_dev_deg = float(np.max(np.abs(np.degrees(np.angle(s21) - np.angle(s12)))))
 
@@ -966,6 +1191,7 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
     sanity_passed = bool(
         not drive1["truncated_suspected"] and not drive2["truncated_suspected"]
         and passivity_drive1["passed"] and passivity_drive2["passed"]
+        and matched_thru["passed"]
     )
 
     return {
@@ -981,6 +1207,7 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
         "reciprocity_max_mag_dev": recip_mag_dev,
         "reciprocity_max_phase_dev_deg": recip_phase_dev_deg,
         "passivity_drive1": passivity_drive1, "passivity_drive2": passivity_drive2,
+        "matched_through_witness": matched_thru,
         "z0_port1_drive1": [[float(c.real), float(c.imag)] for c in drive1["z0_port1"]],
         "beta_port1_drive1": [[float(c.real), float(c.imag)] for c in drive1["beta_port1"]],
         "alternate_channel_s21": [[float(c.real), float(c.imag)]
@@ -997,8 +1224,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output", default=".omx/coax_two_port_referee/openems_coax_two_port.json")
     p.add_argument("--sim-root", default="/tmp/openems_coax_two_port_referee")
     p.add_argument("--threads", type=int, default=16)
-    p.add_argument("--nrts", type=int, default=200000)
-    p.add_argument("--end-criteria", type=float, default=1e-4)
+    p.add_argument("--nrts", type=int, default=200000,
+                   help="Stage B only (H1' fix) -- Stage A always uses its own "
+                        "Coax.m-derived A_NUM_TS, never this value")
+    p.add_argument("--end-criteria", type=float, default=1e-4,
+                   help="Stage B only (H1' fix) -- Stage A always uses its own "
+                        "Coax.m-derived A_END_CRITERIA, never this value")
     p.add_argument("--use-pml", action="store_true",
                    help="Stage A: use PML_8 instead of Coax.m's default MUR z boundary")
     p.add_argument("--skip-stage-b", action="store_true",
@@ -1036,8 +1267,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         print("\n--- Stage A: reproduce-gate (Coax.m, faithful port) ---")
         stage_a = _run_stage_a_reproduce_gate(
-            sim_root=sim_root, threads=args.threads, nrts=args.nrts,
-            end_criteria=args.end_criteria, use_pml=args.use_pml,
+            sim_root=sim_root, threads=args.threads, use_pml=args.use_pml,
         )
         print(f"  ZL: mean={stage_a['zl_mean_ohm']:.3f} ohm "
               f"(analytic {ZL_A_ANALYTIC_OHM:.3f}) max_dev={stage_a['zl_max_dev_ohm']:.3f} ohm")
@@ -1056,6 +1286,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  |S11| band: {min(stage_b['s11_mag']):.4f} - {max(stage_b['s11_mag']):.4f}")
             print(f"  reciprocity max mag dev: {stage_b['reciprocity_max_mag_dev']:.4f}, "
                   f"max phase dev: {stage_b['reciprocity_max_phase_dev_deg']:.2f} deg")
+            print(f"  matched-through witness passed: "
+                  f"{stage_b['matched_through_witness']['passed']}")
             print(f"  sanity_passed: {stage_b['sanity_passed']}")
         elif not stage_a["passed"]:
             print("\nStage A FAILED its reproduce-gate -- skipping Stage B "
