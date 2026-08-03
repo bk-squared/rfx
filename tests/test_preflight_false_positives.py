@@ -97,25 +97,31 @@ def test_full_domain_dielectric_silent_on_cpml_extension():
 
 
 def test_inset_box_leaking_into_cpml_still_warns():
-    """A Box that inset short of the domain edge (so the user clearly
-    did NOT intend full-domain extension) but still drifts into the
-    CPML region must still warn — this is the original issue #61
-    leak-into-absorber case."""
+    """A Box that genuinely crosses the domain edge into the exterior
+    absorber must still warn — this is the original issue #61
+    leak-into-absorber case.
+
+    Issue #500: CPML pads EXTERIOR to the requested domain, so
+    ``[0, LZ]`` is absorber-free by construction — a Box inset short of
+    the edge but still nominally within ``[0, LZ]`` (the pre-#500
+    fixture here) can never touch the absorber, no matter how close to
+    the edge it sits. The only genuine leak is a bounding-box coordinate
+    that is literally negative (or past ``domain_extent``) — the box
+    below is inset in x (unaffected, no leak there) but straddles z=0.
+    """
     LX, LY, LZ = 0.030, 0.005, 0.002
     DX = 0.5e-3
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      cpml_layers=4)
     sim.add_material("fr4", eps_r=4.3)
-    # CPML thickness = 4 × 0.5mm = 2mm.  Box inset 0.5mm on each side
-    # — well short of the domain edge (5·dx away from LX) so the
-    # intentional-edge heuristic does not exempt, AND inside the
-    # 30 % CPML penetration threshold (0.5mm < 0.6mm).
-    sim.add(Box((0.0005, 0, 0), (LX - 0.0005, LY, 0.0005)),
+    # CPML thickness = 4 x 0.5mm = 2mm. Box inset 0.5mm in x (no leak
+    # there) but c1[2]=-0.0003 is genuinely in the exterior z_lo absorber.
+    sim.add(Box((0.0005, 0, -0.0003), (LX - 0.0005, LY, 0.0002)),
             material="fr4")
     sim.add_source((LX/2, LY/2, 0.0002), "ez")
     issues = _issues(sim)
     assert _has(issues, "extends into CPML"), (
-        f"Box inset and leaking into CPML must still warn; "
+        f"Box straddling the z=0 edge and leaking into CPML must still warn; "
         f"issues: {issues!r}"
     )
 

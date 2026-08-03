@@ -27,8 +27,8 @@ from rfx.geometry.csg import Box
 # ---------------------------------------------------------------- (a) records
 def test_preflight_returns_back_compatible_structured_issues():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.018), component="ez")   # near CPML => issue
-    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     assert report, "expected a preflight finding for a source/probe in CPML"
     for issue in report:
@@ -49,8 +49,8 @@ def test_preflight_report_is_a_list_with_canonical_api():
     """PreflightReport IS a list (back-compat) AND mirrors the in-repo report
     idiom (.issues/.errors/.warnings/.ok/.format()/.to_dict()/.to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.018), component="ez")   # near CPML => issue
-    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     assert isinstance(report, PreflightReport) and isinstance(report, list)
     # list[str] ops the 65 legacy call sites rely on
@@ -73,8 +73,8 @@ def test_codes_set_at_check_site():
     emitting check.
     """
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.018), component="ez")
-    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
     absorber = report.by_code("absorber_overlap")
     assert absorber, f"expected absorber_overlap code, got {[i.code for i in report]}"
@@ -154,8 +154,8 @@ def test_lossy_dielectric_silent():
 # ------------------------------------------------ (d) Phase A meta-coverage
 def _bad_sim_probe_in_cpml():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.018), component="ez")   # absorber_overlap
-    sim.add_probe((0.01, 0.01, 0.019), component="ez")
+    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez")
     return sim
 
 
@@ -259,8 +259,8 @@ def test_strict_aggregates_all_issues_in_one_raise():
     raise), not fail-on-first — preserving the historical 'strict escalates any
     issue' contract while reporting all problems at once."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.018), component="ez")   # near CPML
-    sim.add_probe((0.01, 0.01, 0.019), component="ez")     # near CPML
+    sim.add_source((0.01, 0.01, 0.021), component="ez")   # in exterior CPML (#500)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez")     # in exterior CPML (#500)
     # strict=False shows >= 2 findings...
     report = sim.preflight()
     assert len(report) >= 2, f"need a multi-issue config; got {list(report)}"
@@ -365,13 +365,21 @@ def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
 
 
 def test_absorber_overlap_still_fires_on_2d_xy():
-    """The 2D-z exemption must not silence real x/y absorber overlap."""
+    """The 2D-z exemption must not silence real x/y absorber overlap.
+
+    Issue #500: CPML pads EXTERIOR to the requested domain (see
+    rfx-known-issues.md #500), so a source has to sit at a genuinely
+    negative x (past the x=0 domain edge, inside the 2e-6m-thick x_lo
+    absorber: cpml_layers=20 * dx=1e-7) to be "in" it — x=1e-7 (interior,
+    just past the edge) used to false-fire under the pre-#500
+    interior-frame bug but is not actually in the absorber.
+    """
     sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.5e13, dx=1e-7,
                      boundary="upml", cpml_layers=20, mode="2d_tmz")
-    sim.add_source((1e-7, 4.5e-6, 0), component="ez")   # deep in x_lo absorber
+    sim.add_source((-5e-7, 4.5e-6, 0), component="ez")   # genuinely in x_lo absorber
     report = sim.preflight()
     overlap = report.by_code("absorber_overlap")
-    assert overlap, "expected absorber_overlap for a source at the x_lo edge"
+    assert overlap, "expected absorber_overlap for a source in the x_lo absorber"
     assert any("x-thickness" in str(i) for i in overlap)
 
 

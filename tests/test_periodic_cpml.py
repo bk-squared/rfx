@@ -91,14 +91,24 @@ def test_preflight_skips_periodic_axis_cpml_warning():
 
 
 def test_preflight_still_warns_on_non_periodic_z_axis():
-    """Regression: z-axis (non-periodic) CPML intrusion must still warn."""
+    """Regression: z-axis (non-periodic) CPML intrusion must still warn.
+
+    Issue #500: CPML pads EXTERIOR to the requested domain, so a slab
+    spanning z=[0, 0.0005] sits entirely INSIDE the physical domain
+    (z=0.02) and can never touch the absorber — the original fixture here
+    ("deep inside the z-CPML layer") encoded the same interior-frame
+    assumption the #500 bug had, and used to false-fire. A genuine
+    issue-#61 leak requires the box to actually cross the z=0 edge into
+    the exterior absorber (which starts at z=0 and extends to z=-0.002
+    given cpml_layers=4, dx=5e-4).
+    """
     from rfx import Box
 
     sim = _build_absorber_sim()
     sim.add_material("slab", eps_r=4.0)
-    # Slab placed at z=0 (deep inside the z-CPML layer, which is on non-
-    # periodic z and spans ~2 mm from each face).
-    sim.add(Box((0.0, 0.0, 0.0), (0.01, 0.01, 0.0005)), material="slab")
+    # Slab straddles z=0: c1[2]=-0.0003 is genuinely in the exterior z_lo
+    # absorber, c2[2]=0.0002 is interior.
+    sim.add(Box((0.0, 0.0, -0.0003), (0.01, 0.01, 0.0002)), material="slab")
 
     issues = sim.preflight(strict=False)
     z_cpml_warnings = [
@@ -106,7 +116,7 @@ def test_preflight_still_warns_on_non_periodic_z_axis():
         if "extends into CPML region" in msg and " z-axis" in msg
     ]
     assert z_cpml_warnings, (
-        "slab at z=0 should trigger z-axis CPML-region warning"
+        "slab straddling z=0 should trigger z-axis CPML-region warning"
     )
 
 

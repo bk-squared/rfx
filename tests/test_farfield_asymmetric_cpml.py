@@ -96,15 +96,26 @@ def test_ntff_box_inside_cpml_trips_absorber_overlap_lo_and_hi():
 
     This replaces a prior tautology (``k_lo = z_lo + offset; assert
     k_lo >= z_lo``) that re-asserted the test's own arithmetic and could not
-    detect a real inside-CPML placement bug."""
-    # lo corner x = 5 mm < 16 mm CPML -> extends into the lo-face absorber.
-    codes_lo = _preflight_codes((0.005, 0.030, 0.030), (0.090, 0.090, 0.090))
+    detect a real inside-CPML placement bug.
+
+    Issue #500: CPML pads EXTERIOR to the requested domain (proved in
+    ``tests/test_preflight_absorber_frame.py``), so ``[0, 120]`` mm is
+    absorber-free by construction — a corner has to sit at a genuinely
+    negative coordinate (lo side) or past the domain edge (hi side) to be
+    "inside" the 16 mm-thick absorber. The pre-#500 corners here (x=5mm,
+    z=118mm) were both still inside the requested domain and used to
+    false-fire under the old interior-frame comparison.
+    """
+    # lo corner x = -5 mm: 5 mm past the x=0 edge, into the lo-face
+    # absorber (which extends to x=-16mm).
+    codes_lo = _preflight_codes((-0.005, 0.030, 0.030), (0.090, 0.090, 0.090))
     assert "absorber_overlap" in codes_lo, (
         f"lo-face inside-CPML NTFF box was NOT flagged; codes={codes_lo}"
     )
-    # hi corner z = 118 mm > 120 - 16 = 104 mm -> extends into the hi-face
-    # absorber. Verifies the guard is two-sided, not just lo-face.
-    codes_hi = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.118))
+    # hi corner z = 125 mm: 5 mm past the z=120mm edge, into the hi-face
+    # absorber (which extends to z=136mm). Verifies the guard is
+    # two-sided, not just lo-face.
+    codes_hi = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.125))
     assert "absorber_overlap" in codes_hi, (
         f"hi-face inside-CPML NTFF box was NOT flagged; codes={codes_hi}"
     )
