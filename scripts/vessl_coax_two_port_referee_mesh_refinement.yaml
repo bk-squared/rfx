@@ -1,5 +1,5 @@
 name: rfx-coax-two-port-referee-mesh-refinement
-description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared acceptance band [1.05, 1.11] and the runtime arithmetic (~3.9h estimated from run-3's own 2796s baseline). BRANCH-CLONE, SHA-CHECKOUT pattern (mirrors #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, with its reviewer-mandated fix: clone then `git checkout $RFX_EXPECT_SHA`, not `--branch` alone) -- this job clones RFX_BRANCH fresh and pins the exact commit; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
+description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared acceptance band [1.05, 1.11] and the runtime arithmetic (~3.9h estimated from run-3's own 2796s baseline). SHA-PINNED TARBALL FETCH (mechanism changed 2026-08-04 after runs 369367251836/369367251837 both died at apt-get-install-git on an unreachable Ubuntu mirror -- this image ships neither git nor a working apt path to it reliably; the original branch-clone+git-checkout pattern, mirroring #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, is preserved in spirit but fetches https://github.com/bk-squared/rfx/archive/$RFX_EXPECT_SHA.tar.gz via curl/wget/python3 instead of git -- the tarball URL IS the pin) -- this job fetches RFX_EXPECT_SHA fresh; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
 tags: [rfx, coax-two-port, i489, external-referee, mesh-refinement]
 resources:
   cluster: remilab-c0
@@ -25,23 +25,44 @@ run: |-
   echo "=== rfx #489 leg 1: coax two-port referee mesh-refinement witness ==="
   date
 
-  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  # MECHANISM CHANGE (2026-08-04, two prior submissions failed the SAME
+  # way at this exact step: VESSL runs 369367251836 and 369367251837, both
+  # dead within ~3 minutes at "apt-get update" -- "W: Failed to fetch
+  # http://archive.ubuntu.com/... Connection failed" then "E: Unable to
+  # correct problems, you have held broken packages" installing git. This
+  # image genuinely has no git preinstalled (vessl-jobs.md's own
+  # documented gotcha), and the Ubuntu archive mirror was unreachable from
+  # this cluster both times -- zero real work ran either attempt. Rather
+  # than retry the identical apt+git mechanism a third time, fetch the
+  # pinned commit as a GitHub tarball instead: needs only curl/wget/
+  # python3 (all present in this image already), no apt-get, no git. The
+  # tarball URL is itself keyed by RFX_EXPECT_SHA, so it IS the pin --
+  # curl -f fails loud (nonzero exit, caught by set -eu) on a bad SHA or a
+  # network error, same as the old checkout-mismatch guard did.
+  echo "=== fetch RFX_EXPECT_SHA as a tarball (apt+git mechanism dropped after 2 network failures: runs 369367251836, 369367251837) ==="
+  RFX_TARBALL_URL="https://github.com/bk-squared/rfx/archive/${RFX_EXPECT_SHA}.tar.gz"
+  RFX_TARBALL_PATH="/tmp/rfx-${RFX_EXPECT_SHA}.tar.gz"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$RFX_TARBALL_PATH" "$RFX_TARBALL_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$RFX_TARBALL_PATH" "$RFX_TARBALL_URL"
+  else
+    python3 -c "import urllib.request; urllib.request.urlretrieve('$RFX_TARBALL_URL', '$RFX_TARBALL_PATH')"
+  fi
+  test -s "$RFX_TARBALL_PATH" || { echo "FATAL: tarball fetch produced an empty/missing file"; exit 3; }
 
-  echo "=== clone RFX_BRANCH fresh and pin RFX_EXPECT_SHA (reviewer-mandated pattern) ==="
   CLONE_DIR=/tmp/rfx-clone
   rm -rf "$CLONE_DIR"
-  git clone --branch "$RFX_BRANCH" https://github.com/bk-squared/rfx.git "$CLONE_DIR"
+  mkdir -p "$CLONE_DIR"
+  tar xzf "$RFX_TARBALL_PATH" -C "$CLONE_DIR" --strip-components=1
   cd "$CLONE_DIR"
-  git config --global --add safe.directory "$CLONE_DIR" || true
-  git checkout "$RFX_EXPECT_SHA"
-  ACTUAL_SHA="$(git rev-parse HEAD)"
-  echo "cloned branch : $RFX_BRANCH"
-  echo "checked out   : $ACTUAL_SHA"
-  echo "expected SHA  : $RFX_EXPECT_SHA"
-  if [ "$RFX_EXPECT_SHA" != "FILL_AFTER_PUSH" ] && [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
-    echo "FATAL: checked-out SHA does not match RFX_EXPECT_SHA"
+  ACTUAL_SHA="$RFX_EXPECT_SHA"
+  echo "fetched branch (tarball snapshot) : $RFX_BRANCH"
+  echo "pinned SHA (== fetch URL)         : $ACTUAL_SHA"
+  ls validation/crossval/21_coax_two_port_referee.py >/dev/null || {
+    echo "FATAL: expected file missing after tarball extraction -- extraction or pin is broken"
     exit 3
-  fi
+  }
 
   # -- openEMS source build: the PROVEN microwave-energy recipe, identical
   # to scripts/vessl_coax_two_port_referee.yaml's build block (imitated,
