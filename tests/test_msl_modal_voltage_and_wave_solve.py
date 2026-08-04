@@ -389,6 +389,134 @@ def test_solve_handles_a_one_port_system():
 
 
 # --------------------------------------------------------------------------
+# Issue #520 leg 2 — S vs Sᵀ: every committed fixture up to this point is
+# SYMMETRIC (``_planted_s`` sets S[0,0]=S[1,1] and S[1,0]=S[0,1]), so a
+# solve that silently returned Sᵀ instead of S — e.g. the shipped
+# ``jnp.swapaxes(..., -1, -2)`` "flip back" after the batched
+# ``jnp.linalg.solve`` on (Aᵀ, Bᵀ) being dropped — would pass every existing
+# test here. Worse: for a RECIPROCAL 2-port (S12 = S21, true of any real
+# passive non-magnetized MSL structure — this is the reciprocity theorem,
+# not an rfx property) S = Sᵀ identically REGARDLESS of how asymmetric the
+# two ports are (S11 != S22 does not help: transpose only swaps the
+# off-diagonal pair, and reciprocity already makes that pair equal). So no
+# PHYSICALLY REALIZABLE MSL fixture can ever expose this bug — only a
+# fixture that violates reciprocity on purpose can, which is legitimate
+# here because ``msl_solve_s_from_waves`` is a pure n-port linear solve
+# with no reciprocity assumption built in. The re-review that opened this
+# item verified the [receiver, driven] orientation numerically but did not
+# commit a test; this is that test.
+# --------------------------------------------------------------------------
+
+def _nonreciprocal_planted_s(n_freqs=N_FREQS):
+    """A deliberately NON-reciprocal 2-port S (S12 != S21, S11 != S22).
+
+    No real rfx MSL geometry could produce this (reciprocity would force
+    S12 == S21), which is exactly why it is needed: it is the only kind of
+    fixture that can tell a correct [receiver, driven] assembly apart from
+    a transposed one.
+    """
+    f = np.linspace(0.0, 1.0, n_freqs)
+    S = np.zeros((2, 2, n_freqs), dtype=np.complex128)
+    S[0, 0] = 0.20 * np.exp(1j * (0.3 + 0.4 * f))
+    S[1, 1] = 0.35 * np.exp(1j * (-0.5 + 0.2 * f))
+    S[0, 1] = 0.55 * np.exp(1j * (1.1 - 0.6 * f))
+    S[1, 0] = 0.80 * np.exp(1j * (-0.2 + 0.9 * f))
+    return S
+
+
+def _naive_transposed_solve(wave_a, wave_b):
+    """The bug this section guards against: drop the final Sᵀ->S flip.
+
+    ``msl_solve_s_from_waves`` solves the batched system in the
+    ``(Aᵀ, Bᵀ)`` layout ``jnp.linalg.solve`` needs, then swaps the last two
+    axes back (``jnp.swapaxes(..., -1, -2)``) to return S in the
+    documented [receiver, driven] orientation. Omitting that final swap is
+    a plausible, easy-to-miss implementation slip; this reproduces exactly
+    that slip so the test below can show it is caught.
+    """
+    n_ports = len(wave_a)
+    A = jnp.stack([
+        jnp.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    B = jnp.stack([
+        jnp.stack([wave_b[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    S_T = jnp.linalg.solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2))
+    # BUG: no swapaxes back here -- returns S^T, not S.
+    return jnp.moveaxis(S_T, 0, -1)
+
+
+def test_nonreciprocal_fixture_is_actually_asymmetric():
+    """Ground truth must itself be checked (mirrors
+    test_coax_two_port_solve.py's test_asymmetric_fixture_is_what_it_claims):
+    a fixture whose defining property is assumed rather than asserted is
+    exactly how a previous review found a battery that looked complete but
+    was measuring nothing (test_coax_two_port_solve.py's own
+    ``_both_drive_swap`` history)."""
+    S = _nonreciprocal_planted_s()
+    assert not np.allclose(S[0, 1], S[1, 0]), "fixture must be non-reciprocal"
+    assert not np.isclose(abs(S[0, 0][0]), abs(S[1, 1][0])), (
+        "fixture must also be port-asymmetric"
+    )
+
+
+def test_multi_drive_solve_recovers_a_nonreciprocal_planted_s():
+    """The actual S-vs-Sᵀ proof: exact recovery of a NON-symmetric S.
+
+    Unlike test_multi_drive_solve_recovers_the_planted_s (symmetric S,
+    where S == S^T so this assertion cannot tell the two apart), a pass
+    here is only possible if the solve returns S in the declared
+    [receiver, driven] orientation, not its transpose.
+    """
+    S = _nonreciprocal_planted_s()
+    assert not np.allclose(S, np.swapaxes(S, 0, 1))  # sanity: S != S^T
+    for gamma in (0.0, 0.07, 0.2, 0.45):
+        wave_a, wave_b = _waves_from(S, gamma)
+        with enable_x64():
+            S_out = np.asarray(msl_solve_s_from_waves(wave_a, wave_b)[0])
+        np.testing.assert_allclose(S_out, S, rtol=F64_TOL, atol=F64_TOL)
+
+
+def test_transpose_bug_is_caught_only_by_the_nonreciprocal_fixture():
+    """Proves the discriminating power directly: the naive Sᵀ-returning
+    variant visibly diverges from the shipped solve on the non-reciprocal
+    fixture, and is numerically INDISTINGUISHABLE from it on the old
+    reciprocal fixture — exactly the blind spot issue #520 opened on.
+    """
+    S = _nonreciprocal_planted_s()
+    gamma = 0.2
+    wave_a, wave_b = _waves_from(S, gamma)
+    with enable_x64():
+        S_out = np.asarray(msl_solve_s_from_waves(wave_a, wave_b)[0])
+        S_naive_T = np.asarray(_naive_transposed_solve(wave_a, wave_b))
+
+    np.testing.assert_allclose(S_out, S, rtol=F64_TOL, atol=F64_TOL)
+    np.testing.assert_allclose(
+        S_naive_T, np.swapaxes(S, 0, 1), rtol=F64_TOL, atol=F64_TOL)
+    assert np.max(np.abs(S_naive_T - S)) > 0.1, (
+        "the transposed variant should visibly diverge from S on a "
+        "non-reciprocal fixture -- if this fails the fixture is not "
+        "discriminating"
+    )
+
+    # ... and the historical blind spot: on the OLD symmetric fixture the
+    # same bug is invisible, which is why nothing caught it before.
+    S_sym = _planted_s()
+    assert np.allclose(S_sym, np.swapaxes(S_sym, 0, 1))  # S == S^T here
+    wave_a_sym, wave_b_sym = _waves_from(S_sym, gamma)
+    with enable_x64():
+        S_out_sym = np.asarray(msl_solve_s_from_waves(wave_a_sym, wave_b_sym)[0])
+        S_naive_T_sym = np.asarray(_naive_transposed_solve(wave_a_sym, wave_b_sym))
+    np.testing.assert_allclose(
+        S_out_sym, S_naive_T_sym, rtol=F64_TOL, atol=F64_TOL,
+        err_msg="the reciprocal fixture should NOT be able to tell the "
+                "transposed variant apart from the correct one",
+    )
+
+
+# --------------------------------------------------------------------------
 # F2 (PR #516 review) — the WIRING: the assembly must anchor the V span on
 # the RASTERIZED trace node, not on round(h_sub/dx)
 # --------------------------------------------------------------------------
