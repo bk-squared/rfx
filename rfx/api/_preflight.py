@@ -2874,6 +2874,30 @@ class _PreflightMixin:
         # normalization consequence), and the dead-extent live-cell count
         # includes every dead cell — midpoint included — because the live
         # split does not care which cell holds the probe.
+        #
+        # Issue #544: the dead/live classification below is derived from
+        # the SAME primitive the assembler uses to compute ``n_live_lw``
+        # (``_wire_port_live_cells`` against the actual assembled
+        # ``pec_mask``) — not a standalone bounding-box-vs-cell-center
+        # approximation, which is what this advisory used before and which
+        # had DRIFTED from the assembler. The approximation compared a
+        # CENTER coordinate (node position + 0.5*dx along the component
+        # axis) against a closed-interval ``[lo, hi]`` PEC bounding box;
+        # the real rasterization (``Box.mask``, ``rfx/geometry/csg.py``)
+        # evaluates occupancy at NODE coordinates with a half-open
+        # interval ``[lo, hi)`` (or the thin-sheet nearest-node rule for a
+        # sub-cell-thick box) — a different reference point that can, and
+        # on the #488 mixed lumped/wire<->MSL fixture did, put the "dead"
+        # node one cell away from what the approximation assumed: the
+        # advisory reported n_live/n=3/4 while the assembler's
+        # ground-truth count (and the measured passive-port Z_in = Z0/4 =
+        # 12.5 ohm, PR #543) was 4/4 — every cell live. Sharing the
+        # primitive makes the two paths unable to drift again by
+        # construction.
+        grid = None
+        pec_mask = None
+        pec_entry_masks: list[tuple[str, np.ndarray]] = []
+        materials_attempted = False
         for pe in self._ports:
             if not getattr(pe, "extent", None):
                 continue
@@ -2883,36 +2907,65 @@ class _PreflightMixin:
             centers, mid_idx = rasterized
             mid_center = centers[mid_idx]
 
-            pec_bboxes = []
-            for entry in self._geometry:
-                if entry.material_name != "pec":
-                    continue
-                if not hasattr(entry.shape, "bounding_box"):
-                    continue
+            if not materials_attempted:
+                materials_attempted = True
                 try:
-                    c1, c2 = entry.shape.bounding_box()
-                except (NotImplementedError, TypeError):
-                    continue
-                pec_bboxes.append((entry.material_name, c1, c2))
+                    grid = self._build_grid()
+                    _, _, _, pec_mask, _, _, _ = self._assemble_materials(grid)
+                    if pec_mask is not None:
+                        for entry in self._geometry:
+                            mat = self._resolve_material(entry.material_name)
+                            if mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                                continue
+                            pec_entry_masks.append(
+                                (entry.material_name,
+                                 np.asarray(entry.shape.mask(grid)))
+                            )
+                except Exception:
+                    # Defensive (matches ``_wire_port_cell_centers``):
+                    # preflight must never crash a run over a diagnostics
+                    # helper. Falling back to "no dead cells known" keeps
+                    # this advisory silent rather than wrong.
+                    grid = None
+                    pec_mask = None
+                    pec_entry_masks = []
 
             dead_indices: list[int] = []
             dead_names: list[str] = []
-            for idx, center in enumerate(centers):
-                for name, c1, c2 in pec_bboxes:
-                    if all(c1[ax] <= center[ax] <= c2[ax] for ax in range(3)):
-                        dead_indices.append(idx)
-                        if name not in dead_names:
+            if grid is not None and pec_mask is not None:
+                from rfx.sources.sources import (
+                    WirePort, _wire_port_cells, _wire_port_live_cells,
+                )
+                axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
+                end = list(pe.position)
+                end[axis] += pe.extent
+                wp = WirePort(
+                    start=tuple(pe.position), end=tuple(end),
+                    component=pe.component, impedance=pe.impedance,
+                )
+                try:
+                    cells, live_flags, _ = _wire_port_live_cells(
+                        grid, wp, pec_mask)
+                except ValueError:
+                    # Every extent cell is dead: _wire_port_live_cells
+                    # raises there (issue #318 — such a port has no live
+                    # cell to terminate or drive) instead of returning a
+                    # degenerate split. Report all cells dead.
+                    cells = _wire_port_cells(grid, wp)
+                    live_flags = [False] * len(cells)
+                for idx, live in enumerate(live_flags):
+                    if live:
+                        continue
+                    dead_indices.append(idx)
+                    ci, cj, ck = cells[idx]
+                    for name, mask_arr in pec_entry_masks:
+                        if bool(mask_arr[ci, cj, ck]) and name not in dead_names:
                             dead_names.append(name)
-                        break
 
             if mid_idx in dead_indices:
                 # Kept verbatim from the #314 fix (PR #317): probe-cell
                 # corruption is the stronger, measured failure mode.
-                name = next(
-                    name for name, c1, c2 in pec_bboxes
-                    if all(c1[ax] <= mid_center[ax] <= c2[ax]
-                           for ax in range(3))
-                )
+                name = dead_names[0] if dead_names else "pec"
                 _w.warn(
                     PreflightWarning(
                         f"Wire port at {pe.position} (extent "

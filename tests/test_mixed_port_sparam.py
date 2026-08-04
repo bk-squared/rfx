@@ -24,7 +24,9 @@ from rfx import Box, Simulation
 from rfx.api._sparams import _assemble_mixed_power_wave_s
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.probes.probes import DFTPlaneProbe
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import (
+    GaussianPulse, WirePort, _wire_port_cells, _wire_port_live_cells,
+)
 
 _EPS_R = 3.66
 _H_SUB = 254e-6
@@ -637,3 +639,178 @@ def test_mixed_lane_v_span_reaches_the_rasterized_trace_on_bisecting_mesh():
         "#511/F2 off-by-one has returned in the mixed lane's own copy."
     )
     assert sim._ports[0].excite is True
+
+
+# ---------------------------------------------------------------------------
+# Issue #544: preflight's wire-port dead-extent-cell advisory disagreed
+# with the assembler's actual n_live_lw on this fixture (3/4 advisory vs 4
+# actual). The fix makes the advisory derive its count from the SAME
+# primitive the assembler uses (_wire_port_live_cells against the real
+# assembled pec_mask) instead of a standalone bounding-box-vs-cell-center
+# approximation. These tests pin the corrected fixture, confirm a
+# previously-agreeing case stays unchanged (no false positive introduced),
+# and falsify the OLD method against ground truth (mutation-style: the
+# geometry is identical, only the classification method differs).
+# ---------------------------------------------------------------------------
+
+def _ground_truth_wire_port_n_live(sim, position, component, extent,
+                                   impedance=50.0):
+    """Independent ground-truth n_live: build grid + assembled pec_mask
+    FRESH (not reusing anything preflight computed) and classify with the
+    same primitive the assembler calls
+    (rfx/api/_sparams.py:3426, compute_mixed_s_matrix's n_live_lw).
+    """
+    grid = sim._build_grid()
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
+    end = list(position)
+    end[axis] += extent
+    wp = WirePort(start=tuple(position), end=tuple(end),
+                  component=component, impedance=impedance)
+    _, _, _, pec_mask, _, _, _ = sim._assemble_materials(grid)
+    _, live_flags, n_live = _wire_port_live_cells(grid, wp, pec_mask)
+    return n_live, len(live_flags)
+
+
+def _old_buggy_dead_cell_classification(sim, position, component, extent,
+                                        impedance=50.0):
+    """Frozen, standalone reimplementation of the PRE-#544 advisory
+    counting path (bounding-box-vs-cell-CENTER, closed interval). The live
+    ``rfx/api/_preflight.py::_validate_cfg_port_inside_pec`` no longer
+    contains this logic — kept here only so this test can demonstrate,
+    on the exact fixture geometry, that it disagreed with ground truth
+    (the #544 bug) without needing a pre-fix checkout.
+    """
+    grid = sim._build_grid()
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
+    end = list(position)
+    end[axis] += extent
+    wp = WirePort(start=tuple(position), end=tuple(end),
+                  component=component, impedance=impedance)
+    d = (grid.dx, getattr(grid, "dy", grid.dx), getattr(grid, "dz", grid.dx))
+    pad = (getattr(grid, "pad_x_lo", 0), getattr(grid, "pad_y_lo", 0),
+           getattr(grid, "pad_z_lo", 0))
+    cells = _wire_port_cells(grid, wp)
+    centers = []
+    for cell in cells:
+        pos = [(cell[ax] - pad[ax]) * d[ax] for ax in range(3)]
+        pos[axis] += 0.5 * d[axis]
+        centers.append(tuple(pos))
+    pec_bboxes = []
+    for entry in sim._geometry:
+        if entry.material_name != "pec":
+            continue
+        if not hasattr(entry.shape, "bounding_box"):
+            continue
+        c1, c2 = entry.shape.bounding_box()
+        pec_bboxes.append((c1, c2))
+    dead = [idx for idx, c in enumerate(centers)
+            if any(all(c1[ax] <= c[ax] <= c2[ax] for ax in range(3))
+                  for c1, c2 in pec_bboxes)]
+    return len(cells) - len(dead), len(cells)
+
+
+def test_wire_port_dead_cell_advisory_matches_ground_truth_on_488_fixture():
+    """Regression lock (issue #544): on the #488 lane's own committed
+    fixture, the trace is exactly one cell thick (dx=80um) and rasterizes
+    to node k=4 (see test_mixed_lane_v_span_reaches_the_rasterized_trace_
+    on_bisecting_mesh's docstring: "the trace rasterizes at node 4"),
+    which is OUTSIDE the wire port's 4 rasterized cells (k=0..3) — every
+    port cell is genuinely live. Before the fix, the advisory reported
+    n_live/n=3/4 ("terminates at 50 ohm across its 3 live cells") because
+    it compared a cell-CENTER (node + half-cell Yee offset) against the
+    PEC bounding box instead of the real rasterization; the assembler's
+    actual n_live_lw was always 4 (PR #543 measured Z_in = Z0/4 = 12.5 ohm
+    flat, matching n_live=4 to 5.8e-4).
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c, x=2e-3)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    n_live_truth, n = _ground_truth_wire_port_n_live(
+        sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
+    assert (n_live_truth, n) == (4, 4), (
+        f"ground truth changed ({n_live_truth}/{n}) -- re-derive the "
+        "expected preflight behaviour before trusting the rest of this "
+        "test"
+    )
+
+    issues = sim.preflight()
+    codes = [getattr(s, "code", None) for s in issues]
+    assert "wire_port_dead_extent_cells" not in codes, (
+        "corrected advisory must be silent: ground truth is n_live/n=4/4 "
+        "(issue #544): " + "\n".join(str(s) for s in issues)
+    )
+    assert "wire_port_midpoint_in_pec" not in codes, (
+        "midpoint cell (index 2, z=200um) is live -- #314 must stay "
+        "silent too: " + "\n".join(str(s) for s in issues)
+    )
+
+
+def test_wire_port_dead_cell_advisory_stays_correct_on_an_already_agreeing_case():
+    """No false-positive introduction: a case where the pre-#544 advisory
+    and the assembler ALREADY agreed must still report the same n_live/n
+    after the fix. dx=0.5mm, trace z in [1.0,1.5]mm, port extent=1.0mm ->
+    3 cells (centers 0.25/0.75/1.25mm); the top cell (index 2, z=1.25mm)
+    is genuinely dead both under the old center-based check AND under the
+    real node-based rasterization (this box's thin-sheet nearest-node is
+    z=1.0mm=node 2, INSIDE the port's cell range, unlike the #488 case).
+    """
+    dx = 0.5e-3
+    sim = Simulation(freq_max=10e9, domain=(0.016, 0.010, 0.006),
+                     boundary="cpml", cpml_layers=6, dx=dx)
+    sim.add(Box((0.004, 0.003, 1.0e-3), (0.012, 0.007, 1.5e-3)),
+            material="pec")
+    sim.add_port(position=(0.008, 0.005, 0.0), component="ez",
+                 impedance=50.0, extent=1.0e-3)
+
+    n_live_truth, n = _ground_truth_wire_port_n_live(
+        sim, position=(0.008, 0.005, 0.0), component="ez", extent=1.0e-3)
+    n_live_old, n_old = _old_buggy_dead_cell_classification(
+        sim, position=(0.008, 0.005, 0.0), component="ez", extent=1.0e-3)
+    assert (n_live_truth, n) == (n_live_old, n_old) == (2, 3), (
+        f"expected this fixture to be an ALREADY-AGREEING case (2/3 "
+        f"either way); got ground_truth={n_live_truth}/{n} "
+        f"old={n_live_old}/{n_old}"
+    )
+
+    issues = sim.preflight()
+    dead = [s for s in issues
+            if getattr(s, "code", None) == "wire_port_dead_extent_cells"]
+    assert len(dead) == 1 and "2/3" in dead[0], (
+        "advisory text must be unchanged on an already-agreeing fixture: "
+        + "\n".join(str(s) for s in issues)
+    )
+
+
+def test_wire_port_dead_cell_advisory_old_method_would_have_drifted():
+    """Mutation-style falsifier (issue #544): SAME geometry (the #488
+    fixture), two classification methods. The frozen pre-#544 method
+    (bbox-vs-cell-center) disagrees with ground truth here (that
+    disagreement IS the bug); the current advisory -- which now shares
+    _wire_port_live_cells with the assembler -- agrees. If a future edit
+    reintroduced a standalone approximation in the advisory, this test's
+    second assertion would start failing loudly.
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c, x=2e-3)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    n_live_truth, n = _ground_truth_wire_port_n_live(
+        sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
+    n_live_old, n_old = _old_buggy_dead_cell_classification(
+        sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
+
+    assert n_live_old != n_live_truth, (
+        "expected the OLD bbox-vs-center method to DISAGREE with ground "
+        f"truth on this fixture (that disagreement is issue #544); got "
+        f"old={n_live_old}/{n_old} == ground_truth={n_live_truth}/{n} -- "
+        "the frozen reimplementation no longer reproduces the historical "
+        "bug and the regression-lock premise needs revisiting"
+    )
+
+    issues = sim.preflight()
+    codes = [getattr(s, "code", None) for s in issues]
+    assert "wire_port_dead_extent_cells" not in codes, (
+        "current advisory (sharing the ground-truth primitive) must NOT "
+        "reproduce the old method's wrong classification"
+    )

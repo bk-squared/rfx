@@ -1,0 +1,121 @@
+{
+  "fixture": {
+    "eps_r": 3.66,
+    "h_sub_m": 0.000254,
+    "w_trace_m": 0.0006,
+    "dx_m": 8e-05,
+    "feed_x_m": 0.002,
+    "msl_x_m": 0.0055
+  },
+  "wire_port_cells_ijk": [
+    [
+      33,
+      27,
+      0
+    ],
+    [
+      33,
+      27,
+      1
+    ],
+    [
+      33,
+      27,
+      2
+    ],
+    [
+      33,
+      27,
+      3
+    ]
+  ],
+  "ground_truth": {
+    "pec_mask_column_k0_8": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ],
+    "node_z_um_k0_8": [
+      0.0,
+      80.0,
+      160.0,
+      240.0,
+      320.0,
+      400.0,
+      480.0,
+      560.0,
+      640.0
+    ],
+    "pec_node_indices": [
+      4
+    ],
+    "n_live": 4,
+    "n": 4
+  },
+  "b_assembler": {
+    "live_flags": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "n_live": 4,
+    "n": 4,
+    "matches_ground_truth": true
+  },
+  "a_old_advisory": {
+    "centers_m": [
+      [
+        0.002,
+        0.00152,
+        4e-05
+      ],
+      [
+        0.002,
+        0.00152,
+        0.00012000000000000002
+      ],
+      [
+        0.002,
+        0.00152,
+        0.0002
+      ],
+      [
+        0.002,
+        0.00152,
+        0.00028000000000000003
+      ]
+    ],
+    "dead_indices": [
+      3
+    ],
+    "n_live": 3,
+    "n": 4,
+    "matches_ground_truth": false
+  },
+  "i517_cross_check": {
+    "i517_n_live_lw": [
+      4
+    ],
+    "i517_preflight_line": "[PREFLIGHT] Wire port at (0.002, 0.0015, 0.0) (extent 0.000254) rasterizes to n=4 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 3/4). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 3 live cells. (rfx versions before the #318 fix counted all 4 cells and physically terminated at Z0*(n_live/n) = 37.5 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so every cell center sits outside PEC.",
+    "consistent_with_this_scripts_b": true
+  },
+  "after_fix": {
+    "wire_port_dead_extent_cells_fires": false,
+    "wire_port_midpoint_in_pec_fires": false,
+    "preflight_text": "  [PREFLIGHT] 'pec' z-extent 80\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  [PREFLIGHT] all dielectric(s) ['sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  [PREFLIGHT] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.\n  [PREFLIGHT] MSL port 'msl_0': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` avoids that specific bug, but Z0 bias itself is still 2.56-2.94x worse than an aligned mesh at a comparable cell count (measured +20.2% vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells; scripts/diagnostics/msl_z0_bias_floor_sweep.py) \u2014 refining cell count alone will not reach the aligned-mesh bias. To snap onto a safe alignment regardless, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).\n"
+  },
+  "verdict": {
+    "ground_truth_n_live": 4,
+    "assembler_correct": true,
+    "old_advisory_correct": false,
+    "z0_over_4_consistent_with_ground_truth": true,
+    "conclusion": "assembler (n_live=4) matches ground truth pec_mask; old advisory (n_live=3) did not -- the advisory was wrong, fixed by sharing _wire_port_live_cells against the same assembled pec_mask."
+  }
+}
