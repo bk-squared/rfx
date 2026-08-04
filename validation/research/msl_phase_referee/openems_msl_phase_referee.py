@@ -19,9 +19,16 @@ unresolved e^{+-j*omega*t} TIME-CONVENTION mismatch against an external
 solver, or because of an unresolved REFERENCE-PLANE mismatch? The
 CONVENTION NOTE section below answers this from BOTH tools' own source
 (not by running FDTD): the two DFT kernels are IDENTICAL, so it is a
-reference-plane question, and this script resolves it via openEMS's
-own ``CalcPort(ref_plane_shift=...)`` referral (the SAME mechanism the
-#489 coax referee validated end-to-end).
+reference-plane question, resolved here by placing openEMS's own
+``MeasPlaneShift`` measurement stencil directly at rfx's own probe-0
+plane. ``CalcPort(ref_plane_shift=...)`` referral (the SAME mechanism
+the #489 coax referee validated end-to-end) is ALSO called on every
+run, but on THIS fixture it is a MEASURED no-op (effective shift 0.0 --
+see CONVENTION NOTE part (c)'s "NEW-1 FINDING" and the artifact's own
+``port_info`` block) because the placement above already lands exactly
+on-grid; the referral machinery is exercised, not skipped, and remains
+the mechanism a future off-grid fixture would need it to actually do
+work.
 
 ============================================================================
 DO-NOT-REPEAT (R1/R2 class -- read before choosing a mesh size)
@@ -238,6 +245,41 @@ phase is referenced in space, and (c) the transform between them.
     frequencies -- no interpolation, so no interpolation-induced phase
     artefact).
 
+    NEW-1 FINDING (review 2026-08-04, the one that matters -- read this
+    before citing "resolved via ref_plane_shift referral" as this
+    fixture's own evidence): on THIS COMMITTED fixture, the referral is
+    an EXACT NO-OP by construction. ``MeasPlaneShift`` (m5 fix) is set to
+    the SAME target as ``ref_plane_shift`` (both 2.5mm per port), and
+    that target lands EXACTLY on an existing x-mesh line (dx=50um
+    divides 2.5mm into 50 whole cells, and Stage B's own x-mesh is
+    uniform with no thirds-rule refinement -- see
+    ``_predict_measplane_snap``). So openEMS's own mesh-line snap
+    (``python/openEMS/ports.py``) leaves ``measplane_shift`` UNCHANGED at
+    2.5mm, and ``CalcPort``'s own ``shift = ref_plane_shift -
+    measplane_shift`` evaluates to 0.0 -- the TL-phase-rotation this
+    referee cites as "the transform" therefore rotates by ZERO on this
+    specific run (measured, not merely predicted: ``_build_stage_b``
+    cross-checks the REAL openEMS-measured ``measplane_shift`` against
+    the pure-arithmetic prediction and records BOTH, plus the resulting
+    ``effective_shift_real_port{0,1}_m``, in ``port_info`` -- see
+    ``_stage_b_port_placement`` and the artifact's own ``stage_b.
+    port_info`` block). What THIS fixture actually validates, then, is
+    that placing the MEASUREMENT STENCIL directly at rfx's own probe-0
+    plane (via ``MeasPlaneShift``) reproduces the right reference plane
+    -- STENCIL PLACEMENT, not CalcPort's own rotation ARITHMETIC. The
+    ``ref_plane_shift`` argument is still passed to ``CalcPort`` on every
+    run (the code path is exercised, computing and applying a shift of
+    0.0 -- not skipped or dead code), and remains the mechanism a
+    DIFFERENT fixture would need if its own target plane fell BETWEEN
+    two mesh lines (an off-grid target, where ``MeasPlaneShift`` alone
+    cannot land exactly on it and the TL rotation would have real work to
+    do) -- this fixture's own placement was deliberately chosen (m5) to
+    land exactly on-grid, which is what makes its own shift trivial. A
+    reviewer should read this referee's result as "reference-plane
+    PLACEMENT resolved to rfx's own probe-0, referral machinery
+    exercised-as-a-no-op and held in reserve for an off-grid target," not
+    as "the CalcPort referral transform independently validated."
+
 WHAT IS GATED vs REPORTED (per issue #490 lane 2's own design brief):
 this fixture's substrate is Yee-staircased differently by each
 solver's own discretization (rfx: Cartesian voxel raster at dx=50um;
@@ -295,12 +337,19 @@ budget instead of a round number:
     budget (few-cell mesh round-off/snap class, not a referral bug).
   - At this fixture's OWN measured beta over the 3.0-4.5GHz gate band
     (``tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json``,
-    ``beta_first_port``: 111.65-155.92 rad/m), a single 100um plane
-    error maps to 0.45-0.89 deg (worst-case beta in-band).
+    ``beta_first_port``: 111.65-155.92 rad/m), a FIXED 100um (2-cell)
+    plane error maps to 0.640 deg at the gate band's beta_min
+    (3.14GHz) up to 0.893 deg at its beta_max (4.38GHz) -- i.e. the
+    RANGE here is across the band's own beta variation at ONE fixed
+    cell count, not across different cell counts (NEW-2 fix, review
+    2026-08-04: the pre-fix wording conflated a 1-cell/2-cell SPAN
+    evaluated at fixed beta_max with a beta-range at fixed cell count --
+    they read the same on the page but are different quantities).
   - BOTH ports contribute independent plane uncertainty (S21's phase
     depends on both referred planes) -- worst-case linear combination,
-    +-4 cells (200um) total, maps to 0.89-1.79 deg at this fixture's
-    own measured beta.
+    a FIXED 200um (4-cell) total plane error maps to 1.279 deg
+    (beta_min) up to 1.787 deg (beta_max) at this fixture's own
+    measured beta.
   - Headroom for what this in-band budget does NOT model (the
     ``MeasPlaneShift``-to-mesh-line snap is exact for THIS geometry's
     own integer-cell target -- see m5 below -- but the openEMS side's
@@ -503,11 +552,18 @@ scale-free per PR #547); (b) settling/truncation witness (timestep
 count vs NrTS cap); (c) non-physical field guard (|S|>2.0 raises);
 (d) PRE-solve fail-fast stdout scan (mesh/port-parse warning classes,
 before the full NrTS budget is spent); (e) per-bin passivity ceiling
-(M4 fix -- NAMED explicitly, not left implicit: with M3's topology fix
-the device sits between two genuinely Feed_R=50-matched loads, so this
-witness is physically meaningful again (pre-M3 it would have been
-tripped by the self-inflicted parallel-impedance defect, not a real
-finding). ``|S11|^2+|S21|^2 <= 1.05`` (``tol=0.05``) is the gate; given
+(M4 fix -- NAMED explicitly, not left implicit: M3's topology fix made
+this ceiling SATISFIABLE by construction, not the underlying physics
+CORRECT -- the device now sits between two genuinely Feed_R=50-matched
+loads instead of each port's own resistor sitting in parallel with a
+PML-matched line continuation, so a real run is no longer DOOMED to
+trip this witness on the self-inflicted parallel-impedance defect
+alone (pre-M3, predicted max ~1.11 against a 1.05 ceiling). Whether
+the actual VESSL run passes it is still an open, unmeasured question --
+NEW-4 fix, review 2026-08-04: "physically meaningful again" overclaimed
+that M3 restored correctness; it only removed a KNOWN reason the gate
+would have failed regardless of correctness).
+``|S11|^2+|S21|^2 <= 1.05`` (``tol=0.05``) is the gate; given
 this near-lossless matched thru's OWN measured |S21| ~= 1 (rfx-side:
 mean|S21|=0.9985), the SAME inequality implies a NAMED ceiling
 ``|S11| <~ sqrt(1.05 - |S21|^2) ~= sqrt(1.05-0.997) ~= 0.23`` at bins
@@ -665,8 +721,15 @@ DECLARED_QUESTION = (
     "mismatch, or an unresolved reference-plane mismatch? Verified "
     "directly against both tools' own DFT-kernel source (module docstring "
     "CONVENTION NOTE): the kernels are identical, so it is a reference-"
-    "plane question, resolved here via openEMS's own CalcPort(ref_plane_"
-    "shift=...) referral to rfx's own probe-0 plane (issue #478/#469)."
+    "plane question, resolved here by placing openEMS's own MeasPlaneShift "
+    "measurement stencil directly at rfx's own probe-0 plane (issue "
+    "#478/#469). NEW-1 CAVEAT (review 2026-08-04): on this fixture the "
+    "effective CalcPort(ref_plane_shift=...) shift is 0.0 by construction "
+    "(MeasPlaneShift's own target already lands exactly on an existing "
+    "mesh line, measured in port_info -- see CONVENTION NOTE part (c)'s "
+    "own 'NEW-1 FINDING'), so the referral ROTATION itself is exercised "
+    "but not independently validated by this run; it is held in reserve "
+    "for a future fixture whose target plane falls off-grid."
 )
 
 MUST_MOVE_WHEN_VALIDATED = (
@@ -1167,6 +1230,78 @@ def _stage_b_substrate_z_mesh(h_sub: float, dx: float) -> tuple[np.ndarray, int]
     return z_lines_sub, n_sub
 
 
+def _predict_measplane_snap(target_shift_m: float, dx_m: float) -> float:
+    """Predict what ``MSLPort.__init__``'s own mesh-line snap will compute
+    for ``measplane_shift``, given a UNIFORM x-mesh at step ``dx_m`` (Stage
+    B's own x-mesh has no thirds-rule refinement, unlike y -- see
+    ``_build_stage_b``). openEMS's own snap (``python/openEMS/ports.py``,
+    fetched 2026-08-04): ``meas_pos_idx = argmin(abs(prop_lines -
+    measplane_pos))`` then ``measplane_shift = abs(start - prop_lines[
+    meas_pos_idx])`` -- on a uniform grid whose own ``start`` already sits
+    exactly on a mesh line (true for this fixture's own feed_x0/feed_x1,
+    both integer multiples of dx_m from the mesh origin), this is exactly
+    rounding ``target_shift_m`` to the nearest integer multiple of
+    ``dx_m``. Pure arithmetic, openEMS-free -- ``_build_stage_b`` (VESSL-
+    only, openEMS required) cross-checks the REAL, measured ``port.
+    measplane_shift`` against this prediction at build time, so a future
+    mesh change that breaks the "uniform, start-aligned grid" assumption
+    this function relies on fails loud (an AssertionError), not silently.
+    """
+    n_cells = round(target_shift_m / dx_m)
+    return n_cells * dx_m
+
+
+def _stage_b_port_placement(layout: dict) -> dict:
+    """Pure arithmetic (openEMS-free): the trace span, each port's target
+    MeasPlaneShift/ref_plane_shift, and a PREDICTION of the resulting
+    EFFECTIVE CalcPort shift (``ref_plane_shift - measplane_shift``).
+    ``_build_stage_b`` calls this directly for its own AddBox/
+    MeasPlaneShift values (wired, not a second hand-copy) and returns both
+    this prediction AND the REAL, openEMS-measured values for the caller
+    to record.
+
+    NEW-1 finding (review 2026-08-04, the one that matters): on the
+    COMMITTED fixture, ``ref_plane_shift`` and the predicted
+    ``measplane_shift`` are IDENTICAL (both land on an EXISTING mesh line
+    -- dx=50um divides the 2.5mm target exactly, 50 cells), so the
+    predicted ``effective_shift`` is 0.0. ``CalcPort``'s own TL-phase-
+    rotation (``python/openEMS/ports.py``, base ``Port.CalcPort``:
+    ``phase = real(beta)*shift; uf_tot' = uf_tot*cos(-phase) + ...``) is
+    therefore a NO-OP on THIS specific fixture -- the phase-plane
+    correctness this referee measures comes from ``MeasPlaneShift``'s own
+    STENCIL PLACEMENT landing exactly at rfx's own probe-0 plane, not from
+    the referral ROTATION actually correcting a nonzero offset. The
+    ``ref_plane_shift`` argument is still passed to ``CalcPort`` (the code
+    path exists and is exercised, computing and applying a shift of
+    0.0 -- not skipped), and remains the correct, necessary mechanism for
+    a geometry where the target plane does NOT happen to fall exactly on
+    a pre-existing mesh line; this fixture's own placement was chosen
+    (m5 fix) specifically so it WOULD land exactly on-grid, which is what
+    makes the shift trivial here. See DECLARED_QUESTION / module
+    docstring CONVENTION NOTE for the full, non-overclaiming statement.
+    """
+    trace_x_start_m = layout["feed_x_port0_m"]
+    trace_x_stop_m = layout["feed_x_port1_m"]
+    ref_shift0_m = layout["ref_plane_shift_port0_m"]
+    ref_shift1_m = layout["ref_plane_shift_port1_m"]
+    measplane_predicted0_m = _predict_measplane_snap(ref_shift0_m, B_DX_M)
+    measplane_predicted1_m = _predict_measplane_snap(ref_shift1_m, B_DX_M)
+    return {
+        "trace_x_start_m": trace_x_start_m,
+        "trace_x_stop_m": trace_x_stop_m,
+        "ref_plane_shift_port0_m": ref_shift0_m,
+        "ref_plane_shift_port1_m": ref_shift1_m,
+        # The value passed as the MeasPlaneShift= kwarg (m5 fix): the
+        # SAME target ref_plane_shift is aimed for directly.
+        "measplane_shift_target_port0_m": ref_shift0_m,
+        "measplane_shift_target_port1_m": ref_shift1_m,
+        "measplane_shift_predicted_port0_m": measplane_predicted0_m,
+        "measplane_shift_predicted_port1_m": measplane_predicted1_m,
+        "effective_shift_predicted_port0_m": ref_shift0_m - measplane_predicted0_m,
+        "effective_shift_predicted_port1_m": ref_shift1_m - measplane_predicted1_m,
+    }
+
+
 def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
                    nrts: int, end_criteria: float):
     unit = 1.0e-6  # um, independent CSXCAD unit choice for Stage B
@@ -1234,8 +1369,14 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     substrate.AddBox([x0, y0, 0.0], [x1, y1, h_sub])
 
     pec = csx.AddMetal("copper")
-    feed_x0 = layout["feed_x_port0_m"] / unit
-    feed_x1 = layout["feed_x_port1_m"] / unit
+    # NEW-3 fix (review 2026-08-04): the trace span and MeasPlaneShift
+    # targets are now sourced from the PURE, openEMS-free
+    # _stage_b_port_placement (wired, not a second hand-copy) so the
+    # header test can assert on the SAME numbers this function actually
+    # uses, instead of grepping the source text.
+    placement = _stage_b_port_placement(layout)
+    feed_x0 = placement["trace_x_start_m"] / unit
+    feed_x1 = placement["trace_x_stop_m"] / unit
     port_w = B_PORT_W_CELLS * dx
 
     # M3 fix: the trace spans EXACTLY feed_x0..feed_x1 -- thru_openems.py's
@@ -1247,25 +1388,26 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
 
     # m5 fix: MeasPlaneShift set EXPLICITLY to this fixture's own
     # ref_plane_shift target (2.5mm here, same "unit" as ref_plane_shift
-    # below) -- NOT the class default (half the port's own 300um span,
-    # 150um/3 cells from the excitation+Feed_R -- near-field
-    # contaminated). See module docstring DELTA LIST item 5.
-    ref_shift0_units = layout["ref_plane_shift_port0_m"] / unit
-    ref_shift1_units = layout["ref_plane_shift_port1_m"] / unit
+    # in _run_stage_b's own CalcPort call) -- NOT the class default (half
+    # the port's own 300um span, 150um/3 cells from the excitation+
+    # Feed_R -- near-field contaminated). See module docstring DELTA LIST
+    # item 5.
+    measplane_target0_units = placement["measplane_shift_target_port0_m"] / unit
+    measplane_target1_units = placement["measplane_shift_target_port1_m"] / unit
 
     port0_metal = csx.AddMetal("port0_metal")
     port0 = MSLPort(
         csx, port_nr=1, metal_prop=port0_metal,
         start=[feed_x0, trace_y_lo, h_sub], stop=[feed_x0 + port_w, trace_y_hi, 0.0],
         prop_dir="x", exc_dir="z", excite=1.0, Feed_R=50.0,
-        MeasPlaneShift=ref_shift0_units, priority=10,
+        MeasPlaneShift=measplane_target0_units, priority=10,
     )
     port1_metal = csx.AddMetal("port1_metal")
     port1 = MSLPort(
         csx, port_nr=2, metal_prop=port1_metal,
         start=[feed_x1, trace_y_lo, h_sub], stop=[feed_x1 - port_w, trace_y_hi, 0.0],
         prop_dir="x", exc_dir="z", excite=0.0, Feed_R=50.0,
-        MeasPlaneShift=ref_shift1_units, priority=10,
+        MeasPlaneShift=measplane_target1_units, priority=10,
     )
 
     # n8 fix: assert the ports' own `start` (what ref_plane_shift/
@@ -1282,7 +1424,43 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
         "Stage B port1 start drifted from the ref_plane_shift/"
         "MeasPlaneShift target (250-line silent coupling, n8 regression)"
     )
-    return fdtd, port0, port1
+
+    # NEW-1/NEW-3 fix (review 2026-08-04): read openEMS's OWN, REAL,
+    # mesh-line-snapped measplane_shift (available immediately after
+    # MSLPort.__init__ -- see _predict_measplane_snap's own docstring)
+    # and cross-check it against the PURE prediction above (an
+    # AssertionError here means Stage B's own "uniform, start-aligned
+    # x-mesh" assumption broke -- e.g. a future edit adds x-refinement --
+    # not a physics finding). Compute the REAL effective CalcPort shift
+    # (ref_plane_shift - measured measplane_shift) so the artifact records
+    # what ref_plane_shift ACTUALLY did on this run, not just what this
+    # script predicted it would do.
+    measplane_real0_m = float(port0.measplane_shift) * unit
+    measplane_real1_m = float(port1.measplane_shift) * unit
+    assert abs(measplane_real0_m - placement["measplane_shift_predicted_port0_m"]) < 1e-9, (
+        f"Stage B port0's REAL measplane_shift ({measplane_real0_m} m) does "
+        f"not match the pure-arithmetic prediction "
+        f"({placement['measplane_shift_predicted_port0_m']} m) -- the "
+        f"uniform-grid assumption _predict_measplane_snap relies on broke"
+    )
+    assert abs(measplane_real1_m - placement["measplane_shift_predicted_port1_m"]) < 1e-9, (
+        f"Stage B port1's REAL measplane_shift ({measplane_real1_m} m) does "
+        f"not match the pure-arithmetic prediction "
+        f"({placement['measplane_shift_predicted_port1_m']} m) -- the "
+        f"uniform-grid assumption _predict_measplane_snap relies on broke"
+    )
+
+    port_info = dict(placement)
+    port_info["measplane_shift_real_port0_m"] = measplane_real0_m
+    port_info["measplane_shift_real_port1_m"] = measplane_real1_m
+    port_info["effective_shift_real_port0_m"] = (
+        placement["ref_plane_shift_port0_m"] - measplane_real0_m
+    )
+    port_info["effective_shift_real_port1_m"] = (
+        placement["ref_plane_shift_port1_m"] - measplane_real1_m
+    )
+
+    return fdtd, port0, port1, port_info
 
 
 def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
@@ -1293,12 +1471,12 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
     sim_dir = os.path.join(sim_root, "stage_b_thru")
     smoke_dir = os.path.join(sim_root, "stage_b_thru_smoke")
 
-    smoke_fdtd, _p0, _p1 = _build_stage_b(
+    smoke_fdtd, _p0, _p1, _pinfo = _build_stage_b(
         ContinuousStructure, openEMS, MSLPort, layout, nrts=200, end_criteria=0.0)
     smoke_log = _run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
     _scan_stdout_for_bad_patterns(smoke_log, "stage_b_smoke")
 
-    fdtd, port0, port1 = _build_stage_b(
+    fdtd, port0, port1, port_info = _build_stage_b(
         ContinuousStructure, openEMS, MSLPort, layout, nrts=nrts, end_criteria=end_criteria)
 
     t0 = time.time()
@@ -1309,8 +1487,16 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
 
     freqs_hz = np.asarray(rfx_fixture["freqs_hz"], dtype=float)
     unit = 1.0e-6
-    ref_shift0_units = layout["ref_plane_shift_port0_m"] / unit
-    ref_shift1_units = layout["ref_plane_shift_port1_m"] / unit
+    # NEW-1 fix: ref_plane_shift is the SAME target port_info already
+    # recorded as measplane_shift_target -- on this fixture the two are
+    # identical by construction (see _stage_b_port_placement's own
+    # docstring), so this call's own rotation is a measured no-op
+    # (port_info["effective_shift_real_port{0,1}_m"] ~= 0.0). The
+    # argument is still passed -- the code path is exercised, not
+    # skipped -- for a geometry where the target would NOT land exactly
+    # on-grid.
+    ref_shift0_units = port_info["ref_plane_shift_port0_m"] / unit
+    ref_shift1_units = port_info["ref_plane_shift_port1_m"] / unit
 
     port0.CalcPort(sim_dir, freqs_hz, ref_plane_shift=ref_shift0_units)
     port1.CalcPort(sim_dir, freqs_hz, ref_plane_shift=ref_shift1_units)
@@ -1330,6 +1516,7 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         "s11_mag": np.abs(s11).tolist(), "s21_mag": np.abs(s21).tolist(),
         "beta_port0": [[float(c.real), float(c.imag)] for c in beta_port0],
         "beta_port1": [[float(c.real), float(c.imag)] for c in beta_port1],
+        "port_info": port_info,
         "max_uf_inc": inc_peak, "n_trace_samples": n_samples, "nrts_cap": nrts,
         "truncated_suspected": truncated, "elapsed_s": round(elapsed, 1),
         "end_criteria_not_reached": end_criteria_not_reached,
@@ -1409,6 +1596,11 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         "beta_port0": [[float(c.real), float(c.imag)] for c in beta_port0],
         "beta_port1": [[float(c.real), float(c.imag)] for c in beta_port1],
         "layout": layout,
+        # NEW-1(b) fix (review 2026-08-04): the computed per-port
+        # ref_plane_shift - measplane_shift (both predicted AND the REAL,
+        # openEMS-measured value) so a reviewer sees the 0.000 directly
+        # in the artifact rather than having to trust the docstring.
+        "port_info": port_info,
         "passivity": passivity,
         "self_consistency_openems": self_consistency_openems,
         "self_consistency_rfx": self_consistency_rfx_report,

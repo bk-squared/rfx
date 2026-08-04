@@ -668,51 +668,92 @@ def test_build_stage_b_asserts_substrate_cell_count_matches_constants():
 
 
 # ---------------------------------------------------------------------------
-# M3 review fix: Stage B topology no longer extends the TRACE through PML,
-# and terminates with Feed_R=50 as the sole load (thru_openems.py's own
-# single-AddBox-span pattern) -- pinned by reading _build_stage_b's source
-# for the specific mechanism this review fixed, since exercising it fully
-# needs openEMS (VESSL-only, not available in this test environment).
+# M3/m5/NEW-1/NEW-3 review fixes: Stage B's trace span and MeasPlaneShift
+# targets are now sourced from the PURE, openEMS-free
+# _stage_b_port_placement -- _build_stage_b calls it directly (wired, not
+# duplicated), so these are NUMERIC assertions on the actual values used,
+# not inspect.getsource string-counting (the NEW-3 fix).
 # ---------------------------------------------------------------------------
-def test_build_stage_b_trace_does_not_extend_through_pml():
-    """M3 fix: exactly ONE trace AddBox spanning feed_x0..feed_x1 (thru_
-    openems.py's own topology) -- NOT the pre-review THREE-segment version
-    that continued the conductor through both x-PMLs (the parallel-
-    impedance defect this review caught: Feed_R=50 in parallel with a
-    PML-matched continuation, predicted |S11|~=0.33)."""
+def test_stage_b_port_placement_trace_span_is_feed_to_feed_not_pml():
+    """M3 fix, numeric: the trace span must be EXACTLY
+    (feed_x_port0_m, feed_x_port1_m) -- NOT the pre-review version's
+    domain-edge (PML-side) x0/x1 coordinates (the parallel-impedance
+    defect this review caught: Feed_R=50 in parallel with a PML-matched
+    continuation, predicted |S11|~=0.33)."""
     module = _load_referee_module()
-    import inspect
-    src = inspect.getsource(module._build_stage_b)
-    # The pre-review version had three pec.AddBox(...) calls for the trace
-    # (x0..port0+w, port0+w..port1-w, port1-w..x1). The fixed version has
-    # exactly one, spanning feed_x0..feed_x1.
-    assert src.count("pec.AddBox(") == 1, (
-        f"expected exactly one trace AddBox (M3 fix -- thru_openems.py's "
-        f"own single-span pattern), found {src.count('pec.AddBox(')}"
-    )
-    add_box_line = next(line for line in src.splitlines() if "pec.AddBox(" in line)
-    assert "feed_x0" in add_box_line and "feed_x1" in add_box_line, (
-        f"trace AddBox must span exactly feed_x0..feed_x1, not through the "
-        f"PML (x0/x1) -- got: {add_box_line!r}"
-    )
-    import re
-    bare_x_tokens = re.findall(r"(?<!feed_)\bx[01]\b", add_box_line)
-    assert not bare_x_tokens, (
-        f"trace AddBox still references the domain-edge x0/x1 (PML-side) "
-        f"coordinates, not just feed_x0/feed_x1 -- got: {add_box_line!r}"
-    )
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    layout = module._stage_b_layout(fixture)
+    placement = module._stage_b_port_placement(layout)
+
+    assert placement["trace_x_start_m"] == layout["feed_x_port0_m"]
+    assert placement["trace_x_stop_m"] == layout["feed_x_port1_m"]
+    # Must NOT be the PML-side domain-edge coordinates (x0 = -pml_x_m,
+    # x1 = lx_clear_m + pml_x_m) -- a numeric, not textual, guard against
+    # the M3 regression class.
+    x0_pml_side = -layout["pml_x_m"]
+    x1_pml_side = layout["lx_clear_m"] + layout["pml_x_m"]
+    assert placement["trace_x_start_m"] != pytest.approx(x0_pml_side)
+    assert placement["trace_x_stop_m"] != pytest.approx(x1_pml_side)
+    # Sanity: the trace sits strictly inside the clear (non-PML) region.
+    assert 0.0 < placement["trace_x_start_m"] < placement["trace_x_stop_m"] < layout["lx_clear_m"]
 
 
-def test_build_stage_b_sets_explicit_measplaneshift():
-    """m5 fix: MeasPlaneShift must be passed explicitly to BOTH ports (not
-    left at the class default, which at dx=50um is only 150um/3 cells
-    from the excitation+Feed_R -- near-field contaminated)."""
+def test_stage_b_port_placement_measplaneshift_is_explicit_and_far_from_feed():
+    """m5 fix, numeric: MeasPlaneShift's own TARGET must equal this
+    fixture's own ref_plane_shift (2.5mm) -- NOT the class default (half
+    the port's own 300um span, 150um/3 cells from the excitation+Feed_R,
+    near-field contaminated)."""
     module = _load_referee_module()
-    import inspect
-    src = inspect.getsource(module._build_stage_b)
-    assert src.count("MeasPlaneShift=") == 2, (
-        f"expected MeasPlaneShift passed explicitly on both ports (m5 fix), "
-        f"found {src.count('MeasPlaneShift=')} occurrences"
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    layout = module._stage_b_layout(fixture)
+    placement = module._stage_b_port_placement(layout)
+
+    assert placement["measplane_shift_target_port0_m"] == placement["ref_plane_shift_port0_m"]
+    assert placement["measplane_shift_target_port1_m"] == placement["ref_plane_shift_port1_m"]
+    # Comfortably (>3x) past the near-field-contaminated class-default
+    # radius (half the port's own 300um span = 150um).
+    half_port_span_m = 0.5 * module.B_PORT_W_CELLS * module.B_DX_M
+    assert placement["measplane_shift_target_port0_m"] > 3.0 * half_port_span_m
+    assert placement["measplane_shift_target_port1_m"] > 3.0 * half_port_span_m
+
+
+def test_predict_measplane_snap_matches_uniform_grid_rounding():
+    """_predict_measplane_snap must round to the nearest INTEGER multiple
+    of dx -- pinned with both an exact (on-grid) and an off-grid target so
+    the rounding behavior itself is checked, not just one lucky case."""
+    module = _load_referee_module()
+    dx = 50e-6
+    assert module._predict_measplane_snap(2.5e-3, dx) == pytest.approx(2.5e-3)  # exact: 50 cells
+    assert module._predict_measplane_snap(2.51e-3, dx) == pytest.approx(2.5e-3)  # rounds down
+    assert module._predict_measplane_snap(2.53e-3, dx) == pytest.approx(2.55e-3)  # rounds up
+
+
+def test_stage_b_port_placement_effective_shift_is_zero_by_construction():
+    """NEW-1 fix (the one that matters, review 2026-08-04): on the
+    COMMITTED fixture, the predicted effective CalcPort shift
+    (ref_plane_shift - predicted measplane_shift) must be (numerically)
+    ZERO -- proving, not merely asserting in prose, that the referral
+    ROTATION is a no-op here and the referee's own phase-plane
+    correctness comes from MeasPlaneShift's STENCIL PLACEMENT instead.
+    See DECLARED_QUESTION / _stage_b_port_placement's own docstring for
+    the full, non-overclaiming statement this test backs."""
+    module = _load_referee_module()
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    layout = module._stage_b_layout(fixture)
+    placement = module._stage_b_port_placement(layout)
+
+    assert abs(placement["effective_shift_predicted_port0_m"]) < 1e-12
+    assert abs(placement["effective_shift_predicted_port1_m"]) < 1e-12
+
+    # Discrimination check: an OFF-GRID target (not this fixture's own
+    # 2.5mm, which lands exactly on a mesh line) must NOT read zero --
+    # proving this test can actually tell "no-op" from "real rotation".
+    synthetic_layout = dict(layout)
+    synthetic_layout["feed_x_port0_m"] = 0.002
+    synthetic_layout["ref_plane_shift_port0_m"] = 2.517e-3  # deliberately off-grid
+    off_grid_placement = module._stage_b_port_placement(synthetic_layout)
+    assert abs(off_grid_placement["effective_shift_predicted_port0_m"]) > 1e-6, (
+        "off-grid target unexpectedly read zero shift -- this test is not discriminating"
     )
 
 
