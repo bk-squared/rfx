@@ -700,6 +700,64 @@ def test_case_is_discovered_and_bound_by_the_shared_gate_policy(fixture):
         g["f0_measured_envelope_mhz"], quantum=1)
 
 
+def test_contiguity_lock_is_gated_and_fires_on_the_split_shape(fixture, script_src):
+    """Joint-review N1: f0 is computed from the OUTERMOST -10 dB crossings, so
+    the f0 gate alone cannot see a split passband -- a future regeneration
+    whose band collapsed into separated resonances could ship green with its
+    bridged midpoint inside the 19 MHz gate. The lock is the committed
+    envelope (exactly one interior hole bin), recomputed here from the trace,
+    and the committed coarse rung is the demonstration that the instrument
+    fires on the very shape it exists to catch.
+    """
+    freqs = np.asarray(fixture["config"]["freqs_hz"], dtype=float)
+    gated = _band(fixture["gated_rfx"]["s11"], freqs)
+    assert gated["span_holes"] <= 1
+    assert gated["span_holes"] == fixture["gated_rfx"]["band"]["span_holes"]
+    # the split shape this lock exists for: the a/60 rung's "band" is two
+    # separated resonances -- it must violate the lock, or the lock is inert
+    coarse = _band(fixture["coarse_diagnostic"]["s11"], freqs)
+    assert coarse["span_holes"] > 1, coarse["span_holes"]
+    # and the script carries the gate as a live, reachable check
+    assert re.search(r"^MAX_SPAN_HOLES_GATED = 1\b", script_src, re.M), (
+        "the contiguity lock constant is gone or was widened")
+    assert 'contig_ok = meas["span_holes"] <= MAX_SPAN_HOLES_GATED' in script_src
+    assert "ok &= f0_ok and zeros_ok and contig_ok" in script_src, (
+        "the contiguity lock no longer participates in the exit code")
+
+
+def test_zero_count_gate_is_robust_across_the_thickness_ambiguity_band(fixture):
+    """Joint-review N3: the iris-thickness electrical leg is the one unsettled
+    convention input (measured ~(t_c - 0.68)*dx against the built
+    (t_c - 1)*dx), and the zero count is a gated integer -- so the count must
+    be invariant across that acknowledged ambiguity band, or the gate is an
+    artifact of picking a convention. The committed sweep says it is; this
+    test asserts the committed rows and re-solves ONE interior point with
+    this file's own re-typed cascade (an implementation the producer does not
+    share).
+    """
+    rows = fixture["iris_thickness_zero_count_sweep"]["rows"]
+    gated_count = len(fixture["oracle_rasterized_band"]["zeros"])
+    assert rows[0]["t_elec_cells"] == 8.0 and rows[-1]["t_elec_cells"] == 8.5
+    assert len(rows) == 11
+    assert all(r["zeros"] == gated_count == 3 for r in rows), rows
+    # the sweep must actually exercise the input: bandwidth moves ~20 MHz
+    # across the band while the gated integer stays fixed
+    assert rows[0]["bw_hz"] - rows[-1]["bw_hz"] > 10e6
+    eg = fixture["electrical_geometry"]
+    cfg = fixture["config"]
+    freqs = np.asarray(cfg["freqs_hz"], dtype=float)
+    dx = A / cfg["gated_cells_per_a"]
+    aps, offs = _aps_offs(fixture, dx)
+    mid = rows[5]
+    assert mid["t_elec_cells"] == 8.25
+    mine = _band([_filter_s11(A, aps, offs, [8.25 * dx] * 5,
+                              [c * dx for c in eg["cavity_cells"]], f)
+                  for f in freqs], freqs)
+    assert len(mine["zeros"]) == mid["zeros"]
+    assert mine["f0"] == pytest.approx(mid["f0_hz"], abs=2e6)
+    assert mine["bw"] == pytest.approx(mid["bw_hz"], abs=3e6)
+
+
 def test_electrical_geometry_is_rederived_from_committed_node_indices(fixture):
     """Re-derive the oracle's lengths from the rasterised metal, independently.
 
