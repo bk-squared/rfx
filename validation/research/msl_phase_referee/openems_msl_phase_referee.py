@@ -91,17 +91,25 @@ review rounds, PRs #540/#546/#547/#548) -- relevant lessons ticked:
      absorbing face (matching rfx's own ``BoundarySpec(x='cpml',
      y='cpml', z=Boundary(hi='cpml'))`` exactly) -- MUR is not used in
      Stage B at all.
-  6. Reference-plane/measurement-plane ORDERING bug (M1, run-1's
-     |S11|=280.7 root cause): the coax lane's ports spanned the WHOLE
-     domain edge-to-edge, through the PML, so FeedShift/MeasPlaneShift
-     had to be carefully placed relative to the PML edge. THIS script's
-     Stage B ports are SHORT (6 cells, matching thru_openems.py's
-     ``PORT_W`` pattern) and sit deep inside the clear region, far from
-     any PML -- the entire ordering-bug CLASS is structurally avoided
-     by the port-topology choice, not merely unencountered. FeedShift/
-     MeasPlaneShift are left at ``MSLPort``'s own class defaults for
-     this reason (matching thru_openems.py, which also left them at
-     defaults).
+  6. Reference-plane/measurement-plane ORDERING bug (M1 of the COAX
+     lane, run-1's |S11|=280.7 root cause -- do not confuse with THIS
+     file's own M1, the phase-gate-budget fix): the coax lane's ports
+     spanned the WHOLE domain edge-to-edge, through the PML, so
+     FeedShift/MeasPlaneShift had to be carefully placed relative to the
+     PML edge. THIS script's Stage B ports are SHORT (6 cells / 300um,
+     matching thru_openems.py's own ``PORT_W`` pattern for the
+     excitation+Feed_R footprint -- m5 fix, module docstring DELTA LIST
+     item 5) and sit deep inside the clear region, far from any PML --
+     the entire ordering-bug CLASS is structurally avoided by the
+     port-topology choice, not merely unencountered. ``FeedShift`` is
+     left at ``MSLPort``'s own class default (0, at ``start`` -- matching
+     thru_openems.py); ``MeasPlaneShift`` is now set EXPLICITLY (m5 fix,
+     2026-08-04 review -- NOT left at the class default, which at this
+     Stage's finer dx put the measurement stencil only 150um/3 cells
+     from the excitation, near-field contaminated) to a target that is
+     STILL far from any PML (2.5mm from ``start``, vs a 400um-deep PML) --
+     the ordering-bug class remains structurally avoided; only the
+     SOURCE of the value changed (explicit target, not a class default).
   7. Direction-signed current probe / forward-vs-reverse-drive S-matrix
      bookkeeping (``_extract_two_port_s``, 3 review rounds to get
      right): N/A here by design -- Stage B is single-drive, so there is
@@ -150,8 +158,17 @@ phase is referenced in space, and (c) the transform between them.
     WR-90 slab-phase precedent might suggest by analogy (Meep/OpenEMS/
     Palace genuinely disagreed by 100+ degrees among THEMSELVES on that
     case, docs/agent-memory/rfx-known-issues.md "cv11 slab-phase
-    convention mismatch") -- for THIS solver pair, the DFT kernels are
-    byte-identical in form, so e^{+-j*omega*t} is NOT the mismatch
+    convention mismatch") -- for THIS solver pair, the two kernels are
+    IDENTICAL IN EXPONENT AND SIGN (n7 wording fix: not "byte-identical"
+    -- the NORMALIZING factors applied afterward differ: rfx's
+    accumulator multiplies by ``dt`` and a window weight per timestep
+    inside the loop, while openEMS's ``DFT_time2freq`` multiplies by
+    ``t[1]-t[0]`` (dt, 'pulse' signals) THEN returns ``2*f_val`` (an
+    extra factor of 2, its own single-sided-spectrum convention) --
+    both are REAL POSITIVE scalars, and multiplying a complex phasor by
+    a real positive scalar cannot change its ARGUMENT (phase); S11/S21
+    are RATIOS (b/a) besides, so any residual overall scalar cancels a
+    second time regardless), so e^{+-j*omega*t} is NOT the mismatch
     mechanism here. This finding is new: no prior rfx doc records
     having compared the two tools' DFT kernels directly.
 
@@ -234,19 +251,96 @@ precedent for this being physically real and solver-specific, not a
 defect). Gating the RAW cross-solver phase difference would conflate
 that physical dispersion difference with the convention-resolution
 claim. So:
-  GATED (the convention claim): each solver's OWN de-embedded
-  angle(S21)(f), AFTER its OWN reference-plane referral to the shared
-  L12 span, is self-consistent with THAT SAME solver's OWN measured
-  beta(f) via the textbook angle(S21) ~= -beta(f)*L12 relation. This is
-  what "the transform is correctly resolved" MEANS operationally: if
-  either solver's own ref_plane_shift/probe-plane math had a sign or
-  offset bug, that solver's OWN self-consistency check would fail --
-  it does not require the two solvers to agree with each other.
+  GATED (the convention claim, QUALIFIED -- M2/#534 provenance-mismatch
+  fix, see below): each solver's OWN de-embedded angle(S21)(f), AFTER
+  its OWN reference-plane referral to the shared L12 span, is
+  self-consistent with THAT SAME solver's OWN measured beta(f) via the
+  textbook angle(S21) ~= -beta(f)*L12 relation.
+
+  QUALIFIER (read before citing this witness as "proof of convention
+  correctness" -- the #534 provenance-mismatch discipline: the sentence
+  must say what the check ACTUALLY measures, not what it would be nice
+  for it to measure): on ANY uniform (non-dispersive within the gate
+  band) line, angle(S21) = -beta*(x1-x0) HOLDS IDENTICALLY for ANY
+  correctly-identified pair of planes separated by the reported
+  distance -- and the two referred planes here are L12 apart BY
+  CONSTRUCTION of how ref_plane_shift is derived (module docstring part
+  (c)), not an independent fact this witness discovers. So passing this
+  check does NOT prove "the reference-plane transform is convention-
+  correct" in general -- it proves the referral/shift ARITHMETIC is
+  right to WITHIN the gate's own RESOLVING POWER (see "GATE-BUDGET
+  DERIVATION" below): an error SMALLER than that budget would not be
+  caught, by construction. It is therefore a NECESSARY check with a
+  STATED, MEASURED resolving power (the planted-error test in the
+  header suite), not a sufficient, general convention-correctness
+  proof. What it DOES positively rule out, at the stated resolving
+  power: a referral bug of realistic size (this file's own
+  ref_plane_shift is 2.5mm per port -- see the resolving-power test's
+  own measured ~16-22 deg deviation for that exact size of error).
+
   REPORTED, not gated: beta_rfx(f), beta_openems(f), and their ratio
   (the physical-dispersion comparison), plus the raw cross-solver
   angle(S21) difference before and after subtracting the
   dispersion-predicted term -- for the reviewer's own judgement, not a
   pass/fail.
+
+GATE-BUDGET DERIVATION (M1 fix -- ``B_PHASE_TOL_DEG``): the 30 deg
+value this script originally shipped with admits a plane-position
+error of 3.372mm (67% of L12=5mm) at this fixture's own measured beta
+-- a single-port referral drop (see the resolving-power test) measured
+~16-22 deg PASSED under it. Re-derived from an explicit physical
+budget instead of a round number:
+  - Base unit: dx=50um (Stage B's own mesh). A +-2-cell (100um)
+    reference-plane positional uncertainty per port is the target
+    budget (few-cell mesh round-off/snap class, not a referral bug).
+  - At this fixture's OWN measured beta over the 3.0-4.5GHz gate band
+    (``tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json``,
+    ``beta_first_port``: 111.65-155.92 rad/m), a single 100um plane
+    error maps to 0.45-0.89 deg (worst-case beta in-band).
+  - BOTH ports contribute independent plane uncertainty (S21's phase
+    depends on both referred planes) -- worst-case linear combination,
+    +-4 cells (200um) total, maps to 0.89-1.79 deg at this fixture's
+    own measured beta.
+  - Headroom for what this in-band budget does NOT model (the
+    ``MeasPlaneShift``-to-mesh-line snap is exact for THIS geometry's
+    own integer-cell target -- see m5 below -- but the openEMS side's
+    own beta and finite-difference measurement-stencil residual are
+    UNMEASURED before a real run) rounds this up to
+    ``B_PHASE_TOL_DEG = 3.0`` -- deliberately still ~7-10x tighter than
+    the measured single-port-referral-drop error (the resolving-power
+    test), so a genuine referral defect reds with wide margin while a
+    +-2-to-4-cell mesh-round-off class does not false-fire.
+  - RESOLVING-POWER TEST (the #529 pattern -- a gate must be PROVEN to
+    discriminate a real defect, not just pass a real run): ``tests/
+    test_msl_phase_referee_header.py::
+    test_self_consistency_witness_resolving_power_single_port_referral_drop``
+    plants a synthetic single-port referral drop (S21 rotated by
+    ``exp(+j*beta*ref_shift)`` for ONE port's own 2.5mm ref_plane_shift,
+    on the REAL committed rfx fixture's own S21/beta) and asserts the
+    3 deg gate REDS it, while the unperturbed fixture (measured
+    max_phase_dev_deg=0.121, see "RFX-SIDE SELF-CONSISTENCY" below)
+    still passes with ~25x margin. Measured threshold: the planted
+    defect reads 15.88-22.21 deg across the gate band (max 22.21 deg at
+    4.38GHz) -- comfortably red at gate=3 deg (~7.4x over).
+  - GROUP-DELAY GATE HONESTY (part of the M1 fix): ``B_GD_TOL_PS=200``
+    is INERT for this specific failure class -- a CONSTANT plane-
+    position error contributes an ALMOST-CONSTANT group-delay offset
+    (d/domega[-beta(f)*dl] = -dl*dbeta/domega, and dbeta/domega is
+    nearly flat for this near-non-dispersive quasi-TEM line), not a
+    slope change, so it does not show up strongly in a group-delay
+    (derivative) diagnostic. Measured on the real fixture: the SAME
+    single-port (2.5mm) referral-drop that produces 16-22 deg of phase
+    deviation produces only ~14.13-14.20 ps of group-delay deviation
+    (matches the analytic dl*sqrt(eps_eff)/c0 ~= 14.13ps prediction to
+    3 sig figs -- ``eps_eff~=2.87`` from this substrate's own
+    Hammerstad-Jensen value); a BOTH-ports-dropped scenario (dl=L12=
+    5mm) reaches ~28.4 ps -- still far under the 200ps gate. The
+    group-delay witness is KEPT because it is NOT inert for a different
+    failure class it is well-suited to -- a gross ``np.unwrap`` failure
+    (a missed 2*pi branch) or a genuine dispersion-model break (wrong
+    eps_r, wrong beta sign, a non-monotonic beta fit) -- but a reviewer
+    must not read "group-delay gate passed" as evidence bearing on
+    reference-plane/referral correctness; that is the phase gate's job.
 
 ============================================================================
 STAGE A -- REPRODUCE-GATE: a faithful port of openEMS's own MSL_
@@ -308,29 +402,48 @@ runtime (``_assert_matches_rfx_fixture``) -- a drift between the two
 raises loud (exit 3, a config bug), rather than silently comparing
 against stale numbers.
 
-Port topology: mirrors thru_openems.py's validated pattern (SHORT
-6-cell ports, ``prop_dir`` into the line from each end, a separate PEC
-trace box filling the clear span between the two port spans) rather
-than the coax lane's H2 (through-PML) topology -- see PRECEDENT
-TICK-LIST item 6 for why. Boundary: PML_8 on every absorbing face
-(x lo/hi, y lo/hi, z hi), PEC on z lo -- matches rfx's own
-``BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))``
-exactly (no MUR anywhere in Stage B).
+Port topology (M3 fix, 2026-08-04 review -- read before touching this
+again): mirrors thru_openems.py's validated pattern FULLY, not
+partially. The FIRST version of this script fused two precedents
+incompatibly: it kept ``Feed_R=50`` (a genuine lumped termination
+resistor, sitting at each port's own ``start``) AND ALSO extended the
+PEC trace THROUGH both x-PMLs (the coax lane's H2 pattern). Those two
+choices conflict: with the trace continuing past the resistor into a
+PML-matched continuation of the SAME line (impedance close to this
+line's own Z0, ~48-53 ohm per the rfx fixture's own measured Z0), each
+port's resistor sits ELECTRICALLY IN PARALLEL with that continuation
+-- roughly 50||50 ~= 25 ohm seen by the line, Gamma = (25-50)/(25+50)
+~= -1/3, predicted |S11|~=0.33. That is enough to trip the passivity
+witness (predicted max(|S11|^2+|S21|^2) ~= 1.11 against the 1.05
+ceiling) on the FIRST real run -- a SELF-INFLICTED failure, not a
+finding about openEMS or rfx. Fix: terminate the trace AT each port
+with ``Feed_R=50`` as the ACTUAL load, matching thru_openems.py's own
+topology exactly -- its single ``trace_metal.AddBox`` spans exactly
+X1..X2 (each port's own ``start``), with NOTHING beyond that (no
+PML-side continuation of the CONDUCTOR at all). Boundary: PML_8 on
+every absorbing face (x lo/hi, y lo/hi, z hi), PEC on z lo -- matches
+rfx's own ``BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec',
+hi='cpml'))`` exactly (no MUR anywhere in Stage B).
 
 DELTA LIST (every remaining way this openEMS model differs from the
 rfx fixture):
-  1. SUBSTRATE/TRACE EXTENSION THROUGH PML: rfx's own material-
-     rasterization behavior for a Box specified over the CLEAR
-     [0,LX_clear] region only (not verified against rfx's own CPML
-     material-continuation policy for this script -- that would need
-     reading the CPML material-assembly path, out of scope for THIS
-     comparator). This script extends the substrate AND the trace
-     THROUGH the x-CPML at both ends (uniform cross-section into the
-     absorber), matching the coax lane's own validated H2 pattern
-     ("the full coax cross-section extends uniformly through both PML
-     regions so PML is reflectionless") -- a documented, deliberate
-     choice, not a replication of rfx's own (unverified-here) internal
-     behavior.
+  1. SUBSTRATE EXTENSION THROUGH PML, TRACE DOES NOT (M3 fix -- retitled
+     and narrowed from the pre-review version, which extended BOTH):
+     the coax lane's H2 justification ("the full coax cross-section
+     extends uniformly through both PML regions so PML is
+     reflectionless") is the COAX lane's own record for a topology with
+     NO mid-line shunt element -- it does not transfer here, where
+     ``Feed_R=50`` IS a mid-line (at the port's own end) shunt, and
+     continuing the CONDUCTOR past it created exactly the parallel-
+     impedance defect M3 fixed. The TRACE (PEC) now spans EXACTLY
+     feed_x0..feed_x1 (thru_openems.py's own single-AddBox span) --
+     NOT through either PML. The SUBSTRATE (dielectric only, no
+     conductor, so no analogous shunt-parallel discontinuity) still
+     extends through the x/y-PML on all sides -- a plain dielectric
+     background continuing into an absorber is not the pattern the coax
+     lane's own record warns about, and avoids inventing a NEW,
+     untested discontinuity (an abrupt dielectric-to-vacuum step right
+     at the PML boundary) instead.
   2. FEED MODEL: rfx's Laplace-Ez static-mode source distributed over
      the port cross-section (``rfx/sources/msl_port.py``,
      ``make_msl_port_sources``) vs openEMS's own ``MSLPort`` excitation
@@ -347,7 +460,11 @@ rfx fixture):
      Stage B's phase/Z0 precision goal benefits more from trace-edge
      resolution than Stage A's simpler magnitude-only precedent did;
      the underlying background mesh is otherwise dx=50um uniform,
-     matching rfx.
+     matching rfx, EXCEPT the substrate's own top surface (m6 fix
+     below: an explicit mesh line at z=254um, the tutorial's own
+     ``linspace`` pattern, with the substrate's own rasterized cell
+     count asserted rather than left to an uniform arange's arbitrary
+     rounding -- the #325 rasterization class).
   4. WAVEFORM: rfx's Gaussian pulse (``freq_max/2`` centre,
      ``bandwidth=0.8`` fractional -- the ``add_msl_port`` default) vs
      openEMS's ``SetGaussExcite`` with matching f0/fc chosen from the
@@ -355,6 +472,29 @@ rfx fixture):
      ``thru_openems.py`` f0-midband/fc-0.85x pattern) -- different
      waveform family by construction; only the illuminated band needs
      to cover the comparison window.
+  5. MEASUREMENT-PLANE CLEARANCE (m5 fix): ``B_PORT_W_CELLS=6`` (300um
+     at this Stage's dx=50um) sets the port's OWN physical footprint
+     (excitation + Feed_R location) -- a direct COPY of thru_openems.py's
+     cell count, but thru_openems.py's own dx was 500um, so ITS 6 cells
+     were 3mm; blindly copying "6 cells" at a 10x finer mesh shrinks the
+     PHYSICAL clearance 10x (engineering principle 1: physical absolute
+     coordinates, not copied cell counts). ``MeasPlaneShift`` is now set
+     EXPLICITLY (not left at the class default of half the port's own
+     300um span, which would put the measurement stencil only 150um /
+     3 cells from the excitation+resistor -- near-field contaminated)
+     to EXACTLY this fixture's own ``ref_plane_shift`` target, 2.5mm --
+     the SAME physical distance rfx's own #478 ``n_probe_offset``
+     resolution places its probe 0 at, on the SAME fixture. The port's
+     own physical span (``B_PORT_W_CELLS``) is UNCHANGED at 300um --
+     ``MeasPlaneShift`` is not bounded by the port's own [start,stop]
+     box (``MSLPort.__init__`` searches the GLOBAL mesh-line array for
+     the nearest line to ``measplane_pos``, verified by reading the
+     source directly), so a compact port footprint plus a remote,
+     explicit measurement plane on the now-single-span shared trace
+     (delta item 1) is a valid, and arguably MORE rfx-like, combination
+     (a compact feed + a REMOTE measurement location, mirroring rfx's
+     own N-probe philosophy) rather than requiring the port's own box
+     to be physically 3mm long.
 
 Hand-ported sanity checks (external scripts get no rfx preflight --
 ``external_solver_comparator.md`` step 3): (a) nonzero excitation
@@ -362,20 +502,37 @@ energy + nonzero port time trace (``_check_excitation_and_trace``,
 scale-free per PR #547); (b) settling/truncation witness (timestep
 count vs NrTS cap); (c) non-physical field guard (|S|>2.0 raises);
 (d) PRE-solve fail-fast stdout scan (mesh/port-parse warning classes,
-before the full NrTS budget is spent); (e) per-bin passivity ceiling;
-(f) self-consistency witness (mag band + phase vs THIS solver's OWN
-measured beta, see CONVENTION NOTE "WHAT IS GATED").
+before the full NrTS budget is spent); (e) per-bin passivity ceiling
+(M4 fix -- NAMED explicitly, not left implicit: with M3's topology fix
+the device sits between two genuinely Feed_R=50-matched loads, so this
+witness is physically meaningful again (pre-M3 it would have been
+tripped by the self-inflicted parallel-impedance defect, not a real
+finding). ``|S11|^2+|S21|^2 <= 1.05`` (``tol=0.05``) is the gate; given
+this near-lossless matched thru's OWN measured |S21| ~= 1 (rfx-side:
+mean|S21|=0.9985), the SAME inequality implies a NAMED ceiling
+``|S11| <~ sqrt(1.05 - |S21|^2) ~= sqrt(1.05-0.997) ~= 0.23`` at bins
+where |S21| stays near 1 -- a reported |S11| well above that ceiling
+AT SUCH a bin specifically signals a port-mismatch/topology defect
+(e.g. the exact M3 class this review caught), not genuine dielectric
+loss, since this fixture's substrate is lossless by construction); (f)
+self-consistency witness (mag band + phase vs THIS solver's OWN
+measured beta, see CONVENTION NOTE "WHAT IS GATED" -- QUALIFIED, gate-
+budget-derived, resolving-power-tested per the M1/M2 fixes above).
 
 RFX-SIDE SELF-CONSISTENCY -- MEASURED, LOCALLY, BEFORE ANY VESSL RUN
-(2026-08-04): ``build_msl_thru_phase_dx50um_reference.py`` was run
-locally (rfx IS importable outside VESSL; only openEMS is VESSL-only)
-and its own committed output was fed through THIS script's
-``_self_consistency_witness`` directly (no openEMS involved -- a pure
-Python check on real FDTD data): mean|S11|=0.0482, mean|S21|=0.9985
-(dx=50um, far cleaner than the committed dx=80um fixture's 0.118/0.972
--- consistent with the finer mesh), and the self-consistency check
-itself PASSED with max_phase_dev_deg=0.121 (gate 30 deg) and
-group_delay_dev_ps=0.063 (gate 200 ps) against rfx's OWN measured beta
+(2026-08-04, RE-VERIFIED after the M1/M3/m5/m6 review-fix edits --
+neither the rfx fixture nor its own geometry changed, since Stage B's
+geometry edits are entirely openEMS-side): ``build_msl_thru_phase_
+dx50um_reference.py`` was run locally (rfx IS importable outside
+VESSL; only openEMS is VESSL-only) and its own committed output was
+fed through THIS script's ``_self_consistency_witness`` directly (no
+openEMS involved -- a pure Python check on real FDTD data):
+mean|S11|=0.0482, mean|S21|=0.9985 (dx=50um, far cleaner than the
+committed dx=80um fixture's 0.118/0.972 -- consistent with the finer
+mesh), and the self-consistency check itself PASSED with
+max_phase_dev_deg=0.121 (NOW gate=3 deg, ~25x margin -- was 30 deg
+pre-M1) and group_delay_dev_ps=0.063 (gate 200 ps) against rfx's OWN
+measured beta
 over L12=5.0mm. This is real evidence the reference-plane-referral
 MECHANISM (the ``(target-start)*direction`` transform, applied to
 rfx's own probe-0 plane) and the sign convention in
@@ -549,7 +706,10 @@ B_PORT_MARGIN_M = 2e-3
 B_DX_M = 50e-6
 B_CPML_CELLS = 8
 B_F_MAX_HZ = 5.0e9
-B_PORT_W_CELLS = 6  # thru_openems.py's own PORT_W pattern
+B_PORT_W_CELLS = 6  # thru_openems.py's own PORT_W pattern -- sets the
+                    # port's OWN excitation+Feed_R footprint only (m5
+                    # fix); the measurement plane is placed EXPLICITLY
+                    # via MeasPlaneShift below, not derived from this.
 
 B_F0_HZ = 0.5 * B_F_MAX_HZ            # 2.5 GHz -- thru_openems.py midband pattern
 B_FC_HZ = 0.85 * B_F_MAX_HZ           # 4.25 GHz -- thru_openems.py 0.85x pattern
@@ -560,10 +720,28 @@ B_FC_HZ = 0.85 * B_F_MAX_HZ           # 4.25 GHz -- thru_openems.py 0.85x patter
 B_GATE_F_LO_HZ = 3.0e9
 B_GATE_F_HI_HZ = 4.5e9
 
-# Predicted (not yet measured) one-sided matched-through band + phase
-# tolerance -- report-first, gate-second, per the coax/floquet precedent.
+# Predicted (not yet measured) one-sided matched-through magnitude band --
+# report-first, gate-second, per the coax/floquet precedent.
 B_S21_MAG_BAND = (0.80, 1.10)
-B_PHASE_TOL_DEG = 30.0
+# Phase gate -- DERIVED from an explicit +-2-to-4-cell (100-200um)
+# reference-plane positional-uncertainty budget at this fixture's own
+# measured beta, with headroom; see module docstring "GATE-BUDGET
+# DERIVATION" (M1 fix) for the full derivation and the resolving-power
+# test that measures this gate actually discriminates a realistic
+# referral defect (~16-22 deg for a single-port 2.5mm drop) with ~7-10x
+# margin. NOT a round number -- was 30 deg pre-review (admitted a
+# 3.372mm/67%-of-L12 plane error; a real referral-drop defect PASSED).
+B_PHASE_TOL_DEG = 3.0
+# Group-delay gate -- INERT for the reference-plane-referral failure
+# class this file's own gate above targets (a constant plane-position
+# error is nearly frequency-independent for this near-non-dispersive
+# quasi-TEM line, so it barely perturbs a DERIVATIVE diagnostic -- see
+# "GATE-BUDGET DERIVATION"/"GROUP-DELAY GATE HONESTY"). Kept for a
+# DIFFERENT failure class: a gross np.unwrap failure or a genuine
+# dispersion-model break (wrong eps_r, wrong beta sign, non-monotonic
+# beta fit) -- 200ps is generous for THAT class, not for referral
+# errors, and this gate passing must not be read as evidence about
+# reference-plane correctness.
 B_GD_TOL_PS = 200.0
 
 
@@ -967,6 +1145,28 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int) -> dict:
 # ---------------------------------------------------------------------------
 # STAGE B: rfx-matched thru-line, at dx=50um, with ref_plane_shift referral.
 # ---------------------------------------------------------------------------
+def _stage_b_substrate_z_mesh(h_sub: float, dx: float) -> tuple[np.ndarray, int]:
+    """m6 fix: an explicit mesh line AT the substrate top (the openEMS
+    MSL_NotchFilter.py tutorial's own ``linspace(0, substrate_thickness,
+    5)`` pattern), instead of leaving the substrate top wherever a plain
+    uniform ``np.arange`` from z=0 happens to land -- the #325
+    rasterization class (intended vs ACTUAL cell count silently
+    disagreeing; rfx's own do-not-repeat here covered dx choice, not
+    z-line PLACEMENT). Builds a uniform sub-mesh spanning EXACTLY
+    [0, h_sub] with ``round(h_sub/dx)`` cells (5 at this fixture's own
+    h_sub=254um/dx=50um -- NOT an even divisor, so each substrate cell is
+    ~50.8um, not exactly dx -- redistributing the mismatch across the
+    substrate instead of leaving one arbitrary sliver cell wherever an
+    unguided arange happened to cross z=h_sub).
+
+    Pure arithmetic, openEMS-free -- testable directly (see the header
+    test's own rasterized-substrate-cell-count pin).
+    """
+    n_sub = max(1, round(h_sub / dx))
+    z_lines_sub = np.linspace(0.0, h_sub, n_sub + 1)
+    return z_lines_sub, n_sub
+
+
 def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
                    nrts: int, end_criteria: float):
     unit = 1.0e-6  # um, independent CSXCAD unit choice for Stage B
@@ -982,7 +1182,7 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     # z_lo is PEC, no padding below (matches rfx pad_z_lo=0).
     x0, x1 = -pml_x, lx_clear + pml_x
     y0, y1 = -pml_y, ly_clear + pml_y
-    z0, z1 = 0.0, lz_clear + pml_z_hi
+    z1 = lz_clear + pml_z_hi  # z=0 is the PEC ground plane (z_lo, no padding)
 
     y_centre = ly_clear / 2.0
     w_trace = B_W_TRACE_M / unit
@@ -1017,10 +1217,19 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     mesh.AddLine("y", y_lines_bulk)
     mesh.SmoothMeshLines("y", resolution / 4.0, 1.4)
 
-    z_lines = np.arange(z0, z1 + 0.5 * dx, dx)
-    mesh.AddLine("z", z_lines)
+    # m6 fix: explicit substrate-top line (z=h_sub), not left to an
+    # unguided uniform arange (see _stage_b_substrate_z_mesh docstring).
+    z_lines_sub, n_sub = _stage_b_substrate_z_mesh(h_sub, dx)
+    assert n_sub == round(B_H_SUB_M / B_DX_M), (
+        f"Stage B substrate rasterized cell count drifted: got {n_sub}, "
+        f"expected round(h_sub/dx)={round(B_H_SUB_M / B_DX_M)} (#325 class)"
+    )
+    z_lines_air = np.arange(h_sub, z1 + 0.5 * dx, dx)
+    mesh.AddLine("z", z_lines_sub)
+    mesh.AddLine("z", z_lines_air)
 
-    # Substrate + trace extended THROUGH the x-CPML (delta-list item 1).
+    # Substrate (dielectric only) extended through the x/y-PML; the TRACE
+    # (conductor) is NOT (M3 fix -- see module docstring "Port topology").
     substrate = csx.AddMaterial("ro4350b", epsilon=B_EPS_R)
     substrate.AddBox([x0, y0, 0.0], [x1, y1, h_sub])
 
@@ -1029,24 +1238,49 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     feed_x1 = layout["feed_x_port1_m"] / unit
     port_w = B_PORT_W_CELLS * dx
 
-    # Main trace: the clear span between the two ports' own metal spans
-    # (thru_openems.py's own pattern: each port fills its own span; this
-    # box fills the line between them), extended through the x-CPML.
-    pec.AddBox([x0, trace_y_lo, h_sub], [feed_x0 + port_w, trace_y_hi, h_sub + dx], priority=10)
-    pec.AddBox([feed_x0 + port_w, trace_y_lo, h_sub], [feed_x1 - port_w, trace_y_hi, h_sub + dx], priority=10)
-    pec.AddBox([feed_x1 - port_w, trace_y_lo, h_sub], [x1, trace_y_hi, h_sub + dx], priority=10)
+    # M3 fix: the trace spans EXACTLY feed_x0..feed_x1 -- thru_openems.py's
+    # own single-AddBox span (X1..X2, each port's own `start`) -- with
+    # NOTHING beyond either port toward the PML (no through-PML
+    # continuation of the conductor; see module docstring "Port topology"
+    # for the parallel-impedance defect this fixes).
+    pec.AddBox([feed_x0, trace_y_lo, h_sub], [feed_x1, trace_y_hi, h_sub + dx], priority=10)
+
+    # m5 fix: MeasPlaneShift set EXPLICITLY to this fixture's own
+    # ref_plane_shift target (2.5mm here, same "unit" as ref_plane_shift
+    # below) -- NOT the class default (half the port's own 300um span,
+    # 150um/3 cells from the excitation+Feed_R -- near-field
+    # contaminated). See module docstring DELTA LIST item 5.
+    ref_shift0_units = layout["ref_plane_shift_port0_m"] / unit
+    ref_shift1_units = layout["ref_plane_shift_port1_m"] / unit
 
     port0_metal = csx.AddMetal("port0_metal")
     port0 = MSLPort(
         csx, port_nr=1, metal_prop=port0_metal,
         start=[feed_x0, trace_y_lo, h_sub], stop=[feed_x0 + port_w, trace_y_hi, 0.0],
-        prop_dir="x", exc_dir="z", excite=1.0, Feed_R=50.0, priority=10,
+        prop_dir="x", exc_dir="z", excite=1.0, Feed_R=50.0,
+        MeasPlaneShift=ref_shift0_units, priority=10,
     )
     port1_metal = csx.AddMetal("port1_metal")
     port1 = MSLPort(
         csx, port_nr=2, metal_prop=port1_metal,
         start=[feed_x1, trace_y_lo, h_sub], stop=[feed_x1 - port_w, trace_y_hi, 0.0],
-        prop_dir="x", exc_dir="z", excite=0.0, Feed_R=50.0, priority=10,
+        prop_dir="x", exc_dir="z", excite=0.0, Feed_R=50.0,
+        MeasPlaneShift=ref_shift1_units, priority=10,
+    )
+
+    # n8 fix: assert the ports' own `start` (what ref_plane_shift/
+    # MeasPlaneShift are BOTH computed relative to, module docstring
+    # CONVENTION NOTE part (c)) still equals feed_x0/feed_x1 -- a silent
+    # coupling: _stage_b_layout computes ref_plane_shift assuming
+    # `start[prop] == feed_x`, but nothing enforced that invariant at the
+    # point the ports are actually built, ~250 lines away.
+    assert abs(float(port0.start[0]) - feed_x0) < 1e-6, (
+        "Stage B port0 start drifted from the ref_plane_shift/"
+        "MeasPlaneShift target (250-line silent coupling, n8 regression)"
+    )
+    assert abs(float(port1.start[0]) - feed_x1) < 1e-6, (
+        "Stage B port1 start drifted from the ref_plane_shift/"
+        "MeasPlaneShift target (250-line silent coupling, n8 regression)"
     )
     return fdtd, port0, port1
 

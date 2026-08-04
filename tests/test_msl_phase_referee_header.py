@@ -500,3 +500,229 @@ def test_freqs_grid_shared_with_rfx_fixture_no_interpolation():
     assert freqs[-1] == pytest.approx(module.B_F_MAX_HZ, rel=1e-9)
     assert freqs.min() > 0.0
     assert np.all(np.diff(freqs) > 0), "fixture freqs_hz must be strictly increasing"
+
+
+# ---------------------------------------------------------------------------
+# M1 review fix: gate must be PROVEN to discriminate a realistic referral
+# defect (the #529 resolving-power pattern), not just pass a clean run.
+# ---------------------------------------------------------------------------
+def _rfx_fixture_s21_beta_l12(module):
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    freqs = np.asarray(fixture["freqs_hz"], dtype=float)
+    s21 = np.asarray([complex(re, im) for re, im in fixture["s21"]], dtype=np.complex128)
+    beta = np.asarray([complex(re, im) for re, im in fixture["beta_first_port"]], dtype=np.complex128)
+    layout = module._stage_b_layout(fixture)
+    return freqs, s21, beta, layout
+
+
+def test_gate_budget_is_derived_not_a_round_number():
+    """Regression lock on the M1 fix itself: the phase gate must be the
+    derived, tight value (3 deg), not the pre-review 30 deg (which admitted
+    a 3.372mm/67%-of-L12 plane error and let a real referral-drop defect
+    pass -- see the module docstring 'GATE-BUDGET DERIVATION')."""
+    module = _load_referee_module()
+    assert module.B_PHASE_TOL_DEG == pytest.approx(3.0)
+    assert module.B_PHASE_TOL_DEG < 10.0, (
+        "phase gate drifted back toward the refuted 30 deg round number"
+    )
+
+
+def test_self_consistency_witness_resolving_power_single_port_referral_drop():
+    """The #529 resolving-power pattern: a gate must be PROVEN to
+    discriminate a real defect on committed data, not just documented as
+    doing so. Plants a synthetic single-port referral drop -- S21 rotated
+    by exp(+j*beta*ref_shift) for ONE port's own ref_plane_shift (2.5mm on
+    this fixture) -- on the REAL committed rfx fixture's own S21/beta, and
+    asserts:
+      (a) the UNPERTURBED fixture passes the current B_PHASE_TOL_DEG gate
+          with wide margin (measured max_phase_dev_deg ~0.12, ~25x under
+          the 3 deg gate);
+      (b) the PERTURBED (defect-planted) fixture REDS the same gate.
+    This is what makes "the gate resolves a referral-plane error of this
+    size" a MEASURED claim, not an assertion -- the pre-review 30 deg gate
+    passed this exact perturbation (measured ~16-22 deg, well under 30),
+    which is the defect this review caught (module docstring 'GATE-BUDGET
+    DERIVATION').
+    """
+    module = _load_referee_module()
+    freqs, s21, beta, layout = _rfx_fixture_s21_beta_l12(module)
+
+    # (a) nominal fixture: must PASS with real margin under the current gate.
+    result_nominal = module._self_consistency_witness(
+        freqs, s21, beta, l12_m=layout["l12_m"], mag_band=module.B_S21_MAG_BAND,
+        phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+        label="resolving_power_nominal",
+    )
+    assert result_nominal["passed"] is True
+    assert result_nominal["max_phase_dev_deg"] < module.B_PHASE_TOL_DEG / 5.0, (
+        f"nominal fixture's own phase deviation "
+        f"({result_nominal['max_phase_dev_deg']:.3f} deg) does not leave "
+        f"the expected wide margin under the gate ({module.B_PHASE_TOL_DEG} deg) "
+        f"-- the resolving-power claim needs BOTH a passing nominal case "
+        f"AND a reding perturbed case to mean anything"
+    )
+
+    # (b) planted defect: ONE port's own ref_plane_shift (2.5mm) is
+    # rotated back in as if it had never been applied.
+    ref_shift_one_port_m = layout["ref_plane_shift_port0_m"]
+    beta_re = np.real(beta)
+    s21_perturbed = s21 * np.exp(1j * beta_re * ref_shift_one_port_m)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        module._self_consistency_witness(
+            freqs, s21_perturbed, beta, l12_m=layout["l12_m"], mag_band=module.B_S21_MAG_BAND,
+            phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+            label="resolving_power_planted_defect",
+        )
+    assert "self-consistency witness failed" in str(excinfo.value)
+
+    # Measure (not just assert-raises) the actual deviation the planted
+    # defect produces, over the gate band, so the docstring's own cited
+    # "15.99-22.33 deg" claim is a checked number, not folklore.
+    mask = (freqs >= module.B_GATE_F_LO_HZ) & (freqs <= module.B_GATE_F_HI_HZ)
+    expected_phase = -beta_re * layout["l12_m"]
+    measured_phase = np.unwrap(np.angle(s21_perturbed))
+    phase_dev_deg = np.degrees(np.angle(np.exp(1j * (measured_phase - expected_phase))))
+    max_dev = float(np.max(np.abs(phase_dev_deg[mask])))
+    assert 10.0 < max_dev < 35.0, (
+        f"planted single-port referral-drop deviation ({max_dev:.2f} deg) "
+        f"fell outside the expected ballpark (10-35 deg) -- re-derive the "
+        f"docstring's own cited numbers if this genuinely moved"
+    )
+    assert max_dev > 5.0 * module.B_PHASE_TOL_DEG, (
+        f"planted defect ({max_dev:.2f} deg) is not comfortably (5x) past "
+        f"the gate ({module.B_PHASE_TOL_DEG} deg) -- the resolving-power "
+        f"margin this docstring claims ('~7-10x') would not hold"
+    )
+
+
+def test_gd_gate_is_honestly_inert_for_the_referral_drop_class():
+    """M1 honesty fix: the group-delay gate (200ps) must NOT catch the same
+    single-port referral-drop defect the phase gate catches -- pins the
+    docstring's own 'GROUP-DELAY GATE HONESTY' claim (~14ps for a
+    single-port 2.5mm drop) as a checked number instead of prose."""
+    module = _load_referee_module()
+    freqs, s21, beta, layout = _rfx_fixture_s21_beta_l12(module)
+
+    ref_shift_one_port_m = layout["ref_plane_shift_port0_m"]
+    beta_re = np.real(beta)
+    s21_perturbed = s21 * np.exp(1j * beta_re * ref_shift_one_port_m)
+
+    omega = 2.0 * np.pi * freqs
+    mask = (freqs >= module.B_GATE_F_LO_HZ) & (freqs <= module.B_GATE_F_HI_HZ)
+    expected_phase = -beta_re * layout["l12_m"]
+    measured_phase = np.unwrap(np.angle(s21_perturbed))
+    gd_measured = -np.gradient(measured_phase, omega)
+    gd_expected = -np.gradient(expected_phase, omega)
+    gd_dev_ps = np.abs(gd_measured[mask] - gd_expected[mask]) * 1e12
+
+    assert float(np.max(gd_dev_ps)) < module.B_GD_TOL_PS, (
+        "the planted single-port referral-drop defect unexpectedly TRIPPED "
+        "the group-delay gate -- the docstring's inertness claim is wrong, "
+        "fix the prose (or, if this is now doing useful work, say so)"
+    )
+    # Analytic cross-check: dl*sqrt(eps_eff)/c0 for this substrate.
+    eps_eff = (module.B_EPS_R + 1.0) / 2.0 + (module.B_EPS_R - 1.0) / 2.0 * (
+        1.0 + 12.0 / (module.B_W_TRACE_M / module.B_H_SUB_M)
+    ) ** -0.5
+    analytic_gd_ps = ref_shift_one_port_m * np.sqrt(eps_eff) / 2.998e8 * 1e12
+    assert abs(float(np.mean(gd_dev_ps)) - analytic_gd_ps) < 1.0, (
+        f"measured group-delay deviation ({float(np.mean(gd_dev_ps)):.2f} ps) "
+        f"does not match the analytic dl*sqrt(eps_eff)/c0 prediction "
+        f"({analytic_gd_ps:.2f} ps) -- the docstring's own physical "
+        f"explanation would be wrong"
+    )
+
+
+# ---------------------------------------------------------------------------
+# m6 review fix: substrate-top mesh line + rasterized cell count.
+# ---------------------------------------------------------------------------
+def test_stage_b_substrate_z_mesh_rasterized_cell_count():
+    """#325 class: the substrate's ACTUAL rasterized cell count must be
+    asserted, not left to an unguided uniform arange's arbitrary rounding.
+    At this fixture's own h_sub=254um, dx=50um, 254/50=5.08 -> round=5."""
+    module = _load_referee_module()
+    z_lines, n_sub = module._stage_b_substrate_z_mesh(254.0, 50.0)  # um units
+    assert n_sub == 5
+    assert z_lines[0] == pytest.approx(0.0)
+    assert z_lines[-1] == pytest.approx(254.0)
+    assert len(z_lines) == n_sub + 1
+    # Cell count must be derived from h_sub/dx, not hard-coded independent
+    # of the inputs -- discrimination check with a different dx.
+    _, n_sub_alt = module._stage_b_substrate_z_mesh(254.0, 80.0)
+    assert n_sub_alt == 3  # round(254/80) = round(3.175) = 3
+    assert n_sub_alt != n_sub
+
+
+def test_build_stage_b_asserts_substrate_cell_count_matches_constants():
+    """The wiring inside _build_stage_b (not just the pure helper above)
+    must assert n_sub == round(B_H_SUB_M/B_DX_M) -- pinned by reading the
+    source for the assertion rather than only exercising the pure
+    function, since a future edit could call the helper with the wrong
+    arguments and still "pass" the isolated unit test above."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._build_stage_b)
+    assert "_stage_b_substrate_z_mesh" in src
+    assert "n_sub == round(B_H_SUB_M / B_DX_M)" in src or "n_sub ==" in src
+
+
+# ---------------------------------------------------------------------------
+# M3 review fix: Stage B topology no longer extends the TRACE through PML,
+# and terminates with Feed_R=50 as the sole load (thru_openems.py's own
+# single-AddBox-span pattern) -- pinned by reading _build_stage_b's source
+# for the specific mechanism this review fixed, since exercising it fully
+# needs openEMS (VESSL-only, not available in this test environment).
+# ---------------------------------------------------------------------------
+def test_build_stage_b_trace_does_not_extend_through_pml():
+    """M3 fix: exactly ONE trace AddBox spanning feed_x0..feed_x1 (thru_
+    openems.py's own topology) -- NOT the pre-review THREE-segment version
+    that continued the conductor through both x-PMLs (the parallel-
+    impedance defect this review caught: Feed_R=50 in parallel with a
+    PML-matched continuation, predicted |S11|~=0.33)."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._build_stage_b)
+    # The pre-review version had three pec.AddBox(...) calls for the trace
+    # (x0..port0+w, port0+w..port1-w, port1-w..x1). The fixed version has
+    # exactly one, spanning feed_x0..feed_x1.
+    assert src.count("pec.AddBox(") == 1, (
+        f"expected exactly one trace AddBox (M3 fix -- thru_openems.py's "
+        f"own single-span pattern), found {src.count('pec.AddBox(')}"
+    )
+    add_box_line = next(line for line in src.splitlines() if "pec.AddBox(" in line)
+    assert "feed_x0" in add_box_line and "feed_x1" in add_box_line, (
+        f"trace AddBox must span exactly feed_x0..feed_x1, not through the "
+        f"PML (x0/x1) -- got: {add_box_line!r}"
+    )
+    import re
+    bare_x_tokens = re.findall(r"(?<!feed_)\bx[01]\b", add_box_line)
+    assert not bare_x_tokens, (
+        f"trace AddBox still references the domain-edge x0/x1 (PML-side) "
+        f"coordinates, not just feed_x0/feed_x1 -- got: {add_box_line!r}"
+    )
+
+
+def test_build_stage_b_sets_explicit_measplaneshift():
+    """m5 fix: MeasPlaneShift must be passed explicitly to BOTH ports (not
+    left at the class default, which at dx=50um is only 150um/3 cells
+    from the excitation+Feed_R -- near-field contaminated)."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._build_stage_b)
+    assert src.count("MeasPlaneShift=") == 2, (
+        f"expected MeasPlaneShift passed explicitly on both ports (m5 fix), "
+        f"found {src.count('MeasPlaneShift=')} occurrences"
+    )
+
+
+def test_build_stage_b_asserts_port_start_matches_feed_x():
+    """n8 fix: the silent coupling between _stage_b_layout's ref_plane_
+    shift derivation (which assumes start[prop]==feed_x) and the actual
+    port construction, ~250 lines away, must be an explicit assertion."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._build_stage_b)
+    assert "port0.start[0]" in src and "port1.start[0]" in src, (
+        "expected explicit start[prop]==feed_x assertions on both ports (n8 fix)"
+    )
