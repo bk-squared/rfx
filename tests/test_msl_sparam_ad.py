@@ -14,6 +14,7 @@ from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 from rfx.probes.probes import DFTPlaneProbe
+from tests._msl_ad_objective import msl_band_mean_s21_sq
 from tests.test_msl_port_integration import (
     DX,
     EPS_R,
@@ -268,6 +269,20 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
         grid = self._build_grid()
         planes = {}
         ones = jnp.ones((1, grid.ny, grid.nz), dtype=jnp.complex64)
+        # Linear z/y ramps for the Hy/Hz planes (issue #515 root cause).
+        # msl_loop_current's closed Ampere loop is
+        #   I = (Hy[bottom] - Hy[top])*dy_sum + (Hz[right] - Hz[left])*dz_sum
+        # A spatially UNIFORM Hy/Hz plane (the old ``ones * amp``) makes the
+        # opposing legs cancel EXACTLY, so I ~ 0 regardless of theta. With
+        # I ~ 0, every a=(V+Z0*I)/2 and b=(V-Z0*I)/2 collapses to a~b~V/2,
+        # so the multi-drive S=B*A^-1 solve returns ~Identity independent of
+        # V (and therefore of theta) -- empirically confirmed: the old
+        # fixture read S ~ [[1,~1e-9],[~1e-9,1]] at every theta in [0.5,0.9].
+        # A non-uniform ramp gives Hy/Hz a genuine difference between the
+        # loop's opposing legs, so I is non-zero and the V,I -> (a,b)
+        # decomposition is no longer degenerate.
+        z_ramp = (0.5 + jnp.arange(grid.nz, dtype=jnp.float32) / grid.nz)[None, None, :]
+        y_ramp = (0.5 + jnp.arange(grid.ny, dtype=jnp.float32) / grid.ny)[None, :, None]
         for entry in self._dft_planes:
             match = plane_name_re.fullmatch(entry.name)
             assert match is not None, f"Unexpected probe name: {entry.name!r}"
@@ -289,14 +304,16 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
             if kind.startswith("ez"):
                 ez_idx = int(match.group("ez"))
                 vs = _synthetic_v_n(alpha, gamma, n_probes=n_probes)
-                amp = vs[ez_idx]
+                field = ones * vs[ez_idx]
             elif kind == "hy":
                 amp = jnp.asarray(0.018 + 0.004j, dtype=jnp.complex64)
+                field = ones * amp * z_ramp
             else:  # hz
                 amp = jnp.asarray(0.005 + 0.001j, dtype=jnp.complex64)
+                field = ones * amp * y_ramp
 
             planes[entry.name] = DFTPlaneProbe(
-                accumulator=ones * amp,
+                accumulator=field,
                 freqs=entry.freqs,
                 component=entry.component,
                 axis=0,
@@ -322,8 +339,64 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     end-to-end path and is a required acceptance criterion of G-AD-WIRE
     (docs/research_notes/2026-05-24_next_goals_and_miss_audit.md). Real-path
     passivity is already gated by test_msl_thru_line_passive_gate.
+
+    REBUILT (issue #515, 2026-08-04). Two defects, found and fixed together:
+
+    1. **The objective was structurally flat on current main.** The old
+       objective was ``Re(S21)`` (``jnp.real(result.S[1, 0, 0])``). Measured
+       on main post-PR #516 (the multi-drive ``S = B·A⁻¹`` solve): grad =
+       0.000000e+00, and the forward value at theta = 0.6/0.7/0.8 was
+       -2.85e-08 / 0.0 / -2.85e-08 — dead, not merely small. The test's
+       ``isfinite``/``not isnan`` assertions cannot fail on a severed tape,
+       so it passed on a dead value. Fixed by switching to the SAME shared
+       objective the #530 tight gate uses (``msl_band_mean_s21_sq`` in
+       ``tests/_msl_ad_objective.py``, band-mean ``|S21|**2``) instead of a
+       second hand-written reduction.
+
+    2. **Switching the objective alone was not enough — the FIXTURE was also
+       degenerate**, and root-causing that is what this note records.
+       ``_fake_run_for_theta`` used to synthesize Hy/Hz DFT-plane data as a
+       spatially UNIFORM field (``ones * amp``). ``msl_loop_current``'s
+       closed Ampère loop is
+       ``I = (Hy[bottom] − Hy[top])·Σdy + (Hz[right] − Hz[left])·Σdz`` — a
+       uniform Hy/Hz plane makes the opposing legs cancel EXACTLY, so the
+       synthetic trace current I ≈ 0 at every port, every run, every theta.
+       With I ≈ 0, every wave pair ``a = (V + Z0·I)/2``, ``b = (V − Z0·I)/2``
+       collapses to ``a ≈ b ≈ V/2``, and the multi-drive ``S = B·A⁻¹`` solve
+       then returns ``S ≈ Identity`` REGARDLESS of V — and therefore
+       regardless of theta or which objective reads S21. Measured directly:
+       the old fixture gave ``S ≈ [[1, ~1e-9], [~1e-9, 1]]`` at every
+       theta ∈ [0.5, 0.9] — band-mean ``|S21|**2`` under that fixture reads
+       ~1e-17 (float32 noise), not merely small. This was NOT a defect the
+       #530 objective swap could fix by itself; it was a second, independent
+       fixture defect that happened to be invisible under the old ``Re(S21)``
+       objective too. Fixed by giving Hy a linear z-ramp and Hz a linear
+       y-ramp (see the ramps built in ``_fake_run_for_theta``) so the loop's
+       opposing legs no longer cancel and I is genuinely non-zero — a
+       physically-motivated shape (a real trace current does not thread a
+       spatially uniform H field either), not a numerology patch.
+
+    Measured after both fixes (this test, CPU float32, theta0=0.7):
+    ``grad = -4.681417e-03``, ``loss = 6.008485e-03``. A quick central-FD
+    cross-check at h=0.01 on this SAME synthetic fixture (informal, not
+    gated — this is a plumbing smoke, not an accuracy gate) reads
+    ``g_fd = -2.842303e-03``, agreeing in sign and order of magnitude. The
+    floor below (1e-4) sits ~47x under the measured magnitude — comfortable
+    headroom for CPU/GPU or JAX-version float32 noise while still rejecting
+    a severed tape (which reads exactly 0.0, not a small nonzero number).
+
+    FALSIFIER (PR body records the run): reproducing the OLD uniform-field
+    fixture with the NEW shared objective still gives grad ≈ 0
+    (|grad| < 1e-4), confirming this floor rejects the exact severed
+    construction issue #515 was filed against.
     """
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
+
+    # A strictly-positive floor, not merely isfinite/not-NaN (the #515
+    # defect: those assertions cannot fail on a severed tape, so the old
+    # test passed on a dead grad = 0.0). Derived from the measured
+    # -4.681417e-03 with ~47x headroom below its magnitude.
+    _GRAD_FLOOR = 1.0e-4
 
     def objective(theta):
         sim = _build_thru_line_sim()
@@ -333,12 +406,17 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
             freqs=freqs,
             num_periods=1.0,
         )
-        return jnp.real(result.S[1, 0, 0])
+        return msl_band_mean_s21_sq(result.S)
 
     grad = jax.grad(objective)(jnp.asarray(0.7, dtype=jnp.float32))
     print(f"\n[AD smoke] grad = {float(grad):.6e}")
     assert bool(jnp.isfinite(grad)), f"Gradient is not finite: {grad}"
     assert not bool(jnp.isnan(grad)), f"Gradient is NaN: {grad}"
+    assert abs(float(grad)) > _GRAD_FLOOR, (
+        f"[AD smoke] gradient is effectively zero ({float(grad):.3e}, floor "
+        f"{_GRAD_FLOOR:.0e}): the tape may be severed again. isfinite/not-NaN "
+        "alone cannot catch this — see issue #515."
+    )
     print("[test_compute_msl_s_matrix_ad_smoke_has_finite_gradient] PASS")
 
 

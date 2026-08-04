@@ -86,6 +86,24 @@ PRE-DECLARED READS
         threshold crossing as eps changes) and investigate that before the AD.
 
 Report-only. Modifies no gate.
+
+OBJECTIVE UPDATE (issue #530, 2026-08-04): the gate this script referees now
+differentiates band-mean ``|S21|**2`` (``tests._msl_ad_objective.
+msl_band_mean_s21_sq``), not ``sum_ij|S_ij|**2`` — see that module's
+docstring and ``tests/test_msl_ad_fd_converged.py`` for the replacement
+rationale. This script's ``_objective`` helper was updated to match, so the
+numbers it reports going forward are on the CURRENT gate's objective; the
+historical ``sum|S_ij|**2`` numbers quoted above (rel_err 0.8519 f32 /
+0.0331 f64, 4.4 / 2.31e9 ULP) are from the SUPERSEDED objective and are kept
+here only as the record of why the objective was replaced.
+
+This script runs against WHATEVER checkout is on ``sys.path`` (import-time
+``REPO`` resolution, below) — for a branch that is not yet ``main``, prefer
+``scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py``, which is
+built for exactly that case (a fresh ``git clone`` of a pushed branch inside
+a VESSL job, independent of the mounted primary checkout) and additionally
+runs the #529-style resolving-power falsifier (a planted #483-class
+defect) alongside the baseline measurement.
 """
 from __future__ import annotations
 
@@ -138,6 +156,7 @@ def main() -> int:
         _REL_ERR_THRESHOLD,
         _build_msl_sim,
     )
+    from tests._msl_ad_objective import msl_band_mean_s21_sq  # noqa: E402
 
     num_periods = args.num_periods if args.num_periods is not None else _NUM_PERIODS
     n_freqs = args.n_freqs if args.n_freqs is not None else _N_FREQS
@@ -163,7 +182,7 @@ def main() -> int:
                     n_freqs=n_freqs, num_periods=num_periods,
                     eps_override=eps_base * alpha, checkpoint_segments=cseg,
                 )
-            return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
+            return msl_band_mean_s21_sq(r.S)
         return obj
 
     print("\n--- AD (float32, as shipped) ---", flush=True)

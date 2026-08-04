@@ -3,12 +3,20 @@
 MSL-FD-TIGHT (2026-05-25) adds a slow-marked test that runs
 compute_msl_s_matrix(eps_override=...) at num_periods=20 (converged DFT)
 and asserts jax.grad agrees with a central finite-difference to a tight
-tolerance (rel_err <= 0.10). The reference itself runs in float64 and must
-clear a resolving-power floor before its verdict is read — see issue #527.
+tolerance. The reference itself runs in float64 and must clear a
+resolving-power floor before its verdict is read — see issue #527.
 
 This converts the "AD tape flows + roughly right" evidence from
 test_sparam_ad_end_to_end.py (num_periods=3, rel_err=16%) into
 "AD gradient is accurate" evidence.
+
+OBJECTIVE (issue #530, 2026-08-04): the differentiated quantity is band-mean
+``|S21|**2`` (``tests._msl_ad_objective.msl_band_mean_s21_sq``), shared with
+the #515 AD smoke (``tests/test_msl_sparam_ad.py``) so the two tests
+differentiate the identical reduction. This REPLACES the prior
+``sum_ij|S_ij|**2`` objective — see the docstring of
+``test_msl_ad_fd_converged_tight`` below for the full replacement
+rationale and the historical numbers it supersedes.
 
 Geometry mirrors _build_msl_sim() in test_sparam_ad_end_to_end.py exactly.
 """
@@ -27,6 +35,8 @@ from jax.experimental import enable_x64  # SCOPED x64 — never flip it at modul
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
+from tests._gate_policy import gate_from_envelope
+from tests._msl_ad_objective import msl_band_mean_s21_sq
 
 # ---------------------------------------------------------------------------
 # Geometry — identical to _build_msl_sim() in test_sparam_ad_end_to_end.py
@@ -291,10 +301,10 @@ def test_msl_ad_fd_converged_tight():
                 eps_override=eps_base * alpha,
                 checkpoint_segments=checkpoint_segments,
             )
-        S = result.S
-        # Sum of |S|^2 over all matrix entries and all frequency bins —
-        # a smooth scalar that depends on eps at every grid cell.
-        return jnp.real(jnp.sum(jnp.abs(S) ** 2))
+        # Band-mean |S21|^2 (issue #530) — a smooth scalar that depends on
+        # eps at every grid cell, and is NOT passivity-pinned the way
+        # sum_ij|S_ij|^2 is (see module docstring / test docstring).
+        return msl_band_mean_s21_sq(result.S)
 
     alpha0 = jnp.float32(1.0)
 
@@ -362,7 +372,7 @@ def test_msl_ad_fd_converged_tight():
                     eps_override=eps64 * alpha,
                     checkpoint_segments=checkpoint_segments,
                 )
-            return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
+            return msl_band_mean_s21_sq(r.S)
 
         # Keep the ARRAYS. float() would widen them to Python floats — always
         # float64 — and the resolving-power check below would then measure the

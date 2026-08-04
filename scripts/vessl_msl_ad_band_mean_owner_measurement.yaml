@@ -1,0 +1,53 @@
+name: rfx-msl-ad-band-mean-owner
+description: "#530/#515: owner-platform (gpu-rtx4090) measurement of the band-mean |S21|^2 AD gate objective replacement -- clones the PR branch fresh (the mounted primary checkout still points at main, not this branch) and runs scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py"
+tags: [rfx, issue-530, issue-515, ad-fd, comparator]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  RFX_BRANCH: "msl-ad-band-mean-s21-objective"
+  RFX_EXPECT_SHA: "FILL_AFTER_PUSH"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  echo "=== rfx #530/#515 MSL AD band-mean|S21|^2 owner-platform measurement ==="
+  echo "=== this job clones RFX_BRANCH fresh -- it does NOT use the mounted"
+  echo "=== primary checkout, which stays on main (see script docstring) ==="
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  CLONE_DIR=/tmp/rfx-clone
+  rm -rf "$CLONE_DIR"
+  git clone --branch "$RFX_BRANCH" --depth 1 https://github.com/bk-squared/rfx.git "$CLONE_DIR"
+  cd "$CLONE_DIR"
+  git config --global --add safe.directory "$CLONE_DIR" || true
+  echo "=== provenance ==="
+  ACTUAL_SHA="$(git rev-parse HEAD)"
+  echo "cloned branch : $RFX_BRANCH"
+  echo "cloned SHA    : $ACTUAL_SHA"
+  echo "expected SHA  : $RFX_EXPECT_SHA"
+  if [ "$RFX_EXPECT_SHA" != "FILL_AFTER_PUSH" ] && [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
+    echo "FATAL: cloned SHA does not match RFX_EXPECT_SHA -- branch moved after this YAML was pinned"
+    exit 3
+  fi
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$CLONE_DIR"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== owner-platform measurement: baseline + #483-class falsifier ==="
+  OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/msl-ad-band-mean-owner/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
+  mkdir -p "$OUT_DIR"
+  set +e
+  timeout 5400 python -u scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py > "$OUT_DIR/measurement.log" 2>&1
+  rc=$?
+  set -e
+  cat "$OUT_DIR/measurement.log"
+  echo "$rc" > "$OUT_DIR/measurement.rc"
+  echo "artifacts persisted to (mounted, survives job teardown): $OUT_DIR"
+  echo "(the /tmp clone itself is ephemeral and is NOT the artifact store)"
+  exit "$rc"
