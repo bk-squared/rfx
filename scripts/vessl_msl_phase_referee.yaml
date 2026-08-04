@@ -1,0 +1,98 @@
+name: rfx-msl-phase-referee
+description: "#490 lane 2: source-built openEMS referee for MSL de-embedded phase (comparator leg only -- brackets, does not judge rfx's own compute_msl_s_matrix numbers). This lane mounts and tests the PRIMARY checkout (/root/workspace/byungkwan-workspace/research/rfx), NOT a git clone (vessl_external_referee_lane.md) -- the referee script AND the committed rfx-side fixture (tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json) must be MERGED TO MAIN before submitting, or this run will execute whatever is on main, not your branch. On-demand, not a fixed cadence; standing lane per docs/agent-memory/task_recipes/vessl_external_referee_lane.md -- submit whenever the MSL phase geometry or extractor changes, or when #490 lane 2 review needs fresh evidence: vessl run create -f scripts/vessl_msl_phase_referee.yaml"
+tags: [rfx, msl-phase, i490, external-referee]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own --threads/numThreads (passed explicitly
+  # below, matching resources.cpu=16) does the parallelism (coax lane's own
+  # L3 review fix -- align cpu / OMP_NUM_THREADS / numThreads instead of
+  # three independently-chosen numbers).
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  # pytorch runtime image: dash shell (no bashisms) and git via apt below.
+  echo "=== rfx #490 lane 2: openEMS MSL phase referee ==="
+  date
+
+  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
+  # to scripts/vessl_crossval_external.yaml / scripts/vessl_coax_two_port_
+  # referee.yaml's build block (imitated, not reinvented). --
+  apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git \
+    libhdf5-dev libtinyxml-dev \
+    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
+    libboost-serialization-dev \
+    libcgal-dev libvtk7-dev \
+    python3-dev python3-numpy python3-scipy python3-matplotlib \
+    python3-setuptools python3-h5py 2>&1 | tail -3
+  cd /tmp
+  git clone --recursive https://github.com/thliebig/openEMS-Project.git
+  cd openEMS-Project
+  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
+  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
+  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
+  ldconfig
+  export CSXCAD_INSTALL_PATH=/usr/local
+  export OPENEMS_INSTALL_PATH=/usr/local
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
+  cd CSXCAD/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  cd openEMS/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+
+  # -- provenance (this script never imports rfx, but the referee's Stage B
+  # geometry constants were cross-checked against the LIVE rfx checkout at
+  # authoring time -- record which commit that was, per vessl_external_
+  # referee_lane.md's "both lanes test the LIVE primary checkout" discipline,
+  # AND that the committed rfx-side fixture is present -- Stage B cannot
+  # run without it). --
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  test -f tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json && echo "rfx fixture: present" || echo "rfx fixture: MISSING (Stage B will exit 3)"
+
+  out=".omx/msl-phase-referee/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$out"
+
+  # -- Stage A + Stage B, sequential inside the script itself (Stage B is
+  # skipped by the script if Stage A's reproduce-gate fails). Exit-code
+  # convention (docs/agent-memory/task_recipes/vessl_external_referee_
+  # lane.md, extended by the script's own module docstring): 0 self-checks
+  # passed, 1 a physics/self-check gate failed, 2 openEMS missing (should
+  # not fire here -- the build above just proved it isn't), 3 an internal
+  # config/layout bug or a drift against the committed rfx fixture.
+  # --threads matches resources.cpu above. --
+  set +e
+  timeout 5400 "$PY" validation/research/msl_phase_referee/openems_msl_phase_referee.py \
+    --output "$out/openems_msl_phase_referee.json" \
+    --threads 16 \
+    > "$out/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$out/exit_code"
+  tail -n 60 "$out/run.log" || true
+  echo "msl_phase_referee_rc=$rc"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: reproduce-gate + Stage B self-consistency both passed (comparator-leg only -- see JSON for the actual cross-solver bracket/dispersion report, no verdict on rfx-vs-openEMS absolute agreement)" ;;
+    1) echo "SELF-CHECK FAILED: reproduce-gate or a Stage B sanity/self-consistency witness failed -- inspect $out/run.log before trusting any number in the JSON" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding -- investigate the build/import path" ;;
+    3) echo "CONFIG ERROR: an internal layout/geometry assertion or a drift against the committed rfx fixture -- this is a script bug, NOT a physics finding; fix the script or regenerate the fixture before resubmitting" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"
