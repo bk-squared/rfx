@@ -23,7 +23,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   (`dz_profile`/`dx_profile`/`dy_profile`) the advisory now emits a
   `wire_port_dead_cell_classification_unavailable` note instead of either
   silently skipping the check or checking a mismatched uniform substitute
-  (pre-existing NU-blindness, previously undisclosed).
+  (pre-existing NU-blindness, previously undisclosed). **Behaviour change
+  for `preflight(strict=True)`**: an otherwise-clean non-uniform-mesh sim
+  with a wire port now RAISES `ValueError` where it previously did not —
+  the new note is a warning-severity issue like any other, and `strict`
+  escalates every issue (contract-consistent, not a new exception to that
+  contract). Callers that want errors-only escalation and this warning
+  passed through should call `preflight(strict=False).raise_for_failure()`
+  instead of `preflight(strict=True)`.
 
 ### Fixed — the #494 advisory's test coverage was bound at one point in a five-dimensional option space
 

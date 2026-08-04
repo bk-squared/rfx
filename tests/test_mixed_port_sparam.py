@@ -744,6 +744,12 @@ def test_wire_port_dead_cell_advisory_matches_ground_truth_on_488_fixture():
         "midpoint cell (index 2, z=200um) is live -- #314 must stay "
         "silent too: " + "\n".join(str(s) for s in issues)
     )
+    assert "wire_port_dead_cell_classification_unavailable" not in codes, (
+        "issue #544 review R1: the classification-unavailable note is "
+        "reserved for NU meshes / a materials-build exception -- this "
+        "fixture is a clean uniform mesh with a working build, so it "
+        "must NOT fire here: " + "\n".join(str(s) for s in issues)
+    )
 
 
 def test_wire_port_dead_cell_advisory_stays_correct_on_an_already_agreeing_case():
@@ -821,4 +827,79 @@ def test_wire_port_dead_cell_advisory_old_method_would_have_drifted():
     assert "wire_port_dead_extent_cells" not in codes, (
         "current advisory (sharing the ground-truth primitive) must NOT "
         "reproduce the old method's wrong classification"
+    )
+
+
+def test_wire_port_dead_cell_classification_unavailable_on_nu_mesh():
+    """Issue #544 review R1: BLOCKING-1's fix (skip the classification on
+    a non-uniform mesh rather than building a mismatched uniform
+    substitute) had zero test coverage. On a dz_profile sim with a wire
+    port, the new ``wire_port_dead_cell_classification_unavailable``
+    advisory must fire (warning severity) and BOTH #314/#319 dead-cell
+    advisories must stay silent (there is nothing safe to classify).
+    """
+    sim, y_c = _base_sim(dz_profile=np.full(10, 75.4e-6))
+    _add_feed(sim, y_c, x=2e-3)
+
+    issues = sim.preflight()
+    codes = [getattr(s, "code", None) for s in issues]
+    hits = [s for s in issues
+            if getattr(s, "code", None)
+            == "wire_port_dead_cell_classification_unavailable"]
+    assert len(hits) == 1, (
+        "expected exactly one classification-unavailable note on an NU "
+        "sim with one wire port: " + "\n".join(str(s) for s in issues)
+    )
+    assert getattr(hits[0], "severity", None) == "warning", (
+        f"classification-unavailable note must be warning-severity, got "
+        f"{getattr(hits[0], 'severity', None)!r}"
+    )
+    assert "non-uniform mesh" in hits[0] and "dz_profile" in hits[0], (
+        f"note must name the NU reason: {hits[0]}"
+    )
+    assert "wire_port_dead_extent_cells" not in codes, (
+        "the uniform-only ground-truth path must not have run on an NU "
+        "mesh: " + "\n".join(str(s) for s in issues)
+    )
+    assert "wire_port_midpoint_in_pec" not in codes, (
+        "the uniform-only ground-truth path must not have run on an NU "
+        "mesh: " + "\n".join(str(s) for s in issues)
+    )
+
+
+def test_wire_port_dead_cell_classification_unavailable_on_assemble_exception(
+    monkeypatch,
+):
+    """Issue #544 review R1: the OTHER trigger for the same advisory --
+    a materials-build exception on an otherwise-uniform sim (defensive
+    fallback, review item 6) -- also had zero coverage. Monkeypatches
+    ``_assemble_materials`` to raise on a clean uniform #488-style
+    fixture and asserts the note fires carrying the exception text.
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c, x=2e-3)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    def _raise_materials_build(*_args, **_kwargs):
+        raise RuntimeError(
+            "synthetic materials-assembly failure (issue #544 review "
+            "item 1 falsifier)"
+        )
+
+    monkeypatch.setattr(sim, "_assemble_materials", _raise_materials_build)
+
+    issues = sim.preflight()
+    hits = [s for s in issues
+            if getattr(s, "code", None)
+            == "wire_port_dead_cell_classification_unavailable"]
+    assert len(hits) == 1, (
+        "expected exactly one classification-unavailable note when "
+        "_assemble_materials raises: " + "\n".join(str(s) for s in issues)
+    )
+    assert getattr(hits[0], "severity", None) == "warning", (
+        f"classification-unavailable note must be warning-severity, got "
+        f"{getattr(hits[0], 'severity', None)!r}"
+    )
+    assert "synthetic materials-assembly failure" in hits[0], (
+        f"note must carry the caught exception's text verbatim: {hits[0]}"
     )

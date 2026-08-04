@@ -2899,8 +2899,11 @@ class _PreflightMixin:
         # to) extend there.
         #
         # Known limitation (issue #544 adversarial review; same
-        # non-regression disclosure pattern as the #510 review nit A a few
-        # hundred lines above): ``self._build_grid()`` /
+        # non-regression disclosure pattern as the #510 review nit A —
+        # grep this file for "issue #510 review nit A" to find that
+        # comment; citing it by line number/direction rots as the file
+        # grows, which is exactly what happened to an earlier draft of
+        # this comment): ``self._build_grid()`` /
         # ``self._assemble_materials(grid)`` are unconditionally UNIFORM.
         # A ``dz_profile``/``dx_profile``/``dy_profile`` (NU) sim's REAL
         # run instead uses ``_build_nonuniform_grid()`` +
