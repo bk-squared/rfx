@@ -873,15 +873,20 @@ def test_wire_port_dead_cell_classification_unavailable_on_assemble_exception(
     """Issue #544 review R1: the OTHER trigger for the same advisory --
     a materials-build exception on an otherwise-uniform sim (defensive
     fallback, review item 6) -- also had zero coverage. Monkeypatches
-    ``_assemble_materials`` to raise on a clean uniform #488-style
-    fixture and asserts the note fires carrying the exception text.
+    ``_assemble_materials`` to raise a REALISTIC build failure
+    (``ValueError`` -- matches what a malformed domain/grid config or
+    ``_resolve_material``'s own ``KeyError`` class of failure looks like;
+    NOT ``RuntimeError``/``TimeoutError``, which are the classes this
+    advisory must NOT swallow -- see the sibling propagation test below)
+    on a clean uniform #488-style fixture, and asserts the note fires
+    carrying the exception text.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c, x=2e-3)
     _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
 
     def _raise_materials_build(*_args, **_kwargs):
-        raise RuntimeError(
+        raise ValueError(
             "synthetic materials-assembly failure (issue #544 review "
             "item 1 falsifier)"
         )
@@ -903,3 +908,44 @@ def test_wire_port_dead_cell_classification_unavailable_on_assemble_exception(
     assert "synthetic materials-assembly failure" in hits[0], (
         f"note must carry the caught exception's text verbatim: {hits[0]}"
     )
+
+
+def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
+    """Regression test for the studio-packaging CI failure on PR #555's
+    original head (f3a3db7): a broad ``except Exception`` in the new
+    dead-cell classification code caught
+    ``rfx.experiments.worker.RunTimedOut`` (a ``TimeoutError`` subclass a
+    SIGALRM handler raises asynchronously while ``_assemble_materials``
+    was in flight), silently converting the timeout into a
+    "classification unavailable" advisory instead of letting it
+    propagate -- so a 500,000-step experiment with a 1-second timeout
+    kept simulating instead of dying, hanging
+    ``tests/test_durable_worker_lifecycle.py::
+    test_worker_timeout_is_durable_failed_outcome``'s subprocess wait
+    (60s) with NO worker-side sign of the timeout ever having fired.
+
+    Reproduces the class directly (no subprocess/signal needed): monkeypatch
+    ``_assemble_materials`` to raise ``TimeoutError`` -- the same family
+    the worker's SIGALRM handler uses (``RunTimedOut(TimeoutError)``) --
+    and assert ``preflight()`` does NOT catch it: it must propagate all
+    the way out uncaught, exactly as it would have before this advisory
+    existed. A ``RuntimeError`` (the family ``RunCancelled`` -- the
+    worker's SIGTERM/SIGINT handler -- uses) must propagate too.
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c, x=2e-3)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    def _raise_timeout(*_args, **_kwargs):
+        raise TimeoutError("worker exceeded the experiment timeout")
+
+    monkeypatch.setattr(sim, "_assemble_materials", _raise_timeout)
+    with pytest.raises(TimeoutError, match="exceeded the experiment timeout"):
+        sim.preflight()
+
+    def _raise_cancel(*_args, **_kwargs):
+        raise RuntimeError("worker received signal 15")
+
+    monkeypatch.setattr(sim, "_assemble_materials", _raise_cancel)
+    with pytest.raises(RuntimeError, match="worker received signal"):
+        sim.preflight()

@@ -2954,10 +2954,44 @@ class _PreflightMixin:
                         grid = self._build_grid()
                         _, _, _, pec_mask, _, _, _ = \
                             self._assemble_materials(grid)
-                    except Exception as exc:
+                    except (ValueError, TypeError, NotImplementedError,
+                            KeyError, AttributeError, IndexError) as exc:
                         # Defensive (matches ``_wire_port_cell_centers``):
                         # preflight must never crash a run over a
-                        # diagnostics helper.
+                        # diagnostics helper -- but this tuple is
+                        # DELIBERATELY NOT ``except Exception`` (CI
+                        # incident on PR #555's own head: a broad
+                        # ``except Exception`` here caught
+                        # ``rfx.experiments.worker.RunTimedOut``, a
+                        # ``TimeoutError`` subclass a SIGALRM handler
+                        # raises asynchronously while this exact call is
+                        # in flight -- ``execute_run`` arms the alarm
+                        # BEFORE calling ``compiled.preflight()``, so a
+                        # slow ``_assemble_materials`` here is squarely
+                        # inside the timeout window. Swallowing it here
+                        # meant the worker's top-level
+                        # ``except RunTimedOut`` handler never ran, so a
+                        # 1-second-timeout experiment kept simulating for
+                        # its full 500k-step run instead of exiting —
+                        # the worker process hung rather than dying,
+                        # timing out the parent's ``subprocess.wait``
+                        # (tests/test_durable_worker_lifecycle.py
+                        # ::test_worker_timeout_is_durable_failed_outcome,
+                        # 60s). ``rfx/api`` must not import
+                        # ``rfx.experiments`` to name that exception type
+                        # directly (wrong dependency direction), so the
+                        # general fix is this narrow, purpose-scoped
+                        # tuple: only the errors ``_build_grid``/
+                        # ``_assemble_materials`` are actually documented
+                        # to raise for a malformed config (bad domain,
+                        # unresolved material -- ``_resolve_material``
+                        # raises ``KeyError`` -- unsupported shape
+                        # method). Any signal-driven exception
+                        # (``TimeoutError``, ``RuntimeError``-based
+                        # cancellation, ``KeyboardInterrupt``,
+                        # ``MemoryError``, ...) now propagates through
+                        # this advisory untouched, exactly like it did
+                        # before this advisory existed.
                         grid = None
                         pec_mask = None
                         classification_unavailable_reason = str(exc)
