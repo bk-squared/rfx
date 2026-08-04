@@ -1,0 +1,115 @@
+name: build-openems-image
+
+# Builds and publishes docker/openems-lane/Dockerfile -- the prebuilt
+# openEMS solver-environment image for rfx's external-openEMS VESSL referee
+# lanes. Motivation: 2026-08-04, archive.ubuntu.com was unreachable from
+# remilab-c0 and killed 4 provisioning attempts across the coax/MSL/
+# mesh-refinement referee lanes in one day, each having already paid apt +
+# a large chunk of the ~30-60 min openEMS source build before dying. GitHub
+# Actions runners have healthy network to archive.ubuntu.com, so the build
+# happens here instead of on the cluster, once per openEMS-commit bump
+# instead of once per VESSL run.
+#
+# This workflow only builds and publishes the image -- it does NOT change
+# what any lane YAML uses. The `image:` swap in the four lane YAMLs is a
+# separate, independently-revertible commit (see the PR body) gated on (a)
+# this workflow having produced a real image on ghcr and (b) a cheap VESSL
+# pull-smoke (scripts/vessl_image_pull_smoke.yaml) confirming the ghcr
+# package's one-time visibility flip (private -> public, a manual step
+# GITHUB_TOKEN cannot perform) has actually happened.
+
+on:
+  workflow_dispatch:
+    inputs:
+      openems_sha:
+        description: "openEMS-Project commit SHA to build (defaults to the Dockerfile's pinned ARG OPENEMS_COMMIT)"
+        required: false
+        type: string
+  push:
+    paths:
+      - "docker/openems-lane/Dockerfile"
+      - ".github/workflows/build-openems-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/bk-squared/rfx-openems
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      sha_tag: ${{ steps.resolve.outputs.sha_tag }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve openEMS commit, tag, and build date
+        id: resolve
+        run: |
+          set -eu
+          DOCKERFILE_PIN=$(grep -m1 '^ARG OPENEMS_COMMIT=' docker/openems-lane/Dockerfile | cut -d= -f2)
+          SHA="${{ inputs.openems_sha }}"
+          if [ -z "$SHA" ]; then
+            SHA="$DOCKERFILE_PIN"
+          fi
+          SHORT_SHA=$(echo "$SHA" | cut -c1-12)
+          echo "resolved openEMS commit: $SHA (tag: $SHORT_SHA)"
+          echo "openems_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/openems-lane/Dockerfile
+          push: true
+          build-args: |
+            OPENEMS_COMMIT=${{ steps.resolve.outputs.openems_sha }}
+            BUILD_DATE=${{ steps.resolve.outputs.build_date }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.resolve.outputs.sha_tag }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Report image digest and tags
+        run: |
+          echo "image: ${{ env.IMAGE_NAME }}"
+          echo "tags: ${{ steps.resolve.outputs.sha_tag }}, latest"
+          echo "digest: ${{ steps.push.outputs.digest }}"
+
+  verify-pull:
+    name: pull-back-and-verify-import
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the just-pushed image by digest and rerun the import sanity check
+        run: |
+          set -eu
+          IMAGE="${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}"
+          echo "pulling $IMAGE"
+          docker pull "$IMAGE"
+          docker run --rm "$IMAGE" python3 -c "from openEMS.openEMS import openEMS; from CSXCAD.CSXCAD import ContinuousStructure; print('post-push import check: OK')"
