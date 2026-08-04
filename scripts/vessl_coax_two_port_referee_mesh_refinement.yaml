@@ -16,7 +16,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   RFX_BRANCH: "feat/489-active-dev-legs-1-3"
-  RFX_EXPECT_SHA: "409fe13a620f348514a620043611e6fbefa21e23"
+  RFX_EXPECT_SHA: "049064a33e0a80afede4fa2e6c806105a8976c2b"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
