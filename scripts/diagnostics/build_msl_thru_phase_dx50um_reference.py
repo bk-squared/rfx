@@ -22,9 +22,11 @@ substrate cells here too (identical substrate), so the same precedent
 applies.
 
 Writes a JSON fixture (freqs, S, Z0, beta, reference-plane geometry)
-that ``validation/research/msl_phase_referee/openems_msl_phase_referee.py``
-reads for its own Stage B comparison -- keeping that script openEMS-only
-(no rfx import), matching the coax/floquet referee precedent.
+that ``validation/crossval/20_msl_phase_referee.py`` (promoted 2026-08-04,
+formerly ``validation/research/msl_phase_referee/
+openems_msl_phase_referee.py``) reads for its own Stage B comparison --
+keeping that script openEMS-only (no rfx import), matching the
+coax/floquet referee precedent.
 
 Usage::
 

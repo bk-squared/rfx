@@ -31,6 +31,83 @@ the mechanism a future off-grid fixture would need it to actually do
 work.
 
 ============================================================================
+RUN-1 RESULT (2026-08-04, VESSL 369367251705) -- REPRODUCE_GATE_RECORD
+now filled, status="RUN"
+============================================================================
+Log: ``validation/crossval/_20_msl_phase_referee_logs/
+20260804T070702Z_run.log`` (git-tracked; the PR #548 lesson applied from
+the start here, not retrofitted). Full artifact committed verbatim as the
+run-1 regression fixture: ``validation/crossval/
+_20_msl_phase_referee_logs/20260804T055009Z_result.json`` (``tests/
+test_msl_phase_referee_header.py`` pins its claims-bearing arrays
+byte-exact). Both moved from ``validation/research/msl_phase_referee/``
+on promotion (below) -- paths as of the pre-promotion fill are historical.
+
+Stage A reproduced the tutorial's own notch to 0.44% (3.6711 GHz measured
+vs 3.6872 GHz analytic -- well inside the gate band). Stage B's own
+self-checks all passed: passivity max(|S11|^2+|S21|^2)=1.024 (<=1.05
+ceiling), openEMS self-consistency max_phase_dev_deg=0.642 (<3 deg gate,
+~4.7x margin), rfx self-consistency max_phase_dev_deg=0.121 (<3 deg gate,
+~25x margin, matching the pre-run local-only measurement recorded above
+almost exactly -- the VESSL run did not need to touch rfx's own side at
+all). ``overall_passed=True``.
+
+SETTLING EVIDENCE (D2/D3 fix, GUARD CHANNEL-GAP FIX review, 2026-08-04):
+before that fix, neither ``end_criteria_not_reached`` nor ``truncated``/
+``truncated_suspected`` could have reported anything but their own default
+value -- the phrase they check, openEMS's own "RunFDTD: Warning: Max.
+number of timesteps was reached before the end-criteria of ... was
+reached", is written to STDERR, which this script did not capture
+pre-fix. Post-fix, run-1's own committed log (``validation/crossval/
+_20_msl_phase_referee_logs/20260804T070702Z_run.log``) supplies its own
+positive control: the phrase appears for each stage's own SMOKE run
+(NrTS=200, EndCriteria=0.0 -> "-infdB", which by construction can never
+converge) and is ABSENT from either stage's own REAL run -- same binary,
+same stream, only the smoke/real split differs. Stage B's real run
+reached EndCriteria=1e-4 (-40dB); Stage A's real run reached
+EndCriteria=1e-5 (-50dB) -- both WITHOUT hitting the NrTS cap, confirmed
+by the phrase's absence in each stage's own real-run capture, not merely
+inferred from elapsed time.
+
+MEASURED PRECISION (openEMS's own |S21|, reported factually -- not a
+fault finding about either solver, per this repo's humble-crossval
+discipline): Stage B's openEMS-side |S21| carries a small systematic
+magnitude bias above unity -- 29 of 30 bins read |S21|>1.0 (range
+1.00076-1.00135 within the gated 3.0-4.5GHz band; max 1.00872 at bin 0,
+500 MHz). At bin 0, |S21|^2-1 alone accounts for 74% of the passivity
+balance's own 0.0237 excess over 1.0 (the remaining 26% is |S11|^2,
+0.0061) -- most of that bin's passivity margin usage traces to this
+small over-unity |S21| reading, not to |S11|. The balance still clears
+the 1.05 ceiling with room (1.024 vs 1.05) at every bin.
+
+REPORTED (not gated) cross-solver comparison: raw_phase_diff_deg runs
+from 4.13 deg at 500 MHz down through -0.13 deg at 5.0 GHz -- 22 of 30
+bins land within 1 deg, only bin 0 exceeds 3 deg, and the first three
+bins decay monotonically in magnitude (4.13 -> 2.89 -> 2.02 deg). The
+IMPLIED reference-plane error this raw phase difference alone would map
+to (Delta_d = Delta_phi / beta, at each bin's own measured beta) is
+~4063 um at bin 0 (500 MHz) shrinking to ~-13 um at bin 29 (5.0 GHz) --
+a SIGN FLIP across the band that no single constant plane-offset error
+can produce (a genuine fixed-position referral defect maps to a
+CONSTANT-SIGN implied Delta_d at every frequency, per the resolving-
+power test's own planted-defect construction). Subtracting each bin's
+own measured beta_ratio_rfx_over_openems (~1.003-1.008, a real
+few-tenths-percent dispersion difference between the two solvers' own
+discretizations) does NOT collapse raw_phase_diff_deg toward zero --
+``residual_phase_diff_after_dispersion_deg`` stays a COMPARABLE size
+band-wide (4.15 deg down to 0.10 deg, and unlike raw it never crosses
+zero) -- so this measured dispersion term explains only part of the raw
+gap's shape, not all of it. All of these arrays are reported here as
+MEASURED numbers only; per this referee's own "WHAT IS GATED vs
+REPORTED" discipline, no verdict is drawn from their shape here -- see
+tests/test_msl_phase_referee_header.py's own run-1 regression-fixture
+tests for the exact pinned values a future reviewer can inspect
+directly.
+
+This fill is a RECORD-COMPLETION step only -- see MUST_MOVE_WHEN_VALIDATED
+below for what it does and does not decide about promotion.
+
+============================================================================
 DO-NOT-REPEAT (R1/R2 class -- read before choosing a mesh size)
 ============================================================================
 This fixture's substrate is RO4350B (eps_r=3.66, h_sub=254um) -- the
@@ -609,20 +686,20 @@ brackets); 1 = a PHYSICS/self-check gate failed (``RuntimeError``);
 INTERNAL CONFIGURATION error in this script's own geometry/layout math
 or a drift against the committed rfx fixture (``AssertionError``).
 
-MUST-MOVE-WHEN-VALIDATED (mirrors the coax/floquet referee governance
-note): this script lives at ``validation/research/msl_phase_referee/``,
-outside ``validation/crossval/`` and its ``manifest.json`` -- exempt
-from crossval governance by construction (``.claude/rules/
-rfx-feature-discovery.md`` + ``feedback_crossval_governance_glob_
-bypass.md``). Move into ``validation/crossval/`` only after a real
-VESSL run has filled ``REPRODUCE_GATE_RECORD`` AND issue #490's own
-reviewer has judged the resulting convention-resolution evidence.
+PROMOTED (2026-08-04, #490 reviewer judgment -- see MUST_MOVE_WHEN_
+VALIDATED below for the full history and the promoted-entry scope
+fence): this script lived at ``validation/research/msl_phase_referee/
+openems_msl_phase_referee.py`` from authorship (PR #550) through the
+run-1 record-fill; it now lives here, registered in
+``validation/crossval/manifest.json`` as ``20_msl_phase_referee``, a
+``diagnostic-reporter`` case (gated claim = per-solver self-consistency;
+cross-solver agreement REPORTED).
 
 Usage (VESSL-only; openEMS is not importable outside
 ``scripts/vessl_msl_phase_referee.yaml``, which runs the PRIMARY
 checkout -- this script must be merged to main before submitting)::
 
-    python validation/research/msl_phase_referee/openems_msl_phase_referee.py \\
+    python validation/crossval/20_msl_phase_referee.py \\
         --output .omx/msl-phase-referee/openems_msl_phase_referee.json
 """
 from __future__ import annotations
@@ -705,12 +782,12 @@ REPRODUCE_GATE_RECORD: dict = {
         "f_notch_lo_hz": 0.80 * float(F_NOTCH_AN_HZ),
         "f_notch_hi_hz": 1.05 * float(F_NOTCH_AN_HZ),
     },
-    "status": "UNRUN",
-    "reproduced_f_notch_hz": None,
-    "reproduced_f_notch_dev_pct": None,
-    "log_path": None,
-    "vessl_run_id": None,
-    "verified_on": None,
+    "status": "RUN",
+    "reproduced_f_notch_hz": 3671100625.0,
+    "reproduced_f_notch_dev_pct": 0.4364433837294213,
+    "log_path": "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
+    "vessl_run_id": "369367251705",
+    "verified_on": "2026-08-04",
 }
 
 DECLARED_QUESTION = (
@@ -733,12 +810,25 @@ DECLARED_QUESTION = (
 )
 
 MUST_MOVE_WHEN_VALIDATED = (
-    "Move into validation/crossval/ (+ manifest.json) only after a real "
-    "VESSL run has filled REPRODUCE_GATE_RECORD with a number + log path, "
-    "AND issue #490's own reviewer has judged the resulting convention-"
-    "resolution evidence. Not before -- this file's presence under "
-    "validation/research/ must not be read as a registered crossval pass "
-    "(validation/research/floquet/rcwa_referee.py precedent)."
+    "MOVED (2026-08-04): the original condition here was to move into "
+    "validation/crossval/ (+ manifest.json) only after a real VESSL run "
+    "had filled REPRODUCE_GATE_RECORD with a number + log path, AND issue "
+    "#490's own reviewer had judged the resulting convention-resolution "
+    "evidence. Both are now satisfied -- run-1 (VESSL 369367251705) filled "
+    "REPRODUCE_GATE_RECORD (status='RUN', tracked log_path; see the "
+    "module docstring RUN-1 RESULT section), and the #490 reviewer judged "
+    "the evidence on 2026-08-04 (issue #490 comment, 'Reviewer judgment "
+    "on run-1 (lane 2)') and approved promotion under an explicit scope "
+    "fence: one geometry (RO4350B thru, W=600 um, h=254 um, L12=5 mm), "
+    "one mesh (dx=50 um), single drive, gated 3.0-4.5 GHz; the gated "
+    "claim is per-solver self-consistency, with cross-solver agreement "
+    "REPORTED (not gated); the CalcPort ref_plane_shift referral rotation "
+    "is unexercised on this fixture (NEW-1 finding, above); sub-1 GHz "
+    "bins are excluded (ill-conditioned three-point extraction at ~0.03 "
+    "guide wavelengths). This script is now registered in "
+    "validation/crossval/manifest.json as 20_msl_phase_referee, role "
+    "diagnostic-reporter -- see the manifest entry's own claim_scope for "
+    "the machine-readable copy of this same fence."
 )
 
 RFX_FIXTURE_PATH = "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json"
@@ -831,40 +921,137 @@ def _import_openems():
 # ---------------------------------------------------------------------------
 _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitation")
 
+# Truncation patterns (D3/TRUNCATION PATTERNS fix, run-1 forensics, review
+# 2026-08-04): openEMS's own excitation-pulse-clipping warnings. Checked ONLY
+# via ``check_truncation=True`` (real-run scans), NEVER for smoke scans --
+# the smoke runs in THIS script are deliberately tiny (NrTS=200,
+# EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
+# ``_build_stage_b``'s own smoke calls), so their excitation pulse (tens of
+# thousands of timesteps at this script's own f0/fc) is ALWAYS clipped by
+# construction -- run-1's own committed log (``validation/research/
+# msl_phase_referee/logs/20260804T070702Z_run.log``) shows both strings
+# firing for the smoke portion of BOTH stages while the REAL portion (which
+# reached its own EndCriteria, per REPRODUCE_GATE_RECORD's settling note)
+# shows neither -- the exact positive control this scoping relies on: same
+# binary, same stream, smoke trips it and real does not.
+_TRUNCATION_STDOUT_PATTERNS = (
+    "Cutting to max number of timesteps",
+    "max. number of timesteps is smaller than three times the excitation",
+)
 
-def _scan_stdout_for_bad_patterns(log_text: str, label: str) -> None:
-    hits = [p for p in _BAD_STDOUT_PATTERNS if p.lower() in log_text.lower()]
+# Benign, narrowly-scoped exception (GUARD CHANNEL-GAP FIX, run-1 forensics,
+# 2026-08-04): CSXCAD's "Unused primitive (type: Box) detected in property:
+# ..." warning fires for port0_metal/port1_metal on EVERY real Stage B run,
+# for a structural reason, not a defect -- Stage B's M3 topology fix (module
+# docstring "Port topology") gives the thru line's own trace box (property
+# "copper") a span EXACTLY feed_x0..feed_x1, which fully covers each port's
+# own SHORTER metal box ([start, start+port_w]); CSXCAD's own priority-based
+# rasterizer resolves the overlap to the higher-priority primitive (both are
+# priority=10 in this script, and the trace is added to the CSX tree first),
+# so the port's own box never contributes a rasterized cell of its own and
+# CSXCAD reports it "unused". This is a REPORTING artifact of two PEC
+# primitives sharing the same physical footprint, not a missing-conductor
+# defect -- the conduction proof is |S21| ~= 1.0 band-wide (run-1: 0.9985 to
+# 1.0087, self_consistency_openems/passivity BOTH passed), which would be
+# impossible if the line were actually open-circuited at either port.
+# Scoped to the EXACT two property names below -- any OTHER "Unused
+# primitive" (e.g. property: substrate!, a genuinely dropped conductor
+# elsewhere) still trips the gate.
+_ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES = ("port0_metal!", "port1_metal!")
+
+
+def _scan_stdout_for_bad_patterns(log_text: str, label: str, *, check_truncation: bool = False) -> None:
+    """Pre-solve fail-fast gate. ``check_truncation=True`` ADDS
+    ``_TRUNCATION_STDOUT_PATTERNS`` to the scan -- callers must pass this
+    ONLY for a REAL run's own captured log, never a smoke run's (see
+    ``_TRUNCATION_STDOUT_PATTERNS``'s own docstring for why: smoke's tiny
+    NrTS/EndCriteria budget makes those patterns fire by design there).
+    """
+    patterns = _BAD_STDOUT_PATTERNS + (_TRUNCATION_STDOUT_PATTERNS if check_truncation else ())
+    hits = []
+    for line in log_text.splitlines():
+        line_lower = line.lower()
+        if not any(p.lower() in line_lower for p in patterns):
+            continue
+        if "unused primitive" in line_lower and any(
+            f"property: {prop}".lower() in line_lower
+            for prop in _ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES
+        ):
+            continue  # allowlisted -- see _ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES docstring
+        hits.append(line.strip())
     if hits:
         raise RuntimeError(
             f"[{label}] pre-solve mesh/port fail-fast gate tripped: openEMS "
-            f"stdout contains {hits!r}. Aborting BEFORE the full NrTS "
+            f"stdout/stderr contains {hits!r}. Aborting BEFORE the full NrTS "
             f"budget is spent."
         )
 
 
 def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
-    """Run openEMS while capturing its OS-level stdout to a file we can grep.
+    """Run openEMS while capturing its OS-level stdout AND stderr to a file
+    we can grep.
 
-    ``fdtd.Run()`` invokes the openEMS C++ binary; its stdout goes to the
-    process's OS-level fd 1, not Python's ``sys.stdout`` -- redirect fd 1
-    itself, restoring it afterward even on error (thru_openems.py/coax
-    referee pattern).
+    ``fdtd.Run()`` invokes the openEMS C++ binary; its stdout/stderr go to
+    the process's OS-level fd 1 / fd 2, not Python's ``sys.stdout``/
+    ``sys.stderr`` -- redirect BOTH fds, restoring both afterward even on
+    error.
+
+    GUARD CHANNEL-GAP FIX (run-1 forensics, 2026-08-04): the pre-fix version
+    of this function redirected fd 1 ONLY. CSXCAD emits some port/mesh
+    warnings on STDERR, not stdout -- e.g. "Unused primitive (type: Box)
+    detected in property: port0_metal!/port1_metal!", which appears 4x in
+    run-1's own VESSL-captured ``run.log`` (a terminal capture that sees
+    BOTH fds; see ``validation/crossval/_20_msl_phase_referee_logs/
+    20260804T070702Z_run.log`` lines 24-25/29-30) but was ABSENT from this
+    function's own fd-1-only capture file -- ``_scan_stdout_for_bad_
+    patterns`` never saw it and the pre-solve fail-fast gate below silently
+    passed (rc=0) despite the warning having actually occurred. Both fds are
+    now dup2'd into the SAME capture file so the scan below sees everything
+    the terminal would have.
     """
     os.makedirs(sim_path, exist_ok=True)
     log_path = os.path.join(sim_path, "_openems_stdout.log")
     stdout_fd = sys.stdout.fileno()
-    saved_fd = os.dup(stdout_fd)
+    stderr_fd = sys.stderr.fileno()
+    saved_stdout_fd = os.dup(stdout_fd)
+    saved_stderr_fd = os.dup(stderr_fd)
     with open(log_path, "w") as logf:
         sys.stdout.flush()
+        sys.stderr.flush()
         os.dup2(logf.fileno(), stdout_fd)
+        os.dup2(logf.fileno(), stderr_fd)
         try:
             fdtd.Run(sim_path, cleanup=True, verbose=1, numThreads=threads)
         finally:
             sys.stdout.flush()
-            os.dup2(saved_fd, stdout_fd)
-            os.close(saved_fd)
+            sys.stderr.flush()
+            os.dup2(saved_stdout_fd, stdout_fd)
+            os.dup2(saved_stderr_fd, stderr_fd)
+            os.close(saved_stdout_fd)
+            os.close(saved_stderr_fd)
     with open(log_path) as logf:
         return logf.read()
+
+
+_END_CRITERIA_NOT_REACHED_TEXT = "reached before the end-criteria of"
+
+
+def _log_indicates_truncation(real_log: str) -> bool:
+    """D3 fix (run-1 forensics, review 2026-08-04): the single, pure,
+    directly-testable source of truth for "did this REAL run hit its NrTS
+    cap without reaching its own EndCriteria decay target" -- openEMS's own
+    ``RunFDTD: Warning: Max. number of timesteps was reached before the
+    end-criteria of ... was reached`` text (visible only after the fd-2
+    capture fix; this exact phrase appears verbatim in run-1's committed
+    ``run.log``, in the SMOKE portion of both stages, never the real
+    portion). Both ``_run_stage_a_reproduce_gate``'s ``truncated_suspected``
+    and ``_run_stage_b``'s ``end_criteria_not_reached``/``truncated`` call
+    this SAME function on their own real (never smoke) captured log, rather
+    than each maintaining its own copy of the substring or (the pre-fix
+    Stage B behavior) an unrelated, structurally-unreachable probe-row-count
+    comparison.
+    """
+    return _END_CRITERIA_NOT_REACHED_TEXT in real_log
 
 
 def _check_excitation_and_trace(port, sim_path: str, label: str, *,
@@ -1161,7 +1348,7 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int) -> dict:
 
     t0 = time.time()
     real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
-    _scan_stdout_for_bad_patterns(real_log, "stage_a")
+    _scan_stdout_for_bad_patterns(real_log, "stage_a", check_truncation=True)
     elapsed = time.time() - t0
 
     freqs = np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)
@@ -1169,7 +1356,15 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int) -> dict:
     port1.CalcPort(sim_dir, freqs)
 
     inc_peak, n_samples = _check_excitation_and_trace(port0, sim_dir, "stage_a")
-    truncated = False  # NrTS defaults to ~1e9; EndCriteria decay is the stop condition here
+    # D3 fix (run-1 forensics, review 2026-08-04): NrTS defaults to ~1e9 so a
+    # probe-row-count-vs-NrTS comparison (n_samples never approaches ~1e9)
+    # could never fire -- read the ACTUAL log-reported truncation signal
+    # instead (the SAME "reached before the end-criteria of" text
+    # _run_stage_b's own end_criteria_not_reached checks, now visible after
+    # the fd-2 capture fix). Run-1 ground truth: Stage A's real run reached
+    # its own EndCriteria=1e-5 (-50dB) -- this reads False on that data,
+    # correctly, for the right reason (log content), not by construction.
+    truncated_suspected = _log_indicates_truncation(real_log)
 
     s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
     s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
@@ -1200,7 +1395,7 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int) -> dict:
         "f_notch_dev_pct": abs(f_notch - F_NOTCH_AN_HZ) / F_NOTCH_AN_HZ * 100.0,
         "f_notch_ok": f_notch_ok,
         "max_uf_inc": inc_peak, "n_trace_samples": n_samples,
-        "truncated_suspected": truncated, "elapsed_s": round(elapsed, 1),
+        "truncated_suspected": truncated_suspected, "elapsed_s": round(elapsed, 1),
         "passed": passed,
     }
 
@@ -1481,9 +1676,9 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
 
     t0 = time.time()
     real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
-    _scan_stdout_for_bad_patterns(real_log, "stage_b")
+    _scan_stdout_for_bad_patterns(real_log, "stage_b", check_truncation=True)
     elapsed = time.time() - t0
-    end_criteria_not_reached = "reached before the end-criteria of" in real_log
+    end_criteria_not_reached = _log_indicates_truncation(real_log)
 
     freqs_hz = np.asarray(rfx_fixture["freqs_hz"], dtype=float)
     unit = 1.0e-6
@@ -1502,7 +1697,17 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
     port1.CalcPort(sim_dir, freqs_hz, ref_plane_shift=ref_shift1_units)
 
     inc_peak, n_samples = _check_excitation_and_trace(port0, sim_dir, "stage_b", channel="uf_inc")
-    truncated = bool(nrts > 0 and n_samples >= nrts)
+    # D3 fix (run-1 forensics, review 2026-08-04): the pre-fix ``n_samples
+    # >= nrts`` comparison is structurally unreachable -- n_samples is a
+    # DOWNSAMPLED probe-trace ROW COUNT (227 on run-1), never comparable to
+    # nrts, the raw TIMESTEP budget (300000) -- so this could never fire.
+    # end_criteria_not_reached (the SAME log-grounded signal, now visible
+    # post-fd-2-fix) is the real truncation witness; reuse it directly
+    # rather than maintaining two parallel, inconsistent notions of
+    # "truncated". Run-1 ground truth: Stage B's real run reached its own
+    # EndCriteria=1e-4 (-40dB) -- reads False on that data for the right
+    # (log-content) reason, not because the comparison could never trip.
+    truncated = end_criteria_not_reached
 
     s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
     s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)

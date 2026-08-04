@@ -50,6 +50,12 @@ logs/
 # above would otherwise silently swallow this directory too.
 !validation/research/coax_two_port/logs/
 !validation/research/coax_two_port/logs/*
+# The MSL phase referee's own run-1 evidence (issue #490 lane 2) used to
+# need the same exception here at validation/research/msl_phase_referee/
+# logs/ -- it moved to validation/crossval/_20_msl_phase_referee_logs/ on
+# promotion (2026-08-04, #490 reviewer judgment), a directory name that
+# does NOT match the bare "logs/" pattern above, so no negation is needed
+# for it (verified: git check-ignore reports it untracked-by-rule).
 **/*.png
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png

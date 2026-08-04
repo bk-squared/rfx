@@ -77,7 +77,7 @@ run: |-
   # config/layout bug or a drift against the committed rfx fixture.
   # --threads matches resources.cpu above. --
   set +e
-  timeout 5400 "$PY" validation/research/msl_phase_referee/openems_msl_phase_referee.py \
+  timeout 5400 "$PY" validation/crossval/20_msl_phase_referee.py \
     --output "$out/openems_msl_phase_referee.json" \
     --threads 16 \
     > "$out/run.log" 2>&1
@@ -87,9 +87,10 @@ run: |-
   tail -n 60 "$out/run.log" || true
   echo "msl_phase_referee_rc=$rc"
 
-  # n10 fix (2026-08-04 review): copy the run log to the TRACKED prefix
-  # this script's own header-test fill-contract requires
-  # (validation/research/msl_phase_referee/logs/ -- tests/
+  # n10 fix (2026-08-04 review), path updated on promotion (same day, #490
+  # reviewer judgment): copy the run log to the TRACKED prefix this
+  # script's own header-test fill-contract requires
+  # (validation/crossval/_20_msl_phase_referee_logs/ -- tests/
   # test_msl_phase_referee_header.py's REPRODUCE_GATE_RECORD contract
   # test rejects .omx/ and docs/research_notes/vessl_logs/, both
   # gitignored, per the coax lane's own PR #548 lesson). This only
@@ -98,8 +99,8 @@ run: |-
   # filename, matching validation/research/coax_two_port/logs/'s own
   # naming) is still a human step after reviewing the run, same as the
   # coax lane's own workflow.
-  mkdir -p validation/research/msl_phase_referee/logs
-  cp "$out/run.log" "validation/research/msl_phase_referee/logs/$(date -u +%Y%m%dT%H%M%SZ)_run.log" || true
+  mkdir -p validation/crossval/_20_msl_phase_referee_logs
+  cp "$out/run.log" "validation/crossval/_20_msl_phase_referee_logs/$(date -u +%Y%m%dT%H%M%SZ)_run.log" || true
 
   echo "=== verdict ==="
   case "$rc" in

@@ -1,8 +1,10 @@
 """Header/record/contract checks for the openEMS MSL phase referee (#490 lane 2).
 
-``validation/research/msl_phase_referee/openems_msl_phase_referee.py`` is a
-COMPARATOR-leg-only, VESSL-only harness (see its module docstring for the
-full scope fence): openEMS is not installed in THIS test environment, and
+``validation/crossval/20_msl_phase_referee.py`` (promoted 2026-08-04, #490
+reviewer judgment; formerly ``validation/research/msl_phase_referee/
+openems_msl_phase_referee.py``) is a COMPARATOR-leg-only, VESSL-only
+harness (see its module docstring for the full scope fence): openEMS is
+not installed in THIS test environment, and
 this test does not need it -- it only loads the module and inspects
 Python-level data, plus exercises the openEMS-free pure-arithmetic helpers
 (``_stage_b_layout``, ``_self_consistency_witness``, ``_check_excitation_
@@ -18,7 +20,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import pathlib
+import subprocess
 from types import ModuleType
 from typing import Final
 
@@ -26,9 +30,10 @@ import numpy as np
 import pytest
 
 REPO_ROOT: Final = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT_PATH: Final = (
-    REPO_ROOT / "validation" / "research" / "msl_phase_referee" / "openems_msl_phase_referee.py"
-)
+# Promoted 2026-08-04 (#490 reviewer judgment): validation/research/
+# msl_phase_referee/openems_msl_phase_referee.py -> validation/crossval/
+# 20_msl_phase_referee.py, registered in validation/crossval/manifest.json.
+SCRIPT_PATH: Final = REPO_ROOT / "validation" / "crossval" / "20_msl_phase_referee.py"
 RFX_FIXTURE_PATH: Final = REPO_ROOT / "tests" / "fixtures" / "msl_phase_referee" / "msl_thru_rfx_dx50.json"
 
 
@@ -116,7 +121,7 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
         assert log_path_str, "a filled-in reproduce_gate_record needs a log_path"
 
         gitignored_prefixes = (".omx/", "docs/research_notes/vessl_logs/")
-        tracked_prefixes = ("validation/research/msl_phase_referee/logs/",)
+        tracked_prefixes = ("validation/crossval/_20_msl_phase_referee_logs/",)
         assert not log_path_str.startswith(gitignored_prefixes), (
             f"log_path {log_path_str!r} lives under a GITIGNORED prefix -- "
             f"a FILLED record needs a log a reviewer OUTSIDE this machine "
@@ -129,6 +134,27 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
         assert log_path.exists(), (
             f"reproduce_gate_record claims status={record['status']!r} but its "
             f"log_path {log_path} does not exist"
+        )
+
+        # TRACKEDNESS fix (#490 reviewer, 2026-08-04 -- "the #548 failure one
+        # layer down"): os.path.exists() alone passes on THIS machine even
+        # for a file that was only ever written to the working tree and
+        # never `git add`ed -- invisible to anyone who clones the repo
+        # fresh. `git ls-files --error-unmatch` is the actual ground truth
+        # for "is this path in the index/committed", not merely present on
+        # disk here.
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", str(log_path)],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        assert tracked.returncode == 0 and tracked.stdout.strip() == log_path_str, (
+            f"reproduce_gate_record claims status={record['status']!r} with "
+            f"log_path {log_path_str!r}, and the file exists on disk, but "
+            f"`git ls-files --error-unmatch` does not confirm it is TRACKED "
+            f"(rc={tracked.returncode}, stdout={tracked.stdout!r}, "
+            f"stderr={tracked.stderr!r}) -- an untracked evidence file is "
+            f"invisible to a reviewer outside this machine even though it "
+            f"passes exists() here."
         )
 
 
@@ -318,6 +344,149 @@ def test_check_excitation_and_trace_is_scale_free_not_an_absolute_floor():
             module._check_excitation_and_trace(broken, "/tmp/_unused", "broken")
 
     assert not hasattr(module, "_EXCITATION_ENERGY_FLOOR")
+
+
+# ---------------------------------------------------------------------------
+# GUARD CHANNEL-GAP FIX tests (run-1 forensics, review 2026-08-04): the
+# pre-solve fail-fast scanner's allowlist and truncation-pattern scoping,
+# plus the D3 truncation-detection helper. Excerpts below are copied
+# VERBATIM from the committed run-1 log (``validation/crossval/
+# _20_msl_phase_referee_logs/20260804T070702Z_run.log``, lines 20-30) --
+# not paraphrased -- per the #529 resolving-power discipline: a guard
+# must be proven to discriminate on REAL data, not a plausible-looking
+# synthetic.
+# ---------------------------------------------------------------------------
+_RUN1_LOG_PATH: Final = (
+    REPO_ROOT / "validation" / "crossval" / "_20_msl_phase_referee_logs" / "20260804T070702Z_run.log"
+)
+
+# Stage B SMOKE portion (NrTS=200, EndCriteria=0.0/"-infdB" -- committed log
+# lines 20-27): truncation strings legitimately fire here, by construction
+# (a 200-timestep budget cannot hold this script's own excitation pulse).
+_RUN1_SMOKE_LOG_EXCERPT = (
+    "Operator::CalcGaussianPulsExcitation: Requested excitation pusle would "
+    "be 43004 timesteps or 6.74077e-10 s long. Cutting to max number of "
+    "timesteps!\n"
+    "openEMS::SetupFDTD: Warning, the timestep seems to be very small --> "
+    "long simulation. Check your mesh!?\n"
+    "openEMS::SetupFDTD: Warning, max. number of timesteps is smaller than "
+    "three times the excitation. \n"
+    "\tYou may want to choose a higher number of max. timesteps... \n"
+    "Warning: Unused primitive (type: Box) detected in property: port0_metal!\n"
+    "Warning: Unused primitive (type: Box) detected in property: port1_metal!\n"
+    "RunFDTD: Warning: Max. number of timesteps was reached before the "
+    "end-criteria of -infdB was reached... \n"
+    "\tYou may want to choose a higher number of max. timesteps... \n"
+)
+
+# Stage B REAL portion (NrTS=300000, EndCriteria=1e-4 -- committed log lines
+# 28-30): reached its own EndCriteria; no truncation strings present.
+_RUN1_REAL_LOG_EXCERPT = (
+    "openEMS::SetupFDTD: Warning, the timestep seems to be very small --> "
+    "long simulation. Check your mesh!?\n"
+    "Warning: Unused primitive (type: Box) detected in property: port0_metal!\n"
+    "Warning: Unused primitive (type: Box) detected in property: port1_metal!\n"
+)
+
+
+def test_run1_log_excerpts_are_verbatim_substrings_of_the_committed_log():
+    """Ties the two excerpts above to the ACTUAL committed evidence file --
+    if a future edit to the committed log drifts from these hardcoded
+    strings, this test (not just the ones that use the excerpts) goes red."""
+    assert _RUN1_LOG_PATH.exists(), f"missing committed run-1 log {_RUN1_LOG_PATH}"
+    full_log = _RUN1_LOG_PATH.read_text()
+    for excerpt in (_RUN1_SMOKE_LOG_EXCERPT, _RUN1_REAL_LOG_EXCERPT):
+        for line in excerpt.splitlines():
+            assert line.strip() in full_log, (
+                f"excerpt line not found verbatim in committed log: {line!r}"
+            )
+
+
+def test_scan_stdout_allowlists_port_metal_unused_primitive():
+    """M3 topology's own port0_metal/port1_metal 'Unused primitive' warning
+    (see ``_ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES``'s own docstring) must
+    NOT trip the fail-fast gate -- feeding it the REAL run-1 excerpt (which
+    contains exactly these two lines) must not raise."""
+    module = _load_referee_module()
+    module._scan_stdout_for_bad_patterns(_RUN1_REAL_LOG_EXCERPT, "positive_control_real")  # must not raise
+
+
+def test_scan_stdout_still_raises_on_non_allowlisted_unused_primitive():
+    """Discrimination check: the allowlist must be scoped to the EXACT two
+    property names -- any OTHER 'Unused primitive' (e.g. a genuinely
+    dropped conductor, property: substrate!) must still trip the gate."""
+    module = _load_referee_module()
+    bad_log = "Warning: Unused primitive (type: Box) detected in property: substrate!\n"
+    with pytest.raises(RuntimeError) as excinfo:
+        module._scan_stdout_for_bad_patterns(bad_log, "bad")
+    assert "substrate" in str(excinfo.value)
+
+
+def test_scan_stdout_truncation_patterns_scoped_to_real_run_only():
+    """TRUNCATION PATTERNS fix: ``check_truncation=False`` (the smoke-call
+    default) must NOT raise on the smoke excerpt's own legitimate
+    truncation strings -- proving the exemption actually exempts. The SAME
+    text with ``check_truncation=True`` (the real-call setting) MUST raise
+    -- proving the pattern set actually discriminates, not just exists."""
+    module = _load_referee_module()
+    module._scan_stdout_for_bad_patterns(
+        _RUN1_SMOKE_LOG_EXCERPT, "positive_control_smoke", check_truncation=False)  # must not raise
+
+    with pytest.raises(RuntimeError) as excinfo:
+        module._scan_stdout_for_bad_patterns(
+            _RUN1_SMOKE_LOG_EXCERPT, "positive_control_smoke_as_real", check_truncation=True)
+    assert "Cutting to max number of timesteps" in str(excinfo.value)
+
+
+def test_scan_stdout_real_run1_excerpt_passes_truncation_check():
+    """The positive control's OTHER half: run-1's own REAL portion (which
+    genuinely reached its own EndCriteria) must pass ``check_truncation=
+    True`` -- same binary, same stream, only the smoke/real split differs,
+    per the module docstring's own claimed positive control."""
+    module = _load_referee_module()
+    module._scan_stdout_for_bad_patterns(
+        _RUN1_REAL_LOG_EXCERPT, "positive_control_real_truncation_check", check_truncation=True)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# D2/D3 fix: _log_indicates_truncation resolving-power tests.
+# ---------------------------------------------------------------------------
+def test_log_indicates_truncation_flips_on_synthetic_under_settled_input():
+    """#529 resolving-power pattern: the D3 replacement (the pre-fix
+    ``n_trace_samples >= nrts`` comparison was structurally unreachable --
+    a probe-trace ROW count can never approach the raw timestep BUDGET)
+    must be PROVEN to flip True on a genuinely under-settled run's own log
+    text, not just read False on run-1's own (converged) data."""
+    module = _load_referee_module()
+    assert module._log_indicates_truncation(_RUN1_REAL_LOG_EXCERPT) is False
+    assert module._log_indicates_truncation(_RUN1_SMOKE_LOG_EXCERPT) is True
+
+    synthetic_under_settled = (
+        "RunFDTD: Warning: Max. number of timesteps was reached before the "
+        "end-criteria of -30dB was reached... \n"
+    )
+    assert module._log_indicates_truncation(synthetic_under_settled) is True
+    assert module._log_indicates_truncation("no such warning anywhere in this log\n") is False
+
+
+def test_run_stage_a_and_stage_b_wire_truncated_from_log_not_from_counts():
+    """Regression lock on the D3 wiring itself (not just the pure helper):
+    ``_run_stage_a_reproduce_gate``'s ``truncated_suspected`` and
+    ``_run_stage_b``'s ``truncated``/``end_criteria_not_reached`` must be
+    SOURCED from ``_log_indicates_truncation``, not re-implemented -- pinned
+    by reading the source rather than only exercising the pure function,
+    since a future edit could reintroduce a parallel, independent (and
+    possibly inconsistent) count-based check without this test noticing."""
+    module = _load_referee_module()
+    import inspect
+    src_a = inspect.getsource(module._run_stage_a_reproduce_gate)
+    src_b = inspect.getsource(module._run_stage_b)
+    assert "_log_indicates_truncation(real_log)" in src_a
+    assert "_log_indicates_truncation(real_log)" in src_b
+    assert "n_samples >= nrts" not in src_b, (
+        "the structurally-unreachable probe-row-count comparison (D3 "
+        "regression) must not come back"
+    )
 
 
 def test_non_physical_guard_raises_above_two():
@@ -767,3 +936,170 @@ def test_build_stage_b_asserts_port_start_matches_feed_x():
     assert "port0.start[0]" in src and "port1.start[0]" in src, (
         "expected explicit start[prop]==feed_x assertions on both ports (n8 fix)"
     )
+
+
+# ---------------------------------------------------------------------------
+# RUN-1 REGRESSION FIXTURE (2026-08-04, VESSL 369367251705): coax-lane
+# precedent (tests/test_coax_two_port_referee_header.py's own committed
+# run-3 forensics block), adapted here to load an ACTUAL committed JSON
+# fixture (``validation/crossval/_20_msl_phase_referee_logs/
+# 20260804T055009Z_result.json``, the full run-1 artifact, copied verbatim
+# from the primary checkout) rather than re-typing arrays as Python
+# literals -- avoiding a second, possibly-drifting hand transcription of
+# the same numbers. Every assertion below reads a value the fixture
+# actually contains; nothing here is asserted independently of it.
+# ---------------------------------------------------------------------------
+RUN1_RESULT_PATH: Final = (
+    REPO_ROOT / "validation" / "crossval" / "_20_msl_phase_referee_logs" / "20260804T055009Z_result.json"
+)
+
+
+def _load_run1_result() -> dict:
+    assert RUN1_RESULT_PATH.exists(), f"missing committed run-1 result {RUN1_RESULT_PATH}"
+    return json.loads(RUN1_RESULT_PATH.read_text())
+
+
+def test_run1_result_is_committed_and_matches_the_filled_reproduce_gate_record():
+    """The committed fixture and the script's own FILLED REPRODUCE_GATE_
+    RECORD must agree -- a drift here would mean the record was filled from
+    a DIFFERENT run than the one whose evidence is actually committed."""
+    module = _load_referee_module()
+    result = _load_run1_result()
+    record = module.REPRODUCE_GATE_RECORD
+    assert record["status"] == "RUN"
+    assert result["stage_a"]["f_notch_hz"] == record["reproduced_f_notch_hz"]
+    assert result["stage_a"]["f_notch_dev_pct"] == record["reproduced_f_notch_dev_pct"]
+    assert result["overall_passed"] is True
+
+
+def test_run1_stage_a_summary_matches_the_fixture():
+    result = _load_run1_result()
+    sa = result["stage_a"]
+    assert sa["f_notch_hz"] == 3671100625.0
+    assert sa["f_notch_dev_pct"] == 0.4364433837294213
+    assert sa["f_notch_expected_hz"] == 3687193135.4851503
+    assert sa["passed"] is True
+    assert sa["truncated_suspected"] is False
+
+
+def test_run1_stage_b_headline_facts_computed_from_the_fixture():
+    """Assert the headline facts as COMPUTED FROM the fixture -- not
+    independently declared -- per the task's own 'do not assert anything
+    the fixture doesn't contain' discipline."""
+    result = _load_run1_result()
+    sb = result["stage_b"]
+    csr = sb["cross_solver_report"]
+    raw = csr["raw_phase_diff_deg"]
+    assert len(raw) == 30
+
+    n_le_1 = sum(1 for x in raw if abs(x) <= 1.0)
+    idx_gt_3 = [i for i, x in enumerate(raw) if abs(x) > 3.0]
+    assert n_le_1 == 22, f"expected 22/30 bins <=1 deg, got {n_le_1}"
+    assert idx_gt_3 == [0], f"expected only bin 0 to exceed 3 deg, got {idx_gt_3}"
+
+    # Monotonic-decay signature over the first three bins.
+    assert abs(raw[0]) > abs(raw[1]) > abs(raw[2])
+
+    # Top bin (highest frequency, 5.0 GHz): |raw| < 0.2 deg.
+    assert abs(raw[-1]) < 0.2
+
+    # Conjugate-discriminator: the openEMS-side unwrapped S21 phase has
+    # travelled a LOT over the band (>50 deg one-way, so >100 deg for
+    # 2x) at the top bin, while the cross-solver raw phase DIFFERENCE at
+    # that SAME bin stays under 0.2 deg -- ruling out a trivial "both
+    # near zero" false-agreement (a conjugated/flipped convention on one
+    # side would instead show up as roughly 2x the accumulated phase in
+    # the diff, not a near-zero one).
+    unwrapped_top_deg = math.degrees(sb["s21_phase_rad_unwrapped"][-1])
+    assert 2.0 * abs(unwrapped_top_deg) > 100.0
+    assert abs(raw[-1]) < 0.2
+
+    assert sb["sanity_passed"] is True
+    assert sb["passivity"]["passed"] is True
+    assert sb["self_consistency_openems"]["passed"] is True
+    assert sb["self_consistency_rfx"]["passed"] is True
+
+
+def test_run1_implied_plane_error_sign_flip():
+    """Reviewer's sharper attribution test: the implied reference-plane
+    error ``Delta_d = Delta_phi / beta`` a CONSTANT plane-position defect
+    would require, computed independently here from ``raw_phase_diff_deg``
+    and ``beta_openems_real`` (both loaded straight from the fixture, not
+    re-derived from anything else in this file) -- must show a SIGN FLIP
+    across the band, with bin 0's own magnitude large (>1000 um). A
+    genuine single constant-offset referral defect could not produce
+    either fact (module docstring 'REPORTED (not gated) cross-solver
+    comparison')."""
+    result = _load_run1_result()
+    sb = result["stage_b"]
+    csr = sb["cross_solver_report"]
+    raw_rad = [math.radians(x) for x in csr["raw_phase_diff_deg"]]
+    beta = csr["beta_openems_real"]
+    dd_um = [1e6 * (phi / b) for phi, b in zip(raw_rad, beta)]
+
+    assert abs(dd_um[0]) > 1000.0, f"expected bin0 implied plane error > 1000 um, got {dd_um[0]:.1f}"
+    assert (dd_um[0] > 0) != (dd_um[-1] > 0), (
+        f"expected a sign flip between bin0 ({dd_um[0]:.1f} um) and bin29 "
+        f"({dd_um[-1]:.1f} um) -- same sign would be consistent with a "
+        f"genuine constant-offset referral defect, weakening the "
+        f"attribution this test backs"
+    )
+
+
+def test_run1_beta_ratio_effective_shift_and_passivity_balance():
+    """Pins beta_ratio_rfx_over_openems, effective_shift_real (both ports),
+    and the full passivity balance array to the committed fixture."""
+    result = _load_run1_result()
+    sb = result["stage_b"]
+    csr = sb["cross_solver_report"]
+
+    beta_ratio = csr["beta_ratio_rfx_over_openems"]
+    assert len(beta_ratio) == 30
+    assert all(1.0 < r < 1.02 for r in beta_ratio), (
+        f"beta ratio out of the recorded ~0.3-0.8% band: "
+        f"min={min(beta_ratio)} max={max(beta_ratio)}"
+    )
+
+    port_info = sb["port_info"]
+    assert abs(port_info["effective_shift_real_port0_m"]) < 1e-12
+    assert abs(port_info["effective_shift_real_port1_m"]) < 1e-12
+
+    balance = sb["passivity"]["balance"]
+    assert len(balance) == 30
+    assert max(balance) == sb["passivity"]["max_balance"]
+    assert sb["passivity"]["max_balance"] < 1.05
+
+    s21_mag_rfx = csr["s21_mag_rfx"]
+    s21_mag_openems = csr["s21_mag_openems"]
+    assert len(s21_mag_rfx) == 30 and len(s21_mag_openems) == 30
+    assert all(0.99 < x < 1.0 for x in s21_mag_rfx)
+    assert all(0.99 < x < 1.02 for x in s21_mag_openems)
+
+
+def test_run1_measured_precision_s21_bias_and_balance_attribution():
+    """Pins the module docstring's own 'MEASURED PRECISION' paragraph
+    numbers (D-review addition): openEMS's own Stage B |S21| carries a
+    small systematic bias above unity, and at bin 0 most of the passivity
+    balance's excess over 1.0 traces to |S21|^2-1, not |S11|^2."""
+    result = _load_run1_result()
+    sb = result["stage_b"]
+    s21_mag = sb["s21_mag"]
+    s11_mag = sb["s11_mag"]
+    balance = sb["passivity"]["balance"]
+    freqs = sb["freqs_hz"]
+
+    n_gt1 = sum(1 for x in s21_mag if x > 1.0)
+    assert n_gt1 == 29
+
+    gated = [x for f, x in zip(freqs, s21_mag) if 3.0e9 <= f <= 4.5e9]
+    assert min(gated) == pytest.approx(1.0007550003423686)
+    assert max(gated) == pytest.approx(1.0013482202192805)
+    assert max(s21_mag) == pytest.approx(1.0087176793781167)
+    assert s21_mag.index(max(s21_mag)) == 0
+
+    excess0 = balance[0] - 1.0
+    s21_sq_minus1 = s21_mag[0] ** 2 - 1.0
+    s11_sq = s11_mag[0] ** 2
+    assert s11_sq + s21_mag[0] ** 2 == pytest.approx(balance[0])
+    frac = s21_sq_minus1 / excess0
+    assert 0.73 < frac < 0.75, f"expected ~74% of balance[0] excess from |S21|^2-1, got {frac:.3f}"

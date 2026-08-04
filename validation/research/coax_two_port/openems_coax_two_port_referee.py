@@ -898,25 +898,45 @@ def _scan_stdout_for_bad_patterns(log_text: str, label: str) -> None:
 
 
 def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
-    """Run openEMS while capturing its OS-level stdout to a file we can grep.
+    """Run openEMS while capturing its OS-level stdout AND stderr to a file
+    we can grep.
 
-    ``fdtd.Run()`` invokes the openEMS C++ binary; its stdout goes to the
-    process's OS-level fd 1, not Python's ``sys.stdout`` -- redirect fd 1
-    itself, restoring it afterward even on error.
+    ``fdtd.Run()`` invokes the openEMS C++ binary; its stdout/stderr go to
+    the process's OS-level fd 1 / fd 2, not Python's ``sys.stdout``/
+    ``sys.stderr`` -- redirect BOTH fds, restoring both afterward even on
+    error.
+
+    GUARD CHANNEL-GAP FIX (ported from the MSL phase referee, issue #490
+    lane 2 run-1 forensics, 2026-08-04): the pre-fix version of this
+    function redirected fd 1 ONLY -- CSXCAD/openEMS write some warnings
+    (e.g. "Unused primitive") to STDERR, not stdout, so the pre-solve
+    fail-fast gate below could silently miss them. This lane's own three
+    committed runs (run-1/-2/-3) show no such warnings in their own
+    terminal-captured logs (``validation/research/coax_two_port/logs/
+    run3_369367251629_run.log``) -- so, unlike the MSL lane, no allowlist
+    is needed here; this is purely closing the same structural gap before
+    it bites a future run.
     """
     os.makedirs(sim_path, exist_ok=True)
     log_path = os.path.join(sim_path, "_openems_stdout.log")
     stdout_fd = sys.stdout.fileno()
-    saved_fd = os.dup(stdout_fd)
+    stderr_fd = sys.stderr.fileno()
+    saved_stdout_fd = os.dup(stdout_fd)
+    saved_stderr_fd = os.dup(stderr_fd)
     with open(log_path, "w") as logf:
         sys.stdout.flush()
+        sys.stderr.flush()
         os.dup2(logf.fileno(), stdout_fd)
+        os.dup2(logf.fileno(), stderr_fd)
         try:
             fdtd.Run(sim_path, cleanup=True, verbose=1, numThreads=threads)
         finally:
             sys.stdout.flush()
-            os.dup2(saved_fd, stdout_fd)
-            os.close(saved_fd)
+            sys.stderr.flush()
+            os.dup2(saved_stdout_fd, stdout_fd)
+            os.dup2(saved_stderr_fd, stderr_fd)
+            os.close(saved_stdout_fd)
+            os.close(saved_stderr_fd)
     with open(log_path) as logf:
         return logf.read()
 
