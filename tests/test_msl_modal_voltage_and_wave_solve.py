@@ -296,6 +296,86 @@ def test_cond_a_reports_a_degenerate_drive_system():
     assert float(np.max(cond_bad)) > 100.0
 
 
+# --------------------------------------------------------------------------
+# Issue #520 leg 4 — cond_a on an EXACTLY-singular f32 drive matrix
+# (regression lock for the NEP-50 fix in a5acfa9, PR #516 review)
+# --------------------------------------------------------------------------
+#
+# The only committed cond_a test above uses gamma=0.999 (near-, not
+# exactly-, singular) INSIDE ``enable_x64()`` — the production default runs
+# ``msl_solve_s_from_waves`` in complex64 (no x64 scoping anywhere in
+# compute_msl_s_matrix's drive loop), so that test never exercised the f32
+# SVD branch the fix actually touches. Pre-fix, ``cond_a``'s
+# ``np.maximum(_sv[..., -1], 1e-300)`` floor ran on the RAW float32 SVD
+# output; under NEP-50 weak promotion the Python float ``1e-300`` adopts
+# the array's dtype BEFORE the comparison and underflows to exactly 0.0
+# (float32's smallest subnormal is ~1.4e-45), so an exactly-singular A
+# divided by zero instead of saturating at a huge, still-meaningful,
+# finite value.
+
+def test_cond_a_on_exactly_singular_f32_matrix_saturates_not_divides_by_zero():
+    """An exactly rank-deficient complex64 drive matrix (production dtype,
+    no x64) must give a FINITE, huge cond_a -- not inf/nan.
+
+    Drive 1's column is EXACTLY zero (a totally undriven/dead port — the
+    realistic failure mode the downstream warning names: "check that each
+    drive actually excited its port"). A zero column is a clean rank
+    deficiency: unlike two nominally-equal nonzero columns (which measured
+    a smallest singular value ~1e-16 relative, not bit-exact, on this
+    platform's LAPACK and so does not even reach the 1e-300 floor), a
+    genuinely zero column measures an EXACTLY 0.0 smallest singular value
+    in the float32 SVD (verified below), which is what actually exercises
+    the underflow.
+    """
+    a_col = jnp.asarray(
+        [1.0 + 0.3j, 0.9 - 0.1j, 1.1 + 0.05j], dtype=jnp.complex64)
+    zero_col = jnp.zeros(3, dtype=jnp.complex64)
+    wave_a = [[a_col, zero_col], [a_col, zero_col]]
+    wave_b = [[0.3 * a_col, 0.1 * zero_col], [0.2 * a_col, 0.1 * zero_col]]
+
+    S_out, cond_a = msl_solve_s_from_waves(wave_a, wave_b)
+    assert cond_a is not None
+    assert cond_a.dtype == np.float64, (
+        "the fix casts the SVD to float64 BEFORE the 1e-300 floor -- a "
+        "float32 cond_a here means the floor is back in the underflowing "
+        "dtype"
+    )
+    assert np.all(np.isfinite(cond_a)), (
+        f"cond_a is non-finite on an exactly-singular f32 drive matrix "
+        f"({cond_a}) -- the 1e-300 floor divided by zero instead of "
+        "saturating (the a5acfa9 regression)"
+    )
+    assert np.all(cond_a > 1.0e100), (
+        f"an exactly-singular A's cond_a should SATURATE near sv_max/1e-300, "
+        f"got {cond_a}"
+    )
+    del S_out  # solve itself is expected to be non-finite here; not this test's claim
+
+    # Mutation twin: reproduce the PRE-FIX arithmetic directly (float32 SVD,
+    # no cast) and show it actually breaks on this exact fixture -- proving
+    # the fixture discriminates the fix rather than merely being finite by
+    # accident.
+    n_ports = 2
+    A = jnp.stack([
+        jnp.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
+        for j in range(n_ports)
+    ], axis=-2)
+    sv_f32 = np.linalg.svd(np.asarray(A), compute_uv=False)
+    assert sv_f32.dtype == np.float32
+    assert np.all(sv_f32[..., -1] == 0.0), (
+        "fixture precondition: the smallest singular value must be "
+        f"BIT-EXACT 0.0 for the underflow to engage at all; got "
+        f"{sv_f32[..., -1]}"
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cond_a_prefix = sv_f32[..., 0] / np.maximum(sv_f32[..., -1], 1e-300)
+    assert not np.all(np.isfinite(cond_a_prefix)), (
+        "the pre-fix (float32, uncast) arithmetic should have produced a "
+        f"non-finite cond_a here; got {cond_a_prefix} -- if this fails the "
+        "fixture no longer discriminates the a5acfa9 fix"
+    )
+
+
 def test_solve_handles_a_one_port_system():
     """n_ports=1 degenerates to b/a and must not raise."""
     n_f = N_FREQS
