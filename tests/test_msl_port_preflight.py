@@ -325,3 +325,123 @@ def test_reflector_clearance_silent_without_reflector():
     assert len(refl) == 0, (
         f"expected no reflector warning on thru-only short line, got: {refl}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #510: checks 1/3 above measure clearance at x_feed only, so a probe
+# SPAN could leave x_feed clear while the deepest probe (x_deep) lands
+# inside/near the absorber (4a, new below) or past a second port's own feed
+# plane (4b, new below) — check 4's reflector scan only sees PEC Box
+# geometry, not the absorber or a source discontinuity. Reproduction
+# geometry is the committed #488 diagnostic dump the issue cites: dx=80um,
+# domain_x=11.36mm (= 142 cells), CPML 8 layers, msl_0 at x=2.40mm '+x',
+# msl_1 at x=6.40mm '-x', n_probe_offset=31, n_probe_spacing=12, n_probes=5.
+# On that geometry msl_0's probes land at 4.88/5.84/6.80/7.76/8.72mm and
+# msl_1's at 3.92/2.96/2.00/1.04/0.08mm (issue body) -- msl_1's deepest
+# probe (0.08mm) is within the 2-cell/0.16mm proximity margin of the x=0
+# domain edge (NOT literally "inside the CPML" under the #500/#542
+# exterior-padding frame this fix routes through -- the issue's own
+# "x < 0.64mm" framing used the pre-#500 interior intuition), and both
+# ports' probe spans cross the OTHER port's feed plane (msl_0's span
+# [2.40, 8.72]mm contains msl_1's 6.40mm feed; msl_1's span [0.08, 6.40]mm
+# contains msl_0's 2.40mm feed).
+# ---------------------------------------------------------------------------
+def _two_port_sim(*, lx: float, msl1_x: float,
+                  msl0_offset: int = 31, msl1_offset: int = 31,
+                  n_probe_spacing: int = 12, n_probes: int = 5) -> Simulation:
+    dx = 80e-6
+    ly = W_TRACE + 8 * H_SUB
+    sim = Simulation(
+        freq_max=10e9, domain=(lx, ly, H_SUB + 1.5e-3), dx=dx,
+        cpml_layers=8,
+        boundary=BoundarySpec(
+            x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"),
+        ),
+    )
+    sim.add_material("ro4350b", eps_r=EPS_R)
+    sim.add(Box((0, 0, 0), (lx, ly, H_SUB)), material="ro4350b")
+    y_c = ly / 2.0
+    sim.add(
+        Box((0, y_c - W_TRACE / 2, H_SUB), (lx, y_c + W_TRACE / 2, H_SUB + dx)),
+        material="pec",
+    )
+    sim.add_msl_port(position=(2.40e-3, y_c, 0), width=W_TRACE, height=H_SUB,
+                     direction="+x", impedance=50.0, n_probe_offset=msl0_offset,
+                     n_probe_spacing=n_probe_spacing, n_probes=n_probes,
+                     name="msl_0")
+    sim.add_msl_port(position=(msl1_x, y_c, 0), width=W_TRACE, height=H_SUB,
+                     direction="-x", impedance=50.0, n_probe_offset=msl1_offset,
+                     n_probe_spacing=n_probe_spacing, n_probes=n_probes,
+                     name="msl_1")
+    return sim
+
+
+def _absorber_span_msgs(msgs: list[str]) -> list[str]:
+    return [
+        m for m in msgs
+        if "CPML absorbing region" in m or "CPML absorber is active" in m
+    ]
+
+
+def _crossing_msgs(msgs: list[str]) -> list[str]:
+    return [m for m in msgs if "feed plane" in m]
+
+
+def test_issue510_reproduction_fires_both_new_warnings():
+    """The exact #488-dump geometry from the issue body: both new checks
+    must fire, naming the specific ports/probes involved."""
+    sim = _two_port_sim(lx=11.36e-3, msl1_x=6.40e-3)
+    msgs = _msl_warnings(sim)
+
+    absorber = _absorber_span_msgs(msgs)
+    assert absorber, f"expected an absorber-span advisory; got: {msgs}"
+    # Only msl_1's deepest probe (x=0.08mm) is within the proximity
+    # margin of the x=0 edge; msl_0's (x=8.72mm) is 2.64mm from the x-hi
+    # edge, far outside the 0.16mm margin.
+    assert any("msl_1" in m for m in absorber), absorber
+    assert not any("msl_0" in m for m in absorber), absorber
+    assert any("probe 4" in m and "0.08mm" in m for m in absorber), absorber
+
+    crossing = _crossing_msgs(msgs)
+    assert len(crossing) == 2, (
+        f"expected a feed-crossing advisory on BOTH ports, got: {crossing}"
+    )
+    assert any("msl_0" in m and "msl_1" in m and "6.40mm" in m for m in crossing), crossing
+    assert any("msl_1" in m and "msl_0" in m and "2.40mm" in m for m in crossing), crossing
+
+
+def test_issue510_clean_geometry_neither_new_warning_fires():
+    """Same probe-array parameters, but ports far enough apart that
+    neither the absorber-span nor the feed-crossing check has anything to
+    catch -- the half of the coverage that a warning-only test cannot
+    prove (a check that always fires is not a check)."""
+    sim = _two_port_sim(lx=20e-3, msl1_x=16.00e-3)
+    msgs = _msl_warnings(sim)
+    assert not _absorber_span_msgs(msgs), (
+        f"expected no absorber-span advisory on clean geometry; got: {msgs}"
+    )
+    assert not _crossing_msgs(msgs), (
+        f"expected no feed-crossing advisory on clean geometry; got: {msgs}"
+    )
+
+
+def test_issue510_absorber_span_falsifier_compliant_offset_silences_it():
+    """Falsifier for check 4a: the reproduction warning itself reports a
+    compliant n_probe_offset interval ([16, 30] cells on this fixture);
+    moving msl_1 inside it (offset=20) must silence the advisory."""
+    sim = _two_port_sim(lx=11.36e-3, msl1_x=6.40e-3, msl1_offset=20)
+    msgs = _msl_warnings(sim)
+    assert not _absorber_span_msgs(msgs), (
+        f"expected no absorber-span advisory at compliant offset=20; got: {msgs}"
+    )
+
+
+def test_issue510_feed_crossing_falsifier_separated_ports_silences_it():
+    """Falsifier for check 4b: moving msl_1 far enough from msl_0 (same
+    probe-array parameters) that neither probe span reaches the other
+    port's feed must silence the crossing advisory."""
+    sim = _two_port_sim(lx=11.36e-3, msl1_x=9.60e-3)
+    msgs = _msl_warnings(sim)
+    assert not _crossing_msgs(msgs), (
+        f"expected no feed-crossing advisory once ports are separated; got: {msgs}"
+    )

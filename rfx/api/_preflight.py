@@ -132,11 +132,19 @@ def _coord_in_absorber(
 # advisory must respect so library witness probes stay exempt. Neither
 # pins a specific cell count for a GENERIC (non-MSL) probe/source
 # proximity check, so 2 cells is a deliberately modest, conservative
-# default: large enough that the helper's own up-to-one-cell hi-side
-# conservatism (see _absorber_boundary_for_axis) cannot by itself trigger
-# it for a genuinely-interior placement, small enough to stay a "you are
-# suspiciously close to the edge" advisory rather than a broad interior
-# band.
+# default: small enough to stay a "you are suspiciously close to the
+# edge" advisory rather than a broad interior band, large enough to
+# still catch the #470/#500-H1 regression-lock fixtures (a probe one
+# grid cell inside the domain) this margin must keep firing on.
+# Issue #510 nit 2: an earlier version of this comment justified the "2"
+# by invoking _absorber_boundary_for_axis's own up-to-one-cell hi-side
+# conservatism — that was a non-sequitur. That conservatism is a
+# MEMBERSHIP concern (it can shift whether a coordinate reads as
+# absorber_overlap at all, via the boundary position _coord_in_absorber
+# uses); this margin is a PROXIMITY concern — it measures distance from
+# whatever boundary _absorber_boundary_for_axis returns, unaffected by
+# how that boundary itself was derived. The two are independent; neither
+# bounds the other.
 _ABSORBER_PROXIMITY_CELLS = 2
 
 
@@ -2470,12 +2478,24 @@ class _PreflightMixin:
                         )
                         break
                     if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                        # Issue #510 nit 1: worded off the domain edge, not
+                        # off "where the absorber begins" — the edge is
+                        # exactly what _coord_near_absorber measures from
+                        # (_absorber_boundary_for_axis's lo_b/hi_b), so this
+                        # framing is unconditionally true. The prior wording
+                        # ("within N cells of the {label} absorber") could
+                        # overstate proximity to the absorbing MEDIUM itself,
+                        # which (hi side only) can start up to one cell
+                        # further out than the boundary this margin is
+                        # measured from (see _absorber_boundary_for_axis's
+                        # docstring, and nit 3 below).
                         _w.warn(
                             PreflightWarning(
                                 f"Probe at {pos} is within "
                                 f"{_ABSORBER_PROXIMITY_CELLS} cells "
                                 f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
-                                f"{absorber_label} absorber along the {'xyz'[ax]}-axis. "
+                                f"domain edge on the {'xyz'[ax]}-axis, where the "
+                                f"{absorber_label} absorber is active. "
                                 f"Fields there carry CPML fringe/reflection error; move "
                                 f"inward for claims-bearing measurement.",
                                 code="absorber_proximity",
@@ -2506,12 +2526,16 @@ class _PreflightMixin:
                         )
                         break
                     if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                        # Issue #510 nit 1 — see the matching probe-loop
+                        # comment above; same unconditionally-true
+                        # domain-edge framing.
                         _w.warn(
                             PreflightWarning(
                                 f"Source/port at {pos} is within "
                                 f"{_ABSORBER_PROXIMITY_CELLS} cells "
                                 f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
-                                f"{absorber_label} absorber along the {'xyz'[ax]}-axis. "
+                                f"domain edge on the {'xyz'[ax]}-axis, where the "
+                                f"{absorber_label} absorber is active. "
                                 f"Fields there carry CPML fringe/reflection error; move "
                                 f"inward for claims-bearing measurement.",
                                 code="absorber_proximity",
@@ -3704,6 +3728,117 @@ class _PreflightMixin:
                     ),
                     stacklevel=3,
                 )
+
+            # ---- 4a. Probe SPAN vs the absorber — the deepest probe,
+            # not just x_feed (issue #510). Checks 1 and 3 above measure
+            # clearance AT x_feed only; the probe span can leave x_feed
+            # comfortably clear of the CPML while x_deep (just computed
+            # for check 4) lands inside or near it — check 4's reflector
+            # scan only sees PEC geometry, not the absorber. Routed
+            # through the #542 canonical membership/proximity helpers
+            # directly (_coord_in_absorber / _coord_near_absorber), NOT
+            # the buffered x_abs_lo/x_abs_hi built for check 3 above, so
+            # the lo/hi-swap mutation falsifier
+            # (tests/test_preflight_absorber_frame.py module docstring)
+            # covers this comparison the same way it covers every other
+            # consumer of those two helpers.
+            _domain_x = float(domain[0])
+            _deep_idx = n_pr - 1
+            _abs_margin = _ABSORBER_PROXIMITY_CELLS * dx
+            _abs_headroom = (
+                _domain_x - x_feed if pe.direction == "+x" else x_feed
+            )
+            _abs_off_max = (
+                int((_abs_headroom - _abs_margin) / dx) - (n_pr - 1) * n_sp
+            )
+            _abs_hsub_cells = int(round(5.0 * h_sub / dx))
+            _abs_interval_txt = (
+                f"compliant n_probe_offset interval ≈ "
+                f"[{max(3, _abs_hsub_cells)}, {_abs_off_max}] cells"
+                if _abs_off_max >= max(3, _abs_hsub_cells)
+                else "no compliant n_probe_offset exists on this feed "
+                "length (interval empty)"
+            )
+            if _coord_in_absorber(x_deep, _domain_x, cpml_thick_lo[0], cpml_thick_hi[0]):
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"probe {_deep_idx} (deepest, x={x_deep*1e3:.2f}mm) is "
+                        f"past the domain edge (domain x-extent [0, "
+                        f"{_domain_x*1e3:.2f}]mm) — inside the CPML absorbing "
+                        f"region. The N-probe extractor's clean-travelling-"
+                        f"wave assumption is void there: signal is attenuated "
+                        f"and the fitted Z0/S11 are corrupted. "
+                        f"{_abs_interval_txt}.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
+            elif _coord_near_absorber(
+                x_deep, _domain_x, cpml_thick_lo[0], cpml_thick_hi[0], dx
+            ):
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"probe {_deep_idx} (deepest, x={x_deep*1e3:.2f}mm) is "
+                        f"within {_ABSORBER_PROXIMITY_CELLS} cells "
+                        f"({_fmt_len(_abs_margin)}) of the domain edge, where "
+                        f"the CPML absorber is active. Fields there carry "
+                        f"CPML fringe/reflection error, biasing the fitted "
+                        f"Z0/S11. {_abs_interval_txt}.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
+
+            # ---- 4b. Probe span crossing another port's feed plane
+            # (issue #510). A second port's feed is a source
+            # discontinuity — check 4's reflector scan walks registered
+            # PEC ``Box`` shapes only, so it cannot see it. Probes
+            # sampling across it violate the N-probe extractor's
+            # uniform-line assumption even with zero PEC geometry
+            # nearby. Advisory tier, not an error: an intentional
+            # multi-port line with internal witness probes between ports
+            # is a legitimate research configuration as long as those
+            # probes do not cross the OPPOSITE port's own feed. This is
+            # an x-only crossing test (no y/z filtering on the other
+            # port) — a deliberately simple, conservative check; two
+            # independent lines that merely share an x-coordinate at
+            # very different y positions would also warn here.
+            _span_lo, _span_hi = (
+                (x_feed, x_deep) if pe.direction == "+x" else (x_deep, x_feed)
+            )
+            for _other in list(self._msl_ports) + list(self._ports):
+                if _other is pe:
+                    continue
+                _other_x = _other.position[0]
+                if _span_lo < _other_x < _span_hi:
+                    _other_name = getattr(_other, "name", None)
+                    if _other_name is not None:
+                        _other_label = f"MSL port '{_other_name}'"
+                    else:
+                        _other_label = (
+                            f"the lumped/wire port at x={_other_x*1e3:.2f}mm "
+                            f"(component={_other.component!r})"
+                        )
+                    _w.warn(
+                        PreflightWarning(
+                            f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                            f"probe span x∈[{_span_lo*1e3:.2f}, "
+                            f"{_span_hi*1e3:.2f}]mm crosses {_other_label}'s "
+                            f"feed plane at x={_other_x*1e3:.2f}mm. A feed is "
+                            f"a source discontinuity the reflector scan above "
+                            f"cannot see; probes sampling across it break the "
+                            f"N-probe extractor's uniform-line assumption. If "
+                            f"this crossing is intentional, verify the "
+                            f"extracted Z0/S11 independently.",
+                            code="msl_port_geometry",
+                            source="_check_msl_port_geometry",
+                        ),
+                        stacklevel=3,
+                    )
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""

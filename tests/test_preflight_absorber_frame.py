@@ -114,6 +114,7 @@ from rfx.api._preflight import (
     _PreflightMixin,
     _absorber_boundary_for_axis,
     _coord_in_absorber,
+    _coord_near_absorber,
     PreflightConfigError,
 )
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -190,6 +191,33 @@ def test_absorber_boundary_helper_matches_ground_truth():
     # Exterior coordinates are.
     assert _coord_in_absorber(-0.001, 0.090678, 27.94e-3, 27.94e-3)
     assert _coord_in_absorber(0.091, 0.090678, 27.94e-3, 27.94e-3)
+
+
+def test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism():
+    """Issue #510 nit 3: the docstring's own example (domain_extent=0.0101,
+    dx=1e-3 -> ceil(10.1)=11 -> the true last interior node sits at 0.011,
+    one cell BEYOND the nominal domain_extent, yet the real grid still
+    treats it as interior) reads as ``absorber_overlap`` here — the more
+    SEVERE membership finding — rather than the lower-severity
+    ``absorber_proximity`` a genuinely-interior placement gets. This is the
+    user-visible face of ``_absorber_boundary_for_axis``'s documented
+    "conservative by up to one cell" hi-side design (see its docstring):
+    the boundary is deliberately allowed to read slightly early rather
+    than risk missing a genuine overlap. Pinned here rather than "fixed"
+    — every other absorber_overlap/absorber_proximity consumer relies on
+    this exact membership frame (see the module docstring's mutation
+    falsifier list), so loosening it to reclassify this one case as
+    proximity would change shared semantics, not just this corner case."""
+    domain_extent, dx, ct_hi = 0.0101, 1e-3, 2e-3
+    true_last_interior_node = 0.011  # one dx beyond domain_extent
+    assert _coord_in_absorber(true_last_interior_node, domain_extent, 0.0, ct_hi)
+    # _coord_near_absorber is not even reached by a caller once membership
+    # fires (callers check overlap first, per both helpers' docstrings),
+    # but confirm directly it would not independently classify this as
+    # proximity either — the two really are mutually exclusive here.
+    assert not _coord_near_absorber(
+        true_last_interior_node, domain_extent, 0.0, ct_hi, dx
+    )
 
 
 # --------------------------------------------------------------------- #
