@@ -264,6 +264,143 @@ def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
 
 
 # ---------------------------------------------------------------------------
+# FAST: the CALL-SITE drive_idx <-> physical-port wiring (issue #489 "active
+# dev track" leg 2 -- the openEMS referee's own carried-forward item, "the
+# reverse_drive=True call-site wiring for drive='port2' is correct at HEAD
+# but unpinned by a test", closed by tests/test_coax_two_port_referee_
+# header.py::test_extract_two_port_s_synthetic_forward_and_reverse_drive for
+# the REFEREE's own call site. rfx's OWN compute_coaxial_two_port had the
+# analogous gap: no test exercises its FDTD call site's `for drive_idx, spec
+# in enumerate((spec_top, spec_bot))` loop end-to-end -- the two tests above
+# call `_assemble_coaxial_two_port_from_voltages` DIRECTLY with arrays the
+# test itself already indexed correctly, so they cannot see a call-site
+# defect that mislabels which PHYSICAL excitation fills drive_idx 0 vs 1.
+# ---------------------------------------------------------------------------
+
+def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch):
+    """Pins compute_coaxial_two_port's own call-site wiring: drive_idx=0 in
+    ``v_bot_by_drive``/``v_top_by_drive`` must hold data from PHYSICALLY
+    driving port 1 (the top, +z end); drive_idx=1 must hold port 2 (bottom,
+    -z end) -- the contract ``_assemble_coaxial_two_port_from_voltages``'s
+    own docstring states ("index 0 = port 1 driven, index 1 = port 2
+    driven") but that the call site itself had never been checked against.
+
+    METHOD: stub out the expensive/irrelevant physics -- the FDTD run
+    (``rfx.simulation.run``) and the field -> voltage extraction
+    (``rfx.sources.coaxial_port.coaxial_line_plane_voltage``) -- and
+    intercept ``_assemble_coaxial_two_port_from_voltages`` to capture
+    exactly what the real call site (unmodified) passed as
+    ``v_bot_by_drive``/``v_top_by_drive``. The stubbed FDTD run identifies
+    which PHYSICAL port it was asked to excite purely from the z-index of
+    the source cells it received (top half of the domain = physically the
+    port-1/+z end, bottom half = physically the port-2/-z end) -- a
+    criterion entirely INDEPENDENT of the call site's own ``drive_idx``
+    numbering -- and returns a sentinel keyed by that physical identity.
+    The real ``for drive_idx, spec in enumerate((spec_top, spec_bot))``
+    loop, the real per-drive ``_run(...)`` call, and the real per-plane
+    ``coaxial_line_plane_voltage(...)`` call sites all execute unmodified;
+    only the physics underneath each is replaced.
+
+    SWAP EXPERIMENT (performed by hand for this change, per the R3
+    discipline -- not merely asserted): with ``rfx/api/_sparams.py``
+    unmodified this test is GREEN. Temporarily editing the call site's
+    ``enumerate((spec_top, spec_bot))`` to ``enumerate((spec_bot, spec_top))``
+    (physically swapping which drive runs first) and rerunning this test
+    turns it RED (drive_idx=0 then captures the port-2 sentinel instead of
+    port-1's) -- confirmed, then reverted back to the original order before
+    this change was committed.
+
+    NOTE ON WHAT THIS DOES AND DOES NOT PROTECT: the recovered S-parameter
+    MATRIX itself is provably invariant to this specific swap when the
+    measured-port row assignment stays fixed (which it does here --
+    ``v_top_by_drive``/``v_bot_by_drive`` are always filled from the
+    top/bottom probe ARRAYS respectively, regardless of drive_idx or which
+    spec is active): swapping the drive_idx column labeling permutes both
+    ``a_inc`` and ``b_out``'s columns by the SAME permutation matrix P, and
+    ``S = B @ inv(A) = (B@P) @ inv(A@P) = (B@P) @ (inv(P)@inv(A)) =
+    B@(P@inv(P))@inv(A) = B@inv(A)`` -- unchanged, because P is its own
+    inverse. So ``res.s_params`` from ``test_matched_through_line_
+    transmits_reciprocally`` (the slow_physics fixture) CANNOT see this
+    defect class even in principle, and neither can ``cond_a`` (the
+    condition number of a 2x2 matrix is invariant to column permutation)
+    or the R5 mechanism gate's ``gamma_bar`` (a mean over the drive axis,
+    also permutation-invariant). Only the PER-DRIVE ``gamma``/
+    ``recurrence_residual``/``fit_residual`` diagnostics, and the
+    ``port_names``/physical-location contract, would silently scramble --
+    which is exactly why this test inspects the intermediate arrays
+    directly instead of trusting the final S matrix.
+    """
+    sim = _sim()
+    grid = sim._build_grid()
+    nz_mid = grid.shape[2] / 2.0
+
+    captured: dict = {}
+
+    def _fake_assemble(**kwargs):
+        captured["v_bot_by_drive"] = np.array(kwargs["v_bot_by_drive"])
+        captured["v_top_by_drive"] = np.array(kwargs["v_top_by_drive"])
+        n_f = captured["v_bot_by_drive"].shape[-1]
+        s = np.full((2, 2, n_f), 0.1 + 0.0j, dtype=np.complex128)
+        return (
+            s,
+            np.ones(n_f),
+            np.zeros((2, 2, n_f)),
+            np.zeros((2, 2, n_f)),
+            np.zeros((2, 2, n_f), dtype=complex),
+        )
+
+    class _FakeAcc:
+        def __init__(self, v):
+            self.accumulator = v
+
+    class _FakeResult:
+        def __init__(self, dft_planes, time_series):
+            self.dft_planes = dft_planes
+            self.time_series = time_series
+
+    sentinel_port1 = 1.0 + 0.0j  # physically the top (+z) end
+    sentinel_port2 = 2.0 + 0.0j  # physically the bottom (-z) end
+
+    def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
+                 mag_sources, probes, dft_planes, return_state):
+        # Identify the PHYSICAL port purely from source z-location -- NOT
+        # from any call-order assumption.
+        k0 = float(sources[0].k)
+        sentinel = sentinel_port1 if k0 > nz_mid else sentinel_port2
+        fake_planes = [
+            _FakeAcc(np.array([sentinel]) if i % 2 == 0 else np.array([0.0j]))
+            for i in range(len(dft_planes))
+        ]
+        ts = np.full((10, len(probes)), 1e-6)
+        return _FakeResult(fake_planes, ts)
+
+    def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius):
+        return np.asarray(ex_dft, dtype=np.complex128)
+
+    import rfx.simulation as _simulation_mod
+    import rfx.sources.coaxial_port as _coax_mod
+    import rfx.api._sparams as _sparams_mod
+
+    monkeypatch.setattr(_simulation_mod, "run", _fake_run)
+    monkeypatch.setattr(_coax_mod, "coaxial_line_plane_voltage", _fake_voltage)
+    monkeypatch.setattr(
+        _sparams_mod, "_assemble_coaxial_two_port_from_voltages", _fake_assemble
+    )
+
+    sim.compute_coaxial_two_port(n_steps=10, freqs=np.array([8.0e9]), probe_count=12)
+
+    v_bot = captured["v_bot_by_drive"]
+    v_top = captured["v_top_by_drive"]
+    assert v_bot.shape[0] == 2 and v_top.shape[0] == 2
+    # drive_idx=0 must be PHYSICALLY port 1 (top), in BOTH arrays.
+    np.testing.assert_allclose(v_bot[0], sentinel_port1)
+    np.testing.assert_allclose(v_top[0], sentinel_port1)
+    # drive_idx=1 must be PHYSICALLY port 2 (bottom), in BOTH arrays.
+    np.testing.assert_allclose(v_bot[1], sentinel_port2)
+    np.testing.assert_allclose(v_top[1], sentinel_port2)
+
+
+# ---------------------------------------------------------------------------
 # FAST: registration/geometry error paths (raise before any FDTD run).
 # ---------------------------------------------------------------------------
 

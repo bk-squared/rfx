@@ -79,15 +79,21 @@ AD_CLASSIFICATION = {
     ),
     "Simulation.compute_coaxial_two_port": (
         NOT_TRACEABLE,
-        "issue #489 stage 2 two-drive through-line lane: modal voltages are "
-        "pulled off the DFT-plane accumulators as concrete numpy arrays and "
-        "run through the concrete path of coaxial_line_reflection_from_"
-        "plane_voltages (matrix-pencil fit) and solve_two_port_from_wave_"
-        "amplitudes (numpy matrix inverse per frequency) — no eps_scale or "
-        "other traced-input channel is wired (unlike compute_coaxial_line_"
-        "reflection's eps_scale path). Same NOT_TRACEABLE reasoning as "
-        "compute_mixed_s_matrix above. AD wiring, if ever pursued, would be "
-        "issue #489's stage-3 home.",
+        "issue #489 active dev track leg 3: EMPIRICALLY pinned (not just "
+        "prose) by tests/test_coax_two_port_ad.py — (1) the method has no "
+        "eps_scale/eps_override-shaped traced-input parameter at all "
+        "(unlike compute_coaxial_line_reflection's eps_scale path), pinned "
+        "by test_compute_coaxial_two_port_has_no_traced_input_channel; "
+        "(2) even with a channel, coaxial_line_plane_voltage (NOT the "
+        "already-differentiable coaxial_line_plane_voltage_jnp the 1-port "
+        "path uses) concretizes via np.asarray at rfx/sources/"
+        "coaxial_port.py:1499-1500 and raises "
+        "jax.errors.TracerArrayConversionError under jax.grad, pinned by "
+        "test_coaxial_line_plane_voltage_severs_the_jax_tape; the "
+        "downstream two-drive solve (solve_two_port_from_wave_amplitudes) "
+        "is also concrete numpy. Filed as the concrete de-experimental "
+        "blocker on issue #489. Same NOT_TRACEABLE reasoning as "
+        "compute_mixed_s_matrix above.",
     ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (

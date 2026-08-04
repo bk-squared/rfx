@@ -733,7 +733,96 @@ B_MEAS_STENCIL_MARGIN_CELLS = 5  # M3 fix: extra clearance so CoaxialPort's
                                   # PML-adjacent mesh line
 
 
-def _stage_b_layout() -> dict:
+# ---------------------------------------------------------------------------
+# MESH-REFINEMENT CONVERGENCE WITNESS (issue #489 active dev track leg 1,
+# R2-TIGHT: one pre-declared attempt). PRE-DECLARED 2026-08-04, BEFORE any
+# refined-mesh run -- committed in this UNRUN placeholder state, same
+# fill-contract discipline as REPRODUCE_GATE_RECORD above (a VESSL run
+# fills status/measured_ratio/log_path/vessl_run_id; nothing here is
+# retroactively edited to fit a result).
+#
+# QUESTION: the promoted script's benchmarks row (validation/crossval/
+# manifest.json's claim_scope, and docs/public/guide/benchmarks.mdx) says
+# the measured/analytic beta ratio 1.1205-1.1212 (central band; 1.1202-
+# 1.1222 full 4-12GHz sweep) is "CONSISTENT WITH staircase dispersion...
+# NO MESH-REFINEMENT CONVERGENCE WITNESS has been run". This is that
+# witness.
+#
+# PRE-DECLARATION (before seeing any refined-mesh data): if the staircase-
+# dispersion attribution is right, refining openEMS's OWN Stage B mesh (a
+# SMALLER dx -- the physical fixture, L12, and PTFE annulus a/b stay
+# EXACTLY as rfx's own committed fixture; only openEMS's discretization of
+# them gets finer) must move the measured/analytic beta ratio TOWARD 1.
+# First-order Yee staircase error at a dielectric interface is O(dx), so
+# refining by a factor R is expected to shrink the EXCESS (ratio - 1) by
+# roughly 1/R:
+#   excess_now  = 1.1208 - 1.0 = 0.1208 (mean of the gated central-band
+#                 range 1.1205-1.1212, run-3, VESSL 369367251629)
+#   R           = 1.5 (dx_scale = 1/1.5 = 0.666667 -- see "REFINEMENT
+#                 FACTOR ARITHMETIC" below for why 1.5x, not 2x)
+#   excess_pred = 0.1208 / 1.5 = 0.0805
+#   ratio_pred  = 1.0805
+# Declared acceptance band (predicted +/- 0.03, the same margin width the
+# issue's own 2x-case guidance used): [1.05, 1.11]. If the measured ratio
+# at dx_scale=0.666667 lands OUTSIDE this band -- in particular if it
+# stays UNCHANGED near 1.12 -- the staircase-dispersion attribution is
+# WRONG: STOP, report, do not run a third mesh density (R2 HARD STOP,
+# RF/EM intensifier -- one clean pre-declared attempt per mechanism
+# hypothesis; a second needs a named new falsifier or an identified
+# implementation defect in this attempt, in writing).
+#
+# REFINEMENT FACTOR ARITHMETIC (why 1.5x, not the 2x the issue's own
+# guidance offered first): runtime in a 3D+time explicit FDTD scales
+# ~(1/dx)^4 under a UNIFORM refinement of all three spatial axes (spatial
+# cells ~R^3, and CFL forces the timestep to shrink by the same R, so
+# timesteps-to-reach-a-fixed-physical-duration ~R^1; R^3 * R^1 = R^4).
+# Run-3's own committed Stage B wall-clock (module docstring "RUN-3
+# RESULT"): 2796 s for BOTH drives, on the same --threads 16 CPU lane this
+# YAML also uses.
+#   R=2.0 (dx_scale=0.5):     cost x2^4=16    -> 2796*16    = 44736 s = 12.4 h
+#   R=1.5 (dx_scale=0.66667): cost x1.5^4=5.0625 -> 2796*5.0625 = 14155 s = 3.93 h
+# 12.4h exceeds the ~4-6h CPU-lane feasibility window; 3.93h fits
+# comfortably. Per the task's own fallback instruction ("2x if it fits
+# within ~4-6h; else 1.5x with the pre-declaration adjusted"), this run
+# uses R=1.5 with the excess-scaling prediction above adjusted for R=1.5
+# (not R=2's originally-suggested ~1.06+/-0.03).
+MESH_REFINEMENT_PREDECLARATION: dict = {
+    "issue": 489,
+    "leg": "1 (mesh-refinement convergence witness)",
+    "predeclared_on": "2026-08-04",
+    "refinement_factor": 1.5,
+    "dx_scale": 2.0 / 3.0,
+    "dx_mm_before": B_DX_MM,
+    "dx_mm_after": B_DX_MM * (2.0 / 3.0),
+    "annulus_cells_before": 3.789,  # (2.055-0.635)/0.37474, run-3 measured
+    "annulus_cells_after": 3.789 * 1.5,
+    "measured_ratio_before": 1.1208,  # mean, gated central band, run-3
+    "excess_before": 0.1208,
+    "predicted_excess_after": 0.1208 / 1.5,
+    "predicted_ratio_after": 1.0 + 0.1208 / 1.5,
+    "acceptance_band_ratio": [1.05, 1.11],
+    "falsifier": (
+        "measured beta ratio at dx_scale=0.666667 stays outside [1.05, 1.11] "
+        "(in particular, unchanged near 1.12) -- the staircase-dispersion "
+        "attribution is wrong; STOP, do not run a third mesh density (R2)."
+    ),
+    "estimated_runtime_s": 2796 * 1.5 ** 4,
+    "estimated_runtime_h": round(2796 * 1.5 ** 4 / 3600.0, 2),
+    "runtime_basis": (
+        "run-3's own committed Stage B wall-clock, 2796 s for both drives "
+        "(module docstring 'RUN-3 RESULT'), scaled by refinement_factor^4 "
+        "(3D+time explicit FDTD: spatial cells ~R^3, timesteps ~R^1 via CFL)."
+    ),
+    # RUN: filled by a VESSL job (scripts/vessl_coax_two_port_referee_
+    # mesh_refinement.yaml) after it completes; UNRUN placeholders below.
+    "status": "UNRUN",
+    "measured_ratio_after": None,
+    "vessl_run_id": None,
+    "log_path": None,
+    "verified_on": None,
+}
+
+def _stage_b_layout(dx_scale: float = 1.0) -> dict:
     """Pure arithmetic: every Stage B z-position/clearance, in mm.
 
     Deliberately openEMS-FREE so it is testable locally without the
@@ -758,8 +847,23 @@ def _stage_b_layout() -> dict:
     B4' fix: port 2 spans [z_split, lz_mm] (start < stop, direction=+1),
     NOT [lz_mm, z_split] -- both ports now share direction=+1, matching
     Coax.m's own same-direction layout (module docstring "PORT CLASS").
+
+    ``dx_scale`` (added issue #489 active dev track leg 1, the mesh-
+    refinement convergence witness -- see the module docstring section
+    "MESH-REFINEMENT CONVERGENCE WITNESS" and ``MESH_REFINEMENT_
+    PREDECLARATION``): multiplies ``B_DX_MM`` to get the EFFECTIVE cell
+    size this layout is built from. Default ``1.0`` reproduces the
+    committed ``B_DX_MM``/``B_PML_DEPTH_MM`` values bit-for-bit (``x *
+    1.0 == x`` exactly in IEEE754), so every existing caller (all of
+    which omit this argument) is byte-identical to before this parameter
+    existed. Only the DISCRETIZATION (cell size / PML depth-in-mm) scales
+    with ``dx_scale``; every PHYSICAL dimension (``B_CLEAR_*_MM``,
+    ``B_L12_MM``, the feed/measure target planes) stays fixed -- this
+    refines how finely openEMS's OWN mesh resolves rfx's SAME physical
+    fixture, it does not change the fixture or re-run rfx.
     """
-    pml_mm = B_PML_DEPTH_MM
+    dx_mm = B_DX_MM * float(dx_scale)
+    pml_mm = B_CPML_CELLS * dx_mm
     lx_mm = ly_mm = B_CLEAR_X_MM + 2.0 * pml_mm
     lz_mm = B_CLEAR_Z_MM + 2.0 * pml_mm
     cx_mm = lx_mm / 2.0
@@ -790,7 +894,7 @@ def _stage_b_layout() -> dict:
     ref_plane_shift_port1_mm = z_feed_bot_mm - z_port1_start_mm
     ref_plane_shift_port2_mm = z_feed_top_mm - z_port2_start_mm
 
-    cell = B_DX_MM
+    cell = dx_mm
     feed_from_wall_mm = (B_CPML_CELLS + B_FEED_FROM_PML_EDGE_CELLS) * cell
     meas_from_wall_mm = (B_CPML_CELLS + B_MEAS_FROM_PML_EDGE_CELLS) * cell
 
@@ -810,7 +914,10 @@ def _stage_b_layout() -> dict:
     feedshift_port2_mm = port2_span_mm - feed_from_wall_mm
     measplane_port2_mm = port2_span_mm - meas_from_wall_mm
 
+    annulus_cells = (B_B_MM - B_A_MM) / dx_mm
     layout = {
+        "dx_scale": float(dx_scale), "dx_mm": dx_mm, "pml_mm": pml_mm,
+        "annulus_cells": annulus_cells,
         "lx_mm": lx_mm, "ly_mm": ly_mm, "lz_mm": lz_mm,
         "cx_mm": cx_mm, "cy_mm": cy_mm,
         "z_port1_start_mm": z_port1_start_mm, "z_port1_stop_mm": z_port1_stop_mm,
@@ -1392,11 +1499,16 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int, use_pml: bool) -
 # STAGE B: rfx-matched through-line, via CoaxialPort.
 # ---------------------------------------------------------------------------
 def _build_stage_b_drive(ContinuousStructure, openEMS, CoaxialPort, drive: str, *,
-                         nrts: int, end_criteria: float):
+                         nrts: int, end_criteria: float, dx_scale: float = 1.0):
     """Build one Stage B drive's CSX/fdtd/ports fresh (smoke + real, same
-    rationale as Stage A)."""
-    layout = _stage_b_layout()
-    dx_mm = B_DX_MM
+    rationale as Stage A).
+
+    ``dx_scale`` (issue #489 leg 1, mesh-refinement convergence witness):
+    forwarded to ``_stage_b_layout``; default ``1.0`` reproduces the
+    committed mesh bit-for-bit (see ``_stage_b_layout``'s own docstring).
+    """
+    layout = _stage_b_layout(dx_scale=dx_scale)
+    dx_mm = layout["dx_mm"]
 
     fdtd = openEMS(NrTS=nrts, EndCriteria=end_criteria)
     fdtd.SetGaussExcite(B_F0_GHZ * 1e9, B_FC_GHZ * 1e9)
@@ -1542,19 +1654,22 @@ def _extract_two_port_s(port_self, port_thru, *, reverse_drive: bool) -> dict:
 
 
 def _run_one_drive(ContinuousStructure, openEMS, CoaxialPort, *, drive: str, sim_root: str,
-                   threads: int, nrts: int, end_criteria: float) -> dict:
+                   threads: int, nrts: int, end_criteria: float,
+                   dx_scale: float = 1.0) -> dict:
+    """``dx_scale`` (issue #489 leg 1): forwarded to ``_build_stage_b_drive``;
+    default ``1.0`` is byte-identical to before this parameter existed."""
     sim_dir = os.path.join(sim_root, f"stage_b_drive_{drive}")
     smoke_dir = os.path.join(sim_root, f"stage_b_drive_{drive}_smoke")
 
     smoke_fdtd, _sp1, _sp2, _layout = _build_stage_b_drive(
         ContinuousStructure, openEMS, CoaxialPort, drive,
-        nrts=min(200, nrts), end_criteria=0.0)
+        nrts=min(200, nrts), end_criteria=0.0, dx_scale=dx_scale)
     smoke_log = _run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
     _scan_stdout_for_bad_patterns(smoke_log, f"stage_b_drive_{drive}_smoke")
 
     fdtd, port1, port2, layout = _build_stage_b_drive(
         ContinuousStructure, openEMS, CoaxialPort, drive,
-        nrts=nrts, end_criteria=end_criteria)
+        nrts=nrts, end_criteria=end_criteria, dx_scale=dx_scale)
 
     t0 = time.time()
     real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
@@ -1634,13 +1749,20 @@ def _json_safe_diagnostics(drive: dict) -> dict:
     return out
 
 
-def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float) -> dict:
+def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
+                 dx_scale: float = 1.0) -> dict:
+    """``dx_scale`` (issue #489 leg 1, mesh-refinement convergence witness):
+    forwarded to both drives' ``_run_one_drive`` calls; default ``1.0`` is
+    byte-identical to before this parameter existed (see
+    ``_stage_b_layout``'s own docstring)."""
     ContinuousStructure, openEMS, CoaxialPort = _import_openems()
 
     drive1 = _run_one_drive(ContinuousStructure, openEMS, CoaxialPort, drive="port1",
-                            sim_root=sim_root, threads=threads, nrts=nrts, end_criteria=end_criteria)
+                            sim_root=sim_root, threads=threads, nrts=nrts,
+                            end_criteria=end_criteria, dx_scale=dx_scale)
     drive2 = _run_one_drive(ContinuousStructure, openEMS, CoaxialPort, drive="port2",
-                            sim_root=sim_root, threads=threads, nrts=nrts, end_criteria=end_criteria)
+                            sim_root=sim_root, threads=threads, nrts=nrts,
+                            end_criteria=end_criteria, dx_scale=dx_scale)
 
     s11 = drive1["extracted"]["s_self"]
     s21 = drive1["extracted"]["s_thru"]
@@ -1731,7 +1853,20 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float)
         and matched_thru_s21["passed"] and matched_thru_s12["passed"]
     )
 
+    # issue #489 leg 1 (mesh-refinement convergence witness): surface the
+    # discretization this run used, and a single summary beta ratio, so a
+    # reviewer comparing two artifacts at different dx_scale does not have
+    # to re-derive either from the per-bin arrays.
+    _layout_report = _stage_b_layout(dx_scale=dx_scale)
+    beta_ratio_s21 = matched_thru_s21.get("beta_ratio_measured_over_analytic")
+    beta_ratio_mean = (
+        float(np.mean(beta_ratio_s21)) if beta_ratio_s21 is not None else None
+    )
+
     return {
+        "dx_scale": float(dx_scale), "dx_mm": _layout_report["dx_mm"],
+        "annulus_cells": _layout_report["annulus_cells"],
+        "beta_ratio_measured_over_analytic_mean": beta_ratio_mean,
         "freqs_ghz": B_FREQS_GHZ.tolist(),
         "s11": [[float(c.real), float(c.imag)] for c in s11],
         "s21": [[float(c.real), float(c.imag)] for c in s21],
@@ -1772,6 +1907,15 @@ def main(argv: list[str] | None = None) -> int:
                    help="Stage A: use PML_8 instead of Coax.m's default MUR z boundary")
     p.add_argument("--skip-stage-b", action="store_true",
                    help="run only the Stage A reproduce-gate (fast smoke check)")
+    p.add_argument("--dx-scale", type=float, default=1.0,
+                   help="Stage B ONLY (issue #489 leg 1, mesh-refinement convergence "
+                        "witness) -- multiplies B_DX_MM to get the effective openEMS "
+                        "cell size; e.g. 0.6667 refines the mesh 1.5x (annulus cells "
+                        "3.79 -> ~5.68). Default 1.0 reproduces the promoted, "
+                        "committed mesh bit-for-bit -- see MESH_REFINEMENT_"
+                        "PREDECLARATION and _stage_b_layout's own docstring. Stage A "
+                        "(the Coax.m reproduce-gate) is UNAFFECTED -- it always uses "
+                        "its own fixed 5mm tutorial mesh.")
     args = p.parse_args(argv)
 
     # Forensics fix (2026-08-03, run-1 diagnosis): resolve the output path
@@ -1790,9 +1934,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Pure-arithmetic layout check FIRST, before touching openEMS at all --
     # an AssertionError here is an internal config bug (exit 3), distinct
-    # from a physics/self-check failure (exit 1).
+    # from a physics/self-check failure (exit 1). Checked at the REQUESTED
+    # dx_scale (issue #489 leg 1) -- a refined mesh that violates a
+    # clearance assertion must fail here too, not deep inside a real run.
     try:
-        _stage_b_layout()
+        _stage_b_layout(dx_scale=args.dx_scale)
     except AssertionError as exc:
         print(f"CONFIG ERROR: Stage B layout assertion failed: {exc}", file=sys.stderr)
         return 3
@@ -1832,8 +1978,10 @@ def main(argv: list[str] | None = None) -> int:
             print("\n--- Stage B: rfx-matched through-line (CoaxialPort) ---")
             stage_b = _run_stage_b(
                 sim_root=sim_root, threads=args.threads, nrts=args.nrts,
-                end_criteria=args.end_criteria,
+                end_criteria=args.end_criteria, dx_scale=args.dx_scale,
             )
+            print(f"  dx_scale={stage_b['dx_scale']:g} (dx={stage_b['dx_mm']:.5f} mm, "
+                  f"annulus={stage_b['annulus_cells']:.2f} cells)")
             print(f"  |S21| band: {min(stage_b['s21_mag']):.4f} - {max(stage_b['s21_mag']):.4f}")
             print(f"  |S11| band: {min(stage_b['s11_mag']):.4f} - {max(stage_b['s11_mag']):.4f}")
             print(f"  reciprocity max mag dev: {stage_b['reciprocity_max_mag_dev']:.4f}, "
@@ -1842,6 +1990,16 @@ def main(argv: list[str] | None = None) -> int:
                   f"{stage_b['matched_through_witness']['passed']}")
             print(f"  matched-through witness (s12) passed: "
                   f"{stage_b['matched_through_witness_s12']['passed']}")
+            print(f"  beta_ratio_measured_over_analytic (mean, central band): "
+                  f"{stage_b['beta_ratio_measured_over_analytic_mean']}")
+            if args.dx_scale != 1.0:
+                lo, hi = MESH_REFINEMENT_PREDECLARATION["acceptance_band_ratio"]
+                ratio = stage_b["beta_ratio_measured_over_analytic_mean"]
+                within_band = bool(ratio is not None and lo <= ratio <= hi)
+                print(f"  MESH-REFINEMENT PREDECLARATION CHECK: declared band "
+                      f"[{lo}, {hi}] (dx_scale={args.dx_scale:g}) -- "
+                      f"measured ratio {ratio} -- "
+                      f"{'WITHIN band (consistent with staircase dispersion)' if within_band else 'OUTSIDE band -- staircase attribution FALSIFIED, do not iterate, report and stop per R2'}")
             print(f"  sanity_passed: {stage_b['sanity_passed']}")
         elif not stage_a["passed"]:
             print("\nStage A FAILED its reproduce-gate -- skipping Stage B "
@@ -1883,6 +2041,10 @@ def main(argv: list[str] | None = None) -> int:
         "rfx_reference_quote": RFX_REFERENCE_QUOTE,
         "must_move_when_validated": MUST_MOVE_WHEN_VALIDATED,
         "reproduce_gate_record": REPRODUCE_GATE_RECORD,
+        "dx_scale": args.dx_scale,
+        "mesh_refinement_predeclaration": (
+            MESH_REFINEMENT_PREDECLARATION if args.dx_scale != 1.0 else None
+        ),
         "stage_a": stage_a, "stage_b": stage_b,
         "overall_passed": overall_passed, "elapsed_s": round(elapsed_total, 1),
     }

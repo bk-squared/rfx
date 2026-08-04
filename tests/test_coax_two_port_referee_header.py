@@ -499,7 +499,7 @@ def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
     """
     module = _load_referee_module()
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         return _fake_stage_b_drive_dict(drive, nrts)
 
     monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
@@ -646,7 +646,7 @@ def test_main_writes_valid_json_on_stage_b_physics_gate_failure(monkeypatch, tmp
             "passivity": {"passed": True}, "matched_through_witness": {"passed": True},
         }
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         return _fake_stage_b_drive_dict(drive, nrts)
 
     monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
@@ -851,7 +851,7 @@ def test_run_stage_b_passes_end_to_end_on_run3_data_with_the_fix(monkeypatch):
     """
     module = _load_referee_module()
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         if drive == "port1":
             extracted = {"s_self": _run3_complex(_RUN3_S11), "s_thru": _run3_complex(_RUN3_S21),
                         "s_thru_alternate_channel": _run3_complex(_RUN3_S21)}
@@ -967,7 +967,7 @@ def test_config_error_exits_3_distinct_from_physics_failure(monkeypatch):
     exit 3, not 1 or a raw traceback."""
     module = _load_referee_module()
 
-    def _broken_layout():
+    def _broken_layout(*args, **kwargs):
         raise AssertionError("simulated: rfx geometry drifted")
 
     monkeypatch.setattr(module, "_stage_b_layout", _broken_layout)
