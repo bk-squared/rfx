@@ -41,7 +41,14 @@ jobs:
       # finishes, so when a runner is shut down mid-run (2026-07-27, shards 1+3)
       # the identities of already-failed tests survive in the partial log.
       # -q's failure summary prints only at session end and dies with the runner.
+      #
+      # RFX_WEEKLY_RSS=1 (issue #545 step 2): opt-in per-test RSS high-water
+      # reporter (conftest.py) so the NEXT run of this lane can discriminate
+      # an OOM-adjacent kill from a pure infra shutdown if a shard is killed
+      # again — no-op elsewhere (fast-suite/pr-tests.yml do not set this).
       - name: Run slow suite — shard ${{ matrix.group }} of 4
+        env:
+          RFX_WEEKLY_RSS: "1"
         run: >
           pytest -v -ra
           -m "not gpu"
