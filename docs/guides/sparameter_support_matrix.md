@@ -42,7 +42,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee (rel_err 0.0331 at the gate's num_periods=20 fixture, threshold 0.10 unchanged; issue #527) |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures) |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
@@ -158,19 +158,32 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   3` dump (it now raises a clear error instead of a bare `KeyError`). The
   current independent check on the production V/I extraction is
   `scripts/diagnostics/msl_vi_flux_oracle.py`.
-- The `eps_override` gradient is checked against an f64 AD-vs-FD referee:
-  rel_err `0.0331` at `num_periods=20` through the full extraction, on the
-  gate's own fixture (gpu-rtx4090, VESSL 369367250775; a 4-point CPU
-  cross-check reads `0.0035`-`0.0053`), against an unchanged `0.10` gate
-  threshold. This supersedes the pre-#516 `0.000110` figure: the #507/#511
-  fixes shrank the differentiated signal about 50x, which exposed the f32
-  comparator's own resolving-power floor as the dominant cause of the
-  intermediate 0.8519 mismatch that issue #527 opened on (closed; see
-  `tests/test_msl_ad_fd_converged.py` for the ULP-resolving-power
-  derivation). The gate does not by itself separate the physical-response
-  gradient from the extraction-error gradient (issue #530). The launch
-  fixture derives from registered materials on both the FD and AD sides;
-  staticness is regression-locked by `tests/test_msl_source_fixture_static.py`.
+- The `eps_override` gradient is checked against an f64 AD-vs-FD referee on
+  band-mean `\|S21\|^2` (issue #530; this REPLACES the prior `sum_ij\|S_ij\|^2`
+  objective, which was 99.96% a passivity-pinned structural constant — see
+  `tests/test_msl_ad_fd_converged.py`'s docstring for the full replacement
+  rationale): rel_err `0.0026` at `num_periods=20` through the full
+  extraction, on the gate's own fixture at its own h=1e-3 (gpu-rtx4090, VESSL
+  369367251813/369367251827; a 5-point h-sweep over h in [3e-4, 1e-2] reads
+  rel_err 0.0002-0.0146 with a 1.583% FD spread), against a `0.03` gate
+  threshold derived via `tests._gate_policy.gate_from_envelope` from the
+  sweep's worst point. A planted issue-#483-class defect (`eps_override`
+  frozen before tracing, so the traced parameter never reaches the AD tape)
+  reads rel_err `1.0000` on the same fixture — the gate reds at 33x the
+  threshold, confirming it discriminates a real defect and not only
+  comparator noise. This supersedes the pre-#530 objective's `0.0331`/`0.10`
+  figures (issue #527, closed) and the older pre-#516 `0.000110` figure
+  (issues #483/#486): the #507/#511 fixes had shrunk the OLD objective's
+  differentiated signal about 50x, exposing the f32 comparator's own
+  resolving-power floor as the dominant cause of an intermediate 0.8519
+  mismatch — the new objective is not passivity-pinned, so it does not carry
+  that failure mode forward (see `tests/test_msl_ad_fd_converged.py` for the
+  ULP-resolving-power derivation, unchanged by the objective swap). The
+  #515 AD smoke shares this same objective function
+  (`tests/_msl_ad_objective.py`) so the two tests cannot drift apart. The
+  launch fixture derives from registered materials on both the FD and AD
+  sides; staticness is regression-locked by
+  `tests/test_msl_source_fixture_static.py`.
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes
   placed at the same physical coordinate (rfx's probe-0 plane), the raw

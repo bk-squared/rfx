@@ -11,7 +11,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   RFX_BRANCH: "msl-ad-band-mean-s21-objective"
-  RFX_EXPECT_SHA: "0acbfb54f16958813bcbd2e413b992cff036cb98"
+  RFX_EXPECT_SHA: "526831b30d674880d723990b4521b2f438648199"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-

@@ -34,6 +34,15 @@ gradient specifically. On the reduced fixture it measured 1.09-1.16 (well
 conditioned), which refuted that hypothesis there.
 
 Does NOT modify any gate. Report-only.
+
+OBJECTIVE UPDATE (issue #530, 2026-08-04): the gate this script sweeps now
+differentiates band-mean |S21|^2 (tests._msl_ad_objective.
+msl_band_mean_s21_sq), not sum_ij|S_ij|^2 -- this script's objective was
+updated to match so it stays a faithful h-sweep of the CURRENT gate. The 10%
+literal in this script's own verdict logic below is this investigation's
+own historical threshold (pre-dates tests._gate_policy.gate_from_envelope)
+and is independent of the gate's live _REL_ERR_THRESHOLD (now 0.03) -- read
+this script's printed numbers, not its verdict labels, against the live gate.
 """
 from __future__ import annotations
 
@@ -62,6 +71,8 @@ def main() -> None:
     print(f"rfx: {rfx.__file__}")
     print(f"jax devices: {jax.devices()}")
 
+    from tests._msl_ad_objective import msl_band_mean_s21_sq
+
     t = importlib.import_module("test_msl_ad_fd_converged")
     sim = t._build_msl_sim()
     grid = sim._build_grid()
@@ -79,7 +90,7 @@ def main() -> None:
                 n_freqs=t._N_FREQS, num_periods=t._NUM_PERIODS,
                 eps_override=eps_base * alpha, checkpoint_segments=seg,
             )
-        return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
+        return msl_band_mean_s21_sq(r.S)
 
     a0 = jnp.float32(1.0)
     with warnings.catch_warnings():
