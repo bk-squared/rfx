@@ -14,12 +14,16 @@ Layer 1 (this file, fast suite):
     is the separate slow-lane battery.
 """
 
+from types import MethodType
+
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx import Box, Simulation
 from rfx.api._sparams import _assemble_mixed_power_wave_s
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.probes.probes import DFTPlaneProbe
 from rfx.sources.sources import GaussianPulse
 
 _EPS_R = 3.66
@@ -514,4 +518,122 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
     assert sim._msl_ports[0].excite is True
+
+
+# ---------------------------------------------------------------------------
+# Layer 1d (issue #520 leg 3) — the mixed lane's OWN V-span anchor
+# ---------------------------------------------------------------------------
+#
+# compute_msl_s_matrix's V-span anchoring fix (issue #511/PR #516 finding
+# F2: anchor k_hi on the RASTERIZED trace node, not round(h_sub/dx)) was
+# copied by hand into compute_mixed_s_matrix's own MSL leg (the
+# msl_modal_voltage call at _sparams.py that reads
+# trace_k_per_port[p_idx][0] — the call site's own comment says it
+# "mirrors compute_msl_s_matrix line-for-line"). Nothing exercises that
+# copy: every existing mixed-lane test drives real FDTD fields, where the
+# F2 defect's effect is a single-digit-percent V bias lost in ordinary
+# run-to-run noise, not a loud, well-defined discriminator. This plants a
+# per-z-node Ez marker — same technique and same bisecting dx=80um mesh as
+# test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace in
+# test_msl_modal_voltage_and_wave_solve.py, where the real trace node (4)
+# and the retired round(h_sub/dx) proxy (3) disagree — directly into the
+# mixed lane's own ``_forward_from_materials`` scan hook (the mixed lane
+# does not call ``self.run()``, so that file's ``sim.run`` stub does not
+# apply here), and reads back the raw V via ``return_diagnostics=True``.
+# This proves the MIXED LANE'S OWN copy, independently of the shared
+# helper's own unit tests.
+
+
+def _fake_forward_mixed_z_profile(nz_markers, n_lw):
+    """``_forward_from_materials`` stub: MSL Ez planes carry a fixed
+    per-z-node profile; every registered probe plane gets it (retargets
+    ``_fake_run_z_profile`` from test_msl_modal_voltage_and_wave_solve.py
+    at the mixed lane's own scan hook).
+
+    Hy/Hz carry a z-RAMP, not a uniform value: a uniform H makes the
+    closed Ampere-loop current cancel to EXACTLY zero (bottom leg equals
+    top leg, left leg equals right leg), which would make ``i_msl`` -- and
+    everything downstream of it -- degenerate. Same trap documented next
+    to ``_fake_run_drive_dependent`` in that file.
+    """
+
+    def fake_forward(self, grid, materials, debye_spec, lorentz_spec,
+                     n_steps=None, checkpoint=False, pec_mask=None,
+                     port_s11_freqs=None, _return_raw_port_sparams=False):
+        del materials, debye_spec, lorentz_spec, n_steps, checkpoint, pec_mask
+        freqs = jnp.asarray(port_s11_freqs)
+        n_f = int(freqs.shape[0])
+        zramp = jnp.asarray(
+            [1.0 + 0.6 * k for k in range(grid.nz)], dtype=jnp.complex64)
+        planes = {}
+        for entry in self._dft_planes:
+            if entry.component == "ez":
+                prof = jnp.asarray(
+                    [complex(nz_markers.get(k, 0.0)) for k in range(grid.nz)],
+                    dtype=jnp.complex64,
+                )
+                acc = jnp.broadcast_to(
+                    prof[None, None, :], (n_f, grid.ny, grid.nz))
+            elif entry.component == "hy":
+                acc = jnp.broadcast_to(
+                    ((0.018 + 0.004j) * zramp)[None, None, :],
+                    (n_f, grid.ny, grid.nz))
+            else:  # hz
+                acc = jnp.broadcast_to(
+                    ((0.005 + 0.001j) * zramp)[None, None, :],
+                    (n_f, grid.ny, grid.nz))
+            planes[entry.name] = DFTPlaneProbe(
+                accumulator=acc, freqs=entry.freqs,
+                component=entry.component, axis=0, index=0,
+                total_steps=1, window="rect", window_alpha=0.25,
+            )
+        wire_accs = [
+            (None, (np.full(n_f, 0.7 + 0.1j, dtype=np.complex128),
+                   np.full(n_f, 0.02 - 0.01j, dtype=np.complex128)))
+            for _ in range(n_lw)
+        ]
+        return {"lumped": wire_accs, "wire": wire_accs,
+               "dft_planes": planes, "time_series": None}
+
+    return fake_forward
+
+
+def test_mixed_lane_v_span_reaches_the_rasterized_trace_on_bisecting_mesh():
+    """The mixed lane's MSL V must use the SAME corrected span as
+    compute_msl_s_matrix, on the SAME bisecting mesh class (dx=80um,
+    h_sub/dx=3.175) that made the difference measurable in the first place.
+
+    Marker + expected numbers mirror
+    test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace exactly:
+    the trace rasterizes at node 4, so the real trace-anchored span (edges
+    0..3) sums to (1+1+1+10)*dz; the retired round(h_sub/dx)=3 proxy (edges
+    0..2) would give (1+1+1)*dz — a >4x difference, not a tolerance-level
+    slip, so this is a loud discriminator, not a regression-lock on noise.
+    """
+    marker = {0: 1.0, 1: 1.0, 2: 1.0, 3: 10.0, 4: -1000.0}
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c)
+    _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
+    n_lw = len(sim._ports)
+    sim._forward_from_materials = MethodType(
+        _fake_forward_mixed_z_profile(marker, n_lw), sim)
+
+    result, diag = sim.compute_mixed_s_matrix(
+        freqs=np.asarray([1.0e9]), magnitude_channel="wave",
+        return_diagnostics=True, skip_preflight=True,
+    )
+    del result
+    v0_msl = np.asarray(diag["v0_msl"])  # (n_runs, n_msl, n_freqs)
+    assert v0_msl.shape[1:] == (1, 1)
+
+    dz = 80e-6  # _DX, uniform grid -- msl_modal_voltage weights each edge by dz
+    expected_correct = (1.0 + 1.0 + 1.0 + 10.0) * dz
+    expected_proxy = (1.0 + 1.0 + 1.0) * dz
+    v_msl0 = v0_msl[:, 0, 0]  # every drive run, MSL port 0, the one frequency
+    np.testing.assert_allclose(v_msl0.real, expected_correct, rtol=1e-5)
+    assert not np.isclose(v_msl0[0].real, expected_proxy, rtol=1e-3), (
+        f"V read the retired round(h_sub/dx) proxy span ({expected_proxy}) "
+        f"instead of the trace-anchored span ({expected_correct}) — the "
+        "#511/F2 off-by-one has returned in the mixed lane's own copy."
+    )
     assert sim._ports[0].excite is True
