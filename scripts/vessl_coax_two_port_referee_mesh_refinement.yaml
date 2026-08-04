@@ -109,6 +109,20 @@ run: |-
   # forcing IPv4 (skip the doomed AAAA attempts entirely) and adding retries
   # (survive a transient IPv4 blip too) directly targets the log's own
   # failure signature, on both apt-get calls.
+  # R3 fix (mechanism change again, adversarial review 2026-08-04, run
+  # 369367251841): ForceIPv4+Retries was REFUTED -- 841's own log shows
+  # "Unable to connect to archive.ubuntu.com:http: [IP: 91.189.92.23 80]"
+  # on the .deb pool downloads (matplotlib/scipy) even over forced IPv4
+  # with 5 retries. archive.ubuntu.com itself is unreachable from this
+  # cluster right now, over BOTH stacks -- while this morning's MSL
+  # referee runs (05:50Z, 09:41Z) sailed through the identical apt path,
+  # confirming a time-varying upstream condition, not a permanent block.
+  # Swap to a Korean mirror (the cluster sits at CNU) BEFORE any apt call --
+  # a different endpoint entirely, not a retry/protocol tweak on the same
+  # dead host. This is the LAST mechanism change attempted here; if this
+  # also fails at apt, leg 1's VESSL submission is parked until the
+  # network window improves (see the PR body's submission ledger).
+  sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.kakao.com/ubuntu|g' /etc/apt/sources.list
   apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 update && \
   apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 install -y --no-install-recommends \
     build-essential cmake git \
