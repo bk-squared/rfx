@@ -520,6 +520,39 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert sim._msl_ports[0].excite is True
 
 
+@pytest.mark.slow
+def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
+    """Slow-lane smoke for compute_mixed_s_matrix (issue #520 leg 3).
+
+    Before this test, NO test anywhere carried a slow/gpu marker while
+    touching compute_mixed_s_matrix — the fast Layer-1c smoke above
+    deliberately truncates at num_periods=4 and disclaims physics
+    ("NOT PHYSICS... the claims-bearing fixture battery with the
+    pre-declared falsifiers is the separate slow-lane battery"), but that
+    battery was never built. It is still not built here either: this is a
+    minimal smoke check, not the promised passivity/reciprocity/openEMS
+    battery (that scope belongs to issue #488's arc; the adjacent
+    single-ratio-vs-multi-drive-solve composition question is #517).
+
+    Same real (non-monkeypatched) FDTD fixture as the fast smoke, run a bit
+    further (num_periods=8 vs 4) so the record is less trivially truncated.
+    Only proves the lane completes end to end and stays finite/bounded —
+    not a physics claim.
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c)
+    _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
+    freqs = np.linspace(1e9, 4e9, 5)
+    res = sim.compute_mixed_s_matrix(
+        freqs=freqs, num_periods=8.0, skip_preflight=True,
+    )
+    S = np.asarray(res.S)
+    assert S.shape == (2, 2, 5)
+    assert np.all(np.isfinite(S))
+    assert np.all(np.abs(S) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S)):.3f}"
+    assert res.settling_db is not None and np.all(np.isfinite(res.settling_db))
+
+
 # ---------------------------------------------------------------------------
 # Layer 1d (issue #520 leg 3) — the mixed lane's OWN V-span anchor
 # ---------------------------------------------------------------------------

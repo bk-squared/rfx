@@ -1,7 +1,27 @@
 #!/usr/bin/env python3
 """Replay an MSL 3-probe raw dump into an S-matrix.
 
-This is the E3 validation-side counterpart to
+SUPERSEDED (issue #520 leg 3): this script is a dead evidence lane against
+current dumps. It hardcodes the retired 3-probe ``raw_v123`` array and the
+schema-v1 ``rfx.msl_3probe_dump`` layout; production dumps have shipped the
+N-probe ``raw_v`` array under ``rfx.msl_nprobe_dump`` since schema v2
+(issue #80 Fix C), currently v3 (issue #523), so loading a current dump
+raises ``KeyError: 'raw_v123 is not a file in the archive'`` immediately.
+Even patched to read ``raw_v``, its math would still be wrong: it
+re-derives S by the single-ratio rule ``S[j,d] = b_j/a_d`` that issue #507
+replaced with the multi-drive solve ``S = B @ inv(A)`` for the production
+path, so an "independent" replay would no longer be answering the question
+"does this match production" for anything but a ``single_ratio_fallback``
+dump. Reimplementing the multi-drive solve independently (to make the
+comparison meaningful again) is not a minimal fix; it has not been done.
+
+The current independent check on the production V/I extraction is
+``scripts/diagnostics/msl_vi_flux_oracle.py`` (the committed flux-oracle
+falsifier, issue #520 leg 1 / #525 / #531). This module is kept for
+historical reference and for replaying any dump still carrying the retired
+schema v1 layout.
+
+This was the E3 validation-side counterpart to
 ``Simulation.compute_msl_s_matrix(raw_3probe_dump_path=...)``.  It loads the
 real simulation-derived V1/V2/V3/I1 phasors and recomputes the MSL S-matrix
 without calling ``compute_msl_s_matrix`` or importing the production MSL
@@ -69,6 +89,17 @@ def _solve_3probe_independent(
 def replay_msl_3probe_dump(path: Path) -> dict[str, Any]:
     with np.load(path, allow_pickle=True) as data:
         metadata = json.loads(str(data["metadata_json"].item()))
+        if "raw_v123" not in data.files:
+            raise ValueError(
+                f"{path}: this dump uses schema "
+                f"{metadata.get('schema')!r} v{metadata.get('schema_version')} "
+                "(N-probe 'raw_v', not the retired 3-probe 'raw_v123'). "
+                "replay_msl_3probe_dump.py is SUPERSEDED for these dumps — "
+                "see the module docstring — and its single-ratio replay "
+                "math no longer matches the production multi-drive solve "
+                "(issue #507). Use scripts/diagnostics/msl_vi_flux_oracle.py "
+                "for an independent check on a current dump."
+            )
         freqs = np.asarray(data["freqs_hz"], dtype=np.float64)
         raw_v123 = np.asarray(data["raw_v123"], dtype=np.complex128)
         raw_i1 = np.asarray(data["raw_i1"], dtype=np.complex128)

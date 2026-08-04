@@ -2102,10 +2102,15 @@ class _SparamMixin:
             Optional ``.npz`` path. When provided, write the real
             simulation-derived N-probe voltage/current phasors used by the
             extractor, together with the production S-matrix, so the
-            de-embedding can be independently replayed without rerunning
-            FDTD. The dump schema is ``rfx.msl_nprobe_dump`` v2 (issue #80
-            Fix C); ``raw_v`` has shape ``(n_driven, n_ports, n_probes_max,
-            n_freqs)``.
+            de-embedding can be independently checked without rerunning
+            FDTD. The dump schema is ``rfx.msl_nprobe_dump`` v3 (issue #80
+            Fix C; bumped 2->3 by issue #523 to add
+            ``production_smatrix_assembly``); ``raw_v`` has shape
+            ``(n_driven, n_ports, n_probes_max, n_freqs)``.
+            ``scripts/diagnostics/replay_msl_3probe_dump.py`` is SUPERSEDED
+            for v3 dumps (it expects the retired 3-probe/single-ratio v1
+            schema); the current independent check is
+            ``scripts/diagnostics/msl_vi_flux_oracle.py``.
         strict_extractor : bool
             Honesty guard for the de-embedding (issue #80 Fix A). After
             extraction, the per-frequency ``|q|`` and extracted ``Z0``
