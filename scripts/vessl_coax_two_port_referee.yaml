@@ -91,6 +91,21 @@ run: |-
   tail -n 60 "$out/run.log" || true
   echo "coax_two_port_referee_rc=$rc"
 
+  # Log-copy step (added on promotion, 2026-08-04, mirroring
+  # scripts/vessl_msl_phase_referee.yaml's own n10 fix): copy the run
+  # log to the TRACKED prefix this script's own header-test
+  # fill-contract requires (validation/crossval/
+  # _21_coax_two_port_referee_logs/ -- tests/
+  # test_coax_two_port_referee_header.py's REPRODUCE_GATE_RECORD
+  # contract test rejects .omx/ and docs/research_notes/vessl_logs/,
+  # both gitignored -- PR #548's own log-trackedness lesson). This only
+  # places the file on disk at the tracked path inside the mounted
+  # checkout -- `git add` + commit (with the VESSL run ID in the
+  # filename, matching this directory's own existing run3_*.log naming)
+  # is still a human step after reviewing the run.
+  mkdir -p validation/crossval/_21_coax_two_port_referee_logs
+  cp "$out/run.log" "validation/crossval/_21_coax_two_port_referee_logs/$(date -u +%Y%m%dT%H%M%SZ)_run.log" || true
+
   echo "=== verdict ==="
   case "$rc" in
     0) echo "PASS: reproduce-gate + Stage B self-checks both passed (comparator-leg only -- see JSON for the actual bracket, no verdict on rfx agreement)" ;;
