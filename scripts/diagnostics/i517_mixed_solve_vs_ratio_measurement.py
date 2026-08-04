@@ -301,15 +301,24 @@ the degenerate input it was fed").
 everywhere); the raw number's scale was dominated by the trivial Z0c=12.5
 vs Z0_hj~48 column-norm mismatch, not near-singularity.
 
-**INFO 9 — n_live disagreement (unfiled candidate, reported not fixed this
-session)**: preflight's advisory text says "n_live/n = 3/4" and "terminates
-at 50 ohm across its 3 live cells", but the ASSEMBLER's actual
-`n_live_lw = [4]` (captured from the exact call `_assemble_mixed_power_wave_s`
-receives) — `Z0c = 50/4 = 12.5 ohm`, not `50/3 = 16.67 ohm`. The degeneracy
-proof's exact match to `n_live=4` (not 3) is itself evidence the assembler,
-not the preflight advisory, is internally consistent with what the wave
-formulas actually used; which of the two is the geometrically correct count
-is a separate question this script does not resolve.
+**INFO 9 — n_live disagreement (filed as issue #544, RESOLVED by PR #555)**:
+at the time this script's RESULT section was written, preflight's advisory
+text said "n_live/n = 3/4" and "terminates at 50 ohm across its 3 live
+cells", but the ASSEMBLER's actual `n_live_lw = [4]` (captured from the
+exact call `_assemble_mixed_power_wave_s` receives) — `Z0c = 50/4 = 12.5
+ohm`, not `50/3 = 16.67 ohm`. The degeneracy proof's exact match to
+`n_live=4` (not 3) is itself evidence the assembler, not the preflight
+advisory, was internally consistent with what the wave formulas actually
+used. PR #555 (`scripts/diagnostics/i544_n_live_advisory_vs_assembler.py`)
+resolved which count is geometrically correct — the assembler's 4, not the
+advisory's 3 — by dumping the actual assembled `pec_mask`: the PEC trace is
+exactly one cell thick and rasterizes to node k=4, one cell OUTSIDE this
+port's k=0..3 extent, so all 4 cells are genuinely live. The advisory now
+shares `_wire_port_live_cells` with the assembler and is silent on this
+fixture. `main()`'s INFO 9 block below now quotes whatever the LIVE
+`preflight_text` actually contains (searched at print time) instead of the
+pre-#555 "n_live/n = 3/4" literal, so it stays accurate across future
+advisory changes too.
 
 **Free finding — a constant per-port rescale is not sufficient**: the
 per-port factor that would equalize `|S01|` and `|S10|` (wave channel),
@@ -760,15 +769,33 @@ def main(reuse_json=None) -> int:
 
     S_shipped = captured["S_shipped"]
 
-    # ---- INFO 9: n_live disagreement (preflight advisory vs assembler) --
+    # ---- INFO 9: n_live advisory-vs-assembler cross-check (issue #544,
+    #      RESOLVED by PR #555 -- this now reads whatever the LIVE
+    #      preflight_text actually says instead of a hardcoded pre-#555
+    #      quote, so a future regression back to the old wording, or a
+    #      further change to the advisory, shows up here rather than
+    #      silently being masked by a stale literal string). ------------
     z0_lw = captured["z0_lw"]
     z0c_lw = z0_lw / np.maximum(n_live_lw.astype(np.int64), 1)
     print()
     print("=" * 78)
-    print("INFO 9 — n_live advisory-vs-assembler disagreement")
+    print("INFO 9 — n_live advisory-vs-assembler cross-check "
+         "(issue #544, RESOLVED by PR #555)")
     print("=" * 78)
-    print("  preflight text says (verbatim above): 'n_live/n = 3/4' and "
-         "'terminates at 50 ohm across its 3 live cells'")
+    _wire_port_line = next(
+        (ln.strip() for ln in preflight_text.splitlines()
+         if "Wire port" in ln and "rasterizes" in ln),
+        None,
+    )
+    if _wire_port_line is not None:
+        print(f"  live preflight text (quoted from this run's "
+             f"preflight_text, not hardcoded): {_wire_port_line}")
+    else:
+        print("  live preflight text: no 'Wire port ... rasterizes' "
+             "dead-extent advisory fired this run -- post-PR-#555 the "
+             "advisory shares _wire_port_live_cells with the assembler "
+             "and stays silent when every rasterized cell is live, which "
+             "is ground truth on this fixture.")
     print(f"  the ASSEMBLER's actual n_live_lw (captured from the exact "
          f"call _assemble_mixed_power_wave_s receives): {n_live_lw.tolist()}")
     print(f"  => Z0c = Z0/n_live = {z0c_lw.tolist()} ohm "

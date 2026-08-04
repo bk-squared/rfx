@@ -6,6 +6,25 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — wire-port dead-cell preflight advisory now shares the assembler's ground-truth PEC mask (issue #544)
+
+- The `wire_port_dead_extent_cells`/`wire_port_midpoint_in_pec` preflight
+  advisory classified a rasterized cell as PEC-dead by comparing a
+  computed cell-CENTER (node + half-cell Yee offset) against the PEC
+  bounding box, closed interval — a different reference point than the
+  real rasterization (node coordinates, half-open interval, or the
+  thin-sheet nearest-node rule for a sub-cell-thick box). On the #488
+  lane's committed lumped/wire↔MSL fixture this made the advisory report
+  `n_live/n = 3/4` while the assembler's actual `n_live_lw` was `4`
+  (measured passive-port `Z_in = Z0/4 = 12.5 ohm`, matching `n_live=4`).
+  The advisory now calls `_wire_port_live_cells` against the SAME
+  assembled `pec_mask` the assembler uses, so the two paths cannot drift
+  apart again. Uniform meshes only — on a non-uniform mesh
+  (`dz_profile`/`dx_profile`/`dy_profile`) the advisory now emits a
+  `wire_port_dead_cell_classification_unavailable` note instead of either
+  silently skipping the check or checking a mismatched uniform substitute
+  (pre-existing NU-blindness, previously undisclosed).
+
 ### Fixed — the #494 advisory's test coverage was bound at one point in a five-dimensional option space
 
 - An independent mutation battery against the merged #495 suite found **40 of 67
@@ -338,7 +357,13 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   physics in the same change.
 - The `wire_port_dead_extent_cells` preflight advisory now states the
   post-fix semantics (dead cells excluded; the `Z0*(n_live/n)`
-  termination is cited as the historical pre-fix behaviour).
+  termination is cited as the historical pre-fix behaviour). **Update
+  (issue #544, see the Unreleased section below)**: the advisory's own
+  live/dead cell *counting method* — separate from this wording fix —
+  was itself found to disagree with the assembler's actual `n_live_lw`
+  on some fixtures (a bounding-box-vs-cell-center approximation drifting
+  from the real node-based rasterization); it now shares
+  `_wire_port_live_cells` with the assembler directly.
 
 ### Added — opt-in reference-plane port waves for the wire S-matrix off-diagonals (`add_port(reference_plane_cells=)`, issue #313)
 

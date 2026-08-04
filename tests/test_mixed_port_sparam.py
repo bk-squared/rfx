@@ -749,16 +749,24 @@ def test_wire_port_dead_cell_advisory_matches_ground_truth_on_488_fixture():
 def test_wire_port_dead_cell_advisory_stays_correct_on_an_already_agreeing_case():
     """No false-positive introduction: a case where the pre-#544 advisory
     and the assembler ALREADY agreed must still report the same n_live/n
-    after the fix. dx=0.5mm, trace z in [1.0,1.5]mm, port extent=1.0mm ->
-    3 cells (centers 0.25/0.75/1.25mm); the top cell (index 2, z=1.25mm)
-    is genuinely dead both under the old center-based check AND under the
-    real node-based rasterization (this box's thin-sheet nearest-node is
-    z=1.0mm=node 2, INSIDE the port's cell range, unlike the #488 case).
+    after the fix. dx=0.5mm, trace z in [0.9,1.4]mm (1 cell thick -> the
+    thin-sheet branch), port extent=1.0mm -> 3 cells (centers
+    0.25/0.75/1.25mm). The thin-sheet midpoint is 1.15mm, UNAMBIGUOUSLY
+    closer to node z=1.0mm (0.15mm away) than to node z=1.5mm (0.35mm
+    away) -- not a tie, so the ground-truth node is deterministic
+    regardless of platform/dtype rounding (issue #544 review item 5: an
+    EARLIER version of this fixture used trace z in [1.0,1.5]mm, whose
+    thin-sheet midpoint 1.25mm sits EXACTLY equidistant between nodes
+    1.0mm and 1.5mm -- Box's own docstring calls that tie unpredictable
+    across float32 double-rounding, so it was replaced). Cell index 2
+    (z-node=1.0mm, cell center 1.25mm) is genuinely dead both under the
+    old center-based check AND under the real node-based rasterization,
+    and is NOT the midpoint cell (index 1, z-node=0.5mm).
     """
     dx = 0.5e-3
     sim = Simulation(freq_max=10e9, domain=(0.016, 0.010, 0.006),
                      boundary="cpml", cpml_layers=6, dx=dx)
-    sim.add(Box((0.004, 0.003, 1.0e-3), (0.012, 0.007, 1.5e-3)),
+    sim.add(Box((0.004, 0.003, 0.9e-3), (0.012, 0.007, 1.4e-3)),
             material="pec")
     sim.add_port(position=(0.008, 0.005, 0.0), component="ez",
                  impedance=50.0, extent=1.0e-3)

@@ -357,8 +357,9 @@ def _wire_port_live_cells(grid, port, pec_mask=None):
             f"WirePort {port.start} -> {port.end} ({port.component}): all "
             f"{len(cells)} extent cells land inside PEC geometry, so the "
             "port has no live cell to terminate or drive (issue #318). "
-            "Shorten the extent or move the port so at least one cell "
-            "center sits outside PEC."
+            "Shorten the extent or move the port so at least one of its "
+            "rasterized cells is not PEC (per the assembled geometry -- "
+            "not a cell-center guess)."
         )
     return cells, live_flags, n_live
 
