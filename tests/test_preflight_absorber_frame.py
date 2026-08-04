@@ -67,15 +67,28 @@ same frame and the same fix apply on both lanes; there is no separate NU
 code path to special-case.
 
 Mutation falsifier (manual, recorded here rather than left as a permanent
-CI assertion; re-run after the H1/MH2 additions above): with
-``_absorber_boundary_for_axis`` locally edited so
-``lo_boundary = domain_extent if ct_lo > 0 else None`` / ``hi_boundary =
-0.0 if ct_hi > 0 else None`` (swapping the lo/hi roles), 16 tests went
-RED — correctly the NON-FIRING controls plus the helper's own unit test,
-not the firing tests (an earlier draft of this docstring had this
-inverted: the firing tests stay green because the swap makes the
+CI assertion; re-run after the H1/MH2 additions above, and again after
+#510's PR #551 review round): with ``_absorber_boundary_for_axis`` locally
+edited so ``lo_boundary = domain_extent if ct_lo > 0 else None`` /
+``hi_boundary = 0.0 if ct_hi > 0 else None`` (swapping the lo/hi roles),
+**22** tests now go RED (was 16 at the H1/MH2 baseline, 19 after #510's
+first pass added 3, 22 after the #551 review round's BLOCKING 1/2 fixes
+added 3 more) — correctly the NON-FIRING controls plus the helper's own
+unit test, not the firing tests (an earlier draft of this docstring had
+this inverted: the firing tests stay green because the swap makes the
 membership/clearance tests over-inclusive on an already-interior
-coordinate, not blind to a genuinely exterior one). In this file (10):
+coordinate, not blind to a genuinely exterior one). Caveat from the #551
+review: this count is SELECTION-dependent — pytest's warning-registry
+dedup (``warnings.warn`` only re-emits an identical (message, category,
+module, lineno) tuple once per interpreter session by default) can leak
+suppression across tests depending on run order and what else shares the
+session, so the enumerated set below reproduces reliably only when these
+exact 6 files are selected together, in this order, in a fresh process —
+not as a subset, not interleaved with unrelated absorber-adjacent tests,
+and not as a universal invariant of the count "22" itself. Re-run the
+selection below (not a broader or narrower one) to reproduce it.
+
+In this file (10, unchanged by #510):
 ``test_absorber_boundary_helper_matches_ground_truth``,
 ``test_absorber_placement_silent_on_domain_centre_probe``,
 ``test_absorber_placement_proximity_advisory_fires_within_2_cells``,
@@ -85,11 +98,30 @@ coordinate, not blind to a genuinely exterior one). In this file (10):
 ``test_waveguide_reference_plane_silent_on_wr90_ports_in_valid_domain``,
 ``test_waveguide_reference_plane_silent_at_mixin_level_near_edge``,
 ``test_msl_x_cpml_clearance_silent_once_past_buffer_plus_recommended``,
-``test_msl_y_clearance_silent_on_ledger_calibrated_ly``. Outside this
-file (6, confirming M5 that the mutation now also reaches the MSL and
-proximity paths): ``test_msl_port_preflight.py::
-test_clearance_silent_on_wide_ly``, ``test_msl_port_preflight.py::
-test_well_setup_msl_port_zero_warnings``,
+``test_msl_y_clearance_silent_on_ledger_calibrated_ly`` (NOTE:
+``test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism``,
+added alongside these for #510 nit 3, deliberately does NOT count toward
+this red-set — it is a documentation pin on the helper's OWN one-cell
+conservatism, unaffected by the lo/hi swap in the coordinate range this
+fixture happens to probe).
+
+Outside this file (12, was 6 before #510 — confirming M5 that the
+mutation now also reaches the MSL/proximity paths, and #510 that it
+reaches the new absorber-span checks and the BLOCKING-1 walk-down search):
+``test_msl_port_preflight.py::test_clearance_silent_on_wide_ly``,
+``test_msl_port_preflight.py::test_well_setup_msl_port_zero_warnings``,
+``test_msl_port_preflight.py::
+test_issue510_reproduction_fires_both_new_warnings``,
+``test_msl_port_preflight.py::
+test_issue510_clean_geometry_neither_new_warning_fires``,
+``test_msl_port_preflight.py::
+test_issue510_absorber_span_falsifier_compliant_offset_silences_it``,
+``test_msl_port_preflight.py::
+test_issue510_absorber_offset_interval_endpoint_does_not_warn``,
+``test_msl_port_preflight.py::
+test_issue510_absorber_offset_max_endpoint_verified_across_geometries``,
+``test_msl_port_preflight.py::
+test_issue510_absorber_span_names_real_snapped_coordinate_off_grid_feed``,
 ``test_msl_internal_probe_advisories.py::
 test_user_probe_advisories_and_332_still_fire``,
 ``test_preflight_structured_and_guards.py::
@@ -98,7 +130,13 @@ test_absorber_overlap_no_false_positive_on_2d_collapsed_z``,
 test_full_domain_dielectric_silent_on_cpml_extension``,
 ``test_farfield_asymmetric_cpml.py::
 test_ntff_box_outside_cpml_has_no_absorber_overlap``. Reverted; see the
-PR body / rfx-known-issues.md #500 entry for the recorded run.
+PR body / rfx-known-issues.md #500 and #510 entries for the recorded run.
+(``test_issue510_degenerate_ladder_warns_on_clamped_probes``,
+``test_issue510_feed_crossing_names_lumped_port_cleanly``, and
+``test_issue510_feed_crossing_falsifier_separated_ports_silences_it``
+stay green under this mutation, correctly — the degenerate-ladder and
+feed-crossing checks do not route through
+``_absorber_boundary_for_axis`` at all.)
 """
 
 from __future__ import annotations
@@ -208,8 +246,22 @@ def test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism():
     this exact membership frame (see the module docstring's mutation
     falsifier list), so loosening it to reclassify this one case as
     proximity would change shared semantics, not just this corner case."""
-    domain_extent, dx, ct_hi = 0.0101, 1e-3, 2e-3
-    true_last_interior_node = 0.011  # one dx beyond domain_extent
+    dx = 1e-3
+    domain_extent = 0.0101
+    cpml_layers = 2
+    ct_hi = cpml_layers * dx
+    g = Grid(freq_max=10e9, domain=(domain_extent, 0.01, 0.01), dx=dx,
+             cpml_layers=cpml_layers)
+    # Issue #510 review (non-blocking #7): derive the true last interior
+    # node from rfx.grid.Grid's OWN reported sizing (like the rest of
+    # this file's ground-truth tests do), not a hand-transcribed number.
+    # nx = ceil(domain/dx) + 1 + pad_lo + pad_hi, so
+    # ceil(domain/dx) = nx - 1 - pad_lo - pad_hi is the interior cell
+    # count, and that many cells beyond user x=0 is the last interior
+    # node's user coordinate.
+    n_interior_cells = g.nx - 1 - g.pad_x_lo - g.pad_x_hi
+    true_last_interior_node = n_interior_cells * dx
+    assert true_last_interior_node == pytest.approx(0.011)
     assert _coord_in_absorber(true_last_interior_node, domain_extent, 0.0, ct_hi)
     # _coord_near_absorber is not even reached by a caller once membership
     # fires (callers check overlap first, per both helpers' docstrings),

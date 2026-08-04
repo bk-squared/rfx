@@ -502,6 +502,63 @@ def msl_nearest_downstream_reflector(
     return nearest_d, nearest_label
 
 
+def msl_absorber_compliant_offset_max(
+    grid,
+    port,
+    *,
+    n_probes: int,
+    n_spacing: int,
+    off_lo: int,
+    domain_x: float,
+    ct_lo: float,
+    ct_hi: float,
+    dx: float,
+    guess_hi: int,
+) -> int | None:
+    """Largest ``n_probe_offset >= off_lo`` (up to ``guess_hi``) whose
+    resulting GRID-SNAPPED deepest probe clears both
+    :func:`_coord_in_absorber` and :func:`_coord_near_absorber`.
+
+    Issue #510 review finding (BLOCKING 1): the first version of this
+    check derived the advertised interval endpoint by algebraically
+    INVERTING the two predicates — ``int((headroom - margin) / dx) -
+    (n_probes-1)*n_spacing``. Float division plus truncation, combined
+    with :func:`_coord_near_absorber`'s boundary sitting at exactly
+    ``n_cells*dx``, put the computed endpoint on the wrong side of an FP
+    knife edge whenever the true boundary landed within about one ULP
+    of an exact multiple of ``dx`` — reviewer's brute-force sweep found
+    roughly 12,000 ``(dx, n_spacing, feed, domain)`` combinations where
+    the ADVERTISED endpoint itself still tripped the warning it claimed
+    to clear.
+
+    This walks candidate offsets DOWN from ``guess_hi`` and asks the
+    REAL predicate at each one (via ``msl_probe_x_coords_n``, the same
+    grid-index/clamping arithmetic the extractor uses), rather than
+    computing an answer algebraically. The returned value, if any, is
+    verified compliant by construction — it cannot land on the wrong
+    side of the boundary the way an algebraic inversion can.
+
+    Returns ``None`` if no offset in ``[off_lo, guess_hi]`` clears
+    (the compliant interval is empty).
+    """
+    from rfx.sources.msl_port import msl_probe_x_coords_n as _probe_x_coords_n
+
+    off = guess_hi
+    while off >= off_lo:
+        ladder = _probe_x_coords_n(
+            grid, port, n_probes=n_probes,
+            n_offset_cells=off, n_spacing_cells=n_spacing,
+        )
+        x_deep_candidate = ladder[-1]
+        if not (
+            _coord_in_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi)
+            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi, dx)
+        ):
+            return off
+        off -= 1
+    return None
+
+
 class _PreflightMixin:
     """Preflight / validation methods mixed into :class:`Simulation`."""
 
@@ -2488,14 +2545,20 @@ class _PreflightMixin:
                         # which (hi side only) can start up to one cell
                         # further out than the boundary this margin is
                         # measured from (see _absorber_boundary_for_axis's
-                        # docstring, and nit 3 below).
+                        # docstring, and nit 3 below). Review follow-up:
+                        # "just past which" (not "where") the absorber is
+                        # active, because _coord_in_absorber's own
+                        # membership predicate is a STRICT less-than
+                        # (coord < lo_b) -- the boundary coordinate itself
+                        # reads as interior, so the absorber is active
+                        # strictly beyond it, not exactly at it.
                         _w.warn(
                             PreflightWarning(
                                 f"Probe at {pos} is within "
                                 f"{_ABSORBER_PROXIMITY_CELLS} cells "
                                 f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
-                                f"domain edge on the {'xyz'[ax]}-axis, where the "
-                                f"{absorber_label} absorber is active. "
+                                f"domain edge on the {'xyz'[ax]}-axis, just past which "
+                                f"the {absorber_label} absorber is active. "
                                 f"Fields there carry CPML fringe/reflection error; move "
                                 f"inward for claims-bearing measurement.",
                                 code="absorber_proximity",
@@ -2534,8 +2597,8 @@ class _PreflightMixin:
                                 f"Source/port at {pos} is within "
                                 f"{_ABSORBER_PROXIMITY_CELLS} cells "
                                 f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
-                                f"domain edge on the {'xyz'[ax]}-axis, where the "
-                                f"{absorber_label} absorber is active. "
+                                f"domain edge on the {'xyz'[ax]}-axis, just past which "
+                                f"the {absorber_label} absorber is active. "
                                 f"Fields there carry CPML fringe/reflection error; move "
                                 f"inward for claims-bearing measurement.",
                                 code="absorber_proximity",
@@ -3501,6 +3564,31 @@ class _PreflightMixin:
         if not self._msl_ports:
             return
         domain = self._domain
+
+        # Issue #510 review (BLOCKING 2): the deepest-probe coordinate
+        # used to be a pure continuous-coordinate extrapolation
+        # (x_feed + offset*dx). The extractor places probes by GRID
+        # INDEX, with rounding AND clamping into the in-domain range
+        # (rfx.sources.msl_port._msl_x_for_index /
+        # msl_probe_x_coords_n) — for a feed not exactly grid-aligned
+        # that is an O(dx) model error (the same order as the 2-cell
+        # absorber-proximity decision margin), and when the
+        # offset+spacing ladder runs past the grid edge the continuous
+        # formula names a coordinate the real extractor never visits
+        # (several probes clamp onto the SAME cell). Build the real
+        # grid once here — same precedent as ``_wire_port_cell_centers``
+        # above, which mirrors production rasterization exactly for the
+        # same reason — so every check below quotes the coordinates
+        # ``compute_msl_s_matrix`` actually samples. Defensive: preflight
+        # must never crash a run over a diagnostics helper, so a failed
+        # grid build falls back to the pre-fix continuous formula at the
+        # site below rather than raising or skipping checks 4/4a/4b.
+        from rfx.sources.msl_port import MSLPort as _MSLPort, msl_probe_x_coords_n as _probe_x_coords_n
+        try:
+            _msl_grid = self._build_grid()
+        except Exception:
+            _msl_grid = None
+
         for pe in self._msl_ports:
             x_feed, y_centre, z_lo = pe.position
             w_trace = float(pe.width)
@@ -3678,7 +3766,66 @@ class _PreflightMixin:
             n_sp = pe.n_probe_spacing if pe.n_probe_spacing is not None else 3
             n_pr = getattr(pe, "n_probes", 5) or 5
             sign = 1.0 if pe.direction == "+x" else -1.0
-            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * dx
+
+            _mp = _MSLPort(
+                feed_x=float(x_feed),
+                y_lo=float(y_centre - w_trace / 2.0),
+                y_hi=float(y_centre + w_trace / 2.0),
+                z_lo=float(z_lo),
+                z_hi=float(z_lo + h_sub),
+                direction=pe.direction,
+                impedance=float(pe.impedance),
+                excitation=pe.waveform,
+            )
+            _probe_ladder = None
+            if _msl_grid is not None:
+                try:
+                    _probe_ladder = _probe_x_coords_n(
+                        _msl_grid, _mp, n_probes=n_pr,
+                        n_offset_cells=n_off, n_spacing_cells=n_sp,
+                    )
+                except Exception:
+                    _probe_ladder = None
+            if _probe_ladder is not None:
+                x_deep = _probe_ladder[-1]
+                _ladder_dup_count = n_pr - len(set(_probe_ladder))
+            else:
+                # Fallback (issue #510 review, BLOCKING 2): grid build
+                # or probe-ladder computation failed -- keep the
+                # pre-fix continuous extrapolation rather than skip
+                # checks 4/4a/4b outright. Degeneracy cannot be
+                # detected on this path (no real ladder to inspect).
+                x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * dx
+                _ladder_dup_count = 0
+
+            if _ladder_dup_count > 0:
+                # Issue #510 review (BLOCKING 2b): a ladder that runs
+                # past the grid edge CLAMPS -- several probes land on
+                # the same cell instead of spreading out, which makes
+                # the N-probe least-squares fit rank-deficient. This is
+                # a distinct hazard from "the deepest probe is near the
+                # absorber" (4a below still fires separately on the
+                # honest, clamped x_deep).
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"the {n_pr}-probe ladder (n_probe_offset={n_off}, "
+                        f"n_probe_spacing={n_sp} cells) runs past the grid "
+                        f"and CLAMPS — only {n_pr - _ladder_dup_count} of "
+                        f"{n_pr} probes land on distinct grid cells "
+                        f"({_ladder_dup_count} duplicate probe position(s): "
+                        f"{tuple(round(c * 1e3, 2) for c in _probe_ladder)}mm). "
+                        f"The N-probe least-squares wave-decomposition fit "
+                        f"is rank-deficient on duplicated positions; "
+                        f"`compute_msl_s_matrix`'s Z0/S11 extraction is "
+                        f"unreliable for this port. Shorten "
+                        f"n_probe_offset/n_probe_spacing or extend the "
+                        f"domain so the full ladder stays in-grid.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
 
             nearest_d, nearest_label = msl_nearest_downstream_reflector(
                 getattr(self, "_geometry", []),
@@ -3697,6 +3844,18 @@ class _PreflightMixin:
                 # moves the probes TOWARD the reflector, so the pre-#469
                 # "bump n_probe_offset" mitigation pointed the wrong way
                 # on short feeds.
+                # NOTE (issue #510 review, BLOCKING 1): this algebraic
+                # inversion shares the FP-knife-edge pattern fixed for
+                # 4a below via msl_absorber_compliant_offset_max's
+                # walk-down search -- not converted here because
+                # msl_nearest_downstream_reflector's continuous
+                # PEC-box-distance predicate is a different shape (a
+                # scalar clearance threshold, not the two boolean
+                # membership/proximity predicates the walk-down helper
+                # was built around) and does not drop into that helper
+                # cleanly without its own re-derivation. Revisit with
+                # the same walk-down technique if this interval is ever
+                # found to mislead the same way.
                 d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * dx
                 off_max = int((d_feed_to_refl - min_probe_clear) / dx) - (n_pr - 1) * n_sp
                 _hsub_cells = int(round(5.0 * h_sub / dx))
@@ -3748,14 +3907,37 @@ class _PreflightMixin:
             _abs_headroom = (
                 _domain_x - x_feed if pe.direction == "+x" else x_feed
             )
-            _abs_off_max = (
-                int((_abs_headroom - _abs_margin) / dx) - (n_pr - 1) * n_sp
-            )
             _abs_hsub_cells = int(round(5.0 * h_sub / dx))
+            _abs_off_lo = max(3, _abs_hsub_cells)
+            if _msl_grid is not None:
+                # Issue #510 review (BLOCKING 1): the advertised endpoint
+                # is now VERIFIED against the real predicate via a
+                # walk-down search, not computed algebraically -- see
+                # msl_absorber_compliant_offset_max's docstring.
+                # ``_abs_guess_hi`` is a deliberately generous, INEXACT
+                # starting point (ceil, no proximity margin subtracted,
+                # +4 cells of slack) -- only the walked-down RESULT
+                # below is ever reported.
+                _abs_guess_hi = (
+                    int(math.ceil(_abs_headroom / dx)) - (n_pr - 1) * n_sp + 4
+                )
+                _abs_off_max = msl_absorber_compliant_offset_max(
+                    _msl_grid, _mp,
+                    n_probes=n_pr, n_spacing=n_sp, off_lo=_abs_off_lo,
+                    domain_x=_domain_x, ct_lo=cpml_thick_lo[0],
+                    ct_hi=cpml_thick_hi[0], dx=dx, guess_hi=_abs_guess_hi,
+                )
+            else:
+                # Fallback (grid build failed): the pre-fix algebraic
+                # estimate -- imprecise (issue #510 review, BLOCKING 1)
+                # but better than no guidance at all.
+                _abs_off_max = (
+                    int((_abs_headroom - _abs_margin) / dx) - (n_pr - 1) * n_sp
+                )
             _abs_interval_txt = (
                 f"compliant n_probe_offset interval ≈ "
-                f"[{max(3, _abs_hsub_cells)}, {_abs_off_max}] cells"
-                if _abs_off_max >= max(3, _abs_hsub_cells)
+                f"[{_abs_off_lo}, {_abs_off_max}] cells"
+                if _abs_off_max is not None and _abs_off_max >= _abs_off_lo
                 else "no compliant n_probe_offset exists on this feed "
                 "length (interval empty)"
             )
@@ -3806,7 +3988,12 @@ class _PreflightMixin:
             # an x-only crossing test (no y/z filtering on the other
             # port) — a deliberately simple, conservative check; two
             # independent lines that merely share an x-coordinate at
-            # very different y positions would also warn here.
+            # very different y positions would also warn here. Walks
+            # only the two registries #510 named in scope -- MSL ports
+            # (self._msl_ports) and lumped/wire ports (self._ports);
+            # self._coaxial_ports and self._waveguide_ports also carry a
+            # feed / reference plane but are out of scope here (issue
+            # #510 review, disclosed rather than fixed).
             _span_lo, _span_hi = (
                 (x_feed, x_deep) if pe.direction == "+x" else (x_deep, x_feed)
             )
@@ -3816,23 +4003,28 @@ class _PreflightMixin:
                 _other_x = _other.position[0]
                 if _span_lo < _other_x < _span_hi:
                     _other_name = getattr(_other, "name", None)
-                    if _other_name is not None:
-                        _other_label = f"MSL port '{_other_name}'"
-                    else:
-                        _other_label = (
-                            f"the lumped/wire port at x={_other_x*1e3:.2f}mm "
-                            f"(component={_other.component!r})"
-                        )
+                    # Issue #510 review (BLOCKING 3): the previous label
+                    # glued a possessive onto a parenthetical component
+                    # tag and repeated the crossing coordinate twice
+                    # ("...port at x=6.40mm (component='ez')'s feed
+                    # plane at x=6.40mm"). State the owner once, with no
+                    # trailing possessive, and let "feed plane at x=..."
+                    # below carry the coordinate exactly once.
+                    _other_owner_txt = (
+                        f"MSL port '{_other_name}'" if _other_name is not None
+                        else f"the lumped/wire port (component={_other.component!r})"
+                    )
                     _w.warn(
                         PreflightWarning(
                             f"MSL port '{pe.name}' (direction={pe.direction!r}): "
                             f"probe span x∈[{_span_lo*1e3:.2f}, "
-                            f"{_span_hi*1e3:.2f}]mm crosses {_other_label}'s "
-                            f"feed plane at x={_other_x*1e3:.2f}mm. A feed is "
-                            f"a source discontinuity the reflector scan above "
-                            f"cannot see; probes sampling across it break the "
-                            f"N-probe extractor's uniform-line assumption. If "
-                            f"this crossing is intentional, verify the "
+                            f"{_span_hi*1e3:.2f}]mm crosses the feed plane "
+                            f"of {_other_owner_txt} at x={_other_x*1e3:.2f}mm. "
+                            f"A feed is a source discontinuity the "
+                            f"reflector scan above cannot see; probes "
+                            f"sampling across it break the N-probe "
+                            f"extractor's uniform-line assumption. If this "
+                            f"crossing is intentional, verify the "
                             f"extracted Z0/S11 independently.",
                             code="msl_port_geometry",
                             source="_check_msl_port_geometry",
