@@ -128,6 +128,17 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
     frequencies — **on the aligned dx = 84.67 µm mesh**; that identity is
     the falsifier for THIS span (ground→trace underside) and holds only
     when the top anchor is the true trace node.
+
+    The BISECTING mesh (dx = 80 µm, the mesh class this span anchoring
+    actually changes behaviour on) has since been measured too, on a
+    properly terminated two-port fixture (issue #520 leg 1;
+    ``scripts/diagnostics/msl_vi_flux_oracle.py`` + its committed JSON):
+    HELD, ratio 1.0105-1.0118, 30/30 admissible cells. An earlier
+    unterminated single-port reading of this same identity on the
+    bisecting mesh (issue #525) read low (0.54-0.69) for two compounding,
+    non-extractor reasons — a convention slip (see #525's own correction)
+    and a reactive, non-travelling fixture (reactive fraction 0.963-0.995) —
+    neither of which is present in the committed measurement.
     """
     if k_hi <= k_lo:
         raise ValueError(

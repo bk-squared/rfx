@@ -14,8 +14,16 @@ V and I are built from the trace-anchored span (``msl_modal_voltage`` /
 Poynting flux is accumulated by a DIFFERENT kernel entirely
 (``rfx/probes/probes.py:flux_spectrum``, fed by ``rfx/simulation.py``'s own
 H-field spatial-averaging + half-step phase correction — see
-``rfx/simulation.py:1470-1523``). The two paths share no code, so agreement
-is a genuine, independent check, not a tautology.
+``rfx/simulation.py:1470-1523``). Agreement is not tautological: R is not
+computed from its own numerator or denominator restated (unlike the
+now-deleted convention check this PR replaced, see CONVENTION below). But
+code-path separation is not the relevant strength claim, and this script
+does not claim "genuine, independent" as if that closed the question --
+``scripts/msl_flux_ratio_dof.py`` (the #525/#531 closure artifact) shows R
+constrains exactly ONE real degree of freedom of (V, I) -- the product
+``Re(V·conj(I))`` -- while the wave split the extractor actually uses
+(``a, b = 0.5·(V ± Z0_ref·I)``) and the separately reported analytic Z0
+both depend on V and I SEPARATELY. See DOF BLINDNESS below.
 
 PR #516 measured this identity ONLY on the aligned mesh (dx = h_sub/3 =
 84.667 µm, h_sub/dx = 3.0000) and got 1.006-1.009 — the EASY case, where the
@@ -45,9 +53,10 @@ This script is the committed re-measurement #525's own follow-up comment
      test_msl_thru_line_passive_gate``, drives only the near port, and
      leaves the far port passively matched (``add_msl_port(..., excite=
      False)`` → resistive Z0 termination via the port's own σ distribution,
-     ``rfx/sources/msl_port.py`` ``MSLPort`` docstring: "False → passive
-     matched termination only") — NOT relying on CPML alone to absorb the
-     guided mode;
+     ``rfx/api/__init__.py`` ``add_msl_port`` docstring: "``True`` →
+     resistive termination + active source; ``False`` → passive matched
+     termination only") — NOT relying on CPML alone to absorb the guided
+     mode;
   4. BOTH mesh classes: aligned (dx = h_sub/3, frac(h_sub/dx) = 0) and
      bisecting (dx = 80 µm, frac = 0.175, the MESH-ALIGNMENT RULE danger
      zone — docs/agent-memory/rfx-known-issues.md, "Added 2026-07-30").
@@ -57,16 +66,24 @@ CONVENTION (assert, not comment)
 ``flux_spectrum()`` returns ``sum(Re(E1·conj(H2) - E2·conj(H1)) * dA)`` with
 NO ½ prefactor (``rfx/probes/probes.py`` docstring, verbatim: "∫ Re(E × H*)
 · n̂ dA"). The oracle therefore compares ``Re(V·conj(I))`` — ALSO no ½ —
-directly against ``flux_spectrum()``. A "time-averaged power" reading would
-put ½ on BOTH sides, which is a mathematical no-op on the RATIO — #525
-root-caused the prior session's factor-of-2 discrepancy to applying ½ to the
-V·I side only, while the flux side stayed unhalved. ``run_one()`` computes
-the ratio both ways (no halves; halves on both) and asserts they are
-numerically identical, so a future asymmetric-½ slip fails loudly instead of
-silently reintroducing the factor-of-2 bug. A second defensive assertion
-greps ``flux_spectrum``'s own source for a stray ``0.5 *`` so a convention
-change in the library itself cannot silently invalidate this script's
-premise.
+directly against ``flux_spectrum()``, via the single choke point
+``_oracle_ratio()``. A "time-averaged power" reading would put ½ on BOTH
+sides, which is a mathematical no-op on the RATIO — #525 root-caused the
+prior session's factor-of-2 discrepancy to applying ½ to the V·I side only,
+while the flux side stayed unhalved.
+
+An earlier version of this script "verified" that by computing the ratio
+both ways (no halves; halves on both) and asserting they matched — which is
+a TAUTOLOGY (``X/Y == (0.5X)/(0.5Y)`` for any ``X, Y`` whatsoever) and was
+removed on review (PR #549), the same defect class PR #531's review blocked
+in the sibling ``scripts/msl_flux_ratio_dof.py`` arc. The real guard is
+``_assert_half_factor_regression_is_caught()``, run once at the top of
+``main()``: it plants a ½ at the ``p_vi`` build site ONLY (exactly #525's
+own bug) on a small synthetic fixture and requires the ratio to visibly
+move (1.0 -> 0.5), which a symmetric both-sides check structurally cannot
+do. A second, independent defensive assertion greps ``flux_spectrum``'s own
+source for a stray ``0.5 *`` so a convention change in the library itself
+cannot silently invalidate this script's premise.
 
 ADMISSIBILITY WITNESS
 ----------------------
@@ -78,19 +95,55 @@ diverge:
     reactive_fraction = 1 − |Re(Σ integrand·dA)| / Σ |integrand|·dA
         (0 = fully travelling/real; 1 = fully reactive/cancelling)
     spread(f) = (max(flux_real) − min(flux_real)) / mean(|flux_real|)
-        across the 5 planes, at each frequency (a physical travelling wave
-        should read nearly flat across planes over this short line span).
+        across the 5 planes, at each frequency.
+
+These are NOT redundant checks of the same thing. ``spread`` follows from
+LOSSLESSNESS (conservation of net guided power along the lossless line),
+not from travelling-wave purity: a lossless line's net real Poynting flux
+through any cross-section is constant WHETHER OR NOT a standing wave is
+present (the standing wave lives in the REACTIVE part) — this is directly
+measured on a healthy, reciprocating-wave fixture in
+``scripts/msl_flux_ratio_dof.py`` ("R is flat because BOTH numerator and
+denominator are conserved along a lossless line"). ``reactive_fraction`` is
+the leg that actually flags a non-travelling, reactive-dominated plane —
+verified empirically (PR #549 review): re-running this admissibility
+witness on #525's original UNTERMINATED single-port fixture reads
+``spread`` in [0.011, 0.067] (i.e. it PASSES the 0.5 threshold below —
+spread alone would not have refused that fixture) while
+``reactive_fraction`` reads [0.963, 0.995] (decisively fails). So the
+witness legs are complementary, not interchangeable, and this script's
+AND-gate needs both; do not read either one alone as "the" admissibility
+check.
 
 A (plane, frequency) cell is ADMISSIBLE only if
 ``reactive_fraction <= REACTIVE_FRACTION_MAX`` (0.5 — majority-real) AND
-``spread <= SPREAD_MAX`` (0.5 — 50%), both pre-declared below and chosen to
-be far looser than #525's failed single-port fixture (472% spread) — a
-properly terminated fixture should clear them easily if the travelling-wave
-premise holds; failing even these loose bounds would itself be a finding.
-The oracle ratio is still printed at every cell for transparency, but
-INADMISSIBLE cells are excluded from the pass/fail verdict and flagged in
-the JSON — reporting a ratio computed from mostly-reactive power as a
-physics claim is refused, per #525 comment 2.
+``spread <= SPREAD_MAX`` (0.5 — 50%), both pre-declared below. The oracle
+ratio is still printed at every cell for transparency, but INADMISSIBLE
+cells are excluded from the pass/fail verdict and flagged in the JSON —
+reporting a ratio computed from mostly-reactive power as a physics claim is
+refused, per #525 comment 2.
+
+DOF BLINDNESS (both witness legs, not just the ratio)
+--------------------------------------------------------
+``scripts/msl_flux_ratio_dof.py`` proves algebraically AND measures that
+``R = Re(V·conj(I)) / flux`` is EXACTLY invariant under the power-preserving
+rescale ``(V, I) -> (aV, I/a)`` — ``Re(aV·conj(I/a)) = Re(V·conj(I))``
+identically — while the reported analytic Z0 and the wave split the
+extractor actually uses move under the SAME rescale. R constrains ONE real
+combination of (V, I); the extractor depends on the pair separately. This
+oracle's admissibility witnesses do not close that gap — they make it
+WORSE, structurally: both ``reactive_fraction`` and ``spread`` are computed
+purely from the flux monitor's own ``e1/e2/h1/h2`` fields, never from V or
+I at all, so they are ALSO exactly invariant under a ``(V, I) -> (aV, I/a)``
+defect — flux does not see V or I, so nothing about V or I individually can
+move a witness that never reads them. A defect that moves V and I in
+exactly that opposing pattern (constant product) would pass this script's
+ratio check AND both admissibility witnesses while corrupting every S value
+downstream. This is stated as a known, structural blind direction, not
+closed by this script; closing it needs a check on V and I SEPARATELY (the
+``v_abs``/``i_abs`` fields recorded per cell in the committed JSON exist
+for exactly that future purpose — e.g. against a closed-form Z0 on a
+matched line).
 
 FIXTURE
 -------
@@ -141,20 +194,121 @@ every admissible cell of both meshes:
     aligned  h_sub/3 (dx=84.667um, frac=0.0000): ratio 1.0083 .. 1.0090
     bisecting 80um   (dx=80.000um, frac=0.1750): ratio 1.0105 .. 1.0118
 
-This is the first-ever measurement of the bisecting-mesh identity (PR #516
-shipped only the aligned-mesh number). It does NOT reproduce #525's
-0.54-0.69 read on the bisecting class -- that number came from an
-untermined single-port-into-CPML fixture with a measured 472% plane-to-
-plane spread (a reactive, non-travelling-wave regime this script's
-admissibility witness exists to refuse) COMBINED with #525's own follow-up
-finding of an asymmetric 1/2-factor convention bug in that earlier,
-never-committed script. With a properly terminated fixture (far port
+This is the first-COMMITTED measurement of the bisecting-mesh identity (PR
+#516 shipped only the aligned-mesh number; #525 measured the bisecting mesh
+twice in an uncommitted /tmp harness -- see CORRECTION below, not
+"first-ever"). It does NOT reproduce #525's 0.54-0.69 as-posted read on the
+bisecting class -- that number came from an unterminated
+single-port-into-CPML fixture COMBINED with #525's own follow-up finding of
+an asymmetric 1/2-factor convention bug in that earlier, never-committed
+script (see CORRECTION below for the precise provenance and the
+convention-corrected comparison -- an earlier version of this note
+mis-attributed the 472%-spread/-122.9dB figures to the bisecting mesh --
+they are the ALIGNED mesh's). With a properly terminated fixture (far port
 `excite=False` -> resistive Z0 termination, not bare CPML absorption) and
 the symmetric no-half convention asserted here, the extractor-independent
 flux oracle holds tightly on BOTH mesh classes. This does not relitigate
 #525's own numbers (that script was never committed and is not re-run
 here); it establishes what the committed, falsifiable artifact reads on a
 fixture built to satisfy the admissibility bar #525 itself set.
+
+CORRECTION (PR #549 review, same day -- dated append, prior text above
+UNTOUCHED)
+--------------------------------------------------------------------------
+Five items from review (the reviewer reproduced this script's committed
+numbers byte-for-byte, then ran an independent unterminated-fixture control
+to check the provenance claims) -- two factual errors (1, 2), one code
+defect (3), and two additions (4, 5):
+
+1. PROVENANCE (MAJOR). The "472% plane-to-plane spread at a -122.9 dB
+   settling witness" figure quoted in the PRE-DECLARATION above is #525's
+   own measurement on the ALIGNED mesh (dx=84.67um), not the bisecting one
+   -- #525's own comment states it verbatim: "at dx = 84.67 µm the net flux
+   is ~1e-30 W with 472% / 147% / 304% plane-to-plane spread and random
+   sign, on a record settled to −122.9 dB". #525's own EARLIER "Probe 1"
+   comment independently confirms the bisecting column was the well-behaved
+   one: "The dx=80 column is smooth, monotone in k_top, and consistent
+   across frequency ... The dx=84.67 column is sign-flipping across
+   frequency ... It is the signature of a contaminated denominator." So the
+   reactive/spread pathology in #525's own record was an ALIGNED-mesh
+   phenomenon, and the PRE-DECLARATION's phrasing ("that fixture cannot see
+   a travelling wave") was correct about the OLD fixture in general but
+   wrongly localized the specific 472%/-122.9dB evidence to the bisecting
+   mesh discussion it appears next to.
+
+   Second: the ADMISSIBILITY WITNESS leg that actually refuses #525's old
+   UNTERMINATED fixture is REACTIVE_FRACTION, not spread. Reviewer's
+   reproduction of this script's own witness computation on that fixture:
+   spread in [0.011, 0.067] (PASSES this script's 0.5 threshold -- spread
+   alone would not have refused it) while reactive_fraction reads
+   [0.963, 0.995] (decisively fails). The ADMISSIBILITY WITNESS section
+   above has been corrected in place to state this (spread measures
+   losslessness/conservation, not travelling-wave purity; reactive_fraction
+   is the leg that catches a reactive, non-travelling plane).
+
+2. COMPARISON TO #525's CORRECTED NUMBER (MAJOR). #525 comment 2 itself
+   supplies the convention-corrected bisecting figure: the as-posted
+   0.54-0.69 read, once the asymmetric-1/2 bug is removed (both sides
+   un-halfed, doubling the ratio), becomes 1.20-1.34 -- table quoted
+   verbatim from #525: "dx = 80 µm (bisecting) | 0.54 – 0.69 | 1.20 – 1.34".
+   Review's own broader reconstruction across #525's full recorded data
+   reads 1.076-1.387, and review's independent re-run of the SAME
+   unterminated fixture (spread/reactive numbers in item 1 above) measured
+   ratio 1.0898-1.3867 -- matching #525's corrected figure to ~1%. So
+   #525's bisecting-mesh measurement is fully reproducible, and the
+   original 0.54-0.69 headline is jointly explained by (a) the 1/2-factor
+   convention bug and (b) the reactive, non-admissible fixture -- NOT by an
+   extractor defect on the bisecting mesh. This script's own committed
+   bisecting number (1.0105-1.0118, terminated fixture) is a DIFFERENT,
+   cleaner measurement, not a replication of #525's fixture, and should not
+   be read as "explaining away" #525's number by itself -- the
+   reconciliation above is what does that.
+
+   Also new: this script's ALIGNED-mesh number (1.0083-1.0090) resolves a
+   question #525 comment 2 explicitly left open -- "PR #516's '1.006–1.009
+   ⇒ the corrected V span is right' is only sound if that measurement
+   paired ½ with ½ — which I cannot check, because its harness was never
+   committed." This script's aligned measurement, built with the
+   convention explicitly stated and asserted (not assumed), lands at
+   1.0083-1.0090 -- matching PR #516's original 1.006-1.009 closely. That
+   resolves #525's open doubt IN PR #516's FAVOUR: PR #516's original
+   aligned-mesh measurement did use the correctly-paired convention: it was
+   not a coincidence that it read close to 1.
+
+3. THE TAUTOLOGICAL CONVENTION ASSERT (MAJOR). The CONVENTION section
+   above has been corrected in place: this script no longer asserts
+   ``p_vi/flux == (0.5*p_vi)/(0.5*flux)`` (true for any fixture, healthy or
+   broken -- the exact defect class PR #531's review blocked in
+   ``scripts/msl_flux_ratio_dof.py``). Removed; replaced by
+   ``_assert_half_factor_regression_is_caught()``, which plants a ½ at the
+   ``p_vi`` build site only and requires the ratio to move.
+
+4. THE FREE PROXY-SPAN MUTATION TWIN (MODERATE). The committed JSON now
+   carries, per plane per frequency, ``ratio_proxy_span`` -- the retired
+   ``round(h_sub/dx)`` (pre-#511/F2) span applied to the SAME
+   already-recorded fields, zero additional FDTD -- plus a per-mesh
+   ``proxy_ratio_range`` / ``proxy_span_falls_outside_band`` summary. On
+   the aligned mesh the proxy span equals the corrected span by
+   construction (k_top == trace_lo there), so this is an honest null
+   result. On the bisecting mesh it demonstrably falls outside
+   [0.85, 1.15] -- see the committed JSON for this run's exact numbers;
+   the oracle can tell the retired span from the corrected one.
+
+5. DOF BLINDNESS (MODERATE). Addressed in place above (new DOF BLINDNESS
+   subsection): the admissibility witnesses are not tautological with the
+   ratio's own numerator (they read the flux monitor's e1/e2/h1/h2 fields
+   directly, never V or I), but they share the ratio's blindness to a
+   product-preserving ``(V, I) -> (aV, I/a)`` defect, because neither
+   witness reads V or I at all. ``|V|``/``|I|`` are now recorded per cell
+   in the JSON (``v_abs``/``i_abs``) for a future check that closes this
+   direction; this script does not close it.
+
+Not relitigated here: #525's own numbers and its uncommitted harness are
+not re-run by this script (per its own recommendation, item 3: "commit the
+harness"). This script IS that committed harness, built to satisfy the bar
+#525 set, and the reconciliation above is arithmetic on #525's OWN
+published numbers plus the reviewer's independent reproduction -- not a new
+FDTD investigation into #525's fixture.
 """
 
 from __future__ import annotations
@@ -211,6 +365,64 @@ def _assert_flux_convention_unchanged() -> None:
         "flux_spectrum() source now contains a 0.5 factor — the no-half "
         "convention this script asserts against has changed upstream; "
         "re-derive the convention before trusting any ratio below."
+    )
+
+
+def _oracle_ratio(v, i, flux):
+    """The oracle's core arithmetic, and its ONLY choke point: no half
+    anywhere, on either side. ``run_one`` calls this rather than inlining
+    the expression so the anti-regression guard below tests the same code
+    path it is guarding, not a duplicate that could silently drift from
+    it.
+
+    Returns ``(p_vi, ratio)`` with ``p_vi = Re(V·conj(I))`` and
+    ``ratio = p_vi / flux``.
+    """
+    p_vi = np.real(v * np.conj(i))
+    ratio = p_vi / np.where(np.abs(flux) > 1e-300, flux, np.nan)
+    return p_vi, ratio
+
+
+def _assert_half_factor_regression_is_caught() -> None:
+    """Anti-regression guard for the #525 / PR #531 factor-of-2 class.
+
+    A prior version of this script asserted ``p_vi/flux == (0.5*p_vi)/(0.5*
+    flux)`` — TAUTOLOGICALLY true for any V, I, flux whatsoever, since
+    multiplying both the numerator and the denominator of a ratio by the
+    same constant never changes it. PR #549 review (correctly) named this
+    the exact defect class PR #531's review blocked in the sibling
+    ``scripts/msl_flux_ratio_dof.py`` arc: a "falsifier" whose alternative
+    outcome is algebraically unreachable is not a falsifier.
+
+    The regression this guards against is asymmetric, not symmetric: a
+    stray ``0.5`` at the ``p_vi`` BUILD site only (exactly #525's own bug —
+    a time-averaged ``0.5·Re(V·conj(I))`` divided by the un-averaged
+    ``flux_spectrum``). This plants that specific asymmetric mutation
+    through :func:`_oracle_ratio`'s own numerator expression and requires
+    the ratio to visibly move — a real discrimination, since the mutant
+    and the original are compared against each other, not each against a
+    correspondingly-scaled version of itself.
+    """
+    v = np.array([1.0 + 0.3j, 0.7 - 0.4j])
+    i = np.array([0.9 - 0.2j, 0.5 + 0.1j])
+    flux = np.real(v * np.conj(i))  # constructed so the healthy ratio is 1
+    p_vi, ratio = _oracle_ratio(v, i, flux)
+    assert np.allclose(ratio, 1.0), (
+        f"self-test fixture is not honest (expected ratio 1.0): {ratio}"
+    )
+    # THE regression: someone edits the p_vi expression (inside
+    # _oracle_ratio or a call site) to read `0.5 * np.real(v * np.conj(i))`
+    # without touching the flux side. Reproduce exactly that, over the SAME
+    # (unhalfed) flux used above.
+    p_vi_bad = 0.5 * np.real(v * np.conj(i))
+    ratio_bad = p_vi_bad / flux
+    assert np.allclose(ratio_bad, 0.5), (
+        f"planting a half at the p_vi build site should halve the ratio; "
+        f"got {ratio_bad} — this fixture no longer discriminates the bug"
+    )
+    assert not np.allclose(ratio_bad, ratio), (
+        "the anti-regression guard did not move the ratio relative to the "
+        "healthy computation — it is not discriminating"
     )
 
 
@@ -295,13 +507,16 @@ def run_one(label: str, dx: float) -> dict:
     dz_arr = _msl_cell_profile(grid, "z", grid.nz)
     hs_phase = np.exp(1j * 2.0 * np.pi * FREQS * float(grid.dt) * 0.5)
 
-    # Settling witness (end/peak Ez^2, dB) at every plane probe.
+    # Settling witness at every plane probe: PEAK-of-tail vs peak Ez^2, dB
+    # (not mean-of-tail -- mean is the more lenient of the two, ~5.6 dB so
+    # on the sibling msl_flux_ratio_dof.py fixture, PR #531 review; this is
+    # the label's own convention, applied honestly rather than relabelled).
     ts = np.asarray(res.time_series, dtype=float)
     settling_db = []
     for idx in range(len(plane_x)):
         p = ts[:, idx] ** 2
         tail = max(1, p.shape[0] // 10)
-        end = float(p[-tail:].mean())
+        end = float(p[-tail:].max())
         peak = float(p.max())
         tiny = np.finfo(float).tiny
         settling_db.append(10.0 * np.log10((end + tiny) / (peak + tiny)))
@@ -323,7 +538,6 @@ def run_one(label: str, dx: float) -> dict:
             jnp.asarray(hy_plane), jnp.asarray(hz_plane),
             j_lo=j_lo, j_hi=j_hi, k_trace_lo=trace_lo, k_trace_hi=trace_hi,
             dy_arr=dy_arr, dz_arr=dz_arr, direction="+x"))
-        p_vi = np.real(v * np.conj(i))  # no 1/2 -- see CONVENTION above
 
         mon = flux_mons[f"p{idx}_flux"]
         flux_lib = np.real(np.asarray(flux_spectrum(mon)))
@@ -347,17 +561,20 @@ def run_one(label: str, dx: float) -> dict:
         reactive_fraction = 1.0 - np.abs(flux_real_hand) / np.where(
             flux_mag > 0, flux_mag, np.nan)
 
-        # CONVENTION assertion: applying 1/2 to BOTH sides must be a no-op
-        # on the ratio (the only way #525's bug reproduces is an ASYMMETRIC
-        # half -- this assertion would catch that class of regression).
-        ratio_no_half = p_vi / np.where(np.abs(flux_lib) > 1e-300, flux_lib, np.nan)
-        ratio_both_halved = (0.5 * p_vi) / np.where(
-            np.abs(0.5 * flux_lib) > 1e-300, 0.5 * flux_lib, np.nan)
-        assert np.allclose(ratio_no_half, ratio_both_halved, equal_nan=True), (
-            f"{label} plane {idx}: half-both-sides ratio diverged from "
-            "no-half ratio -- this should be mathematically impossible and "
-            "signals a bug in this script's arithmetic, not the extractor."
-        )
+        p_vi, ratio_no_half = _oracle_ratio(v, i, flux_lib)
+
+        # Free mutation twin (#520 leg-1 MODERATE 1, PR #549 review): the
+        # RETIRED round(h_sub/dx) proxy span (k_hi=k_top, pre-#511/F2),
+        # recomputed from the SAME already-recorded ez_plane/i of this run
+        # -- zero additional FDTD. On the aligned mesh k_top == trace_lo so
+        # this is a no-op (matches PR #516's own bit-identical finding); on
+        # the bisecting mesh it drops the in-phase edge 3 and should read
+        # far outside the admissible band, demonstrating the oracle CAN
+        # tell the retired span from the corrected one.
+        v_proxy = np.asarray(msl_modal_voltage(
+            jnp.asarray(ez_plane), j_centre=j_c, k_lo=k_lo, k_hi=k_top,
+            dz_arr=dz_arr))
+        _, ratio_proxy = _oracle_ratio(v_proxy, i, flux_lib)
 
         flux_real_by_plane.append(flux_real_hand)
         per_plane.append(dict(
@@ -366,6 +583,18 @@ def run_one(label: str, dx: float) -> dict:
             flux_real=[float(x) for x in flux_real_hand],
             reactive_fraction=[float(x) for x in reactive_fraction],
             ratio=[float(x) for x in ratio_no_half],
+            ratio_proxy_span=[float(x) for x in ratio_proxy],
+            # |V|, |I| per cell (PR #549 review MODERATE 2): scripts/
+            # msl_flux_ratio_dof.py shows R = Re(V.conj(I))/flux is exactly
+            # invariant under the power-preserving rescale (V,I) ->
+            # (aV, I/a) -- and so, by construction, are reactive_fraction
+            # and spread above (both built from flux's own e1/e2/h1/h2
+            # fields, never from V or I). Recording |V|,|I| here is what a
+            # future re-run needs to additionally check the pair
+            # SEPARATELY (e.g. against a closed-form Z0) and close that
+            # blind direction; this script does not close it.
+            v_abs=[float(x) for x in np.abs(v)],
+            i_abs=[float(x) for x in np.abs(i)],
         ))
 
     flux_stack = np.array(flux_real_by_plane)  # (n_planes, n_freqs)
@@ -377,16 +606,19 @@ def run_one(label: str, dx: float) -> dict:
 
     admissible_cells = []
     all_cells = []
+    all_ratio_proxy = []
     for idx, row in enumerate(per_plane):
         for f_idx in range(len(FREQS)):
             rf = row["reactive_fraction"][f_idx]
             sp = float(spread_per_freq[f_idx])
             ratio = row["ratio"][f_idx]
+            ratio_proxy = row["ratio_proxy_span"][f_idx]
+            all_ratio_proxy.append(ratio_proxy)
             ok = (np.isfinite(rf) and rf <= REACTIVE_FRACTION_MAX
                  and np.isfinite(sp) and sp <= SPREAD_MAX)
             cell = dict(plane_idx=idx, freq_ghz=float(FREQS[f_idx] / 1e9),
                        reactive_fraction=rf, spread=sp, ratio=ratio,
-                       admissible=bool(ok))
+                       ratio_proxy_span=ratio_proxy, admissible=bool(ok))
             all_cells.append(cell)
             if ok:
                 admissible_cells.append(cell)
@@ -397,6 +629,15 @@ def run_one(label: str, dx: float) -> dict:
     verdict = (
         "INCONCLUSIVE" if inconclusive else
         ("HELD" if admissible_ratios and all(within_band) else "FALSIFIED")
+    )
+
+    # Free mutation twin verdict (#520 leg-1 MODERATE 1): does the oracle
+    # actually distinguish the retired proxy span from the corrected one?
+    # On the aligned mesh (k_top == trace_lo) it CANNOT by construction --
+    # that is the expected, honest null result there.
+    proxy_ratio_range = [round(min(all_ratio_proxy), 4), round(max(all_ratio_proxy), 4)]
+    proxy_falls_outside_band = any(
+        r < RATIO_LO or r > RATIO_HI for r in all_ratio_proxy
     )
 
     return dict(
@@ -416,12 +657,15 @@ def run_one(label: str, dx: float) -> dict:
             [round(min(admissible_ratios), 4), round(max(admissible_ratios), 4)]
             if admissible_ratios else None
         ),
+        proxy_ratio_range=proxy_ratio_range,
+        proxy_span_falls_outside_band=bool(proxy_falls_outside_band),
         verdict=verdict,
     )
 
 
 def main() -> int:
     _assert_flux_convention_unchanged()
+    _assert_half_factor_regression_is_caught()
 
     rows = []
     for label, dx in MESH_CLASSES:
@@ -434,6 +678,10 @@ def main() -> int:
         print(f"  spread_per_freq: {row['spread_per_freq']}")
         print(f"  admissible cells: {row['n_admissible']}/{row['n_total']}")
         print(f"  admissible ratio range: {row['admissible_ratio_range']}")
+        print(f"  retired-proxy-span ratio range (free mutation twin, zero "
+              f"new FDTD): {row['proxy_ratio_range']} "
+              f"{'OUTSIDE' if row['proxy_span_falls_outside_band'] else 'inside'} "
+              f"[{RATIO_LO}, {RATIO_HI}]")
         print(f"  VERDICT: {row['verdict']}")
         print("  --- preflight / warnings (verbatim) ---")
         for w in row["preflight_warnings"]:
