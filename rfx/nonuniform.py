@@ -121,6 +121,31 @@ def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     return np.concatenate([lo_pad, np.asarray(profile, dtype=np.float64), hi_pad])
 
 
+def _append_bounding_node(profile_full):
+    """Append one duplicate boundary cell so an N-cell profile yields N+1
+    E-nodes — the node count the uniform ``Grid`` allocates for N cells.
+
+    N cells are bounded by N+1 nodes, and the E-nodes this grid steps sit on
+    cell EDGES (``inv_d_e[i] = 2/(d[i-1]+d[i])`` is the dual spacing of an
+    edge-centred node). Without this the array carried only N nodes, the
+    stencil zeroed the last cell's H term (``inv_d_h[N-1] = 0``), and the
+    realized wall-to-wall extent came out ``sum(d) - d[-1]`` — one cell
+    short of what the caller asked for (#562: +2.47 % of TM110 on a
+    45 x 39-cell PEC box, +37 MHz of WR-90 TE101 centre frequency from the
+    guide-width axis alone).
+
+    Duplicating the boundary cell is what makes the far node's coefficient
+    the mirror of the near one's: ``inv_d_e[N] = 2/(d[N-1]+d[N])``, which is
+    ``1/d[N-1]`` exactly when ``d[N] == d[N-1]``, matching the existing
+    ``inv_d_e[0] = 1/d[0]`` boundary treatment. The appended cell's own H
+    term is the one the stencil zeroes, so it adds a node without adding a
+    cell of physical extent.
+    """
+    if is_tracer(profile_full):
+        return jnp.concatenate([profile_full, profile_full[-1:]])
+    return np.concatenate([profile_full, profile_full[-1:]])
+
+
 def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
     cell-spacing arrays for a padded 1-D cell-size profile ``d``.
@@ -243,7 +268,7 @@ def make_nonuniform_grid(
                 f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
                 f"dx={float(dx)}."
             )
-    dx_full = _pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi)
+    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi))
     nx = int(dx_full.shape[0])
 
     # --- y profile ---
@@ -266,11 +291,11 @@ def make_nonuniform_grid(
                 f"dy_profile boundary cells must match each other "
                 f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
             )
-    dy_full = _pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi)
+    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi))
     ny = int(dy_full.shape[0])
 
     # --- z profile ---
-    dz_full = _pad_profile(dz_profile, pad_z_lo, pad_z_hi)
+    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi))
     nz = int(dz_full.shape[0])
 
     # --- CFL from minimum cell size on every axis ---

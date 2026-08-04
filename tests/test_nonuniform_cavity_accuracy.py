@@ -32,6 +32,17 @@ TM111 error 3.46% @ dx=2mm -> 2.66% @ dx=1mm (shrinks with refinement;
 cell counts (no in-plane dimension-snapping confound), so the residual is
 dominated by the graded-z effective-d offset + coarse-mesh dispersion — exactly
 what a graded-mesh accuracy gate should bound.
+
+WHAT THE "effective-d offset" WAS (#562, 2026-08-04): the NU grid allocated one
+E-node per profile cell, but N cells need N+1 bounding nodes, so the realized
+z extent was ``sum(dz) - dz[-1]`` — one coarse cell short of the ``d`` this test
+feeds the closed form. That was most of the residual this docstring bounded:
+after the missing bounding node was restored, **TM111 error 2.66% -> 0.025%**
+(same geometry, same 4:1 grading, same harminv extraction) — the remainder is
+coarse-mesh dispersion, which is what the gate was meant to bound in the first
+place. The 4% gate below is therefore now ~160x looser than the measured
+residual; tightening it is a separate, evidence-first decision (it must be
+re-measured across resolutions before being pinned, not simply divided down).
 """
 
 from __future__ import annotations

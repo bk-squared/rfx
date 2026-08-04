@@ -39,15 +39,28 @@ proved argmax gates are FFT-bin-blind, harminv resolves <0.05%):
   * UNIFORM mesh, SAME extents (grading OFF): TM110 signed error **+2.47%**.
 
 The +2.4% bias is therefore NOT introduced by grading — it is present, to within
-0.04 pt, on the uniform mesh of the same coarse resolution. It is the standard
-coarse-Yee PEC-cavity extent-convention bias (~1 cell: the tangential-Ez cavity
-is ~1 cell narrower than the nominal ``sum(dx)`` extent; on a ~45mm/1mm cavity a
-1-cell narrowing is ~2.3%, which is what we see). The graded run reproducing the
-uniform run's accuracy is the POSITIVE finding: in-plane ``dx_profile`` /
-``dy_profile`` grading is faithful — it does not corrupt the resonance beyond the
-uniform-mesh discretization floor. Convergence direction (independent evidence the
-agreement is genuine): the error is dominated by the coarse 1mm bulk, not the
-0.25mm fine band, exactly what a graded-mesh accuracy gate should bound.
+0.04 pt, on the ungraded profile of the same coarse resolution. **The POSITIVE
+finding stands and is why this comparison was worth making: in-plane
+``dx_profile`` / ``dy_profile`` grading is faithful — it does not corrupt the
+resonance beyond the shared baseline.** Convergence direction (independent
+evidence the agreement is genuine): the error is dominated by the coarse 1mm
+bulk, not the 0.25mm fine band.
+
+WHAT THAT SHARED BASELINE ACTUALLY WAS — correction (#562, 2026-08-04). This
+docstring attributed the +2.4% to "the standard coarse-Yee PEC-cavity
+extent-convention bias (~1 cell)". **There is no such Yee/PEC convention bias,
+and that attribution is withdrawn.** Both legs above ran through the NU grid
+builder (a *uniform profile* still routes to ``make_nonuniform_grid``), which
+allocated one E-node per profile cell where N cells need N+1 bounding nodes — so
+both realized ``sum(dx) - dx[-1]``, one cell narrow, which is exactly the ~2.3%
+seen. Measured, same PEC box at integer cell counts (45 x 39 cells, dx=1mm,
+TM110 by harminv), before the fix: uniform builder **-0.007%**, NU builder
+**+2.469%** (and -0.008% against the closed form at the extent it had actually
+built — both solvers were accurate; only one built the requested cavity). After
+restoring the bounding node the two builders are bit-identical on an identical
+mesh, and THIS test reads **0.028%** (was 2.43%) on the same graded geometry.
+The 3.5% gate below is now ~125x looser than the measured residual; tightening
+it is a separate, evidence-first decision.
 
 LEVERAGE (honest power of this gate): because TM110's frequency is set 100% by the
 graded in-plane extents, this gate catches graded-metric errors on x/y directly

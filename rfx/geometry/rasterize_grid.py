@@ -39,20 +39,26 @@ def coords_from_uniform_grid(grid) -> GridCoords:
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
 
-def _axis_cell_centers(d_arr: np.ndarray, cpml: int) -> np.ndarray:
-    """Cell-center positions for a padded cell-size array.
+def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
+    """E-node positions for a padded cell-size array.
 
-    Matches the existing ``coords_from_nonuniform_grid`` z convention:
-    the first interior cell's LEFT edge is at physical position 0, so
-    its CENTER is at ``d[cpml]/2``. This is off by half a cell from
-    the legacy uniform-Grid convention (cell[cpml] center at 0) — the
-    two conventions are not unified anywhere in rfx today.
+    The nodes this grid steps sit on cell EDGES, not centres: the
+    non-uniform E update divides by ``2/(d[i-1]+d[i])``, the dual spacing
+    of a node straddling cells ``i-1`` and ``i``. Node ``cpml`` (the first
+    interior one) is the origin, so the interior spans
+    ``[0, sum(interior d)]`` and the last interior node lands exactly on
+    the requested domain face — the same convention
+    ``coords_from_uniform_grid`` uses (``(arange - pad) * dx``).
+
+    Until #562 this returned cell CENTRES, half a cell off the nodes the
+    stencil differences and half a cell off the uniform builder, which put
+    every rasterized material half a cell away from the fields acting on
+    it and (with the missing bounding node) made a PEC-bounded guide one
+    cell narrower than requested.
     """
     d = np.asarray(d_arr, dtype=np.float64)
     edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
-    offset = edges[cpml]                              # first-interior left edge
-    centers = (edges[:-1] + edges[1:]) / 2.0 - offset
-    return centers
+    return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
 
 
 def coords_from_nonuniform_grid(grid) -> GridCoords:
@@ -83,11 +89,10 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             d_j = jnp.asarray(d_arr)
             cum = jnp.concatenate([jnp.zeros((1,), dtype=d_j.dtype),
                                    jnp.cumsum(d_j)])
-            offset = cum[pad_lo]
-            centers = (cum[:-1] + cum[1:]) / 2.0 - offset
-            return centers.astype(jnp.float32)
+            nodes = cum[:-1] - cum[pad_lo]
+            return nodes.astype(jnp.float32)
         d_np = np.asarray(d_arr)
-        return jnp.asarray(_axis_cell_centers(d_np, pad_lo), dtype=jnp.float32)
+        return jnp.asarray(_axis_node_positions(d_np, pad_lo), dtype=jnp.float32)
 
     x = _axis_centers(grid.dx_arr, pad_x_lo)
     y = _axis_centers(grid.dy_arr, pad_y_lo)
