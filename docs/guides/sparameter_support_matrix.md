@@ -42,7 +42,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD validated (converged f64 referee 0.000110) |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee (rel_err 0.0331 at the gate's num_periods=20 fixture, threshold 0.10 unchanged; issue #527) |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
@@ -135,20 +135,40 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 
 - The uniform thru-line check uses `|S21|` in `(0.90, 1.05)` and
   `Re(Z0)` in `(40, 65) ohm` for the cited `dx=80 um` setup.
-- The analytic quarter-wave-notch case reports `1.63%` frequency error,
-  `-34.3 dB` notch depth, and median `Re(Z0)=48.6 ohm` for its cited run.
+- The analytic quarter-wave-notch case
+  (`validation/crossval/06b_msl_notch_filter_uniform.py`) last reported
+  `1.63%` frequency error, `-34.3 dB` notch depth, and median
+  `Re(Z0)=48.6 ohm`. That run predates the #511/#507 extractor fixes
+  (PR #516 / `f95240f`) and has not been regenerated since; there is no
+  committed producer to regenerate it from. Treat this number as
+  describing the superseded extractor until issue #519 regenerates the
+  leg with a committed producer.
 - The committed matched-geometry OpenEMS comparison at `dx=50 um` reports a
   `5.8%` notch-frequency difference, linear `|S21|` mean difference `0.105`,
   and maximum difference `0.2172` over 2.5--6 GHz. This is a characterized
   external check, not a tight cross-solver match. See
   `tests/fixtures/msl_notch_e4/comparison_summary.json`.
-- Raw three-probe replay matches the production matrix with
-  `max_abs_diff=0` over 30 frequencies.
-- The `eps_override` gradient is validated by a converged f64 AD-vs-FD
-  referee: rel_err `0.000110` at `num_periods=20` through the full
-  extraction (#483/#486). The launch fixture derives from registered
-  materials on both the FD and AD sides; staticness is regression-locked
-  by `tests/test_msl_source_fixture_static.py`.
+- `scripts/diagnostics/replay_msl_3probe_dump.py`'s independent 3-probe
+  replay is SUPERSEDED and does not run against current dumps: it expects
+  the retired 3-probe `raw_v123` schema (schema v1) and recomputes S by
+  the single-ratio rule the multi-drive solve replaced (issue #507), so it
+  cannot be compared against `production_smatrix` on a `schema_version >=
+  3` dump (it now raises a clear error instead of a bare `KeyError`). The
+  current independent check on the production V/I extraction is
+  `scripts/diagnostics/msl_vi_flux_oracle.py`.
+- The `eps_override` gradient is checked against an f64 AD-vs-FD referee:
+  rel_err `0.0331` at `num_periods=20` through the full extraction, on the
+  gate's own fixture (gpu-rtx4090, VESSL 369367250775; a 4-point CPU
+  cross-check reads `0.0035`-`0.0053`), against an unchanged `0.10` gate
+  threshold. This supersedes the pre-#516 `0.000110` figure: the #507/#511
+  fixes shrank the differentiated signal about 50x, which exposed the f32
+  comparator's own resolving-power floor as the dominant cause of the
+  intermediate 0.8519 mismatch that issue #527 opened on (closed; see
+  `tests/test_msl_ad_fd_converged.py` for the ULP-resolving-power
+  derivation). The gate does not by itself separate the physical-response
+  gradient from the extraction-error gradient (issue #530). The launch
+  fixture derives from registered materials on both the FD and AD sides;
+  staticness is regression-locked by `tests/test_msl_source_fixture_static.py`.
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes
   placed at the same physical coordinate (rfx's probe-0 plane), the raw

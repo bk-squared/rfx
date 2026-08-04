@@ -157,10 +157,10 @@
       ],
       "numeric_metrics": [
         "uniform thru-line: |S21| in (0.90, 1.05) and Re(Z0) in (40, 65) ohm for the cited dx=80 um setup",
-        "analytic notch case: frequency error 1.63%, notch depth -34.3 dB, median Re(Z0) 48.6 ohm",
+        "analytic notch case (validation/crossval/06b_msl_notch_filter_uniform.py): frequency error 1.63%, notch depth -34.3 dB, median Re(Z0) 48.6 ohm -- measured before the #511/#507 extractor fixes (PR #516/f95240f), not yet regenerated, no committed producer; superseded-extractor number pending issue #519",
         "committed OpenEMS notch comparison at dx=50 um: notch frequency difference 5.8%, S21 linear-magnitude mean difference 0.105 and maximum difference 0.2172 over 2.5--6 GHz",
-        "raw three-probe replay: max_abs_diff 0 over 30 frequencies",
-        "eps_override gradient: converged f64 AD-vs-FD rel_err 0.000110 (num_periods=20, full extraction; #483/#486)"
+        "scripts/diagnostics/replay_msl_3probe_dump.py is SUPERSEDED: retired raw_v123/single-ratio schema v1, does not run against schema_version>=3 dumps (raises a clear error rather than a bare KeyError); current independent check is scripts/diagnostics/msl_vi_flux_oracle.py",
+        "eps_override gradient: f64 AD-vs-FD referee rel_err 0.0331 at num_periods=20 on the gate's own fixture (gate threshold 0.10 unchanged; gpu-rtx4090 VESSL 369367250775; issue #527, closed) -- supersedes the pre-#516 0.000110 figure once the #507/#511 fixes shrank the differentiated signal ~50x and exposed the f32 comparator's own resolving-power floor"
       ],
       "validated_scope": "Uniform Yee laplace/quasi-TEM MSL calculator for the cited thru and notch configurations. Nonuniform mode is experimental and eigenmode is unsupported.",
       "caveats": [
@@ -169,7 +169,7 @@
         "do not generalize matched/thru/notch evidence to strong reflectors or arbitrary launches"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "Converged f64 AD-vs-FD referee: rel_err 0.000110 at num_periods=20 through the full extraction (issues #483/#486, fixed 2026-07-28 — the auto-eps_r_sub launch fixture previously sampled the override under FD while the tape saw it frozen, a 13.7% converged deficit). Launch-fixture staticness is regression-locked by tests/test_msl_source_fixture_static.py (pre-fix 0.126 vs gate 0.03 at num_periods=1); smoke/end-to-end: tests/test_msl_sparam_ad.py and tests/test_sparam_ad_end_to_end.py."
+      "ad_evidence": "f64 AD-vs-FD referee: rel_err 0.0331 at num_periods=20 through the full extraction, on the gate's own fixture (gpu-rtx4090, VESSL 369367250775; a 4-point CPU cross-check reads 0.0035-0.0053), against an unchanged 0.10 gate threshold (tests/test_msl_ad_fd_converged.py). Supersedes the pre-#516 0.000110 figure (issues #483/#486): the #507/#511 fixes shrank the differentiated signal ~50x, which exposed the f32 comparator's own resolving-power floor as the dominant cause of the intermediate 0.8519 mismatch that issue #527 opened on (closed). The gate does not by itself separate the physical-response gradient from the extraction-error gradient (issue #530). Launch-fixture staticness is regression-locked by tests/test_msl_source_fixture_static.py (pre-fix 0.126 vs gate 0.03 at num_periods=1); smoke/end-to-end: tests/test_msl_sparam_ad.py and tests/test_sparam_ad_end_to_end.py."
     },
     {
       "primitive": "add_waveguide_port(...)",
