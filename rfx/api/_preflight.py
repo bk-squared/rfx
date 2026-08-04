@@ -3901,6 +3901,16 @@ class _PreflightMixin:
             # (tests/test_preflight_absorber_frame.py module docstring)
             # covers this comparison the same way it covers every other
             # consumer of those two helpers.
+            #
+            # Known limitation (issue #510 review nit A, disclosed
+            # non-regression): ``_msl_grid`` is built via
+            # ``self._build_grid()``, which is unconditionally UNIFORM (see
+            # the grid-build comment above) -- on an x-graded mesh
+            # (``dx_profile``) this can produce an observable false
+            # positive, e.g. warning about x=0.08mm when the REAL,
+            # NU-grid deepest probe sits at 3.24mm. Exact parity with
+            # every other quantity this whole function already computes
+            # off the scalar ``dx`` parameter, so not a new limitation.
             _domain_x = float(domain[0])
             _deep_idx = n_pr - 1
             _abs_margin = _ABSORBER_PROXIMITY_CELLS * dx
@@ -3960,15 +3970,22 @@ class _PreflightMixin:
             elif _coord_near_absorber(
                 x_deep, _domain_x, cpml_thick_lo[0], cpml_thick_hi[0], dx
             ):
+                # Issue #510 review round-2 (nit B): this site was missed
+                # when the "just past which" rephrasing (see the matching
+                # comments at :2561/:2601, _validate_cfg_absorber_placement)
+                # was applied elsewhere — same reasoning: _coord_in_absorber's
+                # membership predicate is strict less-than, so the domain
+                # edge coordinate itself still reads as interior; the
+                # absorber is active strictly beyond it, not at it.
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}' (direction={pe.direction!r}): "
                         f"probe {_deep_idx} (deepest, x={x_deep*1e3:.2f}mm) is "
                         f"within {_ABSORBER_PROXIMITY_CELLS} cells "
-                        f"({_fmt_len(_abs_margin)}) of the domain edge, where "
-                        f"the CPML absorber is active. Fields there carry "
-                        f"CPML fringe/reflection error, biasing the fitted "
-                        f"Z0/S11. {_abs_interval_txt}.",
+                        f"({_fmt_len(_abs_margin)}) of the domain edge, just "
+                        f"past which the CPML absorber is active. Fields "
+                        f"there carry CPML fringe/reflection error, biasing "
+                        f"the fitted Z0/S11. {_abs_interval_txt}.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
