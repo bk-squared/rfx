@@ -137,8 +137,9 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
     unterminated single-port reading of this same identity on the
     bisecting mesh (issue #525) read low (0.54-0.69) for two compounding,
     non-extractor reasons — a convention slip (see #525's own correction)
-    and a reactive, non-travelling fixture (reactive fraction 0.963-0.995) —
-    neither of which is present in the committed measurement.
+    and a reactive, non-travelling fixture (reactive fraction 0.963-0.995,
+    PR #549 review reconstruction) — neither of which is present in the
+    committed measurement.
     """
     if k_hi <= k_lo:
         raise ValueError(

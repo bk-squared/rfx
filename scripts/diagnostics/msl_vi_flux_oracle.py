@@ -78,12 +78,22 @@ a TAUTOLOGY (``X/Y == (0.5X)/(0.5Y)`` for any ``X, Y`` whatsoever) and was
 removed on review (PR #549), the same defect class PR #531's review blocked
 in the sibling ``scripts/msl_flux_ratio_dof.py`` arc. The real guard is
 ``_assert_half_factor_regression_is_caught()``, run once at the top of
-``main()``: it plants a ½ at the ``p_vi`` build site ONLY (exactly #525's
-own bug) on a small synthetic fixture and requires the ratio to visibly
-move (1.0 -> 0.5), which a symmetric both-sides check structurally cannot
-do. A second, independent defensive assertion greps ``flux_spectrum``'s own
-source for a stray ``0.5 *`` so a convention change in the library itself
-cannot silently invalidate this script's premise.
+``main()``. Its FIRST assertion — that the real, unmutated
+``_oracle_ratio()`` reads 1.0 on an honest synthetic fixture — IS the
+guard; everything after checks that the guard has discriminating power. It
+plants TWO independent mutations, both routed through the real
+``_oracle_ratio()`` call (not a hand-inlined duplicate expression): a ½ on
+the ``v`` (numerator) side only, exactly #525's own bug, which must halve
+the ratio (1.0 -> 0.5); and a ½ on the ``flux`` (denominator) side only —
+the mirror-image bug an unhalved-numerator check alone would miss — which
+must double it (1.0 -> 2.0). The second case matters because an unhalved
+numerator over a halved denominator is exactly the shape of #525's own
+"convention-corrected 2.01-2.02" misdiagnosis: a script-side factor bug
+that would surface as a false PHYSICS over-report rather than a caught
+regression. A second, independent defensive assertion greps
+``flux_spectrum``'s own source for a stray ``0.5 *`` so a convention
+change in the library itself cannot silently invalidate this script's
+premise.
 
 ADMISSIBILITY WITNESS
 ----------------------
@@ -106,10 +116,12 @@ measured on a healthy, reciprocating-wave fixture in
 ``scripts/msl_flux_ratio_dof.py`` ("R is flat because BOTH numerator and
 denominator are conserved along a lossless line"). ``reactive_fraction`` is
 the leg that actually flags a non-travelling, reactive-dominated plane —
-verified empirically (PR #549 review): re-running this admissibility
-witness on #525's original UNTERMINATED single-port fixture reads
-``spread`` in [0.011, 0.067] (i.e. it PASSES the 0.5 threshold below —
-spread alone would not have refused that fixture) while
+verified empirically (PR #549 review): running this admissibility witness
+on a reconstruction of #525's UNTERMINATED single-port fixture CLASS
+(#525's own harness was never committed, so this is this script's own
+geometry with the far port's termination removed, not a re-run of #525's
+literal code) reads ``spread`` in [0.011, 0.067] (i.e. it PASSES the 0.5
+threshold below — spread alone would not have refused that fixture) while
 ``reactive_fraction`` reads [0.963, 0.995] (decisively fails). So the
 witness legs are complementary, not interchangeable, and this script's
 AND-gate needs both; do not read either one alone as "the" admissibility
@@ -212,8 +224,10 @@ flux oracle holds tightly on BOTH mesh classes. This does not relitigate
 here); it establishes what the committed, falsifiable artifact reads on a
 fixture built to satisfy the admissibility bar #525 itself set.
 
-CORRECTION (PR #549 review, same day -- dated append, prior text above
-UNTOUCHED)
+CORRECTION (PR #549 review, same day -- dated append, plus in-place fixes
+to non-falsifiable explanatory prose only; every DECIDABLE pre-declaration
+element -- the 0.85-1.15 band, the two mesh classes, the fixture, the
+REACTIVE_FRACTION_MAX/SPREAD_MAX thresholds -- is untouched)
 --------------------------------------------------------------------------
 Five items from review (the reviewer reproduced this script's committed
 numbers byte-for-byte, then ran an independent unterminated-fixture control
@@ -238,13 +252,16 @@ defect (3), and two additions (4, 5):
 
    Second: the ADMISSIBILITY WITNESS leg that actually refuses #525's old
    UNTERMINATED fixture is REACTIVE_FRACTION, not spread. Reviewer's
-   reproduction of this script's own witness computation on that fixture:
-   spread in [0.011, 0.067] (PASSES this script's 0.5 threshold -- spread
-   alone would not have refused it) while reactive_fraction reads
-   [0.963, 0.995] (decisively fails). The ADMISSIBILITY WITNESS section
-   above has been corrected in place to state this (spread measures
-   losslessness/conservation, not travelling-wave purity; reactive_fraction
-   is the leg that catches a reactive, non-travelling plane).
+   reproduction of this script's own witness computation on the same
+   fixture CLASS, reconstructed (this script's geometry, far port
+   termination removed -- #525's own harness was never committed, so this
+   is not a re-run of its literal code): spread in [0.011, 0.067] (PASSES
+   this script's 0.5 threshold -- spread alone would not have refused it)
+   while reactive_fraction reads [0.963, 0.995] (decisively fails). The
+   ADMISSIBILITY WITNESS section above has been corrected in place to
+   state this (spread measures losslessness/conservation, not
+   travelling-wave purity; reactive_fraction is the leg that catches a
+   reactive, non-travelling plane).
 
 2. COMPARISON TO #525's CORRECTED NUMBER (MAJOR). #525 comment 2 itself
    supplies the convention-corrected bisecting figure: the as-posted
@@ -252,9 +269,10 @@ defect (3), and two additions (4, 5):
    un-halfed, doubling the ratio), becomes 1.20-1.34 -- table quoted
    verbatim from #525: "dx = 80 µm (bisecting) | 0.54 – 0.69 | 1.20 – 1.34".
    Review's own broader reconstruction across #525's full recorded data
-   reads 1.076-1.387, and review's independent re-run of the SAME
-   unterminated fixture (spread/reactive numbers in item 1 above) measured
-   ratio 1.0898-1.3867 -- matching #525's corrected figure to ~1%. So
+   reads 1.076-1.387, and review's independent measurement on the same
+   unterminated fixture CLASS, reconstructed (spread/reactive numbers in
+   item 1 above) measured ratio 1.0898-1.3867 -- matching #525's corrected
+   figure to ~1%. So
    #525's bisecting-mesh measurement is fully reproducible, and the
    original 0.54-0.69 headline is jointly explained by (a) the 1/2-factor
    convention bug and (b) the reactive, non-admissible fixture -- NOT by an
@@ -280,8 +298,21 @@ defect (3), and two additions (4, 5):
    ``p_vi/flux == (0.5*p_vi)/(0.5*flux)`` (true for any fixture, healthy or
    broken -- the exact defect class PR #531's review blocked in
    ``scripts/msl_flux_ratio_dof.py``). Removed; replaced by
-   ``_assert_half_factor_regression_is_caught()``, which plants a ½ at the
-   ``p_vi`` build site only and requires the ratio to move.
+   ``_assert_half_factor_regression_is_caught()``.
+
+   Strengthened in a second review pass (same PR): the first version of the
+   replacement still had two gaps -- the mutation was hand-inlined
+   (``0.5 * np.real(v * np.conj(i))``) rather than routed through
+   :func:`_oracle_ratio` itself, so the docstring's claim of exercising the
+   real code path was not yet true; and only the numerator side was
+   mutated, leaving a denominator-side (``flux``) half uncaught -- exactly
+   the shape of #525's own "convention-corrected 2.01-2.02" misdiagnosis,
+   where a script-side factor bug would surface as a false physics
+   over-report instead of a caught regression. Both fixed: the guard now
+   plants the numerator mutation via ``_oracle_ratio(0.5*v, i, flux)`` and
+   the denominator mutation via ``_oracle_ratio(v, i, 0.5*flux)``, both
+   through the real function, requiring the ratio to move to 0.5 and 2.0
+   respectively.
 
 4. THE FREE PROXY-SPAN MUTATION TWIN (MODERATE). The committed JSON now
    carries, per plane per frequency, ``ratio_proxy_span`` -- the retired
@@ -394,35 +425,62 @@ def _assert_half_factor_regression_is_caught() -> None:
     ``scripts/msl_flux_ratio_dof.py`` arc: a "falsifier" whose alternative
     outcome is algebraically unreachable is not a falsifier.
 
-    The regression this guards against is asymmetric, not symmetric: a
-    stray ``0.5`` at the ``p_vi`` BUILD site only (exactly #525's own bug —
-    a time-averaged ``0.5·Re(V·conj(I))`` divided by the un-averaged
-    ``flux_spectrum``). This plants that specific asymmetric mutation
-    through :func:`_oracle_ratio`'s own numerator expression and requires
-    the ratio to visibly move — a real discrimination, since the mutant
-    and the original are compared against each other, not each against a
-    correspondingly-scaled version of itself.
+    THE ACTUAL GUARD is assertion 1 below: the real, unmutated
+    :func:`_oracle_ratio` — the single choke point ``run_one`` calls — must
+    read 1.0 on a fixture constructed so that is the honest answer. That is
+    what "no half anywhere" MEANS operationally; everything after it is a
+    discriminating-power check on the guard itself, not a second guard.
+
+    Two mutations, BOTH routed through the real :func:`_oracle_ratio` (not
+    a hand-inlined duplicate expression, which would test nothing about the
+    actual code path):
+
+    * NUMERATOR half (#525's own bug — a time-averaged
+      ``0.5·Re(V·conj(I))`` divided by the un-averaged ``flux_spectrum``):
+      call ``_oracle_ratio(0.5*v, i, flux)``. Since the function's
+      numerator is ``Re(v·conj(i))``, halving ``v`` halves it — this
+      exercises the function itself, not a copy of its formula.
+    * DENOMINATOR half — the mirror-image bug (e.g. a call site dividing by
+      ``0.5 * flux_spectrum(...)``): call ``_oracle_ratio(v, i, 0.5*flux)``.
+      Mutation A alone does NOT cover this; an unhalved numerator over a
+      halved flux reads ratio ≈ 2.0, which would surface downstream as a
+      "physics over-report" finding rather than a caught script defect —
+      exactly the shape of #525's own "convention-corrected 2.01-2.02"
+      misdiagnosis class (see PRE-DECLARATION above). Both directions must
+      be caught here, not discovered as a false physics claim later.
     """
     v = np.array([1.0 + 0.3j, 0.7 - 0.4j])
     i = np.array([0.9 - 0.2j, 0.5 + 0.1j])
     flux = np.real(v * np.conj(i))  # constructed so the healthy ratio is 1
-    p_vi, ratio = _oracle_ratio(v, i, flux)
+
+    # THE ACTUAL GUARD: the real, unmutated _oracle_ratio must read 1.0.
+    _, ratio = _oracle_ratio(v, i, flux)
     assert np.allclose(ratio, 1.0), (
         f"self-test fixture is not honest (expected ratio 1.0): {ratio}"
     )
-    # THE regression: someone edits the p_vi expression (inside
-    # _oracle_ratio or a call site) to read `0.5 * np.real(v * np.conj(i))`
-    # without touching the flux side. Reproduce exactly that, over the SAME
-    # (unhalfed) flux used above.
-    p_vi_bad = 0.5 * np.real(v * np.conj(i))
-    ratio_bad = p_vi_bad / flux
-    assert np.allclose(ratio_bad, 0.5), (
-        f"planting a half at the p_vi build site should halve the ratio; "
-        f"got {ratio_bad} — this fixture no longer discriminates the bug"
+
+    # Mutation A — numerator-side half, through the real function.
+    _, ratio_num_half = _oracle_ratio(0.5 * v, i, flux)
+    assert np.allclose(ratio_num_half, 0.5), (
+        f"planting a half on the numerator (v) side should halve the "
+        f"ratio; got {ratio_num_half} — this fixture no longer "
+        "discriminates the bug"
     )
-    assert not np.allclose(ratio_bad, ratio), (
-        "the anti-regression guard did not move the ratio relative to the "
-        "healthy computation — it is not discriminating"
+    assert not np.allclose(ratio_num_half, ratio), (
+        "mutation A did not move the ratio relative to the healthy "
+        "computation — it is not discriminating"
+    )
+
+    # Mutation B — denominator-side (flux) half, through the real function.
+    _, ratio_den_half = _oracle_ratio(v, i, 0.5 * flux)
+    assert np.allclose(ratio_den_half, 2.0), (
+        f"planting a half on the flux (denominator) side should double "
+        f"the ratio; got {ratio_den_half} — this fixture no longer "
+        "discriminates the bug"
+    )
+    assert not np.allclose(ratio_den_half, ratio), (
+        "mutation B did not move the ratio relative to the healthy "
+        "computation — it is not discriminating"
     )
 
 
