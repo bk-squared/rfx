@@ -301,6 +301,24 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     ``coaxial_line_plane_voltage(...)`` call sites all execute unmodified;
     only the physics underneath each is replaced.
 
+    TWO-AXIS SENTINEL (N6, review fix): the sentinel encodes BOTH which
+    physical drive excited it (real part) AND which probe ARRAY position
+    in ``result.dft_planes`` it was read from -- bot-block (first half of
+    the list) vs top-block (second half) -- via the imaginary part. A
+    drive-only sentinel (the first version of this test) would NOT catch
+    a separate defect class: a ``top_off`` indexing bug in the call site
+    (``rfx/api/_sparams.py``, the ``top_off = n_bot * 2`` slice offset)
+    that reads the WRONG half of ``result.dft_planes`` for the top array
+    would still receive the SAME (drive-keyed only) sentinel value the
+    bot array got, and this test would pass vacuously. With a two-axis
+    sentinel, that class of bug flips ``v_bot_by_drive``'s array-axis
+    component to the "top" value (or vice versa), which the assertions
+    below catch independently of the drive-axis check. VERIFIED BY HAND
+    (second swap experiment, N6): temporarily setting ``top_off = 0``
+    instead of ``n_bot * 2`` turned this test RED (``v_top[0]`` read
+    ``1+10j``, the bot-block sentinel, instead of the expected ``1+20j``)
+    -- confirmed, then reverted.
+
     SWAP EXPERIMENT (performed by hand for this change, per the R3
     discipline -- not merely asserted): with ``rfx/api/_sparams.py``
     unmodified this test is GREEN. Temporarily editing the call site's
@@ -358,19 +376,29 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
             self.dft_planes = dft_planes
             self.time_series = time_series
 
-    sentinel_port1 = 1.0 + 0.0j  # physically the top (+z) end
-    sentinel_port2 = 2.0 + 0.0j  # physically the bottom (-z) end
+    # Two-axis sentinel: real part keys the PHYSICAL DRIVE (1=port1/top,
+    # 2=port2/bottom), imaginary part keys the ARRAY BLOCK POSITION within
+    # result.dft_planes (10=bot-block/first half, 20=top-block/second
+    # half) -- four distinct values total, independently checkable.
+    DRIVE_PORT1, DRIVE_PORT2 = 1.0, 2.0
+    ARRAY_BOT, ARRAY_TOP = 10.0, 20.0
 
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
                  mag_sources, probes, dft_planes, return_state):
         # Identify the PHYSICAL port purely from source z-location -- NOT
         # from any call-order assumption.
         k0 = float(sources[0].k)
-        sentinel = sentinel_port1 if k0 > nz_mid else sentinel_port2
-        fake_planes = [
-            _FakeAcc(np.array([sentinel]) if i % 2 == 0 else np.array([0.0j]))
-            for i in range(len(dft_planes))
-        ]
+        drive_val = DRIVE_PORT1 if k0 > nz_mid else DRIVE_PORT2
+        n_total = len(dft_planes)
+        n_bot_block = n_total // 2  # bot block is the first half (n_bot*2 entries)
+        fake_planes = []
+        for i in range(n_total):
+            if i % 2 == 0:  # "ex" slot carries the sentinel; "ey" is unused
+                array_val = ARRAY_BOT if i < n_bot_block else ARRAY_TOP
+                sentinel = drive_val + array_val * 1j
+                fake_planes.append(_FakeAcc(np.array([sentinel])))
+            else:
+                fake_planes.append(_FakeAcc(np.array([0.0j])))
         ts = np.full((10, len(probes)), 1e-6)
         return _FakeResult(fake_planes, ts)
 
@@ -392,12 +420,13 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     v_bot = captured["v_bot_by_drive"]
     v_top = captured["v_top_by_drive"]
     assert v_bot.shape[0] == 2 and v_top.shape[0] == 2
-    # drive_idx=0 must be PHYSICALLY port 1 (top), in BOTH arrays.
-    np.testing.assert_allclose(v_bot[0], sentinel_port1)
-    np.testing.assert_allclose(v_top[0], sentinel_port1)
-    # drive_idx=1 must be PHYSICALLY port 2 (bottom), in BOTH arrays.
-    np.testing.assert_allclose(v_bot[1], sentinel_port2)
-    np.testing.assert_allclose(v_top[1], sentinel_port2)
+    # drive_idx=0 must be PHYSICALLY port 1 (top) AND the array-axis
+    # component must match which array is being read (bot vs top block).
+    np.testing.assert_allclose(v_bot[0], DRIVE_PORT1 + ARRAY_BOT * 1j)
+    np.testing.assert_allclose(v_top[0], DRIVE_PORT1 + ARRAY_TOP * 1j)
+    # drive_idx=1 must be PHYSICALLY port 2 (bottom), same array-axis check.
+    np.testing.assert_allclose(v_bot[1], DRIVE_PORT2 + ARRAY_BOT * 1j)
+    np.testing.assert_allclose(v_top[1], DRIVE_PORT2 + ARRAY_TOP * 1j)
 
 
 # ---------------------------------------------------------------------------

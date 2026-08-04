@@ -173,6 +173,118 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
         )
 
 
+def test_mesh_refinement_predeclaration_has_required_fields():
+    """N1 (review fix): MESH_REFINEMENT_PREDECLARATION claims REPRODUCE_
+    GATE_RECORD's own fill-contract discipline -- give it the same
+    required-fields coverage so its shape cannot silently rot."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    required_fields = {
+        "issue", "leg", "predeclared_on", "refinement_factor", "dx_scale",
+        "dx_mm_before", "dx_mm_after", "annulus_cells_before",
+        "annulus_cells_after", "measured_ratio_before", "excess_before",
+        "predicted_excess_after", "predicted_ratio_after",
+        "acceptance_band_ratio", "falsifier", "estimated_runtime_s",
+        "estimated_runtime_h", "runtime_basis", "status",
+        "measured_ratio_after", "vessl_run_id", "log_path", "verified_on",
+    }
+    missing = required_fields - set(record.keys())
+    assert not missing, f"MESH_REFINEMENT_PREDECLARATION missing fields: {missing}"
+
+
+def test_mesh_refinement_predeclaration_is_committed_unrun_and_self_consistent():
+    """UNRUN <=> no numbers, no log path, no run id -- same fill-contract
+    shape REPRODUCE_GATE_RECORD's own test enforces above."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    if record["status"] == "UNRUN":
+        assert record["measured_ratio_after"] is None
+        assert record["vessl_run_id"] is None
+        assert record["log_path"] is None
+        assert record["verified_on"] is None
+    else:
+        assert record["measured_ratio_after"] is not None
+        assert record["vessl_run_id"], "a filled record needs a vessl_run_id"
+        assert record["log_path"], "a filled record needs a log_path"
+
+
+def test_mesh_refinement_predeclaration_literal_pins():
+    """N1 (review fix): pin the numbers a resubmission could otherwise
+    reshape after the fact -- acceptance_band_ratio (post-B4: [lo, hi]
+    with hi=1.11 the ONLY refuting edge) and predicted_ratio_after must
+    not silently drift once a real measured_ratio_after arrives."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    assert record["refinement_factor"] == 1.5
+    assert abs(record["dx_scale"] - 2.0 / 3.0) < 1e-12
+    assert record["acceptance_band_ratio"] == [1.05, 1.11]
+    assert abs(record["excess_before"] - 0.1208) < 1e-9
+    assert abs(record["predicted_ratio_after"] - (1.0 + 0.1208 / 1.5)) < 1e-9
+    # N3 fix: the corrected (spatial-cell-ratio x timestep-ratio) runtime
+    # estimate, not the wrong refinement_factor**4 figure (2796*1.5**4=
+    # 14155s, 3.93h) -- pinned so a future edit cannot silently
+    # reintroduce the R^4 error via estimated_runtime_s/_h.
+    assert abs(record["estimated_runtime_h"] - 2.41) < 0.01
+    assert abs(record["estimated_runtime_s"] - 2796 * 1.5 ** 4) > 1000, (
+        "estimated_runtime_s matches the WRONG refinement_factor**4 figure"
+    )
+    # B4 fix: the falsifier text must name the one-sided direction
+    # explicitly (not just "outside the band", which reads two-sided).
+    assert "ABOVE 1.11" in record["falsifier"]
+    assert "NOT a falsifier" in record["falsifier"] or "not a falsifier" in record["falsifier"].lower()
+
+
+def test_mesh_refinement_gate_confirms_a_ratio_below_the_band():
+    """B4 (BLOCKING, adversarial review 2026-08-04): the two-sided version
+    of this check printed 'FALSIFIED, R2-STOP' for ANY ratio outside
+    [1.05, 1.11] -- including a ratio like 1.03, which is a STRONGER
+    confirmation of staircase-dispersion attribution (openEMS's own
+    material averaging routinely exceeds the naive first-order O(dx) the
+    predeclaration's excess-scaling estimate assumed), not a refutation.
+    This is the falsifier for that misfire: a ratio well below
+    acceptance_band_ratio[0] must NOT be reported as refuted."""
+    module = _load_referee_module()
+    evaluation = module._evaluate_mesh_refinement_ratio(
+        1.03, module.MESH_REFINEMENT_PREDECLARATION
+    )
+    assert evaluation["refuted"] is False
+    assert "CONFIRMED" in evaluation["verdict"]
+    assert "REFUTED" not in evaluation["verdict"]
+
+
+def test_mesh_refinement_gate_refutes_only_above_hi():
+    """The ONLY refuting outcome: ratio strictly above acceptance_band_
+    ratio[1] (1.11). At exactly hi, and anywhere below it, the gate must
+    confirm, not refute (one-sided, per the B4 fix)."""
+    module = _load_referee_module()
+    predeclaration = module.MESH_REFINEMENT_PREDECLARATION
+    hi = predeclaration["acceptance_band_ratio"][1]
+
+    at_hi = module._evaluate_mesh_refinement_ratio(hi, predeclaration)
+    assert at_hi["refuted"] is False, "exactly at the hard edge must still confirm"
+
+    just_above = module._evaluate_mesh_refinement_ratio(hi + 1e-6, predeclaration)
+    assert just_above["refuted"] is True
+
+    unchanged_near_original = module._evaluate_mesh_refinement_ratio(1.1208, predeclaration)
+    assert unchanged_near_original["refuted"] is True, (
+        "a ratio unchanged near the pre-refinement 1.1208 (no convergence "
+        "at all) must be the canonical refutation case"
+    )
+
+
+def test_mesh_refinement_gate_no_data_when_ratio_is_none():
+    """A missing ratio (e.g. the Stage B witness itself raised before
+    producing one) must be reported as NO-DATA -- distinct from both
+    CONFIRMED and REFUTED, never silently treated as either."""
+    module = _load_referee_module()
+    evaluation = module._evaluate_mesh_refinement_ratio(
+        None, module.MESH_REFINEMENT_PREDECLARATION
+    )
+    assert evaluation["refuted"] is None
+    assert "NO-DATA" in evaluation["verdict"]
+
+
 def test_declared_question_and_governance_notes_present():
     module = _load_referee_module()
     assert "reference-plane referral" in module.DECLARED_QUESTION

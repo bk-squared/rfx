@@ -750,42 +750,100 @@ B_MEAS_STENCIL_MARGIN_CELLS = 5  # M3 fix: extra clearance so CoaxialPort's
 #
 # PRE-DECLARATION (before seeing any refined-mesh data): if the staircase-
 # dispersion attribution is right, refining openEMS's OWN Stage B mesh (a
-# SMALLER dx -- the physical fixture, L12, and PTFE annulus a/b stay
-# EXACTLY as rfx's own committed fixture; only openEMS's discretization of
-# them gets finer) must move the measured/analytic beta ratio TOWARD 1.
+# SMALLER dx) must move the measured/analytic beta ratio TOWARD 1.
 # First-order Yee staircase error at a dielectric interface is O(dx), so
 # refining by a factor R is expected to shrink the EXCESS (ratio - 1) by
-# roughly 1/R:
+# roughly 1/R (a LOWER bound on the improvement -- see the ONE-SIDED GATE
+# note below for why a BIGGER improvement than this is not a falsifier):
 #   excess_now  = 1.1208 - 1.0 = 0.1208 (mean of the gated central-band
 #                 range 1.1205-1.1212, run-3, VESSL 369367251629)
 #   R           = 1.5 (dx_scale = 1/1.5 = 0.666667 -- see "REFINEMENT
 #                 FACTOR ARITHMETIC" below for why 1.5x, not 2x)
 #   excess_pred = 0.1208 / 1.5 = 0.0805
 #   ratio_pred  = 1.0805
-# Declared acceptance band (predicted +/- 0.03, the same margin width the
-# issue's own 2x-case guidance used): [1.05, 1.11]. If the measured ratio
-# at dx_scale=0.666667 lands OUTSIDE this band -- in particular if it
-# stays UNCHANGED near 1.12 -- the staircase-dispersion attribution is
-# WRONG: STOP, report, do not run a third mesh density (R2 HARD STOP,
-# RF/EM intensifier -- one clean pre-declared attempt per mechanism
-# hypothesis; a second needs a named new falsifier or an identified
-# implementation defect in this attempt, in writing).
+#
+# ONE-SIDED GATE (B4 fix, adversarial review 2026-08-04, applied BEFORE
+# any resubmit): the falsifier is ONE-SIDED -- ratio > 1.11 (no
+# meaningful convergence) refutes the staircase-dispersion attribution;
+# ratio <= 1.11, INCLUDING a ratio well below the predicted 1.0805 (e.g.
+# very close to 1.0), CONFIRMS it, more strongly the closer to 1.0 it
+# lands. This is NOT symmetric around the predicted value: the excess-
+# scaling estimate above assumes first-order O(dx) convergence, which is
+# a LOWER bound on how fast openEMS's own material averaging can actually
+# converge staircase error -- material averaging at a dielectric
+# interface routinely lifts the EFFECTIVE order past 2 (O(dx^2)+), so a
+# ratio well under 1.0805 is an EXPECTED, physically sound outcome, not
+# evidence against the mechanism. [1.05, 1.11] below is therefore an
+# INFORMATIONAL band (1.05 is where the naive first-order estimate lands,
+# not a rejection threshold) with a single HARD refutation edge at
+# hi=1.11: the code path that judges the result (main(), the
+# dx_scale-conditional block after the Stage B print block) checks ONLY
+# `ratio > hi`, never `ratio < lo`, and reports the IMPLIED convergence
+# order p = log(excess_before / excess_after) / log(refinement_factor) as
+# the headline quantity alongside the pass/fail word, so a reviewer sees
+# WHY a ratio near 1.0 is a stronger result, not a surprising one. If the
+# witness itself raises (a Stage B physics/self-check gate fails at the
+# refined mesh -- passivity, matched-through magnitude, truncation, or a
+# layout/config assertion) rather than returning a ratio at all, that is
+# ALSO evidence worth reporting on its own terms (a self-check failure
+# specific to the finer mesh, e.g. a clearance violated by the thinner
+# absorber below, would itself need diagnosis before the beta-ratio
+# question can even be asked) -- it is NOT silently treated as either a
+# confirmation or a refutation.
+#
+# R2 discipline: if `ratio > 1.11` (the only refuting outcome) -- STOP,
+# report, do not run a third mesh density (R2 HARD STOP, RF/EM
+# intensifier -- one clean pre-declared attempt per mechanism hypothesis;
+# a second needs a named new falsifier or an identified implementation
+# defect in this attempt, in writing).
+#
+# WHAT DOES AND DOES NOT STAY FIXED AT THE REFINED MESH (N4, review
+# fix -- do not overclaim "exactly the same fixture"): the coax's own
+# electrical geometry -- L12 (port-to-port span), pin radius a, outer
+# radius b, PTFE eps_r -- IS bit-identical to the dx_scale=1.0 fixture
+# (verified: none of these are functions of dx_scale in _stage_b_layout
+# or _build_stage_b_drive). What is NOT held fixed: pml_mm (PML depth in
+# mm shrinks with dx -- same 16 CELLS, thinner in mm), and therefore
+# lx_mm/ly_mm/lz_mm (total domain size) and the feed/measure OFFSETS
+# expressed in mm (though not in CELLS -- B_FEED_FROM_PML_EDGE_CELLS/
+# B_MEAS_FROM_PML_EDGE_CELLS are cell counts, unchanged) and r_os
+# (B_B_MM + 2*dx_mm, the outer shield radius, shrinks slightly with dx).
+# A thinner absorber in mm at the SAME cell count is a real, disclosed,
+# uncontrolled covariate of this witness -- it changes absorber
+# performance only very weakly (CPML absorption depends on cell count,
+# not mm depth, to first order), but it is not nothing, and is recorded
+# here rather than buried in the "EXACTLY as rfx's own fixture" framing
+# an earlier draft of this predeclaration used.
 #
 # REFINEMENT FACTOR ARITHMETIC (why 1.5x, not the 2x the issue's own
-# guidance offered first): runtime in a 3D+time explicit FDTD scales
-# ~(1/dx)^4 under a UNIFORM refinement of all three spatial axes (spatial
-# cells ~R^3, and CFL forces the timestep to shrink by the same R, so
-# timesteps-to-reach-a-fixed-physical-duration ~R^1; R^3 * R^1 = R^4).
-# Run-3's own committed Stage B wall-clock (module docstring "RUN-3
-# RESULT"): 2796 s for BOTH drives, on the same --threads 16 CPU lane this
-# YAML also uses.
-#   R=2.0 (dx_scale=0.5):     cost x2^4=16    -> 2796*16    = 44736 s = 12.4 h
-#   R=1.5 (dx_scale=0.66667): cost x1.5^4=5.0625 -> 2796*5.0625 = 14155 s = 3.93 h
-# 12.4h exceeds the ~4-6h CPU-lane feasibility window; 3.93h fits
-# comfortably. Per the task's own fallback instruction ("2x if it fits
-# within ~4-6h; else 1.5x with the pre-declaration adjusted"), this run
-# uses R=1.5 with the excess-scaling prediction above adjusted for R=1.5
-# (not R=2's originally-suggested ~1.06+/-0.03).
+# guidance offered first; N3 fix -- corrected below, 2026-08-04 review,
+# from a first-draft estimate that ignored that pml_mm shrinks with dx):
+# runtime in a 3D+time explicit FDTD scales as (spatial cell count ratio)
+# x (timestep count ratio). The spatial cell ratio is NOT simply R^3,
+# because the domain itself is clear_span_mm (FIXED) + 2*pml_mm, and
+# pml_mm = B_CPML_CELLS * dx_mm SHRINKS as dx shrinks (fixed 16-cell
+# count, thinner in mm) -- so refining dx grows the cell count along an
+# axis by LESS than a factor of R. Computed directly from
+# _stage_b_layout's own formula (grid.shape=(55,55,194) at dx_scale=1.0):
+#   R=1.5 (dx_scale=0.66667): cells x=y: 55->66.5 (x1.209), z: 194->275
+#                             (x1.417) -> spatial ratio (1.209^2 x 1.417)
+#                             = 2.0723
+#   R=2.0 (dx_scale=0.5):     cells x=y: 55->78.0 (x1.418), z: 194->356
+#                             (x1.835) -> spatial ratio (1.418^2 x 1.835)
+#                             = 3.6907
+# The timestep ratio is UNCHANGED by this correction -- CFL dt scales
+# with dx directly (not with domain size), so timesteps-to-cover-a-fixed-
+# physical-duration still scales as R exactly:
+#   R=1.5: total ratio = 2.0723 x 1.5 = 3.1084 -> 2796 x 3.1084 = 8691 s = 2.41 h
+#   R=2.0: total ratio = 3.6907 x 2.0 = 7.3815 -> 2796 x 7.3815 = 20639 s = 5.73 h
+# Both estimates are SMALLER than the original (wrong) R^4 figures
+# (14155 s/3.93 h and 44736 s/12.4 h) -- the original estimate was
+# conservative (overestimated runtime) in the SAME direction for both R
+# values, so the R=1.5-over-R=2.0 choice made under the wrong formula
+# still stands (2.41 h is comfortably inside the ~4-6h window either
+# way); a future session evaluating R=2.0 should use the corrected 5.73 h
+# figure (borderline-feasible, not 12.4h-infeasible) rather than
+# reproducing the R^4 error here.
 MESH_REFINEMENT_PREDECLARATION: dict = {
     "issue": 489,
     "leg": "1 (mesh-refinement convergence witness)",
@@ -800,18 +858,35 @@ MESH_REFINEMENT_PREDECLARATION: dict = {
     "excess_before": 0.1208,
     "predicted_excess_after": 0.1208 / 1.5,
     "predicted_ratio_after": 1.0 + 0.1208 / 1.5,
+    # B4 fix: this is an INFORMATIONAL band, not a symmetric two-sided
+    # accept/reject range -- acceptance_band_ratio[0] (1.05) is where the
+    # naive first-order excess-scaling estimate lands, NOT a rejection
+    # threshold (a ratio below it is a STRONGER confirmation, per the
+    # "ONE-SIDED GATE" comment above); only acceptance_band_ratio[1]
+    # (1.11, "hi") is a hard refutation edge. main()'s own check reads
+    # only index [1].
     "acceptance_band_ratio": [1.05, 1.11],
     "falsifier": (
-        "measured beta ratio at dx_scale=0.666667 stays outside [1.05, 1.11] "
-        "(in particular, unchanged near 1.12) -- the staircase-dispersion "
-        "attribution is wrong; STOP, do not run a third mesh density (R2)."
+        "measured beta ratio at dx_scale=0.666667 is ABOVE 1.11 (the "
+        "one-sided hard edge -- see 'ONE-SIDED GATE' above; a ratio BELOW "
+        "1.05 is NOT a falsifier, it is a stronger confirmation) -- in "
+        "particular, unchanged near the pre-refinement 1.1208 -- the "
+        "staircase-dispersion attribution is wrong; STOP, do not run a "
+        "third mesh density (R2). A Stage B self-check/config failure at "
+        "the refined mesh (rather than a returned ratio at all) is "
+        "reported on its own terms, not silently folded into either "
+        "verdict -- see 'ONE-SIDED GATE' above."
     ),
-    "estimated_runtime_s": 2796 * 1.5 ** 4,
-    "estimated_runtime_h": round(2796 * 1.5 ** 4 / 3600.0, 2),
+    "estimated_runtime_s": 2796 * 2.0723 * 1.5,
+    "estimated_runtime_h": round(2796 * 2.0723 * 1.5 / 3600.0, 2),
     "runtime_basis": (
         "run-3's own committed Stage B wall-clock, 2796 s for both drives "
-        "(module docstring 'RUN-3 RESULT'), scaled by refinement_factor^4 "
-        "(3D+time explicit FDTD: spatial cells ~R^3, timesteps ~R^1 via CFL)."
+        "(module docstring 'RUN-3 RESULT'), scaled by (spatial cell count "
+        "ratio) x (timestep count ratio) = 2.0723 x 1.5 = 3.1084 -- N3 fix: "
+        "NOT refinement_factor^4 (that ignored that pml_mm, and therefore "
+        "total domain size, SHRINKS as dx shrinks at a fixed 16-cell PML "
+        "depth; see 'REFINEMENT FACTOR ARITHMETIC' above for the corrected "
+        "per-axis cell counts and the R=2.0 figure for comparison)."
     ),
     # RUN: filled by a VESSL job (scripts/vessl_coax_two_port_referee_
     # mesh_refinement.yaml) after it completes; UNRUN placeholders below.
@@ -1150,6 +1225,70 @@ def _check_excitation_and_trace(port, sim_path: str, label: str, *,
                 f"zero: the excitation never entered the grid."
             )
     return inc_peak, n_samples
+
+
+def _evaluate_mesh_refinement_ratio(ratio, predeclaration: dict) -> dict:
+    """Pure decision logic for the issue #489 leg-1 mesh-refinement witness
+    (B4 fix, adversarial review 2026-08-04): ONE-SIDED, refutes ONLY
+    ``ratio > acceptance_band_ratio[1]``. See ``MESH_REFINEMENT_
+    PREDECLARATION``'s "ONE-SIDED GATE" comment for the full mechanism
+    (a ratio at or below the hard edge -- INCLUDING well below
+    ``acceptance_band_ratio[0]`` -- is a CONFIRMATION, not a falsifier;
+    openEMS's own material averaging routinely exceeds the naive
+    first-order O(dx) excess-scaling estimate this predeclaration used).
+
+    Extracted from ``main()`` as a pure function (no I/O, no openEMS) so
+    the decision logic itself -- not just the surrounding prose -- is
+    unit-testable without running Stage B
+    (``tests/test_coax_two_port_referee_header.py::
+    test_mesh_refinement_gate_confirms_a_ratio_below_the_band`` and its
+    siblings).
+
+    Parameters
+    ----------
+    ratio : float or None
+        ``beta_ratio_measured_over_analytic_mean`` from a Stage B run, or
+        ``None`` if unavailable.
+    predeclaration : dict
+        ``MESH_REFINEMENT_PREDECLARATION`` (or a test double with the same
+        shape): reads ``acceptance_band_ratio[1]`` (hi), ``excess_before``,
+        and ``refinement_factor``.
+
+    Returns
+    -------
+    dict with keys ``ratio``, ``hi``, ``refuted`` (bool or None for
+    NO-DATA), ``implied_order_str``, ``verdict`` (one of "NO-DATA",
+    "REFUTED", "CONFIRMED").
+    """
+    hi = predeclaration["acceptance_band_ratio"][1]
+    if ratio is None:
+        return {
+            "ratio": None, "hi": hi, "refuted": None,
+            "implied_order_str": "n/a",
+            "verdict": "NO-DATA -- beta ratio unavailable, cannot evaluate the predeclaration",
+        }
+    excess_before = predeclaration["excess_before"]
+    refinement_factor = predeclaration["refinement_factor"]
+    excess_after = ratio - 1.0
+    refuted = bool(ratio > hi)
+    if excess_after > 0.0:
+        implied_order = float(np.log(excess_before / excess_after) / np.log(refinement_factor))
+        implied_order_str = f"{implied_order:.2f}"
+    else:
+        implied_order_str = (
+            "undefined (excess_after <= 0 -- ratio at or below analytic; "
+            "treat as fully converged / p large)"
+        )
+    verdict = (
+        "REFUTED -- staircase-dispersion attribution WRONG, R2-STOP, do "
+        "not run a third mesh density"
+        if refuted else
+        "CONFIRMED (ratio at or below the one-sided hard edge)"
+    )
+    return {
+        "ratio": ratio, "hi": hi, "refuted": refuted,
+        "implied_order_str": implied_order_str, "verdict": verdict,
+    }
 
 
 def _non_physical_guard(s_mag: np.ndarray, label: str) -> None:
@@ -1955,6 +2094,16 @@ def main(argv: list[str] | None = None) -> int:
     print("openEMS external referee -- rfx issue #489 stage 3 (coax two-port)")
     print("COMPARATOR LEG ONLY. Stage A = faithful Coax.m port (reproduce-gate).")
     print("See module docstring for the full scope fence, delta list, do-not-repeat.")
+    if args.dx_scale != 1.0:
+        # n1 (review fix): a dx_scale != 1.0 run is NOT the registered
+        # validation/crossval/manifest.json fixture -- it is the issue #489
+        # leg-1 mesh-refinement WITNESS, a one-off diagnostic at a
+        # different (and, per MESH_REFINEMENT_PREDECLARATION's N4 note,
+        # not fully identical) mesh. Loud, so this can never be mistaken
+        # for -- or silently substituted as -- the promoted crossval case.
+        print(f"REGISTERED_CONFIGURATION=false (dx_scale={args.dx_scale:g} != 1.0 "
+              f"-- this is the #489 leg-1 mesh-refinement WITNESS run, NOT the "
+              f"registered validation/crossval/manifest.json fixture)")
     print("=" * 78)
     print(f"\nDeclared question:\n  {DECLARED_QUESTION}")
     print(f"\n{RFX_REFERENCE_QUOTE}")
@@ -1993,13 +2142,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  beta_ratio_measured_over_analytic (mean, central band): "
                   f"{stage_b['beta_ratio_measured_over_analytic_mean']}")
             if args.dx_scale != 1.0:
-                lo, hi = MESH_REFINEMENT_PREDECLARATION["acceptance_band_ratio"]
                 ratio = stage_b["beta_ratio_measured_over_analytic_mean"]
-                within_band = bool(ratio is not None and lo <= ratio <= hi)
-                print(f"  MESH-REFINEMENT PREDECLARATION CHECK: declared band "
-                      f"[{lo}, {hi}] (dx_scale={args.dx_scale:g}) -- "
-                      f"measured ratio {ratio} -- "
-                      f"{'WITHIN band (consistent with staircase dispersion)' if within_band else 'OUTSIDE band -- staircase attribution FALSIFIED, do not iterate, report and stop per R2'}")
+                evaluation = _evaluate_mesh_refinement_ratio(
+                    ratio, MESH_REFINEMENT_PREDECLARATION
+                )
+                print(f"  MESH-REFINEMENT PREDECLARATION CHECK (one-sided, "
+                      f"refutes only ratio > {evaluation['hi']}): measured "
+                      f"ratio {evaluation['ratio']} -- implied convergence "
+                      f"order p={evaluation['implied_order_str']} -- "
+                      f"{evaluation['verdict']}")
             print(f"  sanity_passed: {stage_b['sanity_passed']}")
         elif not stage_a["passed"]:
             print("\nStage A FAILED its reproduce-gate -- skipping Stage B "
@@ -2042,6 +2193,10 @@ def main(argv: list[str] | None = None) -> int:
         "must_move_when_validated": MUST_MOVE_WHEN_VALIDATED,
         "reproduce_gate_record": REPRODUCE_GATE_RECORD,
         "dx_scale": args.dx_scale,
+        # n1 (review fix): explicit machine-readable marker so a downstream
+        # consumer cannot mistake a dx_scale != 1.0 witness run's JSON for
+        # the registered validation/crossval/manifest.json fixture.
+        "registered_configuration": bool(args.dx_scale == 1.0),
         "mesh_refinement_predeclaration": (
             MESH_REFINEMENT_PREDECLARATION if args.dx_scale != 1.0 else None
         ),

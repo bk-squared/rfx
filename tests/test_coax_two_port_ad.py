@@ -48,15 +48,41 @@ WHY IT STOPS AT THE SMOKE STAGE, TWO INDEPENDENT REASONS:
    ``jax.grad`` this raises ``jax.errors.TracerArrayConversionError`` — a
    traced array cannot be materialized to a concrete ``numpy.ndarray`` —
    empirically reproduced by
-   ``test_coaxial_line_plane_voltage_severs_the_jax_tape`` below. The
-   post-FDTD pipeline downstream of this call
-   (``_assemble_coaxial_two_port_from_voltages`` ->
-   ``coaxial_line_reflection_from_plane_voltages`` ->
-   ``solve_two_port_from_wave_amplitudes``, all in
-   ``rfx/api/_sparams.py`` / ``rfx/sources/coaxial_port.py``) is ALSO
-   concrete ``np.asarray(..., dtype=np.complex128)`` throughout, so even a
-   hypothetical fix at ``coaxial_line_plane_voltage`` alone would not be
-   sufficient — this is the first break, not the only one.
+   ``test_coaxial_line_plane_voltage_severs_the_jax_tape`` below.
+
+   CORRECTION (B3, adversarial review 2026-08-04 — an earlier version of
+   this docstring, the PR body, and a posted #489 comment overstated this
+   as "the downstream pipeline is concrete np.asarray throughout"; that
+   is WRONG for one of the three links). The downstream pipeline is
+   ``_assemble_coaxial_two_port_from_voltages`` (host loop) ->
+   ``coaxial_line_reflection_from_plane_voltages`` (the matrix-pencil
+   extractor) -> ``solve_two_port_from_wave_amplitudes`` (the two-drive
+   ``S = B @ inv(A)`` solve). Checked directly against source, not
+   assumed:
+     - ``_assemble_coaxial_two_port_from_voltages``'s own host loop
+       (``rfx/api/_sparams.py:1217-1218``) concretizes
+       ``v_bot_by_drive``/``v_top_by_drive`` via
+       ``np.asarray(..., dtype=np.complex128)`` UNCONDITIONALLY, before
+       ever calling the extractor below — concrete, by the CALLER's own
+       choice, not a structural limit of the extractor itself.
+     - ``coaxial_line_reflection_from_plane_voltages`` (``rfx/sources/
+       coaxial_port.py``, ``def`` at line 1620) is **already
+       differentiable** — its own "AD note" docstring documents a dual
+       path: traced inputs (``jax.core.Tracer`` or ``_prefer_jnp=True``)
+       run a ``jax.numpy`` core (``_coaxial_line_reflection_jnp``); this
+       is the SAME function the GRAD_SAFE 1-port
+       ``compute_coaxial_line_reflection(..., eps_scale=...)`` path
+       already uses end to end. It is NOT a blocker — it never gets a
+       traced input to begin with, because the host loop above
+       concretizes first.
+     - ``solve_two_port_from_wave_amplitudes`` (``rfx/sources/
+       coaxial_port.py:1848-1849``) concretizes ``a_inc``/``b_out`` via
+       ``np.asarray(..., dtype=np.complex128)`` UNCONDITIONALLY — no jnp
+       path exists here at all. This one genuinely needs a jnp rewrite.
+
+   So: 2 of the 3 pipeline links are concrete (one by caller choice, one
+   structurally); the middle link is not a blocker today and needs no
+   rewrite — only re-wiring so it actually receives a traced input.
 
 CONCLUSION (per issue #489's own instruction: "if AD is structurally
 blocked, that is a RESULT... skip the gate, do NOT force a workaround"):
@@ -64,13 +90,16 @@ no AD smoke or AD-vs-FD gate is added in this pass. ``tests/
 _coax_ad_objective.py``'s reduction is committed unused, ready for the
 session that wires a traced-input channel through. Filed as the concrete
 de-experimental blocker on issue #489 (see the PR body / issue comment for
-the filed text) — the two fixes needed are (a) add an ``eps_scale``-shaped
+the filed text) — the fixes needed are (a) add an ``eps_scale``-shaped
 traced-input parameter to ``compute_coaxial_two_port`` mirroring the
-1-port method's own design, and (b) route the two-port path through
+1-port method's own design, (b) route the two-port path through
 ``coaxial_line_plane_voltage_jnp`` (already differentiable, already used
 by the 1-port path) instead of the concrete ``coaxial_line_plane_voltage``,
-then re-derive the two-drive solve (``solve_two_port_from_wave_
-amplitudes``) in jnp as well, since it currently also concretizes.
+(c) stop concretizing in ``_assemble_coaxial_two_port_from_voltages``'s
+own host loop so a traced input actually reaches the (already
+differentiable) extractor from (b), and (d) re-derive
+``solve_two_port_from_wave_amplitudes`` in jnp as well — it is the one
+link with no existing differentiable counterpart to reuse.
 """
 
 from __future__ import annotations
@@ -100,25 +129,52 @@ def test_coax_band_mean_s21_sq_reduction_is_correct():
     assert abs(got - want) < 1e-6, (got, want)
 
 
+def _traced_input_param_names(sig: "inspect.Signature") -> set:
+    """Matches the naming convention used by every OTHER traced-input
+    parameter in this codebase (compute_coaxial_line_reflection's
+    eps_scale, compute_waveguide_s_matrix's eps_override/sigma_override):
+    a name starting with "eps_"/"sigma_", or an explicit "eps_scale"-style
+    design-variable name. Deliberately narrow (field_scale, a plain float
+    source-amplitude knob, must NOT match)."""
+    return {
+        name for name in sig.parameters
+        if name.lower().startswith(("eps_", "sigma_")) or name.lower() == "eps_scale"
+    }
+
+
+def test_traced_input_param_predicate_has_a_positive_control():
+    """N7 (review fix): the predicate in ``_traced_input_param_names`` is a
+    name-prefix heuristic -- without a positive control, a typo that makes
+    it match NOTHING would let ``test_compute_coaxial_two_port_has_no_
+    traced_input_channel`` below pass vacuously forever (an absent
+    parameter and a broken matcher look identical to that test). Prove the
+    matcher is live: the 1-port sibling's own ``eps_scale`` parameter
+    (the GRAD_SAFE traced-input channel `compute_coaxial_two_port` is
+    missing) MUST match.
+    """
+    from rfx.api import Simulation as _Simulation
+
+    sig = inspect.signature(_Simulation.compute_coaxial_line_reflection)
+    matched = _traced_input_param_names(sig)
+    assert "eps_scale" in matched, (
+        "the traced-input-parameter predicate did not match "
+        "compute_coaxial_line_reflection's own eps_scale -- the matcher "
+        "itself is broken, not just silent on compute_coaxial_two_port"
+    )
+
+
 def test_compute_coaxial_two_port_has_no_traced_input_channel():
     """Regression guard for AD-blocker reason (1): if a future change adds
     a traced-input parameter (``eps_scale``/``eps_override``-shaped) to
     ``compute_coaxial_two_port``, this test must be updated in the SAME
     change (and the AD smoke this file currently skips should be added) —
     it fails loud instead of letting the classification in
-    ``tests/test_ad_surface_contract.py`` go stale silently.
+    ``tests/test_ad_surface_contract.py`` go stale silently. The matcher's
+    own discriminating power is proven live by
+    ``test_traced_input_param_predicate_has_a_positive_control`` above.
     """
     sig = inspect.signature(Simulation.compute_coaxial_two_port)
-    # Matches the naming convention used by every OTHER traced-input
-    # parameter in this codebase (compute_coaxial_line_reflection's
-    # eps_scale, compute_waveguide_s_matrix's eps_override/sigma_override):
-    # a name starting with "eps_"/"sigma_", or an explicit "eps_scale"-style
-    # design-variable name. Deliberately narrow (field_scale, a plain float
-    # source-amplitude knob, must NOT match).
-    traced_input_names = {
-        name for name in sig.parameters
-        if name.lower().startswith(("eps_", "sigma_")) or name.lower() == "eps_scale"
-    }
+    traced_input_names = _traced_input_param_names(sig)
     assert not traced_input_names, (
         f"compute_coaxial_two_port() now has apparent traced-input "
         f"parameter(s) {traced_input_names!r} -- update tests/"

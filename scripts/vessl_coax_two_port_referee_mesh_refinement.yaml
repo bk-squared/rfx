@@ -1,5 +1,5 @@
 name: rfx-coax-two-port-referee-mesh-refinement
-description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared acceptance band [1.05, 1.11] and the runtime arithmetic (~3.9h estimated from run-3's own 2796s baseline). SHA-PINNED TARBALL FETCH (mechanism changed 2026-08-04 after runs 369367251836/369367251837 both died at apt-get-install-git on an unreachable Ubuntu mirror -- this image ships neither git nor a working apt path to it reliably; the original branch-clone+git-checkout pattern, mirroring #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, is preserved in spirit but fetches https://github.com/bk-squared/rfx/archive/$RFX_EXPECT_SHA.tar.gz via curl/wget/python3 instead of git -- the tarball URL IS the pin) -- this job fetches RFX_EXPECT_SHA fresh; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
+description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared ONE-SIDED gate (refutes only ratio > 1.11) and the runtime arithmetic (~2.41h estimated from run-3's own 2796s baseline, corrected N3 review fix -- spatial cell ratio 2.0723 x timestep ratio 1.5, NOT refinement_factor^4). SHA-PINNED TARBALL FETCH (mechanism changed 2026-08-04 after runs 369367251836/369367251837 both died at apt-get-install-git on an unreachable Ubuntu mirror -- this image ships neither git nor a working apt path to it reliably; the original branch-clone+git-checkout pattern, mirroring #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, is preserved in spirit but fetches https://github.com/bk-squared/rfx/archive/$RFX_EXPECT_SHA.tar.gz via curl/wget/python3 instead of git -- the tarball URL IS the pin) -- this job fetches RFX_EXPECT_SHA fresh; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
 tags: [rfx, coax-two-port, i489, external-referee, mesh-refinement]
 resources:
   cluster: remilab-c0
@@ -40,6 +40,15 @@ run: |-
   # curl -f fails loud (nonzero exit, caught by set -eu) on a bad SHA or a
   # network error, same as the old checkout-mismatch guard did.
   echo "=== fetch RFX_EXPECT_SHA as a tarball (apt+git mechanism dropped after 2 network failures: runs 369367251836, 369367251837) ==="
+  # N5 (review fix): the tarball URL is itself keyed by RFX_EXPECT_SHA, so an
+  # unfilled placeholder would 404 anyway -- but that is an OPAQUE curl
+  # failure, not a diagnosable message. Keep an explicit escape-hatch guard
+  # (same intent as the old branch-clone pattern's FILL_AFTER_PUSH check) and
+  # make it a HARD, LOUD abort rather than relying on an incidental 404.
+  if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_EXPECT_SHA still contains the FILL_AFTER_PUSH placeholder -- fill in the real commit SHA before submitting this job"
+    exit 3
+  fi
   RFX_TARBALL_URL="https://github.com/bk-squared/rfx/archive/${RFX_EXPECT_SHA}.tar.gz"
   RFX_TARBALL_PATH="/tmp/rfx-${RFX_EXPECT_SHA}.tar.gz"
   if command -v curl >/dev/null 2>&1; then
@@ -55,7 +64,7 @@ run: |-
   rm -rf "$CLONE_DIR"
   mkdir -p "$CLONE_DIR"
   tar xzf "$RFX_TARBALL_PATH" -C "$CLONE_DIR" --strip-components=1
-  cd "$CLONE_DIR"
+  cd "$CLONE_DIR" || exit 1
   ACTUAL_SHA="$RFX_EXPECT_SHA"
   echo "fetched branch (tarball snapshot) : $RFX_BRANCH"
   echo "pinned SHA (== fetch URL)         : $ACTUAL_SHA"
@@ -75,12 +84,44 @@ run: |-
     libcgal-dev libvtk7-dev \
     python3-dev python3-numpy python3-scipy python3-matplotlib \
     python3-setuptools python3-h5py 2>&1 | tail -3
-  cd /tmp
+  # B1 fix (review): every `cd` below is now its OWN statement (never a
+  # non-final element of a `&&`/`||` chain) with an explicit `|| exit 1`.
+  # Empirically verified gotcha this fixes: under dash `set -e`, a failing
+  # `cd` that is a NON-FINAL element of an `&&` chain does NOT abort the
+  # script -- `cd /bad && echo x` on a bad path prints nothing, exits 0,
+  # and the script keeps running past it (POSIX errexit exemption for
+  # "any command of an AND-OR list other than the last"). The previous
+  # version of this block hit exactly this: `cd "$CLONE_DIR/CSXCAD/python"`
+  # used $CLONE_DIR (the RFX repo clone, which has no CSXCAD/ subdir --
+  # openEMS-Project is cloned separately, below, at /tmp/openEMS-Project)
+  # as a non-final `&&` element, so the python-bindings install silently
+  # no-opped on every path, and the job would have died at the import
+  # check below only AFTER paying the full ~15-20 min openEMS C++ build.
+  OPENEMS_SRC=/tmp/openEMS-Project
+  cd /tmp || exit 1
   git clone --recursive https://github.com/thliebig/openEMS-Project.git
-  cd openEMS-Project
-  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
-  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
-  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
+  cd "$OPENEMS_SRC" || exit 1
+  cd fparser || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
+  cd CSXCAD || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
+  cd openEMS || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
   ldconfig
   export CSXCAD_INSTALL_PATH=/usr/local
   export OPENEMS_INSTALL_PATH=/usr/local
@@ -88,20 +129,25 @@ run: |-
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
   "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
-  cd "$CLONE_DIR/CSXCAD/python" && "$PY" setup.py install 2>&1 | tail -2 && cd "$CLONE_DIR"
-  cd "$CLONE_DIR/openEMS/python" && "$PY" setup.py install 2>&1 | tail -2 && cd "$CLONE_DIR"
+  # B1 fix: rooted at $OPENEMS_SRC (the openEMS-Project clone), NOT
+  # $CLONE_DIR (the rfx clone -- rfx has no CSXCAD/ or openEMS/ subdirs).
+  cd "$OPENEMS_SRC/CSXCAD/python" || exit 1
+  "$PY" setup.py install 2>&1 | tail -2
+  cd "$OPENEMS_SRC/openEMS/python" || exit 1
+  "$PY" setup.py install 2>&1 | tail -2
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
 
-  cd "$CLONE_DIR"
+  cd "$CLONE_DIR" || exit 1
   OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/coax-two-port-referee-mesh-refinement/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
   mkdir -p "$OUT_DIR"
 
   # -- The predeclared 1.5x refinement (dx_scale=2/3): --nrts/--end-criteria
   # match the promoted run-3's own Stage B settings (only the mesh density
   # changes; the predeclaration's runtime arithmetic assumes this). Timeout
-  # generous over the ~3.9h estimate (MESH_REFINEMENT_PREDECLARATION,
-  # estimated_runtime_h=3.93) for build + smoke-run overhead on top of the
-  # two real Stage B drives. --
+  # generous over the ~2.41h estimate (MESH_REFINEMENT_PREDECLARATION,
+  # estimated_runtime_h -- N3 review fix, corrected from a first-draft
+  # 3.93h that used the wrong refinement_factor^4 scaling) for build +
+  # smoke-run overhead on top of the two real Stage B drives. --
   set +e
   timeout 25200 "$PY" validation/crossval/21_coax_two_port_referee.py \
     --output "$OUT_DIR/openems_coax_two_port_mesh_refinement.json" \
