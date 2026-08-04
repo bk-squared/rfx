@@ -100,8 +100,16 @@ intended model is a distributed microstrip line.
   difference `8.20e-8`, maximum column power `0.979`, and maximum reciprocity
   difference `1.24e-6`.
 - The patch/OpenEMS comparison over 1.5--3.4 GHz has
-  `max_mag_abs_diff 0.05318` and `mean_mag_abs_diff 0.02750`. Phase is not gated
-  because the reference conventions differ.
+  `max_mag_abs_diff 0.05318` and `mean_mag_abs_diff 0.02750`. Phase is not
+  gated for this comparison because the two solvers' reference planes have
+  not been aligned for the wire/patch configuration -- not because their
+  time conventions differ. Both tools accumulate `exp(-j*2*pi*f*t)` (rfx
+  `update_dft_plane_probe`; openEMS `DFT_time2freq`), differing only by
+  real positive normalization factors that cannot change a phase, so there
+  is no `e^{+-j*omega*t}` mismatch to resolve here (verified at source,
+  issue #490 Lane 2). Aligning the planes for this configuration is
+  untried; see the microstrip-line section for the one configuration
+  where it has been done.
 - A three-case OpenEMS mesh/length comparison covers `dx` of 1--2 mm, wire
   lengths of 4--8 mm, and 0.8--1.8 GHz, with
   `max_mag_abs_diff_across_cases 0.05212`.
@@ -141,6 +149,26 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   extraction (#483/#486). The launch fixture derives from registered
   materials on both the FD and AD sides; staticness is regression-locked
   by `tests/test_msl_source_fixture_static.py`.
+- MSL de-embedded phase now has an external referee (issue #490 Lane 2,
+  openEMS, VESSL run 369367251705). With both solvers' measurement planes
+  placed at the same physical coordinate (rfx's probe-0 plane), the raw
+  cross-solver `angle(S21)` difference is `<= 0.304 degrees` across the
+  gated 3.0--4.5 GHz band and `<= 1 degree` in 22 of 30 bins over
+  0.5--5 GHz. A conjugate (time-convention) mismatch would have produced
+  ~102 degrees of disagreement at 5 GHz, where the unwrapped phase is
+  `-51 degrees`; the measured disagreement there is `0.131 degrees`. Gated
+  per-solver self-consistency -- each solver's own `angle(S21)` against its
+  own measured `beta` -- is `0.642 degrees` (openEMS) and `0.121 degrees`
+  (rfx) against a 3-degree budget derived from a +-4-cell plane-position
+  allowance. Scope: one thru geometry at `dx=50 um`, single drive. Bins
+  below ~1 GHz are excluded from the comparison: the line is only 0.03
+  guide wavelengths long at 0.5 GHz, where three-point port extraction is
+  poorly conditioned and the openEMS side returns `|S21|` up to `1.0087`.
+  openEMS's `CalcPort(ref_plane_shift=...)` rotation is not exercised by
+  this run -- the effective shift is 0 by construction -- so the plane
+  match comes from stencil placement, not from the referral transform.
+  See `validation/crossval/20_msl_phase_referee.py` (manifest entry
+  `20_msl_phase_referee`) and `tests/test_msl_phase_referee_header.py`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
 during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at

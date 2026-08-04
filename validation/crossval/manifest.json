@@ -399,6 +399,41 @@
       "cpu_runner": {"excluded_reason": "CPU-infeasible: the default path's single gated FDTD run is 1160 s against the lane's 900 s per-script timeout (full regeneration is roughly 6 h of FDTD across the nine-configuration witness population plus the formulation-independent FDFD sweeps). Evidence floor is the frozen fixture plus tests/test_wr90_iris_filter_gates.py, which runs in 73 s with no FDTD and no network."},
       "scheduled_external_order": null,
       "failure_sentinel": "SOME CHECKS FAILED"
+    },
+    {
+      "id": "20_msl_phase_referee",
+      "script": "validation/crossval/20_msl_phase_referee.py",
+      "role": "diagnostic-reporter",
+      "public_group": "B",
+      "execution_tiers": ["cpu-runner", "external-manual"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "Hammerstad-Jensen quarter-wave open-stub notch closed form (Stage A reproduce-gate oracle -- the SAME formula validation/crossval/06b_msl_notch_filter_uniform.py uses for the identical substrate/trace/stub combination)",
+          "required_for_script_pass": true
+        },
+        {
+          "kind": "external-solver",
+          "name": "openEMS MSL_NotchFilter.py tutorial reproduce-gate (Stage A) plus a matched-mesh (dx=50um) thru-line comparison against rfx's own compute_msl_s_matrix (Stage B); required for a full run -- cross-solver phase agreement is REPORTED, not gated (the gated claim is each solver's own self-consistency)",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "Issue #490 lane 2, promoted 2026-08-04 (#490 reviewer judgment, run-1 VESSL 369367251705): one geometry (RO4350B thru line, W=600um, h_sub=254um, L12=5mm), one mesh (dx=50um), single drive. GATED: Stage A reproduces MSL_NotchFilter.py's own notch frequency against the Hammerstad-Jensen closed form; Stage B gates EACH solver's own de-embedded angle(S21) against that SAME solver's own measured beta (self-consistency, a 3-degree budget derived from a +-4-cell reference-plane positional-uncertainty allowance, resolving-power tested against a planted single-port referral drop), plus passivity and a scale-free excitation/settling guard, over the 3.0-4.5GHz gate band. REPORTED, NOT GATED: the raw cross-solver angle(S21) difference and its dispersion-corrected residual, beta_rfx vs beta_openems, and both solvers' |S21| -- run-1 measured 22/30 bins <=1deg, only bin 0 (500MHz) exceeding 3deg (4.13deg), max 0.304deg inside the gated band. Sub-1GHz bins are EXCLUDED from any claim: the 5mm line is ~0.03 guide wavelengths at 500MHz, where three-point port extraction is ill-conditioned (openEMS reads |S21| up to 1.0087 there, and 74% of that bin's own passivity-balance excess traces to |S21|^2-1). CalcPort's ref_plane_shift referral ROTATION is UNEXERCISED on this fixture -- the effective shift measures 0.0 by construction (MeasPlaneShift's own stencil placement, not the referral transform, is what aligns the two solvers' reference planes here) -- and remains untested for a target plane that falls off-grid. Does not characterize a different geometry, mesh density, or multi-drive configuration.",
+      "external_dependencies": ["openEMS", "CSXCAD"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": [
+        "validation/crossval/20_msl_phase_referee.py",
+        "tests/test_msl_phase_referee_header.py"
+      ],
+      "artifact_paths": [
+        "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
+        "validation/crossval/_20_msl_phase_referee_logs/20260804T055009Z_result.json",
+        "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json"
+      ],
+      "cpu_runner": {"order": 15},
+      "scheduled_external_order": null,
+      "failure_sentinel": null
     }
   ]
 }
