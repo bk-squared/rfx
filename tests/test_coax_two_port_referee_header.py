@@ -1,6 +1,9 @@
 """Header/record consistency checks for the openEMS coax two-port referee.
 
-``validation/research/coax_two_port/openems_coax_two_port_referee.py`` is a
+``validation/crossval/21_coax_two_port_referee.py`` (formerly
+``validation/research/coax_two_port/openems_coax_two_port_referee.py``,
+promoted 2026-08-04 -- PI decision, issue #489 comment
+https://github.com/bk-squared/rfx/issues/489#issuecomment-5179893223) is a
 COMPARATOR-leg-only, VESSL-only harness for rfx issue #489 stage 3 (see its
 module docstring for the full scope fence): openEMS is not installed in
 THIS test environment (this test does not need it -- it only loads the
@@ -35,9 +38,9 @@ import numpy as np
 
 REFEREE_DIR: Final = (
     pathlib.Path(__file__).resolve().parent.parent
-    / "validation" / "research" / "coax_two_port"
+    / "validation" / "crossval"
 )
-SCRIPT_PATH: Final = REFEREE_DIR / "openems_coax_two_port_referee.py"
+SCRIPT_PATH: Final = REFEREE_DIR / "21_coax_two_port_referee.py"
 REPO_ROOT: Final = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -116,9 +119,11 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
 
     TRACKED-PATH fix (PR #548 review, correcting PR #548's OWN first
     fill): a filled-in (``status != "UNRUN"``) record's ``log_path`` must
-    live under a GIT-TRACKED prefix --
-    ``validation/research/coax_two_port/logs/`` -- not merely "exists on
-    disk on the machine that ran the job". The original M3 fix's allowed
+    live under a GIT-TRACKED prefix -- ``validation/crossval/
+    _21_coax_two_port_referee_logs/`` (moved here on promotion,
+    2026-08-04 -- formerly ``validation/research/coax_two_port/logs/``)
+    -- not merely "exists on disk on the machine that ran the job". The
+    original M3 fix's allowed
     prefixes, ``.omx/`` and ``docs/research_notes/vessl_logs/``, are
     BOTH gitignored in this repo -- accepting either one here let the
     VERY FIRST real fill (``status="RUN"``, ``log_path`` under ``.omx/``)
@@ -148,7 +153,7 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
         assert log_path_str, "a filled-in reproduce_gate_record needs a log_path"
 
         gitignored_prefixes = (".omx/", "docs/research_notes/vessl_logs/")
-        tracked_prefixes = ("validation/research/coax_two_port/logs/",)
+        tracked_prefixes = ("validation/crossval/_21_coax_two_port_referee_logs/",)
         assert not log_path_str.startswith(gitignored_prefixes), (
             f"log_path {log_path_str!r} lives under a GITIGNORED prefix -- "
             f"fine for the pre-#548 design's own history, but a FILLED "

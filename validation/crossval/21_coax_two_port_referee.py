@@ -477,23 +477,24 @@ geometry/layout math (``AssertionError``, e.g. a clearance computation
 that doesn't hold) -- distinct from 1 so a reviewer can immediately tell
 "the physics disagreed" from "this script has a bug", per review fix M2.
 
-MUST-MOVE-WHEN-VALIDATED CONDITION (mirrors ``validation/research/
-floquet/rcwa_referee.py``'s governance note): this script lives at
-``validation/research/coax_two_port/`` and is deliberately OUTSIDE
-``validation/crossval/`` and its ``manifest.json`` -- exempt from
-crossval governance by construction (``.claude/rules/
-rfx-feature-discovery.md`` + ``feedback_crossval_governance_glob_
-bypass.md``). Move into ``validation/crossval/`` (+ ``manifest.json``)
-only after: (a) a real VESSL run has filled ``REPRODUCE_GATE_RECORD``
-with numbers + a log path, AND (b) issue #489 stage 3's reviewer has
-judged the resulting bracket against rfx PR #534's numbers.
+PROMOTED (2026-08-04, PI decision -- issue #489 comment
+https://github.com/bk-squared/rfx/issues/489#issuecomment-5179893223; see
+MUST_MOVE_WHEN_VALIDATED below for the full history and the promoted-entry
+scope fence): this script lived at ``validation/research/coax_two_port/
+openems_coax_two_port_referee.py`` from authorship (PR #540/#546/#547/#548)
+through run-3's own record-fill; it now lives here, registered in
+``validation/crossval/manifest.json`` as ``21_coax_two_port_referee``, a
+``diagnostic-reporter`` case (gated claim = per-solver self-consistency;
+this referee brackets, it does not judge rfx's own
+``compute_coaxial_two_port`` numbers, which remain EXPERIMENTAL -- issue
+#489 stage 2, untouched by this promotion).
 
 Usage (VESSL-only; openEMS is not expected to be importable outside the
 lane in ``scripts/vessl_coax_two_port_referee.yaml``, and that lane runs
 the PRIMARY checkout -- this script must be merged to main before
 submitting)::
 
-    python validation/research/coax_two_port/openems_coax_two_port_referee.py \\
+    python validation/crossval/21_coax_two_port_referee.py \\
         --output .omx/coax_two_port_referee/openems_coax_two_port.json
 """
 
@@ -572,7 +573,7 @@ REPRODUCE_GATE_RECORD: dict = {
     "status": "RUN",
     "reproduced_zl_mean_ohm": 50.432,
     "reproduced_zl_max_dev_ohm": 0.511,
-    "log_path": "validation/research/coax_two_port/logs/run3_369367251629_run.log",
+    "log_path": "validation/crossval/_21_coax_two_port_referee_logs/run3_369367251629_run.log",
     "vessl_run_id": "369367251629",
     "verified_on": "2026-08-03",
 }
@@ -589,12 +590,31 @@ DECLARED_QUESTION = (
 )
 
 MUST_MOVE_WHEN_VALIDATED = (
-    "Move into validation/crossval/ (+ manifest.json) only after: (a) a "
-    "real VESSL run has filled REPRODUCE_GATE_RECORD with a number + log "
-    "path, AND (b) issue #489 stage 3's reviewer has judged the resulting "
-    "bracket against rfx PR #534's numbers. Not before -- this file's "
-    "presence under validation/research/ must not be read as a registered "
-    "crossval pass (validation/research/floquet/rcwa_referee.py precedent)."
+    "MOVED (2026-08-04): the original condition here was to move into "
+    "validation/crossval/ (+ manifest.json) only after (a) a real VESSL "
+    "run had filled REPRODUCE_GATE_RECORD with a number + log path, AND "
+    "(b) issue #489 stage 3's reviewer had judged the resulting bracket "
+    "against rfx PR #534's numbers. Both are now satisfied -- run-3 "
+    "(VESSL 369367251629) filled REPRODUCE_GATE_RECORD (status='RUN', "
+    "tracked log_path; see the module docstring RUN-3 RESULT section), "
+    "and the PI judged the evidence on 2026-08-04 (issue #489 comment, "
+    "https://github.com/bk-squared/rfx/issues/489#issuecomment-5179893223) "
+    "and approved promotion under an explicit scope fence: one geometry "
+    "(rfx's own SMA-class coaxial_port fixture, a=0.635mm, b=2.055mm, "
+    "PTFE eps_r=2.1, L12=58.4595mm), one mesh (dx=0.37474mm), two drives "
+    "(forward + reverse, full S-matrix); the gated claim is per-solver "
+    "self-consistency (passivity, matched-through magnitude, and a "
+    "phase/group-delay witness against the port's own MEASURED beta -- "
+    "the idealized analytic beta is off by a real ~1.12x staircase-"
+    "dispersion bias on this fixture's coarse PTFE annulus, NOT a solver "
+    "or referral defect); cross-solver |S21| agreement and reciprocity "
+    "are REPORTED (not gated) -- this referee brackets, it does not "
+    "judge rfx's own numbers, and compute_coaxial_two_port itself "
+    "remains EXPERIMENTAL (issue #489 stage 2), untouched by this "
+    "promotion. This script is now registered in "
+    "validation/crossval/manifest.json as 21_coax_two_port_referee, role "
+    "diagnostic-reporter -- see the manifest entry's own claim_scope for "
+    "the machine-readable copy of this same fence."
 )
 
 RFX_REFERENCE_QUOTE = (
@@ -912,10 +932,10 @@ def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
     (e.g. "Unused primitive") to STDERR, not stdout, so the pre-solve
     fail-fast gate below could silently miss them. This lane's own three
     committed runs (run-1/-2/-3) show no such warnings in their own
-    terminal-captured logs (``validation/research/coax_two_port/logs/
-    run3_369367251629_run.log``) -- so, unlike the MSL lane, no allowlist
-    is needed here; this is purely closing the same structural gap before
-    it bites a future run.
+    terminal-captured logs (``validation/crossval/
+    _21_coax_two_port_referee_logs/run3_369367251629_run.log``) -- so,
+    unlike the MSL lane, no allowlist is needed here; this is purely
+    closing the same structural gap before it bites a future run.
     """
     os.makedirs(sim_path, exist_ok=True)
     log_path = os.path.join(sim_path, "_openems_stdout.log")

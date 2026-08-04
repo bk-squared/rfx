@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """External openEMS referee for rfx issue #490 lane 2 (MSL de-embedded phase).
 
-SCOPE FENCE (matches ``validation/research/coax_two_port/
-openems_coax_two_port_referee.py`` and ``scripts/diagnostics/
-openems_thru_referee/thru_openems.py`` precedent): this is a
+SCOPE FENCE (matches ``validation/crossval/21_coax_two_port_referee.py``
+(formerly ``validation/research/coax_two_port/
+openems_coax_two_port_referee.py``, moved on promotion 2026-08-04) and
+``scripts/diagnostics/openems_thru_referee/thru_openems.py`` precedent): this is a
 COMPARATOR-LEG referee. It builds and runs an INDEPENDENT openEMS model
 and reports its own S-parameters; it does NOT run any rfx simulation
 and does NOT import rfx. Stage B reads ONE committed, rfx-produced JSON
@@ -150,8 +151,9 @@ was read (not summarized) before this script was written. Ticks:
      against openEMS's ``MSLPort`` -- a TIGHTER match than the
      precedent's own comparison, not a looser one.
 
-``matlab/examples/waveguide/Coax.m`` via ``validation/research/
-coax_two_port/openems_coax_two_port_referee.py`` (#489 stage 3, 5
+``matlab/examples/waveguide/Coax.m`` via ``validation/crossval/
+21_coax_two_port_referee.py`` (formerly ``validation/research/
+coax_two_port/openems_coax_two_port_referee.py``; #489 stage 3, 5
 review rounds, PRs #540/#546/#547/#548) -- relevant lessons ticked:
   5. "MUR-on-dielectric is unstable (exponential energy blow-up)." This
      script never uses MUR anywhere -- Stage A uses the MSL tutorial's

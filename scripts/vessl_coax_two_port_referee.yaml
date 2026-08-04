@@ -81,7 +81,7 @@ run: |-
   # config/layout bug in the script itself (distinct from 1 on purpose --
   # M2 review fix). --threads matches resources.cpu above (L3 fix). --
   set +e
-  timeout 5400 "$PY" validation/research/coax_two_port/openems_coax_two_port_referee.py \
+  timeout 5400 "$PY" validation/crossval/21_coax_two_port_referee.py \
     --output "$out/openems_coax_two_port.json" \
     --threads 16 \
     > "$out/run.log" 2>&1
