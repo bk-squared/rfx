@@ -12,6 +12,11 @@ env:
   LANG: "C.UTF-8"
   RFX_BRANCH: "msl-ad-band-mean-s21-objective"
   RFX_EXPECT_SHA: "526831b30d674880d723990b4521b2f438648199"
+  # Opt-in: "1" restores the old hard-abort-on-mismatch behavior (exit 3
+  # instead of falling back to RFX_BRANCH). Default "0" keeps the
+  # loud-warning fallback below -- see the comment at the fetch/checkout
+  # block for why that is the default.
+  RFX_STRICT_SHA: "0"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -40,11 +45,17 @@ run: |-
   # commits, reachable via the merge commit on the base branch).
   if git fetch --depth 1 origin "$RFX_EXPECT_SHA" 2>&1; then
     git checkout -q FETCH_HEAD
+  elif [ "$RFX_STRICT_SHA" = "1" ]; then
+    echo "FATAL: could not fetch RFX_EXPECT_SHA=$RFX_EXPECT_SHA directly and" \
+         "RFX_STRICT_SHA=1 -- aborting instead of falling back to RFX_BRANCH" \
+         "(the old one-shot behavior, restored by request)."
+    exit 3
   else
     echo "WARNING: could not fetch RFX_EXPECT_SHA=$RFX_EXPECT_SHA directly" \
          "(commit may be unreachable/GC'd) -- falling back to RFX_BRANCH tip." \
          "The measurement below is then NOT guaranteed to be the pinned commit;" \
-         "check the SHA printed below against RFX_EXPECT_SHA before trusting it."
+         "check the SHA printed below against RFX_EXPECT_SHA before trusting it." \
+         "Set RFX_STRICT_SHA=1 to abort here instead."
     git fetch --depth 1 origin "$RFX_BRANCH"
     git checkout -q FETCH_HEAD
   fi

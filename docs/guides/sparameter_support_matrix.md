@@ -162,9 +162,14 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   band-mean `\|S21\|^2` (issue #530; this REPLACES the prior `sum_ij\|S_ij\|^2`
   objective, which was 99.96% a passivity-pinned structural constant — see
   `tests/test_msl_ad_fd_converged.py`'s docstring for the full replacement
-  rationale): rel_err `0.0026` at `num_periods=20` through the full
-  extraction, on the gate's own fixture at its own h=1e-3 (gpu-rtx4090, VESSL
-  369367251813/369367251827; a 5-point h-sweep over h in [3e-4, 1e-2] reads
+  rationale). Tracked run log:
+  `scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md`
+  (both VESSL runs' full measurement tables plus the actual pytest gate's
+  own PASS output — the raw logs live only under the primary checkout's
+  gitignored `.omx/`, this is the tracked copy). Headline: rel_err `0.0026`
+  at `num_periods=20` through the full extraction, on the gate's own fixture
+  at its own h=1e-3 (gpu-rtx4090, VESSL 369367251813/369367251827; a
+  5-point h-sweep over h in [3e-4, 1e-2] reads
   rel_err 0.0002-0.0146 with a 1.583% FD spread), against a `0.03` gate
   threshold derived via `tests._gate_policy.gate_from_envelope` from the
   sweep's worst point. A planted issue-#483-class defect (`eps_override`
@@ -190,11 +195,11 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   for the ULP-resolving-power derivation and `tests/_msl_ad_objective.py` for
   the full statement, including the open question of what mechanism drives
   the gradient — a reference-plane artifact against the wave split's frozen
-  Hammerstad-Jensen `z0_hj`, or genuine beta/reflection physics — which this
-  PR ships without resolving). The #515 AD smoke shares this same objective
-  function (`tests/_msl_ad_objective.py`) so the two tests cannot drift
-  apart. The launch fixture derives from registered materials on both the FD
-  and AD sides; staticness is regression-locked by
+  Hammerstad-Jensen `z0_hj`, or genuine beta/reflection physics — tracked in
+  **issue #560**, which this PR ships without resolving). The #515 AD smoke
+  shares this same objective function (`tests/_msl_ad_objective.py`) so the
+  two tests cannot drift apart. The launch fixture derives from registered
+  materials on both the FD and AD sides; staticness is regression-locked by
   `tests/test_msl_source_fixture_static.py`.
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes

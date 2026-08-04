@@ -219,8 +219,8 @@ def test_msl_ad_fd_converged_tight():
     loudly instead of a gradient defect silently — not eliminated by a
     claim that this objective cannot go blind.
 
-    WHAT DRIVES THE GRADIENT IS AN OPEN QUESTION (see
-    ``tests/_msl_ad_objective.py`` for the full statement and self-
+    WHAT DRIVES THE GRADIENT IS AN OPEN QUESTION — tracked in **issue #560**
+    (see ``tests/_msl_ad_objective.py`` for the full statement and self-
     correction — an earlier draft of both this docstring and that module
     claimed the objective "moves directly with... guided wavelength via
     beta"; that mechanism is UNMEASURED, and a sign witness in this
@@ -233,7 +233,8 @@ def test_msl_ad_fd_converged_tight():
     ``z0_hj``, then re-measure ``|g_ad|``; a collapse would settle the
     question in favor of the reference-plane mechanism) has NOT been run —
     this PR ships without it (adversarial review of PR #559, "N1
-    OPTIONAL"). Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
+    OPTIONAL"); issue #560 is the tracker for running it, not an answer.
+    Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
     msl_band_mean_s21_sq``, shared with the #515 AD smoke) is computed from
     the exact same ``compute_msl_s_matrix`` call the old objective used;
     only the post-call reduction changed.

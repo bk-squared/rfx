@@ -39,10 +39,11 @@ UNMEASURED; a sign witness in the gate's own fixture points elsewhere, at
 the wave-split's FROZEN Hammerstad-Jensen Z0 reference rather than a
 beta-driven standing-wave shift, which would have no particular sign
 preference. Whether the gradient is dominantly a reference-plane artifact
-or genuine beta/reflection physics is an OPEN question -- see
-``tests/test_msl_ad_fd_converged.py``'s docstring, "GATE REBUILT", for the
-decisive z0_fit-vs-z0_hj probe that would settle it and the note that it
-has not been run.) It is computed from the SAME ``compute_msl_s_matrix``
+or genuine beta/reflection physics is an OPEN question, tracked in
+**issue #560** (not run there either -- #560 is the tracker, not the
+answer) -- see ``tests/test_msl_ad_fd_converged.py``'s docstring,
+"GATE REBUILT", for the decisive z0_fit-vs-z0_hj probe that would settle
+it.) It is computed from the SAME ``compute_msl_s_matrix``
 call the old objective used; only the post-call reduction changes.
 
 USAGE
