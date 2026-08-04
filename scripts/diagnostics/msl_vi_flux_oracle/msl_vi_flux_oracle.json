@@ -1,0 +1,931 @@
+{
+  "reactive_fraction_max": 0.5,
+  "spread_max": 0.5,
+  "ratio_band": [
+    0.85,
+    1.15
+  ],
+  "rows": [
+    {
+      "label": "aligned h_sub/3",
+      "dx_um": 84.6667,
+      "n_sub_exact": 3.0,
+      "frac": 0.0,
+      "mixed_cell_danger_zone": false,
+      "trace_node": 3,
+      "k_lo": 0,
+      "k_top_proxy": 3,
+      "wallclock_s": 424.9,
+      "preflight_warnings": [
+        "[run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 84.67\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below."
+      ],
+      "settling_db": [
+        -118.2,
+        -116.4,
+        -118.7,
+        -121.9,
+        -118.0
+      ],
+      "spread_per_freq": [
+        0.0007,
+        0.0007,
+        0.0006,
+        0.0006,
+        0.0006,
+        0.0009
+      ],
+      "per_plane": [
+        {
+          "plane_idx": 0,
+          "x_frac": 0.3,
+          "p_vi_real": [
+            7.563832552340299e-27,
+            3.835893544349513e-27,
+            1.3934391074168337e-27,
+            3.712830617207803e-28,
+            7.341055733811782e-29,
+            1.0845990338539936e-29
+          ],
+          "flux_real": [
+            7.500674376116041e-27,
+            3.8042089152764316e-27,
+            1.3820355799196197e-27,
+            3.6823255720774104e-28,
+            7.279420558913422e-29,
+            1.0751055533976566e-29
+          ],
+          "reactive_fraction": [
+            0.02408701181411743,
+            0.03709447383880615,
+            0.051323115825653076,
+            0.06487506628036499,
+            0.07545685768127441,
+            0.08071213960647583
+          ],
+          "ratio": [
+            1.008420467376709,
+            1.0083287954330444,
+            1.0082508325576782,
+            1.0082842111587524,
+            1.0084660053253174,
+            1.0088307857513428
+          ]
+        },
+        {
+          "plane_idx": 1,
+          "x_frac": 0.4,
+          "p_vi_real": [
+            7.564872554510268e-27,
+            3.836759442452509e-27,
+            1.393853182354877e-27,
+            3.714000619649018e-28,
+            7.343369859010585e-29,
+            1.0849004870292732e-29
+          ],
+          "flux_real": [
+            7.498768475843076e-27,
+            3.80321436505315e-27,
+            1.3817513126598281e-27,
+            3.681876348917882e-28,
+            7.279365188427521e-29,
+            1.0752354032056259e-29
+          ],
+          "reactive_fraction": [
+            0.016465604305267334,
+            0.02675706148147583,
+            0.0395197868347168,
+            0.0539698600769043,
+            0.0687781572341919,
+            0.08219730854034424
+          ],
+          "ratio": [
+            1.0088151693344116,
+            1.0088205337524414,
+            1.0087581872940063,
+            1.0087246894836426,
+            1.0087924003601074,
+            1.0089893341064453
+          ]
+        },
+        {
+          "plane_idx": 2,
+          "x_frac": 0.5,
+          "p_vi_real": [
+            7.56577774158413e-27,
+            3.837537132964053e-27,
+            1.394210057173572e-27,
+            3.7150218440020295e-28,
+            7.345300603779833e-29,
+            1.085141453967237e-29
+          ],
+          "flux_real": [
+            7.498788505514497e-27,
+            3.80321089837925e-27,
+            1.3817574756356502e-27,
+            3.682044145564287e-28,
+            7.28035463493645e-29,
+            1.0755042058498171e-29
+          ],
+          "reactive_fraction": [
+            0.009661436080932617,
+            0.016499459743499756,
+            0.025880932807922363,
+            0.03789240121841431,
+            0.05224210023880005,
+            0.06821626424789429
+          ],
+          "ratio": [
+            1.0089335441589355,
+            1.0090254545211792,
+            1.00901198387146,
+            1.0089561939239502,
+            1.0089209079742432,
+            1.0089608430862427
+          ]
+        },
+        {
+          "plane_idx": 3,
+          "x_frac": 0.6,
+          "p_vi_real": [
+            7.566403283630067e-27,
+            3.8381283934569796e-27,
+            1.3944850799696304e-27,
+            3.7158579383391366e-28,
+            7.346798616164702e-29,
+            1.085284394080297e-29
+          ],
+          "flux_real": [
+            7.500486405353469e-27,
+            3.804030574163581e-27,
+            1.3820016835525985e-27,
+            3.682656591286602e-28,
+            7.281651026530265e-29,
+            1.0757438186182887e-29
+          ],
+          "reactive_fraction": [
+            0.004700183868408203,
+            0.008420765399932861,
+            0.013983309268951416,
+            0.021830856800079346,
+            0.03229457139968872,
+            0.04550886154174805
+          ],
+          "ratio": [
+            1.0087883472442627,
+            1.0089638233184814,
+            1.0090328454971313,
+            1.0090155601501465,
+            1.0089472532272339,
+            1.00886869430542
+          ]
+        },
+        {
+          "plane_idx": 4,
+          "x_frac": 0.7,
+          "p_vi_real": [
+            7.566769980691478e-27,
+            3.838550942486778e-27,
+            1.3946866285383106e-27,
+            3.716411161715662e-28,
+            7.347714034741393e-29,
+            1.0853634625323107e-29
+          ],
+          "flux_real": [
+            7.504388339420798e-27,
+            3.805993096776912e-27,
+            1.38262395151763e-27,
+            3.684040371951644e-28,
+            7.283965753582176e-29,
+            1.076041058821815e-29
+          ],
+          "reactive_fraction": [
+            0.0011888742446899414,
+            0.002324223518371582,
+            0.00424504280090332,
+            0.007312774658203125,
+            0.011951684951782227,
+            0.01862788200378418
+          ],
+          "ratio": [
+            1.0083129405975342,
+            1.0085543394088745,
+            1.0087248086929321,
+            1.008786678314209,
+            1.0087519884109497,
+            1.0086634159088135
+          ]
+        }
+      ],
+      "cells": [
+        {
+          "plane_idx": 0,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.02408701181411743,
+          "spread": 0.0007492531440220773,
+          "ratio": 1.008420467376709,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.03709447383880615,
+          "spread": 0.0007313623209483922,
+          "ratio": 1.0083287954330444,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.051323115825653076,
+          "spread": 0.0006314163329079747,
+          "ratio": 1.0082508325576782,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.06487506628036499,
+          "spread": 0.0005876363720744848,
+          "ratio": 1.0082842111587524,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.07545685768127441,
+          "spread": 0.0006318631349131465,
+          "ratio": 1.0084660053253174,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.08071213960647583,
+          "spread": 0.0008698120363987982,
+          "ratio": 1.0088307857513428,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.016465604305267334,
+          "spread": 0.0007492531440220773,
+          "ratio": 1.0088151693344116,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.02675706148147583,
+          "spread": 0.0007313623209483922,
+          "ratio": 1.0088205337524414,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.0395197868347168,
+          "spread": 0.0006314163329079747,
+          "ratio": 1.0087581872940063,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.0539698600769043,
+          "spread": 0.0005876363720744848,
+          "ratio": 1.0087246894836426,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.0687781572341919,
+          "spread": 0.0006318631349131465,
+          "ratio": 1.0087924003601074,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.08219730854034424,
+          "spread": 0.0008698120363987982,
+          "ratio": 1.0089893341064453,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.009661436080932617,
+          "spread": 0.0007492531440220773,
+          "ratio": 1.0089335441589355,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.016499459743499756,
+          "spread": 0.0007313623209483922,
+          "ratio": 1.0090254545211792,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.025880932807922363,
+          "spread": 0.0006314163329079747,
+          "ratio": 1.00901198387146,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.03789240121841431,
+          "spread": 0.0005876363720744848,
+          "ratio": 1.0089561939239502,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.05224210023880005,
+          "spread": 0.0006318631349131465,
+          "ratio": 1.0089209079742432,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.06821626424789429,
+          "spread": 0.0008698120363987982,
+          "ratio": 1.0089608430862427,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.004700183868408203,
+          "spread": 0.0007492531440220773,
+          "ratio": 1.0087883472442627,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.008420765399932861,
+          "spread": 0.0007313623209483922,
+          "ratio": 1.0089638233184814,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.013983309268951416,
+          "spread": 0.0006314163329079747,
+          "ratio": 1.0090328454971313,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.021830856800079346,
+          "spread": 0.0005876363720744848,
+          "ratio": 1.0090155601501465,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.03229457139968872,
+          "spread": 0.0006318631349131465,
+          "ratio": 1.0089472532272339,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.04550886154174805,
+          "spread": 0.0008698120363987982,
+          "ratio": 1.00886869430542,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.0011888742446899414,
+          "spread": 0.0007492531440220773,
+          "ratio": 1.0083129405975342,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.002324223518371582,
+          "spread": 0.0007313623209483922,
+          "ratio": 1.0085543394088745,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.00424504280090332,
+          "spread": 0.0006314163329079747,
+          "ratio": 1.0087248086929321,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.007312774658203125,
+          "spread": 0.0005876363720744848,
+          "ratio": 1.008786678314209,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.011951684951782227,
+          "spread": 0.0006318631349131465,
+          "ratio": 1.0087519884109497,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.01862788200378418,
+          "spread": 0.0008698120363987982,
+          "ratio": 1.0086634159088135,
+          "admissible": true
+        }
+      ],
+      "n_admissible": 30,
+      "n_total": 30,
+      "admissible_ratio_range": [
+        1.0083,
+        1.009
+      ],
+      "verdict": "HELD"
+    },
+    {
+      "label": "bisecting 80um (gate mesh)",
+      "dx_um": 80.0,
+      "n_sub_exact": 3.175,
+      "frac": 0.175,
+      "mixed_cell_danger_zone": true,
+      "trace_node": 4,
+      "k_lo": 0,
+      "k_top_proxy": 3,
+      "wallclock_s": 499.7,
+      "preflight_warnings": [
+        "[run] preflight found 7 advisory issue(s) - pass skip_preflight=True to suppress:\n  - 'pec' z-extent 80\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled.\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.\n  - MSL port 'msl_0': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` avoids that specific bug, but Z0 bias itself is still 2.56-2.94x worse than an aligned mesh at a comparable cell count (measured +20.2% vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells; scripts/diagnostics/msl_z0_bias_floor_sweep.py) \u2014 refining cell count alone will not reach the aligned-mesh bias. To snap onto a safe alignment regardless, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3).\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=80\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.\n  - MSL port 'msl_1': h_sub/dx = 3.175 (fractional part 0.175) lands in the [0.10, 0.40] mixed-cell danger zone. The substrate-air interface bisects the same Yee cell that holds the trace; AD-traceable ``pec_occupancy_override`` zeros the whole cell and produces unphysical |S21|\u00b2 > 1 in this regime. Hard ``Box(material='pec')`` avoids that specific bug, but Z0 bias itself is still 2.56-2.94x worse than an aligned mesh at a comparable cell count (measured +20.2% vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells; scripts/diagnostics/msl_z0_bias_floor_sweep.py) \u2014 refining cell count alone will not reach the aligned-mesh bias. To snap onto a safe alignment regardless, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3)."
+      ],
+      "settling_db": [
+        -115.4,
+        -116.7,
+        -120.8,
+        -119.8,
+        -114.6
+      ],
+      "spread_per_freq": [
+        0.0008,
+        0.0008,
+        0.0006,
+        0.0005,
+        0.0004,
+        0.0005
+      ],
+      "per_plane": [
+        {
+          "plane_idx": 0,
+          "x_frac": 0.3,
+          "p_vi_real": [
+            2.007156887200943e-26,
+            1.019675057926869e-26,
+            3.722116151396926e-27,
+            9.991634995738566e-28,
+            1.9917540169146382e-28,
+            2.9595238833929485e-29
+          ],
+          "flux_real": [
+            1.9860528550191388e-26,
+            1.0089823719128288e-26,
+            3.683342559384544e-27,
+            9.887652112111154e-28,
+            1.9706945748258714e-28,
+            2.927146292688815e-29
+          ],
+          "reactive_fraction": [
+            0.00014460086822509766,
+            0.0002219080924987793,
+            0.00288313627243042,
+            0.010563850402832031,
+            0.024718165397644043,
+            0.04455149173736572
+          ],
+          "ratio": [
+            1.010625958442688,
+            1.0105983018875122,
+            1.0105270147323608,
+            1.0105167627334595,
+            1.0106861591339111,
+            1.011061191558838
+          ]
+        },
+        {
+          "plane_idx": 1,
+          "x_frac": 0.4,
+          "p_vi_real": [
+            2.0074425411302946e-26,
+            1.0199335177254057e-26,
+            3.723393428136043e-27,
+            9.99572855983536e-28,
+            1.9925653149037114e-28,
+            2.960577728184393e-29
+          ],
+          "flux_real": [
+            1.985184029502627e-26,
+            1.0085111353740361e-26,
+            3.681803741358979e-27,
+            9.884571587165107e-28,
+            1.9703619907986e-28,
+            2.9271041629712813e-29
+          ],
+          "reactive_fraction": [
+            0.0008287429809570312,
+            0.00014853477478027344,
+            0.00031512975692749023,
+            0.0033572912216186523,
+            0.01154249906539917,
+            0.026426196098327637
+          ],
+          "ratio": [
+            1.0112121105194092,
+            1.0113260746002197,
+            1.0112967491149902,
+            1.011245846748352,
+            1.0112683773040771,
+            1.0114359855651855
+          ]
+        },
+        {
+          "plane_idx": 2,
+          "x_frac": 0.5,
+          "p_vi_real": [
+            2.0076648704830746e-26,
+            1.0201537670738458e-26,
+            3.724487741530444e-27,
+            9.999161529961231e-28,
+            1.9932209736791537e-28,
+            2.9614149058570937e-29
+          ],
+          "flux_real": [
+            1.9850307254790536e-26,
+            1.0083987381024817e-26,
+            3.681327266290737e-27,
+            9.883693363110466e-28,
+            1.970361509316114e-28,
+            2.927528469412154e-29
+          ],
+          "reactive_fraction": [
+            0.002024352550506592,
+            0.0014140605926513672,
+            0.0004006028175354004,
+            8.398294448852539e-05,
+            0.0022136569023132324,
+            0.008907854557037354
+          ],
+          "ratio": [
+            1.0114017724990845,
+            1.0116571187973022,
+            1.0117237567901611,
+            1.0116826295852661,
+            1.0116018056869507,
+            1.0115748643875122
+          ]
+        },
+        {
+          "plane_idx": 3,
+          "x_frac": 0.6,
+          "p_vi_real": [
+            2.007812319679617e-26,
+            1.0203066859114302e-26,
+            3.725300098780987e-27,
+            1.0001647905519435e-27,
+            1.9937221969471805e-28,
+            2.9619887727952103e-29
+          ],
+          "flux_real": [
+            1.9855266909583322e-26,
+            1.0085998051886757e-26,
+            3.681834941424078e-27,
+            9.884596624254384e-28,
+            1.9705491671150702e-28,
+            2.927944650836074e-29
+          ],
+          "reactive_fraction": [
+            0.0034831762313842773,
+            0.003612697124481201,
+            0.002836287021636963,
+            0.0014377832412719727,
+            0.00019431114196777344,
+            0.00041371583938598633
+          ],
+          "ratio": [
+            1.0112242698669434,
+            1.0116069316864014,
+            1.0118046998977661,
+            1.0118415355682373,
+            1.0117599964141846,
+            1.0116268396377563
+          ]
+        },
+        {
+          "plane_idx": 4,
+          "x_frac": 0.7,
+          "p_vi_real": [
+            2.007864088676522e-26,
+            1.0203927364613454e-26,
+            3.7257908257308165e-27,
+            1.0003443835192576e-27,
+            1.9940004938241444e-28,
+            2.9622283103320435e-29
+          ],
+          "flux_real": [
+            1.9867166075151724e-26,
+            1.0091848256685828e-26,
+            3.6836337599921354e-27,
+            9.88846196565277e-28,
+            1.97110275160346e-28,
+            2.928577198452184e-29
+          ],
+          "reactive_fraction": [
+            0.005159497261047363,
+            0.0065177083015441895,
+            0.0070879459381103516,
+            0.006677031517028809,
+            0.0053057074546813965,
+            0.003252685070037842
+          ],
+          "ratio": [
+            1.010644793510437,
+            1.0111061334609985,
+            1.0114444494247437,
+            1.011628270149231,
+            1.011616587638855,
+            1.0114904642105103
+          ]
+        }
+      ],
+      "cells": [
+        {
+          "plane_idx": 0,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.00014460086822509766,
+          "spread": 0.000849010597448796,
+          "ratio": 1.010625958442688,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.0002219080924987793,
+          "spread": 0.0007792802643962204,
+          "ratio": 1.0105983018875122,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.00288313627243042,
+          "spread": 0.0006263581453822553,
+          "ratio": 1.0105270147323608,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.010563850402832031,
+          "spread": 0.00048236912698484957,
+          "ratio": 1.0105167627334595,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.024718165397644043,
+          "spread": 0.00037614788743667305,
+          "ratio": 1.0106861591339111,
+          "admissible": true
+        },
+        {
+          "plane_idx": 0,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.04455149173736572,
+          "spread": 0.0005031442851759493,
+          "ratio": 1.011061191558838,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.0008287429809570312,
+          "spread": 0.000849010597448796,
+          "ratio": 1.0112121105194092,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.00014853477478027344,
+          "spread": 0.0007792802643962204,
+          "ratio": 1.0113260746002197,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.00031512975692749023,
+          "spread": 0.0006263581453822553,
+          "ratio": 1.0112967491149902,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.0033572912216186523,
+          "spread": 0.00048236912698484957,
+          "ratio": 1.011245846748352,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.01154249906539917,
+          "spread": 0.00037614788743667305,
+          "ratio": 1.0112683773040771,
+          "admissible": true
+        },
+        {
+          "plane_idx": 1,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.026426196098327637,
+          "spread": 0.0005031442851759493,
+          "ratio": 1.0114359855651855,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.002024352550506592,
+          "spread": 0.000849010597448796,
+          "ratio": 1.0114017724990845,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.0014140605926513672,
+          "spread": 0.0007792802643962204,
+          "ratio": 1.0116571187973022,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.0004006028175354004,
+          "spread": 0.0006263581453822553,
+          "ratio": 1.0117237567901611,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 8.398294448852539e-05,
+          "spread": 0.00048236912698484957,
+          "ratio": 1.0116826295852661,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.0022136569023132324,
+          "spread": 0.00037614788743667305,
+          "ratio": 1.0116018056869507,
+          "admissible": true
+        },
+        {
+          "plane_idx": 2,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.008907854557037354,
+          "spread": 0.0005031442851759493,
+          "ratio": 1.0115748643875122,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.0034831762313842773,
+          "spread": 0.000849010597448796,
+          "ratio": 1.0112242698669434,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.003612697124481201,
+          "spread": 0.0007792802643962204,
+          "ratio": 1.0116069316864014,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.002836287021636963,
+          "spread": 0.0006263581453822553,
+          "ratio": 1.0118046998977661,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.0014377832412719727,
+          "spread": 0.00048236912698484957,
+          "ratio": 1.0118415355682373,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.00019431114196777344,
+          "spread": 0.00037614788743667305,
+          "ratio": 1.0117599964141846,
+          "admissible": true
+        },
+        {
+          "plane_idx": 3,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.00041371583938598633,
+          "spread": 0.0005031442851759493,
+          "ratio": 1.0116268396377563,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 2.0,
+          "reactive_fraction": 0.005159497261047363,
+          "spread": 0.000849010597448796,
+          "ratio": 1.010644793510437,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 2.5,
+          "reactive_fraction": 0.0065177083015441895,
+          "spread": 0.0007792802643962204,
+          "ratio": 1.0111061334609985,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 3.0,
+          "reactive_fraction": 0.0070879459381103516,
+          "spread": 0.0006263581453822553,
+          "ratio": 1.0114444494247437,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 3.5,
+          "reactive_fraction": 0.006677031517028809,
+          "spread": 0.00048236912698484957,
+          "ratio": 1.011628270149231,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 4.0,
+          "reactive_fraction": 0.0053057074546813965,
+          "spread": 0.00037614788743667305,
+          "ratio": 1.011616587638855,
+          "admissible": true
+        },
+        {
+          "plane_idx": 4,
+          "freq_ghz": 4.5,
+          "reactive_fraction": 0.003252685070037842,
+          "spread": 0.0005031442851759493,
+          "ratio": 1.0114904642105103,
+          "admissible": true
+        }
+      ],
+      "n_admissible": 30,
+      "n_total": 30,
+      "admissible_ratio_range": [
+        1.0105,
+        1.0118
+      ],
+      "verdict": "HELD"
+    }
+  ],
+  "overall": "HELD"
+}
