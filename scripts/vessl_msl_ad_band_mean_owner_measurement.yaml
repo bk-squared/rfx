@@ -11,7 +11,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   RFX_BRANCH: "msl-ad-band-mean-s21-objective"
-  RFX_EXPECT_SHA: "FILL_AFTER_PUSH"
+  RFX_EXPECT_SHA: "0acbfb54f16958813bcbd2e413b992cff036cb98"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -50,4 +50,16 @@ run: |-
   echo "$rc" > "$OUT_DIR/measurement.rc"
   echo "artifacts persisted to (mounted, survives job teardown): $OUT_DIR"
   echo "(the /tmp clone itself is ephemeral and is NOT the artifact store)"
-  exit "$rc"
+  echo "=== pytest: the actual rebuilt gate + its comparator-floor / dtype-lock tests ==="
+  set +e
+  timeout 5400 python -u -m pytest tests/test_msl_ad_fd_converged.py -m "" -q -ra -s > "$OUT_DIR/gate_pytest.log" 2>&1
+  gate_rc=$?
+  set -e
+  cat "$OUT_DIR/gate_pytest.log"
+  echo "$gate_rc" > "$OUT_DIR/gate_pytest.rc"
+  echo "gate pytest artifacts persisted to: $OUT_DIR/gate_pytest.log"
+  if [ "$rc" -ne 0 ] || [ "$gate_rc" -ne 0 ]; then
+    echo "FAIL: measurement.rc=$rc gate_pytest.rc=$gate_rc"
+    exit 1
+  fi
+  exit 0

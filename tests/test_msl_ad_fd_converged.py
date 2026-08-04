@@ -105,10 +105,20 @@ def _build_msl_sim() -> Simulation:
 _NUM_PERIODS = 20
 _N_FREQS = 8
 _FD_H = 1e-3
-# The one tolerance, printed and enforced. A "tighten to 0.05" variable used
-# to be computed here and never read by the assert, so the gate printed 0.05
-# while enforcing 0.10 (PR #529 review).
-_REL_ERR_THRESHOLD = 0.10
+# Derived via tests._gate_policy.gate_from_envelope (issue #530; no more
+# hand-picked literals for this gate — see the "GATE REBUILT" docstring
+# section below for the measured envelope and the full derivation):
+#   gate_from_envelope(0.0146, quantum=100) == 0.03
+# 0.0146 is the WORST (largest) rel_err observed across the owner-platform
+# h-sweep (VESSL 369367251813, gpu-rtx4090) — not just the single value at
+# this test's own h=1e-3 (0.0026) — a deliberately conservative choice: nothing
+# about the derivation formula requires the sweep-max, but R5 (inspect the
+# full trace, not one point) argues for it, and it happens to also give the
+# comparator-floor self-consistency check in
+# test_comparator_floor_rejects_the_f32_reference_that_caused_527 real slack
+# (300 vs the 100 minimum) instead of landing exactly on that check's
+# boundary the way the single-point value would have.
+_REL_ERR_THRESHOLD = 0.03
 
 # Minimum resolving power the FD reference must have before its disagreement
 # with AD means anything: |f(+h) - f(-h)| expressed in ULPs of the loss.
@@ -157,7 +167,9 @@ def _closest_divisor(n: int, target: int) -> int:
 @pytest.mark.gpu
 @pytest.mark.slow
 def test_msl_ad_fd_converged_tight():
-    """MSL-FD-TIGHT: converged (num_periods=20) AD gradient matches FD to <=10%.
+    """MSL-FD-TIGHT: converged (num_periods=20) AD gradient matches FD within
+    a measured envelope (currently 3%; see GATE REBUILT below for the
+    derivation — the value is _REL_ERR_THRESHOLD, do not hardcode it here).
 
     G-AD-CHECKPOINT (un-skipped 2026-05-26): the num_periods=20 reverse-AD tape
     is now segmented via checkpoint_segments → forward(), so it runs within
@@ -167,15 +179,97 @@ def test_msl_ad_fd_converged_tight():
     If forward |S| is outside [0, 1.2], the test fails explicitly rather than
     silently reporting a gradient on an exploded impedance.
 
-    If rel_err stays >10% this test will fail (deliberately — do NOT loosen
-    the gate to force a pass; report as a gradient accuracy finding instead).
+    If rel_err stays above _REL_ERR_THRESHOLD this test will fail
+    (deliberately — do NOT loosen the gate to force a pass; report as a
+    gradient accuracy finding instead).
+
+    GATE REBUILT (issue #530, 2026-08-04) — OBJECTIVE REPLACED.
+    Everything below this point describes the CURRENT gate. The
+    "issue #477 / #483 / #527" sections further down are HISTORY: they
+    describe how the *previous* objective (``sum_ij|S_ij|**2``) and its
+    comparator were debugged, and their numbers are SUPERSEDED — kept only
+    so the record of why the objective changed is not lost.
+
+    Why the old objective had to go (full derivation: issue #530, PI decision
+    linked from #530's final comment): for a passive network S^dag S <= I,
+    so each column of S has norm <= 1 and sum_ij|S_ij|^2 <= 2 per frequency —
+    16 over the old gate's 8 bins. Its measured loss was 16.00599: 99.96% a
+    passivity-pinned STRUCTURAL CONSTANT, with the differentiated signal
+    riding on the remaining 0.037%. That is why the gate went blind when
+    PR #516 moved |S| closer to unitary (g_ad collapsed 50x, −2.1143e-01 to
+    −4.2425e-03, issue #527) — and it would go blind again the next time an
+    extractor fix did the same, regardless of how good the FD comparator was
+    made. Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
+    msl_band_mean_s21_sq``, shared with the #515 AD smoke) is NOT
+    passivity-pinned — it is a transmitted-power quantity with real dynamic
+    range that moves directly with what ``eps_r_sub``/``alpha`` control
+    (guided wavelength via beta, and therefore the standing-wave pattern at
+    each port) — computed from the exact same ``compute_msl_s_matrix`` call
+    the old objective used; only the post-call reduction changed.
+
+    MEASURED (owner platform: gpu-rtx4090, VESSL 369367251813, branch
+    ``msl-ad-band-mean-s21-objective`` @ ``0acbfb54f16958813bcbd2e413b992cff036cb98``,
+    harness ``scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py``
+    — built standalone because this measurement predates the objective's
+    merge to main, so it clones the branch instead of using the mounted
+    primary checkout, which stays on ``main``):
+
+        loss = 0.99787211            g_ad (f32, as shipped) = 1.602933e-03
+
+        h          g_fd                rel_err   FD resolving power (ULP)
+        3.0e-04    1.6267607988e-03    0.0146    8.79e+09
+        1.0e-03    1.6071476933e-03    0.0026    2.90e+10   <- gate's h
+        2.0e-03    1.6034690085e-03    0.0003    5.78e+10
+        5.0e-03    1.6012954754e-03    0.0010    1.44e+11
+        1.0e-02    1.6026462683e-03    0.0002    2.89e+11
+
+    f64 FD spread over this h-sweep: 1.583% (tight — the new objective's FD
+    reference is well-behaved, unlike the old objective's 2017%/3.4%/0.97%
+    scatter history under #527). Resolving power at every h clears
+    ``_MIN_FD_ULP_SPAN`` (1e4) by 6+ orders of magnitude, so
+    ``_MIN_FD_ULP_SPAN`` itself is UNCHANGED — the new objective did not need
+    a bigger resolving-power floor, it needed to stop riding on a constant.
+
+    THRESHOLD DERIVATION: ``gate_from_envelope(0.0146, quantum=100) == 0.03``
+    (``tests._gate_policy``). The envelope fed in is 0.0146 — the WORST rel_err
+    observed across the h-sweep above, not just the 0.0026 the gate structurally
+    reads at its own h=1e-3 — a deliberately conservative choice (R5: inspect
+    the full trace, not one point) that also gives
+    ``test_comparator_floor_rejects_the_f32_reference_that_caused_527``'s
+    internal ``_MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100`` self-check real
+    slack (300, not exactly 100) instead of landing on that check's boundary,
+    which the single-point 0.0026 value would have (gate_from_envelope(0.0026,
+    quantum=100) == 0.01, and 1e4*0.01 == 100 exactly).
+
+    RESOLVING-POWER FALSIFIER (#529 discipline — the gate must be shown to
+    actually catch a defect, not just pass on the happy path). The same
+    measurement run also built the AD objective with ``eps_override`` FROZEN
+    at a concrete alpha computed BEFORE tracing (an issue-#483-CLASS defect:
+    "the fixture sampled the override under FD while the tape saw it
+    frozen" — here reproduced deliberately by never letting the traced
+    ``alpha`` argument enter the computation at all). ``jax.grad`` of a
+    function that ignores its argument returns exactly 0.0, so at every h in
+    the sweep: ``g_ad(defect) = 0.000000e+00`` and ``rel_err = 1.0000`` — the
+    gate reds at 33x the 0.03 threshold. Separately (this repo, CPU, fast):
+    the #515 smoke's OLD uniform-Hy/Hz-field construction, under this SAME
+    new objective, also reads grad = 0.0 exactly — see
+    ``tests/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient``'s
+    docstring for that falsifier record. Both confirm the gate has resolving
+    power against real defects, not just margin against comparator noise.
+
+    COST: AD (f32, correct) 71.6s, AD (f32, planted defect) 19.1s, FD (f64)
+    ~41-47s per h-row (two forwards each) — all measured on VESSL
+    369367251813; total script wall-time ~308s (job start 14:11:27 to script
+    completion 14:16:35 UTC on 2026-08-04).
+
+    --- HISTORY BELOW (superseded numbers; issues #477, #483, #527) ---
 
     OWNERSHIP + measured comparator envelope (issue #477 root-cause,
-    2026-07-28 — all numbers measured, main @ 98c5e33):
+    2026-07-28 — all numbers measured, main @ 98c5e33, OLD objective):
     This is a GPU-lane gate (gpu marker; VESSL harness). Do NOT treat a CPU
     execution as a main-health signal: the FD comparator carries an f32
-    evaluation-noise envelope that straddles the 0.10 gate across platforms
-    while the AD side is platform-stable to 5 digits
+    evaluation-noise envelope that straddles the old 0.10 gate across
+    platforms while the AD side is platform-stable to 5 digits
     (g_ad CPU −2.1104e-01 vs GPU −2.1105e-01; g_fd CPU −2.3746e-01 vs GPU
     −2.3079e-01 at the same h=1e-3 → rel_err CPU 0.1113 / GPU 0.0855).
     A CPU h-sweep (h ∈ [3e-4, 1e-2]) shows a 27% NON-monotone FD scatter —
@@ -190,43 +284,27 @@ def test_msl_ad_fd_converged_tight():
     eps_override gradient now matches the repo's best lanes. Full record:
     issues #477 and #483.
 
-    COMPARATOR REBUILT (issue #527, 2026-08-01 — all numbers measured):
-    The sentence that used to end this block — "what remains in THIS f32 gate
-    is only the #477 comparator-noise envelope (±3–5%), so the 0.10 threshold
-    now carries real margin" — was false, and PR #516 exposed it. That fix
-    moved |S11| from 0.2233 to ~0.05, and since sum|S|² is pinned near the
-    passivity value 2·n_freqs = 16 (measured loss 16.00599, i.e. 0.037% of
-    signal on top of a structural constant), the gradient it differentiates
-    collapsed 50x, from −2.1143e-01 to −4.2425e-03. The loss magnitude — and
-    therefore its float32 ULP, 1.9073e-06 — did not move. The FD signal
-    2h·|g| fell from ~222 ULP to 4.4 ULP and the comparator stopped resolving:
+    COMPARATOR REBUILT (issue #527, 2026-08-01 — all numbers measured, OLD
+    objective): PR #516 moved |S11| from 0.2233 to ~0.05, and since
+    sum|S|² was pinned near the passivity value 2·n_freqs = 16 (measured loss
+    16.00599, i.e. 0.037% of signal on top of a structural constant), the
+    gradient it differentiated collapsed 50x, from −2.1143e-01 to
+    −4.2425e-03. The loss magnitude — and therefore its float32 ULP,
+    1.9073e-06 — did not move. The FD signal 2h·|g| fell from ~222 ULP to
+    4.4 ULP and the comparator stopped resolving:
 
         f32 comparator, gate settings, gate's h    rel_err 0.8519
         f64 comparator, gate settings, gate's h    rel_err 0.0331
 
-    Both measured ON THIS LANE (gpu-rtx4090, VESSL 369367250775), so the number
-    quoted is the one the gate will actually read. A 4-point CPU run of the same
-    referee reads rel_err {0.0035, 0.0053, 0.0040, 0.0044} over
-    h ∈ {1e-3, 2e-3, 5e-3, 1e-2} with a 0.972% h-spread — the GPU's f64 FD is
-    the noisier of the two platforms, so 0.0331 is the conservative figure. The
-    reference's own h-spread fell from 2017% (f32) to 3.4% (GPU) / 0.97% (CPU),
-    and its resolving power rose from 4.4 to 2.31e+09 ULP.
-
-    COST, measured on the lane, since a float64 reference sounds expensive and
-    is not: f32 AD 59.1s, f64 FD 41.7s and 37.7s per h (two forwards each),
-    i.e. ~19s per f64 forward against ~15s for f32. This FDTD is
-    memory-bandwidth-bound, so the RTX4090's 1/64 float64 throughput barely
-    shows. The gate's own measured total is 117.5s (AD 55.8s, FD 41.8s) on
-    VESSL 369367250794 — an earlier draft said "~140s", which was summed from
-    referee timings rather than measured on the gate itself. On CPU the same forward takes ~500s,
-    which is why the decision was made from a measurement on the lane the gate
-    actually runs in rather than from a local timing.
-
-    A 7-point h-sweep on this fixture (VESSL 369367250742) put the span between
-    1 and 76 ULP across h ∈ [3e-4, 2e-2] — at h = 5e-4 the whole measurement
-    was ONE single ULP — while the FD value scattered 2017% and changed sign.
-    Raising h does not fix it: 1% resolution needs h > 0.0225, where h²
-    truncation takes over.
+    Both measured ON THIS LANE (gpu-rtx4090, VESSL 369367250775). A 4-point
+    CPU run of the same referee reads rel_err {0.0035, 0.0053, 0.0040,
+    0.0044} over h ∈ {1e-3, 2e-3, 5e-3, 1e-2} with a 0.972% h-spread — the
+    GPU's f64 FD was the noisier of the two platforms, so 0.0331 was the
+    conservative figure. The reference's own h-spread fell from 2017% (f32)
+    to 3.4% (GPU) / 0.97% (CPU), and its resolving power rose from 4.4 to
+    2.31e+09 ULP. This comparator machinery (the scoped-x64 FD reference,
+    ``_fd_ulp_span``, ``_MIN_FD_ULP_SPAN``) is UNCHANGED by the #530 objective
+    swap — only the loss/gradient MAGNITUDES it was measuring changed.
 
     (An earlier draft of this block offered "every sweep value was an exact
     integer multiple of ULP/(2h)" as the proof. That is a tautology — ANY two
@@ -242,32 +320,6 @@ def test_msl_ad_fd_converged_tight():
     reading of a 0.85 rel_err on a 4.4-ULP reference is "the instrument is
     broken", not "the gradient is wrong". Harness:
     scripts/msl_ad_fd_f64_referee.py.
-
-    The 0.10 threshold is UNCHANGED. Nothing here loosens a gate.
-
-    WHAT THIS GATE DOES NOT ESTABLISH (issue #530). For a passive network
-    S^dag S <= I, so each column of S has norm <= 1 and sum_ij|S_ij|^2 <= 2 per
-    frequency — 16 over 8 bins. The measured loss is 16.00599, i.e. 0.037% ABOVE
-    that ceiling, which puts the residue's LEVEL on the non-physical side: net
-    = (extraction error) - (physical loss) > 0 requires the extraction error to
-    exceed the physical loss in magnitude.
-
-    Note what that does and does not say. It is a statement about the level.
-    This gate differentiates the residue, and nothing measured here separates
-    d(extraction error)/d(alpha) from d(physical loss)/d(alpha) — alpha scales
-    eps over the whole grid, so guided wavelength, port match and radiation are
-    all genuinely alpha-sensitive while the extraction error may be comparatively
-    alpha-flat. The derivative's composition is UNMEASURED, not attributed.
-
-    The case for changing the objective does not rest on that attribution
-    anyway: it rests on dynamic range. 0.037% of this objective is signal riding
-    on a structural constant, which is why the gate went blind when #516 moved
-    |S| closer to unitary, and why it will go blind again the next time an
-    extractor fix does the same. The comparator floor above makes that failure
-    mode loud instead of silent. Meanwhile this remains a valid AD-vs-FD
-    consistency test — AD must reproduce the FD of whatever the code computes,
-    and it does, to 0.4% on CPU. Tracked as #530; it needs its own evidence,
-    not a rider on a comparator repair.
     """
     t_start = time.perf_counter()
 
