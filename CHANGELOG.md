@@ -28,14 +28,22 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   threshold, confirming it still discriminates a real defect.
 - `test_compute_msl_s_matrix_ad_smoke_has_finite_gradient` (issue #515)
   asserted only `isfinite`/`not isnan`, which passed on a gradient of
-  exactly `0.0` — the objective (`Re(S21)`) had gone structurally flat under
-  the current multi-drive `S = B*A^-1` solve, and separately the synthetic
-  Hy/Hz test fixture was ALSO degenerate (a spatially uniform H-field makes
-  the Ampere-loop current identity cancel exactly, collapsing the solve to
-  `~Identity` regardless of the differentiated parameter). Both fixed: the
-  smoke now shares the gate's `msl_band_mean_s21_sq` objective and uses a
-  non-uniform (linear-ramp) synthetic Hy/Hz fixture, and asserts a measured,
-  non-zero gradient floor instead of finiteness alone.
+  exactly `0.0`. ONE root cause: the synthetic Hy/Hz test fixture was
+  degenerate — a spatially uniform H-field makes the Ampere-loop current
+  identity cancel exactly, collapsing the multi-drive `S = B*A^-1` solve to
+  `~Identity` regardless of the differentiated parameter OR which objective
+  read S21. (An earlier draft of this entry claimed a second, independent
+  defect — the old `Re(S21)` objective being "structurally flat" — that is
+  FALSIFIED: measured with the fixture fixed and `Re(S21)` unchanged,
+  `grad = -2.973442e-02`, nonzero and 6.4x LARGER than the new objective's
+  `-4.681417e-03`. `Re(S21)`'s `grad = 0.0` on main was a consequence of the
+  one fixture defect, not evidence of a second one.) Fixed by giving the
+  Hy/Hz planes a non-uniform (linear-ramp) shape. The objective was
+  ADDITIONALLY switched from `Re(S21)` to the gate's shared
+  `msl_band_mean_s21_sq` — not required to fix the zero gradient, done so
+  the smoke and the #530 tight gate cannot drift onto two hand-written
+  reductions — and the test now asserts a measured, non-zero gradient floor
+  instead of finiteness alone.
 
 ### Fixed — wire-port dead-cell preflight advisory now shares the assembler's ground-truth PEC mask (issue #544)
 

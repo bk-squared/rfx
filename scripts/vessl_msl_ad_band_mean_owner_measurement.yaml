@@ -22,17 +22,40 @@ run: |-
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
   CLONE_DIR=/tmp/rfx-clone
   rm -rf "$CLONE_DIR"
-  git clone --branch "$RFX_BRANCH" --depth 1 https://github.com/bk-squared/rfx.git "$CLONE_DIR"
+  mkdir -p "$CLONE_DIR"
   cd "$CLONE_DIR"
+  git init -q
+  git remote add origin https://github.com/bk-squared/rfx.git
   git config --global --add safe.directory "$CLONE_DIR" || true
+  # Fetch the PINNED SHA directly (GitHub allows fetching a reachable commit
+  # by SHA for a public repo, verified locally before this YAML was written)
+  # rather than `git clone --branch` + an abort-on-mismatch check. That older
+  # form made this harness a one-shot: once the branch tip moves past the
+  # pinned commit, or the branch is deleted after merge, the clone either
+  # fetches the WRONG code silently or the whole job hard-fails at line
+  # "exit 3" before any measurement runs. Fetching by SHA makes the pin the
+  # reproduction mechanism, not a post-hoc check on top of a branch clone --
+  # this keeps working after merge/branch-deletion for as long as GitHub
+  # retains the commit object (typically indefinitely for a merged PR's
+  # commits, reachable via the merge commit on the base branch).
+  if git fetch --depth 1 origin "$RFX_EXPECT_SHA" 2>&1; then
+    git checkout -q FETCH_HEAD
+  else
+    echo "WARNING: could not fetch RFX_EXPECT_SHA=$RFX_EXPECT_SHA directly" \
+         "(commit may be unreachable/GC'd) -- falling back to RFX_BRANCH tip." \
+         "The measurement below is then NOT guaranteed to be the pinned commit;" \
+         "check the SHA printed below against RFX_EXPECT_SHA before trusting it."
+    git fetch --depth 1 origin "$RFX_BRANCH"
+    git checkout -q FETCH_HEAD
+  fi
   echo "=== provenance ==="
   ACTUAL_SHA="$(git rev-parse HEAD)"
-  echo "cloned branch : $RFX_BRANCH"
-  echo "cloned SHA    : $ACTUAL_SHA"
   echo "expected SHA  : $RFX_EXPECT_SHA"
-  if [ "$RFX_EXPECT_SHA" != "FILL_AFTER_PUSH" ] && [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
-    echo "FATAL: cloned SHA does not match RFX_EXPECT_SHA -- branch moved after this YAML was pinned"
-    exit 3
+  echo "checked-out SHA: $ACTUAL_SHA"
+  if [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
+    echo "NOTE: checked-out SHA does not match RFX_EXPECT_SHA -- this run used" \
+         "the RFX_BRANCH fallback above; the measurement below describes THAT" \
+         "commit, not necessarily the one this YAML's numbers were derived from."
   fi
   echo "=== install runtime dependencies (repo path, no editable install) ==="
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest

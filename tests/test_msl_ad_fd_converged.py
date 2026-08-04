@@ -111,22 +111,28 @@ _FD_H = 1e-3
 #   gate_from_envelope(0.0146, quantum=100) == 0.03
 # 0.0146 is the WORST (largest) rel_err observed across the owner-platform
 # h-sweep (VESSL 369367251813, gpu-rtx4090) — not just the single value at
-# this test's own h=1e-3 (0.0026) — a deliberately conservative choice: nothing
-# about the derivation formula requires the sweep-max, but R5 (inspect the
-# full trace, not one point) argues for it, and it happens to also give the
-# comparator-floor self-consistency check in
-# test_comparator_floor_rejects_the_f32_reference_that_caused_527 real slack
-# (300 vs the 100 minimum) instead of landing exactly on that check's
-# boundary the way the single-point value would have.
+# this test's own h=1e-3 (0.0026) — a deliberately conservative choice.
+# Nothing about the derivation formula requires the sweep-max; the reason to
+# use it anyway is that h-sensitivity in a central-difference FD reference IS
+# comparator uncertainty (which side of the truncation/evaluation-noise
+# trade-off a given h lands on), not run-to-run measurement noise the 1.5x
+# multiplier alone would cover — so folding the worst observed h into the
+# envelope is folding in a real, disclosed source of uncertainty rather than
+# a decorative tie-breaker. This gives 0.03/0.0026 = 11.5x margin over the
+# rel_err actually read at the gate's own h=1e-3.
 _REL_ERR_THRESHOLD = 0.03
 
 # Minimum resolving power the FD reference must have before its disagreement
 # with AD means anything: |f(+h) - f(-h)| expressed in ULPs of the loss.
 # The loss is a float, so it can only move in whole ULPs — a difference N ULPs
 # wide is quantised to ~1/N relative resolution no matter how exact the solver
-# is. The shipped float32 comparator ran at N = 4.4 (issue #527), i.e. ~23%
-# resolution against a 10% gate. 1e4 ULP is 0.01% resolution, 1000x inside the
-# gate's bound; the float64 comparator measures 2.4e9.
+# is. The shipped float32 comparator ran at N = 4.4 under the OLD objective
+# (issue #527), i.e. ~23% resolution against the THEN-current 10% gate; under
+# the CURRENT #530 objective the shipped f32 comparator would run at N = 53.8
+# (measured this fixture, gate's h). 1e4 ULP is 0.01% resolution, 300x inside
+# the CURRENT 0.03 gate's bound (recomputed for the #530 threshold; the
+# float64 comparator measures 2.9e10 on this fixture, 2.4e9 was the OLD
+# objective's figure).
 _MIN_FD_ULP_SPAN = 1.0e4
 
 
@@ -197,22 +203,51 @@ def test_msl_ad_fd_converged_tight():
     passivity-pinned STRUCTURAL CONSTANT, with the differentiated signal
     riding on the remaining 0.037%. That is why the gate went blind when
     PR #516 moved |S| closer to unitary (g_ad collapsed 50x, −2.1143e-01 to
-    −4.2425e-03, issue #527) — and it would go blind again the next time an
-    extractor fix did the same, regardless of how good the FD comparator was
-    made. Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
-    msl_band_mean_s21_sq``, shared with the #515 AD smoke) is NOT
-    passivity-pinned — it is a transmitted-power quantity with real dynamic
-    range that moves directly with what ``eps_r_sub``/``alpha`` control
-    (guided wavelength via beta, and therefore the standing-wave pattern at
-    each port) — computed from the exact same ``compute_msl_s_matrix`` call
-    the old objective used; only the post-call reduction changed.
+    −4.2425e-03, issue #527). An extractor fix that shrinks |S11| would
+    shrink THIS objective's gradient too — band-mean ``|S21|**2`` is not
+    immune to that shape of change, only better positioned against it: what
+    is MEASURED (not narrated) is that the level dropped 16x on this
+    fixture (16.00599 -> 0.99787211), cutting the loss's float32 ULP 32x
+    (1.9073e-06 -> 5.9605e-08) and lifting f32 resolving power from 4.45 to
+    53.8 ULP at the gate's h — and the residue from unity (~2.5e-3, order
+    |S11|**2 with |S11| ~ 0.05 here) is now a physical observable
+    (reflected power), not a unitarity-violation artifact. If a future
+    extractor fix shrinks this signal again, that risk is CONTAINED by the
+    f64 comparator's 2.9e6x resolving-power headroom above
+    ``_MIN_FD_ULP_SPAN`` (measured this run) and by the resolving-power
+    floor assert below (issue #527's fix) reporting a comparator failure
+    loudly instead of a gradient defect silently — not eliminated by a
+    claim that this objective cannot go blind.
+
+    WHAT DRIVES THE GRADIENT IS AN OPEN QUESTION (see
+    ``tests/_msl_ad_objective.py`` for the full statement and self-
+    correction — an earlier draft of both this docstring and that module
+    claimed the objective "moves directly with... guided wavelength via
+    beta"; that mechanism is UNMEASURED, and a sign witness in this
+    fixture — the wave split's FROZEN Hammerstad-Jensen Z0 reference,
+    against which g_ad > 0 matches reflection REDUCTION toward that fixed
+    reference as alpha grows, whereas a beta/standing-wave channel would
+    have no particular sign preference — points at a reference-plane
+    mismatch mechanism instead. The decisive probe (anchor the wave split
+    on the per-frequency FITTED ``z0`` instead of the frozen analytic
+    ``z0_hj``, then re-measure ``|g_ad|``; a collapse would settle the
+    question in favor of the reference-plane mechanism) has NOT been run —
+    this PR ships without it (adversarial review of PR #559, "N1
+    OPTIONAL"). Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
+    msl_band_mean_s21_sq``, shared with the #515 AD smoke) is computed from
+    the exact same ``compute_msl_s_matrix`` call the old objective used;
+    only the post-call reduction changed.
 
     MEASURED (owner platform: gpu-rtx4090, VESSL 369367251813, branch
     ``msl-ad-band-mean-s21-objective`` @ ``0acbfb54f16958813bcbd2e413b992cff036cb98``,
     harness ``scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py``
     — built standalone because this measurement predates the objective's
     merge to main, so it clones the branch instead of using the mounted
-    primary checkout, which stays on ``main``):
+    primary checkout, which stays on ``main``). The raw logs live only under
+    the primary checkout's gitignored ``.omx/`` (per-repo runtime scratch);
+    the TRACKED copy, including the actual pytest gate's own PASS output
+    (VESSL 369367251827, "3 passed in 138.72s"), is
+    ``scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md``:
 
         loss = 0.99787211            g_ad (f32, as shipped) = 1.602933e-03
 
@@ -234,12 +269,21 @@ def test_msl_ad_fd_converged_tight():
     (``tests._gate_policy``). The envelope fed in is 0.0146 — the WORST rel_err
     observed across the h-sweep above, not just the 0.0026 the gate structurally
     reads at its own h=1e-3 — a deliberately conservative choice (R5: inspect
-    the full trace, not one point) that also gives
-    ``test_comparator_floor_rejects_the_f32_reference_that_caused_527``'s
-    internal ``_MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100`` self-check real
-    slack (300, not exactly 100) instead of landing on that check's boundary,
-    which the single-point 0.0026 value would have (gate_from_envelope(0.0026,
-    quantum=100) == 0.01, and 1e4*0.01 == 100 exactly).
+    the full trace, not one point). The reason to prefer the sweep-max over
+    the single gate-h value: h-sensitivity in a central-difference reference
+    IS comparator uncertainty (which side of the truncation/evaluation-noise
+    trade-off a given h happens to land on), a real source of doubt about the
+    reference distinct from the 1.5x multiplier's run-to-run margin, so
+    folding it into the envelope is honest rather than decorative. This puts
+    ``_MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD = 300`` (comfortably above the
+    check's own 100 minimum — see
+    ``test_comparator_floor_rejects_the_f32_reference_that_caused_527``,
+    which ALSO documents that this self-check now bounds any FUTURE
+    tightening of this gate from below: it requires
+    ``_REL_ERR_THRESHOLD >= 100 / _MIN_FD_ULP_SPAN = 0.01`` for a fixed
+    ``_MIN_FD_ULP_SPAN``, so this gate cannot be tightened below 0.01
+    without first raising the resolving-power floor). At the gate's own
+    h=1e-3, the resulting margin is explicit: 0.03 / 0.0026 = 11.5x.
 
     RESOLVING-POWER FALSIFIER (#529 discipline — the gate must be shown to
     actually catch a defect, not just pass on the happy path). The same
@@ -448,7 +492,9 @@ def test_msl_ad_fd_converged_tight():
                 "engage — check jax.experimental.enable_x64 and the "
                 "jax.config.x64_enabled keying in rfx/probes/probes.py. Do NOT "
                 "read the rel_err below as physics: an f32 reference here spans "
-                "~4 ULP and cannot resolve the 10% gate."
+                "only ~54 ULP (measured on this #530 objective/fixture; far "
+                f"below the {_MIN_FD_ULP_SPAN:.0e}-ULP resolving-power floor) "
+                f"and cannot be trusted against the {_REL_ERR_THRESHOLD:.2f} gate."
             )
             return float(arr), arr.dtype
 
@@ -535,8 +581,11 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
       instead of 4.4 and passed.
 
     Fast and deterministic — no simulation. It replays the MEASURED numbers
-    from the gate's own fixture (loss 16.00599, g_ad -4.2425e-03 on CPU;
-    16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250775).
+    from the gate's own fixture UNDER THE RETIRED ``sum_ij|S_ij|^2``
+    OBJECTIVE (issue #530 replaced it with band-mean ``|S21|**2`` — these are
+    NOT current-gate numbers, they are the #527 comparator-floor incident
+    this test regression-locks): loss 16.00599, g_ad -4.2425e-03 on CPU;
+    16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250775.
     """
     loss, g_true = 16.00599, 4.2425e-03
     f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true
@@ -560,8 +609,16 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
     # A span of N ULP quantises the difference to ~1/N relative resolution, so
     # judging a threshold T needs 1/N << T. Requiring N*T >= 100 buys 100x
     # margin. Without this, a floor of 5.0 satisfies every assert above while
-    # giving 20% resolution against a 10% gate — the review measured that the
-    # unanchored version admitted any floor in (4.449, 2.388e5), 4.7 decades.
+    # giving 20% resolution — inadequate against ANY realistic gate,
+    # including the CURRENT 3% one (PR #529 review measured that the
+    # unanchored version admitted any floor in (4.449, 2.388e5), 4.7 decades,
+    # against the THEN-current 10% gate; those specific historical bounds are
+    # not recomputed for the #530 objective here, only the "10%" label is).
+    #
+    # This assert is bidirectional: with _MIN_FD_ULP_SPAN fixed at 1e4, it
+    # also lower-bounds any FUTURE tightening of _REL_ERR_THRESHOLD at
+    # 100 / 1e4 = 0.01 — a future editor cannot silently tighten this gate
+    # below 0.01 without first raising the resolving-power floor to match.
     assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0, (
         f"floor {_MIN_FD_ULP_SPAN:.0e} gives only "
         f"{1.0 / _MIN_FD_ULP_SPAN:.2e} relative resolution against a "
@@ -580,6 +637,13 @@ def test_fd_ulp_span_is_dtype_sensitive_not_container_sensitive():
     ``float(jnp_scalar)`` — so if the helper ever goes back to inferring
     precision from the value it will read the same number for both dtypes and
     this fails.
+
+    The replayed ``loss``/``g_true`` below are UNDER THE RETIRED
+    ``sum_ij|S_ij|^2`` OBJECTIVE (issue #530 replaced it with band-mean
+    ``|S21|**2``) — this test locks the ``_fd_ulp_span`` helper's dtype
+    sensitivity, a property independent of which objective the gate
+    differentiates, so the historical numbers are fine to keep as the fixed
+    replay input; they are not a claim about the current gate's fixture.
     """
     loss, g_true = 16.00599, 4.2425e-03
     f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true

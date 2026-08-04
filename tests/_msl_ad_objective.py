@@ -24,12 +24,26 @@ blind the same way again the next time an extractor fix moves |S| closer to
 unitary.
 
 Band-mean ``|S21|**2`` (mean transmitted power over the gate's frequency
-bins) is not passivity-pinned the way the full-matrix sum is -- it has real
-dynamic range and moves directly with the physics ``eps_r_sub`` controls
-(guided wavelength via ``beta``, and therefore the standing-wave pattern the
-line's electrical length puts at each port). It is computed from the SAME
-``compute_msl_s_matrix`` call the old objective used; only the post-call
-reduction changes.
+bins) is not passivity-pinned the way the full-matrix sum is. What moves the
+dynamic range is MEASURED, not a mechanism narrative: the level dropped
+16x (16.006 -> 0.998 on the gate's fixture), which cuts the loss's float32
+ULP 32x (1.9073e-06 -> 5.9605e-08) and lifts f32 resolving power from 4.45
+to 53.8 ULP at the gate's h. The residue from unity (~2.5e-3, on the order
+of |S11|**2 with |S11| ~ 0.05 on this fixture) is now a physical observable
+(reflected power) rather than a unitarity-violation artifact -- that
+composition change, not a claim about which physical channel (beta,
+reference-plane mismatch, or something else) drives d(loss)/d(alpha), is
+the #530 cure. (An earlier draft of this docstring claimed the objective
+"moves directly with... guided wavelength via beta" -- that mechanism is
+UNMEASURED; a sign witness in the gate's own fixture points elsewhere, at
+the wave-split's FROZEN Hammerstad-Jensen Z0 reference rather than a
+beta-driven standing-wave shift, which would have no particular sign
+preference. Whether the gradient is dominantly a reference-plane artifact
+or genuine beta/reflection physics is an OPEN question -- see
+``tests/test_msl_ad_fd_converged.py``'s docstring, "GATE REBUILT", for the
+decisive z0_fit-vs-z0_hj probe that would settle it and the note that it
+has not been run.) It is computed from the SAME ``compute_msl_s_matrix``
+call the old objective used; only the post-call reduction changes.
 
 USAGE
 -----

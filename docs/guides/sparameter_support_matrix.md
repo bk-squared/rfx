@@ -176,13 +176,25 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   (issues #483/#486): the #507/#511 fixes had shrunk the OLD objective's
   differentiated signal about 50x, exposing the f32 comparator's own
   resolving-power floor as the dominant cause of an intermediate 0.8519
-  mismatch — the new objective is not passivity-pinned, so it does not carry
-  that failure mode forward (see `tests/test_msl_ad_fd_converged.py` for the
-  ULP-resolving-power derivation, unchanged by the objective swap). The
-  #515 AD smoke shares this same objective function
-  (`tests/_msl_ad_objective.py`) so the two tests cannot drift apart. The
-  launch fixture derives from registered materials on both the FD and AD
-  sides; staticness is regression-locked by
+  mismatch. The new objective is NOT immune to the same shape of failure — an
+  extractor fix that shrinks `\|S11\|` would shrink this gradient too — but
+  MEASURED (not narrated): the level dropped 16x on this fixture (16.00599 to
+  0.99787211), cutting the loss's float32 ULP 32x and lifting f32 resolving
+  power from 4.45 to 53.8 ULP at the gate's h, and the residue from unity
+  (~2.5e-3, order `\|S11\|^2` with `\|S11\|` ~ 0.05 here) is now a physical
+  observable rather than a unitarity-violation artifact. That risk is
+  CONTAINED — by the f64 comparator's 2.9e6x resolving-power headroom above
+  `_MIN_FD_ULP_SPAN` and by the resolving-power floor assert (issue #527's
+  fix, unchanged by the objective swap) reporting a comparator failure loudly
+  instead of silently — not eliminated (see `tests/test_msl_ad_fd_converged.py`
+  for the ULP-resolving-power derivation and `tests/_msl_ad_objective.py` for
+  the full statement, including the open question of what mechanism drives
+  the gradient — a reference-plane artifact against the wave split's frozen
+  Hammerstad-Jensen `z0_hj`, or genuine beta/reflection physics — which this
+  PR ships without resolving). The #515 AD smoke shares this same objective
+  function (`tests/_msl_ad_objective.py`) so the two tests cannot drift
+  apart. The launch fixture derives from registered materials on both the FD
+  and AD sides; staticness is regression-locked by
   `tests/test_msl_source_fixture_static.py`.
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes

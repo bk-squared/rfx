@@ -17,11 +17,14 @@ the gate's OWN fixture (``_build_msl_sim``, ``num_periods=20``, ``n_freqs=8``).
 Reads, pre-declared. "Stable" below means the FD reference agrees with ITSELF
 across h (spread < 15%) — the reference's own self-consistency, which has to be
 established before its disagreement with AD means anything:
-  * FD stable AND min rel_err <= 0.10
+  * FD stable AND min rel_err <= the LIVE gate threshold (t._REL_ERR_THRESHOLD,
+    read at import time below -- do not hardcode a literal here, it drifts
+    from the gate's own value; was 0.10 under the pre-#530 objective, is 0.03
+    under the current one)
         -> the AD is fine; #527 is an h-selection defect in the comparator.
   * FD stable AND rel_err >= ~0.5 at every h
         -> the disagreement is real; the AD path is the suspect.
-  * FD UNSTABLE but some h lands inside 10%
+  * FD UNSTABLE but some h lands inside the threshold
         -> that agreement is a coincidence of scatter, not convergence. Read it
            as the unstable case, not as a pass.
   * FD unstable at every h
@@ -132,18 +135,23 @@ def main() -> None:
     print(f"best rel_err       : {rels.min():.4f} at h = {H_LIST[int(rels.argmin())]:.1e}")
     print(f"gate's h rel_err   : {rels[H_LIST.index(1e-3)]:.4f}")
     print(f"g_ad inside FD band: {bool(fds.min() <= g_ad <= fds.max())}")
+    print(f"live gate threshold (t._REL_ERR_THRESHOLD): {t._REL_ERR_THRESHOLD}")
     # BOTH halves of the pre-declared read, not just the rel_err half: a lone
-    # h landing inside 10% while the FD scatters wildly is a coincidence, not
-    # a convergence. Require the reference to be stable too (PR #526
-    # re-review, finding 5).
-    if rels.min() <= 0.10 and spread < 0.15:
-        print("\nVERDICT: the FD is stable across h AND some h agrees with AD "
-              "inside the gate's own 10% bound -> the AD is sound and the "
-              "gate's SINGLE h = 1e-3 is the defect.")
-    elif rels.min() <= 0.10:
-        print(f"\nVERDICT: an h agrees within 10% but the FD scatters "
-              f"{spread*100:.0f}% across h -> that agreement is a coincidence, "
-              "not convergence. Treat as FD-unstable.")
+    # h landing inside the threshold while the FD scatters wildly is a
+    # coincidence, not a convergence. Require the reference to be stable too
+    # (PR #526 re-review, finding 5). Read from t._REL_ERR_THRESHOLD (issue
+    # #530 review) rather than a local literal, so this verdict tracks
+    # whatever the gate currently enforces instead of silently going stale
+    # the next time the gate's threshold changes.
+    gate_threshold = t._REL_ERR_THRESHOLD
+    if rels.min() <= gate_threshold and spread < 0.15:
+        print(f"\nVERDICT: the FD is stable across h AND some h agrees with AD "
+              f"inside the gate's own {gate_threshold:.2f} bound -> the AD is "
+              "sound and the gate's SINGLE h = 1e-3 is the defect.")
+    elif rels.min() <= gate_threshold:
+        print(f"\nVERDICT: an h agrees within {gate_threshold:.2f} but the FD "
+              f"scatters {spread*100:.0f}% across h -> that agreement is a "
+              "coincidence, not convergence. Treat as FD-unstable.")
     elif spread < 0.15:
         print("\nVERDICT: FD is stable across h and still disagrees "
               "-> the disagreement is real; the AD path is the suspect.")
