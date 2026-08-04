@@ -52,33 +52,21 @@ ceiling), openEMS self-consistency max_phase_dev_deg=0.642 (<3 deg gate,
 almost exactly -- the VESSL run did not need to touch rfx's own side at
 all). ``overall_passed=True``.
 
-SETTLING EVIDENCE (D2/D3 fix, GUARD CHANNEL-GAP FIX review, 2026-08-04):
-before that fix, neither ``end_criteria_not_reached`` nor ``truncated``/
-``truncated_suspected`` could have reported anything but their own default
-value -- the phrase they check, openEMS's own "RunFDTD: Warning: Max.
-number of timesteps was reached before the end-criteria of ... was
-reached", is written to STDERR, which this script did not capture
-pre-fix. Post-fix, run-1's own committed log (``validation/crossval/
-_20_msl_phase_referee_logs/20260804T070702Z_run.log``) supplies its own
-positive control: the phrase appears for each stage's own SMOKE run
-(NrTS=200, EndCriteria=0.0 -> "-infdB", which by construction can never
-converge) and is ABSENT from either stage's own REAL run -- same binary,
-same stream, only the smoke/real split differs. Stage B's real run
-reached EndCriteria=1e-4 (-40dB); Stage A's real run reached
-EndCriteria=1e-5 (-50dB) -- both WITHOUT hitting the NrTS cap, confirmed
-by the phrase's absence in each stage's own real-run capture, not merely
-inferred from elapsed time.
-
-MEASURED PRECISION (openEMS's own |S21|, reported factually -- not a
-fault finding about either solver, per this repo's humble-crossval
-discipline): Stage B's openEMS-side |S21| carries a small systematic
-magnitude bias above unity -- 29 of 30 bins read |S21|>1.0 (range
-1.00076-1.00135 within the gated 3.0-4.5GHz band; max 1.00872 at bin 0,
-500 MHz). At bin 0, |S21|^2-1 alone accounts for 74% of the passivity
-balance's own 0.0237 excess over 1.0 (the remaining 26% is |S11|^2,
-0.0061) -- most of that bin's passivity margin usage traces to this
-small over-unity |S21| reading, not to |S11|. The balance still clears
-the 1.05 ceiling with room (1.024 vs 1.05) at every bin.
+SETTLING EVIDENCE and MEASURED PRECISION (D2/D3 fix, GUARD CHANNEL-GAP
+FIX review, 2026-08-04; #552 reviewer follow-up, same day): recorded as
+STRING fields on ``REPRODUCE_GATE_RECORD`` itself --
+``REPRODUCE_GATE_RECORD["settling_evidence"]`` and
+``REPRODUCE_GATE_RECORD["measured_precision"]`` -- not carried here,
+because this dict is what serializes into every future run's own
+artifact JSON (``main()``'s own ``"reproduce_gate_record":
+REPRODUCE_GATE_RECORD``); prose living only in this docstring never
+reaches that artifact. In short: SETTLING EVIDENCE documents the D2/D3
+fd-2 fix's own positive control (run-1's committed log shows the
+max-timesteps warning firing for each stage's SMOKE run and absent from
+each stage's REAL run); MEASURED PRECISION documents openEMS's own
+small systematic |S21| bias above unity on Stage B (29/30 bins, max
+1.00872 at bin 0) and that bin's own passivity-balance attribution (74%
+from |S21|^2-1). Read the record fields directly for the full text.
 
 REPORTED (not gated) cross-solver comparison: raw_phase_diff_deg runs
 from 4.13 deg at 500 MHz down through -0.13 deg at 5.0 GHz -- 22 of 30
@@ -788,6 +776,49 @@ REPRODUCE_GATE_RECORD: dict = {
     "log_path": "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
     "vessl_run_id": "369367251705",
     "verified_on": "2026-08-04",
+    # #552 reviewer follow-up (2026-08-04): moved OUT of the module
+    # docstring and INTO the record itself -- this dict is what serializes
+    # as "reproduce_gate_record" into EVERY future run's own artifact JSON
+    # (see main()'s own `artifact = {..., "reproduce_gate_record":
+    # REPRODUCE_GATE_RECORD, ...}`); prose living only in the docstring
+    # never reaches that artifact. Both fields are findings from run-1
+    # (VESSL 369367251705) recorded here as a stable, carried-forward
+    # annotation -- not toggled None/string by status, since (like
+    # do_not_repeat/geometry above) they document a fact about this
+    # referee's own instrumentation and this fixture's own measured
+    # result, not a per-run-varying number.
+    "settling_evidence": (
+        "Before the D2/D3 guard-channel-gap fix (2026-08-04), neither "
+        "end_criteria_not_reached nor truncated/truncated_suspected could "
+        "have reported anything but their own default value -- the phrase "
+        "they check, openEMS's own 'RunFDTD: Warning: Max. number of "
+        "timesteps was reached before the end-criteria of ... was "
+        "reached', is written to STDERR, which this script did not "
+        "capture pre-fix. Post-fix, run-1's own committed log "
+        "(validation/crossval/_20_msl_phase_referee_logs/"
+        "20260804T070702Z_run.log) supplies its own positive control: the "
+        "phrase appears for each stage's own SMOKE run (NrTS=200, "
+        "EndCriteria=0.0 -> '-infdB', which by construction can never "
+        "converge) and is ABSENT from either stage's own REAL run -- same "
+        "binary, same stream, only the smoke/real split differs. Stage "
+        "B's real run reached EndCriteria=1e-4 (-40dB); Stage A's real "
+        "run reached EndCriteria=1e-5 (-50dB) -- both WITHOUT hitting the "
+        "NrTS cap, confirmed by the phrase's absence in each stage's own "
+        "real-run capture, not merely inferred from elapsed time."
+    ),
+    "measured_precision": (
+        "openEMS's own |S21| (Stage B) carries a small systematic "
+        "magnitude bias above unity -- 29 of 30 bins read |S21|>1.0 "
+        "(range 1.00076-1.00135 within the gated 3.0-4.5GHz band; max "
+        "1.00872 at bin 0, 500 MHz). At bin 0, |S21|^2-1 alone accounts "
+        "for 74% of the passivity balance's own 0.0237 excess over 1.0 "
+        "(the remaining 26% is |S11|^2, 0.0061) -- most of that bin's "
+        "passivity margin usage traces to this small over-unity |S21| "
+        "reading, not to |S11|. The balance still clears the 1.05 "
+        "ceiling with room (1.024 vs 1.05) at every bin. Reported "
+        "factually, per this repo's humble-crossval discipline -- not a "
+        "fault finding about either solver."
+    ),
 }
 
 DECLARED_QUESTION = (
@@ -928,10 +959,10 @@ _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitatio
 # EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
 # ``_build_stage_b``'s own smoke calls), so their excitation pulse (tens of
 # thousands of timesteps at this script's own f0/fc) is ALWAYS clipped by
-# construction -- run-1's own committed log (``validation/research/
-# msl_phase_referee/logs/20260804T070702Z_run.log``) shows both strings
+# construction -- run-1's own committed log (``validation/crossval/
+# _20_msl_phase_referee_logs/20260804T070702Z_run.log``) shows both strings
 # firing for the smoke portion of BOTH stages while the REAL portion (which
-# reached its own EndCriteria, per REPRODUCE_GATE_RECORD's settling note)
+# reached its own EndCriteria, per REPRODUCE_GATE_RECORD["settling_evidence"])
 # shows neither -- the exact positive control this scoping relies on: same
 # binary, same stream, smoke trips it and real does not.
 _TRUNCATION_STDOUT_PATTERNS = (
@@ -1386,7 +1417,16 @@ def _run_stage_a_reproduce_gate(*, sim_root: str, threads: int) -> dict:
     gate = REPRODUCE_GATE_RECORD["gate"]
     f_notch_ok = bool(gate["f_notch_lo_hz"] <= f_notch <= gate["f_notch_hi_hz"])
 
-    passed = bool(f_notch_ok)
+    # Symmetry fix (#552 reviewer follow-up): Stage B's own sanity_passed
+    # consults truncated/end_criteria_not_reached; Stage A's passed did not
+    # consult truncated_suspected at all, so a truncated real run (NrTS cap
+    # hit before EndCriteria) would still report passed=True and let a
+    # truncated notch-frequency measurement through as a reproduce-gate
+    # PASS. Low risk in practice (Stage A's real run uses the tutorial's
+    # own defaults, NrTS~=1e9, so truncation is unreachable on any run that
+    # completes in a sane wall-clock budget) but not structurally
+    # impossible, and Stage B already treats it as gating.
+    passed = bool(f_notch_ok and not truncated_suspected)
     return {
         "freqs_hz": freqs.tolist(),
         "s11_mag": np.abs(s11).tolist(), "s21_mag": np.abs(s21).tolist(),

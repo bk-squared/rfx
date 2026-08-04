@@ -66,6 +66,7 @@ def test_reproduce_gate_record_has_required_fields():
         "stage", "tutorial", "do_not_repeat", "geometry", "documented_check",
         "expected_f_notch_an_hz", "gate", "status", "reproduced_f_notch_hz",
         "reproduced_f_notch_dev_pct", "log_path", "vessl_run_id",
+        "settling_evidence", "measured_precision",
     }
     missing = required_fields - set(record.keys())
     assert not missing, f"REPRODUCE_GATE_RECORD missing fields: {missing}"
@@ -98,6 +99,37 @@ def test_do_not_repeat_cites_the_dx80_mixed_cell_trap():
     assert "build_msl_notch_openems_comparison.py" in do_not_repeat
     assert "3.175" in do_not_repeat or "80" in do_not_repeat
     assert "5.08" in do_not_repeat or "50" in do_not_repeat
+
+
+def test_settling_evidence_field_documents_the_smoke_vs_real_positive_control():
+    """#552 reviewer follow-up: settling_evidence must live ON the record
+    (so it serializes into every future run's own artifact JSON), not only
+    in the module docstring -- pinned by content, and cross-checked against
+    the SAME log path the fill-contract test above already verifies is
+    git-tracked and on disk."""
+    module = _load_referee_module()
+    record = module.REPRODUCE_GATE_RECORD
+    settling = record["settling_evidence"]
+    assert isinstance(settling, str) and settling.strip()
+    assert record["log_path"].split("/")[-1] in settling, (
+        "settling_evidence should cite the SAME log file the record's own "
+        "log_path points at"
+    )
+    assert "SMOKE" in settling and "REAL" in settling
+    assert "-40dB" in settling and "-50dB" in settling
+    assert "STDERR" in settling
+
+
+def test_measured_precision_field_documents_the_s21_bias():
+    """#552 reviewer follow-up: measured_precision must live ON the record,
+    pinned by content (the same numbers the run-1 regression-fixture tests
+    below independently recompute FROM the committed fixture)."""
+    module = _load_referee_module()
+    measured_precision = module.REPRODUCE_GATE_RECORD["measured_precision"]
+    assert isinstance(measured_precision, str) and measured_precision.strip()
+    assert "29" in measured_precision
+    assert "1.00872" in measured_precision
+    assert "74%" in measured_precision
 
 
 def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
@@ -486,6 +518,24 @@ def test_run_stage_a_and_stage_b_wire_truncated_from_log_not_from_counts():
     assert "n_samples >= nrts" not in src_b, (
         "the structurally-unreachable probe-row-count comparison (D3 "
         "regression) must not come back"
+    )
+
+
+def test_stage_a_passed_is_symmetric_with_stage_b_on_truncation():
+    """#552 reviewer follow-up: pre-fix, ``_run_stage_a_reproduce_gate``
+    computed ``truncated_suspected`` but never consulted it in ``passed``
+    (``passed = bool(f_notch_ok)``) -- a truncated Stage A real run would
+    still report ``passed=True``, unlike Stage B's own ``sanity_passed``,
+    which DOES gate on ``truncated``. Pinned by reading the source (Stage
+    A's real run defaults to NrTS~=1e9, so a live truncated run is
+    unreachable in ordinary practice -- this test is a structural
+    regression lock, not a claim that run-1 was ever affected)."""
+    module = _load_referee_module()
+    import inspect
+    src_a = inspect.getsource(module._run_stage_a_reproduce_gate)
+    assert "passed = bool(f_notch_ok and not truncated_suspected)" in src_a, (
+        "Stage A's own passed must consult truncated_suspected, matching "
+        "Stage B's sanity_passed -- symmetry regression"
     )
 
 
