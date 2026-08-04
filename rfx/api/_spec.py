@@ -1379,10 +1379,12 @@ class MSLSMatrixResult:
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
-        Characteristic impedance extracted via 3-probe de-embedding,
+        Characteristic impedance extracted via the N-probe SVD
+        least-squares wave-decomposition fit (issue #80 Fix C),
         per driven-port run (``Z0[i, :]`` is from run with port i driven).
     beta : (n_freqs,) complex
-        Propagation constant β = -ln(q) / Δ at the first port's run.
+        Propagation constant β from the N-probe least-squares fit
+        (issue #80 Fix C) at the first port's run.
     reliable : (n_ports, n_freqs) bool, optional
         Per-port wave-split reliability. False marks standing-wave-null bins
         where both voltage and current collapse below 10% of their band

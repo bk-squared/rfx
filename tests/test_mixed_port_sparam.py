@@ -538,6 +538,22 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     further (num_periods=8 vs 4) so the record is less trivially truncated.
     Only proves the lane completes end to end and stays finite/bounded —
     not a physics claim.
+
+    MEASURED BLIND (adversarial review of PR #553): this test PASSED
+    unchanged under two independently injected defects — a sign flip on
+    ``_b_msl`` (``rfx/api/_sparams.py:857``) and a revert of the pre-#511
+    V-span anchor (``:3703``) — while the sibling fast Layer-1d test
+    (``test_mixed_lane_v_span_reaches_the_rasterized_trace_on_bisecting_mesh``)
+    correctly caught the V-span revert. This test gates LIVENESS (the lane
+    completes and stays finite/bounded), not correctness. Adding
+    discriminating physics assertions here is out of scope (#517/#488).
+
+    MEASURED, this test's own run: ``UserWarning: compute_mixed_s_matrix:
+    reciprocity deviation max 30.1% between |S[0,1]| and |S[1,0]|
+    (tolerance 6%)``. ``_sparams.py:777`` documents this lane's known
+    residual as ~9% (#488/#498); whether the 30.1% seen on THIS fixture is
+    the same #498 residual at a different operating point, or a second
+    contributor, is OPEN — not explained away here.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c)

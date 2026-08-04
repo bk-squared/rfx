@@ -139,10 +139,12 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   (`validation/crossval/06b_msl_notch_filter_uniform.py`) last reported
   `1.63%` frequency error, `-34.3 dB` notch depth, and median
   `Re(Z0)=48.6 ohm`. That run predates the #511/#507 extractor fixes
-  (PR #516 / `f95240f`) and has not been regenerated since; there is no
-  committed producer to regenerate it from. Treat this number as
-  describing the superseded extractor until issue #519 regenerates the
-  leg with a committed producer.
+  (PR #516 / `f95240f`) and has not been regenerated since — there is no
+  committed RESULT ARTIFACT from a post-#511 rerun, though the producer
+  script itself is committed and manifest-registered (claims-bearing,
+  `pr-fast`/`gpu-manual` tiers). Treat this number as describing the
+  superseded extractor until issue #519 re-runs it and commits a
+  refreshed result.
 - The committed matched-geometry OpenEMS comparison at `dx=50 um` reports a
   `5.8%` notch-frequency difference, linear `|S21|` mean difference `0.105`,
   and maximum difference `0.2172` over 2.5--6 GHz. This is a characterized

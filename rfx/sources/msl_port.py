@@ -1,11 +1,23 @@
-"""Microstrip line (MSL) port: 2D distributed port with 3-probe de-embedding.
+"""Microstrip line (MSL) port: 2D distributed port geometry, mode-profile
+solve, and probe/current primitives.
 
 Unlike the 1-cell-transverse ``WirePort``, the MSL port covers the full
 trace cross-section (y × z under the trace) and distributes the total
 port impedance Z0 as conductivity over the cross-section cells. After
-the FDTD run, three downstream probe planes are used in an OpenEMS-style
-3-probe recurrence to extract the propagation constant β, characteristic
-impedance Z0, and the reflection coefficient at the reference plane.
+the FDTD run, downstream probe planes are used to extract the
+propagation constant β, characteristic impedance Z0, and the wave
+amplitudes.
+
+Production extraction (``Simulation.compute_msl_s_matrix`` /
+``compute_mixed_s_matrix``, ``rfx/api/_sparams.py``) places N equally
+spaced probes (:func:`msl_probe_x_coords_n`), fits them by SVD
+least-squares (issue #80 Fix C), and assembles the S-matrix with the
+multi-drive solve (issue #507). The original 3-probe placement
+(:func:`msl_probe_x_coords`) and the OpenEMS-style 3-probe recurrence it
+was built for are retained as a geometry primitive consumed by
+``validation/tap_paper/msl_stub_notch_tuning.py`` (via
+``rfx.probes.msl_wave_decomp.register_msl_plane_probes``); it is not on
+the production S-matrix path.
 
 The math is intentionally numpy-only: extraction runs once per port,
 post-simulation, on small per-frequency arrays.
