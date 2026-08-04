@@ -1,0 +1,105 @@
+name: rfx-coax-two-port-referee-mesh-refinement
+description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared acceptance band [1.05, 1.11] and the runtime arithmetic (~3.9h estimated from run-3's own 2796s baseline). BRANCH-CLONE, SHA-CHECKOUT pattern (mirrors #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, with its reviewer-mandated fix: clone then `git checkout $RFX_EXPECT_SHA`, not `--branch` alone) -- this job clones RFX_BRANCH fresh and pins the exact commit; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
+tags: [rfx, coax-two-port, i489, external-referee, mesh-refinement]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 48Gi
+image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own --threads/numThreads (passed explicitly
+  # below, matching resources.cpu=16) does the parallelism -- same rationale
+  # as scripts/vessl_coax_two_port_referee.yaml.
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  RFX_BRANCH: "feat/489-active-dev-legs-1-3"
+  RFX_EXPECT_SHA: "409fe13a620f348514a620043611e6fbefa21e23"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # pytorch runtime image: dash shell (no bashisms), no git preinstalled.
+  echo "=== rfx #489 leg 1: coax two-port referee mesh-refinement witness ==="
+  date
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+
+  echo "=== clone RFX_BRANCH fresh and pin RFX_EXPECT_SHA (reviewer-mandated pattern) ==="
+  CLONE_DIR=/tmp/rfx-clone
+  rm -rf "$CLONE_DIR"
+  git clone --branch "$RFX_BRANCH" https://github.com/bk-squared/rfx.git "$CLONE_DIR"
+  cd "$CLONE_DIR"
+  git config --global --add safe.directory "$CLONE_DIR" || true
+  git checkout "$RFX_EXPECT_SHA"
+  ACTUAL_SHA="$(git rev-parse HEAD)"
+  echo "cloned branch : $RFX_BRANCH"
+  echo "checked out   : $ACTUAL_SHA"
+  echo "expected SHA  : $RFX_EXPECT_SHA"
+  if [ "$RFX_EXPECT_SHA" != "FILL_AFTER_PUSH" ] && [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
+    echo "FATAL: checked-out SHA does not match RFX_EXPECT_SHA"
+    exit 3
+  fi
+
+  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
+  # to scripts/vessl_coax_two_port_referee.yaml's build block (imitated,
+  # not reinvented). --
+  apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake \
+    libhdf5-dev libtinyxml-dev \
+    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
+    libboost-serialization-dev \
+    libcgal-dev libvtk7-dev \
+    python3-dev python3-numpy python3-scipy python3-matplotlib \
+    python3-setuptools python3-h5py 2>&1 | tail -3
+  cd /tmp
+  git clone --recursive https://github.com/thliebig/openEMS-Project.git
+  cd openEMS-Project
+  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
+  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
+  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
+  ldconfig
+  export CSXCAD_INSTALL_PATH=/usr/local
+  export OPENEMS_INSTALL_PATH=/usr/local
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
+  cd "$CLONE_DIR/CSXCAD/python" && "$PY" setup.py install 2>&1 | tail -2 && cd "$CLONE_DIR"
+  cd "$CLONE_DIR/openEMS/python" && "$PY" setup.py install 2>&1 | tail -2 && cd "$CLONE_DIR"
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+
+  cd "$CLONE_DIR"
+  OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/coax-two-port-referee-mesh-refinement/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
+  mkdir -p "$OUT_DIR"
+
+  # -- The predeclared 1.5x refinement (dx_scale=2/3): --nrts/--end-criteria
+  # match the promoted run-3's own Stage B settings (only the mesh density
+  # changes; the predeclaration's runtime arithmetic assumes this). Timeout
+  # generous over the ~3.9h estimate (MESH_REFINEMENT_PREDECLARATION,
+  # estimated_runtime_h=3.93) for build + smoke-run overhead on top of the
+  # two real Stage B drives. --
+  set +e
+  timeout 25200 "$PY" validation/crossval/21_coax_two_port_referee.py \
+    --output "$OUT_DIR/openems_coax_two_port_mesh_refinement.json" \
+    --threads 16 \
+    --dx-scale 0.6666666666666666 \
+    > "$OUT_DIR/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT_DIR/exit_code"
+  tail -n 100 "$OUT_DIR/run.log" || true
+  echo "coax_two_port_referee_mesh_refinement_rc=$rc"
+  echo "artifacts persisted to (mounted, survives job teardown): $OUT_DIR"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: reproduce-gate + Stage B self-checks both passed at the refined mesh -- see JSON's stage_b.beta_ratio_measured_over_analytic_mean against MESH_REFINEMENT_PREDECLARATION.acceptance_band_ratio" ;;
+    1) echo "SELF-CHECK FAILED at the refined mesh -- inspect $OUT_DIR/run.log AND stage_b_partial in the JSON (if present) before concluding anything about the mesh-refinement question" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding" ;;
+    3) echo "CONFIG ERROR: an internal layout/geometry assertion failed at this dx_scale -- script bug or a clearance violated at the finer mesh, NOT itself the mesh-refinement physics answer" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"
