@@ -140,15 +140,23 @@ def test_graded_profile_realizes_its_own_sum():
 
 
 def test_extent_and_pad_symmetry_hold_with_cpml_pads():
-    """The contract must hold with absorber pads, and the pads must be
-    symmetric (#562 review F6/F3).
+    """The extent contract must hold with absorber pads too (#562 review F6).
 
-    The cases above are all PEC-bounded (pad = 0), which is the half of the
-    convention with no absorber interaction — and the absorber is where the
-    added bounding node changes an existing behaviour: before it, the hi face
-    carried one physical cell fewer than the lo face, so the CPML sigma ramps
-    were not mirror images. That is a behaviour change on every open-boundary
-    NU run and belongs under test, not only in a PR note.
+    The other cases are all PEC-bounded (pad = 0), so this one covers the
+    open-domain half of the convention. Of the assertions below only the
+    INTERIOR SPAN is tied to #562; the pad-symmetry ones are invariants that
+    held before it as well — measured across the merge for the same request
+    (60 cells, 8 CPML layers):
+
+        pre-#562:  nx 76, interior span 59.000 cells, pad depths 8.000/8.000
+        post-#562: nx 77, interior span 60.000 cells, pad depths 8.000/8.000
+
+    I claimed in the #564 thread that the hi face had carried one physical
+    cell fewer and that this test witnessed the correction. **It did not, and
+    the underlying claim does not reproduce**: the absorber was symmetric on
+    both sides of the merge. Pinning the invariants is still worth doing —
+    they are cheap and they are load-bearing for CPML behaviour — but they are
+    labelled here as invariants, not as evidence of a change.
     """
     prof = np.full(60, DX)
     sim = Simulation(freq_max=13e9, domain=(60 * DX, A, NB * DX),
@@ -172,3 +180,44 @@ def test_extent_and_pad_symmetry_hold_with_cpml_pads():
         f"absorber depth lo {lo_depth * 1e3:.4f} mm vs hi {hi_depth * 1e3:.4f} mm "
         "— the CPML ramps are not mirror images")
     assert lo_depth == pytest.approx(8 * DX, abs=_ABS_TOL)
+
+
+def test_cpml_sigma_ramps_are_mirror_images_across_the_two_faces():
+    """The two faces' sigma ramps are mirror images — an INVARIANT, not a
+    witness (#568 item 2, resolved by measurement).
+
+    #568 asked for this assertion as the direct witness for a hi-face
+    realignment. It is not one: run against the pre-#562 commit it PASSES
+    (measured, `bb61494^`), because both faces build sigma from the same
+    n_layers and the same boundary cell size, so the arrays are mirror images
+    by construction regardless of how many usable cells sit behind them. The
+    same measurement shows the premise did not hold either — pad depths were
+    8.000/8.000 cells before and after — so there is no realignment to
+    witness, and the "unclaimed improvement" recorded in the #564 review, and
+    repeated by me in that PR's body, is withdrawn.
+
+    Keeping the assertion anyway: it is cheap, it is true, and an asymmetric
+    ramp would be a real defect if a future change made the two faces derive
+    sigma independently (the NU z-faces already do use independent cell
+    sizes). The non-vacuity check below matters for exactly that reason — a
+    constant ramp would satisfy any mirror test.
+    """
+    from rfx.boundaries.cpml import init_cpml
+
+    prof = np.full(60, DX)
+    sim = Simulation(freq_max=13e9, domain=(60 * DX, A, NB * DX),
+                     dx=DX, cpml_layers=8, dx_profile=prof)
+    grid = sim._build_nonuniform_grid()
+    params, _state = init_cpml(grid)
+
+    lo = np.asarray(params.x_lo.sigma, dtype=float)
+    hi = np.asarray(params.x_hi.sigma, dtype=float)
+    # non-vacuity: a constant ramp would satisfy any mirror test
+    assert lo.size == 8, lo.size
+    assert float(lo.max()) > 10.0 * max(float(lo.min()), 1e-30), (
+        "sigma ramp is nearly constant — the mirror comparison below would be "
+        "vacuous", lo)
+    assert np.allclose(lo, hi[::-1], rtol=1e-6, atol=0.0), (
+        "x-lo and x-hi CPML sigma ramps are not mirror images", lo, hi[::-1])
+    # the boundary cell sizes the two faces derive sigma_max from must match too
+    assert float(params.dx_x_lo) == pytest.approx(float(params.dx_x_hi), abs=1e-15)
