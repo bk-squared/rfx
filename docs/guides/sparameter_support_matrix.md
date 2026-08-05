@@ -372,10 +372,20 @@ their gate tests replay the frozen numbers rather than re-running FDTD — the
 tests therefore pass while describing the earlier geometry. Nothing was
 re-blessed: the numbers above stand exactly as measured, and the lane stays
 experimental, so the matrix is conservative rather than wrong. Regenerating
-them is expected to *improve* agreement (the guide finally being the requested
-width); until it happens, treat the cited magnitude differences as an upper
-bound obtained on a slightly narrow guide, and do not compare them against
-newly generated nonuniform numbers.
+them **measurably improves** agreement, so the cited differences are an upper
+bound obtained on a slightly narrow guide; do not compare them against newly
+generated nonuniform numbers. Two of the sixteen broad-E5 configs re-run on
+post-#562 `main` against the same analytic Airy reference (issue #574, which
+also carries the measured 7 h cost of the full sweep):
+
+| config | metric | committed | regenerated |
+|---|---|---|---|
+| `ratio1_er2_L4mm` | `s11_max_mag_abs_diff` | 0.012687 | 0.007370 |
+| `ratio3_er2_L4mm` | `s11_max_mag_abs_diff` | 0.014874 | 0.007038 |
+
+The regenerated values are nearly grading-ratio independent where the committed
+ones spread, which is the expected signature: the cell the old grid dropped was
+the profile's edge cell, whose size varies with the grading ratio.
 
 **Setup restrictions:**
 
