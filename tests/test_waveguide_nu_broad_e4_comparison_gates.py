@@ -44,8 +44,13 @@ FIXTURE = (
 )
 
 # Committed producer constants (build_waveguide_wr90_nu_flux_broad_e4_comparison.py).
-EXPECTED_MAX_TOL = 0.10
-EXPECTED_MEAN_TOL = 0.07
+# Derived from the measured envelope (see that script's tolerance block): the
+# absorber under-provisioning fix took the worst per-pair max from 0.07009 to
+# 0.008529 and the worst per-pair mean from 0.0359 to 0.0030, so the old flat
+# 0.10 / 0.07 were 12x and 23x loose. The tolerances are per-pair, which is what
+# the mean envelope is derived from (not the summary mean).
+EXPECTED_MAX_TOL = 0.013
+EXPECTED_MEAN_TOL = 0.005
 BLOCKING_TOKENS = (
     "narrow", "enabling", "blocked", "partial", "limited", "experimental",
     "shadow",

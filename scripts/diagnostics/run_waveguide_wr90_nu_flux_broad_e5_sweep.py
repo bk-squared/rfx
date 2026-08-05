@@ -27,7 +27,20 @@ from rfx.geometry.csg import Box
 C0=299_792_458.0
 A=22.86e-3; B=10.16e-3; FC=C0/(2*A)
 BAND=(8.2e9,12.4e9); N_FREQS=11; BW=0.4
-DX=0.25e-3; CPML=24; NUM_PERIODS=60
+DX=0.25e-3; NUM_PERIODS=60
+# Absorber depth DERIVED from the guided wavelength at the LOWEST band
+# frequency (case-19 recipe, fraction 0.75), not a fixed cell count. It was a
+# hard-coded 24, which at dx = 0.25 mm is 6.0 mm = 0.099*lambda_g at 8.2 GHz —
+# a 5x worse violation of the >=0.5*lambda_g far-port discipline (#496) than
+# the E4 producer's 0.33, and the same class of artifact: measured on the E4
+# geometry, going from 0.33 to 0.76 lambda_g took a lossless PEC short's
+# over-unity |S11| from 1.01995 to 1.00009. rfx pads CPML OUTSIDE the requested
+# domain, so this moves no port and no geometry; it grows the x array from 800
+# to 800 + 2*183 cells, which is why the regeneration cost in #574 has to be
+# re-estimated with this value rather than the old one.
+CPML_FRACTION=0.75
+_LAM_G_LOW=(C0/BAND[0])/np.sqrt(1.0-(FC/BAND[0])**2)
+CPML=int(np.ceil(CPML_FRACTION*_LAM_G_LOW/DX))
 DOMAIN_X=200e-3; PL=40e-3; PR=160e-3; RL=50e-3; RR=150e-3
 GRADING_RATIOS=(1.0,1.5,2.0,3.0)
 # Flux extractor: test BOTH eps_r=2 (where normalize=True already passes)

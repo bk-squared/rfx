@@ -1,11 +1,11 @@
 {
-  "claim": "rfx NONUNIFORM (graded-dy) waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (high-order FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.1, on a graded transverse mesh (grading ratio 2.0, max/min cell ratio 2.00:1).",
+  "claim": "rfx NONUNIFORM (graded-dy) waveguide_port compute_waveguide_s_matrix(normalize='flux') magnitude comparison against Palace_r_h2 (high-order FEM) across the WR-90 empty / PEC-short / dielectric-slab geometry axis passes the broad-E4 magnitude tolerance of 0.013, on a graded transverse mesh (grading ratio 2.0, max/min cell ratio 2.00:1).",
   "claim_scope": "broad external cross-solver magnitude comparison of the rfx NONUNIFORM graded-dy waveguide_port flux S-matrix against an independent high-order FEM solver (Palace_r_h2) across the WR-90 geometry axis (empty guide, PEC short, dielectric slab) over the X-band frequency grid. Phase conventions are not compared (magnitude metric). This is the external-solver leg that lifts the nonuniform waveguide flux lane's last open promotion rung.",
   "evidence_level": "E4-broad-external-palace-fem-nonuniform-graded-dy-wr90-multigeometry-te10",
   "external_reference_column": "Palace_r_h2",
-  "generated_at": "2026-07-03",
-  "max_mag_abs_tol": 0.1,
-  "mean_mag_abs_tol": 0.07,
+  "generated_at": "2026-08-05",
+  "max_mag_abs_tol": 0.013,
+  "mean_mag_abs_tol": 0.005,
   "mesh": {
     "base_dx_m": 0.001,
     "grading_ratio": 2.0,
@@ -37,16 +37,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8200000000.0,
       "geometry": "empty",
-      "max_mag_abs_diff": 0.00039791954102130767,
-      "mean_mag_abs_diff": 7.279345136337745e-05,
+      "max_mag_abs_diff": 8.680045802533787e-05,
+      "mean_mag_abs_diff": 2.2581047705054546e-05,
       "n_freqs": 21,
       "ref_mag_range": [
         0.999999983044079,
         1.0000000466300203
       ],
       "rfx_mag_range": [
-        0.9996020793914795,
-        1.0002720355987549
+        0.999943733215332,
+        1.000086784362793
       ],
       "status": "passed"
     },
@@ -55,16 +55,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8200000000.0,
       "geometry": "pec_short",
-      "max_mag_abs_diff": 0.016480245206660915,
-      "mean_mag_abs_diff": 0.0031020300441829633,
+      "max_mag_abs_diff": 0.00035231357347076386,
+      "mean_mag_abs_diff": 4.36554622772954e-05,
       "n_freqs": 21,
       "ref_mag_range": [
         0.9999999781587788,
         1.000000154409645
       ],
       "rfx_mag_range": [
-        0.9835197329521179,
-        1.0119104385375977
+        0.9996476769447327,
+        1.0000907182693481
       ],
       "status": "passed"
     },
@@ -73,16 +73,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8200000000.0,
       "geometry": "slab",
-      "max_mag_abs_diff": 0.07008732608400026,
-      "mean_mag_abs_diff": 0.03586533368268814,
+      "max_mag_abs_diff": 0.008528803482554984,
+      "mean_mag_abs_diff": 0.002998374789406808,
       "n_freqs": 21,
       "ref_mag_range": [
         0.0013646269178455765,
         0.5436609263078149
       ],
       "rfx_mag_range": [
-        0.03136024996638298,
-        0.6137482523918152
+        0.0028578222263604403,
+        0.5423073768615723
       ],
       "status": "passed"
     },
@@ -91,16 +91,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8200000000.0,
       "geometry": "slab",
-      "max_mag_abs_diff": 0.047026582581011445,
-      "mean_mag_abs_diff": 0.013069636004010005,
+      "max_mag_abs_diff": 0.0015928364946112827,
+      "mean_mag_abs_diff": 0.0004655246416693475,
       "n_freqs": 21,
       "ref_mag_range": [
         0.8393049319805781,
         0.9999990593664221
       ],
       "rfx_mag_range": [
-        0.7922783493995667,
-        1.0009691715240479
+        0.8400678038597107,
+        1.0000293254852295
       ],
       "status": "passed"
     }
@@ -117,8 +117,8 @@
       "slab"
     ],
     "geometry_count": 3,
-    "max_mag_abs_diff": 0.07008732608400026,
-    "mean_mag_abs_diff": 0.010424561955179958,
+    "max_mag_abs_diff": 0.008528803482554984,
+    "mean_mag_abs_diff": 0.0007086305069427621,
     "pair_count": 5,
     "passed_pair_count": 5
   }
