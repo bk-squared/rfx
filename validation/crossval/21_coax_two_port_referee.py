@@ -844,6 +844,25 @@ B_MEAS_STENCIL_MARGIN_CELLS = 5  # M3 fix: extra clearance so CoaxialPort's
 # way); a future session evaluating R=2.0 should use the corrected 5.73 h
 # figure (borderline-feasible, not 12.4h-infeasible) rather than
 # reproducing the R^4 error here.
+#
+# RUN RESULT (2026-08-05, VESSL 369367251845 -- resolves the "QUESTION"
+# above): the predeclared witness landed. Measured/analytic beta ratio
+# moved from 1.1208 (dx_scale=1.0, run-3) to 1.0661624823818885
+# (dx_scale=0.6667, this run) -- inside the informational band [1.05,
+# 1.11] and BELOW the first-order-scaling prediction (1.0805), i.e. a
+# STRONGER confirmation than predeclared, not merely adequate. Implied
+# convergence order p=1.4847707054524188 -- between the naive first-order
+# O(dx) lower bound this predeclaration's excess-scaling estimate assumed
+# and second-order O(dx^2), consistent with openEMS's own material
+# averaging at a dielectric interface, not a fault. One-sided gate
+# (refutes only ratio > 1.11): CONFIRMED. Full per-bin data, passivity,
+# reciprocity, and matched-through witnesses: the committed fixture
+# (``validation/crossval/_21_coax_two_port_referee_logs/
+# mesh_refinement_369367251845_result.json``) and
+# ``MESH_REFINEMENT_PREDECLARATION`` below, now filled (``status="RUN"``).
+# The benchmarks row (``docs/public/guide/benchmarks.mdx``) and the
+# manifest's own ``claim_scope`` (``validation/crossval/manifest.json``)
+# are updated to the measured statement in the same change.
 MESH_REFINEMENT_PREDECLARATION: dict = {
     "issue": 489,
     "leg": "1 (mesh-refinement convergence witness)",
@@ -888,13 +907,59 @@ MESH_REFINEMENT_PREDECLARATION: dict = {
         "depth; see 'REFINEMENT FACTOR ARITHMETIC' above for the corrected "
         "per-axis cell counts and the R=2.0 figure for comparison)."
     ),
-    # RUN: filled by a VESSL job (scripts/vessl_coax_two_port_referee_
-    # mesh_refinement.yaml) after it completes; UNRUN placeholders below.
-    "status": "UNRUN",
-    "measured_ratio_after": None,
-    "vessl_run_id": None,
-    "log_path": None,
-    "verified_on": None,
+    # RUN (2026-08-05, VESSL 369367251845): the predeclared witness landed.
+    # Full accounting (log-scoped submission arc: runs 369367251836/837
+    # network-provisioning, 369367251839 hand-terminated, 369367251840
+    # apt/IPv6, 369367251841 apt/IPv4-too, 369367251843 mirror-swap
+    # provisioning smoke PASSED, 369367251844 provisioning+build PASSED but
+    # a cwd-shadowed post-build sanity import killed it one line short,
+    # 369367251845 -- THIS run -- the first to reach Stage A/B physics at
+    # all) is in issue #489's PR #561 and its own commit history; none of
+    # the six infra-only failures before this one spent the R2-tight
+    # physics attempt budget -- this IS that one pre-declared attempt,
+    # closed.
+    #
+    # measured_ratio_after = stage_b.beta_ratio_measured_over_analytic_mean
+    # from the committed result fixture (full precision, not rounded) --
+    # mean of the SAME 4 gated-central-band bins
+    # (matched_through_witness.beta_ratio_measured_over_analytic) the
+    # dx_scale=1.0 baseline (1.1208) was itself computed from. Per-bin
+    # range at the refined mesh: 1.0660627719113418 - 1.0662474785033922
+    # (4 points, essentially flat -- 0.017% spread across the gated band).
+    # implied_convergence_order = log(excess_before/measured_excess_after)
+    # / log(refinement_factor) = log(0.1208/0.06616248238188849) /
+    # log(1.5) = 1.4847707054524188 -- between the naive first-order (p=1)
+    # lower bound this predeclaration's excess-scaling estimate assumed
+    # and second-order (p=2), consistent with openEMS's own material
+    # averaging at a dielectric interface lifting the effective order
+    # above naive staircase O(dx) (see the "ONE-SIDED GATE" comment
+    # above). ratio 1.0662 is INSIDE the originally-declared informational
+    # band [1.05, 1.11] (below the predicted 1.0805, i.e. a stronger
+    # confirmation than predicted, not a weaker one) and far below the
+    # one-sided hard edge (1.11) -- CONFIRMED per _evaluate_mesh_
+    # refinement_ratio (verbatim run.log line: "MESH-REFINEMENT
+    # PREDECLARATION CHECK (one-sided, refutes only ratio > 1.11): measured
+    # ratio 1.0661624823818885 -- implied convergence order p=1.48 --
+    # CONFIRMED (ratio at or below the one-sided hard edge)").
+    #
+    # Other witnesses at the refined mesh (R5, from the committed fixture,
+    # not just the headline ratio): Stage B passivity max column power
+    # 1.0000681 (drive1) / 1.0000873 (drive2), both << the 1.05 tol;
+    # |S21| band 0.999918-1.000034; |S11| band 0.00056-0.00137;
+    # reciprocity max mag dev 4.97e-5, max phase dev 0.00336 deg; matched-
+    # through phase deviation against the port's OWN measured beta 0.171
+    # deg (S21) / 0.169 deg (S12), both << the 30 deg tol; group-delay
+    # deviation ~0.15 ps against a ~200 ps tol. FDTD stages (both drives)
+    # took ~67 min wall-clock (2014.2 s + 2015.9 s), well under the
+    # corrected 2.41 h estimate.
+    "status": "RUN",
+    "measured_ratio_after": 1.0661624823818885,
+    "measured_excess_after": 0.06616248238188849,
+    "implied_convergence_order": 1.4847707054524188,
+    "vessl_run_id": "369367251845",
+    "log_path": "validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_run.log",
+    "result_fixture_path": "validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json",
+    "verified_on": "2026-08-05",
 }
 
 def _stage_b_layout(dx_scale: float = 1.0) -> dict:

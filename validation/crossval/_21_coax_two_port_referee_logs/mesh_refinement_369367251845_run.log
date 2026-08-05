@@ -1,0 +1,33 @@
+==============================================================================
+openEMS external referee -- rfx issue #489 stage 3 (coax two-port)
+COMPARATOR LEG ONLY. Stage A = faithful Coax.m port (reproduce-gate).
+See module docstring for the full scope fence, delta list, do-not-repeat.
+REGISTERED_CONFIGURATION=false (dx_scale=0.666667 != 1.0 -- this is the #489 leg-1 mesh-refinement WITNESS run, NOT the registered validation/crossval/manifest.json fixture)
+==============================================================================
+
+Declared question:
+  Does rfx's |S21| attenuation profile (0.96 -> 0.74 over 4-12 GHz, decay-rate-consistent per the compensated-gate check in PR #534) and its reference-plane referral survive an independent solver? rfx's own compensated gate is EXACTLY invariant to a reference-plane referral error (5-decimal cancellation at +30 cells, per docs/agent-memory/rfx-known-issues.md '#489 stage 2 SHIPPED' entry) -- this referee, with its own independently-built ports, independently-measured beta, and CalcPort(ref_plane_shift=...) referral, is not.
+
+rfx PR #534 (657451b), measured 4-12 GHz: |S21| 0.960 -> 0.737 (raw); compensated |S21|*exp(+Re(gamma_bar)*L12) = 0.979-0.992. See docs/agent-memory/rfx-known-issues.md '#489 stage 2 SHIPPED' entry.
+
+--- Stage A: reproduce-gate (Coax.m, faithful port) ---
+  ZL: mean=50.432 ohm (analytic 49.940) max_dev=0.511 ohm
+  passivity passed: True, matched-through witness passed: True
+  Stage A passed: True
+
+--- Stage B: rfx-matched through-line (CoaxialPort) ---
+  dx_scale=0.666667 (dx=0.24983 mm, annulus=5.68 cells)
+  |S21| band: 0.9999 - 1.0000
+  |S11| band: 0.0006 - 0.0014
+  reciprocity max mag dev: 0.0000, max phase dev: 0.00 deg
+  matched-through witness (s21) passed: True
+  matched-through witness (s12) passed: True
+  beta_ratio_measured_over_analytic (mean, central band): 1.0661624823818885
+  MESH-REFINEMENT PREDECLARATION CHECK (one-sided, refutes only ratio > 1.11): measured ratio 1.0661624823818885 -- implied convergence order p=1.48 -- CONFIRMED (ratio at or below the one-sided hard edge)
+  sanity_passed: True
+
+=== Written to /root/workspace/byungkwan-workspace/research/rfx/.omx/coax-two-port-referee-mesh-refinement/20260805T001017Z-865974280e7c779b9273bb7e8d115d950e93b42e/openems_coax_two_port_mesh_refinement.json ===
+
+==============================================================================
+overall_passed=True (self-checks only -- NOT a verdict on rfx vs openEMS agreement)
+==============================================================================
