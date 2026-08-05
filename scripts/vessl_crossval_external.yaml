@@ -5,7 +5,7 @@ resources:
   cluster: remilab-c0
   cpu: 32
   memory: 48Gi
-image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
@@ -20,41 +20,26 @@ run: |-
   echo "=== rfx monthly external crossval (W2.5c) ==="
   date
 
-  # -- openEMS source build: the PROVEN microwave-energy recipe --
-  # (research/microwave-energy/openems_simulation/jobs/wr90_pec_short_field_dump_20260428.yaml)
-  apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git \
-    libhdf5-dev libtinyxml-dev \
-    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
-    libboost-serialization-dev \
-    libcgal-dev libvtk7-dev \
-    python3-dev python3-numpy python3-scipy python3-matplotlib \
-    python3-setuptools python3-h5py 2>&1 | tail -3
-  cd /tmp
-  git clone --recursive https://github.com/thliebig/openEMS-Project.git
-  cd openEMS-Project
-  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
-  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
-  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
-  ldconfig
-  export CSXCAD_INSTALL_PATH=/usr/local
-  export OPENEMS_INSTALL_PATH=/usr/local
-  # Use the image's conda python (>=3.10) for EVERYTHING below. rfx needs
-  # jax>=0.4.20 (Python>=3.9), but the base image's /usr/bin/python3 is 3.8
-  # (its pip resolves jax only up to 0.4.13). cv05 imports the openEMS bindings
-  # AND rfx in the same process, so the bindings must build against this same
-  # conda python. numpy<2 keeps the cython-built bindings ABI-compatible.
+  # -- SOLVER ENVIRONMENT NOW COMES FROM THE IMAGE (image: swap, 5b423bdfe0c8):
+  # this lane used to apt-get install build deps and source-build
+  # openEMS-Project on every run (~30-60 min). That block is gone -- the
+  # image (docker/openems-lane/Dockerfile, built by
+  # .github/workflows/build-openems-image.yml, published to
+  # ghcr.io/bk-squared/rfx-openems) already contains openEMS-Project
+  # (pinned to the Dockerfile's OPENEMS_COMMIT) built and its python
+  # bindings installed against the image's conda python. Motivation:
+  # 2026-08-04, archive.ubuntu.com was unreachable from this cluster and
+  # killed 4 provisioning attempts across this lane's siblings before any
+  # physics ran. rfx's OWN deps (jax etc, below) are unaffected -- the
+  # image is the solver environment only, not the rfx environment.
+  # ONE-LINE REVERT: `git show <this-commit>^:scripts/vessl_crossval_external.yaml
+  # > scripts/vessl_crossval_external.yaml` restores the apt+build block
+  # and the pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime image line in
+  # one shot.
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
-  # Pre-install the bindings' python deps with pip (wheels, 3.10-compatible
-  # versions) BEFORE setup.py install. Otherwise legacy `setup.py install`
-  # invokes easy_install for unsatisfied install_requires (matplotlib) and
-  # easy_install cannot build a modern meson sdist -> the bindings install dies.
-  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
-  cd CSXCAD/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
-  cd openEMS/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
-  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   # -- rfx runtime deps (CPU jax) --
   cd /root/workspace/byungkwan-workspace/research/rfx

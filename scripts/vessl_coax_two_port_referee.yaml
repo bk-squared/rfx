@@ -5,7 +5,7 @@ resources:
   cluster: remilab-c0
   cpu: 16
   memory: 24Gi
-image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
@@ -25,39 +25,25 @@ run: |-
   echo "=== rfx #489 stage 3: openEMS coax two-port referee ==="
   date
 
-  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
-  # to scripts/vessl_crossval_external.yaml's build block (imitated, not
-  # reinvented -- both lanes need the SAME source-built openEMS). --
-  apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git \
-    libhdf5-dev libtinyxml-dev \
-    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
-    libboost-serialization-dev \
-    libcgal-dev libvtk7-dev \
-    python3-dev python3-numpy python3-scipy python3-matplotlib \
-    python3-setuptools python3-h5py 2>&1 | tail -3
-  cd /tmp
-  git clone --recursive https://github.com/thliebig/openEMS-Project.git
-  cd openEMS-Project
-  cd fparser && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install && cd ../..
-  cd CSXCAD && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE && make -j"$(nproc)" && make install && cd ../..
-  cd openEMS && mkdir -p build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF && make -j"$(nproc)" && make install && cd ../..
-  ldconfig
-  export CSXCAD_INSTALL_PATH=/usr/local
-  export OPENEMS_INSTALL_PATH=/usr/local
-  # Same conda-python rationale as vessl_crossval_external.yaml: this
-  # script only needs openEMS + numpy (no rfx import at all -- comparator
-  # leg only, see the script's module docstring), but the base image's
-  # /usr/bin/python3 is 3.8 and the bindings' setup.py wants a modern pip
-  # resolver; use the image's conda python for consistency with the other
-  # external-referee lane.
+  # -- SOLVER ENVIRONMENT NOW COMES FROM THE IMAGE (image: swap, 5b423bdfe0c8):
+  # this lane used to apt-get install build deps and source-build
+  # openEMS-Project on every run (~30-60 min). That block is gone -- the
+  # image (docker/openems-lane/Dockerfile, built by
+  # .github/workflows/build-openems-image.yml, published to
+  # ghcr.io/bk-squared/rfx-openems) already contains openEMS-Project
+  # (pinned to the Dockerfile's OPENEMS_COMMIT) built and its python
+  # bindings installed against the image's conda python. Motivation:
+  # 2026-08-04, archive.ubuntu.com was unreachable from this cluster and
+  # killed 4 provisioning attempts across this lane and its siblings
+  # before any physics ran.
+  # ONE-LINE REVERT: `git show <this-commit>^:scripts/vessl_coax_two_port_referee.yaml
+  # > scripts/vessl_coax_two_port_referee.yaml` restores the apt+build
+  # block and the pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime image line
+  # in one shot.
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
-  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
-  cd CSXCAD/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
-  cd openEMS/python && "$PY" setup.py install 2>&1 | tail -2 && cd ../..
-  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   # -- provenance (this script never imports rfx, but the referee's
   # geometry constants were read off the LIVE rfx checkout at authoring

@@ -1,0 +1,9 @@
+name: rfx-openems-image-pull-smoke
+description: "Cheap post-publish gate for ghcr.io/bk-squared/rfx-openems (PR #563 + this PR): confirms VESSL can pull the image on remilab-c0 and the openEMS/CSXCAD bindings import. This is the verification that the ghcr package's one-time private->public visibility flip (a manual step, Packages > rfx-openems > settings) actually happened -- a still-private package fails this with an auth error, not image-not-found: vessl run create -f scripts/vessl_image_pull_smoke.yaml"
+resources:
+  cluster: remilab-c0
+  cpu: 2
+  memory: 4Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+run: |-
+  python3 -c "from openEMS.openEMS import openEMS; from CSXCAD.CSXCAD import ContinuousStructure; print('rfx-openems image pull smoke: OK')"

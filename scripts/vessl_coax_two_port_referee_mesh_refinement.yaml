@@ -5,7 +5,7 @@ resources:
   cluster: remilab-c0
   cpu: 16
   memory: 48Gi
-image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
@@ -21,14 +21,6 @@ env:
   # provenance context (which branch's history this SHA came from).
   RFX_BRANCH: "feat/489-active-dev-legs-1-3"
   RFX_EXPECT_SHA: "865974280e7c779b9273bb7e8d115d950e93b42e"
-  # PROVISION_SMOKE (review addition, 2026-08-04): "1" exits 0 right after
-  # the openEMS-Project git clone succeeds -- validates apt+git+network
-  # (the exact failure surface of runs 369367251836/369367251837/369367251840)
-  # in minutes, without paying for the ~15-20 min cmake/make build or
-  # running any Stage A/B physics. Default "0" (the real, full job) --
-  # toggle to "1" only for a throwaway smoke submission, never committed
-  # as "1".
-  PROVISION_SMOKE: "0"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -85,122 +77,31 @@ run: |-
     exit 3
   }
 
-  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
-  # to scripts/vessl_coax_two_port_referee.yaml's build block (imitated,
-  # not reinvented). --
-  # R1 fix (review, BLOCKING): `git` must stay in this list even though the
-  # RFX repo itself is now fetched via tarball (no git needed for that) --
-  # openEMS-Project below is STILL fetched via `git clone --recursive`
-  # (submodules: fparser/CSXCAD/openEMS), and this image ships no git at
-  # all (vessl-jobs.md's own documented gotcha; confirmed by run 837's own
-  # `command -v git` branch firing before apt-get). Dropping the old
-  # `command -v git || apt-get install git` fallback when the RFX clone
-  # switched to a tarball fetch (commit b5b5104) silently dropped the ONE
-  # apt token that mattered for THIS clone too -- the reference YAML
-  # (scripts/vessl_coax_two_port_referee.yaml) keeps `git` in its own
-  # `build-essential cmake git` list for exactly this reason.
-  # R2 fix (mechanism change, adversarial review 2026-08-04, run 369367251840):
-  # died at THIS install step, not the git clone R1 fixed above -- log shows
-  # "Network is unreachable" against ~9 different IPv6 literal addresses for
-  # archive.ubuntu.com before ever trying IPv4 (~5.7 minutes of dead-end AAAA
-  # attempts), then a final IPv4 fetch failure too. This morning's MSL
-  # referee runs (05:50Z, 09:41Z) succeeded through this SAME apt path, so
-  # the cluster's IPv6 route is TIME-VARYING, not permanently broken --
-  # forcing IPv4 (skip the doomed AAAA attempts entirely) and adding retries
-  # (survive a transient IPv4 blip too) directly targets the log's own
-  # failure signature, on both apt-get calls.
-  # R3 fix (mechanism change again, adversarial review 2026-08-04, run
-  # 369367251841): ForceIPv4+Retries was REFUTED -- 841's own log shows
-  # "Unable to connect to archive.ubuntu.com:http: [IP: 91.189.92.23 80]"
-  # on the .deb pool downloads (matplotlib/scipy) even over forced IPv4
-  # with 5 retries. archive.ubuntu.com itself is unreachable from this
-  # cluster right now, over BOTH stacks -- while this morning's MSL
-  # referee runs (05:50Z, 09:41Z) sailed through the identical apt path,
-  # confirming a time-varying upstream condition, not a permanent block.
-  # Swap to a Korean mirror (the cluster sits at CNU) BEFORE any apt call --
-  # a different endpoint entirely, not a retry/protocol tweak on the same
-  # dead host. This is the LAST mechanism change attempted here; if this
-  # also fails at apt, leg 1's VESSL submission is parked until the
-  # network window improves (see the PR body's submission ledger).
-  sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.kakao.com/ubuntu|g' /etc/apt/sources.list
-  apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 update && \
-  apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 install -y --no-install-recommends \
-    build-essential cmake git \
-    libhdf5-dev libtinyxml-dev \
-    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
-    libboost-serialization-dev \
-    libcgal-dev libvtk7-dev \
-    python3-dev python3-numpy python3-scipy python3-matplotlib \
-    python3-setuptools python3-h5py 2>&1 | tail -3
-  # B1 fix (review): every `cd` below is now its OWN statement (never a
-  # non-final element of a `&&`/`||` chain) with an explicit `|| exit 1`.
-  # Empirically verified gotcha this fixes: under dash `set -e`, a failing
-  # `cd` that is a NON-FINAL element of an `&&` chain does NOT abort the
-  # script -- `cd /bad && echo x` on a bad path prints nothing, exits 0,
-  # and the script keeps running past it (POSIX errexit exemption for
-  # "any command of an AND-OR list other than the last"). The previous
-  # version of this block hit exactly this: `cd "$CLONE_DIR/CSXCAD/python"`
-  # used $CLONE_DIR (the RFX repo clone, which has no CSXCAD/ subdir --
-  # openEMS-Project is cloned separately, below, at /tmp/openEMS-Project)
-  # as a non-final `&&` element, so the python-bindings install silently
-  # no-opped on every path, and the job would have died at the import
-  # check below only AFTER paying the full ~15-20 min openEMS C++ build.
-  OPENEMS_SRC=/tmp/openEMS-Project
-  cd /tmp || exit 1
-  git clone --recursive https://github.com/thliebig/openEMS-Project.git
-  cd "$OPENEMS_SRC" || exit 1
-  if [ "${PROVISION_SMOKE:-0}" = "1" ]; then
-    echo "PROVISION_SMOKE=1: openEMS-Project git clone succeeded (apt+git+network OK, including the R1/R2 fixes above) -- exiting 0 WITHOUT the cmake/make build or any Stage A/B run."
-    exit 0
-  fi
-  cd fparser || exit 1
-  mkdir -p build
-  cd build || exit 1
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release
-  make -j"$(nproc)"
-  make install
-  cd "$OPENEMS_SRC" || exit 1
-  cd CSXCAD || exit 1
-  mkdir -p build
-  cd build || exit 1
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE
-  make -j"$(nproc)"
-  make install
-  cd "$OPENEMS_SRC" || exit 1
-  cd openEMS || exit 1
-  mkdir -p build
-  cd build || exit 1
-  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF
-  make -j"$(nproc)"
-  make install
-  cd "$OPENEMS_SRC" || exit 1
-  ldconfig
-  export CSXCAD_INSTALL_PATH=/usr/local
-  export OPENEMS_INSTALL_PATH=/usr/local
+  # -- SOLVER ENVIRONMENT NOW COMES FROM THE IMAGE (image: swap, 5b423bdfe0c8):
+  # this lane used to sed in a Korean apt mirror (mirror.kakao.com,
+  # ForceIPv4, 5 retries -- the R1/R2/R3 fixes above chronicle three
+  # mechanism changes chasing a time-varying archive.ubuntu.com outage)
+  # and source-build openEMS-Project on every run (~30-60 min, on top of
+  # the 4 provisioning attempts that outage killed on 2026-08-04). That
+  # whole block -- the mirror sed, both apt-get calls, the openEMS-Project
+  # git clone, the PROVISION_SMOKE early-exit, and the fparser/CSXCAD/
+  # openEMS cmake+make+install steps -- is gone. The image
+  # (docker/openems-lane/Dockerfile, built by
+  # .github/workflows/build-openems-image.yml, published to
+  # ghcr.io/bk-squared/rfx-openems) already contains openEMS-Project
+  # (pinned to the Dockerfile's OPENEMS_COMMIT) built and its python
+  # bindings installed against the image's conda python, via plain
+  # archive.ubuntu.com on a GitHub Actions runner with healthy network --
+  # no mirror workaround needed there. This lane's own RFX_EXPECT_SHA
+  # tarball fetch above is UNCHANGED (that fetches rfx, not openEMS).
+  # ONE-LINE REVERT: `git show <this-commit>^:scripts/vessl_coax_two_port_referee_mesh_refinement.yaml
+  # > scripts/vessl_coax_two_port_referee_mesh_refinement.yaml` restores
+  # the apt+build block, PROVISION_SMOKE, and the
+  # pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime image line in one shot.
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
-  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
-  # B1 fix: rooted at $OPENEMS_SRC (the openEMS-Project clone), NOT
-  # $CLONE_DIR (the rfx clone -- rfx has no CSXCAD/ or openEMS/ subdirs).
-  cd "$OPENEMS_SRC/CSXCAD/python" || exit 1
-  "$PY" setup.py install 2>&1 | tail -2
-  cd "$OPENEMS_SRC/openEMS/python" || exit 1
-  "$PY" setup.py install 2>&1 | tail -2
-  # R4 fix (review, 2026-08-04, run 369367251844 -- cwd-shadow, the repo's
-  # own stale-editable-shadow class inverted): the B1 hardening turned each
-  # `cd` into its own statement, which is correct for errexit safety but
-  # left cwd sitting in $OPENEMS_SRC/openEMS/python for this sanity import
-  # -- and `openEMS/python/openEMS/` IS the source package directory (not
-  # yet Cython-compiled outside site-packages), so it shadowed the
-  # just-installed package on sys.path (cwd is searched first), and the
-  # import chased its own uncompiled __init__.py straight into
-  # `ModuleNotFoundError: No module named 'openEMS.openEMS'` -- the build
-  # itself succeeded ("Finished processing dependencies for openEMS==0.37.0"
-  # printed immediately before). Move to a NEUTRAL cwd (no openEMS/CSXCAD
-  # source subdirectory of its own) before ANY post-build sanity import.
-  cd "$CLONE_DIR" || exit 1
-  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   cd "$CLONE_DIR" || exit 1
   OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/coax-two-port-referee-mesh-refinement/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
