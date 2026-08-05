@@ -905,8 +905,19 @@ MESH_REFINEMENT_PREDECLARATION: dict = {
         "NOT refinement_factor^4 (that ignored that pml_mm, and therefore "
         "total domain size, SHRINKS as dx shrinks at a fixed 16-cell PML "
         "depth; see 'REFINEMENT FACTOR ARITHMETIC' above for the corrected "
-        "per-axis cell counts and the R=2.0 figure for comparison)."
+        "per-axis cell counts and the R=2.0 figure for comparison). MEASURED "
+        "(2026-08-05, VESSL 369367251845): actual Stage B FDTD wall-clock "
+        "was 4030.1 s (drive1 2014.2 s + drive2 2015.9 s) against the 8691.2 "
+        "s estimate above -- the estimate was ~2.16x conservative. Recorded "
+        "here, not retroactively folded into estimated_runtime_s/_h (which "
+        "stay as PRE-declared), for a future session sizing an R=2.0 attempt: "
+        "the same ~2.16x conservatism applied to the R=2.0 estimate "
+        "(20638.6 s / 5.73 h, see 'REFINEMENT FACTOR ARITHMETIC' above) "
+        "would put actual R=2.0 wall-clock closer to ~9550 s (~2.65 h) -- "
+        "still a rough scaling, not a re-measured number, since the "
+        "conservatism factor itself has only one data point (this run)."
     ),
+    "measured_runtime_s": 4030.1,
     # RUN (2026-08-05, VESSL 369367251845): the predeclared witness landed.
     # Full accounting (log-scoped submission arc: runs 369367251836/837
     # network-provisioning, 369367251839 hand-terminated, 369367251840
@@ -928,11 +939,14 @@ MESH_REFINEMENT_PREDECLARATION: dict = {
     # (4 points, essentially flat -- 0.017% spread across the gated band).
     # implied_convergence_order = log(excess_before/measured_excess_after)
     # / log(refinement_factor) = log(0.1208/0.06616248238188849) /
-    # log(1.5) = 1.4847707054524188 -- between the naive first-order (p=1)
-    # lower bound this predeclaration's excess-scaling estimate assumed
-    # and second-order (p=2), consistent with openEMS's own material
-    # averaging at a dielectric interface lifting the effective order
-    # above naive staircase O(dx) (see the "ONE-SIDED GATE" comment
+    # log(1.5) = 1.4847707054524188 -- TWO-POINT (from this single 1.5x
+    # refinement step; not a multi-level Richardson fit -- one data point
+    # cannot separate order from a curvature/discretization-constant
+    # offset the way a 3+ level fit can) -- between the naive first-order
+    # (p=1) lower bound this predeclaration's excess-scaling estimate
+    # assumed and second-order (p=2), consistent with openEMS's own
+    # material averaging at a dielectric interface lifting the effective
+    # order above naive staircase O(dx) (see the "ONE-SIDED GATE" comment
     # above). ratio 1.0662 is INSIDE the originally-declared informational
     # band [1.05, 1.11] (below the predicted 1.0805, i.e. a stronger
     # confirmation than predicted, not a weaker one) and far below the
@@ -951,7 +965,51 @@ MESH_REFINEMENT_PREDECLARATION: dict = {
     # deg (S21) / 0.169 deg (S12), both << the 30 deg tol; group-delay
     # deviation ~0.15 ps against a ~200 ps tol. FDTD stages (both drives)
     # took ~67 min wall-clock (2014.2 s + 2015.9 s), well under the
-    # corrected 2.41 h estimate.
+    # corrected 2.41 h estimate (measured/estimate ratio ~2.16x, recorded
+    # in runtime_basis above for a future R=2.0 sizing).
+    #
+    # SETTLING-FLAG DISCLOSURE (review finding, honestly recorded, not
+    # buried): the committed fixture's stage_b.drive{1,2}_diagnostics.
+    # end_criteria_not_reached is TRUE on BOTH drives (openEMS's own
+    # -40 dB end-criteria was never reached within the 200000-timestep
+    # cap; n_trace_samples=8001 << nrts_cap=200000 is the SAMPLE-DECIMATION
+    # count, not the raw timestep count, so it does not itself indicate
+    # truncation) -- undisclosed in the first fill-and-close pass. The
+    # SEPARATE truncated_suspected witness (n_trace_samples vs nrts_cap)
+    # reads False and is the one gating sanity_passed; the two witnesses
+    # disagree here, and only the latter is wired into the gate. Assessed
+    # (not merely asserted) as very likely benign, not silently accepted:
+    # |S11| ~= 1e-3 means this fixture is near-reflectionless at the
+    # refined mesh, so there is little reflected-wave ring-down energy
+    # left TO decay below -40 dB in the first place -- an End-Criteria
+    # miss on a near-matched line is expected, not diagnostic of a bad
+    # run. A badly-windowed/truncated DFT would be expected to show up as
+    # noise in exactly the numbers this run's OTHER witnesses report
+    # clean: passivity max deviation 9e-5 from unity, reciprocity 5e-5,
+    # matched-through phase 0.17 deg, and the four central-band beta-ratio
+    # bins agreeing to 0.017% -- none of those would plausibly survive a
+    # genuinely under-settled or badly-windowed extraction. This is an
+    # assessment, not a re-run: a settling-specific falsifier (comparing
+    # this run against a LONGER nrts_cap on the SAME dx_scale) has not
+    # been executed and is not proposed here.
+    #
+    # RAW OPENEMS STDOUT LOG: did NOT survive -- checked (read-only) at
+    # the primary checkout's .omx/coax-two-port-referee-mesh-refinement/
+    # 20260805T001017Z-865974280e7c779b9273bb7e8d115d950e93b42e/, which
+    # holds only exit_code/run.log/openems_coax_two_port_mesh_refinement.
+    # json, no _openems_stdout.log. Root cause identified, not merely
+    # observed: this script's own --sim-root CLI default
+    # (/tmp/openems_coax_two_port_referee) is where
+    # _run_openems_capturing_stdout writes each stage/drive's
+    # _openems_stdout.log, and /tmp is the VESSL pod's own EPHEMERAL
+    # container filesystem, never part of the mounted volume -- the file
+    # was never written anywhere persistent, not lost after being
+    # written. The mesh-refinement YAML now passes --sim-root under the
+    # mounted $OUT_DIR so a FUTURE run's raw openEMS stdout persists (see
+    # scripts/vessl_coax_two_port_referee_mesh_refinement.yaml); this
+    # run's own raw stdout is unrecoverable, only its run.log (the
+    # referee's own stdout, captured separately) and result JSON survive,
+    # both committed here.
     "status": "RUN",
     "measured_ratio_after": 1.0661624823818885,
     "measured_excess_after": 0.06616248238188849,

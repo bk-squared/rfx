@@ -213,9 +213,23 @@ run: |-
   # estimated_runtime_h -- N3 review fix, corrected from a first-draft
   # 3.93h that used the wrong refinement_factor^4 scaling) for build +
   # smoke-run overhead on top of the two real Stage B drives. --
+  # SETTLING-FLAG DISCLOSURE fix (review, 2026-08-05, run 369367251845):
+  # that run's raw per-drive openEMS stdout (_openems_stdout.log, written
+  # by _run_openems_capturing_stdout under --sim-root) did NOT survive --
+  # the script's own --sim-root CLI default (/tmp/openems_coax_two_port_
+  # referee) is the VESSL pod's EPHEMERAL container filesystem, never
+  # part of the mounted volume, so the file was never written anywhere
+  # persistent in the first place (not lost after being written). Passing
+  # --sim-root under the mounted $OUT_DIR here makes every future run's
+  # raw per-drive/per-stage stdout (the auditable source of the
+  # end_criteria_not_reached flag and any mesh/port-parse warnings)
+  # persist automatically, alongside run.log and the result JSON.
+  SIM_ROOT="$OUT_DIR/sim_root"
+  mkdir -p "$SIM_ROOT"
   set +e
   timeout 25200 "$PY" validation/crossval/21_coax_two_port_referee.py \
     --output "$OUT_DIR/openems_coax_two_port_mesh_refinement.json" \
+    --sim-root "$SIM_ROOT" \
     --threads 16 \
     --dx-scale 0.6666666666666666 \
     > "$OUT_DIR/run.log" 2>&1
