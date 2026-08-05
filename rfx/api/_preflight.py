@@ -2028,7 +2028,24 @@ class _PreflightMixin:
         if dz.size == 0:
             return
         edges = np.concatenate(([0.0], np.cumsum(dz)))
-        centers = 0.5 * (edges[:-1] + edges[1:])
+        # Sample positions must be the ones the RUN uses, and the occupancy
+        # rule must be the run's rule. This validator previously modelled both
+        # by hand — cell centres plus a bare half-open span — and was wrong on
+        # each count: coordinates are E-NODES (cell edges) since #562, and
+        # ``Box.mask_on_coords`` has a THIN-SHEET branch that snaps a box no
+        # thicker than its local cell onto a single nearest node (#48/#75/#371).
+        # With the hand model this check diverged from the rasterizer on boxes
+        # straddling a grading transition — the #325 signature it exists to
+        # catch — and went SILENT on one of them (#562 review, F2). So call the
+        # production path instead of imitating it: node positions through the
+        # same two steps the grid builder composes, and the shape's own mask.
+        # x/y are passed as single-sample arrays because only the z profile is
+        # needed here; either mask branch admits the box's own midpoint, so the
+        # combined mask's z profile is the z-axis mask.
+        from rfx.geometry.rasterize_grid import _axis_node_positions
+        from rfx.nonuniform import _append_bounding_node
+        z_nodes = np.asarray(_axis_node_positions(_append_bounding_node(dz), 0),
+                             dtype=np.float64)
 
         for entry in self._geometry:
             if not isinstance(entry.shape, Box):
@@ -2039,8 +2056,10 @@ class _PreflightMixin:
             if thickness <= 0.0:
                 continue
 
-            rasterized = (centers >= z_lo) & (centers < z_hi)
-            actual = int(np.count_nonzero(rasterized))
+            x_mid = np.array([0.5 * (float(c1[0]) + float(c2[0]))])
+            y_mid = np.array([0.5 * (float(c1[1]) + float(c2[1]))])
+            mask = np.asarray(entry.shape.mask_on_coords(x_mid, y_mid, z_nodes))
+            actual = int(np.count_nonzero(mask))
             local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
             if not np.any(local):
                 continue

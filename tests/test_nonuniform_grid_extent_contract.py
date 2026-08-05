@@ -137,3 +137,38 @@ def test_graded_profile_realizes_its_own_sum():
     # every interior node sits on a cumulative cell edge of the profile
     edges = np.concatenate([[0.0], np.cumsum(prof)])
     assert np.max(np.abs(x - edges)) < _ABS_TOL
+
+
+def test_extent_and_pad_symmetry_hold_with_cpml_pads():
+    """The contract must hold with absorber pads, and the pads must be
+    symmetric (#562 review F6/F3).
+
+    The cases above are all PEC-bounded (pad = 0), which is the half of the
+    convention with no absorber interaction — and the absorber is where the
+    added bounding node changes an existing behaviour: before it, the hi face
+    carried one physical cell fewer than the lo face, so the CPML sigma ramps
+    were not mirror images. That is a behaviour change on every open-boundary
+    NU run and belongs under test, not only in a PR note.
+    """
+    prof = np.full(60, DX)
+    sim = Simulation(freq_max=13e9, domain=(60 * DX, A, NB * DX),
+                     dx=DX, cpml_layers=8, dx_profile=prof)
+    grid = sim._build_nonuniform_grid()
+    coords = coords_from_nonuniform_grid(grid)
+    x = np.asarray(coords[0], dtype=float)
+
+    # interior span: first interior node at 0, last interior node on the far face
+    assert float(x[grid.pad_x_lo]) == pytest.approx(0.0, abs=1e-12)
+    interior_last = grid.nx - grid.pad_x_hi - 1
+    assert float(x[interior_last] - x[grid.pad_x_lo]) == pytest.approx(
+        60 * DX, abs=_ABS_TOL), (
+        f"interior span {float(x[interior_last] - x[grid.pad_x_lo]) * 1e3:.4f} mm "
+        f"vs requested {60 * DX * 1e3:.4f} mm")
+
+    # pad symmetry: the absorber occupies the same physical depth on both faces
+    lo_depth = float(x[grid.pad_x_lo] - x[0])
+    hi_depth = float(x[grid.nx - 1] - x[interior_last])
+    assert lo_depth == pytest.approx(hi_depth, abs=_ABS_TOL), (
+        f"absorber depth lo {lo_depth * 1e3:.4f} mm vs hi {hi_depth * 1e3:.4f} mm "
+        "— the CPML ramps are not mirror images")
+    assert lo_depth == pytest.approx(8 * DX, abs=_ABS_TOL)

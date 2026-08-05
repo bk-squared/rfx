@@ -1655,6 +1655,29 @@ class _ExecuteMixin:
         self._check_stencil_order_supported()
         from rfx.runners.nonuniform import run_nonuniform_path
 
+        # A grid-shaped override is (cells + 1) per axis, because N cells are
+        # bounded by N+1 E-nodes (#562) — the same shape the uniform path has
+        # always wanted. Caller code that sized arrays from the PROFILE length
+        # is one sample short, and without this check the mismatch surfaces
+        # deep inside XLA as an opaque broadcast TypeError (#562 review F9).
+        _grid = self._build_nonuniform_grid()
+        for _name, _arr in (("eps_override", eps_override),
+                            ("sigma_override", sigma_override),
+                            ("pec_mask_override", pec_mask_override),
+                            ("pec_occupancy_override", pec_occupancy_override),
+                            ("design_mask", design_mask)):
+            if _arr is None or not hasattr(_arr, "shape"):
+                continue
+            if tuple(_arr.shape) != tuple(_grid.shape):
+                raise ValueError(
+                    f"{_name} has shape {tuple(_arr.shape)} but this "
+                    f"non-uniform grid is {tuple(_grid.shape)}. Grid-shaped "
+                    f"arrays are one sample larger per axis than the cell "
+                    f"counts / profile lengths you requested: N cells are "
+                    f"bounded by N+1 field nodes (#562). Build the array from "
+                    f"the grid shape rather than from the profile length."
+                )
+
         result = run_nonuniform_path(
             self,
             n_steps=n_steps,

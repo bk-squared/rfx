@@ -213,14 +213,18 @@ def _get_normal_fn(shape: Shape):
 # ---------------------------------------------------------------------------
 
 def _yee_coords(grid: Grid):
-    """Return cell-center coordinates (x, y, z) as 1-D arrays.
+    """Return E-NODE coordinates (x, y, z) as 1-D arrays.
 
     On the Yee grid:
     - Ex lives at (i+0.5, j, k)
     - Ey lives at (i, j+0.5, k)
     - Ez lives at (i, j, k+0.5)
 
-    We return the integer-grid positions; the caller applies +0.5*dx offsets.
+    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to
+    reach a centre. That direction is the contract: the NU sibling
+    ``compute_smoothed_eps_nonuniform`` subtracted instead, and when #562 made
+    the NU coordinates node-based the subtraction put every smoothed voxel half
+    a cell off (review F1). Derive centres FROM nodes, never the reverse.
     """
     nx, ny, nz = grid.shape
     dx = grid.dx
@@ -308,17 +312,26 @@ def compute_smoothed_eps_nonuniform(
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 
     coords = coords_from_nonuniform_grid(nu_grid)
-    centers_x = coords.x  # (nx,)
-    centers_y = coords.y  # (ny,)
-    centers_z = coords.z  # (nz,)
+    # `coords` are E-NODE positions (cell edges) since #562 unified the NU
+    # convention with the uniform builder's. This function needs BOTH the node
+    # and the cell centre per axis, so the centre is derived FROM the node
+    # rather than the other way round. Getting that direction wrong is not a
+    # cosmetic slip: it displaces every smoothed voxel by half a cell, which is
+    # exactly the defect #562 removed elsewhere, and the committed
+    # interface-value bound (1 < eps < 4) passes under either sign — see
+    # test_compute_smoothed_eps_nonuniform_reduces_to_uniform, which is the
+    # assertion that catches it.
+    node_x = coords.x  # (nx,)
+    node_y = coords.y  # (ny,)
+    node_z = coords.z  # (nz,)
     dx_arr = jnp.asarray(nu_grid.dx_arr, dtype=jnp.float32)
     dy_arr = jnp.asarray(nu_grid.dy_arr, dtype=jnp.float32)
     dz_arr = jnp.asarray(nu_grid.dz, dtype=jnp.float32)
 
-    # Cell corners (for x/y/z) — corner[i] = center[i] - d_arr[i]/2
-    corner_x = centers_x - dx_arr / 2.0
-    corner_y = centers_y - dy_arr / 2.0
-    corner_z = centers_z - dz_arr / 2.0
+    # Cell centres — centre[i] = node[i] + d_arr[i]/2
+    centers_x = node_x + dx_arr / 2.0
+    centers_y = node_y + dy_arr / 2.0
+    centers_z = node_z + dz_arr / 2.0
 
     # Local-cell characteristic length (geometric mean of three cell
     # widths) — used to normalise SDF → fill fraction. Anisotropic cell
@@ -377,12 +390,12 @@ def compute_smoothed_eps_nonuniform(
             continue
 
         # Per-component half-cell offsets along the COMPONENT axis only:
-        # Ex sits at (center_x, corner_y, corner_z); Ey at (corner_x,
-        # center_y, corner_z); Ez at (corner_x, corner_y, center_z).
+        # Ex sits at (center_x, node_y, node_z); Ey at (node_x, center_y,
+        # node_z); Ez at (node_x, node_y, center_z).
         for comp, (axx, ayy, azz) in [
-            ("ex", (centers_x, corner_y, corner_z)),
-            ("ey", (corner_x, centers_y, corner_z)),
-            ("ez", (corner_x, corner_y, centers_z)),
+            ("ex", (centers_x, node_y, node_z)),
+            ("ey", (node_x, centers_y, node_z)),
+            ("ez", (node_x, node_y, centers_z)),
         ]:
             Xc = axx[:, None, None] * jnp.ones((1, ny, nz))
             Yc = jnp.ones((nx, 1, 1)) * ayy[None, :, None] * jnp.ones((1, 1, nz))

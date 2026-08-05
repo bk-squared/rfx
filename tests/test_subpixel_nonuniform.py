@@ -132,3 +132,50 @@ def test_compute_smoothed_eps_nonuniform_interface_values():
         f"interface voxel ε should be between 1.0 and {eps_bulk}, "
         f"got {boundary}"
     )
+
+
+def test_compute_smoothed_eps_nonuniform_reduces_to_uniform():
+    """On a UNIFORM profile the NU smoother must equal the uniform smoother
+    elementwise (#562 review, F1).
+
+    The sibling of `test_nonuniform_grid_extent_contract`'s reduction test,
+    applied to the consumer that hid the bug: `compute_smoothed_eps_nonuniform`
+    needs both the node and the cell centre per axis, and derived one from the
+    other. When #562 flipped `coords_from_nonuniform_grid` from centres to
+    nodes, that derivation silently inverted and every smoothed voxel moved
+    half a cell — reintroducing, on the public `subpixel_smoothing=True` path,
+    the exact defect #562 removed from the rasterizer.
+
+    The committed interface-value test cannot see it: a `1 < eps < 4` bound
+    holds under either placement. Identity against the uniform path can, and
+    only for a mesh where the two builders describe the same structure — which
+    is what the extent fix guarantees.
+    """
+    from rfx.geometry.smoothing import (compute_smoothed_eps,
+                                        compute_smoothed_eps_nonuniform)
+    from rfx.geometry.csg import Box as CsgBox
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.grid import Grid
+
+    dx = 1e-3
+    n = 8
+    eps_bulk = 4.0
+    # Interface deliberately INSIDE a voxel (z = 4.3 dx) — a face-aligned
+    # interface would agree under both conventions and prove nothing.
+    box = CsgBox((0.0, 0.0, 4.3 * dx), (n * dx, n * dx, n * dx))
+    shapes = [(box, eps_bulk)]
+
+    ug = Grid(freq_max=30e9, domain=(n * dx, n * dx, n * dx), dx=dx,
+              cpml_layers=0)
+    nug = make_nonuniform_grid(domain_xy=(n * dx, n * dx),
+                              dz_profile=np.full(n, dx), dx=dx, cpml_layers=0)
+    assert nug.shape == ug.shape, (nug.shape, ug.shape)
+
+    for comp, u_arr, n_arr in zip(("ex", "ey", "ez"),
+                                  compute_smoothed_eps(ug, shapes),
+                                  compute_smoothed_eps_nonuniform(nug, shapes)):
+        worst = float(np.max(np.abs(np.asarray(u_arr) - np.asarray(n_arr))))
+        assert worst < 1e-5, (
+            f"{comp}: NU smoother differs from the uniform smoother by "
+            f"{worst:.4f} on an identical mesh — a half-cell coordinate "
+            f"placement error (#562 review F1)")

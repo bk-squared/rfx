@@ -21,7 +21,23 @@ from rfx.geometry._pole_keying import (
 
 
 class GridCoords(NamedTuple):
-    """Physical cell-center coordinates for rasterization."""
+    """Physical sample coordinates for rasterization.
+
+    **Two conventions live behind this type, deliberately.**
+    ``coords_from_uniform_grid`` and ``coords_from_nonuniform_grid`` return
+    E-NODE positions (cell edges) — the samples the Yee stencil differences and
+    that PEC/geometry act on. ``coords_from_fine_grid`` genuinely returns cell
+    CENTRES for the subgrid fine region (subgrid-fenced, unchanged).
+
+    Reading the wrong one is not cosmetic. This type's docstring said
+    "cell-center" for every producer until #562, and a consumer
+    (``compute_smoothed_eps_nonuniform``) named its variables ``centers_*``
+    accordingly and derived the node as ``centre - d/2``; when the NU producer
+    became node-based, that derivation silently inverted and displaced every
+    smoothed voxel by half a cell. Consumers that need both should derive the
+    centre FROM the node (``centre = node + d/2``), and any new producer must
+    say which convention it returns.
+    """
     x: jnp.ndarray  # (nx,)
     y: jnp.ndarray  # (ny,)
     z: jnp.ndarray  # (nz,)
@@ -29,7 +45,11 @@ class GridCoords(NamedTuple):
 
 
 def coords_from_uniform_grid(grid) -> GridCoords:
-    """Extract cell-center coordinates from a uniform Grid."""
+    """Extract E-NODE coordinates from a uniform Grid.
+
+    ``(arange - pad) * dx`` — node i at i*dx from the first interior node,
+    despite the historical "cell-center" wording this docstring carried.
+    """
     nx, ny, nz = grid.shape
     dx = grid.dx
     pad_x, pad_y, pad_z = grid.axis_pads
@@ -62,7 +82,7 @@ def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
 
 
 def coords_from_nonuniform_grid(grid) -> GridCoords:
-    """Extract cell-center coordinates from a NonUniformGrid.
+    """Extract E-NODE coordinates from a NonUniformGrid (#562).
 
     All three axes use the per-cell spacing arrays (``dx_arr``,
     ``dy_arr``, ``dz``). The first interior cell on each axis is
@@ -80,7 +100,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
     pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    def _axis_centers(d_arr, pad_lo):
+    def _axis_nodes(d_arr, pad_lo):
         # Mesh-as-design-variable path: any axis cell-size profile may be
         # a JAX tracer. Route the cumsum / offset arithmetic through jnp
         # in-trace; fall back to the numpy path on concrete inputs to keep
@@ -94,9 +114,9 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
         d_np = np.asarray(d_arr)
         return jnp.asarray(_axis_node_positions(d_np, pad_lo), dtype=jnp.float32)
 
-    x = _axis_centers(grid.dx_arr, pad_x_lo)
-    y = _axis_centers(grid.dy_arr, pad_y_lo)
-    z = _axis_centers(grid.dz, pad_z_lo)
+    x = _axis_nodes(grid.dx_arr, pad_x_lo)
+    y = _axis_nodes(grid.dy_arr, pad_y_lo)
+    z = _axis_nodes(grid.dz, pad_z_lo)
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
@@ -134,7 +154,9 @@ def rasterize_geometry(
     material_resolver : callable(name) -> MaterialSpec
         Resolves material name to MaterialSpec.
     coords : GridCoords
-        Cell-center coordinates from any grid type.
+        Sample coordinates from any grid type — E-NODES for the uniform and
+        non-uniform builders, cell centres for the subgrid fine region (see
+        ``GridCoords``).
     pec_sigma_threshold : float
         Conductivity above which a material is treated as PEC.
     thin_conductors : list or None

@@ -282,6 +282,21 @@ differentiation is implemented only with `normalize="flux"`.
 there is no corresponding nonuniform `sigma_override` AD-vs-FD test. Neither
 implementation nor gradient regression is RF validation.
 
+**Those nonuniform fixtures are STALE and pending regeneration (issue #562).**
+`tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json`
+and
+`tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json`
+were generated while the nonuniform grid realized every axis one cell short of
+the requested domain, so their guide is `a - dy_edge` wide rather than `a`, and
+their gate tests replay the frozen numbers rather than re-running FDTD — the
+tests therefore pass while describing the earlier geometry. Nothing was
+re-blessed: the numbers above stand exactly as measured, and the lane stays
+experimental, so the matrix is conservative rather than wrong. Regenerating
+them is expected to *improve* agreement (the guide finally being the requested
+width); until it happens, treat the cited magnitude differences as an upper
+bound obtained on a slightly narrow guide, and do not compare them against
+newly generated nonuniform numbers.
+
 **Setup restrictions:**
 
 - Prefer `normalize="flux"`; it uses a matched reference run for Poynting-flux

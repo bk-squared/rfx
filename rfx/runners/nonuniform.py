@@ -97,10 +97,14 @@ def assemble_materials_nu(
     # cell can differ from a >=1-cell VOLUME box at the same nominal z. That is
     # correct: a zero-thickness sheet and a one-cell-thick box are different
     # objects. apply_pec_mask realizes the sheet's conductor at the selected
-    # cell CENTRE (collocated tangential Ex/Ey), so Box's argmin-nearest-centre
-    # thin branch minimizes the realized-plane error |centre - z0|; a genuinely
+    # E-NODE, where tangential Ex/Ey actually sit, so Box's argmin-nearest thin
+    # branch minimizes the realized-plane error |node - z0|; a genuinely
     # matching-thickness (sub-cell) box takes the same thin branch and selects
     # the identical layer (verified, tests/test_thin_conductor.py). No fix here.
+    # (This said "cell CENTRE" until #562: the NU coordinates the argmin runs
+    # over were centres then, half a cell off the fields. The #371 argument is
+    # STRENGTHENED by the correction — the minimized quantity is now the
+    # distance to the plane the conductor is actually realized on.)
     if sim._thin_conductors:
         pec_tcs = [tc for tc in sim._thin_conductors
                    if getattr(tc, "is_pec", False)]
