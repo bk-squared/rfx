@@ -30,6 +30,8 @@ evolve without this test needing to be rewritten each time.
 from __future__ import annotations
 
 import importlib.util
+import json
+import math
 import pathlib
 from types import ModuleType
 from typing import Final
@@ -171,6 +173,249 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
             f"log_path {log_path} does not exist -- a claimed number needs a "
             f"real log, per external_solver_comparator.md step 2"
         )
+
+
+def test_mesh_refinement_predeclaration_has_required_fields():
+    """N1 (review fix): MESH_REFINEMENT_PREDECLARATION claims REPRODUCE_
+    GATE_RECORD's own fill-contract discipline -- give it the same
+    required-fields coverage so its shape cannot silently rot."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    required_fields = {
+        "issue", "leg", "predeclared_on", "refinement_factor", "dx_scale",
+        "dx_mm_before", "dx_mm_after", "annulus_cells_before",
+        "annulus_cells_after", "measured_ratio_before", "excess_before",
+        "predicted_excess_after", "predicted_ratio_after",
+        "acceptance_band_ratio", "falsifier", "estimated_runtime_s",
+        "estimated_runtime_h", "runtime_basis", "status",
+        "measured_ratio_after", "vessl_run_id", "log_path", "verified_on",
+    }
+    missing = required_fields - set(record.keys())
+    assert not missing, f"MESH_REFINEMENT_PREDECLARATION missing fields: {missing}"
+
+
+def test_mesh_refinement_predeclaration_is_committed_unrun_and_self_consistent():
+    """UNRUN <=> no numbers, no log path, no run id -- same fill-contract
+    shape REPRODUCE_GATE_RECORD's own test enforces above."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    if record["status"] == "UNRUN":
+        assert record["measured_ratio_after"] is None
+        assert record["vessl_run_id"] is None
+        assert record["log_path"] is None
+        assert record["verified_on"] is None
+    else:
+        assert record["measured_ratio_after"] is not None
+        assert record["vessl_run_id"], "a filled record needs a vessl_run_id"
+        assert record["log_path"], "a filled record needs a log_path"
+
+
+def test_mesh_refinement_predeclaration_literal_pins():
+    """N1 (review fix): pin the numbers a resubmission could otherwise
+    reshape after the fact -- acceptance_band_ratio (post-B4: [lo, hi]
+    with hi=1.11 the ONLY refuting edge) and predicted_ratio_after must
+    not silently drift once a real measured_ratio_after arrives."""
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    assert record["refinement_factor"] == 1.5
+    assert abs(record["dx_scale"] - 2.0 / 3.0) < 1e-12
+    assert record["acceptance_band_ratio"] == [1.05, 1.11]
+    assert abs(record["excess_before"] - 0.1208) < 1e-9
+    assert abs(record["predicted_ratio_after"] - (1.0 + 0.1208 / 1.5)) < 1e-9
+    # N3 fix: the corrected (spatial-cell-ratio x timestep-ratio) runtime
+    # estimate, not the wrong refinement_factor**4 figure (2796*1.5**4=
+    # 14155s, 3.93h) -- pinned so a future edit cannot silently
+    # reintroduce the R^4 error via estimated_runtime_s/_h.
+    assert abs(record["estimated_runtime_h"] - 2.41) < 0.01
+    assert abs(record["estimated_runtime_s"] - 2796 * 1.5 ** 4) > 1000, (
+        "estimated_runtime_s matches the WRONG refinement_factor**4 figure"
+    )
+    # B4 fix: the falsifier text must name the one-sided direction
+    # explicitly (not just "outside the band", which reads two-sided).
+    assert "ABOVE 1.11" in record["falsifier"]
+    assert "NOT a falsifier" in record["falsifier"] or "not a falsifier" in record["falsifier"].lower()
+
+
+def test_mesh_refinement_gate_confirms_a_ratio_below_the_band():
+    """B4 (BLOCKING, adversarial review 2026-08-04): the two-sided version
+    of this check printed 'FALSIFIED, R2-STOP' for ANY ratio outside
+    [1.05, 1.11] -- including a ratio like 1.03, which is a STRONGER
+    confirmation of staircase-dispersion attribution (openEMS's own
+    material averaging routinely exceeds the naive first-order O(dx) the
+    predeclaration's excess-scaling estimate assumed), not a refutation.
+    This is the falsifier for that misfire: a ratio well below
+    acceptance_band_ratio[0] must NOT be reported as refuted."""
+    module = _load_referee_module()
+    evaluation = module._evaluate_mesh_refinement_ratio(
+        1.03, module.MESH_REFINEMENT_PREDECLARATION
+    )
+    assert evaluation["refuted"] is False
+    assert "CONFIRMED" in evaluation["verdict"]
+    assert "REFUTED" not in evaluation["verdict"]
+
+
+def test_mesh_refinement_gate_refutes_only_above_hi():
+    """The ONLY refuting outcome: ratio strictly above acceptance_band_
+    ratio[1] (1.11). At exactly hi, and anywhere below it, the gate must
+    confirm, not refute (one-sided, per the B4 fix)."""
+    module = _load_referee_module()
+    predeclaration = module.MESH_REFINEMENT_PREDECLARATION
+    hi = predeclaration["acceptance_band_ratio"][1]
+
+    at_hi = module._evaluate_mesh_refinement_ratio(hi, predeclaration)
+    assert at_hi["refuted"] is False, "exactly at the hard edge must still confirm"
+
+    just_above = module._evaluate_mesh_refinement_ratio(hi + 1e-6, predeclaration)
+    assert just_above["refuted"] is True
+
+    unchanged_near_original = module._evaluate_mesh_refinement_ratio(1.1208, predeclaration)
+    assert unchanged_near_original["refuted"] is True, (
+        "a ratio unchanged near the pre-refinement 1.1208 (no convergence "
+        "at all) must be the canonical refutation case"
+    )
+
+
+def test_mesh_refinement_gate_no_data_when_ratio_is_none():
+    """A missing ratio (e.g. the Stage B witness itself raised before
+    producing one) must be reported as NO-DATA -- distinct from both
+    CONFIRMED and REFUTED, never silently treated as either."""
+    module = _load_referee_module()
+    evaluation = module._evaluate_mesh_refinement_ratio(
+        None, module.MESH_REFINEMENT_PREDECLARATION
+    )
+    assert evaluation["refuted"] is None
+    assert "NO-DATA" in evaluation["verdict"]
+
+
+# ---------------------------------------------------------------------------
+# Mesh-refinement witness RUN-845 fixture (issue #489 leg 1, VESSL
+# 369367251845, 2026-08-05): mirrors the MSL phase referee's own "run-1
+# pattern" (tests/test_msl_phase_referee_header.py's RUN1_RESULT_PATH /
+# _load_run1_result / test_run1_stage_b_headline_facts_computed_from_the_
+# fixture) -- the committed result JSON is the SOURCE OF TRUTH; every
+# assertion below reads a value the fixture actually contains rather than
+# re-typing arrays as fresh Python literals, so a future re-run's fixture
+# swap cannot silently drift from what these tests claim to check.
+# ---------------------------------------------------------------------------
+RUN845_RESULT_PATH: Final = (
+    REPO_ROOT / "validation" / "crossval" / "_21_coax_two_port_referee_logs"
+    / "mesh_refinement_369367251845_result.json"
+)
+RUN845_LOG_PATH: Final = (
+    REPO_ROOT / "validation" / "crossval" / "_21_coax_two_port_referee_logs"
+    / "mesh_refinement_369367251845_run.log"
+)
+
+
+def _load_run845_result() -> dict:
+    assert RUN845_RESULT_PATH.exists(), f"missing committed run-845 result {RUN845_RESULT_PATH}"
+    return json.loads(RUN845_RESULT_PATH.read_text())
+
+
+def test_run845_log_is_committed_and_matches_the_filled_predeclaration():
+    """The committed log/fixture and the script's own FILLED
+    MESH_REFINEMENT_PREDECLARATION must agree -- a drift here would mean
+    the record was filled from a DIFFERENT run than the one whose
+    evidence is actually committed."""
+    assert RUN845_LOG_PATH.exists(), f"missing committed run-845 log {RUN845_LOG_PATH}"
+    log_text = RUN845_LOG_PATH.read_text()
+    assert "MESH-REFINEMENT PREDECLARATION CHECK" in log_text
+    assert "CONFIRMED" in log_text
+    assert "369367251845" not in log_text  # the run id is not printed inside the referee's own stdout
+    module = _load_referee_module()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    assert record["status"] == "RUN"
+    assert record["vessl_run_id"] == "369367251845"
+    assert record["log_path"] == "validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_run.log"
+
+
+def test_run845_result_matches_the_filled_predeclaration():
+    module = _load_referee_module()
+    result = _load_run845_result()
+    record = module.MESH_REFINEMENT_PREDECLARATION
+    sb = result["stage_b"]
+    assert result["overall_passed"] is True
+    assert sb["sanity_passed"] is True
+    assert sb["beta_ratio_measured_over_analytic_mean"] == record["measured_ratio_after"]
+    assert abs(sb["dx_scale"] - record["dx_scale"]) < 1e-12
+
+
+def test_run845_headline_facts_computed_from_the_fixture():
+    """Assert the headline facts as COMPUTED FROM the fixture -- not
+    independently declared -- per the run-1 pattern's own 'do not assert
+    anything the fixture doesn't contain' discipline. Also re-derives the
+    one-sided gate verdict and the implied convergence order from the raw
+    ratio, rather than trusting the committed prose alone."""
+    result = _load_run845_result()
+    sb = result["stage_b"]
+
+    ratio = sb["beta_ratio_measured_over_analytic_mean"]
+    # B4's own acceptance band: informational lower edge 1.05, hard upper
+    # (refuting) edge 1.11. The measured ratio must land inside this band
+    # -- a CONFIRMATION, and specifically BELOW the pre-declared 1.0805
+    # prediction (a stronger result than predicted, not merely adequate).
+    assert 1.05 <= ratio <= 1.11, ratio
+    predeclared_prediction = 1.0805333333333333
+    assert ratio < predeclared_prediction, (
+        "measured ratio should be a STRONGER confirmation than the "
+        "first-order prediction, not merely inside the band"
+    )
+
+    module = _load_referee_module()
+    evaluation = module._evaluate_mesh_refinement_ratio(
+        ratio, module.MESH_REFINEMENT_PREDECLARATION
+    )
+    assert evaluation["refuted"] is False
+    assert "CONFIRMED" in evaluation["verdict"]
+
+    # Implied convergence order: a sane bracket (not a tight pin -- physical
+    # staircase convergence order for this class of defect plausibly spans
+    # naive-first-order (p=1) to super-quadratic; this just catches a gross
+    # regression in the log/log formula itself, not a specific physics claim).
+    excess_before = module.MESH_REFINEMENT_PREDECLARATION["excess_before"]
+    excess_after = ratio - 1.0
+    p = math.log(excess_before / excess_after) / math.log(1.5)
+    assert 0.5 <= p <= 3.0, p
+    assert abs(p - 1.4847707054524188) < 1e-9
+
+    # Per-bin beta-ratio range at the refined mesh (R5 -- inspect the full
+    # per-bin data, not just the headline mean): the gated central-band
+    # array the mean above was itself averaged from.
+    per_bin = sb["matched_through_witness"]["beta_ratio_measured_over_analytic"]
+    assert len(per_bin) == 4
+    assert min(per_bin) >= 1.05 and max(per_bin) <= 1.11
+    assert abs(sum(per_bin) / len(per_bin) - ratio) < 1e-9
+
+    # Witness legs beyond the headline ratio, all from the SAME fixture:
+    # passivity, |S21| band, reciprocity, matched-through phase/group-delay
+    # against the port's own MEASURED beta.
+    assert sb["passivity_drive1"]["passed"] is True
+    assert sb["passivity_drive2"]["passed"] is True
+    assert sb["passivity_drive1"]["max_balance"] < 1.05
+    assert sb["passivity_drive2"]["max_balance"] < 1.05
+    assert min(sb["s21_mag"]) > 0.999 and max(sb["s21_mag"]) < 1.001
+    assert sb["reciprocity_max_mag_dev"] < 1e-3
+    assert sb["reciprocity_max_phase_dev_deg"] < 1.0
+    assert sb["matched_through_witness"]["beta_source"] == "measured"
+    assert sb["matched_through_witness"]["max_phase_dev_deg"] < 1.0
+    assert sb["matched_through_witness_s12"]["max_phase_dev_deg"] < 1.0
+
+
+def test_run845_does_not_disturb_default_scale_gates():
+    """Default-scale invariant: filling the mesh-refinement witness must
+    not touch Stage A's own REPRODUCE_GATE_RECORD (a DIFFERENT run,
+    369367251629, gating the dx_scale=1.0 fixture's own reproduce-gate) --
+    the two records are independent fill-contract objects and a fill of
+    one must never silently overwrite the other."""
+    module = _load_referee_module()
+    assert module.REPRODUCE_GATE_RECORD["vessl_run_id"] == "369367251629"
+    assert module.REPRODUCE_GATE_RECORD["status"] == "RUN"
+    # The default (dx_scale=1.0) layout must still be byte-identical to
+    # B_DX_MM/B_PML_DEPTH_MM -- unaffected by the dx_scale=0.6667 fixture
+    # this run measured at.
+    default_layout = module._stage_b_layout()
+    assert default_layout["dx_mm"] == module.B_DX_MM
+    assert default_layout["pml_mm"] == module.B_PML_DEPTH_MM
 
 
 def test_declared_question_and_governance_notes_present():
@@ -499,7 +744,7 @@ def test_stage_b_physics_gate_failure_carries_partial_data(monkeypatch):
     """
     module = _load_referee_module()
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         return _fake_stage_b_drive_dict(drive, nrts)
 
     monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
@@ -646,7 +891,7 @@ def test_main_writes_valid_json_on_stage_b_physics_gate_failure(monkeypatch, tmp
             "passivity": {"passed": True}, "matched_through_witness": {"passed": True},
         }
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         return _fake_stage_b_drive_dict(drive, nrts)
 
     monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
@@ -851,7 +1096,7 @@ def test_run_stage_b_passes_end_to_end_on_run3_data_with_the_fix(monkeypatch):
     """
     module = _load_referee_module()
 
-    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria):
+    def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads, nrts, end_criteria, dx_scale=1.0):
         if drive == "port1":
             extracted = {"s_self": _run3_complex(_RUN3_S11), "s_thru": _run3_complex(_RUN3_S21),
                         "s_thru_alternate_channel": _run3_complex(_RUN3_S21)}
@@ -967,7 +1212,7 @@ def test_config_error_exits_3_distinct_from_physics_failure(monkeypatch):
     exit 3, not 1 or a raw traceback."""
     module = _load_referee_module()
 
-    def _broken_layout():
+    def _broken_layout(*args, **kwargs):
         raise AssertionError("simulated: rfx geometry drifted")
 
     monkeypatch.setattr(module, "_stage_b_layout", _broken_layout)

@@ -1,0 +1,251 @@
+name: rfx-coax-two-port-referee-mesh-refinement
+description: "#489 active dev track leg 1: mesh-refinement convergence witness for the coax two-port openEMS referee's own measured/analytic beta ratio (~1.12x on the committed dx=0.37474mm mesh). Runs the SAME referee script (validation/crossval/21_coax_two_port_referee.py) at --dx-scale 0.666667 (1.5x refinement, annulus 3.79 -> ~5.68 cells) -- see MESH_REFINEMENT_PREDECLARATION in that script for the pre-declared ONE-SIDED gate (refutes only ratio > 1.11) and the runtime arithmetic (~2.41h estimated from run-3's own 2796s baseline, corrected N3 review fix -- spatial cell ratio 2.0723 x timestep ratio 1.5, NOT refinement_factor^4). SHA-PINNED TARBALL FETCH (mechanism changed 2026-08-04 after runs 369367251836/369367251837 both died at apt-get-install-git on an unreachable Ubuntu mirror -- this image ships neither git nor a working apt path to it reliably; the original branch-clone+git-checkout pattern, mirroring #530/#515's scripts/vessl_msl_ad_band_mean_owner_measurement.yaml, is preserved in spirit but fetches https://github.com/bk-squared/rfx/archive/$RFX_EXPECT_SHA.tar.gz via curl/wget/python3 instead of git -- the tarball URL IS the pin) -- this job fetches RFX_EXPECT_SHA fresh; it does NOT use the mounted primary checkout, which stays on main until this branch merges. Comparator-leg only -- brackets, does not judge rfx's own compute_coaxial_two_port numbers."
+tags: [rfx, coax-two-port, i489, external-referee, mesh-refinement]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 48Gi
+image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own --threads/numThreads (passed explicitly
+  # below, matching resources.cpu=16) does the parallelism -- same rationale
+  # as scripts/vessl_coax_two_port_referee.yaml.
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # RFX_BRANCH is INFORMATIONAL ONLY (review nit): the fetch below is a
+  # tarball keyed purely by RFX_EXPECT_SHA (the actual pin) -- this var is
+  # not used to select what gets fetched, only echoed for a human reader's
+  # provenance context (which branch's history this SHA came from).
+  RFX_BRANCH: "feat/489-active-dev-legs-1-3"
+  RFX_EXPECT_SHA: "865974280e7c779b9273bb7e8d115d950e93b42e"
+  # PROVISION_SMOKE (review addition, 2026-08-04): "1" exits 0 right after
+  # the openEMS-Project git clone succeeds -- validates apt+git+network
+  # (the exact failure surface of runs 369367251836/369367251837/369367251840)
+  # in minutes, without paying for the ~15-20 min cmake/make build or
+  # running any Stage A/B physics. Default "0" (the real, full job) --
+  # toggle to "1" only for a throwaway smoke submission, never committed
+  # as "1".
+  PROVISION_SMOKE: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # pytorch runtime image: dash shell (no bashisms), no git preinstalled.
+  echo "=== rfx #489 leg 1: coax two-port referee mesh-refinement witness ==="
+  date
+
+  # MECHANISM CHANGE (2026-08-04, two prior submissions failed the SAME
+  # way at this exact step: VESSL runs 369367251836 and 369367251837, both
+  # dead within ~3 minutes at "apt-get update" -- "W: Failed to fetch
+  # http://archive.ubuntu.com/... Connection failed" then "E: Unable to
+  # correct problems, you have held broken packages" installing git. This
+  # image genuinely has no git preinstalled (vessl-jobs.md's own
+  # documented gotcha), and the Ubuntu archive mirror was unreachable from
+  # this cluster both times -- zero real work ran either attempt. Rather
+  # than retry the identical apt+git mechanism a third time, fetch the
+  # pinned commit as a GitHub tarball instead: needs only curl/wget/
+  # python3 (all present in this image already), no apt-get, no git. The
+  # tarball URL is itself keyed by RFX_EXPECT_SHA, so it IS the pin --
+  # curl -f fails loud (nonzero exit, caught by set -eu) on a bad SHA or a
+  # network error, same as the old checkout-mismatch guard did.
+  echo "=== fetch RFX_EXPECT_SHA as a tarball (apt+git mechanism dropped after 2 network failures: runs 369367251836, 369367251837) ==="
+  # N5 (review fix): the tarball URL is itself keyed by RFX_EXPECT_SHA, so an
+  # unfilled placeholder would 404 anyway -- but that is an OPAQUE curl
+  # failure, not a diagnosable message. Keep an explicit escape-hatch guard
+  # (same intent as the old branch-clone pattern's FILL_AFTER_PUSH check) and
+  # make it a HARD, LOUD abort rather than relying on an incidental 404.
+  if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_EXPECT_SHA still contains the FILL_AFTER_PUSH placeholder -- fill in the real commit SHA before submitting this job"
+    exit 3
+  fi
+  RFX_TARBALL_URL="https://github.com/bk-squared/rfx/archive/${RFX_EXPECT_SHA}.tar.gz"
+  RFX_TARBALL_PATH="/tmp/rfx-${RFX_EXPECT_SHA}.tar.gz"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$RFX_TARBALL_PATH" "$RFX_TARBALL_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$RFX_TARBALL_PATH" "$RFX_TARBALL_URL"
+  else
+    python3 -c "import urllib.request; urllib.request.urlretrieve('$RFX_TARBALL_URL', '$RFX_TARBALL_PATH')"
+  fi
+  test -s "$RFX_TARBALL_PATH" || { echo "FATAL: tarball fetch produced an empty/missing file"; exit 3; }
+
+  CLONE_DIR=/tmp/rfx-clone
+  rm -rf "$CLONE_DIR"
+  mkdir -p "$CLONE_DIR"
+  tar xzf "$RFX_TARBALL_PATH" -C "$CLONE_DIR" --strip-components=1
+  cd "$CLONE_DIR" || exit 1
+  ACTUAL_SHA="$RFX_EXPECT_SHA"
+  echo "fetched branch (tarball snapshot) : $RFX_BRANCH"
+  echo "pinned SHA (== fetch URL)         : $ACTUAL_SHA"
+  ls validation/crossval/21_coax_two_port_referee.py >/dev/null || {
+    echo "FATAL: expected file missing after tarball extraction -- extraction or pin is broken"
+    exit 3
+  }
+
+  # -- openEMS source build: the PROVEN microwave-energy recipe, identical
+  # to scripts/vessl_coax_two_port_referee.yaml's build block (imitated,
+  # not reinvented). --
+  # R1 fix (review, BLOCKING): `git` must stay in this list even though the
+  # RFX repo itself is now fetched via tarball (no git needed for that) --
+  # openEMS-Project below is STILL fetched via `git clone --recursive`
+  # (submodules: fparser/CSXCAD/openEMS), and this image ships no git at
+  # all (vessl-jobs.md's own documented gotcha; confirmed by run 837's own
+  # `command -v git` branch firing before apt-get). Dropping the old
+  # `command -v git || apt-get install git` fallback when the RFX clone
+  # switched to a tarball fetch (commit b5b5104) silently dropped the ONE
+  # apt token that mattered for THIS clone too -- the reference YAML
+  # (scripts/vessl_coax_two_port_referee.yaml) keeps `git` in its own
+  # `build-essential cmake git` list for exactly this reason.
+  # R2 fix (mechanism change, adversarial review 2026-08-04, run 369367251840):
+  # died at THIS install step, not the git clone R1 fixed above -- log shows
+  # "Network is unreachable" against ~9 different IPv6 literal addresses for
+  # archive.ubuntu.com before ever trying IPv4 (~5.7 minutes of dead-end AAAA
+  # attempts), then a final IPv4 fetch failure too. This morning's MSL
+  # referee runs (05:50Z, 09:41Z) succeeded through this SAME apt path, so
+  # the cluster's IPv6 route is TIME-VARYING, not permanently broken --
+  # forcing IPv4 (skip the doomed AAAA attempts entirely) and adding retries
+  # (survive a transient IPv4 blip too) directly targets the log's own
+  # failure signature, on both apt-get calls.
+  # R3 fix (mechanism change again, adversarial review 2026-08-04, run
+  # 369367251841): ForceIPv4+Retries was REFUTED -- 841's own log shows
+  # "Unable to connect to archive.ubuntu.com:http: [IP: 91.189.92.23 80]"
+  # on the .deb pool downloads (matplotlib/scipy) even over forced IPv4
+  # with 5 retries. archive.ubuntu.com itself is unreachable from this
+  # cluster right now, over BOTH stacks -- while this morning's MSL
+  # referee runs (05:50Z, 09:41Z) sailed through the identical apt path,
+  # confirming a time-varying upstream condition, not a permanent block.
+  # Swap to a Korean mirror (the cluster sits at CNU) BEFORE any apt call --
+  # a different endpoint entirely, not a retry/protocol tweak on the same
+  # dead host. This is the LAST mechanism change attempted here; if this
+  # also fails at apt, leg 1's VESSL submission is parked until the
+  # network window improves (see the PR body's submission ledger).
+  sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirror.kakao.com/ubuntu|g' /etc/apt/sources.list
+  apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 update && \
+  apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 install -y --no-install-recommends \
+    build-essential cmake git \
+    libhdf5-dev libtinyxml-dev \
+    libboost-thread-dev libboost-system-dev libboost-date-time-dev \
+    libboost-serialization-dev \
+    libcgal-dev libvtk7-dev \
+    python3-dev python3-numpy python3-scipy python3-matplotlib \
+    python3-setuptools python3-h5py 2>&1 | tail -3
+  # B1 fix (review): every `cd` below is now its OWN statement (never a
+  # non-final element of a `&&`/`||` chain) with an explicit `|| exit 1`.
+  # Empirically verified gotcha this fixes: under dash `set -e`, a failing
+  # `cd` that is a NON-FINAL element of an `&&` chain does NOT abort the
+  # script -- `cd /bad && echo x` on a bad path prints nothing, exits 0,
+  # and the script keeps running past it (POSIX errexit exemption for
+  # "any command of an AND-OR list other than the last"). The previous
+  # version of this block hit exactly this: `cd "$CLONE_DIR/CSXCAD/python"`
+  # used $CLONE_DIR (the RFX repo clone, which has no CSXCAD/ subdir --
+  # openEMS-Project is cloned separately, below, at /tmp/openEMS-Project)
+  # as a non-final `&&` element, so the python-bindings install silently
+  # no-opped on every path, and the job would have died at the import
+  # check below only AFTER paying the full ~15-20 min openEMS C++ build.
+  OPENEMS_SRC=/tmp/openEMS-Project
+  cd /tmp || exit 1
+  git clone --recursive https://github.com/thliebig/openEMS-Project.git
+  cd "$OPENEMS_SRC" || exit 1
+  if [ "${PROVISION_SMOKE:-0}" = "1" ]; then
+    echo "PROVISION_SMOKE=1: openEMS-Project git clone succeeded (apt+git+network OK, including the R1/R2 fixes above) -- exiting 0 WITHOUT the cmake/make build or any Stage A/B run."
+    exit 0
+  fi
+  cd fparser || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
+  cd CSXCAD || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
+  cd openEMS || exit 1
+  mkdir -p build
+  cd build || exit 1
+  cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DWITH_MPI=OFF
+  make -j"$(nproc)"
+  make install
+  cd "$OPENEMS_SRC" || exit 1
+  ldconfig
+  export CSXCAD_INSTALL_PATH=/usr/local
+  export OPENEMS_INSTALL_PATH=/usr/local
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  "$PY" -m pip install -q --upgrade pip "cython" "numpy<2" "matplotlib" "h5py" "scipy"
+  # B1 fix: rooted at $OPENEMS_SRC (the openEMS-Project clone), NOT
+  # $CLONE_DIR (the rfx clone -- rfx has no CSXCAD/ or openEMS/ subdirs).
+  cd "$OPENEMS_SRC/CSXCAD/python" || exit 1
+  "$PY" setup.py install 2>&1 | tail -2
+  cd "$OPENEMS_SRC/openEMS/python" || exit 1
+  "$PY" setup.py install 2>&1 | tail -2
+  # R4 fix (review, 2026-08-04, run 369367251844 -- cwd-shadow, the repo's
+  # own stale-editable-shadow class inverted): the B1 hardening turned each
+  # `cd` into its own statement, which is correct for errexit safety but
+  # left cwd sitting in $OPENEMS_SRC/openEMS/python for this sanity import
+  # -- and `openEMS/python/openEMS/` IS the source package directory (not
+  # yet Cython-compiled outside site-packages), so it shadowed the
+  # just-installed package on sys.path (cwd is searched first), and the
+  # import chased its own uncompiled __init__.py straight into
+  # `ModuleNotFoundError: No module named 'openEMS.openEMS'` -- the build
+  # itself succeeded ("Finished processing dependencies for openEMS==0.37.0"
+  # printed immediately before). Move to a NEUTRAL cwd (no openEMS/CSXCAD
+  # source subdirectory of its own) before ANY post-build sanity import.
+  cd "$CLONE_DIR" || exit 1
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
+
+  cd "$CLONE_DIR" || exit 1
+  OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/coax-two-port-referee-mesh-refinement/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
+  mkdir -p "$OUT_DIR"
+
+  # -- The predeclared 1.5x refinement (dx_scale=2/3): --nrts/--end-criteria
+  # match the promoted run-3's own Stage B settings (only the mesh density
+  # changes; the predeclaration's runtime arithmetic assumes this). Timeout
+  # generous over the ~2.41h estimate (MESH_REFINEMENT_PREDECLARATION,
+  # estimated_runtime_h -- N3 review fix, corrected from a first-draft
+  # 3.93h that used the wrong refinement_factor^4 scaling) for build +
+  # smoke-run overhead on top of the two real Stage B drives. --
+  # SETTLING-FLAG DISCLOSURE fix (review, 2026-08-05, run 369367251845):
+  # that run's raw per-drive openEMS stdout (_openems_stdout.log, written
+  # by _run_openems_capturing_stdout under --sim-root) did NOT survive --
+  # the script's own --sim-root CLI default (/tmp/openems_coax_two_port_
+  # referee) is the VESSL pod's EPHEMERAL container filesystem, never
+  # part of the mounted volume, so the file was never written anywhere
+  # persistent in the first place (not lost after being written). Passing
+  # --sim-root under the mounted $OUT_DIR here makes every future run's
+  # raw per-drive/per-stage stdout (the auditable source of the
+  # end_criteria_not_reached flag and any mesh/port-parse warnings)
+  # persist automatically, alongside run.log and the result JSON.
+  SIM_ROOT="$OUT_DIR/sim_root"
+  mkdir -p "$SIM_ROOT"
+  set +e
+  timeout 25200 "$PY" validation/crossval/21_coax_two_port_referee.py \
+    --output "$OUT_DIR/openems_coax_two_port_mesh_refinement.json" \
+    --sim-root "$SIM_ROOT" \
+    --threads 16 \
+    --dx-scale 0.6666666666666666 \
+    > "$OUT_DIR/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT_DIR/exit_code"
+  tail -n 100 "$OUT_DIR/run.log" || true
+  echo "coax_two_port_referee_mesh_refinement_rc=$rc"
+  echo "artifacts persisted to (mounted, survives job teardown): $OUT_DIR"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: reproduce-gate + Stage B self-checks both passed at the refined mesh -- see JSON's stage_b.beta_ratio_measured_over_analytic_mean against MESH_REFINEMENT_PREDECLARATION.acceptance_band_ratio" ;;
+    1) echo "SELF-CHECK FAILED at the refined mesh -- inspect $OUT_DIR/run.log AND stage_b_partial in the JSON (if present) before concluding anything about the mesh-refinement question" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding" ;;
+    3) echo "CONFIG ERROR: an internal layout/geometry assertion failed at this dx_scale -- script bug or a clearance violated at the finer mesh, NOT itself the mesh-refinement physics answer" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"
