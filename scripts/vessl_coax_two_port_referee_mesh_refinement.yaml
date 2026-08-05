@@ -187,6 +187,19 @@ run: |-
   "$PY" setup.py install 2>&1 | tail -2
   cd "$OPENEMS_SRC/openEMS/python" || exit 1
   "$PY" setup.py install 2>&1 | tail -2
+  # R4 fix (review, 2026-08-04, run 369367251844 -- cwd-shadow, the repo's
+  # own stale-editable-shadow class inverted): the B1 hardening turned each
+  # `cd` into its own statement, which is correct for errexit safety but
+  # left cwd sitting in $OPENEMS_SRC/openEMS/python for this sanity import
+  # -- and `openEMS/python/openEMS/` IS the source package directory (not
+  # yet Cython-compiled outside site-packages), so it shadowed the
+  # just-installed package on sys.path (cwd is searched first), and the
+  # import chased its own uncompiled __init__.py straight into
+  # `ModuleNotFoundError: No module named 'openEMS.openEMS'` -- the build
+  # itself succeeded ("Finished processing dependencies for openEMS==0.37.0"
+  # printed immediately before). Move to a NEUTRAL cwd (no openEMS/CSXCAD
+  # source subdirectory of its own) before ANY post-build sanity import.
+  cd "$CLONE_DIR" || exit 1
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS source build: OK')"
 
   cd "$CLONE_DIR" || exit 1
