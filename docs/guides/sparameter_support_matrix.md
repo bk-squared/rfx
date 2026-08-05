@@ -526,6 +526,15 @@ the first probe plane). No external referee has run against this method and
 no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
 measured single-run envelope and its provenance.
 
+`compute_coaxial_two_port(...)` now has the same `eps_scale` differentiable
+channel as the 1-port method above (issue #489 leg 3): AD smoke + CPU-float32
+envelope (0.22% rel_err at h=0.01, gate 1%), owner-platform re-measurement
+pending. A CPU-float64 envelope is not achievable for this method — it
+hard-requires `precision="float32"` (same constraint as
+`compute_coaxial_line_reflection(...)`), so the FDTD field/CPML carry state
+stays float32 regardless of the outer JAX x64 scope. See
+`tests/test_coax_two_port_ad.py`.
+
 Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
 0.96 -> 0.74 on the 60 mm / 40 GHz fixture over 4-12 GHz even though `|S11|`
 stays at or below 0.05 throughout. A post-hoc consistency check (run after

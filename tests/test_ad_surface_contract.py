@@ -78,22 +78,20 @@ AD_CLASSIFICATION = {
         "tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent",
     ),
     "Simulation.compute_coaxial_two_port": (
-        NOT_TRACEABLE,
-        "issue #489 active dev track leg 3: EMPIRICALLY pinned (not just "
-        "prose) by tests/test_coax_two_port_ad.py — (1) the method has no "
-        "eps_scale/eps_override-shaped traced-input parameter at all "
-        "(unlike compute_coaxial_line_reflection's eps_scale path), pinned "
-        "by test_compute_coaxial_two_port_has_no_traced_input_channel; "
-        "(2) even with a channel, coaxial_line_plane_voltage (NOT the "
-        "already-differentiable coaxial_line_plane_voltage_jnp the 1-port "
-        "path uses) concretizes via np.asarray at rfx/sources/"
-        "coaxial_port.py:1499-1500 and raises "
-        "jax.errors.TracerArrayConversionError under jax.grad, pinned by "
-        "test_coaxial_line_plane_voltage_severs_the_jax_tape; the "
-        "downstream two-drive solve (solve_two_port_from_wave_amplitudes) "
-        "is also concrete numpy. Filed as the concrete de-experimental "
-        "blocker on issue #489. Same NOT_TRACEABLE reasoning as "
-        "compute_mixed_s_matrix above.",
+        GRAD_SAFE,
+        "issue #489 active dev track leg 3, FIXED: gained an eps_scale "
+        "design channel (same contract as compute_coaxial_line_reflection's "
+        "own eps_scale) that reaches both drives' FDTD runs; both drives' "
+        "voltage extraction routes through coaxial_line_plane_voltage_jnp; "
+        "_assemble_coaxial_two_port_from_voltages "
+        "(rfx/api/_sparams.py) and solve_two_port_from_wave_amplitudes "
+        "(rfx/sources/coaxial_port.py) both gained jnp cores dispatched via "
+        "an explicit _prefer_jnp flag (not tracer-only detection — a "
+        "concrete FD probe on this path is not a jax.core.Tracer and was "
+        "measured to hit the strict, less-tolerant NumPy lstsq without it, "
+        "the PR #468/#559-B1 class). AD-vs-FD gate: "
+        "tests/test_coax_two_port_ad.py::"
+        "test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent.",
     ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (

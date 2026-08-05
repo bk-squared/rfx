@@ -1132,6 +1132,7 @@ def _assemble_coaxial_two_port_from_voltages(
     v_bot_by_drive,
     v_top_by_drive,
     cond_warn: float = 1.0e3,
+    _prefer_jnp: bool = False,
 ):
     """Pure post-FDTD assembly: per-array V(z) -> (a_inc,b_out) -> 2x2 S (#489 stage 2).
 
@@ -1152,6 +1153,23 @@ def _assemble_coaxial_two_port_from_voltages(
         port 1 driven, index 1 = port 2 driven) and frequency.
     cond_warn : float
         Forwarded to :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`.
+    _prefer_jnp : bool
+        Force the jnp assembly path even when ``v_bot_by_drive`` /
+        ``v_top_by_drive`` are CONCRETE (not ``jax.core.Tracer``) — set by
+        :meth:`_SparamMixin.compute_coaxial_two_port` whenever its own
+        ``eps_scale`` was provided, whether or not the call happens to be
+        under ``jax.grad``. Without this, a concrete FD probe
+        (``eps_scale`` given but called eagerly, e.g. a finite-difference
+        AD-vs-FD cross-check) would silently fall through to the strict
+        NumPy ``lstsq`` in ``coaxial_line_reflection_from_plane_voltages``
+        instead of that function's own tolerant jnp lstsq — measured to
+        raise ``numpy.linalg.LinAlgError: SVD did not converge`` on a
+        marginal fit that the jnp path handles fine (the exact PR #468 /
+        #559-B1 class: an AD-vs-FD comparator silently evaluating two
+        different functions). See
+        :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`'s
+        own ``_prefer_jnp`` docstring note for the identical precedent on
+        the 1-port ``eps_scale`` path.
 
     Returns
     -------
@@ -1206,6 +1224,19 @@ def _assemble_coaxial_two_port_from_voltages(
     i489_stage2_two_port_fdtd_predeclaration.md``. This is NOT a general
     fact of the extractor — a different feed placement would need a
     different mapping.
+
+    AD note (#489 leg 3)
+    ---------------------
+    ``s_params`` (and the other four returned arrays) are differentiable
+    w.r.t. ``v_bot_by_drive`` / ``v_top_by_drive``: *traced* inputs (checked
+    via :func:`rfx.core.jax_utils.is_tracer`) run the whole assembly on a
+    ``jax.numpy`` core — ``coaxial_line_reflection_from_plane_voltages(...,
+    _prefer_jnp=True)`` (already used by the GRAD_SAFE 1-port ``eps_scale``
+    path) followed by :func:`rfx.sources.coaxial_port.
+    solve_two_port_from_wave_amplitudes`'s own jnp dispatch — while concrete
+    inputs keep the NumPy path below UNCHANGED. Reached by
+    :meth:`_SparamMixin.compute_coaxial_two_port`'s own ``eps_scale``
+    parameter.
     """
     from rfx.sources.coaxial_port import (
         coaxial_line_reflection_from_plane_voltages,
@@ -1214,8 +1245,19 @@ def _assemble_coaxial_two_port_from_voltages(
 
     z_planes_bot_m = np.asarray(z_planes_bot_m, dtype=np.float64)
     z_planes_top_m = np.asarray(z_planes_top_m, dtype=np.float64)
-    v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
-    v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
+
+    # Traced voltages (compute_coaxial_two_port(eps_scale=...), #489 AD leg 3)
+    # -> jax.numpy assembly below; concrete -> NumPy, UNCHANGED (moved into the
+    # `else` branch verbatim so the validated numeric path stays byte-identical).
+    # ``_prefer_jnp`` (set by the eps_scale call site regardless of tracing)
+    # is OR'd in for the same reason coaxial_line_reflection_from_plane_
+    # voltages's own _prefer_jnp exists: a concrete FD probe on the
+    # eps_scale path must hit the identical jnp branch jax.grad sees, not
+    # silently fall back to NumPy just because it happens to run eagerly.
+    _traced = _prefer_jnp or is_tracer(v_bot_by_drive) or is_tracer(v_top_by_drive)
+    if not _traced:
+        v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
+        v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
     if v_bot_by_drive.shape[0] != 2 or v_top_by_drive.shape[0] != 2:
         raise ValueError(
             "v_bot_by_drive / v_top_by_drive must have a leading axis of "
@@ -1224,6 +1266,67 @@ def _assemble_coaxial_two_port_from_voltages(
         )
     n_f = int(v_bot_by_drive.shape[-1])
 
+    if _traced:
+        # --- differentiable path: jnp assembly (AD moat, #489 leg 3) ---
+        # Same per-(drive, frequency) recurrence-fit loop as the concrete path
+        # below, routed through the extractor's own jnp core
+        # (_coaxial_line_reflection_jnp via _prefer_jnp=True — the SAME
+        # differentiable core the GRAD_SAFE 1-port eps_scale path already
+        # uses) instead of concretizing. n_f/drive are static Python ints, so
+        # this unrolls into a fixed-size jnp graph, mirroring
+        # compute_coaxial_line_reflection's own `for fi in range(n_f):` jnp
+        # branch.
+        a_top_rows, b_top_rows = [], []
+        a_bot_rows, b_bot_rows = [], []
+        rec_top_rows, fit_top_rows, gamma_top_rows = [], [], []
+        rec_bot_rows, fit_bot_rows, gamma_bot_rows = [], [], []
+        for drive_idx in range(2):
+            a_top_f, b_top_f, rec_top_f, fit_top_f, gamma_top_f = [], [], [], [], []
+            a_bot_f, b_bot_f, rec_bot_f, fit_bot_f, gamma_bot_f = [], [], [], [], []
+            for fi in range(n_f):
+                out_bot = coaxial_line_reflection_from_plane_voltages(
+                    z_planes_bot_m, v_bot_by_drive[drive_idx, :, fi],
+                    reference_plane_m=ref_bot_m, _prefer_jnp=True,
+                )
+                out_top = coaxial_line_reflection_from_plane_voltages(
+                    z_planes_top_m, v_top_by_drive[drive_idx, :, fi],
+                    reference_plane_m=ref_top_m, _prefer_jnp=True,
+                )
+                a_top_f.append(out_top.backward_amp)
+                b_top_f.append(out_top.forward_amp)
+                rec_top_f.append(out_top.recurrence_residual)
+                fit_top_f.append(out_top.fit_residual)
+                gamma_top_f.append(out_top.gamma)
+                a_bot_f.append(out_bot.backward_amp)
+                b_bot_f.append(out_bot.forward_amp)
+                rec_bot_f.append(out_bot.recurrence_residual)
+                fit_bot_f.append(out_bot.fit_residual)
+                gamma_bot_f.append(out_bot.gamma)
+            a_top_rows.append(jnp.stack(a_top_f))
+            b_top_rows.append(jnp.stack(b_top_f))
+            rec_top_rows.append(jnp.stack(rec_top_f))
+            fit_top_rows.append(jnp.stack(fit_top_f))
+            gamma_top_rows.append(jnp.stack(gamma_top_f))
+            a_bot_rows.append(jnp.stack(a_bot_f))
+            b_bot_rows.append(jnp.stack(b_bot_f))
+            rec_bot_rows.append(jnp.stack(rec_bot_f))
+            fit_bot_rows.append(jnp.stack(fit_bot_f))
+            gamma_bot_rows.append(jnp.stack(gamma_bot_f))
+
+        # Port-array axis 0 = top/port1, 1 = bot/port2 (matches the concrete
+        # path's a_inc[0]=out_top / a_inc[1]=out_bot assignment below).
+        a_inc = jnp.stack([jnp.stack(a_top_rows), jnp.stack(a_bot_rows)], axis=0)
+        b_out = jnp.stack([jnp.stack(b_top_rows), jnp.stack(b_bot_rows)], axis=0)
+        rec_resid = jnp.stack([jnp.stack(rec_top_rows), jnp.stack(rec_bot_rows)], axis=0)
+        fit_resid = jnp.stack([jnp.stack(fit_top_rows), jnp.stack(fit_bot_rows)], axis=0)
+        gamma = jnp.stack([jnp.stack(gamma_top_rows), jnp.stack(gamma_bot_rows)], axis=0)
+
+        solve = solve_two_port_from_wave_amplitudes(
+            a_inc, b_out, cond_warn=float(cond_warn), _prefer_jnp=True,
+        )
+        return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
+
+    # --- concrete path: NumPy (byte-identical to the pre-AD code) ---
     a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
     b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
     rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
@@ -4722,6 +4825,7 @@ class _SparamMixin:
         feed_impedance: float | None = None,
         cond_warn: float = 1.0e3,
         strict_passivity: bool = False,
+        eps_scale: "jnp.ndarray | float | None" = None,
     ) -> "CoaxialTwoPortResult":
         """EXPERIMENTAL two-drive coaxial 2-port S-parameters (#489 stage 2).
 
@@ -4782,6 +4886,32 @@ class _SparamMixin:
         ``boundary='cpml'`` with positive CPML on all six faces,
         ``cpml_axes='z'``, no periodic axes, no non-uniform mesh, no
         refinement).
+
+        Differentiable (``eps_scale``, #489 leg 3)
+        -------------------------------------------
+        Pass ``eps_scale`` (a scalar or ``(nx, ny, nz)`` ``jnp`` array) to make
+        the S-matrix differentiable w.r.t. the dielectric under ``jax.grad`` —
+        same name, semantics, and MULTIPLIES-the-stamped-``eps_r`` design as
+        the 1-port :meth:`compute_coaxial_line_reflection`'s own ``eps_scale``
+        (``eps_r <- eps_r * eps_scale``, applied once, after both feed stamps,
+        so it reaches BOTH drives' FDTD runs — the through line has no DUT
+        break to scope it to). When provided, both drives route their
+        voltage extraction through :func:`rfx.sources.coaxial_port.
+        coaxial_line_plane_voltage_jnp` (the same differentiable twin the
+        1-port path uses) instead of the concrete
+        :func:`~rfx.sources.coaxial_port.coaxial_line_plane_voltage`, and the
+        assembly (:func:`_assemble_coaxial_two_port_from_voltages`) and the
+        two-drive solve (:func:`~rfx.sources.coaxial_port.
+        solve_two_port_from_wave_amplitudes`) both dispatch to their own jnp
+        cores. With ``eps_scale=None`` the result is byte-identical to the
+        validated numpy path (dual-path design, not a rewrite — mirrors the
+        1-port method's own contract). The per-drive ring-down ``settling_db``
+        witness needs a concrete time series and is skipped on this path
+        (stays ``nan``, same reasoning as the 1-port method's own
+        "can't Python-branch on a tracer" note on its ``rec_resid``
+        contamination check); ``status`` is therefore ``"under_resolved"`` or
+        ``"differentiable"`` here, never ``"contaminated"``/``"passed"``. The
+        AD gate is ``tests/test_coax_two_port_ad.py``.
         """
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:
@@ -4915,6 +5045,7 @@ class _SparamMixin:
             CoaxialPort as _CoaxPort,
             build_coaxial_tem_plane_source_specs,
             coaxial_line_plane_voltage,
+            coaxial_line_plane_voltage_jnp,
             coaxial_tem_characteristic_impedance,
             stamp_coaxial_line,
             stamp_coaxial_annular_resistor,
@@ -4979,6 +5110,16 @@ class _SparamMixin:
             outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
         )
 
+        # Differentiable design channel (#489 leg 3): applied AFTER the
+        # (numpy) stamps as a MULTIPLIER, same contract as the 1-port
+        # compute_coaxial_line_reflection's own eps_scale — the stamped
+        # dielectric (PTFE fill) + PEC (in sigma) are preserved and only
+        # modulated. Applied ONCE, before either drive's _run() call below,
+        # so it reaches both (the through line has no DUT break to scope it
+        # to one end).
+        if eps_scale is not None:
+            materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+
         if freqs is None:
             freqs = jnp.linspace(
                 0.1 * self._freq_max, 0.6 * self._freq_max, int(n_freqs), dtype=jnp.float32
@@ -5032,8 +5173,16 @@ class _SparamMixin:
         ref_bot_m = (z_feed_bot - grid.pad_z_lo) * dz
         annulus_cells = float((b - a) / dz)
 
-        v_bot_by_drive = np.zeros((2, n_bot, n_f), dtype=np.complex128)
-        v_top_by_drive = np.zeros((2, n_top, n_f), dtype=np.complex128)
+        _traced_eps = eps_scale is not None
+        if _traced_eps:
+            # jnp lists, one entry per drive; stacked into (2, n_planes, n_f)
+            # arrays after the loop (traced values can't be assigned into a
+            # preallocated numpy array in place).
+            v_bot_list: list = [None, None]
+            v_top_list: list = [None, None]
+        else:
+            v_bot_by_drive = np.zeros((2, n_bot, n_f), dtype=np.complex128)
+            v_top_by_drive = np.zeros((2, n_top, n_f), dtype=np.complex128)
         settling_db = np.full(2, np.nan, dtype=np.float64)
 
         # drive_idx 0 drives port 1 (top); drive_idx 1 drives port 2 (bot).
@@ -5057,48 +5206,92 @@ class _SparamMixin:
                     "compute_coaxial_two_port(): runner returned no DFT planes"
                 )
 
-            v_bot_by_drive[drive_idx] = np.stack(
-                [
-                    coaxial_line_plane_voltage(
-                        grid, result.dft_planes[pi * 2 + 0].accumulator,
-                        result.dft_planes[pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
-                    )
-                    for pi in range(n_bot)
-                ],
-                axis=0,
-            )  # (n_bot, n_freqs)
             top_off = n_bot * 2
-            v_top_by_drive[drive_idx] = np.stack(
-                [
-                    coaxial_line_plane_voltage(
-                        grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
-                        result.dft_planes[top_off + pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
-                    )
-                    for pi in range(n_top)
-                ],
-                axis=0,
-            )  # (n_top, n_freqs)
+            if _traced_eps:
+                # --- differentiable path: jnp voltage (AD moat, #489 leg 3) ---
+                # Only the ex plane is needed (mirrors compute_coaxial_line_
+                # reflection's own eps_scale branch): coaxial_line_plane_
+                # voltage_jnp integrates E_r along the +x ray, ey is unused
+                # for the voltage line-integral either way.
+                v_bot_list[drive_idx] = jnp.stack(
+                    [
+                        coaxial_line_plane_voltage_jnp(
+                            grid, result.dft_planes[pi * 2 + 0].accumulator,
+                            center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        )
+                        for pi in range(n_bot)
+                    ],
+                    axis=0,
+                )  # (n_bot, n_freqs)
+                v_top_list[drive_idx] = jnp.stack(
+                    [
+                        coaxial_line_plane_voltage_jnp(
+                            grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
+                            center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        )
+                        for pi in range(n_top)
+                    ],
+                    axis=0,
+                )  # (n_top, n_freqs)
+                # Settling witness needs a concrete time series (np.asarray on
+                # a traced result.time_series would raise
+                # TracerArrayConversionError) -- skipped on this path, same
+                # "can't Python-branch on a tracer" reasoning as the 1-port
+                # eps_scale branch's own skipped contamination check.
+                # settling_db stays nan for both drives.
+            else:
+                v_bot_by_drive[drive_idx] = np.stack(
+                    [
+                        coaxial_line_plane_voltage(
+                            grid, result.dft_planes[pi * 2 + 0].accumulator,
+                            result.dft_planes[pi * 2 + 1].accumulator,
+                            center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        )
+                        for pi in range(n_bot)
+                    ],
+                    axis=0,
+                )  # (n_bot, n_freqs)
+                v_top_by_drive[drive_idx] = np.stack(
+                    [
+                        coaxial_line_plane_voltage(
+                            grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
+                            result.dft_planes[top_off + pi * 2 + 1].accumulator,
+                            center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        )
+                        for pi in range(n_top)
+                    ],
+                    axis=0,
+                )  # (n_top, n_freqs)
 
-            ts = np.asarray(result.time_series, dtype=float)
-            if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-                power = ts ** 2
-                tail = max(1, power.shape[0] // 10)
-                end = power[-tail:, :].mean(axis=0)
-                peak = power.max(axis=0)
-                tiny = np.finfo(float).tiny
-                ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
-                settling_db[drive_idx] = float(np.max(ratio_db))
+                ts = np.asarray(result.time_series, dtype=float)
+                if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
+                    power = ts ** 2
+                    tail = max(1, power.shape[0] // 10)
+                    end = power[-tail:, :].mean(axis=0)
+                    peak = power.max(axis=0)
+                    tiny = np.finfo(float).tiny
+                    ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
+                    settling_db[drive_idx] = float(np.max(ratio_db))
+
+        if _traced_eps:
+            v_bot_by_drive = jnp.stack(v_bot_list, axis=0)
+            v_top_by_drive = jnp.stack(v_top_list, axis=0)
 
         s_params, cond_a, rec_resid, fit_resid, gamma = _assemble_coaxial_two_port_from_voltages(
             z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
             ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
             v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
-            cond_warn=float(cond_warn),
+            cond_warn=float(cond_warn), _prefer_jnp=_traced_eps,
         )
 
-        if annulus_cells < 3.5:
+        if _traced_eps:
+            # Status from concrete geometry only -- rec_resid is a jnp
+            # tracer here, so the Python-branching "contaminated" check below
+            # cannot run (mirrors the 1-port eps_scale branch's own status
+            # derivation). "differentiable" flags the AD path so it is not
+            # confused with a fully-gated concrete "passed".
+            status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
+        elif annulus_cells < 3.5:
             status = "under_resolved"
         elif float(np.max(rec_resid)) > 0.1:
             status = "contaminated"

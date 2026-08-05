@@ -1752,11 +1752,48 @@ class TwoPortWaveSolve(NamedTuple):
     cond_a: np.ndarray
 
 
+def _solve_two_port_from_wave_amplitudes_jnp(a_inc, b_out) -> TwoPortWaveSolve:
+    """``jax.numpy`` core of :func:`solve_two_port_from_wave_amplitudes` (#489 AD leg).
+
+    Reached ONLY for *traced* wave amplitudes (``jax.grad`` / ``jax.jit``); the
+    concrete path stays in NumPy, UNCHANGED, so the validated cond/NaN-handling
+    behaviour stays byte-identical (untouched code, not just numerically equal).
+    ``S = B @ inv(A)`` per frequency, batched over the trailing frequency axis
+    via ``jax.numpy``'s native batched ``linalg.inv``/``linalg.cond`` (no
+    explicit ``vmap`` needed — both already broadcast over leading axes).
+
+    The concrete path's ill-conditioning WARNING and per-bin NaN-skip-with-
+    inv-catch are Python control flow keyed on concrete values with no jnp
+    equivalent under trace (mirrors ``_coaxial_line_reflection_jnp``'s own
+    note that its contamination check is "NOT evaluated here — can't
+    Python-branch on a tracer"); a differentiating caller is responsible for
+    keeping the two drives non-degenerate. ``cond_a`` is still RETURNED (not
+    skipped), so a caller can inspect it after concretizing the traced result.
+    """
+    a = jnp.asarray(a_inc)
+    b = jnp.asarray(b_out)
+    if a.shape != b.shape:
+        raise ValueError(
+            f"a_inc and b_out must have the same shape, got {a.shape} vs {b.shape}."
+        )
+    if a.ndim != 3 or a.shape[0] != 2 or a.shape[1] != 2:
+        raise ValueError(
+            "a_inc/b_out must have shape (2, 2, n_freqs) indexed "
+            f"[measured_port, driven_port, freq]; got {a.shape}."
+        )
+    A = jnp.moveaxis(a, -1, 0)   # (n_freqs, 2, 2)
+    B = jnp.moveaxis(b, -1, 0)   # (n_freqs, 2, 2)
+    s = jnp.matmul(B, jnp.linalg.inv(A))    # (n_freqs, 2, 2)
+    cond_a = jnp.linalg.cond(A)             # (n_freqs,)
+    return TwoPortWaveSolve(s_params=jnp.moveaxis(s, 0, -1), cond_a=cond_a)
+
+
 def solve_two_port_from_wave_amplitudes(
     a_inc: np.ndarray,
     b_out: np.ndarray,
     *,
     cond_warn: float = 1.0e3,
+    _prefer_jnp: bool = False,
 ) -> TwoPortWaveSolve:
     """Two-drive 2x2 S-matrix solve from measured wave amplitudes (issue #489).
 
@@ -1844,7 +1881,37 @@ def solve_two_port_from_wave_amplitudes(
     and appears "caught" by accident. Discriminating it needs an ASYMMETRIC DUT.
 
     All three families are pinned in ``tests/test_coax_two_port_solve.py``.
+
+    AD note
+    -------
+    ``S`` is differentiable w.r.t. traced wave amplitudes (``jax.grad`` /
+    ``jax.jit``): a ``jax.numpy`` core computes ``S = B @ inv(A)`` per
+    frequency, batched (:func:`_solve_two_port_from_wave_amplitudes_jnp`),
+    while concrete inputs keep this NumPy path UNCHANGED, byte-for-byte
+    (including the ill-conditioning warning and per-bin NaN handling, which
+    are Python control flow on concrete values with no jnp equivalent under
+    trace). Reached by ``Simulation.compute_coaxial_two_port(...,
+    eps_scale=...)`` via :func:`rfx.api._sparams._assemble_coaxial_two_port_from_voltages`.
+
+    ``_prefer_jnp`` forces the jnp core even for CONCRETE inputs — used by
+    the ``eps_scale`` path so a concrete FD probe (``eps_scale`` provided but
+    not under ``jax.grad``) still routes through this SAME jnp core rather
+    than silently falling back to this NumPy path (mirrors
+    ``coaxial_line_reflection_from_plane_voltages``'s own ``_prefer_jnp``,
+    and the PR #468 / #559-B1 lesson: an AD-vs-FD comparator must hit the
+    identical branch on both sides, not two functions that merely agree in
+    the well-conditioned case).
     """
+    # Traced amplitudes -> jax.numpy core (differentiable); concrete -> NumPy,
+    # UNCHANGED below (mirrors coaxial_line_reflection_from_plane_voltages's
+    # own dispatch).
+    if (
+        _prefer_jnp
+        or isinstance(a_inc, jax.core.Tracer)
+        or isinstance(b_out, jax.core.Tracer)
+    ):
+        return _solve_two_port_from_wave_amplitudes_jnp(a_inc, b_out)
+
     a = np.asarray(a_inc, dtype=np.complex128)
     b = np.asarray(b_out, dtype=np.complex128)
     if a.shape != b.shape:
