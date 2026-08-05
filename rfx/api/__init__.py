@@ -796,6 +796,26 @@ class Simulation(
         content, ~1e-4). This prevents static charge accumulation on PEC
         surfaces.
 
+        .. warning::
+           **The waveform amplitude means different physical quantities on the
+           uniform and non-uniform paths**, so absolute field amplitudes are not
+           comparable between them. On the uniform mesh the amplitude is added
+           to E directly (a field increment); on a mesh built with any
+           ``d{x,y,z}_profile`` it is treated as a CURRENT IN AMPERES and
+           converted as ``E += (dt / eps) * I / dV`` for resolution-independent
+           injected power (``rfx.nonuniform.make_current_source``, Meep's
+           convention). The resulting traces differ by exactly
+           ``dt / (eps0 * dV)`` — about 2.2e8 at dx = 1 mm — which is large
+           enough to look like an instability when a script is ported from one
+           path to the other (that reading is what issue #565 recorded).
+
+           Frequencies, S-parameters (normalized by a reference run) and any
+           ratio of fields are unaffected. Measured cross-path agreement after
+           removing the factor: 2.7e-5 of full scale, 9.5e-6 with
+           ``subpixel_smoothing=True`` — see
+           ``tests/test_nonuniform_uniform_end_to_end_reduction.py``, which pins
+           the relationship.
+
         Parameters
         ----------
         position : (x, y, z) in metres
