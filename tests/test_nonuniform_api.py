@@ -20,7 +20,8 @@ class TestNonUniformGrid:
         grid = make_nonuniform_grid((0.05, 0.05), dz_profile, 0.5e-3, 12)
         assert grid.nx > 24  # domain + 2*cpml
         assert grid.ny > 24
-        assert grid.nz == len(dz_profile) + 24  # profile + 2*cpml
+        # N cells are bounded by N+1 nodes (#562): profile + 2*cpml pads + 1
+        assert grid.nz == len(dz_profile) + 24 + 1
         assert grid.dt > 0
         assert len(grid.inv_dz) == grid.nz
 

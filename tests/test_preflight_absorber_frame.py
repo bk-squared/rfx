@@ -160,13 +160,20 @@ def test_nonuniform_grid_pads_absorber_exterior_to_requested_domain():
     ng = make_nonuniform_grid((0.03, 0.03), dz_profile, 0.5e-3, cpml_layers=cpml_layers)
 
     assert (ng.pad_z_lo, ng.pad_z_hi) == (cpml_layers, cpml_layers)
-    assert ng.nz == len(dz_profile) + ng.pad_z_lo + ng.pad_z_hi
+    # N cells are bounded by N+1 nodes (#562) — the outermost node is the
+    # absorber's outer face, which is why the interior extent below is exact.
+    assert ng.nz == len(dz_profile) + ng.pad_z_lo + ng.pad_z_hi + 1
 
     dz_full = np.asarray(ng.dz)
     edges = np.concatenate(([0.0], np.cumsum(dz_full)))
     # Node pad_z_lo is user z=0 (mirrors Grid's node pad_x_lo convention).
+    # The LAST node is edges[nz-1], not edges[-1]: the cell array carries one
+    # trailing duplicate whose only job is to bound the last real cell with a
+    # node (#562), and whose own H term the stencil zeroes — it is not physical
+    # extent, so extents must be read from the node positions, never from
+    # sum(dz).
     z_node0 = edges[0] - edges[ng.pad_z_lo]
-    z_node_last = edges[-1] - edges[ng.pad_z_lo]
+    z_node_last = edges[ng.nz - 1] - edges[ng.pad_z_lo]
     physical_extent = float(np.sum(dz_profile))
 
     # float32 storage (NonUniformGrid.dz) — loosen tolerance accordingly.

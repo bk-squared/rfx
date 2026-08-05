@@ -109,7 +109,15 @@ def test_position_to_index_nonuniform_xy():
 # ---------------------------------------------------------------------
 # 4. coords_from_nonuniform_grid cell centers
 # ---------------------------------------------------------------------
-def test_coords_from_nonuniform_grid_cell_centers():
+def test_coords_from_nonuniform_grid_node_positions():
+    """Coordinates are E-NODE positions (cumulative cell edges), not centres.
+
+    The non-uniform E update divides by ``2/(d[i-1]+d[i])`` — the dual spacing
+    of a node straddling cells ``i-1`` and ``i`` — so the samples geometry is
+    rasterized onto sit on cell EDGES. This test previously pinned cell
+    CENTRES, half a cell off both the stencil's own nodes and
+    ``coords_from_uniform_grid``; #562 unified them.
+    """
     dz = np.full(4, 1e-3)
     dx_prof = np.array([1e-3, 1e-3, 0.5e-3, 0.5e-3, 1e-3, 1e-3])
     g = make_nonuniform_grid(
@@ -120,15 +128,17 @@ def test_coords_from_nonuniform_grid_cell_centers():
     x = np.asarray(coords.x)
     cpml = g.cpml_layers
 
-    # The first interior cell's center should be dx[cpml]/2 above the
-    # interior-left-edge offset, matching the existing z convention.
-    assert abs(float(x[cpml]) - 0.5e-3) < 1e-6
+    # The first interior node IS the interior origin (user x = 0).
+    assert abs(float(x[cpml]) - 0.0) < 1e-9
 
-    # x[cpml+1] center = dx[cpml] + dx[cpml+1]/2 - 0 = 1 + 0.5 = 1.5mm
-    assert abs(float(x[cpml + 1]) - 1.5e-3) < 1e-6
+    # Then each node sits on the running sum of the profile's cell sizes:
+    # 1mm, 2mm, 2.5mm (after the first 0.5mm cell), 3mm, 4mm.
+    for k, want in enumerate([0.0, 1e-3, 2e-3, 2.5e-3, 3e-3, 4e-3]):
+        assert abs(float(x[cpml + k]) - want) < 1e-6, (k, float(x[cpml + k]), want)
 
-    # x[cpml+2] (0.5mm cell) center = 2 + 0.25 = 2.25mm
-    assert abs(float(x[cpml + 2]) - 2.25e-3) < 1e-6
+    # N cells need N+1 bounding nodes, so the last interior node lands exactly
+    # on the profile's total extent — the requested domain face.
+    assert abs(float(x[cpml + len(dx_prof)]) - float(np.sum(dx_prof))) < 1e-6
 
 
 # ---------------------------------------------------------------------

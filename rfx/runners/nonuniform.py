@@ -11,6 +11,7 @@ from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.nonuniform import (
     NonUniformGrid,
+    interior_cells,
     make_nonuniform_grid,
     run_nonuniform,
     run_nonuniform_until_decay,
@@ -186,7 +187,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         d_np = np.asarray(d_arr_jnp)
         # Cell-edge positions in physical coords (interior only, edge=0 at first
         # interior face). Length = n_interior + 1.
-        interior = d_np[pad_lo : n_axis - pad_hi]
+        interior = interior_cells(d_np, pad_lo, pad_hi)
         edges = np.insert(np.cumsum(interior), 0, 0.0)
         if value_range is None:
             return (pad_lo, n_axis - pad_hi), float(edges[-1])
@@ -226,7 +227,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     else:
         d_axis_np = np.asarray(grid.dz)
     _pad_lo_axis, _pad_hi_axis = pads_lo_hi[normal_axis]
-    _interior = d_axis_np[_pad_lo_axis : len(d_axis_np) - _pad_hi_axis]
+    _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis)
     _edges_axis = np.insert(np.cumsum(_interior), 0, 0.0)
     _local_axis = max(0, min(x_index - _pad_lo_axis, len(_edges_axis) - 1))
     snapped_source_plane = float(_edges_axis[_local_axis])

@@ -90,6 +90,18 @@ def _require_two_devices() -> list:
     return list(devices[:2])
 
 
+def _field_shape(nx: int, ny: int, nz: int) -> tuple[int, int, int]:
+    """Field-grid shape for an ``(nx, ny, nz)``-CELL request.
+
+    N cells are bounded by N+1 nodes, so a grid-shaped override array (eps,
+    design mask, PEC occupancy) is one sample larger per axis than the cell
+    counts these tests parameterize on (#562). Stated once here rather than at
+    the call sites, which all used to restate ``(nx, ny, nz)`` and would
+    silently mis-size again if the node convention ever moved.
+    """
+    return (nx + 1, ny + 1, nz + 1)
+
+
 def _make_nu_sim_small(
     *,
     nx: int = 16,
@@ -532,8 +544,8 @@ def test_forward_distributed_pec_occupancy_two_device_matches_single_device():
         return sim
 
     # Build a soft-PEC occupancy mask: partial conductivity in a slab near the seam
-    # Shape matches the field grid (nx, ny, nz)
-    pec_occ = jnp.zeros((nx, ny, nz))
+    # Shape matches the FIELD GRID, which is cells+1 per axis (#562)
+    pec_occ = jnp.zeros(_field_shape(nx, ny, nz))
     pec_occ = pec_occ.at[7:9, :, :].set(0.5)  # partial occupancy near seam
 
     sim_s = _build_sim()
@@ -587,7 +599,7 @@ def test_forward_distributed_checkpoint_every_matches_no_segment_small_grad_case
         sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
         return sim
 
-    eps = jnp.ones((nx, ny, nz)) * 1.0
+    eps = jnp.ones(_field_shape(nx, ny, nz)) * 1.0
 
     def loss_no_segment(eps_val):
         sim = _build_sim()
@@ -646,7 +658,7 @@ def test_forward_distributed_n_warmup_tail_grad_matches_single_device():
         sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
         return sim
 
-    eps = jnp.ones((nx, ny, nz)) * 1.0
+    eps = jnp.ones(_field_shape(nx, ny, nz)) * 1.0
 
     def loss_single(eps_val):
         sim = _build_sim()
@@ -697,9 +709,9 @@ def test_forward_distributed_design_mask_stop_grad_matches_single_device():
         sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
         return sim
 
-    eps = jnp.ones((nx, ny, nz)) * 1.0
+    eps = jnp.ones(_field_shape(nx, ny, nz)) * 1.0
     # Design mask: only cells x=3..7 are design cells
-    design_mask = jnp.zeros((nx, ny, nz), dtype=bool)
+    design_mask = jnp.zeros(_field_shape(nx, ny, nz), dtype=bool)
     design_mask = design_mask.at[3:8, :, :].set(True)
 
     def loss_single(eps_val):
@@ -754,7 +766,7 @@ def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     n_steps = 20
 
     # PEC mask: a thin conductor near the seam (x = nx//2 - 1 to nx//2 + 1)
-    pec_mask = jnp.zeros((nx, ny, nz), dtype=bool)
+    pec_mask = jnp.zeros(_field_shape(nx, ny, nz), dtype=bool)
     pec_mask = pec_mask.at[nx // 2 - 1 : nx // 2 + 2, :, :].set(True)
 
     def _build_sim():
@@ -821,7 +833,7 @@ def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
         sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
         return sim
 
-    eps = jnp.ones((nx, ny, nz)) * 1.0
+    eps = jnp.ones(_field_shape(nx, ny, nz)) * 1.0
 
     def loss_single(eps_val):
         sim = _build_sim()
@@ -898,7 +910,7 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
     )
 
     # Inject NaN into rank 0's eps slab (x = 0..nx//2-1)
-    eps_nan = jnp.ones((nx, ny, nz))
+    eps_nan = jnp.ones(_field_shape(nx, ny, nz))
     eps_nan = eps_nan.at[: nx // 2, :, :].set(jnp.nan)
 
     res = sim.forward(

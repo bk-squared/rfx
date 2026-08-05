@@ -61,6 +61,12 @@ class NonUniformGrid(NamedTuple):
                            # Readers must not apply float() / .item() without
                            # an is_tracer(dt) guard or a host-boundary context.
     cpml_layers: int
+    # Cell-size arrays are padded AND carry one trailing duplicate cell so N
+    # cells are bounded by N+1 E-nodes (#562, see _append_bounding_node). The
+    # duplicate is a node-provider, not physical extent: its H term is the one
+    # the stencil zeroes. Read extents from node positions
+    # (coords_from_nonuniform_grid, or cumsum edges up to index nx-1) — NEVER
+    # from sum(dx_arr), which overshoots by that trailing cell.
     # Pre-computed inverse spacing arrays (length N, padded).
     # CORE-C2: inv_d* feed the E update (mean spacing), inv_d*_h feed
     # the H update (local cell width). See _profile_to_inv_arrays.
@@ -144,6 +150,22 @@ def _append_bounding_node(profile_full):
     if is_tracer(profile_full):
         return jnp.concatenate([profile_full, profile_full[-1:]])
     return np.concatenate([profile_full, profile_full[-1:]])
+
+
+def interior_cells(d_full, pad_lo: int, pad_hi: int):
+    """The physical interior cells of a padded NU cell-size array.
+
+    The array is ``[lo pad | interior | hi pad | bounding-node duplicate]``
+    (#562, see ``_append_bounding_node``), so the interior ends one entry
+    before ``len - pad_hi``. Slicing without that ``-1`` pulls in a pad cell
+    — or the duplicate itself on a face with no pad — and overstates the
+    extent by one cell, which is the same class of error #562 was.
+
+    Returns the CELLS; ``np.insert(np.cumsum(cells), 0, 0.0)`` then gives the
+    ``N+1`` interior NODE positions, the last of which lands exactly on the
+    requested domain face.
+    """
+    return d_full[pad_lo : len(d_full) - pad_hi - 1]
 
 
 def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -348,7 +370,7 @@ def _interior_line_positions(
     """
     if pad_hi is None:
         pad_hi = pad_lo
-    interior = d_arr_np[pad_lo : len(d_arr_np) - pad_hi]
+    interior = interior_cells(d_arr_np, pad_lo, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     return edges
 

@@ -283,7 +283,9 @@ def test_nu_grid_asymmetric_pmc_allocation():
     assert g.pad_y_hi == 4
     assert g.pad_x_lo == 4 and g.pad_x_hi == 4
     # ny = interior + pad_y_hi (no lo padding) = 8 + 4 = 12.
-    assert g.ny == 12, f"expected ny=12, got {g.ny}"
+    # 8 interior cells + 0 lo pad (PMC face) + 4 hi pad = 12 cells,
+    # bounded by 13 nodes (#562).
+    assert g.ny == 13, f"expected ny=13, got {g.ny}"
     # axis_pads property carries the leading (lo) pad per axis.
     assert g.axis_pads == (4, 0, 4)
 

@@ -841,7 +841,8 @@ def _msl_x_for_index(grid, target_i: int) -> float:
         return float(u * grid.dx)
     # NonUniformGrid — cumulative interior cell-edge positions.
     pad_hi = int(getattr(grid, "pad_x_hi", 0))
-    interior = np.asarray(dx_arr, dtype=float)[pad : nx - pad_hi]
+    from rfx.nonuniform import interior_cells
+    interior = interior_cells(np.asarray(dx_arr, dtype=float), pad, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     u_c = max(0, min(u, len(edges) - 1))
     return float(edges[u_c])
