@@ -188,25 +188,64 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     print(f"[NU-xy-cavity] TM110 f_sim={f_sim/1e9:.4f} GHz, err={err*100:.3f}% "
           f"(2nd-nearest delta {d_second/1e9:.3f} GHz, sep ratio {d_second/d_near:.1f}x)")
 
-    # In-test FALSIFIER (proves the gate has discrimination power, not vacuous):
-    # a solver/analytic wrong by +/-10% MUST trip the accuracy gate. +/-10% clears
-    # the gate (3.5%) plus the base +2.4% bias in either sign, so both directions
-    # fail unambiguously (measured: +10% -> 6.9% err, -10% -> 13.8% err).
-    GATE = 0.035
+    # The gate is DERIVED, not chosen: measured envelope x the repo-wide
+    # envelope multiplier, quantized up by the shared helper (#528/#539), in
+    # percent units. Envelope = 0.0282 % measured at this test's own
+    # configuration; gate_from_envelope(0.0282, quantum=100) = 0.05 %.
+    #
+    # It was 3.5 % until #562 removed the one-cell extent defect that dominated
+    # the residual (2.43 % -> 0.028 %, an ~87x improvement on unchanged
+    # geometry). A 3.5 % gate on a 0.028 % residual could not catch the defect
+    # class it exists for — a 125x-loose gate is a formality.
+    #
+    # Measured surrounding sensitivity (single machine, this configuration and
+    # four neighbours; percent error of TM110 vs the closed form):
+    #
+    #     dx = 1.0 mm, grading 4:1  ->  0.0282   <- this test
+    #     dx = 1.0 mm, grading 2:1  ->  0.0224
+    #     dx = 1.0 mm, uniform      ->  0.0108
+    #     dx = 0.5 mm, grading 4:1  ->  0.0458   (fixed n_steps = shorter record)
+    #     dx = 2.0 mm, grading 4:1  ->  0.0868
+    #
+    # The envelope is deliberately taken at THIS configuration rather than over
+    # the whole scan: the test only ever runs this one, so the gate is a
+    # regression lock on it, and the neighbours are recorded as evidence rather
+    # than folded into the margin. These cases run only in the weekly slow lane
+    # (both cavity tests are `slow`-marked), so the envelope is single-machine.
+    # If another runner reds, the response is to re-measure and widen with the
+    # new datum recorded — not to blanket-loosen.
+    from tests._gate_policy import gate_from_envelope
+    _MEASURED_ENVELOPE_PCT = 0.0282
+    GATE = gate_from_envelope(_MEASURED_ENVELOPE_PCT, quantum=100) / 100.0
+
+    # In-test FALSIFIER (proves the gate has discrimination power, not vacuous).
+    # The perturbation has to scale with the gate: +/-10 % proved nothing about
+    # a 0.05 % gate, since it clears it by 200x. +/-0.5 % is 10x the gate and
+    # still an order of magnitude below the old one — so this now demonstrates
+    # discrimination the 3.5 % gate never had.
+    _FALSIFIER = 0.005
+    # And the gate must reject the REAL historical regression, not only a
+    # synthetic perturbation: the residual this configuration measured while the
+    # #562 extent defect was live was 2.43 %, which the new gate rejects
+    # by 49x. The old gate accepted it.
+    assert 0.0243 > GATE, (
+        "the derived gate would NOT have caught the #562-era residual "
+        f"(2.43 % vs gate {GATE*100:.3f} %) — tightening bought nothing")
+
     for sign in (+1.0, -1.0):
-        f_wrong = f_tm110 * (1.0 + sign * 0.10)
+        f_wrong = f_tm110 * (1.0 + sign * _FALSIFIER)
         err_wrong = abs(f_sim - f_wrong) / f_wrong
         assert err_wrong > GATE, (
-            f"falsifier failed: a {sign*10:+.0f}% frequency error (anchor "
-            f"{f_wrong/1e9:.4f} GHz) gives err {err_wrong*100:.3f}% which does NOT "
-            f"exceed the {GATE*100:.1f}% gate — the gate would not catch it"
+            f"falsifier failed: a {sign*_FALSIFIER*100:+.2f}% frequency error "
+            f"(anchor {f_wrong/1e9:.4f} GHz) gives err {err_wrong*100:.4f}% which "
+            f"does NOT exceed the {GATE*100:.3f}% gate — the gate would not catch it"
         )
 
     # The ANALYTIC accuracy gate (the coverage #403 flags as missing): the x&y
     # graded NU mesh reproduces the closed-form in-plane-dependent TM110 to within
     # the measured tolerance (2.43% graded == 2.47% uniform -> grading faithful).
     assert err < GATE, (
-        f"NU in-plane-graded TM110 error {err*100:.3f}% >= {GATE*100:.1f}% — the "
+        f"NU in-plane-graded TM110 error {err*100:.4f}% >= {GATE*100:.3f}% — the "
         f"non-uniform x/y grid does not reproduce the closed-form cavity resonance "
         f"whose frequency is set by the graded in-plane extents "
         f"(f_sim={f_sim/1e9:.4f} vs analytic={f_tm110/1e9:.4f} GHz)"
