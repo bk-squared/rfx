@@ -73,7 +73,15 @@ def pytest_configure(config):
 # no per-test overhead beyond the one `os.environ.get` check done once at
 # session configure time. See
 # tests/test_weekly_rss_reporter.py::test_disabled_by_default_registers_nothing.
-_RSS_THRESHOLD_MB = float(os.environ.get("RFX_WEEKLY_RSS_THRESHOLD_MB", "500"))
+#
+# NOTE: RFX_WEEKLY_RSS_THRESHOLD_MB is intentionally NOT parsed at module
+# scope. A malformed value would raise ValueError while conftest.py is being
+# imported, which happens for EVERY pytest invocation in this repo (not just
+# weekly-lane runs) -- that would red the entire test suite over a typo in
+# an env var this file's own default gate is supposed to make irrelevant.
+# The parse lives inside _maybe_register_rss_reporter, after the enable
+# gate, with a fallback to the 500 MB default on a bad value. See
+# tests/test_weekly_rss_reporter.py::test_malformed_threshold_with_reporter_off_does_not_raise.
 
 
 def _rss_env_enabled() -> bool:
@@ -81,23 +89,27 @@ def _rss_env_enabled() -> bool:
 
 
 class _RSSHighWaterReporter:
-    """pytest plugin: report per-test RSS high-water delta above a threshold.
+    """pytest plugin: report per-test RSS high-water delta AND absolute peak.
 
     Uses ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` (stdlib, no extra
-    dependency). ``ru_maxrss`` is a monotonically non-decreasing high-water
-    mark for the WHOLE process (Linux reports it in KB), so the delta
-    measured around one test is "how much did this test push the process's
-    peak RSS up", not "how much memory this test allocated" — a test that
-    runs after the process has already reached a higher peak will show a
-    0 MB delta even if it is itself memory-heavy. That is the right signal
-    here: since shards run one test at a time with no xdist (matching CI),
-    the tests that are actually driving the shard's memory footprint toward
-    the runner's ceiling are exactly the ones with a nonzero delta.
+    dependency; Linux reports it in KB). ``RUSAGE_SELF`` covers only this
+    process, not any subprocesses it spawns.
+
+    ``ru_maxrss`` is a monotonically non-decreasing high-water mark for the
+    WHOLE process, so the *delta* measured around one test is "how much did
+    this test push the process's peak RSS up" — a test that runs after the
+    process has already reached a higher peak shows a 0 MB delta even if it
+    is itself memory-heavy (once one test sets the peak, every later test
+    reads +0.0 regardless of its own footprint). The *absolute* peak
+    (``ru_maxrss`` itself, at that point in the run) does not have this
+    blind spot -- it says the process had reached at least that much RSS by
+    the time this test finished, which is what the OOM-vs-infra question
+    actually needs. Both numbers are reported per test and in the summary.
     """
 
     def __init__(self, threshold_mb: float):
         self.threshold_kb = threshold_mb * 1024.0
-        self.samples: list = []  # list[tuple[str, float]] of (nodeid, delta_mb)
+        self.samples: list = []  # list[tuple[str, float, float]] of (nodeid, delta_mb, peak_mb)
 
     @staticmethod
     def _maxrss_kb() -> float:
@@ -109,11 +121,16 @@ class _RSSHighWaterReporter:
     def pytest_runtest_protocol(self, item, nextitem):
         start_kb = self._maxrss_kb()
         yield
-        delta_kb = self._maxrss_kb() - start_kb
+        end_kb = self._maxrss_kb()
+        delta_kb = end_kb - start_kb
         if delta_kb >= self.threshold_kb:
             delta_mb = delta_kb / 1024.0
-            self.samples.append((item.nodeid, delta_mb))
-            print(f"\n[rss] {item.nodeid}: +{delta_mb:.1f} MB RSS high-water delta")
+            peak_mb = end_kb / 1024.0
+            self.samples.append((item.nodeid, delta_mb, peak_mb))
+            print(
+                f"\n[rss] {item.nodeid}: +{delta_mb:.1f} MB delta, "
+                f"peak {peak_mb:.0f} MB"
+            )
 
     def pytest_terminal_summary(self, terminalreporter):
         terminalreporter.write_line("")
@@ -122,13 +139,15 @@ class _RSSHighWaterReporter:
                 f"[rss] no test crossed the {self.threshold_kb / 1024.0:.0f} MB RSS high-water threshold"
             )
             return
-        top = sorted(self.samples, key=lambda pair: pair[1], reverse=True)[:10]
+        top = sorted(self.samples, key=lambda triple: triple[1], reverse=True)[:10]
         terminalreporter.write_line(
             f"[rss] top {len(top)} test(s) by RSS high-water delta "
             f"(threshold {self.threshold_kb / 1024.0:.0f} MB):"
         )
-        for nodeid, delta_mb in top:
-            terminalreporter.write_line(f"  {delta_mb:8.1f} MB  {nodeid}")
+        for nodeid, delta_mb, peak_mb in top:
+            terminalreporter.write_line(
+                f"  +{delta_mb:8.1f} MB delta, peak {peak_mb:8.0f} MB  {nodeid}"
+            )
 
 
 def _maybe_register_rss_reporter(config: "pytest.Config") -> None:
@@ -140,8 +159,18 @@ def _maybe_register_rss_reporter(config: "pytest.Config") -> None:
     """
     if not _rss_env_enabled():
         return
+    threshold_raw = os.environ.get("RFX_WEEKLY_RSS_THRESHOLD_MB", "500")
+    try:
+        threshold_mb = float(threshold_raw)
+    except ValueError:
+        warnings.warn(
+            f"[conftest] RFX_WEEKLY_RSS_THRESHOLD_MB={threshold_raw!r} is not a "
+            "valid number; falling back to the 500 MB default.",
+            stacklevel=1,
+        )
+        threshold_mb = 500.0
     config.pluginmanager.register(
-        _RSSHighWaterReporter(_RSS_THRESHOLD_MB), "rfx-weekly-rss-reporter"
+        _RSSHighWaterReporter(threshold_mb), "rfx-weekly-rss-reporter"
     )
 
 

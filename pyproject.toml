@@ -50,7 +50,12 @@ dashboard = ["streamlit>=1.30", "pandas"]
 # by default, reddening the quality-gates ruff on 65 pre-existing style items in the studio
 # files with no code change. Pin for deterministic CI; adopting the 0.16 UP ruleset (+ the
 # pyupgrade cleanup) is a deliberate future bump, not a silent tool drift.
-dev = ["pytest>=7.0", "pytest-xdist", "pytest-split", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "httpx>=0.27", "build>=1,<2", "tomli>=2; python_version < '3.11'", "rfx-fdtd[studio]"]
+# pytest-split pinned <0.12: the weekly slow lane's shard balance is now load-bearing on
+# --store-durations' merge-not-replace semantics and the duration_based_chunks algorithm's
+# exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
+# unpinned minor bump changing either would silently invalidate the balance without a
+# code-visible signal.
+dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "httpx>=0.27", "build>=1,<2", "tomli>=2; python_version < '3.11'", "rfx-fdtd[studio]"]
 agent = ["mcp>=1.27,<2"]
 studio = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp>=1.27,<2", "openai>=2.17,<3"]
 all = ["rfx-fdtd[optimization,visualization,dashboard,agent,studio,cad,dev]"]
