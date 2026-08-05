@@ -1258,6 +1258,18 @@ def _assemble_coaxial_two_port_from_voltages(
     if not _traced:
         v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
         v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
+    elif not hasattr(v_bot_by_drive, "shape") or not hasattr(v_top_by_drive, "shape"):
+        # The traced/_prefer_jnp path indexes v_*_by_drive directly (no
+        # np.asarray concretization step) — a plain Python list has no
+        # .shape and would otherwise fail below with an opaque
+        # AttributeError instead of a message naming the actual problem.
+        raise ValueError(
+            "v_bot_by_drive / v_top_by_drive must be array-like (numpy or "
+            "jax.numpy) on the traced/_prefer_jnp path, not a plain Python "
+            f"list; got {type(v_bot_by_drive).__name__} / "
+            f"{type(v_top_by_drive).__name__}. Wrap with jnp.asarray(...) "
+            "(or np.asarray(...) if concrete) before calling."
+        )
     if v_bot_by_drive.shape[0] != 2 or v_top_by_drive.shape[0] != 2:
         raise ValueError(
             "v_bot_by_drive / v_top_by_drive must have a leading axis of "
@@ -4910,8 +4922,18 @@ class _SparamMixin:
         (stays ``nan``, same reasoning as the 1-port method's own
         "can't Python-branch on a tracer" note on its ``rec_resid``
         contamination check); ``status`` is therefore ``"under_resolved"`` or
-        ``"differentiable"`` here, never ``"contaminated"``/``"passed"``. The
-        AD gate is ``tests/test_coax_two_port_ad.py``.
+        ``"differentiable"`` here, never ``"contaminated"``/``"passed"``.
+        ``cond_warn`` is also silently INERT on this path: the ill-
+        conditioning warning it controls is Python control flow keyed on a
+        concrete ``cond(A)`` value
+        (:func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`'s
+        NumPy branch), which the traced jnp core
+        (``_solve_two_port_from_wave_amplitudes_jnp``) cannot evaluate and
+        does not attempt to — this mirrors the ``settling_db``/``status``
+        losses above (same "can't Python-branch on a tracer" reason), not a
+        separate defect; ``cond_a`` is still RETURNED (as a tracer), so a
+        caller can inspect it after concretizing the result if degeneracy
+        matters to them. The AD gate is ``tests/test_coax_two_port_ad.py``.
         """
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:

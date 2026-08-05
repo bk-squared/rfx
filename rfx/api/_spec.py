@@ -1308,6 +1308,19 @@ class CoaxialTwoPortResult:
     lanes; above -40 dB suggests the fixed-length record may have been
     truncated before the structure rang down).
 
+    **``eps_scale`` (differentiable) path** (:meth:`compute_coaxial_two_port`'s
+    own ``eps_scale`` parameter, issue #489 leg 3): ``status`` takes a FOURTH
+    value, ``"differentiable"``, in place of ``"passed"``/``"contaminated"``
+    — the traced ``rec_resid`` cannot be Python-branched on to distinguish
+    those two, so ``"differentiable"`` means only "geometry-resolved"
+    (``annulus_cells >= 3.5``; below that it is still ``"under_resolved"``),
+    NOT "fit-clean"; inspect ``recurrence_residual`` directly if the
+    contamination signal matters. ``settling_db`` stays ``nan`` for both
+    drives on this path (the ring-down witness needs a concrete time series).
+    ``cond_a`` is still returned as a traced value, but the ill-conditioning
+    WARNING ``cond_warn`` normally controls does not fire — see
+    :meth:`compute_coaxial_two_port`'s own docstring for why.
+
     **Numerical line attenuation, not just a reflection artifact**: on the
     validated 60 mm / 40 GHz fixture, the discrete (3.79-cell annulus)
     through line itself attenuates the transmitted wave — measured

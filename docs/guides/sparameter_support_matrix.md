@@ -527,13 +527,15 @@ no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
 measured single-run envelope and its provenance.
 
 `compute_coaxial_two_port(...)` now has the same `eps_scale` differentiable
-channel as the 1-port method above (issue #489 leg 3): AD smoke + CPU-float32
-envelope (0.22% rel_err at h=0.01, gate 1%), owner-platform re-measurement
-pending. A CPU-float64 envelope is not achievable for this method — it
-hard-requires `precision="float32"` (same constraint as
-`compute_coaxial_line_reflection(...)`), so the FDTD field/CPML carry state
-stays float32 regardless of the outer JAX x64 scope. See
-`tests/test_coax_two_port_ad.py`.
+channel as the 1-port method above (issue #489 leg 3): the gate compares
+float32 AD (as shipped) against a float64-loss central finite difference —
+the FDTD fields stay float32 (same baseline as the MSL f64 referee), but a
+scoped `enable_x64()` around the forward call makes the DFT-accumulator-and-
+downstream math run at float64 (`rfx/probes/probes.py` keys the accumulator
+dtype off `jax.config.x64_enabled`, independent of the `precision="float32"`
+pin). Measured rel_err 0.51% at `h=2e-3` against a 2% gate; owner-platform
+(GPU) re-measurement pending. See `tests/test_coax_two_port_ad.py` and
+`scripts/coax_two_port_ad_fd_f64_referee.py`.
 
 Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
 0.96 -> 0.74 on the 60 mm / 40 GHz fixture over 4-12 GHz even though `|S11|`

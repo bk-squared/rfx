@@ -2453,7 +2453,8 @@
       "probe_spacing_cells",
       "feed_impedance",
       "cond_warn",
-      "strict_passivity"
+      "strict_passivity",
+      "eps_scale"
     ],
     "compute_mixed_s_matrix": [
       "n_steps",
