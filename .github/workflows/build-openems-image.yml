@@ -26,6 +26,7 @@ on:
         required: false
         type: string
   push:
+    branches: [main]
     paths:
       - "docker/openems-lane/Dockerfile"
       - ".github/workflows/build-openems-image.yml"
@@ -50,10 +51,18 @@ jobs:
 
       - name: Resolve openEMS commit, tag, and build date
         id: resolve
+        env:
+          # Route the workflow_dispatch input through env: rather than
+          # splicing it directly into the shell script below
+          # (`${{ inputs.openems_sha }}` inline would be an Actions script-
+          # injection footgun -- an attacker-controlled input value could
+          # break out of the `SHA="..."` assignment). $OPENEMS_SHA_INPUT is
+          # a plain shell variable expansion, safe regardless of content.
+          OPENEMS_SHA_INPUT: ${{ inputs.openems_sha }}
         run: |
           set -eu
           DOCKERFILE_PIN=$(grep -m1 '^ARG OPENEMS_COMMIT=' docker/openems-lane/Dockerfile | cut -d= -f2)
-          SHA="${{ inputs.openems_sha }}"
+          SHA="$OPENEMS_SHA_INPUT"
           if [ -z "$SHA" ]; then
             SHA="$DOCKERFILE_PIN"
           fi

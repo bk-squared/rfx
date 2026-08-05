@@ -48,7 +48,15 @@ LABEL org.opencontainers.image.source="https://github.com/bk-squared/rfx" \
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     CSXCAD_INSTALL_PATH=/usr/local \
-    OPENEMS_INSTALL_PATH=/usr/local
+    OPENEMS_INSTALL_PATH=/usr/local \
+    RFX_OPENEMS_COMMIT=${OPENEMS_COMMIT}
+
+# Solver provenance stamp, baked as a real runtime ENV (not just a LABEL,
+# which `docker inspect` can see but a VESSL job's own stdout/log cannot):
+# every container started from this image can `echo "$RFX_OPENEMS_COMMIT"`
+# and every lane YAML + the pull-smoke now do exactly that, so a tag
+# repush (same tag, different content -- ghcr tags are mutable) becomes
+# visible in the RUN LOG itself, not only in a registry API call.
 
 # apt superset of the four lanes' dependency lists -- verified identical
 # across all four at authoring time (diffed against

@@ -18,7 +18,10 @@ Both were false, verified independently before this rewrite:
      thin-shell radial-E excitation, computes its own ``beta`` from
      measured fields, and ``CalcPort(ref_plane_shift=...)`` can referral
      the reported S-parameters to an arbitrary reference plane. The
-     submodule pin this lane's YAML clones (``2000574e``) includes it
+     openEMS submodule gitlink ``2000574e``, recorded at openEMS-Project
+     ``5b423bd`` (the image pin in ``docker/openems-lane/Dockerfile``'s
+     ``ARG OPENEMS_COMMIT`` -- this lane's YAML no longer clones
+     openEMS-Project itself, the prebuilt image does), includes it
      (added 2026-05-13, fixed 2026-07-29).
 
 SCOPE FENCE (unchanged): this is a COMPARATOR-LEG referee. It builds and
@@ -526,9 +529,12 @@ REPRODUCE_GATE_RECORD: dict = {
         "verified_present_on": "2026-08-03",
         "verified_via": "gh api repos/thliebig/openEMS/contents/matlab/examples/waveguide",
         "submodule_pin_note": (
-            "openEMS-Project submodule pin 2000574e (scripts/"
-            "vessl_coax_two_port_referee.yaml's clone) includes CoaxialPort "
-            "(added 2026-05-13, fixed 2026-07-29)."
+            "openEMS submodule gitlink 2000574e, recorded at "
+            "openEMS-Project 5b423bd, the image pin in "
+            "docker/openems-lane/Dockerfile (ARG OPENEMS_COMMIT) -- "
+            "this lane's YAML clones nothing anymore, the prebuilt image "
+            "does. Includes CoaxialPort (added 2026-05-13, fixed "
+            "2026-07-29)."
         ),
     },
     "do_not_repeat": (

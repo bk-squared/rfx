@@ -16,7 +16,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eux
-  # pytorch runtime image: dash shell (no bashisms) and git via apt below.
+  # image ships git + openEMS already (docker/openems-lane/Dockerfile); dash shell (no bashisms).
   echo "=== rfx monthly external crossval (W2.5c) ==="
   date
 
@@ -39,6 +39,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   # -- rfx runtime deps (CPU jax) --

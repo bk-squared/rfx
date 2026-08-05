@@ -6,4 +6,7 @@ resources:
   memory: 4Gi
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 run: |-
+  echo "pinned image tag   : ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
+  echo "expected digest    : sha256:eec712977b3a7f23931f67f3807d9e6bd3a561dac7e56885deb20ca82ca15e1a"
+  echo "RFX_OPENEMS_COMMIT : ${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
   python3 -c "from openEMS.openEMS import openEMS; from CSXCAD.CSXCAD import ContinuousStructure; print('rfx-openems image pull smoke: OK')"

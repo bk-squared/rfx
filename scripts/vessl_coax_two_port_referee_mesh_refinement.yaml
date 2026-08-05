@@ -25,7 +25,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
-  # pytorch runtime image: dash shell (no bashisms), no git preinstalled.
+  # image ships git + openEMS already (docker/openems-lane/Dockerfile); dash shell (no bashisms).
   echo "=== rfx #489 leg 1: coax two-port referee mesh-refinement witness ==="
   date
 
@@ -101,6 +101,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   cd "$CLONE_DIR" || exit 1
@@ -145,7 +146,7 @@ run: |-
   case "$rc" in
     0) echo "PASS: reproduce-gate + Stage B self-checks both passed at the refined mesh -- see JSON's stage_b.beta_ratio_measured_over_analytic_mean against MESH_REFINEMENT_PREDECLARATION.acceptance_band_ratio" ;;
     1) echo "SELF-CHECK FAILED at the refined mesh -- inspect $OUT_DIR/run.log AND stage_b_partial in the JSON (if present) before concluding anything about the mesh-refinement question" ;;
-    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the image's import check above succeeding" ;;
     3) echo "CONFIG ERROR: an internal layout/geometry assertion failed at this dx_scale -- script bug or a clearance violated at the finer mesh, NOT itself the mesh-refinement physics answer" ;;
     *) echo "ERROR: unexpected exit code $rc" ;;
   esac

@@ -21,7 +21,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eux
-  # pytorch runtime image: dash shell (no bashisms) and git via apt below.
+  # image ships git + openEMS already (docker/openems-lane/Dockerfile); dash shell (no bashisms).
   echo "=== rfx #489 stage 3: openEMS coax two-port referee ==="
   date
 
@@ -43,6 +43,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
 
   # -- provenance (this script never imports rfx, but the referee's
@@ -96,7 +97,7 @@ run: |-
   case "$rc" in
     0) echo "PASS: reproduce-gate + Stage B self-checks both passed (comparator-leg only -- see JSON for the actual bracket, no verdict on rfx agreement)" ;;
     1) echo "SELF-CHECK FAILED: reproduce-gate or a Stage B sanity/physical guard failed -- inspect $out/run.log before trusting any number in the JSON" ;;
-    2) echo "UNEXPECTED: script reports openEMS missing despite the source build above succeeding -- investigate the build/import path" ;;
+    2) echo "UNEXPECTED: script reports openEMS missing despite the image's import check above succeeding -- investigate the build/import path" ;;
     3) echo "CONFIG ERROR: an internal layout/geometry assertion in the script itself failed -- this is a script bug, NOT a physics finding; fix the script before resubmitting" ;;
     *) echo "ERROR: unexpected exit code $rc" ;;
   esac
