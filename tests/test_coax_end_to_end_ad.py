@@ -54,7 +54,10 @@ def _s11_mag2(deps):
     return jnp.abs(res.s11[0]) ** 2
 
 
+# highmem (issue #545): measured +10.8 GB RSS high-water delta in weekly
+# run 31103127491.
 @pytest.mark.slow_physics
+@pytest.mark.highmem
 def test_coax_reflection_grad_finite_and_fd_consistent():
     """Gate: the full-method reflection is differentiable w.r.t. the dielectric and
     the AD gradient matches a finite difference (the AD moat for coaxial_port)."""

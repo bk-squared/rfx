@@ -25,6 +25,7 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -70,6 +71,12 @@ def _msl_sim_auto_eps():
     return sim
 
 
+# highmem (issue #545): measured +8.1 GB RSS high-water delta in weekly
+# run 31103127491. No prior slow/slow_physics/gpu marker on this test —
+# highmem is additive only (pyproject addopts filters "not slow and not
+# slow_physics", not highmem), so this test stays in the default fast lane
+# unchanged; highmem only pulls it out of the weekly 4-shard rotation.
+@pytest.mark.highmem
 def test_auto_eps_msl_gradient_matches_fd_mini_referee():
     """f32 mini-referee (np=1, h=1e-2) on the auto-eps_r_sub MSL forward:
     AD within 3% of central FD. Measured: pre-#483 main reads 0.126 (the

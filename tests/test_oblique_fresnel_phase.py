@@ -145,7 +145,10 @@ def test_oblique_complex_gamma_vs_analytic(theta, magtol):
     assert dph < 20.0, f"∠Γ={np.degrees(np.angle(g)):.1f}° vs 180° (θ={theta}, off {dph:.1f}°)"
 
 
+# highmem (issue #545): measured +10.7 GB RSS high-water delta in weekly
+# run 31103127491.
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_oblique_complex_gamma_differentiable():
     """The complex-target RIS loss |Γ-Γ_target|² is differentiable through oblique forward()."""
     sim, shape, xi, xe, idx, dt, ns = _build_lean(30.0)  # lean config: AD tape fits GPU memory

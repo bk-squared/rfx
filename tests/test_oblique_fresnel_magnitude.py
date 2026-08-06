@@ -91,7 +91,10 @@ def test_oblique_fresnel_magnitude_vs_analytic(theta, tol):
     assert abs(g - ga) / ga < tol, f"|Γ|={g:.3f} vs R_TE={ga:.3f} (θ={theta}, {abs(g-ga)/ga*100:.1f}%)"
 
 
+# highmem (issue #545): the shard-2 kill in weekly run 31103127491 crossed
+# 12,187 MB high-water on this test, ~1.7x the ~7 GB hosted-runner ceiling.
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_oblique_reflection_magnitude_differentiable():
     """d|Γ|/dε flows through the checkpointed oblique forward and matches finite difference."""
     sim, shape, xi, xe, _idx, dt, ns = _build_lean(30.0)  # lean config: AD tape fits GPU memory

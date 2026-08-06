@@ -203,7 +203,10 @@ def test_mu_r_channel_is_live(mag_run):
     assert rel > 1e-3, f"mu_r_override is a no-op (series change {rel:.2e})"
 
 
+# highmem (issue #545): measured +3.3 GB RSS high-water delta in weekly
+# run 31103127491.
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_mu_r_gradient_ad_vs_fd(mag_run):
     """Autodiff SELF-CONSISTENCY (not physics): jax.grad w.r.t. mu_r matches a FD
     step of the same forward. Physical validation is test_mu_r_gradient_vs_analytic_tmm."""

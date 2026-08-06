@@ -60,7 +60,11 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     assert rel < 0.05, f"grad {g:.4f} vs FD {fd:.4f} rel_err {rel*100:.1f}% > 5%"
 
 
+# highmem (issue #545): measured peak RSS 23.78 GB locally (taskset -c 0-1);
+# the shard-1 kill in weekly run 31103127491 crossed 14,976 MB high-water on
+# this test, 2x+ the ~7 GB hosted-runner class ceiling.
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_forward_tfsf_oblique_differentiable():
     """forward() couples an OBLIQUE TFSF source (complex Bloch path, auto-activated)
     and produces a finite, nonzero gradient w.r.t. the scatterer eps."""

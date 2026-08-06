@@ -322,7 +322,12 @@ def test_ram_magnitude_vs_tmm(ram_run):
         f"absorption dip: FDTD {20*np.log10(g_fd[i0]):.1f} dB, TMM {20*np.log10(g_nom[i0]):.1f} dB"
 
 
+# highmem (issue #545): the [sigma-1.0] case was the fatal test in the
+# shard-3 kill in weekly run 31103127491 (14,854 MB high-water); the eps
+# case shares the same checkpointed forward and is marked with it (pytest
+# marks apply per-function, not per-parametrize-case).
 @pytest.mark.slow
+@pytest.mark.highmem
 @pytest.mark.parametrize("var,x0", [("sigma", 1.0), ("eps", 4.0)])
 def test_ram_gradient_ad_vs_fd(ram_run, var, x0):
     """AUTODIFF SELF-CONSISTENCY (not physics): jax.grad through the checkpointed

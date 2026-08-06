@@ -9,18 +9,44 @@ permissions:
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # slow-tests (4-shard) + slow-tests-highmem (serial) split (issue #545 step 3).
+  #
+  # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
+  # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
+  # zero assertions/exceptions) are OOM: every killed shard's process had
+  # already crossed 12-15 GB RSS high-water before its own death, 2-2.5x the
+  # ~7 GB hosted-runner-class ceiling. The fatal tests in each case were
+  # memory-heavy (8-24 GB) but TIME-cheap (38-100s); pytest-split's
+  # duration_based_chunks balances on time only, so it freely relocates these
+  # tests between shards on every .test_durations regeneration -- a fresh
+  # durations file is a coin flip for which shards OOM next. The fix is to
+  # pull the 7 confirmed memory-heavy tests (marked `highmem`, see pyproject
+  # markers + issue #545's discriminator-run comment for the per-test
+  # deltas/peaks) out of the time-balanced shard rotation entirely and run
+  # them in their own job, one process at a time, so at most one multi-GB
+  # peak exists on the runner at any instant.
+  #
+  # .test_durations interaction: the 4-shard job's selection (`not gpu and
+  # not highmem`) now excludes the 7 highmem tests, so duration_based_chunks
+  # balances only over the remaining ~3312 tests. No regeneration of
+  # .test_durations is needed for this split -- pytest-split's
+  # --collect-only entry simply won't see the deselected highmem tests, and
+  # the file's existing per-test duration entries for them (if present) are
+  # just unused by this selection, not stale/wrong.
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
     # suite grows weekly; the 60-min ceiling left <15% headroom.
     timeout-minutes: 90
     strategy:
-      # Shard the full "not gpu" suite across parallel jobs. Each shard is a
-      # FRESH process running its slice serially, so the cumulative JAX/XLA
-      # compilation-cache growth that OOM-killed the single-process full run
-      # (~75%, exit 143 on the 7 GB ubuntu-latest runner) cannot accumulate.
-      # Serial-per-shard also means no xdist (avoids xdist-only false failures);
-      # dropping -x lets every shard report all of its failures.
+      # Shard the full "not gpu and not highmem" suite across parallel jobs.
+      # Each shard is a FRESH process running its slice serially, so the
+      # cumulative JAX/XLA compilation-cache growth that OOM-killed the
+      # single-process full run (~75%, exit 143 on the 7 GB ubuntu-latest
+      # runner) cannot accumulate. Serial-per-shard also means no xdist
+      # (avoids xdist-only false failures); dropping -x lets every shard
+      # report all of its failures.
       fail-fast: false
       matrix:
         group: [1, 2, 3, 4]
@@ -43,16 +69,55 @@ jobs:
       # -q's failure summary prints only at session end and dies with the runner.
       #
       # RFX_WEEKLY_RSS=1 (issue #545 step 2): opt-in per-test RSS high-water
-      # reporter (conftest.py) so the NEXT run of this lane can discriminate
-      # an OOM-adjacent kill from a pure infra shutdown if a shard is killed
-      # again — no-op elsewhere (fast-suite/pr-tests.yml do not set this).
+      # reporter (conftest.py) so this lane can discriminate an OOM-adjacent
+      # kill from a pure infra shutdown if a shard is killed again — no-op
+      # elsewhere (fast-suite/pr-tests.yml do not set this).
+      #
+      # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
+      # move to the slow-tests-highmem job below, see the block comment above
+      # this job for why.
       - name: Run slow suite — shard ${{ matrix.group }} of 4
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           pytest -v -ra
-          -m "not gpu"
+          -m "not gpu and not highmem"
           --splits 4 --group ${{ matrix.group }}
+          --ignore=tests/test_meep_crossval.py
+          --ignore=tests/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/test_openems_crossval.py
+          --ignore=tests/test_crossval_comprehensive.py
+
+  # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
+  # xdist) so only one multi-GB peak exists on the runner at a time -- see the
+  # block comment on slow-tests above for the full OOM evidence this responds
+  # to. These tests are individually time-cheap (measured 38-100s each, ~6-8
+  # min total compute across all 7) but memory-heavy (8-24 GB RSS high-water
+  # each per issue #545's discriminator run), so a generous timeout here is
+  # about tolerating a slow/loaded runner, not about the tests' own compute
+  # cost.
+  slow-tests-highmem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run highmem suite (serial, one multi-GB peak at a time)
+        env:
+          RFX_WEEKLY_RSS: "1"
+        run: >
+          pytest -v -ra
+          -m "highmem and not gpu"
           --ignore=tests/test_meep_crossval.py
           --ignore=tests/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/test_openems_crossval.py

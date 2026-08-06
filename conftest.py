@@ -25,6 +25,7 @@ import os
 
 os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
+import threading  # noqa: E402
 import warnings  # noqa: E402
 
 import jax  # noqa: E402
@@ -82,10 +83,105 @@ def pytest_configure(config):
 # The parse lives inside _maybe_register_rss_reporter, after the enable
 # gate, with a fallback to the 500 MB default on a bad value. See
 # tests/test_weekly_rss_reporter.py::test_malformed_threshold_with_reporter_off_does_not_raise.
+#
+# issue #545 step 3 (2026-08-06 discriminator run 31103127491): this reporter
+# alone left one structural gap disclosed in that run's writeup -- ru_maxrss
+# only updates in the POST-test hook, so the exact RSS at the SIGKILL instant
+# is never captured (the process dies before that hook resumes). _RSSLiveSampler
+# below closes it with an independent background-thread poll of
+# /proc/self/status VmHWM, on its own ~2s clock, printing (flushed
+# immediately) whenever the high-water mark advances past the threshold --
+# see its docstring.
 
 
 def _rss_env_enabled() -> bool:
     return os.environ.get("RFX_WEEKLY_RSS", "").strip().lower() not in ("", "0", "false")
+
+
+def _read_proc_vmhwm_mb() -> "float | None":
+    """Read VmHWM (peak resident set size, all-time high-water) from
+    ``/proc/self/status``, in MB.
+
+    Returns ``None`` -- never raises -- when ``/proc/self/status`` does not
+    exist (any non-Linux platform) or the ``VmHWM`` line is missing or
+    unparsable, so callers treat "no reading" as "skip this sample," not as
+    a crash or a real 0 MB reading. ``/proc`` is a Linux-only kernel
+    interface, so this is the deliberate non-Linux guard for
+    ``_RSSLiveSampler`` below.
+    """
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmHWM:"):
+                    # Typical line: "VmHWM:\t 1234567 kB"
+                    parts = line.split()
+                    return float(parts[1]) / 1024.0
+    except (OSError, IndexError, ValueError):
+        return None
+    return None
+
+
+class _RSSLiveSampler:
+    """Background daemon thread: samples ``/proc/self/status`` VmHWM on its
+    own ~2s clock (independent of any pytest hook) and prints a line the
+    instant the high-water mark has advanced by more than ``threshold_mb``
+    past the last-printed value.
+
+    Closes a gap ``_RSSHighWaterReporter`` below cannot: that reporter's
+    ``pytest_runtest_protocol`` hookwrapper only samples at test
+    boundaries (before/after each test runs), so if the OS SIGKILLs the
+    process mid-test -- the exit-143 kill class issue #545 exists to
+    discriminate -- the RSS at the moment of death is never captured; the
+    process dies before the hookwrapper resumes. This thread samples on its
+    own independent schedule and flushes every print immediately
+    (``flush=True``), so a killed process still leaves its last high-water
+    line in the streamed CI log even though it died mid-test.
+
+    Zero cost when not started: the object can be constructed without ever
+    launching its thread. In this file it is only constructed (via
+    ``_RSSHighWaterReporter.__init__``) when ``_maybe_register_rss_reporter``
+    has already passed the RFX_WEEKLY_RSS enable gate, and only started
+    (via ``_RSSHighWaterReporter.pytest_sessionstart``) once a real pytest
+    session begins -- so a unit test that merely constructs the reporter
+    (e.g. against a ``MagicMock`` config) never spins up a thread.
+    """
+
+    def __init__(self, threshold_mb: float, interval_s: float = 2.0):
+        self.threshold_mb = threshold_mb
+        self.interval_s = interval_s
+        self.current_nodeid = None  # best-effort, updated by a pytest hook
+        self._last_reported_mb = 0.0
+        self._started = False
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run, name="rfx-rss-live-sampler", daemon=True
+        )
+
+    def start(self) -> None:
+        self._started = True
+        self._thread.start()
+
+    def stop(self, timeout: float = 5.0) -> None:
+        self._stop_event.set()
+        if self._started:
+            self._thread.join(timeout=timeout)
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
+
+    def _sample_once(self) -> None:
+        mb = _read_proc_vmhwm_mb()
+        if mb is None:
+            return  # non-Linux, or /proc unreadable -- silently skip
+        if mb - self._last_reported_mb > self.threshold_mb:
+            self._last_reported_mb = mb
+            suffix = f" during {self.current_nodeid}" if self.current_nodeid else ""
+            # flush=True: a SIGKILL must leave this line in the streamed log.
+            print(f"[rss-live] VmHWM {mb:.0f} MB{suffix}", flush=True)
+
+    def _run(self) -> None:
+        while not self._stop_event.wait(self.interval_s):
+            self._sample_once()
 
 
 class _RSSHighWaterReporter:
@@ -105,11 +201,21 @@ class _RSSHighWaterReporter:
     blind spot -- it says the process had reached at least that much RSS by
     the time this test finished, which is what the OOM-vs-infra question
     actually needs. Both numbers are reported per test and in the summary.
+
+    Also owns a background ``_RSSLiveSampler`` thread (issue #545 step 3)
+    that samples VmHWM directly from ``/proc/self/status`` on its own ~2s
+    clock, to capture the high-water mark at the instant of a mid-test
+    SIGKILL that this class's own post-test hook cannot see (see
+    ``_RSSLiveSampler``'s docstring). Started in ``pytest_sessionstart`` and
+    stopped in ``pytest_sessionfinish``, both gated by the same
+    RFX_WEEKLY_RSS enable check as this whole reporter, transitively, via
+    ``_maybe_register_rss_reporter``.
     """
 
     def __init__(self, threshold_mb: float):
         self.threshold_kb = threshold_mb * 1024.0
         self.samples: list = []  # list[tuple[str, float, float]] of (nodeid, delta_mb, peak_mb)
+        self.live_sampler = _RSSLiveSampler(threshold_mb)
 
     @staticmethod
     def _maxrss_kb() -> float:
@@ -117,8 +223,15 @@ class _RSSHighWaterReporter:
 
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
+    def pytest_sessionstart(self, session):
+        self.live_sampler.start()
+
+    def pytest_sessionfinish(self, session, exitstatus):
+        self.live_sampler.stop()
+
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item, nextitem):
+        self.live_sampler.current_nodeid = item.nodeid
         start_kb = self._maxrss_kb()
         yield
         end_kb = self._maxrss_kb()
