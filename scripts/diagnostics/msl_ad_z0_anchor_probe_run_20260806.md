@@ -113,19 +113,95 @@ appearing in a different quantity for an unrelated, non-alarming reason).
 
 ```
 g_a (production, frozen analytic z0_hj)          = 1.602236e-03  (Run 1, deterministic 2/2)
-g_b (frozen fitted z0, full-precision anchor)     = 6.885110e-05  (Run 1, run 0 -- same process as g_a)
-g_b (frozen fitted z0, CLI-rounded anchor)        = 6.884444e-05  (Run 2, deterministic 2/2)
+g_b (frozen fitted z0, full-precision anchor)     = 6.885110e-05  (Run 1, run 0 -- HEADLINE, un-repeated: Run 1's own run 1 was killed before printing)
+g_b (frozen fitted z0, CLI-rounded anchor)        = 6.884444e-05  (Run 2, deterministic 2/2 -- the bit-exact-confirmed value)
 
-ratio (primary:   g_a / g_b[Run 1])   = 23.271
-ratio (cross-check: g_a / g_b[Run 2]) = 23.273
+ratio (headline:    g_a / g_b[Run 1, un-repeated]) = 23.271
+ratio (cross-check: g_a / g_b[Run 2, 2/2 exact])   = 23.273
 same sign: both positive
+loss_a = 0.99787515 (<= 1, no passivity flag)
+loss_b = 1.00077176 / 1.00077271 (both anchor-B runs, > 1 -- see "Passivity note" below)
 ```
 
-**VERDICT: COLLAPSE** (ratio ~23.3 >= the 5x threshold issue #560 itself
-proposed, by more than 4x margin — not a borderline call). The
-frozen-reference normalization gap (mechanism 2) is the dominant channel
-behind `d(band-mean|S21|**2)/d(alpha)` on this fixture. See
-`scripts/diagnostics/msl_ad_z0_anchor_probe.py`'s header for the full
+### Primary criterion — issue #560's own qualitative wording, applied literally
+
+Issue #560 does NOT state a numeric collapse threshold anywhere in its
+body (checked: zero occurrences of "5x" or any ratio). Its actual
+criterion, quoted verbatim: *"If `|g_ad|` collapses (drops toward the
+FD-unresolvable floor, i.e. the reference-plane mismatch was supplying
+most of the sensitivity) [...] If `|g_ad|` stays close to the current
+`1.602933e-03`"*. Operationalizing "FD-unresolvable floor" with this
+repo's own established standard (issue #527: `test_msl_ad_fd_converged.py`'s
+`_fd_ulp_span`, and `test_comparator_floor_rejects_the_f32_reference_that_caused_527`,
+which measured the RETIRED objective's f32 comparator at 4.449 ULP and
+declared it untrustworthy):
+
+```
+first-order Taylor estimate of anchor B's FD signal at the gate's h=1e-3
+(2h|g_b|, NOT an actual FD re-run -- verified via _fd_ulp_span reused
+directly, see scripts/diagnostics/msl_ad_z0_anchor_probe.py's RESULT
+section for the runtime code this reproduces):
+
+  g_b headline (6.885110e-05):   1.1551 ULP of a float32 loss near 1.0008
+  g_b reconfirmed (6.884444e-05): 1.1550 ULP
+```
+
+Both are well below the 4.449-ULP mark #527 declared unresolvable — by
+this repo's own established standard, `g_b` has literally "dropped toward
+the FD-unresolvable floor" in the issue's own words. **This alone settles
+the issue on its own terms**, without needing any numeric ratio.
+
+### Secondary criterion — this PR's own pre-declared threshold (NOT #560's)
+
+`scripts/diagnostics/msl_ad_z0_anchor_probe.py`'s docstring pre-declares
+a 5x/2x operational threshold BEFORE running the probe, as ITS OWN
+choice — an earlier version of that docstring (and of this run log,
+the PR body, and the GitHub issue comment) wrongly attributed "5x" to
+issue #560 as a verbatim quote. It is not there; this has been corrected
+throughout. Using the script's own pre-declared threshold: ratio ~23.3x
+is 4.6x past the self-declared 5x collapse bar — consistent with, and
+reinforcing, the primary criterion above.
+
+### Passivity note (F3)
+
+`loss_a` = 0.99787515 (a passivity-consistent value: band-mean `|S21|**2`
+<= 1). Both anchor-B runs read `loss_b` > 1 (1.00077176 and 1.00077271) —
+a passivity violation for a passive thru, which must be attributed, not
+left silent. Attribution: `compute_msl_s_matrix` applies NO passivity
+projection on the `eps_override` channel by design (so `jax.grad` and a
+finite-difference reference see the identical raw function — see that
+method's "EXEMPTION" docstring paragraph, which documents a measured
+`sigma_max` of 1.18 on a coarse thru even in PRODUCTION with the frozen
+analytic anchor). This does not threaten the ratio-based channel
+attribution above (`g_a` and `g_b` both come from the same unprojected raw
+`S` channel, so the comparison is apples to apples). It IS, however, the
+strongest argument that the fitted anchor is not self-evidently "more
+correct" than the frozen analytic one: swapping to it pushes THIS
+extraction further over the passivity bound (implied `Γ_spur` from the
+~74% z0 gap, 47.89 Ω analytic vs ~83.19 Ω fitted, is ≈0.27) — see the
+"Production-anchor design question" note below.
+
+### Production-anchor design question (F2) — NOT decided by this probe
+
+This probe measures which channel dominates the AD *gradient* under a
+hypothetical alternate anchor. It does **not** decide whether
+`compute_msl_s_matrix` **should** anchor its *production* wave split on
+the fitted `z0` instead of the frozen analytic `z0_hj`. That is a
+separate, undecided design question. The passivity note above is exactly
+why that question needs its own analysis rather than being inferred from
+this result: the ~74% gap between the analytic anchor (47.89 Ω) and the
+fitted one (~83.19 Ω) invites the reading "so switch production to the
+fitted anchor," but the fitted anchor is what pushes `loss_b` over the
+passivity bound here — not obviously the "more correct" choice on its
+own. This PR does not open or resolve that design question; it is flagged
+here so it is not silently inferred from the channel-attribution result.
+
+**VERDICT: COLLAPSE** (issue #560's own qualitative criterion, satisfied
+directly via the ULP argument above; also ~23.3x past this PR's own
+pre-declared 5x threshold, 4.6x margin — not a borderline call either
+way). The frozen-reference normalization gap (mechanism 2) is the
+dominant channel behind `d(band-mean|S21|**2)/d(alpha)` on this fixture.
+See `scripts/diagnostics/msl_ad_z0_anchor_probe.py`'s header for the full
 decision-rule pre-declaration and for what this does and does not change
 about `test_msl_ad_fd_converged_tight`'s validity as an AD-vs-FD
 comparator (unaffected either way — see "WHAT THIS PROBE DOES NOT CHANGE").

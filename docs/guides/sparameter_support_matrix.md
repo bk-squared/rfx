@@ -202,10 +202,26 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   `scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`) swapped the
   frozen analytic `z0_hj` anchor for a frozen per-port FITTED z0 (measured
   at alpha=1, held constant) and re-measured `|g_ad|` on this same fixture
-  (CPU/float32): it collapsed `1.602236e-03` -> `6.885110e-05` (~23.3x,
-  reproduced deterministically), so the reference-plane artifact (not
-  beta/reflection physics) is the dominant channel — this does not change
-  the `rel_err`/threshold numbers above, only their physical reading). The #515 AD smoke
+  (CPU/float32): it collapsed `1.602236e-03` (bit-identical across 2
+  repeats) -> `6.885110e-05` (headline value from an un-repeated run,
+  killed mid-way by a background-task duration limit; the
+  bit-identical-2/2 value under a CLI-rounded anchor is `6.884444e-05`,
+  agreeing to 4 significant figures). By issue #560's own QUALITATIVE
+  criterion ("drops toward the FD-unresolvable floor"): the estimated FD
+  signal for this g_b at the gate's h is only ~1.16 ULP of a float32 loss,
+  below the 4.449 ULP issue #527 measured for the retired objective's
+  comparator and declared untrustworthy — g_b is noise-floor by this
+  repo's own established standard. (As a secondary check, this is ~23.3x,
+  past this PR's own pre-declared 5x threshold — NOT a quote from #560,
+  whose body contains no such number; see the probe script's docstring.)
+  The reference-plane artifact (not beta/reflection physics) is the
+  dominant channel — this does not change the `rel_err`/threshold numbers
+  above, only their physical reading. Separately, anchor B's own loss
+  exceeded 1 (a passivity violation, attributed to the raw unprojected
+  `eps_override` channel — see the probe's run log), which is evidence the
+  fitted anchor is not self-evidently "more correct"; whether
+  `compute_msl_s_matrix`'s PRODUCTION wave split should anchor on it is a
+  SEPARATE, undecided design question this PR does not settle. The #515 AD smoke
   shares this same objective function (`tests/_msl_ad_objective.py`) so the
   two tests cannot drift apart. The launch fixture derives from registered
   materials on both the FD and AD sides; staticness is regression-locked by

@@ -129,9 +129,24 @@ docstring.
 same fixture as this file) re-ran `jax.grad` of the identical objective
 with the wave split's frozen analytic `z0_hj` anchor swapped for a frozen
 per-port FITTED z0 (measured at alpha=1, held constant): `|g_ad|` dropped
-from `1.602236e-03` to `6.885110e-05` (~23.3x, deterministic across
-repeats for both anchors) — the reference-plane mismatch (mechanism 2) is
-the dominant channel, not beta/reflection physics. This is a channel-
-ATTRIBUTION finding, not a numerical-agreement one: it does not change the
-`rel_err`/PASS verdict recorded above, only the physical interpretation of
-the gradient's magnitude.
+from `1.602236e-03` (bit-identical across 2 repeats) to `6.885110e-05`
+(the headline value, from an un-repeated run — the run's 2nd repeat was
+killed by a background-task duration limit; the bit-identical-2/2 value
+under a CLI-rounded anchor is `6.884444e-05`, agreeing to 4 significant
+figures). By issue #560's own QUALITATIVE criterion ("drops toward the
+FD-unresolvable floor"): the estimated FD signal for `g_b` at the gate's h
+is only ~1.16 ULP of a float32 loss, below the 4.449 ULP issue #527
+declared untrustworthy for the retired objective's comparator — g_b is
+noise-floor by this repo's own established standard. (As a secondary,
+self-declared check, this is ~23.3x — NOT a quote from #560, whose body
+has no numeric threshold; see the probe script's docstring.) The
+reference-plane mismatch (mechanism 2) is the dominant channel, not
+beta/reflection physics. This is a channel-ATTRIBUTION finding, not a
+numerical-agreement one: it does not change the `rel_err`/PASS verdict
+recorded above, only the physical interpretation of the gradient's
+magnitude. Separately, anchor B's own loss exceeded 1 (a passivity
+violation, attributed to the raw unprojected `eps_override` channel, not
+threatening the ratio) — evidence the fitted anchor is not self-evidently
+"more correct," so whether `compute_msl_s_matrix`'s production wave split
+should anchor on it is a SEPARATE, undecided design question this probe
+does not settle.

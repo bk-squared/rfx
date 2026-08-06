@@ -236,17 +236,34 @@ def test_msl_ad_fd_converged_tight():
     ``scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md``.
     Measured on this exact fixture (CPU, float32, same dtype/discipline as
     the gate): ``|g_ad|`` collapsed from ``1.602236e-03`` (production,
-    frozen analytic anchor) to ``6.885110e-05`` (frozen fitted anchor) — a
-    ~23.3x drop, 4.6x past the issue's own 5x collapse threshold, and
-    reproduced deterministically (bit-identical across repeats for both
-    anchors; the CLI-rounded reconfirmation run agrees to 4 significant
-    figures). VERDICT: the reference-plane mismatch (mechanism 2) is the
+    frozen analytic anchor — bit-identical across 2 repeats in the same
+    process) to ``6.885110e-05`` (frozen fitted anchor — this HEADLINE
+    value is from an un-repeated run, killed by a background-task duration
+    limit before its own repeat printed; the value that IS 2/2
+    bit-identical-confirmed is a CLI-rounded-anchor rerun, ``6.884444e-05``,
+    agreeing with the headline to 4 significant figures). PRIMARY
+    criterion (issue #560's own qualitative wording, "drops toward the
+    FD-unresolvable floor" applied literally): the estimated FD signal for
+    g_b at the gate's h is only ~1.16 ULP of a float32 loss — below the
+    4.449 ULP issue #527 measured for the RETIRED objective's f32
+    comparator and declared untrustworthy, i.e. g_b is noise-floor by this
+    repo's own established standard. SECONDARY check (this PR's own
+    pre-declared threshold, NOT a quote from #560 — an earlier draft of
+    this docstring wrongly attributed "5x" to the issue body, which
+    contains no such number): ~23.3x, 4.6x past that self-declared 5x
+    bar. VERDICT: the reference-plane mismatch (mechanism 2) is the
     DOMINANT channel behind d(loss)/d(alpha) on this fixture — the
     beta/reflection-physics reading is NOT supported as the dominant
     explanation. This does not touch the accuracy gate below: AD and FD
     still differentiate the identical function, so rel_err/PASS is
     unaffected either way — only the physical story attached to the
-    gradient's magnitude changes. Band-mean ``|S21|**2`` (``tests._msl_ad_objective.
+    gradient's magnitude changes. Separately, anchor B's own loss exceeded
+    1 (a passivity violation, expected/attributed to the raw unprojected
+    eps_override channel — see the probe's run log) — evidence the fitted
+    anchor is not self-evidently "more correct," so whether
+    ``compute_msl_s_matrix``'s PRODUCTION wave split should anchor on it is
+    a SEPARATE, undecided design question this PR does not settle. Band-mean
+    ``|S21|**2`` (``tests._msl_ad_objective.
     msl_band_mean_s21_sq``, shared with the #515 AD smoke) is computed from
     the exact same ``compute_msl_s_matrix`` call the old objective used;
     only the post-call reduction changed.

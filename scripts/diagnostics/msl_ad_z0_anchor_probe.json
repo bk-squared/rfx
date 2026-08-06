@@ -15,6 +15,7 @@
   },
   "assembly_path": "multi_drive_solve",
   "z0_fit_per_port_ohm_real_band_mean": [83.1861, 83.2578],
+  "z0_hj_analytic_ohm_this_fixture": 47.8948,
   "run_1_combined": {
     "preliminary_forward_wall_time_s": 370.6,
     "forward_s_abs_range": [0.0080, 1.0000],
@@ -24,26 +25,53 @@
     },
     "anchor_b_frozen_fitted_z0_full_precision_anchor": {
       "run_0": [1.00077176, 6.885110e-05],
-      "run_1": "killed before printing (background-task duration limit)"
+      "run_1": "killed before printing (background-task duration limit) -- run_0's value is therefore the UN-REPEATED headline"
     }
   },
   "run_2_anchor_b_reconfirmation": {
     "z0_fit_ohm_cli_rounded": [83.1861, 83.2578],
     "all_runs": [[1.0007727146148682, 6.884444155730307e-05], [1.0007727146148682, 6.884444155730307e-05]],
-    "deterministic": true
+    "deterministic": true,
+    "note": "this pair IS the bit-exact-2/2-confirmed value, using a CLI-rounded (4-decimal) anchor rather than Run 1's full-precision internal value"
   },
   "g_a": 1.602236e-03,
-  "g_b_primary": 6.885110e-05,
-  "g_b_cross_check": 6.884444155730307e-05,
-  "ratio_primary": 23.271,
-  "ratio_cross_check": 23.273,
+  "g_a_deterministic": true,
+  "g_b_headline_unrepeated": 6.885110e-05,
+  "g_b_reconfirmed_2of2_deterministic": 6.884444155730307e-05,
+  "ratio_headline": 23.271,
+  "ratio_reconfirmed": 23.273,
   "same_sign": true,
-  "decision_rule": {
-    "collapse_ratio_threshold": 5.0,
-    "survive_ratio_threshold": 2.0
+  "primary_criterion_issue560_qualitative_wording": {
+    "quote": "If |g_ad| collapses (drops toward the FD-unresolvable floor, i.e. the reference-plane mismatch was supplying most of the sensitivity) [...] If |g_ad| stays close to the current 1.602933e-03 -- issue #560's body contains NO numeric threshold; a prior draft of this evidence wrongly attributed a '5x' figure to the issue as a verbatim quote, which was incorrect and has been corrected throughout",
+    "method": "first-order Taylor ESTIMATE (2*h*|g_b|, NOT an actual FD re-run) of anchor B's central-difference signal at the gate's own h, expressed in ULPs of a float32 loss near loss_b, via _fd_ulp_span (test_msl_ad_fd_converged.py) -- directly comparable to issue #527's established resolving-power discipline",
+    "fd_h": 0.001,
+    "estimated_ulp_span_g_b_headline": 1.1551,
+    "estimated_ulp_span_g_b_reconfirmed": 1.1550,
+    "unresolvable_ulp_benchmark_issue527": 4.449,
+    "below_unresolvable_benchmark": true,
+    "conclusion": "g_b is noise-floor by this repo's own established standard -- settles the issue on its own qualitative terms without needing any numeric ratio"
   },
+  "secondary_criterion_this_prs_own_threshold": {
+    "note": "5x/2x are THIS script's own pre-declared operational thresholds, on record before the run -- NOT a quote from issue #560, whose body contains no numeric threshold",
+    "collapse_ratio_threshold": 5.0,
+    "survive_ratio_threshold": 2.0,
+    "margin_over_collapse_threshold": "4.6x"
+  },
+  "passivity_note": {
+    "loss_a": 0.99787515,
+    "loss_a_exceeds_1": false,
+    "loss_b_headline": 1.00077176,
+    "loss_b_reconfirmed": 1.00077271,
+    "loss_b_exceeds_1": true,
+    "attribution": "expected for the raw, unprojected eps_override channel (compute_msl_s_matrix applies no passivity projection there by design -- see its 'EXEMPTION' docstring paragraph, measured sigma_max 1.18 on a coarse thru even in production); does not threaten the ratio-based attribution (g_a and g_b both come from the same unprojected raw-S channel)",
+    "implication": "the strongest argument that the fitted anchor is NOT self-evidently more correct than the frozen analytic one -- anchoring on it pushes this extraction further over the passivity bound",
+    "implied_gamma_spur": 0.2694,
+    "z0_hj_analytic_ohm": 47.8948,
+    "z0_fit_mean_ohm": 83.222
+  },
+  "production_design_question_not_decided": "whether compute_msl_s_matrix's PRODUCTION wave split should anchor on the fitted z0 instead of the frozen analytic z0_hj is a separate, undecided design question this probe does not settle -- it only measures channel attribution under a hypothetical swap; the passivity_note above is exactly why that question needs its own analysis rather than being inferred from this result",
   "verdict": "collapse_mechanism2_dominant",
-  "headline": "COLLAPSE (ratio ~23.3 >= 5.0x, ~4.6x margin over the collapse threshold): the frozen-reference normalization gap (mechanism 2) is the dominant channel behind d(band-mean|S21|**2)/d(alpha) on this fixture.",
+  "headline": "COLLAPSE by issue #560's own qualitative criterion (estimated FD signal ~1.155 ULP, below the 4.449-ULP #527 unresolvable benchmark) and by this PR's own secondary 5x threshold (ratio ~23.3x, 4.6x margin): the frozen-reference normalization gap (mechanism 2) is the dominant channel behind d(band-mean|S21|**2)/d(alpha) on this fixture.",
   "compare_to_committed_owner_platform": {
     "source": "scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md",
     "platform": "gpu-rtx4090, VESSL 369367251813/369367251827",
