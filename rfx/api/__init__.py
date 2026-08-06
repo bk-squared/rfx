@@ -799,22 +799,47 @@ class Simulation(
         .. warning::
            **The waveform amplitude means different physical quantities on the
            uniform and non-uniform paths**, so absolute field amplitudes are not
-           comparable between them. On the uniform mesh the amplitude is added
-           to E directly (a field increment); on a mesh built with any
-           ``d{x,y,z}_profile`` it is treated as a CURRENT IN AMPERES and
-           converted as ``E += (dt / eps) * I / dV`` for resolution-independent
-           injected power (``rfx.nonuniform.make_current_source``, Meep's
-           convention). The resulting traces differ by exactly
-           ``dt / (eps0 * dV)`` — about 2.2e8 at dx = 1 mm — which is large
-           enough to look like an instability when a script is ported from one
-           path to the other (that reading is what issue #565 recorded).
+           comparable between them.
 
-           Frequencies, S-parameters (normalized by a reference run) and any
-           ratio of fields are unaffected. Measured cross-path agreement after
-           removing the factor: 2.7e-5 of full scale, 9.5e-6 with
+           The invariant: **the non-uniform path divides by the cell volume; the
+           uniform path never does.** On a profiled mesh the amplitude is treated
+           as a CURRENT IN AMPERES and converted as ``E += (dt / eps) * I / dV``
+           for resolution-independent injected power
+           (``rfx.nonuniform.make_current_source``, Meep's convention). On the
+           uniform mesh it is a field quantity, and *which* field quantity is
+           BOUNDARY-DEPENDENT (``rfx/runners/uniform.py``): a closed (PEC) domain
+           takes a raw field add, an open (CPML/UPML) domain goes through
+           ``make_j_source`` and is already ``Cb = dt/eps`` normalized.
+
+           So the cross-path amplitude ratio has two values, both measured at
+           dx = 1 mm on an otherwise identical mesh:
+
+           ===================  =========================  ==================
+           uniform boundary     NU / uniform ratio         at dx = 1 mm
+           ===================  =========================  ==================
+           ``pec`` (closed)     ``dt / (eps0 * dV)``       2.15e8
+           ``cpml`` / ``upml``  ``1 / dV``                 1.00e9
+           ===================  =========================  ==================
+
+           An earlier revision of this warning gave only the PEC factor and
+           stated it unconditionally; on an open domain — rfx's more common case
+           — that is wrong by ``dt/eps0``, a measured 4.64x. Either factor is
+           large enough to look like an instability when a script is ported
+           between paths, which is the reading issue #565 recorded.
+
+           Frequencies, S-parameters (normalized by a reference run) and field
+           ratios are unaffected **in the linear regime**; a Kerr (``chi3``)
+           material makes permittivity depend on ``|E|^2``, so there the absolute
+           drive does reach the phase velocity. Absolute probe traces, field
+           snapshots, flux and NTFF outputs are reported as-is and are affected
+           either way.
+
+           Measured cross-path agreement after removing the applicable factor:
+           1.5e-5 of full scale (PEC), 1.1e-4 (CPML), 9.5e-6 with
            ``subpixel_smoothing=True`` — see
            ``tests/test_nonuniform_uniform_end_to_end_reduction.py``, which pins
-           the relationship.
+           both factors. See issue #571 for whether to unify the two
+           conventions.
 
         Parameters
         ----------

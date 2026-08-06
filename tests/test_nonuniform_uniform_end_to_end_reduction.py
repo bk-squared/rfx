@@ -28,6 +28,11 @@ What #565 reported as "NU + subpixel_smoothing diverges wildly on a trivial
 closed box (uniform max|E| 0.0078 vs NU ~1.5e6)" is this factor. Measured here:
 correlation 1.00000000, peak at the same step, tail amplitude equal to head
 amplitude — no growth anywhere, on either builder.
+
+Scope, stated rather than implied: this pins the UNIFORM-PROFILE reduction. A
+genuinely graded mesh computes ``dV`` from the forward cell rather than the
+node's dual volume (pre-existing, unchanged by #562), so the factor there is not
+expected to be this exact expression and is not covered here.
 """
 
 from __future__ import annotations
@@ -52,38 +57,84 @@ def _f110(dx: float) -> float:
     return (C0 / 2) * np.sqrt((1 / (NA * dx)) ** 2 + (1 / (NB * dx)) ** 2)
 
 
-def _run(dx: float, *, nonuniform: bool, smoothing: bool):
+def _expected_factor(boundary: str, dt: float, dx: float) -> float:
+    """The documented cross-path amplitude ratio, per boundary condition.
+
+    The NU path divides by the cell volume; the uniform path never does, and
+    what it adds depends on the boundary (`rfx/runners/uniform.py`): a closed
+    PEC domain takes a raw field add, an open domain goes through
+    `make_j_source` and is already `Cb = dt/eps` normalized. So the ratio is
+    `dt/(eps0*dV)` closed and `1/dV` open — a factor `dt/eps0` = 4.64x apart at
+    dx = 1 mm. The first version of this test covered only PEC and the
+    `add_source` docstring stated the PEC factor unconditionally (#570 review,
+    finding 9); the open case is rfx's more common one.
+    """
+    dV = dx ** 3
+    return (dt / (EPS_0 * dV)) if boundary == "pec" else (1.0 / dV)
+
+
+def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec"):
     f0 = _f110(dx)
     profiles = (dict(dx_profile=np.full(NA, dx), dy_profile=np.full(NB, dx))
                 if nonuniform else {})
     sim = Simulation(freq_max=2.5 * f0, domain=(NA * dx, NB * dx, NZ * dx),
-                     dx=dx, boundary="pec", **profiles)
+                     dx=dx, boundary=boundary,
+                     cpml_layers=(0 if boundary == "pec" else 8), **profiles)
     if smoothing:
         sim.add_material("slab", eps_r=4.0)
         # interface deliberately inside a voxel so the smoother engages
         sim.add(Box((0.0, 0.0, 0.3 * dx), (NA * dx, NB * dx, 2.0 * dx)),
                 material="slab")
-    sim.add_source((NA * dx / 3, NB * dx / 3, NZ * dx / 2), "ez",
+    # z = 3*dx, NOT NZ*dx/2: the latter is EXACTLY the slab's upper face, so the
+    # factor prediction would ride on Box's exclusive-upper-bound convention and
+    # a future inclusive rule would red this test for an unrelated reason
+    # (#570 review, finding 10). 3*dx is unambiguously vacuum.
+    sim.add_source((NA * dx / 3, NB * dx / 3, 3.0 * dx), "ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))
-    sim.add_probe((2 * NA * dx / 3, 2 * NB * dx / 3, NZ * dx / 2), "ez")
+    sim.add_probe((2 * NA * dx / 3, 2 * NB * dx / 3, 3.0 * dx), "ez")
     result = sim.run(n_steps=STEPS, compute_s_params=False,
                      skip_preflight=True, subpixel_smoothing=smoothing)
     return np.asarray(result.time_series, dtype=float).ravel(), float(result.dt)
 
 
-@pytest.mark.parametrize("smoothing", [False, True],
-                         ids=["plain", "subpixel_smoothing"])
-def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(smoothing):
-    """Same mesh, same geometry, both builders: same physics, one known factor."""
+_CASES = [
+    pytest.param(False, "pec", id="plain-pec"),
+    pytest.param(True, "pec", id="subpixel-pec"),
+    pytest.param(False, "cpml", id="plain-cpml"),
+    pytest.param(
+        True, "cpml", id="subpixel-cpml",
+        marks=pytest.mark.xfail(strict=True, reason=(
+            "NU + subpixel_smoothing does NOT reduce to the uniform path on an "
+            "OPEN boundary (#582). Measured, and record-length "
+            "independent at 600/1200/2400 steps: amplitude factor off by "
+            "0.1804 %, waveform residual 1.978e-02, 1-corr 2.8e-04 — against "
+            "~1e-5 residual for the other three boundary x smoothing "
+            "combinations. strict=True so this XPASSes and hard-fails the suite "
+            "the day it is fixed, rather than silently passing.")),
+    ),
+]
+
+
+@pytest.mark.parametrize("smoothing,boundary", _CASES)
+def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(
+        smoothing, boundary):
+    """Same mesh, same geometry, both builders: same physics, one known factor.
+
+    Run for BOTH boundary conditions, because the uniform path's source
+    normalization differs between them and the factor therefore does too.
+    """
     dx = 1e-3
-    uni, dt_u = _run(dx, nonuniform=False, smoothing=smoothing)
-    nu, dt_n = _run(dx, nonuniform=True, smoothing=smoothing)
+    uni, dt_u = _run(dx, nonuniform=False, smoothing=smoothing, boundary=boundary)
+    nu, dt_n = _run(dx, nonuniform=True, smoothing=smoothing, boundary=boundary)
 
     assert dt_u == pytest.approx(dt_n, rel=1e-12), (dt_u, dt_n)
     assert np.abs(uni).max() > 1e-6, "uniform leg produced no field"
 
-    # the two traces are the SAME waveform: identical shape, identical timing
-    assert np.corrcoef(uni, nu)[0, 1] > 1 - 1e-9
+    # the two traces are the SAME waveform: identical shape, identical timing.
+    # Threshold accommodates both boundaries — measured deviation from 1 is
+    # <1e-10 (pec) and 3.7e-9 (cpml, whose absorber implementations differ in
+    # detail between the two paths); 1e-7 leaves ~27x margin on the worse case.
+    assert np.corrcoef(uni, nu)[0, 1] > 1 - 1e-7
     assert int(np.argmax(np.abs(nu))) == int(np.argmax(np.abs(uni)))
 
     # neither leg grows: a diverging run would break this, and #565 read this
@@ -96,15 +147,19 @@ def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(smoothing)
 
     # and the amplitude ratio is exactly the source-normalization factor
     scale = float(np.dot(uni, nu) / np.dot(uni, uni))
-    predicted = dt_u / (EPS_0 * dx ** 3)
+    predicted = _expected_factor(boundary, dt_u, dx)
     assert scale == pytest.approx(predicted, rel=1e-5), (
-        f"cross-path amplitude ratio {scale:.6g} is not dt/(eps0*dV) "
-        f"{predicted:.6g} — one of the two source normalizations changed; see "
-        f"rfx.nonuniform.make_current_source (current in amperes) versus the "
-        f"uniform path's field increment")
+        f"cross-path amplitude ratio {scale:.6g} does not match the documented "
+        f"{boundary} factor {predicted:.6g} — a source normalization changed; "
+        f"see rfx.nonuniform.make_current_source (current in amperes, divided "
+        f"by cell volume) versus rfx/runners/uniform.py's boundary-dependent "
+        f"choice of make_source (raw add) vs make_j_source (Cb-normalized)")
 
     residual = float(np.abs(nu - scale * uni).max() / np.abs(nu).max())
-    assert residual < 2e-4, (
+    # measured: 1.5e-5 (pec), 8.2e-6 (pec + smoothing), 1.1e-4 (cpml).
+    # cpml + smoothing measures 2.0e-2 and is xfail(strict) above, not covered
+    # by this bound — see _CASES.
+    assert residual < 3e-4, (
         f"after removing the known source-normalization factor the two paths "
         f"still differ by {residual:.3e} of full scale — the NU solve is not "
         f"reducing to the uniform solve on an identical mesh")
@@ -122,7 +177,7 @@ def test_source_normalization_factor_is_cell_size_dependent_as_documented():
         uni, dt = _run(dx, nonuniform=False, smoothing=False)
         nu, _ = _run(dx, nonuniform=True, smoothing=False)
         scale = float(np.dot(uni, nu) / np.dot(uni, uni))
-        ratios[dx] = scale / (dt / (EPS_0 * dx ** 3))
+        ratios[dx] = scale / _expected_factor("pec", dt, dx)
         assert ratios[dx] == pytest.approx(1.0, rel=1e-5), (dx, ratios[dx])
     # the raw factors differ by 4x (dt halves, dV falls 8x) — assert the
     # comparison is not vacuous
