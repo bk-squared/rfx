@@ -174,6 +174,22 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
     #                                              re-parameterize to 2 mm
     #                                              without re-deriving the gate
     #
+    # Domain-SIZE sensitivity, measured by the #573 reviewer at fixed dx and
+    # fixed 4:1 grading while sweeping cavity size (z, percent error):
+    #
+    #     0.0373 / 0.0306 / 0.0252 / 0.0264 / 0.0213
+    #
+    # The residual tracks f0, so the gate binds the dispersion floor rather than
+    # a fixture artifact — but the worst case is inside the gate, so the
+    # "do NOT re-parameterize without re-deriving" warning covers cavity SIZE as
+    # well as dx.
+    #
+    # Harminv window sensitivity, same source: over n_steps in {4k, 8k, 12k, 16k}
+    # the error spans 0.0071 pt (xy) / 0.0110 pt (z), and the committed 8000-step
+    # point is each family's MAXIMUM — so the envelope already covers estimator
+    # scatter by construction rather than by luck. z's margin over that scatter
+    # is ~1.35x, which makes z the more fragile of the two gates.
+    #
     # The envelope is taken at THIS configuration, not over the scan: the test
     # runs one configuration, so the gate is a regression lock on it and the
     # neighbours are evidence. Both cavity tests are `slow`-marked and so run

@@ -17,8 +17,15 @@ estimator, NOT rfft-argmax. At ``num_periods=20`` the record is only ~10 cycles
 of f_tm110, so FFT bins span 10% of f and argmax can place the peak only to ±5%
 — the sub-0.1% "error" it used to print was bin-quantization luck (issue #396).
 harminv resolves far below the bin width, exposing the fixture's true ~2.5%
-NU-air-cavity discretization error (consistent with the sibling analytic gate
-``test_nonuniform_cavity_accuracy.py``: 2.66% @ dx=1mm, gated 4%).
+NU-air-cavity discretization error.
+
+STALE AS OF #562 (2026-08-05): that ~2.5% was dominated by the non-uniform grid
+building every axis one cell short of the requested domain, now fixed. The
+sibling analytic gate this used to cite for corroboration moved from 2.66% @ 4%
+to 0.025% @ 0.04% (#573), and THIS script's own residual measures 0.0144%
+against its unchanged 3.5% gate — 243x loose. Its gate wants the same
+envelope-derived treatment; that is a follow-up, not something to leave
+undocumented here.
 
 Run:
     python scripts/stage1_nu_cavity_physics_gate.py
@@ -137,12 +144,16 @@ def run_gate() -> Stage1NUGateResult:
         raise AssertionError(
             f"cell savings {gate.cell_savings_factor:.2f}x below 40x gate"
         )
-    # Resolution-honest gate. harminv measures ~2.54% error here (HIGH; a one-cell
-    # effective-a registration effect, stable across record lengths 20→160 periods
-    # and corroborated by zero-padded-FFT + parabolic-peak ~2.55-2.58% (the exact
-    # secondary number is window/pad-factor dependent). This is a MEASURED
-    # NU-air-cavity discretization envelope, consistent with the sibling analytic
-    # gate test_nonuniform_cavity_accuracy.py (2.66% @ dx=1mm, gated 4%). The old
+    # Resolution-honest gate. The ~2.54% this comment was written around, and the
+    # "one-cell effective-a registration effect" it attributed it to, were the
+    # #562 grid defect: the NU builder realized every axis one cell short of the
+    # requested domain. Post-fix this script measures 0.0144% against the 3.5%
+    # gate below (243x loose), and the sibling analytic gate moved 2.66% -> 0.025%
+    # with its gate re-derived to 0.04% (#573). Re-deriving THIS gate from a fresh
+    # envelope is the obvious follow-up; the numbers below are kept as the
+    # historical record of what the defect-era measurement was, not as current
+    # values. Corroborated then by zero-padded-FFT + parabolic-peak ~2.55-2.58%
+    # (the exact secondary number is window/pad-factor dependent). The old
     # "1%" gate was luck: the true 5.433 GHz peak snapped down into the 5.298 GHz
     # bin (0.03%). 3.5% = measured 2.54% + margin; harminv resolves <0.05% so this
     # now actually binds a real regression, unlike the ±5% argmax window (#396).
