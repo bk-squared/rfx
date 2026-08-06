@@ -526,9 +526,12 @@ feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only
 TM0n modes, while the transition discontinuities issue #489 targets excite
 TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to
 the first probe plane). The measured single-run envelope (60 mm / 40 GHz
-fixture, 4-12 GHz): reciprocity within `0.3%` magnitude / `0.21` degree
-phase, `cond(A) <= 1.11`. See `tests/test_coax_two_port_fdtd.py` for the
-full measured envelope and its provenance. An external openEMS referee is
+fixture, 4-12 GHz): `|S21|`,`|S12|` 0.74-0.96, `|S11|`,`|S22|` `<= 0.051`
+(measured max `0.0502` at 12 GHz, `tests/test_coax_two_port_fdtd.py:699`;
+the committed gate itself is the wider inherited 1-port envelope
+`<= 0.08`), reciprocity within `0.3%` magnitude / `0.21` degree phase,
+`cond(A) <= 1.11`. See `tests/test_coax_two_port_fdtd.py` for the full
+measured envelope and its provenance. An external openEMS referee is
 now REGISTERED (`validation/crossval/21_coax_two_port_referee.py`, promoted
 2026-08-04) bracketing the through-line class — it builds and runs its own
 independent openEMS model offline and does not execute rfx in-process;
