@@ -1666,6 +1666,33 @@ class CoaxMSLTransitionResult:
     Do not read the reciprocity/degeneracy numbers on this result as
     evidence about coax<->MSL launch physics in general.
 
+    ATTEMPT 2 (PI-directed, R2's escape clause — attempt 1's own named
+    defect authorized exactly one retry): lengthened the MSL probe ladder
+    1.000mm -> 8.000mm and widened the MSL port's x-CPML clearance
+    200um -> 1500um, keeping the junction geometry byte-identical to
+    attempt 1 (asserted, see
+    ``tests/test_coax_msl_transition.py::
+    test_attempt2_junction_geometry_is_byte_identical_to_attempt1``). The
+    two predeclared discriminants SPLIT: the fitted ``gamma`` now tracks
+    analytic beta within the predeclared [0.8, 1.3] band at all three
+    (new) measured frequencies (1.128/0.854/1.071) — CONFIRMING the
+    ladder-length attribution for that specific symptom — and ``|S22|``
+    is now clearly resolvable (no longer f32-noise-floor-degenerate). But
+    reciprocity does NOT recover (93.8% deviation, vs the predeclared
+    <=30% acceptance) — the falsifier for THIS discriminant fires. The
+    newly-exposed ``a_inc`` (added in the #581 review's own B2 fix)
+    implicates a DIFFERENT, still-unresolved cause: the coax and MSL
+    drives' own incident-wave amplitudes remain 1.8e7-3.3e7x apart (same
+    order as attempt 1 — unchanged, since no excitation-amplitude
+    calibration was in this attempt's scope). ``settling_db`` also falls
+    short of the -40 dB rule within locally-feasible runtime (-19.7/-17.9
+    dB at 45000 steps, improving monotonically from -12.3/-10.7 dB at
+    20000 steps — reported honestly rather than forcing a third, much
+    longer calibration run). Verdict: extraction class CONFIRMED for the
+    gamma/dispersion symptom, REFUTED-residual-remains for reciprocity.
+    Per R2, stops here — a third attempt targeting the drive-amplitude
+    gap needs its own separate predeclaration.
+
     Attributes
     ----------
     s_params : (2, 2, n_freqs) complex

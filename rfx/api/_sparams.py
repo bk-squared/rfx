@@ -5526,6 +5526,9 @@ class _SparamMixin:
         probe_count: int = 8,
         probe_start_cells: int = 6,
         probe_spacing_cells: int = 3,
+        msl_probe_count: int | None = None,
+        msl_probe_start_cells: int | None = None,
+        msl_probe_spacing_cells: int | None = None,
         feed_impedance: float | None = None,
         cond_warn: float = 1.0e3,
         strict_passivity: bool = False,
@@ -5652,6 +5655,24 @@ class _SparamMixin:
             geometry-bounding-box auto-detection :meth:`add_msl_port`
             itself offers, to keep the eps anchor unambiguous for the
             Hammerstad-Jensen Z0 used in the power-wave normalization).
+        probe_count, probe_start_cells, probe_spacing_cells : int
+            The COAX side's own probe array (mirrors
+            :meth:`compute_coaxial_two_port`'s identically-named
+            parameters — this method's coax stub is short by
+            construction, between the near-source feed and the junction,
+            so these three rarely need to grow).
+        msl_probe_count, msl_probe_start_cells, msl_probe_spacing_cells : int, optional
+            The MSL side's OWN probe array, independent of the coax
+            parameters above (added issue #489 leg 4 attempt 2 — the two
+            families' probe ladders were coupled through one shared set
+            of parameters through attempt 1, which is fine when both
+            ladders are short but breaks as soon as the MSL side needs a
+            ladder spanning a meaningful fraction of a guided wavelength,
+            since the coax stub's own short z-extent cannot host the same
+            span). Each defaults to ``None``, meaning "use the
+            correspondingly-named coax parameter" — this preserves
+            attempt 1's exact behavior (and its committed fixture's
+            numbers) when left unset.
 
         Returns
         -------
@@ -5951,10 +5972,21 @@ class _SparamMixin:
                         stacklevel=2,
                     )
 
+        # MSL-side probe ladder is independent of the coax-side one (issue
+        # #489 leg 4 attempt 2) -- default to the coax values so an
+        # existing caller (attempt 1's committed fixture) sees byte-
+        # identical behavior when these new parameters are left unset.
+        _msl_probe_count = int(probe_count if msl_probe_count is None else msl_probe_count)
+        _msl_probe_start_cells = int(
+            probe_start_cells if msl_probe_start_cells is None else msl_probe_start_cells
+        )
+        _msl_probe_spacing_cells = int(
+            probe_spacing_cells if msl_probe_spacing_cells is None else msl_probe_spacing_cells
+        )
         probe_xs = msl_probe_x_coords_n(
-            grid, msl_port_base, n_probes=int(probe_count),
-            n_offset_cells=int(probe_start_cells),
-            n_spacing_cells=int(probe_spacing_cells),
+            grid, msl_port_base, n_probes=_msl_probe_count,
+            n_offset_cells=_msl_probe_start_cells,
+            n_spacing_cells=_msl_probe_spacing_cells,
         )
         xs_ladder = [float(x) for x in probe_xs]
         lx_dom = float(self._domain[0])

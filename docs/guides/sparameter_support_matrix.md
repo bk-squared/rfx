@@ -48,7 +48,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **experimental** (issue #489 stage 2) — two-drive through-line 2-port solve; every DUT it can currently gate against is azimuthally symmetric (TM0n only); an external openEMS referee is now REGISTERED (`validation/crossval/21_coax_two_port_referee.py`, promoted 2026-08-04) bracketing the through-line class — it builds and runs its own independent openEMS model offline and does not execute rfx in-process; EXPERIMENTAL status stands until the transition/AD legs close; no phase claim |
-| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; one committed fixture, and it trips its own reciprocity falsifier (see the section below) — do not treat as a validated transition |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures (attempt 1 + a longer-ladder attempt 2). Attempt 2's own MSL wave-extraction discriminant (fitted gamma vs analytic beta) CONFIRMS, but reciprocity is still falsifier-tripped, now attributed to an unresolved drive-amplitude gap — see the section below — do not treat as a validated transition |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
 
@@ -750,3 +750,65 @@ attempt: a future retry should lengthen the MSL probe ladder (e.g. to
 junction geometry itself — the junction's own physical dimensions (matching
 structure, via width/length) remain a separate, still-open question this
 fixture cannot yet speak to.
+
+### Attempt 2 (PI-directed, R2's escape clause) — the ladder fix PARTIALLY confirms the extraction class
+
+Attempt 1's own named defect (MSL probe ladder spanning only 0.34%-3.37% of
+the guided wavelength) authorized exactly one retry. Attempt 2 lengthens the
+MSL probe ladder 1.000mm → 8.000mm and widens the MSL port's x-CPML clearance
+200um → 1500um, shifts the measured band {0.6,3.3,6.0}GHz → {6.0,8.0,10.0}GHz
+(forced by the ladder-length requirement — 0.25·lambda_g at the old lowest bin
+is 74.3mm, infeasible), and keeps the junction geometry (coax pin/outer
+radius, PTFE fill, ground node, substrate, trace, pin-to-trace post) **byte-
+identical** to attempt 1 (asserted by
+`test_attempt2_junction_geometry_is_byte_identical_to_attempt1`, not just
+claimed). This required a genuine, small API extension — the two families'
+probe ladders were coupled through one shared set of
+`compute_coax_msl_transition(...)` kwargs in attempt 1, which cannot host a
+short coax ladder and a long MSL ladder at once; new `msl_probe_count` /
+`msl_probe_start_cells` / `msl_probe_spacing_cells` parameters (default
+`None` → falls back to the coax value, preserving attempt 1's exact
+behavior — its own slow_physics test still reproduces its exact numbers
+unchanged) decouple them.
+
+**The two predeclared discriminants SPLIT** — a third, honestly-reported
+outcome distinct from the clean confirm/refute the predeclaration
+anticipated:
+
+| discriminant | attempt 1 | attempt 2 (45000 steps) | predeclared acceptance | verdict |
+|---|---|---|---|---|
+| gamma-vs-beta ratio (coax-driven fit) | 4-32x off, non-monotonic with frequency | 1.128 / 0.854 / 1.071 (all 3 bins) | [0.8, 1.3] | **CONFIRMED** |
+| reciprocity worst deviation | 94-100% | 93.8% | <=30% | **NOT confirmed** (falsifier fired) |
+| `\|S22\|` | 1e-8 to 1e-11 at 2/3 bins (f32-noise-floor-degenerate) | 0.102 / 0.109 / 1.104 (resolvable) | n/a (diagnostic) | resolvable, as predicted |
+| `cond_a_equilibrated` | 1.0004 / 1.0001 / 1.0040 | 1.00238 / 1.00244 / 1.00549 | near 1 | consistent, unchanged interpretation |
+| coax/msl own-drive amplitude ratio | ~7e4-4e7x (varying) | ~1.8e7-3.3e7x | (no target; watched) | **unchanged order of magnitude** — did not narrow |
+| `settling_db` | -43.9 / -63.6 dB (well past -40) | -19.7 / -17.9 dB (NOT past -40 within local runtime; improved monotonically from -12.3/-10.7 dB at 20000 steps) | < -40 dB | **not reached** |
+
+**Verdict: extraction class CONFIRMED for the gamma/dispersion symptom;
+REFUTED-residual-remains for reciprocity.** The ladder-length fix does
+exactly what attempt 1's discriminant predicted — once the MSL probe ladder
+spans a meaningful fraction of a guided wavelength, the matrix-pencil fit
+correctly recovers the propagation constant, and `|S22|` stops reading as
+numerical noise. But reciprocity — the original headline symptom — does
+NOT recover, and the newly-exposed `a_inc` (issue #581 review B2's own
+audit fields) point at a DIFFERENT, still-unresolved cause: the coax and
+MSL drives inject wildly different raw field amplitudes (own-drive
+incident-wave magnitude ~1.8e7-3.3e7x apart), unchanged from attempt 1,
+because no per-drive excitation-amplitude calibration was in scope for
+this attempt. `settling_db` also falls short of the -40 dB rule within
+locally-feasible runtime (COMMIT-EARLY: reported honestly with a two-point
+convergence curve rather than forcing a third, much longer calibration
+run — extrapolation suggests roughly 3x more steps, ~60 min locally, to
+reach -40 dB).
+
+| aspect | status |
+|---|---|
+| gamma-vs-beta (MSL wave extraction) | **CONFIRMED** — the ladder-length fix resolves this specific symptom; locked as a test assertion |
+| reciprocity | **STILL FALSIFIER-TRIPPED** — 93.8% deviation; now attributed to the drive-amplitude gap, not the ladder length |
+| settling | improving (monotonic across two step-count checkpoints) but short of -40 dB within local runtime; a VESSL-scale run was not attempted in this PR |
+| implication for a third attempt | R2's escape clause would need a NEW named defect for the drive-amplitude gap specifically (e.g. per-family excitation-amplitude normalization) — not attempted here |
+
+Per R2, this stops here: no third attempt in this PR. A future retry needs
+its own separate predeclaration targeting the drive-amplitude gap (or a
+much longer settling run, likely requiring VESSL), not a repeat of the
+ladder-length fix (already confirmed adequate for the symptom it targeted).
