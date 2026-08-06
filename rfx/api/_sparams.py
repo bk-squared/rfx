@@ -40,6 +40,7 @@ from rfx.api._spec import (
     CoaxialTwoPortResult,
     MSLSMatrixResult,
     MixedSMatrixResult,
+    CoaxMSLTransitionResult,
     _WaveguidePortEntry,
     _MSLPortEntry,
 )
@@ -1365,6 +1366,135 @@ def _assemble_coaxial_two_port_from_voltages(
             fit_resid[1, drive_idx, fi] = out_bot.fit_residual
             gamma[0, drive_idx, fi] = out_top.gamma
             gamma[1, drive_idx, fi] = out_bot.gamma
+
+    solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
+    return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
+
+
+def _assemble_coax_msl_transition_from_voltages(
+    *,
+    z_coax_planes_m,
+    x_msl_planes_m,
+    ref_coax_m: float,
+    ref_msl_m: float,
+    v_coax_by_drive,
+    v_msl_by_drive,
+    z0_coax: float,
+    z0_msl: float,
+    cond_warn: float = 1.0e3,
+):
+    """Pure post-FDTD assembly: coax + MSL modal-voltage ladders -> power-wave 2x2 S (#489 leg 4).
+
+    Isolated from :meth:`_SparamMixin.compute_coax_msl_transition` so the
+    cross-family normalization can be exercised with PLANTED analytic
+    voltages (no FDTD) — see
+    ``tests/test_coax_msl_transition.py::test_planted_voltages_recover_known_s_matrix``.
+    Concrete NumPy only (no jnp/traced branch): AD is explicitly out of
+    scope for this leg (see :class:`~rfx.api._spec.CoaxMSLTransitionResult`'s
+    class docstring).
+
+    Both ports' forward/backward modal-voltage wave amplitudes come from
+    the SAME extractor,
+    :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`
+    (a Z0-free matrix-pencil fit over >=3 equally spaced planes) — applied to
+    the coax port's z-axis probe ladder AND, in place of the MSL lane's own
+    diagnostic-only N-probe SVD fit, to the MSL port's x-axis probe ladder
+    too (see the class docstring for why). That extractor returns RAW modal
+    VOLTAGE wave amplitudes (volts, ``V(x)=A*exp(-gamma*x)+B*exp(+gamma*x)``
+    Z0-free by construction) — each is converted to a POWER wave via
+    ``a = V+ / sqrt(Re(Z0))``, ``b = V- / sqrt(Re(Z0))`` (the standard
+    real-Z0 Kurokawa identity, using each port's OWN reference impedance)
+    before the two-drive solve. This division is the load-bearing fix for
+    the pre-declared "impedance-convention mismatch" failure mode: solving
+    directly on the raw volt-wave amplitudes would leave the diagonal
+    correct but scale each off-diagonal entry by ``sqrt(Z0_i/Z0_j)`` — see
+    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`'s
+    own docstring for the generic two-drive solve this feeds.
+
+    Parameters
+    ----------
+    z_coax_planes_m, x_msl_planes_m : (n_coax,), (n_msl,) float
+        Equally spaced axial probe-plane positions (metres) for the coax
+        port (port array 0, along z) and the MSL port (port array 1, along
+        x). Each family's own axis — these are NOT on a shared coordinate.
+    ref_coax_m, ref_msl_m : float
+        Each port's own reference plane, in that port's own axis. Chosen by
+        the caller to sit AT the physical coax<->MSL launch discontinuity
+        (minimizing the reference-plane-mismatch failure mode by
+        construction — see :meth:`_SparamMixin.compute_coax_msl_transition`).
+    v_coax_by_drive, v_msl_by_drive : (2, n_coax, n_freqs), (2, n_msl, n_freqs) complex
+        Modal voltage at every probe plane, per drive (index 0 = coax port
+        driven, index 1 = MSL port driven) and frequency.
+    z0_coax, z0_msl : float
+        Real reference impedance (ohm) for the power-wave normalization:
+        analytic coax TEM Z0 and analytic Hammerstad-Jensen microstrip Zc.
+    cond_warn : float
+        Forwarded to :func:`solve_two_port_from_wave_amplitudes`.
+
+    Returns
+    -------
+    s_params, cond_a, recurrence_residual, fit_residual, gamma
+        ``s_params`` is ``(2, 2, n_freqs)``, port order ``(coax, msl)``.
+        The other four are ``(2, 2, n_freqs)`` indexed
+        ``[port_array, drive, freq]`` (port array 0 = coax, 1 = msl), same
+        meaning as :func:`_assemble_coaxial_two_port_from_voltages`'s own
+        return values.
+    """
+    from rfx.sources.coaxial_port import (
+        coaxial_line_reflection_from_plane_voltages,
+        solve_two_port_from_wave_amplitudes,
+    )
+
+    z_coax = np.asarray(z_coax_planes_m, dtype=np.float64)
+    x_msl = np.asarray(x_msl_planes_m, dtype=np.float64)
+    v_coax_by_drive = np.asarray(v_coax_by_drive, dtype=np.complex128)
+    v_msl_by_drive = np.asarray(v_msl_by_drive, dtype=np.complex128)
+    if v_coax_by_drive.shape[0] != 2 or v_msl_by_drive.shape[0] != 2:
+        raise ValueError(
+            "v_coax_by_drive / v_msl_by_drive must have a leading axis of "
+            f"size 2 (one per drive); got {v_coax_by_drive.shape} / "
+            f"{v_msl_by_drive.shape}."
+        )
+    n_f = int(v_coax_by_drive.shape[-1])
+    if int(v_msl_by_drive.shape[-1]) != n_f:
+        raise ValueError(
+            "v_coax_by_drive and v_msl_by_drive must share the same "
+            f"trailing frequency axis; got {v_coax_by_drive.shape[-1]} vs "
+            f"{v_msl_by_drive.shape[-1]}."
+        )
+    if not (np.isfinite(z0_coax) and z0_coax > 0.0):
+        raise ValueError(f"z0_coax must be positive finite, got {z0_coax}")
+    if not (np.isfinite(z0_msl) and z0_msl > 0.0):
+        raise ValueError(f"z0_msl must be positive finite, got {z0_msl}")
+    sqrt_z0 = np.array([np.sqrt(float(z0_coax)), np.sqrt(float(z0_msl))])
+
+    a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
+    b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
+    rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    fit_resid = np.zeros((2, 2, n_f), dtype=np.float64)
+    gamma = np.zeros((2, 2, n_f), dtype=np.complex128)
+
+    for drive_idx in range(2):
+        for fi in range(n_f):
+            out_coax = coaxial_line_reflection_from_plane_voltages(
+                z_coax, v_coax_by_drive[drive_idx, :, fi],
+                reference_plane_m=float(ref_coax_m),
+            )
+            out_msl = coaxial_line_reflection_from_plane_voltages(
+                x_msl, v_msl_by_drive[drive_idx, :, fi],
+                reference_plane_m=float(ref_msl_m),
+            )
+            # Raw modal-voltage waves (volts, Z0-free) -> power waves.
+            a_inc[0, drive_idx, fi] = out_coax.backward_amp / sqrt_z0[0]
+            b_out[0, drive_idx, fi] = out_coax.forward_amp / sqrt_z0[0]
+            a_inc[1, drive_idx, fi] = out_msl.backward_amp / sqrt_z0[1]
+            b_out[1, drive_idx, fi] = out_msl.forward_amp / sqrt_z0[1]
+            rec_resid[0, drive_idx, fi] = out_coax.recurrence_residual
+            fit_resid[0, drive_idx, fi] = out_coax.fit_residual
+            gamma[0, drive_idx, fi] = out_coax.gamma
+            rec_resid[1, drive_idx, fi] = out_msl.recurrence_residual
+            fit_resid[1, drive_idx, fi] = out_msl.fit_residual
+            gamma[1, drive_idx, fi] = out_msl.gamma
 
     solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
     return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
@@ -5337,6 +5467,586 @@ class _SparamMixin:
         return _finalize_sparam_result(
             result_obj,
             extractor="compute_coaxial_two_port",
+            strict=strict_passivity,
+        )
+
+    def compute_coax_msl_transition(
+        self,
+        *,
+        junction_x: float,
+        eps_r_sub: float | None = None,
+        n_steps: int | None = None,
+        num_periods: float = 30.0,
+        freqs: "jnp.ndarray | None" = None,
+        n_freqs: int = 11,
+        field_scale: float = 1.0e4,
+        probe_count: int = 8,
+        probe_start_cells: int = 6,
+        probe_spacing_cells: int = 3,
+        feed_impedance: float | None = None,
+        cond_warn: float = 1.0e3,
+        strict_passivity: bool = False,
+        skip_preflight: bool = False,
+    ) -> "CoaxMSLTransitionResult":
+        """EXPERIMENTAL coax<->microstrip transition 2-port S-parameters (issue #489 leg 4).
+
+        .. warning::
+            **EXPERIMENTAL — not in the validated set**
+            (``docs/guides/sparameter_support_matrix.md`` / ``.json``). One
+            pre-declared fixture has been run against this method; see that
+            fixture's own predeclaration
+            (``tests/test_coax_msl_transition.py``) for the measured
+            envelope. NOT_TRACEABLE (see :class:`~rfx.api._spec.
+            CoaxMSLTransitionResult`'s class docstring for the full honesty
+            contract, including why the MSL side is extracted via the coax
+            matrix-pencil fit rather than the diagnostic-only N-probe fit
+            #488 uses).
+
+        Generalizes issue #488's mixed lumped/wire<->MSL assembler
+        (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
+        UNCHANGED, the less-invasive half of each family's own validated
+        machinery instead of writing a new geometry-specific extractor:
+
+        * The **coax side** is built exactly like :meth:`compute_coaxial_two_port`'s
+          own single-ended stub (CPML, TEM TFSF source, matched annular-
+          resistor feed, then a probe array), reusing
+          :func:`~rfx.sources.coaxial_port.stamp_coaxial_line`,
+          :func:`~rfx.sources.coaxial_port.stamp_coaxial_annular_resistor`,
+          and :func:`~rfx.sources.coaxial_port.build_coaxial_tem_plane_source_specs`
+          verbatim — but only ONE end (this method has no second coax port).
+        * The **MSL side** is consumed exactly like :meth:`compute_mixed_s_matrix`
+          consumes its MSL ports: the caller registers arbitrary DUT
+          geometry (substrate, trace, ground plane, and — unique to this
+          transition — the ground-plane clearance hole and the vertical
+          pin-to-trace post that connects the two families) via the
+          ordinary ``sim.add(Box(...)/Cylinder(...), material=...)`` API,
+          and this method reuses :func:`~rfx.sources.msl_port.compute_msl_mode_profile`,
+          :func:`~rfx.sources.msl_port.setup_msl_port`, and
+          :func:`~rfx.sources.msl_port.make_msl_port_sources` verbatim for
+          the MSL port's own termination/excitation.
+
+        This method does NOT build the junction geometry itself (the ground
+        plane, its clearance hole, or the pin-to-trace post) — those are
+        DUT-specific and belong to the caller's own registered geometry,
+        exactly as :meth:`compute_mixed_s_matrix` never builds its own
+        substrate/trace. What this method DOES fix, by construction, is
+        WHERE each port's own S-parameter reference plane sits: both are
+        placed AT the physical launch discontinuity (see ``junction_x``
+        below and ``port.position[2]`` on the registered
+        :meth:`add_coaxial_port`), specifically to minimize the
+        pre-declared "reference-plane mismatch" failure mode (the coax's
+        axial z-feed-plane convention has no direct analogue in the MSL's
+        along-trace x reference plane — these are different geometric axes
+        entirely).
+
+        Registration contract
+        ----------------------
+        Exactly one :meth:`add_coaxial_port` (``face='bottom'`` — the
+        physical convention this method assumes: the coax stub is built
+        FROM the domain's low-z CPML face UP TO ``position[2]`` (rounded to
+        the nearest grid z-node, :meth:`~rfx.grid.Grid.position_to_index`'s
+        own convention), where ``position[0], position[1]`` is the coax
+        axis centre (x, y) and ``position[2]`` is the physical height of
+        the caller's OWN registered ground-plane conductor — i.e. this is
+        the ONE parameter that ties this method's auto-built coax stub to
+        the caller's own junction geometry; get it wrong and the pin will
+        either dangle in a gap or overlap the caller's own PEC). Exactly
+        one :meth:`add_msl_port`, whose ``position[2]`` (substrate bottom /
+        ground height) MUST equal the coax port's ``position[2]`` to within
+        one grid cell — both refer to the SAME physical ground plane. No
+        other ports (lumped/wire/waveguide/Floquet), no TFSF, no lumped
+        RLC, no pre-registered probes/DFT planes/flux monitors/NTFF (this
+        method builds its own). ``self._geometry`` must be non-empty (the
+        caller's substrate/trace/ground-plane/pin-post Boxes and
+        Cylinders) — arbitrary, not validated here, same delegation
+        :meth:`compute_mixed_s_matrix` uses for its own MSL DUT geometry.
+        Same solver/precision/boundary contract as
+        :meth:`compute_coaxial_two_port` (float32, 3D uniform Yee,
+        ``boundary='cpml'`` with positive CPML on all six faces) EXCEPT
+        this method needs absorption on all three axes (``cpml_axes="xyz"``,
+        not ``"z"``): the coax's own far end needs an absorbing z face
+        exactly like the coax lane, but the MSL trace radiates in x/y too,
+        and the caller's own ground plane is an INTERNAL stamped/registered
+        PEC layer rather than the domain's z boundary — this is also WHY
+        this method cannot reuse a PEC ``z_lo`` domain boundary as the MSL
+        ground reference the way :meth:`compute_mixed_s_matrix`'s
+        ``magnitude_channel="flux"`` fixtures do (that would conflict with
+        the coax's own need for an absorbing z_lo face).
+
+        Two-drive extraction (never a naive single-ratio)
+        ---------------------------------------------------
+        Drives the coax source, then the MSL source, in two separate FDTD
+        runs (never assuming the non-driven port sees zero incident wave —
+        the terminator-floor problem :meth:`compute_coaxial_two_port`
+        already solved for symmetric coax applies here too, and likely
+        worse, since the coax feed resistor and the MSL Hammerstad-Jensen
+        termination have no reason to share a termination quality). Each
+        port's own forward/backward wave amplitudes are recovered from its
+        own probe ladder via :func:`~rfx.sources.coaxial_port.
+        coaxial_line_reflection_from_plane_voltages` (Z0-free matrix-pencil
+        fit — see :class:`~rfx.api._spec.CoaxMSLTransitionResult` for why
+        this is used for the MSL side too, not the lane's own N-probe fit),
+        converted to POWER waves via each port's own analytic reference
+        impedance, and assembled by
+        :func:`~rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
+        (the same generic two-drive solve :meth:`compute_coaxial_two_port`
+        uses). See :func:`_assemble_coax_msl_transition_from_voltages` for
+        the full pure-assembly derivation.
+
+        Parameters
+        ----------
+        junction_x : float
+            Physical x-coordinate (metres) of the coax-to-trace launch
+            discontinuity — the MSL side's own S-parameter reference plane.
+            Must match wherever the caller's own registered pin-to-trace
+            post / trace Box actually begins; this method does not infer it
+            from geometry (mirrors the coax side's own reference plane
+            being the registered port's ``position[2]``, not inferred).
+        eps_r_sub : float, optional
+            Substrate relative permittivity. If ``None``, taken from the
+            registered :meth:`add_msl_port`'s own ``eps_r_sub`` (which must
+            then be set explicitly — this method does not attempt the
+            geometry-bounding-box auto-detection :meth:`add_msl_port`
+            itself offers, to keep the eps anchor unambiguous for the
+            Hammerstad-Jensen Z0 used in the power-wave normalization).
+
+        Returns
+        -------
+        CoaxMSLTransitionResult
+        """
+        from rfx.sources.coaxial_port import (
+            CoaxialPort as _CoaxPort,
+            build_coaxial_tem_plane_source_specs,
+            coaxial_line_plane_voltage,
+            coaxial_tem_characteristic_impedance,
+            stamp_coaxial_line,
+            stamp_coaxial_annular_resistor,
+        )
+        from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+        from rfx.sources.msl_port import (
+            MSLPort as _MSLPortLL,
+            _msl_yz_cells,
+            compute_msl_mode_profile,
+            setup_msl_port,
+            make_msl_port_sources,
+            msl_probe_x_coords_n,
+        )
+        from rfx.probes.probes import init_dft_plane_probe
+        from rfx.simulation import run as _run, ProbeSpec
+
+        # ---- Registration guards ----------------------------------------
+        if self._boundary != "cpml" or self._cpml_layers <= 0:
+            raise ValueError(
+                "compute_coax_msl_transition() requires boundary='cpml' "
+                "with cpml_layers > 0."
+            )
+        if any(token != "cpml" for _, _, token in self._boundary_spec.faces()):
+            raise ValueError(
+                "compute_coax_msl_transition() requires CPML tokens on all "
+                "six boundary faces; mixed BoundarySpec faces are not "
+                "supported (the coax stub needs an absorbing z_lo face and "
+                "the MSL trace needs absorbing x/y faces; the ground plane "
+                "is an internal registered/stamped PEC layer, not a domain "
+                "boundary)."
+            )
+        if self._periodic_axes:
+            raise ValueError(
+                "compute_coax_msl_transition() does not support periodic "
+                "boundary axes."
+            )
+        if self._mode != "3d":
+            raise ValueError("compute_coax_msl_transition() requires mode='3d'.")
+        if self._solver != "yee":
+            raise ValueError(
+                "compute_coax_msl_transition() supports solver='yee' only."
+            )
+        if self._precision != "float32":
+            raise ValueError(
+                "compute_coax_msl_transition() requires precision='float32'."
+            )
+        if self._stencil_order != 2:
+            raise ValueError(
+                "compute_coax_msl_transition() requires stencil_order=2."
+            )
+        if self._tfsf is not None:
+            raise ValueError(
+                "compute_coax_msl_transition() creates its own coax TEM "
+                "source and does not accept an existing TFSF source."
+            )
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            raise ValueError(
+                "compute_coax_msl_transition() supports only a uniform "
+                "Yee grid; dx_profile/dy_profile/dz_profile are not "
+                "supported."
+            )
+        if self._refinement is not None:
+            raise ValueError(
+                "compute_coax_msl_transition() does not support SBP-SAT "
+                "refinement."
+            )
+        if self._lumped_rlc:
+            raise ValueError(
+                "compute_coax_msl_transition() does not support registered "
+                "lumped RLC elements."
+            )
+        if self._probes or self._dft_planes or self._flux_monitors or self._ntff:
+            raise ValueError(
+                "compute_coax_msl_transition() does not consume registered "
+                "probes, DFT planes, flux monitors, or NTFF boxes (it "
+                "builds its own)."
+            )
+        if (
+            self._coaxial_terminations
+            or self._coaxial_open_terminations
+            or self._coaxial_pec_end_caps
+        ):
+            raise ValueError(
+                "compute_coax_msl_transition() does not consume registered "
+                "add_coaxial_* termination helpers; use feed_impedance= "
+                "instead."
+            )
+        if len(self._coaxial_ports) != 1:
+            raise ValueError(
+                "compute_coax_msl_transition() is built from exactly one "
+                "add_coaxial_port()."
+            )
+        if len(self._msl_ports) != 1:
+            raise ValueError(
+                "compute_coax_msl_transition() is built from exactly one "
+                "add_msl_port()."
+            )
+        if self._ports or self._waveguide_ports or self._floquet_ports:
+            raise NotImplementedError(
+                "compute_coax_msl_transition() is defined only for a "
+                "coax + MSL port pair; no other port families."
+            )
+        if not self._geometry:
+            raise ValueError(
+                "compute_coax_msl_transition() consumes the caller's own "
+                "registered DUT geometry (substrate, trace, ground plane, "
+                "clearance hole, pin-to-trace post) — none is registered. "
+                "This method builds only the coax stub; register the "
+                "junction geometry via sim.add(...) first."
+            )
+        port = self._coaxial_ports[0]
+        if port.face != "bottom":
+            raise NotImplementedError(
+                "compute_coax_msl_transition() currently requires the "
+                "registered coax port's face='bottom' (the coax stub is "
+                "built from the domain's low-z CPML face up to "
+                "position[2])."
+            )
+        msl_pe = self._msl_ports[0]
+        # The coax stub's own top face stops AT port.position[2] (rounded to
+        # the nearest grid node); the caller's own registered ground-plane
+        # conductor is expected to occupy that node and MSL's substrate
+        # (msl_pe.position[2], its own z_lo / substrate-bottom convention)
+        # to begin at or above it -- the exact gap is the caller's own
+        # ground-plane thickness (fixture-specific, not knowable here), so
+        # this only guards the ORDER and catches a grossly misaligned
+        # ground reference (e.g. forgetting to raise msl_z_lo at all).
+        if float(msl_pe.position[2]) < float(port.position[2]) - 1.5e-9:
+            raise ValueError(
+                "compute_coax_msl_transition(): the registered MSL port's "
+                f"substrate-bottom height ({msl_pe.position[2]:.6g} m) sits "
+                f"BELOW the coax port's own junction height "
+                f"({port.position[2]:.6g} m) — both must reference the SAME "
+                "physical ground plane, with the MSL substrate at or above "
+                "it."
+            )
+        eps_r_sub_resolved = (
+            float(eps_r_sub) if eps_r_sub is not None
+            else (float(msl_pe.eps_r_sub) if msl_pe.eps_r_sub is not None else None)
+        )
+        if eps_r_sub_resolved is None:
+            raise ValueError(
+                "compute_coax_msl_transition() needs eps_r_sub, either "
+                "passed directly or set on the registered add_msl_port() "
+                "(this method does not auto-detect it from geometry)."
+            )
+
+        grid = self._build_grid()
+        dz = float(grid.dx)
+        _junction_gap_cells = (float(msl_pe.position[2]) - float(port.position[2])) / dz
+        if _junction_gap_cells > 8.0:
+            raise ValueError(
+                "compute_coax_msl_transition(): the registered MSL port's "
+                f"substrate-bottom height is {_junction_gap_cells:.1f} cells "
+                f"above the coax port's junction height ({port.position[2]:.6g} "
+                "m) — that is implausibly large for a single ground-plane "
+                "layer; check both registrations reference the SAME "
+                "physical ground plane."
+            )
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
+            self._assemble_materials(grid)
+
+        if freqs is None:
+            freqs_arr = np.asarray(
+                jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
+            )
+        else:
+            freqs_arr = np.asarray(freqs)
+        n_f = int(freqs_arr.shape[0])
+        if n_steps is None:
+            n_steps = grid.num_timesteps(num_periods=num_periods)
+        freqs_jnp = jnp.asarray(freqs_arr, dtype=jnp.float32)
+
+        # ---- Coax stub (mirrors compute_coaxial_two_port's single end) --
+        center_xy = (float(port.position[0]), float(port.position[1]))
+        a, b = float(port.pin_radius), float(port.outer_radius)
+        z_junction_idx = int(grid.position_to_index(port.position)[2])
+        z_stub_lo = int(grid.pad_z_lo) + 2
+        z_feed = z_stub_lo + 1
+        z_src = z_stub_lo + 3
+        z_stub_hi = z_junction_idx - 1
+        if z_stub_hi <= z_src:
+            raise ValueError(
+                "compute_coax_msl_transition(): domain too short between "
+                "the low-z CPML and the junction height for the coax "
+                "stub's source/feed/probe layout; increase the z domain or "
+                "lower position[2]."
+            )
+        probes_coax = sorted(
+            z_src + int(probe_start_cells) + int(probe_spacing_cells) * k
+            for k in range(int(probe_count))
+        )
+        if probes_coax[-1] >= z_stub_hi:
+            raise ValueError(
+                "compute_coax_msl_transition(): the coax probe array "
+                f"reaches index {probes_coax[-1]}, at or past the junction "
+                f"({z_stub_hi}); increase the z domain or reduce "
+                "probe_count/probe_start_cells/probe_spacing_cells."
+            )
+
+        z_tem = coaxial_tem_characteristic_impedance(a, b)
+        r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+        materials, shell_inner = stamp_coaxial_line(
+            grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
+            z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b,
+        )
+        materials = stamp_coaxial_annular_resistor(
+            grid, materials, center_xy=center_xy, z_index=z_feed,
+            pin_radius=a, outer_radius=b, target_impedance=r_feed,
+            shell_inner_radius=shell_inner,
+        )
+
+        src_port = _CoaxPort(
+            position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
+            face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
+            impedance=port.impedance, excitation=port.excitation,
+        )
+        spec_coax = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=src_port, n_steps=int(n_steps),
+            field_scale=float(field_scale), magnetic_ratio=1.0,
+        )
+        ref_coax_m = (z_junction_idx - grid.pad_z_lo) * dz
+        z_planes_coax_m = np.array(
+            [(z - grid.pad_z_lo) * dz for z in probes_coax], dtype=np.float64
+        )
+        annulus_cells = float((b - a) / dz)
+        if annulus_cells < 3.5:
+            import warnings as _wa
+            _wa.warn(
+                f"compute_coax_msl_transition(): coax annulus resolution "
+                f"{annulus_cells:.2f} cells is below the documented "
+                "under-resolved threshold (3.5 cells, same convention as "
+                "compute_coaxial_line_reflection/compute_coaxial_two_port) "
+                "— reflection accuracy degrades at high frequency.",
+                stacklevel=2,
+            )
+
+        # ---- MSL side (mirrors compute_mixed_s_matrix's MSL consumption) ---
+        x_feed, y_centre, msl_z_lo = (float(c) for c in msl_pe.position)
+        msl_port_base = _MSLPortLL(
+            feed_x=x_feed,
+            y_lo=y_centre - msl_pe.width / 2, y_hi=y_centre + msl_pe.width / 2,
+            z_lo=msl_z_lo, z_hi=msl_z_lo + msl_pe.height,
+            direction=msl_pe.direction, impedance=msl_pe.impedance,
+            excitation=None,
+        )
+        mode_profile = compute_msl_mode_profile(grid, msl_port_base, eps_r_sub_resolved)
+        materials = setup_msl_port(grid, msl_port_base, materials, mode_profile=mode_profile)
+        z0_msl, eps_eff_msl = hammerstad_jensen_z0_eps_eff(
+            msl_pe.width, msl_pe.height, eps_r_sub_resolved
+        )
+
+        probe_xs = msl_probe_x_coords_n(
+            grid, msl_port_base, n_probes=int(probe_count),
+            n_offset_cells=int(probe_start_cells),
+            n_spacing_cells=int(probe_spacing_cells),
+        )
+        xs_ladder = [float(x) for x in probe_xs]
+        lx_dom = float(self._domain[0])
+        mono = all(
+            (xs_ladder[q + 1] - xs_ladder[q]) * (1 if msl_pe.direction == "+x" else -1)
+            > 0.5 * dz
+            for q in range(len(xs_ladder) - 1)
+        )
+        if (not mono) or min(xs_ladder) <= 0.0 or max(xs_ladder) >= lx_dom:
+            raise ValueError(
+                "compute_coax_msl_transition(): the MSL probe ladder "
+                f"({', '.join(f'{x * 1e3:.2f}' for x in xs_ladder)} mm) "
+                f"leaves the declared x-domain (0, {lx_dom * 1e3:.2f}) mm "
+                "or was clamped at its edge. Face the port toward the "
+                "junction (direction), reduce n_probe_offset/spacing, or "
+                "enlarge the domain."
+            )
+        # coaxial_line_reflection_from_plane_voltages requires STRICTLY
+        # INCREASING plane positions; a "-x"-facing port's own ladder comes
+        # back decreasing in x (probe n steps AWAY from feed_x, toward the
+        # junction). Sort once here and use this order everywhere below so
+        # DFT-plane construction and the voltage array stay index-consistent.
+        xs_sorted = sorted(xs_ladder)
+
+        pec_mask_np = None if pec_mask is None else np.asarray(pec_mask)
+        cells = _msl_yz_cells(grid, msl_port_base)
+        j_set = sorted({c[1] for c in cells})
+        k_set = sorted({c[2] for c in cells})
+        j_lo_msl, j_hi_msl = j_set[0], j_set[-1]
+        k_lo_msl, k_hi_msl = k_set[0], k_set[-1]
+        j_centre_msl = (j_lo_msl + j_hi_msl) // 2
+        i_feed_msl = cells[0][0]
+        if pec_mask_np is None:
+            raise RuntimeError(
+                "compute_coax_msl_transition(): no PEC geometry registered "
+                "— the MSL trace conductor must be a registered PEC Box "
+                "(pec_mask came back None)."
+            )
+        col = pec_mask_np[i_feed_msl, j_centre_msl, k_hi_msl:]
+        k_pec = np.where(col)[0]
+        if k_pec.size == 0:
+            raise RuntimeError(
+                "compute_coax_msl_transition(): no PEC trace conductor "
+                "found above the substrate top at the registered MSL "
+                "port's own feed plane; add the microstrip trace as a "
+                "Box(material='pec')."
+            )
+        k_trace_lo = int(k_hi_msl + int(k_pec.min()))
+        dz_arr = _msl_cell_profile(grid, "z", grid.nz)
+        _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+
+        # ---- Two-drive FDTD run -------------------------------------------
+        msl_waveform = (
+            msl_pe.waveform if msl_pe.waveform is not None
+            else GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+        )
+        import dataclasses as _dc
+        msl_port_driven = _dc.replace(msl_port_base, excitation=msl_waveform)
+
+        v_coax_by_drive = np.zeros((2, len(probes_coax), n_f), dtype=np.complex128)
+        v_msl_by_drive = np.zeros((2, len(xs_sorted), n_f), dtype=np.complex128)
+        settling_db = np.full(2, np.nan, dtype=np.float64)
+
+        x_mid_coax = center_xy[0] + 0.5 * (a + b)
+        i_probe_coax = int(round(x_mid_coax / dz)) + int(grid.pad_x_lo)
+        j_probe_coax = int(grid.pad_y_lo) + int(round(center_xy[1] / dz))
+        i_probe_msl = int(grid.position_to_index(
+            (xs_sorted[len(xs_sorted) // 2], y_centre, msl_z_lo + msl_pe.height * 0.5)
+        )[0])
+        j_probe_msl = int(grid.pad_y_lo) + int(round(y_centre / dz))
+        k_probe_msl = int(round((msl_z_lo + 0.5 * msl_pe.height) / dz)) + int(grid.pad_z_lo)
+
+        # drive_idx 0 drives the coax port; drive_idx 1 drives the MSL port.
+        for drive_idx in range(2):
+            if drive_idx == 0:
+                sources = list(spec_coax.electric_sources)
+                mag_sources = list(spec_coax.magnetic_sources)
+            else:
+                sources = make_msl_port_sources(
+                    grid, msl_port_driven, materials, int(n_steps),
+                    mode_profile=mode_profile,
+                )
+                mag_sources = []
+
+            planes = []
+            for z in probes_coax:
+                for comp in ("ex", "ey"):
+                    planes.append(init_dft_plane_probe(
+                        axis=2, index=int(z), component=comp, freqs=freqs_jnp,
+                        grid_shape=grid.shape, dft_total_steps=int(n_steps),
+                    ))
+            n_coax_planes = len(planes)
+            for x in xs_sorted:
+                i_x = int(grid.position_to_index((x, y_centre, msl_z_lo))[0])
+                planes.append(init_dft_plane_probe(
+                    axis=0, index=i_x, component="ez", freqs=freqs_jnp,
+                    grid_shape=grid.shape, dft_total_steps=int(n_steps),
+                ))
+
+            witness_probes = [
+                ProbeSpec(i=i_probe_coax, j=j_probe_coax,
+                          k=int(probes_coax[len(probes_coax) // 2]), component="ex"),
+                ProbeSpec(i=i_probe_msl, j=j_probe_msl, k=k_probe_msl, component="ez"),
+            ]
+
+            result = _run(
+                grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
+                sources=sources, mag_sources=mag_sources, probes=witness_probes,
+                dft_planes=planes, pec_mask=pec_mask, return_state=False,
+            )
+            if result.dft_planes is None:
+                raise RuntimeError(
+                    "compute_coax_msl_transition(): runner returned no DFT "
+                    "planes"
+                )
+
+            for pi, z in enumerate(probes_coax):
+                v_coax_by_drive[drive_idx, pi, :] = np.asarray(
+                    coaxial_line_plane_voltage(
+                        grid, result.dft_planes[pi * 2 + 0].accumulator,
+                        result.dft_planes[pi * 2 + 1].accumulator,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    )
+                )
+            for pi in range(len(xs_sorted)):
+                ez_plane = jnp.asarray(result.dft_planes[n_coax_planes + pi].accumulator)
+                v_q = msl_modal_voltage(
+                    ez_plane, j_centre=j_centre_msl, k_lo=k_lo_msl,
+                    k_hi=k_trace_lo, dz_arr=dz_arr, dtype=_complex_dtype,
+                )
+                v_msl_by_drive[drive_idx, pi, :] = np.asarray(v_q)
+
+            ts = np.asarray(result.time_series, dtype=float)
+            if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
+                power = ts ** 2
+                tail = max(1, power.shape[0] // 10)
+                end = power[-tail:, :].mean(axis=0)
+                peak = power.max(axis=0)
+                tiny = np.finfo(float).tiny
+                settling_db[drive_idx] = float(np.max(
+                    10.0 * np.log10((end + tiny) / (peak + tiny))
+                ))
+
+        s_params, cond_a, rec_resid, fit_resid, gamma = \
+            _assemble_coax_msl_transition_from_voltages(
+                z_coax_planes_m=z_planes_coax_m, x_msl_planes_m=np.asarray(xs_sorted),
+                ref_coax_m=ref_coax_m, ref_msl_m=float(junction_x),
+                v_coax_by_drive=v_coax_by_drive, v_msl_by_drive=v_msl_by_drive,
+                z0_coax=float(z_tem), z0_msl=float(z0_msl), cond_warn=float(cond_warn),
+            )
+
+        reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
+        z0_ref = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
+        result_obj = CoaxMSLTransitionResult(
+            s_params=s_params,
+            freqs=np.asarray(freqs_arr, dtype=float),
+            port_names=("coax", "msl"),
+            reference_planes=reference_planes,
+            z0_ref=z0_ref,
+            cond_a=cond_a,
+            recurrence_residual=rec_resid,
+            fit_residual=fit_resid,
+            gamma=gamma,
+            settling_db=settling_db,
+            status="experimental",
+        )
+        return _finalize_sparam_result(
+            result_obj,
+            extractor="compute_coax_msl_transition",
             strict=strict_passivity,
         )
 

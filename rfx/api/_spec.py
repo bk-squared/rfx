@@ -1571,6 +1571,114 @@ class MixedSMatrixResult:
     magnitude_channel: str = "wave"
 
 
+@dataclass
+class CoaxMSLTransitionResult:
+    """EXPERIMENTAL two-drive coax<->microstrip transition S-parameters (issue #489 leg 4).
+
+    STATUS: **EXPERIMENTAL — not in the validated set**
+    (``docs/guides/sparameter_support_matrix.md`` / ``.json``). This is the
+    coax<->planar generalization of the #488 mixed-family lane
+    (:class:`MixedSMatrixResult`) and reuses the #489 stage-2 coax two-port
+    machinery's per-port wave extraction
+    (:func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`)
+    for BOTH ports — including the MSL side, in place of the diagnostic-only,
+    sign-unstable N-probe SVD fit (``extract_msl_nprobe``; see its own
+    docstring and :meth:`_SparamMixin.compute_mixed_s_matrix`'s "N-probe line
+    Zc: DIAGNOSTIC ONLY" comment for the documented branch-sign instability
+    this sidesteps) — a deliberate deviation from imitating the #488 lane's
+    own MSL extractor choice, made because the coax matrix-pencil fit
+    deterministically pins the propagation-constant branch
+    (``beta = Im(gamma) > 0``) while the N-probe fit does not.
+
+    Like :class:`MixedSMatrixResult`, ``s_params`` is in the **Kurokawa
+    power-wave convention**: each port's raw modal-voltage wave amplitude
+    (``forward_amp``/``backward_amp``, both in **volts** — the matrix-pencil
+    fit is Z0-free) is divided by ``sqrt(Re(z0_ref))`` of that port's OWN
+    reference impedance BEFORE the two-drive solve
+    (:func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`).
+    This step is load-bearing here in a way it was not for the coax-coax
+    two-port lane: solving directly on RAW (un-normalized) volt-wave
+    amplitudes leaves S_ii (diagonal) exactly correct but scales each
+    off-diagonal S_ij (i != j) by ``sqrt(Z0_i/Z0_j)`` relative to the true
+    power-wave value — invisible on a coax-coax through line (equal Z0
+    cancels) but NOT invisible here, since the coax port's analytic TEM Z0
+    and the MSL port's Hammerstad-Jensen Zc are generally different. This is
+    the pre-declared "impedance-convention mismatch" failure mode: getting
+    this normalization wrong presents as spurious reflection/transmission
+    error even on an ideal, lossless transition.
+
+    Reference planes sit at the physical launch discontinuity on BOTH sides
+    by construction (``junction_z`` on the coax's own z axis, ``junction_x``
+    on the MSL's own x axis — see ``reference_planes``), specifically to
+    minimize the OTHER pre-declared failure mode ("reference-plane
+    mismatch": the coax's axial z-feed-plane convention has no direct
+    analogue in the MSL's along-trace x reference plane — these are
+    different geometric axes). Off-diagonal PHASE nonetheless mixes two
+    different transverse-mode conventions (coax TEM radial E-integral vs MSL
+    quasi-TEM z line-integral) and inherits #488's own caveat: magnitude is
+    the validated observable, phase is provisional.
+
+    NOT_TRACEABLE (inherits #488's AD scope): both this result's own
+    assembly and the underlying two extractors it composes
+    (:meth:`_SparamMixin.compute_coax_msl_transition`'s coax stub +
+    :func:`rfx.sources.msl_port.make_msl_port_sources`) run a concrete NumPy
+    path only. AD is explicitly out of scope for this leg (unlike stage-2
+    coax-coax, which grew an ``eps_scale`` channel in PR #572 — no
+    equivalent channel exists here).
+
+    Attributes
+    ----------
+    s_params : (2, 2, n_freqs) complex
+        ``s_params[j, i, :]`` = response at port *j* driving port *i*.
+        Port order is ALWAYS ``("coax", "msl")`` — port 0 = coax, port 1 =
+        MSL (see ``port_names``).
+    freqs : (n_freqs,) float
+    port_names : tuple of str
+        Always ``("coax", "msl")``.
+    reference_planes : (2,) float
+        ``[junction_z_m, junction_x_m]`` — the coax port's own z reference
+        plane and the MSL port's own x reference plane. Both are placed AT
+        the physical launch discontinuity (see class docstring); they are
+        NOT on a shared axis and must not be subtracted from one another.
+    z0_ref : (2,) float
+        ``[z0_coax_ohm, z0_msl_ohm]`` — the power-wave reference impedance
+        used for each port: analytic coax TEM Z0
+        (:func:`rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance`)
+        and analytic Hammerstad-Jensen microstrip Zc
+        (:func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
+    cond_a : (n_freqs,) float
+        Per-frequency condition number of the two-drive incident-wave
+        matrix (degeneracy bound only, not an accuracy score — same
+        contract as :class:`CoaxialTwoPortResult`).
+    recurrence_residual, fit_residual, gamma : (2, 2, n_freqs)
+        Per (port array, drive, freq), same convention and meaning as
+        :class:`CoaxialTwoPortResult` (0 = clean single-mode field; the MSL
+        array's own numbers are the SAME diagnostics applied to the MSL
+        probe ladder rather than a coax probe ladder).
+    settling_db : (2,) float
+        Ring-down settling witness per drive (worst end/peak field-energy
+        ratio, dB; above -40 dB = truncation suspect — see repo ring-down
+        convention).
+    status : str
+        ``"experimental"`` always (this lane makes no pass/fail physics
+        claim beyond what the calling test's own predeclared gate states;
+        unlike :class:`CoaxialTwoPortResult` there is no committed accuracy
+        battery to derive "passed"/"contaminated" from yet).
+    """
+
+    s_params: np.ndarray
+    freqs: np.ndarray
+    port_names: tuple[str, ...]
+    reference_planes: np.ndarray
+    z0_ref: np.ndarray
+    cond_a: np.ndarray
+    recurrence_residual: np.ndarray
+    fit_residual: np.ndarray
+    gamma: np.ndarray
+    settling_db: np.ndarray
+    status: str = "experimental"
+
+
 __all__ = [
     "MATERIAL_LIBRARY",
     "AD_MemoryEstimate",
@@ -1600,4 +1708,5 @@ __all__ = [
     "_MSLPortEntry",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
+    "CoaxMSLTransitionResult",
 ]
