@@ -1388,7 +1388,7 @@ def _assemble_coax_msl_transition_from_voltages(
     Isolated from :meth:`_SparamMixin.compute_coax_msl_transition` so the
     cross-family normalization can be exercised with PLANTED analytic
     voltages (no FDTD) — see
-    ``tests/test_coax_msl_transition.py::test_planted_voltages_recover_known_s_matrix``.
+    ``tests/test_coax_msl_transition.py::test_planted_voltages_recover_known_s_matrix_with_unequal_z0``.
     Concrete NumPy only (no jnp/traced branch): AD is explicitly out of
     scope for this leg (see :class:`~rfx.api._spec.CoaxMSLTransitionResult`'s
     class docstring).
@@ -1402,14 +1402,38 @@ def _assemble_coax_msl_transition_from_voltages(
     too (see the class docstring for why). That extractor returns RAW modal
     VOLTAGE wave amplitudes (volts, ``V(x)=A*exp(-gamma*x)+B*exp(+gamma*x)``
     Z0-free by construction) — each is converted to a POWER wave via
-    ``a = V+ / sqrt(Re(Z0))``, ``b = V- / sqrt(Re(Z0))`` (the standard
-    real-Z0 Kurokawa identity, using each port's OWN reference impedance)
-    before the two-drive solve. This division is the load-bearing fix for
-    the pre-declared "impedance-convention mismatch" failure mode: solving
-    directly on the raw volt-wave amplitudes would leave the diagonal
-    correct but scale each off-diagonal entry by ``sqrt(Z0_i/Z0_j)`` — see
+    ``a = V+ / sqrt(Z0)``, ``b = V- / sqrt(Z0)`` (the standard real-Z0
+    Kurokawa identity, using each port's OWN reference impedance — ``Z0`` is
+    already a real float here, both callers pass an analytic real
+    impedance, so no ``Re()`` is taken anywhere in this function; a complex
+    reference impedance is out of scope) before the two-drive solve. This
+    division is the load-bearing fix for the pre-declared
+    "impedance-convention mismatch" failure mode: solving directly on the
+    raw volt-wave amplitudes would leave the diagonal correct but scale
+    each off-diagonal entry by ``sqrt(Z0_i/Z0_j)`` — see
     :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`'s
     own docstring for the generic two-drive solve this feeds.
+
+    ``cond_a`` vs ``cond_a_equilibrated`` (issue #581 review, finding B2)
+    -----------------------------------------------------------------------
+    ``solve_two_port_from_wave_amplitudes``'s own ``cond_a`` is the RAW
+    condition number of the 2x2 incident-wave matrix ``A``. On the coax-coax
+    stage-2 lane that matrix's two columns are naturally comparable in scale
+    (same TEM source construction, same ``field_scale``, both drives), so a
+    large raw ``cond_a`` there really does mean "the two drives' incident
+    waves are nearly parallel in port-space" (near-degenerate). On THIS
+    mixed-family lane the two drives are built by unrelated source
+    constructions with no reason to share an amplitude (a coax TEM plane
+    source vs an MSL Ez injection) — measured on the committed fixture, the
+    two columns differ by 5-9 orders of magnitude in norm, which alone
+    inflates ``cond_a`` into the 1e3-1e7 range with NO implication about the
+    two incident-wave DIRECTIONS. ``cond_a_equilibrated`` divides each
+    column of ``A`` by its own norm before taking ``cond`` — invariant to
+    the per-drive scale, so it isolates genuine geometric near-parallelism.
+    Column equilibration does not change ``s_params`` (``S = B @ inv(A)`` is
+    invariant under any per-column rescaling of ``(a_inc, b_out)`` pairs,
+    since both matrices pick up the identical column scale factor and it
+    cancels in ``B @ inv(A)``); it is a diagnostic-only recomputation.
 
     Parameters
     ----------
@@ -1433,12 +1457,15 @@ def _assemble_coax_msl_transition_from_voltages(
 
     Returns
     -------
-    s_params, cond_a, recurrence_residual, fit_residual, gamma
+    s_params, cond_a, cond_a_equilibrated, recurrence_residual, fit_residual, gamma, a_inc, b_out
         ``s_params`` is ``(2, 2, n_freqs)``, port order ``(coax, msl)``.
-        The other four are ``(2, 2, n_freqs)`` indexed
-        ``[port_array, drive, freq]`` (port array 0 = coax, 1 = msl), same
-        meaning as :func:`_assemble_coaxial_two_port_from_voltages`'s own
-        return values.
+        ``cond_a`` / ``cond_a_equilibrated`` are ``(n_freqs,)`` (see above).
+        ``recurrence_residual`` / ``fit_residual`` / ``gamma`` / ``a_inc`` /
+        ``b_out`` are ``(2, 2, n_freqs)`` indexed ``[port_array, drive,
+        freq]`` (port array 0 = coax, 1 = msl) — ``a_inc``/``b_out`` are the
+        POWER-wave amplitudes actually fed to the two-drive solve (post
+        ``sqrt(Z0)`` division), exposed for audit per issue #581 review
+        finding B2.
     """
     from rfx.sources.coaxial_port import (
         coaxial_line_reflection_from_plane_voltages,
@@ -1497,7 +1524,23 @@ def _assemble_coax_msl_transition_from_voltages(
             gamma[1, drive_idx, fi] = out_msl.gamma
 
     solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
-    return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
+
+    # Column-equilibrated condition number (issue #581 review, finding B2):
+    # divide each drive's own incident-wave column by its own norm before
+    # taking cond() so a per-drive amplitude-scale mismatch (routine on a
+    # mixed-family lane, see the docstring above) cannot masquerade as
+    # geometric near-parallelism. Does not touch s_params.
+    cond_a_equilibrated = np.full(n_f, np.nan, dtype=np.float64)
+    for fi in range(n_f):
+        col_norms = np.linalg.norm(a_inc[:, :, fi], axis=0)
+        safe_norms = np.where(col_norms > 0.0, col_norms, 1.0)
+        a_eq = a_inc[:, :, fi] / safe_norms[None, :]
+        cond_a_equilibrated[fi] = float(np.linalg.cond(a_eq))
+
+    return (
+        solve.s_params, solve.cond_a, cond_a_equilibrated,
+        rec_resid, fit_resid, gamma, a_inc, b_out,
+    )
 
 
 class _SparamMixin:
@@ -5874,6 +5917,40 @@ class _SparamMixin:
             msl_pe.width, msl_pe.height, eps_r_sub_resolved
         )
 
+        # Registered impedance= divergence advisory (issue #581 review N2):
+        # add_coaxial_port(impedance=...) / add_msl_port(impedance=...) size
+        # the feed resistor / termination sigma and (for coax) the TEM
+        # source amplitude calibration — but the POWER-WAVE NORMALIZATION
+        # (z0_ref, feeding sqrt(Z0) in the assembler) always uses the
+        # ANALYTIC z_tem / z0_msl computed here, never the registered
+        # impedance. A large silent divergence between the two is a
+        # footgun: the source/termination is calibrated for one Z0 while
+        # the extraction is normalized against another.
+        for _label, _registered, _analytic in (
+            ("coax", float(port.impedance), float(z_tem)),
+            ("msl", float(msl_pe.impedance), float(z0_msl)),
+        ):
+            if _analytic > 0.0:
+                _rel_dev = abs(_registered - _analytic) / _analytic
+                if _rel_dev > 0.05:
+                    import warnings as _wz
+                    _wz.warn(
+                        f"compute_coax_msl_transition(): the registered "
+                        f"{_label} port impedance ({_registered:.2f} ohm) "
+                        f"diverges {_rel_dev * 100:.1f}% from the analytic "
+                        f"{_label} Z0 ({_analytic:.2f} ohm) this method "
+                        "actually uses for the power-wave normalization "
+                        "(z0_ref) and for sizing the feed resistor / "
+                        "termination. The registered impedance= is NOT "
+                        "the reference impedance of the returned "
+                        "s_params; it only affects source/termination "
+                        "sizing. Pass a matching pin_radius/outer_radius "
+                        "(coax) or width/height/eps_r_sub (msl), or "
+                        "reconcile the mismatch, before trusting a "
+                        "specific reference-impedance interpretation.",
+                        stacklevel=2,
+                    )
+
         probe_xs = msl_probe_x_coords_n(
             grid, msl_port_base, n_probes=int(probe_count),
             n_offset_cells=int(probe_start_cells),
@@ -6021,7 +6098,7 @@ class _SparamMixin:
                     10.0 * np.log10((end + tiny) / (peak + tiny))
                 ))
 
-        s_params, cond_a, rec_resid, fit_resid, gamma = \
+        s_params, cond_a, cond_a_equilibrated, rec_resid, fit_resid, gamma, a_inc, b_out = \
             _assemble_coax_msl_transition_from_voltages(
                 z_coax_planes_m=z_planes_coax_m, x_msl_planes_m=np.asarray(xs_sorted),
                 ref_coax_m=ref_coax_m, ref_msl_m=float(junction_x),
@@ -6038,9 +6115,12 @@ class _SparamMixin:
             reference_planes=reference_planes,
             z0_ref=z0_ref,
             cond_a=cond_a,
+            cond_a_equilibrated=cond_a_equilibrated,
             recurrence_residual=rec_resid,
             fit_residual=fit_resid,
             gamma=gamma,
+            a_inc=a_inc,
+            b_out=b_out,
             settling_db=settling_db,
             status="experimental",
         )

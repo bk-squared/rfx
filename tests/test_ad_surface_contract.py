@@ -93,6 +93,15 @@ AD_CLASSIFICATION = {
         "tests/test_coax_two_port_ad.py::"
         "test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent.",
     ),
+    "Simulation.compute_coax_msl_transition": (
+        NOT_TRACEABLE,
+        "issue #489 leg 4: concrete numpy path throughout — "
+        "_assemble_coax_msl_transition_from_voltages calls the concrete "
+        "branch of coaxial_line_reflection_from_plane_voltages and "
+        "solve_two_port_from_wave_amplitudes directly (no _prefer_jnp / "
+        "tracer dispatch, unlike compute_coaxial_two_port); no eps_scale "
+        "or other design channel is wired for this leg",
+    ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (
         NOT_TRACEABLE,

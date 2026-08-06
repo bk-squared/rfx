@@ -172,7 +172,7 @@ def test_planted_voltages_recover_known_s_matrix_with_unequal_z0():
     noise-free synthetic field.
     """
     fx = _build_planted_fixture(_Z0_COAX, _Z0_MSL)
-    s_params, cond_a, rec_resid, fit_resid, gamma_fit = (
+    s_params, cond_a, cond_a_eq, rec_resid, fit_resid, gamma_fit, a_inc, b_out = (
         _assemble_coax_msl_transition_from_voltages(
             **fx, z0_coax=_Z0_COAX, z0_msl=_Z0_MSL,
         )
@@ -183,6 +183,8 @@ def test_planted_voltages_recover_known_s_matrix_with_unequal_z0():
     assert np.all(np.isfinite(rec_resid)) and np.all(rec_resid < 1e-9)
     assert np.all(np.isfinite(fit_resid)) and np.all(fit_resid < 1e-9)
     assert np.all(cond_a < 3.0)
+    assert np.all(cond_a_eq < 3.0)
+    assert a_inc.shape == (2, 2, _N_F) and b_out.shape == (2, 2, _N_F)
     np.testing.assert_allclose(
         gamma_fit, np.broadcast_to(_GAMMA_LINE, gamma_fit.shape), atol=1e-6
     )
@@ -324,11 +326,16 @@ PREDECLARATION = {
         "sits (direction='-x', facing back toward the junction, mirrors "
         "the #488 mixed-lane fixture's own convention). Pin-to-trace "
         "post: a PEC Cylinder (radius = pin radius) connecting the "
-        "ground node through the substrate to the trace node. All Box/"
-        "Cylinder z-boundaries are placed on CELL MIDPOINTS "
-        "((n +/- 0.5)*dx / stamp_coaxial_line-style +2*dz margin), not "
-        "exact node multiples -- see the module docstring note below on "
-        "why exact multiples are unsafe on this grid."
+        "ground node through the substrate to the trace node. No z-"
+        "boundary is placed on an exact node multiple -- Box corners use "
+        "the CELL-MIDPOINT convention ((n +/- 0.5)*dx, per rfx/geometry/"
+        "csg.py's own Box docstring); Cylinder heights use a DIFFERENT "
+        "mechanism, a full stamp_coaxial_line-style +2*dz margin on each "
+        "side (Cylinder's inclusive <= height check has the same knife-"
+        "edge risk but is not corner-based, so the midpoint recipe does "
+        "not literally apply -- margin is the analogous fix). See the "
+        "module docstring note below on why exact multiples are unsafe "
+        "on this grid."
     ),
     "healthy_envelope_predeclared": (
         "|S11| (coax) well below 1 (reflection, not total block); |S21| "
@@ -364,7 +371,74 @@ PREDECLARATION = {
         ),
     },
     "status": "RUN",
+    "post_review_correction": (
+        "PR #581 adversarial review (finding B2) refuted the reciprocity "
+        "discriminant's mechanism above by three independent checks on "
+        "this fixture's own data: (i) cond_a is almost ENTIRELY column-"
+        "norm ratio, not near-parallel columns -- after per-column "
+        "equilibration cond_a_equilibrated = 1.0004/1.0001/1.0040 and the "
+        "two incident-wave columns are near-ORTHOGONAL (normalized "
+        "overlap 4e-4/7e-5/4e-3), the opposite of 'nearly parallel'; (ii) "
+        "the 'both ports strongly reflecting' premise fails on this "
+        "fixture's own |S22| = 0.000/0.000/0.500 (the MSL side is NOT "
+        "strongly reflecting at the two lower bins); (iii) the signature "
+        "that DOES match is the two-drive solve's OWN warning's second "
+        "branch, 'one drive that failed to excite': the MSL drive's own "
+        "incident amplitude a_inc[1,1,:] is 8.2e-14/1.3e-11/7.1e-17 "
+        "against the coax drive's a_inc[0,0,:] of 5.8e-9/5.8e-8/3.0e-9 -- "
+        "5 to 9 orders of magnitude apart. Superseded by "
+        "POST_REVIEW_DISCRIMINANT below, which independently confirms the "
+        "PREDECLARED extraction-class failure mode (not junction physics) "
+        "is the better-supported explanation: the MSL ladder spans only "
+        "0.34%-3.37% of the guided wavelength at these three frequencies, "
+        "and the fitted Im(gamma) on the MSL array does not track the "
+        "analytic Hammerstad-Jensen beta at all (ratios 4x-32x off, "
+        "non-monotonic with frequency -- see the discriminant below and "
+        "the class docstring on CoaxMSLTransitionResult)."
+    ),
 }
+
+
+def _msl_guided_beta_and_ladder_fraction(freqs_hz, *, ladder_span_m):
+    """Analytic Hammerstad-Jensen beta and ladder-span/lambda_g fraction.
+
+    Pure function (no FDTD) -- the B3 discriminant computed from the SAME
+    committed fixture's own geometry constants, independent of any run.
+    """
+    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+    from rfx.core.yee import EPS_0, MU_0
+
+    c0 = 1.0 / np.sqrt(MU_0 * EPS_0)
+    _, eps_eff_hj = hammerstad_jensen_z0_eps_eff(W_TRACE, H_SUB, EPS_SUB)
+    beta = 2.0 * np.pi * np.asarray(freqs_hz) * np.sqrt(eps_eff_hj) / c0
+    lambda_g = 2.0 * np.pi / beta
+    return beta, ladder_span_m / lambda_g
+
+
+def test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit():
+    """B3 discriminant (issue #581 review) -- no FDTD, pure geometry/analytic.
+
+    The committed fixture's MSL probe ladder (probe_spacing_cells=2,
+    probe_count=6 -> span = 2*5 = 10 cells = 1.000 mm) spans a tiny, and
+    FREQUENCY-DEPENDENT, fraction of the guided wavelength at each measured
+    bin. A matrix-pencil forward/backward decomposition needs the span to
+    resolve a meaningful fraction of a cycle; this locks in that it does
+    not, at any of the three measured frequencies -- independent evidence
+    (alongside POST_REVIEW_DISCRIMINANT's fitted-gamma-vs-analytic-beta
+    comparison, which needs the FDTD result and is reported in the PR body
+    /the slow_physics test below) that the reciprocity/degeneracy finding
+    is an MSL wave-extraction instrument-scoping limit, not a claim about
+    the ladder span at published frequencies elsewhere in this file.
+    """
+    freqs = np.array([0.6e9, 3.3e9, 6.0e9])
+    ladder_span_m = 2 * (6 - 1) * DX  # probe_spacing_cells * (probe_count-1) * dx
+    beta, frac = _msl_guided_beta_and_ladder_fraction(freqs, ladder_span_m=ladder_span_m)
+    assert np.all(frac < 0.05), (
+        f"MSL ladder now spans {frac} of lambda_g at {freqs/1e9} GHz -- if "
+        "this rises above the ~5% floor a matrix-pencil fit needs, the "
+        "instrument-scoping finding may no longer apply; re-derive it "
+        "before trusting a passing reciprocity assertion elsewhere."
+    )
 
 
 def test_predeclaration_has_required_fields():
@@ -402,24 +476,82 @@ def test_predeclaration_has_required_fields():
 # THE DECLARED RESULT: the fixture runs, is internally self-consistent
 # (finite, deterministic, settles below -40 dB), but the RECIPROCITY
 # falsifier fires -- badly (|S12| vs |S21| disagree by 94-100% across the
-# three measured frequencies) -- with cond_a in the 1e3-1e7 range at every
-# bin. Per the falsifier's own discriminant (predeclared above): this
-# points at near-degenerate two-drive amplification, not an assembler
-# defect (Part 1's planted-voltage tests independently confirm the
-# assembler's power-wave normalization is correct) and not a missing-PEC
-# defect (independently confirmed by direct pec_mask inspection during
-# construction debugging). The coax side reflects strongly (|S11| ~
-# 0.81-0.99) while the MSL side's own reflection is small at low/mid
-# frequency and rises at the top of the band -- consistent with a
-# via-dominated series discontinuity at this SPECIFIC fixture's thin
-# (200um radius, ~700um long) unmatched pin-to-trace post, which the task
-# scoping explicitly anticipated ("no intermediate matching structure").
+# three measured frequencies), with raw cond_a in the 1e3-1e7 range at
+# every bin.
 #
-# Per R2, this STOPS here: no second geometry attempt in this session.
-# This is reported as an honest FIRST diagnostic measurement of a
-# deliberately unmatched junction, not a validated transition -- the test
-# below locks the measured (bad) reciprocity and passivity numbers as a
-# reproducibility witness, not as an accuracy claim.
+# ATTRIBUTION (CORRECTED after PR #581 adversarial review, findings B2/B3
+# -- the ORIGINAL attribution in this comment, "near-degenerate two-drive
+# amplification from strong junction reflection", was WRONG and is
+# preserved only in PREDECLARATION["post_review_correction"] above as the
+# historical record of what was first written and why it did not survive
+# its own data):
+#
+# B2: raw cond_a is almost entirely a column-NORM-ratio artifact, not
+# geometric near-parallelism. After per-column equilibration,
+# cond_a_equilibrated = 1.0004/1.0001/1.0040 (see the assembler's own
+# docstring) and the two incident-wave columns are near-ORTHOGONAL
+# (normalized overlap 4e-4/7e-5/4e-3) -- the OPPOSITE of "nearly
+# parallel". The "both ports strongly reflecting" premise also fails on
+# this fixture's own |S22| = 0.000/0.000/0.500 (not uniformly near 1).
+# What DOES match is the two-drive solve's own warning's SECOND branch,
+# "one drive that failed to excite": a_inc[1,1,:] (MSL's own incident
+# wave when MSL drives) is 8.2e-14/1.3e-11/7.1e-17 against
+# a_inc[0,0,:] (coax's own incident wave when coax drives) of
+# 5.8e-9/5.8e-8/3.0e-9 -- 5 to 9 orders of magnitude apart. This is a
+# drive-AMPLITUDE mismatch between the two unrelated source
+# constructions (coax TEM plane source vs MSL Ez injection), not
+# evidence of near-degenerate DIRECTIONS.
+#
+# B3: the PREDECLARED extraction-class failure mode (not junction
+# physics) is positively supported, not ruled out, by this fixture's own
+# numbers. The MSL probe ladder spans only 1.000 mm = 0.34%-3.37% of the
+# guided wavelength across the 3 measured frequencies (locked in by
+# test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit,
+# analytic/no-FDTD) -- far too short for a matrix-pencil forward/backward
+# split to resolve. The fitted Im(gamma) on the MSL array does not track
+# analytic Hammerstad-Jensen beta (21.2/116.4/211.7 rad/m) at all: the
+# coax-driven fit gives 673.0/853.6/885.0 rad/m (4-32x too high, and
+# nearly FREQUENCY-FLAT across a 10x frequency span where the true beta
+# is not -- "locked onto a spatial feature" of the fixed probe spacing,
+# not the guided mode), and the msl-own-drive fit gives
+# 4.5/36.2/2881.3 rad/m with Re(gamma) = 5619/5964/139 rad/m -- a decay
+# length near 1 cell, i.e. not a propagating/decaying wave at all. Two of
+# this array's own fit_residual values (0.0313, 0.0348) already cross the
+# PREDECLARED "large = fit unreliable" line, and |S22| = 0.00000 at bins
+# 0-1 is a b/a ratio of 1e-8 to 1e-11 -- below float32 relative precision,
+# a degenerate split, which directly CONTRADICTS the via-reflector story
+# (that story demands |S22| -> 1, a real near-total reflection, not a
+# numerically-degenerate near-zero ratio). test_coax_msl_transition_
+# first_fixture_diagnostic (below) locks this comparison in as an
+# assertion, not just prose.
+#
+# HONEST STATEMENT (per review): degeneracy is observed. Whether the
+# junction's own physical reflection or the MSL wave-extraction's own
+# instrument-scoping limit (the PREDECLARED failure class) is the
+# dominant cause is UNRESOLVED by this one fixture alone -- but the
+# discriminant above POSITIVELY SUPPORTS the extraction-class
+# explanation and does not support the junction-reflection story, so
+# that is the better-supported reading, not a coin flip. This also NAMES
+# the implementation defect that would justify a future SECOND R2
+# attempt (a longer MSL probe ladder, >= 0.25 lambda_g at the lowest
+# measured frequency -- NOT run in this PR).
+#
+# A NAMED THIRD candidate mechanism, not ruled out either (issue #581
+# review B4): preflight's own x-CPML clearance warning on this fixture
+# ("distance to nearest x-CPML = 200um < recommended 600um... Source-side
+# CPML reflection may inflate |S11|") means the MSL port's own near-field
+# measurement sits close enough to its absorbing boundary that CPML
+# reflection could also be contaminating the MSL-side extraction,
+# independent of the ladder-length limit above. Not disentangled from
+# the ladder-length finding in this PR.
+#
+# Per R2, this STOPS here: no second geometry/probe-ladder attempt in
+# this session -- the numeric re-derivations above are instruments on
+# the ALREADY-COLLECTED run (same geometry, same n_steps; no new FDTD),
+# not a second physics attempt. This is reported as an honest FIRST
+# diagnostic measurement, not a validated transition -- the test below
+# locks the measured (bad) reciprocity/passivity/discriminant numbers as
+# a reproducibility witness, not as an accuracy claim.
 
 DX = 100e-6
 PIN_R = 0.2e-3
@@ -512,16 +644,91 @@ def _build_coax_msl_transition_sim():
     return sim
 
 
+def test_pin_axis_pec_connectivity_is_continuous():
+    """Non-FDTD (~1s) connectivity check -- the claim behind N5/the module
+    comment's "missing PEC z-layer" fix, committed as an artifact instead of
+    living only in throwaway debugging output (issue #581 review N1).
+
+    Reproduces exactly what compute_coax_msl_transition builds on the pin
+    axis (registered geometry via _assemble_materials, THEN the coax stub's
+    own stamp_coaxial_line, mirroring the method's own ordering) and asserts
+    there is no gap: every z-index from the coax stub's near-source end
+    through the trace's own layer is either registered PEC (pec_mask) or
+    coax-stamped PEC-conductivity (sigma >= PEC_SIGMA/2), with no break.
+    """
+    from rfx.sources.coaxial_port import stamp_coaxial_line, PEC_SIGMA
+
+    sim = _build_coax_msl_transition_sim()
+    grid = sim._build_grid()
+    materials, _, _, pec_mask, _, _, _ = sim._assemble_materials(grid)
+    pec = np.asarray(pec_mask)
+
+    port = sim._coaxial_ports[0]
+    center_xy = (float(port.position[0]), float(port.position[1]))
+    z_junction_idx = int(grid.position_to_index(port.position)[2])
+    z_stub_lo = int(grid.pad_z_lo) + 2
+    z_stub_hi = z_junction_idx - 1
+
+    materials, _ = stamp_coaxial_line(
+        grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
+        z_hi_index=z_stub_hi, pin_radius=PIN_R, outer_radius=OUTER_R,
+    )
+    sigma = np.asarray(materials.sigma)
+
+    i0, j0 = grid.position_to_index((JUNCTION_X, Y_C, 0.0))[:2]
+    trace_idx = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
+
+    registered_pec = pec[i0, j0, :]
+    stamped_pec = sigma[i0, j0, :] >= 0.5 * PEC_SIGMA
+    combined = registered_pec | stamped_pec
+
+    span = combined[z_stub_lo:trace_idx + 1]
+    assert np.all(span), (
+        f"gap in pin-axis PEC/sigma connectivity between the coax stub "
+        f"(z_stub_lo={z_stub_lo}) and the trace (idx={trace_idx}): missing "
+        f"indices {z_stub_lo + np.where(~span)[0]}"
+    )
+
+
+# Pinned from gate_from_envelope(0.9928, quantum=100) = 1.49, computed ONCE
+# from the max|S| measured when this test was last written/reviewed (issue
+# #581 review B5): a gate computed LIVE from the value it bounds
+# (``gate_from_envelope(max_abs_s)``) can never fail by construction, so it
+# is frozen here as a literal instead, and capped at the PREDECLARED 1.10
+# passivity floor (1.49 alone is ~40% above that floor and would provide no
+# real protection).
+PINNED_MEASURED_GATE = 1.49
+
+
+def test_pinned_measured_gate_provenance():
+    """PINNED_MEASURED_GATE's own derivation, kept checkable (issue #581
+    review B5): frozen as a literal so the amplitude gate below cannot be
+    tautological, but the literal's provenance (gate_from_envelope applied
+    to the max|S| measured when it was pinned) stays self-verifying rather
+    than a comment-only claim.
+    """
+    assert gate_from_envelope(0.9928, quantum=100) == PINNED_MEASURED_GATE
+
+
 @pytest.mark.slow_physics
 def test_coax_msl_transition_first_fixture_diagnostic():
     """The one committed #489-leg-4 fixture -- DIAGNOSTIC honesty level.
 
     See ``PREDECLARATION`` above and the module-level comment immediately
-    preceding this test for the full R2/R3 accounting. This test asserts
-    exactly what was measured: self-consistency (finite, settled) passes;
-    the reciprocity/passivity falsifier fires and is LOCKED as a
-    reproducibility witness, not papered over. Runtime ~110s (two FDTD
-    drives on a (67, 51, 56)-cell grid, 8000 steps each).
+    preceding this test for the full R2/R3 accounting, INCLUDING THE
+    POST-REVIEW ATTRIBUTION CORRECTION (issue #581 review B2/B3): the
+    degeneracy this test locks in is NOT attributed to "near-degenerate
+    two-drive amplification from junction reflection" (the original,
+    refuted claim) -- it is better explained by the MSL probe ladder being
+    far too short (0.34%-3.37% of a guided wavelength) for the matrix-pencil
+    wave split to resolve, an instrument-scoping limit of THIS fixture's
+    probe geometry, not a claim about the junction's own physics. This test
+    asserts exactly what was (re-)measured: self-consistency (finite,
+    settled) passes; the reciprocity/passivity/degeneracy findings are
+    LOCKED as a reproducibility witness, not papered over; the corrected
+    discriminants (column-equilibrated cond_a, fitted gamma vs analytic
+    beta) are asserted too, not just claimed in prose. Runtime ~110s (two
+    FDTD drives on a (67, 51, 56)-cell grid, 8000 steps each).
     """
     assert PREDECLARATION["status"] == "RUN"
 
@@ -529,12 +736,13 @@ def test_coax_msl_transition_first_fixture_diagnostic():
     result = sim.compute_coax_msl_transition(
         junction_x=JUNCTION_X, eps_r_sub=EPS_SUB, n_steps=N_STEPS,
         n_freqs=3, probe_count=6, probe_start_cells=4, probe_spacing_cells=2,
-        skip_preflight=True,
+        skip_preflight=True, strict_passivity=True,
     )
 
     assert result.s_params.shape == (2, 2, 3)
     assert np.all(np.isfinite(result.s_params))
     assert result.port_names == ("coax", "msl")
+    assert result.a_inc.shape == (2, 2, 3) and result.b_out.shape == (2, 2, 3)
 
     # Settling: both drives clear the -40 dB ring-down rule (this fixture
     # measured -43.9 / -63.6 dB at N_STEPS=8000; a shorter, 1500-step
@@ -545,37 +753,85 @@ def test_coax_msl_transition_first_fixture_diagnostic():
         "8000-step record may need lengthening."
     )
 
-    # Amplitude falsifier: pin the MEASURED envelope with the repo's
-    # standard 1.5x margin (tests/_gate_policy.py) rather than a fixed
-    # a-priori threshold -- this fixture's own diagonal peaks near 1
-    # (strong coax-side reflection; see the module comment) but must not
+    # Amplitude falsifier: pinned literal (see PINNED_MEASURED_GATE above),
+    # capped at the predeclared 1.10 passivity floor -- this fixture's own
+    # diagonal peaks near 1 (strong coax-side reflection) but must not
     # cross the passivity-violation floor by more than extraction noise.
+    # strict_passivity=True above additionally makes the hard
+    # passivity/finiteness self-check RAISE (not warn) if this fixture's
+    # own extraction ever crosses that check's tol=0.10 bound.
     max_abs_s = float(np.max(np.abs(result.s_params)))
-    gate = gate_from_envelope(max_abs_s, quantum=100)
+    gate = min(PINNED_MEASURED_GATE, 1.10)
     assert max_abs_s <= gate, (
-        f"max|S| {max_abs_s:.4f} exceeds its own {gate:.4f} envelope gate "
-        "-- a NEW amplitude excursion beyond what was measured when this "
-        "test was written; re-run the falsifier diagnostic (recurrence_"
-        "residual / fit_residual / cond_a) before trusting the change."
+        f"max|S| {max_abs_s:.4f} exceeds the pinned gate {gate:.4f} -- a "
+        "NEW amplitude excursion beyond what was measured when this test "
+        "was written; re-run the falsifier diagnostic (recurrence_"
+        "residual / fit_residual / cond_a_equilibrated) before trusting "
+        "the change."
     )
 
-    # Degeneracy witness: cond_a stays large (the predeclared discriminant
-    # for the reciprocity falsifier below). A LOW cond_a here without the
-    # matching reciprocity fix would itself be suspicious (the two
-    # findings should move together).
+    # Degeneracy witness -- CORRECTED (issue #581 review B2): raw cond_a
+    # stays large (scale-mismatch artifact, see module comment), but the
+    # column-EQUILIBRATED cond_a -- the one that actually discriminates
+    # geometric near-parallelism on a mixed-family lane -- stays near 1,
+    # confirming the two drives are NOT geometrically near-degenerate.
     assert np.all(np.asarray(result.cond_a) > 1.0e3), (
-        f"cond_a {result.cond_a} dropped below the degenerate-drive floor "
-        "this fixture measured -- the ill-conditioning finding may no "
-        "longer apply; re-evaluate the reciprocity assertion below too."
+        f"cond_a {result.cond_a} dropped below the scale-mismatch floor "
+        "this fixture measured -- re-evaluate the attribution."
+    )
+    assert np.all(np.asarray(result.cond_a_equilibrated) < 1.5), (
+        f"cond_a_equilibrated {result.cond_a_equilibrated} rose above the "
+        "near-unity floor this fixture measured -- the two drives may have "
+        "become genuinely geometrically near-degenerate, which would "
+        "revive (not refute) the original junction-reflection attribution; "
+        "re-derive the finding before trusting either story."
+    )
+
+    # B3 discriminant, asserted (not just claimed in the PR body): the
+    # fitted Im(gamma) on the MSL array does not track the analytic
+    # Hammerstad-Jensen beta -- confirms the extraction-class (ladder too
+    # short) explanation over the junction-physics one, per the module
+    # comment. Checked both drives' own fits (they disagree with EACH
+    # OTHER by 1-2 orders of magnitude too -- a second, independent
+    # symptom of an unreliable split, not just a mismatch vs the analytic
+    # value).
+    freqs = np.asarray(result.freqs)
+    ladder_span_m = 2 * (6 - 1) * DX
+    beta_analytic, ladder_frac = _msl_guided_beta_and_ladder_fraction(
+        freqs, ladder_span_m=ladder_span_m,
+    )
+    im_gamma_coax_driven = np.abs(result.gamma[1, 0, :].imag)
+    im_gamma_msl_owndrive = np.abs(result.gamma[1, 1, :].imag)
+    ratio_coax_driven = im_gamma_coax_driven / beta_analytic
+    assert np.all(ratio_coax_driven > 3.0), (
+        f"fitted Im(gamma) (coax-driven) / analytic beta = "
+        f"{ratio_coax_driven} dropped near 1 -- the MSL matrix-pencil fit "
+        "may have started tracking the true guided mode; re-derive the "
+        "instrument-scoping attribution before trusting it."
+    )
+    # The two drives' own fits should still disagree by >1 order of
+    # magnitude at at least one bin (measured: bin 0 gives 673.0 vs 4.5 --
+    # ratio ~150x) -- an internal cross-check that neither fit is simply
+    # "the right answer measured twice".
+    cross_drive_ratio = np.maximum(
+        im_gamma_coax_driven / np.maximum(im_gamma_msl_owndrive, 1e-30),
+        im_gamma_msl_owndrive / np.maximum(im_gamma_coax_driven, 1e-30),
+    )
+    assert np.any(cross_drive_ratio > 10.0), (
+        f"coax-driven vs msl-own-drive Im(gamma) ratios {cross_drive_ratio} "
+        "no longer disagree by >10x anywhere -- the two independent fits "
+        "may have converged, which would weaken the instrument-scoping "
+        "finding; re-derive it."
     )
 
     # Reciprocity falsifier -- LOCKED, not silently accepted: this
-    # fixture's own measured deviation is ~94-100% (see module comment).
-    # Regression-lock the FINDING (it stays badly non-reciprocal) so a
-    # future change that quietly "fixes" this number gets flagged for
-    # review rather than assumed correct -- the fix would need its own
-    # falsifier re-run (a NEW fixture geometry, e.g. adding a matching
-    # structure or a wider/shorter via), not a silent gate change here.
+    # fixture's own measured deviation is ~94-100% (see module comment for
+    # the corrected attribution). Regression-lock the FINDING (it stays
+    # badly non-reciprocal) so a future change that quietly "fixes" this
+    # number gets flagged for review rather than assumed correct -- the
+    # fix would need its own falsifier re-run (e.g. a longer MSL probe
+    # ladder, >= 0.25 lambda_g -- a NEW, separately pre-declared R2
+    # attempt, NOT run in this PR), not a silent gate change here.
     pair, worst_dev = _mixed_reciprocity_deviation(result.s_params)
     assert worst_dev > 0.5, (
         f"reciprocity deviation dropped to {worst_dev:.3f} between ports "

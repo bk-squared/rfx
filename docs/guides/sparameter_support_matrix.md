@@ -670,7 +670,8 @@ applied to the coax probe ladder AND, deliberately, to the MSL probe ladder
 too, in place of the mixed lane's own N-probe SVD fit (`extract_msl_nprobe`),
 which that lane's own docstring documents as diagnostic-only with an
 unresolved branch-sign instability. Each port's raw modal-voltage wave is
-converted to a POWER wave via `a = V+ / sqrt(Re(Z0))` (coax: analytic TEM
+converted to a POWER wave via `a = V+ / sqrt(Z0)` (Z0 is already a real
+analytic value on both sides, so no `Re()` is taken anywhere; coax: analytic TEM
 Z0; MSL: analytic Hammerstad-Jensen Zc) before the same two-drive solve
 `compute_coaxial_two_port` uses (`solve_two_port_from_wave_amplitudes`) —
 this per-port `sqrt(Z0)` step is the fix for the "impedance-convention
@@ -689,29 +690,63 @@ thin, unmatched pin-to-trace post — "no intermediate matching structure", per
 the leg's own scoping) is internally self-consistent (finite, deterministic,
 settles below −40 dB) but trips its own pre-declared reciprocity falsifier
 badly: `|S12|` vs `|S21|` disagree by 94-100% across the three measured
-frequencies, with the two-drive solve's condition number `cond_a` in the
-1e3-1e7 range at every bin. Per the falsifier's own predeclared discriminant,
-this points at near-degenerate two-drive amplification (both ports strongly
-reflecting their own port, so the two drives' incident-wave columns are
-nearly parallel — `solve_two_port_from_wave_amplitudes`'s own docstring notes
-`cond(A)` "multiplies whatever noise is on the measured amplitudes"), not an
-assembler defect (independently ruled out by the planted-voltage tests above)
-and not a missing-PEC defect (independently ruled out by direct `pec_mask`
-inspection during construction). `sim.preflight()` on this fixture
-independently flags the same resolution class: the pin post's 4-cell
-diameter is under the ≥5-cell PEC-volume floor, the 3-cell substrate is
-flagged for >5% Z0 staircase bias, and the substrate gap itself is flagged
-"coupling may be under-resolved" — consistent with a via-dominated series
-discontinuity at this specific fixture's thin, unmatched dimensions.
+frequencies, with the two-drive solve's raw condition number `cond_a` in the
+1e3-1e7 range at every bin.
+
+**Attribution (corrected after adversarial PR review; see PR #581 review
+findings B2/B3).** The first attribution written for this finding —
+"near-degenerate two-drive amplification from strong junction reflection" —
+did not survive its own data and was retracted. Three checks on this
+fixture's own numbers refute it: (i) `cond_a` is almost entirely a per-drive
+amplitude SCALE artifact — after per-column equilibration,
+`cond_a_equilibrated` is 1.0004/1.0001/1.0040 (near 1) and the two drives'
+incident-wave columns are near-ORTHOGONAL (normalized overlap ~1e-4 to
+~4e-3), the opposite of "nearly parallel"; (ii) the "both ports strongly
+reflecting" premise fails on this fixture's own measured `|S22|`
+(0.000/0.000/0.500 — not uniformly near 1); (iii) the signature that DOES
+match is a drive-amplitude mismatch between the two unrelated source
+constructions (the MSL drive's own incident amplitude is 5-9 orders of
+magnitude smaller than the coax drive's), exactly the second branch of the
+two-drive solve's own warning ("one drive that failed to excite"), not the
+first ("nearly linearly dependent" in the geometric sense). The PREDECLARED
+alternative explanation — an MSL wave-extraction instrument-scoping limit,
+not junction physics — is positively supported instead: the MSL probe
+ladder on this fixture spans only 0.34%-3.37% of the guided wavelength
+across the three measured frequencies, and the fitted propagation constant
+on the MSL array does not track the analytic Hammerstad-Jensen beta
+(21.2/116.4/211.7 rad/m) at all — the coax-driven fit gives
+673.0/853.6/885.0 rad/m (4-32x too high and nearly frequency-flat, where
+the true beta is not), and the MSL's own-drive fit gives 4.5/36.2/2881.3
+rad/m with an implied decay length near one grid cell (not a real
+propagating/decaying wave). Both discriminants are locked as test
+assertions, not just prose (`tests/test_coax_msl_transition.py`). Whether
+the junction's own physical reflection also contributes is genuinely
+UNRESOLVED by this one fixture — `sim.preflight()` on the same fixture
+independently names a THIRD, also-unruled-out candidate mechanism (the MSL
+port sits only 200um from its own x-CPML face, "recommended 600um... source-
+side CPML reflection may inflate |S11|") — but the extraction-class
+explanation is the better-supported one, and it NAMES the implementation
+defect (probe ladder far shorter than any reasonable fraction of a guided
+wavelength) that would justify a future, separately pre-declared retry (a
+longer MSL probe ladder, e.g. >= 0.25 lambda_g) — not attempted in this PR.
+`sim.preflight()` on this fixture also independently flags the same general
+resolution class from a different angle: the pin post's 4-cell diameter is
+under the ≥5-cell PEC-volume floor, and the 3-cell substrate is flagged for
+>5% Z0 staircase bias.
 
 | aspect | status |
 |---|---|
-| reciprocity | **FALSIFIER TRIPPED** — 94-100% deviation on the one committed fixture; root-caused to ill-conditioning (`cond_a` 1e3-1e7), not the assembler |
+| reciprocity | **FALSIFIER TRIPPED** — 94-100% deviation on the one committed fixture; root-caused to the MSL probe ladder being far too short for the matrix-pencil wave split (instrument scoping), not the assembler, not a missing-PEC defect, and not confirmed junction physics |
 | off-diagonal magnitude | not validated — the one fixture measured near-zero, unreliable transmission |
 | power-wave normalization (`sqrt(Z0)` step) | validated by planted-voltage unit tests, independent of any FDTD run |
 | AD | out of scope for this leg (no `eps_scale`-style channel) |
 
 Do not extend this lane's gates to "pass" without a NEW pre-declared falsifier
-or an identified implementation defect in this fixture (repo R2 rule) — the
-next attempt needs a redesigned junction (e.g. an intentional matching
-structure, or a wider/shorter via), not a parameter tweak on this one.
+or an identified implementation defect in this fixture (repo R2 rule). This
+finding DOES name such a defect (the MSL probe ladder's length, per the
+attribution above), which is R2's own written escape clause for a second
+attempt: a future retry should lengthen the MSL probe ladder (e.g. to
+>= 0.25 lambda_g at the lowest measured frequency) BEFORE touching the
+junction geometry itself — the junction's own physical dimensions (matching
+structure, via width/length) remain a separate, still-open question this
+fixture cannot yet speak to.

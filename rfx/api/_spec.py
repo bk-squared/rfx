@@ -1593,8 +1593,11 @@ class CoaxMSLTransitionResult:
     Like :class:`MixedSMatrixResult`, ``s_params`` is in the **Kurokawa
     power-wave convention**: each port's raw modal-voltage wave amplitude
     (``forward_amp``/``backward_amp``, both in **volts** — the matrix-pencil
-    fit is Z0-free) is divided by ``sqrt(Re(z0_ref))`` of that port's OWN
-    reference impedance BEFORE the two-drive solve
+    fit is Z0-free) is divided by ``sqrt(z0_ref)`` of that port's OWN
+    reference impedance (real reference impedances only — no ``Re()`` is
+    taken anywhere in this lane's assembly; see
+    :func:`_assemble_coax_msl_transition_from_voltages`) BEFORE the
+    two-drive solve
     (:func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`).
     This step is load-bearing here in a way it was not for the coax-coax
     two-port lane: solving directly on RAW (un-normalized) volt-wave
@@ -1626,6 +1629,43 @@ class CoaxMSLTransitionResult:
     coax-coax, which grew an ``eps_scale`` channel in PR #572 — no
     equivalent channel exists here).
 
+    On the one committed fixture (issue #581 adversarial review, findings
+    B2/B3): reciprocity and the two-drive solve's raw ``cond_a`` are badly
+    degenerate. The ORIGINAL attribution written for this fixture —
+    "near-degenerate two-drive amplification from strong junction
+    reflection" — did not survive its own data and was retracted. Three
+    independent checks on this fixture refute it: (i) ``cond_a`` is almost
+    entirely a per-drive amplitude SCALE artifact, not geometric
+    near-parallelism — after per-column equilibration (see
+    ``cond_a_equilibrated`` below) the two drives' incident-wave columns
+    are near-ORTHOGONAL, not nearly parallel; (ii) the "both ports strongly
+    reflecting" premise fails on this fixture's own measured ``|S22|``
+    (near 0 at two of three bins, not near 1); (iii) the signature that
+    DOES match is a drive-amplitude mismatch between the two unrelated
+    source constructions (coax TEM plane source vs MSL Ez injection) —
+    5-9 orders of magnitude apart on this fixture, visible directly in
+    ``a_inc`` (see below). The PREDECLARED alternative — an MSL wave-
+    extraction instrument-scoping limit, not junction physics — is
+    positively supported instead: the MSL probe ladder on this fixture
+    spans only 0.34%-3.37% of the guided wavelength across the three
+    measured frequencies, and the fitted ``gamma`` on the MSL array does
+    not track the analytic Hammerstad-Jensen propagation constant at all
+    (off by a factor of 4-32x, and the two drives' own independent fits of
+    the SAME array disagree with each other by 1-2 orders of magnitude —
+    see ``tests/test_coax_msl_transition.py``'s
+    ``test_coax_msl_transition_first_fixture_diagnostic`` for the locked
+    assertions and
+    ``test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit``
+    for the pure-geometry version of the same check). Whether the
+    junction's own physical reflection ALSO contributes is genuinely
+    UNRESOLVED by this one fixture — a preflight advisory on the same
+    fixture (MSL port too close to its own x-CPML face) names a third,
+    also-unruled-out candidate mechanism — but the extraction-class
+    explanation is the better-supported one and is what a future retry
+    (a longer MSL probe ladder, not attempted in this PR) would target.
+    Do not read the reciprocity/degeneracy numbers on this result as
+    evidence about coax<->MSL launch physics in general.
+
     Attributes
     ----------
     s_params : (2, 2, n_freqs) complex
@@ -1646,15 +1686,42 @@ class CoaxMSLTransitionResult:
         (:func:`rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance`)
         and analytic Hammerstad-Jensen microstrip Zc
         (:func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
+        NOTE: the registered ``add_coaxial_port(impedance=...)`` /
+        ``add_msl_port(impedance=...)`` values are NOT used here (they only
+        size the feed resistor / termination and, for coax, the source
+        amplitude calibration) — :meth:`_SparamMixin.compute_coax_msl_transition`
+        warns when a registered impedance diverges from the analytic value
+        actually used by more than 5%.
     cond_a : (n_freqs,) float
         Per-frequency condition number of the two-drive incident-wave
-        matrix (degeneracy bound only, not an accuracy score — same
-        contract as :class:`CoaxialTwoPortResult`).
+        matrix, RAW (same contract as :class:`CoaxialTwoPortResult`'s own
+        ``cond_a``). On a mixed-family lane this is dominated by the two
+        drives' unrelated source-amplitude SCALES (see the finding above)
+        and is NOT a reliable geometric-degeneracy discriminant here —
+        use ``cond_a_equilibrated`` for that.
+    cond_a_equilibrated : (n_freqs,) float
+        Condition number of the SAME incident-wave matrix after dividing
+        each drive's own column by its own norm — invariant to per-drive
+        amplitude scale, so it isolates genuine geometric near-parallelism
+        between the two drives' incident waves. Does not affect
+        ``s_params`` (column equilibration leaves ``S = B @ inv(A)``
+        unchanged). Added in response to issue #581 review finding B2.
     recurrence_residual, fit_residual, gamma : (2, 2, n_freqs)
         Per (port array, drive, freq), same convention and meaning as
         :class:`CoaxialTwoPortResult` (0 = clean single-mode field; the MSL
         array's own numbers are the SAME diagnostics applied to the MSL
-        probe ladder rather than a coax probe ladder).
+        probe ladder rather than a coax probe ladder). On the one committed
+        fixture the MSL array's ``fit_residual`` crosses the predeclared
+        "large = unreliable" line at two of six (array, drive, freq)
+        entries, and its ``gamma`` does not track the analytic beta (see
+        the finding above) — inspect these before trusting any MSL-side
+        number from a new fixture.
+    a_inc, b_out : (2, 2, n_freqs) complex
+        The POWER-wave incident/outgoing amplitudes actually fed to the
+        two-drive solve (after the ``sqrt(Z0)`` division), exposed for
+        audit (issue #581 review finding B2) — e.g. to check each drive's
+        own excitation actually reached a comparable amplitude before
+        trusting ``cond_a``/``cond_a_equilibrated``.
     settling_db : (2,) float
         Ring-down settling witness per drive (worst end/peak field-energy
         ratio, dB; above -40 dB = truncation suspect — see repo ring-down
@@ -1672,9 +1739,12 @@ class CoaxMSLTransitionResult:
     reference_planes: np.ndarray
     z0_ref: np.ndarray
     cond_a: np.ndarray
+    cond_a_equilibrated: np.ndarray
     recurrence_residual: np.ndarray
     fit_residual: np.ndarray
     gamma: np.ndarray
+    a_inc: np.ndarray
+    b_out: np.ndarray
     settling_db: np.ndarray
     status: str = "experimental"
 
