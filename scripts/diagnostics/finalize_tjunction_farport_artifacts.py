@@ -3,7 +3,7 @@ data (supersedes the narrow-band near-port finalize_tjunction_artifacts.py, whos
 5.4-6.4 GHz restriction was a port-placement sweet spot, not a convergence limit).
 
 Far-port = de-embedding planes >=5 evanescent decay-lengths from the junction
-(tj_farport_test.py). rfx at dx=2.0 & 1.0 mm; matched far-port MEEP at res=500.
+(tj_farport_diag.py (formerly tj_farport_test.py)). rfx at dx=2.0 & 1.0 mm; matched far-port MEEP at res=500.
 Full single-mode TE10 band 5-7 GHz. Writes the two manifest-referenced artifacts.
 No tolerance loosening: actual metrics are computed and reported as-is.
 """
