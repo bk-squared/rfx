@@ -84,10 +84,22 @@ def _eps_override(sim, deps):
     — derive the baseline from ``assemble_materials_nu`` (the production NU
     materials-assembly path) and the slab region from the Box's own
     ``mask_on_coords``, never a hand ``pos_to_nu_index`` nearest-node
-    reconstruction (which went stale under #562's node-coordinate
-    convention change and was silently unprotected here since this test
-    only compares two runs that share the same override, not against a
-    production-default run).
+    reconstruction.
+
+    Measured correction (PR #591 review): on THIS fixture the OLD
+    (``pos_to_nu_index``) and NEW (``mask_on_coords``) masks occupy the
+    SAME x-planes (28, 29, 30) — the #562 node-coordinate convention shift
+    that broke the sibling ``test_waveguide_nu_flux_ad.py`` fixture does
+    NOT reach this one. The 114 cells that differ are exactly the y=A and
+    z=B hi-face node planes: Box's half-open ``[lo, hi)`` volume rule
+    excludes its own hi face, and this box's y/z extent is the full
+    PEC-walled cross-section, so those planes are the PEC-wall nodes
+    ``pos_to_nu_index`` had no shape-aware reason to exclude. Directly
+    measured: a gradient computed with the OLD mask and one computed with
+    the NEW mask on this fixture are IDENTICAL, ``-2.307174e-02`` both
+    (0.00% difference) — this rewrite is latent-divergence cleanup (the
+    same class of hand-rolled comparator removed before it COULD go stale
+    under a future change), not a fix for a live defect on this fixture.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
@@ -101,21 +113,30 @@ def _eps_override(sim, deps):
 
 
 def test_eps_override_matches_production_assembly():
-    """#590 sibling regression: lock ``_eps_override`` to the production NU
-    materials assembly (the reduce-to-production pattern PR #564's review
-    used for F1/F2) — an elementwise assertion the helper's deps=0 baseline
-    equals a fresh, independent ``assemble_materials_nu`` call on the
-    identical fixture. Not ``@pytest.mark.slow``: no FDTD run, so it reds
-    in the fast lane if this helper ever drifts back to a hand-rolled
-    index reconstruction.
+    """#590 sibling / PR #591-review regression: lock ``_eps_override``'s
+    PERTURBATION MASK to the production slab indicator.
+
+    Mirrors ``test_waveguide_nu_flux_ad.py``'s lock — the original
+    deps=0-elementwise-equality version was a TAUTOLOGY in the mask
+    dimension (``jnp.where(mask, eps_r + 0, eps_r) == eps_r`` for ANY
+    mask); the review's witnessed 1-node ``jnp.roll`` mask shift passed it
+    (and every other test in both files) while moving a directly measured
+    gradient 11%. Fixed by perturbing at ``deps != 0`` and checking that
+    the increased cells are exactly the production slab-material cells —
+    a shifted or wrong mask reds this immediately. Not
+    ``@pytest.mark.slow``: no FDTD run.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
 
     sim = _nu_sim()
     grid = sim._build_nonuniform_grid()
     materials, _, _, _ = assemble_materials_nu(sim, grid)
-    override = _eps_override(sim, jnp.asarray(0.0, dtype=jnp.float32))
-    np.testing.assert_array_equal(np.asarray(override), np.asarray(materials.eps_r))
+    deps = jnp.asarray(0.5, dtype=jnp.float32)
+    perturbed = _eps_override(sim, deps)
+    np.testing.assert_array_equal(
+        np.asarray(perturbed) - np.asarray(materials.eps_r) > 0,
+        np.asarray(materials.eps_r) == _SLAB_EPS,
+    )
 
 
 @pytest.mark.slow

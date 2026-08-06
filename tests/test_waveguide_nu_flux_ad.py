@@ -97,7 +97,7 @@ def _wr90_nu_sim():
     return sim, domain_x
 
 
-def _eps_override_for(sim, domain_x, deps):
+def _eps_override_for(sim, deps):
     """NU-grid eps override: production-assembled eps + deps inside the slab.
 
     #590: this used to reconstruct the slab index range by hand via
@@ -130,8 +130,8 @@ def _eps_override_for(sim, domain_x, deps):
 
 
 def _s21_mag2(deps):
-    sim, domain_x = _wr90_nu_sim()
-    eps = _eps_override_for(sim, domain_x, deps)
+    sim, _ = _wr90_nu_sim()
+    eps = _eps_override_for(sim, deps)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = sim.compute_waveguide_s_matrix(
@@ -170,8 +170,8 @@ def test_nu_flux_smatrix_forward_matches_untraced():
         warnings.simplefilter("ignore")
         res_a = sim_a.compute_waveguide_s_matrix(
             num_periods=NUM_PERIODS, normalize="flux")
-    sim_b, domain_x_b = _wr90_nu_sim()
-    eps = _eps_override_for(sim_b, domain_x_b, jnp.asarray(0.0, dtype=jnp.float32))
+    sim_b, _ = _wr90_nu_sim()
+    eps = _eps_override_for(sim_b, jnp.asarray(0.0, dtype=jnp.float32))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res_b = sim_b.compute_waveguide_s_matrix(
@@ -183,25 +183,36 @@ def test_nu_flux_smatrix_forward_matches_untraced():
 
 
 def test_eps_override_helper_matches_production_assembly():
-    """#590 regression: lock ``_eps_override_for`` to the production NU
-    materials assembly, the reduce-to-production pattern PR #564's review
-    used to close the smoother (F1) and the #325 advisory (F2) — an
-    elementwise assertion the helper's deps=0 baseline equals a fresh,
-    independent ``assemble_materials_nu`` call on the identical fixture.
+    """#590/PR #591-review regression: lock ``_eps_override_for``'s
+    PERTURBATION MASK to the production slab indicator.
 
-    This is deliberately NOT gated behind ``@pytest.mark.slow``: it only
-    builds the grid and rasterizes materials, no FDTD run, so it stays in
-    the fast lane and reds loudly (not just weekly) if this helper ever
-    drifts back to a hand-rolled index reconstruction under a future
-    coordinate-convention change.
+    The first version of this lock asserted elementwise equality at
+    ``deps=0``. That was a TAUTOLOGY in the mask dimension:
+    ``jnp.where(mask, eps_r + 0, eps_r) == eps_r`` for ANY mask, so it
+    could not tell the correct mask apart from a shifted, all-True, or
+    all-False one — the PR review demonstrated a 1-node ``jnp.roll`` of the
+    slab mask passes this assertion (and every other test in this file and
+    the sibling checkpoint file) while moving the measured AD gradient 11%
+    (-1.190e-3 -> -1.059e-3), invisible to the AD/FD gate because both
+    sides of that comparison move together under the same shifted mask.
+
+    Fixed by perturbing at ``deps != 0`` and checking WHERE the increase
+    landed, not just that deps=0 is a no-op: a cell is increased iff it is
+    genuinely slab material (``eps_r == _SLAB_EPS_R``) in the production
+    assembly. A shifted or otherwise wrong mask reds this immediately,
+    because the perturbed set and the true slab-material set diverge.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
 
-    sim, domain_x = _wr90_nu_sim()
+    sim, _ = _wr90_nu_sim()
     grid = sim._build_nonuniform_grid()
     materials, _, _, _ = assemble_materials_nu(sim, grid)
-    override = _eps_override_for(sim, domain_x, jnp.asarray(0.0, dtype=jnp.float32))
-    np.testing.assert_array_equal(np.asarray(override), np.asarray(materials.eps_r))
+    deps = jnp.asarray(0.5, dtype=jnp.float32)
+    perturbed = _eps_override_for(sim, deps)
+    np.testing.assert_array_equal(
+        np.asarray(perturbed) - np.asarray(materials.eps_r) > 0,
+        np.asarray(materials.eps_r) == _SLAB_EPS_R,
+    )
 
 
 def _s11_mag2_at_vacuum(deps):
