@@ -1167,13 +1167,26 @@ SETTLED_RUN_RECORD = {
         "calibration (20000 -> 45000) needed one correction already."
     ),
     "vessl_pattern": (
-        "The branch-clone pattern from #561/#559 (VESSL job clones this "
-        "PR's branch, runs the same _build_coax_msl_transition_sim_"
-        "attempt2 fixture at target_n_steps, uploads the result). Not "
-        "written in this PR -- the target script does not yet exist; "
-        "the next session should add it under scripts/vessl_*.yaml "
-        "following that precedent."
+        "UPDATE (PR #588): a mounted-primary-checkout pattern was used "
+        "instead of the branch-clone pattern this field originally "
+        "predeclared (mirroring #561/#559) -- by the time this job can "
+        "run, scripts/diagnostics/coax_msl_transition_settled_run.py and "
+        "compute_coax_msl_transition are both already on main (PR #588 "
+        "merged), so the mounted checkout already has everything needed "
+        "and the branch-clone machinery (SHA pinning, fallback logic) "
+        "would be pure overhead. Driver: "
+        "scripts/diagnostics/coax_msl_transition_settled_run.py (imports "
+        "the test module, reuses _build_coax_msl_transition_sim_attempt2, "
+        "runs at --n-steps target_n_steps, reports the same witnesses "
+        "this file's own attempt-2 test computes). YAML: "
+        "scripts/vessl_coax_msl_transition_settled_run.yaml (mounted "
+        "checkout, imitates scripts/vessl_gpu_suite.yaml / "
+        "scripts/vessl_msl_f64_referee.yaml). Landed in PR #588; the run "
+        "itself was deliberately NOT submitted by that PR -- submit only "
+        "after it merges to main. Tracked by issue #589 (#489 is closed "
+        "and does not track this lane's continuing work)."
     ),
+    "tracking_issue": 589,
     "status": "UNRUN",
     "measured": None,
     "log_path": None,

@@ -576,9 +576,9 @@ The older `compute_coaxial_s_matrix(...)` path is deprecated and experimental.
 transmission-line method to two ports: it builds a single through line with a
 matched annular-resistor feed near each z end, drives each end's own TEM TFSF
 source in turn (two FDTD runs), and assembles the S-matrix via a two-drive
-solve that does not assume the non-driven port sees zero incident wave. **Its
-EXPERIMENTAL label lifted 2026-08-06 (issue #489, PI decision) to VALIDATED
-WITH SCOPE**: an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`,
+solve that does not assume the non-driven port sees zero incident wave. **This
+method is VALIDATED WITH SCOPE** (issue #489, PI decision 2026-08-06): an
+external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`,
 VESSL run-3 `369367251629` and the first default-scale green promoted-lane
 run VESSL `369367252220`) brackets — it does not judge — this method's own
 `|S21|` on the through-line class, and, via the port's own measured `beta`
@@ -591,11 +591,9 @@ are measured below. **Scope that remains outside this evidence**: every DUT
 it can currently gate against (none, a matched feed, or a coaxial dielectric
 plug) is azimuthally symmetric and excites only TM0n modes, while the
 transition discontinuities issue #489 targets excite TE11 (cutoff 25.17 GHz
-on the validated SMA line, evanescently surviving to the first probe plane)
-— coax<->planar transitions are the SEPARATE `compute_coax_msl_transition(...)`
-lane, which stays **EXPERIMENTAL, diagnostic-only** regardless of this
-promotion (see the section below); nor does this evidence generalize beyond
-this single coax geometry family. The measured single-run envelope (60 mm /
+on the validated SMA line, evanescently surviving to the first probe plane);
+nor does this evidence generalize beyond this single coax geometry family.
+The measured single-run envelope (60 mm /
 40 GHz fixture, 4-12 GHz): `|S21|`,`|S12|` 0.74-0.96, `|S11|`,`|S22|`
 `<= 0.051` (measured max `0.0502` at 12 GHz,
 `tests/test_coax_two_port_fdtd.py:699`; the committed gate itself is the
@@ -603,6 +601,10 @@ wider inherited 1-port envelope `<= 0.08`), reciprocity within `0.3%`
 magnitude / `0.21` degree phase, `cond(A) <= 1.11`. See
 `tests/test_coax_two_port_fdtd.py` for the full measured envelope and its
 provenance.
+
+Coax<->planar transitions are a SEPARATE lane, `compute_coax_msl_transition(...)`
+(below), and are unaffected by this promotion — that lane's own status is
+tracked independently in its own section below, not restated here.
 
 `compute_coaxial_two_port(...)` now has the same `eps_scale` differentiable
 channel as the 1-port method above (issue #489 leg 3): the gate compares

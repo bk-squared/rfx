@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Settled run for the coax<->MSL transition lane (issue #489 leg 4, attempt 2).
 
+Tracked by issue #589 (#489 itself is closed and does not track this lane's
+continuing work -- see SETTLED_RUN_RECORD["tracking_issue"]).
+
 WHY THIS SCRIPT EXISTS
 -----------------------
 ``tests/test_coax_msl_transition.py::SETTLED_RUN_RECORD`` predeclares the

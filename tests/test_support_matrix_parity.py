@@ -68,6 +68,23 @@ review ran into before landing):
   construction: the json msl entry uses it ("...pending issue #519") where
   the .md paraphrases the same fact without the literal word, which is not
   drift and would have been a permanent false-positive tripwire.
+  ROUND TWO (PR #588 review fix, P1 -- BLOCKING): narrowing the .md side to
+  per-anchor paragraphs was not sufficient on its own once the coaxial-port
+  lane's json entry started stating BOTH of its two sub-APIs' status words
+  in the SAME whole-entry ``support_status``/``validation_status`` string --
+  that combined json text is constant-True for "experimental" regardless of
+  which sub-API's OWN status changed, proven by mutation on review (flipping
+  either carrier's two-port-specific status text alone, with the other
+  carrier untouched, stayed green both directions; a control mutation on the
+  single-sub-API PRE-#588 prose correctly reds). ``LANE_STATUS_ANCHORS_JSON``
+  narrows the JSON side the same way ``LANE_STATUS_ANCHORS_MD`` narrows the
+  .md side, for any primitive whose json entry bundles multiple
+  independently-evolving sub-API statuses: each json anchor must match
+  EXACTLY ONE ``known_limits`` bullet (paired 1:1, same order, with the
+  corresponding .md anchor), and THAT bullet -- not the whole entry -- is
+  what gets scanned. A primitive absent from ``LANE_STATUS_ANCHORS_JSON``
+  keeps the original whole-entry behavior (still correct for a lane with
+  only one status-bearing sub-API).
 - The section map (json ``primitive`` -> .md "## " header) is explicit and
   asserted complete in both directions for the lanes it covers. Lanes not
   yet mapped must be named in ``UNMAPPED_LANES_TODO``; a new json primitive
@@ -185,6 +202,54 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Per-lane, hand-identified json ``known_limits`` anchors (PR #588 review
+# fix, P1 -- BLOCKING). For a primitive listed here, each anchor below must
+# match EXACTLY ONE entry of that primitive's json ``known_limits`` list
+# (same "exactly one" discipline ``_lane_status_blocks_md`` already applies
+# to the .md side), IN THE SAME ORDER as ``LANE_STATUS_ANCHORS_MD[primitive]``
+# -- anchor i here pairs with md anchor i. THAT bullet, not the whole-entry
+# ``support_status``/``validation_status`` blob, is what
+# ``test_status_token_polarity_agrees`` scans for STATUS_TOKENS for that
+# specific md anchor. Primitives NOT listed here keep the original
+# whole-entry ``_lane_status_text_json`` behavior (unchanged, still correct
+# for a lane with only one status-bearing sub-API).
+#
+# Why this exists: the whole-entry text is exactly what PR #588's own
+# promotion prose defeated, proven by mutation on review. The coaxial-port
+# json entry's ``support_status``/``validation_status`` mentions
+# "experimental" (for the still-deprecated ``compute_coaxial_s_matrix``)
+# regardless of what ``compute_coaxial_two_port``'s own status is, so
+# ``in_json`` for the token "experimental" was CONSTANT True no matter how
+# the two-port sub-API's own status was written -- flipping the two-port
+# json status back to "experimental" with the .md left untouched, and
+# flipping the .md status back with the json left untouched, BOTH stayed
+# green (19 passed) because the combined string could not distinguish
+# either sub-API's own claim from the other's. A control mutation on the
+# PRE-#588 single-sub-API prose (removing "experimental" from the old
+# one-sub-API paragraph) correctly reds, proving the check was live before
+# this bundling defeated it -- the #584-M1 text-gaming class, recurring one
+# level down. Splitting the json side into its own per-anchor bullet
+# (mirroring what the .md side already does) restores real discrimination:
+# each sub-API's own bullet only contains ITS OWN status word, so flipping
+# either carrier's own text now changes ONLY that anchor's own polarity.
+#
+# Anchors here are chosen the SAME way the .md anchors are (see that dict's
+# own comment): a stable prefix that does NOT itself contain the status
+# word being tracked, so a later status-word edit changes the bullet's
+# CONTENT without breaking the anchor LOOKUP that finds the bullet. The
+# two-port anchor below deliberately does not include "VALIDATED WITH
+# SCOPE" for this reason -- anchoring on "...is VALIDATED WITH SCOPE"
+# would stop matching the moment that phrase is edited back to
+# "EXPERIMENTAL" (or anything else), producing the same confusing
+# "anchor not found" failure mode the .md side's own docstring already
+# warns about, instead of a clean status-disagreement report.
+LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
+    "add_coaxial_port(...)": (
+        "compute_coaxial_s_matrix(...) remains",
+        "validation/crossval/21_coax_two_port_referee.py, VESSL run-3 369367251629",
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # Extraction helpers
@@ -231,8 +296,13 @@ _VESSL_RUN_ID_RE = re.compile(r"VESSL\s+(?:run\s+)?(\d{6,}(?:/\d{6,})*)")
 
 # Status tokens checked for presence-polarity agreement. Verified against
 # live content before landing this gate (see module docstring for why
-# "pending" was tried and dropped).
-STATUS_TOKENS = ("experimental", "superseded", "unresolved")
+# "pending" was tried and dropped). "validated with scope" added in PR #588
+# review fix (P1): a lane's promotion to this new state must itself be
+# checked for carrier agreement, not just the retired "experimental" token
+# it replaces -- without this, a carrier that silently reverted the NEW
+# status word would go undetected (the reverse of what "experimental"
+# alone catches).
+STATUS_TOKENS = ("experimental", "superseded", "unresolved", "validated with scope")
 
 _OVERCLAIM_PHRASES = (
     "differentiable end-to-end",
@@ -346,8 +416,44 @@ def _lane_status_text_json(entry: dict) -> str:
     json.dumps(), which also pulls in evidence_artifacts paths,
     numeric_metrics run logs, and caveats, any of which can carry an
     incidental, unrelated mention of a status word that masks a real flip
-    in the field that actually declares status."""
+    in the field that actually declares status.
+
+    This is the FALLBACK used only for primitives absent from
+    LANE_STATUS_ANCHORS_JSON (PR #588 review fix, P1): for a lane bundling
+    multiple independently-evolving sub-APIs in one entry, this combined
+    whole-entry string is exactly the text that flip-mutation on review
+    proved could not discriminate one sub-API's own status from another's
+    -- see LANE_STATUS_ANCHORS_JSON's own comment for the full finding.
+    """
     return f"{entry.get('support_status', '')} {entry.get('validation_status', '')}"
+
+
+def _lane_status_blocks_json(entry: dict, primitive: str) -> list[str] | None:
+    """[bullet_text, ...] in the SAME ORDER as LANE_STATUS_ANCHORS_MD[primitive],
+    one per LANE_STATUS_ANCHORS_JSON[primitive] entry -- or None if
+    ``primitive`` is not in LANE_STATUS_ANCHORS_JSON, signaling the caller to
+    fall back to the whole-entry ``_lane_status_text_json`` (unchanged
+    behavior for a lane with only one status-bearing sub-API).
+
+    Mirrors ``_lane_status_blocks_md``'s own "exactly one match" discipline,
+    scanning json ``known_limits`` (a list of independent bullets) instead of
+    .md paragraphs -- see LANE_STATUS_ANCHORS_JSON's own comment for why this
+    exists (PR #588 review fix, P1).
+    """
+    json_anchors = LANE_STATUS_ANCHORS_JSON.get(primitive)
+    if json_anchors is None:
+        return None
+    limits = entry.get("known_limits", []) or []
+    result: list[str] = []
+    for anchor in json_anchors:
+        matches = [b for b in limits if anchor in b]
+        assert len(matches) == 1, (
+            f"{primitive}: json status anchor {anchor!r} must match exactly "
+            f"one known_limits entry; found {len(matches)}. If known_limits "
+            "changed, update LANE_STATUS_ANCHORS_JSON."
+        )
+        result.append(matches[0])
+    return result
 
 
 def _lane_evidence_text(entry: dict) -> str:
@@ -417,6 +523,28 @@ def test_lane_map_targets_are_unique_sections():
     headers = list(LANE_SECTION_MAP.values())
     assert len(headers) == len(set(headers)), (
         "two primitives in LANE_SECTION_MAP point at the same .md section"
+    )
+
+
+def test_json_status_anchors_reference_mapped_primitives_with_matching_arity():
+    """LANE_STATUS_ANCHORS_JSON keys must be mapped primitives (a typo'd or
+    stale key would otherwise silently never run), and each primitive's json
+    anchor count must match its md anchor count 1:1 (same check the main
+    test also runs per-primitive at collection time; this version fails even
+    if pytest parametrization ever skips a primitive, e.g. via -k)."""
+    unmapped = set(LANE_STATUS_ANCHORS_JSON) - set(LANE_SECTION_MAP)
+    assert not unmapped, (
+        f"LANE_STATUS_ANCHORS_JSON references primitive(s) not in "
+        f"LANE_SECTION_MAP: {unmapped}"
+    )
+    mismatched = {
+        primitive: (len(json_anchors), len(LANE_STATUS_ANCHORS_MD.get(primitive, ())))
+        for primitive, json_anchors in LANE_STATUS_ANCHORS_JSON.items()
+        if len(json_anchors) != len(LANE_STATUS_ANCHORS_MD.get(primitive, ()))
+    }
+    assert not mismatched, (
+        f"LANE_STATUS_ANCHORS_JSON/LANE_STATUS_ANCHORS_MD anchor-count "
+        f"mismatch (primitive -> (json_count, md_count)): {mismatched}"
     )
 
 
@@ -490,26 +618,44 @@ def test_status_token_polarity_agrees(
     primitive, header, matrix_json_by_primitive, matrix_md_sections
 ):
     """A status token's PRESENCE must agree between carriers: if the json
-    lane's support_status/validation_status fields call something
-    experimental/superseded/unresolved, EACH of the mapped .md section's
-    designated status anchors (LANE_STATUS_ANCHORS_MD) must say so too, and
-    vice versa -- checked per anchor, not as one combined blob. Catches a
-    status flip landed in only one carrier (PR #581 review finding:
-    matching-phrasing requirements enforced by nothing) -- scoped to the
-    fields/paragraphs that actually declare status (PR #584 review, M1)
-    after the original whole-entry/whole-section version was shown unable to
-    catch a headline flip on the coaxial-port lane specifically, and a first
-    per-lane-combined-anchor revision was shown unable to catch a flip
-    confined to just ONE of that lane's two anchors (both in the module
-    docstring)."""
+    side calls something experimental/superseded/unresolved/validated with
+    scope, EACH of the mapped .md section's designated status anchors
+    (LANE_STATUS_ANCHORS_MD) must say so too, and vice versa -- checked per
+    anchor, not as one combined blob. Catches a status flip landed in only
+    one carrier (PR #581 review finding: matching-phrasing requirements
+    enforced by nothing) -- scoped to the fields/paragraphs that actually
+    declare status (PR #584 review, M1) after the original whole-entry/
+    whole-section version was shown unable to catch a headline flip on the
+    coaxial-port lane specifically, and a first per-lane-combined-anchor
+    revision was shown unable to catch a flip confined to just ONE of that
+    lane's two anchors (both in the module docstring).
+
+    The json side of the comparison is PER-ANCHOR when the primitive is in
+    LANE_STATUS_ANCHORS_JSON (PR #588 review fix, P1 -- BLOCKING): a single
+    whole-entry support_status+validation_status string was proven by
+    mutation to be constant-True/False regardless of either sub-API's own
+    status once the coaxial-port lane's json entry started separately
+    stating BOTH sub-APIs' status words in that combined text (see
+    LANE_STATUS_ANCHORS_JSON's own comment for the finding and the mutation
+    outputs). Falls back to the original whole-entry text for any primitive
+    not listed there (unchanged behavior for a lane with only one
+    status-bearing sub-API)."""
     entry = matrix_json_by_primitive[primitive]
-    json_text = _lane_status_text_json(entry).lower()
+    json_blocks = _lane_status_blocks_json(entry, primitive)
+    whole_entry_json_text = _lane_status_text_json(entry).lower()
     anchor_blocks = _lane_status_blocks_md(
         matrix_md_sections[header], header, LANE_STATUS_ANCHORS_MD[primitive]
     )
+    if json_blocks is not None:
+        assert len(json_blocks) == len(anchor_blocks), (
+            f"{primitive}: LANE_STATUS_ANCHORS_JSON has {len(json_blocks)} "
+            f"anchor(s) but LANE_STATUS_ANCHORS_MD has {len(anchor_blocks)} -- "
+            "the two must pair 1:1, same order."
+        )
 
     disagreements = []
-    for anchor, block_text in anchor_blocks:
+    for i, (anchor, block_text) in enumerate(anchor_blocks):
+        json_text = json_blocks[i].lower() if json_blocks is not None else whole_entry_json_text
         block_text = block_text.lower()
         for token in STATUS_TOKENS:
             in_json = token in json_text
