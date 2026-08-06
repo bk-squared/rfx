@@ -41,8 +41,8 @@ after the missing bounding node was restored, **TM111 error 2.66% -> 0.025%**
 (same geometry, same 4:1 grading, same harminv extraction) — the remainder is
 coarse-mesh dispersion, which is what the gate was meant to bound in the first
 place. The 4% gate below is therefore now ~160x looser than the measured
-residual; tightening it is a separate, evidence-first decision (it must be
-re-measured across resolutions before being pinned, not simply divided down).
+residual; this PR makes that tightening, re-measured across resolutions and
+grading ratios first rather than divided down (see the gate block in the body).
 """
 
 from __future__ import annotations

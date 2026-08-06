@@ -38,13 +38,24 @@ proved argmax gates are FFT-bin-blind, harminv resolves <0.05%):
     8000/12000/16000 steps; the mode is high-Q clean).
   * UNIFORM mesh, SAME extents (grading OFF): TM110 signed error **+2.47%**.
 
-The +2.4% bias is therefore NOT introduced by grading — it is present, to within
-0.04 pt, on the ungraded profile of the same coarse resolution. **The POSITIVE
-finding stands and is why this comparison was worth making: in-plane
-``dx_profile`` / ``dy_profile`` grading is faithful — it does not corrupt the
-resonance beyond the shared baseline.** Convergence direction (independent
-evidence the agreement is genuine): the error is dominated by the coarse 1mm
-bulk, not the 0.25mm fine band.
+The +2.4% bias was therefore NOT introduced by grading — it was present, to
+within 0.04 pt, on the ungraded profile of the same coarse resolution. That
+comparison was worth making, but read it for what it shows: **both legs shared a
+baseline that #562 dominated**, so it established that grading did not ADD to a
+2.4% defect, not that grading is free.
+
+With the defect gone the same comparison resolves the real grading term, measured
+at IDENTICAL extents on this harness: **graded 4:1 = 0.0282%, ungraded = 0.0084%
+— grading adds ~0.02 pt, a factor 3.35x above the uniform floor.** So grading is
+now the DOMINANT contribution rather than a null effect; both numbers remain
+negligible against the 0.05% gate, which is the honest form of the original
+claim. (Caveat checked, not assumed: matching the graded extents forces uniform
+cells of 1.0083/1.0096 mm, +0.83%/+0.96% over the nominal 1 mm — far too small to
+account for 3.35x. Corroborating points at the ~0.01% floor: the round-1 uniform
+leg 0.0108% and #564's committed -0.007%.)
+
+Convergence direction (independent evidence the agreement is genuine): the error
+is dominated by the coarse 1mm bulk, not the 0.25mm fine band.
 
 WHAT THAT SHARED BASELINE ACTUALLY WAS — correction (#562, 2026-08-04). This
 docstring attributed the +2.4% to "the standard coarse-Yee PEC-cavity
@@ -59,15 +70,21 @@ TM110 by harminv), before the fix: uniform builder **-0.007%**, NU builder
 built — both solvers were accurate; only one built the requested cavity). After
 restoring the bounding node the two builders are bit-identical on an identical
 mesh, and THIS test reads **0.028%** (was 2.43%) on the same graded geometry.
-The 3.5% gate below is now ~125x looser than the measured residual; tightening
-it is a separate, evidence-first decision.
+That left the then-3.5% gate ~125x looser than the measured residual; this PR
+makes the tightening, deriving 0.05% from the measured envelope (see the gate
+block in the body).
 
 LEVERAGE (honest power of this gate): because TM110's frequency is set 100% by the
 graded in-plane extents, this gate catches graded-metric errors on x/y directly
 (no sqrt-dilution). It is a full-FDTD end-to-end analytic anchor — the coverage
 the #403 blind-spot lacked. Since the gate became 0.05% it IS a sub-percent
-probe: an effective-extent error of roughly 0.12-0.17% now trips it, where the
-3.5% gate needed 12-17%. (The per-stencil CORE-C2 guard,
+probe, and because there is no dilution here the numbers follow the gate almost
+directly: TM110's f^2 shares are 0.4296 (a-axis) and 0.5704 (b-axis), so tripping
+0.05% takes an effective-extent error of 0.05% (both axes together) to 0.12%
+(a-axis alone), where the old 3.5% gate needed 3.5-8.1%. (An earlier revision of
+this paragraph imported the z-sibling's sqrt-diluted 12-17% figure into this
+file, two sentences after asserting there is no dilution, and rescaled it by the
+z gate's ratio — corrected here from the closed form.) (The per-stencil CORE-C2 guard,
 test_review_tier1_validation_battery.py::test_corec2_*, still covers the
 stencil-level question this end-to-end test cannot isolate.)
 """

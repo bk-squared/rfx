@@ -156,7 +156,10 @@ def run_gate() -> Stage1NUGateResult:
     # (the exact secondary number is window/pad-factor dependent). The old
     # "1%" gate was luck: the true 5.433 GHz peak snapped down into the 5.298 GHz
     # bin (0.03%). 3.5% = measured 2.54% + margin; harminv resolves <0.05% so this
-    # now actually binds a real regression, unlike the ±5% argmax window (#396).
+    # now actually binds a real regression, unlike the ±5% argmax window (#396)
+    # — TRUE WHEN WRITTEN, stale now: post-#562 the measured residual is 0.0144%,
+    # so this 3.5% bound is ~243x loose and binds nothing. Re-deriving it from a
+    # fresh envelope is the follow-up this file promises and does not yet have.
     if gate.resonance_error_pct > 3.5:
         raise AssertionError(
             f"resonance error {gate.resonance_error_pct:.3f}% exceeds the "
