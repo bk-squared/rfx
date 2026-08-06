@@ -157,10 +157,34 @@ GEOMETRY_COMPONENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 # lab dataset, same source cv11 loads). Values are embedded in the committed
 # artifact, so the fixture stays clean-checkout-replayable; only the PRODUCER
 # needs this file present at build time (like the uniform producer's cv11 stdout).
-PALACE_REF = (
-    REPO.parent
-    / "microwave-energy/results/rfx_crossval_wr90_palace/wr90_palace_reference.json"
-)
+#
+# Resolved rather than hard-coded: the old `REPO.parent / "microwave-energy/..."`
+# assumed the primary checkout's sibling layout and raised a bare
+# FileNotFoundError in every worktree and clone, where the dataset sits under a
+# different ancestor. Walk up from the repo, then take an explicit override, and
+# say what was searched if neither works. No absolute local path belongs in a
+# public file, which is why the override is an env var and not a default.
+_PALACE_REL = Path(
+    "microwave-energy/results/rfx_crossval_wr90_palace/wr90_palace_reference.json")
+_PALACE_ENV = "RFX_PALACE_WR90_REFERENCE"
+
+
+def _resolve_palace_ref() -> Path:
+    override = os.environ.get(_PALACE_ENV)
+    if override:
+        p = Path(override).expanduser()
+        if not p.is_file():
+            raise SystemExit(f"{_PALACE_ENV}={override} is not a readable file")
+        return p
+    for ancestor in (REPO, *REPO.parents):
+        cand = ancestor / _PALACE_REL
+        if cand.is_file():
+            return cand
+    raise SystemExit(
+        "WR-90 Palace reference not found. It is a gitignored lab dataset, not "
+        "part of this repo.\n"
+        f"  searched <ancestor>/{_PALACE_REL} for every ancestor of {REPO}\n"
+        f"  override with {_PALACE_ENV}=/path/to/wr90_palace_reference.json")
 
 
 def _graded_dy(total: float, base_dx: float, ratio: float) -> np.ndarray:
@@ -210,8 +234,16 @@ def _run_geometry(geom: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]
     return np.asarray(r.freqs), s11, s21, float(dy.max() / dy.min())
 
 
+def _palace_digest() -> str:
+    """Digest of the reference actually used — it identifies WHICH reference
+    produced these numbers without embedding anyone's local filesystem in a
+    public artifact."""
+    import hashlib
+    return hashlib.sha256(_resolve_palace_ref().read_bytes()).hexdigest()[:16]
+
+
 def _load_palace(geom: str, comp: str) -> np.ndarray:
-    d = json.loads(PALACE_REF.read_text())
+    d = json.loads(_resolve_palace_ref().read_text())
     block = d["r_h2"][geom]
     key = comp.lower()
     return np.array([complex(a, b) for a, b in block[key]], dtype=np.complex128)
@@ -248,6 +280,19 @@ def build(output_dir: Path) -> dict[str, Any]:
                 "ref_mag_range": [float(np.abs(ref).min()), float(np.abs(ref).max())],
                 "max_mag_abs_diff": pmax,
                 "mean_mag_abs_diff": pmean,
+                # PER-BIN arrays (#576 review F4). Without these, every scalar
+                # above is a frozen number that can only be pinned, never
+                # re-derived, and any claim about WHERE in the band a residual
+                # or an over-unity bin sits is unfalsifiable from the artifact.
+                # That is not hypothetical: this PR's review caught me asserting
+                # the excess was band-edge localized when the producer's own
+                # spectrum peaks at the other end. The gate test now recomputes
+                # max/mean/range from these and cross-checks the passivity
+                # bound per bin, so the scalars are derived, not trusted.
+                "freqs_ghz": [round(float(f) / 1e9, 6)
+                              for f in rfx_s[geom]["freqs"]],
+                "rfx_mag": [round(float(v), 9) for v in np.abs(rfx)],
+                "ref_mag": [round(float(v), 9) for v in np.abs(ref)],
                 "status": (
                     "passed"
                     if pmax <= MAX_MAG_ABS_TOL and pmean <= MEAN_MAG_ABS_TOL
@@ -260,7 +305,11 @@ def build(output_dir: Path) -> dict[str, Any]:
     status = "passed" if not failed else "failed"
     payload: dict[str, Any] = {
         "schema": "rfx.waveguide_wr90_nu_flux_broad_e4_comparison",
-        "schema_version": 1,
+        # 2: added the per-bin freqs_ghz / rfx_mag / ref_mag arrays
+        # (#576 review F4). Additive only — every v1 key is still present
+        # and every v1 consumer keeps working; the bump is so a reader can
+        # tell whether a given artifact predates the per-bin evidence.
+        "schema_version": 2,
         "status": status,
         "evidence_level": (
             "E4-broad-external-palace-fem-nonuniform-graded-dy-wr90-multigeometry-te10"
@@ -306,6 +355,7 @@ def build(output_dir: Path) -> dict[str, Any]:
         # absorber a number came from, which is exactly the confusion that made
         # the 0.33-lambda_g run look like a solver result.
         "setup": {
+            "external_reference_sha256": _palace_digest(),
             "cpml_layers": int(CPML),
             # Analytic lambda_g at the lowest measured frequency. The runtime
             # advisory reports a slightly different fraction (0.36 where this
