@@ -50,7 +50,9 @@ STEPS = 1200
 
 # Deliberately NOT marked slow: the whole point is that this runs in the default
 # lane. An anchor the fast suite deselects would have missed #562's F1 exactly
-# the way the existing suite did. Measured 6.5 s for all three cases.
+# the way the existing suite did. Measured 29.8 s for the five cases here (it
+# was 6.5 s for three before the boundary axis was added) — worth keeping in
+# view against the fast-lane time pressure #545 tracks.
 
 
 def _f110(dx: float) -> float:

@@ -834,11 +834,28 @@ class Simulation(
            snapshots, flux and NTFF outputs are reported as-is and are affected
            either way.
 
-           Measured cross-path agreement after removing the applicable factor:
-           1.5e-5 of full scale (PEC), 1.1e-4 (CPML), 9.5e-6 with
-           ``subpixel_smoothing=True`` — see
-           ``tests/test_nonuniform_uniform_end_to_end_reduction.py``, which pins
-           both factors. See issue #571 for whether to unify the two
+           Measured cross-path agreement after removing the applicable factor,
+           all four combinations — the fourth is the one to read:
+
+           ==================  =====================  ====================
+           uniform boundary    ``subpixel_smoothing``  agreement (of scale)
+           ==================  =====================  ====================
+           ``pec``             off                    1.5e-5
+           ``pec``             on                     9.5e-6
+           ``cpml``            off                    1.1e-4
+           ``cpml``            **on**                 **1.98e-2**
+           ==================  =====================  ====================
+
+           **The open-boundary + subpixel case does NOT reduce**: a systematic
+           0.18 % amplitude error and 2 % of the waveform, stable across a 4x
+           record length. That is an open defect (issue #582), not a tolerance —
+           so do not read the three good rows as clearance for subpixel
+           smoothing on an open domain, which is the combination issue #565 was
+           about.
+
+           ``tests/test_nonuniform_uniform_end_to_end_reduction.py`` pins all
+           four (the last as ``xfail(strict=True)``, so it announces itself when
+           fixed). See issue #571 for whether to unify the two source
            conventions.
 
         Parameters
