@@ -203,9 +203,15 @@ def main() -> int:
               f"(agree to {adj_diff[i]*100:.4f}%)")
         print(f"  window [{h_lo:.1e}, {h_hi:.1e}] worst rel_err: "
               f"{float(rels[in_window].max()):.5f}")
-        print("  -- this is the window a gate should be derived from; h "
-              "values outside it are diagnostic, not gate inputs (see the "
-              "module docstring).")
+        print("  -- a LOWER BOUND on the converged window, not the gate's own "
+              "window: the committed gate (tests/test_coax_two_port_ad.py) "
+              "derives its threshold from the WIDER {1e-3, 2e-3, 5e-3} window "
+              "(worst rel_err 0.01053, not this pair's 0.00508) -- a "
+              "deliberately more conservative choice than the bare minimum "
+              "this auto-detected pair would justify, since h=1e-3 is still "
+              "reasonably well-behaved (not part of the tightest pair, but "
+              "not floor-noise-dominated the way h<=5e-4 is either). h values "
+              "outside the gate's own window are diagnostic, not gate inputs.")
 
     stable = spread <= 0.05
     if stable:

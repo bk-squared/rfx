@@ -145,7 +145,9 @@ POINTS INSIDE that window (``h`` in ``{1e-3, 2e-3, 5e-3}``), not the full
 not a property of AD accuracy at ``eps_scale=1.0``) is a step-size-selection
 judgment, made and disclosed BEFORE reading it as license to loosen anything
 -- it makes the gate TIGHTER (2%) than deriving from the full 7-point sweep
-would (17%), not looser. Worst of the 3-point window is 0.01053 (h=1e-3);
+would (``gate_from_envelope(0.16997, quantum=100) == 0.26``, i.e. 26%, not
+merely the raw 17% worst-rel_err before the 1.5x multiplier), not looser.
+Worst of the 3-point window is 0.01053 (h=1e-3);
 ``tests._gate_policy.gate_from_envelope(0.01053, quantum=100) == 0.02``. At
 the gate's own ``h=2e-3`` the measured rel_err is 0.00508, so the 2%
 threshold carries ~3.9x margin over what is actually asserted.
@@ -303,6 +305,22 @@ _REL_ERR_THRESHOLD = gate_from_envelope(_WORST_MEASURED_REL_ERR, quantum=100)
 # bidirectional anchor _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100 (that
 # file's own discipline) holds here: 1e4 * 0.02 = 200.
 _MIN_FD_ULP_SPAN = 1.0e4
+
+# COMMITTED as a module-level assert, not left as a comment (adversarial
+# review, 2026-08-05): tests/test_msl_ad_fd_converged.py enforces this same
+# invariant in an executable check
+# (test_comparator_floor_rejects_the_f32_reference_that_caused_527); a
+# comment alone would let a future editor tighten _REL_ERR_THRESHOLD below
+# 100/_MIN_FD_ULP_SPAN without ever being told to also raise the
+# resolving-power floor. Runs at collection time (no simulation needed),
+# so it fires even if nobody runs the slow_physics gate test itself.
+assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0, (
+    f"_MIN_FD_ULP_SPAN ({_MIN_FD_ULP_SPAN:.0e}) combined with "
+    f"_REL_ERR_THRESHOLD ({_REL_ERR_THRESHOLD:.2f}) gives only "
+    f"{_MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD:.0f}x combined margin, under "
+    "this repo's own 100x floor (tests/test_msl_ad_fd_converged.py). "
+    "Raise _MIN_FD_ULP_SPAN before tightening _REL_ERR_THRESHOLD further."
+)
 
 # Not merely isfinite/nonzero (the #515-class defect: those cannot fail on a
 # severed tape reading exactly 0.0). Derived with ~40x headroom below the
