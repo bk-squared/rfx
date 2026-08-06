@@ -14,14 +14,29 @@ And issue #545 step 3 (the live sampler, closing the discriminator gap the
 2026-08-06 run 31103127491 writeup disclosed: ru_maxrss only updates in the
 post-test hook, so the RSS at the exact SIGKILL instant is never captured):
   - _read_proc_vmhwm_mb reads a real number on this (Linux) box and returns
-    None -- never raises -- when /proc is unavailable,
+    None -- never raises -- when /proc is unavailable, and agrees with an
+    INDEPENDENT measurement (resource.getrusage's ru_maxrss) to within a
+    generous band, so a kB/MB unit-conversion mutation cannot silently pass,
   - _RSSLiveSampler prints the documented "[rss-live] VmHWM N MB [during
     nodeid]" line only once VmHWM has advanced past the threshold, using
-    synthetic readings (no real GB allocation in a test),
+    synthetic readings (no real GB allocation) for the pure line-format unit
+    tests,
   - the sampler's thread is an actual daemon thread that starts and stops
-    cleanly, and
+    cleanly,
   - _RSSHighWaterReporter.pytest_sessionstart/pytest_sessionfinish start and
-    stop that thread, gated the same way the reporter itself is gated.
+    stop that thread, gated the same way the reporter itself is gated, and
+  - THE property PR #592 review demanded: a background thread's bare
+    ``print()`` is invisible under pytest's own capture unless ``-s`` is
+    passed (measured: 0 [rss-live] lines at -v -ra with default fd-capture,
+    including under a `timeout -s KILL` rehearsal of the exact scenario, and
+    even with --capture=tee-sys; 3 lines with -s). The unit tests above bind
+    the STRING the sampler builds (via capsys, calling _sample_once
+    directly) -- they do NOT prove that string is ever DELIVERED anywhere a
+    human or CI log could see it. Only a real subprocess pytest run, killed
+    with SIGKILL and inspected from OUTSIDE pytest's own capture layer
+    (subprocess.run's stdout pipe), proves delivery. See
+    test_live_sampler_line_survives_sigkill_with_dash_s and its
+    without-`-s` regression-pin sibling below.
 
 conftest.py sits at the repo root and pytest's default "prepend" import mode
 has already loaded it as the top-level module ``conftest`` by the time this
@@ -30,11 +45,14 @@ module object rather than re-executing the file.
 """
 
 import os
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 import conftest
 
@@ -173,6 +191,26 @@ def test_read_proc_vmhwm_mb_returns_none_when_proc_is_unreadable(monkeypatch):
     assert conftest._read_proc_vmhwm_mb() is None
 
 
+def test_read_proc_vmhwm_mb_agrees_with_independent_ru_maxrss_band():
+    """Cross-check against an INDEPENDENT measurement (resource.getrusage's
+    ru_maxrss, KB on Linux -- the same call _RSSHighWaterReporter._maxrss_kb
+    uses) so a unit-conversion mutation (e.g. dropping the /1024.0, or
+    reading the wrong /proc/self/status field) cannot silently pass: VmHWM
+    and ru_maxrss are two different kernel-accounting paths to the same
+    process's peak RSS, not byte-identical, but they must never be off by
+    an order of magnitude."""
+    vmhwm_mb = conftest._read_proc_vmhwm_mb()
+    assert vmhwm_mb is not None
+    ru_maxrss_mb = conftest._RSSHighWaterReporter._maxrss_kb() / 1024.0
+    assert ru_maxrss_mb > 0.0
+
+    ratio = vmhwm_mb / ru_maxrss_mb
+    assert 0.5 < ratio < 2.0, (
+        f"VmHWM={vmhwm_mb:.1f} MB vs ru_maxrss={ru_maxrss_mb:.1f} MB, "
+        f"ratio={ratio:.2f} outside the expected band -- possible unit-conversion bug"
+    )
+
+
 def test_live_sampler_line_format_with_nodeid(monkeypatch, capsys):
     """Synthetic reading (no real allocation): a delta past the threshold
     prints the documented "[rss-live] VmHWM N MB during <nodeid>" line."""
@@ -267,3 +305,100 @@ def test_reporter_updates_live_sampler_current_nodeid_during_test():
         next(gen)
     except StopIteration:
         pass
+
+
+# ---------------------------------------------------------------------------
+# THE property (PR #592 review, CRITICAL): does an [rss-live] line actually
+# survive a real SIGKILL, observed from OUTSIDE pytest's own capture layer?
+# The tests above bind the sampler's output STRING via capsys; none of them
+# prove DELIVERY through pytest's real stdout capture machinery. Only a
+# subprocess pytest run, killed for real and inspected via subprocess.run's
+# own stdout pipe (a wholly separate capture layer from pytest's internal
+# one), proves that.
+
+
+def test_rss_live_sampler_helper_allocates_and_self_sigkills():
+    """NOT a standalone test -- a subprocess helper for
+    test_live_sampler_line_survives_sigkill_with_dash_s and
+    test_live_sampler_line_lost_without_dash_s below. Skips immediately
+    unless RFX_TEST_SIGKILL_HELPER=1 is set (only those two driver tests set
+    it, in a CHILD subprocess), so this function is inert in every normal
+    run of this file, including this file's own collection in the
+    fast/weekly lanes.
+
+    Allocates ~60 MB (comfortably above the low RFX_WEEKLY_RSS_THRESHOLD_MB
+    the driver sets, and nowhere near "GB" scale), sleeps long enough for
+    the live sampler's REAL ~2s poll cadence (this deliberately does not
+    shorten interval_s -- it exercises the exact production default) to
+    observe the jump and print at least one line, then SIGKILLs its own
+    process -- reproducing the OOM-style hard kill mid-test that issue #545
+    is about, without needing an actual multi-GB allocation.
+    """
+    if os.environ.get("RFX_TEST_SIGKILL_HELPER") != "1":
+        pytest.skip("subprocess-only helper; set RFX_TEST_SIGKILL_HELPER=1 to run it")
+    buf = bytearray(60 * 1024 * 1024)  # 60 MB
+    for i in range(0, len(buf), 4096):
+        buf[i] = 1  # touch every page so it's actually resident, not just reserved
+    time.sleep(3.0)  # >= one full real _RSSLiveSampler interval_s (2.0s default), with margin
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def _run_sigkill_helper_subprocess(extra_pytest_args):
+    root = Path(__file__).resolve().parent.parent
+    env = dict(os.environ)
+    env["RFX_TEST_SIGKILL_HELPER"] = "1"
+    env["RFX_WEEKLY_RSS"] = "1"
+    env["RFX_WEEKLY_RSS_THRESHOLD_MB"] = "10"  # low so the 60 MB helper alloc trips it
+    return subprocess.run(
+        [
+            sys.executable, "-m", "pytest", *extra_pytest_args, "-v",
+            "tests/test_weekly_rss_reporter.py::test_rss_live_sampler_helper_allocates_and_self_sigkills",
+        ],
+        cwd=str(root),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+
+def test_live_sampler_line_survives_sigkill_with_dash_s():
+    """THE property (PR #592 review, CRITICAL fix): with -s (--capture=no),
+    the live sampler's background-thread prints reach the real stdout fd, so
+    flush=True actually lands the line before a SIGKILL. This is what
+    validation.yml's -s flag (added in this fix) is load-bearing for --
+    without it, this exact scenario prints nothing (see the sibling
+    regression-pin test below)."""
+    result = _run_sigkill_helper_subprocess(extra_pytest_args=["-s"])
+
+    assert result.returncode == -signal.SIGKILL, (
+        f"expected the child to die from SIGKILL, got returncode={result.returncode}\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "[rss-live] VmHWM" in result.stdout, (
+        "expected at least one [rss-live] line to survive the SIGKILL under -s\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+
+
+def test_live_sampler_line_lost_without_dash_s():
+    """Regression pin for WHY -s is required in validation.yml: under
+    pytest's DEFAULT capture (no -s), the identical scenario prints nothing
+    to the outer process's stdout -- pytest's fd-level capture redirects the
+    real stdout fd to its own internal per-test buffer, which is lost (not
+    replayed) on a SIGKILL mid-test. If a future edit drops -s from the
+    workflow, THIS is the silent loss it would reintroduce; if this
+    assertion ever starts failing (i.e. the line DOES show up here), that
+    means pytest's capture behavior changed and validation.yml's -s flag
+    may no longer be load-bearing -- re-verify before removing it."""
+    result = _run_sigkill_helper_subprocess(extra_pytest_args=[])
+
+    assert result.returncode == -signal.SIGKILL, (
+        f"expected the child to die from SIGKILL, got returncode={result.returncode}\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "[rss-live] VmHWM" not in result.stdout, (
+        "expected NO [rss-live] line without -s (pytest's default capture "
+        "should swallow it)\n"
+        f"stdout={result.stdout}"
+    )

@@ -15,25 +15,54 @@ jobs:
   # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
   # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
   # zero assertions/exceptions) are OOM: every killed shard's process had
-  # already crossed 12-15 GB RSS high-water before its own death, 2-2.5x the
-  # ~7 GB hosted-runner-class ceiling. The fatal tests in each case were
-  # memory-heavy (8-24 GB) but TIME-cheap (38-100s); pytest-split's
-  # duration_based_chunks balances on time only, so it freely relocates these
-  # tests between shards on every .test_durations regeneration -- a fresh
-  # durations file is a coin flip for which shards OOM next. The fix is to
-  # pull the 7 confirmed memory-heavy tests (marked `highmem`, see pyproject
-  # markers + issue #545's discriminator-run comment for the per-test
-  # deltas/peaks) out of the time-balanced shard rotation entirely and run
-  # them in their own job, one process at a time, so at most one multi-GB
-  # peak exists on the runner at any instant.
+  # already crossed 12-15 GB RSS high-water before its own death. pytest-split's
+  # duration_based_chunks balances on time only, so it freely relocates the 7
+  # confirmed memory-heavy (3-24 GB, TIME-cheap at 38-100s each) tests between
+  # shards on every .test_durations regeneration -- a fresh durations file is a
+  # coin flip for which shards OOM next. The fix is to pull those 7 tests
+  # (marked `highmem`, see pyproject markers + issue #545's discriminator-run
+  # comment for the per-test deltas/peaks) out of the time-balanced shard
+  # rotation entirely and run them in their own job, one process at a time, so
+  # at most one multi-GB peak exists on the runner at any instant.
+  #
+  # CORRECTED runner ceiling: PR #592 review re-measurement puts the actual
+  # ceiling at ~16 GB, not ~7 GB -- two witnesses: shard 1 SURVIVED past
+  # 14,976 MB (its own entering-state reading, not a death), and the ~8.9 GB
+  # msl-referee highmem test (test_auto_eps_msl_gradient_matches_fd_mini_referee)
+  # passes on ubuntu-latest in the DEFAULT fast lane on every PR. So this is
+  # NOT "several tests each ~2x an ~7 GB ceiling" -- it is ONE test
+  # (test_forward_tfsf_oblique_differentiable, ~24 GB own footprint, ~1.5x the
+  # ~16 GB ceiling) that will not fit under any serialization, plus 6 tests
+  # that do fit under ~16 GB and only needed to stop competing for headroom
+  # with the rest of a 3300-test shard.
+  #
+  # PREDICTION (not yet proven -- this split has not run in CI): the 4-shard
+  # slow-tests job should stop OOMing now that the highmem tests are gone.
+  # slow-tests-highmem will likely still see
+  # test_forward_tfsf_oblique_differentiable exit 143 -- serialization removes
+  # the ~4 GB of accumulated baseline from co-located tests, which is not
+  # enough to fit a ~24 GB single-test footprint under a ~16 GB ceiling. If
+  # that happens, this IS still an improvement (a single named, reproducible
+  # test death is a strictly better signal than "one of ~1500 tests in a
+  # randomly balanced shard died somewhere"), not evidence the split failed.
+  # Next steps per issue #545 item 3, in order of preference: (a) an explicit
+  # checkpoint_segments count for that test's forward, to see whether its ~24
+  # GB tape is compressible; (b) a larger-runner label for slow-tests-highmem
+  # if (a) does not land it under ~16 GB; (c) exclude it from CI entirely and
+  # track it as a manual/local-only regression check.
   #
   # .test_durations interaction: the 4-shard job's selection (`not gpu and
   # not highmem`) now excludes the 7 highmem tests, so duration_based_chunks
-  # balances only over the remaining ~3312 tests. No regeneration of
-  # .test_durations is needed for this split -- pytest-split's
-  # --collect-only entry simply won't see the deselected highmem tests, and
-  # the file's existing per-test duration entries for them (if present) are
-  # just unused by this selection, not stale/wrong.
+  # balances only over the rest of the "not gpu" suite (~3300 tests; the exact
+  # count depends on which optional extras -- e.g. `cad` -- are installed, but
+  # the partition invariant, shard-selection-count + highmem-selection-count
+  # == old not-gpu-selection-count with no overlap, holds regardless: verified
+  # both at 3320 = 3312 + 8 without optional extras and at 3328 = 3320 + 8
+  # with them installed, --collect-only, PR #592). No regeneration of
+  # .test_durations is needed for this split -- pytest-split's --collect-only
+  # entry simply won't see the deselected highmem tests, and the file's
+  # existing per-test duration entries for them (if present) are just unused
+  # by this selection, not stale/wrong.
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
@@ -73,6 +102,19 @@ jobs:
       # kill from a pure infra shutdown if a shard is killed again — no-op
       # elsewhere (fast-suite/pr-tests.yml do not set this).
       #
+      # -s (issue #545 step 3, PR #592 review): REQUIRED for the live sampler's
+      # background-thread prints to survive at all. Measured directly: under
+      # pytest's default fd-level capture (no -s), a completing test's
+      # [rss-live] lines are captured into pytest's internal per-test buffer
+      # and never surface -- 0 lines, even under a `timeout -s KILL` rehearsal
+      # of the exact SIGKILL scenario this sampler exists for, and even with
+      # `--capture=tee-sys`. Only `-s` (`--capture=no`) sends the thread's
+      # writes straight to the real stdout fd, where flush=True can actually
+      # do its job. See
+      # tests/test_weekly_rss_reporter.py::test_live_sampler_line_survives_sigkill_with_dash_s
+      # (and its without-`-s` regression-pin sibling) for the subprocess-level
+      # proof of this property.
+      #
       # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
       # move to the slow-tests-highmem job below, see the block comment above
       # this job for why.
@@ -80,7 +122,7 @@ jobs:
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
-          pytest -v -ra
+          pytest -v -ra -s
           -m "not gpu and not highmem"
           --splits 4 --group ${{ matrix.group }}
           --ignore=tests/test_meep_crossval.py
@@ -91,11 +133,15 @@ jobs:
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the
   # block comment on slow-tests above for the full OOM evidence this responds
-  # to. These tests are individually time-cheap (measured 38-100s each, ~6-8
-  # min total compute across all 7) but memory-heavy (8-24 GB RSS high-water
-  # each per issue #545's discriminator run), so a generous timeout here is
-  # about tolerating a slow/loaded runner, not about the tests' own compute
-  # cost.
+  # to, INCLUDING the prediction that test_forward_tfsf_oblique_differentiable
+  # (~24 GB own footprint) is likely to still exit 143 here even serialized,
+  # since serialization only removes accumulated co-located-test baseline, not
+  # that one test's own footprint, which alone exceeds the corrected ~16 GB
+  # ceiling. These tests are individually time-cheap (measured 38-100s each,
+  # ~6-8 min total compute across all 7) but memory-heavy (3-24 GB RSS
+  # high-water each per issue #545's discriminator run), so a generous
+  # timeout here is about tolerating a slow/loaded runner, not about the
+  # tests' own compute cost.
   slow-tests-highmem:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -112,11 +158,13 @@ jobs:
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
 
+      # -s: required for the live sampler's prints to survive a SIGKILL --
+      # see the matching comment on the slow-tests job above.
       - name: Run highmem suite (serial, one multi-GB peak at a time)
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
-          pytest -v -ra
+          pytest -v -ra -s
           -m "highmem and not gpu"
           --ignore=tests/test_meep_crossval.py
           --ignore=tests/test_meep_crossval_dielectric_cavity.py

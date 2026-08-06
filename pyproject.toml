@@ -81,7 +81,7 @@ markers = [
     "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
     "distributed: tests that require multi-device / distributed setup (deselect with '-m not distributed')",
     "slow_physics: release-tag-time physics regression gate (V173-A bit-identity); opt-in with '-m slow_physics'",
-    "highmem: memory-heavy weekly-lane tests (issue #545, 8-24 GB RSS high-water each); run serially in the dedicated weekly slow-tests-highmem job, ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts below only filters not gpu/slow/slow_physics)",
+    "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially in the dedicated weekly slow-tests-highmem job, ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
 ]
 
 [tool.mypy]

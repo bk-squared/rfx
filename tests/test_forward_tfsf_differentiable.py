@@ -60,9 +60,17 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     assert rel < 0.05, f"grad {g:.4f} vs FD {fd:.4f} rel_err {rel*100:.1f}% > 5%"
 
 
-# highmem (issue #545): measured peak RSS 23.78 GB locally (taskset -c 0-1);
-# the shard-1 kill in weekly run 31103127491 crossed 14,976 MB high-water on
-# this test, 2x+ the ~7 GB hosted-runner class ceiling.
+# highmem (issue #545): this test's own footprint is UNMEASURED in CI --
+# the [rss] post-test hook only prints AFTER a test completes, and this is
+# the test that got killed (shard 1, weekly run 31103127491), so its own
+# hook line never fired. The process was already at 14,976 MB *entering*
+# this test -- that number is the PRECEDING (coax) test's own reading, not
+# this test's. Measured directly instead: 23.78 GB peak locally
+# (taskset -c 0-1), 23,964 MB on independent standalone remeasurement --
+# ~1.5x the corrected ~16 GB runner-class ceiling (see validation.yml's
+# block comment). This test is PREDICTED to still be killed even
+# serialized into its own job; serialization removes accumulated baseline,
+# not this test's own ~24 GB.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_forward_tfsf_oblique_differentiable():

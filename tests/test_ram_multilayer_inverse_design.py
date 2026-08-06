@@ -322,10 +322,13 @@ def test_ram_magnitude_vs_tmm(ram_run):
         f"absorption dip: FDTD {20*np.log10(g_fd[i0]):.1f} dB, TMM {20*np.log10(g_nom[i0]):.1f} dB"
 
 
-# highmem (issue #545): the [sigma-1.0] case was the fatal test in the
-# shard-3 kill in weekly run 31103127491 (14,854 MB high-water); the eps
-# case shares the same checkpointed forward and is marked with it (pytest
-# marks apply per-function, not per-parametrize-case).
+# highmem (issue #545): the [sigma-1.0] case was the test killed in shard 3
+# (weekly run 31103127491) -- its own footprint is UNMEASURED in CI, since
+# the [rss] post-test hook never fired for it (the process died first). The
+# process was already at 14,854 MB *entering* it -- that number belongs to
+# the PRECEDING mu_r highmem test, not this one. The eps case shares the
+# same checkpointed forward and is marked with it (pytest marks apply
+# per-function, not per-parametrize-case).
 @pytest.mark.slow
 @pytest.mark.highmem
 @pytest.mark.parametrize("var,x0", [("sigma", 1.0), ("eps", 4.0)])

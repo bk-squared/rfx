@@ -181,7 +181,21 @@ class _RSSLiveSampler:
 
     def _run(self) -> None:
         while not self._stop_event.wait(self.interval_s):
-            self._sample_once()
+            try:
+                self._sample_once()
+            except (ValueError, OSError):
+                # Narrow teardown-race guard ONLY: if the main thread has
+                # already moved past pytest_sessionfinish / interpreter
+                # shutdown by the time this daemon thread wakes for its next
+                # sample, stdout (or the pipe under it) can already be
+                # closed -- CPython raises ValueError ("I/O operation on
+                # closed file") or OSError/BrokenPipeError in that case.
+                # Deliberately NOT a bare `except Exception`: see
+                # feedback_broad_except_eats_async_timeout (#555), where a
+                # broad except in preflight swallowed a real SIGALRM timeout
+                # and hung the process. A genuine bug in _sample_once should
+                # still crash this thread loudly, not vanish here.
+                return
 
 
 class _RSSHighWaterReporter:
