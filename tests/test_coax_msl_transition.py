@@ -1144,18 +1144,27 @@ SETTLED_RUN_RECORD = {
     "target_n_steps": 135000,
     "target_n_steps_derivation": (
         "Extrapolated from the two measured local checkpoints (20000 "
-        "steps -> -12.3/-10.7 dB, 45000 steps -> -19.7/-17.9 dB): "
-        "roughly 7.4-7.9 dB gained per +25000 steps in this range: "
-        "reaching -40 dB from -19.7 dB needs another ~20.3 dB, i.e. "
-        "roughly 3x the 25000-step increment already spent (25000 -> "
-        "45000), landing near 45000 + 3*25000 = 120000-135000 steps. "
-        "This is a linear extrapolation of a process that may not "
-        "actually be linear (ring-down decay is often closer to "
-        "exponential in TIME, i.e. linear in STEPS on a dB scale, which "
-        "is the assumption here) -- treat the target as a starting "
-        "estimate to calibrate against, not a guarantee, exactly as "
-        "attempt 2's own local calibration (20000 -> 45000) needed one "
-        "correction already."
+        "steps -> -12.3/-10.7 dB, 45000 steps -> -19.69/-17.94 dB, see "
+        "settling_db_by_checkpoint in PREDECLARATION_ATTEMPT2): 7.39 dB "
+        "gained on port 0 and 7.24 dB gained on port 1 per +25000 steps "
+        "in this range (an earlier revision of this text rounded these "
+        "same two numbers to a looser '7.4-7.9 dB' band -- corrected "
+        "here to the precise per-port deltas). Reaching -40 dB from the "
+        "WORSE (less-negative) of the two checkpoints, -17.94 dB, needs "
+        "another ~22.1 dB, i.e. roughly 3x the 25000-step increment "
+        "already spent (25000 -> 45000): the formula 45000 + 3*25000 "
+        "gives exactly 120000 steps, not a '120000-135000' range (an "
+        "earlier revision of this text conflated the formula's output "
+        "with the chosen target and stated it as a range). "
+        "target_n_steps is set to 135000, not 120000 -- the extra "
+        "15000 steps above the formula's 120000 are deliberate margin, "
+        "not part of the linear extrapolation itself. This is a linear "
+        "extrapolation of a process that may not actually be linear "
+        "(ring-down decay is often closer to exponential in TIME, i.e. "
+        "linear in STEPS on a dB scale, which is the assumption here) "
+        "-- treat the target as a starting estimate to calibrate "
+        "against, not a guarantee, exactly as attempt 2's own local "
+        "calibration (20000 -> 45000) needed one correction already."
     ),
     "vessl_pattern": (
         "The branch-clone pattern from #561/#559 (VESSL job clones this "
@@ -1489,7 +1498,16 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     # strict_passivity=True would invoke, directly on this run's already-
     # obtained result -- equivalent verification without a second ~20-
     # minute FDTD run (the guard itself is a pure post-processing check,
-    # no FDTD involved).
+    # no FDTD involved). On the real strict_passivity=True path,
+    # compute_coax_msl_transition does not call _warn_if_nonpassive_smatrix
+    # directly either -- it returns through the shared
+    # rfx.api._sparams._finalize_sparam_result(result_obj,
+    # extractor="compute_coax_msl_transition", strict=strict_passivity)
+    # epilogue (also used by compute_waveguide_s_matrix and
+    # compute_coaxial_s_matrix), which is the one call site that actually
+    # invokes this guard function in production; calling it directly here
+    # is a faithful stand-in, not a different code path (issue #585
+    # final-verify, nit n2).
     from rfx.api._sparams import _warn_if_nonpassive_smatrix
     with pytest.raises(ValueError, match="UNRELIABLE"):
         _warn_if_nonpassive_smatrix(

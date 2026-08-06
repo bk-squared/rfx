@@ -1707,6 +1707,18 @@ class CoaxMSLTransitionResult:
     attempt 2; the next step is the settled VESSL run, not a third
     ladder/clearance change.
 
+    DISCLOSURE (issue #585 final-verify, finding G1): the shared passivity
+    guard both attempts rely on (``rfx/validation.py``'s ``check_passivity``
+    block, ``strict_passivity=True`` path — see
+    :func:`rfx.api._sparams._finalize_sparam_result`) checks only whether
+    ``max column power`` EXCEEDS its upper limit; it has no lower-bound
+    check at all, so a column power far BELOW 1 on a lossless structure —
+    exactly the open question above — passes it silently. That one-sided
+    guard is part of why the col_power finding went undetected across both
+    attempts: nothing in the pipeline flags "too little" power, only "too
+    much." This is a disclosure, not a fix — the guard is unchanged by
+    this attempt.
+
     Attributes
     ----------
     s_params : (2, 2, n_freqs) complex
