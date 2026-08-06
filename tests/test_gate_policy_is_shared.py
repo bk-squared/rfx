@@ -56,6 +56,20 @@ _QUANTIZED_GATE_FILES = [
     REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
     REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
+    # #576 review F5. This lane is in the tripwire list but NOT in _REAL_CASES
+    # below, and that is a real coverage gap, not an oversight: the mutation
+    # falsifiers discover cases from `tests/fixtures/**/fixture.json` files
+    # carrying a `gates` dict with `<prefix>_measured_envelope_<suffix>` /
+    # `<prefix>_gate_<suffix>` pairs, and this lane's artifact is a flat
+    # comparison JSON keyed `max_mag_abs_tol` / `mean_mag_abs_tol` with a
+    # per-pair list — a different schema with its own consumers. It also gates
+    # at quantum 1000 (milli-scale residual) where _QUANTUM_BY_SUFFIX maps every
+    # `abs` key to 100. So the multiplier-mutation coverage here rests on the
+    # test file's own derived-not-pinned tolerances, which is weaker than the
+    # discovered lanes' from-outside check.
+    REPO / "tests" / "test_waveguide_nu_broad_e4_comparison_gates.py",
+    (REPO / "scripts" / "diagnostics"
+     / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against

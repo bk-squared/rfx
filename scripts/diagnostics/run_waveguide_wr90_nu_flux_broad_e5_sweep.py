@@ -34,7 +34,16 @@ DX=0.25e-3; NUM_PERIODS=60
 # a 5x worse violation of the >=0.5*lambda_g far-port discipline (#496) than
 # the E4 producer's 0.33, and the same class of artifact: measured on the E4
 # geometry, going from 0.33 to 0.76 lambda_g took a lossless PEC short's
-# over-unity |S11| from 1.01995 to 1.00009. rfx pads CPML OUTSIDE the requested
+# over-unity |S11| from 1.01995 to 1.00009.
+#
+# CO-CONDITION, not yet settled here: on that same E4 geometry, leaving the
+# absorber at 20 cells and doubling NUM_PERIODS 60 -> 120 removes the excess
+# just as well (1.000063). The mechanism is absorber-limited ring-down that has
+# not drained inside a fixed window, so THIS file's NUM_PERIODS=60 is the other
+# half and is deliberately untouched: #574 carries a cheap falsifier (one E5
+# config at np 60 vs 120) to settle it before the full sweep is authorized,
+# because the two levers price differently — absorber 1.38x cells, window 2x
+# steps at 1x memory. rfx pads CPML OUTSIDE the requested
 # domain, so this moves no port and no geometry; it grows the x array from 800
 # to 800 + 2*183 cells, which is why the regeneration cost in #574 has to be
 # re-estimated with this value rather than the old one.

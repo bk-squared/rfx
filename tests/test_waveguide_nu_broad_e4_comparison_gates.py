@@ -38,19 +38,29 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from check_port_external_references import _comparison_breadth_ok  # type: ignore  # noqa: E402
 
+sys.path.insert(0, str(REPO / "tests"))
+from _gate_policy import gate_from_envelope  # type: ignore  # noqa: E402
+
 FIXTURE = (
     REPO / "tests" / "fixtures" / "waveguide_nu_broad_e4"
     / "waveguide_wr90_nu_flux_broad_e4_comparison.json"
 )
 
-# Committed producer constants (build_waveguide_wr90_nu_flux_broad_e4_comparison.py).
-# Derived from the measured envelope (see that script's tolerance block): the
-# absorber fix took the worst PER-PAIR max from 0.07009 to
-# 0.008529 and the worst per-pair mean from 0.0359 to 0.0030, so the old flat
-# 0.10 / 0.07 were 12x and 23x loose. The tolerances are per-pair, which is what
-# the mean envelope is derived from (not the summary mean).
-EXPECTED_MAX_TOL = 0.013
-EXPECTED_MEAN_TOL = 0.005
+# What is HARD-PINNED here is the MEASURED envelope, which no policy change may
+# move: the absorber fix (#496/#576) took the worst per-pair max from 0.07009 to
+# 0.008529 and the worst per-pair mean from 0.0359 to 0.0030, leaving the old
+# flat 0.10 / 0.07 12x and 23x loose. Both are PER-PAIR figures — deriving the
+# mean tolerance from the summary mean (0.000709) instead produced a gate that
+# failed 1 of 5 pairs on its first run.
+MEASURED_MAX_ENVELOPE = 0.008529
+MEASURED_MEAN_ENVELOPE = 0.0030
+
+# The tolerance itself is DERIVED, not pinned (#576 review F5): restating 0.013 /
+# 0.005 as literals here would let this lane silently disagree with the producer
+# if the repo-wide multiplier ever moved. Quantum 1000 because the residual is
+# milli-scale; every other quantized lane uses 100.
+EXPECTED_MAX_TOL = gate_from_envelope(MEASURED_MAX_ENVELOPE, quantum=1000)
+EXPECTED_MEAN_TOL = gate_from_envelope(MEASURED_MEAN_ENVELOPE, quantum=1000)
 BLOCKING_TOKENS = (
     "narrow", "enabling", "blocked", "partial", "limited", "experimental",
     "shadow",

@@ -61,9 +61,23 @@ FREQS = np.linspace(8.2e9, 12.4e9, 21)
 # Absorber depth is DERIVED from the guided wavelength at the LOWEST band
 # frequency, not a fixed cell count (the case-19 recipe, CPML_FRACTION 0.75).
 # It was a hard-coded 20, which is 0.33*lambda_g at 8.2 GHz — below the repo's
-# >=0.5*lambda_g far-port discipline (#496) — and that under-provisioning, not
-# the extractor, was producing the PEC-short over-unity |S11|. Measured on this
-# exact geometry (lossless PEC short, |S11| must be 1):
+# >=0.5*lambda_g far-port discipline (#496). That under-provisioning is ONE OF
+# TWO necessary conditions behind the PEC-short over-unity |S11|; the other is
+# the fixed 60-period record, and either one alone removes ~99.7% of the excess:
+#
+#     CPML  num_periods   max|S11|
+#       20       60        1.019948
+#       20      120        1.000063     <- window alone
+#       46       60        1.000091     <- absorber alone
+#       46      120        1.000061
+#
+# So the accurate cause is absorber-limited ring-down not drained inside a fixed
+# window, and the table below (all at np=60) prices only the absorber lever. An
+# earlier revision of this comment named under-provisioning as THE cause and
+# located the excess at the low band edge; the producer's own spectrum peaks at
+# the HIGH edge, and both claims are withdrawn (#576 review F1/F2).
+#
+# Measured on this exact geometry at np=60 (lossless PEC short, |S11| must be 1):
 #
 #     CPML  cells   lambda_g(low)   max|S11|    column power
 #       20            0.33          1.01995       1.0403     <- was committed
@@ -71,8 +85,7 @@ FREQS = np.linspace(8.2e9, 12.4e9, 21)
 #       31            0.51          1.00397       1.0080
 #       46            0.76          1.00009       1.0002     <- derived value
 #
-# 46 cells puts the excess at 9e-5, i.e. float32 noise, and the remaining
-# bins-above-1 are scattered rather than band-edge concentrated. rfx pads CPML
+# 46 cells puts the excess at 9e-5, i.e. float32 noise. rfx pads CPML
 # OUTSIDE the requested domain, so raising this moves no port and no geometry —
 # it only grows the array.
 CPML_FRACTION = 0.75
@@ -91,7 +104,11 @@ GRADING_RATIO = 2.0
 # Tolerances DERIVED from the measured envelope via the repo-wide envelope
 # multiplier (tests/_gate_policy.py, #528/#539), quantized to 1/1000 because the
 # residual is now milli-scale. They were flat 0.10 / 0.07 with no derivation,
-# which the absorber fix above leaves 12x / 99x loose:
+# which the absorber fix above leaves 12x and 23x loose on the PER-PAIR basis
+# the gate actually applies (99x is the summary-mean basis, which is exactly the
+# confusion the paragraph below this table warns against — it is what an earlier
+# revision derived the mean tolerance from, and the resulting gate failed 1 of 5
+# pairs on the first run):
 #
 #                          committed   post-#562   + absorber fix
 #     summary max           0.07009     0.05322      0.008529
@@ -290,6 +307,10 @@ def build(output_dir: Path) -> dict[str, Any]:
         # the 0.33-lambda_g run look like a solver result.
         "setup": {
             "cpml_layers": int(CPML),
+            # Analytic lambda_g at the lowest measured frequency. The runtime
+            # advisory reports a slightly different fraction (0.36 where this
+            # says 0.33 pre-fix) because it uses the DISCRETE cutoff; neither
+            # is wrong, they are two conventions for the same depth (#576 N3).
             "cpml_fraction_of_lambda_g_low": round(CPML * DX / _LAM_G_LOW, 4),
             "num_periods": float(NUM_PERIODS),
             "dx_m": float(DX),
