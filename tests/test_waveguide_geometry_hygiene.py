@@ -808,3 +808,106 @@ def test_advisory_also_fires_on_the_port_reference_sims_junction_path():
     assert len(hits) == 1, [str(w.message) for w in caught]
     # It is the band-EDGE check, distinct from the sibling's band-centre one.
     assert "lowest measured frequency 4.500 GHz" in hits[0], hits[0]
+
+
+# --------------------------------------------------------------------------- #
+# #576 review F3 — the advisory has to reach the NON-UNIFORM lane too
+# --------------------------------------------------------------------------- #
+def _two_port_nu(cpml_layers, *, ratio=2.0, freqs=_FREQS, dx=0.004):
+    """The same two-port sim on a transversely graded mesh.
+
+    `compute_waveguide_s_matrix` dispatches a `dy_profile` mesh to a dedicated
+    extractor and returns from that branch ~110 lines ABOVE where the absorber
+    advisory used to sit, so the check was unreachable from here: the guard
+    existed, its text named the exact remedy, and no NU caller ever asked it.
+    Both NU fixture producers consequently shipped 0.33 and 0.099 lambda_g
+    stacks in silence (#496 / #576).
+    """
+    total = 0.04
+    n = int(round(total / dx))
+    x = np.linspace(-1.0, 1.0, n)
+    w = 1.0 + (ratio - 1.0) * np.abs(x)
+    sim = Simulation(
+        freq_max=float(freqs[-1]),
+        domain=(0.12, total, 0.02),
+        dx=dx,
+        boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
+                              y=Boundary(lo="pec", hi="pec"),
+                              z=Boundary(lo="pec", hi="pec")),
+        cpml_layers=cpml_layers,
+        dy_profile=w / w.sum() * total,
+    )
+    for x_pos, direction in ((0.02, "+x"), (0.10, "-x")):
+        sim.add_waveguide_port(
+            x_pos, direction=direction, mode=(1, 0), mode_type="TE",
+            freqs=jnp.asarray(freqs), f0=float(np.mean(freqs)), bandwidth=0.6,
+        )
+    return sim
+
+
+def _nu_advisory_hits(sim):
+    """Drive the NU extraction far enough to reach the advisory, keep its hits.
+
+    `num_periods` is deliberately tiny: the advisory is emitted before the FDTD
+    runs, so this needs the dispatch, not a converged solve. Any solver error
+    after the advisory is irrelevant here and is swallowed on purpose.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            sim.compute_waveguide_s_matrix(num_periods=1, normalize="flux")
+        except Exception:
+            pass
+    return [str(w.message) for w in caught if ADVISORY_KEY in str(w.message)]
+
+
+def test_thin_absorber_advisory_fires_on_the_nonuniform_lane():
+    """FIRING on the NU lane — the wiring #576's review found missing."""
+    hits = _nu_advisory_hits(_two_port_nu(10))
+    assert len(hits) == 1, hits
+    msg = hits[0]
+    assert "40.0 mm" in msg, msg           # 10 cells * 4 mm
+    assert "against a required" in msg
+    assert "lowest measured frequency 4.500 GHz" in msg
+    assert "cpml_layers" in msg
+
+
+def test_thin_absorber_advisory_silent_on_the_nonuniform_lane_when_thick():
+    """NON-FIRING control: same graded mesh and band, adequate absorber.
+
+    Without this the firing test above could be satisfied by an advisory that
+    warns unconditionally on any NU mesh.
+    """
+    assert _nu_advisory_hits(_two_port_nu(40)) == []
+
+
+def test_nonuniform_advisory_plumbing_failure_is_reported_not_swallowed():
+    """A broken advisory must SAY so rather than read as a clean bill of health.
+
+    The first version of this wiring wrapped the whole block in
+    `except Exception: pass`, and two separate plumbing bugs (an unresolved
+    `freqs`, then a `None` `n_steps`) presented exactly like a passing absorber.
+    That silence is the failure mode #576's F3 is about, so the block reports
+    instead — asserted here by breaking the config builder on purpose.
+    """
+    import rfx.runners.nonuniform as _nu
+
+    original = _nu._build_waveguide_port_config_nu
+    _nu._build_waveguide_port_config_nu = (
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("planted")))
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                _two_port_nu(10).compute_waveguide_s_matrix(
+                    num_periods=1, normalize="flux")
+            except Exception:
+                pass
+        msgs = [str(w.message) for w in caught]
+    finally:
+        _nu._build_waveguide_port_config_nu = original
+
+    reported = [m for m in msgs if "could not evaluate the far-port" in m]
+    assert reported, msgs
+    assert "planted" in reported[0]
+    assert "UNCHECKED" in reported[0]

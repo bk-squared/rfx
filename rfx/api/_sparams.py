@@ -1467,6 +1467,23 @@ class _SparamMixin:
         # two-run extractor below is enabled when its supported scope
         # is met (``normalize=True``, single-mode ports); otherwise
         # raise so the user is not given silently-wrong numbers.
+        # Frequency grid resolved HERE rather than after the non-uniform
+        # dispatch below: the NU lane's absorber advisory needs it, and
+        # duplicating the resolver into that branch would be one more hand copy
+        # of production logic (the #576-review class of defect). Pure function of
+        # the entries and freq_max, so moving it earlier only makes the
+        # matching-grid check fail sooner.
+        def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
+            if entry.freqs is not None:
+                return entry.freqs
+            return jnp.linspace(self._freq_max / 10, self._freq_max, entry.n_freqs)
+
+        freqs = _resolve_freqs(entries[0])
+        for entry in entries[1:]:
+            entry_freqs = _resolve_freqs(entry)
+            if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
+                raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
+
         if self._dx_profile is not None or self._dy_profile is not None:
             if checkpoint_segments is not None and checkpoint_segments < 1:
                 raise ValueError(
@@ -1510,6 +1527,46 @@ class _SparamMixin:
                     + "; ".join(unsupported)
                     + ". Drop the dx/dy profile to use the uniform lane."
                 )
+            # Far-port absorber advisory, on the NU lane too (#576 review F3).
+            # It used to sit ~110 lines below this branch's return, i.e. it was
+            # UNREACHABLE from here: the guard existed, its text named the exact
+            # remedy, and no NU caller ever asked it. That silence is why both NU
+            # fixture producers shipped 0.33 and 0.099 lambda_g stacks — patching
+            # the two producers would have left the next one to repeat it. Pure
+            # NumPy, no FDTD, so it costs a grid build and a few array ops.
+            # No bare `except: pass` around it: an advisory that can fail
+            # silently is the failure mode this finding IS. If the plumbing ever
+            # breaks, the caller hears about it as a warning rather than getting
+            # the same quiet all-clear that let 0.33 lambda_g ship.
+            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+            try:
+                _nu_grid = self._build_nonuniform_grid()
+                _nu_cfgs = [
+                    # n_steps is still None here when the caller passed
+                    # num_periods; the advisory reads only the config's
+                    # propagation axis and modal cutoff, never anything derived
+                    # from the step count, so a placeholder is honest rather
+                    # than a lie about the run length.
+                    _build_waveguide_port_config_nu(
+                        self, _e, _nu_grid, jnp.asarray(freqs),
+                        int(n_steps) if n_steps else 1)
+                    for _e in entries
+                ]
+            except Exception as _exc:  # noqa: BLE001 - reported, not swallowed
+                import warnings as _w
+                _w.warn(
+                    "compute_waveguide_s_matrix: could not evaluate the far-port "
+                    f"absorber advisory on the non-uniform lane ({_exc!r}). The "
+                    "0.5 guide-wavelength discipline is therefore UNCHECKED for "
+                    "this run — verify the absorber depth by hand (#576).",
+                    stacklevel=2,
+                )
+            else:
+                _warn_thin_absorber_vs_guide_wavelength(
+                    _nu_grid, _nu_cfgs, freqs, self._cpml_layers,
+                    self._boundary_spec,
+                )
+
             _res_nu = self._compute_waveguide_s_matrix_nu(
                 n_steps=n_steps,
                 num_periods=num_periods,
@@ -1582,17 +1639,6 @@ class _SparamMixin:
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
         _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
-
-        def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
-            if entry.freqs is not None:
-                return entry.freqs
-            return jnp.linspace(self._freq_max / 10, self._freq_max, entry.n_freqs)
-
-        freqs = _resolve_freqs(entries[0])
-        for entry in entries[1:]:
-            entry_freqs = _resolve_freqs(entry)
-            if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
-                raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
         # Build configs — may be a single config or a list of configs per port
         has_multimode = any(entry.n_modes > 1 for entry in entries)
