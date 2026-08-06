@@ -796,7 +796,7 @@ discriminants SPLIT, but not the way the first write-up said:**
 |---|---|---|---|---|
 | gamma-vs-beta ratio (coax-driven fit) | 4-32x off, non-monotonic | 1.085 / 0.826 / 0.976 | 1.128 / 0.854 / 1.071 | **STABLE, in [0.8,1.3] both times → CONFIRMED, provisional** |
 | `cond_a_equilibrated` | 1.0004 / 1.0001 / 1.0040 | (not separately logged) | 1.00238 / 1.00244 / 1.00549 | near 1, consistent with attempt 1 |
-| reciprocity worst deviation | 94-100% | 82.4% | 93.8% | **moved AWAY from any acceptance → UNMEASURED at this settling** |
+| reciprocity worst deviation | 94-100% | 82.4% (0.824) | 93.8% (0.938) | **moved AWAY from any acceptance → UNMEASURED at this settling** |
 | `\|S22\|` | 1e-8 to 1e-11 at 2/3 bins | 0.043 / 0.141 / 0.451 | 0.102 / 0.109 / 1.104 (×2.4 at top bin) | **still growing → UNMEASURED at this settling** |
 | max`\|S\|` | 0.99 (well under limit) | 0.9933 | 1.1038 (crosses the 1.10 passivity-guard hard limit) | **crosses unity between checkpoints → UNMEASURED at this settling** |
 | MSL-driven column power `Σ\|S_ij\|²` (NEW, issue #585 finding B5) | not computed | 0.0018 / 0.0199 / 0.204 | 0.0104 / 0.0119 / 1.218 | **THE open question — mostly ≪1 on a lossless structure, one bin >1 at the less-settled checkpoint** |
