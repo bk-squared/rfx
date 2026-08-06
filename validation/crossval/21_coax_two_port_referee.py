@@ -489,8 +489,13 @@ through run-3's own record-fill; it now lives here, registered in
 ``validation/crossval/manifest.json`` as ``21_coax_two_port_referee``, a
 ``diagnostic-reporter`` case (gated claim = per-solver self-consistency;
 this referee brackets, it does not judge rfx's own
-``compute_coaxial_two_port`` numbers, which remain EXPERIMENTAL -- issue
-#489 stage 2, untouched by this promotion).
+``compute_coaxial_two_port`` numbers). UPDATE (2026-08-06): rfx's own
+``compute_coaxial_two_port`` had its EXPERIMENTAL label lifted separately
+(issue #489, PI decision) once this referee, a mesh-refinement convergence
+witness, and an AD gate all closed -- see
+``docs/guides/sparameter_support_matrix.md`` for the current VALIDATED WITH
+SCOPE statement. This referee's own scope fence is unchanged by that
+decision: it still only brackets, it still does not judge.
 
 Usage (VESSL-only; openEMS is not expected to be importable outside the
 lane in ``scripts/vessl_coax_two_port_referee.yaml``, and that lane runs
@@ -615,12 +620,16 @@ MUST_MOVE_WHEN_VALIDATED = (
     "dispersion bias on this fixture's coarse PTFE annulus, NOT a solver "
     "or referral defect); cross-solver |S21| agreement and reciprocity "
     "are REPORTED (not gated) -- this referee brackets, it does not "
-    "judge rfx's own numbers, and compute_coaxial_two_port itself "
-    "remains EXPERIMENTAL (issue #489 stage 2), untouched by this "
-    "promotion. This script is now registered in "
+    "judge rfx's own numbers. This script is now registered in "
     "validation/crossval/manifest.json as 21_coax_two_port_referee, role "
     "diagnostic-reporter -- see the manifest entry's own claim_scope for "
-    "the machine-readable copy of this same fence."
+    "the machine-readable copy of this same fence. UPDATE (2026-08-06, "
+    "issue #489 final PI decision): compute_coaxial_two_port's own "
+    "EXPERIMENTAL label was lifted separately, using this referee as one "
+    "leg of its evidence chain (alongside a mesh-refinement convergence "
+    "witness and an AD gate) -- see docs/guides/sparameter_support_matrix.md "
+    "for the current VALIDATED WITH SCOPE statement. This referee's own "
+    "scope fence (brackets, does not judge) is unchanged by that decision."
 )
 
 RFX_REFERENCE_QUOTE = (

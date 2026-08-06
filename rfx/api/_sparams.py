@@ -5058,18 +5058,26 @@ class _SparamMixin:
         strict_passivity: bool = False,
         eps_scale: "jnp.ndarray | float | None" = None,
     ) -> "CoaxialTwoPortResult":
-        """EXPERIMENTAL two-drive coaxial 2-port S-parameters (#489 stage 2).
+        """Two-drive coaxial 2-port S-parameters (#489 stage 2) — VALIDATED WITH SCOPE.
 
-        .. warning::
-            **EXPERIMENTAL — not in the validated set**
-            (``docs/guides/sparameter_support_matrix.md``, the S-parameter
-            family companion where this row lives). Every DUT this method can
-            currently gate against is azimuthally symmetric (TM0n only); it
-            has no external referee and makes no phase claim. See the class
+        .. note::
+            **VALIDATED WITH SCOPE, not EXPERIMENTAL** (issue #489, PI
+            decision 2026-08-06 —
+            ``docs/guides/sparameter_support_matrix.md``, the S-parameter
+            family companion where this row lives). Covered: the two-port
+            through-line class on this single coax geometry family, bracketed
+            by an external openEMS referee (crossval 21) on ``|S21|`` and,
+            via the port's own measured ``beta``, phase; a mesh-refinement
+            convergence witness (``p ~= 1.5``); an end-to-end ``eps_scale``
+            AD gate (``GRAD_SAFE``); and this method's own measured
+            reciprocity/``cond(A)``. NOT covered: every DUT this method can
+            currently gate against is azimuthally symmetric (TM0n only) —
+            transition discontinuities that excite TE11 are still outside
+            this evidence (see :meth:`compute_coax_msl_transition`, which
+            stays EXPERIMENTAL, diagnostic-only), nor does the evidence
+            generalize to other coax geometry families. See the class
             docstring on the returned :class:`CoaxialTwoPortResult` for the
-            full scope limitation — transition discontinuities that excite
-            TE11 are the target use case and are NOT covered by any battery
-            built on the symmetric DUTs available today.
+            full evidence chain and scope statement.
 
         Builds ONE through coax line spanning the z axis with a matched
         annular-resistor feed near EACH z end (mirroring the validated

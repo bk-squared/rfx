@@ -57,11 +57,15 @@ command is verified to return at least one hit on the current tree.
 
 For coaxial one-port workflows, use `Simulation.compute_coaxial_line_reflection(...)`
 inside its documented one-port transmission-line envelope. For coaxial 2-port
-workflows, `Simulation.compute_coaxial_two_port(...)` (issue #489 stage 2) exists
-but is **EXPERIMENTAL — not in the validated set**: every DUT it can currently gate
-against is azimuthally symmetric (TM0n only), it has no external referee, and it
-makes no phase claim (see its docstring / `CoaxialTwoPortResult` for the full scope
-limitation). The older `Simulation.compute_coaxial_s_matrix(...)` path remains
+workflows, `Simulation.compute_coaxial_two_port(...)` (issue #489 stage 2) is
+**VALIDATED WITH SCOPE** (PI decision 2026-08-06): an external openEMS referee
+(crossval 21) brackets its own `|S21|` and, via the port's own measured `beta`,
+phase on the through-line class; a mesh-refinement convergence witness
+(`p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate close the remaining legs. It
+does NOT cover transitions to other port families: every DUT it can currently
+gate against is still azimuthally symmetric (TM0n only) (see its docstring /
+`CoaxialTwoPortResult` for the full evidence chain and scope statement). The
+older `Simulation.compute_coaxial_s_matrix(...)` path remains
 deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
 (issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**: two committed fixtures

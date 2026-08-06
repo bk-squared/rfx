@@ -1,10 +1,12 @@
 """``Simulation.compute_coaxial_two_port`` — FDTD path for #489 stage 2.
 
-STATUS: EXPERIMENTAL (see the docstring on ``CoaxialTwoPortResult`` and
+STATUS: VALIDATED WITH SCOPE (issue #489, PI decision 2026-08-06 — see the
+docstring on ``CoaxialTwoPortResult`` and
 ``docs/research_notes/20260729_i489_coax_two_port_design.md`` for the full
-scope limitation — every gateable DUT is azimuthally symmetric, so this
-battery certifies a class that excludes the transition-discontinuity class
-issue #489 targets).
+evidence chain and scope statement — every gateable DUT here is azimuthally
+symmetric, so this battery alone still excludes the transition-discontinuity
+class issue #489 targets; that class is covered, at EXPERIMENTAL,
+diagnostic-only status, by ``compute_coax_msl_transition``).
 
 Split, per this repo's physics-run discipline:
 

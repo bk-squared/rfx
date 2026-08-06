@@ -1252,11 +1252,26 @@ class CoaxialLineReflectionResult(NamedTuple):
 class CoaxialTwoPortResult:
     """Two-drive coaxial 2-port S-parameters on a through line (issue #489 stage 2).
 
-    STATUS: **EXPERIMENTAL — not in the validated set**
-    (``docs/guides/sparameter_support_matrix.md``, the S-parameter-family
+    STATUS: **VALIDATED WITH SCOPE** (issue #489, PI decision 2026-08-06 —
+    ``docs/guides/sparameter_support_matrix.md``, the S-parameter-family
     companion where this row lives — see also
     ``docs/guides/sparameter_support_matrix.json``, its machine-readable
-    twin). This extends the validated 1-port
+    twin). The EXPERIMENTAL label held through three legs closing in
+    sequence — wiring pin, mesh-refinement convergence witness, and an
+    ``eps_scale`` AD gate — and lifted once a fourth, an external referee,
+    also closed. Evidence chain: an external openEMS referee (crossval 21,
+    ``validation/crossval/21_coax_two_port_referee.py``, VESSL run-3
+    ``369367251629`` and the first default-scale green promoted-lane run
+    VESSL ``369367252220``) brackets — it does not judge — this method's own
+    ``|S21|`` on the through-line class, and, via the port's own measured
+    ``beta`` (not an idealized analytic one), its phase; a mesh-refinement
+    convergence witness (VESSL ``369367251845``) moved the measured/analytic
+    ``beta`` ratio from ``1.1208`` to ``1.0662`` (implied convergence order
+    ``p ~= 1.5``, two-point, from a single 1.5x step); the ``eps_scale`` AD
+    channel below is ``GRAD_SAFE`` (``tests/test_ad_surface_contract.py``);
+    and this method's own reciprocity (``0.3%`` magnitude / ``0.21`` degree
+    phase) and ``cond(A) <= 1.11`` are measured on the committed fixture
+    (below). This extends the validated 1-port
     coax-line method (:meth:`compute_coaxial_line_reflection`) to two ports by
     building a single through line with a matched annular-resistor feed near
     EACH z end, driving each end's own TEM TFSF source in turn (two separate
@@ -1266,15 +1281,22 @@ class CoaxialTwoPortResult:
     why the naive ``S[j,i]=b_j/a_i`` ratio has a hard terminator-reflection
     floor that this two-drive solve removes).
 
-    **Scope limitation that must not be silently dropped**: every DUT this
-    method can currently gate against (none / a matched feed / a coaxial
-    dielectric plug) is azimuthally symmetric and excites only TM0n modes.
-    Issue #489 exists for TRANSITION designers whose discontinuities excite
-    TE11 (cutoff 25.17 GHz on the validated SMA line — inside the 4-12 GHz
-    band's evanescent tail, surviving to the first probe plane at roughly
-    0.10 of its launch amplitude). A battery built only on symmetric DUTs
-    certifies a class that EXCLUDES the target class. No external referee has
-    run against this method, and no phase claim is made.
+    **Scope limitation that must not be silently dropped — NOT covered by
+    the evidence chain above**: every DUT this method can currently gate
+    against (none / a matched feed / a coaxial dielectric plug) is
+    azimuthally symmetric and excites only TM0n modes. Issue #489 exists
+    for TRANSITION designers whose discontinuities excite TE11 (cutoff
+    25.17 GHz on the validated SMA line — inside the 4-12 GHz band's
+    evanescent tail, surviving to the first probe plane at roughly 0.10 of
+    its launch amplitude). A battery built only on symmetric DUTs certifies
+    a class that EXCLUDES the target class — coax<->planar transitions are
+    the SEPARATE :meth:`compute_coax_msl_transition` lane, which stays
+    **EXPERIMENTAL, diagnostic-only** regardless of this promotion (its own
+    reciprocity is unmeasured pending a settled run — see that method's own
+    docstring). Nor does this evidence generalize beyond this single
+    through-line coax geometry family (SMA-class, the committed fixture's
+    own dimensions — ``a=0.635mm``, ``b=2.055mm``, PTFE ``eps_r=2.1``) to
+    other coax geometries.
 
     ``s_params[j, i, :]`` is the response measured at port ``j`` while port
     ``i`` is driven (standard S-matrix convention), referenced to each port's

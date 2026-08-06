@@ -1,0 +1,42 @@
+name: rfx-coax-msl-transition-settled-run
+description: "#489 leg 4 (coax<->MSL transition) settled-run follow-up, predeclared in tests/test_coax_msl_transition.py::SETTLED_RUN_RECORD (PR #585, merge da443f5): runs the SAME attempt-2 fixture (_build_coax_msl_transition_sim_attempt2) at target_n_steps=135000 via scripts/diagnostics/coax_msl_transition_settled_run.py, to resolve reciprocity/|S22|/max|S| from UNMEASURED-AT-THIS-SETTLING (45000 steps only reached -19.7/-17.9 dB, short of the -40 dB ring-down rule) to an actual pass/fail read. USES THE MOUNTED PRIMARY CHECKOUT (not a fresh branch/tarball clone, unlike scripts/vessl_msl_ad_band_mean_owner_measurement.yaml or scripts/vessl_coax_two_port_referee_mesh_refinement.yaml): the driver script and the compute_coax_msl_transition method it calls are both on main as of this PR's merge, so the mounted checkout already has everything this job needs -- imitates scripts/vessl_msl_f64_referee.yaml's / scripts/vessl_gpu_suite.yaml's mounted-checkout pattern instead. DO NOT SUBMIT until this PR has merged to main (the mounted checkout tracks main, not this branch) -- see the PR body for the submission plan."
+tags: [rfx, issue-489, coax-msl-transition, settled-run]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx #489 leg 4: coax<->MSL transition settled run (target_n_steps=135000) ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== settled run: attempt2 fixture at n_steps=135000 ==="
+  out=".omx/coax-msl-transition-settled-run/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  set +e
+  timeout 14400 python -u scripts/diagnostics/coax_msl_transition_settled_run.py \
+    --n-steps 135000 \
+    --output "$out/settled_run_result.json" \
+    > "$out/run.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 150 "$out/run.log"
+  echo "$rc" > "$out/run.rc"
+  echo "artifacts persisted to (mounted, survives job teardown): $out"
+  echo "coax_msl_transition_settled_run_rc=$rc"
+  exit "$rc"
