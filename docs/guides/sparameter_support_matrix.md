@@ -194,10 +194,18 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   fix, unchanged by the objective swap) reporting a comparator failure loudly
   instead of silently — not eliminated (see `tests/test_msl_ad_fd_converged.py`
   for the ULP-resolving-power derivation and `tests/_msl_ad_objective.py` for
-  the full statement, including the open question of what mechanism drives
-  the gradient — a reference-plane artifact against the wave split's frozen
-  Hammerstad-Jensen `z0_hj`, or genuine beta/reflection physics — tracked in
-  **issue #560**, which this PR ships without resolving). The #515 AD smoke
+  the full statement, including what mechanism drives the gradient — a
+  reference-plane artifact against the wave split's frozen Hammerstad-Jensen
+  `z0_hj`, or genuine beta/reflection physics. **RESOLVED, issue #560,
+  2026-08-06**: a decisive probe
+  (`scripts/diagnostics/msl_ad_z0_anchor_probe.py`, run log
+  `scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`) swapped the
+  frozen analytic `z0_hj` anchor for a frozen per-port FITTED z0 (measured
+  at alpha=1, held constant) and re-measured `|g_ad|` on this same fixture
+  (CPU/float32): it collapsed `1.602236e-03` -> `6.885110e-05` (~23.3x,
+  reproduced deterministically), so the reference-plane artifact (not
+  beta/reflection physics) is the dominant channel — this does not change
+  the `rel_err`/threshold numbers above, only their physical reading). The #515 AD smoke
   shares this same objective function (`tests/_msl_ad_objective.py`) so the
   two tests cannot drift apart. The launch fixture derives from registered
   materials on both the FD and AD sides; staticness is regression-locked by

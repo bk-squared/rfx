@@ -119,5 +119,19 @@ Per adversarial review of PR #559: these runs measure AD-vs-FD numerical
 agreement and the planted-defect falsifier's resolving power. They do NOT
 measure which physical channel (guided-wavelength/beta shift vs. a
 reference-plane mismatch against the wave-split's frozen Hammerstad-Jensen
-`z0_hj`) dominates `d(loss)/d(alpha)` — that question is open; see
-`tests/_msl_ad_objective.py` and `test_msl_ad_fd_converged_tight`'s docstring.
+`z0_hj`) dominates `d(loss)/d(alpha)` — that question was open; see
+`tests/_msl_ad_objective.py` and `test_msl_ad_fd_converged_tight`'s
+docstring.
+
+**RESOLVED, issue #560, 2026-08-06**: a separate decisive probe
+(`scripts/diagnostics/msl_ad_z0_anchor_probe.py`, run log
+`scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`, CPU/float32,
+same fixture as this file) re-ran `jax.grad` of the identical objective
+with the wave split's frozen analytic `z0_hj` anchor swapped for a frozen
+per-port FITTED z0 (measured at alpha=1, held constant): `|g_ad|` dropped
+from `1.602236e-03` to `6.885110e-05` (~23.3x, deterministic across
+repeats for both anchors) — the reference-plane mismatch (mechanism 2) is
+the dominant channel, not beta/reflection physics. This is a channel-
+ATTRIBUTION finding, not a numerical-agreement one: it does not change the
+`rel_err`/PASS verdict recorded above, only the physical interpretation of
+the gradient's magnitude.

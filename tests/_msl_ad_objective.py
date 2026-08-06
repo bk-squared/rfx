@@ -35,16 +35,26 @@ composition change, not a claim about which physical channel (beta,
 reference-plane mismatch, or something else) drives d(loss)/d(alpha), is
 the #530 cure. (An earlier draft of this docstring claimed the objective
 "moves directly with... guided wavelength via beta" -- that mechanism is
-UNMEASURED; a sign witness in the gate's own fixture points elsewhere, at
+UNMEASURED; a sign witness in the gate's own fixture pointed elsewhere, at
 the wave-split's FROZEN Hammerstad-Jensen Z0 reference rather than a
 beta-driven standing-wave shift, which would have no particular sign
-preference. Whether the gradient is dominantly a reference-plane artifact
-or genuine beta/reflection physics is an OPEN question, tracked in
-**issue #560** (not run there either -- #560 is the tracker, not the
-answer) -- see ``tests/test_msl_ad_fd_converged.py``'s docstring,
-"GATE REBUILT", for the decisive z0_fit-vs-z0_hj probe that would settle
-it.) It is computed from the SAME ``compute_msl_s_matrix``
-call the old objective used; only the post-call reduction changes.
+preference. **RESOLVED, issue #560, 2026-08-06**: the decisive probe
+(``scripts/diagnostics/msl_ad_z0_anchor_probe.py``, full run log
+``scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md``) re-ran
+``jax.grad`` of this exact objective on the gate's own fixture with the
+wave split's frozen analytic ``z0_hj`` anchor swapped for a FROZEN
+per-port FITTED z0 (measured at alpha=1, held constant): ``|g_ad|``
+collapsed from ``1.602236e-03`` to ``6.885110e-05`` -- a ~23.3x drop,
+comfortably past the 5x collapse threshold the issue proposed. The
+reference-plane mismatch (mechanism 2) is therefore the DOMINANT channel,
+not genuine beta/standing-wave physics (mechanism 1). Read a gradient on
+this objective as "how far the frozen wave-split reference sits from the
+line's true impedance", not as "the line's electrical response to
+substrate permittivity". This does NOT affect
+``test_msl_ad_fd_converged_tight``'s validity as an AD-vs-FD comparator --
+see that test's docstring for why.) It is computed from the SAME
+``compute_msl_s_matrix`` call the old objective used; only the post-call
+reduction changes.
 
 USAGE
 -----

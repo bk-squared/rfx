@@ -1,0 +1,53 @@
+{
+  "issue": 560,
+  "provenance_note": "Assembled from TWO process invocations of scripts/diagnostics/msl_ad_z0_anchor_probe.py -- Run 1 (--repeats 2, combined) was killed by a background-task duration limit before printing anchor B's 2nd repeat or writing its own JSON; Run 2 (--only b --z0-fit-ohm <Run 1's printed values>) re-confirms anchor B's determinism. Full narrative + raw log excerpts: scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md (single source; this file is the machine-readable summary).",
+  "git_sha": "3e63a8ad1552f3c2a48cd2b6ed4ee24466ada02f",
+  "jax_version": "0.6.2",
+  "devices": ["CpuDevice(id=0)"],
+  "dtype": "float32",
+  "platform": "cpu",
+  "fixture": {
+    "num_periods": 20,
+    "n_freqs": 8,
+    "grid_shape": [142, 54, 19],
+    "n_steps": 26226,
+    "checkpoint_segments": 141
+  },
+  "assembly_path": "multi_drive_solve",
+  "z0_fit_per_port_ohm_real_band_mean": [83.1861, 83.2578],
+  "run_1_combined": {
+    "preliminary_forward_wall_time_s": 370.6,
+    "forward_s_abs_range": [0.0080, 1.0000],
+    "anchor_a_production_frozen_analytic_z0_hj": {
+      "all_runs": [[0.99787515, 1.602236e-03], [0.99787515, 1.602236e-03]],
+      "deterministic": true
+    },
+    "anchor_b_frozen_fitted_z0_full_precision_anchor": {
+      "run_0": [1.00077176, 6.885110e-05],
+      "run_1": "killed before printing (background-task duration limit)"
+    }
+  },
+  "run_2_anchor_b_reconfirmation": {
+    "z0_fit_ohm_cli_rounded": [83.1861, 83.2578],
+    "all_runs": [[1.0007727146148682, 6.884444155730307e-05], [1.0007727146148682, 6.884444155730307e-05]],
+    "deterministic": true
+  },
+  "g_a": 1.602236e-03,
+  "g_b_primary": 6.885110e-05,
+  "g_b_cross_check": 6.884444155730307e-05,
+  "ratio_primary": 23.271,
+  "ratio_cross_check": 23.273,
+  "same_sign": true,
+  "decision_rule": {
+    "collapse_ratio_threshold": 5.0,
+    "survive_ratio_threshold": 2.0
+  },
+  "verdict": "collapse_mechanism2_dominant",
+  "headline": "COLLAPSE (ratio ~23.3 >= 5.0x, ~4.6x margin over the collapse threshold): the frozen-reference normalization gap (mechanism 2) is the dominant channel behind d(band-mean|S21|**2)/d(alpha) on this fixture.",
+  "compare_to_committed_owner_platform": {
+    "source": "scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md",
+    "platform": "gpu-rtx4090, VESSL 369367251813/369367251827",
+    "g_ad": 1.602933e-03,
+    "note": "this run's g_a (CPU) = 1.602236e-03 matches to within 0.04% relative"
+  }
+}
