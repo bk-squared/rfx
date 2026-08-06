@@ -1,0 +1,46 @@
+{
+  "leg": "issue #489 leg 4, attempt 2 -- the settled-run follow-up",
+  "n_steps": 135000,
+  "git_sha": "38a002cb2299220164521223149b8e68483b17be",
+  "elapsed_s": 121.40441425377503,
+  "freqs_hz": [
+    6000000000.0,
+    8000000000.0,
+    10000000000.0
+  ],
+  "settling_db": [
+    -45.9397630721533,
+    -44.17124185980615
+  ],
+  "settling_cleared_40db": true,
+  "cond_a_equilibrated": [
+    1.0021941511855976,
+    1.0024592751812058,
+    1.005013438629622
+  ],
+  "gamma_ratio_coax_driven": [
+    1.1484731207266794,
+    0.858657230346571,
+    1.0510942174501197
+  ],
+  "reciprocity_worst_deviation": {
+    "pair": [
+      0,
+      1
+    ],
+    "value": 0.913919627745057
+  },
+  "s22_abs": [
+    0.08078023177463328,
+    0.10478316571484025,
+    0.893672853684955
+  ],
+  "max_abs_s": 0.9932631013833461,
+  "col_msl_driven_power": [
+    0.0065254707693085355,
+    0.010979588441163948,
+    0.7986516509686326
+  ],
+  "passivity_guard_raised": false,
+  "passivity_guard_message": null
+}

@@ -48,7 +48,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`, VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions stay **EXPERIMENTAL, diagnostic-only** in the separate `compute_coax_msl_transition(...)` lane |
-| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures (attempt 1 + a longer-ladder attempt 2). Attempt 2's gamma-vs-beta discriminant is CONFIRMED, PROVISIONAL (passes a run-length invariance test); reciprocity/`\|S22\|`/max`\|S\|` are UNMEASURED at this settling (fail that same test — a settled VESSL run is predeclared, not yet run); a scaling-invariant column-power witness is the OPEN question — see the section below — do not treat as a validated transition |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures plus a settled VESSL run (`369367252283`, `n_steps=135000`) of attempt 2's own fixture. gamma-vs-beta is CONFIRMED (three in-band checkpoints, the last at full settling); reciprocity (91.4% worst deviation) and passivity are now MEASURED/ATTRIBUTED at full settling (the earlier passivity-guard trip was a truncation artifact); the MSL-driven column power is a SHARPENED open question (~99% missing at 6/8 GHz, ~20% at 10 GHz) with a named discriminating check — see the section below — do not treat as a validated transition |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
 
@@ -905,13 +905,91 @@ since sum-power > 1 is impossible for a genuinely passive structure).
 
 | aspect | status |
 |---|---|
-| gamma-vs-beta (MSL wave extraction) | **CONFIRMED, PROVISIONAL** — passes the run-length invariance test; locked as a real test assertion |
-| reciprocity / `\|S22\|` / max`\|S\|` | **UNMEASURED at this settling** — recorded (both checkpoints) but NOT gated; do not cite either checkpoint's number as physics |
-| MSL-driven column power | **OPEN QUESTION** — scaling-invariant, regression-locked as a measured observation, not yet explained |
+| gamma-vs-beta (MSL wave extraction) | **CONFIRMED** — passes the run-length invariance test across THREE checkpoints (20000/45000/135000 steps), the last at full settling; see the settled-run section below |
+| reciprocity / `\|S22\|` / max`\|S\|` | **RESOLVED to MEASURED / ATTRIBUTED at full settling** — see the settled-run section below; do not cite the pre-settling checkpoint numbers above as physics |
+| MSL-driven column power | **SHARPENED OPEN QUESTION** — the settled measurement below narrows it to a frequency-dependent effect, still not adjudicated |
 | drive-amplitude gap "explanation" | **RETRACTED** (issue #585 B1) — mathematically cannot affect S; do not repeat |
-| settled run | **PREDECLARED, UNRUN** — `SETTLED_RUN_RECORD` in the test file targets VESSL (~135000 steps, extrapolated); not attempted in this PR |
+| settled run | **RUN** — VESSL `369367252283`, `n_steps=135000`, both drives clear -40 dB; see the settled-run section below |
 
-Per R2, this stops here: no third ladder/clearance attempt in this PR. The
-named next step is the settled VESSL run (predeclared UNRUN, fill-contract
-pattern) — reciprocity, `|S22|`, and the column-power question all need that
-settled data before any further attribution, not a new instrument change.
+Per R2, attempt 2 itself stopped at the two checkpoints above (no third
+ladder/clearance change in that PR). The settled VESSL run below is the named
+next step that PR called for, not a new instrument change — it reuses the
+SAME attempt-2 fixture unmodified.
+
+### Settled run (VESSL `369367252283`, `n_steps=135000`, 2026-08-06) — gamma-vs-beta CONFIRMED; reciprocity and passivity now MEASURED
+
+The same attempt-2 fixture (`_build_coax_msl_transition_sim_attempt2`,
+unmodified), driven at `n_steps=135000` on VESSL `369367252283` (git SHA
+`38a002c`), clears the -40 dB ring-down rule for the first time on this lane:
+`settling_db` `-45.94` / `-44.17` dB. Tracked run log and result JSON:
+`scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_run.log`
+/ `..._result.json`. Fill-contract record:
+`tests/test_coax_msl_transition.py::SETTLED_RUN_RECORD` (`status: "RUN"`).
+
+| discriminant | attempt 2, 20000 steps | attempt 2, 45000 steps | settled, 135000 steps | verdict |
+|---|---|---|---|---|
+| gamma-vs-beta ratio (coax-driven fit) | 1.085 / 0.826 / 0.976 | 1.128 / 0.854 / 1.071 | 1.148 / 0.859 / 1.051 | **CONFIRMED** — third in-band `[0.8,1.3]` checkpoint, at full settling |
+| reciprocity worst deviation | 82.4% (0.824) | 93.8% (0.938) | 91.4% (0.914) | **MEASURED at full settling** — not attributed to any of this lane's three retracted explanations |
+| `\|S22\|` | 0.043 / 0.141 / 0.451 | 0.102 / 0.109 / 1.104 | 0.0808 / 0.1048 / 0.8937 | **MEASURED at full settling** |
+| max`\|S\|` | 0.9933 | 1.1038 (crosses guard limit) | 0.9933 | **ATTRIBUTED** — the 1.1038 reading was a truncation artifact of an unsettled run; the settled guard is clean |
+| MSL-driven column power `Σ\|S_ij\|²` | 0.0018 / 0.0199 / 0.204 | 0.0104 / 0.0119 / 1.218 | 0.00653 / 0.01098 / 0.79865 | **SHARPENED** — 99.3% / 98.9% / 20.1% of incident power unaccounted for, dropping sharply at 10 GHz |
+| `settling_db` | -12.3 / -10.7 dB | -19.7 / -17.9 dB | -45.94 / -44.17 dB | **clears -40 dB for the first time** |
+
+**gamma-vs-beta: CONFIRMED**, no longer provisional — a THIRD checkpoint,
+this one at full settling, lands inside the predeclared `[0.8, 1.3]` band.
+Three in-band checkpoints in a row is the strongest confirmation this lane's
+own run-length-invariance discipline can produce.
+
+**Passivity: ATTRIBUTED.** Settled max`\|S\|` = `0.9933` and the shared
+passivity guard (strict semantics) raises nothing on this result. The earlier
+passivity-guard trip (max`\|S\|` `1.1038`, column power `1.218`, both measured
+at the 45000-step checkpoint and both impossible for a passive structure) is
+now attributable to TRUNCATION — those readings were taken before ring-down
+had actually settled, not evidence of a real passivity violation or an
+extractor defect. This resolves the earlier "UNMEASURED AT THIS SETTLING"
+label for max`\|S\|`.
+
+**Reciprocity: now MEASURED**, not merely disclosed — worst deviation `91.4%`
+(pair `(0, 1)`) AT FULL SETTLING. This is not a still-evolving transient (the
+-40 dB rule is cleared) and is not explained by any of this lane's THREE
+previously RETRACTED attributions (near-degenerate two-drive amplification;
+the drive-amplitude gap, proven mathematically impossible; the
+MSL-ladder-too-short instrument-scoping limit, which the gamma-vs-beta pass
+above shows is resolved, not the cause of this number). What `91.4%` IS: a
+real, settled property of THIS fixture's own measurement — a passive
+reciprocal structure cannot physically have `\|S12\|` differ from `\|S21\|` by
+an order of magnitude, so this deviation measures either (a) genuine
+un-modeled loss/coupling asymmetry in how the extraction sees the two drives,
+or (b) an instrument limitation in the extraction itself that survives
+settling. Per this lane's own retraction history, this is deliberately NOT
+adjudicated here.
+
+**THE SHARPENED OPEN QUESTION (MSL-driven column power, at full settling):**
+`0.00653` / `0.01098` / `0.79865` at 6/8/10 GHz — `99.3%` / `98.9%` / `20.1%`
+of incident power is unaccounted for (neither transmitted nor reflected) at
+the two lower frequencies, dropping sharply by 10 GHz. Derived from the same
+result: `\|S12\|²` (column power minus `\|S22\|²`) stays of order `1e-7` at
+all three bins — essentially nothing transmits to the coax side — while
+`\|S22\|²` alone accounts for nearly all the retained power. Two named
+candidates, NOT adjudicated:
+
+- **(a) physical** — the unmatched vertical coax-to-trace launch (no
+  intermediate matching structure, per this leg's own scoping) radiates the
+  MSL drive's power into the CPML absorber at low frequency; consistent with
+  the frequency trend (coupling back to the ports improves sharply toward
+  10 GHz).
+- **(b) instrument** — the MSL-side outgoing-wave (`b`) extraction misses
+  non-quasi-TEM content generated near the junction discontinuity, which a
+  quasi-TEM matrix-pencil fit on the MSL probe ladder cannot resolve.
+
+A DISCRIMINATING check (named, not run): a closed-box variant of this fixture
+(PEC walls in place of CPML, no absorber) — if the missing power reappears in
+the port accounting once there is nowhere to radiate, that supports (a); if
+it is still missing, that supports (b). Per this lane's three-retraction
+history (near-degenerate drives; ladder-too-short, later resolved by
+measurement; drive-amplitude gap, proven impossible), do not attribute
+without running this or an equivalent falsifier.
+
+Per R2, this stops here: no further ladder/clearance/geometry attempt in this
+PR. The named next step is the closed-box discriminating check above, tracked
+by issue #589.

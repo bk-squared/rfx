@@ -1741,6 +1741,39 @@ class CoaxMSLTransitionResult:
     much." This is a disclosure, not a fix — the guard is unchanged by
     this attempt.
 
+    SETTLED RUN (VESSL 369367252283, 2026-08-06, ``n_steps=135000`` — see
+    ``tests/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, status
+    ``RUN``): both drives clear the -40 dB ring-down rule for the first
+    time on this lane (settling_db -45.94 / -44.17 dB). gamma-vs-beta is
+    now **CONFIRMED**, not provisional — a THIRD checkpoint (after 20000
+    and 45000 steps) still lands inside [0.8, 1.3] (ratio 1.148 / 0.859 /
+    1.051). Passivity is **ATTRIBUTED**: settled max ``|S|`` = 0.9933 and
+    the strict passivity guard raises nothing — the earlier
+    passivity-guard trip (max ``|S|`` 1.104, column power 1.218, both >1
+    at the 45000-step checkpoint) is now understood as a TRUNCATION
+    artifact of an unsettled run, not a real violation. Reciprocity is
+    now **MEASURED**, not merely disclosed — worst deviation 91.4% (pair
+    (0, 1)) AT FULL SETTLING, explained by NONE of this lane's three
+    retracted attributions (near-degenerate drives; the drive-amplitude
+    gap, proven impossible; the MSL-ladder instrument-scoping limit,
+    resolved by the gamma-vs-beta pass above, not by this number). Per
+    this lane's own retraction history, that 91.4% is reported as a
+    measurement, not adjudicated between a genuine loss/coupling
+    asymmetry and a surviving instrument limitation. THE OPEN QUESTION is
+    correspondingly sharpened, not answered: at full settling the
+    MSL-driven column power is 0.00653 / 0.01098 / 0.79865 at 6/8/10 GHz —
+    ~99.3% / ~98.9% / ~20.1% of incident power unaccounted for, dropping
+    sharply toward 10 GHz (derived ``|S12|**2`` stays ~1e-7 throughout —
+    essentially nothing transmits to the coax side; the retained power is
+    almost entirely ``|S22|**2``). Two named, NOT-adjudicated candidates:
+    (a) physical — the unmatched vertical launch radiates the MSL drive's
+    power into the CPML absorber at low frequency (consistent with the
+    frequency trend); (b) instrument — the MSL-side outgoing-wave
+    extraction misses non-quasi-TEM content near the junction. A named
+    discriminating check (not run): a closed-box (PEC-wall, no absorber)
+    variant of this fixture — power reappearing in the port accounting
+    would support (a); power still missing would support (b).
+
     Attributes
     ----------
     s_params : (2, 2, n_freqs) complex

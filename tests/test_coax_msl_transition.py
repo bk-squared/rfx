@@ -1119,6 +1119,25 @@ PREDECLARATION_ATTEMPT2 = {
             "run (predeclared UNRUN, see SETTLED_RUN_RECORD) is needed "
             "before any claim on reciprocity/|S22| can be made."
         ),
+        # RESOLVED, VESSL 369367252283 (2026-08-06): the settled run this
+        # 'verdict' string above calls for has now run and cleared -40 dB.
+        # The two checkpoint numbers above are UNCHANGED (kept as the
+        # historical record of what run-length invariance looked like
+        # before settling) -- this key only points forward to where the
+        # settled read lives, per the same additive pattern
+        # PREDECLARATION["post_review_correction"] uses elsewhere in this
+        # file. See SETTLED_RUN_RECORD["measured"]["verdict"] for the full
+        # settled-run verdict (gamma-vs-beta CONFIRMED; passivity
+        # ATTRIBUTED to truncation; reciprocity now MEASURED at 91.4% worst
+        # deviation, not adjudicated between physical/instrument causes;
+        # the column-power question SHARPENED with a named discriminating
+        # check) -- do not re-derive it here.
+        "settled_run_resolution": (
+            "See SETTLED_RUN_RECORD (status RUN, VESSL 369367252283) for "
+            "the full settled-run verdict -- this checkpoint-level "
+            "'verdict' string above is preserved as history, not "
+            "superseded in place."
+        ),
     },
 }
 
@@ -1187,10 +1206,101 @@ SETTLED_RUN_RECORD = {
         "and does not track this lane's continuing work)."
     ),
     "tracking_issue": 589,
-    "status": "UNRUN",
-    "measured": None,
-    "log_path": None,
-    "vessl_run_id": None,
+    "status": "RUN",
+    "measured": {
+        # Verbatim from the VESSL run's own result JSON (tracked copy below) --
+        # do not hand-round these before comparing against a future re-run.
+        "n_steps": 135000,
+        "settling_db": [-45.9397630721533, -44.17124185980615],
+        "settling_cleared_40db": True,  # CLEARED for the first time on this lane.
+        "gamma_ratio_coax_driven": [1.1484731207266794, 0.858657230346571, 1.0510942174501197],
+        "reciprocity_worst_deviation": {"pair": [0, 1], "value": 0.913919627745057},
+        "s22_abs": [0.08078023177463328, 0.10478316571484025, 0.893672853684955],
+        "max_abs_s": 0.9932631013833461,
+        "col_msl_driven_power": [0.0065254707693085355, 0.010979588441163948, 0.7986516509686326],
+        "passivity_guard_raised": False,
+        "verdict": (
+            "Both drives clear the -40 dB ring-down rule for the first time "
+            "on this lane (settling_db -45.94 / -44.17 dB) -- reciprocity, "
+            "|S22|, and max|S| are now genuinely MEASURED quantities on this "
+            "fixture, not still-evolving transients, resolving the earlier "
+            "'UNMEASURED AT THIS SETTLING' label.\n"
+            "\n"
+            "gamma-vs-beta: CONFIRMED, no longer provisional. Ratio "
+            "1.148/0.859/1.051 at 6/8/10 GHz is a THIRD checkpoint (after "
+            "20000 and 45000 steps) landing inside the predeclared [0.8, "
+            "1.3] band -- three checkpoints in a row in-band, including the "
+            "fully settled one, is the strongest confirmation this lane's "
+            "own run-length-invariance discipline can produce.\n"
+            "\n"
+            "Passivity: ATTRIBUTED. max|S| = 0.9933 at full settling and "
+            "the shared passivity guard (strict semantics) raises nothing "
+            "on this result. The earlier passivity-guard-tripping readings "
+            "(max|S| 1.1038 and MSL-driven column power 1.218, both >1 and "
+            "both measured at the 45000-step checkpoint -- impossible for "
+            "a passive structure) are now attributable to TRUNCATION: they "
+            "were measured before ring-down had actually settled, not "
+            "evidence of a real passivity violation or an extractor "
+            "defect.\n"
+            "\n"
+            "Reciprocity: now MEASURED, not merely disclosed -- worst "
+            "deviation 91.4% (pair (0, 1)) AT FULL SETTLING. This is NOT a "
+            "still-evolving transient (the -40 dB rule is cleared) and is "
+            "NOT explained by any of the THREE previously RETRACTED "
+            "attributions on this lane (near-degenerate two-drive "
+            "amplification; the drive-amplitude-gap 'explanation', proven "
+            "mathematically impossible; and the MSL-ladder-too-short "
+            "instrument-scoping limit, which attempt 2's own gamma-vs-beta "
+            "pass shows is resolved, not the cause of THIS number). What "
+            "91.4% IS: a real, settled property of THIS fixture's own "
+            "measurement -- a passive reciprocal structure cannot "
+            "physically have |S12| != |S21| by an order of magnitude, so "
+            "this deviation measures either (a) genuine un-modeled "
+            "loss/coupling asymmetry in how the extraction sees the two "
+            "drives, or (b) an instrument limitation in the extraction "
+            "itself that survives settling. Per this lane's own "
+            "three-strikes retraction history, this is NOT adjudicated "
+            "here -- see the sharpened open question below, which names a "
+            "discriminating check instead of a fourth attribution.\n"
+            "\n"
+            "THE SHARPENED OPEN QUESTION (MSL-driven column power, at full "
+            "settling): 0.00653 / 0.01098 / 0.79865 at 6/8/10 GHz -- "
+            "~99.3% / ~98.9% / ~20.1% of the incident power is unaccounted "
+            "for (neither transmitted nor reflected) at the two lower "
+            "frequencies, dropping sharply by 10 GHz. Derived from this "
+            "same result: |S12|^2 (col_msl_driven_power - |S22|^2) is "
+            "~2.5e-8 / ~7.7e-8 / ~4.8e-7 at the three bins -- essentially "
+            "nothing transmits to the coax side -- while |S22|^2 alone "
+            "(0.0065 / 0.0110 / 0.7987) accounts for nearly all the "
+            "retained power. Two named candidates, NOT adjudicated: "
+            "(a) PHYSICAL -- the unmatched vertical coax-to-trace launch "
+            "(no intermediate matching structure, per this leg's own "
+            "scoping) radiates the MSL drive's power into the CPML "
+            "absorber at low frequency; consistent with the frequency "
+            "trend (coupling back to the ports improves sharply toward "
+            "10 GHz). (b) INSTRUMENT -- the MSL-side b-wave (outgoing "
+            "wave) extraction misses non-quasi-TEM content generated near "
+            "the junction discontinuity, which a quasi-TEM matrix-pencil "
+            "fit on the MSL probe ladder cannot resolve. A DISCRIMINATING "
+            "check (named, not run): a closed-box variant of this fixture "
+            "(PEC walls in place of CPML, no absorber) -- if the missing "
+            "power reappears in the port accounting once there is nowhere "
+            "to radiate, that supports (a); if it is still missing, that "
+            "supports (b). Per this lane's three-retraction history, do "
+            "not attribute without running this or an equivalent "
+            "falsifier."
+        ),
+    },
+    "log_path": (
+        "scripts/diagnostics/_coax_msl_transition_settled_run_logs/"
+        "settled_run_369367252283_run.log"
+    ),
+    "result_json_path": (
+        "scripts/diagnostics/_coax_msl_transition_settled_run_logs/"
+        "settled_run_369367252283_result.json"
+    ),
+    "vessl_run_id": "369367252283",
+    "verified_on": "2026-08-06",
 }
 
 
@@ -1346,8 +1456,22 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     asserted claims-bearing physics numbers (reciprocity, |S22|) that a
     second review round showed were UNMEASURED at this settling, not
     passing. See ``PREDECLARATION_ATTEMPT2`` above for the full
-    predeclaration and ``SETTLED_RUN_RECORD`` for the still-open,
-    predeclared-UNRUN settled-run follow-up.
+    predeclaration.
+
+    RESOLVED, VESSL 369367252283 (2026-08-06): ``SETTLED_RUN_RECORD``
+    (status ``RUN``) now carries a fully settled read (both drives clear
+    -40 dB) of THIS SAME fixture at ``n_steps=135000`` -- gamma-vs-beta is
+    CONFIRMED (a third in-band checkpoint); the earlier passivity-guard
+    trip is ATTRIBUTED to truncation (settled max|S|=0.9933, guard clean);
+    reciprocity is now MEASURED at 91.4% worst deviation (not attributed
+    to any of this lane's three retracted explanations); and the
+    column-power open question is SHARPENED (mostly missing at 6/8 GHz,
+    only ~20% missing at 10 GHz), with a named discriminating check
+    (closed-box PEC-wall variant) as the next step. See
+    ``SETTLED_RUN_RECORD["measured"]["verdict"]`` for the full accounting.
+    THIS test's own numbers below are the 20000-/45000-step checkpoints
+    that predate settling -- kept exactly as measured, as the historical
+    record the settled run's own invariance argument rests on.
 
     Runtime ~20 min (two FDTD drives on a (142, 51, 56)-cell grid, 45000
     steps each).
@@ -1433,7 +1557,9 @@ def test_coax_msl_transition_attempt2_instrument_verification():
 
     # Settling DIRECTION only -- more negative than the 20000-step
     # checkpoint's own -12.3/-10.7 dB, not a claim of adequate settling
-    # (neither checkpoint clears the -40 dB rule; see SETTLED_RUN_RECORD).
+    # (neither of THIS test's own two checkpoints clears the -40 dB rule;
+    # the settled n_steps=135000 run that does is SETTLED_RUN_RECORD,
+    # status RUN, a separate recorded run, not re-run by this test).
     assert np.all(np.asarray(result.settling_db) < -15.0), (
         f"settling_db {result.settling_db} did not improve past the "
         "-15 dB floor (between the 20000-step checkpoint's -12.3/-10.7 "

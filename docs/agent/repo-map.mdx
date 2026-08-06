@@ -69,14 +69,22 @@ older `Simulation.compute_coaxial_s_matrix(...)` path remains
 deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
 (issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**: two committed fixtures
-(attempt 1, then a longer-MSL-ladder attempt 2 per R2's escape clause). A run-length
-invariance test across two settling checkpoints shows attempt 2's gamma-vs-beta
-discriminant is CONFIRMED, PROVISIONAL (stable both times); reciprocity/`|S22|`/max`|S|`
-are UNMEASURED AT THIS SETTLING (still evolving between checkpoints, not converging) --
-a prior write-up attributing the reciprocity miss to a drive-amplitude gap was RETRACTED
-as mathematically impossible (see
+(attempt 1, then a longer-MSL-ladder attempt 2 per R2's escape clause), plus a settled
+VESSL run (`369367252283`, `n_steps=135000`, 2026-08-06) of attempt 2's own fixture that
+clears the -40 dB ring-down rule for the first time on this lane. gamma-vs-beta is now
+**CONFIRMED** (a third checkpoint, at full settling, still in-band `[0.8,1.3]`). Passivity
+is **ATTRIBUTED**: the settled max`|S|` is `0.9933` with the guard clean — the earlier
+sub-settled excursions above 1 are now understood as truncation artifacts, not a real
+violation. Reciprocity is now **MEASURED**, not merely disclosed — worst deviation `91.4%`
+at full settling, explained by none of this lane's three retracted attributions and
+deliberately NOT adjudicated between a genuine physical asymmetry and a surviving
+extraction-instrument limitation. The MSL-driven column-power open question is
+correspondingly SHARPENED (~99% of incident power unaccounted for at 6/8 GHz, only ~20% at
+10 GHz), with a named but not-yet-run discriminating check (a closed-box, PEC-wall variant
+of the fixture) as the next step (see
 `docs/guides/sparameter_support_matrix.md`'s "Coax<->MSL transition" section and
-`tests/test_coax_msl_transition.py`) — do not cite it as a validated transition result.
+`tests/test_coax_msl_transition.py`) — still do not cite it as a validated transition
+result.
 
 ## What NOT to do
 

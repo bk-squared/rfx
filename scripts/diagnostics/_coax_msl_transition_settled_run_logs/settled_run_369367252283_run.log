@@ -1,0 +1,37 @@
+rfx        : /root/workspace/byungkwan-workspace/research/rfx/rfx/__init__.py
+git SHA    : 38a002cb2299220164521223149b8e68483b17be
+jax        : 0.4.33.dev20241023+e3c6d6430   devices: [CudaDevice(id=0)]
+fixture    : attempt2 (same junction as attempt 1, longer MSL ladder, wider x-CPML clearance), n_steps=135000 (record target: 135000)
+/root/workspace/byungkwan-workspace/research/rfx/scripts/diagnostics/coax_msl_transition_settled_run.py:108: UserWarning: compute_coax_msl_transition(): the registered coax port impedance (50.00 ohm) diverges 10.0% from the analytic coax Z0 (45.46 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+  result = sim.compute_coax_msl_transition(
+/root/workspace/byungkwan-workspace/research/rfx/scripts/diagnostics/coax_msl_transition_settled_run.py:108: UserWarning: compute_coax_msl_transition(): the registered msl port impedance (50.00 ohm) diverges 5.8% from the analytic msl Z0 (53.11 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+  result = sim.compute_coax_msl_transition(
+/root/workspace/byungkwan-workspace/research/rfx/rfx/api/_sparams.py:1526: UserWarning: solve_two_port_from_wave_amplitudes: the two drives are nearly linearly dependent at 3/3 frequencies (cond > 1000; worst 2.91e+07) — usually both ports seeing essentially the same field, e.g. a symmetric structure driven identically, or one drive that failed to excite. S at those bins is degenerate. NOTE this threshold flags DEGENERACY only: cond below it is NOT a reliability certificate, because cond(A) also multiplies whatever noise is on the measured amplitudes (~1.3e-2 relative error in S from 1e-4 noise at cond=199, which never trips this warning).
+  solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
+
+FDTD run complete in 121.4s (2.0 min)
+
+=== measured witnesses ===
+  settling_db (per drive)          : [-45.9397630721533, -44.17124185980615]  (-40 dB rule cleared: True)
+  cond_a_equilibrated               : [1.0021941511855976, 1.0024592751812058, 1.005013438629622]
+  gamma_ratio (coax-driven, vs HJ beta): [1.1484731207266794, 0.858657230346571, 1.0510942174501197]
+  reciprocity worst deviation (pair=(0, 1)): 0.913919627745057
+  |S22|                             : [0.08078023177463328, 0.10478316571484025, 0.893672853684955]
+  max|S|                            : 0.9932631013833461
+  MSL-driven column power (|S01|^2+|S11|^2): [0.0065254707693085355, 0.010979588441163948, 0.7986516509686326]
+  passivity guard (strict=True) raised: False
+
+result JSON written to: .omx/coax-msl-transition-settled-run/20260806T135943Z-38a002c/settled_run_result.json
+
+=== SUMMARY (for filling SETTLED_RUN_RECORD -- hand-copy, do not auto-apply) ===
+  status              : RUN
+  target_n_steps       : 135000
+  n_steps (this run)   : 135000
+  settling_db          : [-45.9397630721533, -44.17124185980615]  (-40 dB rule cleared: True)
+  reciprocity worst dev: 0.913919627745057
+  |S22|                : [0.08078023177463328, 0.10478316571484025, 0.893672853684955]
+  max|S|               : 0.9932631013833461
+  col_msl_driven_power : [0.0065254707693085355, 0.010979588441163948, 0.7986516509686326]
+  gamma_ratio          : [1.1484731207266794, 0.858657230346571, 1.0510942174501197]
+  log_path             : .omx/coax-msl-transition-settled-run/20260806T135943Z-38a002c/settled_run_result.json
+  vessl_run_id         : <fill from the VESSL job that ran this>
