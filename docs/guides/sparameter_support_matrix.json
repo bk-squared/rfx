@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "updated": "2026-08-06",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
@@ -533,14 +533,15 @@
         "the junction geometry (ground plane, clearance hole, pin-to-trace post, substrate, trace) is the caller's own registered Box/Cylinder geometry, mirroring compute_mixed_s_matrix's own MSL-DUT delegation",
         "imperative forward path only (no AD channel for this leg)"
       ],
-      "validation_status": "EXPERIMENTAL, DIAGNOSTIC-ONLY. The power-wave cross-family normalization (per-port sqrt(Z0) division before the two-drive solve) is validated by planted-voltage unit tests under UNEQUAL port impedances, independent of any FDTD run. TWO committed FDTD fixtures. Attempt 1: internally self-consistent but trips its own reciprocity falsifier (94-100% deviation) -- root-caused (post-review) to the MSL probe ladder spanning only 0.34%-3.37% of the guided wavelength, too short for the matrix-pencil wave split (instrument scoping, not junction physics). Attempt 2 (PI-directed, R2 escape clause): lengthened the MSL ladder 1.0mm->8.0mm and widened the x-CPML clearance 200um->1500um, keeping the junction geometry byte-identical to attempt 1 (asserted). RESULT SPLITS: fitted gamma now tracks analytic Hammerstad-Jensen beta within [0.8,1.3] at all 3 (new, 6/8/10 GHz) bins -- CONFIRMS the ladder-length attribution -- but reciprocity does NOT recover (93.8% deviation, still > the predeclared 30% acceptance), now attributed to an UNCHANGED coax/msl drive-amplitude gap (~2e7x, same order as attempt 1) that neither attempt touched. settling_db also falls short of -40 dB within locally-feasible runtime (-19.7/-17.9 dB at 45000 steps, improving monotonically from -12.3/-10.7 dB at 20000 steps). Verdict: extraction class CONFIRMED for the gamma/dispersion symptom, REFUTED-residual-remains for reciprocity. Do not cite this family as a validated transition.",
+      "validation_status": "EXPERIMENTAL, DIAGNOSTIC-ONLY. The power-wave cross-family normalization (per-port sqrt(Z0) division before the two-drive solve) is validated by planted-voltage unit tests under UNEQUAL port impedances, independent of any FDTD run. TWO committed FDTD fixtures. Attempt 1: trips its own reciprocity falsifier (94-100% deviation) -- root-caused (post-review) to the MSL probe ladder spanning only 0.34%-3.37% of the guided wavelength, too short for the matrix-pencil wave split (instrument scoping). Attempt 2 (PI-directed, R2 escape clause): lengthened the MSL ladder 1.0mm->8.0mm and widened the x-CPML clearance 200um->1500um, junction geometry byte-identical to attempt 1 (asserted). A RUN-LENGTH INVARIANCE TEST across two settling checkpoints (20000 -> 45000 steps) is the discriminator: the fitted gamma-vs-analytic-beta ratio is STABLE and in-band [0.8,1.3] at BOTH checkpoints -- CONFIRMED, PROVISIONAL pending a settled run. Reciprocity (0.824->0.938), |S22| (0.451->1.104), and max|S| (0.9933->1.1038, crossing the passivity-guard hard limit) all FAIL that same invariance test -- still evolving in the WRONG direction between checkpoints -- so these are UNMEASURED AT THIS SETTLING, not 'refuted with cause identified'. A prior write-up of this result attributed the reciprocity miss to a coax/MSL drive-amplitude gap; this was RETRACTED after a second review found it mathematically impossible (per-drive column rescaling of the two-drive solve leaves S exactly invariant by construction) and found the invoked 'amplitude ratio' equal to raw cond_a under a new name -- the third retracted attribution on this lane. The scaling-invariant open question in its place: the MSL-driven column power (sum|S_ij|^2) is mostly far below 1 on a nominally lossless structure at both checkpoints -- where does that power go? A settled run (predeclared UNRUN, targeting VESSL, ~135000 steps) is the named next step, not attempted in this PR. Do not cite this family as a validated transition.",
       "known_limits": [
-        "reciprocity falsifier STILL TRIPPED after attempt 2 (93.8% deviation, vs the predeclared 30% acceptance) -- locked as a regression witness in tests/test_coax_msl_transition.py, not as a passing accuracy gate",
-        "root cause for reciprocity (attempt 2 finding): the coax and MSL drives' own incident-wave amplitudes remain ~1.8e7-3.3e7x apart -- UNCHANGED from attempt 1 (same order of magnitude) since no per-drive excitation-amplitude calibration was in either attempt's scope",
-        "the MSL wave-extraction instrument-scoping limit that dominated attempt 1 IS resolved by attempt 2's longer probe ladder: fitted gamma tracks analytic beta within [0.8,1.3] at all 3 bins (was 4-32x off in attempt 1) -- this specific symptom is CONFIRMED fixed",
-        "settling_db does not clear the -40 dB rule within locally-feasible runtime on attempt 2's larger domain (-19.7/-17.9 dB at 45000 steps) -- a full-settling run was not attempted (would need ~3x more steps, ~60 min locally, or VESSL)",
-        "raw cond_a (1e3-1e7 on both attempts) is dominated by the same drive-amplitude-scale mismatch, not geometric near-degeneracy -- see cond_a_equilibrated (near 1 on both attempts) on CoaxMSLTransitionResult",
-        "a third, unruled-out candidate mechanism from attempt 1: preflight flagged the MSL port as only 200um from its own x-CPML face on attempt 1 -- CLOSED in attempt 2 (raised to 1500um; the warning no longer fires) but this did not resolve reciprocity either",
+        "reciprocity, |S22|, and max|S| are UNMEASURED AT THIS SETTLING (not 'refuted') -- both fail a run-length invariance test across the two measured checkpoints (20000 -> 45000 steps), moving further from any acceptance rather than converging; do not cite either checkpoint's number as physics",
+        "the passivity guard (strict_passivity=True path) fires on the 45000-step run: max column power 1.218 > 1.1, 'UNRELIABLE... do not interpret as physics' -- exercised directly in the committed test so the guard is not silently bypassed even though the literal strict_passivity flag on that call is False",
+        "OPEN QUESTION (issue #585 review finding B5): the MSL-driven column's power (sum|S_ij|^2 over the column) is mostly far below 1 at both checkpoints (0.0018-0.204, then 0.0104-1.218) on a nominally lossless structure -- scaling-invariant (unlike the retracted amplitude-gap story), locked as a regression witness, not yet explained",
+        "RETRACTED attribution (do not repeat, third on this lane): a prior write-up attributed the reciprocity miss to a coax/MSL drive-amplitude gap (~1.8e7-3.3e7x) -- mathematically impossible, since per-drive rescaling of the two-drive solve leaves S exactly invariant; the invoked 'amplitude ratio' also turned out to equal raw cond_a to 8 significant figures, the exact quantity this lane's own cond_a_equilibrated split already says not to read as a degeneracy witness",
+        "the MSL wave-extraction instrument-scoping limit that dominated attempt 1 IS resolved by attempt 2's longer probe ladder: fitted gamma tracks analytic beta within [0.8,1.3] at all 3 bins, STABLE across both settling checkpoints -- this specific symptom is CONFIRMED, though still PROVISIONAL pending a fully settled run",
+        "neither attempt 2 checkpoint clears the -40 dB ring-down rule within locally-feasible runtime -- a VESSL run is needed for a settled measurement (predeclared UNRUN, see SETTLED_RUN_RECORD in tests/test_coax_msl_transition.py)",
+        "raw cond_a (1e3-1e7 on both attempts) is dominated by per-drive amplitude scale, not geometric near-degeneracy -- see cond_a_equilibrated (near 1 on both attempts) on CoaxMSLTransitionResult",
         "the MSL side is extracted via the coax matrix-pencil fit (coaxial_line_reflection_from_plane_voltages) rather than the mixed lane's own N-probe fit, a deliberate deviation made because the coax fit deterministically pins the propagation-constant branch while the N-probe fit's sign is documented as unstable",
         "no external-solver referee has been run",
         "AD is out of scope for both attempts (no eps_scale-style channel)",
@@ -550,9 +551,9 @@
       "validation_gaps": [
         "no external-solver cross-check",
         "no mesh-convergence study",
-        "two fixture classes now (attempt 1: short ladder, unmatched pin-to-trace post; attempt 2: same junction, longer ladder) -- neither is a validated result",
-        "reciprocity has not passed on either attempt -- attempt 2 narrowed the cause to the drive-amplitude gap but did not close it",
-        "settling has not cleared -40 dB on either attempt's LX-scaled probe geometry without exceeding locally-feasible runtime on attempt 2"
+        "no settled run yet at attempt 2's domain size -- both measured checkpoints (20000, 45000 steps) fall short of the -40 dB rule; a VESSL run is predeclared UNRUN as the named next step",
+        "reciprocity/|S22|/max|S| have not passed a run-length invariance test on either attempt -- neither is a validated number",
+        "the MSL-driven column-power open question (B5) is unexplained on both attempts"
       ],
       "evidence_artifacts": [
         "tests/test_coax_msl_transition.py"
@@ -562,19 +563,16 @@
         "attempt 1: cond_a (raw) 7.0e4/4.6e3/4.3e7; cond_a_equilibrated 1.0004/1.0001/1.0040",
         "attempt 1: fitted Im(gamma)/analytic beta ratio 4-32x off (coax-driven fit), non-monotonic with frequency",
         "attempt 1: settling_db -43.9 dB (coax drive) / -63.6 dB (msl drive) at N_STEPS=8000",
-        "attempt 2: gamma_ratio_coax_driven 1.128/0.854/1.071 at 6/8/10 GHz (all within the predeclared [0.8,1.3] band)",
-        "attempt 2: reciprocity worst deviation 93.8% (vs predeclared <=30% acceptance)",
-        "attempt 2: |S22| 0.102/0.109/1.104 (resolvable, vs attempt 1's 1e-8 to 1e-11 at 2/3 bins)",
-        "attempt 2: cond_a_equilibrated 1.00238/1.00244/1.00549",
-        "attempt 2: coax/msl own-drive amplitude ratio 1.8e7-3.3e7x (unchanged order of magnitude from attempt 1)",
-        "attempt 2: settling_db -19.7/-17.9 dB at N_STEPS=45000 (improved from -12.3/-10.7 dB at N_STEPS=20000, still short of -40 dB)"
+        "attempt 2, 20000 steps: gamma_ratio 1.085/0.826/0.976; reciprocity 0.824; |S22| 0.043/0.141/0.451; max|S| 0.9933; MSL-driven column power 0.0018/0.0199/0.204; settling_db -12.3/-10.7 dB",
+        "attempt 2, 45000 steps: gamma_ratio 1.128/0.854/1.071 (STABLE vs 20000 steps, both in-band [0.8,1.3]); reciprocity 0.938 (NOT stable, moved further from acceptance); |S22| 0.102/0.109/1.104 (NOT stable, top bin grew 2.4x); max|S| 1.1038 (crosses the passivity-guard 1.10 hard limit); MSL-driven column power 0.0104/0.0119/1.218 (NOT stable; top bin now exceeds 1); cond_a_equilibrated 1.00238/1.00244/1.00549; settling_db -19.7/-17.9 dB"
       ],
-      "validated_scope": "NONE -- this is a diagnostic CALCULATION over the already-registered coaxial_port and microstrip_line port families, not a new port primitive and not a validated result. Attempt 2 confirms the MSL wave-extraction discriminant specifically but reciprocity remains unresolved. Listed so the matrix does not read as 'a coax<->MSL transition is impossible in rfx'.",
+      "validated_scope": "NONE -- this is a diagnostic CALCULATION over the already-registered coaxial_port and microstrip_line port families, not a new port primitive and not a validated result. Attempt 2's gamma-vs-beta discriminant is CONFIRMED-provisional (passes a run-length invariance test); reciprocity/|S22|/max|S| are UNMEASURED at this settling. Listed so the matrix does not read as 'a coax<->MSL transition is impossible in rfx'.",
       "caveats": [
         "quote the preflight output and settling_db with any number from this lane",
-        "attempt 2's reciprocity falsifier is STILL TRIPPED -- read the finding (drive-amplitude gap, not ladder length, not junction physics -- genuinely unresolved), do not treat a future silent pass as evidence of a fix without a new falsifier re-run",
+        "reciprocity/|S22|/max|S| are UNMEASURED AT THIS SETTLING on attempt 2 -- both measured checkpoints are disclosed but neither passes a run-length invariance test; do not cite either as physics",
+        "do not attribute the reciprocity miss to a coax/MSL drive-amplitude gap -- that attribution was RETRACTED as mathematically impossible (issue #585 review finding B1); the open question is the scaling-invariant column-power witness instead",
         "do not read cond_a alone as a degeneracy witness on this lane -- use cond_a_equilibrated (per-drive amplitude scale dominates raw cond_a on a mixed-family lane)",
-        "settling_db has not cleared -40 dB on either attempt within locally-feasible runtime -- treat both attempts' S values with that caveat"
+        "a settled run (predeclared UNRUN, targeting VESSL) is the named next step before any further claim on reciprocity/|S22|"
       ],
       "ad_traceable": "no",
       "ad_evidence": "not wired to the differentiable forward lane (imperative only); no eps_scale-style channel exists for this leg"

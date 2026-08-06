@@ -65,10 +65,12 @@ limitation). The older `Simulation.compute_coaxial_s_matrix(...)` path remains
 deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
 (issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**: two committed fixtures
-(attempt 1, then a longer-MSL-ladder attempt 2 per R2's escape clause). Attempt 2's own
-MSL wave-extraction discriminant (fitted gamma vs analytic beta) is CONFIRMED, but
-reciprocity is STILL falsifier-tripped, now attributed to an unresolved coax/MSL
-drive-amplitude gap rather than the ladder length (see
+(attempt 1, then a longer-MSL-ladder attempt 2 per R2's escape clause). A run-length
+invariance test across two settling checkpoints shows attempt 2's gamma-vs-beta
+discriminant is CONFIRMED, PROVISIONAL (stable both times); reciprocity/`|S22|`/max`|S|`
+are UNMEASURED AT THIS SETTLING (still evolving between checkpoints, not converging) --
+a prior write-up attributing the reciprocity miss to a drive-amplitude gap was RETRACTED
+as mathematically impossible (see
 `docs/guides/sparameter_support_matrix.md`'s "Coax<->MSL transition" section and
 `tests/test_coax_msl_transition.py`) — do not cite it as a validated transition result.
 

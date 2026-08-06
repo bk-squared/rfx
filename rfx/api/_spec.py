@@ -1672,26 +1672,40 @@ class CoaxMSLTransitionResult:
     200um -> 1500um, keeping the junction geometry byte-identical to
     attempt 1 (asserted, see
     ``tests/test_coax_msl_transition.py::
-    test_attempt2_junction_geometry_is_byte_identical_to_attempt1``). The
-    two predeclared discriminants SPLIT: the fitted ``gamma`` now tracks
-    analytic beta within the predeclared [0.8, 1.3] band at all three
-    (new) measured frequencies (1.128/0.854/1.071) — CONFIRMING the
-    ladder-length attribution for that specific symptom — and ``|S22|``
-    is now clearly resolvable (no longer f32-noise-floor-degenerate). But
-    reciprocity does NOT recover (93.8% deviation, vs the predeclared
-    <=30% acceptance) — the falsifier for THIS discriminant fires. The
-    newly-exposed ``a_inc`` (added in the #581 review's own B2 fix)
-    implicates a DIFFERENT, still-unresolved cause: the coax and MSL
-    drives' own incident-wave amplitudes remain 1.8e7-3.3e7x apart (same
-    order as attempt 1 — unchanged, since no excitation-amplitude
-    calibration was in this attempt's scope). ``settling_db`` also falls
-    short of the -40 dB rule within locally-feasible runtime (-19.7/-17.9
-    dB at 45000 steps, improving monotonically from -12.3/-10.7 dB at
-    20000 steps — reported honestly rather than forcing a third, much
-    longer calibration run). Verdict: extraction class CONFIRMED for the
-    gamma/dispersion symptom, REFUTED-residual-remains for reciprocity.
-    Per R2, stops here — a third attempt targeting the drive-amplitude
-    gap needs its own separate predeclaration.
+    test_attempt2_junction_geometry_is_byte_identical_to_attempt1``).
+
+    Verdict, per the RUN-LENGTH INVARIANCE TEST across two settling
+    checkpoints (20000 -> 45000 steps; issue #585 adversarial review):
+    the fitted ``gamma`` is the ONE quantity that is stable across both
+    checkpoints and lands inside the predeclared [0.8, 1.3] band both
+    times — CONFIRMED, but PROVISIONAL pending a fully settled run
+    (neither checkpoint clears the -40 dB ring-down rule; see
+    ``tests/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, a
+    predeclared-UNRUN follow-up targeting VESSL). Reciprocity (0.824 ->
+    0.938), ``|S22|`` (0.451 -> 1.104), and max ``|S|`` (0.993 -> 1.104,
+    crossing the passivity-guard hard limit) all FAIL that same
+    invariance test — still evolving between checkpoints, in the WRONG
+    direction — so these are **UNMEASURED at this settling**, not
+    "refuted with cause identified" (an earlier revision of this
+    docstring made exactly that overclaim; see below).
+
+    RETRACTED (do not repeat — the third retracted attribution on this
+    lane, after attempt 1's own "near-degenerate two-drive amplification"):
+    a prior revision attributed the reciprocity miss to a coax/MSL
+    drive-amplitude gap (~1.8e7-3.3e7x). This is mathematically
+    impossible — per-drive (column) rescaling of the two-drive solve
+    leaves ``s_params`` EXACTLY invariant by construction (verified
+    numerically at this attempt's own gap value: deviation ~3e-16) — and
+    the "amplitude ratio" invoked turned out to equal raw ``cond_a`` to 8
+    significant figures, the exact quantity this docstring's own
+    ``cond_a`` / ``cond_a_equilibrated`` split already says not to read
+    as a degeneracy witness on this lane. The productive, SCALING-
+    INVARIANT open question in its place: the MSL-driven column's power
+    (``sum_j |s_params[j, 1, :]|**2``) is mostly far below 1 at both
+    checkpoints (0.0018-0.204, rising to 0.0104-1.218) on a nominally
+    lossless structure — where does that power go? Not answered by
+    attempt 2; the next step is the settled VESSL run, not a third
+    ladder/clearance change.
 
     Attributes
     ----------
