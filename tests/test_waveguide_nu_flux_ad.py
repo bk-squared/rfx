@@ -98,20 +98,35 @@ def _wr90_nu_sim():
 
 
 def _eps_override_for(sim, domain_x, deps):
-    """NU-grid eps override 1.0 + deps inside the slab region (traced).
+    """NU-grid eps override: production-assembled eps + deps inside the slab.
 
-    Sized to the NU grid the flux extractor builds (``_build_nonuniform_grid``
-    synthesises the same scalar-dx dz_profile and the same x-cpml pad the
-    NU S-matrix path uses, so the shape matches the device materials array).
+    #590: this used to reconstruct the slab index range by hand via
+    ``pos_to_nu_index`` (nearest-E-NODE argmin) — a comparator that agreed
+    with the assembled eps only under the pre-#562 cell-CENTRE coordinate
+    convention. #562/#564 moved ``coords_from_nonuniform_grid`` to E-node
+    coordinates and audited two consumers (the subpixel smoother, the #325
+    rasterization advisory); this helper was a third, unaudited one, and
+    went stale silently (16/16 elements, up to 19.8% rel diff against the
+    production no-override run).
+
+    Fixed the #564-review way: derive the baseline from
+    ``assemble_materials_nu`` (the SAME NU materials-assembly path
+    ``compute_waveguide_s_matrix`` calls internally) and the slab region
+    from the Box's own ``mask_on_coords`` on the production node
+    coordinates — never a hand-rolled index reconstruction.
     """
-    from rfx.runners.nonuniform import pos_to_nu_index
+    from rfx.runners.nonuniform import assemble_materials_nu
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+
     grid = sim._build_nonuniform_grid()
-    eps = jnp.ones(grid.shape, dtype=jnp.float32)
-    i_lo = pos_to_nu_index(grid, (_SLAB_X_LO, _A_WG / 2, _B_WG / 2))[0]
-    i_hi = pos_to_nu_index(grid, (_SLAB_X_HI, _A_WG / 2, _B_WG / 2))[0]
-    # Perturb the slab region: base slab eps (=4) + deps so deps=0 is a
-    # no-op vs the assembled materials (gate 3) and deps>0 changes S21.
-    return eps.at[i_lo:i_hi, :, :].set(_SLAB_EPS_R + deps)
+    materials, _debye_spec, _lorentz_spec, _pec_mask = assemble_materials_nu(sim, grid)
+    coords = coords_from_nonuniform_grid(grid)
+    slab_entry = next(e for e in sim._geometry if e.material_name == "diel_slab")
+    slab_mask = slab_entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+    # Perturb the slab region: base slab eps (=4, from the production
+    # assembly) + deps so deps=0 is a no-op vs the assembled materials
+    # (gate 3) and deps>0 changes S21 (FD gate).
+    return jnp.where(slab_mask, materials.eps_r + deps, materials.eps_r)
 
 
 def _s21_mag2(deps):
@@ -165,6 +180,28 @@ def test_nu_flux_smatrix_forward_matches_untraced():
     sb = np.asarray(res_b.s_params)
     assert np.all(np.isfinite(sa)) and np.all(np.isfinite(sb))
     np.testing.assert_allclose(sb, sa, rtol=1e-5, atol=1e-7)
+
+
+def test_eps_override_helper_matches_production_assembly():
+    """#590 regression: lock ``_eps_override_for`` to the production NU
+    materials assembly, the reduce-to-production pattern PR #564's review
+    used to close the smoother (F1) and the #325 advisory (F2) — an
+    elementwise assertion the helper's deps=0 baseline equals a fresh,
+    independent ``assemble_materials_nu`` call on the identical fixture.
+
+    This is deliberately NOT gated behind ``@pytest.mark.slow``: it only
+    builds the grid and rasterizes materials, no FDTD run, so it stays in
+    the fast lane and reds loudly (not just weekly) if this helper ever
+    drifts back to a hand-rolled index reconstruction under a future
+    coordinate-convention change.
+    """
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    sim, domain_x = _wr90_nu_sim()
+    grid = sim._build_nonuniform_grid()
+    materials, _, _, _ = assemble_materials_nu(sim, grid)
+    override = _eps_override_for(sim, domain_x, jnp.asarray(0.0, dtype=jnp.float32))
+    np.testing.assert_array_equal(np.asarray(override), np.asarray(materials.eps_r))
 
 
 def _s11_mag2_at_vacuum(deps):

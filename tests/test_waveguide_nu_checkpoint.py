@@ -78,12 +78,44 @@ def test_nu_checkpoint_no_longer_fenced_and_forward_identical():
 
 
 def _eps_override(sim, deps):
-    from rfx.runners.nonuniform import pos_to_nu_index
+    """NU-grid eps override: production-assembled eps + deps inside the slab.
+
+    #590 sibling: mirrors ``test_waveguide_nu_flux_ad.py::_eps_override_for``
+    — derive the baseline from ``assemble_materials_nu`` (the production NU
+    materials-assembly path) and the slab region from the Box's own
+    ``mask_on_coords``, never a hand ``pos_to_nu_index`` nearest-node
+    reconstruction (which went stale under #562's node-coordinate
+    convention change and was silently unprotected here since this test
+    only compares two runs that share the same override, not against a
+    production-default run).
+    """
+    from rfx.runners.nonuniform import assemble_materials_nu
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+
     grid = sim._build_nonuniform_grid()
-    eps = jnp.ones(grid.shape, dtype=jnp.float32)
-    i_lo = pos_to_nu_index(grid, (_SLAB_LO, _A / 2, _B / 2))[0]
-    i_hi = pos_to_nu_index(grid, (_SLAB_HI, _A / 2, _B / 2))[0]
-    return eps.at[i_lo:i_hi, :, :].set(_SLAB_EPS + deps)
+    materials, _debye_spec, _lorentz_spec, _pec_mask = assemble_materials_nu(sim, grid)
+    coords = coords_from_nonuniform_grid(grid)
+    slab_entry = next(e for e in sim._geometry if e.material_name == "diel")
+    slab_mask = slab_entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+    return jnp.where(slab_mask, materials.eps_r + deps, materials.eps_r)
+
+
+def test_eps_override_matches_production_assembly():
+    """#590 sibling regression: lock ``_eps_override`` to the production NU
+    materials assembly (the reduce-to-production pattern PR #564's review
+    used for F1/F2) — an elementwise assertion the helper's deps=0 baseline
+    equals a fresh, independent ``assemble_materials_nu`` call on the
+    identical fixture. Not ``@pytest.mark.slow``: no FDTD run, so it reds
+    in the fast lane if this helper ever drifts back to a hand-rolled
+    index reconstruction.
+    """
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    sim = _nu_sim()
+    grid = sim._build_nonuniform_grid()
+    materials, _, _, _ = assemble_materials_nu(sim, grid)
+    override = _eps_override(sim, jnp.asarray(0.0, dtype=jnp.float32))
+    np.testing.assert_array_equal(np.asarray(override), np.asarray(materials.eps_r))
 
 
 @pytest.mark.slow
