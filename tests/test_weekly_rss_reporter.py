@@ -346,6 +346,7 @@ def test_rss_live_sampler_helper_allocates_and_self_sigkills():
 def _run_sigkill_helper_subprocess(extra_pytest_args):
     root = Path(__file__).resolve().parent.parent
     env = dict(os.environ)
+    env.pop("PYTEST_ADDOPTS", None)  # an ambient -s here would leak into the child and invert the without--s regression pin
     env["RFX_TEST_SIGKILL_HELPER"] = "1"
     env["RFX_WEEKLY_RSS"] = "1"
     env["RFX_WEEKLY_RSS_THRESHOLD_MB"] = "10"  # low so the 60 MB helper alloc trips it
