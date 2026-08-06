@@ -362,14 +362,15 @@ differentiation is implemented only with `normalize="flux"`.
 there is no corresponding nonuniform `sigma_override` AD-vs-FD test. Neither
 implementation nor gradient regression is RF validation.
 
-**Those nonuniform fixtures are STALE and pending regeneration (issue #562).**
+**The nonuniform E5 fixture is STALE and pending regeneration (issues #562,
+#574).**
 `tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json`
-and
-`tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json`
-were generated while the nonuniform grid realized every axis one cell short of
+was generated while the nonuniform grid realized every axis one cell short of
 the requested domain, so their guide is `a - dy_edge` wide rather than `a`, and
-their gate tests replay the frozen numbers rather than re-running FDTD — the
-tests therefore pass while describing the earlier geometry. Nothing was
+its gate test replays the frozen numbers rather than re-running FDTD — the test
+therefore passes while describing the earlier geometry. (The E4 sibling was in
+this list until #576 regenerated it on corrected geometry AND a corrected
+absorber; it is current as of that PR.) Nothing was
 re-blessed: the numbers above stand exactly as measured, and the lane stays
 experimental, so the matrix is conservative rather than wrong. Regenerating
 them **measurably improves** agreement, so the cited differences are an upper
@@ -378,14 +379,34 @@ generated nonuniform numbers. Two of the sixteen broad-E5 configs re-run on
 post-#562 `main` against the same analytic Airy reference (issue #574, which
 also carries the measured 7 h cost of the full sweep):
 
-| config | metric | committed | regenerated |
+| config | metric | committed | regenerated (un-artifacted trial) |
 |---|---|---|---|
 | `ratio1_er2_L4mm` | `s11_max_mag_abs_diff` | 0.012687 | 0.007370 |
 | `ratio3_er2_L4mm` | `s11_max_mag_abs_diff` | 0.014874 | 0.007038 |
 
+Provenance, because the regenerated column is a **trial with no committed
+artifact** behind it while the committed column is backed by the frozen
+envelope: produced 2026-08-05 on post-#562 `main`, `CPML=24` (the sweep's
+then-hardcoded value), `NUM_PERIODS=60`, compared against the same analytic Airy
+reference the envelope builder uses. Those two numbers become
+**irreproducible** once #576 lands, which replaces that hardcoded 24 with a
+derived 183 cells — so treat them as a directional sample pending the #574
+regeneration, not as values to cite.
+
 The regenerated values are nearly grading-ratio independent where the committed
-ones spread, which is the expected signature: the cell the old grid dropped was
-the profile's edge cell, whose size varies with the grading ratio.
+ones spread. The tempting reading — that the dropped cell was the profile's
+*edge* cell, whose size varies with the grading ratio — is a **hypothesis, not a
+demonstrated cause**: #562 changed the node count and the centre-to-node
+coordinate convention in the same commit, and no ablation separates them here.
+Two configurations of sixteen also cannot support a lane-wide claim; what is
+established is these two measurements.
+
+One more reason they will move: E5's absorber is under revision in #576 at
+0.099 lambda_g — a 5x worse violation of the far-port discipline than the E4
+setting whose correction moved that lane's slab residual 8.2x. A
+transversely-graded lane is absorber-floor-limited on its propagation axis by
+construction, so the "ratio-independent floor" reading is incomplete until that
+lands.
 
 **Setup restrictions:**
 
