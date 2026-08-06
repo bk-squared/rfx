@@ -301,3 +301,59 @@ def test_the_empty_s11_pair_is_structurally_vacuous_and_not_counted_as_evidence(
     assert float(np.abs(rfx - ref).max()) < 0.1 * env["max_mag_abs_tol"], (
         "if this ever approaches the tolerance, the pair stops being vacuous "
         "and this test's premise needs rewriting")
+
+
+# WR-90's broad-wall dimension is a WAVEGUIDE STANDARD, not a measurement from
+# this run, so pinning it here is a definition rather than a frozen result — and
+# it lets the absorber witness below be recomputed entirely from the artifact
+# plus standards, with no constant copied out of the producer.
+WR90_A_M = 0.02286
+C0 = 299_792_458.0
+FAR_PORT_LAMBDA_G_FRACTION_FLOOR = 0.5  # #496
+
+
+def test_absorber_depth_witness_is_gated_not_just_recorded() -> None:
+    """#576 review F4 / #496. The fixture grew a `setup` provenance block, and
+    NOTHING asserted it — a recorded number no test reads is decoration, which
+    is how this lane shipped 0.33 lambda_g for its whole history.
+
+    Three things, in ascending strength:
+      1. the DISCIPLINE: the absorber must be >= 0.5 lambda_g at the lowest
+         measured frequency. This is the check whose absence caused #576.
+      2. the depth is RECOMPUTED from the artifact's own dx and band edge plus
+         the WR-90 standard, so a fixture claiming 46 cells at some other dx
+         cannot pass by restating its own fraction.
+      3. the PHYSICAL witness that the absorber worked: the PEC-short is a
+         lossless total reflector, so its |S11| must sit at unity within
+         float32 noise. At 20 cells this read 1.019948; the discipline check
+         above is only trustworthy to the extent this one agrees with it.
+    """
+    env = _env()
+    setup = env["setup"]
+
+    f_lo = min(float(p["freq_lo_hz"]) for p in env["pairs"])
+    f_c = C0 / (2.0 * WR90_A_M)
+    assert f_lo > f_c, "band must be above TE10 cutoff for lambda_g to be real"
+    lam_g_low = (C0 / f_lo) / np.sqrt(1.0 - (f_c / f_lo) ** 2)
+
+    dx = float(setup["dx_m"])
+    layers = int(setup["cpml_layers"])
+    fraction = layers * dx / lam_g_low
+
+    assert fraction >= FAR_PORT_LAMBDA_G_FRACTION_FLOOR, (
+        f"absorber is {layers} cells = {fraction:.3f} lambda_g at {f_lo / 1e9:.2f} "
+        f"GHz, below the {FAR_PORT_LAMBDA_G_FRACTION_FLOOR} far-port discipline "
+        f"(#496). This is the check whose absence let 0.33 lambda_g ship")
+    # The fixture's own stated fraction must be that same quantity, so a
+    # regeneration cannot record a flattering number next to a thin absorber.
+    assert float(setup["cpml_fraction_of_lambda_g_low"]) == pytest.approx(
+        fraction, rel=2e-3), (setup["cpml_fraction_of_lambda_g_low"], fraction)
+
+    ps = next(p for p in env["pairs"] if p["geometry"] == "pec_short")
+    rfx, _, _ = _per_bin(ps)
+    excess = float(np.max(np.abs(rfx - 1.0)))
+    assert excess < 2e-3, (
+        f"PEC-short |S11| departs from unity by {excess:.2e} — a lossless total "
+        f"reflector does not do that. At 20 CPML cells this was 2.0e-2; if it has "
+        f"regressed, the absorber/window pair is back (#576), and the "
+        f"{fraction:.3f} lambda_g recorded above is not sufficient on its own")
