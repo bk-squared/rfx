@@ -13,6 +13,8 @@ Outputs per-case NPZ + manifest to .omx/physics-gate/<dated>/rfx-sweep/.
 """
 from __future__ import annotations
 import argparse
+import dataclasses
+import math
 import json
 import sys
 import time
@@ -148,7 +150,7 @@ def build_sim(spec: BandSpec, dx: float, eps_r: float, freqs: np.ndarray):
     return sim
 
 
-def run_band(spec: BandSpec, date_tag: str):
+def run_band(spec: BandSpec, date_tag: str, cpml_fraction=None):
     out_dir = REPO / f".omx/physics-gate/{date_tag}-waveguide-broad-e5-{spec.tag}-flux/rfx-sweep"
     out_dir.mkdir(parents=True, exist_ok=True)
     freqs = np.linspace(spec.band_hz[0], spec.band_hz[1], spec.n_freqs)
@@ -180,14 +182,28 @@ def run_band(spec: BandSpec, date_tag: str):
           f"(cells/λ@top={[int(C0/spec.band_hz[1]/d) for d in spec.dx_values_m]})")
 
     for dx in spec.dx_values_m:
+        # The absorber depth is a PHYSICAL length, so a fixed cell count means a
+        # different depth at every dx. Derive it per dx when asked; otherwise
+        # leave the spec untouched so committed lanes reproduce bit for bit.
+        eff = spec
+        if cpml_fraction is not None:
+            lam_g_low = ((C0 / spec.band_hz[0])
+                         / math.sqrt(1.0 - (spec.fc_te10_hz / spec.band_hz[0]) ** 2))
+            eff = dataclasses.replace(
+                spec, cpml_layers=int(math.ceil(cpml_fraction * lam_g_low / dx)))
+            print(f"  dx {dx*1e6:.0f}um: absorber {spec.cpml_layers} -> "
+                  f"{eff.cpml_layers} cells "
+                  f"({spec.cpml_layers*dx/lam_g_low:.3f} -> "
+                  f"{eff.cpml_layers*dx/lam_g_low:.3f} lambda_g at "
+                  f"{spec.band_hz[0]/1e9:.2f} GHz)", flush=True)
         for eps_r in spec.eps_r_values:
             tag = f"dx{int(dx*1e6)}_slab_er{int(eps_r)}"
             out_path = out_dir / f"{tag}.npz"
             t0 = time.time()
             print(f"  [{tag}] starting", flush=True)
-            sim = build_sim(spec, dx, eps_r, freqs)
+            sim = build_sim(eff, dx, eps_r, freqs)
             result = sim.compute_waveguide_s_matrix(
-                num_periods=spec.num_periods, normalize="flux")
+                num_periods=eff.num_periods, normalize="flux")
             s = np.asarray(result.s_params)
             pi = {n: i for i, n in enumerate(result.port_names)}
             fr = np.asarray(result.freqs)
@@ -198,7 +214,7 @@ def run_band(spec: BandSpec, date_tag: str):
             np.savez(out_path,
                      freqs_hz=fr, s11=s11, s21=s21,
                      dx_m=dx, geometry=f"slab_er{int(eps_r)}",
-                     cpml_layers=spec.cpml_layers,
+                     cpml_layers=eff.cpml_layers,
                      eps_r=eps_r, slab_length_m=spec.slab_L_m,
                      num_periods=spec.num_periods, normalize="flux")
             manifest["cases"].append({
@@ -207,6 +223,9 @@ def run_band(spec: BandSpec, date_tag: str):
                 "rfx_npz": str(out_path.relative_to(REPO)),
                 "n_cells_total": int(cells),
                 "cells_per_lambda_max_hz": float(C0/spec.band_hz[1]/dx),
+                # Per-case, because with --cpml-fraction it differs per dx and a
+                # single manifest-level number would misdescribe half the cases.
+                "cpml_layers": int(eff.cpml_layers),
                 "wallclock_s": dt,
             })
             print(f"  [{tag}] done in {dt:.1f}s -> {out_path.name}", flush=True)
@@ -225,9 +244,24 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--band", required=True, choices=sorted(BANDS.keys()))
     p.add_argument("--date-tag", default="2026-05-26")
+    # Absorber override, default OFF so every committed lane reproduces bit for
+    # bit. The five committed band envelopes all ran at the class default of 24
+    # cells, which for these dx values is 0.060-0.162 lambda_g at the low band
+    # edge -- 3x to 8x below the >=0.5 far-port discipline (#496), and in the
+    # same range as the WR-90 NU lane's 0.099, where raising it moved the
+    # measured envelope by 14.4x (#574). Whether these bands are equally
+    # affected is an empirical question per band, which is what this flag is
+    # for: it derives the depth from lambda_g at the LOWEST measured frequency
+    # (where lambda_g is longest and the absorber weakest) instead of fixing a
+    # cell count that means a different physical depth at every dx.
+    p.add_argument("--cpml-fraction", type=float, default=None,
+                   metavar="FRAC",
+                   help="derive cpml_layers = ceil(FRAC * lambda_g_low / dx) "
+                        "per dx instead of the spec's fixed count; 0.75 is the "
+                        "case-19 recipe value")
     args = p.parse_args()
     spec = BANDS[args.band]
-    run_band(spec, args.date_tag)
+    run_band(spec, args.date_tag, cpml_fraction=args.cpml_fraction)
 
 
 if __name__ == "__main__":

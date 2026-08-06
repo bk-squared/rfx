@@ -29,6 +29,14 @@ def _cases(env: dict) -> dict:
 
 
 def _summary_max(env: dict) -> float:
+    # Read the key the GATE reads (`envelope_summary.max_mag_abs_diff_across_cases`)
+    # first. An earlier revision looked only in a `summary` dict these envelopes
+    # do not have, fell through to the max over cases, and happened to agree —
+    # because the gate test asserts those are equal. Agreeing by luck is not the
+    # same as reporting the gated quantity.
+    es = env.get("envelope_summary") or {}
+    if "max_mag_abs_diff_across_cases" in es:
+        return float(es["max_mag_abs_diff_across_cases"])
     s = env.get("summary") or {}
     for key in ("max_mag_abs_diff", "max_abs_diff", "envelope_max"):
         if key in s:
