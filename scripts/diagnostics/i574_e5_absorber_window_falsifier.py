@@ -56,6 +56,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 
 from rfx.api import Simulation  # noqa: E402
@@ -145,6 +146,12 @@ def run_cell(geometry: str, cpml: int, num_periods: float) -> dict:
         "max_s11": float(np.abs(s11).max()),
         "argmax_s11_ghz": float(fr[int(np.argmax(np.abs(s11)))] / 1e9),
         "max_col_power": float(colpow.max()),
+        # Lane provenance: rfx's core is f32/complex64 and the port DFT
+        # accumulators are complex128-declared, so CPU and GPU can differ in the
+        # last digits. Recording the backend makes a cross-lane mismatch
+        # attributable instead of mysterious.
+        "backend": jax.default_backend(),
+        "device": str(jax.devices()[0]),
         "argmax_colpow_ghz": float(fr[int(np.argmax(colpow))] / 1e9),
     }
 
@@ -157,6 +164,62 @@ _CELLS = {
 }
 
 
+def summarize(out_root: Path) -> int:
+    """Print the 2x2 (or whatever subset exists) from committed cell artifacts.
+
+    Lives here rather than in the job definition because a summary that is
+    re-derived from the artifacts is checkable, while one printed inline by a
+    batch runner is a claim with nothing behind it. Reports how many of the 8
+    cells are present so a partial matrix cannot read as a complete one.
+    """
+    paths = sorted(out_root.glob("*.json"))
+    if not paths:
+        print(f"no cell artifacts in {out_root}")
+        return 1
+    rows = [json.loads(p.read_text()) for p in paths]
+    rows.sort(key=lambda r: (r["geometry"], r["cpml_layers"], r["num_periods"]))
+    print(f"{'geometry':10} {'CPML':>5} {'lam_g':>6} {'np':>4} {'max|S11|':>10} "
+          f"{'@GHz':>6} {'colpow':>9} {'wall_s':>7} {'lane':>8}")
+    for r in rows:
+        print(f"{r['geometry']:10} {r['cpml_layers']:>5} "
+              f"{r['cpml_fraction_lambda_g_low']:>6.3f} {r['num_periods']:>4.0f} "
+              f"{r['max_s11']:>10.6f} {r['argmax_s11_ghz']:>6.2f} "
+              f"{r['max_col_power']:>9.6f} {r['wall_s']:>7.0f} "
+              f"{r.get('backend', '?'):>8}")
+    print(f"cells present: {len(rows)}/8")
+    for geom in sorted({r["geometry"] for r in rows}):
+        g = {(r["cpml_layers"], r["num_periods"]): r for r in rows
+             if r["geometry"] == geom}
+        base = g.get((CPML_COMMITTED, NP_COMMITTED))
+        if base is None:
+            continue
+        # METRIC BY GEOMETRY. |S11|-1 is only meaningful for a TOTAL reflector:
+        # a dielectric slab reflects ~0.79, so |S11|-1 = -0.205 there, which is
+        # not an excess at all and made an earlier revision of this summary
+        # print "-0.3% of the excess removed" as if it meant something. For the
+        # slab the passivity observable is COLUMN POWER (|S11|^2+|S21|^2 = 1 for
+        # a lossless two-port); for the PEC short both work and column power is
+        # the stricter of the two.
+        key_metric = "max_s11" if geom == "pec_short" else "max_col_power"
+        label_metric = "max|S11|" if geom == "pec_short" else "max column power"
+        print(f"\n  {geom}: {label_metric} excess over unity, "
+              f"and what each lever removes")
+        e0 = base[key_metric] - 1.0
+        print(f"    committed (cpml {CPML_COMMITTED}, np {NP_COMMITTED:.0f}): "
+              f"{e0:+.6f}")
+        for key, label in (((CPML_COMMITTED, NP_DOUBLED), "window alone"),
+                           ((CPML_DERIVED, NP_COMMITTED), "absorber alone"),
+                           ((CPML_DERIVED, NP_DOUBLED), "both")):
+            cell = g.get(key)
+            if cell is None:
+                print(f"    {label:<15}: MISSING")
+                continue
+            e = cell[key_metric] - 1.0
+            frac = (1.0 - e / e0) * 100.0 if e0 != 0 else float("nan")
+            print(f"    {label:<15}: {e:+.6f}  ({frac:.1f}% of the excess removed)")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--geometry", default="pec_short",
@@ -164,10 +227,22 @@ def main(argv=None) -> int:
     ap.add_argument("--cell", choices=sorted(_CELLS), action="append",
                     help="CPMLxNUM_PERIODS; repeatable. default = all four")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--out-dir", default=None,
+                    help="artifact directory; default .omx/i574-step0-absorber-window. "
+                         "Separate directories keep a GPU lane's results from "
+                         "overwriting a concurrent CPU lane's — the two are a "
+                         "cross-check, so they must not share filenames.")
+    ap.add_argument("--summarize", action="store_true",
+                    help="print the 2x2 from existing artifacts and exit")
     args = ap.parse_args(argv)
     cells = sorted(_CELLS) if (args.all or not args.cell) else args.cell
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_root = Path(args.out_dir) if args.out_dir else OUT
+    if not out_root.is_absolute():
+        out_root = REPO / out_root
+    out_root.mkdir(parents=True, exist_ok=True)
+    if args.summarize:
+        return summarize(out_root)
     print(f"#574 Step 0: {args.geometry}, dx={DX * 1e6:.0f}um, "
           f"lambda_g(8.2GHz)={_LAM_G_LOW * 1e3:.1f}mm")
     print(f"  committed absorber {CPML_COMMITTED} cells = "
@@ -181,7 +256,7 @@ def main(argv=None) -> int:
         print(f"\n[{args.geometry} {key}] cpml={cpml} np={npd:.0f} starting",
               flush=True)
         res = run_cell(args.geometry, cpml, npd)
-        path = OUT / f"{args.geometry}_{key}.json"
+        path = out_root / f"{args.geometry}_{key}.json"
         path.write_text(json.dumps(res, indent=2) + "\n")
         print(f"[{args.geometry} {key}] {res['wall_s']:.0f}s  "
               f"max|S11|={res['max_s11']:.6f} @ {res['argmax_s11_ghz']:.2f}GHz  "
