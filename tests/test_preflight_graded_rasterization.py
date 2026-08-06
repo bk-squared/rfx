@@ -100,13 +100,32 @@ def _real_rasterized_z_count(sim) -> int:
     return int(_np.count_nonzero((eps > 1.0 + 1e-6).max(axis=(0, 1))))
 
 
-def _validator_z_count(sim):
+def _validator_counts(sim):
+    """(reported cell count, reported `implied`) or (None, None) when silent."""
     for issue in _issues(sim):
         if "rasterizes to" in issue:
-            return int(issue.split("rasterizes to")[1].split()[0])
-    return None
+            count = int(issue.split("rasterizes to")[1].split()[0])
+            implied = float(issue.split("(implied")[1].split(")")[0])
+            return count, implied
+    return None, None
 
 
+def _implied_cells(dz, z_lo, z_hi):
+    """The validator's own `implied` figure: span thickness over the finest
+    cell in a +-5-cell neighbourhood of the span (the #325 shifted-band
+    recipe). Duplicated here on purpose so the SILENT direction can be
+    justified rather than skipped; it is cross-checked against the
+    validator's reported value on every case that fires.
+    """
+    edges = np.concatenate(([0.0], np.cumsum(dz)))
+    local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
+    idx = np.flatnonzero(local)
+    lo_i = max(0, int(idx[0]) - 5)
+    hi_i = min(dz.size, int(idx[-1]) + 6)
+    return (z_hi - z_lo) / float(np.min(dz[lo_i:hi_i]))
+
+
+import math  # noqa: E402
 import pytest  # noqa: E402
 
 
@@ -134,11 +153,37 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
     sim.add_source((2e-3, 2e-3, 1e-3), "ez")
 
     real = _real_rasterized_z_count(sim)
-    predicted = _validator_z_count(sim)
-    if predicted is not None:
+    predicted, implied = _validator_counts(sim)
+
+    # Both directions, because the SILENT one is the F2 failure mode. The
+    # first version of this test only asserted when the advisory fired, so
+    # four of six cases skipped the assertion entirely — and "validator quiet
+    # where it should warn" is exactly what F2 was (#568 item 1).
+    implied_local = _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3)
+    under_resolved = real < math.ceil(0.5 * implied_local)
+    # The validator ALSO requires `actual <= 4`. That cutoff is its policy, not
+    # this test's contract (#569 review, finding 4): hard-coding it here would
+    # red this test the day the advisory is widened. So assert the two directions
+    # the resolution condition settles, and stay silent about the band where the
+    # cutoff alone decides.
+    should_warn = under_resolved and real <= 4
+    if should_warn:
+        assert predicted is not None, (
+            f"advisory SILENT for z-span [{z_lo_mm}, {z_hi_mm}) mm, but the "
+            f"rasterizer realizes {real} cells against "
+            f"{_implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3):.1f} implied "
+            f"— that silence reads as a clean bill of health")
         assert predicted == real, (
             f"validator predicts {predicted} z cells, rasterizer realizes "
             f"{real} for z-span [{z_lo_mm}, {z_hi_mm}) mm")
+        # cross-check this test's own `implied` formula against the validator's
+        assert implied == pytest.approx(implied_local, abs=0.05)
+    elif not under_resolved:
+        assert predicted is None, (
+            f"advisory fired for z-span [{z_lo_mm}, {z_hi_mm}) mm where the "
+            f"realized count {real} is not under-resolved against "
+            f"{implied_local:.1f} implied")
+
     # and the reviewer's case must actually fire: 1 realized against 4 implied
     if (z_lo_mm, z_hi_mm) == (4.50, 5.50):
         assert real == 1, real

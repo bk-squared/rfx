@@ -1660,15 +1660,21 @@ class _ExecuteMixin:
         # always wanted. Caller code that sized arrays from the PROFILE length
         # is one sample short, and without this check the mismatch surfaces
         # deep inside XLA as an opaque broadcast TypeError (#562 review F9).
-        _grid = self._build_nonuniform_grid()
-        for _name, _arr in (("eps_override", eps_override),
-                            ("sigma_override", sigma_override),
-                            ("pec_mask_override", pec_mask_override),
-                            ("pec_occupancy_override", pec_occupancy_override),
-                            ("design_mask", design_mask)):
-            if _arr is None or not hasattr(_arr, "shape"):
-                continue
-            if tuple(_arr.shape) != tuple(_grid.shape):
+        _overrides = (("eps_override", eps_override),
+                      ("sigma_override", sigma_override),
+                      ("pec_mask_override", pec_mask_override),
+                      ("pec_occupancy_override", pec_occupancy_override),
+                      ("design_mask", design_mask))
+        # Build the grid ONLY when there is an array to check, so the common
+        # override-free forward() does not pay for a second grid build
+        # (#568 observation 1 — negligible against the solve, but free to skip).
+        if any(_a is not None and hasattr(_a, "shape") for _n, _a in _overrides):
+            _grid = self._build_nonuniform_grid()
+            for _name, _arr in _overrides:
+                if _arr is None or not hasattr(_arr, "shape"):
+                    continue
+                if tuple(_arr.shape) == tuple(_grid.shape):
+                    continue
                 raise ValueError(
                     f"{_name} has shape {tuple(_arr.shape)} but this "
                     f"non-uniform grid is {tuple(_grid.shape)}. Grid-shaped "

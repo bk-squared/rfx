@@ -178,7 +178,8 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   reads rel_err `1.0000` on the same fixture — the gate reds at 33x the
   threshold, confirming it discriminates a real defect and not only
   comparator noise. This supersedes the pre-#530 objective's `0.0331`/`0.10`
-  figures (issue #527, closed) and the older pre-#516 `0.000110` figure
+  figures (issue #527, closed; that run: VESSL 369367250775, gate's own
+  measured run VESSL 369367250794) and the older pre-#516 `0.000110` figure
   (issues #483/#486): the #507/#511 fixes had shrunk the OLD objective's
   differentiated signal about 50x, exposing the f32 comparator's own
   resolving-power floor as the dominant cause of an intermediate 0.8519
@@ -201,7 +202,8 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   shares this same objective function (`tests/_msl_ad_objective.py`) so the
   two tests cannot drift apart. The launch fixture derives from registered
   materials on both the FD and AD sides; staticness is regression-locked by
-  `tests/test_msl_source_fixture_static.py`.
+  `tests/test_msl_source_fixture_static.py` (pre-fix `0.126` vs gate `0.03`
+  at `num_periods=1`).
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes
   placed at the same physical coordinate (rfx's probe-0 plane), the raw
@@ -523,9 +525,18 @@ solve that does not assume the non-driven port sees zero incident wave. It is
 feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only
 TM0n modes, while the transition discontinuities issue #489 targets excite
 TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to
-the first probe plane). No external referee has run against this method and
-no phase claim is made. See `tests/test_coax_two_port_fdtd.py` for the
-measured single-run envelope and its provenance.
+the first probe plane). The measured single-run envelope (60 mm / 40 GHz
+fixture, 4-12 GHz): `|S21|`,`|S12|` 0.74-0.96, `|S11|`,`|S22|` `<= 0.051`
+(measured max `0.0502` at 12 GHz, `tests/test_coax_two_port_fdtd.py:699`;
+the committed gate itself is the wider inherited 1-port envelope
+`<= 0.08`), reciprocity within `0.3%` magnitude / `0.21` degree phase,
+`cond(A) <= 1.11`. See `tests/test_coax_two_port_fdtd.py` for the full
+measured envelope and its provenance. An external openEMS referee is
+now REGISTERED (`validation/crossval/21_coax_two_port_referee.py`, promoted
+2026-08-04) bracketing the through-line class — it builds and runs its own
+independent openEMS model offline and does not execute rfx in-process;
+EXPERIMENTAL status stands until the transition/AD legs close, and no phase
+claim is made.
 
 `compute_coaxial_two_port(...)` now has the same `eps_scale` differentiable
 channel as the 1-port method above (issue #489 leg 3): the gate compares
@@ -690,8 +701,13 @@ thin, unmatched pin-to-trace post — "no intermediate matching structure", per
 the leg's own scoping) is internally self-consistent (finite, deterministic,
 settles below −40 dB) but trips its own pre-declared reciprocity falsifier
 badly: `|S12|` vs `|S21|` disagree by 94-100% across the three measured
-frequencies, with the two-drive solve's raw condition number `cond_a` in the
-1e3-1e7 range at every bin.
+frequencies (0.6/3.3/6.0 GHz), with the two-drive solve's raw condition
+number `cond_a` in the 1e3-1e7 range at every bin (precise per-frequency
+values: `cond_a` (raw) `7.0e4` / `4.6e3` / `4.3e7`). Own-drive incident-wave
+magnitudes `a_inc` are 5-9 orders of magnitude apart: coax
+`5.8e-9`/`5.8e-8`/`3.0e-9`, msl `8.2e-14`/`1.3e-11`/`7.1e-17`. The MSL probe
+ladder spans `1.000` mm. Settling: `-43.9` dB (coax drive) / `-63.6` dB (msl
+drive) at `N_STEPS=8000`.
 
 **Attribution (corrected after adversarial PR review; see PR #581 review
 findings B2/B3).** The first attribution written for this finding —

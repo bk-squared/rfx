@@ -179,7 +179,7 @@ def test_thin_conductor_nonuniform_reflects_like_box():
     # sheet and the matching-thickness box coincide cell-for-cell. (#371, resolved
     # as not-a-placement-bug: even on a GENUINELY graded dz_profile a thin sheet
     # and a genuinely MATCHING-THICKNESS (sub-cell) box still select the same
-    # z-layer, because both take the argmin-nearest-centre thin branch. Only a
+    # z-layer, because both take the argmin-nearest-NODE thin branch. Only a
     # >=1-cell VOLUME box — a physically different object — lands a layer away.
     # See test_thin_conductor_graded_matches_matching_thickness_box_not_onecell.)
     from rfx.runners.nonuniform import (build_nonuniform_grid,
@@ -252,11 +252,17 @@ def test_thin_conductor_lossy_nonuniform_runs_no_skip_warn():
 def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     """#371: on a GENUINELY graded dz_profile, a PEC thin sheet selects the same
     z-layer as a genuinely MATCHING-THICKNESS (sub-cell) box — because both take
-    the argmin thin branch, which realizes the conductor at the nearest cell
-    CENTRE (apply_pec_mask zeros collocated tangential Ex/Ey there). A one-cell
-    VOLUME box is a different object and legitimately lands one layer away; the
-    sheet's layer is the one whose centre is NEAREST z0 (minimum realized-plane
+    the argmin thin branch, which realizes the conductor at the nearest E-NODE
+    (apply_pec_mask zeros collocated tangential Ex/Ey there). A one-cell VOLUME
+    box is a different object and legitimately lands one layer away; the
+    sheet's layer is the one whose NODE is NEAREST z0 (minimum realized-plane
     error), which the one-cell box is NOT required to match.
+
+    Wording note (#562 / #568 item 3): this said "cell CENTRE" until the NU
+    coordinates became node-based. The coords the argmin runs over are nodes,
+    and nodes are where tangential Ex/Ey actually sit, so the #371 closure this
+    file records is STRENGTHENED by the correction — the minimized quantity is
+    now the distance to the plane the conductor is really realized on.
     """
     import numpy as np
     from rfx.api import Simulation
@@ -298,17 +304,17 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     onecell_z, _ = nu_pec_z(lambda s: s.add(
         Box((px[0], py[0], 4.0e-3), (px[1], py[1], 5.5e-3)), material="pec"))
 
-    # R5 witness: realized plane (selected cell centre) vs requested z0.
+    # R5 witness: realized plane (selected E-node) vs requested z0.
     k = sheet_z[0]
     sheet_err = abs(float(zc[k]) - z_req)
     nearest = int(np.argmin(np.abs(zc - z_req)))
     assert sheet_z == [nearest], (
-        f"#371: thin sheet must land on the NEAREST-centre layer {nearest} "
+        f"#371: thin sheet must land on the NEAREST-NODE layer {nearest} "
         f"(realized {float(zc[nearest])*1e3:.3f}mm); got {sheet_z}")
     assert sheet_z == mbox_z, (
         f"#371: sheet must equal a genuinely matching-thickness box "
         f"(sheet={sheet_z}, matching-box={mbox_z})")
-    # sanity: the nearest-centre layer really is the min-error placement
+    # sanity: the nearest-node layer really is the min-error placement
     assert sheet_err <= abs(float(zc[onecell_z[0]]) - z_req) + 1e-12
     # A one-cell VOLUME box is a physically different object (1-cell slab vs a
     # zero-thickness sheet); on this graded profile it lands one layer away

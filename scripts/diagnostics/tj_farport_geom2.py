@@ -3,7 +3,7 @@
 Second, genuinely different junction geometry demanded by the single-geometry
 honesty locks (tests/test_waveguide_tjunction_e4e5_gates.py): the numeric
 breadth bars require >= 2 junction geometries before any "broad" junction
-claim. Mirrors scripts/diagnostics/tj_farport_test.py (geometry 1, W=0.04)
+claim. Mirrors scripts/diagnostics/tj_farport_diag.py (formerly tj_farport_test.py) (geometry 1, W=0.04)
 with the same far-port discipline on the SAME domain/CPML:
 
   * guide width W = 0.036 m -> TE10 cutoff 4.163 GHz, TE20 cutoff 8.327 GHz;

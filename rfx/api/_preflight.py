@@ -2107,10 +2107,8 @@ class _PreflightMixin:
         # x/y are passed as single-sample arrays because only the z profile is
         # needed here; either mask branch admits the box's own midpoint, so the
         # combined mask's z profile is the z-axis mask.
-        from rfx.geometry.rasterize_grid import _axis_node_positions
-        from rfx.nonuniform import _append_bounding_node
-        z_nodes = np.asarray(_axis_node_positions(_append_bounding_node(dz), 0),
-                             dtype=np.float64)
+        from rfx.nonuniform import node_positions_from_profile
+        z_nodes = np.asarray(node_positions_from_profile(dz), dtype=np.float64)
 
         for entry in self._geometry:
             if not isinstance(entry.shape, Box):
