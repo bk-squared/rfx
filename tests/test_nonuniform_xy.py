@@ -107,7 +107,7 @@ def test_position_to_index_nonuniform_xy():
 
 
 # ---------------------------------------------------------------------
-# 4. coords_from_nonuniform_grid cell centers
+# 4. coords_from_nonuniform_grid E-node positions (#562: was cell centres)
 # ---------------------------------------------------------------------
 def test_coords_from_nonuniform_grid_node_positions():
     """Coordinates are E-NODE positions (cumulative cell edges), not centres.

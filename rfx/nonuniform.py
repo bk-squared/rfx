@@ -180,12 +180,8 @@ def node_positions_from_profile(profile):
     worse, a hand-rolled copy, is how that check drifted in the first place —
     #562 review F2, #568).
     """
-    return _axis_node_positions_for(_append_bounding_node(profile))
-
-
-def _axis_node_positions_for(padded):
     from rfx.geometry.rasterize_grid import _axis_node_positions
-    return _axis_node_positions(padded, 0)
+    return _axis_node_positions(_append_bounding_node(profile), 0)
 
 
 def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:

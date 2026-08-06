@@ -159,8 +159,14 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
     # first version of this test only asserted when the advisory fired, so
     # four of six cases skipped the assertion entirely — and "validator quiet
     # where it should warn" is exactly what F2 was (#568 item 1).
-    should_warn = real < math.ceil(0.5 * _implied_cells(dz, z_lo_mm * 1e-3,
-                                                       z_hi_mm * 1e-3)) and real <= 4
+    implied_local = _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3)
+    under_resolved = real < math.ceil(0.5 * implied_local)
+    # The validator ALSO requires `actual <= 4`. That cutoff is its policy, not
+    # this test's contract (#569 review, finding 4): hard-coding it here would
+    # red this test the day the advisory is widened. So assert the two directions
+    # the resolution condition settles, and stay silent about the band where the
+    # cutoff alone decides.
+    should_warn = under_resolved and real <= 4
     if should_warn:
         assert predicted is not None, (
             f"advisory SILENT for z-span [{z_lo_mm}, {z_hi_mm}) mm, but the "
@@ -171,12 +177,12 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
             f"validator predicts {predicted} z cells, rasterizer realizes "
             f"{real} for z-span [{z_lo_mm}, {z_hi_mm}) mm")
         # cross-check this test's own `implied` formula against the validator's
-        assert implied == pytest.approx(
-            _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3), abs=0.05)
-    else:
+        assert implied == pytest.approx(implied_local, abs=0.05)
+    elif not under_resolved:
         assert predicted is None, (
             f"advisory fired for z-span [{z_lo_mm}, {z_hi_mm}) mm where the "
-            f"realized count {real} does not meet its own criterion")
+            f"realized count {real} is not under-resolved against "
+            f"{implied_local:.1f} implied")
 
     # and the reviewer's case must actually fire: 1 realized against 4 implied
     if (z_lo_mm, z_hi_mm) == (4.50, 5.50):

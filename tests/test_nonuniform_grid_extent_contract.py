@@ -182,42 +182,44 @@ def test_extent_and_pad_symmetry_hold_with_cpml_pads():
     assert lo_depth == pytest.approx(8 * DX, abs=_ABS_TOL)
 
 
-def test_cpml_sigma_ramps_are_mirror_images_across_the_two_faces():
-    """The two faces' sigma ramps are mirror images — an INVARIANT, not a
-    witness (#568 item 2, resolved by measurement).
+def test_absorber_depth_is_symmetric_across_the_two_faces():
+    """Both absorber faces must be the same physical depth (#568 item 2, redone).
 
-    #568 asked for this assertion as the direct witness for a hi-face
-    realignment. It is not one: run against the pre-#562 commit it PASSES
-    (measured, `bb61494^`), because both faces build sigma from the same
-    n_layers and the same boundary cell size, so the arrays are mirror images
-    by construction regardless of how many usable cells sit behind them. The
-    same measurement shows the premise did not hold either — pad depths were
-    8.000/8.000 cells before and after — so there is no realignment to
-    witness, and the "unclaimed improvement" recorded in the #564 review, and
-    repeated by me in that PR's body, is withdrawn.
+    History worth keeping, because two wrong answers preceded this one. #564's
+    review recorded that the hi-face absorber had been one cell shallower than
+    the lo face. #568 proposed `allclose(sigma_lo, sigma_hi[::-1])` as the
+    witness; that assert is a TAUTOLOGY (cpml.py builds the hi profile by
+    flipping the same base, so it holds at every commit) and is gone. I then
+    measured pad depths as equal on both sides of the merge and WITHDREW the
+    claim — that measurement was wrong: it derived the interior's last node as
+    `nx - pad_hi - 1`, where the `-1` exists only to skip the bounding node the
+    fix ADDS, so applied to the pre-fix array it landed one node short and
+    charged the missing node to the interior instead of the pad.
 
-    Keeping the assertion anyway: it is cheap, it is true, and an asymmetric
-    ramp would be a real defect if a future change made the two faces derive
-    sigma independently (the NU z-faces already do use independent cell
-    sizes). The non-vacuity check below matters for exactly that reason — a
-    constant ramp would satisfy any mirror test.
+    Measured convention-free from the raw cell array (this test's formula), 60
+    interior cells with 8 CPML layers:
+
+        pre-#562   nx 76   interior 60.000 cells   lo 8.000 / hi 7.000
+        post-#562  nx 77   interior 60.000 cells   lo 8.000 / hi 8.000
+
+    So the missing bounding node was charged to whatever sat at the outer end
+    of the axis: on a PEC-bounded axis (pad = 0) the INTERIOR lost a cell, which
+    is #562's headline; on a CPML-padded axis the HI ABSORBER lost one, which is
+    the claim above. Both are the same defect seen from two boundary conditions,
+    and this assert reds at `bb61494^` and greens on `main`.
     """
-    from rfx.boundaries.cpml import init_cpml
-
     prof = np.full(60, DX)
     sim = Simulation(freq_max=13e9, domain=(60 * DX, A, NB * DX),
                      dx=DX, cpml_layers=8, dx_profile=prof)
     grid = sim._build_nonuniform_grid()
-    params, _state = init_cpml(grid)
 
-    lo = np.asarray(params.x_lo.sigma, dtype=float)
-    hi = np.asarray(params.x_hi.sigma, dtype=float)
-    # non-vacuity: a constant ramp would satisfy any mirror test
-    assert lo.size == 8, lo.size
-    assert float(lo.max()) > 10.0 * max(float(lo.min()), 1e-30), (
-        "sigma ramp is nearly constant — the mirror comparison below would be "
-        "vacuous", lo)
-    assert np.allclose(lo, hi[::-1], rtol=1e-6, atol=0.0), (
-        "x-lo and x-hi CPML sigma ramps are not mirror images", lo, hi[::-1])
-    # the boundary cell sizes the two faces derive sigma_max from must match too
-    assert float(params.dx_x_lo) == pytest.approx(float(params.dx_x_hi), abs=1e-15)
+    cum = np.insert(np.cumsum(np.asarray(grid.dx_arr, dtype=float)), 0, 0.0)
+    lo_depth = float(cum[grid.pad_x_lo] - cum[0])
+    hi_depth = float(cum[grid.nx - 1] - cum[grid.pad_x_lo + 60])
+    interior = float(cum[grid.pad_x_lo + 60] - cum[grid.pad_x_lo])
+
+    assert interior == pytest.approx(60 * DX, abs=_ABS_TOL), interior / DX
+    assert lo_depth == pytest.approx(8 * DX, abs=_ABS_TOL), lo_depth / DX
+    assert hi_depth == pytest.approx(lo_depth, abs=_ABS_TOL), (
+        f"absorber depth lo {lo_depth / DX:.3f} vs hi {hi_depth / DX:.3f} cells "
+        "— the hi face is short by the bounding node")
