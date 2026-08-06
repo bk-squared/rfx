@@ -353,7 +353,7 @@ relative permittivity 2 and 4, and 8.2--12.4 GHz with a maximum
 linear-magnitude difference of `0.01561`. A passed Palace magnitude comparison
 covers `normalize="flux"`, a graded-`dy` ratio of 2, and WR-90
 empty/PEC-short/dielectric-slab cases over 8.2--12.4 GHz; its maximum and mean
-linear-magnitude differences are `0.07009` and `0.01042`. This is external RF
+linear-magnitude differences are `0.008529` and `0.000709` (they were `0.07009` and `0.01042` until this lane's absorber was derived from lambda_g rather than hard-coded at 0.33 of it — see #576/#496). This is external RF
 evidence for that configuration, not for other profiles, bands, phase,
 multimode extraction, or arbitrary junctions. The calculation remains
 experimental outside those stated results. `eps_override` and `sigma_override`

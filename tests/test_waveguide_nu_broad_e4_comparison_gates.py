@@ -45,7 +45,7 @@ FIXTURE = (
 
 # Committed producer constants (build_waveguide_wr90_nu_flux_broad_e4_comparison.py).
 # Derived from the measured envelope (see that script's tolerance block): the
-# absorber under-provisioning fix took the worst per-pair max from 0.07009 to
+# absorber fix took the worst PER-PAIR max from 0.07009 to
 # 0.008529 and the worst per-pair mean from 0.0359 to 0.0030, so the old flat
 # 0.10 / 0.07 were 12x and 23x loose. The tolerances are per-pair, which is what
 # the mean envelope is derived from (not the summary mean).
@@ -97,8 +97,22 @@ def test_committed_pairs_rederive_broad_e4_verdict() -> None:
     for p in pairs:
         assert p["status"] == "passed", p
         assert p["max_mag_abs_diff"] <= max_tol, p
-        # The gate is BOTH max<=0.10 AND mean<=0.07 (both enforced in the
-        # producer's per-pair status), so the "0.10/0.07" framing is real.
+        # PASSIVITY, stated rather than implied (#576 review F11). The bounds
+        # above constrain agreement with the reference; they do not by
+        # themselves say a lossless structure stayed passive. The E4 lane's
+        # over-unity |S11| is what started that review, so assert the intent
+        # directly: no rfx magnitude may exceed unity by more than the
+        # comparison envelope it is being judged against.
+        _hi = float(p["rfx_mag_range"][1])
+        assert _hi <= 1.0 + max_tol, (
+            f"{p['geometry']} {p['component']} rfx |S| reaches {_hi:.6f}, above "
+            f"1 + {max_tol} — a lossless structure is not that non-passive; see "
+            f"#576 (absorber under-provisioning) before blessing the fixture")
+        # The gate is BOTH bounds at once (both enforced in the producer's
+        # per-pair status), so quoting the pair is real rather than shorthand.
+        # They are 0.013 / 0.005 since #576 derived them from the measured
+        # envelope; the 0.10 / 0.07 this comment used to name were the
+        # pre-derivation literals.
         assert p["mean_mag_abs_diff"] <= mean_tol, p
 
     s = env["summary"]
