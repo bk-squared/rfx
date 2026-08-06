@@ -1,5 +1,5 @@
 """Far-port MEEP reference for the H-plane T-junction |S|-matrix, matched to the
-rfx long-arm geometry (scripts/diagnostics/tj_farport_test.py): domain 0.30x0.24,
+rfx long-arm geometry (scripts/diagnostics/tj_farport_diag.py (formerly tj_farport_test.py)): domain 0.30x0.24,
 W=0.04, ports >=5 evanescent decay-lengths from the junction. |S| magnitudes are
 reference-plane independent (only phase rotates), so this is apples-to-apples with
 far-port rfx. FLUX-based (MPB-free; MEEP MPB rejects PEC walls).

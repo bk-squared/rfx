@@ -1,4 +1,8 @@
 """DISCRIMINATING TEST: is the T-junction mesh-divergence a SOLVER corner error
+# RENAMED from tj_farport_test.py (issue #567): the old name matched pytest's
+# *_test.py collection glob while the script calls argparse.parse_args() at module
+# level -- an INTERNALERROR landmine if rootdir/testpaths detection ever shifts.
+# Diagnostic scripts must not be named *_test.py.
 (H1/H3) or just PORTS sitting in the junction's evanescent near-field (H2)?
 
 Long-arm T-junction: ports placed >=5 evanescent decay-lengths from the junction

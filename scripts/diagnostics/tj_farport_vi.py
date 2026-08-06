@@ -2,7 +2,7 @@
 (extract_waveguide_s_matrix). S11 = backward/forward = Gamma_junction, which
 separates the two propagation directions at the port plane and is therefore
 IMMUNE to the source/boundary re-reflection standing wave that ripples the
-flux (power-subtraction) reflection. Same geometry as tj_farport_test.py.
+flux (power-subtraction) reflection. Same geometry as tj_farport_diag.py (formerly tj_farport_test.py).
 Tests whether per-frequency |S11| is clean with V/I separation.
 """
 import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
