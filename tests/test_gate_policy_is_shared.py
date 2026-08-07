@@ -70,6 +70,17 @@ _QUANTIZED_GATE_FILES = [
     REPO / "tests" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
+    # #574 promotion. Same shape and the same coverage gap as the E4 pair above:
+    # a flat envelope JSON keyed `max_mag_abs_tol`, gating at quantum 1000, so
+    # the fixture-glob discovery in _REAL_CASES does not reach it either. Its
+    # from-outside check is its own lane's
+    # test_envelope_is_recomputed_from_the_artifact_and_capped_from_outside,
+    # which re-derives MAX_TOL through gate_from_envelope AND caps the measured
+    # envelope with a literal pinned outside the artifact (blind below 1.203x,
+    # measured in that file).
+    REPO / "tests" / "test_waveguide_nu_broad_e5_envelope_gates.py",
+    (REPO / "scripts" / "diagnostics"
+     / "build_waveguide_wr90_nu_flux_broad_e5_envelope.py"),
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against
