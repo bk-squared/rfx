@@ -90,6 +90,16 @@ jobs:
         run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Fast suite — shard ${{ matrix.group }} of 4
+        env:
+          # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
+          # live VmHWM sampler the weekly lane got in PR #592 (issue #545).
+          # Without it, an OOM-adjacent kill in THIS lane is the undiagnosable
+          # exit-143 / zero-assertions class — and fast-suite carries a
+          # highmem-marked test (test_auto_eps_msl_gradient_matches_fd_mini_
+          # referee, ~8-9 GB) in a time-only-balanced shard. The reporter is
+          # a no-op beyond this flag when nothing is anomalous. (Variable
+          # name kept for continuity with the weekly lane's wiring.)
+          RFX_WEEKLY_RSS: "1"
         run: >
           pytest -q -ra -p no:cacheprovider
           --splits 4 --group ${{ matrix.group }}

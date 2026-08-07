@@ -26,12 +26,13 @@ def _sim(angle, waveform, bandwidth):
     return sim
 
 
-def _objective(sim, shp, n_steps, checkpoint=True):
+def _objective(sim, shp, n_steps, checkpoint=True, checkpoint_segments=None):
     xi = shp[0] // 2
 
     def obj(eps_val):
         eps = jnp.ones(shp, jnp.float32).at[xi:xi + 15, :, :].set(eps_val)
         fr = sim.forward(eps_override=eps, n_steps=n_steps, checkpoint=checkpoint,
+                         checkpoint_segments=checkpoint_segments,
                          skip_preflight=True)
         return jnp.sum(jnp.abs(fr.time_series) ** 2).real
 
@@ -60,17 +61,20 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     assert rel < 0.05, f"grad {g:.4f} vs FD {fd:.4f} rel_err {rel*100:.1f}% > 5%"
 
 
-# highmem (issue #545): this test's own footprint is UNMEASURED in CI --
-# the [rss] post-test hook only prints AFTER a test completes, and this is
-# the test that got killed (shard 1, weekly run 31103127491), so its own
-# hook line never fired. The process was already at 14,976 MB *entering*
-# this test -- that number is the PRECEDING (coax) test's own reading, not
-# this test's. Measured directly instead: 23.78 GB peak locally
-# (taskset -c 0-1), 23,964 MB on independent standalone remeasurement --
-# ~1.5x the corrected ~16 GB runner-class ceiling (see validation.yml's
-# block comment). This test is PREDICTED to still be killed even
-# serialized into its own job; serialization removes accumulated baseline,
-# not this test's own ~24 GB.
+# highmem (issue #545): the default-checkpoint footprint of this test was
+# ~24 GB (23.78 GB / 23,964 MB on two independent local measurements;
+# ~1.5x the ~16 GB runner-class ceiling), which is why it was the test the
+# weekly lane kept killing at exit 143 -- serialization into its own job
+# (PR #592) removed the accumulated baseline but not this test's own
+# demand, and run 31139278303 confirmed the predicted kill WITH the live
+# sampler attributing it (VmHWM 14,866 MB at death). RESOLVED by an
+# explicit checkpoint_segments=8 (issue #545 residual, measured
+# 2026-08-07, same harness both configs): peak RSS 24,065 MB -> 3,955 MB
+# (6.1x), gradient 2.468510 -> 2.468503 (3e-6 relative -- the recompute
+# reordering, not a numerics change), wall 96 s -> 38 s locally. 8 divides
+# n_steps=1400 (175-step segments); non-divisors are rejected fail-loud by
+# the runner. The highmem marker stays (additive-only per PR #592's
+# design; ~4 GB still warrants serial-lane placement).
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_forward_tfsf_oblique_differentiable():
@@ -78,7 +82,8 @@ def test_forward_tfsf_oblique_differentiable():
     and produces a finite, nonzero gradient w.r.t. the scatterer eps."""
     sim = _sim(30.0, "modulated_gaussian", 0.15)
     shp = sim.run(n_steps=1).state.ez.shape
-    obj = _objective(sim, shp, n_steps=1400, checkpoint=True)
+    obj = _objective(sim, shp, n_steps=1400, checkpoint=True,
+                     checkpoint_segments=8)
 
     val = float(obj(4.0))
     assert val > 1e-3, f"oblique TFSF did not couple (obj={val:.2e})"
