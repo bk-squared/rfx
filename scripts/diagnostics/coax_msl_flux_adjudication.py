@@ -63,6 +63,18 @@ arithmetic indexes the exact FREQS_2 members only.
 
 INSTRUMENT NOTES (measured during implementation, 2026-08-07)
 -------------------------------------------------------------
+* C1 iteration 2 (declared on #589 before resubmission): the first C1 run
+  (VESSL 369367252342, rc=2 by design) read fluxes of ~1e-29 W with a
+  WRONG net-flux sign at planeA — the MSL drive's absolute scale puts the
+  per-cell E x H* products (~1e-33) inside the GPU float32
+  subnormal-flush zone (issue #304 class; S-parameters are ratio-based
+  and immune, an energy witness is not). Remedy: all witness-channel
+  spectra are now computed with flux_spectrum(exact_f64=True) — a float64
+  NumPy recompute from the healthy float32 accumulators; the FDTD run and
+  the S path are byte-identical. C1's default n_steps also rises to the
+  family's settled recipe (135000): the first run measured -22.1 dB at
+  20000 steps, consistent with this launch's slow ring-down recorded
+  across the lane's checkpoints (-10.7 / -17.9 / -44.2 dB).
 * Non-perturbation witness: S bit-identical with/without monitors —
   committed as tests/test_coax_msl_transition.py::
   test_extra_flux_monitors_do_not_perturb_s (slow_physics).
@@ -368,7 +380,7 @@ def run_c1(n_steps, outdir):
                   probes=witness, dft_planes=[], pec_mask=pec_mask,
                   return_state=False, flux_monitors=flux_cfgs)
 
-    spectra = {e.name: np.asarray(flux_spectrum(fm), float)
+    spectra = {e.name: np.asarray(flux_spectrum(fm, exact_f64=True), float)
                for e, fm in zip(entries, result.flux_monitors or ())}
     settling = _settling_from_witness(result.time_series)
     assert float(np.max(np.asarray(result.time_series) ** 2)) > 0.0, \
@@ -663,7 +675,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--stage", choices=("c1", "c2", "target", "all"),
                     default="all")
-    ap.add_argument("--n-steps-c1", type=int, default=20000)
+    ap.add_argument("--n-steps-c1", type=int, default=135000)
     ap.add_argument("--n-steps-c2", type=int, default=6000)
     ap.add_argument("--n-steps-target", type=int, default=135000)
     ap.add_argument("--output-dir", type=Path, required=True)

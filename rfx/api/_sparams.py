@@ -5533,7 +5533,7 @@ class _SparamMixin:
                 )
             if extra_flux_monitors:
                 flux_by_drive[("port1", "port2")[drive_idx]] = {
-                    entry.name: np.asarray(_flux_spectrum(fm), dtype=np.float64)
+                    entry.name: np.asarray(_flux_spectrum(fm, exact_f64=True), dtype=np.float64)
                     for entry, fm in zip(
                         extra_flux_monitors, result.flux_monitors or ()
                     )
@@ -6275,7 +6275,7 @@ class _SparamMixin:
                 )
             if extra_flux_monitors:
                 flux_by_drive[("coax", "msl")[drive_idx]] = {
-                    entry.name: np.asarray(_flux_spectrum(fm), dtype=np.float64)
+                    entry.name: np.asarray(_flux_spectrum(fm, exact_f64=True), dtype=np.float64)
                     for entry, fm in zip(
                         extra_flux_monitors, result.flux_monitors or ()
                     )

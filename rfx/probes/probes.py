@@ -610,7 +610,7 @@ def update_flux_monitor(
     )
 
 
-def flux_spectrum(mon: FluxMonitor) -> jnp.ndarray:
+def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
     """Compute Poynting flux spectrum from accumulated DFT fields.
 
     Returns
@@ -629,7 +629,32 @@ def flux_spectrum(mon: FluxMonitor) -> jnp.ndarray:
     this readily). Eager calls detect that state with a float64 NumPy
     recompute of the identical sum and emit a UserWarning; under
     jit/grad the check is skipped entirely (tracer-safe, off the AD tape).
+
+    ``exact_f64=True`` performs that float64 NumPy recompute AS the result
+    (eager-only; raises under tracing): the per-cell products and the sum
+    run in complex128 from the (healthy) float32 accumulators, which is
+    the #304 warning's own sanctioned remedy. Absolute-scale energy
+    consumers (the #589 flux-adjudication witness channel) use this path —
+    partial subnormal flushing corrupts small-magnitude sums well before
+    they reach exact zero, so the warning alone is not sufficient there.
+    The default path is unchanged.
     """
+    if exact_f64:
+        import numpy as np
+        import jax as _jax
+        if isinstance(mon.e1_dft, _jax.core.Tracer):
+            raise TypeError(
+                "flux_spectrum(exact_f64=True) is eager-only — it is a "
+                "NumPy float64 post-processing of concrete accumulators "
+                "and cannot run under jit/grad."
+            )
+        e1 = np.asarray(mon.e1_dft, dtype=np.complex128)
+        e2 = np.asarray(mon.e2_dft, dtype=np.complex128)
+        h1 = np.asarray(mon.h1_dft, dtype=np.complex128)
+        h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
+        integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
+        dA = np.asarray(mon.dA, dtype=np.float64)
+        return np.real(np.sum(integrand * dA, axis=(-2, -1)))
     # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product).
     # mon.dA is the axis-aware area weight (scalar or (n1,n2)).
     integrand = mon.e1_dft * jnp.conj(mon.h2_dft) - mon.e2_dft * jnp.conj(mon.h1_dft)

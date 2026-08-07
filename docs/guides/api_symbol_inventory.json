@@ -1008,7 +1008,8 @@
     "flux_spectrum": {
       "kind": "function",
       "params": [
-        "mon"
+        "mon",
+        "exact_f64"
       ]
     },
     "front_to_back_ratio": {

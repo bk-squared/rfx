@@ -1769,3 +1769,38 @@ def test_extra_flux_monitors_do_not_perturb_s():
         for name, arr in spectra.items():
             assert arr.shape == (len(FREQS_2),), (drive_key, name, arr.shape)
             assert np.all(np.isfinite(arr)), (drive_key, name, arr)
+
+
+def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
+    """#589 C1 iteration 2: the exact_f64 path is the same Poynting sum in
+    float64 — on magnitudes far from the float32 subnormal zone the two
+    paths must agree to float32 roundoff; on subnormal-zone magnitudes the
+    default path collapses (issue #304) while exact_f64 keeps the value.
+    Synthetic monitor, no FDTD."""
+    import numpy as np
+    from rfx.probes.probes import FluxMonitor, flux_spectrum
+
+    rng = np.random.default_rng(42)
+    shape = (3, 8, 9)
+
+    def _mon(scale):
+        def c64(s):
+            return (rng.normal(size=shape) * s
+                    + 1j * rng.normal(size=shape) * s).astype(np.complex64)
+        return FluxMonitor(
+            axis=0, index=5,
+            freqs=np.array([6.0e9, 8.0e9, 10.0e9]),
+            e1_dft=c64(scale), e2_dft=c64(scale),
+            h1_dft=c64(scale), h2_dft=c64(scale),
+            dA=np.float32(1.0e-8),
+            total_steps=100, window="rect", window_alpha=0.25,
+        )
+
+    healthy = _mon(1.0)
+    a = np.asarray(flux_spectrum(healthy), dtype=np.float64)
+    b = np.asarray(flux_spectrum(healthy, exact_f64=True), dtype=np.float64)
+    assert np.allclose(a, b, rtol=5e-6, atol=0.0), (a, b)
+
+    tiny = _mon(1.0e-15)  # products ~1e-30: inside the f32 flush zone
+    t64 = np.asarray(flux_spectrum(tiny, exact_f64=True), dtype=np.float64)
+    assert np.all(np.isfinite(t64)) and np.any(t64 != 0.0)
