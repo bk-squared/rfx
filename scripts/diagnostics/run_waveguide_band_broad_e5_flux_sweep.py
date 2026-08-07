@@ -230,6 +230,21 @@ def run_band(spec: BandSpec, date_tag: str, cpml_fraction=None):
             })
             print(f"  [{tag}] done in {dt:.1f}s -> {out_path.name}", flush=True)
 
+    # The header `cpml_layers` above was written from the SPEC, before
+    # --cpml-fraction derived a per-dx depth. Reconcile it against what actually
+    # ran: a single number is honest only when every case used it, otherwise the
+    # header names a depth no case used. This is not cosmetic — the envelope
+    # builder copies this field into `setup_recipe.cpml_layers`, and the #496
+    # auditor derives each lane's lambda_g fraction from it, so a stale header
+    # makes the absorber audit report a discipline VIOLATION for a run that
+    # satisfied the discipline (the 2026-08-06 WR-15/WR-28 probes ran at 0.75
+    # lambda_g and their artifacts recorded the 24-cell default, which audits as
+    # 0.060). Absent-or-varying must read as such, never as a number.
+    used = sorted({int(c["cpml_layers"]) for c in manifest["cases"]})
+    manifest["cpml_layers"] = used[0] if len(used) == 1 else None
+    manifest["cpml_layers_per_case"] = len(used) > 1
+    manifest["cpml_fraction"] = cpml_fraction
+
     manifest["jax_default_backend"] = jax.default_backend()
     manifest["jax_enable_x64"] = bool(jax.config.read("jax_enable_x64"))
     manifest["jax_version"] = jax.__version__

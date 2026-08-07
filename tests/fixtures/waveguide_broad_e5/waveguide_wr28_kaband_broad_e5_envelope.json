@@ -72,7 +72,7 @@
       "numpy_version": "1.26.4"
     }
   },
-  "diagnostic_note": "max_mag_abs_diff_across_cases 0.0245 (tol 0.05); ratio_spread 0.5898 (floor 0.005); flux-mode recipe from docs/guides/sparameter_support_matrix.md.",
+  "diagnostic_note": "max_mag_abs_diff_across_cases 0.0245 (tol 0.05); ratio_spread 0.5898 (floor 0.005); flux-mode recipe from docs/guides/sparameter_support_matrix.md. Absorber is below the 0.5 lambda_g far-port discipline (#496) \u2014 see absorber_discipline.",
   "rfx_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr28_kaband-flux/rfx-sweep/rfx_wr28_kaband_flux_sweep_manifest.json",
   "cases": [
     {
@@ -161,5 +161,22 @@
     }
   ],
   "noise_floor_baseline_role": "DESCRIPTIVE metadata, not a gate input (T2.4 reconciliation; cases[] physics untouched)",
-  "noise_floor_measurement": "tests/fixtures/waveguide_broad_e5/noise_floor_measurement.json"
+  "noise_floor_measurement": "tests/fixtures/waveguide_broad_e5/noise_floor_measurement.json",
+  "absorber_discipline": {
+    "status": "below_floor_accepted",
+    "issue": 496,
+    "floor_lambda_g": 0.5,
+    "floor_fraction_is_derived_not_stored": "scripts/diagnostics/i496_unitarity_witness_audit.py derives each case's lambda_g fraction from cases[].dx_m and the recorded absorber; it is deliberately not duplicated here.",
+    "decision": "Accepted, not corrected. Regenerating at 0.75 lambda_g costs ~30x wallclock (WR-15 dx25: 961 s/case at 9.0M cells) and buys 1.10-1.20x on the gate-bearing envelope error. Contrast the WR-90 NU lane (#574), where the same change bought 14.4x -- there the absorber genuinely dominated and IS being regenerated. The residual here still scales with dx after the absorber is fixed, i.e. it is mesh-convergent discretization, not an absorber floor.",
+    "probe": {
+      "envelope_worst_before": 0.02447,
+      "envelope_worst_after": 0.02045,
+      "envelope_ratio": 1.2,
+      "unitarity_worst_before": 0.00315,
+      "unitarity_worst_after": 0.000101,
+      "unitarity_ratio": 31.1
+    },
+    "passivity_absorber_limited": true,
+    "note": "Probed 2026-08-06 by rerunning the identical sweep at 0.75 lambda_g (scripts/vessl_i496_band_absorber_probe.yaml, artifact under .omx/physics-gate/2026-08-06-i496probe-*): the absorber is NOT the dominant term in this lane's envelope error. The two observables DECOUPLE here: the recorded unitarity excess 3.15e-03 is absorber-limited (31x better at 0.75 lambda_g) and characterizes the setup, NOT the extractor -- do not pin it as extractor behaviour. The envelope error is not absorber-limited (1.20x)."
+  }
 }
