@@ -124,7 +124,7 @@ def test_forward_periodic_xy_cpml_z_runs_without_nan():
     """End-to-end: periodic xy + CPML z forward must produce finite fields.
 
     Before the fix, the conflicting boundary conditions degenerated the
-    simulation (documented as S11 = 0 dB flat on rfx-TAP ex6). The
+    simulation (documented as S11 = 0 dB flat on the T-MTT-paper ex6). The
     minimum smoke criterion here is that the probe time series is finite
     and non-zero after the fix.
     """

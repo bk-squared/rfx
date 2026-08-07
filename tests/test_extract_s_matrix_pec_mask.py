@@ -5,7 +5,7 @@ Without this, eval simulations lose ground planes / scatterers added
 via ``Box(..., material="pec")``, producing flat |S11| ≈ 0 dB across
 the band — which manifests as a large train/eval disconnect on the
 ``optimize()`` path identical in shape to the time-gating bug
-(rfx-tap paper, ex1_dra; issue #72 follow-up).
+(rfx T-MTT paper, ex1_dra; issue #72 follow-up).
 
 The wire-port counterpart already accepts ``pec_mask`` — the lumped
 path just needed parity.
