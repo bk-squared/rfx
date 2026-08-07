@@ -956,7 +956,8 @@
         "aniso_eps",
         "conformal_weights",
         "aniso_inv_eps",
-        "checkpoint_segments"
+        "checkpoint_segments",
+        "return_settling"
       ]
     },
     "extract_waveguide_sparams": {

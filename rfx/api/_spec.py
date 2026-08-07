@@ -1187,12 +1187,23 @@ class WaveguideSParamResult(NamedTuple):
 
 
 class WaveguideSMatrixResult(NamedTuple):
-    """Waveguide scattering result assembled one driven port at a time."""
+    """Waveguide scattering result assembled one driven port at a time.
+
+    ``settling_db`` (issue #538) is the per-driven-run energy ring-down
+    witness: worst end/peak ``|V_probe|^2`` tail ratio across the port
+    probe planes for each driven run, in dB (rule: below −40 dB, same
+    ``_SETTLING_WITNESS_DB`` threshold and aggregate warning as the
+    lumped/MSL path). ``None`` only on paths that have not adopted the
+    witness yet (the NU sibling — tracked on the issue); NaN entries mean
+    the run was traced (AD path) and the host-side witness was skipped
+    rather than concretised.
+    """
     s_params: np.ndarray
     freqs: np.ndarray
     port_names: tuple[str, ...]
     port_directions: tuple[str, ...]
     reference_planes: np.ndarray
+    settling_db: np.ndarray | None = None
 
 
 class CoaxialSMatrixResult(NamedTuple):
