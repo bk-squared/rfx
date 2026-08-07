@@ -22,14 +22,22 @@ Outward sign: +1 if +axis flux is outward for that face, else -1.
 
   face  axis coord(mm) cell  tangential footprint            outward  shifts
   xp    x    2.2       22    y [0.3,3.1], z [0.9,3.4] mm     +1       +/-2
-  xm    x    0.3        3    y [0.3,3.1], z [0.9,3.4] mm     -1       +/-2
-  yp    y    3.1       31    x [0.3,2.2], z [0.9,3.4] mm     +1       +/-2
-  ym    y    0.3        3    x [0.3,2.2], z [0.9,3.4] mm     -1       +/-2
+  xm    x    0.3        3    y [0.3,3.1], z [0.9,3.4] mm     -1       +2 only
+  yp    y    3.1       31    x [0.3,2.2], z [0.9,3.4] mm     +1       -2 only
+  ym    y    0.3        3    x [0.3,2.2], z [0.9,3.4] mm     -1       +2 only
   zt    z    3.4       34    x [0.3,2.2], y [0.3,3.1] mm     +1       +/-2
-  zb    z    0.9        9    x [0.3,2.2], y [0.3,3.1] mm     -1       +/-2
+  zb    z    0.9        9    x [0.3,2.2], y [0.3,3.1] mm     -1       +/-2 (see flag)
   x2    x    6.0       60    same footprint as xp (2-plane witness)   none
   xp_aperture (partition of xp, books to the MSL return channel):
         x    2.2       22    y Y_C+/-0.6 mm, z [2.5,3.2] mm  +1       +/-2
+  strip_{xp,xm,yp,ym}: below-ground sub-strips of the side faces
+        (z [0.9,2.5] mm) — coax shell tightness witness, must read ~0.
+
+  One-sided shifts (declared): xm/ym +2 only and yp -2 only — the omitted
+  member would sit 1 cell from the CPML inner edge, where absorber-fringe
+  contamination could trip the invariance gate for a placement reason.
+  zb's -2 member (0.7 mm) sits 2 cells above the coax source plane and is
+  flagged in the output (SHIFT_FLAGS).
   xp remainder := xp - xp_aperture (arithmetic; DFT flux is per-cell
         linear, both monitors sit at the same plane index).
 
@@ -104,13 +112,30 @@ DENSE_BAND = np.linspace(5.0e9, 11.0e9, 25)
 # face: (axis, coordinate_m, size_(t1,t2)_m, center_(t1,t2)_m, outward, shifts)
 # tangential order follows add_flux_monitor: x-normal -> (y, z);
 # y-normal -> (x, z); z-normal -> (x, y).
+# Shift ranges (review finding, declared): xm/ym take +2 only and yp -2
+# only — their other member would land 1 cell from the CPML inner edge,
+# where absorber-fringe contamination could trip the invariance gate for a
+# placement reason rather than an instrument one. zb keeps -2 with an
+# explicit source-proximity flag in the output (2 cells above the coax
+# source plane at its -2 member).
 FACES = {
     "xp": ("x", 2.2e-3, (2.8e-3, 2.5e-3), (1.7e-3, 2.15e-3), +1, (-2, +2)),
-    "xm": ("x", 0.3e-3, (2.8e-3, 2.5e-3), (1.7e-3, 2.15e-3), -1, (-2, +2)),
-    "yp": ("y", 3.1e-3, (1.9e-3, 2.5e-3), (1.25e-3, 2.15e-3), +1, (-2, +2)),
-    "ym": ("y", 0.3e-3, (1.9e-3, 2.5e-3), (1.25e-3, 2.15e-3), -1, (-2, +2)),
+    "xm": ("x", 0.3e-3, (2.8e-3, 2.5e-3), (1.7e-3, 2.15e-3), -1, (+2,)),
+    "yp": ("y", 3.1e-3, (1.9e-3, 2.5e-3), (1.25e-3, 2.15e-3), +1, (-2,)),
+    "ym": ("y", 0.3e-3, (1.9e-3, 2.5e-3), (1.25e-3, 2.15e-3), -1, (+2,)),
     "zt": ("z", 3.4e-3, (1.9e-3, 2.8e-3), (1.25e-3, 1.7e-3), +1, (-2, +2)),
     "zb": ("z", 0.9e-3, (1.9e-3, 2.8e-3), (1.25e-3, 1.7e-3), -1, (-2, +2)),
+}
+SHIFT_FLAGS = {
+    "zb_s-2": "2 cells above the coax source plane (closest shift-to-source)",
+}
+# Below-ground strip witnesses (coax shell tightness): side-face strips
+# z in [0.9, 2.5] mm (below the ground plane) must read ~0.
+STRIPS = {
+    "strip_xp": ("x", 2.2e-3, (2.8e-3, 1.6e-3), (1.7e-3, 1.7e-3)),
+    "strip_xm": ("x", 0.3e-3, (2.8e-3, 1.6e-3), (1.7e-3, 1.7e-3)),
+    "strip_yp": ("y", 3.1e-3, (1.9e-3, 1.6e-3), (1.25e-3, 1.7e-3)),
+    "strip_ym": ("y", 0.3e-3, (1.9e-3, 1.6e-3), (1.25e-3, 1.7e-3)),
 }
 X2_PLANE = ("x", 6.0e-3, (2.8e-3, 2.5e-3), (1.7e-3, 2.15e-3), +1)
 APERTURE = ("x", 2.2e-3, (1.2e-3, 0.7e-3), (1.7e-3, 2.85e-3), +1, (-2, +2))
@@ -155,42 +180,81 @@ def _build_target_entries(freqs_base):
             axis=axis, coordinate=coord + sh * DX, freqs=mf,
             size=size, center=center, name=f"xp_aperture_s{sh:+d}",
         )
+    for name, (axis, coord, size, center) in STRIPS.items():
+        scratch.add_flux_monitor(axis=axis, coordinate=coord, freqs=mf,
+                                 size=size, center=center, name=name)
     return scratch._flux_monitors, mf
 
 
-def _outward(name):
-    base = name.split("_s")[0]
-    if base == "xp_aperture":
-        return +1
-    return FACES.get(base, ("", 0, (), (), +1, ()))[4] if base in FACES else +1
+def _assert_monitor_indices(entries, grid):
+    """Header-table assert (hand-ported preflight): the MATERIALIZED plane
+    index of every monitor must equal round(coordinate/DX) + pad on its
+    normal axis — checked against the actual grid, pads included, so a
+    rasterization surprise fails loudly before any physics is read."""
+    pads = {"x": int(grid.pad_x_lo), "y": int(grid.pad_y_lo),
+            "z": int(grid.pad_z_lo)}
+    for pe in entries:
+        expected = int(round(float(pe.coordinate) / DX)) + pads[pe.axis]
+        axis_idx = {"x": 0, "y": 1, "z": 2}[pe.axis]
+        pos = [0.0, 0.0, 0.0]
+        pos[axis_idx] = pe.coordinate
+        got = int(grid.position_to_index(tuple(pos))[axis_idx])
+        assert got == expected, (
+            f"monitor {pe.name}: materialized plane index {got} != "
+            f"expected {expected} (coord {pe.coordinate} m)")
 
 
-def _channels(spectra, p_inc, idx):
+def _face_terms(spectra, p_inc, idx):
+    """Per-face OUTWARD flux terms / P_inc at the FREQS_2 bins."""
+    def g(name):
+        return np.asarray(spectra[name], float)[idx]
+    return {
+        "xp_rem": +1 * (g("xp") - g("xp_aperture")) / p_inc,
+        "xm": -1 * g("xm") / p_inc,
+        "yp": +1 * g("yp") / p_inc,
+        "ym": -1 * g("ym") / p_inc,
+        "zt": +1 * g("zt") / p_inc,
+        "zb": -1 * g("zb") / p_inc,
+        "xp_aperture": +1 * g("xp_aperture") / p_inc,
+    }, g
+
+
+def _channels(spectra, p_inc, idx, b_nl_subtract=None):
     """Pre-declared channel arithmetic at the FREQS_2 bins.
 
     R_nl books the xp remainder (xp - xp_aperture) plus xm/yp/ym/zt;
     R_msl_return = 1 + outward aperture flux / P_inc; R_coax from zb.
+    ``b_nl_subtract`` (per-bin, from C1) applies the pre-declared
+    launch-spill background subtraction to R_nl; both raw and corrected
+    values are reported, and the decision arms evaluate the corrected one.
+
+    W2 note (review finding, declared): W2 is algebraically identical to
+    W1 given these channel definitions (the aperture terms cancel), so it
+    is reported as a BOOKKEEPING consistency check of the channel
+    arithmetic, not counted as an independent physics witness —
+    witnesses_ok gates on W1 once.
     """
-    out = {}
-    def g(name):
-        return np.asarray(spectra[name], float)[idx]
-    ap = +1 * g("xp_aperture")
-    xp_rem = +1 * (g("xp") - g("xp_aperture"))
-    r_nl = (xp_rem
-            + (-1) * g("xm")
-            + (+1) * g("yp")
-            + (-1) * g("ym")
-            + (+1) * g("zt")) / p_inc
-    r_coax = (-1) * g("zb") / p_inc
-    r_msl_return = 1.0 + ap / p_inc
+    terms, g = _face_terms(spectra, p_inc, idx)
+    r_nl_raw = (terms["xp_rem"] + terms["xm"] + terms["yp"]
+                + terms["ym"] + terms["zt"])
+    r_nl = r_nl_raw if b_nl_subtract is None else (
+        r_nl_raw - np.asarray(b_nl_subtract, float))
+    r_coax = terms["zb"]
+    r_msl_return = 1.0 + terms["xp_aperture"]
     w1 = (g("xp") - g("xm") + g("yp") - g("ym") + g("zt") - g("zb"))
-    out.update(
-        R_nl=r_nl, R_coax=r_coax, R_msl_return=r_msl_return,
+    out = dict(
+        R_nl=r_nl, R_nl_raw=r_nl_raw, R_coax=r_coax,
+        R_msl_return=r_msl_return,
+        per_face_outward=terms,
         W1_raw_closure=np.abs(w1) / p_inc,
-        W2_channel_identity=np.abs(r_nl + r_coax + r_msl_return - 1.0),
+        W2_bookkeeping_check=np.abs(r_nl_raw + r_coax + r_msl_return - 1.0),
         two_plane_delta=(+1) * (g("x2") - g("xp")) / p_inc,
     )
-    return {k: np.asarray(v, float).tolist() for k, v in out.items()}
+    def _ser(v):
+        if isinstance(v, dict):
+            return {k: _ser(x) for k, x in v.items()}
+        return np.asarray(v, float).tolist()
+    return {k: _ser(v) for k, v in out.items()}
 
 
 def _shift_table(spectra, p_inc, idx):
@@ -297,6 +361,7 @@ def run_c1(n_steps, outdir):
     j_probe = int(grid.pad_y_lo) + int(round(y_c / DX))
     witness = [ProbeSpec(i=i_probe, j=j_probe, k=k_probe, component="ez")]
 
+    _assert_monitor_indices(entries, grid)
     flux_cfgs = build_flux_monitor_cfgs(sim, grid, int(n_steps), entries=entries)
     result = _run(grid, materials, int(n_steps), boundary="cpml",
                   cpml_axes="xyz", sources=sources, mag_sources=[],
@@ -315,7 +380,17 @@ def run_c1(n_steps, outdir):
     p_inc = -phi_a  # incident travels -x: net flux at planeA = -P_inc (matched)
     plane_inv = np.abs(phi_a - phi_b) / np.maximum(np.abs(phi_a), 1e-300)
     ch = _channels(spectra, p_inc, idx)
-    b_nl = np.asarray(ch["R_nl"], float)
+    # Launch-spill background (review fix): the through-line trace passes
+    # THROUGH both x-faces, so xm carries the full transmitted power and
+    # must be EXCLUDED — the background covers the faces the target's R_nl
+    # shares minus xm (xm background is unmeasurable on a through line;
+    # disclosed). Composition: xp remainder + yp + ym + zt.
+    terms = {k: np.asarray(v, float)
+             for k, v in ch["per_face_outward"].items()}
+    b_nl = terms["xp_rem"] + terms["yp"] + terms["ym"] + terms["zt"]
+    strips = {k: np.asarray(spectra[k], float)[idx].tolist()
+              for k in STRIPS}
+    strip_max = max(float(np.max(np.abs(np.asarray(v)))) for v in strips.values())
 
     gates = {
         "settling_db": settling,
@@ -325,7 +400,12 @@ def run_c1(n_steps, outdir):
         "plane_invariance_gate_le_floor": bool(np.max(plane_inv) <= FLOOR_FAIL),
         "measured_floor": float(np.max(plane_inv)),
         "launch_spill_B_nl": b_nl.tolist(),
+        "launch_spill_composition": "xp_rem + yp + ym + zt (xm EXCLUDED: "
+                                    "through-line exit face; disclosed)",
         "spill_gate_le_0.05": bool(np.max(np.abs(b_nl)) <= 0.05),
+        "below_ground_strips": strips,
+        "below_ground_strip_max_over_pinc": strip_max / max(
+            float(np.max(np.abs(p_inc))), 1e-300),
     }
     gates["c1_pass"] = bool(
         gates["settling_gate_le_-40"] and gates["p_inc_positive"]
@@ -377,9 +457,25 @@ def run_c2(n_steps, outdir):
     )
     idx = _bin_index(mf, band)
     gamma = np.asarray(res.gamma)
-    re_gamma = np.mean(np.abs(np.real(gamma)).reshape(-1, gamma.shape[-1]), axis=0)
-    d12 = z2 - z1
-    model = np.exp(-2.0 * re_gamma * d12)
+    # Attenuation model (review fix): the committed mechanism-check record
+    # attributes the own/other-drive Re(gamma) split to loss at the
+    # RECEIVING feed, which does not occur between the mid-line planes —
+    # so the bulk ratio is modeled by the OWN-DRIVE gamma pair; the
+    # all-fits mean is recorded alongside for attribution if the gate
+    # trips near the band edge.
+    if gamma.ndim == 3:
+        re_own = np.mean(np.abs(np.real(gamma[(0, 1), (0, 1), :])), axis=0)
+    else:
+        re_own = np.mean(np.abs(np.real(gamma)).reshape(-1, gamma.shape[-1]),
+                         axis=0)
+    re_all = np.mean(np.abs(np.real(gamma)).reshape(-1, gamma.shape[-1]), axis=0)
+    # snapped plane separation from the actual grid indices
+    g2 = sim._build_grid()
+    k1 = int(g2.position_to_index((0.0, 0.0, z1))[2])
+    k2 = int(g2.position_to_index((0.0, 0.0, z2))[2])
+    d12 = (k2 - k1) * float(g2.dx)
+    model = np.exp(-2.0 * re_own * d12)
+    model_allfits = np.exp(-2.0 * re_all * d12)
 
     def flux(drive, name):
         return np.asarray(res.flux_monitors[drive][name], float)[idx]
@@ -390,26 +486,37 @@ def run_c2(n_steps, outdir):
     # attenuated one: |f1| ~= |f2| * exp(-2 Re(gamma) d12)
     ratio = np.abs(f1) / np.maximum(np.abs(f2), 1e-300)
     atten_ok = np.abs(ratio / model - 1.0) <= 0.15
-    p_ref = float(np.max(np.abs(f2)))
-    side = max(float(np.max(np.abs(flux("port1", n)))) for n in
-               ("c2_xm", "c2_xp", "c2_ym", "c2_yp"))
+    # W1 Poynting closure over the closed C2 box (posted gate): outward =
+    # +f2 (z2, +z face) - f1 (z1, -z face) + outward side faces.
+    side_out = (flux("port1", "c2_xp") - flux("port1", "c2_xm")
+                + flux("port1", "c2_yp") - flux("port1", "c2_ym"))
+    w1_c2 = np.abs(f2 - f1 + side_out) / np.maximum(np.abs(f2), 1e-300)
+    # per-bin shield gate (posted: per-bin, floor-scaled)
+    side_abs = np.max(np.stack([np.abs(flux("port1", n)) for n in
+                                ("c2_xm", "c2_xp", "c2_ym", "c2_yp")]), axis=0)
+    shield_ok = side_abs <= FLOOR * np.maximum(np.abs(f2), 1e-300)
     col = np.sum(np.abs(np.asarray(res.s_params)[:, 0, :]) ** 2, axis=0)
 
     gates = {
         "signs_negative_towards_minus_z": bool(np.all(f1 < 0) and np.all(f2 < 0)),
-        "atten_ratio": ratio.tolist(), "atten_model": model.tolist(),
+        "atten_ratio": ratio.tolist(), "atten_model_own_drive": model.tolist(),
+        "atten_model_all_fits": model_allfits.tolist(),
+        "d12_snapped_m": d12,
         "atten_gate_pm15pct": bool(np.all(atten_ok)),
-        "shield_side_over_pref": side / max(p_ref, 1e-300),
-        "shield_gate_le_floor": bool(side <= FLOOR * p_ref),
+        "w1_closure": w1_c2.tolist(),
+        "w1_gate_le_0.15": bool(np.all(w1_c2 <= W_TOL)),
+        "shield_side_over_f2_per_bin": (side_abs / np.maximum(np.abs(f2), 1e-300)).tolist(),
+        "shield_gate_le_floor_per_bin": bool(np.all(shield_ok)),
         "column_power_port1_drive": col.tolist(),
         "column_power_committed_range": [0.546, 0.923],
-        "column_power_in_committed_range": bool(
+        "column_power_in_widened_range_0.50_0.97": bool(
             np.all((col > 0.50) & (col < 0.97))),
         "settling_db": np.asarray(res.settling_db, float).tolist(),
         "settling_gate_le_-40": bool(np.all(np.asarray(res.settling_db) <= -40.0)),
     }
     gates["c2_pass"] = bool(
-        gates["atten_gate_pm15pct"] and gates["shield_gate_le_floor"]
+        gates["atten_gate_pm15pct"] and gates["shield_gate_le_floor_per_bin"]
+        and gates["w1_gate_le_0.15"]
         and gates["settling_gate_le_-40"]
         and gates["signs_negative_towards_minus_z"]
     )
@@ -418,8 +525,10 @@ def run_c2(n_steps, outdir):
            "flux_monitors": {d: {k: v.tolist() for k, v in s.items()}
                              for d, s in res.flux_monitors.items()}}
     (outdir / "c2_result.json").write_text(json.dumps(out, indent=1))
-    print(f"[c2] atten dev {np.max(np.abs(ratio / model - 1.0)):.4f} | shield "
-          f"{gates['shield_side_over_pref']:.2e} | PASS={gates['c2_pass']}")
+    print(f"[c2] atten dev {np.max(np.abs(ratio / model - 1.0)):.4f} | "
+          f"W1 {np.max(w1_c2):.4f} | shield "
+          f"{np.max(side_abs / np.maximum(np.abs(f2), 1e-300)):.2e} | "
+          f"PASS={gates['c2_pass']}")
     return out
 
 
@@ -427,11 +536,14 @@ def run_c2(n_steps, outdir):
 # target — settled attempt-2 fixture + flux box, pre-declared decision rule
 # ---------------------------------------------------------------------------
 
-def run_target(n_steps, outdir, p_inc_c1, floor_eff=FLOOR):
+def run_target(n_steps, outdir, c1_data, floor_eff=FLOOR):
     import tests.test_coax_msl_transition as T
 
+    p_inc_c1 = c1_data["p_inc_w"]
+    b_nl_bg = np.asarray(c1_data["gates"]["launch_spill_B_nl"], float)
     entries, mf = _build_target_entries(T.FREQS_2)
     sim = T._build_coax_msl_transition_sim_attempt2()
+    _assert_monitor_indices(entries, sim._build_grid())
     res = sim.compute_coax_msl_transition(
         junction_x=T.JUNCTION_X, eps_r_sub=T.EPS_SUB, n_steps=int(n_steps),
         freqs=T.FREQS_2,
@@ -449,25 +561,41 @@ def run_target(n_steps, outdir, p_inc_c1, floor_eff=FLOOR):
     s12 = np.abs(S[0, 1, :]) ** 2
     deficit = 1.0 - s22 - s12
 
-    ch = _channels(spectra, p_inc, idx)
+    ch = _channels(spectra, p_inc, idx, b_nl_subtract=b_nl_bg)
     shifts = _shift_table(spectra, p_inc, idx)
     a_msl = np.abs(np.asarray(res.a_inc)[1, 1, :]) ** 2
     kappa = (p_inc / np.maximum(a_msl, 1e-300)).tolist()
+    kappa_in_soft_range = [bool(0.7 <= k <= 1.3) for k in kappa]
+    if not all(kappa_in_soft_range[:2]):
+        print("[target] WARNING: kappa outside soft range [0.7, 1.3] at a "
+              f"binding bin: {np.round(kappa, 3).tolist()} — investigate "
+              "the P_inc normalization before trusting this verdict "
+              "(pre-declared investigate-before-interpret trigger).")
 
+    # spill-corrected R_nl is the DECISION value (posted C1 bullet:
+    # background 'reported and subtracted explicitly'); raw kept alongside.
     r_nl = np.asarray(ch["R_nl"])
     r_ret = np.asarray(ch["R_msl_return"])
     w1 = np.asarray(ch["W1_raw_closure"])
-    w2 = np.asarray(ch["W2_channel_identity"])
+    w2 = np.asarray(ch["W2_bookkeeping_check"])
     two_plane = np.asarray(ch["two_plane_delta"])
     settling_ok = bool(np.all(np.asarray(res.settling_db) <= -40.0))
+    strips = {k: np.asarray(spectra[k], float)[idx].tolist() for k in STRIPS}
+    strip_max_over_pinc = max(
+        float(np.max(np.abs(np.asarray(v) / p_inc))) for v in strips.values())
 
     b0, b1 = 0, 1  # binding bins: 6, 8 GHz; bin 2 (10 GHz) = trend witness
     shifts["gate_lt_floor"] = bool(shifts["worst_abs_delta"] < floor_eff)
+    w1_per_bin_ok = (w1 <= W_TOL).tolist()
+    # W1 gates at the binding bins; W2 is a bookkeeping identity of the
+    # channel arithmetic (== W1 by construction), reported, not counted.
     witnesses_ok = bool(np.all(w1[[b0, b1]] <= W_TOL)
-                        and np.all(w2[[b0, b1]] <= W_TOL)
                         and shifts["gate_lt_floor"] and settling_ok)
     ret_leg_ok = bool(np.all(np.abs(two_plane[[b0, b1]]) <= W_TOL))
 
+    # Contamination rule, symmetric (review fix, matches the posted text
+    # "only R_nl binds"): when the two-plane witness declares the return
+    # leg contaminated, BOTH arms reduce to their R_nl condition.
     arm_a = bool(
         np.all(r_nl[[b0, b1]] >= 0.7 * deficit[[b0, b1]])
         and np.all(r_nl[[b0, b1]] <= 1.3 * deficit[[b0, b1]])
@@ -476,8 +604,8 @@ def run_target(n_steps, outdir, p_inc_c1, floor_eff=FLOOR):
     )
     arm_b = bool(
         np.all(r_nl[[b0, b1]] <= 0.3 * deficit[[b0, b1]])
-        and ret_leg_ok
-        and np.any((r_ret - s22)[[b0, b1]] >= 0.5 * deficit[[b0, b1]])
+        and ((not ret_leg_ok) or np.any(
+            (r_ret - s22)[[b0, b1]] >= 0.5 * deficit[[b0, b1]]))
     )
     if not witnesses_ok:
         verdict = "NON-CLOSING (witness failure)"
@@ -492,18 +620,35 @@ def run_target(n_steps, outdir, p_inc_c1, floor_eff=FLOOR):
         "stage": "target", "n_steps": int(n_steps), "verdict": verdict,
         "monitor_freqs_hz": mf.tolist(), "freqs2_idx": idx,
         "p_inc_from_c1_w": p_inc.tolist(), "kappa_witness": kappa,
+        "kappa_in_soft_range_0.7_1.3": kappa_in_soft_range,
+        "launch_spill_bg_from_c1": b_nl_bg.tolist(),
+        "decision_uses": "R_nl spill-corrected (raw kept in channels.R_nl_raw)",
         "deficit": deficit.tolist(), "s22_sq": s22.tolist(),
         "s12_sq": s12.tolist(),
         "settling_db": np.asarray(res.settling_db, float).tolist(),
         "channels": ch, "shift_invariance": shifts,
+        "shift_member_flags": SHIFT_FLAGS,
+        "below_ground_strips": strips,
+        "below_ground_strip_max_over_pinc": strip_max_over_pinc,
+        "w1_per_bin_ok": w1_per_bin_ok,
         "ret_leg_ok_two_plane": ret_leg_ok,
         "trend_witness_10ghz_R_nl": float(r_nl[2]),
+        "trend_witness_10ghz_w1_ok": bool(w1_per_bin_ok[2]),
         "trend_expected_if_a": [0.14, 0.26],
         "spectra_msl_drive": {k: np.asarray(v).tolist()
                               for k, v in spectra.items()},
         "spectra_coax_drive": {k: np.asarray(v).tolist()
                                for k, v in res.flux_monitors["coax"].items()},
     }
+    if verdict == "SUPPORTS (b) INSTRUMENT":
+        out["predeclared_consequence"] = (
+            "Per the #589 pre-declaration: the follow-up is a Gwarek V-I "
+            "MSL-side extraction check per the repo's port-class fallback "
+            "discipline — flux numbers never become S numbers. NOTE "
+            "(PI decision 2026-08-07): the lane hard-stops after this "
+            "verdict is reported; the Gwarek follow-up is NOT auto-started."
+        )
+        print("[target] predeclared consequence:", out["predeclared_consequence"])
     (outdir / "target_result.json").write_text(json.dumps(out, indent=1))
     print(f"[target] verdict: {verdict}")
     print(f"  Deficit {deficit.round(4).tolist()}  R_nl {r_nl.round(4).tolist()}")
@@ -536,17 +681,26 @@ def main(argv=None):
             print("[all] C2 hard-gate FAILED -> target skipped (rc=2)")
             return 2
     if args.stage in ("target", "all"):
-        c1_path = args.output_dir / "c1_result.json"
-        if not c1_path.exists():
-            print("[target] c1_result.json missing — run --stage c1 first "
-                  "(P_inc is flux-measured there, per the pre-declaration)")
-            return 2
-        c1_data = json.loads(c1_path.read_text())
-        p_inc = c1_data["p_inc_w"]
+        # both controls must EXIST and PASS regardless of invocation path
+        # (review fix: --stage target alone previously skipped the gates)
+        gate_data = {}
+        for st in ("c1", "c2"):
+            p = args.output_dir / f"{st}_result.json"
+            if not p.exists():
+                print(f"[target] {st}_result.json missing — run --stage {st} "
+                      "first (controls gate the target, per the "
+                      "pre-declaration)")
+                return 2
+            gate_data[st] = json.loads(p.read_text())
+            if not gate_data[st]["gates"][f"{st}_pass"]:
+                print(f"[target] {st} hard-gate FAILED in its recorded "
+                      "result — target not interpreted (rc=2)")
+                return 2
+        c1_data = gate_data["c1"]
         # pre-declared: floor = 0.02 unless C1 measured worse (fail > 0.05)
         floor_eff = min(max(FLOOR, c1_data["gates"]["measured_floor"]),
                         FLOOR_FAIL)
-        run_target(args.n_steps_target, args.output_dir, p_inc,
+        run_target(args.n_steps_target, args.output_dir, c1_data,
                    floor_eff=floor_eff)
     return 0
 

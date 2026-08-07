@@ -2434,7 +2434,8 @@
       "feed_impedance",
       "cond_warn",
       "strict_passivity",
-      "skip_preflight"
+      "skip_preflight",
+      "extra_flux_monitors"
     ],
     "compute_coaxial_line_reflection": [
       "termination",
@@ -2473,7 +2474,8 @@
       "feed_impedance",
       "cond_warn",
       "strict_passivity",
-      "eps_scale"
+      "eps_scale",
+      "extra_flux_monitors"
     ],
     "compute_mixed_s_matrix": [
       "n_steps",
