@@ -286,8 +286,9 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
 
     # The ANALYTIC accuracy gate (the coverage #403 flags as missing): the x&y
     # graded NU mesh reproduces the closed-form in-plane-dependent TM110 to within
-    # the measured tolerance. (The grading-faithful finding is now 0.028% graded
-    # against the same ~0.03% class ungraded; the 2.43% == 2.47% pair it used to
+    # the measured tolerance. (The grading-faithful finding is 0.0282% graded vs
+    # 0.0084% ungraded at identical extents — factor 3.35x, grading DOMINANT, as
+    # measured at :48-50; the 2.43% == 2.47% pair it used to
     # cite was the #562-era baseline both legs shared.)
     assert err < GATE, (
         f"NU in-plane-graded TM110 error {err*100:.4f}% >= {GATE*100:.3f}% — the "

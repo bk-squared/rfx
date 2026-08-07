@@ -66,9 +66,9 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
 
     LEVERAGE (honest power of this gate): the graded-z (p=1) term contributes only
     ~29% of f^2 here (the (1/d)^2 term vs (1/a)^2+(1/b)^2), so f's sensitivity to the
-    graded-z extent is diluted ~sqrt. This gate therefore catches GROSS graded-z
-    metric errors (an effective-d wrong by more than ~12-17% would trip 4%), NOT
-    sub-percent ones — sub-percent graded-stencil correctness is the job of the
+    graded-z extent is diluted ~sqrt. Even so, at the 0.04% gate this catches
+    sub-percent graded-z metric errors (an effective-d wrong by ~0.14% =
+    0.04/0.2884 already trips it) — graded-STENCIL correctness is the job of the
     CORE-C2 per-stencil guard (test_review_tier1_validation_battery.py::test_corec2_*).
     This test's role is the end-to-end full-FDTD analytic anchor the oracle-free
     sibling lacks, not a high-resolution stencil probe.

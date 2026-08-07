@@ -2,15 +2,21 @@
 
 The #573 review noted that the scan numbers had become load-bearing in three
 committed files with no committed artifact behind them. This script reproduces
-every one of them, so the gates' basis is auditable rather than quoted:
+the xy-lane scans (nine values), so that gate's basis is auditable rather than
+quoted:
 
-  * resolution / grading scan  -> the per-configuration envelope each gate uses
-  * domain-size scan           -> that the residual tracks f0 (dispersion floor)
-  * harminv window scan        -> that the committed 8000-step point is the
-                                  family maximum, so the envelope covers
-                                  estimator scatter by construction
+  * xy resolution / grading scan -> the per-configuration envelope the xy gate
+                                    uses (5 points)
+  * xy harminv window scan       -> that the committed 8000-step point is the
+                                    family maximum, so the envelope covers
+                                    estimator scatter by construction (4 points)
   * graded-vs-ungraded at IDENTICAL extents -> the grading term itself
-                                  (0.0282% vs 0.0084%, factor 3.35x)
+                                    (0.0282% vs 0.0084%, factor 3.35x)
+
+NOT reproduced here (reviewer-measured, no committed producer yet): the
+domain-size sweeps quoted in both gate blocks, and every z-lane number
+(z resolution scan, z harminv span). Issue #596 tracks committing a producer
+for those.
 
 Research-lane script: no gate, no fixture. Run it to re-derive, not in CI.
 
