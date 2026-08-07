@@ -1,0 +1,43 @@
+name: rfx-coax-msl-flux-adjudication
+description: "#589 item-2 adjudication (pre-declared 2026-08-07 on the issue): face-resolved flux accounting on the settled attempt-2 coax<->MSL fixture, adjudicating whether the MSL-driven 99.3%/98.9% column-power deficit at 6/8 GHz is (a) physically departing power or (b) extraction blindness. Runs scripts/diagnostics/coax_msl_flux_adjudication.py --stage all: C1 (MSL through-line control -- pins the flux-measured P_inc normalizer, plane-invariance, launch-spill background, settling), C2 (coax two-port control -- attenuation-model gate vs the run's own Re(gamma), shield-tightness, settling), then the target settled run (n_steps=135000, same as VESSL 369367252283) with the 6-face flux box + shifted siblings + two-plane witness. Controls HARD-GATE the target (rc=2 skips it), witnesses can force NON-CLOSING; the decision rule is the issue comment's, verbatim, implemented in the driver. USES THE MOUNTED PRIMARY CHECKOUT (imitates scripts/vessl_coax_msl_transition_settled_run.yaml): the driver, the extra_flux_monitors= opt-in, and its bit-identity contract test must all be on main before submission -- DO NOT SUBMIT until the instrument PR has merged."
+tags: [rfx, issue-589, coax-msl-transition, flux-adjudication]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  echo "=== rfx #589 item 2: flux adjudication (C1 -> C2 -> target 135000) ==="
+  echo "=== provenance ==="
+  git rev-parse HEAD || true
+  git status --short || true
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== bit-identity witness must be green on THIS checkout before the physics runs ==="
+  python -m pytest tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s -m slow_physics -x -q
+  out=".omx/coax-msl-flux-adjudication/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  set +e
+  timeout 14400 python -u scripts/diagnostics/coax_msl_flux_adjudication.py \
+    --stage all \
+    --output-dir "$out" \
+    > "$out/run.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 120 "$out/run.log"
+  echo "$rc" > "$out/run.rc"
+  echo "artifacts persisted to (mounted, survives job teardown): $out"
+  echo "coax_msl_flux_adjudication_rc=$rc"
+  exit "$rc"

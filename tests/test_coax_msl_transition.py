@@ -1652,3 +1652,120 @@ def test_coax_msl_transition_attempt2_instrument_verification():
         _warn_if_nonpassive_smatrix(
             result, extractor="compute_coax_msl_transition", strict=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Part 5 -- #589 flux-adjudication instrument: the extra_flux_monitors= opt-in.
+#
+# The issue #589 pre-declaration (2026-08-07 comment) commits this PR to ONE
+# witness before any adjudication run is interpreted: the S output must be
+# BIT-IDENTICAL with and without monitors attached (the opt-in is an
+# energy-witness channel, not an extractor change), and the registered-
+# monitor guard must stay intact. The fast tests below pin the guard and the
+# entry validation; the slow_physics test pins the bit-identity witness on
+# the SAME attempt-2 fixture the adjudication run uses (step count is
+# instrument calibration only -- bit-identity is step-count independent).
+# ---------------------------------------------------------------------------
+
+def _attempt2_kwargs(n_steps):
+    return dict(
+        junction_x=JUNCTION_X, eps_r_sub=EPS_SUB, n_steps=n_steps,
+        freqs=FREQS_2,
+        probe_count=6, probe_start_cells=4, probe_spacing_cells=2,
+        msl_probe_count=PROBE_COUNT_2, msl_probe_start_cells=PROBE_START_2,
+        msl_probe_spacing_cells=PROBE_SPACING_2,
+        skip_preflight=True, strict_passivity=False,
+    )
+
+
+def _attempt2_scratch_flux_entries():
+    """Flux entries built the documented way: a scratch Simulation sharing
+    the attempt-2 domain, handing over its ._flux_monitors list."""
+    from rfx.api import Simulation as _Sim
+    scratch = _Sim(freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX,
+                   boundary="cpml")
+    scratch.add_flux_monitor(
+        axis="x", coordinate=2.2e-3, freqs=FREQS_2,
+        size=(1.2e-3, 0.7e-3), center=(Y_C, 2.8e-3), name="xplane_aperture",
+    )
+    scratch.add_flux_monitor(
+        axis="z", coordinate=3.0e-3, freqs=FREQS_2,
+        size=(1.3e-3, 1.2e-3), center=(2.15e-3, Y_C), name="ztop_patch",
+    )
+    return scratch._flux_monitors
+
+
+def test_extra_flux_monitors_registered_guard_unchanged():
+    """Monitors registered ON the sim still raise -- the opt-in did not
+    loosen the builds-its-own guard."""
+    sim = _build_coax_msl_transition_sim_attempt2()
+    sim.add_flux_monitor(axis="x", coordinate=2.2e-3, freqs=FREQS_2)
+    with pytest.raises(ValueError, match="flux monitors"):
+        sim.compute_coax_msl_transition(**_attempt2_kwargs(1))
+
+
+def test_extra_flux_monitors_entry_validation():
+    """Malformed opt-in entries fail loudly BEFORE any FDTD work."""
+    with pytest.raises(TypeError, match="add_flux_monitor"):
+        _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+            **_attempt2_kwargs(1), extra_flux_monitors=[{"name": "not_an_entry"}],
+        )
+
+    from rfx.api import Simulation as _Sim
+    off_domain = _Sim(freq_max=FREQ_MAX_2, domain=(50.0e-3, LY, LZ_2), dx=DX,
+                      boundary="cpml")
+    off_domain.add_flux_monitor(axis="x", coordinate=30.0e-3, freqs=FREQS_2,
+                                name="outside_attempt2_x")
+    with pytest.raises(ValueError, match="outside"):
+        _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+            **_attempt2_kwargs(1),
+            extra_flux_monitors=off_domain._flux_monitors,
+        )
+
+    dup = _Sim(freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX,
+               boundary="cpml")
+    dup.add_flux_monitor(axis="x", coordinate=2.2e-3, freqs=FREQS_2, name="d")
+    dup.add_flux_monitor(axis="x", coordinate=2.3e-3, freqs=FREQS_2, name="d")
+    with pytest.raises(ValueError, match="duplicate"):
+        _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+            **_attempt2_kwargs(1), extra_flux_monitors=dup._flux_monitors,
+        )
+
+
+@pytest.mark.slow_physics
+def test_extra_flux_monitors_do_not_perturb_s():
+    """The #589 non-perturbation witness: S bit-identical with and without
+    the opt-in monitors, on the attempt-2 fixture itself.
+
+    Bit-identity (not allclose) is deliberate: the monitors add read-only
+    DFT accumulation to the scan carry, and any drift here would mean the
+    instrument perturbs the thing it measures. Measured before commit on
+    CPU (2026-08-07): identical, and off/off repeatability also identical.
+    If a future backend/XLA version reorders the fused field math under the
+    added carry, this test reds -- that is a REAL finding about the witness
+    (re-measure and re-declare on #589 before trusting adjudication runs),
+    not a tolerance to loosen silently.
+    """
+    n_steps = 1000  # bit-identity is step-count independent; keep it cheap
+    r_off = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+        **_attempt2_kwargs(n_steps))
+    r_on = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+        **_attempt2_kwargs(n_steps),
+        extra_flux_monitors=_attempt2_scratch_flux_entries(),
+    )
+
+    assert r_off.flux_monitors is None
+    assert np.array_equal(np.asarray(r_off.s_params), np.asarray(r_on.s_params)), (
+        "extra_flux_monitors perturbed the S output -- the #589 "
+        "non-perturbation witness failed; do not run the adjudication "
+        "until this is re-declared."
+    )
+    assert np.array_equal(np.asarray(r_off.settling_db),
+                          np.asarray(r_on.settling_db))
+
+    assert set(r_on.flux_monitors) == {"coax", "msl"}
+    for drive_key, spectra in r_on.flux_monitors.items():
+        assert set(spectra) == {"xplane_aperture", "ztop_patch"}
+        for name, arr in spectra.items():
+            assert arr.shape == (len(FREQS_2),), (drive_key, name, arr.shape)
+            assert np.all(np.isfinite(arr)), (drive_key, name, arr)

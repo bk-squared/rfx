@@ -1378,6 +1378,7 @@ class CoaxialTwoPortResult:
     annulus_cells: float
     settling_db: np.ndarray
     status: str
+    flux_monitors: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -1772,7 +1773,12 @@ class CoaxMSLTransitionResult:
     extraction misses non-quasi-TEM content near the junction. A named
     discriminating check (not run): a closed-box (PEC-wall, no absorber)
     variant of this fixture — power reappearing in the port accounting
-    would support (a); power still missing would support (b).
+    would support (a); power still missing would support (b). SUPERSEDED
+    as the chosen instrument: the issue #589 pre-declaration (2026-08-07
+    comment) replaces the closed-box variant with face-resolved flux
+    accounting on the settled open fixture (see ``extra_flux_monitors=``
+    and the ``flux_monitors`` attribute below), with the deviation's
+    reasoning recorded there.
 
     Attributes
     ----------
@@ -1855,6 +1861,7 @@ class CoaxMSLTransitionResult:
     b_out: np.ndarray
     settling_db: np.ndarray
     status: str = "experimental"
+    flux_monitors: dict | None = None
 
 
 __all__ = [

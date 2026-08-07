@@ -269,6 +269,52 @@ def _warn_msl_wave_split_unreliable(
 _SETTLING_WITNESS_DB = -40.0
 
 
+def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
+    """Light re-validation of ``extra_flux_monitors=`` entries (#589 opt-in).
+
+    Entries are the objects ``Simulation.add_flux_monitor`` registers,
+    typically built on a scratch ``Simulation`` sharing this sim's domain —
+    ``add_flux_monitor`` already validated them against THAT domain, so this
+    only re-checks the one property that can silently diverge between the
+    two sims (the normal-axis coordinate inside THIS domain). Energy-witness
+    channel only: spectra come back on ``result.flux_monitors``; nothing
+    here feeds the S-parameter math (the registered-monitor guard below is
+    unchanged — this extractor still builds its own DFT planes).
+    """
+    if not entries:
+        return
+    axis_to_index = {"x": 0, "y": 1, "z": 2}
+    seen = set()
+    for pe in entries:
+        for attr in ("name", "axis", "coordinate"):
+            if not hasattr(pe, attr):
+                raise TypeError(
+                    f"{fn_name}(): extra_flux_monitors entries must be the "
+                    "objects Simulation.add_flux_monitor() registers "
+                    f"(missing attribute {attr!r}); build them by calling "
+                    "add_flux_monitor() on a scratch Simulation with the "
+                    "same domain and passing its ._flux_monitors list."
+                )
+        ax = axis_to_index.get(pe.axis)
+        if ax is None:
+            raise ValueError(
+                f"{fn_name}(): extra flux monitor {pe.name!r} has invalid "
+                f"axis {pe.axis!r}."
+            )
+        if not (0.0 <= float(pe.coordinate) <= float(domain[ax])):
+            raise ValueError(
+                f"{fn_name}(): extra flux monitor {pe.name!r} coordinate "
+                f"{pe.coordinate} m is outside this simulation's "
+                f"{pe.axis}-domain [0, {domain[ax]}] m."
+            )
+        if pe.name in seen:
+            raise ValueError(
+                f"{fn_name}(): duplicate extra flux monitor name "
+                f"{pe.name!r} — result spectra are name-keyed."
+            )
+        seen.add(pe.name)
+
+
 def _warn_if_ringdown_truncated(
     settling_db: np.ndarray, port_names: tuple, *, num_periods: float
 ) -> None:
@@ -5057,6 +5103,7 @@ class _SparamMixin:
         cond_warn: float = 1.0e3,
         strict_passivity: bool = False,
         eps_scale: "jnp.ndarray | float | None" = None,
+        extra_flux_monitors: "list | None" = None,
     ) -> "CoaxialTwoPortResult":
         """Two-drive coaxial 2-port S-parameters (#489 stage 2) — VALIDATED WITH SCOPE.
 
@@ -5161,6 +5208,21 @@ class _SparamMixin:
         separate defect; ``cond_a`` is still RETURNED (as a tracer), so a
         caller can inspect it after concretizing the result if degeneracy
         matters to them. The AD gate is ``tests/test_coax_two_port_ad.py``.
+
+        ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
+        an ENERGY-WITNESS channel, not an extractor change. Pass the entry
+        objects ``Simulation.add_flux_monitor`` registers (build them on a
+        scratch ``Simulation`` with the same domain and hand over its
+        ``._flux_monitors``); each internal drive run then accumulates the
+        requested Poynting-flux planes, and per-drive spectra come back
+        name-keyed on ``result.flux_monitors``
+        (``{port_name: {monitor_name: (n_monitor_freqs,) float64}}``, net
+        flux, positive = +axis). The S-parameter math is untouched — the
+        non-perturbation witness (S bit-identical with and without
+        monitors) is gated in
+        ``tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+        The registered-monitor guard is unchanged: monitors registered ON
+        this sim still raise, because this method builds its own probes.
         """
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:
@@ -5289,6 +5351,8 @@ class _SparamMixin:
             )
 
         from rfx.probes.probes import init_dft_plane_probe
+        from rfx.probes.probes import flux_spectrum as _flux_spectrum
+        from rfx.runners.uniform import build_flux_monitor_cfgs
         from rfx.simulation import run as _run, ProbeSpec
         from rfx.sources.coaxial_port import (
             CoaxialPort as _CoaxPort,
@@ -5299,6 +5363,10 @@ class _SparamMixin:
             stamp_coaxial_line,
             stamp_coaxial_annular_resistor,
         )
+        _validate_extra_flux_monitor_entries(
+            extra_flux_monitors, self._domain, "compute_coaxial_two_port"
+        )
+        flux_by_drive: dict = {}
 
         grid = self._build_grid()
         nz = grid.shape[2]
@@ -5445,15 +5513,31 @@ class _SparamMixin:
                             grid_shape=grid.shape, dft_total_steps=int(n_steps),
                         )
                     )
+            # #589 flux-adjudication opt-in: fresh accumulators PER DRIVE
+            # (init_flux_monitor zeroes the DFT carries; sharing cfgs across
+            # drives would co-accumulate both drives into one spectrum).
+            _flux_run_kwargs = (
+                {"flux_monitors": build_flux_monitor_cfgs(
+                    self, grid, int(n_steps), entries=extra_flux_monitors)}
+                if extra_flux_monitors else {}
+            )
             result = _run(
                 grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
                 sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
                 probes=witness_probes, dft_planes=planes, return_state=False,
+                **_flux_run_kwargs,
             )
             if result.dft_planes is None:
                 raise RuntimeError(
                     "compute_coaxial_two_port(): runner returned no DFT planes"
                 )
+            if extra_flux_monitors:
+                flux_by_drive[("port1", "port2")[drive_idx]] = {
+                    entry.name: np.asarray(_flux_spectrum(fm), dtype=np.float64)
+                    for entry, fm in zip(
+                        extra_flux_monitors, result.flux_monitors or ()
+                    )
+                }
 
             top_off = n_bot * 2
             if _traced_eps:
@@ -5560,6 +5644,7 @@ class _SparamMixin:
             annulus_cells=annulus_cells,
             settling_db=settling_db,
             status=status,
+            flux_monitors=(flux_by_drive if extra_flux_monitors else None),
         )
         return _finalize_sparam_result(
             result_obj,
@@ -5587,6 +5672,7 @@ class _SparamMixin:
         cond_warn: float = 1.0e3,
         strict_passivity: bool = False,
         skip_preflight: bool = False,
+        extra_flux_monitors: "list | None" = None,
     ) -> "CoaxMSLTransitionResult":
         """EXPERIMENTAL coax<->microstrip transition 2-port S-parameters (issue #489 leg 4).
 
@@ -5728,6 +5814,21 @@ class _SparamMixin:
             attempt 1's exact behavior (and its committed fixture's
             numbers) when left unset.
 
+        ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
+        an ENERGY-WITNESS channel, not an extractor change. Pass the entry
+        objects ``Simulation.add_flux_monitor`` registers (build them on a
+        scratch ``Simulation`` with the same domain and hand over its
+        ``._flux_monitors``); each internal drive run then accumulates the
+        requested Poynting-flux planes, and per-drive spectra come back
+        name-keyed on ``result.flux_monitors``
+        (``{"coax"|"msl": {monitor_name: (n_monitor_freqs,) float64}}``,
+        net flux, positive = +axis). The S-parameter math is untouched —
+        the non-perturbation witness (S bit-identical with and without
+        monitors) is gated in
+        ``tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+        The registered-monitor guard is unchanged: monitors registered ON
+        this sim still raise, because this method builds its own probes.
+
         Returns
         -------
         CoaxMSLTransitionResult
@@ -5750,7 +5851,14 @@ class _SparamMixin:
             msl_probe_x_coords_n,
         )
         from rfx.probes.probes import init_dft_plane_probe
+        from rfx.probes.probes import flux_spectrum as _flux_spectrum
+        from rfx.runners.uniform import build_flux_monitor_cfgs
         from rfx.simulation import run as _run, ProbeSpec
+
+        _validate_extra_flux_monitor_entries(
+            extra_flux_monitors, self._domain, "compute_coax_msl_transition"
+        )
+        flux_by_drive: dict = {}
 
         # ---- Registration guards ----------------------------------------
         if self._boundary != "cpml" or self._cpml_layers <= 0:
@@ -6146,16 +6254,32 @@ class _SparamMixin:
                 ProbeSpec(i=i_probe_msl, j=j_probe_msl, k=k_probe_msl, component="ez"),
             ]
 
+            # #589 flux-adjudication opt-in: fresh accumulators PER DRIVE
+            # (init_flux_monitor zeroes the DFT carries; sharing cfgs across
+            # drives would co-accumulate both drives into one spectrum).
+            _flux_run_kwargs = (
+                {"flux_monitors": build_flux_monitor_cfgs(
+                    self, grid, int(n_steps), entries=extra_flux_monitors)}
+                if extra_flux_monitors else {}
+            )
             result = _run(
                 grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
                 sources=sources, mag_sources=mag_sources, probes=witness_probes,
                 dft_planes=planes, pec_mask=pec_mask, return_state=False,
+                **_flux_run_kwargs,
             )
             if result.dft_planes is None:
                 raise RuntimeError(
                     "compute_coax_msl_transition(): runner returned no DFT "
                     "planes"
                 )
+            if extra_flux_monitors:
+                flux_by_drive[("coax", "msl")[drive_idx]] = {
+                    entry.name: np.asarray(_flux_spectrum(fm), dtype=np.float64)
+                    for entry, fm in zip(
+                        extra_flux_monitors, result.flux_monitors or ()
+                    )
+                }
 
             for pi, z in enumerate(probes_coax):
                 v_coax_by_drive[drive_idx, pi, :] = np.asarray(
@@ -6209,6 +6333,7 @@ class _SparamMixin:
             b_out=b_out,
             settling_db=settling_db,
             status="experimental",
+            flux_monitors=(flux_by_drive if extra_flux_monitors else None),
         )
         return _finalize_sparam_result(
             result_obj,

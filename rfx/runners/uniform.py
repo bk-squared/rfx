@@ -59,7 +59,7 @@ def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
     return sim_result._replace(state=new_state, time_series=new_ts)
 
 
-def build_flux_monitor_cfgs(sim, grid, n_steps):
+def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
     """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
 
     Mechanical extraction of the historical ``run_uniform`` inline block so
@@ -67,10 +67,19 @@ def build_flux_monitor_cfgs(sim, grid, n_steps):
     mixed-family flux magnitude channel) can register the SAME monitors
     the run() lane does. Pure function of (sim registrations, grid,
     n_steps) — keep byte-identical to the pre-extraction block.
+
+    ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
+    objects ``add_flux_monitor`` registers) without touching the sim's
+    own registrations — the ``extra_flux_monitors=`` opt-in on the coax
+    extractors (#589 flux-adjudication instrument) passes caller-built
+    entries here while the registered-monitor guard stays intact. ``sim``
+    is still consulted for ``_freq_max``/``_domain``.
     """
     axis_to_index = {"x": 0, "y": 1, "z": 2}
     flux_monitors = []
-    for pe in getattr(sim, '_flux_monitors', []):
+    if entries is None:
+        entries = getattr(sim, '_flux_monitors', [])
+    for pe in entries:
         axis_idx = axis_to_index[pe.axis]
         plane_pos = [0.0, 0.0, 0.0]
         plane_pos[axis_idx] = pe.coordinate
