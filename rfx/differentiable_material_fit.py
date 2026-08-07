@@ -5,13 +5,28 @@ this module differentiates through the full FDTD simulation to fit
 dispersive material models.  No de-embedding is needed because the fixture
 geometry is included in the simulation.
 
-ACCURACY CAVEAT — despite the name, the current loss does NOT fit true
-S-parameters. The extraction self-normalizes each probe spectrum by its own
-per-probe maximum magnitude (see ~L470-477), which discards magnitude
-information; the loss therefore matches only the *shape* of a self-normalized
-probe spectrum, not S-parameter magnitude and phase. The code calls this an
-"S-param proxy" internally. A real S-parameter fit is planned (the
-review-remediation plan, Stage 3.5a).
+ACCURACY CAVEAT — despite the name, neither loss mode fits true 2-port
+S-parameters; both build a diagonal per-probe proxy. The difference between
+the two ``normalization=`` modes is what the proxy preserves (issue #580):
+
+* ``"per_probe_max"`` (default, legacy): each probe spectrum is divided by
+  its own maximum magnitude. This matches only the *shape* of each probe's
+  spectrum — it is invariant to ANY frequency-independent field scaling,
+  including the physical magnitude changes that loss tangent and
+  conductivity produce, so a fit can look converged while the absolute
+  level is wrong. Appropriate only when magnitude is genuinely
+  uncalibrated (unknown drive, uncalibrated measurement chain).
+* ``"reference_probe"``: every probe spectrum is divided, complex and
+  per-frequency, by ONE designated reference probe's spectrum (typically a
+  probe recording the incident wave). Relative level between probes and
+  the response-vs-reference level both enter the loss, so magnitude-acting
+  parameters (conductivity-like Debye loss) are identifiable; the ratio is
+  still invariant to the shared drive amplitude, which is the calibration
+  you want. Appropriate whenever the fixture can afford one probe on the
+  incident side.
+
+A real S-parameter fit (off-diagonal terms, port de-embedding) remains
+planned (the review-remediation plan, Stage 3.5a).
 
 The gradient path is::
 
@@ -271,6 +286,55 @@ def _adam_step(
 # Main fitting function
 # ---------------------------------------------------------------------------
 
+def _normalize_probe_spectra(
+    s_raw: "jnp.ndarray",
+    n_ports: int,
+    target_shape: tuple,
+    *,
+    normalization: str = "per_probe_max",
+    reference_probe: "int | None" = None,
+) -> "jnp.ndarray":
+    """Probe DFT spectra -> diagonal S-proxy, under the selected mode.
+
+    Pure function (unit-tested directly, issue #580). ``s_raw`` is
+    (n_probes, n_freqs) complex; returns ``target_shape`` complex
+    ((n_ports, n_ports, n_freqs)) with only the diagonal populated.
+
+    ``per_probe_max``: probe i divided by max|probe i| — shape-only, blind
+    to any frequency-independent magnitude change (the legacy proxy).
+    ``reference_probe``: probe i divided complex-per-frequency by the
+    designated reference probe's spectrum — preserves relative and
+    response-vs-reference magnitude and phase; invariant to the shared
+    drive amplitude.
+    """
+    n_probes = s_raw.shape[0]
+    s_sim = jnp.zeros(target_shape, dtype=jnp.complex64)
+    if normalization == "per_probe_max":
+        if n_probes >= n_ports:
+            for i in range(min(n_ports, n_probes)):
+                mag = jnp.abs(s_raw[i])
+                safe_max = jnp.maximum(jnp.max(mag), 1e-30)
+                s_sim = s_sim.at[i, i, :].set(s_raw[i] / safe_max)
+        else:
+            mag = jnp.abs(s_raw[0])
+            safe_max = jnp.maximum(jnp.max(mag), 1e-30)
+            s_sim = (s_raw[0] / safe_max).reshape(target_shape)
+        return s_sim
+    if normalization == "reference_probe":
+        ref = s_raw[reference_probe]
+        # complex per-frequency division; floor |ref| to avoid 0/0 at band
+        # edges where the reference has no energy
+        ref_safe = jnp.where(jnp.abs(ref) > 1e-30, ref,
+                             jnp.asarray(1e-30, dtype=ref.dtype))
+        for i in range(min(n_ports, n_probes)):
+            s_sim = s_sim.at[i, i, :].set(s_raw[i] / ref_safe)
+        return s_sim
+    raise ValueError(
+        f"normalization must be 'per_probe_max' or 'reference_probe', "
+        f"got {normalization!r}"
+    )
+
+
 def differentiable_material_fit(
     sim_factory: Callable,
     s_measured: np.ndarray,
@@ -285,6 +349,8 @@ def differentiable_material_fit(
     weight_phase: float = 0.1,
     checkpoint: bool = True,
     verbose: bool = True,
+    normalization: str = "per_probe_max",
+    reference_probe: "int | None" = None,
 ) -> MaterialFitResult:
     """Fit dispersive material poles to S-parameter data via jax.grad through FDTD.
 
@@ -317,10 +383,29 @@ def differentiable_material_fit(
         Use ``jax.checkpoint`` in the FDTD loop (recommended).
     verbose : bool
         Print progress.
+    normalization : {"per_probe_max", "reference_probe"}
+        Loss-proxy normalization mode (issue #580; see the module
+        docstring's ACCURACY CAVEAT for when each is appropriate).
+        ``"per_probe_max"`` (default, legacy) is shape-only and BLIND to
+        magnitude-acting parameters such as conductivity;
+        ``"reference_probe"`` divides every probe spectrum, complex and
+        per-frequency, by the designated reference probe's spectrum, so
+        magnitude and inter-probe level enter the loss while the shared
+        drive amplitude cancels.
+    reference_probe : int or None
+        Required (and only used) with ``normalization="reference_probe"``:
+        index into the fixture's registered probe list of the probe that
+        records the reference (incident-side) signal. Must not be one of
+        the first ``n_ports`` probes — those are the response probes the
+        proxy is built from, and self-referencing would reintroduce the
+        degeneracy this mode exists to remove.
 
     Returns
     -------
     MaterialFitResult
+        ``final_s_params`` carries the LAST iteration's model-side proxy
+        spectrum (same normalization as the loss) — previously this field
+        was always ``None``.
     """
     from rfx.simulation import run as sim_run, make_port_source, make_probe
     from rfx.sources.sources import LumpedPort, setup_lumped_port
@@ -375,6 +460,45 @@ def differentiable_material_fit(
     grid = dummy_sim._build_grid()
     dt = grid.dt
     n_steps = grid.num_timesteps(num_periods=20.0)
+
+    # ---- normalization-mode validation (issue #580), fail-loud up front --
+    if normalization not in ("per_probe_max", "reference_probe"):
+        raise ValueError(
+            f"normalization must be 'per_probe_max' or 'reference_probe', "
+            f"got {normalization!r}"
+        )
+    _n_ports_meas = int(s_measured.shape[0])
+    _n_fixture_probes = len(dummy_sim._probes)
+    if normalization == "reference_probe":
+        if reference_probe is None:
+            raise ValueError(
+                "normalization='reference_probe' requires reference_probe= "
+                "(index into the fixture's registered probe list of the "
+                "incident-side reference probe)."
+            )
+        _ref = int(reference_probe)
+        if not (-_n_fixture_probes <= _ref < _n_fixture_probes):
+            raise ValueError(
+                f"reference_probe={reference_probe} is outside the fixture's "
+                f"probe list (n_probes={_n_fixture_probes})."
+            )
+        _ref_pos = _ref % _n_fixture_probes
+        if _ref_pos < _n_ports_meas:
+            raise ValueError(
+                f"reference_probe={reference_probe} indexes one of the first "
+                f"n_ports={_n_ports_meas} probes, which are the response "
+                "probes the proxy is built from — self-referencing "
+                "reintroduces the magnitude degeneracy this mode removes. "
+                "Register a dedicated incident-side probe and point at it."
+            )
+        if _n_fixture_probes < _n_ports_meas + 1:
+            raise ValueError(
+                "normalization='reference_probe' needs at least "
+                f"n_ports+1={_n_ports_meas + 1} registered probes "
+                f"(response probes + the reference); fixture has "
+                f"{_n_fixture_probes}."
+            )
+        reference_probe = _ref_pos
 
     # ------------------------------------------------------------------
     # Forward function (called inside jax.value_and_grad)
@@ -448,8 +572,6 @@ def differentiable_material_fit(
         # Extract S-params from time series via DFT
         # Use probe time series and compute S-params from voltage/current DFTs
         ts = result.time_series  # (n_steps, n_probes)
-        n_probes = ts.shape[1] if ts.ndim > 1 else 1
-        len(freqs)
 
         # Compute DFT of probe time series at target frequencies
         times = jnp.arange(n_steps) * dt
@@ -464,43 +586,35 @@ def differentiable_material_fit(
         # S_raw ~ DFT of probe signals, shape (n_probes, n_freqs) complex
         s_raw = jnp.dot(ts.T.astype(jnp.complex64), phase_matrix)
 
-        # Normalize: S_ij ~ response_i / excitation_j
-        # For a simple proxy: normalize by the first port's self-response
-        # and form an S-matrix-like quantity
+        # Probe spectra -> diagonal S-proxy under the selected mode
+        # (issue #580; the pure helper carries the unit-tested arithmetic)
         n_ports = s_meas_jnp.shape[0]
+        s_sim = _normalize_probe_spectra(
+            s_raw, n_ports, s_meas_jnp.shape,
+            normalization=normalization, reference_probe=reference_probe,
+        )
 
-        # Build a simplified S-param proxy from probe frequency content
-        # Use probe signals to form S11-like reflection coefficients
-        if n_probes >= n_ports:
-            s_sim = jnp.zeros_like(s_meas_jnp)
-            for i in range(min(n_ports, n_probes)):
-                mag = jnp.abs(s_raw[i])
-                safe_max = jnp.maximum(jnp.max(mag), 1e-30)
-                s_sim = s_sim.at[i, i, :].set(s_raw[i] / safe_max)
-        else:
-            # Single probe: use as S11
-            mag = jnp.abs(s_raw[0])
-            safe_max = jnp.maximum(jnp.max(mag), 1e-30)
-            s_sim = (s_raw[0] / safe_max).reshape(s_meas_jnp.shape)
-
-        return sparam_loss(
+        loss = sparam_loss(
             s_sim, s_meas_jnp,
             weight_mag=weight_mag, weight_phase=weight_phase,
         )
+        return loss, s_sim
 
     # ------------------------------------------------------------------
     # Optimization loop (Adam)
     # ------------------------------------------------------------------
-    grad_fn = jax.value_and_grad(forward)
+    grad_fn = jax.value_and_grad(forward, has_aux=True)
 
     m = jnp.zeros_like(params)
     v = jnp.zeros_like(params)
     loss_history = []
+    last_s_sim = None
 
     for it in range(n_iterations):
-        loss_val, grad = grad_fn(params)
+        (loss_val, s_sim_aux), grad = grad_fn(params)
         loss_val = float(loss_val)
         loss_history.append(loss_val)
+        last_s_sim = s_sim_aux
 
         params, m, v = _adam_step(
             params, grad, m, v, it, learning_rate,
@@ -541,7 +655,8 @@ def differentiable_material_fit(
         debye_poles=debye_out,
         lorentz_poles=lorentz_out,
         loss_history=loss_history,
-        final_s_params=None,
+        final_s_params=(None if last_s_sim is None
+                        else np.asarray(last_s_sim)),
         freqs=freqs,
         converged=converged,
     )

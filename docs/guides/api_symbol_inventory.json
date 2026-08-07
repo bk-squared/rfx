@@ -767,7 +767,9 @@
         "weight_mag",
         "weight_phase",
         "checkpoint",
-        "verbose"
+        "verbose",
+        "normalization",
+        "reference_probe"
       ]
     },
     "directivity": {

@@ -347,3 +347,102 @@ def test_recover_known_debye():
     # The error should have decreased (we moved toward the truth)
     assert de_err_final < de_err_init, \
         f"delta_eps error did not decrease: {de_err_final:.2%} >= {de_err_init:.2%}"
+
+
+# ---------------------------------------------------------------------------
+# #580: recovery through the PUBLIC entry with the magnitude-preserving
+# reference_probe mode (acceptance criterion 1). The measurement-harvest
+# trick: n_iterations=1 with learning_rate=0.0 leaves params untouched, so
+# MaterialFitResult.final_s_params IS the model observation at the given
+# initial_guess — used to generate a self-consistent synthetic
+# "measurement" at the truth parameters through the identical pipeline.
+# ---------------------------------------------------------------------------
+
+def _i580_factory():
+    from rfx.api import Simulation
+    from rfx.geometry.csg import Box
+    from rfx.sources.sources import GaussianPulse as _GP
+
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        sim = Simulation(freq_max=5e9, domain=(0.024, 0.009, 0.009))
+        sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles)
+        sim.add(Box((0.010, 0.0, 0.0), (0.016, 0.009, 0.009)), material="dut")
+        sim.add_port((0.003, 0.0045, 0.0045), "ez",
+                     waveform=_GP(f0=3e9, bandwidth=0.5))
+        # probe 0 = response (behind the slab, transmission-sensitive);
+        # probe 1 = reference (incident side, between port and slab)
+        sim.add_probe((0.020, 0.0045, 0.0045), component="ez")
+        sim.add_probe((0.007, 0.0045, 0.0045), component="ez")
+        return sim
+
+    return factory
+
+
+def test_recover_debye_reference_mode_public_entry():
+    """#580 acceptance: a known (eps_inf, lossy Debye pole) is recovered
+    through the public differentiable_material_fit entry under
+    normalization='reference_probe', and the per_probe_max proxy's
+    structural magnitude blindness is witnessed on the same data."""
+    from rfx.material_fit import DebyeFitResult
+    from rfx.differentiable_material_fit import differentiable_material_fit
+
+    factory = _i580_factory()
+    freqs = np.linspace(2.0e9, 4.0e9, 5)
+    true_de, true_tau, true_eps_inf = 3.0, 50.0e-12, 2.0  # tau relaxation ~3.2 GHz = IN the 2-4 GHz band (identifiability; 8 ps put it at ~20 GHz, out of band, and tau drifted)
+    truth = DebyeFitResult(
+        eps_inf=true_eps_inf,
+        poles=[DebyePole(delta_eps=true_de, tau=true_tau)],
+        fit_error=0.0,
+    )
+
+    # harvest the truth observation through the identical pipeline
+    obs = differentiable_material_fit(
+        factory, np.zeros((1, 1, 5), complex), freqs, n_debye_poles=1,
+        n_iterations=1, learning_rate=0.0, initial_guess=truth,
+        verbose=False, normalization="reference_probe", reference_probe=1,
+    )
+    s_meas = obs.final_s_params
+    assert s_meas is not None and np.all(np.isfinite(s_meas))
+    # magnitude information present: NOT pinned to a unit peak
+    assert abs(float(np.max(np.abs(s_meas))) - 1.0) > 1e-3
+
+    # fit from a perturbed guess (2x both pole parameters)
+    guess = DebyeFitResult(
+        eps_inf=true_eps_inf,
+        poles=[DebyePole(delta_eps=true_de * 2.0, tau=true_tau * 2.0)],
+        fit_error=0.0,
+    )
+    fit = differentiable_material_fit(
+        factory, s_meas, freqs, n_debye_poles=1,
+        n_iterations=25, learning_rate=0.05, initial_guess=guess,
+        verbose=False, normalization="reference_probe", reference_probe=1,
+    )
+    rec_de = float(fit.debye_poles[0].delta_eps)
+    rec_tau = float(fit.debye_poles[0].tau)
+    print(f"\n#580 recovery: de {true_de*2:.2f}->{rec_de:.3f} (true {true_de}), "
+          f"tau {true_tau*2:.2e}->{rec_tau:.2e} (true {true_tau:.1e}), "
+          f"loss {fit.loss_history[0]:.3e}->{fit.loss_history[-1]:.3e}")
+
+    assert fit.loss_history[-1] < fit.loss_history[0]
+    # moved toward truth from the 2x start on both parameters
+    assert abs(rec_de - true_de) < abs(true_de * 2.0 - true_de)
+    assert abs(rec_tau - true_tau) < abs(true_tau * 2.0 - true_tau)
+    # documented recovery tolerance (issue #580 acceptance), pinned from the
+    # 2026-08-07 CPU measurement: de 6.00->3.331 (11% rel err, gate 20%),
+    # tau 1.00e-10->5.29e-11 (5.8% rel err, gate 15%), loss 1.44e-4->8.40e-6
+    # (25 Adam iterations, lr=0.05). Gates carry ~1.8x/2.6x margin over the
+    # measured errors, same envelope-with-margin convention as the repo's
+    # gate_from_envelope policy.
+    assert abs(rec_de - true_de) / true_de < 0.20
+    assert abs(rec_tau - true_tau) / true_tau < 0.15
+
+    # structural-blindness witness: the legacy proxy's model spectrum is
+    # pinned to a unit peak REGARDLESS of the material, so it cannot carry
+    # the magnitude information the measurement contains
+    legacy = differentiable_material_fit(
+        factory, s_meas, freqs, n_debye_poles=1,
+        n_iterations=1, learning_rate=0.0, initial_guess=truth,
+        verbose=False, normalization="per_probe_max",
+    )
+    assert np.isclose(float(np.max(np.abs(legacy.final_s_params))), 1.0,
+                      atol=1e-5)
