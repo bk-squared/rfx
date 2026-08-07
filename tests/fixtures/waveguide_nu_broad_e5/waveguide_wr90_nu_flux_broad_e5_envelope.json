@@ -5,8 +5,8 @@
   "evidence_level": "E5-broad-mesh-frequency-geometry-nonuniform-flux",
   "claim": "rfx WR-90 nonuniform graded-dy compute_waveguide_s_matrix(normalize='flux') vs analytic Airy across 4 grading ratios and 2 eps_r geometries (incl. strong eps_r=4) over X-band passes broad-E5 0.002.",
   "claim_scope": "broad rfx WR-90 rectangular_waveguide_port nonuniform-mesh compute_waveguide_s_matrix(normalize='flux') Poynting power-flux extraction versus analytic Airy reference envelope spanning the graded-dy mesh refinement axis (grading_ratio 1-3, adjacent-cell ratio up to 3.00), the frequency axis (8.2-12.4 GHz X-band single-mode TE10), and the geometry axis (eps_r in [2.0, 4.0] centered slabs including the strong eps_r=4 reflector that the normalize=True path floors at ~0.077). The graded-mesh discrete TE10 mode profile uses the Galerkin symmetric generalized eigensolve (commit 13c9651) and the flux S-matrix branch (issue #88 Step B). Truth source is independent analytic Airy, not a same-class FDTD reference.",
-  "commit_hash": "282934b",
-  "generated_at": "2026-08-07T14:21:28.616686+00:00",
+  "commit_hash": "287b281",
+  "generated_at": "2026-08-07T17:24:59.025678+00:00",
   "max_mag_abs_tol": 0.002,
   "ratio_spread_floor": 0.005,
   "noise_floor_baseline": 0.0021,
@@ -104,6 +104,9 @@
       "s11_max_mag_abs_diff": 0.0004841101661584579,
       "s21_max_mag_abs_diff": 0.0001926486543679662,
       "max_mag_abs_diff": 0.0004841101661584579,
+      "unitarity_min": 0.9999796152114868,
+      "unitarity_max": 1.0000392198562622,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1_er2_L4mm.npz",
       "status": "passed"
     },
@@ -117,6 +120,9 @@
       "s11_max_mag_abs_diff": 0.0003946474801356237,
       "s21_max_mag_abs_diff": 9.497386235712835e-05,
       "max_mag_abs_diff": 0.0003946474801356237,
+      "unitarity_min": 0.9999896883964539,
+      "unitarity_max": 1.0000457763671875,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1_er2_L2mm.npz",
       "status": "passed"
     },
@@ -130,6 +136,9 @@
       "s11_max_mag_abs_diff": 0.0007074792387852247,
       "s21_max_mag_abs_diff": 0.0005959945990261506,
       "max_mag_abs_diff": 0.0007074792387852247,
+      "unitarity_min": 0.999994158744812,
+      "unitarity_max": 1.0000288486480713,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1_er4_L4mm.npz",
       "status": "passed"
     },
@@ -143,6 +152,9 @@
       "s11_max_mag_abs_diff": 0.0010696952113267155,
       "s21_max_mag_abs_diff": 0.0008067757064413872,
       "max_mag_abs_diff": 0.0010696952113267155,
+      "unitarity_min": 0.9999879598617554,
+      "unitarity_max": 1.0000324249267578,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1_er4_L2mm.npz",
       "status": "passed"
     },
@@ -156,6 +168,9 @@
       "s11_max_mag_abs_diff": 0.00045216207655884855,
       "s21_max_mag_abs_diff": 0.00020281960097567886,
       "max_mag_abs_diff": 0.00045216207655884855,
+      "unitarity_min": 0.9999837279319763,
+      "unitarity_max": 1.0000088214874268,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1.5_er2_L4mm.npz",
       "status": "passed"
     },
@@ -169,6 +184,9 @@
       "s11_max_mag_abs_diff": 0.0003716400872523229,
       "s21_max_mag_abs_diff": 0.00010285506965923563,
       "max_mag_abs_diff": 0.0003716400872523229,
+      "unitarity_min": 0.9999855160713196,
+      "unitarity_max": 1.0000100135803223,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1.5_er2_L2mm.npz",
       "status": "passed"
     },
@@ -182,6 +200,9 @@
       "s11_max_mag_abs_diff": 0.0006702859404453809,
       "s21_max_mag_abs_diff": 0.0005887824370083283,
       "max_mag_abs_diff": 0.0006702859404453809,
+      "unitarity_min": 0.9999849796295166,
+      "unitarity_max": 1.0000070333480835,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1.5_er4_L4mm.npz",
       "status": "passed"
     },
@@ -195,6 +216,9 @@
       "s11_max_mag_abs_diff": 0.0010425154933091374,
       "s21_max_mag_abs_diff": 0.0008123785430502739,
       "max_mag_abs_diff": 0.0010425154933091374,
+      "unitarity_min": 0.9999867677688599,
+      "unitarity_max": 1.0000088214874268,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio1.5_er4_L2mm.npz",
       "status": "passed"
     },
@@ -208,6 +232,9 @@
       "s11_max_mag_abs_diff": 0.0005011570945642196,
       "s21_max_mag_abs_diff": 0.0001956884912515111,
       "max_mag_abs_diff": 0.0005011570945642196,
+      "unitarity_min": 0.9999793767929077,
+      "unitarity_max": 1.000107765197754,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio2_er2_L4mm.npz",
       "status": "passed"
     },
@@ -221,6 +248,9 @@
       "s11_max_mag_abs_diff": 0.00042391336072034047,
       "s21_max_mag_abs_diff": 0.00010135155934809514,
       "max_mag_abs_diff": 0.00042391336072034047,
+      "unitarity_min": 0.9999802708625793,
+      "unitarity_max": 1.000110149383545,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio2_er2_L2mm.npz",
       "status": "passed"
     },
@@ -234,6 +264,9 @@
       "s11_max_mag_abs_diff": 0.0006932933333286817,
       "s21_max_mag_abs_diff": 0.0005871731115993928,
       "max_mag_abs_diff": 0.0006932933333286817,
+      "unitarity_min": 0.9999722838401794,
+      "unitarity_max": 1.0000817775726318,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio2_er4_L4mm.npz",
       "status": "passed"
     },
@@ -247,6 +280,9 @@
       "s11_max_mag_abs_diff": 0.0010809604891892644,
       "s21_max_mag_abs_diff": 0.0007792383605551567,
       "max_mag_abs_diff": 0.0010809604891892644,
+      "unitarity_min": 0.9999756813049316,
+      "unitarity_max": 1.0000896453857422,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio2_er4_L2mm.npz",
       "status": "passed"
     },
@@ -260,6 +296,9 @@
       "s11_max_mag_abs_diff": 0.0004162850795687567,
       "s21_max_mag_abs_diff": 0.00022999931899325698,
       "max_mag_abs_diff": 0.0004162850795687567,
+      "unitarity_min": 0.9998009204864502,
+      "unitarity_max": 0.9999980926513672,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio3_er2_L4mm.npz",
       "status": "passed"
     },
@@ -273,6 +312,9 @@
       "s11_max_mag_abs_diff": 0.00035363694543988355,
       "s21_max_mag_abs_diff": 0.00014106164696026102,
       "max_mag_abs_diff": 0.00035363694543988355,
+      "unitarity_min": 0.9998326897621155,
+      "unitarity_max": 0.9999993443489075,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio3_er2_L2mm.npz",
       "status": "passed"
     },
@@ -286,6 +328,9 @@
       "s11_max_mag_abs_diff": 0.0006403048041233594,
       "s21_max_mag_abs_diff": 0.0005757290198025178,
       "max_mag_abs_diff": 0.0006403048041233594,
+      "unitarity_min": 0.9997843503952026,
+      "unitarity_max": 0.9999943971633911,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio3_er4_L4mm.npz",
       "status": "passed"
     },
@@ -299,6 +344,9 @@
       "s11_max_mag_abs_diff": 0.0009985868701096745,
       "s21_max_mag_abs_diff": 0.0008328825408530083,
       "max_mag_abs_diff": 0.0009985868701096745,
+      "unitarity_min": 0.9997763633728027,
+      "unitarity_max": 0.9999961853027344,
+      "dx_m": 0.00025,
       "rfx_npz": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/ratio3_er4_L2mm.npz",
       "status": "passed"
     }

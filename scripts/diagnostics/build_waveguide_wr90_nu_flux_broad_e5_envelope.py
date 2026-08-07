@@ -118,11 +118,21 @@ def main():
         s11r=s11e*np.exp(-2j*bv*(c-0.5*slab_L-RL)); s21r=s21e*np.exp(+1j*bv*slab_L)
         d11=np.abs(np.abs(s11)-np.abs(s11r)); d21=np.abs(np.abs(s21)-np.abs(s21r))
         cmax=float(max(d11.max(),d21.max())); diffs.append(cmax)
+        # PASSIVITY WITNESS (#496 ask 3). Every case here is a LOSSLESS slab, so
+        # column power |S11|^2+|S21|^2 must be 1 and any departure is unphysical.
+        # This lane shipped with NO passivity witness at all -- its builder wrote
+        # no unitarity keys, which is why the #496 auditor could only print
+        # "NOT MEASURED" for it while every band lane got a real reading. Same
+        # key names as the band producer so one convention is read everywhere.
+        colpow=np.abs(s11)**2+np.abs(s21)**2
         cases.append({"tag":case["tag"],"grading_ratio":float(case["grading_ratio"]),
             "adjacent_ratio":float(case["adjacent_ratio"]),"n_cells_y":int(case["n_cells_y"]),
             "eps_r":er,"geometry":case["geometry"],
             "s11_max_mag_abs_diff":float(d11.max()),"s21_max_mag_abs_diff":float(d21.max()),
-            "max_mag_abs_diff":cmax,"rfx_npz":case["rfx_npz"],
+            "max_mag_abs_diff":cmax,
+            "unitarity_min":float(colpow.min()),"unitarity_max":float(colpow.max()),
+            "dx_m":float(d["base_dx_m"]),
+            "rfx_npz":case["rfx_npz"],
             "status":"passed" if cmax<=MAX_TOL else "failed"})
     diffs=np.array(diffs); mx=float(diffs.max()); mn=float(diffs.mean())
     rs=float((diffs.max()-diffs.min())/max(diffs.max(),1e-12))
