@@ -1785,6 +1785,37 @@ def extract_waveguide_port_waves(
     return _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
 
 
+def settling_db_from_port_records(final_cfgs) -> float:
+    """Energy ring-down witness for ONE driven waveguide run (issue #538).
+
+    Worst end/peak ``|V_probe|^2`` tail ratio across the run's port probe
+    planes, in dB — the same end/peak arithmetic as the lumped/MSL witness
+    (``rfx/api/_sparams.py``), computed from the ``v_probe_t`` time series
+    the scan already records for the post-run DFT extraction. NO run-side
+    change: this is pure host-side post-processing of arrays the extractors
+    already return, so it cannot perturb S (nothing is added to the jitted
+    graph). Returns NaN when the records are tracers (eps_override AD path)
+    — the witness is skipped rather than concretised, mirroring the MSL
+    implementation's guard.
+    """
+    from rfx.core.jax_utils import is_tracer
+    worst = -np.inf
+    for cfg in final_cfgs:
+        ts = cfg.v_probe_t
+        if is_tracer(ts):
+            return float("nan")
+        ts_np = np.abs(np.asarray(ts, dtype=np.float64))
+        if ts_np.shape[0] < 10:
+            return float("nan")
+        p = ts_np ** 2
+        tail = max(1, p.shape[0] // 10)
+        end = float(p[-tail:].mean())
+        peak = float(p.max())
+        tiny = float(np.finfo(float).tiny)
+        worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
+    return float(worst)
+
+
 def extract_waveguide_s_matrix(
     grid,
     materials,
@@ -1802,8 +1833,17 @@ def extract_waveguide_s_matrix(
     conformal_weights: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
+    return_settling: bool = False,
 ) -> jnp.ndarray:
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
+
+    ``return_settling=True`` (issue #538) additionally returns the
+    per-driven-run energy ring-down witness: ``(S, settling_db)`` with
+    ``settling_db`` shape ``(n_ports,)`` from
+    :func:`settling_db_from_port_records` (NaN per run under tracing).
+    Default ``False`` keeps the legacy single-array return for existing
+    callers, and the S values are identical either way — the witness is
+    post-processing of records the scan already produces.
 
     checkpoint_segments : int or None
         When set, enables segmented gradient checkpointing on each per-port
@@ -1831,6 +1871,7 @@ def extract_waveguide_s_matrix(
     # in recv order; stacked to (n_ports, n_freqs) then assembled to
     # (n_ports, n_ports, n_freqs) via jnp.stack(axis=1).
     s_cols: list[jnp.ndarray] = []
+    settling_runs: list[float] = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t)
@@ -1870,6 +1911,8 @@ def extract_waveguide_s_matrix(
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+        if return_settling:
+            settling_runs.append(settling_db_from_port_records(final_cfgs))
         # NB: run() stamps grid.dt onto every returned waveguide cfg, so the
         # post-scan rect-DFT extractor below uses the correct Δt even when the
         # cfgs were built via init_waveguide_port without dt=.
@@ -1892,7 +1935,10 @@ def extract_waveguide_s_matrix(
 
     # Assemble full S-matrix: stack drive columns along axis=1 →
     # (n_ports, n_ports, n_freqs).
-    return jnp.stack(s_cols, axis=1)
+    s_matrix = jnp.stack(s_cols, axis=1)
+    if return_settling:
+        return s_matrix, np.asarray(settling_runs, dtype=float)
+    return s_matrix
 
 
 def extract_waveguide_s_matrix_flux(
@@ -1918,8 +1964,16 @@ def extract_waveguide_s_matrix_flux(
     ref_aniso_inv_eps: tuple | None = None,
     ref_materials_per_port: "list | None" = None,
     checkpoint_segments: int | None = None,
+    return_settling: bool = False,
 ) -> jnp.ndarray:
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
+
+    ``return_settling=True`` (issue #538): returns ``(S, settling_db)``;
+    the witness is computed from the DEVICE run's port records per drive
+    (the claims-bearing resonant structure — the reference run is a
+    matched straight guide whose faster ring-down would flatter the
+    number). NaN per run under tracing. Default ``False`` keeps the
+    legacy single-array return; S is identical either way.
 
     ``ref_materials_per_port`` (optional): a per-driven-port list of reference
     materials. These must be PEC-FOLDED (walls as sigma≈1e10) exactly like the
@@ -1985,6 +2039,7 @@ def extract_waveguide_s_matrix_flux(
     # port and stacked at the end — no in-place np mutation, so traced
     # values flow through to the returned S-matrix.
     s_columns: list = []
+    settling_runs: list[float] = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t)
@@ -2086,6 +2141,8 @@ def extract_waveguide_s_matrix_flux(
         dev_final_mons = dev_result.flux_monitors or ()
         if len(dev_final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+        if return_settling:
+            settling_runs.append(settling_db_from_port_records(dev_final_cfgs))
 
         F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
 
@@ -2125,7 +2182,10 @@ def extract_waveguide_s_matrix_flux(
         s_columns.append(jnp.stack(col_entries, axis=0))
 
     # Stack drive columns on axis 1 -> (recv, drive, n_freqs)
-    return jnp.stack(s_columns, axis=1)
+    s_matrix = jnp.stack(s_columns, axis=1)
+    if return_settling:
+        return s_matrix, np.asarray(settling_runs, dtype=float)
+    return s_matrix
 
 
 def extract_waveguide_s_params_normalized(
@@ -2150,6 +2210,7 @@ def extract_waveguide_s_params_normalized(
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
+    return_settling: bool = False,
 ) -> jnp.ndarray:
     """Two-run normalized waveguide S-matrix.
 
@@ -2249,6 +2310,7 @@ def extract_waveguide_s_params_normalized(
     # it always passes aniso_eps=None — the two-run cancellation only
     # benefits if the smoothed ε is applied to the device run.
 
+    settling_runs: list[float] = []
     for drive_idx in range(n_ports):
         # --- Reference run: extract waves at all ports ---
         ref_cfgs = [
@@ -2312,6 +2374,8 @@ def extract_waveguide_s_params_normalized(
             raise RuntimeError(
                 "waveguide S-matrix extraction expected one final config per port"
             )
+        if return_settling:
+            settling_runs.append(settling_db_from_port_records(dev_final_cfgs))
 
         for recv_idx, cfg in enumerate(dev_final_cfgs):
             _, b_recv_dev = extract_waveguide_port_waves(
@@ -2335,6 +2399,9 @@ def extract_waveguide_s_params_normalized(
                 )
                 s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_b_ref
 
+    if return_settling:
+        import numpy as _np
+        return jnp.asarray(s_matrix), _np.asarray(settling_runs, dtype=float)
     return jnp.asarray(s_matrix)
 
 

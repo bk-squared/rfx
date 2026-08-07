@@ -351,7 +351,8 @@ def _warn_if_ringdown_truncated(
         "truncation artifacts wherever the structure is resonant — expect "
         "spurious |S| poles and passivity violations. Increase num_periods "
         "until the witness is below −40 dB before quoting any S value "
-        "(see MSLSMatrixResult.settling_db).",
+        "(see the result's settling_db field — MSLSMatrixResult and, since "
+        "issue #538, WaveguideSMatrixResult).",
         stacklevel=2,
     )
 
@@ -2341,7 +2342,9 @@ class _SparamMixin:
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
                 ref_materials_per_port=ref_materials_per_port,
                 checkpoint_segments=checkpoint_segments,
+                return_settling=True,
             )
+            s_params, settling_db = s_params
         elif normalize:
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
@@ -2365,9 +2368,11 @@ class _SparamMixin:
                 aniso_inv_eps=aniso_inv_eps,
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
                 checkpoint_segments=checkpoint_segments,
+                return_settling=True,
             )
+            s_params, settling_db = s_params
         else:
-            s_params = extract_waveguide_s_matrix(
+            s_params, settling_db = extract_waveguide_s_matrix(
                 grid,
                 materials,
                 cfgs,
@@ -2382,6 +2387,7 @@ class _SparamMixin:
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 checkpoint_segments=checkpoint_segments,
+                return_settling=True,
             )
         reference_planes = np.array(
             [
@@ -2396,12 +2402,22 @@ class _SparamMixin:
             ],
             dtype=float,
         )
+        _port_names = tuple(entry.name for entry in entries)
+        # Issue #538: the energy ring-down witness now reaches the waveguide
+        # path — same aggregate truncation warning as the lumped/MSL path.
+        # NaN entries (traced AD runs) are skipped by the warner's finite
+        # mask; the array itself is always attached for the record.
+        settling_db = np.asarray(settling_db, dtype=float)
+        _warn_if_ringdown_truncated(
+            settling_db, _port_names, num_periods=float(num_periods),
+        )
         _res_sm = WaveguideSMatrixResult(
             s_params=s_params,
             freqs=jnp.asarray(freqs),
-            port_names=tuple(entry.name for entry in entries),
+            port_names=_port_names,
             port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
+            settling_db=settling_db,
         )
         return _finalize_sparam_result(
             _res_sm,
