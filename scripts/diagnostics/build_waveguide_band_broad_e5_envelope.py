@@ -92,6 +92,20 @@ def _validate_claim_scope(text: str, band_token: str) -> None:
         raise SystemExit(f"claim_scope contains blocking tokens: {found_block}")
 
 
+def _uniform_cpml(cases_out):
+    """The one absorber depth every case used, or None if they differ / unknown.
+
+    None is the honest answer for a --cpml-fraction run: the depth is derived per
+    dx, so no single number describes the lane and the #496 auditor must fall
+    through to the per-case record instead of trusting a summary.
+    """
+    depths = {c["cpml_layers"] for c in cases_out}
+    if len(depths) != 1:
+        return None
+    only = depths.pop()
+    return int(only) if only is not None else None
+
+
 def build_envelope(manifest_path: Path, band_token: str, band_label: str):
     manifest = json.loads(manifest_path.read_text())
     fc_v = float(manifest["fc_te10_hz"])
@@ -143,6 +157,12 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
             "slab_length_m": case_slab_L,
             "n_cells_total": int(case["n_cells_total"]),
             "cells_per_lambda_max_hz": float(case["cells_per_lambda_max_hz"]),
+            # Per-case, because with --cpml-fraction the depth is derived per dx.
+            # The #496 auditor reads THIS in preference to setup_recipe, so the
+            # absorber a case actually ran with can never be misreported by a
+            # manifest-level summary. None when an older manifest predates it.
+            "cpml_layers": (int(case["cpml_layers"])
+                            if case.get("cpml_layers") is not None else None),
             "freqs_hz_min": float(freqs.min()),
             "freqs_hz_max": float(freqs.max()),
             "n_freqs": int(len(freqs)),
@@ -244,7 +264,17 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
             "primary_truth_key": "airy_slab_closed_form",
             "mesh_axis_kind": "uniform_dx_refinement",
             "setup_recipe": {
-                "cpml_layers": int(manifest["cpml_layers"]),
+                # Derived from the CASES, not the manifest header. The header is
+                # written before --cpml-fraction is applied per dx, so on a
+                # derived-absorber run it names the spec default that no case
+                # used — which is what made the #496 auditor report the
+                # 0.75-lambda_g WR-15/WR-28 probes as 0.060. One number here is
+                # honest only when every case agrees; otherwise None, and
+                # cases[].cpml_layers is the record.
+                "cpml_layers": _uniform_cpml(cases_out),
+                "cpml_layers_per_case": len(
+                    {c["cpml_layers"] for c in cases_out}) > 1,
+                "cpml_fraction": manifest.get("cpml_fraction"),
                 "normalize": manifest["normalize"],
                 "num_periods": int(manifest["num_periods"]),
                 "domain_m": list(manifest["domain_m"]),

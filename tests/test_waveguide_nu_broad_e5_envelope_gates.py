@@ -49,11 +49,43 @@ FIXTURE = (
     / "waveguide_wr90_nu_flux_broad_e5_envelope.json"
 )
 
+sys.path.insert(0, str(REPO / "tests"))
+from _gate_policy import gate_from_envelope  # type: ignore  # noqa: E402
+
 MIN_GRADING_RATIOS = 2   # mesh-refinement axis (NU uses grading ratio, not dx)
 MIN_EPS_R = 2            # geometry axis
 MIN_CASES = 4
 _A_WG = 22.86e-3
 _FC_TE10 = 299_792_458.0 / (2 * _A_WG)
+
+# The MEASURED envelope of the #574 regeneration (16 cases, GPU, cpml_layers
+# 183 = 0.75 lambda_g, num_periods 60). The pre-#576 absorber (24 cells =
+# 0.099 lambda_g) measured 0.015609; the regeneration is 14.4x better, which
+# left the old flat 0.05 gate sitting 46x above the thing it bounded.
+MEASURED_MAX_ENVELOPE = 0.001081
+
+# ABSOLUTE ceiling, pinned OUTSIDE the artifact — the E4 lane's idiom
+# (test_waveguide_nu_broad_e4_comparison_gates.py) and the treatment #576
+# established, which is why the #574 promotion could not be a fixture swap.
+# MAX_TOL is DERIVED from the measured envelope, and that envelope lives inside
+# the artifact this gate guards, so a regeneration that degraded would
+# re-derive its own looser gate and stay green. This number is the part no
+# regeneration can move.
+#
+# MEASURED blind band, not asserted (a bound whose blind band nobody measured
+# is a bound nobody can rely on). Mutation: scale every per-case diff in the
+# artifact by k, re-derive the gate from the degraded envelope, AND move the
+# pinned literal above to match — a coherent author, which is the edit the
+# equality check alone loses to. Bytecode cache cleared between runs (a stale
+# .pyc of the producer silently reports the previous k's MAX_TOL):
+#     k = 1.15  ->  envelope 0.001243  ->  GREEN (blind)
+#     k = 1.20  ->  envelope 0.001297  ->  GREEN (blind)
+#     k = 1.21  ->  envelope 0.001308  ->  RED, ceiling assert
+# So the threshold is k = 0.0013 / 0.001081 = 1.203 and the instrument is blind
+# below it. float32 S-parameters (the sweep runs JAX_ENABLE_X64=0) and
+# reference-resolution scatter live in that band; it is a real limit and is
+# quoted as one, not as "the gate cannot be loosened".
+ABSOLUTE_MAX_ENVELOPE_CEILING = 0.0013
 
 
 def test_nu_flux_envelope_present() -> None:
@@ -90,6 +122,80 @@ def test_committed_nu_flux_envelope_passes_broad_e5() -> None:
     assert summ["max_mag_abs_diff_across_cases"] <= MAX_TOL
     # The strong eps_r=4 reflector (normalize=True 0.077-floor breaker) is covered.
     assert 4.0 in [float(x) for x in summ["eps_r_values"]], summ["eps_r_values"]
+
+
+def test_envelope_is_recomputed_from_the_artifact_and_capped_from_outside() -> None:
+    """MAX_TOL is DERIVED, so the derivation's INPUT must be checked two ways.
+
+    It must match what the producer measured (catches a hand-edited fixture, or
+    producer/test drift), and it must sit under a ceiling pinned outside the
+    artifact (catches a regeneration that degraded and would otherwise re-derive
+    its own looser gate — the dependency-closure trap named in #576 and the
+    reason #574's promotion is a reviewed change rather than a fixture swap).
+    """
+    env = json.loads(FIXTURE.read_text())
+    worst = max(float(c["max_mag_abs_diff"]) for c in env["cases"])
+
+    assert worst == pytest.approx(MEASURED_MAX_ENVELOPE, abs=1e-6), (
+        f"artifact's worst per-case max {worst:.6f} != the pinned envelope "
+        f"{MEASURED_MAX_ENVELOPE} that the producer derived MAX_TOL from")
+    assert worst <= ABSOLUTE_MAX_ENVELOPE_CEILING, (
+        f"worst per-case max {worst:.6f} exceeds the absolute ceiling "
+        f"{ABSOLUTE_MAX_ENVELOPE_CEILING} — do NOT re-derive a looser gate from "
+        f"it; find out what degraded (#574/#576)")
+
+    # The gate really is that derivation, through the SHARED multiplier — not a
+    # literal that happens to equal it today.
+    assert MAX_TOL == gate_from_envelope(MEASURED_MAX_ENVELOPE, quantum=1000)
+    assert env["max_mag_abs_tol"] == MAX_TOL
+
+
+def test_regenerated_absorber_satisfies_the_far_port_discipline() -> None:
+    """#574's regeneration exists to fix #496: the committed absorber was 24
+    cells = 0.099 lambda_g against a >= 0.5 floor. The promoted fixture must
+    actually carry the fixed absorber — otherwise the 14.4x improvement is
+    attributed to a configuration the artifact does not record."""
+    env = json.loads(FIXTURE.read_text())
+    recipe = env["envelope_summary"]["setup_recipe"]
+    cpml = recipe["cpml_layers"]
+    dx = float(recipe["base_dx_m"])
+    f_lo = float(env["envelope_summary"]["freq_range_hz"][0])
+    lam_g_low = (299_792_458.0 / f_lo) / np.sqrt(1.0 - (_FC_TE10 / f_lo) ** 2)
+    frac = cpml * dx / lam_g_low
+    assert frac >= 0.5, (
+        f"absorber {cpml} cells = {frac:.3f} lambda_g at {f_lo/1e9:.2f} GHz, "
+        f"below the 0.5 far-port discipline (#496)")
+
+
+def test_settling_witness_shows_the_record_window_does_not_bind() -> None:
+    """CLAUDE.md makes a settling witness MANDATORY for claims-bearing numbers
+    taken from an open CPML domain at fixed ``num_periods`` — exactly this
+    fixture. #576 recorded that it had not been run and made it a named step of
+    #574, so the promotion carries it.
+
+    Form is observable-invariance + passivity rather than energy-dB (rfx exposes
+    no total-energy monitor; on a lossless structure truncation shows up first
+    as non-passive column power). The independent axis is the record window,
+    doubled at the SAME absorber — a two-window comparison is only meaningful
+    once the other co-condition is held fixed (#576).
+    """
+    env = json.loads(FIXTURE.read_text())
+    w = env["settling_witness"]
+    recipe = env["envelope_summary"]["setup_recipe"]
+    assert str(recipe["num_periods"]) in w["configuration"]
+    assert str(recipe["cpml_layers"]) in w["configuration"], (
+        "the witness must describe the PROMOTED absorber, not the superseded one")
+
+    for name, cell in w["cells"].items():
+        shift = float(cell["max_s11_shift"])
+        assert shift < MAX_TOL / 10.0, (
+            f"{name}: doubling the record window moved max|S11| by {shift:.2e}, "
+            f"not negligible against the gate {MAX_TOL} — the window binds and "
+            f"the envelope carries transient error")
+        colpow = float(cell["max_col_power_np60"])
+        assert colpow == pytest.approx(1.0, abs=1e-3), (
+            f"{name}: column power {colpow:.6f} is non-passive beyond 1e-3 on a "
+            f"lossless structure — the first symptom of a truncated record")
 
 
 def test_primary_reference_is_independent_analytic() -> None:

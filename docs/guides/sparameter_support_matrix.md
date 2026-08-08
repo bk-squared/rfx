@@ -378,7 +378,8 @@ outside the single-dielectric-slab configuration described next.
 **Nonuniform transverse mesh:** single-mode `normalize=True` and
 `normalize="flux"` run. Analytic Airy fixtures cover grading ratios 1--3,
 relative permittivity 2 and 4, and 8.2--12.4 GHz with a maximum
-linear-magnitude difference of `0.01561`. A passed Palace magnitude comparison
+linear-magnitude difference of `0.001081` (was `0.01561` before the
+#574 regeneration promoted below). A passed Palace magnitude comparison
 covers `normalize="flux"`, a graded-`dy` ratio of 2, and WR-90
 empty/PEC-short/dielectric-slab cases over 8.2--12.4 GHz; its maximum and mean
 linear-magnitude differences are `0.008529` and `0.000709` (they were `0.07009` and `0.01042` until this lane's absorber was derived from lambda_g rather than hard-coded at 0.33 of it — see #576/#496). This is external RF
@@ -390,51 +391,49 @@ differentiation is implemented only with `normalize="flux"`.
 there is no corresponding nonuniform `sigma_override` AD-vs-FD test. Neither
 implementation nor gradient regression is RF validation.
 
-**The nonuniform E5 fixture is STALE and pending regeneration (issues #562,
-#574).**
-`tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json`
-was generated while the nonuniform grid realized every axis one cell short of
-the requested domain, so their guide is `a - dy_edge` wide rather than `a`, and
-its gate test replays the frozen numbers rather than re-running FDTD — the test
-therefore passes while describing the earlier geometry. (The E4 sibling was in
-this list until #576 regenerated it on corrected geometry AND a corrected
-absorber; it is current as of that PR.) Nothing was
-re-blessed: the numbers above stand exactly as measured, and the lane stays
-experimental, so the matrix is conservative rather than wrong. Regenerating
-them **measurably improves** agreement, so the cited differences are an upper
-bound obtained on a slightly narrow guide; do not compare them against newly
-generated nonuniform numbers. Two of the sixteen broad-E5 configs re-run on
-post-#562 `main` against the same analytic Airy reference (issue #574, which
-also carries the measured 7 h cost of the full sweep):
+**The nonuniform E5 fixture was regenerated and promoted (#574, closing the
+staleness #562/#564 recorded).** It now carries post-#562 geometry AND the
+#576/#496 absorber (`cpml_layers` 183 = 0.75 lambda_g, replacing a hardcoded 24
+= 0.099), measured on GPU over all 16 configs:
 
-| config | metric | committed | regenerated (un-artifacted trial) |
-|---|---|---|---|
-| `ratio1_er2_L4mm` | `s11_max_mag_abs_diff` | 0.012687 | 0.007370 |
-| `ratio3_er2_L4mm` | `s11_max_mag_abs_diff` | 0.014874 | 0.007038 |
+| | committed (pre-#576) | promoted |
+|---|---|---|
+| `max_mag_abs_diff_across_cases` | 0.015609 | **0.001081** (14.4x) |
+| `mean_max_mag_abs_diff_across_cases` | 0.012636 | **0.000644** |
+| gate `max_mag_abs_tol` | 0.05 (flat, underived) | **0.002** (derived) |
 
-Provenance, because the regenerated column is a **trial with no committed
-artifact** behind it while the committed column is backed by the frozen
-envelope: produced 2026-08-05 on post-#562 `main`, `CPML=24` (the sweep's
-then-hardcoded value), `NUM_PERIODS=60`, compared against the same analytic Airy
-reference the envelope builder uses. Those two numbers become
-**irreproducible** once #576 lands, which replaces that hardcoded 24 with a
-derived 183 cells — so treat them as a directional sample pending the #574
-regeneration, not as values to cite.
+Every one of the 16 improved, by 11.9x--35.7x. The gate is no longer a flat
+number: it is `gate_from_envelope(0.001081, quantum=1000)` through the repo-wide
+multiplier (`tests/_gate_policy.py`), and the old 0.05 had been sitting 46x
+above the residual it was supposed to bound. The measured envelope is
+additionally capped by a literal pinned OUTSIDE the artifact, because a gate
+derived from a number living inside the artifact it guards would let a degraded
+regeneration re-derive its own looser gate; that ceiling is blind below a 1.203x
+degradation, measured by mutation in
+`tests/test_waveguide_nu_broad_e5_envelope_gates.py`.
 
-The regenerated values are nearly grading-ratio independent where the committed
-ones spread. The tempting reading — that the dropped cell was the profile's
-*edge* cell, whose size varies with the grading ratio — is a **hypothesis, not a
+The improvement is not a backend artifact: the superseded envelope was itself
+produced on GPU, same script and same 16 geometries, the only difference being
+the absorber, and the two backends agree to 0.6% relative on the excess at the
+committed configuration.
+
+Settling witness (mandatory for a fixed-`num_periods` open-CPML claim, and a
+named step of #574 after #576 recorded it as not-run): at the promoted absorber,
+doubling the record window 60 -> 120 periods moves `max|S11|` by 2.8e-05
+(PEC short) and 7.8e-07 (slab), with column power passive to 9.3e-05 — the
+window does not bind. At the superseded 24-cell absorber the same doubling moved
+the PEC short by 1.46e-02, 520x more, which is why #576 calls absorber depth and
+record length co-conditions and why the witness is only meaningful when read at
+the absorber actually promoted.
+
+The earlier grading-ratio-independence reading stands as a **hypothesis, not a
 demonstrated cause**: #562 changed the node count and the centre-to-node
-coordinate convention in the same commit, and no ablation separates them here.
-Two configurations of sixteen also cannot support a lane-wide claim; what is
-established is these two measurements.
+coordinate convention in the same commit, and no ablation separates them.
 
-One more reason they will move: E5's absorber is under revision in #576 at
-0.099 lambda_g — a 5x worse violation of the far-port discipline than the E4
-setting whose correction moved that lane's slab residual 8.2x. A
-transversely-graded lane is absorber-floor-limited on its propagation axis by
-construction, so the "ratio-independent floor" reading is incomplete until that
-lands.
+The E4 comparison fixture is unchanged and still cannot be regenerated in this
+workspace — its producer needs the gitignored Palace dataset at
+`REPO.parent/microwave-energy/...`, which is present in neither workspace. It
+stays replayable because its reference values are embedded (#574 scope item 3).
 
 **Setup restrictions:**
 
