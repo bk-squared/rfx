@@ -5,7 +5,7 @@ Before the fix: ``rfx/nonuniform.py:1140`` did
 wrapped in ``jax.grad`` and a WirePort with ``extent=`` is registered,
 ``b_j / safe_a_k`` is a JAX tracer, and ``_np.array(tracer)`` raises
 ``TracerArrayConversionError``, blocking differentiable inverse design
-on non-uniform grids (the IEEE TAP paper's ex3_series_fed_array_nu
+on non-uniform grids (the IEEE T-MTT paper's ex3_series_fed_array_nu
 scenario).
 
 After the fix: ``S`` is a jnp array built via

@@ -827,7 +827,7 @@ pins the removal version (v2.0) in the warning text and here.
   (matching `farfield.directivity()` / `antenna._total_radiated_power`) rather
   than the upper hemisphere, so the optimized quantity is the true directivity;
   the hemisphere-only integral inflated it (~+3 dB) for any radiator with back
-  radiation. The shipped tap-paper beam-steering example is unaffected (it builds
+  radiation. The shipped T-MTT-paper beam-steering example is unaffected (it builds
   its own full-sphere `4π U/P_rad` objective and never called this function).
 
 ## [1.6.6] - 2026-06-24
