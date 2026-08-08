@@ -120,8 +120,18 @@ F0_HZ = float(FREQS_HZ.mean())
 BANDWIDTH_REL = 0.5  # of f0
 
 DX_M = 0.001        # 1 mm, ≈ 30 cells per λ at 10 GHz
-CPML_LAYERS = 20    # 20 mm physical CPML (was 10 — guided-mode reflection ~12%;
-                    # 20 gives ~4% residual per scripts/isolate_extractor_vs_engine.py)
+# DERIVED from lambda_g at the band edge, not chosen (#496; the pattern case 18
+# and #576 established). The history behind the old literal 20 is real and is
+# kept: 10 gave ~12% guided-mode reflection, 20 gave ~4% residual per
+# scripts/isolate_extractor_vs_engine.py. But 20 mm is 0.35 lambda_g against
+# the repo's >= 0.5 far-port discipline, so that trajectory stopped short —
+# rfx's own advisory says so on every run of this script.
+# Cheap here because this lane already uses PER-AXIS boundaries (x=cpml,
+# y=z=pec): the padding lands on the propagation axis only, so 0.75 lambda_g
+# costs 1.19x the cells (grid 241x24x12 -> 287x24x12), not the ~3.9x it would
+# cost if CPML padded all three axes of a 23x10-cell cross-section.
+_LAMBDA_G_LOW_M = 56.4e-3   # at 8.2 GHz, numerical TE10 cutoff 6.241 GHz
+CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW_M / DX_M))
 # Post-scan rect-DFT architecture (2026-04-25 refactor): all geometries
 # share one scan length. The DFT integral is bounded by truncation at
 # `num_periods` and is independent of scan length once the source pulse
