@@ -76,16 +76,23 @@ model, not the field solver, is the dominant residual between packages, and
 dip depth is comparable only within a common feed type (depths are further
 non-comparable across solvers wherever loss models differ).
 
-\* **Palace-driven caveat.** The Palace driven-port leg used a tight (~10 mm)
-radiation box with a first-order absorbing boundary, which demonstrably pulls
-the driven dip low (the same mesh's shielded eigenmode agrees with the FDTD
-legs at 9.199 GHz); its record was also produced with a pre-correction
-LossTan = 1e-3 setting. It is therefore **excluded** from radiating-tier
-comparisons (and from the paper's Fig. 2); Palace corroborates the study at
-the shielded tier.
+\* **Palace-driven caveat.** Excluded from radiating-tier comparisons (and from
+the paper's Fig. 2) for a **configuration** reason that is clean: its record was
+produced with a pre-correction `LossTan = 1e-3` setting. Palace corroborates the
+study at the shielded tier, where the same mesh's eigenmode agrees with the FDTD
+legs at 9.199 GHz.
 
-**Excluded rfx leg.** An rfx dx = 98 µm refinement leg exists but carries an
-unresolved passivity violation and must not be used in comparisons.
+The leg also used a tight (~10 mm) radiation box with a first-order absorbing
+boundary, and an earlier reading of this campaign made that the explanation for
+its low dip. **The CST port swap demoted it**: the same downshift-and-deepen is
+produced inside CST alone by changing only the feed model, so the ABC is at most
+a secondary term, not the cause (falsification ledger, row
+`level2-radiating-s11`). The exclusion stands on the loss-model setting; do not
+cite the ABC as the reason.
+
+**Excluded rfx leg.** An rfx dx = 98.5 µm refinement leg exists but shows
+max\|S11\| = 1.3579 — an unresolved fine-mesh passivity violation. Recorded, not
+hidden, and must not be used in comparisons.
 
 ## 5. Data and reproduction
 
