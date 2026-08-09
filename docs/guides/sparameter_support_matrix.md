@@ -358,10 +358,12 @@ outside the single-dielectric-slab configuration described next.
   29%): max interior diff `0.0320 ns` against a pinned-constant gate of
   `0.042 ns` (the raw diff against the exact closed-form derivative,
   `0.0248 ns`, is recorded for context but is not the gated number). A
-  record-length settling witness (`num_periods` 60 vs 120 --
-  `compute_waveguide_s_matrix` has no built-in energy-based `settling_db`
-  for the waveguide port family, unlike the MSL calculator) agrees to
-  `0.000 ns`. A domain-size invariance run (`+100 mm` growth) holds the pass
+  record-length settling witness (`num_periods` 60 vs 120; at the time of
+  that run `compute_waveguide_s_matrix` had no built-in energy-based
+  `settling_db` -- since issue #538 the uniform single-mode waveguide
+  lanes carry the same energy-based `settling_db` field and -40 dB
+  aggregate warning as the MSL calculator, with the NU and multimode
+  branches still un-adopted) agrees to `0.000 ns`. A domain-size invariance run (`+100 mm` growth) holds the pass
   verdict (`0.0266 ns`, still under the gate). Three genuinely independent
   falsifiers (skipping the phase-unwrap step, dropping the leading minus
   sign, and using the wrong `L_eff` -- domain length instead of

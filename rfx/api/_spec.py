@@ -1190,13 +1190,20 @@ class WaveguideSMatrixResult(NamedTuple):
     """Waveguide scattering result assembled one driven port at a time.
 
     ``settling_db`` (issue #538) is the per-driven-run energy ring-down
-    witness: worst end/peak ``|V_probe|^2`` tail ratio across the port
-    probe planes for each driven run, in dB (rule: below −40 dB, same
-    ``_SETTLING_WITNESS_DB`` threshold and aggregate warning as the
-    lumped/MSL path). ``None`` only on paths that have not adopted the
-    witness yet (the NU sibling — tracked on the issue); NaN entries mean
-    the run was traced (AD path) and the host-side witness was skipped
-    rather than concretised.
+    witness: worst end/peak tail ratio over ALL FOUR recorded per-port
+    time series (``v_probe_t``/``v_ref_t``/``i_probe_t``/``i_ref_t`` —
+    single-series witnesses measured up to 8.3 dB optimistic vs the
+    records the extraction actually consumes) for each driven run, in dB;
+    two-run variants (flux/normalized) take the worst of the device AND
+    reference runs. Rule: below −40 dB, same ``_SETTLING_WITNESS_DB``
+    threshold and aggregate warning as the lumped/MSL path. Scope limits
+    (modal records only; peak includes the incident pulse): see
+    ``settling_db_from_port_records``. ``None`` on the paths that have
+    not adopted the witness: the NU sibling
+    (``_compute_waveguide_s_matrix_nu``) AND the uniform multimode branch
+    (``extract_multimode_s_matrix*``) — both tracked on the issue. NaN
+    entries mean the run was traced (AD path) and the host-side witness
+    was skipped rather than concretised.
     """
     s_params: np.ndarray
     freqs: np.ndarray

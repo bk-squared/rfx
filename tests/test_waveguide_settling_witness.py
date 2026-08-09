@@ -34,7 +34,8 @@ def _two_port():
 def test_settling_populated_and_truncation_warning_fires():
     """All three normalize modes populate settling_db (n_ports,), finite;
     a deliberately short record fires the aggregate truncation warning
-    (measured 2026-08-07: [-5.8, -1.9] dB at num_periods=6 on this
+    (measured 2026-08-09, worst-of-4-series witness: [-2.3, -1.9] dB at
+    num_periods=4.0 — the parameter this test runs — on this
     fixture — far above the -40 dB rule, which is the point)."""
     for mode in (False, True, "flux"):
         with warnings.catch_warnings(record=True) as caught:
@@ -62,20 +63,52 @@ def test_longer_record_settles_deeper():
         short.settling_db, long_.settling_db)
 
 
-def test_witness_does_not_perturb_s():
-    """Non-perturbation, pinned as run-to-run determinism of the public
-    path plus the structural argument: return_settling only gates
-    HOST-SIDE post-processing of the ``v_probe_t`` records the scan
-    already produces (see settling_db_from_port_records — nothing enters
-    the jitted graph), so S cannot differ with the flag; two identical
-    public-path runs must therefore agree bit-for-bit, and any future
-    refactor that moves the witness run-side breaks either this
-    determinism pin or the suite's existing waveguide S value gates."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        r1 = _two_port().compute_waveguide_s_matrix(num_periods=4.0)
-        r2 = _two_port().compute_waveguide_s_matrix(num_periods=4.0)
-    assert np.array_equal(np.asarray(r1.s_params), np.asarray(r2.s_params)), (
-        "public waveguide path is not run-to-run deterministic — the "
-        "settling-witness identity check cannot be interpreted")
-    assert np.array_equal(np.asarray(r1.settling_db), np.asarray(r2.settling_db))
+def test_witness_flag_does_not_perturb_s_extractor_level():
+    """Direct non-perturbation pair at the extractor level (review round-1
+    upgrade over a determinism-only pin): the SAME cfgs list driven with
+    return_settling False vs True must return bit-identical S — the flag
+    gates only host-side post-processing of records the scan already
+    produces. Fixture imitates
+    test_simulation.py::test_extract_waveguide_s_matrix_two_port_reciprocity."""
+    from rfx.core.yee import init_materials
+    from rfx.sources.waveguide_port import (
+        WaveguidePort, init_waveguide_port, extract_waveguide_s_matrix,
+    )
+    # reuse the committed reciprocity fixture's grid helper directly
+    # (bare test-module import needs the tests dir on sys.path)
+    import os
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_simulation import _CompiledWgGrid as _Grid
+
+    a_wg, b_wg, length, dx, nc, f0 = 0.04, 0.02, 0.12, 0.002, 10, 6e9
+    grid = _Grid(length, a_wg, b_wg, dx, nc)
+    materials = init_materials(grid.shape)
+    freqs = jnp.linspace(5.0e9, 7.0e9, 5)
+    n_steps = grid.num_timesteps(num_periods=8)
+
+    def _port(x_index, direction):
+        return WaveguidePort(
+            x_index=x_index, y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+            a=(grid.ny - 1) * dx, b=(grid.nz - 1) * dx,
+            mode=(1, 0), mode_type="TE", direction=direction,
+        )
+
+    cfgs = [
+        init_waveguide_port(_port(nc + 5, "+x"), dx, freqs, f0=f0,
+                            dft_total_steps=n_steps),
+        init_waveguide_port(_port(grid.nx - nc - 6, "-x"), dx, freqs, f0=f0,
+                            dft_total_steps=n_steps),
+    ]
+    s_off = extract_waveguide_s_matrix(
+        grid, materials, cfgs, n_steps,
+        boundary="cpml", cpml_axes="x", pec_axes="yz",
+    )
+    s_on, settling = extract_waveguide_s_matrix(
+        grid, materials, cfgs, n_steps,
+        boundary="cpml", cpml_axes="x", pec_axes="yz", return_settling=True,
+    )
+    assert np.array_equal(np.asarray(s_off), np.asarray(s_on)), (
+        "return_settling=True perturbed S at the extractor level")
+    assert settling.shape == (2,) and np.all(np.isfinite(settling))
+    assert np.all(settling < 0.0)

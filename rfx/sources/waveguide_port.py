@@ -1788,31 +1788,46 @@ def extract_waveguide_port_waves(
 def settling_db_from_port_records(final_cfgs) -> float:
     """Energy ring-down witness for ONE driven waveguide run (issue #538).
 
-    Worst end/peak ``|V_probe|^2`` tail ratio across the run's port probe
-    planes, in dB — the same end/peak arithmetic as the lumped/MSL witness
-    (``rfx/api/_sparams.py``), computed from the ``v_probe_t`` time series
-    the scan already records for the post-run DFT extraction. NO run-side
-    change: this is pure host-side post-processing of arrays the extractors
-    already return, so it cannot perturb S (nothing is added to the jitted
-    graph). Returns NaN when the records are tracers (eps_override AD path)
-    — the witness is skipped rather than concretised, mirroring the MSL
-    implementation's guard.
+    Worst end/peak tail ratio, in dB, over ALL FOUR recorded per-port time
+    series — ``v_probe_t``, ``v_ref_t``, ``i_probe_t``, ``i_ref_t`` — for
+    every port of the run. The review of the first implementation measured
+    why one series is not enough: the plain/normalized extraction DFTs the
+    REF-plane records, and on an iris-resonator fixture the ``v_probe_t``-
+    only witness read 8.3 dB more settled than the worst record the
+    extraction actually consumes (a V-node/I-antinode standing wave at one
+    plane makes a single-quantity witness a false pass at the −40 dB
+    line). End/peak is self-normalized per series, so V and I mix
+    unit-free; the same end/peak arithmetic as the lumped/MSL witness
+    (``rfx/api/_sparams.py``), which takes its worst over multiple planes
+    for the same reason. NO run-side change: pure host-side
+    post-processing of arrays the extractors already return, so it cannot
+    perturb S. Returns NaN when the records are tracers (eps_override AD
+    path) — skipped rather than concretised, mirroring MSL.
+
+    Scope: the witness covers the MODAL port records; non-modal power
+    ringing through the port/flux planes is orthogonal-projected out of
+    these series and is not witnessed. The peak includes the incident
+    pulse (global record max), so a weakly-port-coupled high-Q interior
+    resonance can pass the witness while its narrowband S feature is
+    still under-resolved — the witness bounds truncation of the port
+    records, not interior stored energy (same limitation as the MSL
+    implementation it mirrors).
     """
     from rfx.core.jax_utils import is_tracer
     worst = -np.inf
     for cfg in final_cfgs:
-        ts = cfg.v_probe_t
-        if is_tracer(ts):
-            return float("nan")
-        ts_np = np.abs(np.asarray(ts, dtype=np.float64))
-        if ts_np.shape[0] < 10:
-            return float("nan")
-        p = ts_np ** 2
-        tail = max(1, p.shape[0] // 10)
-        end = float(p[-tail:].mean())
-        peak = float(p.max())
-        tiny = float(np.finfo(float).tiny)
-        worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
+        for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
+            if is_tracer(ts):
+                return float("nan")
+            ts_np = np.abs(np.asarray(ts, dtype=np.float64))
+            if ts_np.shape[0] < 10:
+                return float("nan")
+            p = ts_np ** 2
+            tail = max(1, p.shape[0] // 10)
+            end = float(p[-tail:].mean())
+            peak = float(p.max())
+            tiny = float(np.finfo(float).tiny)
+            worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
     return float(worst)
 
 
@@ -1834,7 +1849,7 @@ def extract_waveguide_s_matrix(
     aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
-) -> jnp.ndarray:
+) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
 
     ``return_settling=True`` (issue #538) additionally returns the
@@ -1965,14 +1980,16 @@ def extract_waveguide_s_matrix_flux(
     ref_materials_per_port: "list | None" = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
-) -> jnp.ndarray:
+) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
 
     ``return_settling=True`` (issue #538): returns ``(S, settling_db)``;
-    the witness is computed from the DEVICE run's port records per drive
-    (the claims-bearing resonant structure — the reference run is a
-    matched straight guide whose faster ring-down would flatter the
-    number). NaN per run under tracing. Default ``False`` keeps the
+    the witness per drive is the WORST of the device and reference runs'
+    port records (the reference run produces the ``P_inc``/``a_inc``
+    normalization, so its truncation corrupts the same S values). Scope:
+    modal port records only — non-modal power crossing the flux plane
+    enters the |S| magnitudes but is orthogonal-projected out of the
+    witness. NaN per run under tracing. Default ``False`` keeps the
     legacy single-array return; S is identical either way.
 
     ``ref_materials_per_port`` (optional): a per-driven-port list of reference
@@ -2142,7 +2159,15 @@ def extract_waveguide_s_matrix_flux(
         if len(dev_final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
         if return_settling:
-            settling_runs.append(settling_db_from_port_records(dev_final_cfgs))
+            # worst over BOTH runs of the pair: the reference run's records
+            # feed P_inc/a_inc, so its truncation corrupts the same S values
+            # (review finding — max is the conservative composition; NaN
+            # from a traced run propagates instead of being max()-eaten)
+            _sd_dev = settling_db_from_port_records(dev_final_cfgs)
+            _sd_ref = settling_db_from_port_records(ref_final_cfgs)
+            settling_runs.append(
+                float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+                else max(_sd_dev, _sd_ref))
 
         F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
 
@@ -2211,7 +2236,7 @@ def extract_waveguide_s_params_normalized(
     ref_aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
-) -> jnp.ndarray:
+) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Two-run normalized waveguide S-matrix.
 
     Cancels Yee-grid numerical dispersion for **transmission** (off-diagonal)
@@ -2375,7 +2400,13 @@ def extract_waveguide_s_params_normalized(
                 "waveguide S-matrix extraction expected one final config per port"
             )
         if return_settling:
-            settling_runs.append(settling_db_from_port_records(dev_final_cfgs))
+            # worst over BOTH runs of the pair (same reasoning as the flux
+            # variant: the reference run produces the normalization records)
+            _sd_dev = settling_db_from_port_records(dev_final_cfgs)
+            _sd_ref = settling_db_from_port_records(ref_final_cfgs)
+            settling_runs.append(
+                float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+                else max(_sd_dev, _sd_ref))
 
         for recv_idx, cfg in enumerate(dev_final_cfgs):
             _, b_recv_dev = extract_waveguide_port_waves(
