@@ -64,6 +64,7 @@ logs/
 **/*.png
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png
+!docs/crossval/figures/*.png
 **/*.gif
 **/benchmark_results.json
 examples/*.json
