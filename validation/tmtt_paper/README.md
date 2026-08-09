@@ -13,20 +13,41 @@ Everything the paper and its response letter reference lives in five places:
 | Material | Location |
 |---|---|
 | Worked inverse-design examples (notch, taper, beam steering, gradient check) | this directory |
-| Solver cross-validation suite (openEMS / Palace / Meep comparators, 20+ studies) | [`validation/crossval/`](../crossval/) |
+| Solver cross-validation suite (18 numbered studies with embedded Meep/openEMS configs; Palace setups in `palace/`) | [`validation/crossval/`](../crossval/) |
 | Four-solver X-band patch record (geometry + port figure, protocol, results, exclusions) | [`docs/crossval/patch_xband_4solver.md`](../../docs/crossval/patch_xband_4solver.md) |
 | Raw patch-campaign data (CST Touchstone files, falsification ledger, `REPRODUCE.md`) | branch [`research/calibration-inverse`](https://github.com/bk-squared/rfx/tree/research/calibration-inverse/scripts/research/calibration/crossval), `scripts/research/calibration/crossval/` |
 | Release accompanying the paper | tag [`paper-tmtt-2026`](https://github.com/bk-squared/rfx/tree/paper-tmtt-2026) |
 
 Each script is self-contained and runs a real reverse-mode FDTD gradient.
-`SMOKE=1` (the default) verifies the pipeline end to end on CPU in ~1-3 min;
-it does not reproduce the headline numbers. `SMOKE=0` reproduces the paper's
-headline numbers and is GPU-backed in practice for the taper and the
+The smoke/full split differs per script — check before running:
+
+| Script | `SMOKE` env var | CPU expectation |
+|---|---|---|
+| `waveguide_dielectric_taper.py` | honored, `SMOKE=1` default (coarse grid, short run) | minutes |
+| `beam_steering_superstrate.py` | honored, `SMOKE=1` default (coarse grid, few iterations) | minutes |
+| `msl_stub_notch_tuning.py` | **not implemented — always runs its full multi-start workload** | ~12–15 min on a fast workstation; can exceed 45 min on slower CPUs |
+| `lumped_port_gradient_check.py` | not used (single forward + adjoint + FD check) | a few minutes |
+
+`SMOKE=1` does not reproduce the headline numbers; `SMOKE=0` reproduces the
+paper's headline numbers and is GPU-backed in practice for the taper and the
 beam-steering superstrate.
 
-> **Install.** These scripts use the optional optimization extra (for `optax`):
-> `pip install rfx-fdtd[optimization]` (with the repo on `PYTHONPATH`, or an
-> editable install).
+> **Expected preflight advisories (notch).** `msl_stub_notch_tuning.py`
+> prints four preflight warnings in its validated configuration (an infinite
+> `z_lo` PEC face coexisting with finite PEC objects, a lossless dielectric
+> in an open CPML domain, and two-substrate-cell MSL ports); they are
+> expected for this example and do not indicate failure.
+
+> **Install.** These scripts use the optional optimization extra (for
+> `optax`). From the clone root:
+>
+> ```bash
+> python3 -m venv .venv
+> .venv/bin/python -m pip install -e '.[optimization]'
+> source .venv/bin/activate
+> ```
+>
+> (or `pip install rfx-fdtd[optimization]` with the repo on `PYTHONPATH`).
 
 > **Notch filter (Example 1)** is `msl_stub_notch_tuning.py` in this directory
 > (cross-validation companion:

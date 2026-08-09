@@ -6,6 +6,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — reproducibility-audit corrections (independent clean-room walk-through, 2026-08-09)
+
+- `validation/tmtt_paper/README.md` no longer claims a blanket `SMOKE=1`
+  1-3-min CPU path: only the taper and beam-steering scripts honor `SMOKE`;
+  the notch script always runs its full ~12-15-min (fast workstation)
+  multi-start workload and the gradient check ignores the variable. The
+  README now carries a per-script table, the exact editable-install
+  commands, and the notch example's four expected preflight advisories.
+- `validation/crossval/` gains a README (case-to-config map; the "20+
+  studies" claim corrected to the 18 numbered studies present) and a
+  `palace/` directory carrying the Palace mesh/config setups of the
+  four-solver patch study (copied from the campaign branch), so the
+  paper's validation tree now includes every solver's setup.
+
 ### Changed — validation/tap_paper/ renamed to validation/tmtt_paper/
 
 - Finishes the TAP -> T-MTT venue rename (#598 relabeled prose only): the

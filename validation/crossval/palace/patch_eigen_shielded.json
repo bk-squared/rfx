@@ -1,0 +1,80 @@
+{
+  "Problem": {
+    "Type": "Eigenmode",
+    "Verbose": 2,
+    "Output": "postpro/patch_eigen_shielded"
+  },
+  "Model": {
+    "Mesh": "palace_patch.msh",
+    "L0": 0.001
+  },
+  "Domains": {
+    "Materials": [
+      {
+        "Attributes": [
+          1
+        ],
+        "Permeability": 1.0,
+        "Permittivity": 3.38,
+        // Recorded eigen runs (9.199 GHz shielded) used LossTan=1e-3 (Q~1154 reflects
+        // it); frequency effect negligible. The driven config is lossless by the
+        // #273 convention -- set 0.0 here too on the next Palace rerun.
+        "LossTan": 0.001
+      },
+      {
+        "Attributes": [
+          2
+        ],
+        "Permeability": 1.0,
+        "Permittivity": 1.0,
+        "LossTan": 0.0
+      }
+    ]
+  },
+  "Boundaries": {
+    "PEC": {
+      "Attributes": [
+        3,
+        4,
+        6
+      ]
+    },
+    "Postprocessing": {
+      "FarField": {
+        "Attributes": [
+          6
+        ],
+        "NSample": 100,
+        "ThetaPhis": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            90.0,
+            0.0
+          ],
+          [
+            90.0,
+            90.0
+          ]
+        ]
+      }
+    }
+  },
+  "Solver": {
+    "Order": 2,
+    "Eigenmode": {
+      "N": 5,
+      "Tol": 1e-06,
+      "Target": 8.0,
+      "Save": 0
+    },
+    "Linear": {
+      "Type": "Default",
+      "KSPType": "GMRES",
+      "Tol": 1e-08,
+      "MaxIts": 200
+    }
+  }
+}
