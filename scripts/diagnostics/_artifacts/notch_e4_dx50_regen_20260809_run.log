@@ -1,0 +1,49 @@
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/scripts/diagnostics/build_msl_notch_rfx_dx50.py:161: UserWarning: MSL port 'msl_0': the upstream and downstream probe clearances are mutually unsatisfiable on this feed (upstream needs n_probe_offset >= 36 cells = max(λ/4π, 5·h_sub)/dx; downstream needs <= -107 cells to keep the deepest of 5 probes ≥ 4788µm (λ_g/4 at f_max) clear of the reflector 2.20mm from the feed). The feed line is too short for a clean N-probe measurement — keeping the upstream-priority offset 36; expect standing-wave bias at the deep probes. Extend the feed line to fix (issue #469).
+  res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/scripts/diagnostics/build_msl_notch_rfx_dx50.py:161: UserWarning: MSL port 'msl_1': the upstream and downstream probe clearances are mutually unsatisfiable on this feed (upstream needs n_probe_offset >= 36 cells = max(λ/4π, 5·h_sub)/dx; downstream needs <= -107 cells to keep the deepest of 5 probes ≥ 4788µm (λ_g/4 at f_max) clear of the reflector 2.20mm from the feed). The feed line is too short for a clean N-probe measurement — keeping the upstream-priority offset 36; expect standing-wave bias at the deep probes. Extend the feed line to fix (issue #469).
+  res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/rfx/api/_sparams.py:2912: UserWarning: [run] preflight found 2 advisory issue(s) - pass skip_preflight=True to suppress:
+  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  result = self.run(
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/rfx/api/_sparams.py:2912: UserWarning: [run] preflight found 2 advisory issue(s) - pass skip_preflight=True to suppress:
+  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+  - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  result = self.run(
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/rfx/api/_sparams.py:3210: UserWarning: standing-wave null at the port plane: 7 bins in [6.6182, 7.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  _warn_msl_wave_split_unreliable(reliable, freqs_arr)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/scripts/diagnostics/build_msl_notch_rfx_dx50.py:161: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 9.11 ohm deviates 81.0% from analytic Hammerstad-Jensen 47.89 ohm at f = 3.5636 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V·I-split S11/S21 are unaffected.
+  res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/scripts/diagnostics/build_msl_notch_rfx_dx50.py:161: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 8.97 ohm deviates 81.3% from analytic Hammerstad-Jensen 47.89 ohm at f = 3.5636 GHz. Z0 rides on the retained N-probe fit (S1 transitional); on coarse meshes this includes Yee-staircase bias. The V·I-split S11/S21 are unaffected.
+  res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/rfx/api/_sparams.py:3415: UserWarning: S-matrix projected onto the passive set (singular values clipped to 1): 92 of 100 frequency bins were non-passive as extracted, worst sigma_max = 1.005 at 4.009 GHz. Raw values are preserved in S_raw; corrections per bin in passivity_correction.
+  _warn_if_passivity_projected(passivity_correction, freqs_arr)
+======================================================================
+notch-e4 rfx leg producer — matched openEMS dx=50um geometry (#519)
+======================================================================
+eps_r=3.66, h_sub=254um, W=600um, stub=12mm
+l_line=5mm, margin=1mm, dx=50um (h_sub/dx=5.08 cells)
+n_freqs=100, num_periods=20
+
+Preflight (verbatim, part of the evidence):
+  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+
+Running rfx 2-port S-matrix sweep (2 drives)...
+  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  ... done in 3292.0s
+
+settling_db per drive (rule: <= -40 dB): [-111.96822639376788, -112.72115925255015]
+reliable: 7/100 bins flagged at f_ghz=[6.6182, 6.6818, 6.7455, 6.8091, 6.8727, 6.9364, 7.0]
+assembly: multi_drive_solve
+passivity_correction: max=0.004722 (92 bins clipped)
+
+notch: f=3.6273 GHz, depth=-32.95 dB
+re_z0_median_ohm=31.38, max(|S11|^2+|S21|^2)=1.0000
+
+Wrote /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/i519-crossval-legs/tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json
+Now refresh the derived summary (byte-locked to this fixture):
+  python scripts/diagnostics/build_msl_notch_openems_comparison.py

@@ -25,9 +25,15 @@
     + passivity-enforced S (strict ||S||_2 <= 1, raw excess recorded per bin).
     With decontaminated probes the rfx argmin lands at 7.874 GHz — the ~8 GHz
     doublet member, 1.4% from openEMS — CONFIRMING the referee's doublet
-    structure. What remains at dx=200um: raw sigma excess up to 0.37 (recorded
-    in passivity_correction; 84/120 bins > 0.05), which is the coarse-mesh
-    envelope, honestly bounded rather than quoted.
+    structure.
+
+    UPDATE 2026-08-09 — leg regenerated on the #511/#507-corrected extractor
+    (PR #516, f95240f; issue #519). The raw sigma excess this note used to
+    bound (up to 0.37, 84/120 bins > 0.05) was substantially the extractor
+    defects, not a coarse-mesh envelope: on the corrected extractor the
+    worst raw excess is 0.0145 and NO bin exceeds 0.05. Passband mean |S21|
+    now agrees with openEMS to 0.0014 (was 0.0156). The argmin null is
+    bit-identical (7.8739 GHz), so the doublet characterization stands.
 
 Reproduces the classic FDTD-microwave benchmark of
   D. M. Sheen, S. M. Ali, M. D. Abouzahra, J. A. Kong,
@@ -52,12 +58,13 @@ HONEST SCOPE (do NOT overclaim):
     number is RETIRED (issue #487): it was substantially the #511/#507
     extractor defects, fixed in PR #516 (f95240f), not a mesh property --
     see scripts/diagnostics/msl_z0_bias_floor_sweep.py for the corrected-
-    extractor measurements. The real reason the depth stays ungated is
-    that THIS leg's own committed rfx numbers still describe the
-    pre-#511/#507 extractor and have not been regenerated against the fix
-    (issues #519/#520, "stale evidence chains" / "verification debt").
-    Ungating is still the right call until that regeneration lands; do
-    not read the retired 0.16-0.22 number as the reason.
+    extractor measurements. The committed leg WAS regenerated on the
+    corrected extractor (2026-08-09, issue #519), so the "stale evidence
+    chain" reason for ungating is resolved. The depth stays ungated as a
+    deliberate scope choice: no committed depth-accuracy envelope has been
+    derived for this dx=200um leg (openEMS reads -43.7 dB, rfx -39.2 dB at
+    a different argmin bin density), and deriving one is a separate
+    measurement task, not a lock this reporter should improvise.
   - We gate the first-null FREQUENCY (few-% envelope) and the passband band-mean
     |S21|. All deltas are stated rfx-centric ("method distance"); openEMS is a
     reference, not ground truth.
@@ -91,13 +98,14 @@ default ``compare`` mode does NOT gate rfx-vs-openEMS agreement. It gates:
 
 EVIDENCE STATE OF THE COMMITTED rfx ARTIFACT (gate D, quoted not hidden)
 ------------------------------------------------------------------------
-The committed leg (regenerated 2026-07-26) is passivity-ENFORCED: quoted
-|S| satisfies the strict bound at every bin (max column power 0.9891,
-min Re(Z0) = +6.5 ohm), the raw excess is recorded per bin in
-passivity_correction (81/120 bins > 0.05, worst 0.398 at 18.197 GHz — the
-dx=200um coarse-mesh envelope, bounded and recorded rather than quoted),
-and the ring-down settling witness reads -70.1/-70.6 dB (rule: < -40).
-Gate D locks that evidence chain (D0 fails closed on a leg lacking the
+The committed leg (regenerated 2026-08-09 on the #511/#507-corrected
+extractor, PR #516 f95240f; issue #519) is passivity-ENFORCED: quoted |S|
+satisfies the strict bound at every bin (max column power 0.9995), the raw
+excess is recorded per bin in passivity_correction (0/120 bins > 0.05,
+worst 0.0145 at 17.378 GHz — the large pre-#516 excess, 84 bins > 0.05
+worst 0.36, was the extractor defects, not a mesh envelope), and the
+ring-down settling witness reads -70.2/-71.3 dB (rule: < -40). Gate D
+locks that evidence chain (D0 fails closed on a leg lacking the
 witness/enforcement fields; D1 strict bound; D2 witness; D3-D5 correction
 footprint; D6 max column power).
 
@@ -105,25 +113,23 @@ PREFLIGHT WARNINGS AND KNOWN RESIDUALS (quoted per the preflight rule)
 ----------------------------------------------------------------------
 The committed offset=30 leg satisfies both port-probe clearances on the
 driven port (6 mm >= 5*h_sub upstream; V3 3.2 mm >= lambda_g/4 to the
-patch). Its preflight still carries, stored verbatim in
-_07_sheen_results/rfx.json: (a) p2 at 900 um from the x-CPML
-(geometry-limited, PORT_MARGIN=2.5 mm), and (b) a V3-near-reflector
-advisory that pattern-matches p2's own feed trace (the heuristic cannot
-tell a port's own trace from a foreign reflector). KNOWN RESIDUAL, printed
-not gated: the fitted PASSBAND (0.5-3 GHz) median Re(Z0) reads ~67 ohm vs
-openEMS's flat ~51 ohm at BOTH offset 30 and 40 — and read ~57 ohm only on
-the truncated num_periods=20 leg — so it is a low-frequency fit-conditioning
-artifact (the probe span is << lambda there), not an offset trade-off; the
-IN-BAND (5-15 GHz) median Re(Z0) is 49.8 ohm. Gate A2's (40, 65) ohm sanity
-applies to the openEMS reference only; Z0-sensitive magnitude claims are
-exactly what the correction footprint already marks artifact-class. The
-argmin null POSITION is insensitive to all of this (correction 0.013 at
-the null bin, identical argmin at offset 30 and 40).
+patch). Its preflight carries, stored verbatim in
+_07_sheen_results/rfx.json: BOTH ports at 900 um from the x-CPML
+(geometry-limited, PORT_MARGIN=2.5 mm; recommended 2*h_sub = 1588 um),
+plus the standing pec_faces and lossless-dielectric advisories. The
+pre-#516 leg additionally carried a V3-near-reflector advisory on p2 that
+pattern-matched p2's own feed trace; the current preflight no longer
+emits it on this geometry. The old KNOWN RESIDUAL — passband (0.5-3 GHz)
+fitted median Re(Z0) ~67 ohm — is GONE on the corrected extractor: the
+regenerated leg reads 50.3 ohm in the passband and 52.4 ohm in-band
+(openEMS ~51 ohm). Gate A2's (40, 65) ohm sanity applies to the openEMS
+reference only.
 
 Consequence for the reader: the argmin null position and the
-passband/stopband STRUCTURE are the readable outputs; |S| magnitudes at
-bins with correction > 0.05 remain artifact-class. The study is registered
-for its stopband-STRUCTURE characterization only.
+passband/stopband STRUCTURE are the primary registered outputs; the
+regenerated leg's magnitudes carry no correction > 0.05, but the study
+remains registered for its stopband-STRUCTURE characterization, not as
+an rfx magnitude-accuracy claim at dx=200um.
 
 Exit contract (crossval registry, validation/crossval/manifest.json)
 -------------------------------------------------------------------
@@ -173,27 +179,42 @@ PASSIVITY_COLUMN_POWER_MAX = 1.10
 # Values re-derived from the committed _07_sheen_results/*.json artifacts.
 # ---------------------------------------------------------------------------
 COMMITTED = dict(
-    # Leg regenerated 2026-07-26 with the measured-correct recipe
-    # (num_periods=60, n_probe_offset=30, witness+enforcement rfx — see
-    # recipe_evidence inside _07_sheen_results/rfx.json and PR #468):
-    # the previous num_periods=20 leg FAILED the settling witness at
-    # -24.7/-24.3 dB and its argmin (7.2185 GHz) sat on a probe-
-    # contamination dip, not a doublet member.
+    # Leg regenerated 2026-08-09 (issue #519) on the #511/#507-corrected MSL
+    # extractor (PR #516, f95240f), keeping the measured-correct PR #468
+    # recipe (num_periods=60, n_probe_offset=30, witness + enforcement).
+    # RE-PIN ROOT-CAUSE (no-silent-loosening rule): the previous constants
+    # locked a leg produced by the extractor with the one-edge modal-V span
+    # defect (#511) and the single-ratio S assembly defect (#507). On the
+    # corrected extractor every change is in the improvement direction and
+    # was verified per-bin against the openEMS reference:
+    #   - passband mean |S21| 0.9236 -> 0.9378 (|diff| to openEMS
+    #     0.0156 -> 0.0014, the ~0.001 agreement #507's two-drive
+    #     investigation predicted);
+    #   - raw passivity excess collapsed: bins with correction > 0.05
+    #     84 -> 0, worst 0.3645 @ 18.03 GHz -> 0.0145 @ 17.38 GHz — the
+    #     old "coarse-mesh envelope" was substantially the extractor
+    #     defects, as issue #487 anticipated;
+    #   - argmin null BIT-IDENTICAL at 7.8739 GHz (structure
+    #     characterization is extractor-independent, doublet member
+    #     confirmed at both 6.891 and 7.874 GHz local minima).
+    # History: the earlier num_periods=20 leg FAILED the settling witness
+    # at -24.7/-24.3 dB and its argmin (7.2185 GHz) sat on a probe-
+    # contamination dip, not a doublet member (PR #468).
     rfx_null_ghz=7.8739,        # argmin |S21| over 5-15 GHz
     oems_null_ghz=7.9831,
     null_tol_pct=1.0,           # regression tolerance on the locked numbers
     rfx_nbins=120,
     oems_nbins=801,
     # Evidence-chain locks (gate D): witness, strict bound, correction footprint
-    rfx_settling_db=(-72.16, -72.36),   # per driven run; rule is < -40
-    rfx_corr_bins_over_005=84,          # passivity_correction > 0.05
-    rfx_corr_bins_in_null_band=37,      # of those, inside 5-15 GHz
-    rfx_worst_corr=0.3652,
-    rfx_worst_corr_ghz=18.030,
+    rfx_settling_db=(-70.17, -71.26),   # per driven run; rule is < -40
+    rfx_corr_bins_over_005=0,           # passivity_correction > 0.05
+    rfx_corr_bins_in_null_band=0,       # of those, inside 5-15 GHz
+    rfx_worst_corr=0.0145,
+    rfx_worst_corr_ghz=17.378,
     # S-data locks (falsifier coverage: a tampered s11/s21 array must go red
     # even where the argmin and the stored side-channel fields survive)
-    rfx_passband_mean_s21=0.9236,   # over the CLI passband window, linear
-    rfx_max_column_power=0.9938,
+    rfx_passband_mean_s21=0.9378,   # over the CLI passband window, linear
+    rfx_max_column_power=0.9995,
     referee_sides_with="openems",
 )
 
@@ -364,10 +385,60 @@ def run_rfx(dx, num_periods, n_freqs):
             json.dump(out, fp, indent=2)
         print(f"   (evidence-less leg written to {alt} for inspection only)")
         return
+    # Provenance + recipe evidence are emitted BY THE PRODUCER (issue #519:
+    # a committed evidence field the committed producer does not produce
+    # cannot be honestly regenerated). Values below are measured from THIS
+    # run, not pasted from a previous leg.
+    out["rfx_provenance"] = _git_provenance()
+    corr_arr = np.asarray(corr)
+    sett_l = [float(x) for x in np.asarray(sett)]
+    rez0 = np.real(z0)
+    pb = (f >= 0.5e9) & (f <= 3.0e9)
+    ib = (f >= 5.0e9) & (f <= 15.0e9)
+    out["recipe_evidence"] = (
+        f"num_periods={num_periods:g}: settling witness "
+        f"{sett_l[0]:.1f}/{sett_l[1]:.1f} dB per driven run (rule < -40; the "
+        "retired num_periods=20 leg failed it at -24.7/-24.3 dB and carried "
+        "truncation-artifact |S| poles, PR #468). n_probe_offset=30: clears "
+        "BOTH port-probe constraints on this short-feed geometry — >= 5*h_sub "
+        "from the feed (near-field; measured 16-20 GHz contamination collapse "
+        "8.75 -> 1.81, PR #468) AND >= lambda_g/4 from the downstream patch "
+        "discontinuity (which offset=40 violated, preflight-warned). "
+        "Extractor: the #511/#507-corrected MSL path (PR #516, f95240f) — "
+        "trace-anchored modal voltage (the one-edge V-span defect is fixed) "
+        "and per-frequency two-drive S assembly (the single-ratio assembly "
+        "defect is fixed). S is passivity-enforced: strict ||S||_2 <= 1, raw "
+        "excess recorded per bin in passivity_correction "
+        f"({int((corr_arr > 0.05).sum())}/{len(corr_arr)} bins > 0.05, worst "
+        f"{float(corr_arr.max()):.3f} at "
+        f"{f[int(np.argmax(corr_arr))] / 1e9:.2f} GHz — the dx=200um "
+        "coarse-mesh envelope, bounded and recorded rather than quoted). "
+        f"Fitted median Re(Z0): passband (0.5-3 GHz) "
+        f"{float(np.median(rez0[pb])):.1f} ohm, in-band (5-15 GHz) "
+        f"{float(np.median(rez0[ib])):.1f} ohm. Preflight output is stored "
+        "verbatim in this JSON's 'preflight' field."
+    )
     with open(os.path.join(RES_DIR, "rfx.json"), "w") as fp:
         json.dump(out, fp, indent=2)
     _quick_report("rfx", f, np.abs(s21), np.abs(s11), np.real(z0), esum)
     print(f"saved {os.path.join(RES_DIR, 'rfx.json')}")
+
+
+def _git_provenance():
+    """Branch + short SHA of the checkout that produced this leg."""
+    import subprocess
+    try:
+        kw = dict(cwd=SCRIPT_DIR, capture_output=True, text=True, timeout=10)
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             **kw).stdout.strip()
+        br = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                            **kw).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain",
+                                "--untracked-files=no"], **kw).stdout.strip()
+        return f"{br} {sha}{' (dirty tree)' if dirty else ''}" if sha \
+            else "unknown"
+    except Exception:
+        return "unknown"
 
 
 # ===========================================================================
@@ -661,12 +732,21 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
           f"= {dnull_pct:.1f} %")
     print(f"REPORTED (not gated) rfx-vs-openEMS passband |S21| mean abs diff "
           f"= {dpass:.3f}")
-    print("  ^ magnitude caveat: every passband bin carries a "
-          "passivity_correction > 0.05, which the")
-    print("    quotability rule marks artifact-class for MAGNITUDE claims — "
-          "this row shows the")
-    print("    projected values agree in SHAPE, it does not certify the "
-          "magnitudes.")
+    # magnitude quotability, computed from the leg itself (not hard-coded):
+    # bins whose raw passivity excess exceeded 0.05 are artifact-class for
+    # MAGNITUDE claims per the quotability rule.
+    corr_r = np.asarray(R.get("passivity_correction", []))
+    if corr_r.size:
+        pb_mask = (fr >= pass_lo) & (fr <= pass_hi)
+        n_pb_bad = int((corr_r[pb_mask] > 0.05).sum())
+        if n_pb_bad:
+            print(f"  ^ magnitude caveat: {n_pb_bad}/{int(pb_mask.sum())} "
+                  "passband bins carry a passivity_correction > 0.05 — "
+                  "artifact-class for MAGNITUDE claims; this row shows shape "
+                  "agreement, it does not certify the magnitudes.")
+        else:
+            print(f"  ^ no passband bin carries a passivity_correction > 0.05 "
+                  f"(worst over the whole band: {float(corr_r.max()):.4f}).")
     print("  ^ NOT an accuracy gate. History of this number: the original "
           "num_periods=20,")
     print("    default-offset leg read 9.6% (7.218 vs 7.983 GHz); the Palace "
@@ -683,6 +763,12 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
           "plus record")
     print("    truncation, not solver physics. sides_with = openems remains "
           "on record.")
+    print("    2026-08-09 (issue #519): leg regenerated on the #511/#507-"
+          "corrected extractor")
+    print("    (PR #516) — argmin unchanged at 7.874 GHz; passband |S21| "
+          "diff to openEMS")
+    print("    0.0156 -> 0.0014; raw passivity excess collapsed "
+          "(84 -> 0 bins > 0.05).")
     if paper_null_ghz:
         print(f"rfx-vs-paper  null-freq distance = "
               f"{abs(fnull_r/1e9 - paper_null_ghz)/paper_null_ghz*100:.1f} %")
@@ -835,8 +921,9 @@ def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi, pm_
                   if ok else "SOME CHECKS FAILED"))
     print("Scope: stopband STRUCTURE characterization only. This case makes NO "
           "rfx accuracy claim.\nQuoted |S| is passivity-enforced (strict <= 1); "
-          "bins with passivity_correction > 0.05\n(81/120, worst 0.398 @ 18.2 GHz) "
-          "remain artifact-class for magnitude claims at dx=200um.")
+          "any bin with passivity_correction > 0.05\n(footprint locked by gates "
+          "D3-D5; 0 bins on the 2026-08-09 corrected-extractor leg) is\n"
+          "artifact-class for magnitude claims at dx=200um.")
     return ok
 
 
