@@ -6,6 +6,18 @@ These scripts reproduce the inverse-design results of the paper
 > Engineering**, B. Kim, submitted to *IEEE Transactions on Microwave Theory and
 > Techniques* (T-MTT).
 
+## Paper materials map (start here)
+
+Everything the paper and its response letter reference lives in five places:
+
+| Material | Location |
+|---|---|
+| Worked inverse-design examples (notch, taper, beam steering, gradient check) | this directory |
+| Solver cross-validation suite (openEMS / Palace / Meep comparators, 20+ studies) | [`validation/crossval/`](../crossval/) |
+| Four-solver X-band patch record (geometry + port figure, protocol, results, exclusions) | [`docs/crossval/patch_xband_4solver.md`](../../docs/crossval/patch_xband_4solver.md) |
+| Raw patch-campaign data (CST Touchstone files, falsification ledger, `REPRODUCE.md`) | branch [`research/calibration-inverse`](https://github.com/bk-squared/rfx/tree/research/calibration-inverse/scripts/research/calibration/crossval), `scripts/research/calibration/crossval/` |
+| Release accompanying the paper | tag [`paper-tmtt-2026`](https://github.com/bk-squared/rfx/tree/paper-tmtt-2026) |
+
 Each script is self-contained and runs a real reverse-mode FDTD gradient.
 `SMOKE=1` (the default) verifies the pipeline end to end on CPU in ~1-3 min;
 it does not reproduce the headline numbers. `SMOKE=0` reproduces the paper's
@@ -16,8 +28,8 @@ beam-steering superstrate.
 > `pip install rfx-fdtd[optimization]` (with the repo on `PYTHONPATH`, or an
 > editable install).
 
-> **Notch filter (Example 1) lives elsewhere in the repo**, not duplicated here:
-> `validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
+> **Notch filter (Example 1)** is `msl_stub_notch_tuning.py` in this directory
+> (cross-validation companion:
 > `validation/crossval/06b_msl_notch_filter_uniform.py`).
 
 > **GPU note.** `SMOKE=0` for the dielectric taper and the beam-steering
@@ -31,7 +43,7 @@ placed at 6 GHz by descending a single stub-length design variable. The
 single-variable descent reaches a -46.1 dB in-band objective, and the validated
 optimized null is -55.7 dB at 5.924 GHz, within 3.1% of the analytic
 quarter-wave length. Not duplicated here; see
-`validation/tap_paper/msl_stub_notch_tuning.py` (cross-validation companion:
+`validation/tmtt_paper/msl_stub_notch_tuning.py` (cross-validation companion:
 `validation/crossval/06b_msl_notch_filter_uniform.py`).
 
 **Example 2 - Waveguide dielectric taper (30 sections).**
@@ -43,8 +55,8 @@ resolution dx = 0.25 mm, versus a discretized Klopfenstein taper of the same
 electrical length at -36.6 dB (dx = 0.25 mm). At a comparable coarse-grid solve
 budget, particle-swarm and genetic search trail the gradient by at least
 11.6 dB. Run:
-`SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/waveguide_dielectric_taper.py`
-(CPU, ~1-3 min); `SMOKE=0 python validation/tap_paper/waveguide_dielectric_taper.py`
+`SMOKE=1 JAX_PLATFORMS=cpu python validation/tmtt_paper/waveguide_dielectric_taper.py`
+(CPU, ~1-3 min); `SMOKE=0 python validation/tmtt_paper/waveguide_dielectric_taper.py`
 (full, GPU).
 
 **Example 3 - Beam-steering superstrate (441-param latent / 2883-cell).**
@@ -57,8 +69,8 @@ superstrate, a +3.6 dB gain over the 5.9 dBi bare plate-backed dipole. A
 laterally uniform slab of the same aperture reaches at most 5.4 dBi toward
 30 deg. An independent openEMS run corroborates the steered direction (8.9 dBi
 toward 30 deg, with the pattern peak near 30 deg). Run:
-`SMOKE=1 JAX_PLATFORMS=cpu python validation/tap_paper/beam_steering_superstrate.py`
-(CPU, ~1-3 min); `SMOKE=0 python validation/tap_paper/beam_steering_superstrate.py`
+`SMOKE=1 JAX_PLATFORMS=cpu python validation/tmtt_paper/beam_steering_superstrate.py`
+(CPU, ~1-3 min); `SMOKE=0 python validation/tmtt_paper/beam_steering_superstrate.py`
 (full, GPU).
 
 ## Gradient verification
@@ -67,7 +79,7 @@ toward 30 deg, with the pattern peak near 30 deg). Run:
 the analytic directional derivative of |S11|^2 (one reverse-mode pass) agrees
 with a central finite difference (two forward passes) to 0.2% over the 24-cell
 design region. Runs on CPU in ~5-10 min (no GPU needed):
-`JAX_PLATFORMS=cpu python validation/tap_paper/lumped_port_gradient_check.py`.
+`JAX_PLATFORMS=cpu python validation/tmtt_paper/lumped_port_gradient_check.py`.
 
 The modal-S gradient check (taper) and the NTFF log-ratio gradient check
 (superstrate) are exercised by their example scripts. AD-vs-FD agreement is

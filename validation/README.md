@@ -63,6 +63,6 @@ an applicable comparison.
 - `research/subgrid/13_subgrid_material_validation.py` demonstrates the guarded
   subgrid boundary and checks the same material setup on a uniform mesh.
   SBP-SAT/subgridding is not a supported feature.
-- `tap_paper/` contains paper-support scripts. Values identified there as
+- `tmtt_paper/` contains paper-support scripts. Values identified there as
   targets are experiment goals, not measured results. See
-  `tap_paper/README.md` for the status of each script.
+  `tmtt_paper/README.md` for the status of each script.

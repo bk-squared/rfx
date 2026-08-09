@@ -6,6 +6,16 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — validation/tap_paper/ renamed to validation/tmtt_paper/
+
+- Finishes the TAP -> T-MTT venue rename (#598 relabeled prose only): the
+  paper-support directory and every live reference (bakeoff runner paths,
+  multistart test path, source/test docstrings, validation/README) now say
+  `tmtt_paper`. Historical CHANGELOG entries and dated inventory snapshots
+  keep the old name. The directory README now opens with a five-row map of
+  all paper materials (examples, crossval suite, patch record, raw campaign
+  data, release tag).
+
 ### Changed — MSL AD gate objective replaced: band-mean |S21|^2, not sum_ij|S_ij|^2 (issues #530, #515)
 
 - `test_msl_ad_fd_converged_tight`'s differentiated objective was

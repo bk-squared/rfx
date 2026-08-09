@@ -15,7 +15,7 @@ least-squares (issue #80 Fix C), and assembles the S-matrix with the
 multi-drive solve (issue #507). The original 3-probe placement
 (:func:`msl_probe_x_coords`) and the OpenEMS-style 3-probe recurrence it
 was built for are retained as a geometry primitive consumed by
-``validation/tap_paper/msl_stub_notch_tuning.py`` (via
+``validation/tmtt_paper/msl_stub_notch_tuning.py`` (via
 ``rfx.probes.msl_wave_decomp.register_msl_plane_probes``); it is not on
 the production S-matrix path.
 

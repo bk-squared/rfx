@@ -332,7 +332,7 @@ def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
        this.
 
        Callers today: ``tests/test_msl_plane_primitives_smoke.py`` and
-       ``validation/tap_paper/msl_stub_notch_tuning.py`` (whose full-res
+       ``validation/tmtt_paper/msl_stub_notch_tuning.py`` (whose full-res
        headline numbers are projected targets, not committed validation).
     """
     plane = fr.dft_planes[plane_name].accumulator     # (n_freqs, ny, nz)
