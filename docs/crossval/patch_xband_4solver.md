@@ -12,7 +12,7 @@ without access to the other solvers' setups).
 
 ## 1. Geometry (all dimensions mm)
 
-![Geometry and port models of the cross-validation patch (dimensions in mm). Panel (b) marks the two feed models exercised in the Tier-2 port swap: the guided waveguide/MSL port at the board edge and the lumped V-I discrete port across the substrate gap.](figures/patch_xband_geometry_ports.png)
+![Geometry and port models of the cross-validation patch (dimensions in mm). Panel (b) marks the two feed models exercised in the Tier-2 port swap (§4): the guided waveguide/MSL port at the board edge and the lumped V-I discrete port across the substrate gap.](figures/patch_xband_geometry_ports.png)
 
 Substrate: Rogers **RO4003C**, thickness **h = 0.787** (31 mil), nominal
 εr = 3.38, tan δ ≈ 0.0027 @ 10 GHz. 1-oz (35 µm) copper both sides; the
