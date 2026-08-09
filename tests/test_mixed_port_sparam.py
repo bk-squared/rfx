@@ -998,3 +998,159 @@ def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
     monkeypatch.setattr(sim, "_assemble_materials", _raise_cancel)
     with pytest.raises(RuntimeError, match="worker received signal"):
         sim.preflight()
+
+
+# ---------------------------------------------------------------------------
+# Issue #556 (D5 follow-up): wire port terminating one cell SHORT of a
+# rasterized conductor — the false-NEGATIVE sibling of the #544-fixed
+# false-positive class. On the D5 end-fed trace fixture (dx=80um,
+# h_sub=254um, h_sub/dx=3.175 in the [0.10,0.40] mixed-cell danger zone)
+# the trace's rasterization snaps to node k=4, one full cell above the
+# wire's rasterized top cell (k=3): no port cell is dead, so #314/#319
+# are correctly silent, yet the feed never galvanically reaches the
+# conductor and couples only capacitively (measured: |S21| rising with
+# frequency). The new advisory reads the SAME assembled-pec_mask ground
+# truth as the #544 fix and fires ONLY on the exact
+# one-cell-short-of-adjacent-PEC signature.
+# ---------------------------------------------------------------------------
+
+def _d5_gap_ground_truth(sim, position, component, extent, impedance=50.0):
+    """Independent ground-truth premise check for the #556 signature:
+    classify the port's cells with the assembler's own primitive
+    (fresh grid + assembled pec_mask, nothing reused from preflight) and
+    return (end_cell_live, cell_beyond_end_is_pec) for the high-index
+    end of the extent.
+    """
+    grid = sim._build_grid()
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
+    end = list(position)
+    end[axis] += extent
+    wp = WirePort(start=tuple(position), end=tuple(end),
+                  component=component, impedance=impedance)
+    _, _, _, pec_mask, _, _, _ = sim._assemble_materials(grid)
+    cells, live_flags, _ = _wire_port_live_cells(grid, wp, pec_mask)
+    mask_np = np.asarray(pec_mask)
+    nb = list(cells[-1])
+    nb[axis] += 1
+    beyond_is_pec = (
+        0 <= nb[axis] < mask_np.shape[axis]
+        and bool(mask_np[nb[0], nb[1], nb[2]])
+    )
+    return bool(live_flags[-1]), beyond_is_pec
+
+
+def test_wire_port_end_gap_advisory_fires_on_d5_end_fed_trace():
+    """POSITIVE (issue #556): the D5 end-fed trace fixture itself.
+
+    dx=80um, h_sub=254um: the wire port's extent nominally reaches the
+    trace bottom (z=254um -> node k=3), but the trace Box (254..334um)
+    rasterizes to node k=4 -- one full cell above the wire's rasterized
+    top. Every port cell is live (the #544 regression lock above pins
+    n_live/n = 4/4), so the #314/#319 dead-cell advisories are correctly
+    silent -- and before #556 NOTHING warned, while the measured physics
+    was capacitive-only coupling (|S21| rising with f, falsifier-ledger
+    D5). The new advisory must fire exactly once, on the +z side.
+    """
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c, x=2e-3)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    end_live, beyond_pec = _d5_gap_ground_truth(
+        sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
+    assert (end_live, beyond_pec) == (True, True), (
+        f"ground-truth premise changed (end_live={end_live}, "
+        f"beyond_pec={beyond_pec}) -- the D5 one-cell-gap signature no "
+        "longer holds on this fixture; re-derive the expected preflight "
+        "behaviour before trusting the rest of this test"
+    )
+
+    issues = sim.preflight()
+    hits = [s for s in issues
+            if getattr(s, "code", None) == "wire_port_end_gap_to_conductor"]
+    assert len(hits) == 1, (
+        "expected exactly one #556 end-gap advisory on the D5 fixture: "
+        + "\n".join(str(s) for s in issues)
+    )
+    assert getattr(hits[0], "severity", None) == "warning", (
+        f"#556 advisory must be advisory (warning) severity, got "
+        f"{getattr(hits[0], 'severity', None)!r}"
+    )
+    msg = str(hits[0])
+    for needle in ("+z-side", "gap = 1 cell", "capacitive",
+                   "extend the port extent by one cell", "refine dx"):
+        assert needle in msg, (
+            f"#556 advisory must name the side, the 1-cell gap, the "
+            f"capacitive consequence and both remedies; missing "
+            f"{needle!r} in: {msg}"
+        )
+    # The advisory must not double-fire as a dead-cell finding: no cell
+    # is dead here (#544 regression lock pins 4/4 live).
+    codes = [getattr(s, "code", None) for s in issues]
+    assert "wire_port_dead_extent_cells" not in codes
+    assert "wire_port_midpoint_in_pec" not in codes
+
+
+def test_wire_port_end_gap_advisory_silent_when_extent_reaches_conductor():
+    """SILENT CONTROL 1 (issue #556): same fixture, wire extent extended
+    one cell (extent = h_sub + dx) so the port's top cell lands ON the
+    rasterized trace node -- galvanic contact restored (D5's remedy).
+    The #556 gap advisory must NOT fire; the end cell is now a dead cell
+    ON the conductor, which is exactly the pre-existing #319
+    dead-extent advisory's territory ("verify the extent was MEANT to
+    end on/inside the conductor") -- assert that partition explicitly.
+    """
+    sim, y_c = _base_sim()
+    sim.add_port(position=(2e-3, y_c, 0.0), component="ez",
+                 impedance=50.0, extent=_H_SUB + _DX)
+    _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
+
+    end_live, _ = _d5_gap_ground_truth(
+        sim, position=(2e-3, y_c, 0.0), component="ez",
+        extent=_H_SUB + _DX)
+    assert end_live is False, (
+        "ground-truth premise changed: the extended extent's top cell "
+        "should land ON the rasterized trace (dead cell = contact)"
+    )
+
+    issues = sim.preflight()
+    codes = [getattr(s, "code", None) for s in issues]
+    assert "wire_port_end_gap_to_conductor" not in codes, (
+        "#556 advisory must stay silent when the port's end cell is "
+        "on/in the conductor (galvanic contact): "
+        + "\n".join(str(s) for s in issues)
+    )
+    assert "wire_port_dead_extent_cells" in codes, (
+        "the #319 dead-extent advisory owns the extent-ends-on-conductor "
+        "case; its absence means the two advisories no longer partition "
+        "the space: " + "\n".join(str(s) for s in issues)
+    )
+
+
+def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
+    """SILENT CONTROL 2 (issue #556): a wire port ending in genuine open
+    vacuum -- nothing PEC anywhere in the domain (dipole-feed-like
+    situation, mis-gated-guard footgun class). The advisory must stay
+    silent: a port that legitimately ends in open space is not
+    one-cell-short of anything. Geometry mirrors
+    tests/test_inverse_design_preflight.py's _clean_sim (which pins
+    preflight() == [] on it, so this control is double-locked).
+    """
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                     dx=0.02 / 15, boundary="cpml", cpml_layers=6)
+    sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
+                 impedance=50.0,
+                 waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
+                 extent=0.004)
+
+    issues = sim.preflight()
+    codes = [getattr(s, "code", None) for s in issues]
+    assert "wire_port_end_gap_to_conductor" not in codes, (
+        "#556 advisory fired on a wire port ending in open vacuum -- "
+        "this is the false-positive class the gating must exclude: "
+        + "\n".join(str(s) for s in issues)
+    )
+    assert issues == [], (
+        "open-vacuum wire-port fixture must stay fully clean (it also "
+        "backs test_zero_issue_summary_line_is_honest): "
+        + "\n".join(str(s) for s in issues)
+    )

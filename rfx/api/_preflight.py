@@ -2948,6 +2948,41 @@ class _PreflightMixin:
             or self._dx_profile is not None
             or self._dy_profile is not None
         )
+
+        def _ensure_pec_entry_masks(grid):
+            # Lazy (issue #544 review item 8): only rasterize per-entry
+            # masks the first time any port actually needs a conductor
+            # NAME -- a dead cell to attribute (#319) or an adjacent-
+            # conductor gap to attribute (#556) -- so the common clean
+            # case (no dead cells, no gap anywhere) never pays for it.
+            # Covers BOTH ``self._geometry`` PEC entries AND
+            # ``self._thin_conductors`` PEC sheets (issue #544 review
+            # item 3: thin conductors also feed the assembled
+            # ``pec_mask`` -- ``rfx/api/_compile.py``:232-238 -- and were
+            # missing here, which produced an empty ``dead_names`` and a
+            # false ``'pec'`` fallback label for a thin-conductor-only
+            # dead cell).
+            nonlocal pec_entry_masks
+            if pec_entry_masks is not None:
+                return pec_entry_masks
+            pec_entry_masks = []
+            for entry in self._geometry:
+                mat = self._resolve_material(entry.material_name)
+                if mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                    continue
+                pec_entry_masks.append(
+                    (entry.material_name,
+                     np.asarray(entry.shape.mask(grid)))
+                )
+            for _tc_i, tc in enumerate(self._thin_conductors):
+                if not tc.is_pec:
+                    continue
+                pec_entry_masks.append(
+                    (f"thin_conductor[{_tc_i}]",
+                     np.asarray(tc.shape.mask(grid)))
+                )
+            return pec_entry_masks
+
         for pe in self._ports:
             if not getattr(pe, "extent", None):
                 continue
@@ -3040,35 +3075,10 @@ class _PreflightMixin:
                     idx for idx, live in enumerate(live_flags) if not live
                 ]
                 if dead_indices:
-                    if pec_entry_masks is None:
-                        # Lazy (issue #544 review item 8): only rasterize
-                        # per-entry masks the first time any port actually
-                        # has a dead cell to name — the common clean case
-                        # (no dead cells anywhere) never pays for it.
-                        # Covers BOTH ``self._geometry`` PEC entries AND
-                        # ``self._thin_conductors`` PEC sheets (issue #544
-                        # review item 3: thin conductors also feed the
-                        # assembled ``pec_mask`` --
-                        # ``rfx/api/_compile.py``:232-238 -- and were
-                        # missing here, which produced an empty
-                        # ``dead_names`` and a false ``'pec'`` fallback
-                        # label for a thin-conductor-only dead cell).
-                        pec_entry_masks = []
-                        for entry in self._geometry:
-                            mat = self._resolve_material(entry.material_name)
-                            if mat.sigma < self._PEC_SIGMA_THRESHOLD:
-                                continue
-                            pec_entry_masks.append(
-                                (entry.material_name,
-                                 np.asarray(entry.shape.mask(grid)))
-                            )
-                        for _tc_i, tc in enumerate(self._thin_conductors):
-                            if not tc.is_pec:
-                                continue
-                            pec_entry_masks.append(
-                                (f"thin_conductor[{_tc_i}]",
-                                 np.asarray(tc.shape.mask(grid)))
-                            )
+                    # Build (or reuse) the per-entry PEC masks -- see
+                    # ``_ensure_pec_entry_masks`` above for the laziness
+                    # and thin-conductor rationale (issue #544).
+                    _ensure_pec_entry_masks(grid)
                     for idx in dead_indices:
                         ci, cj, ck = cells[idx]
                         for name, mask_arr in pec_entry_masks:
@@ -3082,15 +3092,106 @@ class _PreflightMixin:
                         # "unknown" label) rather than silently inventing
                         # a specific, possibly wrong material name.
                         dead_names = ["unknown"]
+
+                # Issue #556 (D5 follow-up, #488 arc): the OPPOSITE
+                # failure mode of the #314/#319 advisories above. There,
+                # a port extent cell lands ON PEC (false contact / dead
+                # cell). Here, the port terminates one cell SHORT of a
+                # rasterized conductor: its own end cell is live (not
+                # PEC), but the cell immediately beyond it along the port
+                # axis IS PEC in the assembled ``pec_mask`` -- read via
+                # the SAME ground-truth arrays the #544 fix reads
+                # (``_wire_port_live_cells`` against the assembled mask;
+                # no geometric re-derivation from shapes). On the D5
+                # "end-fed trace" fixture (dx=80um, h_sub=254um,
+                # h_sub/dx=3.175 in the [0.10,0.40] mixed-cell danger
+                # zone) the trace's rasterization snapped to the node one
+                # full cell above the wire's rasterized top, so the feed
+                # never galvanically reached the conductor and coupled
+                # only capacitively (measured: |S21| RISING with
+                # frequency, docs/research_notes/
+                # 20260728_i488_falsifier_ledger.md, D5). No cell is dead
+                # in that geometry, so #314/#319 are correctly silent --
+                # nothing warned.
+                #
+                # Gating (the mis-gated-guard class the LLM-footgun audit
+                # documents): fire ONLY on the exact one-cell-short-of-
+                # adjacent-PEC signature. A wire port that legitimately
+                # ends in open vacuum (dipole feed, nothing PEC in the
+                # adjacent cell) has no adjacent-PEC hit and stays
+                # silent; a port whose end cell IS on/in PEC has galvanic
+                # contact (and #319 above already flags it as a dead
+                # cell), so the live-end-cell requirement keeps this
+                # silent there. BOTH ends of the extent are candidates
+                # and both are checked (a port can miss a trace at its
+                # far end or a ground plane at its near end). Pure numpy
+                # reads of already-built arrays -- no new exception-prone
+                # calls inside a try (PR #555 lesson: nothing here may
+                # swallow an async worker-timeout exception).
+                if cells and live_flags:
+                    mask_np = np.asarray(pec_mask)
+                    axis_letter = "xyz"[axis]
+                    d_ax = (grid.dx, getattr(grid, "dy", grid.dx),
+                            getattr(grid, "dz", grid.dx))[axis]
+                    for end_idx, step in ((0, -1), (len(cells) - 1, +1)):
+                        # Degenerate 1-cell rasterization: both loop
+                        # iterations share end_idx 0 but probe DIFFERENT
+                        # neighbor cells (nb-1 vs nb+1), so no duplicate
+                        # warning is possible by construction.
+                        if not live_flags[end_idx]:
+                            continue
+                        nb = list(cells[end_idx])
+                        nb[axis] += step
+                        if not (0 <= nb[axis] < mask_np.shape[axis]):
+                            continue
+                        if not bool(mask_np[nb[0], nb[1], nb[2]]):
+                            continue
+                        adj_names = [
+                            name for name, mask_arr
+                            in _ensure_pec_entry_masks(grid)
+                            if bool(mask_arr[nb[0], nb[1], nb[2]])
+                        ] or ["unknown"]
+                        side = ("+" if step > 0 else "-") + axis_letter
+                        _w.warn(
+                            PreflightWarning(
+                                f"Wire port at {pe.position} (extent "
+                                f"{pe.extent}, component {pe.component}): "
+                                f"its {side}-side end cell "
+                                f"{tuple(cells[end_idx])} is live "
+                                f"(vacuum/dielectric), but the cell "
+                                f"immediately beyond it "
+                                f"({tuple(nb)}) is PEC {adj_names} in "
+                                f"the assembled geometry. The port "
+                                f"terminates in vacuum/dielectric one "
+                                f"cell (gap = 1 cell = {d_ax:g} m) short "
+                                f"of a rasterized conductor, so the feed "
+                                f"never galvanically reaches it and "
+                                f"coupling is capacitive only (measured "
+                                f"signature: |S21| rising with "
+                                f"frequency; issue #556, the #488-lane "
+                                f"D5 finding). Remedy: extend the port "
+                                f"extent by one cell so its end lands on "
+                                f"the conductor's rasterized node, or "
+                                f"refine dx so the conductor interface "
+                                f"aligns with a grid node (e.g. dx = h/N "
+                                f"for an interface at height h).",
+                                code="wire_port_end_gap_to_conductor",
+                                source="_validate_cfg_port_inside_pec",
+                            ),
+                            stacklevel=3,
+                        )
             elif classification_unavailable_reason is not None:
                 _w.warn(
                     PreflightWarning(
                         f"Wire port at {pe.position} (extent {pe.extent}): "
                         f"dead-cell classification unavailable "
                         f"({classification_unavailable_reason}). The "
-                        f"#314/#319 PEC-overlap advisories are skipped "
+                        f"#314/#319 PEC-overlap advisories and the #556 "
+                        f"end-gap-to-conductor advisory are skipped "
                         f"for this port -- verify manually that its "
-                        f"rasterized extent does not land on PEC.",
+                        f"rasterized extent does not land on PEC and "
+                        f"does not stop one cell short of a conductor "
+                        f"it is meant to contact.",
                         code="wire_port_dead_cell_classification_unavailable",
                         source="_validate_cfg_port_inside_pec",
                     ),
