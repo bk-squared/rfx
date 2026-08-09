@@ -19,6 +19,7 @@ An adversarial review of PR #499 demonstrated exactly that: 1.5 -> 3.0 in
 one case doubled its gate with every existing guard still green.
 
 Consumers (as of this writing):
+  * tests/test_msl_port_integration.py              (quantum=1000, |Z0| length-spread, #518)
   * tests/test_wr90_iris_modematch_gates.py        (quantum=100, abs |S11|)
   * tests/test_rcs_mie_ka_sweep_gates.py            (quantum=10,  dB)
   * tests/test_rcs_dielectric_sphere_mie_gates.py   (quantum=10,  dB)

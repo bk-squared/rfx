@@ -56,6 +56,8 @@ from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 
+from tests._gate_policy import gate_from_envelope
+
 
 # ---------------------------------------------------------------------------
 # Geometry constants
@@ -405,23 +407,50 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
        per-unit-length property, so the mean-band |Z0| must agree across lengths
        to a few percent.
 
-    Tolerances tie to the 2026-06-14 #140 verify-only measurement (|Z0| ~57.5 Ω,
-    cross-length spread ~0.49%, passivity 1.009-1.013, mean|S11| 0.052-0.124).
+    LOCK RE-DERIVED FROM FRESH MEASUREMENT 2026-08-09 (issue #518). Every leg
+    re-measured in one process with this exact recipe (dx = 80 µm, band
+    3-4.5 GHz, mean-band |Z0| on the +x port):
 
-    MARGIN WARNING (2026-07-30, post PR #516): the measured cross-length
-    spread is now **4.96% against the 5% bound** — margin-less, NOT the ~10x
-    headroom the 0.49% record suggested. Measured [60.23, 57.34, 57.58] Ω for
-    L = 6/8/10 mm; the L = 6 mm leg is the outlier under BOTH V-span choices
-    tried that day, so the spread is short-line N-probe fit conditioning,
-    not the extractor change. Any red here is as likely that conditioning as
-    a real regression — investigate the L = 6 mm fit window before touching
-    the bound (tracked follow-up issue).
+        L =  6 mm : 60.2313 Ω   (REMOVED — see below)
+        L =  8 mm : 57.3381 Ω
+        L = 10 mm : 57.5778 Ω   (reproduces PR #516's recorded 57.58)
+        L = 12 mm : 57.6030 Ω   (new leg)
+
+    Envelope over the retained legs {8, 10, 12}:
+    spread = (57.6030 − 57.3381) / mean(57.3381, 57.5778, 57.6030) = 0.4607%.
+    Enforced bound = gate_from_envelope(0.004607, quantum=1000) = 0.007 —
+    the shared measured-envelope policy (``tests/_gate_policy.py``:
+    ENVELOPE_GATE_MULTIPLIER then ceil-quantize to 1/1000), a 1.52x margin.
+
+    The L = 6 mm leg was REMOVED, not re-bounded (no-silent-loosening: the
+    bound TIGHTENED 5% → 0.7%). Issue #518 attributes its ~+2.9 Ω offset to
+    short-line N-probe fit conditioning: it was the outlier under BOTH V-span
+    choices measured 2026-07-30 (k_hi proxy AND trace-anchored), so the offset
+    is a property of the short-line fixture's fit window, not of the extractor
+    — measured-by-elimination. The fresh 2026-08-09 trace shows the signature
+    directly: L = 6 mm Re(Z0) runs monotone 59.89 → 60.60 Ω across the band
+    while all three retained legs are flat to ±0.03 Ω. Falsifier (gate-can-
+    bind-artifact mandate, run fresh-vs-fresh 2026-08-09): re-including the
+    fresh L = 6 mm value gives spread 4.9556% > 0.007 — the retired
+    configuration reds this lock.
+
+    Prior state, for the record: legs {6, 8, 10}, bound 5%, measured spread
+    4.96% — margin-less (commit 7f889d8's warning; the 2026-06-14 "0.49%
+    headroom" record was obsolete).
+
+    MARGIN NOTE (2026-08-09): the L = 12 mm leg measures mean|S11| = 0.1487
+    against the per-leg < 0.15 envelope bound — 0.0013 of margin. Deterministic
+    on a fixed platform, but any change that moves |S11| at the ~1% level will
+    surface there first; triage that as the longer line's larger accumulated
+    mismatch, not as a spread-lock problem.
     @slow: three full FDTD thru-line runs.
     """
-    # Lengths chosen so the largest domain (L + 2*PORT_MARGIN = 14 mm) matches the
-    # validated single-length gate's domain — three FDTD runs each ~that gate's cost,
-    # spanning a 67% length range (enough to expose any length-dependent Z0 drift).
-    lengths = [6e-3, 8e-3, 10e-3]
+    # Legs {8, 10, 12} mm (L = 6 mm removed 2026-08-09, issue #518 — short-line
+    # N-probe fit conditioning; see docstring). Largest domain is now
+    # L + 2*PORT_MARGIN = 16 mm (the validated single-length gate's domain is
+    # 14 mm); the set spans a 50% length range — still enough to expose any
+    # length-dependent Z0 drift.
+    lengths = [8e-3, 10e-3, 12e-3]
     mean_abs_z0_per_length = []
     for l_line in lengths:
         result = _run_msl_thru(l_line)
@@ -467,11 +496,22 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         mean_abs_z0_per_length.append(m0)
 
     # (5) |Z0| length-invariance: per-unit-length property -> agree across lengths.
+    # Bound derived from the fresh 2026-08-09 measured envelope through the
+    # shared gate policy (see docstring for the per-leg numbers + arithmetic).
+    measured_spread_envelope = 0.004607   # {8,10,12} mm legs, 2026-08-09
+    spread_tol = gate_from_envelope(measured_spread_envelope, quantum=1000)
+    assert spread_tol == 0.007, (
+        f"spread gate derives to {spread_tol}, not its committed 0.007 — the "
+        f"envelope constant or tests/_gate_policy.py moved; re-measure before "
+        f"touching this lock"
+    )
     mean_of_means = sum(mean_abs_z0_per_length) / len(mean_abs_z0_per_length)
     spread = (max(mean_abs_z0_per_length) - min(mean_abs_z0_per_length)) / mean_of_means
     print(f"\n[MSL z0-len] mean|Z0| per length {[round(z, 2) for z in mean_abs_z0_per_length]} Ω; "
-          f"spread = {spread*100:.2f}%")
-    assert spread < 0.05, (
-        f"|Z0| length spread {spread*100:.1f}% >= 5% — not length-invariant "
-        f"({mean_abs_z0_per_length})"
+          f"spread = {spread*100:.2f}% (bound {spread_tol*100:.1f}%)")
+    assert spread < spread_tol, (
+        f"|Z0| length spread {spread*100:.2f}% >= {spread_tol*100:.1f}% — not "
+        f"length-invariant ({mean_abs_z0_per_length}). If the offender is a "
+        f"SHORT line, check N-probe fit conditioning first (issue #518) "
+        f"before suspecting the extractor."
     )
