@@ -91,12 +91,32 @@ review ran into before landing):
   in neither dict fails ``test_lane_map_is_complete_in_both_directions``
   loudly instead of silently escaping the gate.
 
+- The "## API summary" table is a THIRD in-file copy of the same per-lane
+  status claims (issue #586 item 2), and a demonstrated drift site: one of
+  PR #584's five live-drift fixes was the coax section saying "no external
+  referee" while the summary table's row for the same API already correctly
+  said the referee was registered -- caught only by accident. The third
+  comparison (``test_api_summary_status_cell_agrees_with_section_status``)
+  pairs each mapped lane's summary-table row(s) (``API_SUMMARY_ROW_ANCHORS``,
+  1:1 and in order with ``LANE_STATUS_ANCHORS_MD``) with the section's
+  designated status block and requires STATUS_TOKENS presence-polarity
+  agreement between the row's status cell and that block. The table parser
+  is fail-loud by construction (the #303 "All checks passed with a skipped
+  check family" class): the section, the exact 4-column header row, the
+  4-cell shape of every row, and a nonzero data-row count are all asserted,
+  and every mapped row key must match exactly one row -- a restructured
+  table fails loudly instead of parsing to nothing and passing vacuously.
+  Extending this check exposed live drift on first contact (the #584
+  experience repeating): three rows understating the section's
+  nonuniform-experimental status, the coax two-port row carrying ANOTHER
+  lane's status word inside its own status cell, the transition row missing
+  its section's "unresolved", and the compute_mixed_s_matrix lane having no
+  summary row at all -- all fixed doc-side in the same change.
+
 Not in scope (see the issue, and issue #586 filed from the PR #584 review for
 the deferred items): auto-generating one carrier from the other, byte/full-
-text parity, covering every lane immediately (the map grows incrementally as
-drift surfaces in a given lane), and checking the separate "## API summary"
-table (a second, currently-ungated in-file copy of the same per-primitive
-claims -- issue #586).
+text parity, and covering every lane immediately (the map grows incrementally
+as drift surfaces in a given lane).
 
 Pure text parsing, no FDTD -- joins the contract-test family (same default
 marker/lane as test_sparameter_support_contract.py; no slow/gpu marker).
@@ -122,43 +142,48 @@ MATRIX_MD_PATH = Path("docs/guides/sparameter_support_matrix.md")
 # actually hit (issue #554): MSL (ad_evidence), coax two-port, coax-MSL
 # transition, wire/patch, and the waveguide near-cutoff group-delay figures
 # (NU broad-E4/E5 lives in the same "## Rectangular-waveguide port" section).
+# Issue #586 extended the map to the 3 remaining genuinely mappable lanes
+# (lumped, Floquet, mixed lumped/wire+MSL); mapping them immediately exposed
+# live numeric drift in the Floquet and mixed sections (json numeric_metrics
+# tokens absent from the .md), fixed doc-side from the json in the same
+# change -- the #584 experience repeating on first contact.
 LANE_SECTION_MAP: dict[str, str] = {
+    "add_port(extent=None)": "## Lumped port",
     "add_port(extent=...)": "## Wire port",
     "add_msl_port(...)": "## Microstrip-line port",
     "add_waveguide_port(...)": "## Rectangular-waveguide port",
     "add_coaxial_port(...)": "## Coaxial port",
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)":
         "## Coax<->MSL transition — EXPERIMENTAL, diagnostic-only (issue #489 leg 4)",
+    "add_floquet_port(...)": "## Floquet/Bloch and non-port observables",
+    "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)":
+        "## Mixed port families — EXPERIMENTAL, not in the validated set",
 }
 
-# json port_families primitives NOT yet mapped above, each with a short
-# reason. Adding a primitive to the json's port_families without adding it to
-# EITHER this dict or LANE_SECTION_MAP fails
+# json port_families primitives NOT mapped above, each with a short reason.
+# Adding a primitive to the json's port_families without adding it to EITHER
+# this dict or LANE_SECTION_MAP fails
 # test_lane_map_is_complete_in_both_directions loudly rather than silently
-# escaping the parity gate. issue #586 (filed from the PR #584 review) tracks
-# promoting the 3 genuinely mappable lanes below (lumped, floquet, mixed) into
-# LANE_SECTION_MAP; the remaining 3 are "not_a_port" families whose
-# numeric_metrics field HOLDS a value -- ``["not an S-parameter calculation"]``
-# -- but that value carries no numeric token to check, which is why they stay
-# deferred rather than mapped.
+# escaping the parity gate. Issue #586 promoted the 3 genuinely mappable
+# lanes (lumped, floquet, mixed) into LANE_SECTION_MAP; the remaining 3 are
+# "not_a_port" families whose numeric_metrics field HOLDS a value --
+# ``["not an S-parameter calculation"]`` -- but that value carries no numeric
+# token to check (the #584-corrected reason: the key exists, its content is
+# non-numeric), which is why they stay deferred rather than mapped.
 UNMAPPED_LANES_TODO: dict[str, str] = {
-    "add_port(extent=None)": "TODO(#586): lumped-port section not yet mapped",
-    "add_floquet_port(...)": "TODO(#586): Floquet section not yet mapped",
     "add_source(...) / add_polarized_source(...)":
-        "TODO(#586): not-a-port family, numeric_metrics carries no numeric tokens",
+        "not_a_port family: numeric_metrics carries no numeric tokens (issue #586 kept it deferred)",
     "add_tfsf_source(...)":
-        "TODO(#586): not-a-port family, numeric_metrics carries no numeric tokens",
+        "not_a_port family: numeric_metrics carries no numeric tokens (issue #586 kept it deferred)",
     "add_probe(...) / add_dft_plane_probe(...) / add_flux_monitor(...)":
-        "TODO(#586): not-a-port family, numeric_metrics carries no numeric tokens",
-    "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)":
-        "TODO(#586): mixed lumped/wire+MSL lane not yet mapped",
+        "not_a_port family: numeric_metrics carries no numeric tokens (issue #586 kept it deferred)",
 }
 
 # Lanes explicitly exempt from the "numeric_metrics must extract at least one
 # token" floor in test_json_numeric_claims_appear_in_markdown (PR #584
 # review, L4). Empty on purpose: every currently-mapped lane has real
 # numeric_metrics content: an empty allowlist means the floor is live on all
-# 5 mapped lanes today. Add a primitive here only with a comment naming why
+# 8 mapped lanes today. Add a primitive here only with a comment naming why
 # its numeric_metrics is genuinely number-free (not merely emptied by a
 # careless edit, which is exactly the silent-vacuous-pass class L4 closes).
 NUMBER_FREE_LANES: frozenset[str] = frozenset()
@@ -184,6 +209,13 @@ NUMBER_FREE_LANES: frozenset[str] = frozenset()
 # matching at all (an "anchor not found" error) instead of exercising the
 # intended status-token disagreement path.
 LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
+    "add_port(extent=None)": (
+        # the Restrictions bullet block -- the lumped lane's only
+        # status-bearing text (json status is "limited", which is not a
+        # tracked token, so this anchor pins "no status tokens on either
+        # side" rather than a specific word's presence)
+        "Analytic extractor and V/I replay checks validate",
+    ),
     "add_port(extent=...)": (
         "The nonuniform wire calculation is",
     ),
@@ -199,6 +231,18 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
     ),
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)": (
         "the junction's own physical reflection also contributes is genuinely",
+    ),
+    "add_floquet_port(...)": (
+        # the section's opening paragraph, which states the lane's own
+        # status ("Treat the result as experimental") -- prefix chosen
+        # upstream of the status word per this dict's own anchor rule
+        "`add_floquet_port(...)` has broadside modal bookkeeping",
+    ),
+    "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)": (
+        # the per-aspect status table block; the lane's loudest status
+        # marker is in the section header ("-- EXPERIMENTAL, not in the
+        # validated set"), which _lane_status_blocks_md includes by design
+        "| off-diagonal magnitude |",
     ),
 }
 
@@ -247,6 +291,59 @@ LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
         "compute_coaxial_s_matrix(...) remains",
         "validation/crossval/21_coax_two_port_referee.py, VESSL run-3 369367251629",
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# "## API summary" table (issue #586 item 2)
+# ---------------------------------------------------------------------------
+
+# The summary table is one row per (primitive, calculation API) pair with its
+# own status cell -- a second, previously ungated in-file copy of the same
+# per-lane status claims the section prose carries (see the module docstring
+# for the demonstrated #584 drift case this closes). Each mapped primitive
+# lists here one row key per LANE_STATUS_ANCHORS_MD anchor, PAIRED 1:1 IN THE
+# SAME ORDER: row key i's status cell is token-compared against md anchor i's
+# designated block. A row key is a substring matched against
+# "<primitive cell> | <calculation API cell>" and must match EXACTLY ONE data
+# row (fail-loud, same discipline as the anchor lookups). Rows without a
+# paired anchor (e.g. the lumped/wire forward(...) rows, the coax
+# line-reflection row, the not-a-port row) are parsed but not compared --
+# coverage grows the same incremental way LANE_SECTION_MAP does.
+#
+# Pairing is per-row, not per-lane-union, for the same reason the json side
+# went per-anchor (PR #588 review, P1): the coax lane's three rows carry two
+# independently evolving sub-API statuses, and a union over them would be
+# constant-True for either token regardless of which sub-API's own cell
+# changed.
+API_SUMMARY_HEADER = "## API summary"
+API_SUMMARY_EXPECTED_COLUMNS = ("Primitive", "Calculation API", "Result", "Current status")
+
+API_SUMMARY_ROW_ANCHORS: dict[str, tuple[str, ...]] = {
+    "add_port(extent=None)": (
+        "Lumped `add_port(..., extent=None)` | `run(",
+    ),
+    "add_port(extent=...)": (
+        "Wire `add_port(..., extent=...)` | `run(",
+    ),
+    "add_msl_port(...)": (
+        "`add_msl_port(...)` | `compute_msl_s_matrix(...)`",
+    ),
+    "add_waveguide_port(...)": (
+        "`add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)`",
+    ),
+    "add_coaxial_port(...)": (
+        "`add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)`",
+        "`add_coaxial_port(...)` | `compute_coaxial_two_port(...)`",
+    ),
+    "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)": (
+        "`add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)`",
+    ),
+    "add_floquet_port(...)": (
+        "`add_floquet_port(...)` | no documented high-level",
+    ),
+    "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)": (
+        "`add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)`",
     ),
 }
 
@@ -454,6 +551,53 @@ def _lane_status_blocks_json(entry: dict, primitive: str) -> list[str] | None:
         )
         result.append(matches[0])
     return result
+
+
+def _api_summary_rows(md_sections: dict[str, str]) -> list[tuple[str, str, str, str]]:
+    """[(primitive_cell, api_cell, result_cell, status_cell), ...] parsed
+    from the "## API summary" table, fail-loud at every stage (issue #586
+    item 2; a parser that silently parses nothing and lets the comparison
+    pass vacuously is the #303 "skipped check family" class):
+
+    - the section itself must exist,
+    - exactly one header row must carry exactly the 4 expected column
+      titles (a renamed/reordered/re-widened table fails here, not by
+      matching zero rows),
+    - every table line must split into exactly 4 cells (split on UNESCAPED
+      pipes only -- status cells legitimately contain ``\\|S21\\|``),
+    - at least one data row must survive.
+    """
+    section = md_sections.get(API_SUMMARY_HEADER)
+    assert section is not None, (
+        f"section {API_SUMMARY_HEADER!r} not found in the .md -- if the table "
+        "moved or was renamed, update API_SUMMARY_HEADER."
+    )
+    header_rows = 0
+    data_rows: list[tuple[str, str, str, str]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", stripped[1:-1])]
+        assert len(cells) == len(API_SUMMARY_EXPECTED_COLUMNS), (
+            f"API summary table row does not have exactly "
+            f"{len(API_SUMMARY_EXPECTED_COLUMNS)} cells (unescaped-pipe "
+            f"split): {stripped!r} -> {cells}"
+        )
+        if all(set(c) <= {"-", ":"} and c for c in cells):
+            continue  # the |---|---| separator row
+        if tuple(cells) == API_SUMMARY_EXPECTED_COLUMNS:
+            header_rows += 1
+            continue
+        data_rows.append((cells[0], cells[1], cells[2], cells[3]))
+    assert header_rows == 1, (
+        f"expected exactly one API summary header row with columns "
+        f"{API_SUMMARY_EXPECTED_COLUMNS}, found {header_rows} -- if the "
+        "table's columns changed, update API_SUMMARY_EXPECTED_COLUMNS and "
+        "re-verify what the status comparison reads."
+    )
+    assert data_rows, "API summary table parsed to zero data rows"
+    return data_rows
 
 
 def _lane_evidence_text(entry: dict) -> str:
@@ -666,6 +810,76 @@ def test_status_token_polarity_agrees(
     assert not disagreements, (
         f"{primitive}: status token polarity disagreement "
         f"(anchor, token, which carrier has it): {disagreements}"
+    )
+
+
+def test_api_summary_row_map_covers_all_mapped_lanes():
+    """API_SUMMARY_ROW_ANCHORS must cover exactly the mapped primitives, with
+    one row key per md status anchor (1:1, same order) -- the same
+    completeness discipline test_json_status_anchors_... applies to the json
+    side. A mapped lane missing here would silently escape the table check;
+    a stale key would silently never run."""
+    assert set(API_SUMMARY_ROW_ANCHORS) == set(LANE_SECTION_MAP), (
+        "API_SUMMARY_ROW_ANCHORS keys must equal LANE_SECTION_MAP keys; "
+        f"missing={set(LANE_SECTION_MAP) - set(API_SUMMARY_ROW_ANCHORS)}, "
+        f"stale={set(API_SUMMARY_ROW_ANCHORS) - set(LANE_SECTION_MAP)}"
+    )
+    mismatched = {
+        primitive: (len(row_keys), len(LANE_STATUS_ANCHORS_MD.get(primitive, ())))
+        for primitive, row_keys in API_SUMMARY_ROW_ANCHORS.items()
+        if len(row_keys) != len(LANE_STATUS_ANCHORS_MD.get(primitive, ()))
+    }
+    assert not mismatched, (
+        f"API_SUMMARY_ROW_ANCHORS/LANE_STATUS_ANCHORS_MD count mismatch "
+        f"(primitive -> (row_key_count, md_anchor_count)): {mismatched}"
+    )
+
+
+@pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+def test_api_summary_status_cell_agrees_with_section_status(
+    primitive, header, matrix_md_sections
+):
+    """Third comparison (issue #586 item 2), alongside json-vs-md-section
+    numeric parity and status polarity: the "## API summary" table's status
+    cell for each mapped (primitive, calculation API) row must agree with
+    the mapped section's designated status block (LANE_STATUS_ANCHORS_MD) on
+    STATUS_TOKENS presence -- row key i paired with anchor i. Catches the
+    demonstrated #584 drift shape: the summary table and the detailed
+    section, hundreds of lines apart in the SAME file, stating different
+    statuses for the same API. The anchor side includes the section header
+    (same semantics as the json-vs-md check): several lanes carry their
+    loudest status marker there."""
+    rows = _api_summary_rows(matrix_md_sections)
+    row_keys = API_SUMMARY_ROW_ANCHORS[primitive]
+    anchor_blocks = _lane_status_blocks_md(
+        matrix_md_sections[header], header, LANE_STATUS_ANCHORS_MD[primitive]
+    )
+    assert len(row_keys) == len(anchor_blocks), (
+        f"{primitive}: {len(row_keys)} summary row key(s) but "
+        f"{len(anchor_blocks)} md status anchor(s) -- must pair 1:1, same order."
+    )
+
+    disagreements = []
+    for row_key, (anchor, block_text) in zip(row_keys, anchor_blocks):
+        matches = [r for r in rows if row_key in f"{r[0]} | {r[1]}"]
+        assert len(matches) == 1, (
+            f"{primitive}: API summary row key {row_key!r} must match exactly "
+            f"one table row; found {len(matches)}. If the table changed, "
+            "update API_SUMMARY_ROW_ANCHORS."
+        )
+        status_cell = matches[0][3].lower()
+        block_lower = block_text.lower()
+        for token in STATUS_TOKENS:
+            in_table = token in status_cell
+            in_section = token in block_lower
+            if in_table != in_section:
+                disagreements.append(
+                    (row_key, anchor, token, "table-only" if in_table else "section-only")
+                )
+
+    assert not disagreements, (
+        f"{primitive}: API-summary-table vs section status token disagreement "
+        f"(row key, md anchor, token, which side has it): {disagreements}"
     )
 
 

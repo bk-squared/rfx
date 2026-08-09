@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "updated": "2026-08-06",
+  "updated": "2026-08-09",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -549,6 +549,7 @@
         "the settled VESSL run (369367252283, n_steps=135000) clears the -40 dB ring-down rule for the first time on this lane; see SETTLED_RUN_RECORD in tests/test_coax_msl_transition.py (status RUN) and the tracked run log/result JSON under scripts/diagnostics/_coax_msl_transition_settled_run_logs/",
         "raw cond_a (1e3-1e7 on both attempts) is dominated by per-drive amplitude scale, not geometric near-degeneracy -- see cond_a_equilibrated (near 1 on both attempts) on CoaxMSLTransitionResult",
         "the MSL side is extracted via the coax matrix-pencil fit (coaxial_line_reflection_from_plane_voltages) rather than the mixed lane's own N-probe fit, a deliberate deviation made because the coax fit deterministically pins the propagation-constant branch while the N-probe fit's sign is documented as unstable",
+        "the registered impedance= on add_coaxial_port(...)/add_msl_port(...) sizes only the feed resistor / termination and (for coax) the TEM source amplitude calibration; the power-wave normalization (z0_ref) always uses the analytic TEM / Hammerstad-Jensen Z0 the method computes itself, so the registered impedance= is NOT the reference impedance of the returned s_params -- the method emits a divergence advisory when either port's registered impedance diverges more than 5% from the analytic Z0 it actually uses (issue #581 review N2)",
         "no external-solver referee has been run",
         "AD is out of scope for both attempts (no eps_scale-style channel)",
         "waveguide, Floquet, TFSF, lumped RLC, and any second coaxial or MSL port are all rejected loudly"

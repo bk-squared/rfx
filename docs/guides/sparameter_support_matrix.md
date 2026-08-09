@@ -40,15 +40,16 @@ guard. An absent warning therefore cannot be compared across port families.
 |---|---|---|---|
 | Lumped `add_port(..., extent=None)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — one-cell impedance model; E2/E3/E4-partial evidence |
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
-| Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence |
+| Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures) |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures); nonuniform mode is experimental |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
-| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`, VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions stay **EXPERIMENTAL, diagnostic-only** in the separate `compute_coax_msl_transition(...)` lane |
-| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures plus a settled VESSL run (`369367252283`, `n_steps=135000`) of attempt 2's own fixture. gamma-vs-beta is CONFIRMED (three in-band checkpoints, the last at full settling); reciprocity (91.4% worst deviation) and passivity are now MEASURED/ATTRIBUTED at full settling (the earlier passivity-guard trip was a truncation artifact); the MSL-driven column power is a SHARPENED open question (~99% missing at 6/8 GHz, ~20% at 10 GHz) with a named discriminating check — see the section below — do not treat as a validated transition |
+| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`, VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions are the separate `compute_coax_msl_transition(...)` lane (own row below, own status, unaffected by this promotion) |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures plus a settled VESSL run (`369367252283`, `n_steps=135000`) of attempt 2's own fixture. gamma-vs-beta is CONFIRMED (three in-band checkpoints, the last at full settling); reciprocity (91.4% worst deviation) and passivity are now MEASURED/ATTRIBUTED at full settling (the earlier passivity-guard trip was a truncation artifact); the MSL-driven column power is a SHARPENED open question (~99% missing at 6/8 GHz, ~20% at 10 GHz) with a named discriminating check, and whether the junction's own physical reflection also contributes is genuinely unresolved — see the section below — do not treat as a validated transition |
+| `add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)` | `MixedSMatrixResult` | **experimental**, diagnostic, not in the validated set — off-diagonal magnitudes from Poynting flux; internal reciprocity witness 9.0% (flux channel) vs 55% (wave channel) on the probe-fed MSL fixture; absolute \|S\| is NOT validated (no external-solver referee has been run); with `enforce_passivity=True` (default) the returned diagonal is a joint SVD-projected value — read `S_raw`/`passivity_correction` for what was measured |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
 
@@ -639,11 +640,17 @@ only gates below 3.5).
 ## Floquet/Bloch and non-port observables
 
 `add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay, and
-analytic empty-space/slab diagnostics. Representative internal differences are
-`max_abs_diff 0.06067` for the empty-space analytic-null check and
-`max_mag_abs_diff 0.06212` for the three-frequency homogeneous-slab magnitude
-check. These are not RCWA or independent full-wave validation, and there is no
-documented high-level Floquet S-parameter API. Treat the result as experimental.
+analytic empty-space/slab diagnostics. The internal differences: the
+empty-space analytic-null check has `max_abs_diff 0.06067` (against `0.07`) and
+`mean_abs_diff 0.05306` (against `0.06`); the homogeneous-slab analytic oracle
+covers 8 cases x 3 frequencies with maximum power-balance error `4.44e-16`; the
+rfx-FDTD homogeneous-slab magnitude check has `max_mag_abs_diff 0.06212`
+(against `0.07`) and `mean_mag_abs_diff 0.03209` (against `0.04`) over 3
+frequencies; the synthetic specular-TE check has S11 difference `2.89e-7`, S21
+difference `6.37e-7`, and power-balance error `1.02e-6`; the real-FDTD Ex/Hy
+DFT-plane replay has maximum S difference `2.23e-7`. These are not RCWA or
+independent full-wave validation, and there is no documented high-level Floquet
+S-parameter API. Treat the result as experimental.
 
 `add_source(...)`, polarized sources, TFSF, point probes, DFT plane probes, and
 flux monitors do not define a port impedance or S-matrix reference. Validate
@@ -696,7 +703,7 @@ What this is and is not:
 
 | aspect | status |
 |---|---|
-| off-diagonal magnitude | experimental; internal reciprocity witness 9% on the probe-fed MSL fixture (55% on the wave channel) |
+| off-diagonal magnitude | experimental; internal reciprocity witness 9.0% on the probe-fed MSL fixture at `dx=63.5um`, settling `-101`/`-100` dB (55% on the wave channel) |
 | absolute magnitude | **NOT validated** — no external-solver referee has been run |
 | off-diagonal phase | provisional (mixes two reference-plane conventions) |
 | per-column power | an algebraic identity on the flux channel — **not** a passivity check |
@@ -704,7 +711,9 @@ What this is and is not:
 Because the flux normalization makes column power identically 1 whenever the
 arriving power equals the net launched power, a green passivity result on this
 lane carries no information. Reciprocity is the only independent internal
-witness, and the method warns when it exceeds `reciprocity_tol`.
+witness, and the method warns when it exceeds `reciprocity_tol` (default
+`0.06`, set below the 9% reference-fixture residual so that fixture warns
+rather than passing silently).
 
 Everything outside the first supported pair is rejected loudly: waveguide,
 Floquet, coaxial and TFSF registrations, bare sources and 0-ohm ports, mixed
@@ -763,6 +772,18 @@ independently unit-tested against a PLANTED, analytically known S-matrix
 under UNEQUAL port impedances (`tests/test_coax_msl_transition.py`), including
 a dedicated regression test that reproduces the exact defect the fix
 prevents.
+
+The registered `impedance=` on either port is NOT the reference impedance of
+the returned `s_params` (issue #581 review N2): `add_coaxial_port(impedance=...)`
+/ `add_msl_port(impedance=...)` size only the feed resistor / termination and
+(for coax) the TEM source amplitude calibration, while the power-wave
+normalization (`z0_ref`, the `sqrt(Z0)` step above) always uses the analytic
+TEM / Hammerstad-Jensen Z0 the method computes itself. When either port's
+registered impedance diverges more than 5% from the analytic Z0 actually used,
+`compute_coax_msl_transition(...)` emits a divergence advisory naming both
+values — pass a matching `pin_radius`/`outer_radius` (coax) or
+`width`/`height`/`eps_r_sub` (msl), or reconcile the mismatch, before trusting
+a specific reference-impedance interpretation.
 
 **One fixture has been run, and it is diagnostic, not validated.** The
 committed fixture (a vertical coax landing on a grounded substrate edge via a
