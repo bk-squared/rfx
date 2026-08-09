@@ -240,9 +240,12 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     #     0.0489 / 0.0390 / 0.0282 / 0.0139 / 0.0203
     #
     # The residual tracks f0, so the gate binds the dispersion floor rather than
-    # a fixture artifact — but the worst case is 97.8% of the gate, so the
-    # "do NOT re-parameterize without re-deriving" warning covers cavity SIZE as
-    # well as dx.
+    # a fixture artifact — but the worst case is 97.8% of the gate ON THE #573
+    # REVIEWER'S (unrecorded) size grid; the committed producer's documented
+    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, #596)
+    # measures its smallest-cavity point ABOVE this gate (0.0613% vs 0.05%) —
+    # direct evidence that the "do NOT re-parameterize without re-deriving"
+    # warning covers cavity SIZE as well as dx.
     #
     # Harminv window sensitivity, same source: over n_steps in {4k, 8k, 12k, 16k}
     # the error spans 0.0071 pt (xy) / 0.0110 pt (z), and the committed 8000-step

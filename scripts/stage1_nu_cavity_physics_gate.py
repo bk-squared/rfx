@@ -19,13 +19,13 @@ of f_tm110, so FFT bins span 10% of f and argmax can place the peak only to ±5%
 harminv resolves far below the bin width, exposing the fixture's true ~2.5%
 NU-air-cavity discretization error.
 
-STALE AS OF #562 (2026-08-05): that ~2.5% was dominated by the non-uniform grid
-building every axis one cell short of the requested domain, now fixed. The
-sibling analytic gate this used to cite for corroboration moved from 2.66% @ 4%
-to 0.025% @ 0.04% (#573), and THIS script's own residual measures 0.0144%
-against its unchanged 3.5% gate — 243x loose. Its gate wants the same
-envelope-derived treatment; that is a follow-up, not something to leave
-undocumented here.
+That ~2.5% was #562-era (2026-08-05): the non-uniform grid built every axis one
+cell short of the requested domain, now fixed. The sibling analytic gate this
+used to cite for corroboration moved from 2.66% @ 4% to 0.025% @ 0.04% (#573),
+and this script's gate got the same envelope-derived treatment in #596: the
+residual measures 0.0144% and the enforced gate is 0.03%, derived through the
+shared ``tests/_gate_policy.gate_from_envelope`` (#528/#539) — see the gate
+block in ``run_gate`` for the derivation, falsifier, and invariance evidence.
 
 Run:
     python scripts/stage1_nu_cavity_physics_gate.py
@@ -45,6 +45,15 @@ from rfx import GaussianPulse, Simulation
 from rfx.auto_config import smooth_grading
 from rfx.grid import C0
 from rfx.harminv import harminv
+
+from tests._gate_policy import gate_from_envelope
+
+# Measured residual of THIS script's own configuration, re-measured fresh
+# post-#562 (2026-08-09, single machine, CPU/f32): 0.0144 %. The derivation,
+# what the envelope covers, and the falsifier/invariance evidence live in the
+# gate block inside run_gate().
+_MEASURED_ENVELOPE_PCT = 0.0144
+_GATE_PCT = gate_from_envelope(_MEASURED_ENVELOPE_PCT, quantum=100)  # = 0.03
 
 
 @dataclass(frozen=True)
@@ -144,26 +153,49 @@ def run_gate() -> Stage1NUGateResult:
         raise AssertionError(
             f"cell savings {gate.cell_savings_factor:.2f}x below 40x gate"
         )
-    # Resolution-honest gate. The ~2.54% this comment was written around, and the
-    # "one-cell effective-a registration effect" it attributed it to, were the
-    # #562 grid defect: the NU builder realized every axis one cell short of the
-    # requested domain. Post-fix this script measures 0.0144% against the 3.5%
-    # gate below (243x loose), and the sibling analytic gate moved 2.66% -> 0.025%
-    # with its gate re-derived to 0.04% (#573). Re-deriving THIS gate from a fresh
-    # envelope is the obvious follow-up; the numbers below are kept as the
-    # historical record of what the defect-era measurement was, not as current
-    # values. Corroborated then by zero-padded-FFT + parabolic-peak ~2.55-2.58%
-    # (the exact secondary number is window/pad-factor dependent). The old
-    # "1%" gate was luck: the true 5.433 GHz peak snapped down into the 5.298 GHz
-    # bin (0.03%). 3.5% = measured 2.54% + margin; harminv resolves <0.05% so this
-    # now actually binds a real regression, unlike the ±5% argmax window (#396)
-    # — TRUE WHEN WRITTEN, stale now: post-#562 the measured residual is 0.0144%,
-    # so this 3.5% bound is ~243x loose and binds nothing. Re-deriving it from a
-    # fresh envelope is the follow-up this file promises and does not yet have.
-    if gate.resonance_error_pct > 3.5:
+    # Gate DERIVED from a measured envelope via the shared #528/#539 policy
+    # (envelope x ENVELOPE_GATE_MULTIPLIER, quantized up; quantum=100 in
+    # percent units — the same usage as the #573 sibling gates in
+    # tests/test_nonuniform_xy_cavity_accuracy.py):
+    #
+    #   measured residual, THIS configuration, fresh post-#562 (2026-08-09):
+    #     0.0144 %  (harminv peak 5.300394 GHz vs analytic TM110 5.299632 GHz,
+    #     n_steps=2425; preflight clean: "All checks passed (NTFF advisory
+    #     tier; ...)")
+    #   gate = gate_from_envelope(0.0144, quantum=100) = 0.03 %.
+    #
+    # The envelope covers ONLY this script's own configuration (a=b=40 mm,
+    # dz = 14x1.0 + 8x0.25 + 14x1.0 mm smooth-graded at max_ratio=1.3,
+    # dx=1 mm, PEC closed cavity, num_periods=20, harminv extraction, single
+    # machine, CPU/f32) — the #573 policy: the script only ever runs this one
+    # configuration, so the gate is a regression lock on it, and neighbours
+    # are recorded as evidence rather than folded into the margin. If another
+    # runner reds, re-measure and re-derive with the new datum recorded — do
+    # not blanket-loosen.
+    #
+    # STRENGTHENED-GATE MANDATE evidence (a green gate must be shown to bind
+    # physics, not an artifact; both runs 2026-08-09, this harness):
+    #   * FALSIFIER — the #562-class defect planted in production
+    #     (rfx.nonuniform._append_bounding_node -> identity, interior_cells ->
+    #     the old slice without the -1): residual 2.5196 % (peak 5.433161
+    #     GHz), REJECTED by the 0.03 % gate with 84x margin. The old 3.5 %
+    #     gate ACCEPTED that defect — the exact class this gate exists for.
+    #   * DOMAIN-SIZE INVARIANCE — a=b=50 mm, clean production: residual
+    #     0.0046 % (peak 4.239509 GHz vs analytic 4.239706 GHz, n_steps=3031),
+    #     PASS verdict holds under the same 0.03 % gate.
+    #
+    # History: the pre-#562 defect-era measurement was 2.54 % (corroborated
+    # then by zero-padded-FFT + parabolic-peak ~2.55-2.58 %) and the gate was
+    # 3.5 % = 2.54 % + margin; post-#562 that bound measured 243x loose
+    # (#596 item 1) and is replaced by the derived gate above. The still-older
+    # "1%" gate was rfft-argmax bin-quantization luck: the true 5.433 GHz peak
+    # snapped down into the 5.298 GHz bin (#396). harminv resolves <0.05 %,
+    # so 0.03 % genuinely binds.
+    if gate.resonance_error_pct > _GATE_PCT:
         raise AssertionError(
-            f"resonance error {gate.resonance_error_pct:.3f}% exceeds the "
-            f"resolution-honest 3.5% NU-cavity discretization envelope"
+            f"resonance error {gate.resonance_error_pct:.4f}% exceeds the "
+            f"envelope-derived {_GATE_PCT}% NU-cavity gate "
+            f"(= gate_from_envelope({_MEASURED_ENVELOPE_PCT}, quantum=100))"
         )
     if gate.segmented_ad_gb >= gate.full_ad_gb:
         raise AssertionError(
@@ -179,6 +211,8 @@ def main() -> int:
     print(f"  analytic TM110:       {gate.analytic_freq_hz/1e9:.6f} GHz")
     print(f"  FDTD harminv peak:    {gate.resonance_hz/1e9:.6f} GHz")
     print(f"  resonance error:      {gate.resonance_error_pct:.4f} %")
+    print(f"  gate (derived):       {_GATE_PCT:.2f} % "
+          f"(= gate_from_envelope({_MEASURED_ENVELOPE_PCT}, quantum=100))")
     print(f"  cells:                {gate.cells:,}")
     print(f"  uniform-fine cells:   {gate.uniform_fine_cells:,}")
     print(f"  cell savings:         {gate.cell_savings_factor:.2f}x")
