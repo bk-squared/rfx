@@ -134,7 +134,7 @@ def _run_assembly_with_replay(acc_data: dict, freqs_replay: np.ndarray, *,
         # jax.experimental.enable_x64 was removed in v0.8.0.
         from jax import enable_x64
     except ImportError:  # older JAX (< ~0.4.31)
-        from jax.experimental import enable_x64
+        from tests._x64_compat import enable_x64
 
     sim = _build_thru_line_sim()
     freqs_jnp = jnp.asarray(freqs_replay, dtype=jnp.float32)

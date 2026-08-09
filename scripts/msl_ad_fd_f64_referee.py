@@ -140,7 +140,7 @@ def main() -> int:
 
     import jax
     import jax.numpy as jnp
-    from jax.experimental import enable_x64
+    from tests._x64_compat import enable_x64
 
     import rfx
     print(f"rfx     : {rfx.__file__}")

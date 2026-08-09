@@ -35,7 +35,7 @@ try:
     # jax.experimental.enable_x64 was removed in v0.8.0).
     from jax import enable_x64 as _enable_x64
 except ImportError:  # older JAX (< ~0.4.31)
-    from jax.experimental import enable_x64 as _enable_x64
+    from tests._x64_compat import enable_x64 as _enable_x64
 
 
 @pytest.fixture(autouse=True)

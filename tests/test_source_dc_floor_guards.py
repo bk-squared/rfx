@@ -84,7 +84,7 @@ def test_cutoff_45_reduces_deposited_dc_by_predicted_factor():
     float32 accumulation would be pure rounding noise. Never enable x64
     at module level — it is process-global at pytest collection.
     """
-    from jax.experimental import enable_x64
+    from tests._x64_compat import enable_x64
 
     with enable_x64():
         t = jnp.arange(50_000, dtype=jnp.float64) * DEMO_DT

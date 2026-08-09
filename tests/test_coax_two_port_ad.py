@@ -386,7 +386,7 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent():
     try:
         from jax import enable_x64
     except ImportError:  # older JAX (< ~0.4.31)
-        from jax.experimental import enable_x64
+        from tests._x64_compat import enable_x64
 
     val, g = jax.value_and_grad(_band_mean_s21_sq)(jnp.asarray(1.0, dtype=jnp.float32))
     g_ad = float(g)

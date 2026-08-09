@@ -100,7 +100,7 @@ def main() -> int:
     try:
         from jax import enable_x64
     except ImportError:  # older JAX (< ~0.4.31)
-        from jax.experimental import enable_x64
+        from tests._x64_compat import enable_x64
 
     import rfx
     print(f"rfx     : {rfx.__file__}")

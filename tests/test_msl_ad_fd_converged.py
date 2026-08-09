@@ -30,7 +30,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jax.experimental import enable_x64  # SCOPED x64 — never flip it at module level
+from tests._x64_compat import enable_x64  # SCOPED x64 — never flip it at module level
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec

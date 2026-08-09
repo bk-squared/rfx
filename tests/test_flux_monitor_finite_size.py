@@ -50,7 +50,7 @@ from rfx.sources.sources import ModulatedGaussian
 try:  # jax >= 0.8.0
     from jax import enable_x64
 except ImportError:  # older jax
-    from jax.experimental import enable_x64
+    from tests._x64_compat import enable_x64
 
 C0 = 2.998e8
 

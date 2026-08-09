@@ -89,7 +89,7 @@ import numpy as np
 try:  # modern JAX: scoped x64 promoted to top-level (experimental removed v0.8.0)
     from jax import enable_x64 as _enable_x64
 except ImportError:  # older JAX (< ~0.4.31)
-    from jax.experimental import enable_x64 as _enable_x64
+    from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import GaussianPulse, Simulation
 

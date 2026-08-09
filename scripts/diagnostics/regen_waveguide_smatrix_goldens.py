@@ -28,7 +28,7 @@ import numpy as np
 try:
     from jax import enable_x64 as _enable_x64
 except ImportError:  # older JAX
-    from jax.experimental import enable_x64 as _enable_x64
+    from tests._x64_compat import enable_x64 as _enable_x64
 
 import jax.numpy as jnp
 from rfx import Simulation
