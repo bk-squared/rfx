@@ -25,9 +25,9 @@ points, not by what is convenient to write.
    - The vmap fast path supports **only**: PEC/periodic walls, CPML
      absorbing boundaries, soft sources, point probes, and DFT plane
      probes (`add_dft_plane_probe`).
-   - Simulations using UPML, lumped/MSL/coaxial/floquet ports, TFSF,
-     material dispersion, waveguide ports, flux monitors, NTFF, or a
-     non-uniform mesh take a **sequential fallback** — same results,
+   - Simulations using UPML, lumped RLC elements, lumped/MSL/coaxial/floquet
+     ports, TFSF, material dispersion, waveguide ports, flux monitors, NTFF,
+     or a non-uniform mesh take a **sequential fallback** — same results,
      without the fused-kernel speedup. The fallback carries the full
      material specification (including Kerr χ³) and also returns DFT
      plane accumulators, so a registered plane works on either path.
