@@ -1,11 +1,24 @@
 """Eligibility guards for the vmap_material_sweep fast path (roadmap W1.2).
 
-The vmap scan bodies implement only pec/periodic walls and CPML. Before
-this guard, a sim with ``boundary='upml'`` was routed to a scan body that
-applies NO absorber at all, and lumped RLC elements / flux monitors /
-DFT planes / NTFF / non-uniform profiles were silently dropped from the
-swept runs. These tests pin the sequential fallback for every such case
-and pin that the supported fast path still does NOT fall back.
+The vmap scan bodies implement only pec/periodic walls, CPML, and (as of
+#578) DFT plane probes. Before the original guard, a sim with
+``boundary='upml'`` was routed to a scan body that applies NO absorber at
+all, and lumped RLC elements / flux monitors / NTFF / non-uniform profiles
+were silently dropped from the swept runs. These tests pin the sequential
+fallback for every such case and pin that the supported fast path still
+does NOT fall back.
+
+#578 added DFT plane probes to the fast-path allowlist (see
+``tests/test_vmap_sweep_dft_planes.py`` for the batched-vs-run()
+equivalence gate, the falsifier ritual, and the fallback-carries-DFT
+pin) and added eligibility guards for the MSL/floquet/coaxial port
+registries (``sim._msl_ports`` / ``_floquet_ports`` / ``_coaxial_ports``),
+which were never consulted here before — a sim carrying one of those took
+the fast path and silently ignored the port. MSL/floquet/coaxial
+fallback pins (combined with a registered DFT plane, to also exercise
+fallback-carries-DFT for a non-UPML fallback reason) live in
+``tests/test_vmap_sweep_dft_planes.py::TestVmapPortFamilyEligibility``
+rather than here.
 
 CPU-runnable on tiny grids (intentionally not gpu-marked so the PR gate
 exercises this file).

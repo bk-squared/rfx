@@ -6,6 +6,69 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `vmap_material_sweep()` batches DFT plane accumulators on the fast path (#578)
+
+- `add_dft_plane_probe` planes now accumulate inside the `jax.vmap`-batched
+  scan carry, inlining `Simulation.run()`'s rect-window DFT kernel exactly
+  (same `init_dft_plane_probe` call, same `t = state.step * dt` phase
+  reference — using the scan's own step-index instead would be an
+  off-by-one, per-bin phase-error class bug). `VmapSweepResult` gains a
+  new field, `dft_planes: dict[str, ndarray] | None`, with a leading
+  batch axis (`n_batch, n_freqs, n1, n2` complex) — the SAME accessor
+  key each plane's `add_dft_plane_probe(name=...)` uses for a single
+  `Result.dft_planes[name]`. The sequential fallback also populates this
+  field now (by stacking each swept value's `Result.dft_planes`
+  accumulator), so a registered DFT plane returns data through
+  `vmap_material_sweep()` regardless of which internal path a given
+  `Simulation` takes — previously flux monitors and DFT planes both
+  forced the sequential fallback and neither path's output carried any
+  frequency-domain data at all (`VmapSweepResult` had no such field).
+  Verified against `Simulation.run()` per swept element with a predeclared
+  tolerance and a one-sided falsifier (a deliberate DFT-kernel sign flip
+  turns the equivalence gate red on every frequency bin); see
+  `tests/test_vmap_sweep_dft_planes.py`.
+- Measured speedup (batched vmap fast path vs. the sequential fallback,
+  same machine, same config: CPML dielectric slab + one DFT plane,
+  `n_steps=300`, CPU backend, JAX 0.10.2, AMD EPYC 9654 96-core, no
+  GPU available in this environment): **1.2x at `n_batch=8`, 2.0x at
+  `n_batch=16`, 4.7x at `n_batch=32`** — the fast path pays one XLA
+  compile amortized over the whole batch while the fallback recompiles
+  per swept value, so the speedup grows with batch size in the
+  documented "moderate batch sizes (5-50 values)" regime; a GPU is
+  expected to widen this further via genuine parallel kernel execution
+  (untested here — no GPU device in this environment).
+- **BREAKING (fail-loud, not a numerics change)**: `vmap_material_sweep(...,
+  return_fields=True)` now raises `ValueError` instead of silently
+  returning `VmapSweepResult.final_fields=None`. `return_fields` was
+  documented since this function's introduction but never implemented on
+  either the fast path or the sequential fallback — `final_fields` was
+  always `None` regardless of the flag. Use `sim.run()`/`sim.forward()`
+  for a final-field snapshot, or `parametric_sweep()` for full per-value
+  `Result` objects.
+- New eligibility guards route simulations carrying MSL (`_msl_ports`),
+  Floquet (`_floquet_ports`), or coaxial (`_coaxial_ports`) ports to the
+  sequential fallback instead of the vmap fast path. MSL/Floquet ports
+  were a genuine silent-drop gap (the fast-path scan bodies never
+  launched or recorded them, so a swept sim carrying one previously ran
+  the fast path missing that physics with no warning). Coaxial ports are
+  not consumed by plain `Simulation.run()` at all today; this guard makes
+  that failure loud (the fallback now surfaces `run()`'s existing
+  `NotImplementedError` for `add_coaxial_port`) instead of silently
+  taking the fast path and ignoring the port.
+- Fixed a drifted module-docstring inversion (`rfx/vmap_sweep.py`
+  Limitations section used to claim ports/TFSF/dispersion/waveguide
+  ports/NTFF/RLC elements were "fully supported" — the opposite
+  of the function docstring and the code guards, which always correctly
+  listed them as fallback-triggering).
+- Angle-batched TFSF sweeps remain out of scope for `vmap_material_sweep`
+  — documented as a structural limitation, not a missing feature (the
+  TFSF incident field is itself an in-scan auxiliary FDTD solution,
+  Method B's auxiliary grid size is angle-dependent, and rfx cannot
+  express a general incidence triple today). `parametric_sweep()` is the
+  documented route for illumination/angle sweeps, with the pre-existing
+  oblique-Bloch-TFSF-plus-DFT-planes `NotImplementedError` noted as a
+  caveat there.
+
 ### Added — `rfx.observables`: differentiable DFT-plane accessor + objectives (#579)
 
 - New `rfx.observables` module (flat-exported at top level and in the
