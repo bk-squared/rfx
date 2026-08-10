@@ -77,11 +77,17 @@ def benchmark(
 
         pulse = GaussianPulse(f0=5e9)
         center = tuple(s * dx / 2 for s in shape)
-        src = make_source(grid, center, "ez", pulse, n_steps)
+        # issue #571: benchmark drive is explicitly a raw field add —
+        # 'field' is make_source's native kind (bit-identical no-op), and
+        # being explicit insulates the benchmark from the deprecation-window
+        # default changes.
+        src = make_source(grid, center, "ez", pulse, n_steps,
+                          materials=materials, amplitude_kind="field")
         prb = make_probe(grid, center, "ez")
 
         # Warm up JIT (separate short source to match step count)
-        warmup_src = make_source(grid, center, "ez", pulse, 10)
+        warmup_src = make_source(grid, center, "ez", pulse, 10,
+                                 materials=materials, amplitude_kind="field")
         _ = run(grid, materials, 10, sources=[warmup_src], probes=[prb])
 
         # Timed run

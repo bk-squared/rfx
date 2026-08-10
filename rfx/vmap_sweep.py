@@ -238,7 +238,8 @@ def _build_vmap_scan_fn(
         CPML H/E sub-steps are applied; J-source waveforms are Cb-normalized
         per batch element from the actual material arrays.
     j_source_raw_info : list of (i, j, k, component, raw_waveform)
-        Only used when ``use_cpml``.  Raw (un-Cb-normalized) J-source
+        Populated for legacy CPML J-sources AND for ``amplitude_kind='current'``
+        soft sources on any boundary.  Raw (un-Cb-normalized) J-source
         waveforms + cell indices so Cb can be computed dynamically inside the
         vmapped function from the actual material arrays.
     """
@@ -263,7 +264,8 @@ def _build_vmap_scan_fn(
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
     # J-source metadata: cell indices + component + raw (un-Cb-normalized)
-    # waveforms.  Only populated on the CPML path.
+    # waveforms.  Populated for legacy CPML J-sources and for
+    # amplitude_kind='current' soft sources on any boundary.
     j_src_meta = [(i, j, k, comp) for i, j, k, comp, _ in j_source_raw_info]
     if j_source_raw_info:
         j_src_raw_waveforms = jnp.stack(
@@ -343,7 +345,8 @@ def _build_vmap_scan_fn(
                 field = field.at[si, sj, sk].add(src_vals[idx_s])
                 st = st._replace(**{sc: field})
 
-            # J-sources (Cb-normalized, material-dependent); CPML path only
+            # J-sources (Cb-normalized, material-dependent): legacy cpml
+            # route, plus amplitude_kind='current' on any boundary (#571)
             for idx_j, (si, sj, sk, sc) in enumerate(j_src_meta):
                 field = getattr(st, sc)
                 field = field.at[si, sj, sk].add(j_src_vals[idx_j])
@@ -432,11 +435,34 @@ def _build_full_scan_fn(
 
     for pe in sim._ports:
         if pe.impedance == 0.0:
-            if boundary == "cpml":
+            # amplitude_kind (issue #571) routing:
+            #   None      -> legacy per-boundary routing, bit-identical
+            #               (cpml: dynamic-Cb J-source; else raw make_source)
+            #   'field'   -> raw make_source on EVERY boundary (E += w has
+            #               no material dependence, so no dynamic path)
+            #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
+            #               raw waveform prescaled by the static 1/dV part
+            #               (Cb is material-dependent and varies per sweep
+            #               element, so it stays dynamic; dV is geometry)
+            if pe.amplitude_kind == "field":
+                sources.append(make_source(grid, pe.position, pe.component,
+                                           pe.waveform, n_steps))
+            elif pe.amplitude_kind == "current" or (
+                    pe.amplitude_kind is None and boundary == "cpml"):
                 # Store raw waveform + cell info for dynamic Cb computation
                 idx = grid.position_to_index(pe.position)
                 times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
                 raw_waveform = jax.vmap(pe.waveform)(times)
+                if pe.amplitude_kind == "current":
+                    from rfx.api._source_semantics import (
+                        source_amplitude_scale)
+                    from rfx.simulation import _uniform_cell_volume
+                    # 'current' <- 'cb': static 1/dV (cb unused on this
+                    # branch); the dynamic per-batch Cb multiply below in
+                    # _build_vmap_scan_fn completes Cb*w/dV.
+                    raw_waveform = source_amplitude_scale(
+                        "current", "cb", cb=None,
+                        dV=_uniform_cell_volume(grid)) * raw_waveform
                 j_source_raw_info.append(
                     (idx[0], idx[1], idx[2], pe.component, raw_waveform)
                 )
@@ -485,6 +511,11 @@ def _build_full_scan_fn(
                 grid, n_steps,
                 use_cpml=False,
                 sources=sources,
+                # non-empty only for amplitude_kind='current' soft sources
+                # on a non-cpml boundary (issue #571): their Cb is material-
+                # dependent and must be computed dynamically per sweep
+                # element, exactly like the legacy cpml J-source path.
+                j_source_raw_info=j_source_raw_info,
                 probes=probes,
                 periodic=periodic,
                 pec_axes=pec_axes,

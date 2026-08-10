@@ -311,12 +311,19 @@ def run_uniform(
             # Auto-select source type based on boundary conditions:
             # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
             # - PEC (closed): raw field add (broadband, exact cavity modes)
+            # amplitude_kind (issue #571) rides on top: the helper stays
+            # boundary-selected (its native numerics are deliberate); the
+            # KIND only rescales the waveform inside the helper. kind=None
+            # threads through as a no-op (legacy, bit-identical).
             if sim._boundary in ("cpml", "upml"):
                 sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials))
+                                             pe.waveform, n_steps, materials,
+                                             amplitude_kind=pe.amplitude_kind))
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps))
+                                           pe.waveform, n_steps,
+                                           materials=materials,
+                                           amplitude_kind=pe.amplitude_kind))
             continue
         if pe.extent is not None:
             # Multi-cell wire port

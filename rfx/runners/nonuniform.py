@@ -592,9 +592,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     for pe in sim._ports:
         idx = pos_to_nu_index(grid, pe.position)
         if pe.impedance == 0.0:
-            # Current source with dV normalization
+            # Current source with dV normalization; amplitude_kind (issue
+            # #571) threaded — None/'current' are bit-identical no-ops here.
             src = make_current_source(
-                grid, idx, pe.component, pe.waveform, sizing_n, materials_concrete)
+                grid, idx, pe.component, pe.waveform, sizing_n,
+                materials_concrete, amplitude_kind=pe.amplitude_kind)
             sources.append(src)
         elif pe.extent is not None:
             # Wire port on non-uniform grid

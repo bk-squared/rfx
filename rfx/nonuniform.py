@@ -539,7 +539,7 @@ def make_z_profile(
 
 
 def make_current_source(grid: NonUniformGrid, position_ijk, component,
-                        waveform_fn, n_steps, materials):
+                        waveform_fn, n_steps, materials, amplitude_kind=None):
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:
@@ -548,6 +548,14 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
 
     This gives resolution-independent injected POWER regardless of cell size.
     Same approach as Meep's internal source normalization.
+
+    Native amplitude convention (issue #571): ``'current'`` —
+    ``amplitude_kind`` of None or ``'current'`` is bit-identical to the
+    historical output (no extra multiply). ``amplitude_kind='field'``
+    rescales by ``dV/Cb`` via
+    ``rfx.api._source_semantics.source_amplitude_scale``, computed AFTER
+    the tracer-safe cb/dV resolution below so the GEO-C3
+    differentiable-material path is preserved unchanged.
     """
     import jax
     i, j, k = position_ijk
@@ -592,6 +600,15 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # This ensures power = ∫(J·E)dV is independent of cell size
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     waveform = (cb / dV) * jax.vmap(waveform_fn)(times)
+
+    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
+    if needs_scale(amplitude_kind, "cb_over_dv"):
+        # only 'field' lands here (scale dV/Cb). Python-level dispatch on
+        # the kind string (issue #571 dossier): cb/dV may be tracers on
+        # the GEO-C3 / mesh-as-design-variable paths, so never gate the
+        # multiply on the scale VALUE.
+        waveform = source_amplitude_scale(
+            amplitude_kind, "cb_over_dv", cb=cb, dV=dV) * waveform
 
     waveform_out = waveform if any_traced else np.array(waveform)
     return (i, j, k, component, waveform_out)

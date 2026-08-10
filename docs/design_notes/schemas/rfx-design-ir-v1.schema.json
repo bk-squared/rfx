@@ -338,14 +338,15 @@
       "properties": {
         "soft_sources": {
           "type": "array",
-          "description": "add_source() entries. Only the three fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
+          "description": "add_source() entries. Only the four fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": [
               "position",
               "component",
-              "waveform"
+              "waveform",
+              "amplitude_kind"
             ],
             "properties": {
               "position": {
@@ -354,6 +355,13 @@
               "component": {
                 "type": "string",
                 "minLength": 1
+              },
+              "amplitude_kind": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What the waveform amplitude means (issue #571): 'current' (amperes, resolution-independent injected power), 'field' (raw E increment), or null for the deprecated per-path legacy meaning. Required despite the builder default because null is itself a meaning (legacy per-path semantics): a codec that defaulted the field away would silently import a current-normalized design with resolution-dependent injected power. The value fence lives in add_source, not here (two-layer policy)."
               },
               "waveform": {
                 "$ref": "#/$defs/waveform_or_null"

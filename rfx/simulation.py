@@ -174,20 +174,66 @@ class SimResult(NamedTuple):
 # Helpers to build source / probe specs
 # ---------------------------------------------------------------------------
 
-def make_source(grid: Grid, position, component, waveform_fn, n_steps):
+def _source_cell_cb(grid: Grid, idx, materials):
+    """Cb = (dt/eps)/(1 + sigma*dt/(2*eps)) at the source cell.
+
+    Single spelling of the coefficient shared by ``make_source`` and
+    ``make_j_source`` (same expression, same operation order, so the
+    ``make_j_source`` output stays bit-identical to its historical value).
+    ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
+    no ``float()`` here.
+    """
+    i, j, k = idx
+    eps = materials.eps_r[i, j, k] * EPS_0
+    sigma = materials.sigma[i, j, k]
+    loss = sigma * grid.dt / (2.0 * eps)
+    return (grid.dt / eps) / (1.0 + loss)
+
+
+def _uniform_cell_volume(grid: Grid) -> float:
+    """dV = dx*dy*dz with missing axes duck-typed to dx (engineering
+    principle 3). A 2D grid is treated as ONE CELL DEEP (dz -> dx), so
+    dV = dx**3 there too — the documented #571 convention
+    (``rfx/api/_source_semantics.py``), not per-unit-length dx**2."""
+    return grid.dx * getattr(grid, "dy", grid.dx) * getattr(grid, "dz", grid.dx)
+
+
+def make_source(grid: Grid, position, component, waveform_fn, n_steps,
+                materials=None, amplitude_kind=None):
     """Create a SourceSpec by precomputing a waveform function (raw E-field add).
 
     WARNING: raw field source causes DC accumulation on PEC surfaces.
     Prefer ``make_j_source`` for resonance detection.
+
+    Native amplitude convention (issue #571): ``'field'`` — ``E += w``.
+    ``amplitude_kind='current'`` rescales the waveform by ``Cb/dV`` via
+    ``rfx.api._source_semantics.source_amplitude_scale`` and REQUIRES
+    ``materials`` (for Cb at the source cell). ``amplitude_kind`` of
+    None or ``'field'`` is bit-identical to the historical output (no
+    multiply is applied at all). ``materials`` is accepted and unused in
+    that legacy/native case.
     """
+    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
     idx = grid.position_to_index(position)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     waveform = jax.vmap(waveform_fn)(times)
+    if needs_scale(amplitude_kind, "raw"):
+        # only 'current' lands here
+        if materials is None:
+            raise ValueError(
+                "make_source(amplitude_kind='current') needs materials "
+                "for the Cb normalization at the source cell")
+        scale = source_amplitude_scale(
+            amplitude_kind, "raw",
+            cb=_source_cell_cb(grid, idx, materials),
+            dV=_uniform_cell_volume(grid))
+        waveform = scale * waveform
     return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
                       component=component, waveform=waveform)
 
 
-def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materials):
+def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materials,
+                  amplitude_kind=None):
     """Create a SourceSpec using current density injection (J source).
 
     Unlike ``make_source``, the waveform is Cb-normalized so that
@@ -197,10 +243,17 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
 
     where Cb = dt / (eps * (1 + sigma*dt/2eps)).
 
-    Note: this is a soft *field* source, not a current-density
-    source.  Injected amplitude depends on local material (eps, sigma)
-    but NOT on cell size.  Power coupling varies with resolution;
-    use Harminv/FFT for mode extraction rather than absolute amplitude.
+    Note (scoped to ``amplitude_kind=None``): this is a soft *field*
+    source, not a current-density source. Injected amplitude depends on
+    local material (eps, sigma) but NOT on cell size. Power coupling
+    varies with resolution; use Harminv/FFT for mode extraction rather
+    than absolute amplitude.
+
+    Native amplitude convention (issue #571): ``'cb'`` — ``E += Cb*w`` —
+    which is NEITHER named kind (the legacy open-uniform third contract).
+    ``amplitude_kind='current'`` rescales by ``1/dV``, ``'field'`` by
+    ``1/Cb``, both via ``rfx.api._source_semantics.source_amplitude_scale``.
+    None is bit-identical to the historical output (no multiply applied).
 
     Parameters
     ----------
@@ -210,13 +263,12 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     waveform_fn : callable(t) -> value
     n_steps : int
     materials : MaterialArrays (for Cb computation at source cell)
+    amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
+    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
     idx = grid.position_to_index(position)
     i, j, k = idx
-    eps = materials.eps_r[i, j, k] * EPS_0
-    sigma = materials.sigma[i, j, k]
-    loss = sigma * grid.dt / (2.0 * eps)
-    cb = (grid.dt / eps) / (1.0 + loss)
+    cb = _source_cell_cb(grid, idx, materials)
 
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     # Cb normalization: the source enters the update equation through
@@ -226,6 +278,13 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     # Power scales as Cb²·dx³ — weaker at fine grids, but Harminv
     # with bandpass filtering reliably extracts modes at all resolutions.
     waveform = cb * jax.vmap(waveform_fn)(times)
+    if needs_scale(amplitude_kind, "cb"):
+        # Python-level dispatch (issue #571 dossier): the scale may be a
+        # tracer ('field' -> 1/Cb with traced materials), so never gate
+        # the multiply on its value.
+        waveform = source_amplitude_scale(
+            amplitude_kind, "cb", cb=cb,
+            dV=_uniform_cell_volume(grid)) * waveform
     return SourceSpec(i=i, j=j, k=k,
                       component=component, waveform=waveform)
 

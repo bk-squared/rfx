@@ -494,6 +494,10 @@ _SOFT_SOURCE_FIELDS: dict[str, _F] = {
     "position": _vec(3),
     "component": _STR,
     "waveform": _WAVEFORM,
+    # issue #571 option 4: recorded so a design document round-trips the
+    # explicit amplitude semantics; None round-trips as the legacy per-path
+    # meaning (and correctly re-emits the deprecation warning on load).
+    "amplitude_kind": _opt(_STR),
 }
 
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
@@ -1005,7 +1009,10 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
     never has to re-derive the intent from a sentinel.
     """
     live = set(live_field_names(_PortEntry))
-    unrecorded = live - set(_LUMPED_PORT_FIELDS)
+    # _PortEntry is shared by both families; a field is recorded if EITHER
+    # family's registry knows it (amplitude_kind is soft-source-only — the
+    # lumped branch below refuses a non-None value it cannot rebuild).
+    unrecorded = live - set(_LUMPED_PORT_FIELDS) - set(_SOFT_SOURCE_FIELDS)
     if unrecorded:
         raise _refuse(
             f"_PortEntry carries fields the design document does not record: "
@@ -1038,6 +1045,13 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
                 }
             )
         else:
+            if getattr(entry, "amplitude_kind", None) is not None:
+                raise _refuse(
+                    f"{what} is a lumped port but carries amplitude_kind="
+                    f"{entry.amplitude_kind!r}; add_port() cannot set that "
+                    f"field, so the entry was not built through the public "
+                    f"API and cannot be rebuilt through it"
+                )
             lumped.append(
                 {
                     name: field.dump(getattr(entry, name), f"{what}.{name}")
@@ -1743,7 +1757,8 @@ def simulation_from_design(document: Any) -> Any:
             what=f"excitations.soft_sources[{index}]",
         )
         sim.add_source(
-            values["position"], values["component"], waveform=values["waveform"]
+            values["position"], values["component"], waveform=values["waveform"],
+            amplitude_kind=values["amplitude_kind"],
         )
 
     for index, payload in enumerate(

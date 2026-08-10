@@ -103,6 +103,16 @@ sim.add_source(
 
 Use `add_source` for resonance characterization (Harminv) where port loading would suppress the ring-down signal.
 
+What the waveform amplitude *means* is controlled by `amplitude_kind`
+(issue #571): `'current'` — amperes, realized as `E += Cb·I/dV` on every
+path and boundary (resolution-independent injected power, the future
+default) — or `'field'` — a raw E-field increment `E += w(t)`. Omitting it
+keeps a deprecated per-path legacy meaning (raw add on uniform+PEC,
+`Cb`-normalized add on uniform+CPML/UPML, current on non-uniform meshes)
+and emits one `DeprecationWarning` per simulation naming which one applies.
+To migrate an open-boundary uniform script exactly, multiply the waveform
+amplitude by the cell volume `dV` and pass `amplitude_kind='current'`.
+
 ---
 
 ## Polarized source (`add_polarized_source`)

@@ -6,6 +6,35 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — explicit soft-source amplitude semantics: `add_source(..., amplitude_kind=)` (#565/#571)
+
+- `add_source` (and `add_polarized_source`) gain `amplitude_kind='field'|'current'|None`.
+  Explicit kinds are boundary- and mesh-independent: `'current'` = amperes,
+  `E += Cb·I/dV` on every path (the non-uniform path's native Meep-style
+  convention, resolution-independent injected power, and the future default);
+  `'field'` = raw E-field increment `E += w(t)` on every path. With
+  `amplitude_kind='current'` the uniform and non-uniform builders produce
+  EQUAL traces — the boundary-dependent cross-path factor table disappears.
+- `None` (the default) keeps the legacy per-path meaning bit-identically for
+  the deprecation window and emits one `DeprecationWarning` per `Simulation`
+  naming this simulation's concrete legacy meaning (uniform+PEC raw add /
+  uniform+CPML/UPML `Cb`-normalized add / non-uniform current). The
+  open-uniform legacy contract is named by NEITHER kind; its exact migration
+  is waveform amplitude ×`dV` with `amplitude_kind='current'`. Plan:
+  `amplitude_kind` required in 1.8, default `'current'` in 1.9.
+- Conversion lives in one module (`rfx/api/_source_semantics.py`); the
+  source-building helpers declare their native coefficient (`make_source`
+  'raw', `make_j_source` 'cb', `make_current_source` 'cb_over_dv') and
+  dispatch on the Python-level kind — never on a possibly-traced scale value,
+  so `jax.grad` paths are unaffected. 2D grids are treated as one cell deep
+  (`dV = dx·dy·dz_one_cell`).
+- The field is design state, so every serialization surface carries it: the
+  design IR records it on `soft_sources` (schema + registry + round-trip
+  test pinned on the non-default value; a lumped entry carrying a non-None
+  `amplitude_kind` is refused at export since `add_port` cannot set it), and
+  the config CLI accepts an optional `amplitude_kind:` key on `type: source`
+  entries.
+
 ### Fixed — reproducibility-audit corrections (independent clean-room walk-through, 2026-08-09)
 
 - `validation/tmtt_paper/README.md` no longer claims a blanket `SMOKE=1`

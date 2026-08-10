@@ -246,6 +246,7 @@ def _check_smoke(report: _Report) -> None:
             (0.01, 0.01, 0.01),
             "ez",
             waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+            amplitude_kind="field",
         )
         sim.add_probe((0.012, 0.01, 0.01), "ez")
 

@@ -268,6 +268,39 @@ def test_missing_required_key_raises():
         simulation_from_dict({"domain": {"x": 0.01, "y": 0.01, "z": 0.01}})
 
 
+def test_soft_source_amplitude_kind_passthrough():
+    cfg = {
+        "frequency": {"freq_max": 1e10},
+        "domain": {"x": 0.01, "y": 0.01, "z": 0.01},
+        "boundary": "pec",
+        "dx": 0.001,
+        "sources": [
+            {"type": "source", "position": [0.005, 0.005, 0.005],
+             "component": "ez", "amplitude_kind": "current",
+             "waveform": {"type": "gaussian_pulse", "f0": 5e9}},
+        ],
+    }
+    sim = simulation_from_dict(cfg)
+    assert sim._ports[0].amplitude_kind == "current"
+
+
+def test_soft_source_without_amplitude_kind_stays_legacy():
+    cfg = {
+        "frequency": {"freq_max": 1e10},
+        "domain": {"x": 0.01, "y": 0.01, "z": 0.01},
+        "boundary": "pec",
+        "dx": 0.001,
+        "sources": [
+            {"type": "source", "position": [0.005, 0.005, 0.005],
+             "component": "ez",
+             "waveform": {"type": "gaussian_pulse", "f0": 5e9}},
+        ],
+    }
+    with pytest.warns(DeprecationWarning, match="amplitude_kind"):
+        sim = simulation_from_dict(cfg)
+    assert sim._ports[0].amplitude_kind is None
+
+
 # --------------------------------------------------------------------------
 # Full run — slow, opt-in. Confirms YAML run == direct-build run.
 # --------------------------------------------------------------------------

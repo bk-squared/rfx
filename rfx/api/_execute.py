@@ -970,9 +970,13 @@ class _ExecuteMixin:
         for pe in self._ports:
             if pe.impedance == 0.0:
                 from rfx.simulation import make_j_source
+                # forward() uniform route: Cb-normalized helper regardless
+                # of boundary (pre-existing). amplitude_kind (issue #571)
+                # rescales inside the helper; None = legacy bit-identical.
                 sources.append(
                     make_j_source(grid, pe.position, pe.component,
-                                  pe.waveform, n_steps, materials)
+                                  pe.waveform, n_steps, materials,
+                                  amplitude_kind=pe.amplitude_kind)
                 )
                 continue
 
@@ -2040,7 +2044,7 @@ class _ExecuteMixin:
             # both for the source-cell normalisation).
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
-                materials_concrete,
+                materials_concrete, amplitude_kind=pe.amplitude_kind,
             )
             sources.append(SourceSpec(
                 i=int(si), j=int(sj), k=int(sk),

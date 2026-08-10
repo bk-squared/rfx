@@ -1087,6 +1087,13 @@ class _PortEntry:
     # behaviour, byte-identical. Diagonal S_jj always stays on the legacy
     # path either way.
     reference_plane_cells: int | None = None
+    # Soft-source amplitude semantics (issue #571, option 4):
+    # 'field' | 'current' | None (= legacy per-path default, deprecated).
+    # Only meaningful when impedance == 0.0 (add_source soft sources); port
+    # entries (impedance > 0) keep their own port-normalized waveform
+    # contract and never set this. Defaulted so every non-add_source
+    # _PortEntry construction site is untouched.
+    amplitude_kind: str | None = None
 
 
 @dataclass(frozen=True)

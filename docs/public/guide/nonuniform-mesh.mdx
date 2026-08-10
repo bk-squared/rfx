@@ -299,4 +299,11 @@ signatures. Use `make_current_source` when constructing the low-level source
 array directly; the high-level `Simulation` path performs its own source
 registration and scaling.
 
+Soft-source amplitude semantics: on this path the `add_source` waveform is
+natively a **current in amperes** (`E += Cb·I/dV`, resolution-independent
+injected power). Pass `add_source(..., amplitude_kind='current')` to say so
+explicitly — the bare per-path default is deprecated (issue #571), and an
+explicit `amplitude_kind` means the same amplitude on the uniform and
+non-uniform builders.
+
 ---

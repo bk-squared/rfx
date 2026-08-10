@@ -549,11 +549,19 @@ def test_record_field_registry_is_pinned(cls, fields):
 
 
 def test_port_entry_registry_is_pinned():
-    """``_PortEntry`` splits across two sections, so it is pinned separately."""
+    """``_PortEntry`` splits across two sections, so it is pinned separately.
+
+    Every live field must be recorded by at least one family's registry.
+    ``amplitude_kind`` is the one soft-source-only field (add_port cannot set
+    it; the exporter refuses a lumped entry carrying a non-None value) — any
+    new asymmetry between the registries must be a deliberate decision here.
+    """
     from rfx.interop._design import _LUMPED_PORT_FIELDS, _SOFT_SOURCE_FIELDS
 
-    assert set(live_field_names(_PortEntry)) == set(_LUMPED_PORT_FIELDS)
-    assert set(_SOFT_SOURCE_FIELDS) <= set(_LUMPED_PORT_FIELDS)
+    assert set(live_field_names(_PortEntry)) == (
+        set(_LUMPED_PORT_FIELDS) | set(_SOFT_SOURCE_FIELDS)
+    )
+    assert set(_SOFT_SOURCE_FIELDS) - set(_LUMPED_PORT_FIELDS) == {"amplitude_kind"}
 
 
 def test_waveform_registry_is_pinned():
@@ -1206,6 +1214,43 @@ def test_round_trip_preserves_the_tfsf_method_lane():
     restored = simulation_from_design(document)
     assert restored._tfsf.method == "methodB"
     assert restored._tfsf.angle_deg == 30.0
+
+
+def test_round_trip_preserves_soft_source_amplitude_kind():
+    """``amplitude_kind`` is design state (issue #571): 'current' means the
+    waveform amplitude is amperes with resolution-independent injected power;
+    null means the deprecated per-path legacy meaning. Pinned on the
+    NON-default value: a codec that defaulted the field away would still
+    round-trip a legacy design cleanly while silently importing a
+    current-normalized design with resolution-dependent injected power."""
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim.add_source(
+        (0.010, 0.010, 0.010), "ez",
+        waveform=GaussianPulse(f0=5e9), amplitude_kind="current",
+    )
+
+    document = design_to_dict(sim)
+    assert document["excitations"]["soft_sources"][0]["amplitude_kind"] == "current"
+    restored = simulation_from_design(document)
+    assert restored._ports[0].amplitude_kind == "current"
+
+
+def test_refuses_lumped_port_carrying_amplitude_kind():
+    """``add_port`` cannot set ``amplitude_kind``, so a lumped entry carrying
+    one was not built through the public API and cannot be rebuilt through it."""
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim._ports.append(
+        _PortEntry(
+            position=(0.010, 0.010, 0.010),
+            component="ez",
+            impedance=50.0,
+            waveform=GaussianPulse(f0=5e9),
+            amplitude_kind="current",
+        )
+    )
+
+    with pytest.raises(UnsupportedDesignFeature, match="amplitude_kind"):
+        design_to_dict(sim)
 
 
 def test_import_does_not_widen_the_tfsf_boundary_fence():

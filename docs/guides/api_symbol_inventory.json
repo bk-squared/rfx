@@ -1233,7 +1233,8 @@
         "component",
         "waveform_fn",
         "n_steps",
-        "materials"
+        "materials",
+        "amplitude_kind"
       ]
     },
     "make_nonuniform_grid": {
@@ -1283,7 +1284,9 @@
         "position",
         "component",
         "waveform_fn",
-        "n_steps"
+        "n_steps",
+        "materials",
+        "amplitude_kind"
       ]
     },
     "maximize_bandwidth": {
@@ -2345,7 +2348,8 @@
     "add_polarized_source": [
       "position",
       "polarization",
-      "waveform"
+      "waveform",
+      "amplitude_kind"
     ],
     "add_port": [
       "position",
@@ -2372,7 +2376,8 @@
     "add_source": [
       "position",
       "component",
-      "waveform"
+      "waveform",
+      "amplitude_kind"
     ],
     "add_tfsf_source": [
       "f0",

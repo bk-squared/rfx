@@ -785,6 +785,7 @@ class Simulation(
         component: str = "ez",
         *,
         waveform=None,
+        amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
 
@@ -796,77 +797,81 @@ class Simulation(
         content, ~1e-4). This prevents static charge accumulation on PEC
         surfaces.
 
-        .. warning::
-           **The waveform amplitude means different physical quantities on the
-           uniform and non-uniform paths**, so absolute field amplitudes are not
-           comparable between them.
-
-           The invariant: **the non-uniform path divides by the cell volume; the
-           uniform path never does.** On a profiled mesh the amplitude is treated
-           as a CURRENT IN AMPERES and converted as ``E += (dt / eps) * I / dV``
-           for resolution-independent injected power
-           (``rfx.nonuniform.make_current_source``, Meep's convention). On the
-           uniform mesh it is a field quantity, and *which* field quantity is
-           BOUNDARY-DEPENDENT (``rfx/runners/uniform.py``): a closed (PEC) domain
-           takes a raw field add, an open (CPML/UPML) domain goes through
-           ``make_j_source`` and is already ``Cb = dt/eps`` normalized.
-
-           So the cross-path amplitude ratio has two values, both measured at
-           dx = 1 mm on an otherwise identical mesh:
-
-           ===================  =========================  ==================
-           uniform boundary     NU / uniform ratio         at dx = 1 mm
-           ===================  =========================  ==================
-           ``pec`` (closed)     ``dt / (eps0 * dV)``       2.15e8
-           ``cpml`` / ``upml``  ``1 / dV``                 1.00e9
-           ===================  =========================  ==================
-
-           An earlier revision of this warning gave only the PEC factor and
-           stated it unconditionally; on an open domain — rfx's more common case
-           — that is wrong by ``dt/eps0``, a measured 4.64x. Either factor is
-           large enough to look like an instability when a script is ported
-           between paths, which is the reading issue #565 recorded.
-
-           Frequencies, S-parameters (normalized by a reference run) and field
-           ratios are unaffected **in the linear regime**; a Kerr (``chi3``)
-           material makes permittivity depend on ``|E|^2``, so there the absolute
-           drive does reach the phase velocity. Absolute probe traces, field
-           snapshots, flux and NTFF outputs are reported as-is and are affected
-           either way.
-
-           Measured cross-path agreement after removing the applicable factor,
-           all four combinations — the fourth is the one to read:
-
-           ==================  =====================  ====================
-           uniform boundary    ``subpixel_smoothing``  agreement (of scale)
-           ==================  =====================  ====================
-           ``pec``             off                    1.5e-5
-           ``pec``             on                     9.5e-6
-           ``cpml``            off                    1.1e-4
-           ``cpml``            **on**                 **1.98e-2**
-           ==================  =====================  ====================
-
-           **The open-boundary + subpixel case does NOT reduce**: a systematic
-           0.18 % amplitude error and 2 % of the waveform, stable across a 4x
-           record length. That is an open defect (issue #582), not a tolerance —
-           so do not read the three good rows as clearance for subpixel
-           smoothing on an open domain, which is the combination issue #565 was
-           about.
-
-           ``tests/test_nonuniform_uniform_end_to_end_reduction.py`` pins all
-           four (the last as ``xfail(strict=True)``, so it announces itself when
-           fixed). See issue #571 for whether to unify the two source
-           conventions.
-
         Parameters
         ----------
         position : (x, y, z) in metres
         component : "ex", "ey", or "ez"
         waveform : excitation pulse
             (default: ``GaussianPulse(f0=freq_max/2, bandwidth=0.8)``)
+        amplitude_kind : 'field' | 'current' | None
+            What the waveform amplitude MEANS — issue #571. Boundary- and
+            mesh-independent once explicit:
+
+            - ``'current'``: the amplitude is a current I(t) in amperes,
+              realized as ``E += Cb * I / dV`` on every path and boundary
+              (``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))`` at the source cell,
+              ``dV`` = local cell volume). Resolution-independent injected
+              power; Meep's convention; the future default.
+            - ``'field'``: the amplitude is a raw E-field increment per
+              step, ``E += w(t)`` on every path and boundary.
+
+            Cell-volume convention: ``dV = dx * dy * dz`` at the source
+            cell; a 2D grid is treated as ONE CELL DEEP (``dz`` one cell,
+            duck-typed to ``dx``), so ``dV = dx**3`` on a cubic 2D grid,
+            not the per-unit-length ``dx**2``
+            (``rfx/api/_source_semantics.py``).
+
+            .. deprecated:: 1.7
+               ``None`` (the current default) keeps the legacy PER-PATH
+               meaning and emits one :class:`DeprecationWarning` per
+               Simulation naming what it resolves to on this simulation:
+               a CURRENT in amperes on a profiled (non-uniform) mesh
+               (identical to ``'current'``); on the uniform mesh a raw
+               field add for ``pec`` (identical to ``'field'``) or a
+               ``Cb``-normalized add for ``cpml``/``upml`` — which is
+               named by NEITHER kind. Cross-path amplitude ratios
+               ``dt/(eps0*dV)`` (pec) and ``1/dV`` (open), measured
+               2.15e8 and 1.00e9 at dx = 1 mm
+               (``tests/test_nonuniform_uniform_end_to_end_reduction.py``
+               pins both). **Exact migration for the open-uniform legacy
+               contract**: multiply your waveform amplitude by the cell
+               volume ``dV`` and pass ``amplitude_kind='current'`` —
+               algebra ``Cb*(w*dV)/dV == Cb*w``, exact up to one float
+               multiply/divide pair (not bit-identical). From 1.8
+               ``amplitude_kind`` is required; from 1.9 the default
+               becomes ``'current'``.
+
+            Route note (pre-existing, unchanged): the ``forward()``
+            uniform route uses the ``Cb``-normalized helper regardless of
+            boundary, so ``None`` there means the ``Cb`` contract even on
+            ``pec``; explicit kinds behave identically on ``run()`` and
+            ``forward()``.
+
+            The open-boundary + ``subpixel_smoothing`` cross-path residual
+            (0.18 % amplitude, issue #582) is a solver defect independent
+            of this parameter.
         """
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        from rfx.api._source_semantics import (
+            validate_amplitude_kind, legacy_kind_description)
+        validate_amplitude_kind(amplitude_kind)
+        if amplitude_kind is None and not getattr(
+                self, "_amplitude_kind_warned", False):
+            self._amplitude_kind_warned = True
+            import warnings
+            _is_nu = (self._dx_profile is not None
+                      or self._dy_profile is not None
+                      or self._dz_profile is not None)
+            warnings.warn(
+                "add_source(..., amplitude_kind=None): on this simulation "
+                "the waveform amplitude is "
+                f"{legacy_kind_description(_is_nu, self._boundary)}. "
+                "This per-path default is deprecated (issue #571): pass "
+                "amplitude_kind='current' (amperes, resolution-independent "
+                "power — the future default) or amplitude_kind='field' (raw "
+                "E increment). amplitude_kind becomes required in 1.8.",
+                DeprecationWarning, stacklevel=2)
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
@@ -875,6 +880,7 @@ class Simulation(
             position=position, component=component,
             impedance=0.0,  # 0 = no port impedance (soft source)
             waveform=waveform, extent=None,
+            amplitude_kind=amplitude_kind,
         ))
         return self
 
@@ -884,6 +890,7 @@ class Simulation(
         *,
         polarization: str | tuple = "ez",
         waveform=None,
+        amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a polarized point source.
 
@@ -899,13 +906,18 @@ class Simulation(
               the documented linear-polarization scope
             - "slant45" — 45° linear (Ex = Ey)
         waveform : excitation pulse (default: GaussianPulse)
+        amplitude_kind : 'field' | 'current' | None
+            Threaded through to every internal :meth:`add_source` call —
+            see ``add_source`` for the semantics and the ``None``
+            deprecation (issue #571).
         """
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
         if isinstance(polarization, str):
             if polarization in ("ex", "ey", "ez"):
-                self.add_source(position, polarization, waveform=waveform)
+                self.add_source(position, polarization, waveform=waveform,
+                                amplitude_kind=amplitude_kind)
                 return self
             pol_map = {
                 "circular": (1.0, 1j),
@@ -940,13 +952,15 @@ class Simulation(
                 wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
                         amplitude=waveform.amplitude * float(jx.real),
                         cutoff=getattr(waveform, 'cutoff', 3.0))
-                self.add_source(position, "ex", waveform=wx)
+                self.add_source(position, "ex", waveform=wx,
+                                amplitude_kind=amplitude_kind)
             if abs(float(jy.real)) > 1e-10:
                 from rfx.sources.sources import GaussianPulse as GP
                 wy = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
                         amplitude=waveform.amplitude * float(jy.real),
                         cutoff=getattr(waveform, 'cutoff', 3.0))
-                self.add_source(position, "ey", waveform=wy)
+                self.add_source(position, "ey", waveform=wy,
+                                amplitude_kind=amplitude_kind)
         else:
             # Complex Jones — build carrier-modulated components.
             from rfx.sources.sources import ModulatedGaussian as MG
@@ -954,7 +968,8 @@ class Simulation(
             if abs(jx) > 1e-10:
                 wx = MG(f0=waveform.f0, bandwidth=waveform.bandwidth,
                         amplitude=waveform.amplitude * float(abs(jx)))
-                self.add_source(position, "ex", waveform=wx)
+                self.add_source(position, "ex", waveform=wx,
+                                amplitude_kind=amplitude_kind)
             # Ey component (90° phase shift for circular)
             if abs(jy) > 1e-10:
                 # Phase of jy relative to jx
@@ -970,7 +985,8 @@ class Simulation(
                     envelope = _jnp.exp(-((t - t0) / tau)**2)
                     carrier = _jnp.cos(2.0 * _jnp.pi * waveform.f0 * t + float(phase))
                     return amp_y * carrier * envelope
-                self.add_source(position, "ey", waveform=CustomWaveform(func=_ey_func))
+                self.add_source(position, "ey", waveform=CustomWaveform(func=_ey_func),
+                                amplitude_kind=amplitude_kind)
 
         return self
 

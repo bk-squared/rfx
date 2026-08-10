@@ -353,17 +353,30 @@ def _run_subgridded_once(
             # Soft source — normalization depends on boundary type:
             # PEC: raw field add (matches make_source in uniform runner)
             # CPML/UPML: J-source Cb normalized (matches make_j_source)
+            # amplitude_kind (issue #571) rides on top: the native
+            # coefficient stays boundary-selected exactly as before; an
+            # explicit kind only rescales the waveform. kind=None is the
+            # legacy bit-identical no-op (needs_scale dispatches on the
+            # Python-level kind string — never on a scale value).
+            from rfx.api._source_semantics import (
+                needs_scale, source_amplitude_scale)
             idx = _pos_to_fine_idx(pe.position)
             i, j, k = idx
             raw_waveform = jax.vmap(pe.waveform)(times)
-            if sim._boundary in ("cpml", "upml"):
+            native = "cb" if sim._boundary in ("cpml", "upml") else "raw"
+            if native == "cb" or needs_scale(pe.amplitude_kind, native):
                 eps = float(mats_f.eps_r[i, j, k]) * EPS_0
                 sigma_val = float(mats_f.sigma[i, j, k])
                 loss = sigma_val * dt / (2.0 * eps)
                 cb = (dt / eps) / (1.0 + loss)
-                waveform = cb * raw_waveform
             else:
-                waveform = raw_waveform
+                cb = None  # not needed on the raw no-conversion path
+            waveform = cb * raw_waveform if native == "cb" else raw_waveform
+            if needs_scale(pe.amplitude_kind, native):
+                # dV on the fine grid: cubic cells, one cell deep is moot
+                # (3D); dx_f**3 = dx*dy*dz duck convention (#571).
+                waveform = source_amplitude_scale(
+                    pe.amplitude_kind, native, cb=cb, dV=dx_f ** 3) * waveform
             sources_f.append(
                 (
                     i,

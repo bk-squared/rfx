@@ -206,12 +206,20 @@ def _add_sources(sim: Simulation, sources_cfg) -> None:
         waveform = waveform_from_config(waveform_cfg) if waveform_cfg else None
 
         if stype == "source":
-            extra = set(entry) - {"type", "position", "component", "waveform"}
+            extra = set(entry) - {
+                "type", "position", "component", "waveform", "amplitude_kind",
+            }
             if extra:
                 raise KeyError(
                     f"{ctx}: soft source got unsupported key(s) {sorted(extra)}"
                 )
-            sim.add_source(position, component, waveform=waveform)
+            amplitude_kind = entry.get("amplitude_kind")
+            if amplitude_kind is not None:
+                amplitude_kind = str(amplitude_kind)
+            sim.add_source(
+                position, component, waveform=waveform,
+                amplitude_kind=amplitude_kind,
+            )
             continue
 
         # Lumped port.

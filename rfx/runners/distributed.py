@@ -1343,12 +1343,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             materials = setup_lumped_port(grid, lp, materials)
             sources.append(make_port_source(grid, lp, materials, n_steps))
         elif pe.impedance == 0.0:
+            # issue #571: thread amplitude_kind; helper stays boundary-selected.
             if sim._boundary == "cpml":
                 sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials))
+                                             pe.waveform, n_steps, materials,
+                                             amplitude_kind=pe.amplitude_kind))
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps))
+                                           pe.waveform, n_steps,
+                                           materials=materials,
+                                           amplitude_kind=pe.amplitude_kind))
     for pe in sim._probes:
         probes.append(make_probe(grid, pe.position, pe.component))
 
