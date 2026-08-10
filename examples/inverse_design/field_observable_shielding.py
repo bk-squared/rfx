@@ -228,7 +228,8 @@ def main() -> None:
         "descent did not reduce worst-case leakage -- check LR/BETA"
     )
 
-    # ---- PART 4: ring-down settling witness (CLAUDE.md rule) --------------
+    # ---- PART 4: ring-down settling witness (repo convention: quote
+    # end-of-run energy in dB vs post-source peak; -40 dB bar) -----------
     print("\n[4/5] Settling witness on the FINAL design (mandatory before "
           "any frequency-domain number above is trusted) ...")
     final_result = sim.forward(
