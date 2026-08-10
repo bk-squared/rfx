@@ -7,13 +7,23 @@ now use the same conditional dtype idiom as compute_msl_s_matrix.
 
 x64 is scoped per-test via a context manager — NEVER flipped at module
 level (process-global; reds every same-process pytest shard).
+
+``jax.experimental.enable_x64`` was removed in newer JAX releases (this
+venv: JAX 0.10.2); the fallback below is the same scoped-flip-with-restore
+shim tests/_x64_compat.py provides, applied inline here (folded pre-
+existing fix, discovered while landing #579's own tests/_x64_compat usage
+— see the #579 PR body).
 """
-import jax
 import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
 from rfx.probes.probes import init_dft_probe, init_dft_plane_probe
+
+try:
+    from jax import enable_x64
+except ImportError:  # older JAX (< ~0.4.31) -- see tests/_x64_compat.py
+    from tests._x64_compat import enable_x64
 
 
 def _grid():
@@ -36,7 +46,7 @@ def test_accumulators_are_complex64_by_default():
 def test_accumulators_follow_x64_when_enabled():
     """Under scoped x64 the accumulators must be complex128, so the scan
     carry stays dtype-consistent and an f64 referee can run."""
-    with jax.experimental.enable_x64():
+    with enable_x64():
         g = _grid()
         freqs = jnp.asarray([5e9])
         p = init_dft_probe(g, (0.005, 0.005, 0.005), "ez", freqs)

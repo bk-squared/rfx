@@ -13,7 +13,8 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   `dft_field(names)` is a result accessor over `result.dft_planes` (a
   single name returns the raw `(n_freqs, n1, n2)` complex accumulator; a
   list of names stacks into `(n_names, n_freqs, n1, n2)` when shapes
-  match, else returns a `dict[name] -> array`). `field_energy(names)` and
+  match, else raises `ValueError` pointing at `stack=False`, which opts
+  into a `dict[name] -> array` return instead). `field_energy(names)` and
   `field_softmax(names, beta=)` are objective factories in the
   `rfx.optimize_objectives` factory style (`callable(Result) -> scalar`,
   JAX-differentiable), for `sum(|field|**2)` and a temperature-controlled
@@ -31,7 +32,7 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   component) into one worst-case-leakage scalar minimized via
   `jax.grad` descent.
 
-### **BREAKING** — two new fail-loud fences for registered DFT plane probes on distributed lanes (#579)
+### Changed — two new fail-loud fences for registered DFT plane probes on distributed lanes (**BEHAVIOUR CHANGE**) (#579)
 
 - `forward(distributed=True)` and `run(devices=[...])` (2+ devices) now
   raise `NotImplementedError` when any `add_dft_plane_probe(...)` plane is

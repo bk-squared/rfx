@@ -26,7 +26,10 @@ the uniform AND non-uniform meshes, for both ``run()`` and ``forward()``
 only reads ``result.dft_planes``, so it works unmodified on any of the four
 combinations. The exceptions are the two DISTRIBUTED lanes, which are
 fenced fail-loud (see "Fail-loud fences" below) because neither sharded
-runner accumulates DFT-plane fields.
+runner accumulates DFT-plane fields. The per-name value is duck-typed
+(``.accumulator`` if present, else the value itself), so a name-keyed dict
+of bare arrays (e.g. a vmap-batched sweep result) works too, not just
+``DFTPlaneProbe`` objects.
 
 What stays on the AD tape
 --------------------------
@@ -102,6 +105,12 @@ def _select_planes(result, names, caller: str) -> dict:
     specific missing name(s) when the result has planes but not all of the
     requested ones -- both in the ``optimize_objectives`` error style (name
     the field that's missing and the call that would populate it).
+
+    Duck-types the per-name value: ``DFTPlaneProbe``-like objects (an
+    ``.accumulator`` attribute, from ``run()``/``forward()``) and bare
+    arrays (e.g. a vmap-batched sweep result whose ``dft_planes`` dict
+    carries raw stacked arrays rather than probe objects) are both
+    accepted -- ``getattr(value, "accumulator", value)``.
     """
     planes = getattr(result, "dft_planes", None)
     if not planes:
@@ -124,7 +133,7 @@ def _select_planes(result, names, caller: str) -> dict:
             "passed (or the auto-generated 'component_axis_index' default) to "
             "the matching add_dft_plane_probe(...) call."
         )
-    return {n: jnp.asarray(planes[n].accumulator) for n in name_list}
+    return {n: jnp.asarray(getattr(planes[n], "accumulator", planes[n])) for n in name_list}
 
 
 def dft_field(
@@ -147,9 +156,17 @@ def dft_field(
         but only when every requested plane has the same
         ``(n_freqs, n1, n2)`` shape (planes at different axes/coordinates
         commonly do not, e.g. a yz-plane vs an xz-plane monitor). When the
-        shapes differ, or when ``stack=False``, the accessor instead
-        returns ``dict[name] -> array`` (per-name dict form) so callers with
-        heterogeneous planes are never silently truncated or broadcast.
+        shapes differ, stacking is impossible and the accessor RAISES
+        ``ValueError`` naming the mismatched shapes and pointing at
+        ``stack=False``; it never silently truncates or broadcasts. Pass
+        ``stack=False`` explicitly to opt into the per-name
+        ``dict[name] -> array`` form instead (also the unconditional return
+        form when *names* is a sequence and ``stack=False``, even if the
+        shapes happen to match). Mixed-dtype stacking (e.g. a complex64
+        plane alongside a complex128 one, possible if planes were
+        registered under different ``jax_enable_x64`` states) follows
+        ordinary ``jnp.stack`` dtype promotion -- the result takes the
+        wider dtype.
 
     Returns
     -------
@@ -161,8 +178,8 @@ def dft_field(
     Raises
     ------
     ValueError
-        If *result* carries no ``dft_planes`` at all, or is missing one of
-        the requested *names*, or (list form, ``stack=True``) the requested
+        If *result* carries no ``dft_planes`` at all, is missing one of the
+        requested *names*, or (list form, ``stack=True``) the requested
         planes' shapes do not match -- naming the fix in each case.
     """
     single = isinstance(names, str)
@@ -250,11 +267,41 @@ def field_softmax(
         pattern: register one plane per physical monitor location, then
         soft-max over all of them at once for a single worst-case scalar.
     beta : float
-        Soft-max sharpness (default 1.0). Must be positive.
+        Soft-max sharpness (default 1.0). Must be positive, and MUST be
+        scale-matched to the field magnitude -- see the warning below.
 
-    Returns
-    -------
-    callable(Result) -> scalar (JAX-differentiable)
+    .. warning::
+        **beta must be scale-matched to your |field|**2** magnitude, not
+        left at the default.** ``logsumexp(beta*vals)/beta`` equals
+        ``log(count)/beta + (a term that depends on vals)`` where
+        ``count = n_freqs * n1 * n2`` summed over every requested plane; if
+        ``beta`` is too small for the actual ``|field|**2`` scale, the
+        ``log(count)/beta`` CONSTANT (independent of your design variable)
+        dominates the objective and swallows the real signal -- both the
+        objective value and its gradient measure rounding noise in that
+        constant, not physics, and can coincidentally still pass a single
+        finite-difference check while failing at a different step size
+        (rfx's own DFT-plane accumulators commonly sit around
+        ``|field|**2`` ~1e-10 to 1e-22 depending on geometry/normalization,
+        the same tiny-absolute-unit convention documented elsewhere for
+        NTFF power, e.g. ``maximize_directivity``'s ~1e-27 note -- so
+        ``beta=1.0`` is almost always wrong). Pick beta empirically: measure
+        ``max(|field|**2)`` once (e.g. via :func:`dft_field` +
+        ``jnp.max(jnp.abs(x)**2)``) at a representative design point, and
+        choose beta so ``beta * max(|field|**2)`` is at least a few units
+        (pushes past the ``log(count)`` constant) -- see
+        ``examples/inverse_design/field_observable_shielding.py``'s own
+        ``BETA`` comment for a worked, measured example.
+    .. warning::
+        **Top-end overflow is a real, undocumented-by-JAX failure mode.**
+        ``beta * vals`` is computed as a plain array BEFORE
+        ``jax.nn.logsumexp`` gets to apply its internal max-subtraction
+        stabilization; if ``beta * max(vals)`` itself overflows the
+        working dtype's range (~3.4e38 for float32, ~1.8e308 for float64 --
+        measured: ``beta=1e40`` against ``vals`` ~1e-10 already returns
+        ``nan``, while ``beta=1e30`` on the same ``vals`` is fine), the
+        result is silently ``nan``, not a large-but-finite number. Do not
+        pick beta by "bigger is always safer" -- there is a ceiling.
     """
     if beta <= 0.0:
         raise ValueError(f"field_softmax: beta must be positive, got {beta}")

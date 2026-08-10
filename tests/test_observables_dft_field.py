@@ -21,11 +21,17 @@ Coverage:
 
 FALSIFIER RITUAL: before trusting the FD-vs-AD gates below, a throwaway
 `jax.lax.stop_gradient` was inserted on the DFT-plane accumulator inside a
-scratch copy of the material-leg objective and the gate was re-run -- AD
-grad collapsed to ~0.0 while the FD reference stayed finite, i.e. the gate
-DOES go red when the tape is actually severed. The red output is saved at
-scratchpad/i579_falsifier_red.txt (not committed here -- see the PR body);
-the throwaway change was reverted immediately after.
+scratch copy of the material-leg objective (field_energy, alpha0=2.0) and
+the gate was re-run: AD grad went to EXACTLY 0.0 while the FD reference
+stayed finite at -7.7177063137973e-09 -- i.e. the gate DOES go red when
+the tape is actually severed (see the #579 PR body for the full captured
+output). The throwaway change was reverted immediately after and verified
+clean (grep + git status) before this file's tests were trusted green.
+
+BETA CALIBRATION NOTE (the softmax gates below): an initial beta=1.0 on
+these two tests passed by COINCIDENCE, not physics -- see
+`_SOFTMAX_BETA`'s comment for the measured counter-example (h=0.01 read
+18.9% relative error with the AD gradient unchanged) and the fix.
 """
 
 from __future__ import annotations
@@ -64,12 +70,36 @@ _SLAB_HI_M = (18 * _DX, _NY * _DX, _NZ * _DX)
 _PIXEL_POS_M = (14 * _DX, 10 * _DX, 10 * _DX)  # geometry-leg single design pixel
 _N_STEPS = 160
 _FD_H = 0.02
+# field_softmax needs beta scale-matched to the field magnitude (see
+# rfx.observables.field_softmax's docstring warning) -- this sim's
+# max|field|^2 measures ~5e-10 to 5.4e-10 on both legs, with
+# count = n_freqs*n1*n2 = 1*31*31 = 961 elements on the single registered
+# plane, so log(count)/beta ~ 6.87/beta is the CONSTANT (design-variable-
+# independent) floor logsumexp(beta*vals)/beta never drops below. At
+# beta=1.0 that constant totally dominates: the objective sits at
+# ~100.000002% of log(961), both AD and FD differentiate rounding noise in
+# that constant rather than physics, and the two coincidentally agreed at
+# h=0.02 (< 5% rel_err) while DISAGREEING at h=0.01 (18.9% rel_err, same
+# AD value) -- proof the original green was luck, not a real measurement.
+# Measured sweep (geometry leg, h=0.02, same sim): beta=1e9 -> 0.257%,
+# beta=1e10 -> 0.177%, beta=1e11 -> 0.112% rel_err, monotonically
+# tightening as beta pushes past the log(count)/beta regime toward the
+# true max (beta*max(vals) ~ 1e11*5e-10 = 50, comfortably >> log(961)~6.87
+# and comfortably below the ~3.4e38 float32 overflow ceiling the
+# docstring warns about). beta=1e11 is used below, and re-verified across
+# THREE h values (not one) so a future coincidental-rounding regression
+# cannot slip back in unnoticed.
+_SOFTMAX_BETA = 1e11
+_SOFTMAX_FD_H_VALUES = (0.01, 0.02, 0.04)
 # A single-Yee-cell material perturbation (the geometry/topology leg) has a
-# proportionally tiny effect on a bulk plane-energy sum (~1e-10 measured) —
-# real, FD-matching signal, not noise. The floor only needs to catch an
-# actually-severed tape (which reads exactly/near 0.0), so it sits several
-# orders below that measured single-pixel gradient, not just below the
-# larger material-leg (whole-slab) gradient.
+# proportionally tiny effect on a bulk plane-energy sum -- real,
+# FD-matching signal, not noise, but small. The tightest margin measured
+# across all four FD-vs-AD gates is field_softmax's geometry leg at
+# beta=_SOFTMAX_BETA (~4.9e-12) -- about 2.7 orders of magnitude above
+# this floor (field_energy's geometry leg, ~2.1e-10, and both material-leg
+# gradients sit further above it still). The floor only needs to catch an
+# actually-severed tape (which reads exactly/near 0.0), so it sits
+# comfortably below that measured minimum.
 _GRAD_FLOOR = 1e-14
 
 
@@ -209,7 +239,7 @@ def test_field_energy_geometry_leg_ad_matches_fd():
 
 def test_field_softmax_material_leg_ad_matches_fd():
     sim = _build_sim()
-    functional = field_softmax(_PLANE, beta=1.0)
+    functional = field_softmax(_PLANE, beta=_SOFTMAX_BETA)
     obj = _material_objective(sim, functional)
 
     alpha0 = 2.0
@@ -217,13 +247,18 @@ def test_field_softmax_material_leg_ad_matches_fd():
     assert np.isfinite(val)
 
     g_ad = float(jax.grad(obj)(jnp.asarray(alpha0, dtype=jnp.float32)))
-    g_fd = _central_fd_f64(obj, alpha0, _FD_H)
-    _assert_ad_matches_fd(g_ad, g_fd, label="field_softmax material leg")
+    # h-robustness, not a single h: see _SOFTMAX_BETA's comment -- a
+    # coincidental rounding-lattice match does NOT hold consistently
+    # across multiple step sizes, which is exactly what caught the
+    # beta=1.0 false green (18.9% at h=0.01 vs <5% at h=0.02, same g_ad).
+    for h in _SOFTMAX_FD_H_VALUES:
+        g_fd = _central_fd_f64(obj, alpha0, h)
+        _assert_ad_matches_fd(g_ad, g_fd, label=f"field_softmax material leg (h={h})")
 
 
 def test_field_softmax_geometry_leg_ad_matches_fd():
     sim = _build_sim()
-    functional = field_softmax(_PLANE, beta=1.0)
+    functional = field_softmax(_PLANE, beta=_SOFTMAX_BETA)
     obj = _geometry_objective(sim, functional)
 
     rho0 = 0.5
@@ -231,8 +266,11 @@ def test_field_softmax_geometry_leg_ad_matches_fd():
     assert np.isfinite(val)
 
     g_ad = float(jax.grad(obj)(jnp.asarray(rho0, dtype=jnp.float32)))
-    g_fd = _central_fd_f64(obj, rho0, _FD_H)
-    _assert_ad_matches_fd(g_ad, g_fd, label="field_softmax geometry (1-pixel) leg")
+    for h in _SOFTMAX_FD_H_VALUES:
+        g_fd = _central_fd_f64(obj, rho0, h)
+        _assert_ad_matches_fd(
+            g_ad, g_fd, label=f"field_softmax geometry (1-pixel) leg (h={h})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +373,23 @@ def test_field_energy_missing_plane_raises_naming_the_call():
 def test_field_softmax_rejects_nonpositive_beta():
     with pytest.raises(ValueError, match="beta"):
         field_softmax("p1", beta=0.0)
+
+
+def test_dft_field_and_field_energy_accept_raw_array_planes():
+    """Cross-PR robustness (#578): a dft_planes dict may carry BARE arrays
+    instead of DFTPlaneProbe-like objects -- e.g. a vmap-batched sweep
+    result. _select_planes must duck-type (`getattr(v, "accumulator", v)`)
+    rather than assume every value has an `.accumulator` attribute, or this
+    combination crashes AttributeError."""
+    raw = jnp.full((2, 3, 4), 1.5, dtype=jnp.complex64)  # NOT wrapped in a probe-like object
+    result = types.SimpleNamespace(dft_planes={"p1": raw})
+
+    out = dft_field("p1")(result)
+    assert out.shape == (2, 3, 4)
+    np.testing.assert_allclose(np.asarray(out), np.asarray(raw))
+
+    energy = float(field_energy("p1")(result))
+    assert np.isclose(energy, float(jnp.sum(jnp.abs(raw) ** 2)))
 
 
 # ---------------------------------------------------------------------------

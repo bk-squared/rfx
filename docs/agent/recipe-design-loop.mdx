@@ -71,6 +71,34 @@ explicit in-band `f0`), keep every bin above the mode cutoff, and check
 the final design at 2× `n_steps` (run-length invariance) before trusting
 it. The direct MSL path does not have an equivalent verified design example.
 
+## Direct `jax.grad` through a registered DFT-plane field observable
+
+For an objective defined directly on a frequency-domain FIELD rather than a
+port S-parameter (e.g. "minimize the worst-case field leaking through a
+shield"), register one or more `add_dft_plane_probe(...)` planes and pull
+them off the result with `rfx.observables`:
+
+- `dft_field(names)` -- accessor: single name returns the raw
+  `(n_freqs, n1, n2)` complex accumulator; a list stacks (same-shape planes)
+  or returns a per-name dict.
+- `field_energy(names)` -- `sum(|field|**2)`, a trivially smooth first
+  objective.
+- `field_softmax(names, beta=...)` -- a temperature-controlled soft-max
+  over space + frequency, for a worst-case-bin (not average) objective.
+  **`beta` MUST be scale-matched to your `|field|**2` magnitude** (rfx's
+  DFT-accumulator units commonly sit far from O(1) — see the function's
+  own docstring warning and
+  `examples/inverse_design/field_observable_shielding.py`'s measured
+  `BETA` for a worked example); an unscaled `beta` can make the objective
+  silently dominated by a design-variable-independent constant.
+
+Composition is `lambda p: field_softmax(names)(sim.forward(eps_override=p))`
+— same factory-returns-`callable(Result)` style as `rfx.optimize_objectives`,
+plugging directly into a hand-rolled `jax.grad` descent loop (or `optimize()`
+with a `DesignRegion`). Lane-agnostic: works on `run()`/`forward()` results
+from both the uniform and non-uniform meshes; fenced fail-loud on the two
+distributed lanes (neither sharded runner accumulates DFT planes today).
+
 ## Validate either method
 
 - `rfx.validate_port_smatrix(result)` — passivity/shape verdict. A

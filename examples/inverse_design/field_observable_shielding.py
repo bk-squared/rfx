@@ -151,9 +151,11 @@ def _assert_design_region_inside_tfsf_box(grid):
         f"far leakage monitor index {leak_far_idx} too close to TFSF box hi {x_hi_tfsf}"
     )
     print(
-        f"  TFSF total-field box: x in [{x_lo_tfsf}, {x_hi_tfsf}] (grid indices) | "
-        f"shield x in [{shield_lo}, {shield_hi}] | leak_far idx {leak_far_idx} "
-        f"-- design region + both monitors confirmed strictly inside, pad={pad}"
+        f"  TFSF total-field box: x in [{x_lo_tfsf}, {x_hi_tfsf}] (grid indices, "
+        f"inclusive) | shield x in [{shield_lo}, {shield_hi}) (half-open -- "
+        f"{shield_hi - shield_lo} layers, cells {shield_lo}..{shield_hi - 1}) | "
+        f"leak_far idx {leak_far_idx} -- design region + both monitors confirmed "
+        f"strictly inside, pad={pad}"
     )
 
 
