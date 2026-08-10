@@ -17,9 +17,16 @@ Limitations
 - Only material parameters (``eps_r``, ``sigma``, ``mu_r``) can be swept.
   For geometry sweeps (different shapes/sizes) use ``parametric_sweep()``.
 - ``until_decay`` is not supported (requires Python-level control flow).
-- Ports, TFSF, CPML, dispersion, waveguide ports, NTFF, DFT planes,
-  snapshots, and RLC elements are fully supported because they use the
-  same grid topology.
+- CPML and DFT plane probes (``add_dft_plane_probe``, #578) ARE supported on
+  the fast path because they use the same grid topology as PEC/periodic
+  walls. This bullet used to claim the WHOLE feature list below it was
+  "fully supported" — that was a drifted inversion of the true limitation
+  (the function docstring below and the code guards always disagreed with
+  it). Lumped/MSL/coaxial/floquet ports, TFSF, dispersion, waveguide ports,
+  flux monitors, NTFF, snapshots, and RLC elements are NOT wired into the
+  fast-path scan bodies and trigger the sequential fallback instead (still
+  correct, just slower — and, as of #578, that fallback also carries DFT
+  plane accumulators, so no feature silently vanishes on either path).
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
+from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
     SourceSpec,
     ProbeSpec,
@@ -56,12 +64,26 @@ class VmapSweepResult:
         Name of the swept parameter.
     param_values : ndarray, shape (n_batch,)
         The parameter values that were swept.
+    dft_planes : dict[str, ndarray] or None
+        DFT plane accumulators, keyed by the ``add_dft_plane_probe`` name,
+        each shaped ``(n_batch, n_freqs, n1, n2)`` complex — a leading
+        batch axis over the same accumulator ``Result.dft_planes[name]``
+        exposes for a single run (#578). Populated on BOTH the vmap fast
+        path and the sequential fallback (the fallback stacks each
+        swept-value ``Result.dft_planes[name].accumulator``), so the field
+        is uniform regardless of which path a given ``Simulation`` takes.
+        ``None`` if no ``add_dft_plane_probe`` was registered.
     final_fields : dict or None
-        If requested, dict mapping component name to (n_batch, Nx, Ny, Nz).
+        Never populated (``return_fields=True`` raises ``ValueError``
+        instead of silently returning ``None`` here — see
+        ``vmap_material_sweep``). Reserved for a future final-field-state
+        implementation; use ``sim.run()``/``sim.forward()`` or
+        ``parametric_sweep()`` for final fields today.
     """
     time_series: np.ndarray
     param_name: str
     param_values: np.ndarray
+    dft_planes: dict | None = None
     final_fields: dict | None = None
 
     def peak_field(self) -> np.ndarray:
@@ -222,14 +244,16 @@ def _build_vmap_scan_fn(
     cpml_axes: str = "xyz",
     pec_axes: str = "xyz",
     pec_mask=None,
+    dft_probes: list[DFTPlaneProbe] | None = None,
 ):
-    """Build a pure function ``f(materials) -> time_series`` suitable for vmap.
+    """Build a pure function ``f(materials) -> (time_series, dft_accs)``
+    suitable for vmap.
 
     Constructs a minimal FDTD loop (H update -> [CPML H] -> E update ->
-    [CPML E] -> PEC -> sources -> probes) without dispersion, TFSF, DFT
-    planes, or waveguide ports.  For the common material-sweep use case
-    (PEC cavity, CPML absorber, or simple probe measurement) this covers the
-    needed physics.
+    [CPML E] -> PEC -> sources -> DFT-plane accumulation -> probes) without
+    dispersion, TFSF, or waveguide ports.  For the common material-sweep use
+    case (PEC cavity, CPML absorber, DFT-plane probe, or simple probe
+    measurement) this covers the needed physics.
 
     Parameters
     ----------
@@ -242,14 +266,33 @@ def _build_vmap_scan_fn(
         soft sources on any boundary.  Raw (un-Cb-normalized) J-source
         waveforms + cell indices so Cb can be computed dynamically inside the
         vmapped function from the actual material arrays.
+    dft_probes : list of DFTPlaneProbe or None
+        Zero-initialized DFT plane probes (from ``init_dft_plane_probe``,
+        the SAME helper ``run()`` uses — rfx/runners/uniform.py:489-497).
+        Their ``.accumulator`` seeds the scan-carry accumulator for that
+        plane; ``.component``/``.axis``/``.index``/``.freqs`` drive the
+        per-step kernel, inlined here to match ``Simulation.run()``'s rect
+        kernel exactly (rfx/simulation.py:1512-1526): ``t = st.step * dt``
+        (the STATE's step counter, NOT the scan's ``xs`` step index — using
+        the latter is an off-step, per-bin-phase-error class bug, #404).
+        The returned ``run_one`` always returns a 2-tuple
+        ``(time_series, dft_accs)`` where ``dft_accs`` is a tuple of final
+        accumulators in the SAME order as ``dft_probes`` (empty tuple if
+        no planes were registered).
     """
     dt = grid.dt
     dx = grid.dx
     sources = sources or []
     j_source_raw_info = j_source_raw_info or []
     probes = probes or []
+    dft_probes = dft_probes or []
 
     use_pec_mask = pec_mask is not None
+    use_dft = len(dft_probes) > 0
+    dft_meta = tuple(
+        (p.component, p.axis, p.index, p.freqs) for p in dft_probes
+    )
+    dft_acc_init = tuple(p.accumulator for p in dft_probes)
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
@@ -278,10 +321,13 @@ def _build_vmap_scan_fn(
     if use_cpml:
         cpml_params, cpml_state_init = init_cpml(grid)
 
-    def run_one(materials: MaterialArrays) -> jnp.ndarray:
+    def run_one(materials: MaterialArrays) -> tuple[jnp.ndarray, tuple]:
         """Run a single FDTD simulation with the given materials.
 
-        Returns time_series of shape (n_steps, n_probes).
+        Returns ``(time_series, dft_accs)``: time_series shaped
+        ``(n_steps, n_probes)``; dft_accs a tuple of final ``(n_freqs, n1,
+        n2)`` complex accumulators, one per registered DFT plane (empty
+        tuple if none).
         """
         fdtd = init_state(grid.shape)
 
@@ -305,9 +351,9 @@ def _build_vmap_scan_fn(
         def step_fn(carry, xs):
             _step_idx, src_vals, j_src_vals = xs
             if use_cpml:
-                st, cpml_st = carry
+                st, cpml_st, dft_accs = carry
             else:
-                st = carry
+                st, dft_accs = carry
 
             # H update
             st = update_h(st, materials, dt, dx, periodic=periodic)
@@ -352,14 +398,34 @@ def _build_vmap_scan_fn(
                 field = field.at[si, sj, sk].add(j_src_vals[idx_j])
                 st = st._replace(**{sc: field})
 
+            # DFT-plane accumulation (rect window always — matches
+            # Simulation.run()'s inline kernel, rfx/simulation.py:1512-1526).
+            # ``t`` is derived from the STATE's own step counter, not the
+            # scan xs step index, so it matches run() bit-for-bit under vmap.
+            if use_dft:
+                t_plane = st.step * dt
+                new_dft_accs = []
+                for acc, (component, axis, index, freqs) in zip(dft_accs, dft_meta):
+                    field = getattr(st, component)
+                    if axis == 0:
+                        plane = field[index, :, :]
+                    elif axis == 1:
+                        plane = field[:, index, :]
+                    else:
+                        plane = field[:, :, index]
+                    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
+                    new_dft_accs.append(
+                        acc + plane[None, :, :] * phase[:, None, None] * dt)
+                dft_accs = tuple(new_dft_accs)
+
             # Probe samples
             samples = [getattr(st, pc)[pi, pj, pk]
                        for pi, pj, pk, pc in prb_meta]
             probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
             if use_cpml:
-                return (st, cpml_st), probe_out
-            return st, probe_out
+                return (st, cpml_st, dft_accs), probe_out
+            return (st, dft_accs), probe_out
 
         xs = (
             jnp.arange(n_steps, dtype=jnp.int32),
@@ -367,11 +433,12 @@ def _build_vmap_scan_fn(
             j_src_waveforms,
         )
         if use_cpml:
-            init_carry = (fdtd, cpml_state_init)
+            init_carry = (fdtd, cpml_state_init, dft_acc_init)
         else:
-            init_carry = fdtd
-        _, time_series = jax.lax.scan(step_fn, init_carry, xs)
-        return time_series
+            init_carry = (fdtd, dft_acc_init)
+        final_carry, time_series = jax.lax.scan(step_fn, init_carry, xs)
+        final_dft_accs = final_carry[-1]
+        return time_series, final_dft_accs
 
     return run_one
 
@@ -386,8 +453,10 @@ def _build_full_scan_fn(
     lorentz_spec=None,
     pec_mask=None,
 ):
-    """Build a function ``f(materials) -> time_series`` that uses the full
-    simulation runner (including CPML, dispersion, etc.).
+    """Build ``(f, dft_names)`` where ``f(materials) -> (time_series,
+    dft_accs)`` uses the full simulation runner (including CPML,
+    dispersion, etc.), or ``(None, None)`` if this simulation must take the
+    sequential fallback instead.
 
     This wraps ``simulation.run()`` into a vmappable form by making
     ``materials`` an explicit argument rather than a closure capture.
@@ -399,30 +468,41 @@ def _build_full_scan_fn(
     has_tfsf = sim._tfsf is not None
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
+    # MSL/floquet ports are genuine run()-consumed silent drops if allowed
+    # onto the fast path (neither scan body launches/records them); coaxial
+    # ports are NOT consumed by plain run() at all today, so this guard is
+    # added for honesty/uniformity with the other port families rather than
+    # because the fast path would corrupt anything (#578 design v2 PR B.3).
+    has_msl_ports = len(getattr(sim, "_msl_ports", []) or []) > 0
+    has_floquet_ports = len(getattr(sim, "_floquet_ports", []) or []) > 0
+    has_coaxial_ports = len(getattr(sim, "_coaxial_ports", []) or []) > 0
 
     # Allowlist guard: the vmap scan bodies implement ONLY pec/periodic
-    # walls and CPML. Anything below must take the sequential fallback
-    # (return None) or it would be SILENTLY DROPPED from the swept runs:
+    # walls, CPML, and (as of #578) DFT plane probes. Anything below must
+    # take the sequential fallback (return None) or it would be SILENTLY
+    # DROPPED from the swept runs:
     #   - boundary='upml': neither scan body applies a UPML step, so the
     #     fast path would run with no absorber at all;
     #   - lumped RLC elements: not wired into either scan body;
-    #   - flux monitors / DFT planes / NTFF: frequency-domain accumulators
-    #     exist only in the canonical Simulation.run() loop;
+    #   - flux monitors / NTFF: frequency-domain accumulators exist only in
+    #     the canonical Simulation.run() loop (DFT PLANE probes are the
+    #     #578 exception — built into ``dft_probes`` below and threaded
+    #     into the fast-path scan body);
     #   - non-uniform mesh profiles: scan bodies assume a uniform grid.
     if boundary == "upml":
-        return None
+        return None, None
     if getattr(sim, "_lumped_rlc", None):
-        return None
-    if getattr(sim, "_flux_monitors", None) or getattr(sim, "_dft_planes", None):
-        return None
+        return None, None
+    if getattr(sim, "_flux_monitors", None):
+        return None, None
     if getattr(sim, "_ntff", None) is not None:
-        return None
+        return None, None
     if (
         getattr(sim, "_dx_profile", None) is not None
         or getattr(sim, "_dy_profile", None) is not None
         or getattr(sim, "_dz_profile", None) is not None
     ):
-        return None
+        return None, None
 
     # Build sources and probes from the simulation.
     # For CPML J-sources the Cb coefficient depends on material properties
@@ -473,9 +553,55 @@ def _build_full_scan_fn(
     for pe in sim._probes:
         probes.append(make_probe(grid, pe.position, pe.component))
 
-    # For the simple (no-port, no-dispersion, no-TFSF) case, use the
-    # lightweight scan function that can be cleanly vmapped.
-    if not has_ports and not has_tfsf and not has_waveguide and not has_dispersion:
+    # DFT plane probes (#578): mirrors rfx/runners/uniform.py:478-498
+    # exactly, including calling the SAME init_dft_plane_probe helper, so
+    # the accumulator dtype/shape/init state is identical to run()'s by
+    # construction (the #477/#484 x64-contract pin below is therefore a
+    # sanity assertion, not a computed correction).
+    axis_to_index = {"x": 0, "y": 1, "z": 2}
+    dft_probes: list[DFTPlaneProbe] = []
+    dft_names: list[str] = []
+    for pe in getattr(sim, "_dft_planes", []) or []:
+        axis_idx = axis_to_index[pe.axis]
+        plane_pos = [0.0, 0.0, 0.0]
+        plane_pos[axis_idx] = pe.coordinate
+        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+        freqs_arr = (
+            pe.freqs
+            if pe.freqs is not None
+            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+        )
+        dft_probes.append(
+            init_dft_plane_probe(
+                axis=axis_idx,
+                index=grid_index,
+                component=pe.component,
+                freqs=freqs_arr,
+                grid_shape=grid.shape,
+                dft_total_steps=n_steps,
+            )
+        )
+        dft_names.append(pe.name)
+
+    if dft_probes:
+        _expected_dtype = (
+            jnp.complex128 if jax.config.x64_enabled else jnp.complex64)
+        for _probe in dft_probes:
+            assert _probe.accumulator.dtype == _expected_dtype, (
+                f"vmap DFT accumulator dtype {_probe.accumulator.dtype} != "
+                f"run()'s {_expected_dtype} "
+                f"(x64_enabled={jax.config.x64_enabled}) — #477/#484 "
+                "x64-contract pin violated"
+            )
+
+    # For the simple (no-port, no-dispersion, no-TFSF, no-MSL/floquet/coax
+    # port) case, use the lightweight scan function that can be cleanly
+    # vmapped.
+    if (
+        not has_ports and not has_tfsf and not has_waveguide
+        and not has_dispersion and not has_msl_ports
+        and not has_floquet_ports and not has_coaxial_ports
+    ):
         periodic = (False, False, False)
         if sim._periodic_axes:
             periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
@@ -495,7 +621,7 @@ def _build_full_scan_fn(
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,
             # we build a scan function that includes CPML handling.
-            return _build_vmap_scan_fn(
+            run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=True,
                 sources=sources,
@@ -505,9 +631,10 @@ def _build_full_scan_fn(
                 cpml_axes=cpml_axes,
                 pec_axes=pec_axes,
                 pec_mask=pec_mask,
+                dft_probes=dft_probes,
             )
         else:
-            return _build_vmap_scan_fn(
+            run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=False,
                 sources=sources,
@@ -520,10 +647,12 @@ def _build_full_scan_fn(
                 periodic=periodic,
                 pec_axes=pec_axes,
                 pec_mask=pec_mask,
+                dft_probes=dft_probes,
             )
+        return run_one_fn, dft_names
 
     # Fallback: for complex sims, run sequentially (not vmapped)
-    return None
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -559,25 +688,88 @@ def vmap_material_sweep(
     num_periods : float
         Periods at freq_max for auto timestep count (default 20).
     return_fields : bool
-        If True, also return final E-field snapshots per batch element.
+        Must be False (the default). ``return_fields=True`` was documented
+        here since this function's introduction but never implemented —
+        neither the fast path nor the sequential fallback ever populated
+        ``VmapSweepResult.final_fields``, so it silently returned ``None``
+        instead of the promised snapshot. Passing ``True`` now raises
+        ``ValueError`` (fail loud beats silent ``None``, #578). Use
+        ``sim.run()``/``sim.forward()`` for a final-field snapshot of one
+        configuration, or ``parametric_sweep()`` for full per-value
+        ``Result`` objects across a swept parameter.
 
     Returns
     -------
     VmapSweepResult
-        Result with ``.time_series`` of shape ``(n_batch, n_steps, n_probes)``
-        and ``.param_values``.
+        Result with ``.time_series`` of shape
+        ``(n_batch, n_steps, n_probes)``, ``.dft_planes`` (dict of
+        ``(n_batch, n_freqs, n1, n2)`` complex arrays keyed by
+        ``add_dft_plane_probe`` name, or ``None`` if no plane was
+        registered), and ``.param_values``.
 
     Notes
     -----
     The entire FDTD time loop is vmapped so all simulations execute in a
-    single fused GPU kernel.  Memory scales as ``n_batch * grid_size``.
-    For large grids, reduce batch size to avoid OOM.
+    single fused GPU kernel. Memory scales as
+    ``n_batch * grid_size + n_batch * sum(n_freqs_p * n1_p * n2_p for each
+    registered DFT plane p)`` (complex accumulators; no remat on this
+    path). For large grids/plane counts, reduce batch size or plane
+    frequency count to avoid OOM.
 
     Features supported in vmap path: PEC boundaries, CPML absorbing
-    boundaries, soft sources, point probes.  Lumped ports, TFSF,
-    dispersion, waveguide ports, DFT planes, and NTFF are **not**
-    supported in the vmap fast path and will trigger a sequential fallback.
+    boundaries, soft sources (incl. ``amplitude_kind='current'``, #571),
+    point probes, and DFT plane probes (``add_dft_plane_probe``, #578).
+    Lumped ports, MSL/coaxial/floquet ports, TFSF, dispersion, waveguide
+    ports, flux monitors, and NTFF are **not** supported in the vmap fast
+    path and trigger a sequential fallback. As of #578 that fallback also
+    populates ``.dft_planes`` (by stacking each swept value's
+    ``Result.dft_planes`` accumulators), so registering a DFT plane never
+    silently loses data on either path — it is only the FAST path that is
+    conditional on eligibility, not the DFT-plane *output*.
+
+    TFSF sweeps — angle batching is intentionally out of scope, not just
+    unimplemented: it is a structural mismatch with this function's
+    material-only batching model, not a missing feature. The TFSF incident
+    field is itself an auxiliary FDTD solution advanced *inside* the scan
+    (not closed-form); Method B's auxiliary-grid size is angle-dependent
+    (a batch of angles would need a batch of scan shapes, which
+    ``jax.vmap`` cannot express); and the oblique 2D-aux Bloch path
+    concretizes its transverse phase factors from ``angle_deg`` at trace
+    time (rfx/sources/tfsf_2d.py). More basically, rfx cannot even
+    *express* a general incidence triple ``(theta, phi, psi)`` today — only
+    ``angle_deg`` + a binary ``direction`` + a two-way ``polarization``
+    choice — so there is no batchable angle parameter to expose in the
+    first place. Route illumination/angle sweeps to ``parametric_sweep()``
+    instead: it already returns full ``Result`` objects including
+    ``dft_planes`` for each swept value. Caveat there too: oblique-Bloch
+    TFSF (``angle_deg != 0``, ``method='bloch'``, the default) combined
+    with DFT planes/flux monitors/NTFF raises ``NotImplementedError`` by
+    design (rfx/simulation.py:728-745) because the accumulated envelope is
+    not the physical spectrum — DFT-plane tensors from a TFSF-illuminated
+    ``parametric_sweep`` are obtainable only at normal incidence
+    (``angle_deg=0``) or with ``method='methodB'`` (open-domain, real
+    fields). A MATERIAL sweep on a sim carrying a FIXED (non-swept) TFSF
+    source still benefits from #578: it takes this function's sequential
+    fallback (TFSF is not fast-path-eligible) but that fallback now
+    carries ``dft_planes`` through, so per-material DFT tensors at fixed
+    incidence ARE obtainable via ``vmap_material_sweep`` today.
+
+    Point-frequency-domain probes are not a separate case here: rfx has no
+    public builder for a point DFT probe (only plane DFT probes and flux
+    monitors), and point *time series* — the actual point-probe primitive
+    — are already fully batched via ``add_probe`` + ``.time_series`` on
+    both paths.
     """
+    if return_fields:
+        raise ValueError(
+            "return_fields=True is not implemented on vmap_material_sweep "
+            "— it was accepted since this function's introduction but "
+            "silently ignored (VmapSweepResult.final_fields was never "
+            "populated on either the fast path or the sequential "
+            "fallback). Use sim.run()/sim.forward() for a final-field "
+            "snapshot, or parametric_sweep() for full per-value Result "
+            "objects."
+        )
     param_values = np.asarray(param_values, dtype=np.float32).ravel()
     if len(param_values) == 0:
         raise ValueError("param_values must not be empty")
@@ -593,7 +785,7 @@ def vmap_material_sweep(
         n_steps = grid.num_timesteps(num_periods=num_periods)
 
     # Build the vmappable scan function
-    run_one_fn = _build_full_scan_fn(
+    run_one_fn, dft_names = _build_full_scan_fn(
         sim, grid, base_materials, n_steps,
         debye_spec=debye_spec,
         lorentz_spec=lorentz_spec,
@@ -614,17 +806,25 @@ def vmap_material_sweep(
             return run_one_fn(mats)
 
         batched_run = jax.vmap(run_one_from_materials)
-        time_series = batched_run(
+        time_series, dft_accs = batched_run(
             batched_materials.eps_r,
             batched_materials.sigma,
             batched_materials.mu_r,
         )
         time_series_np = np.asarray(time_series)
 
+        dft_planes_out = None
+        if dft_names:
+            dft_planes_out = {
+                name: np.asarray(acc)
+                for name, acc in zip(dft_names, dft_accs)
+            }
+
         return VmapSweepResult(
             time_series=time_series_np,
             param_name=param_name,
             param_values=param_values,
+            dft_planes=dft_planes_out,
         )
     else:
         # Fallback: sequential execution for complex simulations
@@ -632,8 +832,10 @@ def vmap_material_sweep(
         import warnings
         warnings.warn(
             "Simulation uses features not supported by vmap fast path "
-            "(ports/TFSF/dispersion/waveguide). Falling back to sequential "
-            "execution. Use parametric_sweep() for better sequential support.",
+            "(ports incl. MSL/coaxial/floquet, TFSF, dispersion, "
+            "waveguide, flux monitors, NTFF). Falling back to sequential "
+            "execution. Use parametric_sweep() for better sequential "
+            "support.",
             stacklevel=2,
         )
         return _sequential_fallback(
@@ -648,10 +850,21 @@ def _sequential_fallback(
     *,
     n_steps: int,
 ) -> VmapSweepResult:
-    """Sequential fallback when vmap is not possible."""
+    """Sequential fallback when vmap is not possible.
+
+    #578: also populates ``VmapSweepResult.dft_planes`` by stacking each
+    swept value's ``Result.dft_planes[name].accumulator`` — the SAME
+    carrier the fast path populates (dict[str, ndarray] with a leading
+    batch axis), so a DFT plane registered on a simulation that must take
+    this fallback (TFSF, lumped/MSL/coaxial/floquet ports, dispersion,
+    waveguide ports, ...) still comes back through
+    ``vmap_material_sweep()`` instead of only being reachable via
+    ``parametric_sweep()``.
+    """
     mat_name, field = _parse_param_name(param_name)
 
     all_ts = []
+    dft_acc_lists: dict[str, list] = {}
     for _i, val in enumerate(param_values):
         # Clone the simulation and modify the material
         import copy
@@ -678,10 +891,24 @@ def _sequential_fallback(
         result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
 
+        if result.dft_planes:
+            for name, probe in result.dft_planes.items():
+                dft_acc_lists.setdefault(name, []).append(
+                    np.asarray(probe.accumulator))
+
     # Stack into (n_batch, n_steps, n_probes)
     time_series = np.stack(all_ts, axis=0)
+
+    dft_planes_out = None
+    if dft_acc_lists:
+        dft_planes_out = {
+            name: np.stack(accs, axis=0)
+            for name, accs in dft_acc_lists.items()
+        }
+
     return VmapSweepResult(
         time_series=time_series,
         param_name=param_name,
         param_values=param_values,
+        dft_planes=dft_planes_out,
     )
