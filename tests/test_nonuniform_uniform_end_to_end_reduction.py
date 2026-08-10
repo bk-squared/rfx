@@ -50,9 +50,9 @@ STEPS = 1200
 
 # Deliberately NOT marked slow: the whole point is that this runs in the default
 # lane. An anchor the fast suite deselects would have missed #562's F1 exactly
-# the way the existing suite did. Measured 29.8 s for the five cases here (it
-# was 6.5 s for three before the boundary axis was added) — worth keeping in
-# view against the fast-lane time pressure #545 tracks.
+# the way the existing suite did. Measured 38.6 s for the six cases here (it
+# was 29.8 s for five before staircase-slab-cpml was added, #582 E2) — worth
+# keeping in view against the fast-lane time pressure #545 tracks.
 
 
 def _f110(dx: float) -> float:
@@ -75,16 +75,27 @@ def _expected_factor(boundary: str, dt: float, dx: float) -> float:
     return (dt / (EPS_0 * dV)) if boundary == "pec" else (1.0 / dV)
 
 
-def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec"):
+def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec",
+         slab: bool | None = None):
+    """``slab`` defaults to ``smoothing`` (legacy behaviour: the dielectric
+    slab was only ever exercised together with the smoother). Pass it
+    explicitly to decouple the two — the staircase-slab+cpml combo (#582 E2)
+    needs the slab WITHOUT subpixel_smoothing to isolate the CPML pad
+    material extension from the smoother.
+    """
+    if slab is None:
+        slab = smoothing
     f0 = _f110(dx)
     profiles = (dict(dx_profile=np.full(NA, dx), dy_profile=np.full(NB, dx))
                 if nonuniform else {})
     sim = Simulation(freq_max=2.5 * f0, domain=(NA * dx, NB * dx, NZ * dx),
                      dx=dx, boundary=boundary,
                      cpml_layers=(0 if boundary == "pec" else 8), **profiles)
-    if smoothing:
+    if slab:
         sim.add_material("slab", eps_r=4.0)
         # interface deliberately inside a voxel so the smoother engages
+        # (when subpixel_smoothing=True; a no-op when it is False, giving
+        # the plain staircase rasterization of the same geometry)
         sim.add(Box((0.0, 0.0, 0.3 * dx), (NA * dx, NB * dx, 2.0 * dx)),
                 material="slab")
     # z = 3*dx, NOT NZ*dx/2: the latter is EXACTLY the slab's upper face, so the
@@ -100,34 +111,37 @@ def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec")
 
 
 _CASES = [
-    pytest.param(False, "pec", id="plain-pec"),
-    pytest.param(True, "pec", id="subpixel-pec"),
-    pytest.param(False, "cpml", id="plain-cpml"),
+    pytest.param(False, "pec", False, id="plain-pec"),
+    pytest.param(True, "pec", True, id="subpixel-pec"),
+    pytest.param(False, "cpml", False, id="plain-cpml"),
     pytest.param(
-        True, "cpml", id="subpixel-cpml",
-        marks=pytest.mark.xfail(strict=True, reason=(
-            "NU + subpixel_smoothing does NOT reduce to the uniform path on an "
-            "OPEN boundary (#582). Measured, and record-length "
-            "independent at 600/1200/2400 steps: amplitude factor off by "
-            "0.1804 %, waveform residual 1.978e-02, 1-corr 2.8e-04 — against "
-            "~1e-5 residual for the other three boundary x smoothing "
-            "combinations. strict=True so this XPASSes and hard-fails the suite "
-            "the day it is fixed, rather than silently passing.")),
+        False, "cpml", True, id="staircase-slab-cpml",
     ),
+    pytest.param(True, "cpml", True, id="subpixel-cpml"),
 ]
 
 
-@pytest.mark.parametrize("smoothing,boundary", _CASES)
+@pytest.mark.parametrize("smoothing,boundary,slab", _CASES)
 def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(
-        smoothing, boundary):
+        smoothing, boundary, slab):
     """Same mesh, same geometry, both builders: same physics, one known factor.
 
     Run for BOTH boundary conditions, because the uniform path's source
     normalization differs between them and the factor therefore does too.
+
+    ``staircase-slab-cpml`` (slab=True, smoothing=False) isolates the CPML
+    pad material extension from the smoother (#582 E2): it was never run
+    before this fix — the slab used to be added only under ``if
+    smoothing:`` — and pre-fix it already carried ~90% of the
+    ``subpixel-cpml`` divergence (residual 7.80e-3 of the 1.978e-2 total),
+    because the missing NU pad replication is a material-assembly gap, not
+    a smoother interaction.
     """
     dx = 1e-3
-    uni, dt_u = _run(dx, nonuniform=False, smoothing=smoothing, boundary=boundary)
-    nu, dt_n = _run(dx, nonuniform=True, smoothing=smoothing, boundary=boundary)
+    uni, dt_u = _run(dx, nonuniform=False, smoothing=smoothing, boundary=boundary,
+                     slab=slab)
+    nu, dt_n = _run(dx, nonuniform=True, smoothing=smoothing, boundary=boundary,
+                    slab=slab)
 
     assert dt_u == pytest.approx(dt_n, rel=1e-12), (dt_u, dt_n)
     assert np.abs(uni).max() > 1e-6, "uniform leg produced no field"
@@ -158,9 +172,18 @@ def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(
         f"choice of make_source (raw add) vs make_j_source (Cb-normalized)")
 
     residual = float(np.abs(nu - scale * uni).max() / np.abs(nu).max())
-    # measured: 1.5e-5 (pec), 8.2e-6 (pec + smoothing), 1.1e-4 (cpml).
-    # cpml + smoothing measures 2.0e-2 and is xfail(strict) above, not covered
-    # by this bound — see _CASES.
+    # measured (post-#582 fix, 1200 steps): 2.0e-5 (pec), 9.5e-6
+    # (pec + smoothing), 1.1e-4 (cpml, no slab). staircase-slab-cpml and
+    # subpixel-cpml used to be untested/xfail (#582: the NU material
+    # assembler never replicated eps/sigma/mu_r into the CPML pads the way
+    # the uniform assembler does, rfx/api/_compile.py:188-231 vs
+    # rfx/runners/nonuniform.py's assemble_materials_nu — an edge-touching
+    # slab therefore saw a different absorber medium per path: 736 pad cells
+    # eps 4.0-vs-1.0 at the slab's k=9 layer). Fixed by adding the same pad
+    # replication to assemble_materials_nu; post-fix measured 8.7e-5
+    # (staircase-slab-cpml, was 7.80e-3 pre-fix — carried ~90% of the
+    # subpixel-cpml divergence on its own) and 1.1e-4 (subpixel-cpml, was
+    # 1.978e-2 pre-fix, record-length-independent at 600/1200/2400 steps).
     assert residual < 3e-4, (
         f"after removing the known source-normalization factor the two paths "
         f"still differ by {residual:.3e} of full scale — the NU solve is not "

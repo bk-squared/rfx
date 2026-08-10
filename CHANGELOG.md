@@ -6,6 +6,39 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — non-uniform-mesh CPML absorber was not impedance-matched (issue #582)
+
+- The uniform-grid material assembler extends the interior-edge
+  `eps_r`/`sigma`/`mu_r` slice outward into the CPML padding so guided
+  modes see an impedance-matched absorber (`rfx/api/_compile.py`,
+  "equivalent to UPML"). The non-uniform-mesh assembler
+  (`assemble_materials_nu`, `rfx/runners/nonuniform.py`) never had this
+  step, so a structure touching the domain's interior edge (e.g. a
+  dielectric slab spanning the transverse extent) saw a **different
+  absorber medium per path**: on the issue's fixture, 736 CPML pad cells
+  carried `eps_r=4.0` on the uniform path and `eps_r=1.0` on the NU path.
+  Found via the uniform-mesh reduction anchor (#562/#568/#570): the
+  `boundary="cpml"` + `subpixel_smoothing=True` combination was the only
+  one of four boundary x smoothing combinations that did not reduce to the
+  uniform-path solve (amplitude off 0.18%, waveform residual 1.98e-2,
+  record-length-independent). Root cause was NOT the smoother — a new
+  staircase-only (no smoothing) discriminator case already carried ~90% of
+  the divergence (residual 7.8e-3) — it was the missing pad replication,
+  confirmed by three independent witnesses (input-array diff, field dump,
+  causal A/B relocating the slab away from the domain edge).
+  Fix: `assemble_materials_nu` now performs the same interior-edge
+  replication into the CPML pads, using the NU grid's existing per-face
+  `pad_{x,y,z}_{lo,hi}` bookkeeping. Guided-mode / dielectric-waveguide
+  structures on a non-uniform mesh now see the same impedance-matched
+  absorber the uniform path always has. PEC-bounded simulations are
+  unaffected (the new step is gated on `cpml_layers > 0`, which
+  `Simulation.__init__` forces to 0 for `boundary="pec"`).
+  `tests/test_nonuniform_uniform_end_to_end_reduction.py`'s
+  `subpixel-cpml` case converts from `xfail(strict=True)` to a normal
+  assertion (residual 1.978e-2 -> 1.14e-4); a new `staircase-slab-cpml`
+  case closes the blind spot that hid most of the effect (residual
+  7.80e-3 -> 8.7e-5).
+
 ### Fixed — distributed-NU pad-lane hi-x wall displacement (issue #622)
 
 - `rfx.runners.distributed_nu.run_nonuniform_distributed_pec` and the NU
