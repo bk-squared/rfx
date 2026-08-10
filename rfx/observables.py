@@ -1,4 +1,5 @@
-"""Differentiable observables built on registered DFT-plane probes (#579).
+"""Differentiable observables built on registered DFT-plane probes (#579),
+plus a batched forward-mode Jacobian wrapper (#577).
 
 ``Simulation.add_dft_plane_probe(...)`` registers a frequency-domain plane
 accumulator that ``run()`` and ``forward()`` both populate into a name-keyed
@@ -18,6 +19,12 @@ layer on top of it, in the same "factory returns ``callable(result) ->
   space + frequency, for objectives that care about the WORST bin (e.g.
   "minimize peak leaked field anywhere behind a shield") rather than the
   average.
+- :func:`jacobian_fwd` -- batch ``jax.jvp`` over a tangent basis to get a
+  many-output Jacobian in one pass, for any ``sim_fn(params) -> observable``
+  built on top of the three accessors above (or anything else that is
+  ``jax``-differentiable). See its own docstring for the full contract,
+  including why it is PACKAGING rather than new solver capability, and the
+  scope limits that come with that.
 
 Both lanes, both entry points: ``result.dft_planes`` is a name-keyed dict on
 the uniform AND non-uniform meshes, for both ``run()`` and ``forward()``
@@ -88,12 +95,13 @@ back-compat break). This mirrors the pre-existing
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import Any, Callable, Sequence
 
+import jax
 import jax.numpy as jnp
 from jax.nn import logsumexp
 
-__all__ = ["dft_field", "field_energy", "field_softmax"]
+__all__ = ["dft_field", "field_energy", "field_softmax", "jacobian_fwd"]
 
 
 def _select_planes(result, names, caller: str) -> dict:
@@ -315,3 +323,337 @@ def field_softmax(
         return logsumexp(beta * vals) / beta
 
     return objective
+
+
+def _identity_tangent_batch(params):
+    """Build the ``tangents="identity"`` basis for :func:`jacobian_fwd`.
+
+    Defined as per-ELEMENT identity over SCALAR leaves only -- deliberately
+    NOT a per-leaf identity, and it fails loud rather than silently picking
+    one of the two readings. Measured trap (#577 evidence): on a
+    ``{'scalar': (), 'field': (4, 4)}`` pytree, a per-leaf one-hot tangent
+    (ones on the whole ``field`` leaf) returns 64.0 -- the SUM of the 16
+    Jacobian entries for that leaf, not any single column of them. Because
+    every leaf here is required to be scalar, "one basis vector per leaf"
+    and "one basis vector per scalar element" are the same construction, so
+    that trap cannot occur once the non-scalar check below passes.
+    """
+    leaves, treedef = jax.tree_util.tree_flatten(params)
+    if not leaves:
+        raise ValueError(
+            "jacobian_fwd(tangents='identity'): params pytree has no "
+            "leaves -- nothing to differentiate."
+        )
+    arrays = [jnp.asarray(leaf) for leaf in leaves]
+    non_scalar = [
+        (i, tuple(a.shape)) for i, a in enumerate(arrays) if a.shape != ()
+    ]
+    if non_scalar:
+        raise ValueError(
+            "jacobian_fwd(tangents='identity') requires every params leaf "
+            f"to be a SCALAR (shape ()); found non-scalar leaf shape(s) "
+            f"{non_scalar}. A per-leaf one-hot tangent on a multi-element "
+            "leaf sums that leaf's Jacobian entries instead of isolating "
+            "one column of them (measured: a {'scalar': (), 'field': (4, "
+            "4)} pytree returned the SUM of 16 Jacobian entries, not one "
+            "of them). Pass an explicit tangent pytree/matrix instead: "
+            "same structure as params, each leaf carrying an extra "
+            "leading n_t axis."
+        )
+    non_float = [
+        (i, str(a.dtype)) for i, a in enumerate(arrays)
+        if not jnp.issubdtype(a.dtype, jnp.floating)
+    ]
+    if non_float:
+        raise ValueError(
+            "jacobian_fwd(tangents='identity') requires every params leaf "
+            f"to have a floating dtype; found non-floating leaf dtype(s) "
+            f"{non_float}. An int/bool leaf has no continuous derivative "
+            "(jax.jvp requires a float0 tangent for it, which "
+            "tangents='identity' does not auto-build); pass an explicit "
+            "tangent pytree instead, or drop the non-float leaf(s) from "
+            "params."
+        )
+    n_t = len(leaves)
+    tangent_leaves = [
+        jnp.asarray(1.0, dtype=a.dtype) * (jnp.arange(n_t) == i).astype(a.dtype)
+        for i, a in enumerate(arrays)
+    ]
+    return jax.tree_util.tree_unflatten(treedef, tangent_leaves), n_t
+
+
+def _explicit_tangent_batch(params, tangents):
+    """Validate and pass through an explicit tangent batch (the escape
+    hatch for a non-all-scalar ``params`` pytree, e.g. a flat ``(n_p,)``
+    design vector with an explicit ``(n_t, n_p)`` tangent matrix).
+
+    ``tangents`` must share ``params``' pytree structure, with every leaf
+    carrying one extra LEADING axis of a common size ``n_t`` (so
+    ``tangents`` is exactly what you get by stacking ``n_t`` tangent
+    pytrees, each shaped like ``params``, along a new axis 0).
+    """
+    param_leaves, param_treedef = jax.tree_util.tree_flatten(params)
+    tangent_leaves, tangent_treedef = jax.tree_util.tree_flatten(tangents)
+    if tangent_treedef != param_treedef:
+        raise ValueError(
+            "jacobian_fwd: explicit tangents must share params' pytree "
+            f"structure (with a leading n_t axis on every leaf); got "
+            f"tangents structure {tangent_treedef!r} vs params structure "
+            f"{param_treedef!r}."
+        )
+    bad = []
+    n_t_seen = set()
+    for i, (p, t) in enumerate(zip(param_leaves, tangent_leaves)):
+        p_shape = jnp.shape(p)
+        t_shape = jnp.shape(t)
+        if len(t_shape) != len(p_shape) + 1 or t_shape[1:] != p_shape:
+            bad.append((i, tuple(p_shape), tuple(t_shape)))
+        else:
+            n_t_seen.add(t_shape[0])
+    if bad:
+        raise ValueError(
+            "jacobian_fwd: explicit tangents leaf shapes must equal the "
+            "matching params leaf shape with one leading n_t axis "
+            "prepended; mismatched leaf(s) (index, params_shape, "
+            f"tangents_shape) = {bad}."
+        )
+    if len(n_t_seen) != 1:
+        raise ValueError(
+            "jacobian_fwd: explicit tangents leaves disagree on n_t (the "
+            f"leading axis size): {sorted(n_t_seen)}. Every leaf must "
+            "share one n_t."
+        )
+    n_t = n_t_seen.pop()
+    if n_t < 1:
+        raise ValueError(f"jacobian_fwd: n_t must be >= 1, got {n_t}.")
+    return tangents, n_t
+
+
+def jacobian_fwd(
+    sim_fn: Callable,
+    params: Any,
+    *,
+    tangents: Any = "identity",
+    batch_tangents: bool = True,
+) -> tuple[Any, Any]:
+    """Batched forward-mode Jacobian of ``sim_fn`` at ``params`` (issue #577).
+
+    ``jax.jvp`` / ``jax.jacfwd`` / ``jax.vmap(jax.jvp)`` already run
+    end-to-end through ``sim.forward(eps_override=...)`` ->
+    :func:`dft_field` / :func:`field_energy` / :func:`field_softmax` today,
+    with zero solver changes -- this function is a thin, gated PACKAGING
+    layer over that stock-JAX capability (tangent-basis construction,
+    dtype/shape validation, primal de-duplication, sequential-vs-batched
+    dispatch), not a new AD engine. It computes
+
+        ``value, jacobian = jacobian_fwd(sim_fn, params)``
+
+    where ``value = sim_fn(params)`` (bit-identical to calling ``sim_fn``
+    directly -- see the API trap note below) and ``jacobian`` has the SAME
+    pytree structure as *value* (``sim_fn``'s OUTPUT, not *params* -- this
+    is what ``jax.jvp``'s own tangent output mirrors, and this function
+    does not reshape it into a params-keyed structure the way
+    ``jax.jacfwd`` does), with every leaf gaining one new LEADING axis of
+    size ``n_t``: ``jacobian`` (or ``jacobian[k]`` for an output pytree
+    with leaf ``k``) has shape ``(n_t,) + value.shape``, row ``i`` holding
+    the directional derivative of *value* along tangent direction ``i``.
+    With the default ``tangents="identity"``, direction ``i`` corresponds
+    to ``params``' ``i``-th flattened leaf (``jax.tree_util.tree_flatten``
+    order) -- i.e. ``jacobian[i]`` is ``d(value)/d(params_leaf[i])``.
+
+    Mechanism: ``jax.vmap`` over the TANGENT argument of ``jax.jvp`` (NOT
+    ``jax.linearize``). Measured on the real uniform-lane FDTD scan: the
+    ``vmap(jvp)`` jaxpr contains exactly ONE ``lax.scan`` (the FDTD time
+    loop) whose carry holds one UNBATCHED copy of the field state (the
+    primal sweep) plus ``n_t`` BATCHED tangent copies -- the primal sweep
+    really is shared across every tangent direction, which is the premise
+    #577 asked to verify. ``jax.linearize`` was measured to cost 24x more
+    peak memory on the same fixture (8654 MB vs 355 MB at n_steps=600,
+    n_t=10) because it materialises the whole scan's primal residuals --
+    i.e. the reverse-mode tape -- which forward mode never needs.
+
+    API TRAP (verify this, do not assume it): a naive
+    ``jax.vmap(jax.jvp(...))`` ALSO stacks the primal, returning a
+    ``(n_t,) + value.shape`` array of ``n_t`` copies of the same value.
+    This function passes ``out_axes=(None, 0)`` to ``jax.vmap`` so the
+    returned ``value`` is the single, unstacked primal -- but that only
+    works because the primal computation genuinely does not depend on
+    which tangent direction is being evaluated. If you change ``sim_fn``
+    in a way that breaks that invariant, ``jax.vmap`` raises loudly
+    (``out_axes=None`` on an output that DOES depend on the mapped axis is
+    a vmap error, not a silent wrong answer).
+
+    Cost profile: NOT "a few times one solve" -- see
+    ``scripts/benchmark_jacobian_fwd.py`` (regenerable; run it for current
+    numbers on your hardware/grid) and the CHANGELOG entry for this issue
+    for measured wall-time/flops/memory ratios. The honest summary: wall
+    time and flops scale roughly as ``(1 + n_t)`` plain solves and that
+    ratio MOVES with grid size (do not trust one ratio across problem
+    sizes); memory is the argument FOR this mode, not speed -- forward-mode
+    peak is ``O(state) * (1 + n_t)`` and independent of ``n_steps``, while
+    reverse mode without segmented checkpointing is tens of times one
+    plain solve even for a single scalar output, and ``jax.jacrev`` refuses
+    a complex-valued observable outright (raises ``TypeError`` without
+    ``holomorphic=True``). Numbers are never published here -- see the
+    anti-rot rule in the module/CHANGELOG instead of trusting a docstring
+    number, which rots.
+
+    Parameters
+    ----------
+    sim_fn : Callable
+        ``params -> value``, JAX-differentiable (typically
+        ``lambda p: dft_field(name)(sim.forward(eps_override=eps(p), ...))``
+        or the same composed with :func:`field_energy` /
+        :func:`field_softmax`). Called under ``jax.jvp``, so it must be
+        traceable the same way any ``jax.grad``/``jax.jvp`` target is.
+    params : Any
+        A JAX pytree of the design variables to differentiate with respect
+        to. With the default ``tangents="identity"``, every leaf must be a
+        floating-dtype SCALAR (shape ``()``) -- see :func:`_identity_tangent_batch`.
+        A flat ``(n_p,)`` array (one non-scalar leaf) needs the explicit
+        ``tangents=`` escape hatch below.
+    tangents : "identity" or a pytree, optional
+        ``"identity"`` (default): build one one-hot tangent direction per
+        scalar leaf of *params* (``n_t = number of leaves``); fails loud
+        (``ValueError``) if any leaf is non-scalar or non-floating -- see
+        :func:`_identity_tangent_batch`'s docstring for the measured trap
+        this avoids. Otherwise: an explicit tangent BATCH -- a pytree with
+        the same structure as *params*, every leaf carrying one extra
+        LEADING axis of a common size ``n_t`` (e.g. ``tangents=jnp.eye(n_p)``
+        when *params* is a flat ``(n_p,)`` array, for the full Jacobian, or
+        any ``(n_t, n_p)`` slice of it for a subset of columns).
+    batch_tangents : bool, optional
+        ``True`` (default): run all ``n_t`` tangent directions as ONE
+        ``jax.vmap(jax.jvp(...))`` call -- lower wall time (measured 2.3-3.1x
+        faster than the sequential control at n_t in {4, 10}), higher peak
+        memory (``O(state) * (1 + n_t)``, all ``n_t`` tangent copies live
+        at once). ``False``: run the ``n_t`` directions as independent
+        sequential ``jax.jvp`` calls inside one ``jit`` -- the memory-vs-speed
+        knob, trading the wall-time win for a peak that scales with ONE
+        tangent copy at a time instead of ``n_t`` (measured: primal-sharing
+        still holds sequentially, at ``~1 + n_t`` compute but with a lower
+        peak than the batched path scales to as ``n_t`` grows). The two
+        paths are DIFFERENT XLA programs and may disagree at float32
+        reassociation scale (~1e-6 relative); they are not bit-identical.
+
+    Returns
+    -------
+    (value, jacobian) : tuple
+        ``value``: the single primal, ``sim_fn(params)`` bit-identical
+        (verify this in your own test if you change *sim_fn*'s structure --
+        see the API trap above). ``jacobian``: a pytree mirroring *value*
+        (``sim_fn``'s output, NOT *params* -- see the paragraph above the
+        signature), each leaf an array of shape ``(n_t,) + value.shape``.
+
+    Complex-Jacobian convention
+    ----------------------------
+    For a complex-valued *value* (e.g. :func:`dft_field`'s output), the
+    returned Jacobian is ``dy/dx`` UNCONJUGATED -- exactly what forward-mode
+    AD produces for a real input tangent and a complex output. This
+    DIFFERS BY A CONJUGATE from anything derived through ``jax.vjp`` /
+    ``jax.grad`` on the same computation (measured: 0.02% relative error
+    against an unconjugated central-difference reference, 198% against the
+    conjugated one). If you compare this Jacobian against anything built
+    from reverse-mode AD, conjugate one side first. This is also why
+    ``jax.jacrev`` cannot be used as a drop-in alternative here: it refuses
+    a complex-dtype output outright (``TypeError``, needs
+    ``holomorphic=True``) -- forward mode is the only stock-JAX mode that
+    hands back this Jacobian without a holomorphy declaration.
+
+    Fail-loud fences
+    -----------------
+    Four configurations are unsafe to combine with ``jacobian_fwd`` on
+    ``sim_fn`` bodies built on ``Simulation.forward(...)``. This function
+    is intentionally generic over *sim_fn* (it never sees ``forward()``'s
+    own keyword arguments -- they live inside your closure), so only the
+    first two are enforced by a RAISE that propagates up through
+    ``jax.jvp`` from ``forward()``'s own pre-existing checks; the other two
+    have no raise to inherit and cannot be intercepted from outside the
+    closure, so they are DOCUMENTED traps instead. Read the RAISES/DOCS tag
+    on each before assuming "it didn't raise" means "it's fine":
+
+    - **[RAISES, inherited]** non-uniform + ``distributed=True`` with a
+      registered DFT-plane probe: ``forward()`` itself raises
+      ``NotImplementedError`` (the #619 fence, ``rfx/api/_execute.py``) --
+      neither sharded runner accumulates DFT-plane fields. ``jacobian_fwd``
+      scope is the uniform single-device lane only; a distributed
+      ``sim_fn`` fails loud before this function's own machinery runs.
+    - **[RAISES, inherited]** ``design_mask``: ``forward()`` itself raises
+      ``NotImplementedError`` for ``design_mask`` on the uniform lane
+      (issue #41; ``rfx/api/_execute.py``) -- so on ``jacobian_fwd``'s
+      supported (uniform) lane, a ``design_mask``-using ``sim_fn`` already
+      fails loud. Do not read this as "design_mask is safe elsewhere":
+      on the non-uniform lane, ``design_mask`` measurably returns an
+      EXACTLY ZERO derivative for its intended use in BOTH forward and
+      reverse mode (issue #625) -- it is not fenced there, and any future
+      non-uniform extension of this function must not trust it silently.
+    - **[DOCS ONLY -- no raise exists to inherit]** ``n_warmup``: measured
+      SILENT NO-OP on the uniform ``forward()`` lane (bit-identical value
+      AND tangent at ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps; issue
+      #626) -- it neither errors nor changes the result, so there is
+      nothing for ``jacobian_fwd`` (or ``forward()``) to fail loud on. If
+      your ``sim_fn`` passes a nonzero ``n_warmup`` expecting either a
+      memory saving (forward mode builds no tape, so there is none to
+      save) or a truncated-but-correct derivative (it silently is NOT
+      truncated), both expectations are wrong. Do not use it here.
+    - **[DOCS ONLY -- inert, not a raise]** ``checkpoint`` /
+      ``checkpoint_segments``: measured EXACTLY NEUTRAL under forward mode
+      (flops/temp bytes identical across ``checkpoint=False``,
+      ``checkpoint=True`` (the ``forward()`` default), and
+      ``checkpoint_segments=K``) -- remat only pays off under reverse-mode
+      transposition, and forward mode builds no tape to transpose. A
+      ``sim_fn`` built for use with ``jacobian_fwd`` should pass
+      ``checkpoint=False`` explicitly (``forward()`` defaults to
+      ``checkpoint=True``) to avoid inheriting dead HLO plus
+      ``checkpoint_segments``' ``n_steps % K == 0`` divisibility raise for
+      no forward-mode benefit. These are reverse-mode knobs; document them
+      as such, do not reach for them here.
+
+    Scope limits
+    -------------
+    - Uniform single-device lane only (see the fences above).
+    - "Geometry parameter" is NOT a parametric dimension here. A traced
+      ``Box`` corner raises ``ConcretizationTypeError``
+      (``rfx/geometry/csg.py``) and ``forward()``'s material rasterisation
+      is a binary ``jnp.where`` mask with zero gradient almost everywhere.
+      The only continuous geometry design channels this package has are
+      topology density (via :func:`rfx.topology.density_to_material_fields`),
+      ``pec_occupancy_override``, and the non-uniform ``dz_profile``. If you
+      want ``d/d(patch width in metres)``, this function cannot supply that
+      column -- rfx does not have it to give, on any AD mode.
+    - Nonlinear (Kerr chi3) tangents ran clean under ``vmap(jvp)`` in
+      testing but were numerically indistinguishable from the linear
+      baseline at the tested chi3 -- that is NOT a validation of the
+      nonlinear tangent path. Treat it as unverified until measured at a
+      chi3 large enough to move the Jacobian outside noise.
+    """
+    if isinstance(tangents, str):
+        if tangents != "identity":
+            raise ValueError(
+                f"jacobian_fwd: tangents string must be 'identity', got "
+                f"{tangents!r}."
+            )
+        tangent_batch, n_t = _identity_tangent_batch(params)
+    else:
+        tangent_batch, n_t = _explicit_tangent_batch(params, tangents)
+
+    def _jvp_row(tangent_row):
+        return jax.jvp(sim_fn, (params,), (tangent_row,))
+
+    if batch_tangents:
+        value, jacobian = jax.vmap(
+            _jvp_row, in_axes=0, out_axes=(None, 0),
+        )(tangent_batch)
+    else:
+        values = []
+        jac_rows = []
+        for i in range(n_t):
+            row = jax.tree_util.tree_map(lambda x: x[i], tangent_batch)
+            v, j = jax.jvp(sim_fn, (params,), (row,))
+            values.append(v)
+            jac_rows.append(j)
+        value = values[0]
+        jacobian = jax.tree_util.tree_map(
+            lambda *rows: jnp.stack(rows, axis=0), *jac_rows,
+        )
+    return value, jacobian

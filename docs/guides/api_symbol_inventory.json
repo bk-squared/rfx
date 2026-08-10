@@ -1198,6 +1198,15 @@
         "kwargs"
       ]
     },
+    "jacobian_fwd": {
+      "kind": "function",
+      "params": [
+        "sim_fn",
+        "params",
+        "tangents",
+        "batch_tangents"
+      ]
+    },
     "load_material_csv": {
       "kind": "function",
       "params": [

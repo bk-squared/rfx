@@ -99,6 +99,62 @@ with a `DesignRegion`). Lane-agnostic: works on `run()`/`forward()` results
 from both the uniform and non-uniform meshes; fenced fail-loud on the two
 distributed lanes (neither sharded runner accumulates DFT planes today).
 
+## `jacobian_fwd` — a many-output Jacobian in one batched forward pass
+
+For a many-output objective (the full `dft_field` tensor, not a scalar
+reduction — e.g. training a gradient-augmented surrogate on the field
+itself), reverse mode needs one `jax.grad`/`jax.vjp` call PER output, and
+`jax.jacrev` refuses a complex-dtype output outright (`TypeError` without
+`holomorphic=True`). `rfx.jacobian_fwd(sim_fn, params)` computes the whole
+Jacobian in one batched forward-mode pass instead:
+
+```python
+value, jacobian = rfx.jacobian_fwd(
+    lambda p: dft_field(name)(sim.forward(eps_override=eps(p), checkpoint=False)),
+    params,
+)
+```
+
+with `params` a pytree of scalar design variables (the default
+`tangents="identity"` builds one tangent direction per scalar leaf — pass
+an explicit tangent pytree/matrix, same structure as `params` with a
+leading `n_t` axis, for a flat `(n_p,)` design vector or a subset of
+columns). `jacobian` mirrors `sim_fn`'s OUTPUT, not `params` — every leaf
+gains a new leading `n_t` axis holding the directional derivative along
+each tangent direction, in `tangents="identity"`'s case matching `params`'
+flattened leaf order.
+
+This is PACKAGING over stock `jax.vmap(jax.jvp(...))`, not new solver
+capability — forward mode already ran end-to-end through the same
+`forward()` -> `rfx.observables` path with zero solver changes. Read
+before reaching for it:
+
+- **Not "a few times one solve, not N times."** Measured cost scales
+  roughly `(1 + n_t)` plain solves in both wall time and flops, and that
+  ratio MOVES with grid size — regenerate `scripts/benchmark_jacobian_fwd.py`
+  for a current number rather than trusting one written down elsewhere.
+  The real argument for this mode is MEMORY: forward-mode peak is
+  `O(state) * (1 + n_t)` and independent of `n_steps`, while reverse mode
+  on a single scalar output is tens of times one plain solve on the same
+  fixture and cannot produce a many-output Jacobian at all.
+- The returned Jacobian is `dy/dx` UNCONJUGATED for a complex `value` —
+  differs by a conjugate from anything built through `jax.vjp`/`jax.grad`.
+- Uniform single-device lane only. `design_mask` and non-uniform+
+  `distributed=True` (with a registered DFT-plane probe) both raise
+  `NotImplementedError` via `forward()`'s own pre-existing checks;
+  `n_warmup` is a measured silent no-op and `checkpoint`/
+  `checkpoint_segments` are measured exactly neutral under forward mode —
+  neither has a raise to catch it, so both are documented traps in
+  `jacobian_fwd`'s own docstring rather than being plumbed through.
+- "Geometry parameter" still means the topology-density pixel /
+  `pec_occupancy_override` / `dz_profile` design channels from the section
+  above — not a parametric dimension (`Box` corners are not
+  differentiable through `forward()`).
+
+Full contract, fence reasoning, and gates:
+`rfx/observables.py`'s `jacobian_fwd` docstring and
+`tests/test_jacobian_fwd.py`.
+
 ## Validate either method
 
 - `rfx.validate_port_smatrix(result)` — passivity/shape verdict. A

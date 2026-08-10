@@ -6,6 +6,101 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `rfx.jacobian_fwd`, a batched forward-mode Jacobian wrapper (issue #577)
+
+- `rfx.observables.jacobian_fwd(sim_fn, params, *, tangents="identity",
+  batch_tangents=True)` (flat-exported as `rfx.jacobian_fwd`) computes
+  `(value, jacobian)` for any JAX-differentiable `sim_fn(params) -> value`
+  (typically `lambda p: dft_field(name)(sim.forward(eps_override=eps(p),
+  ...))`) via `jax.vmap(jax.jvp(...))` over a tangent basis, NOT
+  `jax.linearize`. This is PACKAGING, not new solver capability: forward
+  mode already ran end-to-end through `sim.forward()` ->
+  `rfx.observables` with zero solver changes before this PR — the new
+  surface is tangent-basis construction, primal de-duplication, and four
+  documented fences.
+- **The headline finding is a negative one, and it is the honest
+  deliverable**: the issue's premise that batched forward-mode AD "shares
+  the expensive primal sweep" is TRUE (verified both structurally, via
+  the compiled jaxpr's scan carry, and via a cost-model fit whose
+  intercept lands within a few percent of one plain solve — see
+  `tests/test_jacobian_fwd.py::test_g3_primal_carry_is_independent_of_n_t`
+  and `scripts/benchmark_jacobian_fwd.py`), but the issue's hoped-for
+  economics ("a few times one solve, not N times") is NOT what the
+  current kernel delivers. MEASURED, CPU (`jax.default_backend()=="cpu"`),
+  jax 0.10.2, float32, `n_steps=120`:
+  - grid 35x31x31 = 33,635 cells: wall time at `n_t=10` is **5.9x** one
+    plain solve (batched) / **21.3x** (sequential, `batch_tangents=False`);
+    flops **17.5x**; XLA-reported `temp_bytes` (a *compiler estimate*, not
+    a measured/observed/certified runtime peak — see the honesty-label
+    discipline in `tests/test_estimate_ad_memory.py`) **10.4x**.
+  - grid 59x55x55 = 178,475 cells (5.3x more cells), same `n_steps`: the
+    SAME `n_t=10` batched configuration moves to **7.3x** wall time /
+    **18.6x** flops / **10.4x** `temp_bytes` — flops and `temp_bytes` (both
+    deterministic compiler outputs) land within ~1% of the small-grid
+    ratio, while wall time (subject to machine load) moved from 5.9x to
+    7.3x. The point of quoting two grid sizes is that the ratio is not a
+    fixed constant across problem sizes — re-run
+    `scripts/benchmark_jacobian_fwd.py --grid-scale 24` for the current
+    number on your hardware rather than trusting either one quoted here.
+  - forward-mode `temp_bytes` is measured INDEPENDENT of `n_steps`
+    (`n_steps=120` vs `240` differ by <0.02% — noise, not a real
+    dependency) — this is the actual argument FOR this mode: reverse mode
+    on the same fixture costs `temp_bytes` tens of times one plain solve
+    for a SINGLE scalar output at `n_steps=120` and cannot produce a
+    many-output Jacobian in one pass at all (`jax.jacrev` raises
+    `TypeError` on a complex-dtype output without `holomorphic=True`).
+  - batching beats running the `n_t` tangent directions one at a time:
+    measured wall time ~3x faster and flops ~1.3-1.4x fewer at `n_t=10`
+    than the `batch_tangents=False` sequential control on the same
+    fixture.
+  - Numbers are never pinned as constants in a test or docstring (repo
+    anti-rot rule) — `tests/test_benchmark_jacobian_fwd.py` gates
+    RELATIONS (intercept-vs-plain-solve ratio band, batched-faster-than-
+    sequential, memory-independent-of-n_steps), and
+    `scripts/benchmark_jacobian_fwd.py` is the regenerable source for any
+    number quoted above or in a PR body.
+- Complex-Jacobian convention: for a complex-valued `value` (e.g.
+  `dft_field`'s output), the returned Jacobian is `dy/dx` UNCONJUGATED —
+  it differs by a conjugate from anything derived through `jax.vjp`/
+  `jax.grad` on the same computation. Documented in the function's own
+  docstring; gated by `tests/test_jacobian_fwd.py::test_g2_jacobian_is_unconjugated_dy_dx`.
+- `tangents="identity"` is defined as per-element identity over SCALAR
+  leaves of `params` ONLY, and fails loud (`ValueError`) on any non-scalar
+  or non-floating leaf — a naive per-leaf identity on a multi-element leaf
+  silently sums that leaf's Jacobian entries instead of isolating one
+  column of them. An explicit tangent pytree/matrix (params' structure
+  with a leading `n_t` axis on every leaf) is the escape hatch for
+  non-all-scalar `params`, e.g. a flat `(n_p,)` design vector with
+  `tangents=jnp.eye(n_p)`.
+- **Scope limits, stated plainly**: uniform single-device lane only;
+  "geometry parameter" means the topology-density pixel / `dz_profile` /
+  `pec_occupancy_override` design channels rfx actually has, NOT a
+  parametric dimension (a traced `Box` corner still raises
+  `ConcretizationTypeError`) — no new geometry differentiability shipped
+  here; nonlinear (Kerr) tangents are unverified at the tested chi3.
+- Fail-loud fences, two INHERITED raises and two DOCUMENTED traps (see
+  `jacobian_fwd`'s own docstring "Fail-loud fences" section for the full
+  reasoning): non-uniform+`distributed=True` with a registered DFT-plane
+  probe and `design_mask` on the uniform lane both raise
+  `NotImplementedError` via `forward()`'s own pre-existing checks,
+  propagated unchanged through `jax.jvp`; `n_warmup` (measured SILENT
+  NO-OP on the uniform lane, issue #626) and `checkpoint`/
+  `checkpoint_segments` (measured EXACTLY NEUTRAL under forward mode —
+  remat only pays off under reverse-mode transposition) have no raise to
+  inherit and are documented traps instead, since `jacobian_fwd` is
+  generic over `sim_fn` and never sees `forward()`'s own keyword
+  arguments.
+- Provenance: the issue's own author downgraded #577 to nice-to-have on
+  2026-08-06 in favour of #579 (a reverse-mode scalar-objective need);
+  #579 shipped (PR #619, 2026-08-10). The PI directed this session, in
+  the same window after #579 shipped, to proceed to #577 following
+  #622/#582. `docs/agent-memory/` carries no forward-mode/jvp/jacfwd STOP
+  or do-not-repeat entry.
+- New docs: `docs/agent/recipe-design-loop.mdx` gains a `jacobian_fwd`
+  section; `docs/guides/api_symbol_inventory.json` regenerated
+  (`rfx.jacobian_fwd`'s parameter names `sim_fn, params, tangents,
+  batch_tangents` are now pinned by `scripts/check_api_reference.py`).
+
 ### Fixed — non-uniform-mesh CPML absorber was not impedance-matched (issue #582)
 
 - The uniform-grid material assembler extends the interior-edge

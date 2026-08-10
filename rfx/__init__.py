@@ -153,7 +153,7 @@ from rfx.optimize_objectives import (
     maximize_transmitted_energy,
     steer_probe_array,
 )
-from rfx.observables import dft_field, field_energy, field_softmax
+from rfx.observables import dft_field, field_energy, field_softmax, jacobian_fwd
 try:
     from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
 except ImportError:
@@ -293,7 +293,7 @@ __all__ = [
     "minimize_s11", "maximize_s21", "target_impedance", "maximize_bandwidth",
     "maximize_directivity", "minimize_reflected_energy",
     "maximize_transmitted_energy", "steer_probe_array",
-    "dft_field", "field_energy", "field_softmax",
+    "dft_field", "field_energy", "field_softmax", "jacobian_fwd",
     # sweeps / batch
     "parametric_sweep", "SweepResult", "plot_sweep",
     "vmap_material_sweep", "VmapSweepResult",

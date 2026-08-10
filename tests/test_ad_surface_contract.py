@@ -198,6 +198,19 @@ AD_CLASSIFICATION = {
         "tests/test_observables_dft_field.py::test_field_softmax_material_leg_ad_matches_fd, "
         "tests/test_observables_dft_field.py::test_field_softmax_geometry_leg_ad_matches_fd",
     ),
+    "observables.jacobian_fwd": (
+        GRAD_SAFE,
+        "thin jax.vmap(jax.jvp(...)) packaging over the same already-"
+        "differentiable forward()->dft_field/field_energy path (issue "
+        "#577); FD-vs-AD gate, both AC legs (material eps_r scalar; one "
+        "topology-density pixel) plus the many-output complex dft_field "
+        "tensor leg, swept over multiple h values: "
+        "tests/test_jacobian_fwd.py::test_g1_material_and_geometry_legs_ad_matches_fd, "
+        "tests/test_jacobian_fwd.py::test_g1_many_output_tensor_leg_ad_matches_fd — "
+        "severed-tape falsifier confirmed the gate reads exactly 0.0 AD vs "
+        "finite FD when eps_override is stop_gradient'd: "
+        "tests/test_jacobian_fwd.py::test_g7_falsifier_severed_tape_reads_exactly_zero.",
+    ),
 }
 
 
