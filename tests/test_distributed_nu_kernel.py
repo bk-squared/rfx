@@ -44,7 +44,12 @@ def test_inv_dx_h_slab_boundary_matches_global():
     lower neighbour and is resolved by the global build."""
     nz = 8
     ny = 8
-    n_physical = 32
+    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # per axis, so an n_physical-cell request realizes nx = n_physical + 1
+    # nodes. 31 physical cells -> 32 realized nodes, evenly splittable by
+    # n_devices=2 below (the manual slab replay assumes an even, unpadded
+    # split).
+    n_physical = 31
     dx0 = 1e-3
     dx_profile = _graded_profile(n_physical, dx0, ratio=1.5)
     dz_profile = np.full(nz, dx0)
@@ -55,6 +60,13 @@ def test_inv_dx_h_slab_boundary_matches_global():
     )
 
     n_devices = 2
+    # Fixture precondition: guard the even-split, unpadded premise the
+    # manual 2-device slab replay below depends on (gate-can-bind-artifact
+    # rule — assert what makes the test able to fail correctly).
+    assert grid.nx % n_devices == 0, (
+        f"grid.nx={grid.nx} must be evenly divisible by n_devices="
+        f"{n_devices} for this test's unpadded slab-split premise"
+    )
     inv_dx_g, inv_dx_h_g, dx_padded = _build_sharded_inv_dx_arrays(
         grid, n_devices, pad_x=0
     )
@@ -101,7 +113,12 @@ def test_update_h_nu_local_matches_global_interior():
     update_h_nu on the unsharded tensor at interior real cells."""
     nz = 8
     ny = 8
-    n_physical = 16
+    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # per axis, so an n_physical-cell request realizes nx = n_physical + 1
+    # nodes. 15 physical cells -> 16 realized nodes, evenly splittable by
+    # n_devices=2 below (the manual 2-device slab replay assumes an even
+    # split).
+    n_physical = 15
     dx0 = 1e-3
     dx_profile = _graded_profile(n_physical, dx0, ratio=1.2)
     dz_profile = np.full(nz, dx0)
@@ -112,25 +129,35 @@ def test_update_h_nu_local_matches_global_interior():
     )
     nx = grid.nx
     n_devices = 2
+    # Fixture precondition: guard the even-split premise the manual slab
+    # replay below depends on.
+    assert grid.nx % n_devices == 0, (
+        f"grid.nx={grid.nx} must be evenly divisible by n_devices="
+        f"{n_devices} for this test's slab-split premise"
+    )
     nx_per = nx // n_devices
     ghost = 1
     nx_local = nx_per + 2 * ghost
 
-    # Random-ish E fields
+    # Random-ish E fields. Every field/material array is sized from the
+    # REALIZED grid shape (grid.nx/ny/nz) — #564 appends a bounding node
+    # per axis, so grid.ny/grid.nz are ny+1/nz+1, not the bare ny/nz used
+    # above only to build the dz_profile / domain-size request.
+    gnx, gny, gnz = grid.nx, grid.ny, grid.nz
     rng = np.random.default_rng(42)
-    ex = jnp.asarray(rng.standard_normal((nx, ny, nz)), dtype=jnp.float32)
-    ey = jnp.asarray(rng.standard_normal((nx, ny, nz)), dtype=jnp.float32)
-    ez = jnp.asarray(rng.standard_normal((nx, ny, nz)), dtype=jnp.float32)
-    zeros_xyz = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
+    ex = jnp.asarray(rng.standard_normal((gnx, gny, gnz)), dtype=jnp.float32)
+    ey = jnp.asarray(rng.standard_normal((gnx, gny, gnz)), dtype=jnp.float32)
+    ez = jnp.asarray(rng.standard_normal((gnx, gny, gnz)), dtype=jnp.float32)
+    zeros_xyz = jnp.zeros((gnx, gny, gnz), dtype=jnp.float32)
     state = FDTDState(
         ex=ex, ey=ey, ez=ez,
         hx=zeros_xyz, hy=zeros_xyz, hz=zeros_xyz,
         step=jnp.int32(0),
     )
     mats = MaterialArrays(
-        eps_r=jnp.ones((nx, ny, nz), dtype=jnp.float32),
-        sigma=jnp.zeros((nx, ny, nz), dtype=jnp.float32),
-        mu_r=jnp.ones((nx, ny, nz), dtype=jnp.float32),
+        eps_r=jnp.ones((gnx, gny, gnz), dtype=jnp.float32),
+        sigma=jnp.zeros((gnx, gny, gnz), dtype=jnp.float32),
+        mu_r=jnp.ones((gnx, gny, gnz), dtype=jnp.float32),
     )
 
     # Global H update
@@ -162,7 +189,7 @@ def test_update_h_nu_local_matches_global_interior():
     idxh_slab = _slab_1d(inv_dx_h_g, 0.0)
 
     def _slab_field(arr):
-        out = np.zeros((n_devices, nx_local, ny, nz), dtype=np.float32)
+        out = np.zeros((n_devices, nx_local, gny, gnz), dtype=np.float32)
         for d in range(n_devices):
             lo, hi = d * nx_per, (d + 1) * nx_per
             out[d, ghost:ghost + nx_per] = np.asarray(arr)[lo:hi]
@@ -188,9 +215,9 @@ def test_update_h_nu_local_matches_global_interior():
         step=jnp.int32(0),
     )
     slab_mats = MaterialArrays(
-        eps_r=jnp.ones((nx_local, ny, nz), dtype=jnp.float32),
-        sigma=jnp.zeros((nx_local, ny, nz), dtype=jnp.float32),
-        mu_r=jnp.ones((nx_local, ny, nz), dtype=jnp.float32),
+        eps_r=jnp.ones((nx_local, gny, gnz), dtype=jnp.float32),
+        sigma=jnp.zeros((nx_local, gny, gnz), dtype=jnp.float32),
+        mu_r=jnp.ones((nx_local, gny, gnz), dtype=jnp.float32),
     )
     slab_h = _update_h_local_nu(
         slab_state, slab_mats, grid.dt,
@@ -314,10 +341,16 @@ def test_build_sharded_nu_grid_inv_dx_seam_continuity():
 
 
 def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
-    """nx=17, n_devices=2 — high-x rank gets the pad; metadata flags are correct."""
-    # nx=17 is odd; with n_devices=2 we need pad_x=1 to reach 18
+    """nx=17 (realized), n_devices=2 — high-x rank gets the pad; metadata
+    flags are correct."""
+    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # per axis, so an nx_physical-cell request realizes grid.nx =
+    # nx_physical + 1 nodes. This test's whole point is exercising the
+    # PAD-TRIM path, which only fires when the realized nx is NOT
+    # divisible by n_devices — request 16 physical cells to realize
+    # nx=17 (odd); with n_devices=2 we need pad_x=1 to reach 18.
     dx0 = 1e-3
-    nx_physical = 17
+    nx_physical = 16
     ny_physical = 8
     nz_physical = 8
     dx_profile = _graded_profile(nx_physical, dx0, ratio=1.2)
@@ -327,10 +360,21 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
         cpml_layers=0,
         dx_profile=dx_profile,
     )
-    assert grid.nx == nx_physical  # sanity
+    # #564 bounding node: N physical cells realize N+1 nodes.
+    assert grid.nx == nx_physical + 1  # sanity
 
     n_devices = 2
+    # Fixture precondition: the pad-trim path only executes when the
+    # realized nx is NOT evenly divisible by n_devices — guard both ends
+    # so a future realized-node-count change can't silently stop
+    # exercising the path this test exists to cover (gate-can-bind-
+    # artifact rule).
+    assert grid.nx % n_devices != 0, (
+        f"grid.nx={grid.nx} must be non-divisible by n_devices={n_devices} "
+        f"for this test to exercise the pad-trim path at all"
+    )
     sg = build_sharded_nu_grid(grid, n_devices=n_devices)
+    assert sg.pad_x > 0, "pad-trim path did not execute (pad_x == 0)"
 
     # Padding arithmetic
     assert sg.pad_x == 1, f"Expected pad_x=1, got {sg.pad_x}"
