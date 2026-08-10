@@ -6,6 +6,43 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `rfx.observables`: differentiable DFT-plane accessor + objectives (#579)
+
+- New `rfx.observables` module (flat-exported at top level and in the
+  curated `rfx.__all__`, re-specced 210 -> 213 for this addition):
+  `dft_field(names)` is a result accessor over `result.dft_planes` (a
+  single name returns the raw `(n_freqs, n1, n2)` complex accumulator; a
+  list of names stacks into `(n_names, n_freqs, n1, n2)` when shapes
+  match, else returns a `dict[name] -> array`). `field_energy(names)` and
+  `field_softmax(names, beta=)` are objective factories in the
+  `rfx.optimize_objectives` factory style (`callable(Result) -> scalar`,
+  JAX-differentiable), for `sum(|field|**2)` and a temperature-controlled
+  soft-max over space + frequency respectively. All three are lane-
+  agnostic: they work on `run()`/`forward()` results from both the
+  uniform and non-uniform meshes, since `result.dft_planes` is a
+  name-keyed dict on every one of those four combinations. See the
+  module docstring for the AD-tape contents and an E/H-mixing hazard note
+  (no `h_phase_correction` kwarg — apply `exp(+j*omega*dt/2)` to H-component
+  planes yourself for any E x H* cross-term objective).
+- New example `examples/inverse_design/field_observable_shielding.py`:
+  a normal-incidence TFSF illuminates a multilayer dielectric stack;
+  `field_softmax` pools two internal DFT-plane leakage monitors (the
+  register-N-planes-then-pool pattern, since each plane probe is single-
+  component) into one worst-case-leakage scalar minimized via
+  `jax.grad` descent.
+
+### **BREAKING** — two new fail-loud fences for registered DFT plane probes on distributed lanes (#579)
+
+- `forward(distributed=True)` and `run(devices=[...])` (2+ devices) now
+  raise `NotImplementedError` when any `add_dft_plane_probe(...)` plane is
+  registered, instead of silently dropping it. Neither
+  `rfx.runners.distributed_nu` (the only lane `forward(distributed=True)`
+  currently reaches) nor `rfx.runners.distributed_v2`/`rfx.runners.distributed`
+  accumulates DFT-plane fields — a registered plane's data was previously
+  discarded with no warning. Remediation: drop the DFT plane probe(s), or
+  use the single-device lane (`run()` without `devices=`, or a
+  non-distributed `forward()`).
+
 ### Added — explicit soft-source amplitude semantics: `add_source(..., amplitude_kind=)` (#565/#571)
 
 - `add_source` (and `add_polarized_source`) gain `amplitude_kind='field'|'current'|None`.
