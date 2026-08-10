@@ -133,9 +133,10 @@ def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(
     pad material extension from the smoother (#582 E2): it was never run
     before this fix — the slab used to be added only under ``if
     smoothing:`` — and pre-fix it already carried ~90% of the
-    ``subpixel-cpml`` divergence (residual 7.80e-3 of the 1.978e-2 total),
-    because the missing NU pad replication is a material-assembly gap, not
-    a smoother interaction.
+    ``subpixel-cpml`` divergence (residual 7.7261e-3 of the 1.9890e-2
+    total, both measured on the pre-fix tree, commit 31395e0), because the
+    missing NU pad replication is a material-assembly gap, not a smoother
+    interaction.
     """
     dx = 1e-3
     uni, dt_u = _run(dx, nonuniform=False, smoothing=smoothing, boundary=boundary,
@@ -181,9 +182,10 @@ def test_nu_solve_reduces_to_uniform_solve_up_to_source_normalization(
     # slab therefore saw a different absorber medium per path: 736 pad cells
     # eps 4.0-vs-1.0 at the slab's k=9 layer). Fixed by adding the same pad
     # replication to assemble_materials_nu; post-fix measured 8.7e-5
-    # (staircase-slab-cpml, was 7.80e-3 pre-fix — carried ~90% of the
+    # (staircase-slab-cpml, was 7.7261e-3 pre-fix — carried ~90% of the
     # subpixel-cpml divergence on its own) and 1.1e-4 (subpixel-cpml, was
-    # 1.978e-2 pre-fix, record-length-independent at 600/1200/2400 steps).
+    # 1.9890e-2 pre-fix, record-length-independent at 600/1200/2400 steps).
+    # Pre-fix numbers measured on the pre-fix tree (commit 31395e0).
     assert residual < 3e-4, (
         f"after removing the known source-normalization factor the two paths "
         f"still differ by {residual:.3e} of full scale — the NU solve is not "
