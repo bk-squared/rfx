@@ -6,6 +6,51 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — distributed-NU pad-lane hi-x wall displacement (issue #622)
+
+- `rfx.runners.distributed_nu.run_nonuniform_distributed_pec` and the NU
+  branch of `rfx.runners.distributed_v2.run_distributed` (`distributed=True`
+  with a non-uniform `dx`/`dy`/`dz` profile) produced a distributed cavity
+  effectively **one cell wider** than the equivalent single-device run
+  whenever the sharded x-extent needed alignment padding to divide evenly
+  across devices (`sharded_grid.pad_x > 0` — e.g. any even physical cell
+  count on 2 devices, since #564 made the realized node count `N+1`).
+  `_build_sharded_inv_dx_arrays` re-derived the H-update inverse-spacing
+  array from a padded cell-size profile instead of reading the grid's own
+  `inv_dx_h`, which moved the trailing zero coefficient (the one that
+  freezes the real boundary node's H term) from the real face (global
+  node `nx - 1`) to the padded slab end — so the real boundary cell's H
+  term stayed live. The PEC/PMC face appliers and the CPML x-hi window
+  had the matching off-by-`pad_x` bug, acting on the padded slab end
+  instead of the real face. Net effect on the 13 affected 2-device
+  equivalence tests: final-step probe `rel_err` up to 2.0 (gate 5e-5);
+  the Class F analytic-resonance test stayed green-but-degraded (2.0%
+  measured error under its 5% discretisation gate, now 0.02%).
+  Fix: pad cells are now structurally inert (all E/H inverse-spacing
+  coefficients zero in the pad region, preserving the grid's own
+  trailing zero at the real boundary node), and the PEC/PMC/CPML face
+  machinery is shifted by `pad_x` to act on the real face on the last
+  rank. The `pad_x == 0` lane is unchanged in behaviour class;
+  coefficients now come bit-identically from the grid's own arrays. No
+  gate was loosened; the Class F resonance gate (5% discretisation
+  bound) is untouched even though the measured error dropped well
+  under it.
+- Lane visibility: `tests/test_distributed_nu_kernel.py` carried a
+  module-wide `pytest.mark.gpu` from file creation (2026-04-16, for a
+  test-pollution reason superseded the same day by the root conftest's
+  ordered XLA_FLAGS/jax-import sequence) that put its entire 22-test
+  2-device equivalence family in a lane that never ran it: every CPU
+  lane deselects `gpu`, and the 1-GPU-device VESSL pod's `-m gpu` step
+  only creates *virtual* extra devices on the CPU backend, so it always
+  skipped there too. That is why this regression (introduced pre-#564,
+  unmasked by it) shipped undetected. The marker is removed; the file
+  now runs in the same fast-suite/weekly CPU shards as its sibling
+  `test_distributed_nu_composition.py`, which never carried the marker.
+  `scripts/vessl_gpu_suite.yaml`'s stale comment (claiming distributed
+  coverage already ran in the fast suite) is corrected to match.
+  `tests/test_distributed.py` (the uniform-grid distributed family) is
+  in the same runs-nowhere state and is tracked separately.
+
 ### Added — `vmap_material_sweep()` batches DFT plane accumulators on the fast path (#578)
 
 - `add_dft_plane_probe` planes now accumulate inside the `jax.vmap`-batched

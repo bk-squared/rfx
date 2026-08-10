@@ -1,7 +1,25 @@
 """Unit tests for Phase B distributed_nu kernels.
 
-These are pure-python tests that do NOT require multiple devices — they
-exercise the slab-building helper and the local H update directly.
+Mostly pure-python tests that do NOT require multiple devices — they
+exercise the slab-building helper and the local H update directly — plus
+a 2-device equivalence family gated by ``_PHASE2B_REQUIRES_2DEV``
+(skips cleanly on <2 devices; the root conftest sets 2 virtual CPU
+devices for any run that doesn't already set XLA_FLAGS).
+
+Historical note (#622): this file carried a module-wide
+``pytestmark = pytest.mark.gpu`` from its creation (2026-04-16,
+a317dc4) for a test-POLLUTION reason (module-level XLA_FLAGS set at
+import time), not a genuine GPU requirement — that pollution class was
+superseded the same day by the root conftest's single, ordered
+XLA_FLAGS/jax-import sequence (1c8268d). Because every CPU lane
+deselects ``gpu`` (pyproject addopts) and the GPU pod exposes only 1
+CUDA device (the sentinel only creates *virtual* devices on the CPU
+backend), the marker meant this file's whole 2-device equivalence
+family ran in NO lane at all — the regression this file's tests guard
+against (13 failing tests, PR that closed #622) went undetected for
+that reason. The marker is removed so these run in the same
+fast-suite/weekly CPU shards as the sibling
+``test_distributed_nu_composition.py`` file, which never carried it.
 """
 
 import os
@@ -13,8 +31,6 @@ os.environ.setdefault(
 import numpy as np
 import jax.numpy as jnp
 import pytest
-
-pytestmark = pytest.mark.gpu
 
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.core.yee import FDTDState, MaterialArrays, MU_0, update_h_nu
@@ -385,12 +401,29 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     # High-x rank index
     assert sg.rank_has_high_x_pad == n_devices - 1  # rank 1
 
-    # The padded cell in inv_dx_global should equal 1/dx_arr[-1]
-    expected_last_inv = float(1.0 / np.asarray(grid.dx_arr)[-1])
-    got_last_inv = float(sg.inv_dx_global[-1])
-    assert np.isclose(got_last_inv, expected_last_inv, rtol=1e-5), (
-        f"Padded inv_dx last cell {got_last_inv} != 1/dx[-1] {expected_last_inv}"
+    # #622 fix: the pad region is STRUCTURALLY INERT — both the E
+    # (inv_dx_global) and H (inv_dx_h_global) coefficients are exactly
+    # zero at the padded cell, so nothing evolves there regardless of
+    # the PEC-mask padding. Pre-fix this cell carried a LIVE 1/dx[-1]
+    # coefficient (this assertion used to check for that value) — that
+    # was exactly the #622 bug: it kept the real boundary node's H term
+    # live and displaced the hi-x wall by one cell. Asserting the old
+    # nonzero value here would re-encode the bug as expected behaviour.
+    got_last_inv_h = float(sg.inv_dx_h_global[-1])
+    got_last_inv_e = float(sg.inv_dx_global[-1])
+    assert got_last_inv_h == 0.0, (
+        f"Padded inv_dx_h (H) last cell must be inert (0.0), got {got_last_inv_h}"
     )
+    assert got_last_inv_e == 0.0, (
+        f"Padded inv_dx (E) last cell must be inert (0.0), got {got_last_inv_e}"
+    )
+    # The REAL boundary node's H term (global index nx-1 — the grid's
+    # own trailing zero, nonuniform.py:219) must stay AT nx-1, not move
+    # to the padded slab end.
+    assert float(sg.inv_dx_h_global[sg.nx - 1]) == 0.0, (
+        "Real boundary node's H coefficient must be zero at global nx-1"
+    )
+    assert float(grid.inv_dx_h[-1]) == 0.0  # sanity: matches grid's own convention
 
 
 def test_build_sharded_nu_grid_replicates_dt():
@@ -482,6 +515,7 @@ from rfx.nonuniform import (  # noqa: E402
 from rfx.simulation import SourceSpec, ProbeSpec  # noqa: E402
 from tests._distributed_nu_tolerances import (  # noqa: E402
     assert_class_b_parity,
+    RTOL_PROBE_B,
 )
 
 
@@ -620,6 +654,131 @@ def test_distributed_pec_only_2device_matches_single_device():
 
     assert_class_b_parity(ts_single, ts_dist,
                           label="phase2b_pec_only_2device_parity")
+
+
+@_PHASE2B_REQUIRES_2DEV
+def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
+    """#622 regression: on an odd-node (pad_x > 0) fixture, the FULL
+    gathered final state must match single-device everywhere — not just
+    at one probe.
+
+    Pre-fix, the pad lane realized one extra active x cell (the trailing
+    H-coefficient zero moved from the real boundary node ``nx - 1`` to
+    the padded slab end, and the PEC/PMC/CPML face appliers acted on the
+    padded slab end instead of the real face) — the distributed cavity
+    was effectively one cell wider than the single-device one. A single
+    probe can miss that (see the smallest-drift case,
+    ``test_distributed_pec_mask_override_union_semantics``, where a PEC
+    sheet partially shielded the probe); comparing the whole gathered
+    field state cannot.
+
+    Uses a distinct fixture (``nx_physical=20``) from the other pad-lane
+    tests so this is not a duplicate of an existing parity check, and
+    asserts the ``pad_x > 0`` precondition explicitly (gate-can-bind-
+    artifact rule — a future realized-node-count change must not
+    silently stop exercising the pad lane here).
+    """
+    devices = jax.devices()[:2]
+    n_devices = 2
+    n_steps = 60
+
+    grid = _phase2b_build_test_grid(nx_physical=20, ny=8, nz=8, ratio=1.15)
+    materials = _phase2b_make_materials(grid)
+
+    sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
+                                         exchange_interval=1)
+    # Precondition guard: this test exists specifically to exercise the
+    # pad lane (#622). If a future change makes nx_physical=20 realize
+    # an evenly-divisible nx, this fixture stops testing what it claims
+    # to and must be updated, not silently pass on the pad_x==0 lane.
+    assert sharded_grid.pad_x > 0, (
+        f"fixture no longer exercises the pad lane: grid.nx={grid.nx}, "
+        f"pad_x={sharded_grid.pad_x} (expected > 0)"
+    )
+
+    # Structural check on _build_sharded_inv_dx_arrays's own output
+    # (#622 fix site 1). This is deliberately NOT redundant with the
+    # full-state parity run below: empirically, reverting fix site (1)
+    # alone (while sites 2-4, the PEC/PMC/CPML face appliers, stay
+    # fixed) produces NO observable drift in ANY forward or gradient
+    # parity test in this file — the PEC face applier re-zeros E at the
+    # real boundary node every step, and the corrupted H coefficient at
+    # that one node never leaks anywhere else for a hard-PEC unmasked
+    # cavity. So a parity-only test cannot be the F4 falsifier for site
+    # 1; this direct array assertion is what makes it one.
+    assert float(sharded_grid.inv_dx_h_global[sharded_grid.nx - 1]) == 0.0, (
+        "Real boundary node's H coefficient must be zero at global nx-1"
+    )
+    assert float(sharded_grid.inv_dx_h_global[-1]) == 0.0, (
+        "Pad-region H coefficient must be inert (0.0)"
+    )
+    assert float(sharded_grid.inv_dx_global[-1]) == 0.0, (
+        "Pad-region E coefficient must be inert (0.0)"
+    )
+
+    src_idx = (4, 4, 4)
+    prb_idx = (12, 4, 4)
+    src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
+        grid, src_idx, "ez", _phase2b_gauss_waveform, n_steps, materials,
+    )
+    src_spec = SourceSpec(
+        i=int(src_si), j=int(src_sj), k=int(src_sk),
+        component=src_comp, waveform=jnp.asarray(src_wf),
+    )
+    prb_spec = ProbeSpec(
+        i=int(prb_idx[0]), j=int(prb_idx[1]), k=int(prb_idx[2]),
+        component="ez",
+    )
+
+    single_out = run_nonuniform(
+        grid=grid, materials=materials, n_steps=n_steps,
+        sources=[src_spec], probes=[prb_spec],
+    )
+    single_state = single_out["state"]
+
+    sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
+    dist_out = run_nonuniform_distributed_pec(
+        sharded_grid=sharded_grid,
+        sharded_materials=sharded_mat,
+        sharded_pec_mask=None,
+        n_steps=n_steps,
+        sources=[src_spec],
+        probes=[prb_spec],
+        n_devices=n_devices,
+        devices=devices,
+    )
+    dist_state = dist_out["final_state"]
+
+    # Full-field parity, combined relative L2 norm across all 6
+    # gathered components (the whole domain, not one probe location).
+    # An elementwise max-relative-error is the wrong metric here: this
+    # z-polarised-source geometry drives hz to a near-null field
+    # (norm ~1e-1 vs ~1e5-1e8 for the other 5 components), so per-cell
+    # ratios there are floating-point noise divided by floating-point
+    # noise, not signal. A combined L2 norm — the same sum-of-squares
+    # style as ``assert_class_b_parity``'s time-integrated energy
+    # check, generalised from the probe time series to the full
+    # spatial field — weights each component by its physical energy
+    # share, so a genuinely null component cannot dominate the metric.
+    for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        assert getattr(single_state, comp).shape == getattr(dist_state, comp).shape, (
+            f"{comp} shape mismatch: single={getattr(single_state, comp).shape}, "
+            f"dist={getattr(dist_state, comp).shape}"
+        )
+    sq_diff = sum(
+        float(jnp.sum((jnp.asarray(getattr(dist_state, c))
+                       - jnp.asarray(getattr(single_state, c))) ** 2))
+        for c in ("ex", "ey", "ez", "hx", "hy", "hz")
+    )
+    sq_ref = sum(
+        float(jnp.sum(jnp.asarray(getattr(single_state, c)) ** 2))
+        for c in ("ex", "ey", "ez", "hx", "hy", "hz")
+    )
+    rel_l2 = (sq_diff / sq_ref) ** 0.5
+    assert rel_l2 < RTOL_PROBE_B, (
+        f"#622 pad-lane full-field parity failed: "
+        f"combined relative L2 = {rel_l2:.3e} >= {RTOL_PROBE_B:.3e}"
+    )
 
 
 @_PHASE2B_REQUIRES_2DEV

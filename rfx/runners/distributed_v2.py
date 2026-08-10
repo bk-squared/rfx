@@ -145,8 +145,13 @@ def _exchange_e_ghosts_shmap(state: FDTDState, mesh: Mesh, n_devices: int) -> FD
 # ---------------------------------------------------------------------------
 
 def _apply_pec_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                     nx_local_with_ghost: int) -> FDTDState:
-    """Apply PEC boundary conditions using shard_map for device identity."""
+                     nx_local_with_ghost: int, pad_x: int = 0) -> FDTDState:
+    """Apply PEC boundary conditions using shard_map for device identity.
+
+    ``pad_x`` (#622): when the last rank's slab carries alignment-pad
+    cells past the real x-hi face (global node ``nx - 1``), the face
+    must act on that real node, not on the padded slab end.
+    """
 
     @partial(
         shard_map,
@@ -187,9 +192,9 @@ def _apply_pec_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
         ey = ey.at[ghost, :, :].set(ey_xlo)
         ez = ez.at[ghost, :, :].set(ez_xlo)
 
-        # X-hi PEC: device N-1 only
+        # X-hi PEC: device N-1 only (skip ghost AND alignment pad, #622)
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost
+        last_real = nx_local_with_ghost - 1 - ghost - pad_x
         ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
         ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
         ey = ey.at[last_real, :, :].set(ey_xhi)
@@ -203,7 +208,7 @@ def _apply_pec_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
 def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
                      nx_local_with_ghost: int,
-                     pmc_faces: frozenset) -> FDTDState:
+                     pmc_faces: frozenset, pad_x: int = 0) -> FDTDState:
     """PMC (``H_tangential = 0``) for the sharded uniform scan body.
 
     Dual of :func:`_apply_pec_shmap`. Hook point is the H-half of the
@@ -213,7 +218,7 @@ def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
     Y- and Z-face PMC is local to every rank; X-face PMC is rank-
     conditional and acts on the first / last real cell, not the seam
-    ghost.
+    ghost — nor the alignment-pad cells when ``pad_x > 0`` (#622).
     """
     if not pmc_faces:
         return state
@@ -254,7 +259,7 @@ def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
         device_idx = lax.axis_index("x")
         is_first = (device_idx == 0)
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost
+        last_real = nx_local_with_ghost - 1 - ghost - pad_x
         last_inside = last_real - 1
 
         if "x_lo" in pmc_faces:
@@ -1275,7 +1280,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #     OQ9: after H ghost exchange, before E update. PMC must
         #     fire before the next E-update reads H via curl.
         st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen)
+            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x)
 
         # 4. E update
         st, db_st, lr_st = _update_e_shmap(
@@ -1327,7 +1332,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update.
         st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen)
+            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x)
 
         # 3. E update
         st, db_st, lr_st = _update_e_shmap(
@@ -1344,7 +1349,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         )
 
         # 5. PEC boundaries
-        st = _apply_pec_shmap(st, mesh, n_devices, nx_local)
+        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
 
         # 6. Source injection
         st = _inject_sources_shmap(st, src_vals)

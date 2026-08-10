@@ -56,61 +56,59 @@ from rfx.runners._distributed_common import (
 def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
     """Build per-device x-axis inverse-spacing slabs for the shard_map runner.
 
-    The caller has already padded the global x-extent by ``pad_x`` cells
-    (to align ``nx`` on ``n_devices``).  We replicate that padding onto
-    the cell-size profile using the boundary cell value (matching how
-    ``make_nonuniform_grid`` pads CPML cells) and rebuild the global
-    ``inv_dx`` and ``inv_dx_h`` from the padded profile, then reshape to
-    per-device slabs.
-
-    The two inverse-spacing arrays are built on the *global* padded
-    profile, so slicing them into per-device slabs (with ghosts) keeps
-    every entry — including the slab-boundary ones — globally correct.
+    The caller has already decided to pad the global x-extent by
+    ``pad_x`` cells (to align ``nx`` on ``n_devices``).  Unlike the
+    pre-#622 version, this does NOT re-derive ``inv_dx``/``inv_dx_h``
+    from a padded cell-size profile — it reads ``grid.inv_dx`` /
+    ``grid.inv_dx_h`` directly (the single-device reference arrays,
+    which already carry the correct trailing H zero at the REAL
+    boundary node ``nx - 1``, see ``nonuniform.py:219``) and appends
+    ``pad_x`` zero coefficients.  The pad region is therefore
+    STRUCTURALLY INERT: with every E and H coefficient zero there, no
+    field evolves in the pad cells regardless of what the PEC-mask
+    padding does, and the wall stays exactly where the single-device
+    grid put it (#622 — the old re-derivation moved the trailing H
+    zero from real node ``nx-1`` to padded index ``nx_padded-1``,
+    leaving the real boundary cell's H term live).
 
     Parameters
     ----------
     grid : NonUniformGrid
     n_devices : int
     pad_x : int
-        Number of PEC-padded cells appended to the high-x end of the
-        domain so that ``(nx + pad_x) % n_devices == 0``.
+        Number of inert cells appended to the high-x end of the domain
+        so that ``(nx + pad_x) % n_devices == 0``.
 
     Returns
     -------
     inv_dx_e_global : (nx_padded,) np.ndarray
         E-update inverse spacing — mean ``2/(d[k-1]+d[k])`` (leading
-        ``1/d[0]``). Consumed by ``_update_e_local_nu``.
+        ``1/d[0]``), zero in the pad region. Consumed by
+        ``_update_e_local_nu``.
     inv_dx_h_global : (nx_padded,) np.ndarray
-        H-update inverse spacing — local ``1/d[k]`` (trailing ``0``).
+        H-update inverse spacing — local ``1/d[k]`` (zero at real
+        boundary node ``nx-1`` AND throughout the pad region).
         Consumed by ``_update_h_local_nu``.
     dx_padded : (nx_padded,) np.ndarray
-        The padded cell-size profile (float32) — useful for diagnostics
-        and the unit test.
+        The cell-size profile (float32), pad region filled with the
+        boundary cell size for diagnostics (e.g. CPML dx_boundary) —
+        this is geometry bookkeeping only; it does NOT feed the E/H
+        inverse-spacing arrays above.
     """
     dx_arr = np.asarray(grid.dx_arr, dtype=np.float64)
+    inv_dx_e = np.asarray(grid.inv_dx, dtype=np.float64)
+    inv_dx_h = np.asarray(grid.inv_dx_h, dtype=np.float64)
     if pad_x > 0:
-        # pad at the high-x end with boundary-cell-size value
         dx_arr = np.concatenate(
             [dx_arr, np.full(pad_x, float(dx_arr[-1]))]
         )
-    nx = dx_arr.shape[0]
+        inv_dx_e = np.concatenate([inv_dx_e, np.zeros(pad_x, dtype=np.float64)])
+        inv_dx_h = np.concatenate([inv_dx_h, np.zeros(pad_x, dtype=np.float64)])
+    nx = inv_dx_e.shape[0]
     if nx % n_devices != 0:
         raise ValueError(
             f"After padding nx={nx} is not divisible by n_devices={n_devices}"
         )
-
-    # CORE-C2: the E update needs the MEAN spacing 2/(d[k-1]+d[k]); the
-    # H update needs the LOCAL cell width 1/d[k]. (Mirrors the
-    # single-device rfx.nonuniform._profile_to_inv_arrays.) Built on the
-    # global padded profile, so each per-device slab is correct after
-    # the P("x") shard — the E-mean seam straddles the lower neighbour
-    # and is resolved here, globally, before sharding.
-    inv_local = 1.0 / dx_arr                          # 1/d[k]
-    inv_mean = 2.0 / (dx_arr[:-1] + dx_arr[1:])       # 2/(d[k]+d[k+1])
-    # First return -> E update: mean of (d[k-1], d[k]); leading 1/d[0].
-    inv_dx_e = np.concatenate([inv_local[:1], inv_mean])
-    # Second return -> H update: local cell width; trailing 0.
-    inv_dx_h = np.concatenate([inv_local[:-1], np.zeros(1, dtype=np.float64)])
 
     return (
         inv_dx_e.astype(np.float32),
@@ -693,7 +691,7 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
 
 
 def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int) -> FDTDState:
+                             nx_local: int, pad_x: int = 0) -> FDTDState:
     """Apply PEC on physical domain faces (x_lo, x_hi, y, z) using shard_map.
 
     Mirrors ``rfx/runners/distributed_v2.py::_apply_pec_shmap`` exactly:
@@ -701,11 +699,16 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
     conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi).
 
     Critically, the X-face PEC acts on the **first real cell**
-    (``ghost``) and the **last real cell** (``nx_local - 1 - ghost``),
-    NOT on the seam ghost cells (which belong to neighbouring ranks).
-    This is V3 bullet 7 ("Hard PEC only acts on physical boundary or
-    masked cells, not on seam ghosts") and V3 bullet 6 ("Hard PEC does
-    not re-zero interior seam cells of neighbouring ranks").
+    (``ghost``) and the **last real cell** (``nx_local - 1 - ghost -
+    pad_x``), NOT on the seam ghost cells (which belong to
+    neighbouring ranks) and NOT on the alignment-pad cells (which are
+    beyond the real domain face — #622: with ``pad_x > 0`` the last
+    rank's slab carries ``pad_x`` inert cells past global node
+    ``nx - 1``; the physical face stays at that real node, not at the
+    padded slab end). This is V3 bullet 7 ("Hard PEC only acts on
+    physical boundary or masked cells, not on seam ghosts") and V3
+    bullet 6 ("Hard PEC does not re-zero interior seam cells of
+    neighbouring ranks").
     """
     @partial(
         shard_map,
@@ -738,9 +741,10 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
         ey = ey.at[ghost, :, :].set(ey_xlo)
         ez = ez.at[ghost, :, :].set(ez_xlo)
 
-        # X-hi PEC: only rank N-1; act on last REAL cell (skip ghost)
+        # X-hi PEC: only rank N-1; act on last REAL cell (skip ghost AND
+        # the alignment pad — #622).
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost
+        last_real = nx_local - 1 - ghost - pad_x
         ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
         ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
         ey = ey.at[last_real, :, :].set(ey_xhi)
@@ -753,7 +757,8 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
 
 
 def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int, pmc_faces: frozenset) -> FDTDState:
+                             nx_local: int, pmc_faces: frozenset,
+                             pad_x: int = 0) -> FDTDState:
     """Apply PMC (``H_tan = 0``) on physical domain faces using shard_map.
 
     Electromagnetic dual of :func:`_apply_pec_face_nu_shmap`: PEC zeroes
@@ -766,7 +771,8 @@ def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
     Y- and Z-face PMC is local to every rank; X-face PMC is rank-
     conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi),
     and acts on the **first real cell** (``ghost``) / **last real cell**
-    (``nx_local - 1 - ghost``) — NOT the seam ghost.
+    (``nx_local - 1 - ghost - pad_x``) — NOT the seam ghost, and NOT
+    the alignment-pad cells (#622, same class as the PEC face fix).
     """
     if not pmc_faces:
         return state
@@ -799,7 +805,7 @@ def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
         device_idx = lax.axis_index("x")
         is_first = (device_idx == 0)
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost
+        last_real = nx_local - 1 - ghost - pad_x
         last_inside = last_real - 1
 
         if "x_lo" in pmc_faces:
@@ -1438,7 +1444,7 @@ def _update_e_dispersive_local_nu(
 
 def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
-                           n_devices: int, eps_r=None):
+                           n_devices: int, eps_r=None, pad_x: int = 0):
     """Per-rank slab-aware CPML E-field correction with NU per-axis dx.
 
     Mirrors :func:`rfx.boundaries.cpml.apply_cpml_e` but operates on a
@@ -1500,7 +1506,12 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     n = n_cpml
     g = ghost
     xlo = slice(g, g + n)
-    xhi = slice(-(g + n), -g) if g > 0 else slice(-n, None)
+    # #622: on the last rank, pad_x inert alignment cells sit past the
+    # real x-hi face (global node nx-1) — shift the window left by
+    # pad_x so it covers the physical face, matching single-device
+    # cpml.py's [nx-n, nx) (a no-op on other ranks / when pad_x==0).
+    x_hi_edge = g + pad_x
+    xhi = slice(-(x_hi_edge + n), -x_hi_edge) if x_hi_edge > 0 else slice(-n, None)
 
     # Per-face E-coefficient (material-aware when eps_r is supplied, #205).
     # Each face slice broadcasts element-wise against its correction array:
@@ -1697,7 +1708,7 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
 
 def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
-                           n_devices: int, mu_r=None):
+                           n_devices: int, mu_r=None, pad_x: int = 0):
     """Per-rank slab-aware CPML H-field correction with NU per-axis dx.
 
     Mirror of :func:`_apply_cpml_e_local_nu` for the H field.  Same
@@ -1750,7 +1761,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     n = n_cpml
     g = ghost
     xlo = slice(g, g + n)
-    xhi = slice(-(g + n), -g) if g > 0 else slice(-n, None)
+    # #622: same alignment-pad shift as the E-field CPML applier above.
+    x_hi_edge = g + pad_x
+    xhi = slice(-(x_hi_edge + n), -x_hi_edge) if x_hi_edge > 0 else slice(-n, None)
 
     # Per-face H-coefficient (material-aware when mu_r is supplied, #205).
     # Same per-face slicing as the E kernel; vacuum scalar dt/mu_0 when
@@ -2689,7 +2702,7 @@ def run_nonuniform_distributed_pec(
             )
             new_st, new_cs = _apply_cpml_h_local_nu(
                 _st, cpml_params, _cs, n_cpml_local, dt, ghost, n_devices,
-                mu_r=mu_r_slab,
+                mu_r=mu_r_slab, pad_x=pad_x,
             )
             return (new_st.hx, new_st.hy, new_st.hz,
                     new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -2757,7 +2770,7 @@ def run_nonuniform_distributed_pec(
             )
             new_st, new_cs = _apply_cpml_e_local_nu(
                 _st, cpml_params, _cs, n_cpml_local, dt, ghost, n_devices,
-                eps_r=eps_r_slab,
+                eps_r=eps_r_slab, pad_x=pad_x,
             )
             return (new_st.ex, new_st.ey, new_st.ez,
                     new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -2821,7 +2834,7 @@ def run_nonuniform_distributed_pec(
         #     of PEC: PMC must fire before the next E-update reads H via
         #     curl.
         st = _apply_pmc_face_nu_shmap(
-            st, mesh, n_devices, nx_local, pmc_faces)
+            st, mesh, n_devices, nx_local, pmc_faces, pad_x=pad_x)
 
         # 3. Ghost exchange of H so the upcoming E update sees the
         #    neighbour rank's H at the seam.
@@ -2852,7 +2865,7 @@ def run_nonuniform_distributed_pec(
         st = _exchange_e_ghosts_nu(st, mesh, n_devices)
 
         # 8. PEC on physical domain faces (X-faces are rank-conditional).
-        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local)
+        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
 
         # 9. PEC mask zeroing (geometry + override union).  No-op when
         #    sharded_pec_mask is None.

@@ -31,7 +31,13 @@ run: |-
   # NOTE: the 'distributed' pytest marker is declared but currently has ZERO
   # tests — distributed coverage lives in regular test files that set their
   # own XLA --xla_force_host_platform_device_count sentinel and run in the
-  # fast suite. Re-add a '-m distributed' step here if the marker gains tests.
+  # fast suite (test_distributed_nu_composition.py always did; as of #622
+  # test_distributed_nu_kernel.py's 2-device family joined it there too —
+  # it used to carry the 'gpu' marker below, which meant its 22 two-device
+  # tests ran in NO lane at all: this 1-GPU pod only creates *virtual*
+  # devices on the CPU backend, so '-m gpu' here always skipped them, and
+  # every CPU lane deselects 'gpu'). Re-add a '-m distributed' step here if
+  # the marker gains tests.
   # POSIX-safe rc capture (the VESSL runner shell is busybox-ash:
   # ${PIPESTATUS[0]} is a bashism and died with 'bad substitution' on
   # proof run 369367242339 — pytest itself completed fine).
