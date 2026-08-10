@@ -5,17 +5,33 @@ CPU-runnable on tiny grids (intentionally not gpu-marked, matching
 
 Comparator-class work (rfx-known-issues.md case ledger; workspace R5): the
 equivalence tests below carry a predeclared tolerance derived from an
-inspected per-bin dump (not asserted blind), and the falsifier ritual — a
-one-sided deliberate sign flip in the vmap DFT kernel that must turn the
-equivalence check red — was run manually against a throwaway edit before
-this file was written; see
-``i578_falsifier_red.txt``/``i578_perbin_dump.txt`` in the session
-scratchpad for the artifacts. The observed agreement floor at the chosen
-geometry/step count is ~5e-4 relative (float32 accumulation roundoff
-between the two independently-coded scan bodies); a genuine phase/sign
-defect produces O(1) relative error uniformly (demonstrated by the
-falsifier run), so the gates here use rtol with a comfortable margin above
-the observed floor, not a tight-as-possible bound.
+inspected per-bin dump (not asserted blind), and a one-sided falsifier
+ritual (deliberate sign flip in the vmap DFT kernel, which must turn the
+equivalence check red) was run before this tolerance was trusted.
+
+R5 per-bin dump (batched vmap vs. sequential ``sim.run()``, plane p1 =
+axis=x, coordinate=0.010 m, component=ez, n_freqs=4, eps_r=2.0, n_steps=60
+-- the eps_r=6.0 case measured tighter, 2.6e-4 to 2.8e-4 uniformly, and is
+omitted for brevity):
+
+    freq (Hz)     |run acc|      |vmap acc|     complex maxdiff   rel diff
+    5.0000e+08    4.857830e-12   4.857516e-12   2.500504e-15      5.147e-04
+    2.0000e+09    4.366568e-12   4.366276e-12   2.269723e-15      5.198e-04
+    3.5000e+09    3.554534e-12   3.554285e-12   1.870204e-15      5.261e-04
+    5.0000e+09    2.804546e-12   2.804345e-12   1.480970e-15      5.281e-04
+
+Magnitudes agree to ~5 significant figures at every bin (rel diff 2.6e-4 to
+5.3e-4, uniform across frequency and eps_r) -- consistent with ordinary
+float32 accumulation roundoff between the two independently-coded scan
+bodies, not a systematic phase/sign/off-by-one defect. Falsifier (temporary
+sign flip of the vmap DFT kernel to ``exp(+1j...)``, reverted via ``git
+checkout`` immediately after each run): relative error jumped to 0.11-1.79
+(O(1)) uniformly across every bin, both when run as a standalone script and
+when run against this committed pytest file -- and ONLY the
+``TestVmapDftPlaneFastPath`` tests went red, confirming the falsifier is
+localized to the code path it is meant to catch. So the gates below use
+rtol with a comfortable margin above the observed ~5e-4 floor, not a
+tight-as-possible bound.
 """
 
 from __future__ import annotations
@@ -25,6 +41,11 @@ import warnings
 import numpy as np
 import numpy.testing as npt
 import pytest
+
+try:  # modern JAX: scoped x64 promoted to top-level (experimental removed v0.8.0)
+    from jax import enable_x64 as _enable_x64
+except ImportError:  # older JAX (< ~0.4.31)
+    from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import Simulation, GaussianPulse, Box
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
@@ -73,8 +94,8 @@ def _assert_dft_planes_match(vmap_planes: dict, ref_planes: dict, *,
     precision on the actual signal (discovered building this test: doing
     the elementwise check first gave 27% "mismatched" elements, all at
     |value| ~ 1e-16 next to a ~1e-12 peak). This is the same max-abs-diff
-    / max-abs-reference ratio manually verified and dumped for the R5
-    per-bin artifact (i578_perbin_dump.txt) before this gate was written.
+    / max-abs-reference ratio manually verified and inlined into this
+    module's docstring (the R5 per-bin dump) before this gate was written.
     """
     for name, probe in ref_planes.items():
         ref_acc = np.asarray(probe.accumulator, dtype=np.complex128)
@@ -170,6 +191,38 @@ class TestVmapDftPlaneFastPath:
         res = vmap_material_sweep(sim, "substrate.eps_r", np.array([2.0, 4.0]),
                                    n_steps=20)
         assert res.dft_planes is None
+
+
+class TestVmapDftPlaneX64:
+    """#477/#484 x64-contract pin, scoped (never module-level, per repo
+    rule): under ``jax_enable_x64``, ``init_dft_plane_probe`` (called
+    identically by both the vmap fast path and ``run()``) selects
+    ``complex128`` instead of ``complex64`` (rfx/probes/probes.py:441).
+    This is a separate axis from the default-precision equivalence tests
+    above -- confirm the promoted dtype AND that equivalence still holds
+    (same ~5e-4 relative floor observed at default precision; x64 widens
+    the accumulator's storage precision but the underlying field state is
+    still produced by the same float32-pinned Yee kernels, so the
+    numerical agreement floor does not tighten)."""
+
+    def test_dft_plane_matches_run_cpml_x64(self):
+        eps_values = np.array([2.0, 6.0])
+        n_steps = 60
+
+        with _enable_x64(True):
+            vmap_res = vmap_material_sweep(
+                _dft_sim("cpml", eps_r=4.0), "substrate.eps_r", eps_values,
+                n_steps=n_steps,
+            )
+            assert vmap_res.dft_planes["p1"].dtype == np.complex128
+
+            for idx, ev in enumerate(eps_values):
+                ref = _dft_sim("cpml", eps_r=float(ev)).run(n_steps=n_steps)
+                assert ref.dft_planes["p1"].accumulator.dtype == np.complex128
+                _assert_dft_planes_match(
+                    {"p1": vmap_res.dft_planes["p1"][idx]},
+                    ref.dft_planes, rtol=2e-3, ctx=f"x64 cpml eps_r={ev}",
+                )
 
 
 class TestVmapDftPlaneFallbackCarries:

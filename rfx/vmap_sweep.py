@@ -23,7 +23,7 @@ Limitations
   "fully supported" — that was a drifted inversion of the true limitation
   (the function docstring below and the code guards always disagreed with
   it). Lumped/MSL/coaxial/floquet ports, TFSF, dispersion, waveguide ports,
-  flux monitors, NTFF, snapshots, and RLC elements are NOT wired into the
+  flux monitors, NTFF, and RLC elements are NOT wired into the
   fast-path scan bodies and trigger the sequential fallback instead (still
   correct, just slower — and, as of #578, that fallback also carries DFT
   plane accumulators, so no feature silently vanishes on either path).
@@ -64,6 +64,12 @@ class VmapSweepResult:
         Name of the swept parameter.
     param_values : ndarray, shape (n_batch,)
         The parameter values that were swept.
+    final_fields : dict or None
+        Never populated (``return_fields=True`` raises ``ValueError``
+        instead of silently returning ``None`` here — see
+        ``vmap_material_sweep``). Reserved for a future final-field-state
+        implementation; use ``sim.run()``/``sim.forward()`` or
+        ``parametric_sweep()`` for final fields today.
     dft_planes : dict[str, ndarray] or None
         DFT plane accumulators, keyed by the ``add_dft_plane_probe`` name,
         each shaped ``(n_batch, n_freqs, n1, n2)`` complex — a leading
@@ -72,19 +78,16 @@ class VmapSweepResult:
         path and the sequential fallback (the fallback stacks each
         swept-value ``Result.dft_planes[name].accumulator``), so the field
         is uniform regardless of which path a given ``Simulation`` takes.
-        ``None`` if no ``add_dft_plane_probe`` was registered.
-    final_fields : dict or None
-        Never populated (``return_fields=True`` raises ``ValueError``
-        instead of silently returning ``None`` here — see
-        ``vmap_material_sweep``). Reserved for a future final-field-state
-        implementation; use ``sim.run()``/``sim.forward()`` or
-        ``parametric_sweep()`` for final fields today.
+        ``None`` if no ``add_dft_plane_probe`` was registered. Appended
+        AFTER ``final_fields`` (not inserted before it) to preserve the
+        positional-construction meaning of this publicly exported
+        dataclass for any existing caller using positional args.
     """
     time_series: np.ndarray
     param_name: str
     param_values: np.ndarray
-    dft_planes: dict | None = None
     final_fields: dict | None = None
+    dft_planes: dict | None = None
 
     def peak_field(self) -> np.ndarray:
         """Return peak |probe value| per batch element."""

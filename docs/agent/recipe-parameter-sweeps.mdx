@@ -20,14 +20,17 @@ points, not by what is convenient to write.
    or scoped to one material as `"substrate.eps_r"`) →
    `vmap_material_sweep`. The entire FDTD time loop is `jax.vmap`-ed into
    a single fused kernel — typically the fastest option on GPU, with
-   memory scaling as `n_batch × grid_size`.
+   memory scaling as `n_batch × grid_size` plus `n_batch × n_planes ×
+   n_freqs × n1 × n2` complex for any registered DFT plane accumulators.
    - The vmap fast path supports **only**: PEC/periodic walls, CPML
-     absorbing boundaries, soft sources, and point probes.
-   - Simulations using UPML, lumped RLC elements, TFSF, material
-     dispersion, waveguide ports, DFT planes, flux monitors, NTFF, or a
+     absorbing boundaries, soft sources, point probes, and DFT plane
+     probes (`add_dft_plane_probe`).
+   - Simulations using UPML, lumped/MSL/coaxial/floquet ports, TFSF,
+     material dispersion, waveguide ports, flux monitors, NTFF, or a
      non-uniform mesh take a **sequential fallback** — same results,
      without the fused-kernel speedup. The fallback carries the full
-     material specification (including Kerr χ³).
+     material specification (including Kerr χ³) and also returns DFT
+     plane accumulators, so a registered plane works on either path.
 3. **Far-field over many frequencies** where the NTFF accumulator
    dominates memory → `ntff_sweep(sim, freqs, batch_size=…)`. Requires
    `add_ntff_box(...)` on the simulation; accumulates in memory-bounded
