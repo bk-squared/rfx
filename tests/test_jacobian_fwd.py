@@ -34,15 +34,14 @@ the closure without breaking the pinned generic signature, so they are
 DOCUMENTED traps rather than runtime checks; G6 pins the docstring text
 for those two instead of a raise.
 
-FALSIFIER ARTIFACT: `test_g7_falsifier_severed_tape_reads_exactly_zero`
-below writes its captured red-then-green transcript to
-`scratchpad/i577_falsifier_red.txt` (session scratch, not committed) --
-see that file for the PR body excerpt.
+FALSIFIER ARTIFACT: `test_g7_falsifier_severed_tape_reads_exactly_zero` below
+PRINTS its captured red-then-green transcript (visible under `pytest -s`
+or in CI logs) rather than writing to a fixed path -- no hard-coded
+session/scratch path belongs in a committed public-repo test. Copy the
+printed transcript into the PR body.
 """
 
 from __future__ import annotations
-
-import math
 
 import jax
 import jax.numpy as jnp
@@ -300,7 +299,17 @@ def _find_shallowest_scan(jaxpr):
     """Depth-first search for the SHALLOWEST `lax.scan` equation, recursing
     through nested (Closed)Jaxpr params -- `jax.jit(...)` wraps the traced
     program in a `pjit` equation whose own params carry the inner jaxpr, so
-    a plain top-level scan of `jaxpr.eqns` misses it one level down."""
+    a plain top-level scan of `jaxpr.eqns` misses it one level down.
+
+    Returns ``(eqn, inner_jaxpr, total_scan_count)``. ``total_scan_count``
+    matters: `batch_tangents=False` (independent sequential `jax.jvp` calls,
+    the OPPOSITE of a shared primal sweep) produces N_T separate top-level
+    scan equations, not one -- MEASURED. Examining only the shallowest
+    scan's carry without also checking the total count would silently
+    accept that regression (each independent scan happens to carry the
+    same unbatched byte count as the elision case, so the primal-bytes-
+    equal check alone does not discriminate "shared" from "not shared").
+    """
     by_depth: list[tuple[int, object]] = []
 
     def walk(jx, depth):
@@ -324,7 +333,7 @@ def _find_shallowest_scan(jaxpr):
         raise AssertionError("no lax.scan found anywhere in jaxpr (FDTD time loop)")
     by_depth.sort(key=lambda pair: pair[0])
     eqn = by_depth[0][1]
-    return eqn, eqn.params["jaxpr"].jaxpr
+    return eqn, eqn.params["jaxpr"].jaxpr, len(by_depth)
 
 
 def _carry_grid_bytes(eqn, spatial: tuple[int, int, int], n_t: int):
@@ -369,15 +378,16 @@ def _make_design_sim_fn(sim, n_p: int):
     return grid, sim_fn
 
 
-def _measure_carry_bytes(n_t: int):
+def _measure_carry_bytes(n_t: int, *, batch_tangents: bool = True):
     sim = _build_sim()
     grid, sim_fn = _make_design_sim_fn(sim, n_t)
     params = tuple(jnp.asarray(1.0, dtype=jnp.float32) for _ in range(n_t))
 
-    jitted = jax.jit(lambda p: jacobian_fwd(sim_fn, p))
+    jitted = jax.jit(lambda p: jacobian_fwd(sim_fn, p, batch_tangents=batch_tangents))
     jaxpr = jax.make_jaxpr(jitted)(params).jaxpr
-    eqn, _inner = _find_shallowest_scan(jaxpr)
-    return _carry_grid_bytes(eqn, tuple(grid.shape), n_t)
+    eqn, _inner, scan_count = _find_shallowest_scan(jaxpr)
+    primal_bytes, batched_bytes = _carry_grid_bytes(eqn, tuple(grid.shape), n_t)
+    return primal_bytes, batched_bytes, scan_count
 
 
 def test_g3_primal_carry_is_independent_of_n_t():
@@ -395,11 +405,38 @@ def test_g3_primal_carry_is_independent_of_n_t():
     n_t=2, 3, and 4 all show primal=945,624 B identically while batched
     bytes scale exactly linearly (945,624 x n_t) -- the decisive, elision-
     free evidence -- so n_t=2 and n_t=4 are the comparison pair.
-    """
-    primal_2, batched_2 = _measure_carry_bytes(2)
-    primal_4, batched_4 = _measure_carry_bytes(4)
 
+    Two assertions below exist specifically because a degenerate case was
+    caught in review: running this SAME classifier against
+    `jacobian_fwd(..., batch_tangents=False)` -- genuinely n_t independent
+    sequential jvp calls, the OPPOSITE of a shared primal sweep -- passed
+    the original primal/batched-ratio checks, because `batched_2 ==
+    batched_4 == 0` makes `batched_4 == approx(2 * batched_2)` degenerate
+    to `0 == approx(0)`, and each independent scan happens to carry the
+    same per-scan byte count as the elision case, so `primal_2 ==
+    primal_4` ALSO holds without any real sharing. `batched_2 > 0` /
+    `batched_4 > 0` and `scan_count == 1` close that hole: flipping the
+    default to `batch_tangents=False` now fails both (MEASURED:
+    batched_bytes=0 and scan_count=n_t there, not 1).
+    """
+    primal_2, batched_2, scan_count_2 = _measure_carry_bytes(2)
+    primal_4, batched_4, scan_count_4 = _measure_carry_bytes(4)
+
+    assert scan_count_2 == 1, (
+        f"expected exactly ONE lax.scan (the FDTD time loop, shared across "
+        f"tangent directions) at n_t=2, found {scan_count_2} -- primal "
+        "sharing requires one shared scan, not n_t independent ones"
+    )
+    assert scan_count_4 == 1, (
+        f"expected exactly ONE lax.scan at n_t=4, found {scan_count_4}"
+    )
     assert primal_2 > 0 and primal_4 > 0, "no primal-shaped (unbatched) carry found"
+    assert batched_2 > 0 and batched_4 > 0, (
+        f"no batched (tangent) carry found (n_t=2 -> {batched_2}, n_t=4 -> "
+        f"{batched_4}) -- without this check the ratio assertion below "
+        "degenerates to 0 == approx(0) and would not catch batching being "
+        "broken entirely"
+    )
     assert primal_2 == primal_4, (
         f"primal carry bytes depend on n_t: n_t=2 -> {primal_2}, n_t=4 -> "
         f"{primal_4} -- the primal sweep is NOT shared across tangent directions"
@@ -472,11 +509,16 @@ def test_g5_batched_and_sequential_agree_many_output():
 # gates.
 # ---------------------------------------------------------------------------
 
-def test_g6a_distributed_fence_raises():
-    """Inherited from forward()'s own distributed dispatch check (fires
-    before any DFT-plane-specific check): a uniform sim + distributed=True
-    raises NotImplementedError, and that raise propagates through
-    jax.jvp/jacobian_fwd unchanged -- no new code in jacobian_fwd needed."""
+def test_g6a_uniform_distributed_raises_a_different_earlier_check():
+    """A uniform sim + distributed=True DOES raise NotImplementedError, but
+    via forward()'s general "distributed=True is NU-only" dispatch guard
+    (_execute.py's "only for non-uniform meshes" check) -- NOT the
+    DFT-plane-specific fence jacobian_fwd's own docstring names as fence
+    #1 (the #619 fence, which needs a non-uniform mesh to even reach). This
+    test pins that this EARLIER, more general check also propagates
+    through jax.jvp/jacobian_fwd unchanged; the NAMED fence itself is
+    exercised separately below by
+    test_g6a_distributed_nu_dft_plane_fence_raises."""
     sim = _build_sim()
 
     def sim_fn(alpha):
@@ -486,7 +528,40 @@ def test_g6a_distributed_fence_raises():
         )
         return dft_field(_PLANE)(result)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError, match="non-uniform meshes"):
+        jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
+
+
+def test_g6a_distributed_nu_dft_plane_fence_raises():
+    """The fence jacobian_fwd's own docstring actually names as fence #1
+    (issue #619, inherited from forward()): non-uniform + distributed=True
+    WITH a registered DFT-plane probe raises NotImplementedError naming
+    add_dft_plane_probe, and that raise propagates through
+    jax.jvp/jacobian_fwd unchanged -- no new code in jacobian_fwd needed.
+    Same NU-sim construction as
+    tests/test_observables_dft_field.py::test_forward_distributed_nu_dft_planes_fence_raises."""
+    nx, ny, nz = 16, 12, 12
+    dx = 1e-3
+    sim = Simulation(
+        freq_max=8e9, domain=(nx * dx, ny * dx, nz * dx), dx=dx,
+        boundary="cpml", cpml_layers=4,
+    )
+    sim._dx_profile = np.full(nx, dx)
+    sim._dy_profile = np.full(ny, dx)
+    sim._dz_profile = np.full(nz, dx)
+    sim.add_source(
+        position=(4 * dx, 6 * dx, 6 * dx), component="ez", amplitude_kind="current",
+    )
+    sim.add_dft_plane_probe(
+        axis="x", coordinate=10 * dx, component="ez", freqs=_FREQS,
+    )
+
+    def sim_fn(alpha):
+        # alpha is unused: the fence fires during forward()'s Python-level
+        # dispatch, before any traced computation touches eps/alpha at all.
+        return sim.forward(distributed=True, n_steps=2, skip_preflight=True)
+
+    with pytest.raises(NotImplementedError, match="add_dft_plane_probe"):
         jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
 
 
@@ -532,9 +607,10 @@ def test_g6d_checkpoint_knobs_are_documented_inert_not_a_raise():
 
 # ---------------------------------------------------------------------------
 # G7 -- FALSIFIER: sever the tape with stop_gradient on eps_override ->
-# Jacobian must go EXACTLY 0, and (witnessed separately, captured to
-# scratchpad/i577_falsifier_red.txt) G1's own assertion form must go RED
-# against the severed objective before this gate is trusted.
+# Jacobian must go EXACTLY 0, and (witnessed separately, transcript
+# printed for the PR body -- see the module docstring) G1's own assertion
+# form must go RED against the severed objective before this gate is
+# trusted.
 # ---------------------------------------------------------------------------
 
 def test_g7_falsifier_severed_tape_reads_exactly_zero():
@@ -578,12 +654,8 @@ def test_g7_falsifier_severed_tape_reads_exactly_zero():
         f"severed geometry tangent (rho) = {float(jac_severed[1])!r} (must be exactly 0.0)\n"
     )
     assert rel >= 1.0, "falsifier did not actually diverge from the FD reference"
-    try:
-        with open(
-            "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/"
-            "a15d1025-c3b0-4e66-beea-fecee1eeda44/scratchpad/i577_falsifier_red.txt",
-            "w",
-        ) as fh:
-            fh.write(transcript)
-    except OSError:
-        pass  # best-effort artifact capture; the assertions above are the real gate
+    # Print (not write to a fixed path -- no hard-coded session/scratch path
+    # belongs in a committed public-repo test) so `pytest -s` / CI logs carry
+    # the transcript for a PR body excerpt; the assertions above are the
+    # real gate.
+    print(transcript)

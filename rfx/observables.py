@@ -483,7 +483,7 @@ def jacobian_fwd(
     (``out_axes=None`` on an output that DOES depend on the mapped axis is
     a vmap error, not a silent wrong answer).
 
-    Cost profile: NOT "a few times one solve" -- see
+    Cost characterization: NOT "a few times one solve" -- see
     ``scripts/benchmark_jacobian_fwd.py`` (regenerable; run it for current
     numbers on your hardware/grid) and the CHANGELOG entry for this issue
     for measured wall-time/flops/memory ratios. The honest summary: wall

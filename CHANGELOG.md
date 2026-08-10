@@ -35,11 +35,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
     discipline in `tests/test_estimate_ad_memory.py`) **10.4x**.
   - grid 59x55x55 = 178,475 cells (5.3x more cells), same `n_steps`: the
     SAME `n_t=10` batched configuration moves to **7.3x** wall time /
-    **18.6x** flops / **10.4x** `temp_bytes` — flops and `temp_bytes` (both
-    deterministic compiler outputs) land within ~1% of the small-grid
-    ratio, while wall time (subject to machine load) moved from 5.9x to
-    7.3x. The point of quoting two grid sizes is that the ratio is not a
-    fixed constant across problem sizes — re-run
+    **18.6x** flops / **10.4x** `temp_bytes` — the flops ratio itself moved
+    6.4% from the small grid's 17.5x (it is NOT a fixed constant across
+    problem sizes, which is the whole point of quoting two grid sizes).
+    Separately, flops and `temp_bytes` (both deterministic compiler
+    outputs, unaffected by machine load) reproduce the *evidence base's own
+    independent probe measurement* on the same two fixtures to within ~1%
+    — a cross-check that this implementation's cost characterization is not an
+    artifact of this particular run. Wall time (subject to machine load)
+    moved from 5.9x to 7.3x between the two grids. Re-run
     `scripts/benchmark_jacobian_fwd.py --grid-scale 24` for the current
     number on your hardware rather than trusting either one quoted here.
   - forward-mode `temp_bytes` is measured INDEPENDENT of `n_steps`

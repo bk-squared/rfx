@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerable cost-profile benchmark for `rfx.observables.jacobian_fwd`
-(issue #577).
+"""Regenerable cost-characterization benchmark for
+`rfx.observables.jacobian_fwd` (issue #577).
 
 The repo forbids publishing prose cost numbers (they rot) and forbids
 calling a compiler estimate a "profile" -- see
@@ -33,7 +33,7 @@ near one plain solve; see G3 in tests/test_jacobian_fwd.py for the
 structural, non-numeric version of the same claim) and the SLOPE `b` is
 the marginal per-tangent cost.
 
-Fixture note (issue #577 cost-profile discipline): the fixture registers
+Fixture note (issue #577 cost-measurement discipline): the fixture registers
 NO point probes (no `add_probe`). The uniform forward lane cannot drop the
 probe time-series tape (`emit_time_series=False` raises there), and under
 `vmap(jvp)` that tape would batch to `(n_t, n_steps, n_probes)` -- with
@@ -266,7 +266,7 @@ def build_benchmark_table(
 
 def _print_table(table: dict[str, Any]) -> None:
     print(
-        f"jacobian_fwd cost profile -- backend={table['backend']} "
+        f"jacobian_fwd cost table -- backend={table['backend']} "
         f"dtype={table['dtype']} grid={table['grid_shape']} "
         f"({table['grid_cells']} cells) n_steps={table['n_steps']} "
         f"n_p={table['n_p']} (CPU unless backend says otherwise)"
