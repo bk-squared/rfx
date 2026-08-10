@@ -172,6 +172,32 @@ AD_CLASSIFICATION = {
         UNTESTED,
         "jnp-pure legacy helper, no direct grad smoke test",
     ),
+    # --- rfx.observables (issue #579) ---------------------------------------
+    "observables.dft_field": (
+        GRAD_SAFE,
+        "pure selection/stack of an already-traced DFT-plane accumulator (no "
+        "concretizing op); differentiability is exercised indirectly through "
+        "every field_energy/field_softmax gate below, since both compose "
+        "dft_field internally via the shared _select_planes helper: "
+        "tests/test_observables_dft_field.py::test_field_energy_material_leg_ad_matches_fd, "
+        "tests/test_observables_dft_field.py::test_field_energy_geometry_leg_ad_matches_fd",
+    ),
+    "observables.field_energy": (
+        GRAD_SAFE,
+        "FD-vs-AD gate, both AC legs (material eps_r scalar; one topology-"
+        "density pixel via density_to_material_fields): "
+        "tests/test_observables_dft_field.py::test_field_energy_material_leg_ad_matches_fd, "
+        "tests/test_observables_dft_field.py::test_field_energy_geometry_leg_ad_matches_fd — "
+        "severed-tape falsifier confirmed the gate reads exactly 0.0 AD vs "
+        "finite FD when the accumulator is stop_gradient'd (see the test "
+        "module docstring; red-run artifact in the #579 PR body).",
+    ),
+    "observables.field_softmax": (
+        GRAD_SAFE,
+        "FD-vs-AD gate, both AC legs, same discipline as field_energy: "
+        "tests/test_observables_dft_field.py::test_field_softmax_material_leg_ad_matches_fd, "
+        "tests/test_observables_dft_field.py::test_field_softmax_geometry_leg_ad_matches_fd",
+    ),
 }
 
 
@@ -184,6 +210,18 @@ def _exported_surface() -> set[str]:
     for n, _ in inspect.getmembers(Simulation, predicate=inspect.isfunction):
         if n.startswith("compute_"):
             names.add(f"Simulation.{n}")
+    # #579: rfx.observables' public factories (dft_field/field_energy/
+    # field_softmax) are a new differentiable-observable surface class, not
+    # compute_*/extract_*-shaped, so the prefix scan above never sees them.
+    # The stale-key half of test_every_sparam_entry_point_is_ad_classified
+    # forbids adding AD_CLASSIFICATION entries that aren't in this surface,
+    # so they are enumerated explicitly here (via the module's own
+    # __all__, not a hand-picked list, so a future addition to
+    # rfx/observables.py trips the "missing" half automatically).
+    import rfx.observables as _observables
+    for n in _observables.__all__:
+        if callable(getattr(_observables, n)):
+            names.add(f"observables.{n}")
     return names
 
 

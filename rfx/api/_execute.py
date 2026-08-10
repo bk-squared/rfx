@@ -1757,6 +1757,13 @@ class _ExecuteMixin:
                 "add_ntff_box() for far-field observables) or use the "
                 "uniform lane."
             )
+        if self._dft_planes:
+            raise NotImplementedError(
+                "add_dft_plane_probe() is not supported on the distributed "
+                "non-uniform forward path (issue #579); the sharded NU scan "
+                "body does not accumulate DFT-plane fields. Drop DFT plane "
+                "probes or use the uniform lane."
+            )
         import warnings as _w
         from rfx.runners.distributed_nu import (
             build_sharded_nu_grid,
@@ -2858,6 +2865,16 @@ class _ExecuteMixin:
 
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed":
+            if self._dft_planes:
+                raise NotImplementedError(
+                    "add_dft_plane_probe() is not supported on the "
+                    "distributed multi-device run() path (issue #579); "
+                    "neither rfx.runners.distributed_v2 nor "
+                    "rfx.runners.distributed accumulates DFT-plane fields, "
+                    "so a registered plane would be silently dropped. Drop "
+                    "DFT plane probes or omit devices=... (use a "
+                    "single-device run() instead)."
+                )
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,

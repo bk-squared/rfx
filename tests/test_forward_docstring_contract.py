@@ -83,8 +83,11 @@ def test_all_is_curated_subset():
     # __all__=204, ratio 0.64 — tighter than the 181/~245=0.74 this gate was
     # written against). Ceiling re-specced 200 -> 210 for that deliberate
     # 23-name expansion; kept tight on purpose so the NEXT surface expansion
-    # trips this gate again and must re-justify itself.
-    assert len(names) < 210, f"rfx.__all__ too large to be curated: {len(names)}"
+    # trips this gate again and must re-justify itself. Re-specced again
+    # 210 -> 213 for the #579 `rfx.observables` factories (`dft_field`,
+    # `field_energy`, `field_softmax`) — a genuinely new differentiable
+    # surface, not incidental growth.
+    assert len(names) < 213, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

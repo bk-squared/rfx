@@ -741,6 +741,13 @@
       "kind": "function",
       "params": []
     },
+    "dft_field": {
+      "kind": "function",
+      "params": [
+        "names",
+        "stack"
+      ]
+    },
     "diagnose_ad_saved_residuals": {
       "kind": "function",
       "params": [
@@ -970,6 +977,20 @@
         "i_ref_dft",
         "v_probe_dft",
         "i_probe_dft"
+      ]
+    },
+    "field_energy": {
+      "kind": "function",
+      "params": [
+        "names",
+        "weights"
+      ]
+    },
+    "field_softmax": {
+      "kind": "function",
+      "params": [
+        "names",
+        "beta"
       ]
     },
     "fit_debye": {
