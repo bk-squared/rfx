@@ -241,27 +241,18 @@ def extend_cpml_pad_materials(
     plx: int, phx: int,
     ply: int, phy: int,
     plz: int, phz: int,
-    extra_masks=(),
 ):
-    """Extend material properties (and dispersion-pole masks) into the CPML
-    padding so guided modes see an impedance-matched absorber, equivalent
-    to UPML. Each CPML face copies the interior-edge slice outward, as if
-    the geometry continued beyond the domain.
+    """Extend eps_r/sigma/mu_r into the CPML padding so guided modes see an
+    impedance-matched absorber, equivalent to UPML. Each CPML face copies
+    the interior-edge slice outward, as if the geometry continued beyond
+    the domain.
 
     Single shared implementation for the uniform (``rfx/api/_compile.py``)
     and non-uniform (``rfx/runners/nonuniform.py``) assemblers — issue #627
     found the two hand-duplicated copies (#582 mirrored one onto the other)
-    both carrying the same two gaps, so the fix lives once, here, and both
-    call sites use it instead of keeping duplicated pad-extension code that
-    can drift.
-
-    ``extra_masks`` is a sequence of additional per-cell arrays (e.g.
-    Debye/Lorentz dispersion-pole boolean masks, #627b — previously never
-    extended into the pad at all, so a dispersive edge-touching material
-    was matched at DC but not across the band) that get the identical
-    lo/hi replication as ``eps_r``/``sigma``/``mu_r``, using the SAME
-    hi-face source column decided below (same box, same dropped node, for
-    every property of that box).
+    both carrying the same gap, so the fix lives once, here, and both call
+    sites use it instead of keeping duplicated pad-extension code that can
+    drift.
 
     **Hi-face fallback (#627a).** ``rfx.geometry.csg.Box``'s volume-branch
     rasterization is deliberately half-open, ``[lo, hi)``, over node
@@ -294,12 +285,32 @@ def extend_cpml_pad_materials(
     considered and rejected: it would bridge that common air gap and smear
     an unrelated interior structure's material into the pad.
 
+    **Dispersion-pole extension was tried and reverted (#627b).** An
+    earlier revision of this function extended Debye/Lorentz pole masks
+    into the pad the same way, via an ``extra_masks`` parameter, so a
+    dispersive edge-touching material would be impedance-matched across
+    the band, not just at DC. Review found this turns a stable simulation
+    into a divergent one for an edge-touching structure carrying a
+    high-Q Lorentz pole (Q~60): the same 20,000-step fixture that decays
+    on both the shipped (statics-only) code and on the pre-#582 tree
+    (last/mid energy ratio 0.12–0.16) grows without bound once the pole
+    mask is also extended (last/mid ratio 649, no NaN and no exception —
+    values stay finite and simply grow, so nothing downstream flags it).
+    Extending the pole alone, on top of an otherwise-unpatched static
+    extension, reproduces the divergence; the static extension alone,
+    with the same high-Q pole left un-extended in the interior, decays
+    cleanly. Do not re-add pole-mask extension here without a stability
+    argument for the resonant-pole-in-a-CPML-pad regime — see the
+    follow-up issue (filed separately from #627, tracking this factorial)
+    and the physics-level regression lock in
+    ``tests/test_cpml_pad_material_extension.py``, which reds if pole
+    extension is naively reintroduced.
+
     Returns
     -------
-    (eps_r, sigma, mu_r, extended_extra_masks) — ``extended_extra_masks``
-    is a list in the same order as ``extra_masks``.
+    (eps_r, sigma, mu_r)
     """
-    arrays = [eps_r, sigma, mu_r] + list(extra_masks)
+    arrays = [eps_r, sigma, mu_r]
 
     def _vacuum(e, s, m):
         return (e == 1.0) & (s == 0.0) & (m == 1.0)
@@ -357,4 +368,4 @@ def extend_cpml_pad_materials(
     )
 
     eps_r, sigma, mu_r = arrays[0], arrays[1], arrays[2]
-    return eps_r, sigma, mu_r, arrays[3:]
+    return eps_r, sigma, mu_r

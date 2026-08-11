@@ -192,9 +192,18 @@ class _CompileMixin:
         # slice outward, as if the geometry continued beyond the domain.
         # Shared with the NU mirror (rfx/runners/nonuniform.py) via
         # extend_cpml_pad_materials — issue #627 found the two
-        # hand-duplicated copies (#582) both carrying the same gaps
-        # (hi-face vacuum column for a domain-touching box, and
-        # dispersion poles never extended at all); the fix lives once.
+        # hand-duplicated copies (#582) both carrying a hi-face vacuum
+        # column for a domain-touching box; the fix lives once.
+        #
+        # Dispersion-pole masks are deliberately NOT extended here (#627b
+        # tried and reverted): extending a high-Q (Q~60) Lorentz pole into
+        # the pad turns a stable edge-touching simulation into a divergent
+        # one (last/mid energy ratio 649 vs 0.12-0.16 decaying on every
+        # other tested variant, including the static extension below with
+        # the same pole left un-extended in the interior) — with no NaN
+        # and no exception, so nothing downstream catches it. See
+        # extend_cpml_pad_materials's docstring and the follow-up issue
+        # (filed separately, tracking the stability factorial).
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Reflector /
             # periodic faces have pad=0 on that side and the corresponding
@@ -204,23 +213,9 @@ class _CompileMixin:
             plx, phx = grid.pad_x_lo, grid.pad_x_hi
             ply, phy = grid.pad_y_lo, grid.pad_y_hi
             plz, phz = grid.pad_z_lo, grid.pad_z_hi
-            debye_keys = list(debye_masks_by_pole.keys())
-            lorentz_keys = list(lorentz_masks_by_pole.keys())
-            extra_masks_in = (
-                [debye_masks_by_pole[k][1] for k in debye_keys]
-                + [lorentz_masks_by_pole[k][1] for k in lorentz_keys]
-            )
-            eps_r, sigma, mu_r, extra_masks_out = extend_cpml_pad_materials(
+            eps_r, sigma, mu_r = extend_cpml_pad_materials(
                 eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
-                extra_masks=extra_masks_in,
             )
-            n_debye = len(debye_keys)
-            for k, mask in zip(debye_keys, extra_masks_out[:n_debye]):
-                pole, _old_mask = debye_masks_by_pole[k]
-                debye_masks_by_pole[k] = (pole, mask)
-            for k, mask in zip(lorentz_keys, extra_masks_out[n_debye:]):
-                pole, _old_mask = lorentz_masks_by_pole[k]
-                lorentz_masks_by_pole[k] = (pole, mask)
 
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 

@@ -1,12 +1,11 @@
-"""Locks for CPML pad material/pole extension (issue #627).
+"""Locks for CPML pad material extension (issue #627).
 
 ``rfx/api/_compile.py``'s ``_assemble_materials`` (mirrored on the
 non-uniform mesh by ``rfx/runners/nonuniform.py``'s ``assemble_materials_nu``,
 #582) extends the interior-edge ``eps_r``/``sigma``/``mu_r`` slice outward
 into the CPML padding so guided modes see an impedance-matched absorber.
-#627's review of that mirror found two gaps BOTH assemblers inherited from
-the (pre-existing) uniform path, now fixed once in the shared
-``rfx.geometry.rasterize_grid.extend_cpml_pad_materials``:
+#627's review of that mirror found two gaps both assemblers inherited from
+the (pre-existing) uniform path:
 
 (a) For a ``Box`` whose hi face lands on (or past) the domain's last
     interior node, ``rfx.geometry.csg.Box``'s deliberately half-open
@@ -14,28 +13,40 @@ the (pre-existing) uniform path, now fixed once in the shared
     box's own mask, so the naive interior-edge column for a hi-face pad
     read vacuum even though the structure's real material sits one column
     further in. Measured pre-fix on the #582 fixture: x-lo pad eps_r=4.0,
-    x-hi pad eps_r=1.0, for a slab spanning the full x extent.
-(b) Debye/Lorentz dispersion-pole masks were never extended into the pad
-    at all (only the static eps_r/sigma/mu_r were), so a dispersive
-    edge-touching material was impedance-matched at DC but not across the
-    band.
+    x-hi pad eps_r=1.0, for a slab spanning the full x extent. **FIXED**
+    here, in the shared ``rfx.geometry.rasterize_grid.extend_cpml_pad_materials``.
+(b) Debye/Lorentz dispersion-pole masks are never extended into the pad
+    at all (only the static eps_r/sigma/mu_r are), so a dispersive
+    edge-touching material is impedance-matched at DC but not across the
+    band. **NOT FIXED.** An earlier revision of this change extended pole
+    masks the same way as (a); review's controlled discriminator found
+    that turns a stable high-Q (Q~60) edge-touching Lorentz-slab
+    simulation into a divergent one (20,000-step last/mid energy ratio
+    649, vs 0.1557 for the static extension alone with the same pole
+    left un-extended — no NaN, no exception, values just grow). Reverted
+    in full (no flag, no partial path); tracked with the full factorial,
+    mechanism hypothesis, and a separate pole-only-material coverage hole
+    the attempted design also had, in issue #636.
+    ``test_pole_extension_stability_lock`` below is the physics-level
+    guard against silently reintroducing it.
 
-The fix is bounded to exactly one column inward on the hi-face fallback
-(the rasterizer's per-box shortfall there is deterministically one node)
-so a genuine multi-cell vacuum buffer between an interior structure and
-the CPML pad — the overwhelmingly common case — is untouched; that
-invariant is locked here too (test 4), since an earlier, rejected design
-(an unbounded backward scan for "the last non-vacuum column") would have
-silently bridged it.
+The (a) fix is bounded to exactly one column inward on the hi-face
+fallback (the rasterizer's per-box shortfall there is deterministically
+one node) so a genuine multi-cell vacuum buffer between an interior
+structure and the CPML pad — the overwhelmingly common case — is
+untouched; that invariant is locked here too (test 4), since an earlier,
+rejected design (an unbounded backward scan for "the last non-vacuum
+column") would have silently bridged it.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from rfx import Simulation
+from rfx import Simulation, GaussianPulse
 from rfx.geometry.csg import Box
 from rfx.materials.debye import DebyePole
+from rfx.materials.lorentz import LorentzPole
 from rfx.runners.nonuniform import build_nonuniform_grid, assemble_materials_nu
 
 NA, NB, NZ = 45, 39, 4
@@ -98,10 +109,18 @@ def test_hi_face_pad_matches_lo_face_for_domain_touching_box_nu():
         f"NU x-hi pad eps_r={x_hi} != x-lo pad eps_r={x_lo}")
 
 
-def test_dispersion_poles_extend_into_hi_face_pad_uniform():
-    """(#627b) Debye poles must reach the x-hi pad, not stop at the interior
-    edge. Pre-fix this was 0 unconditionally (poles were never extended at
-    all, on EITHER face)."""
+def test_dispersion_poles_are_not_extended_into_the_pad_uniform():
+    """(#627b, deliberately NOT fixed) Lock the reverted state: NEITHER
+    pad gets the slab's Debye pole (the box's own rasterized mask never
+    covers pad indices — they are outside [0, domain_extent) — and no
+    extension step runs for pole masks, on either face, matching the
+    original pre-#582 behaviour). If either count goes nonzero, someone
+    re-added pole-mask extension — read the module docstring and
+    ``test_pole_extension_stability_lock`` before doing that; the
+    extension was reverted because it diverges for a high-Q pole (see
+    that test and the CHANGELOG entry for #627). Contrast with the
+    static eps_r, which DOES reach both pads (test 1/2 above) — that
+    asymmetry is exactly what this test locks."""
     sim = _build_uniform(dispersive=True)
     materials, debye_spec, plx, phx, ply, plz = _assemble_uniform(sim)
     assert debye_spec is not None
@@ -109,14 +128,14 @@ def test_dispersion_poles_extend_into_hi_face_pad_uniform():
     mask = np.asarray(masks[0])
     n_pad_x_hi = int(mask[-phx:, :, :].sum())
     n_pad_x_lo = int(mask[:plx, :, :].sum())
-    assert n_pad_x_hi > 0, "no Debye pole cells reached the x-hi CPML pad"
-    assert n_pad_x_hi == n_pad_x_lo, (
-        f"x-hi pad pole cell count {n_pad_x_hi} != x-lo pad {n_pad_x_lo} "
-        f"(both faces should be extended symmetrically for a slab spanning "
-        f"the full x extent)")
+    assert n_pad_x_lo == 0 and n_pad_x_hi == 0, (
+        f"pole cells reached a CPML pad (x-lo={n_pad_x_lo}, "
+        f"x-hi={n_pad_x_hi}) — pole-mask extension appears to have been "
+        f"reintroduced without the stability question (see "
+        f"test_pole_extension_stability_lock) being resolved first")
 
 
-def test_dispersion_poles_extend_into_hi_face_pad_nu():
+def test_dispersion_poles_are_not_extended_into_the_pad_nu():
     """(#627b) NU mirror of the uniform-path lock above."""
     sim = _build_uniform(dispersive=True)
     materials, debye_spec, plx, phx, ply, plz = _assemble_nu(sim)
@@ -125,8 +144,9 @@ def test_dispersion_poles_extend_into_hi_face_pad_nu():
     mask = np.asarray(masks[0])
     n_pad_x_hi = int(mask[-phx:, :, :].sum())
     n_pad_x_lo = int(mask[:plx, :, :].sum())
-    assert n_pad_x_hi > 0, "no Debye pole cells reached the NU x-hi CPML pad"
-    assert n_pad_x_hi == n_pad_x_lo
+    assert n_pad_x_lo == 0 and n_pad_x_hi == 0, (
+        f"NU pole cells reached a CPML pad (x-lo={n_pad_x_lo}, "
+        f"x-hi={n_pad_x_hi}) — see the uniform-path test's docstring")
 
 
 def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
@@ -168,9 +188,10 @@ def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
 
 
 def test_uniform_and_nu_assemblers_stay_byte_identical_after_the_fix():
-    """Extends #582's verified byte-identity property to the #627 fix
-    itself: both assemblers must still agree exactly, including the
-    extended dispersion-pole masks.
+    """Extends #582's verified byte-identity property to the #627(a) fix:
+    both assemblers must still agree exactly on eps_r/sigma/mu_r, and the
+    (un-extended, per #627b's revert) pole masks must still agree with
+    each other too.
     """
     for dispersive in (False, True):
         sim_u = _build_uniform(dispersive=dispersive)
@@ -185,3 +206,110 @@ def test_uniform_and_nu_assemblers_stay_byte_identical_after_the_fix():
             _, masks_u = debye_u
             _, masks_n = debye_n
             assert np.array_equal(np.asarray(masks_u[0]), np.asarray(masks_n[0]))
+
+
+def test_pole_extension_stability_lock():
+    """Physics-level regression guard for issue #636 (see also the module
+    docstring's (b) entry): extending Debye/Lorentz pole masks into the
+    CPML pad turns a stable high-Q edge-touching Lorentz-slab simulation
+    into a divergent one.
+
+    Four-way factorial (review's controlled discriminator, one fixture,
+    one harness, only the pad-fill contents varied, pad contents printed
+    per variant to confirm each matched its label -- reproduced directly
+    by this author before committing, not taken on trust):
+
+      FULL   (statics hi-face-fixed AND poles extended), 20,000 steps:
+              last-decile/mid-decile = 649           DIVERGES
+      S-ONLY (statics hi-face-fixed, poles NOT extended -- what SHIPS),
+              20,000 steps: last/mid = 0.1557         decays
+      unpatched pre-#627 tree, 20,000 steps: last/mid ~ 0.12  decays
+
+    S-ONLY is exactly what ships (issue #627a shipped, #627b reverted in
+    full, no flag) -- this test runs that shipped code, unmodified, on
+    the SAME fixture. At the committed step count (8000, chosen for test
+    suite runtime) the two variants have NOT yet separated by the 20,000-
+    step run's dramatic margin -- this author independently measured
+    FULL's last/mid at 8000 steps as 2.546 (already above 1, i.e. already
+    growing, but not yet past the "diverging" classification the 20,000-
+    step comparison uses) against S-ONLY's 0.4281. The literal criterion
+    from review -- last decile below the mid-run decile, ratio < 1 -- DOES
+    separate them at 8000 steps; a laxer "diverging" threshold would not.
+    Do not loosen this threshold without re-measuring both variants at
+    whatever step count you choose; the margin at 8000 steps is real but
+    not enormous (0.43 vs 2.55), unlike at 20,000 steps (0.16 vs 649).
+
+    Designed to red the moment someone re-adds pole-mask extension
+    naively, without re-litigating the stability question tracked in #636.
+    """
+    DX = 1e-3
+    NA, NB, NZ = 45, 39, 12
+    F0 = 3e9
+    w0 = 2 * np.pi * F0
+    STEPS = 8000
+
+    sim = Simulation(freq_max=2.5 * F0, domain=(NA * DX, NB * DX, NZ * DX),
+                      dx=DX, boundary="cpml", cpml_layers=8)
+    sim.add_material("slab", eps_r=4.0,
+                      lorentz_poles=[LorentzPole(omega_0=w0, delta=w0 / 120.0,
+                                                  kappa=3.0 * w0 ** 2)])
+    # edge-touching in x AND y (the #627a trigger); z is interior (3*DX to
+    # 7*DX inside a 12*DX domain) so the resonance has real vacuum above
+    # and below it to live in -- a thin-in-z fixture (as this author first
+    # tried, and failed to reproduce the divergence with) starves the
+    # resonance of an interior to couple through.
+    sim.add(Box((0.0, 0.0, 3 * DX), (NA * DX, NB * DX, 7 * DX)), material="slab")
+    sim.add_source((NA * DX / 3, NB * DX / 3, 5.0 * DX), "ez",
+                    waveform=GaussianPulse(f0=F0, bandwidth=0.8),
+                    amplitude_kind="field")
+    sim.add_probe(((NA - 3) * DX, NB * DX / 2, 5.0 * DX), "ez")
+
+    # R5 witness -- what actually landed in the pad for THIS run. A
+    # mislabelled variant (pad contents not matching what the code claims
+    # to do) is exactly what the #636 investigation caught once; printed
+    # here (in the assertion messages) so a future failure shows it too.
+    grid = sim._build_grid()
+    materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(grid)
+    eps = np.asarray(materials.eps_r)
+    plx, phx = grid.pad_x_lo, grid.pad_x_hi
+    ply, plz = grid.pad_y_lo, grid.pad_z_lo
+    pole_pad_hi = pole_pad_lo = None
+    if lorentz_spec is not None:
+        _, masks = lorentz_spec
+        pole = np.asarray(masks[0])
+        pole_pad_hi = int(pole[-phx:, :, :].sum())
+        pole_pad_lo = int(pole[:plx, :, :].sum())
+    pad_witness = (
+        f"x-hi pad eps={float(eps[-phx, ply + 5, plz + 5]):.2f} "
+        f"x-hi pad pole cells={pole_pad_hi} x-lo pad pole cells={pole_pad_lo}")
+
+    # Sanity check first: the shipped code must not extend pole masks at
+    # all (issue #636). If this fails, the divergence assertion below is
+    # not trustworthy either way -- fix this first.
+    assert pole_pad_hi == 0 and pole_pad_lo == 0, (
+        f"pole cells reached a CPML pad ({pad_witness}) -- pole-mask "
+        f"extension appears to have been reintroduced; see issue #636 "
+        f"before touching this")
+
+    result = sim.run(n_steps=STEPS, compute_s_params=False,
+                      skip_preflight=True, subpixel_smoothing=False)
+    ts = np.asarray(result.time_series, dtype=float).ravel()
+    n = len(ts)
+    deciles = [float(np.abs(ts[i * n // 10:(i + 1) * n // 10]).max())
+               for i in range(10)]
+    last, mid = deciles[-1], deciles[3]
+    ratio = last / max(mid, 1e-300)
+
+    assert np.isfinite(ts).all(), (
+        f"non-finite field values ({pad_witness}) -- this fixture should "
+        f"decay cleanly on shipped code")
+    assert ratio < 1.0, (
+        f"last-decile/mid-decile ratio {ratio:.4g} ({pad_witness}) -- the "
+        f"shipped (statics-only) pad fill should have its last decile "
+        f"below its mid-run decile on this high-Q edge-touching Lorentz "
+        f"fixture (measured S-ONLY 0.4281 at this step count, 0.1557 at "
+        f"20,000 steps, in the #636 discriminator). A ratio at or above 1 "
+        f"means either pole-mask extension was reintroduced or the static "
+        f"hi-face fallback (#627a) has somehow become unsafe for a "
+        f"resonant interior material -- see issue #636 before changing "
+        f"this gate. deciles={deciles}")
