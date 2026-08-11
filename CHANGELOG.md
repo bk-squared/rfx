@@ -6,6 +6,72 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — CPML pad replication was incomplete: hi-face vacuum for domain-face-touching boxes, and dispersion poles never extended (issue #627)
+
+- Follow-up to #582's review, which found two gaps its uniform-vs-NU pad
+  replication mirror faithfully inherited from the (pre-existing) uniform
+  path. Both are fixed once, in a new shared
+  `rfx.geometry.rasterize_grid.extend_cpml_pad_materials`, used by both
+  `rfx/api/_compile.py`'s `_assemble_materials` and
+  `rfx/runners/nonuniform.py`'s `assemble_materials_nu` — replacing the two
+  hand-duplicated pad-extension blocks that #582 had verified byte-identical
+  (a duplication that is itself the historical defect class here: two
+  hand-maintained copies of one piece of logic drift).
+- **(a) Hi-face vacuum column for a domain-face-touching `Box`.**
+  `rfx.geometry.csg.Box`'s volume rasterization is deliberately half-open,
+  `[lo, hi)`, over node coordinates (see that class's docstring — the
+  convention is load-bearing across the package, e.g. every WR-90
+  aperture/iris measurement, and is explicitly OUT OF SCOPE to change here:
+  doing so would move geometry everywhere in the package). Its documented
+  consequence is that a box's hi face "contributes no node": a structure
+  whose hi face lands on the domain's last interior node loses exactly that
+  node from its own rasterized mask, so the naive interior-edge source for
+  a hi-face CPML pad read vacuum even though the structure's real material
+  sits one column further in. Measured pre-fix on the #582 fixture: x-lo
+  pad `eps_r=4.0`, x-hi pad `eps_r=1.0`, for a slab spanning the full x
+  extent. Fix: per transverse cell, if the naive interior-edge column is
+  vacuum (`eps_r==1 & sigma==0 & mu_r==1`) but the column immediately
+  inside it is not, replicate from that inner column instead — bounded to
+  exactly one column inward, matching the rasterizer's deterministic
+  one-node-per-box shortfall, so a genuine multi-cell vacuum buffer between
+  an interior structure and the CPML pad (the overwhelmingly common
+  simulation layout) is untouched and still replicates plain vacuum, as
+  before. Locked by
+  `tests/test_cpml_pad_material_extension.py::test_genuine_vacuum_buffer_before_cpml_is_not_bridged`.
+- **(b) Dispersion poles were never extended into the pad.** Debye/Lorentz
+  pole masks were built straight from the geometry loop with no
+  pad-extension step at all (on either face) — a dispersive edge-touching
+  material had its static `eps_r` matched into the pad but not its poles,
+  so the pad medium was non-dispersive: matched at DC, mismatched across
+  the band. Fix: the pole masks now go through the same
+  `extend_cpml_pad_materials` call as `eps_r`/`sigma`/`mu_r`, using the
+  identical per-cell hi-face source decision (same box, same dropped node,
+  for every property of that box).
+- **Absorber-quality witness** (4000-step run, `eps_r=9.8, sigma=0.5,
+  mu_r=2.5` slab spanning the full x/y extent, probe near the x-hi pad
+  interface, `cpml_layers=8`, no subpixel smoothing): tail/peak energy
+  improves −85.15 dB → −90.62 dB for the static-only fix (a), and
+  −89.34 dB → −98.84 dB when the material is also dispersive (a+b
+  combined) — consistent in direction and rough scale with #582's own
+  −63.2 dB → −76.7 dB precedent.
+- **Byte-identity preserved.** `eps_r`/`sigma`/`mu_r` and every
+  Debye/Lorentz pole mask are bit-identical between the uniform and NU
+  assemblers post-fix (0 mismatched cells of 72,912, checked for
+  non-dispersive, Debye, and Lorentz materials, including a lossy+magnetic
+  case) — extending the property #582's review established.
+  `tests/test_nonuniform_uniform_end_to_end_reduction.py` (the anchor that
+  originally caught #582) stays green: `staircase-slab-cpml` residual
+  8.83e-5, `subpixel-cpml` residual 1.40e-4 (both well under the 3e-4
+  gate; not expected to move much, since the fix is symmetric across both
+  assemblers — the reduction anchor compares the two paths to each other,
+  not either to ground truth).
+- **Scope.** Rasterizer semantics (`Box.mask`/`mask_on_coords`) are
+  unchanged — the fix lives entirely in the post-rasterization pad-fill
+  step. PEC pad replication remains out of scope (PEC has never been
+  extended into the pad on either path; a PEC surface intersecting a CPML
+  boundary is a pre-existing, separate situation not addressed by #582 or
+  #627). Closes the two gaps #582's Scope clause deferred.
+
 ### Fixed — arc-audit follow-up: flaky benchmark gate, an over-general `n_warmup` claim, an unsafe `field_softmax` default, and asymmetric `jacobian_fwd` safety
 
 An independent adversarial audit of the e4b565c..ce44661 merge arc (10 PRs,
@@ -548,15 +614,16 @@ corrections to fixes that had not yet shipped.
   unaffected (the new step is gated on `cpml_layers > 0`, which
   `Simulation.__init__` forces to 0 for `boundary="pec"`).
   **Scope**: the fix mirrors the uniform path's replication exactly,
-  including two gaps it inherits from that path (tracked separately in
-  #627, not addressed here): (a) for a `Box` whose upper face coincides
-  with the domain face, the hi-face replication copies a column the
-  rasterizer leaves at vacuum, so only the lo-side pad ends up matched;
-  (b) Debye/Lorentz dispersive poles are rasterized with no pad-extension
-  step, so a dispersive edge-touching material gets its static `eps_r`
-  matched into the pad but not its poles. In short: this closes the gap
-  for non-dispersive media, and — for boxes ending exactly on the domain
-  face — for the lo-side faces.
+  including two gaps it inherits from that path — (a) for a `Box` whose
+  upper face coincides with the domain face, the hi-face replication
+  copies a column the rasterizer leaves at vacuum, so only the lo-side pad
+  ends up matched; (b) Debye/Lorentz dispersive poles are rasterized with
+  no pad-extension step, so a dispersive edge-touching material gets its
+  static `eps_r` matched into the pad but not its poles. In short: this
+  closes the gap for non-dispersive media, and — for boxes ending exactly
+  on the domain face — for the lo-side faces. **Both gaps are now closed,
+  by issue #627** (see that entry above) — this clause is kept for
+  historical accuracy about what #582 itself did and did not cover.
   `tests/test_nonuniform_uniform_end_to_end_reduction.py`'s
   `subpixel-cpml` case converts from `xfail(strict=True)` to a normal
   assertion (residual 1.9890e-2 pre-fix -> 1.14e-4 post-fix); a new

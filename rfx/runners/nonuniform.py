@@ -71,7 +71,9 @@ def assemble_materials_nu(
     -------
     materials, debye_spec, lorentz_spec, pec_mask
     """
-    from rfx.geometry.rasterize_grid import rasterize_geometry, coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import (
+        rasterize_geometry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
+    )
 
     coords = coords_from_nonuniform_grid(grid)
 
@@ -87,45 +89,37 @@ def assemble_materials_nu(
     # dielectric waveguides see an impedance-matched absorber (equivalent to
     # UPML). Each CPML face copies the interior-edge slice outward, as if
     # the geometry continued beyond the domain. Mirrors the uniform path's
-    # identical step (rfx/api/_compile.py:188-231) exactly, adapted to the
-    # NU per-face pad bookkeeping (``grid.pad_{axis}_{lo,hi}``, already
-    # zero on PEC/PMC/periodic faces). Before this fix the NU assembler had
-    # NO such step, so an edge-touching structure saw a different absorber
-    # medium per path (#582: measured 736 pad cells eps 4.0-vs-1.0 at the
-    # slab's k=9 layer) and the uniform-mesh reduction anchor diverged
-    # wherever that mismatch interacted with subpixel smoothing.
+    # identical step (rfx/api/_compile.py) exactly via the shared
+    # extend_cpml_pad_materials helper, adapted to the NU per-face pad
+    # bookkeeping (``grid.pad_{axis}_{lo,hi}``, already zero on
+    # PEC/PMC/periodic faces). Before this fix the NU assembler had NO such
+    # step, so an edge-touching structure saw a different absorber medium
+    # per path (#582: measured 736 pad cells eps 4.0-vs-1.0 at the slab's
+    # k=9 layer) and the uniform-mesh reduction anchor diverged wherever
+    # that mismatch interacted with subpixel smoothing. #627 moved this
+    # (and the uniform mirror) onto one shared implementation after finding
+    # the two hand-duplicated copies both carried the same two gaps: a
+    # hi-face vacuum column for a domain-touching box, and dispersion poles
+    # never extended into the pad at all — see extend_cpml_pad_materials's
+    # docstring for both fixes.
     if sim._boundary in ("cpml", "upml") and sim._cpml_layers > 0:
         plx, phx = grid.pad_x_lo, grid.pad_x_hi
         ply, phy = grid.pad_y_lo, grid.pad_y_hi
         plz, phz = grid.pad_z_lo, grid.pad_z_hi
-        eps_r_ext = materials.eps_r
-        sigma_ext = materials.sigma
-        mu_r_ext = materials.mu_r
-        if plx > 0:
-            eps_r_ext = eps_r_ext.at[:plx,:,:].set(eps_r_ext[plx:plx+1,:,:])
-            sigma_ext = sigma_ext.at[:plx,:,:].set(sigma_ext[plx:plx+1,:,:])
-            mu_r_ext = mu_r_ext.at[:plx,:,:].set(mu_r_ext[plx:plx+1,:,:])
-        if phx > 0:
-            eps_r_ext = eps_r_ext.at[-phx:,:,:].set(eps_r_ext[-phx-1:-phx,:,:])
-            sigma_ext = sigma_ext.at[-phx:,:,:].set(sigma_ext[-phx-1:-phx,:,:])
-            mu_r_ext = mu_r_ext.at[-phx:,:,:].set(mu_r_ext[-phx-1:-phx,:,:])
-        if ply > 0:
-            eps_r_ext = eps_r_ext.at[:,:ply,:].set(eps_r_ext[:,ply:ply+1,:])
-            sigma_ext = sigma_ext.at[:,:ply,:].set(sigma_ext[:,ply:ply+1,:])
-            mu_r_ext = mu_r_ext.at[:,:ply,:].set(mu_r_ext[:,ply:ply+1,:])
-        if phy > 0:
-            eps_r_ext = eps_r_ext.at[:,-phy:,:].set(eps_r_ext[:,-phy-1:-phy,:])
-            sigma_ext = sigma_ext.at[:,-phy:,:].set(sigma_ext[:,-phy-1:-phy,:])
-            mu_r_ext = mu_r_ext.at[:,-phy:,:].set(mu_r_ext[:,-phy-1:-phy,:])
-        if plz > 0:
-            eps_r_ext = eps_r_ext.at[:,:,:plz].set(eps_r_ext[:,:,plz:plz+1])
-            sigma_ext = sigma_ext.at[:,:,:plz].set(sigma_ext[:,:,plz:plz+1])
-            mu_r_ext = mu_r_ext.at[:,:,:plz].set(mu_r_ext[:,:,plz:plz+1])
-        if phz > 0:
-            eps_r_ext = eps_r_ext.at[:,:,-phz:].set(eps_r_ext[:,:,-phz-1:-phz])
-            sigma_ext = sigma_ext.at[:,:,-phz:].set(sigma_ext[:,:,-phz-1:-phz])
-            mu_r_ext = mu_r_ext.at[:,:,-phz:].set(mu_r_ext[:,:,-phz-1:-phz])
+        debye_poles, debye_masks_in = debye_spec if debye_spec is not None else ([], [])
+        lorentz_poles, lorentz_masks_in = lorentz_spec if lorentz_spec is not None else ([], [])
+        extra_masks_in = list(debye_masks_in) + list(lorentz_masks_in)
+        eps_r_ext, sigma_ext, mu_r_ext, extra_masks_out = extend_cpml_pad_materials(
+            materials.eps_r, materials.sigma, materials.mu_r,
+            plx, phx, ply, phy, plz, phz,
+            extra_masks=extra_masks_in,
+        )
         materials = MaterialArrays(eps_r=eps_r_ext, sigma=sigma_ext, mu_r=mu_r_ext)
+        n_debye = len(debye_masks_in)
+        if debye_spec is not None:
+            debye_spec = (debye_poles, extra_masks_out[:n_debye])
+        if lorentz_spec is not None:
+            lorentz_spec = (lorentz_poles, extra_masks_out[n_debye:])
 
     # Thin conductors (#369): a PEC thin sheet rasterizes on the coords-based
     # mask exactly like geometry PEC — ``mask_on_coords`` resolves fine on

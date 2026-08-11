@@ -232,3 +232,129 @@ def rasterize_geometry(
     has_pec = bool(jnp.any(pec_mask))
     kerr_chi3 = chi3_arr if has_kerr else None
     return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, kerr_chi3
+
+
+def extend_cpml_pad_materials(
+    eps_r: jnp.ndarray,
+    sigma: jnp.ndarray,
+    mu_r: jnp.ndarray,
+    plx: int, phx: int,
+    ply: int, phy: int,
+    plz: int, phz: int,
+    extra_masks=(),
+):
+    """Extend material properties (and dispersion-pole masks) into the CPML
+    padding so guided modes see an impedance-matched absorber, equivalent
+    to UPML. Each CPML face copies the interior-edge slice outward, as if
+    the geometry continued beyond the domain.
+
+    Single shared implementation for the uniform (``rfx/api/_compile.py``)
+    and non-uniform (``rfx/runners/nonuniform.py``) assemblers — issue #627
+    found the two hand-duplicated copies (#582 mirrored one onto the other)
+    both carrying the same two gaps, so the fix lives once, here, and both
+    call sites use it instead of keeping duplicated pad-extension code that
+    can drift.
+
+    ``extra_masks`` is a sequence of additional per-cell arrays (e.g.
+    Debye/Lorentz dispersion-pole boolean masks, #627b — previously never
+    extended into the pad at all, so a dispersive edge-touching material
+    was matched at DC but not across the band) that get the identical
+    lo/hi replication as ``eps_r``/``sigma``/``mu_r``, using the SAME
+    hi-face source column decided below (same box, same dropped node, for
+    every property of that box).
+
+    **Hi-face fallback (#627a).** ``rfx.geometry.csg.Box``'s volume-branch
+    rasterization is deliberately half-open, ``[lo, hi)``, over node
+    coordinates (see that class's docstring — the convention is load-
+    bearing across the package, e.g. every WR-90 aperture/iris
+    measurement). Its documented consequence is that the ``hi`` face of a
+    box "contributes no node": a structure whose hi face lands on (or
+    inside) the domain's last interior node loses exactly that one node
+    from its own rasterized mask. The naive interior-edge source for a hi
+    pad — literally the outermost interior column — therefore reads
+    vacuum for such a structure even though its real material sits one
+    column further in, and copying that vacuum outward gives the pad a
+    Fresnel step instead of a match (measured on the #582 fixture: x-lo
+    pad eps_r 4.0, x-hi pad eps_r 1.0, for a slab spanning the full x
+    extent).
+
+    The fix does NOT touch the rasterizer (out of scope — it would move
+    geometry everywhere in the package, and the convention is correct and
+    intentional for the shape mask itself). Instead, per transverse cell:
+    if the naive interior-edge column is vacuum (``eps_r==1 & sigma==0 &
+    mu_r==1``) but the column immediately inside it is not, replicate from
+    that inner column instead. This is bounded to exactly one column
+    inward — the rasterizer's hi-face shortfall for a single box is
+    deterministically one node (Box docstring: "the shortfall is entirely
+    at the hi face"), never more — so a genuine multi-cell vacuum buffer
+    between a structure and the CPML pad (the overwhelmingly common case:
+    almost every example leaves an air gap before the absorber) is left
+    completely alone and still replicates plain vacuum, exactly as before.
+    An unbounded backward scan for "the last non-vacuum column" was
+    considered and rejected: it would bridge that common air gap and smear
+    an unrelated interior structure's material into the pad.
+
+    Returns
+    -------
+    (eps_r, sigma, mu_r, extended_extra_masks) — ``extended_extra_masks``
+    is a list in the same order as ``extra_masks``.
+    """
+    arrays = [eps_r, sigma, mu_r] + list(extra_masks)
+
+    def _vacuum(e, s, m):
+        return (e == 1.0) & (s == 0.0) & (m == 1.0)
+
+    def _extend_lo(arrays, pad_lo, lo_src, lo_dst):
+        if pad_lo <= 0:
+            return arrays
+        return [a.at[lo_dst].set(a[lo_src]) for a in arrays]
+
+    def _extend_hi(arrays, n, pad_lo, pad_hi, outer_sl, inner_sl, dst_sl):
+        if pad_hi <= 0:
+            return arrays
+        e, s, m = arrays[0], arrays[1], arrays[2]
+        outer_vac = _vacuum(e[outer_sl], s[outer_sl], m[outer_sl])
+        use_inner = None
+        if n - pad_lo - pad_hi >= 2:
+            inner_vac = _vacuum(e[inner_sl], s[inner_sl], m[inner_sl])
+            use_inner = outer_vac & (~inner_vac)
+        new_arrays = []
+        for a in arrays:
+            src = a[outer_sl]
+            if use_inner is not None:
+                src = jnp.where(use_inner, a[inner_sl], src)
+            new_arrays.append(a.at[dst_sl].set(src))
+        return new_arrays
+
+    # ---- x ----
+    arrays = _extend_lo(arrays, plx, np.s_[plx:plx + 1, :, :], np.s_[:plx, :, :])
+    nx = arrays[0].shape[0]
+    arrays = _extend_hi(
+        arrays, nx, plx, phx,
+        np.s_[nx - phx - 1:nx - phx, :, :],
+        np.s_[nx - phx - 2:nx - phx - 1, :, :],
+        np.s_[nx - phx:nx, :, :],
+    )
+
+    # ---- y ----
+    arrays = _extend_lo(arrays, ply, np.s_[:, ply:ply + 1, :], np.s_[:, :ply, :])
+    ny = arrays[0].shape[1]
+    arrays = _extend_hi(
+        arrays, ny, ply, phy,
+        np.s_[:, ny - phy - 1:ny - phy, :],
+        np.s_[:, ny - phy - 2:ny - phy - 1, :],
+        np.s_[:, ny - phy:ny, :],
+    )
+
+    # ---- z ----
+    arrays = _extend_lo(arrays, plz, np.s_[:, :, plz:plz + 1], np.s_[:, :, :plz])
+    nz = arrays[0].shape[2]
+    arrays = _extend_hi(
+        arrays, nz, plz, phz,
+        np.s_[:, :, nz - phz - 1:nz - phz],
+        np.s_[:, :, nz - phz - 2:nz - phz - 1],
+        np.s_[:, :, nz - phz:nz],
+    )
+
+    eps_r, sigma, mu_r = arrays[0], arrays[1], arrays[2]
+    return eps_r, sigma, mu_r, arrays[3:]
