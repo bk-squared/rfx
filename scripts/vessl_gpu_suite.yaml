@@ -32,8 +32,9 @@ run: |-
   # tests — distributed coverage lives in regular test files that set their
   # own XLA --xla_force_host_platform_device_count sentinel and run in the
   # fast suite (test_distributed_nu_composition.py always did; as of #622
-  # test_distributed_nu_kernel.py's 2-device family joined it there too —
-  # it used to carry the 'gpu' marker below, which meant its 22 two-device
+  # test_distributed_nu_kernel.py's 2-device family joined it there too, and
+  # as of #623 test_distributed.py's 2-/4-device family joined it as well —
+  # both used to carry the 'gpu' marker below, which meant their two-device
   # tests ran in NO lane at all: this 1-GPU pod only creates *virtual*
   # devices on the CPU backend, so '-m gpu' here always skipped them, and
   # every CPU lane deselects 'gpu'). Re-add a '-m distributed' step here if

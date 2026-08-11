@@ -284,7 +284,7 @@ def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 # ---------------------------------------------------------------------------
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
-                         mesh, n_devices, ghost=1, eps_r=None):
+                         mesh, n_devices, ghost=1, eps_r=None, pad_x=0):
     """Apply CPML E-field correction using shard_map.
 
     ``eps_r`` (the x-sharded per-cell relative permittivity slab) is a new
@@ -292,6 +292,11 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     correction is material-aware (#205).  It is NOT returned, so it gets an
     extra ``P("x")`` entry in ``in_specs`` only.  ``None`` reproduces the
     vacuum (pre-#205) coefficient bit-identically.
+
+    ``pad_x`` (#623, same class as #622): forwarded to
+    :func:`rfx.runners.distributed._apply_cpml_e_distributed` so the x-hi
+    CPML window on the last rank targets the real physical face (global
+    node ``nx - 1``) instead of the padded slab end.
     """
 
     @partial(
@@ -336,7 +341,8 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = _apply_cpml_e_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab)
+            n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
+            pad_x=pad_x)
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -374,7 +380,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
-                         mesh, n_devices, ghost=1, mu_r=None):
+                         mesh, n_devices, ghost=1, mu_r=None, pad_x=0):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -382,6 +388,11 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     (#205).  Like ``eps_r`` in the E-variant it gets one extra ``P("x")``
     in ``in_specs`` only and is not returned.  ``None`` reproduces the
     vacuum (pre-#205) coefficient bit-identically.
+
+    ``pad_x`` (#623, same class as #622): forwarded to
+    :func:`rfx.runners.distributed._apply_cpml_h_distributed` so the x-hi
+    CPML window on the last rank targets the real physical face (global
+    node ``nx - 1``) instead of the padded slab end.
     """
 
     @partial(
@@ -424,7 +435,8 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = _apply_cpml_h_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab)
+            n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab,
+            pad_x=pad_x)
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -1265,7 +1277,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 2. CPML H correction (material-aware, #205)
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost, mu_r=sharded_materials.mu_r)
+            mesh, n_devices, ghost=ghost, mu_r=sharded_materials.mu_r,
+            pad_x=pad_x)
 
         # 3. Exchange H ghost cells (conditionally skip)
         do_exchange = (_step_idx % _exchange_interval == 0)
@@ -1291,7 +1304,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 5. CPML E correction (material-aware, #205)
         st, cpml_st = _apply_cpml_e_shmap(
             st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r)
+            mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r,
+            pad_x=pad_x)
 
         # 6. Exchange E ghost cells
         st = lax.cond(

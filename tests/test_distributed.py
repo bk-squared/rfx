@@ -1,11 +1,13 @@
 """Tests for multi-GPU distributed FDTD runner.
 
-Uses XLA_FLAGS to simulate 4 CPU devices for testing.
-Must be set BEFORE importing JAX.
+Uses XLA_FLAGS to simulate up to 4 CPU devices for testing (the root
+``conftest.py`` sets 2 virtual CPU devices, via ``setdefault``, for any
+run that doesn't already set XLA_FLAGS — see its module docstring).
 """
 
 import os
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=4"
+os.environ.setdefault(
+    "XLA_FLAGS", "--xla_force_host_platform_device_count=4")
 
 import jax
 import jax.numpy as jnp
@@ -22,27 +24,46 @@ from rfx.runners.distributed import (
 )
 from rfx.core.yee import init_state, init_materials
 
-pytestmark = pytest.mark.gpu
-
-# Multi-device tests are device-count-ADAPTIVE: they shard across however many JAX
-# devices are available (up to 4, `_N_MULTI`) instead of hardcoding 4, and SKIP when
-# <2 devices are present (`requires_multidevice`). Issue #162: the GPU suite runs on
-# a single-GPU pod where jax.device_count() == 1 — the host-device-count sentinel
-# (XLA_FLAGS above) does NOT add virtual devices when a GPU backend is present — so
-# the multi-device classes previously FAILED there on a brittle `len(devices) == 4`
-# assert (and could at best run vacuous 1-device "distribution"). They now skip
-# cleanly on <2 devices, turning the GPU suite green, while staying correct for any
-# >=2-device env (a future multi-GPU pod). The runner itself is verified correct
-# (multi == single to ~1e-6) at 2 and 4 devices.
+# Historical note (#623, same class as #622's test_distributed_nu_kernel.py
+# fix): this file carried a module-wide ``pytestmark = pytest.mark.gpu``
+# from creation. Every CPU lane deselects ``gpu`` (pyproject addopts) and
+# a single-GPU pod exposes only 1 CUDA device (the host-device-count
+# sentinel only creates *virtual* devices on the CPU backend), so the
+# marker meant this file's whole 2-/4-device equivalence family ran in NO
+# lane at all — the #623 pad_x displacement (and the once-suspected
+# ``test_interval_monotonic_error_growth`` flake below) both went
+# undetected for exactly that reason. The module-level
+# ``os.environ["XLA_FLAGS"] = ...`` line above was ALSO dead in practice
+# even before this fix: pytest always imports conftest.py (which sets 2
+# virtual devices via ``setdefault``, before any test module is
+# imported) ahead of this module, so this file's own unconditional
+# assignment never won the race — changed to ``setdefault`` here to stop
+# implying otherwise; ``_N_DEVICES`` below is 2 in the fast/weekly CPU
+# shards. The marker is removed so this family runs in the same
+# fast-suite/weekly CPU shards as the sibling
+# ``test_distributed_nu_kernel.py`` / ``test_distributed_nu_composition.py``
+# files. Measured (2026-08-11, this fix, 2-device conftest default):
+# 33/33 passed, 65-68 s wall, 1.74 GiB peak RSS — comparable to (and
+# below) the NU kernel file's precedent (62-66 s, 1.93 GiB) that #622
+# already accepted into the fast lane, and well under the ``highmem``
+# marker's 3-24 GB band (pyproject.toml). This measured run also
+# confirms ``test_interval_monotonic_error_growth`` — flagged in an
+# earlier version of this comment as a "pre-existing latent failure"
+# under genuine multi-device execution — passes cleanly today (its
+# trend-not-strict-monotonicity assertion, see the test body, already
+# absorbed that wobble); no follow-up needed.
 #
-# NOTE (real multi-device CPU coverage — known limitation, not this fix): genuinely
-# running these on the CPU slow suite is blocked by the module-level XLA_FLAGS being
-# process-global + first-jax-init-wins — in a shared pytest process another module
-# usually initialises jax first, so the sentinel is ignored and only 1 device is
-# seen (then they silently skip). A reliable CPU lane would need an ISOLATED pytest
-# invocation. Running them multi-device also surfaces a pre-existing latent failure
-# (TestExchangeInterval::test_interval_monotonic_error_growth) — both are tracked
-# follow-ups, separate from this #162 GPU-suite-green fix.
+# Multi-device tests remain device-count-ADAPTIVE: they shard across
+# however many JAX devices are available (up to 4, `_N_MULTI`) instead of
+# hardcoding 4, and SKIP when <2 devices are present (`requires_multidevice`).
+# Issue #162: a single-GPU pod has jax.device_count() == 1 (the sentinel
+# does not add virtual devices when a GPU backend is present) — the
+# multi-device classes skip cleanly there rather than failing on a
+# brittle `len(devices) == 4` assert, while staying correct for any
+# >=2-device env (a future multi-GPU pod, or the fast/weekly CPU shards
+# now that the marker is gone). The runner itself is verified correct
+# (multi == single to ~1e-6, and to bit-parity on the pad_x-insensitive
+# Debye/Lorentz fixtures) at 2 and 4 devices.
 _N_DEVICES = jax.device_count()
 _N_MULTI = min(4, _N_DEVICES)
 requires_multidevice = pytest.mark.skipif(
@@ -403,6 +424,89 @@ class TestDistributedCPML:
         peak = np.max(np.abs(ts_s)) + 1e-30
         rel_err = np.max(np.abs(ts_s - ts_m)) / peak
         assert rel_err < 1e-3, f"Off-center probe CPML error {rel_err:.2e}"
+
+    def test_distributed_cpml_pad_x_matches_single(self):
+        """#623: uniform CPML distributed lane must place the x-hi
+        absorber at the real physical face when nx is NOT divisible by
+        n_devices (pad_x > 0 — the common case post-#564, since an
+        even cell request now realizes an odd node count).
+
+        Before the fix, ``_apply_cpml_e_distributed`` /
+        ``_apply_cpml_h_distributed`` (called from distributed_v2's
+        shmap wrappers, which is what production ``run(devices=...)``
+        dispatches to) left the x-hi CPML window at the padded slab
+        end instead of shifting it left by pad_x, displacing the
+        absorber by one cell relative to the single-device reference.
+        A probe positioned near the x-hi face (inside the CPML zone,
+        where the displacement is most visible) is sensitive to this:
+        measured rel_err 3.14e-01 pre-fix vs 8.13e-06 post-fix on this
+        exact fixture (R2 falsifier record).
+
+        Two preflight advisories fire on this fixture (both intentional,
+        quoted here per repo policy that preflight output is part of the
+        result — never inferred, always cited):
+          - "Probe at (...) is within 2 cells (...) of the domain edge on
+            the x-axis, just past which the CPML absorber is active.
+            Fields there carry CPML fringe/reflection error; move inward
+            for claims-bearing measurement." — expected: this is a
+            boundary-MECHANISM test, not a claims-bearing physics
+            measurement, so the near-edge probe is deliberate.
+          - "waveform tau=... is below 3*dt (...): pulse unresolved by
+            the time step — an absolute-Hz bandwidth was likely passed
+            where a FRACTIONAL one is expected ... (issue #386)" —
+            inherited unchanged from the ``GaussianPulse(f0=1.5e9,
+            bandwidth=1.5e9)`` convention already used by every other
+            CPML test in this file (e.g. ``test_distributed_cpml_matches_
+            single`` above); harmless here since this test measures
+            boundary placement via the multi-vs-single DIFFERENCE, not an
+            absolute physical quantity, and is not #386's fix target.
+        """
+        # Lx=0.125 -> nx=59 (ODD), pad_x = 2 - (59 % 2) = 1 for n=2 devices.
+        Lx = 0.125
+        n_devices = 2
+        sim = Simulation(
+            freq_max=3e9,
+            domain=(Lx, 0.04, 0.04),
+            boundary="cpml",
+        )
+        sim.add_source(
+            position=(Lx / 2, 0.02, 0.02),
+            component="ez",
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+        )
+        # Probe near the x-hi physical face (inside the CPML zone) so
+        # it is sensitive to the absorber window's exact placement.
+        # skip_preflight: intentional near-boundary placement — this
+        # is a boundary-mechanism test, not a claims-bearing physics
+        # measurement (preflight would otherwise advise moving inward).
+        sim.add_probe(position=(Lx - 0.006, 0.02, 0.02), component="ez")
+
+        n_steps = 400
+
+        result_single = sim.run(n_steps=n_steps, skip_preflight=True)
+        devices = jax.devices()[:n_devices]
+        result_multi = sim.run(n_steps=n_steps, devices=devices, skip_preflight=True)
+
+        # Precondition guard on the RUNNER'S OWN realized grid (not a
+        # separate pre-run sim._build_grid() call, which can silently
+        # diverge from what the run actually used — e.g. a dielectric
+        # fixture's resolution can depend on material-aware refinement
+        # that resolves lazily, only visible post-run; #623 review).
+        # The #622 lesson stands: a fixture whose realized dimensions
+        # make the pad path unreachable silently stops testing the thing.
+        nx = int(result_single.grid.shape[0])
+        pad_x = 0 if nx % n_devices == 0 else n_devices - (nx % n_devices)
+        assert pad_x > 0, (
+            f"fixture no longer exercises the pad_x>0 lane: realized "
+            f"nx={nx} is divisible by n_devices={n_devices} -- adjust Lx"
+        )
+
+        ts_s = np.array(result_single.time_series).ravel()
+        ts_m = np.array(result_multi.time_series).ravel()
+
+        peak = np.max(np.abs(ts_s)) + 1e-30
+        rel_err = np.max(np.abs(ts_s - ts_m)) / peak
+        assert rel_err < 1e-4, f"pad_x={pad_x} CPML distributed error {rel_err:.2e}"
 
 
 @requires_multidevice
@@ -868,3 +972,106 @@ class TestExchangeInterval:
         for i in range(len(errors) - 1):
             assert errors[i] <= errors[i + 1] + tol, (
                 f"error trend should be non-decreasing within {tol:.4f}: {errors}")
+
+
+@requires_multidevice
+class TestLegacyPmapPadXFaceAppliers:
+    """#623: ``_apply_pec_local`` / ``_apply_pmc_local`` (the legacy
+    ``jax.pmap`` runner's x-hi face appliers) must honor ``pad_x``, the
+    same class of bug fixed for the shared distributed_v2 PEC/PMC
+    appliers and the NU lane in #622.
+
+    Unlike the CPML lane above, ``pad_x > 0`` is currently UNREACHABLE
+    through the public ``rfx.runners.distributed.run_distributed``
+    entry point: it raises ``ValueError`` when ``nx % n_devices != 0``
+    (no padding support), so no simulation-level fixture can exercise
+    these two sites (the #622 F4 lesson — some sites need a structural
+    witness, not a physics one). These tests therefore call the
+    appliers directly under a synthetic ``jax.pmap``, mirroring the
+    direct-call style already used for the same functions in
+    ``tests/test_boundary_pmc_distributed.py::test_pmc_distributed_legacy_mixed_z``
+    (which exercises them at n_devices=1, where pad_x is always 0 and
+    so never reaches this code path either).
+    """
+
+    def _padded_state(self, n_devices, nx_local, ny, nz):
+        from rfx.core.yee import FDTDState
+        ones = jnp.ones((n_devices, nx_local, ny, nz), dtype=jnp.float32)
+        step = jnp.zeros((n_devices,), dtype=jnp.int32)
+        return FDTDState(ex=ones, ey=ones, ez=ones,
+                         hx=ones, hy=ones, hz=ones, step=step)
+
+    def test_apply_pec_local_pad_x_targets_real_face(self):
+        """x-hi PEC must zero the real face (nx_local-1-ghost-pad_x),
+        NOT the alignment-pad cell at the old (nx_local-1-ghost) index."""
+        from functools import partial
+        from rfx.runners.distributed import _apply_pec_local
+
+        n_devices, nx_local, ny, nz, ghost, pad_x = 2, 10, 4, 4, 1, 2
+        state = self._padded_state(n_devices, nx_local, ny, nz)
+
+        @partial(jax.pmap, axis_name="devices")
+        def run_pec(state):
+            return _apply_pec_local(state, n_devices, nx_local, "devices",
+                                    pad_x=pad_x)
+
+        out = run_pec(state)
+        last_real = nx_local - 1 - ghost - pad_x       # correct real face
+        old_buggy = nx_local - 1 - ghost                # pre-#623 (pad cell)
+        # Interior (y, z) point — the unconditional y/z PEC faces zero
+        # y=0/-1 and z=0/-1 on every device regardless of the x-hi fix,
+        # which would mask the x-hi-specific signal at a boundary index.
+        iy, iz = 1, 1
+        ey_last, ez_last = out.ey[-1], out.ez[-1]
+
+        assert jnp.allclose(ey_last[last_real, iy, iz], 0.0), (
+            f"PEC did not zero the real x-hi face at index {last_real}: "
+            f"ey={float(ey_last[last_real, iy, iz]):.3e}")
+        assert jnp.allclose(ez_last[last_real, iy, iz], 0.0), (
+            f"PEC did not zero the real x-hi face at index {last_real}: "
+            f"ez={float(ez_last[last_real, iy, iz]):.3e}")
+        assert jnp.allclose(ey_last[old_buggy, iy, iz], 1.0), (
+            f"PEC touched the pad cell (old buggy index {old_buggy}) "
+            f"instead of the real face: ey="
+            f"{float(ey_last[old_buggy, iy, iz]):.3e}")
+        assert jnp.allclose(ez_last[old_buggy, iy, iz], 1.0), (
+            f"PEC touched the pad cell (old buggy index {old_buggy}) "
+            f"instead of the real face: ez="
+            f"{float(ez_last[old_buggy, iy, iz]):.3e}")
+
+    def test_apply_pmc_local_pad_x_targets_real_face(self):
+        """x-hi PMC must zero the real inside cell (last_real - 1 with
+        the pad_x-shifted last_real), NOT the old pad-adjacent index."""
+        from functools import partial
+        from rfx.runners.distributed import _apply_pmc_local
+
+        n_devices, nx_local, ny, nz, ghost, pad_x = 2, 10, 4, 4, 1, 2
+        state = self._padded_state(n_devices, nx_local, ny, nz)
+
+        @partial(jax.pmap, axis_name="devices")
+        def run_pmc(state):
+            return _apply_pmc_local(state, n_devices, nx_local, "devices",
+                                    frozenset({"x_hi"}), pad_x=pad_x)
+
+        out = run_pmc(state)
+        last_real = nx_local - 1 - ghost - pad_x
+        old_buggy = nx_local - 1 - ghost
+        last_inside = last_real - 1        # correct inside cell
+        old_inside = old_buggy - 1          # pre-#623 (pad-adjacent)
+        iy, iz = 1, 1
+        hy_last, hz_last = out.hy[-1], out.hz[-1]
+
+        assert jnp.allclose(hy_last[last_inside, iy, iz], 0.0), (
+            f"PMC did not zero the real inside cell at index "
+            f"{last_inside}: hy={float(hy_last[last_inside, iy, iz]):.3e}")
+        assert jnp.allclose(hz_last[last_inside, iy, iz], 0.0), (
+            f"PMC did not zero the real inside cell at index "
+            f"{last_inside}: hz={float(hz_last[last_inside, iy, iz]):.3e}")
+        assert jnp.allclose(hy_last[old_inside, iy, iz], 1.0), (
+            f"PMC touched the pad-adjacent cell (old buggy index "
+            f"{old_inside}) instead: hy="
+            f"{float(hy_last[old_inside, iy, iz]):.3e}")
+        assert jnp.allclose(hz_last[old_inside, iy, iz], 1.0), (
+            f"PMC touched the pad-adjacent cell (old buggy index "
+            f"{old_inside}) instead: hz="
+            f"{float(hz_last[old_inside, iy, iz]):.3e}")

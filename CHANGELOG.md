@@ -6,6 +6,54 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — uniform distributed lane's CPML/PEC x-hi wall displacement in the pad_x>0 lane (issue #623)
+
+- Same class as #622, in the sibling UNIFORM-grid runner:
+  `rfx.runners.distributed._apply_cpml_e_distributed` and
+  `_apply_cpml_h_distributed` (called from `distributed_v2.py`'s
+  `_apply_cpml_e_shmap` / `_apply_cpml_h_shmap`, which is what production
+  `sim.run(distributed=True)` / `devices=...` dispatches to) left the x-hi
+  CPML absorber window at the padded slab end instead of shifting it left
+  by `pad_x`, whenever `nx % n_devices != 0` (the common case post-#564,
+  since an even cell request now realizes an odd node count). Measured on
+  a 2-device CPML fixture with `nx=59` (`pad_x=1`), probe near the x-hi
+  face: `rel_err` **3.14e-01 pre-fix vs 8.13e-06 post-fix** (~38,600x) —
+  a clean physics witness, unlike #622's PEC-face site which needed a
+  structural array assertion because the x-hi terminal node there is an
+  identically-zero fixed point under PEC.
+- The legacy `jax.pmap` runner's `_apply_pec_local` / `_apply_pmc_local`
+  x-hi face appliers had the matching off-by-`pad_x` bug, but this site
+  is currently UNREACHABLE through the public `run_distributed()` entry
+  point — it hard-raises `ValueError` when `nx % n_devices != 0` (no
+  padding support there), so the fix is defensive/consistency-only,
+  witnessed by a direct structural unit test (mirrors #622's F4: no
+  simulation-level fixture can trigger this site).
+- Fix: threads a static `pad_x` (Python int, default 0) into both CPML
+  appliers and the legacy PEC/PMC appliers; the x-hi window/face index
+  shifts by `pad_x` so it covers the real physical face (global node
+  `nx - 1`), matching single-device `cpml.py`'s `[nx-n, nx)`. The
+  `pad_x == 0` lane is unchanged (no-op shift). Four pre-existing
+  2-device tests in `tests/test_distributed.py` already exercised
+  `pad_x=1` (3 Debye + 1 Lorentz fixtures) — measured **0.0 rel_err
+  before AND after** this fix. That is a structural, not a
+  timing/reach, result: those fixtures use `boundary="pec"`, which
+  routes through `distributed_v2.py`'s `_apply_pec_shmap` /
+  `_apply_pmc_shmap` (already made `pad_x`-aware by #622) — the CPML
+  appliers and legacy pmap appliers this PR touches are never invoked
+  on a PEC-boundary run at all, so this PR's fix has no code path to
+  move on that fixture regardless of probe placement or run length.
+- Lane visibility: `tests/test_distributed.py` carried a module-wide
+  `pytest.mark.gpu` (plus a since-superseded `os.environ["XLA_FLAGS"] =
+  ...` override that the root conftest's `setdefault`-based ordering
+  already made a no-op) that put its entire 2-/4-device family in the
+  same runs-nowhere state #622 found and fixed for
+  `test_distributed_nu_kernel.py`. The marker is removed; measured
+  (2-device conftest default): 33/33 passed, 65-68 s wall, 1.74 GiB peak
+  RSS — comparable to (and below) the NU kernel file's precedent (62-66
+  s, 1.93 GiB) and well under the `highmem` marker's 3-24 GB band. The
+  file now runs in the same fast-suite/weekly CPU shards as its NU
+  siblings. `scripts/vessl_gpu_suite.yaml`'s comment is updated to match.
+
 ### Added — `rfx.jacobian_fwd`, a batched forward-mode Jacobian wrapper (issue #577)
 
 - `rfx.observables.jacobian_fwd(sim_fn, params, *, tangents="identity",

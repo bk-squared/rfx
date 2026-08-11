@@ -529,13 +529,19 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     return new_fdtd, new_debye_st, new_lor_st
 
 
-def _apply_pec_local(state, n_devices, nx_local_with_ghost, axis_name="devices"):
+def _apply_pec_local(state, n_devices, nx_local_with_ghost, axis_name="devices",
+                     pad_x: int = 0):
     """Apply PEC boundary on a local slab.
 
     - y and z PEC: always applied (all devices own the full y/z extent).
     - x PEC: only device 0 applies x-lo, only device N-1 applies x-hi.
       These operate on the first/last REAL cell (index ghost and
-      nx_local+ghost-1), not the ghost cell itself.
+      nx_local+ghost-1-pad_x), not the ghost cell itself.
+
+    ``pad_x`` (#623, same class as #622): when the last rank's slab
+    carries alignment-pad cells past the real x-hi face (global node
+    ``nx - 1``), the face must act on that real node, not on the
+    padded slab end.
     """
     device_idx = lax.axis_index(axis_name)
     ghost = 1
@@ -564,9 +570,10 @@ def _apply_pec_local(state, n_devices, nx_local_with_ghost, axis_name="devices")
     ey = ey.at[ghost, :, :].set(ey_xlo)
     ez = ez.at[ghost, :, :].set(ez_xlo)
 
-    # Device N-1: x-hi PEC at last real cell
+    # Device N-1: x-hi PEC at last real cell (skip ghost AND alignment
+    # pad, #623 — same class as #622)
     is_last = (device_idx == n_devices - 1)
-    last_real = nx_local_with_ghost - 1 - ghost  # last real cell index
+    last_real = nx_local_with_ghost - 1 - ghost - pad_x  # last real cell index
     ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
     ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
     ey = ey.at[last_real, :, :].set(ey_xhi)
@@ -576,7 +583,7 @@ def _apply_pec_local(state, n_devices, nx_local_with_ghost, axis_name="devices")
 
 
 def _apply_pmc_local(state, n_devices, nx_local_with_ghost, axis_name,
-                     pmc_faces):
+                     pmc_faces, pad_x: int = 0):
     """Apply PMC (``H_tangential = 0``) on a local slab.
 
     Electromagnetic dual of :func:`_apply_pec_local`. Hook point is the
@@ -587,7 +594,9 @@ def _apply_pmc_local(state, n_devices, nx_local_with_ghost, axis_name,
       full y/z extent).
     - x PMC: only device 0 applies x-lo, only device N-1 applies x-hi.
       Acts on the first/last REAL cell (index ghost and
-      ``nx_local_with_ghost - 1 - ghost``), NOT the ghost cell.
+      ``nx_local_with_ghost - 1 - ghost - pad_x``), NOT the ghost cell
+      nor the alignment-pad cells when ``pad_x > 0`` (#623, same class
+      as #622).
     """
     if not pmc_faces:
         return state
@@ -616,7 +625,7 @@ def _apply_pmc_local(state, n_devices, nx_local_with_ghost, axis_name,
 
     is_first = (device_idx == 0)
     is_last = (device_idx == n_devices - 1)
-    last_real = nx_local_with_ghost - 1 - ghost
+    last_real = nx_local_with_ghost - 1 - ghost - pad_x
     last_inside = last_real - 1
 
     if "x_lo" in pmc_faces:
@@ -712,7 +721,7 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
 def _apply_cpml_e_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, ghost=1, axis_name="devices", eps_r=None,
+    n_devices, ghost=1, axis_name="devices", eps_r=None, pad_x: int = 0,
 ):
     """Apply CPML E-field correction on a distributed slab.
 
@@ -721,7 +730,7 @@ def _apply_cpml_e_distributed(
     Non-active faces are masked to zero via jnp.where.
 
     X-axis indexing accounts for ghost cells: x-lo uses
-    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+n):-ghost]``.
+    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+pad_x+n):-(ghost+pad_x)]``.
 
     Parameters
     ----------
@@ -746,16 +755,29 @@ def _apply_cpml_e_distributed(
         absorber stays impedance-matched inside a dielectric (mirrors the
         single-device ``apply_cpml_e``).  ``None`` falls back to the vacuum
         scalar ``dt / eps_0`` (bit-identical to the pre-#205 behaviour).
+    pad_x : int
+        Number of alignment-pad cells appended to the high-x end of the
+        last rank's slab so that ``(nx + pad_x) % n_devices == 0``
+        (#623, same class as #622). The x-hi CPML window is shifted left
+        by ``pad_x`` so it covers the real physical face (global node
+        ``nx - 1``), matching single-device ``cpml.py``'s ``[nx-n, nx)``
+        (a no-op on other ranks / when ``pad_x == 0``).
     """
     n = n_cpml
     g = ghost
+    # #623: on the last rank, pad_x alignment cells sit past the real
+    # x-hi face — shift the window left by pad_x.
+    x_hi_edge = g + pad_x
     # Per-face E-coefficient (material-aware when eps_r is supplied).
     # Each face slice broadcasts element-wise against its correction array
     # (x faces account for the ghost offset; y/z faces have no x-ghost).
     if eps_r is not None:
         _ce = dt / (eps_r * EPS_0)  # (nx_local+2g, ny, nz)
         ce_xlo = _ce[g:g + n, :, :]
-        ce_xhi = _ce[-(g + n):-g, :, :] if g > 0 else _ce[-n:, :, :]
+        ce_xhi = (
+            _ce[-(x_hi_edge + n):-x_hi_edge, :, :]
+            if x_hi_edge > 0 else _ce[-n:, :, :]
+        )
         ce_ylo = _ce[:, :n, :]
         ce_yhi = _ce[:, -n:, :]
         ce_zlo = _ce[:, :, :n]
@@ -778,9 +800,10 @@ def _apply_cpml_e_distributed(
     is_first = (device_idx == 0)
     is_last = (device_idx == n_devices - 1)
 
-    # X-axis slice helpers (account for ghost offset)
+    # X-axis slice helpers (account for ghost offset AND alignment pad,
+    # #623 — xhi shifted left by pad_x so it covers the real x-hi face)
     xlo = slice(g, g + n)          # first n real cells
-    xhi = slice(-(g + n), -g)      # last n real cells
+    xhi = slice(-(x_hi_edge + n), -x_hi_edge) if x_hi_edge > 0 else slice(-n, None)
 
     # =======================================================================
     # X-axis CPML (device-conditional)
@@ -975,7 +998,7 @@ def _apply_cpml_e_distributed(
 
 def _apply_cpml_h_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, ghost=1, axis_name="devices", mu_r=None,
+    n_devices, ghost=1, axis_name="devices", mu_r=None, pad_x: int = 0,
 ):
     """Apply CPML H-field correction on a distributed slab.
 
@@ -983,7 +1006,8 @@ def _apply_cpml_h_distributed(
     X faces: x-lo on device 0 only, x-hi on device N-1 only.
 
     X-axis indexing accounts for ghost cells: x-lo uses
-    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+n):-ghost]``.
+    ``[ghost:ghost+n]``, x-hi uses
+    ``[-(ghost+pad_x+n):-(ghost+pad_x)]``.
 
     Parameters
     ----------
@@ -1006,14 +1030,27 @@ def _apply_cpml_h_distributed(
         H-coefficient is the material-aware ``dt / (mu_r * mu_0)`` (mirrors
         the single-device ``apply_cpml_h``).  ``None`` falls back to the
         vacuum scalar ``dt / mu_0`` (bit-identical to pre-#205 behaviour).
+    pad_x : int
+        Number of alignment-pad cells appended to the high-x end of the
+        last rank's slab so that ``(nx + pad_x) % n_devices == 0``
+        (#623, same class as #622). The x-hi CPML window is shifted left
+        by ``pad_x`` so it covers the real physical face (global node
+        ``nx - 1``), matching single-device ``cpml.py``'s ``[nx-n, nx)``
+        (a no-op on other ranks / when ``pad_x == 0``).
     """
     n = n_cpml
     g = ghost
+    # #623: on the last rank, pad_x alignment cells sit past the real
+    # x-hi face — shift the window left by pad_x.
+    x_hi_edge = g + pad_x
     # Per-face H-coefficient (material-aware when mu_r is supplied).
     if mu_r is not None:
         _ch = dt / (mu_r * MU_0)  # (nx_local+2g, ny, nz)
         ch_xlo = _ch[g:g + n, :, :]
-        ch_xhi = _ch[-(g + n):-g, :, :] if g > 0 else _ch[-n:, :, :]
+        ch_xhi = (
+            _ch[-(x_hi_edge + n):-x_hi_edge, :, :]
+            if x_hi_edge > 0 else _ch[-n:, :, :]
+        )
         ch_ylo = _ch[:, :n, :]
         ch_yhi = _ch[:, -n:, :]
         ch_zlo = _ch[:, :, :n]
@@ -1036,9 +1073,10 @@ def _apply_cpml_h_distributed(
     is_first = (device_idx == 0)
     is_last = (device_idx == n_devices - 1)
 
-    # X-axis slice helpers (account for ghost offset)
+    # X-axis slice helpers (account for ghost offset AND alignment pad,
+    # #623 — xhi shifted left by pad_x so it covers the real x-hi face)
     xlo = slice(g, g + n)          # first n real cells
-    xhi = slice(-(g + n), -g)      # last n real cells
+    xhi = slice(-(x_hi_edge + n), -x_hi_edge) if x_hi_edge > 0 else slice(-n, None)
 
     # =======================================================================
     # X-axis CPML (device-conditional)
