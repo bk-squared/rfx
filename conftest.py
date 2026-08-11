@@ -302,6 +302,57 @@ def _maybe_register_rss_reporter(config: "pytest.Config") -> None:
 
 
 @pytest.fixture(scope="session")
+def _x64_baseline():
+    """The ``jax_enable_x64`` value this session STARTED with."""
+    return bool(jax.config.jax_enable_x64)
+
+
+@pytest.fixture(autouse=True)
+def _no_x64_leak(_x64_baseline):
+    """Fail the test that leaves ``jax_enable_x64`` flipped (issue #646).
+
+    ``jax_enable_x64`` is process-global. A test that flips it without scoping
+    (a bare ``jax.config.update("jax_enable_x64", True)`` instead of
+    ``tests/_x64_compat.enable_x64()``) silently changes the dtype environment
+    of every test scheduled after it in the same pytest-split worker. That has
+    already happened once: it reddened 13 unrelated tests in shard 3 on PR
+    #645, and the reported failures pointed at innocent tests. This guard
+    makes the leak fail in the test that CAUSED it.
+
+    Two deliberate deviations from the sketch in issue #646:
+
+    * **Function-scoped, not session-scoped.** A session-scoped teardown fires
+      once, after everything, and so cannot name the culprit — which is the
+      entire point. Per-test teardown can.
+    * **Compares against the session baseline, not against ``False``.** The
+      supported way to reproduce #646 is to run the suite under
+      ``JAX_ENABLE_X64=1``; asserting a hard ``False`` would fail every test
+      in that configuration. Anchoring to the session's initial value catches
+      a leak in either direction and stays correct under both env values.
+
+    Legitimate scoped use (``with enable_x64(): ...``) restores the flag
+    before teardown and is unaffected.
+
+    The flag is RESTORED before the assertion fires, so a leak costs exactly
+    one red test — the one that caused it — instead of cascading into every
+    test after it. Verified: with the restore, a deliberate leaker errors and
+    its neighbour still passes; without it, both error.
+    """
+    yield
+    now = bool(jax.config.jax_enable_x64)
+    if now != _x64_baseline:
+        jax.config.update("jax_enable_x64", _x64_baseline)
+    assert now == _x64_baseline, (
+        f"this test leaked jax_enable_x64: session started with "
+        f"{_x64_baseline}, test left it {now}. jax_enable_x64 is "
+        "process-global, so this changes the dtype environment of every test "
+        "scheduled after it in this worker. Scope the flip with "
+        "tests/_x64_compat.enable_x64() instead of calling "
+        'jax.config.update("jax_enable_x64", ...) directly.'
+    )
+
+
+@pytest.fixture(scope="session")
 def two_devices():
     """Return the first 2 JAX devices, or skip the test if unavailable."""
     devices = jax.devices()

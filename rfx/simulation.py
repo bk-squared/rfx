@@ -852,7 +852,11 @@ def _build_step_setup(
         from rfx.farfield import accumulate_ntff as _accumulate_ntff
         init_ntff_data_fn = _init_ntff_data
         accumulate_ntff_fn = _accumulate_ntff
-        carry_init["ntff"] = _init_ntff_data(ntff)
+        # NTFF accumulator dtype follows the field dtype with a float32 floor
+        # (#646), mirroring the CPML psi carry above. accumulate_ntff pins its
+        # phase arithmetic to whatever is allocated here, so the scan carry
+        # closes under jax_enable_x64 instead of raising a dtype mismatch.
+        carry_init["ntff"] = _init_ntff_data(ntff, field_dtype=_field_dtype)
 
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)

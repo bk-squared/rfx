@@ -114,20 +114,37 @@ class RLCState(NamedTuple):
     capacitor_charge: jnp.ndarray  # Q_C in coulombs
 
 
-def init_rlc_state(dtype=jnp.float32) -> RLCState:
+def init_rlc_state(dtype=None) -> RLCState:
     """Create zero-initialised RLC ADE state.
 
     Parameters
     ----------
-    dtype : jnp dtype
+    dtype : jnp dtype, optional
         Real dtype of the ADE carry (``inductor_current``,
-        ``capacitor_charge``).  Defaults to ``float32`` so every existing
-        caller (the concrete ``run()`` path) is byte-identical.  The
-        differentiable ``forward()`` lane threads the promoted dtype (e.g.
-        ``float64`` under a scoped ``jax_enable_x64`` component-value DoF)
-        so the ``lax.scan`` carry input/output dtypes agree — see
-        ``rlc_carry_dtype``.
+        ``capacitor_charge``).  ``None`` (the default) follows the ambient
+        JAX default float dtype with a ``float32`` floor, which is what the
+        ADE update body actually produces — see the dtype note below.  The
+        concrete ``run()`` path and the differentiable ``forward()`` lane both
+        pass an explicit dtype from ``rlc_carry_dtype`` instead.
+
+    Dtype note (issue #646)
+    -----------------------
+    This default used to be a hard ``jnp.float32`` pin, which reds every
+    caller under ``jax_enable_x64``.  The promoting quantity is NOT the field
+    dtype: ``build_rlc_meta`` derives ``D0``/``gamma``/``dt_dx_over_L``/
+    ``dt_over_C_dx``/``dt`` from ``grid.dt``, which is a **numpy float64
+    scalar**.  numpy scalars are strongly typed in JAX, so under x64 they
+    promote the ADE update to float64 even when the fields are float32; with
+    x64 off JAX clamps them to float32 and the pin happened to agree.  So the
+    body returns the ambient default float dtype, and the carry must be
+    allocated at that same dtype for ``lax.scan`` to close.
+
+    ``promote_types(..., float32)`` keeps the float32 floor: this is a
+    recursive accumulator, so it must never land in float16 under
+    ``precision="mixed"``.
     """
+    if dtype is None:
+        dtype = jnp.promote_types(jnp.result_type(float), jnp.float32)
     return RLCState(
         inductor_current=jnp.array(0.0, dtype=dtype),
         capacitor_charge=jnp.array(0.0, dtype=dtype),
@@ -137,11 +154,15 @@ def init_rlc_state(dtype=jnp.float32) -> RLCState:
 def rlc_carry_dtype(metas, field_dtype=jnp.float32):
     """Real dtype for the RLC ADE scan carry given the per-element metas.
 
-    The concrete ``run()`` path builds ``RLCCellMeta`` with Python-float
-    coefficients (``build_rlc_meta`` coerces via ``float()``) and runs with
-    ``field_dtype=float32``; every meta coefficient is a plain ``float`` (no
-    ``.dtype``) so this returns ``float32`` — byte-identical to the historical
-    ``init_rlc_state()`` pin.
+    The concrete ``run()`` path builds ``RLCCellMeta`` from ``grid.dt``, which
+    is a **numpy float64 scalar**, so ``D0``/``gamma``/``dt_dx_over_L``/
+    ``dt_over_C_dx`` are ``np.float64`` (they DO carry a ``.dtype``) and this
+    returns ``float64``, not ``float32``.  With x64 off JAX clamps that back to
+    float32 at allocation, which is why the result is byte-identical to the
+    historical ``init_rlc_state()`` float32 pin; with x64 on it correctly
+    returns float64, matching what the ADE body produces.  (An earlier version
+    of this docstring claimed the metas were plain Python floats and that this
+    returned float32 — measured false, issue #646.)
 
     The differentiable ``forward()`` lane builds metas with
     ``build_rlc_meta_traced``; when a component value is supplied as a tracer

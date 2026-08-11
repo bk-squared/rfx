@@ -141,19 +141,49 @@ def make_ntff_box(
     )
 
 
-def init_ntff_data(box: NTFFBox) -> NTFFData:
+def ntff_accum_dtype(field_dtype=jnp.float32):
+    """Complex dtype for the NTFF DFT scan carry, given the field dtype.
+
+    One policy, shared by ``init_ntff_data`` (allocation) and
+    ``accumulate_ntff`` (the scan body), so the ``lax.scan`` carry closes:
+    the accumulator is the complex type matching
+    ``promote_types(field_dtype, float32)``.
+
+    * float16 (``precision="mixed"``) -> complex64.  The float32 floor is
+      mandatory: this is a recursive accumulator and must never land in
+      float16, whose 11-bit mantissa would destroy the running DFT.
+    * float32 (the default)           -> complex64.  Unchanged, x64 or not.
+    * float64 (``precision="float64"``) -> complex128.
+    * complex64 (the oblique-Bloch path, #404) -> complex64.  A flat float32
+      pin would break that path; ``promote_types`` preserves complex.
+    """
+    return jnp.result_type(
+        jnp.promote_types(jnp.dtype(field_dtype), jnp.float32), jnp.complex64)
+
+
+def init_ntff_data(box: NTFFBox, *, field_dtype=jnp.float32) -> NTFFData:
     """Initialize zeroed NTFF DFT accumulators.
 
-    Uses complex64 accumulators with Kahan compensated summation (the ``c_*``
-    arrays), which keeps near-float64 precision over thousands of timesteps
-    WITHOUT enabling JAX x64 mode (x64 caused an MLIR scan-carry mismatch,
-    issue #14). Plain float32 accumulation would lose the signal at coarse dx,
-    where the per-step phase rotation is small; Kahan avoids that.
+    Uses Kahan compensated summation (the ``c_*`` arrays), which keeps
+    near-float64 precision in complex64 over thousands of timesteps. Plain
+    float32 accumulation would lose the signal at coarse dx, where the
+    per-step phase rotation is small; Kahan avoids that. That design is
+    unchanged — at the default float32 field storage the accumulator is
+    complex64 whether or not JAX x64 mode is on.
+
+    Dtype note (issue #646)
+    -----------------------
+    The accumulator dtype used to be a hard ``complex64`` pin, justified here
+    by "x64 caused an MLIR scan-carry mismatch, issue #14". That has the
+    causality backwards: the PIN is what raises the mismatch. ``dt`` reaches
+    ``accumulate_ntff`` as a **numpy float64 scalar** (``grid.dt``), and numpy
+    scalars are strongly typed in JAX, so under x64 the phase factor — and
+    therefore the scan body's output — is complex128 while the carry was
+    allocated complex64. The fields are NOT the promoting quantity; they stay
+    float32. So the accumulator follows ``ntff_accum_dtype`` and
+    ``accumulate_ntff`` pins its phase arithmetic to that same dtype.
     """
-    # Always use complex64 — Kahan compensated summation provides near-float64
-    # precision without requiring JAX x64 mode (which causes MLIR issues #14).
-    # No need for x64 mode which causes MLIR scan carry mismatch (issue #14).
-    _cdtype = jnp.complex64
+    _cdtype = ntff_accum_dtype(field_dtype)
     nf = len(box.freqs)
     ni = box.i_hi - box.i_lo
     nj = box.j_hi - box.j_lo
@@ -186,15 +216,26 @@ def accumulate_ntff(
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
     """
-    # Phase in float32/complex64 — Kahan summation handles precision.
+    # Phase arithmetic is pinned to the ACCUMULATOR's dtype (issue #646), not
+    # to a literal float32/complex64. ``dt`` arrives as a numpy float64 scalar
+    # (``grid.dt``); numpy scalars are strongly typed in JAX, so leaving it
+    # uncast makes this body return complex128 under x64 while the carry was
+    # allocated complex64 — a lax.scan carry-type mismatch. Casting it to the
+    # accumulator's real dtype is a no-op with x64 off (JAX already clamped
+    # float64 -> float32 there), so the default path stays bit-identical.
+    # Kahan summation still supplies the precision, as before.
     # E is at time step n, H at n+1/2 in Yee leapfrog.
     # Apply half-step phase correction to H components (indices 2,3)
     # so that E and H DFTs are co-located in time.
-    t = jnp.float32(step_idx) * jnp.float32(dt)
-    freqs_hi = jnp.asarray(box.freqs, dtype=jnp.float32)
-    omega = 2 * jnp.pi * freqs_hi
-    phase_e = jnp.exp(jnp.complex64(-1j) * omega * t) * dt
-    phase_h = jnp.exp(jnp.complex64(-1j) * omega * (t + dt * 0.5)) * dt
+    _cdtype = ntff_data.x_lo.dtype
+    _rdtype = jnp.finfo(_cdtype).dtype
+    _dt = jnp.asarray(dt, dtype=_rdtype)
+    t = jnp.asarray(step_idx, dtype=_rdtype) * _dt
+    freqs_hi = jnp.asarray(box.freqs, dtype=_rdtype)
+    omega = jnp.asarray(2 * jnp.pi, dtype=_rdtype) * freqs_hi
+    _mj = jnp.asarray(-1j, dtype=_cdtype)
+    phase_e = jnp.exp(_mj * omega * t) * _dt
+    phase_h = jnp.exp(_mj * omega * (t + _dt * 0.5)) * _dt
     # Stack [E_phase, E_phase, H_phase, H_phase] for the 4 tangential components
     ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
     ph = ph[:, None, None, :]  # (nf, 1, 1, 4)

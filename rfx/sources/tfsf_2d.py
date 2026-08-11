@@ -475,6 +475,43 @@ def _update_e_tez(cfg, st, dx, dt, t):
 # Mode-dispatching update entry points
 # ---------------------------------------------------------------------------
 
+_AUX_CARRY_FIELDS = ("ez_2d", "hx_2d", "hy_2d",
+                     "psi_ez_xlo", "psi_ez_xhi", "psi_hy_xlo", "psi_hy_xhi")
+
+
+def _narrow_to_carry(st_in: TFSF2DState, st_out: TFSF2DState) -> TFSF2DState:
+    """Return ``st_out`` with every complex field back at ``st_in``'s dtype.
+
+    Issue #646. ``dx``/``dt``/``t`` reach the update bodies as numpy float64
+    scalars (derived from ``grid.dt``), and numpy scalars are strongly typed
+    in JAX. Under ``jax_enable_x64`` they promote the scalar precomputes
+    (``dt/MU_0``, ``exp(-1j*k_y*dx)``, the source term) and hence the whole
+    returned aux state to complex128, while the carry was allocated
+    complex64 — a lax.scan carry-type mismatch.
+
+    The narrowing is done on the OUTPUT rather than by casting dx/dt/t on the
+    way in, and that ordering is deliberate: those scalar precomputes are
+    evaluated in float64/complex128 today and rounded once at the point they
+    meet the complex64 arrays. Casting the inputs first would move the
+    rounding earlier (``float32(dt)/MU_0`` instead of ``float32(dt/MU_0)``,
+    ``exp`` evaluated in complex64 instead of complex128-then-rounded) and
+    perturb the default path by an ULP. Narrowing the output cannot: with x64
+    off every field here is ALREADY the carry dtype, so this is a no-op and
+    the path is bit-identical by construction.
+
+    Derived from the state, never pinned to complex64, so the complex
+    aux-grid carry the oblique-Bloch path needs (#404) is preserved and a
+    complex128 aux state would stay complex128.
+    """
+    repl = {}
+    for name in _AUX_CARRY_FIELDS:
+        want = getattr(st_in, name).dtype
+        cur = getattr(st_out, name)
+        if cur.dtype != want:
+            repl[name] = cur.astype(want)
+    return st_out._replace(**repl) if repl else st_out
+
+
 def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
                       dx: float, dt: float) -> TFSF2DState:
     """Advance 2D auxiliary H: H^{n-1/2} -> H^{n+1/2}.
@@ -482,8 +519,10 @@ def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
     Dispatches to TMz or TEz based on ``cfg.mode``.
     """
     if cfg.mode == "TEz":
-        return _update_h_tez(cfg, st, dx, dt)
-    return _update_h_tmz(cfg, st, dx, dt)
+        out = _update_h_tez(cfg, st, dx, dt)
+    else:
+        out = _update_h_tmz(cfg, st, dx, dt)
+    return _narrow_to_carry(st, out)
 
 
 def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
@@ -493,8 +532,10 @@ def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
     Dispatches to TMz or TEz based on ``cfg.mode``.
     """
     if cfg.mode == "TEz":
-        return _update_e_tez(cfg, st, dx, dt, t)
-    return _update_e_tmz(cfg, st, dx, dt, t)
+        out = _update_e_tez(cfg, st, dx, dt, t)
+    else:
+        out = _update_e_tmz(cfg, st, dx, dt, t)
+    return _narrow_to_carry(st, out)
 
 
 def update_tfsf_2d(cfg: TFSF2DConfig, st: TFSF2DState,
@@ -614,9 +655,16 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     # sign is (-coeff, +coeff).  For TEz (Ey/Hz, curl_sign=-1): Ampere
     # has -dHz/dx, so correction sign is (+coeff, -coeff).  Using
     # curl_sign unifies both: (-curl_sign*coeff, +curl_sign*coeff).
+    # Narrow the correction to the 3D field's own dtype (#646). ``coeff`` is a
+    # numpy float64 scalar, so under x64 the product is complex128/float64 and
+    # the scatter-add into a complex64/float32 field emits JAX's
+    # "cannot safely cast" FutureWarning (a future hard error). No-op with x64
+    # off, where the product is already the field dtype.
     e_field = e_ref
-    e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff * h_lo_3d)
-    e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff * h_hi_3d)
+    e_field = e_field.at[cfg.x_lo, :, :].add(
+        (-cfg.curl_sign * coeff * h_lo_3d).astype(e_ref.dtype))
+    e_field = e_field.at[cfg.x_hi + 1, :, :].add(
+        (cfg.curl_sign * coeff * h_hi_3d).astype(e_ref.dtype))
 
     return state._replace(**{cfg.electric_component: e_field})
 
@@ -654,8 +702,11 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
         e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
 
+    # Narrow to the 3D field dtype — see the note in apply_tfsf_2d_e (#646).
     h_field = h_ref
-    h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff * e_lo_3d)
-    h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_hi_3d)
+    h_field = h_field.at[cfg.x_lo - 1, :, :].add(
+        (-cfg.curl_sign * coeff * e_lo_3d).astype(h_ref.dtype))
+    h_field = h_field.at[cfg.x_hi, :, :].add(
+        (cfg.curl_sign * coeff * e_hi_3d).astype(h_ref.dtype))
 
     return state._replace(**{cfg.magnetic_component: h_field})
