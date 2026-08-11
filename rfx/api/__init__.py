@@ -2454,7 +2454,6 @@ class Simulation(
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
     ) -> "AD_MemoryEstimate":
         """Estimate reverse-mode AD memory for this simulation.
 
@@ -2489,12 +2488,8 @@ class Simulation(
         pushing the segment count to either extreme. Use
         :meth:`plan_ad_memory` to pick a balanced knob for a budget.
         ``n_warmup`` must be an integer with
-        ``0 <= n_warmup < n_steps``. ``design_mask`` must be a boolean array
-        matching the simulation grid shape and selecting at least one cell.
-        ``n_warmup`` reduces reported reverse-mode tape time. ``design_mask``
-        is reported as active-design metadata but does not reduce primary
-        memory estimates until masked-state memory has observed calibration.
-        The legacy
+        ``0 <= n_warmup < n_steps`` and reduces reported reverse-mode tape
+        time. The legacy
         ``ad_checkpointed_gb`` field keeps its old (optimistic) heuristic
         for backwards compatibility; it
         is NOT accurate for FDTD on the non-uniform path — see the
@@ -2545,9 +2540,6 @@ class Simulation(
                     f"n_steps={n_steps_i}"
                 )
         accounting = self._ad_memory_static_accounting()
-        nx = accounting["nx"]
-        ny = accounting["ny"]
-        nz = accounting["nz"]
         field_bytes = accounting["field_bytes"]
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
@@ -2557,29 +2549,10 @@ class Simulation(
         # scan carry itself is not rematerialised.
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes
         active_steps = n_steps_i - n_warmup_i
-        active_design_fraction = 1.0
-        if design_mask is not None:
-            mask = np.asarray(design_mask)
-            if mask.size == 0:
-                raise ValueError("design_mask must be non-empty")
-            if mask.shape == ():
-                raise ValueError("design_mask must be a boolean array matching grid shape")
-            if mask.dtype != np.bool_:
-                raise TypeError("design_mask must have boolean dtype")
-            grid_shape = (nx, ny, nz)
-            if mask.shape != grid_shape:
-                raise ValueError(
-                    f"design_mask shape {mask.shape} must match simulation grid shape {grid_shape}"
-                )
-            selected_cells = int(np.count_nonzero(mask))
-            if selected_cells == 0:
-                raise ValueError("design_mask must select at least one cell")
-            active_design_fraction = float(selected_cells) / float(mask.size)
         active_tape_field_bytes = field_bytes
 
-        # Non-checkpointed AD: O(active_steps) full-grid field tape. ``n_warmup``
-        # reduces active reverse-mode time, while ``design_mask`` is retained as
-        # metadata only until masked-state memory has observed calibration.
+        # Non-checkpointed AD: O(active_steps) full-grid field tape.
+        # ``n_warmup`` reduces active reverse-mode time.
         ad_full_bytes = active_steps * active_tape_field_bytes + ntff_bytes + forward_bytes
 
         # Segmented scan paths. ``checkpoint_every`` is the non-uniform
@@ -2681,7 +2654,6 @@ class Simulation(
             checkpoint_every=checkpoint_every_i,
             checkpoint_segments=checkpoint_segments_i,
             ad_active_steps=active_steps,
-            ad_active_design_fraction=active_design_fraction,
             ad_segmented_active_segments=segmented_active_segments,
         )
 
@@ -2693,7 +2665,6 @@ class Simulation(
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
     ) -> ADMemoryExplainabilityReport:
         """Explain the static reverse-mode AD memory estimate.
 
@@ -2710,7 +2681,6 @@ class Simulation(
             checkpoint_every=checkpoint_every,
             checkpoint_segments=checkpoint_segments,
             n_warmup=n_warmup,
-            design_mask=design_mask,
         )
 
         accounting = self._ad_memory_static_accounting()
@@ -2888,10 +2858,6 @@ class Simulation(
                 f"time-step tape entries, instead of {active_steps} active "
                 "time-step tape entries."
             )
-        if estimate.ad_active_design_fraction is not None and estimate.ad_active_design_fraction < 1.0:
-            recommendations.append(
-                "design_mask is recorded as active-design metadata only; it does not reduce the selected memory estimate."
-            )
         if estimate.warning:
             recommendations.append(estimate.warning)
 
@@ -2913,7 +2879,6 @@ class Simulation(
         *,
         target_fraction: float = 0.85,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
     ) -> ADMemoryPlan:
         """Choose a segmented-AD memory plan for a memory budget.
@@ -2927,13 +2892,10 @@ class Simulation(
         ``checkpoint_segments`` for uniform grids. Only wire the candidate when
         ``segmented_fits`` is true; a non-fitting plan keeps the least-memory
         candidate as diagnostics.
-        ``n_warmup`` must be an integer with ``0 <= n_warmup < n_steps``.
-        ``design_mask`` must be a boolean array matching the simulation grid
-        shape and selecting at least one cell. ``n_warmup`` reduces active
-        reverse-mode time; ``design_mask`` is metadata only for conservative
-        budgeting. Raw estimates must also fit after multiplying by
-        ``safety_factor`` before fit flags are set, so near-boundary plans stay
-        conservative.
+        ``n_warmup`` must be an integer with ``0 <= n_warmup < n_steps`` and
+        reduces active reverse-mode time. Raw estimates must also fit after
+        multiplying by ``safety_factor`` before fit flags are set, so
+        near-boundary plans stay conservative.
         """
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)
@@ -2963,7 +2925,6 @@ class Simulation(
             n_steps_i,
             available_memory_gb=available_memory_gb_f,
             n_warmup=n_warmup_i,
-            design_mask=design_mask,
         )
         if full_estimate.ad_full_gb * safety_factor_f <= target_memory_gb:
             return ADMemoryPlan(
@@ -3011,7 +2972,6 @@ class Simulation(
                     available_memory_gb=available_memory_gb_f,
                     checkpoint_segments=segments,
                     n_warmup=n_warmup_i,
-                    design_mask=design_mask,
                 )
                 segmented_gb = estimate.ad_segmented_gb
                 if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
@@ -3051,7 +3011,6 @@ class Simulation(
                     available_memory_gb=available_memory_gb_f,
                     checkpoint_segments=segments,
                     n_warmup=n_warmup_i,
-                    design_mask=design_mask,
                 )
                 segmented_gb = estimate.ad_segmented_gb
                 if segmented_gb is None:
@@ -3103,7 +3062,6 @@ class Simulation(
                 available_memory_gb=available_memory_gb_f,
                 checkpoint_every=checkpoint,
                 n_warmup=n_warmup_i,
-                design_mask=design_mask,
             )
             segmented_gb = estimate.ad_segmented_gb
             if segmented_gb is not None and (
@@ -3170,7 +3128,6 @@ class Simulation(
         *,
         target_fraction: float = 0.85,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
         include_mesh_report: bool = True,
         check_ntff: bool = True,
@@ -3194,7 +3151,6 @@ class Simulation(
             available_memory_gb,
             target_fraction=target_fraction,
             n_warmup=n_warmup,
-            design_mask=design_mask,
             safety_factor=safety_factor,
         )
 
@@ -3215,7 +3171,6 @@ class Simulation(
             checkpoint_every=selected_checkpoint_every,
             checkpoint_segments=selected_checkpoint_segments,
             n_warmup=n_warmup,
-            design_mask=design_mask,
         )
 
         mesh_report = (
@@ -3225,7 +3180,6 @@ class Simulation(
                 checkpoint_segments=selected_checkpoint_segments,
                 available_memory_gb=available_memory_gb,
                 n_warmup=n_warmup,
-                design_mask=design_mask,
                 check_ntff=check_ntff,
                 check_resolution=check_resolution,
             )
@@ -3386,7 +3340,6 @@ class Simulation(
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
         precision: str | None = None,
         input_signature: object | None = None,
         static_signature: object | None = None,
@@ -3426,15 +3379,14 @@ class Simulation(
         if target_fraction_f > 1.0:
             raise ValueError("target_fraction must be in the interval (0, 1]")
 
-        # Reuse the existing AD-memory validation contract for counts,
-        # checkpoint knob exclusivity/divisibility, and design-mask shape/dtype.
+        # Reuse the existing AD-memory validation contract for counts and
+        # checkpoint knob exclusivity/divisibility.
         self.estimate_ad_memory(
             n_steps_i,
             available_memory_gb=available_memory_gb_f,
             checkpoint_every=checkpoint_every_i,
             checkpoint_segments=checkpoint_segments_i,
             n_warmup=n_warmup_i,
-            design_mask=design_mask,
         )
 
         target_memory_gb = available_memory_gb_f * target_fraction_f
@@ -3593,7 +3545,6 @@ class Simulation(
         checkpoint_segments: int | None = None,
         available_memory_gb: float | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | np.ndarray | None = None,
         check_ntff: bool = True,
         check_resolution: bool = True,
     ) -> MeshIntelligenceReport:
@@ -3612,8 +3563,8 @@ class Simulation(
 
         ``checkpoint_every`` and ``checkpoint_segments`` are forwarded to the
         same AD estimator used by :meth:`plan_ad_memory`; they are mutually
-        exclusive. ``n_warmup`` and ``design_mask`` are forwarded as
-        reverse-mode tape metadata only, matching ``estimate_ad_memory``.
+        exclusive. ``n_warmup`` is forwarded as reverse-mode tape metadata
+        only, matching ``estimate_ad_memory``.
         """
         import contextlib
         import io
@@ -3679,7 +3630,6 @@ class Simulation(
                 checkpoint_every=checkpoint_every,
                 checkpoint_segments=checkpoint_segments,
                 n_warmup=n_warmup,
-                design_mask=design_mask,
             )
 
         uses_nonuniform = any(

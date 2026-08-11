@@ -51,7 +51,11 @@ Test inventory (V3 plan §Phase 1 Tolerance Contract):
  12 | test_forward_distributed_pec_occupancy_two_device_matches_single_device | B
  13 | test_forward_distributed_checkpoint_every_matches_no_segment_small_grad_case | A+E
  14 | test_forward_distributed_n_warmup_tail_grad_matches_single_device | A
- 15 | test_forward_distributed_design_mask_stop_grad_matches_single_device | A
+ -- | (was) test_forward_distributed_design_mask_stop_grad_matches_single_device
+    |   — removed 2026-08-11 (issue #625): design_mask was measured to corrupt
+    |   the gradient (not merely fail to save memory), so the parity check it
+    |   ran (two implementations of the same defective mechanism agreeing with
+    |   each other) was never evidence of correctness. See CHANGELOG.md.
  -- | (was) cpml_internal_seam_is_noop — moved to kernel test, removed here
  16 | test_forward_distributed_pec_mask_seam_exchange_preserves_field | B
  17 | test_forward_distributed_grad_per_cell_matches_single_device_near_seam (G1) | A seam
@@ -680,64 +684,6 @@ def test_forward_distributed_n_warmup_tail_grad_matches_single_device():
     grad_dist = jax.grad(loss_dist)(eps)
 
     assert_class_a_grad(grad_single, grad_dist, label="n_warmup_tail_grad")
-
-
-def test_forward_distributed_design_mask_stop_grad_matches_single_device():
-    """Distributed forward with design_mask must match single-device gradient.
-
-    design_mask applies stop_gradient on non-design cells so only the
-    design region accumulates gradients.  On the distributed path, the
-    sharded carry rebuild must apply design_mask in the same way.
-    Class A: max_rel_err < 1e-6.
-    """
-    devices = _require_two_devices()
-
-    from rfx import Simulation
-
-    n_steps = 16
-    nx, ny, nz, dx = 12, 10, 10, 5e-3
-
-    def _build_sim():
-        sim = Simulation(
-            freq_max=5e9,
-            domain=(nx * dx, ny * dx, nz * dx),
-            dx=dx,
-            boundary="pec",
-            dx_profile=np.full(nx, dx),
-        )
-        sim.add_source(position=(3 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
-        sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
-        return sim
-
-    eps = jnp.ones(_field_shape(nx, ny, nz)) * 1.0
-    # Design mask: only cells x=3..7 are design cells
-    design_mask = jnp.zeros(_field_shape(nx, ny, nz), dtype=bool)
-    design_mask = design_mask.at[3:8, :, :].set(True)
-
-    def loss_single(eps_val):
-        sim = _build_sim()
-        res = sim.forward(
-            n_steps=n_steps,
-            eps_override=eps_val,
-            design_mask=design_mask,
-        )
-        return jnp.sum(res.time_series[0] ** 2)
-
-    def loss_dist(eps_val):
-        sim = _build_sim()
-        res = sim.forward(
-            n_steps=n_steps,
-            eps_override=eps_val,
-            design_mask=design_mask,
-            distributed=True,
-            devices=devices,
-        )
-        return jnp.sum(res.time_series[0] ** 2)
-
-    grad_single = jax.grad(loss_single)(eps)
-    grad_dist = jax.grad(loss_dist)(eps)
-
-    assert_class_a_grad(grad_single, grad_dist, label="design_mask_stop_grad")
 
 
 # ---------------------------------------------------------------------------

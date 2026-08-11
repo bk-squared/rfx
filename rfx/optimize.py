@@ -254,7 +254,6 @@ def optimize(
     checkpoint_every: int | None = None,
     emit_time_series: bool = True,
     n_warmup: int = 0,
-    design_mask: jnp.ndarray | None = None,
     distributed: bool = False,
     port_s11_freqs: object | None = None,
     checkpoint_segments: int | None = None,
@@ -418,7 +417,6 @@ def optimize(
             checkpoint_every=checkpoint_every,
             emit_time_series=emit_time_series,
             n_warmup=n_warmup,
-            design_mask=design_mask,
             distributed=distributed,
             port_s11_freqs=port_s11_freqs,
             skip_preflight=True,  # already done at optimize() entry

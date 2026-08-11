@@ -118,7 +118,6 @@ class AD_MemoryEstimate(NamedTuple):
     checkpoint_every: int | None = None
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
-    ad_active_design_fraction: float | None = None
     ad_segmented_active_segments: int | None = None
     @property
     def evidence_class(self) -> str:
@@ -144,11 +143,6 @@ class AD_MemoryEstimate(NamedTuple):
             "checkpoint_every": self.checkpoint_every,
             "checkpoint_segments": self.checkpoint_segments,
             "ad_active_steps": self.ad_active_steps,
-            "ad_active_design_fraction": (
-                None
-                if self.ad_active_design_fraction is None
-                else float(self.ad_active_design_fraction)
-            ),
             "ad_segmented_active_segments": self.ad_segmented_active_segments,
         }
 

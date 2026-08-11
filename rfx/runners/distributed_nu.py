@@ -526,71 +526,6 @@ def shard_pec_occupancy_x_slab(global_occupancy, sharded_grid: ShardedNUGrid):
     return slabs.reshape(n_devices * nx_local, ny, nz)
 
 
-def shard_design_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
-    """Slice a global design mask along x using the slab ownership of
-    :class:`ShardedNUGrid`.
-
-    The design mask is a boolean ``(nx, ny, nz)`` array where ``True``
-    marks cells whose ``eps`` participates in the optimisation variable
-    (i.e. cells that should keep gradient).  Cells outside the mask
-    will be replaced by ``stop_gradient(field)`` at the end of each
-    step (mirrors :issue:`#41` semantics in
-    :func:`rfx.nonuniform.run_nonuniform`).
-
-    The same slab+ghost layout convention as
-    :func:`shard_pec_mask_x_slab` is used.  Ghost rows at the physical
-    domain boundary are padded ``False`` (no-design) so the
-    ``stop_gradient`` filter is applied there, which is harmless when
-    the boundary is PEC (field is zero anyway) but matches the safer
-    "no-design outside the user-marked region" semantics.
-
-    Parameters
-    ----------
-    global_mask : (nx, ny, nz) jnp.ndarray bool, or None
-        Full-domain design mask.  Returns ``None`` if ``global_mask`` is
-        ``None`` so callers can do an unconditional call.
-    sharded_grid : ShardedNUGrid
-
-    Returns
-    -------
-    sharded_mask : (n_devices * nx_local, ny, nz) jnp.ndarray bool, or None
-    """
-    if global_mask is None:
-        return None
-
-    n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-    ny = sharded_grid.ny
-    nz = sharded_grid.nz
-
-    if pad_x > 0:
-        pad_widths = [(0, pad_x), (0, 0), (0, 0)]
-        global_mask = jnp.pad(global_mask, pad_widths, constant_values=False)
-
-    nx_padded = global_mask.shape[0]
-    assert nx_padded == n_devices * nx_per, (
-        f"sharded_design_mask: padded mask shape {nx_padded} != "
-        f"n_devices*nx_per_rank = {n_devices * nx_per}"
-    )
-
-    slabs = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.bool_)
-    for d in range(n_devices):
-        lo = d * nx_per
-        hi = lo + nx_per
-        slabs = slabs.at[d, ghost:ghost + nx_per, :, :].set(global_mask[lo:hi])
-        if d > 0:
-            slabs = slabs.at[d, 0, :, :].set(global_mask[lo - 1])
-        # else: domain boundary; ghost stays False
-        if d < n_devices - 1:
-            slabs = slabs.at[d, -1, :, :].set(global_mask[hi])
-        # else: domain boundary; ghost stays False
-
-    return slabs.reshape(n_devices * nx_local, ny, nz)
-
-
 def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
     """Slice a global PEC mask along x using the slab ownership of
     :class:`ShardedNUGrid`.
@@ -1964,7 +1899,6 @@ def run_nonuniform_distributed_pec(
     sharded_pec_occupancy=None,
     checkpoint_every: int | None = None,
     n_warmup: int = 0,
-    sharded_design_mask=None,
     emit_time_series: bool = True,
     pmc_faces: frozenset = frozenset(),
 ) -> dict:
@@ -2111,16 +2045,6 @@ def run_nonuniform_distributed_pec(
         ``stop_gradient``'d so AD builds no tape for that transient.
         Only the trailing ``n_steps - n_warmup`` steps participate in
         reverse-mode autodiff.  Must satisfy ``n_warmup < n_steps``.
-    sharded_design_mask : jnp.ndarray bool or None, optional
-        Phase 2F design-mask stop-gradient (mirrors single-device
-        :issue:`#41`).  x-slab sharded boolean mask with the same
-        layout as ``sharded_pec_mask`` (use
-        :func:`shard_design_mask_x_slab` to build it).  Cells where the
-        mask is ``True`` keep gradient; cells where the mask is
-        ``False`` have ``stop_gradient`` applied at each step before
-        the carry-out.  Forward physics is bit-identical
-        (``stop_gradient`` is forward-identity); backward memory and
-        wall-time scale with mask occupancy instead of grid volume.
     emit_time_series : bool, optional
         Phase 2F.  When ``True`` (default), the runner accumulates per-
         step probe samples and returns ``time_series`` as a
@@ -2892,27 +2816,6 @@ def run_nonuniform_distributed_pec(
             probe_out = _sample_probes_shmap(st)
         else:
             probe_out = jnp.zeros(0, dtype=jnp.float32)
-
-        # 9c. Phase 2F design-mask stop-gradient (mirrors single-device
-        #     :issue:`#41`).  Apply ``stop_gradient`` to fields outside
-        #     the design region BEFORE carry-out so the backward tape
-        #     never accumulates entries for cells whose ``eps`` does not
-        #     depend on the optimisation variable.  Forward physics is
-        #     unchanged (``stop_gradient`` is forward-identity); backward
-        #     memory + wall-time scale with mask occupancy.  The mask
-        #     itself is x-sharded with the same slab+ghost layout as the
-        #     state, so the elementwise ``jnp.where`` runs locally on
-        #     each rank with no cross-rank communication.
-        if sharded_design_mask is not None:
-            sg = jax.lax.stop_gradient
-            st = st._replace(
-                ex=jnp.where(sharded_design_mask, st.ex, sg(st.ex)),
-                ey=jnp.where(sharded_design_mask, st.ey, sg(st.ey)),
-                ez=jnp.where(sharded_design_mask, st.ez, sg(st.ez)),
-                hx=jnp.where(sharded_design_mask, st.hx, sg(st.hx)),
-                hy=jnp.where(sharded_design_mask, st.hy, sg(st.hy)),
-                hz=jnp.where(sharded_design_mask, st.hz, sg(st.hz)),
-            )
 
         new_carry = {"fdtd": st}
         if use_cpml:

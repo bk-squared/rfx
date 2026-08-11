@@ -31,7 +31,7 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 
 | `evidence_class` | Available | Meaning |
 |---|---:|---|
-| `static_estimate` | yes | Formula-based estimate from static metadata such as shape, dtype, NTFF monitors, active steps, and design-mask metadata. |
+| `static_estimate` | yes | Formula-based estimate from static metadata such as shape, dtype, NTFF monitors, and active steps. |
 | `calibrated_conservative_plan` | yes | Budget check built from the static estimates and a safety multiplier. |
 | `static_ad_explainability` | yes | Breakdown of field, material/CPML, reverse-mode saved-state, and monitor memory in the selected static estimate. |
 | `jax_saved_residuals_inspection` | yes | Trace-time listing from `inspect_ad_saved_residuals(...)`; it is not an XLA memory report or runtime profile. |
@@ -252,11 +252,8 @@ per segment; either extreme can increase peak memory, so use the value chosen
 by `plan_ad_memory(...)` rather than minimizing the segment count manually.
 
 `n_warmup` reduces the active reverse-mode timestep count and must satisfy
-`0 <= n_warmup < n_steps`. `design_mask` records active-design metadata but
-does not reduce the primary full-grid estimate. It must be a boolean array with
-the simulation grid shape and at least one selected cell. The plan applies a
-conservative safety multiplier before setting the fit flags and records it in
-`plan.fit_safety_factor`.
+`0 <= n_warmup < n_steps`. The plan applies a conservative safety multiplier
+before setting the fit flags and records it in `plan.fit_safety_factor`.
 
 For a uniform run, gate execution on the fit flags before applying the selected
 checkpoint value:

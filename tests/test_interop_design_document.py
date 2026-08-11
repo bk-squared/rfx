@@ -832,7 +832,6 @@ _FORBIDDEN_KEYS = frozenset(
         "eps_override",
         "sigma_override",
         "pec_mask_override",
-        "design_mask",
         "rlc_values_override",
         "execution",
     }

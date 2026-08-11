@@ -835,7 +835,6 @@ def _build_nu_scan(
     tfsf: tuple | None = None,
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
-    design_mask: jnp.ndarray | None = None,
     aniso_eps: tuple | None = None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion, #383).
@@ -1276,22 +1275,6 @@ def _build_nu_scan(
         else:
             probe_out = jnp.zeros(0)
 
-        # Issue #41: stop_gradient on fields outside the design region so the
-        # backward tape does not accumulate entries for cells whose eps does
-        # not depend on the optimization variable. Forward physics is
-        # unchanged (stop_gradient is identity forward); backward memory +
-        # wall-time scale with mask occupancy instead of grid volume.
-        if design_mask is not None:
-            sg = jax.lax.stop_gradient
-            st = st._replace(
-                ex=jnp.where(design_mask, st.ex, sg(st.ex)),
-                ey=jnp.where(design_mask, st.ey, sg(st.ey)),
-                ez=jnp.where(design_mask, st.ez, sg(st.ez)),
-                hx=jnp.where(design_mask, st.hx, sg(st.hx)),
-                hy=jnp.where(design_mask, st.hy, sg(st.hy)),
-                hz=jnp.where(design_mask, st.hz, sg(st.hz)),
-            )
-
         new_carry = {"fdtd": st}
         if use_cpml:
             new_carry["cpml"] = cpml_new
@@ -1364,7 +1347,6 @@ def run_nonuniform(
     emit_time_series: bool = True,
     checkpoint_every: int | None = None,
     n_warmup: int = 0,
-    design_mask: jnp.ndarray | None = None,
     aniso_eps: tuple | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
@@ -1404,7 +1386,6 @@ def run_nonuniform(
         tfsf=tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
-        design_mask=design_mask,
         aniso_eps=aniso_eps,
     )
     step_fn = setup.step_fn
@@ -1761,7 +1742,6 @@ def run_nonuniform_until_decay(
         tfsf=tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
-        design_mask=None,
         aniso_eps=aniso_eps,
     )
     step_fn = setup.step_fn

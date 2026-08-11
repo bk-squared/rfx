@@ -1422,7 +1422,6 @@
         "checkpoint_every",
         "emit_time_series",
         "n_warmup",
-        "design_mask",
         "distributed",
         "port_s11_freqs",
         "checkpoint_segments",
@@ -1840,7 +1839,6 @@
         "emit_time_series",
         "checkpoint_every",
         "n_warmup",
-        "design_mask",
         "aniso_eps"
       ]
     },
@@ -2252,7 +2250,6 @@
       "checkpoint_every",
       "checkpoint_segments",
       "n_warmup",
-      "design_mask",
       "precision",
       "input_signature",
       "static_signature",
@@ -2266,7 +2263,6 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
-      "design_mask",
       "safety_factor",
       "include_mesh_report",
       "check_ntff",
@@ -2556,16 +2552,14 @@
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup",
-      "design_mask"
+      "n_warmup"
     ],
     "explain_ad_memory": [
       "n_steps",
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup",
-      "design_mask"
+      "n_warmup"
     ],
     "export_artifact_bundle": [
       "path",
@@ -2590,7 +2584,6 @@
       "checkpoint_every",
       "n_warmup",
       "skip_preflight",
-      "design_mask",
       "distributed",
       "devices",
       "exchange_interval",
@@ -2603,7 +2596,6 @@
       "checkpoint_segments",
       "available_memory_gb",
       "n_warmup",
-      "design_mask",
       "check_ntff",
       "check_resolution"
     ],
@@ -2612,7 +2604,6 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
-      "design_mask",
       "safety_factor"
     ],
     "plan_mesh": [

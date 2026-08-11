@@ -396,7 +396,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         pec_mask_override=None, pec_occupancy_override=None,
                         checkpoint=False,
                         emit_time_series=True, checkpoint_every=None,
-                        n_warmup=0, design_mask=None,
+                        n_warmup=0,
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
                         strip_interior_pec: bool = False,
@@ -1012,8 +1012,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
         # (forward-only host loop — mirrors uniform run_until_decay's
-        # treatment of the grad-tape flag); ``design_mask`` is a
-        # forward()-only kwarg and cannot reach this branch.
+        # treatment of the grad-tape flag).
         r = run_nonuniform_until_decay(
             grid, materials,
             decay_by=until_decay,
@@ -1031,7 +1030,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             checkpoint=checkpoint,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
-            design_mask=design_mask,
             **_shared_run_kwargs,
         )
 

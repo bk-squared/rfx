@@ -139,12 +139,12 @@ before reaching for it:
   fixture and cannot produce a many-output Jacobian at all.
 - The returned Jacobian is `dy/dx` UNCONJUGATED for a complex `value` —
   differs by a conjugate from anything built through `jax.vjp`/`jax.grad`.
-- Uniform single-device lane only. `design_mask` and non-uniform+
-  `distributed=True` (with a registered DFT-plane probe) both raise
-  `NotImplementedError` via `forward()`'s own pre-existing checks;
-  `n_warmup` is a measured silent no-op and `checkpoint`/
-  `checkpoint_segments` are measured exactly neutral under forward mode —
-  neither has a raise to catch it, so both are documented traps in
+- Uniform single-device lane only. Non-uniform + `distributed=True` (with
+  a registered DFT-plane probe) raises `NotImplementedError` via
+  `forward()`'s own pre-existing checks; `n_warmup` is a measured silent
+  no-op and `checkpoint`/`checkpoint_segments` are measured exactly
+  neutral under forward mode — neither has a raise to catch it, so both
+  are documented traps in
   `jacobian_fwd`'s own docstring rather than being plumbed through.
 - "Geometry parameter" still means the topology-density pixel /
   `pec_occupancy_override` / `dz_profile` design channels from the section

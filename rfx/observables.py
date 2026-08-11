@@ -562,11 +562,11 @@ def jacobian_fwd(
 
     Fail-loud fences
     -----------------
-    Four configurations are unsafe to combine with ``jacobian_fwd`` on
+    Three configurations are unsafe to combine with ``jacobian_fwd`` on
     ``sim_fn`` bodies built on ``Simulation.forward(...)``. This function
     is intentionally generic over *sim_fn* (it never sees ``forward()``'s
     own keyword arguments -- they live inside your closure), so only the
-    first two are enforced by a RAISE that propagates up through
+    first is enforced by a RAISE that propagates up through
     ``jax.jvp`` from ``forward()``'s own pre-existing checks; the other two
     have no raise to inherit and cannot be intercepted from outside the
     closure, so they are DOCUMENTED traps instead. Read the RAISES/DOCS tag
@@ -578,15 +578,6 @@ def jacobian_fwd(
       neither sharded runner accumulates DFT-plane fields. ``jacobian_fwd``
       scope is the uniform single-device lane only; a distributed
       ``sim_fn`` fails loud before this function's own machinery runs.
-    - **[RAISES, inherited]** ``design_mask``: ``forward()`` itself raises
-      ``NotImplementedError`` for ``design_mask`` on the uniform lane
-      (issue #41; ``rfx/api/_execute.py``) -- so on ``jacobian_fwd``'s
-      supported (uniform) lane, a ``design_mask``-using ``sim_fn`` already
-      fails loud. Do not read this as "design_mask is safe elsewhere":
-      on the non-uniform lane, ``design_mask`` measurably returns an
-      EXACTLY ZERO derivative for its intended use in BOTH forward and
-      reverse mode (issue #625) -- it is not fenced there, and any future
-      non-uniform extension of this function must not trust it silently.
     - **[DOCS ONLY -- no raise exists to inherit]** ``n_warmup``: measured
       SILENT NO-OP on the uniform ``forward()`` lane (bit-identical value
       AND tangent at ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps; issue

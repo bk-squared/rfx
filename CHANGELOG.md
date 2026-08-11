@@ -6,6 +6,91 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Removed — `design_mask` deleted from every public surface (issue #625, BREAKING)
+
+- `design_mask` is deleted, not deprecated, from every entry point that
+  accepted it: `Simulation.forward()`, `rfx.optimize.optimize()`,
+  `Simulation.estimate_ad_memory()`, `Simulation.explain_ad_memory()`,
+  `Simulation.plan_ad_memory()`, `Simulation.ad_memory_preflight()`,
+  `Simulation.ad_memory_compiled_certificate()`,
+  `Simulation.mesh_intelligence_report()`, the single-device NU runner
+  (`rfx.nonuniform.run_nonuniform`), and the distributed NU runner
+  (`rfx.runners.distributed_nu.run_nonuniform_distributed_pec` and the
+  `shard_design_mask_x_slab` helper, also deleted). The
+  `AD_MemoryEstimate.ad_active_design_fraction` reporting field — which
+  existed only to report the mask's active-cell fraction — is deleted
+  with it, from both the Python object AND its `to_dict()`/`to_json()`
+  serialization: the key is absent, not `null`, so a consumer parsing
+  the dict/JSON that indexes `["ad_active_design_fraction"]` now fails
+  at READ time with `KeyError`, not at call time — check for the key's
+  presence, or catch the read, before assuming it is there. Passing
+  `design_mask=` anywhere now raises `TypeError` for an unrecognised
+  keyword argument (pinned by `tests/test_design_mask_removed.py`), so a
+  future reintroduction is a deliberate act, not a silent slip.
+- **Why (measured on the production `forward()`/`nonuniform.py` path)**:
+  the mechanism saved **zero** reverse-mode AD memory — the tape is
+  byte-identical with and without the mask at `n_steps`=40/80/160
+  (127,770,748 bytes both ways at n=160), and **+496,584 bytes WORSE**
+  at `checkpoint=False` plus **+4.7% backward wall time**. This is
+  structural, not an implementation bug:
+  `jnp.where(mask, x, jax.lax.stop_gradient(x))` lowers to `select_n`,
+  whose JVP/transpose need only the loop-invariant boolean predicate, so
+  it deletes cotangents rather than shrinking storage — JAX's
+  partial-eval residuals have whole-array granularity, so confining the
+  design variable to 0.13% of cells shrank the tape by 0.06%. Worse, it
+  corrupted the gradient in every configuration tested: an observable
+  positioned outside the design region read back exactly 0.0, and one
+  co-located with the mask read back **69.9%** (3^3 region) / **52.8%**
+  (7^3 region) relative error against a reference matching central
+  finite differences to 1e-5 — the masked gradient was a function of
+  mask geometry alone, not the derivative of anything with respect to
+  the design variable.
+- **The 1.6.2 entry below (`#41`) and the deleted docstring described
+  incompatible things, and the docstring was the wrong one.** The 1.6.2
+  entry's stated intent was material-scoped — confine gradient credit to
+  a design region so "gradients cannot escape the design volume". What
+  was actually implemented was field-scoped: `stop_gradient` applied to
+  the E/H field carry inside the scan body every step, framed in the
+  removed docstring as a memory optimisation ("backward memory +
+  wall-time scale with mask occupancy instead of grid volume"). That
+  memory claim was simply false (see the zero-savings measurement
+  above), and the field-scoped mechanism it actually shipped is not the
+  material-scoped restriction the original issue asked for.
+- **The stated goal was already served, orthogonally and fully, by
+  segmented remat**, which this repo already ships:
+  `checkpoint_every`/`checkpoint_segments` measured
+  127,770,748 -> 10,687,688 (`checkpoint_every=13`) -> 3,519,260 bytes
+  (n=40), identically with or without a design_mask, two days before
+  `design_mask` (`#41`) shipped. No comparable package masks field state
+  for this purpose either — Meep/Lumerical/Tidy3D restrict the
+  parametrisation and recording, fdtdx/ceviche restrict storage via
+  custom VJPs — because the adjoint field must traverse the non-design
+  volume regardless of which cells a design variable touches.
+- **Migration**: for memory, use `checkpoint_every` (non-uniform
+  scan-of-scan) or `checkpoint_segments` (uniform segmented scan) — see
+  `docs/public/guide/memory-reduction.mdx`. To restrict which material
+  cells carry a derivative, construct the restriction yourself at the
+  `eps_override` call site: `eps = jnp.where(region, eps,
+  jax.lax.stop_gradient(eps))`. Verified independently for this removal
+  (CPU, float32, an absorbing-boundary fixture with a 3x3x3 region):
+  forward output is bit-identical with and without the wrapper
+  (`stop_gradient` is forward-identity); the resulting per-cell gradient
+  is EXACTLY zero outside the region and EXACTLY equal — bit-identical,
+  not merely close — to the unmasked reference gradient inside it; that
+  unmasked reference itself checks out against independent central
+  finite differences to 1.9% on a single-cell spot check, within this
+  repo's own established float32 single-cell noise floor (see
+  `tests/test_jacobian_fwd.py`'s geometry-leg discussion).
+- Tests: `tests/test_design_mask.py` deleted outright (every assertion
+  survived the identically-zero/corrupted gradient the feature actually
+  produced). The distributed parity tests that pinned the
+  outside-mask-gradient-is-zero behaviour as correct
+  (`tests/test_distributed_nu_kernel.py::test_distributed_design_mask_stop_grad_matches_single_device`,
+  `tests/test_distributed_nu_composition.py::test_forward_distributed_design_mask_stop_grad_matches_single_device`)
+  are deleted rather than converted, since every one of their assertions
+  was mask-specific. `tests/test_design_mask_removed.py` (new) pins that
+  every entry point above now raises `TypeError`.
+
 ### Fixed — uniform distributed lane's CPML/PEC x-hi wall displacement in the pad_x>0 lane (issue #623)
 
 - Same class as #622, in the sibling UNIFORM-grid runner:
@@ -130,18 +215,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   parametric dimension (a traced `Box` corner still raises
   `ConcretizationTypeError`) — no new geometry differentiability shipped
   here; nonlinear (Kerr) tangents are unverified at the tested chi3.
-- Fail-loud fences, two INHERITED raises and two DOCUMENTED traps (see
+- Fail-loud fences, one INHERITED raise and two DOCUMENTED traps (see
   `jacobian_fwd`'s own docstring "Fail-loud fences" section for the full
   reasoning): non-uniform+`distributed=True` with a registered DFT-plane
-  probe and `design_mask` on the uniform lane both raise
-  `NotImplementedError` via `forward()`'s own pre-existing checks,
-  propagated unchanged through `jax.jvp`; `n_warmup` (measured SILENT
-  NO-OP on the uniform lane, issue #626) and `checkpoint`/
+  probe raises `NotImplementedError` via `forward()`'s own pre-existing
+  checks, propagated unchanged through `jax.jvp`; `n_warmup` (measured
+  SILENT NO-OP on the uniform lane, issue #626) and `checkpoint`/
   `checkpoint_segments` (measured EXACTLY NEUTRAL under forward mode —
   remat only pays off under reverse-mode transposition) have no raise to
   inherit and are documented traps instead, since `jacobian_fwd` is
   generic over `sim_fn` and never sees `forward()`'s own keyword
-  arguments.
+  arguments. (A fourth candidate fence, `design_mask` on the uniform
+  lane, existed when this entry was first drafted; it was deleted from
+  every public surface days later in issue #625 — see that entry above
+  — so it is not a `jacobian_fwd` fence at all any more.)
 - Provenance: the issue's own author downgraded #577 to nice-to-have on
   2026-08-06 in favour of #579 (a reverse-mode scalar-objective need);
   #579 shipped (PR #619, 2026-08-10). The PI directed this session, in

@@ -1642,7 +1642,6 @@ class _ExecuteMixin:
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | None = None,
     ) -> ForwardResult:
         """Differentiable forward on the non-uniform mesh path.
 
@@ -1667,8 +1666,7 @@ class _ExecuteMixin:
         _overrides = (("eps_override", eps_override),
                       ("sigma_override", sigma_override),
                       ("pec_mask_override", pec_mask_override),
-                      ("pec_occupancy_override", pec_occupancy_override),
-                      ("design_mask", design_mask))
+                      ("pec_occupancy_override", pec_occupancy_override))
         # Build the grid ONLY when there is an array to check, so the common
         # override-free forward() does not pay for a second grid build
         # (#568 observation 1 — negligible against the solve, but free to skip).
@@ -1699,7 +1697,6 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
-            design_mask=design_mask,
         )
         return self._pack_nu_forward_result(
             time_series=result.time_series,
@@ -1723,7 +1720,6 @@ class _ExecuteMixin:
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
-        design_mask: jnp.ndarray | None = None,
         devices: list | None = None,
         exchange_interval: int = 1,
         skip_preflight: bool = False,
@@ -1772,7 +1768,6 @@ class _ExecuteMixin:
             shard_cpml_state_x_slab,
             shard_debye_coeffs_x_slab,
             shard_debye_state_x_slab,
-            shard_design_mask_x_slab,
             shard_lorentz_coeffs_x_slab,
             shard_lorentz_state_x_slab,
             shard_pec_mask_x_slab,
@@ -1991,13 +1986,10 @@ class _ExecuteMixin:
             mu_r=_shard_3d_stacked(materials_slabs.mu_r),
         )
 
-        # ---- Shard PEC mask / occupancy / design mask via Phase 2 helpers. ----
+        # ---- Shard PEC mask / occupancy via Phase 2 helpers. ----
         sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
         sharded_pec_occupancy = shard_pec_occupancy_x_slab(
             pec_occupancy_override, sharded_grid,
-        )
-        sharded_design_mask = shard_design_mask_x_slab(
-            design_mask, sharded_grid,
         )
 
         # ---- CPML init + sharding (Phase 2C). ----
@@ -2084,7 +2076,6 @@ class _ExecuteMixin:
             sharded_pec_occupancy=sharded_pec_occupancy,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
-            sharded_design_mask=sharded_design_mask,
             emit_time_series=emit_time_series,
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         )
@@ -2134,7 +2125,6 @@ class _ExecuteMixin:
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
-        design_mask: object | None = None,
         # run-only inputs
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -2249,12 +2239,6 @@ class _ExecuteMixin:
                     "supported on the non-uniform forward path. For the "
                     "uniform path, use checkpoint_segments instead (issue #73)."
                 )
-            if design_mask is not None:
-                raise NotImplementedError(
-                    "design_mask (issue #41) is currently only supported on the "
-                    "non-uniform forward path. Ping #41 if you need it on the "
-                    "uniform path — the same step_fn stop_gradient pattern applies."
-                )
             # n_steps for the uniform forward lane is resolved by the caller
             # from the grid it builds and reuses for material assembly.
             return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
@@ -2356,7 +2340,6 @@ class _ExecuteMixin:
         checkpoint_every: int | None = None,
         n_warmup: int = 0,
         skip_preflight: bool = False,
-        design_mask: jnp.ndarray | None = None,
         distributed: bool = False,
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -2431,14 +2414,6 @@ class _ExecuteMixin:
             Use only when preflight has already been run by the caller
             (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
             known-spurious warning on a deliberate configuration.
-        design_mask : jnp.ndarray or None
-            Boolean array with shape ``grid.shape`` selecting the
-            differentiable design region (issue #41).  Cells where the mask
-            is ``True`` keep their gradient; cells where it is ``False`` have
-            ``stop_gradient`` applied each step, so AD memory tracks only the
-            design subvolume while forward physics is bit-identical.
-            Currently only supported on the non-uniform forward path; on the
-            uniform path it raises ``NotImplementedError``.
         distributed : bool, optional
             **Opt-in, unstable, pending GPU evidence (issue #44).**  When
             ``True`` and a non-uniform mesh is configured, route the
@@ -2550,7 +2525,6 @@ class _ExecuteMixin:
             checkpoint_segments=checkpoint_segments,
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
-            design_mask=design_mask,
         )
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
@@ -2609,7 +2583,6 @@ class _ExecuteMixin:
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
-                design_mask=design_mask,
                 devices=devices,
                 exchange_interval=exchange_interval,
                 skip_preflight=skip_preflight,
@@ -2626,7 +2599,6 @@ class _ExecuteMixin:
                 emit_time_series=emit_time_series,
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
-                design_mask=design_mask,
             )
 
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----

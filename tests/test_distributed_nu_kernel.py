@@ -1970,15 +1970,11 @@ def test_distributed_pec_occupancy_seam_no_double_application():
 
 
 # ---------------------------------------------------------------------------
-# Phase 2F: segmented remat + warmup + design-mask + emit_time_series tests
+# Phase 2F: segmented remat + warmup + emit_time_series tests
 # ---------------------------------------------------------------------------
 
-from rfx.runners.distributed_nu import (  # noqa: E402
-    shard_design_mask_x_slab,
-)
 from tests._distributed_nu_tolerances import (  # noqa: E402
     assert_class_a_grad,
-    assert_class_e_bit_match,
 )
 
 
@@ -1987,10 +1983,10 @@ def _phase2f_build_run_kwargs(*, n_steps, n_devices, devices, eps_scale=1.0,
     """Build a small Phase 2B-style 2-device run with a tunable eps scale.
 
     Returns a callable ``run(*, ckpt_every=None, n_warmup=0,
-    design_mask=None, emit_time_series=True)`` that runs a fresh
-    distributed simulation with the requested kwargs and returns the
-    raw result dict.  The eps inside the cavity is scaled by
-    ``eps_scale`` so callers can take ``jax.grad`` w.r.t. the scale.
+    emit_time_series=True)`` that runs a fresh distributed simulation
+    with the requested kwargs and returns the raw result dict.  The eps
+    inside the cavity is scaled by ``eps_scale`` so callers can take
+    ``jax.grad`` w.r.t. the scale.
     """
     grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.2)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
@@ -2019,13 +2015,9 @@ def _phase2f_build_run_kwargs(*, n_steps, n_devices, devices, eps_scale=1.0,
         )
 
     def run(eps_scale_val=eps_scale, *, checkpoint_every=None,
-            n_warmup=0, design_mask=None, emit_time_series=True):
+            n_warmup=0, emit_time_series=True):
         materials = _materials(eps_scale_val)
         sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
-        sharded_design = (
-            shard_design_mask_x_slab(design_mask, sharded_grid)
-            if design_mask is not None else None
-        )
         return run_nonuniform_distributed_pec(
             sharded_grid=sharded_grid,
             sharded_materials=sharded_mat,
@@ -2037,7 +2029,6 @@ def _phase2f_build_run_kwargs(*, n_steps, n_devices, devices, eps_scale=1.0,
             devices=devices,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
-            sharded_design_mask=sharded_design,
             emit_time_series=emit_time_series,
         )
 
@@ -2206,145 +2197,6 @@ def test_distributed_n_warmup_tail_grad_matches_single_device():
         jnp.atleast_1d(g_single),
         jnp.atleast_1d(g_dist),
         label="phase2f_n_warmup_tail_grad_match",
-    )
-
-
-@_PHASE2B_REQUIRES_2DEV
-def test_distributed_design_mask_stop_grad_matches_single_device():
-    """Class A: forward bit-identical (design_mask is identity forward);
-    gradient zero outside mask cells, finite inside.
-
-    Compares the distributed runner's ``sharded_design_mask`` path with
-    the single-device :func:`rfx.nonuniform.run_nonuniform`'s
-    ``design_mask`` path on a small NU+PEC case.  Forward must be
-    exactly identical to the no-mask path (``stop_gradient`` is
-    forward-identity); the gradient w.r.t. a per-cell eps perturbation
-    must vanish outside the mask and stay finite inside.
-    """
-    devices = jax.devices()[:2]
-    n_devices = 2
-    n_steps = 16
-
-    grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.2)
-    nx, ny, nz = grid.nx, grid.ny, grid.nz
-    sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
-                                         exchange_interval=1)
-
-    # Design region: a small block on rank 1 (x in [10, 14)).
-    design_mask_global = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
-    design_mask_global = design_mask_global.at[10:14, 3:6, 3:6].set(True)
-
-    src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
-        grid, (4, 4, 4), "ez", _phase2b_gauss_waveform, n_steps,
-        _phase2b_make_materials(grid),
-    )
-    src_spec = SourceSpec(
-        i=int(src_si), j=int(src_sj), k=int(src_sk),
-        component=src_comp, waveform=jnp.asarray(src_wf),
-    )
-    prb_spec = ProbeSpec(i=12, j=4, k=4, component="ez")
-
-    # ------ Forward bit-identity check -------------------------------
-    materials_const = _phase2b_make_materials(grid)
-    sharded_mat = _phase2b_shard_mat(materials_const, sharded_grid)
-
-    out_no_mask = run_nonuniform_distributed_pec(
-        sharded_grid=sharded_grid,
-        sharded_materials=sharded_mat,
-        sharded_pec_mask=None,
-        n_steps=n_steps,
-        sources=[src_spec],
-        probes=[prb_spec],
-        n_devices=n_devices,
-        devices=devices,
-    )
-    out_with_mask = run_nonuniform_distributed_pec(
-        sharded_grid=sharded_grid,
-        sharded_materials=sharded_mat,
-        sharded_pec_mask=None,
-        n_steps=n_steps,
-        sources=[src_spec],
-        probes=[prb_spec],
-        n_devices=n_devices,
-        devices=devices,
-        sharded_design_mask=shard_design_mask_x_slab(
-            design_mask_global, sharded_grid),
-    )
-    assert_class_e_bit_match(
-        jnp.asarray(out_no_mask["time_series"])[:, 0],
-        jnp.asarray(out_with_mask["time_series"])[:, 0],
-        label="phase2f_design_mask_forward_bit_identity",
-    )
-
-    # ------ Gradient parity vs single-device --------------------------
-    # Use a per-cell eps perturbation indexed at one cell INSIDE the
-    # mask and one cell OUTSIDE.  We expect: grad_inside finite
-    # (matches single-device), grad_outside == 0 on both paths.
-    inside_idx = (12, 4, 4)   # inside the design block
-    outside_idx = (5, 4, 4)   # outside the design block
-
-    def _make_eps_with_perturbation(delta, idx):
-        base = jnp.ones((nx, ny, nz), dtype=jnp.float32)
-        return base.at[idx].add(delta)
-
-    def _mats_from_eps(eps):
-        return MaterialArrays(
-            eps_r=eps,
-            sigma=jnp.zeros((nx, ny, nz), dtype=jnp.float32),
-            mu_r=jnp.ones((nx, ny, nz), dtype=jnp.float32),
-        )
-
-    def loss_single(delta, idx):
-        eps = _make_eps_with_perturbation(delta, idx)
-        out = run_nonuniform(
-            grid=grid,
-            materials=_mats_from_eps(eps),
-            n_steps=n_steps,
-            sources=[src_spec],
-            probes=[prb_spec],
-            design_mask=design_mask_global,
-        )
-        return jnp.sum(out["time_series"][:, 0] ** 2)
-
-    def loss_dist(delta, idx):
-        eps = _make_eps_with_perturbation(delta, idx)
-        materials = _mats_from_eps(eps)
-        sharded_mat_local = _phase2b_shard_mat(materials, sharded_grid)
-        sharded_dm = shard_design_mask_x_slab(
-            design_mask_global, sharded_grid)
-        out = run_nonuniform_distributed_pec(
-            sharded_grid=sharded_grid,
-            sharded_materials=sharded_mat_local,
-            sharded_pec_mask=None,
-            n_steps=n_steps,
-            sources=[src_spec],
-            probes=[prb_spec],
-            n_devices=n_devices,
-            devices=devices,
-            sharded_design_mask=sharded_dm,
-        )
-        return jnp.sum(out["time_series"][:, 0] ** 2)
-
-    delta0 = jnp.float32(0.0)
-    g_in_dist = jax.grad(lambda d: loss_dist(d, inside_idx))(delta0)
-    g_out_dist = jax.grad(lambda d: loss_dist(d, outside_idx))(delta0)
-
-    # Outside the design region the gradient must be (numerically) zero.
-    assert float(jnp.abs(g_out_dist)) <= 1e-12, (
-        f"phase2f_design_mask: outside-mask grad should be 0, "
-        f"got {float(g_out_dist):.3e}"
-    )
-    # Inside the design region the gradient must be finite (and equal
-    # to single-device's, up to Class A tolerance).
-    g_in_single = jax.grad(lambda d: loss_single(d, inside_idx))(delta0)
-    assert jnp.isfinite(g_in_dist), (
-        f"phase2f_design_mask: inside-mask grad should be finite, "
-        f"got {float(g_in_dist):.3e}"
-    )
-    assert_class_a_grad(
-        jnp.atleast_1d(g_in_single),
-        jnp.atleast_1d(g_in_dist),
-        label="phase2f_design_mask_inside_grad_match",
     )
 
 

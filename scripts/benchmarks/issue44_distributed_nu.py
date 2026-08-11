@@ -69,8 +69,16 @@ import jax.numpy as jnp
 # by repeated invocations of the harness with different ``--checkpoint-every``.
 #
 # ``scaleout`` is Job B (V3 lines 1031-1033): ~100M cells, full CPML +
-# dispersive + design_mask.  Authored here for Job B reuse but not run in this
-# session.
+# dispersive.  Authored here for Job B reuse but not run in this session.
+#
+# Issue #625 (2026-08-11): design_mask was removed from every rfx public
+# surface (measured to save zero AD memory while corrupting the gradient
+# in every configuration tested), so the per-case ``"design_mask"``
+# True/False field that used to live here is gone. That field was never
+# actually read by ``build_simulation()`` or ``run()`` below in the first
+# place -- the harness's only live design_mask control was the separate
+# ``--design-mask-fraction`` CLI flag (default 0.0, never exercised in
+# any run to date) -- so removing it changes no benchmark behaviour.
 
 CASES: dict[str, dict[str, Any]] = {
     "calibration": {
@@ -82,7 +90,6 @@ CASES: dict[str, dict[str, Any]] = {
         "cpml_layers": 8,
         "n_steps_default": 200,
         "dispersion_mode": "mixed",  # 1 Debye + 1 Lorentz
-        "design_mask": False,
     },
     "baseline": {
         # ~10M cells (Job A): keep transverse small so the seam exchange has
@@ -93,7 +100,6 @@ CASES: dict[str, dict[str, Any]] = {
         "cpml_layers": 8,
         "n_steps_default": 500,
         "dispersion_mode": "mixed",
-        "design_mask": False,
     },
     "scaleout": {
         # ~100M cells (Job B). Author the case definition; user won't run
@@ -104,7 +110,6 @@ CASES: dict[str, dict[str, Any]] = {
         "cpml_layers": 8,
         "n_steps_default": 1000,
         "dispersion_mode": "mixed",
-        "design_mask": True,
     },
 }
 
@@ -213,7 +218,7 @@ def _build_dz_profile(nz_total: int, dz_uniform: float, dz_min: float,
     return dz
 
 
-def build_simulation(case: dict[str, Any], design_mask_fraction: float):
+def build_simulation(case: dict[str, Any]):
     """Build a non-uniform Simulation matching the case spec.
 
     Returns a tuple ``(sim, build_meta)`` where ``build_meta`` records the
@@ -313,28 +318,6 @@ def build_simulation(case: dict[str, Any], design_mask_fraction: float):
         "n_lorentz_poles": 1 if lorentz_poles else 0,
     }
     return sim, build_meta
-
-
-def make_design_mask(sim, fraction: float):
-    """Construct a design_mask covering the central ``fraction`` of cells.
-
-    Returns ``None`` when ``fraction <= 0``.
-    """
-    if fraction <= 0.0:
-        return None
-    g = sim._build_nonuniform_grid()
-    nx, ny, nz = int(g.nx), int(g.ny), int(g.nz)
-    mask = np.zeros((nx, ny, nz), dtype=bool)
-    # Central slab in x/y/z each shrunk by the cube root so total volume
-    # ratio matches `fraction`.
-    f = max(min(float(fraction), 1.0), 0.0)
-    side = f ** (1.0 / 3.0)
-    def _slc(n: int) -> slice:
-        half = max(1, int(round(n * side / 2.0)))
-        c = n // 2
-        return slice(max(0, c - half), min(n, c + half))
-    mask[_slc(nx), _slc(ny), _slc(nz)] = True
-    return jnp.asarray(mask)
 
 
 # ---------------------------------------------------------------------------
@@ -456,11 +439,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         sim_kwargs["distributed"] = True
         sim_kwargs["devices"] = devices
 
-    # Build once to get grid metadata + design_mask shape
-    sim_for_meta, build_meta = build_simulation(case, args.design_mask_fraction)
-    design_mask = make_design_mask(sim_for_meta, args.design_mask_fraction)
-    if design_mask is not None:
-        sim_kwargs["design_mask"] = design_mask
+    # Build once to get grid metadata
+    sim_for_meta, build_meta = build_simulation(case)
 
     # Initial eps for grad measurement: just ones, the ADE/CPML response is
     # what we are differentiating w.r.t.
@@ -471,11 +451,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     # numerical-parity targets).  Even when args.devices == 1, this gives us
     # the warmup-vs-timed wall time split.
     def _factory_single():
-        s, _ = build_simulation(case, args.design_mask_fraction)
+        s, _ = build_simulation(case)
         return s
 
     def _factory_dist():
-        s, _ = build_simulation(case, args.design_mask_fraction)
+        s, _ = build_simulation(case)
         return s
 
     record: dict[str, Any] = {
@@ -503,7 +483,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "checkpoint_every": (None if args.checkpoint_every in (None, "none")
                               else int(args.checkpoint_every)),
         "n_warmup": 0,
-        "design_mask_fraction": float(args.design_mask_fraction),
         "emit_time_series": True,
         "exchange_interval": int(args.exchange_interval),
         "calibration_row": (case_name == "calibration" and args.devices == 1
@@ -670,8 +649,6 @@ def main() -> int:
                    help="Override case-default n_steps.")
     p.add_argument("--checkpoint-every", default=None,
                    help="Segmented remat interval ('none' or int).")
-    p.add_argument("--design-mask-fraction", type=float, default=0.0,
-                   help="Fraction of cells in design region (0 disables).")
     p.add_argument("--exchange-interval", type=int, default=1,
                    help="Ghost-cell exchange interval.")
     p.add_argument("--out", type=Path, required=True,

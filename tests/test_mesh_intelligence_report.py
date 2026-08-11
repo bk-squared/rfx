@@ -62,19 +62,15 @@ def test_mesh_intelligence_report_forwards_ad_tape_metadata():
     baseline = sim.mesh_intelligence_report(n_steps=1_000, checkpoint_every=100)
     assert baseline.ad_memory is not None
 
-    mask = np.zeros(baseline.grid_shape, dtype=bool)
-    mask.reshape(-1)[: max(1, mask.size // 4)] = True
     report = sim.mesh_intelligence_report(
         n_steps=1_000,
         checkpoint_every=100,
         n_warmup=600,
-        design_mask=mask,
     )
 
     assert report.ad_memory is not None
     assert report.ad_memory.forward_gb == baseline.ad_memory.forward_gb
     assert report.ad_memory.ad_active_steps == 400
-    assert report.ad_memory.ad_active_design_fraction == np.count_nonzero(mask) / mask.size
     assert report.ad_memory.ad_full_gb < baseline.ad_memory.ad_full_gb
 
 

@@ -144,28 +144,6 @@ def _uniform_sim():
     return sim
 
 
-def _grid_shape(sim: Simulation) -> tuple[int, int, int]:
-    dx = sim._dx or (299_792_458.0 / sim._freq_max / 20.0)
-
-    def _axis_cells(extent: float, profile) -> int:
-        if profile is not None:
-            return len(profile) + 1 + 2 * sim._cpml_layers
-        return int(np.ceil(extent / dx)) + 1 + 2 * sim._cpml_layers
-
-    return (
-        _axis_cells(sim._domain[0], sim._dx_profile),
-        _axis_cells(sim._domain[1], sim._dy_profile),
-        _axis_cells(sim._domain[2], sim._dz_profile),
-    )
-
-
-def _design_mask(sim: Simulation, *, fraction: float = 0.25) -> np.ndarray:
-    mask = np.zeros(_grid_shape(sim), dtype=bool)
-    selected = max(1, int(mask.size * fraction))
-    mask.reshape(-1)[:selected] = True
-    return mask
-
-
 class _Missing:
     pass
 
@@ -360,7 +338,6 @@ def test_public_imports_and_json_roundtrip():
         "checkpoint_every",
         "checkpoint_segments",
         "ad_active_steps",
-        "ad_active_design_fraction",
         "ad_segmented_active_segments",
     }
     assert estimate.to_dict()["evidence_class"] == "static_estimate"
@@ -1051,14 +1028,12 @@ def test_explain_ad_memory_covers_ntff_and_segmented_warmup_paths():
         ) == pytest.approx(explanation.selected_memory_gb)
 
 
-def test_explain_ad_memory_records_warmup_mask_and_full_tape():
+def test_explain_ad_memory_records_warmup_reduces_full_tape():
     sim = _uniform_sim()
-    design_mask = _design_mask(sim, fraction=0.5)
 
     explanation = sim.explain_ad_memory(
         n_steps=120,
         n_warmup=20,
-        design_mask=design_mask,
     )
     artifact = explanation.to_dict()
     components = {component["name"]: component for component in artifact["components"]}
@@ -1066,10 +1041,6 @@ def test_explain_ad_memory_records_warmup_mask_and_full_tape():
     assert explanation.strategy == "full_reverse_ad_static_tape"
     assert explanation.selected_memory_field == "ad_full_gb"
     assert components["full_reverse_field_tape"]["count"] == 100
-    assert explanation.estimate.ad_active_design_fraction == pytest.approx(
-        np.count_nonzero(design_mask) / design_mask.size
-    )
-    assert any("design_mask" in rec for rec in explanation.recommendations)
     assert sum(
         component["memory_gb"] for component in artifact["components"]
     ) == pytest.approx(explanation.selected_memory_gb)
@@ -1704,25 +1675,6 @@ def test_estimate_rejects_invalid_active_tape_inputs():
         sim.estimate_ad_memory(n_steps=120, checkpoint_every=0)
     with pytest.raises(ValueError, match="checkpoint_every must be positive"):
         sim.estimate_ad_memory(n_steps=120, checkpoint_every=-1)
-    with pytest.raises(ValueError, match="design_mask must be non-empty"):
-        sim.estimate_ad_memory(n_steps=120, design_mask=np.array([], dtype=bool))
-    with pytest.raises(ValueError, match="boolean array matching grid shape"):
-        sim.estimate_ad_memory(n_steps=120, design_mask=np.array(True))
-    with pytest.raises(TypeError, match="boolean dtype"):
-        sim.estimate_ad_memory(
-            n_steps=120,
-            design_mask=np.ones(_grid_shape(sim), dtype=np.int8),
-        )
-    with pytest.raises(ValueError, match="select at least one cell"):
-        sim.estimate_ad_memory(
-            n_steps=120,
-            design_mask=np.zeros(_grid_shape(sim), dtype=bool),
-        )
-    with pytest.raises(ValueError, match="must match simulation grid shape"):
-        sim.estimate_ad_memory(
-            n_steps=120,
-            design_mask=np.ones((2, 2, 2), dtype=bool),
-        )
     with pytest.raises(TypeError, match="n_steps must be an integer"):
         sim.estimate_ad_memory(n_steps=1.5)
     with pytest.raises(TypeError, match="n_steps must be an integer"):
@@ -1820,41 +1772,6 @@ def test_plan_ad_memory_rejects_invalid_scalar_inputs():
         )
     with pytest.raises(TypeError, match="finite real scalar"):
         sim.plan_ad_memory(n_steps=120, available_memory_gb=1.0, safety_factor=True)
-
-
-def test_plan_ad_memory_rejects_invalid_design_masks():
-    sim = _uniform_sim()
-
-    with pytest.raises(ValueError, match="design_mask must be non-empty"):
-        sim.plan_ad_memory(
-            n_steps=120,
-            available_memory_gb=1.0,
-            design_mask=np.array([], dtype=bool),
-        )
-    with pytest.raises(ValueError, match="boolean array matching grid shape"):
-        sim.plan_ad_memory(
-            n_steps=120,
-            available_memory_gb=1.0,
-            design_mask=np.array(True),
-        )
-    with pytest.raises(TypeError, match="boolean dtype"):
-        sim.plan_ad_memory(
-            n_steps=120,
-            available_memory_gb=1.0,
-            design_mask=np.ones(_grid_shape(sim), dtype=np.int8),
-        )
-    with pytest.raises(ValueError, match="select at least one cell"):
-        sim.plan_ad_memory(
-            n_steps=120,
-            available_memory_gb=1.0,
-            design_mask=np.zeros(_grid_shape(sim), dtype=bool),
-        )
-    with pytest.raises(ValueError, match="must match simulation grid shape"):
-        sim.plan_ad_memory(
-            n_steps=120,
-            available_memory_gb=1.0,
-            design_mask=np.ones((2, 2, 2), dtype=bool),
-        )
 
 
 def test_warning_uses_realistic_selected_estimate():
@@ -2070,19 +1987,6 @@ def test_n_warmup_reduces_reverse_tape_only():
     assert warm.ad_full_gb < full.ad_full_gb
 
 
-def test_design_mask_records_fraction_without_reducing_primary_memory():
-    sim = _patch_like_sim()
-    design_mask = _design_mask(sim)
-    expected_fraction = float(np.count_nonzero(design_mask)) / float(design_mask.size)
-
-    full = sim.estimate_ad_memory(n_steps=1_000)
-    masked = sim.estimate_ad_memory(n_steps=1_000, design_mask=design_mask)
-
-    assert masked.forward_gb == full.forward_gb
-    assert masked.ad_active_design_fraction == pytest.approx(expected_fraction)
-    assert masked.ad_full_gb == full.ad_full_gb
-
-
 def test_plan_ad_memory_rejects_non_integral_counts():
     sim = _uniform_sim()
 
@@ -2094,11 +1998,9 @@ def test_plan_ad_memory_rejects_non_integral_counts():
         sim.plan_ad_memory(n_steps=120, available_memory_gb=1.0, n_warmup=1.5)
 
 
-def test_plan_ad_memory_records_warmup_and_mask_metadata():
+def test_plan_ad_memory_records_warmup_metadata():
     sim = _patch_like_sim()
     budget_gb = 0.2
-    design_mask = _design_mask(sim)
-    expected_fraction = float(np.count_nonzero(design_mask)) / float(design_mask.size)
     warm_only = sim.plan_ad_memory(
         n_steps=10_000,
         available_memory_gb=budget_gb,
@@ -2106,16 +2008,7 @@ def test_plan_ad_memory_records_warmup_and_mask_metadata():
     )
 
     baseline = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=budget_gb)
-    masked = sim.plan_ad_memory(
-        n_steps=10_000,
-        available_memory_gb=budget_gb,
-        n_warmup=9_000,
-        design_mask=design_mask,
-    )
 
     assert baseline.full_ad_fits is False
-    assert masked.selected_estimate.ad_active_steps == 1_000
-    assert masked.selected_estimate.ad_active_design_fraction == pytest.approx(expected_fraction)
-    assert masked.selected_estimate.ad_full_gb == warm_only.selected_estimate.ad_full_gb
-    assert masked.checkpoint_every == warm_only.checkpoint_every
-    assert masked.checkpoint_every is None or masked.checkpoint_every < baseline.checkpoint_every
+    assert warm_only.selected_estimate.ad_active_steps == 1_000
+    assert warm_only.checkpoint_every is None or warm_only.checkpoint_every < baseline.checkpoint_every
