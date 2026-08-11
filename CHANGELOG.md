@@ -6,6 +6,38 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — `test_benchmark_table_relations` no longer gates on machine-dependent wall-clock (issue #632 follow-up)
+
+- `tests/test_benchmark_jacobian_fwd.py` asserted `intercept_vs_plain_ratio`
+  landed in `[0.5x, 2.0x]` for EVERY column including `wall_s` — confirmed
+  red on main (commit 55fa85b, CI run 31464443445, fast-suite shard 1:
+  `wall_s = 0.474`, just outside the band) and green again on the very
+  next commit with no code change, exactly the machine-dependence #632
+  itself had already diagnosed for this quantity (0.98-1.10 CPU vs
+  1.41-1.87 on an RTX 4090). It reproduced again on an unrelated PR
+  (#638: `wall_s = 0.230`) — a required per-PR gate flaking on wall-clock
+  noise, not a code regression, blocks unrelated work each time it fires.
+  The assertion now gates only the deterministic compiler-derived
+  columns (`flops`, `temp_bytes`); `wall_s` is still computed and left in
+  the table for a human/CI-log reader, never gated. The
+  batched-vs-sequential wall-time comparison (same file) is the same
+  class of check and gets the same treatment: reported, not asserted —
+  that specific inversion has never actually been observed (0/18 local
+  samples, worst measured margin 1.30x in batched's favor), so de-gating
+  it is a consistency choice on the same principle as `wall_s`, not a
+  second confirmed-red case; the comment says so explicitly rather than
+  implying it was observed to flake.
+- Also added `assert "flops" in ratios` / `assert "temp_bytes" in ratios`
+  before the band-check loop: `scripts/benchmark_jacobian_fwd.py`'s own
+  `_compile_and_measure` has a bare `except Exception` around
+  `cost_analysis()`/`memory_analysis()` that silently sets those fields
+  to `None` on failure; without the new asserts, a silent failure there
+  would make the loop's `continue` skip both columns and the test would
+  pass having checked NOTHING.
+- `tests/test_jacobian_fwd.py`'s G3 (jaxpr-structural, backend-independent)
+  remains the authoritative primal-sharing check — unaffected by this
+  change, still gated as before.
+
 ### Removed — `design_mask` deleted from every public surface (issue #625, BREAKING)
 
 - `design_mask` is deleted, not deprecated, from every entry point that
