@@ -322,6 +322,17 @@ class Simulation(
         setup-time constants measurably bias the primal but do not
         create the per-timestep rounding-lattice noise floor that the
         compute-dtype pin did — see issue #630's f64-lift measurement).
+        ``"mixed"``/``"float64"`` are UNIFORM-SINGLE-DEVICE-LANE ONLY
+        today: ``field_dtype`` is threaded only by
+        ``rfx/runners/uniform.py`` — the non-uniform-mesh, distributed
+        (``devices=``/``distributed=True``), and subgridded
+        (``refinement``) runners do not thread it, so a non-float32
+        precision there would silently run float32 fields. ``run()`` /
+        ``forward()`` raise ``NotImplementedError`` rather than do that
+        silently; ``preflight()`` also warns in advance for the
+        non-uniform-mesh case (the distributed case is a call-time
+        ``run()``/``forward()`` kwarg, invisible to preflight, so its
+        `NotImplementedError` at dispatch is the only enforcement point).
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
         ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in

@@ -54,8 +54,8 @@ def test_v0_migration_renames_blocks_and_preserves_identity_fields():
         ),
         (lambda doc: doc["execution"].update({"backend": "gpu"}), "only permits"),
         (
-            lambda doc: doc["execution"].update({"precision": "float64"}),
-            "float32.*mixed",
+            lambda doc: doc["execution"].update({"precision": "bogus"}),
+            "float32.*mixed.*float64",
         ),
         (
             lambda doc: doc["model"]["frequency_sweep"].update({"stop_hz": 1.0}),

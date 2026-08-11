@@ -1523,6 +1523,47 @@ class _ExecuteMixin:
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 ))
 
+        # Issue #644 (pre-existing, NOT caused by #630 -- measured identical
+        # via run() on both the pre- and post-#630 trees): CPML's psi_*
+        # carry arrays are allocated at field_dtype (float16 for
+        # precision="mixed"), but the CPML coefficients are hard-pinned to
+        # float32, so `psi = b*psi + c*curl` promotes to float32 and the
+        # lax.scan carry signature no longer matches its own input --
+        # TypeError. This path was UNREACHABLE from forward() before #630
+        # (forward() silently ignored precision= entirely); #630 made
+        # forward() honour precision= for the first time (a genuine second
+        # fix -- see field_dtype=self._resolve_field_dtype() below), which
+        # newly surfaces this pre-existing defect through forward(). Fail
+        # loud with a clear, actionable rfx-layer message instead of
+        # degrading to a raw JAX carry-dtype TypeError. UPML does NOT hit
+        # this (measured: boundary="upml" + precision="mixed" runs clean
+        # on forward() -- the coefficient/carry dtype mismatch is CPML-only,
+        # rfx/boundaries/upml.py has no analogous hard-float32 psi carry
+        # promoted by a field_dtype-following one). float64 is unaffected
+        # (jnp.promote_types(float64, float32) == float64 matches storage,
+        # so the carry stays consistent) -- measured clean on forward().
+        if self._precision == "mixed":
+            _bspec = self._boundary_spec
+            _uses_cpml = any(
+                getattr(_bspec, _axis).lo == "cpml"
+                or getattr(_bspec, _axis).hi == "cpml"
+                for _axis in ("x", "y", "z")
+            )
+            if _uses_cpml:
+                raise NotImplementedError(
+                    "forward(): precision='mixed' with a CPML boundary "
+                    "face is not supported (issue #644, pre-existing -- "
+                    "not caused by this fix). The CPML psi_* carry arrays "
+                    "follow field_dtype (float16), but the CPML "
+                    "coefficients are hard-pinned to float32, so the "
+                    "update promotes float16->float32 and breaks the "
+                    "lax.scan carry contract with a raw JAX TypeError. Use "
+                    "precision='float32' (default) or 'float64' with CPML "
+                    "today; 'mixed' + CPML needs #644's fix (giving the "
+                    "psi_* arrays and CPML coefficients one consistent "
+                    "dtype policy) before it can work."
+                )
+
         result = _run(
             grid,
             materials,
@@ -2219,6 +2260,32 @@ class _ExecuteMixin:
             or self._dy_profile is not None
         )
 
+        def _reject_lane_precision(lane: str) -> None:
+            # Issue #630 follow-up: field_dtype is threaded ONLY on the
+            # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
+            # distributed, distributed-NU, and subgridded runners have zero
+            # field_dtype occurrences, so a non-float32 precision would
+            # silently run float32 fields there -- the exact SILENT_WRONG
+            # class this repo removes on sight. distributed=True is a
+            # call-time kwarg invisible to preflight (see the "P3
+            # (Distributed path)" precedent in
+            # _validate_cfg_subgrid_limitations), so THIS is the only
+            # enforcement point for that case; for the non-uniform-mesh
+            # case _validate_cfg_precision_x64 also warns in advance, but
+            # this raise is what actually stops it (and cannot be bypassed
+            # with skip_preflight=True, unlike a preflight warning).
+            if self._precision != "float32":
+                raise NotImplementedError(
+                    f"precision={self._precision!r} is currently supported "
+                    f"only on the uniform single-device lane (issue #630); "
+                    f"the {lane!r} lane does not thread field_dtype through "
+                    "its runner and would silently run float32 fields "
+                    "regardless of this setting. Use precision='float32' "
+                    "(the default) here, or drop distributed=True / the "
+                    "non-uniform mesh profile / refinement (subgridding) to "
+                    "reach the uniform lane, where this knob is honoured."
+                )
+
         if mode == "forward":
             def _fwd_nu_n_steps() -> int:
                 # Throwaway NU grid build for the step count; mirrors the
@@ -2282,12 +2349,14 @@ class _ExecuteMixin:
                 # hook lives in rfx/simulation.py:703-705 and the sharded
                 # PMC helpers live in each runner next to their PEC analog.
                 _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
+                _reject_lane_precision("fwd_distributed_nu")
                 return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
 
             if is_nonuniform:
                 # Let the NU runner build grid/materials so it can apply the
                 # NU-aware pec_mask and port/source setup against per-axis widths.
                 _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
+                _reject_lane_precision("fwd_nonuniform")
                 return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
 
             # Uniform forward lane: the remaining kwargs are NU-only.
@@ -2381,6 +2450,7 @@ class _ExecuteMixin:
                 else:
                     grid = self._build_grid()
                     _n = grid.num_timesteps(num_periods=num_periods)
+            _reject_lane_precision("run_distributed")
             return _DispatchPlan(lane="run_distributed", n_steps=_n)
 
         # ---- Non-uniform mesh lane ----
@@ -2388,6 +2458,7 @@ class _ExecuteMixin:
             _n = n_steps
             if _n is None:
                 _n = self._nu_n_steps(num_periods)
+            _reject_lane_precision("run_nonuniform")
             return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
 
         # ---- ADI lane (n_steps resolved by caller from the reused grid) ----
@@ -2397,6 +2468,7 @@ class _ExecuteMixin:
         # ---- Subgridded lane (n_steps resolved by caller — refinement ratio
         # scaling needs the reused grid) ----
         if self._refinement is not None:
+            _reject_lane_precision("run_subgridded")
             return _DispatchPlan(lane="run_subgridded", n_steps=n_steps)
 
         # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----

@@ -703,11 +703,11 @@ def _validate_document(document: dict[str, Any]) -> None:
         _fail("range_error", "$.simulation.domain_m", "all dimensions must be > 0")
     _positive(simulation["cell_size_m"], "$.simulation.cell_size_m")
     _positive(simulation["freq_max_hz"], "$.simulation.freq_max_hz")
-    if simulation["precision"] not in {"float32", "mixed"}:
+    if simulation["precision"] not in {"float32", "mixed", "float64"}:
         _fail(
             "unsupported_variant",
             "$.simulation.precision",
-            "expected 'float32' or 'mixed'",
+            "expected 'float32', 'mixed', or 'float64'",
         )
 
     material_ids = {"pec"}

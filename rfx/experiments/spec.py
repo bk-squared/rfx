@@ -379,8 +379,10 @@ def _parse_current(doc: Mapping[str, Any]) -> ExperimentSpec:
     precision = _text(
         execution_doc.get("precision", "float32"), "spec.execution.precision"
     )
-    if precision not in {"float32", "mixed"}:
-        raise ExperimentSpecError("execution.precision must be 'float32' or 'mixed'")
+    if precision not in {"float32", "mixed", "float64"}:
+        raise ExperimentSpecError(
+            "execution.precision must be 'float32', 'mixed', or 'float64'"
+        )
     execution = ExecutionSpec(
         backend=backend,
         precision=precision,
