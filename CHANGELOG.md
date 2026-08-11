@@ -122,6 +122,53 @@ this exact-hi-face case). Pinned by
 marked `xfail(strict=True)` so it turns into a hard failure — not a
 silent pass — the day #643 is closed.
 
+**No-worse guard added to `_extend_batched_cpml_pad`, found in review.**
+Re-running #637's own 7-configuration representativeness sweep on the
+rebased tree (unmodified geometries, not the margin-nudged variants
+elsewhere in this entry) surfaced that #627 didn't just leave the
+exact-hi-face case unfixed — for 4 of 7 configurations it made the
+vmap/`run()` divergence WORSE than #637's own pre-fix numbers, wherever
+a swept value happened to equal the base value. Mechanism: pre-#637-fix,
+the unconditional pad copy inherited base's OWN (post-#627, correct)
+pad value everywhere, so the swept-equals-base element was accidentally
+right; post-#637-fix, that same cell falls back to the naive vacuum
+column instead, since `_extend_batched_cpml_pad` doesn't reproduce
+#627's fallback — actively discarding a value that was already correct.
+Fix: skip the pad-cell overwrite when the source column is vacuum,
+using the SAME joint test `rasterize_grid._vacuum` uses
+(`eps_r==1.0 & sigma==0.0 & mu_r==1.0`, not a per-field approximation —
+an earlier draft tested each field against its own default independently
+and, measured against this file's suite, left the same two residuals
+this joint version does, since none of these fixtures carries a second
+material with nonzero sigma or non-unity `mu_r` to distinguish the two
+predicates; the joint version is kept because it is the one that
+matches the rest of the package and generalizes to fixtures the current
+suite doesn't happen to exercise).
+
+Effect, measured per swept element (not aggregated) across all 14
+elements in the 7-configuration sweep: every element where the swept
+value equals the base value is now exact or unchanged (previously
+already-correct by the coincidence described above; confirmed still
+correct, not merely no-worse). Of the 10 elements where the swept value
+differs from base, 8 improved (by 0.4% to 16.7%) or were unchanged, and
+2 remain measurably worse than #637's pre-fix numbers: the "issue-table
+base=2.0" configuration's `eps_r=10.0` element (6.421e-2 -> 6.527e-2,
++1.6%) and the "committed fixture" configuration's `eps_r=2.0` element
+(1.193e-2 -> 1.199e-2, +0.5%). Both residuals are small, reproduced
+identically across repeated measurement (not floating-point noise), and
+their specific mechanism is not established — the joint-vacuum fix did
+not change either number, so whatever produces them is a different,
+smaller effect than the predicate mismatch the guard targets. Both sit
+on the same exact-domain-edge geometry class already disclosed above
+and covered by the `xfail(strict=True)` witness; shipped with the
+residual disclosed rather than pursuing a third guard variant, since
+the class itself is already known-broken and tracked by #643, and #637's
+actual target class (material reaching a pad without sitting exactly on
+the domain edge) is unaffected — the "single-face touch (x_lo only)"
+configuration, which never touches a domain edge exactly, goes
+4.191e-3/8.729e-4 -> 2.623e-7/2.258e-7 pre- to post-fix, unchanged by
+the guard either way.
+
 ### Fixed — import-time binding pollution in the uniform-grid runner (issue #628)
 
 - `rfx/runners/uniform.py` used to do `from rfx.simulation import run as
