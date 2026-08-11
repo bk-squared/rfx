@@ -27,13 +27,29 @@ from rfx.vmap_sweep import vmap_material_sweep
 def _full_dielectric_cpml_sim(eps_r: float):
     """CPML sim whose dielectric fills the ENTIRE domain (incl. all 6 CPML
     faces), so the absorber sees the dielectric — the geometry that exposes a
-    free-space-CPML divergence."""
+    free-space-CPML divergence.
+
+    Hi bound is domain-edge + half a cell (0.021, not 0.02): ``Box``'s
+    rasterization is half-open (``[lo, hi)``), so a hi bound landing
+    EXACTLY on the domain edge drops that edge node from the box's own
+    mask on all three axes here. Unrelated to this file's #205 mechanism,
+    but it interacts with issue #627 (``rfx.geometry.rasterize_grid``'s
+    hi-face pad vacuum fallback, landed as fce1091): post-#627,
+    ``Simulation.run()`` recovers that node via the fallback while this
+    file's ``vmap_material_sweep`` call does not reproduce that fallback
+    (see #637's CHANGELOG entry, "Overlap with issue #627" — an
+    already-disclosed, deliberately out-of-scope gap for #637). Without
+    this margin, ``test_vmap_cpml_dielectric_is_finite_and_matches_run``
+    would fail for that separate, unrelated reason. Confirmed directly
+    the margin stays inside the interior (0 mask cells inside the actual
+    CPML pad) before landing this change.
+    """
     sim = Simulation(
         freq_max=5e9, domain=(0.02, 0.02, 0.02),
         boundary="cpml", cpml_layers=6, dx=0.002,
     )
     sim.add_material("d", eps_r=eps_r)
-    sim.add(Box((0.0, 0.0, 0.0), (0.02, 0.02, 0.02)), material="d")
+    sim.add(Box((0.0, 0.0, 0.0), (0.021, 0.021, 0.021)), material="d")
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=GaussianPulse(f0=3e9))
     sim.add_probe((0.006, 0.01, 0.01), "ez")
     return sim

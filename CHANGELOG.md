@@ -21,9 +21,13 @@ an absorber matched to the *base* material instead of its own. Any
 substrate/dielectric running out to a CPML face — ordinary microwave
 geometry — was affected. Measured on the committed test fixture
 (box spanning the full transverse domain extent, `cpml_layers=6`, base
-`eps_r=4.0`, sweep `{2.0, 6.0}`): 780 of 12167 cells held the wrong
-`eps_r`; worst per-bin DFT-plane relative error against `sim.run()` was
-5.281e-4, which the previous `rtol=2e-3` gate absorbed and two test
+`eps_r=4.0`, sweep `{2.0, 6.0}`): originally 780 of 12167 cells held the
+wrong `eps_r` (re-measured at 2040/12167 after this branch's rebase onto
+issue #627, which independently fixed a related hi-face pad gap and, in
+doing so, corrected the reference `run()` used for this count too — see
+"Overlap with issue #627" below); worst per-bin DFT-plane relative error
+against `sim.run()` was 5.281e-4 (8.83e-4 on the rebased fixture), which
+the previous `rtol=2e-3` gate absorbed and two test
 docstrings misattributed to "float32 accumulation roundoff" — the
 decisive discriminator (moving the same slab off the CPML faces so no
 material lands in the padding) dropped the identical comparison to
@@ -70,9 +74,10 @@ falsifier-of-the-test finding), and the global-sweep regression pin
 above. Two docstrings that attributed the defect's symptom to float32
 roundoff are corrected (module docstring and the x64 class docstring); a
 third (`TestVmapAmplitudeKindCurrent`) is partially corrected — its own
-floor also included this defect (4.89e-5 pre-fix, 2.60e-7 post-fix, an
-188x drop) alongside genuine dynamic-Cb float32 noise it was originally
-trying to describe.
+floor also included this defect (6.88e-5 pre-fix, 1.74e-7 post-fix, a
+~396x drop, numbers re-measured after the rebase; conclusion unchanged
+from an earlier 4.89e-5/2.60e-7 pair) alongside genuine dynamic-Cb
+float32 noise it was originally trying to describe.
 
 `tests/test_vmap_cpml_dielectric.py::test_vmap_cpml_dielectric_is_finite_and_matches_run`
 (a #205 regression pin, unrelated in origin) shared the same fixture
@@ -84,23 +89,30 @@ construction. Now asserts every swept element; the previously-unchecked
 #637 signature) and is exactly bit-identical post-fix.
 
 **Overlap with issue #627 (landed separately as fce1091, this same
-Unreleased block, below):** #627 moved `Simulation._assemble_materials`'s
-pad-extension rule into a new shared
-`rfx.geometry.rasterize_grid.extend_cpml_pad_materials`, and changed the
-rule itself — a per-transverse-cell hi-face fallback (if the naive
-interior-edge column is vacuum but the column one further in is not,
-replicate from that inner column instead), fixing a case where a `Box`
-touching the domain's hi face loses its edge node to `Box`'s half-open
-rasterization. `_extend_batched_cpml_pad` (this entry) still reproduces
-the PRE-#627 rule — a straight edge-slice copy, no hi-face fallback — so
-after this rebase it is a known, not-yet-reconciled divergence: a
-material-named `vmap_material_sweep` on a box whose HI face lands
-exactly on the domain's last interior node still gets the #627a case
-wrong (vacuum pad on that face) even though `Simulation.run()` on the
-same geometry now gets it right. Both PR bodies already flag this as
-follow-up work rather than something either PR should absorb; see the
-next commit in this branch's history for the concrete before/after
-measurement.
+Unreleased block, below) — confirmed divergence, deliberately NOT fixed
+here.** #627 moved `Simulation._assemble_materials`'s pad-extension rule
+into a new shared `rfx.geometry.rasterize_grid.extend_cpml_pad_materials`,
+and changed the rule itself — a per-transverse-cell hi-face fallback (if
+the naive interior-edge column is vacuum but the column one further in is
+not, replicate from that inner column instead), fixing a case where a
+`Box` touching the domain's hi face loses its edge node to `Box`'s
+half-open rasterization. `_extend_batched_cpml_pad` (this entry) still
+reproduces the PRE-#627 rule — a straight edge-slice copy, no hi-face
+fallback. Measured directly post-rebase on a slab spanning the full
+domain (`Box((0,0,0), domain)`, touching all six CPML faces including
+x-hi exactly at the domain's last interior node, `cpml_layers=6`, base
+`eps_r=4.0`): `Simulation.run()`'s assembled x-hi pad now reads the
+correct `4.0` (the #627a fix); `vmap_material_sweep`'s batched x-hi pad
+for the SAME geometry stays at vacuum `1.0` regardless of the swept
+value (`2.0` and `6.0` both read `1.0` there) — the pre-#627 defect,
+unaffected by this entry's fix, which only ever reproduced the OLD rule.
+DFT-plane impact on this geometry: worst rel err 1.66e-2 (sweep to 2.0)
+/ 4.25e-2 (sweep to 6.0) against `run()` — the same order of magnitude
+as issue #637's own pre-fix numbers, on a case this entry does not
+correct. Both PR bodies already flag reconciling the two helpers as
+follow-up work rather than something either PR should absorb now; this
+paragraph is that disclosure, not a promise of a later commit in this
+PR.
 
 ### Fixed — import-time binding pollution in the uniform-grid runner (issue #628)
 
