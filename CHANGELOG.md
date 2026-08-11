@@ -25,9 +25,17 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 - Fix: late-bind via `from rfx import simulation as _simulation`, calling
   `_simulation.run(...)` / `_simulation.run_until_decay(...)` — a module
   reference resolved at CALL time, not import time, so it always reflects
-  whatever `rfx.simulation.run` currently is. Not a hot path: each is
-  called exactly once per `run_uniform()` invocation (the single entry
-  point into the compiled `jax.lax.scan` FDTD loop), so the extra
+  whatever `rfx.simulation.run` currently is. `rfx/runners/uniform.py`'s
+  other five `rfx.simulation` names (`make_source`, `make_j_source`,
+  `make_probe`, `make_port_source`, `make_wire_port_sources`) are late-bound
+  the same way, even though none is currently monkeypatched anywhere in the
+  suite: closing the whole block removes the vulnerable SHAPE from the file
+  entirely, rather than leaving it one future `monkeypatch.setattr` away
+  from recurring in the exact file that already produced a multi-hour false
+  attribution during the #582 review. Not a hot path: all seven calls
+  happen at most once per `run_uniform()` invocation (setup-time
+  port/source/probe registration, or the single entry into the compiled
+  `jax.lax.scan` FDTD loop for `run`/`run_until_decay`), so the extra
   attribute lookup is negligible against that call's own runtime.
 - Same-shape audit (module-level `from rfx.X import Y` where `X` is
   monkeypatched by a test somewhere in the suite) across `rfx/runners/`,
