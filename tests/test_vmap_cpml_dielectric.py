@@ -45,6 +45,22 @@ def test_vmap_cpml_dielectric_is_finite_and_matches_run():
 
     Pre-#205-fix this diverges to NaN/inf because the vmap scan used free-space
     CPML inside the eps_r dielectric.
+
+    #637 completeness note: this originally asserted ONLY ``ts[1]``
+    (eps_r=10.0) against ``run()`` — the base simulation below is built
+    with ``eps_r=10.0`` too, so ``ts[1]`` is the one sweep element whose
+    value happens to EQUAL the base material. #637 was exactly "a
+    material-named sweep's CPML padding stays matched to the base
+    simulation instead of the swept value" — for the one element that
+    already IS the base value, that padding is correct by construction,
+    so this test could never have caught it (or a regression of its
+    fix) via ``ts[1]`` alone. ``ts[0]`` (eps_r=4.0, which DIFFERS from
+    the base 10.0) is the load-bearing assertion: measured directly,
+    pre-#637-fix ``ts[0]`` disagreed with ``run(eps_r=4.0)`` at
+    rel=9.65e-03 (the #637 defect signature — the padding stayed
+    matched to eps_r=10.0 while the interior correctly swept to 4.0);
+    post-fix both ``ts[0]`` and ``ts[1]`` are exactly bit-identical
+    (0.0) with their respective ``run()`` references.
     """
     eps_values = np.array([4.0, 10.0])
     n_steps = 300  # buggy tree reaches ~1e26 well before this
@@ -66,15 +82,20 @@ def test_vmap_cpml_dielectric_is_finite_and_matches_run():
         "— absorber likely mismatched."
     )
 
-    # Correctness: the eps_r=10 sweep element must reproduce the material-aware
-    # uniform run() path (the supported reference) on the same geometry.
-    ref = np.asarray(
-        _full_dielectric_cpml_sim(10.0).run(n_steps=n_steps).time_series
-    )
-    np.testing.assert_allclose(
-        ts[1], ref, atol=1e-5, rtol=1e-4,
-        err_msg="vmap CPML sweep (eps_r=10) disagrees with material-aware run()",
-    )
+    # Correctness: EVERY sweep element must reproduce the material-aware
+    # uniform run() path (the supported reference) on the same geometry --
+    # eps_r=4.0 (differs from the base 10.0, the #637 CPML-padding
+    # regression guard) AND eps_r=10.0 (matches base, kept for continuity
+    # with the original #205 pin).
+    for idx, ev in enumerate(eps_values):
+        ref = np.asarray(
+            _full_dielectric_cpml_sim(float(ev)).run(n_steps=n_steps).time_series
+        )
+        np.testing.assert_allclose(
+            ts[idx], ref, atol=1e-5, rtol=1e-4,
+            err_msg=f"vmap CPML sweep (eps_r={ev}) disagrees with "
+                    f"material-aware run()",
+        )
 
 
 def test_vmap_cpml_distinct_eps_change_response():
