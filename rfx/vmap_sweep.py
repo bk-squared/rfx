@@ -123,6 +123,49 @@ def _parse_param_name(param_name: str) -> tuple[str | None, str]:
     return mat_name, field
 
 
+def _extend_batched_cpml_pad(field: jnp.ndarray, grid) -> jnp.ndarray:
+    """Re-extend a BATCHED material field, shape ``(n_batch, Nx, Ny, Nz)``,
+    into the CPML padding — the batched analogue of the per-face edge-slice
+    replication in ``Simulation._assemble_materials``
+    (``rfx/api/_compile.py:192-228``).
+
+    ``jnp.where(mask, param_values, base_field)`` (the caller) only ever
+    touches the physical-domain-interior cells that ``mask`` covers
+    (``Shape.mask`` returns False everywhere in the padding, since padding
+    cells map to physical coordinates outside the declared domain). The
+    padding faces of ``base_field`` were replicated from the BASE
+    simulation's edge slice, so every batch element inherits the base
+    material's absorber there regardless of its own swept value (issue
+    #637). Re-running the same per-face copy on the already-batch-correct
+    interior — same face order (x_lo, x_hi, y_lo, y_hi, z_lo, z_hi), same
+    "copy the interior-edge slice outward" rule — makes each batch
+    element's padding match what ``Simulation.run()`` would build for that
+    same swept value, since the interior edge cell each pad cell copies
+    from is now correctly set per batch element.
+
+    A no-op on any face with zero pad depth (non-CPML boundary, or a
+    reflector/periodic face with ``pad=0`` on that side), so this is safe
+    to call unconditionally.
+    """
+    plx, phx = grid.pad_x_lo, grid.pad_x_hi
+    ply, phy = grid.pad_y_lo, grid.pad_y_hi
+    plz, phz = grid.pad_z_lo, grid.pad_z_hi
+    out = field
+    if plx > 0:
+        out = out.at[:, :plx, :, :].set(out[:, plx:plx + 1, :, :])
+    if phx > 0:
+        out = out.at[:, -phx:, :, :].set(out[:, -phx - 1:-phx, :, :])
+    if ply > 0:
+        out = out.at[:, :, :ply, :].set(out[:, :, ply:ply + 1, :])
+    if phy > 0:
+        out = out.at[:, :, -phy:, :].set(out[:, :, -phy - 1:-phy, :])
+    if plz > 0:
+        out = out.at[:, :, :, :plz].set(out[:, :, :, plz:plz + 1])
+    if phz > 0:
+        out = out.at[:, :, :, -phz:].set(out[:, :, :, -phz - 1:-phz])
+    return out
+
+
 def _build_batched_materials(
     sim,
     grid,
@@ -134,10 +177,23 @@ def _build_batched_materials(
 
     For a global sweep (e.g. ``"eps_r"``), the parameter is applied to
     **all non-vacuum cells** that have the swept property differing from 1.0
-    (for eps_r/mu_r) or 0.0 (for sigma).
+    (for eps_r/mu_r) or 0.0 (for sigma). This already reaches the CPML
+    padding without special-casing: ``base_materials`` replicates each
+    material's actual (non-vacuum) value into its padding
+    (``_assemble_materials``), so the ``!= 1.0`` / ``!= 0.0`` test is True
+    there too and the global sweep overwrites those pad cells along with
+    the interior ones (issue #637 scope note — verified by
+    ``test_global_sweep_pad_cells_still_correct`` in
+    ``tests/test_vmap_sweep_dft_planes.py``).
 
     For a material-specific sweep (e.g. ``"substrate.eps_r"``), the parameter
-    is applied only to cells occupied by that named material.
+    is applied only to cells occupied by that named material — geometry
+    cells only, via ``Shape.mask``. Unlike the global case, ``mask`` is
+    False everywhere in the CPML padding (padding cells sit outside the
+    physical domain ``Shape.mask`` tests against), so the padding is
+    handled separately below via ``_extend_batched_cpml_pad`` (issue #637):
+    without it, every swept batch element would run against a pad matched
+    to the BASE material instead of its own.
     """
     mat_name, field = _parse_param_name(param_name)
     n_batch = len(param_values)
@@ -161,6 +217,11 @@ def _build_batched_materials(
                 param_values[:, None, None, None],  # (n_batch, 1, 1, 1)
                 eps_r[None],  # (1, Nx, Ny, Nz)
             )
+            # #637: the mask above only covers the physical-domain interior
+            # -- extend the (now per-batch-correct) interior into the CPML
+            # pad the same way the base simulation would for each swept
+            # value, instead of leaving the base material's pad fill.
+            batch_eps = _extend_batched_cpml_pad(batch_eps, grid)
             batch_sigma = jnp.broadcast_to(sigma[None], (n_batch,) + sigma.shape)
             batch_mu = jnp.broadcast_to(mu_r[None], (n_batch,) + mu_r.shape)
         elif field == "sigma":
@@ -170,6 +231,7 @@ def _build_batched_materials(
                 param_values[:, None, None, None],
                 sigma[None],
             )
+            batch_sigma = _extend_batched_cpml_pad(batch_sigma, grid)
             batch_mu = jnp.broadcast_to(mu_r[None], (n_batch,) + mu_r.shape)
         else:  # mu_r
             batch_eps = jnp.broadcast_to(eps_r[None], (n_batch,) + eps_r.shape)
@@ -179,6 +241,7 @@ def _build_batched_materials(
                 param_values[:, None, None, None],
                 mu_r[None],
             )
+            batch_mu = _extend_batched_cpml_pad(batch_mu, grid)
     else:
         # Global sweep: apply to all non-background cells
         if field == "eps_r":
