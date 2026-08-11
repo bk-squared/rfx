@@ -48,15 +48,48 @@ of the ritual is unchanged by #637 and was re-run against the fixed code
 to confirm it still catches a kernel defect). #637's own falsifier
 (reverting ONLY the pad-extension fix, i.e. the 780-cell defect, while
 keeping everything else fixed) reproduces the original ~5e-4 floor --
-captured in ``docs/research_notes/`` / the PR body, not re-run on every
-CI pass. The gate below (``rtol=1e-6``) is anchored near the observed
-floor with margin for cross-machine floating-point reduction-order
-jitter (this repo's own experience is that cross-machine float
-comparisons are not bit-exact -- see the CI slow-suite agent-memory
-entry), not fitted to hide a defect: it is ~500x tighter than the old
-``2e-3`` and five to six orders of magnitude below every pre-fix defect
-measurement (5.3e-4 on this fixture; 4.2e-3 to 5.8e-2 across the broader
-#637 representativeness sweep in the PR body).
+reviewable by reverting ``_extend_batched_cpml_pad``'s call sites in
+``rfx/vmap_sweep.py`` and re-running this file: exactly
+``test_dft_plane_matches_run_cpml``,
+``TestVmapMaterialSweepCpmlPad::test_material_named_sweep_pad_cells_match_run_materials``,
+``TestVmapMaterialSweepCpmlPad::test_dft_plane_matches_run_alternate_geometry``,
+and ``test_dft_plane_matches_run_cpml_x64`` go red (the global-sweep pin
+and everything unrelated stay green) -- an independent reviewer
+reproduced this exact four-test signature separately. The gate below
+(``rtol=1e-6``) is anchored near the observed floor with margin for
+cross-machine floating-point reduction-order jitter (this repo's own
+experience is that cross-machine float comparisons are not bit-exact --
+see the CI slow-suite agent-memory entry; an independent re-measurement
+of the CHANGELOG's separate 7-configuration representativeness sweep on
+different hardware got exactly ``0.0`` on all seven, where this
+session's machine measured them at-or-below ~4e-7 -- same conclusion,
+different floating-point path), not fitted to hide a defect: it is
+~500x tighter than the old ``2e-3`` and five to six orders of magnitude
+below every pre-fix defect measurement (5.3e-4 on this fixture; 4.2e-3
+to 5.8e-2 across that representativeness sweep, PR
+`fix/637-vmap-sweep-cpml-pad`).
+
+Gate bracketing (why ``1e-6`` and not looser or tighter): from BELOW,
+every measured post-fix residual on this file's DFT-plane fixtures is
+<=4.12e-8 (>=24x margin), and the sibling fixture where the two paths
+genuinely execute different arithmetic --
+``TestVmapAmplitudeKindCurrent`` (dynamic per-batch Cb-normalization,
+not a shared code path with the DFT-plane kernel; a raw-time-series
+comparison, not this file's per-bin DFT metric) -- measured on this
+session's machine at 2.60e-7 (cpml, eps_r=2.0) / 1.56e-7 (eps_r=6.0),
+and independently re-measured at 2.05e-7/3.43e-7 on different hardware:
+both machines land in the same 1.5e-7 to 3.4e-7 band, still >=3x under
+even in the looser direction -- itself a second data point for the
+cross-machine-jitter margin above, not just the ``1e-6`` anchor. From
+ABOVE, the weakest defect signal the gate must still catch is
+``test_dft_plane_matches_run_alternate_geometry``'s ~1.1e-5 pre-fix
+measurement; a gate at ``1e-5`` would leave that only 1.1x headroom and
+destroy it as a falsifier. ``1e-6`` sits inside both bounds. Thread-count
+sweep (1 to 192 CPUs, same fixtures): zero spread -- the compared
+quantities (a single batch element's DFT accumulator vs. a single
+sequential run's) contain no cross-batch or cross-space reduction for
+either code path to reorder differently under a different thread count,
+so there is no mechanism for this floor to move with parallelism.
 """
 
 from __future__ import annotations
@@ -373,16 +406,37 @@ class TestVmapDftPlaneX64:
     "does not tighten" under x64. Both halves were wrong -- that 5e-4 was
     the #637 CPML-padding defect (see the module docstring), not a
     genuine precision floor, so there was nothing for x64 to fail to
-    tighten. Post-fix, measured on this fixture: default precision is
-    exactly 0.0 at every bin (bit-identical vmap-vs-run); x64 is NOT
+    tighten. Post-fix, on this fixture AT n_steps=60: default precision
+    is exactly 0.0 at every bin (bit-identical vmap-vs-run); x64 is NOT
     bit-identical, worst observed 4.12e-08 (eps_r=6.0, highest-frequency
     bin) -- i.e. x64 promotes the DFT accumulator to complex128 but the
     underlying field state is still produced by the same float32-pinned
     Yee kernels, so accumulating in higher precision surfaces a genuine
     (tiny) float32-vs-float64 promotion-order residual that default
-    precision's exact bit-identity can't show. ``rtol=1e-6`` covers this
-    with ~24x margin while remaining far below any #637-class defect
-    magnitude."""
+    precision's exact bit-identity can't show.
+
+    That 4.12e-08 is a property of THIS fixture AT n_steps=60, not a
+    fixture-independent precision bound -- it is not safe to read as "the
+    x64 floor is ~4e-8" in general. Sweeping n_steps on the same fixture
+    (signal-bearing bins only): 1.01e-07 (120 steps), 4.41e-07 (200),
+    ~6.4e-06 (300) -- growing smoothly as the DFT window covers more of
+    the pulse's post-source evolution, more steps of float32-pinned Yee
+    accumulation to promote into the complex128 sum. Past a fixture- and
+    bin-dependent point (this fixture's highest-frequency bin, past
+    n_steps~=300) the reference magnitude itself decays toward the
+    numerical noise floor as that bin's spectral content leaves the
+    window; the ratio then blows up on a shrinking denominator, not a
+    growing numerator -- 4.39e-03 at n_steps=400 on this fixture's
+    weakest bin is that artefact (verified: the ABSOLUTE difference
+    barely moves between n_steps=300 and 400, only the reference
+    magnitude collapses), the same near-zero-denominator failure mode
+    ``_assert_dft_planes_match``'s own docstring warns about for an
+    elementwise check -- not evidence of divergence. ``rtol=1e-6`` covers
+    the genuine n_steps=60 floor with ~24x margin (see the module
+    docstring's gate-bracketing note for the full argument); it is not
+    claimed to generalize to arbitrarily long ``n_steps`` on other
+    fixtures, and a future test built on a longer-duration fixture should
+    re-derive its own floor rather than assume this one."""
 
     def test_dft_plane_matches_run_cpml_x64(self):
         eps_values = np.array([2.0, 6.0])
