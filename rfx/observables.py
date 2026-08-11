@@ -257,11 +257,14 @@ def field_softmax(
 ) -> Callable:
     """Objective factory: smooth (soft) max of ``|field|**2`` over space+frequency.
 
-    Uses the standard log-sum-exp soft-max:
-    ``softmax = logsumexp(beta * |field|**2) / beta``, computed with
-    ``jax.nn.logsumexp`` for numerical stability. As ``beta -> infinity``
-    this converges to the true ``max(|field|**2)``; a smaller *beta* trades
-    a looser max approximation for a smoother, better-conditioned gradient
+    Uses the standard log-sum-exp soft-max, AUTO-SCALED to the field's own
+    magnitude each call: ``beta_eff = beta / stop_gradient(max(vals))``,
+    ``softmax = logsumexp(beta_eff * vals) / beta_eff``, computed with
+    ``jax.nn.logsumexp`` for numerical stability. As *beta* (equivalently
+    ``beta_eff * max(vals)``, which the normalization pins to exactly
+    *beta* by construction -- see "Auto-scaling", below) grows this
+    converges to the true ``max(|field|**2)``; a smaller *beta* trades a
+    looser max approximation for a smoother, better-conditioned gradient
     (useful early in an optimization run, e.g. the shielding case: minimize
     the worst-case leaked field anywhere behind a barrier, over all
     monitored frequencies, rather than the mean leaked field).
@@ -275,41 +278,52 @@ def field_softmax(
         pattern: register one plane per physical monitor location, then
         soft-max over all of them at once for a single worst-case scalar.
     beta : float
-        Soft-max sharpness (default 1.0). Must be positive, and MUST be
-        scale-matched to the field magnitude -- see the warning below.
+        Soft-max sharpness (default 1.0), now DIMENSIONLESS -- see
+        "Auto-scaling" below. Must be positive.
 
-    .. warning::
-        **beta must be scale-matched to your |field|**2** magnitude, not
-        left at the default.** ``logsumexp(beta*vals)/beta`` equals
-        ``log(count)/beta + (a term that depends on vals)`` where
-        ``count = n_freqs * n1 * n2`` summed over every requested plane; if
-        ``beta`` is too small for the actual ``|field|**2`` scale, the
-        ``log(count)/beta`` CONSTANT (independent of your design variable)
-        dominates the objective and swallows the real signal -- both the
-        objective value and its gradient measure rounding noise in that
-        constant, not physics, and can coincidentally still pass a single
-        finite-difference check while failing at a different step size
-        (rfx's own DFT-plane accumulators commonly sit around
-        ``|field|**2`` ~1e-10 to 1e-22 depending on geometry/normalization,
-        the same tiny-absolute-unit convention documented elsewhere for
-        NTFF power, e.g. ``maximize_directivity``'s ~1e-27 note -- so
-        ``beta=1.0`` is almost always wrong). Pick beta empirically: measure
-        ``max(|field|**2)`` once (e.g. via :func:`dft_field` +
-        ``jnp.max(jnp.abs(x)**2)``) at a representative design point, and
-        choose beta so ``beta * max(|field|**2)`` is at least a few units
-        (pushes past the ``log(count)`` constant) -- see
-        ``examples/inverse_design/field_observable_shielding.py``'s own
-        ``BETA`` comment for a worked, measured example.
-    .. warning::
-        **Top-end overflow is a real, undocumented-by-JAX failure mode.**
-        ``beta * vals`` is computed as a plain array BEFORE
-        ``jax.nn.logsumexp`` gets to apply its internal max-subtraction
-        stabilization; if ``beta * max(vals)`` itself overflows the
-        working dtype's range (~3.4e38 for float32, ~1.8e308 for float64 --
-        measured: ``beta=1e40`` against ``vals`` ~1e-10 already returns
-        ``nan``, while ``beta=1e30`` on the same ``vals`` is fine), the
-        result is silently ``nan``, not a large-but-finite number. Do not
-        pick beta by "bigger is always safer" -- there is a ceiling.
+    Auto-scaling (fixes a measured footgun -- read before raising *beta*
+    "to be safe")
+    -------------------------------------------------------------------
+    Earlier versions of this function computed ``logsumexp(beta*vals)/beta``
+    directly against the RAW ``|field|**2`` values, so *beta* had to be
+    hand-matched to whatever physical units/magnitude the accumulator
+    happened to carry (rfx's own DFT-plane accumulators commonly sit
+    around ``|field|**2`` ~1e-10 to 1e-22 depending on
+    geometry/normalization). At the then-default ``beta=1.0`` the
+    objective sat at ~100.000002% of the design-independent constant
+    ``log(count)/beta`` (measured, `#619`): both the value and its
+    gradient were differentiating ROUNDING NOISE in that constant, not
+    physics, and it could coincidentally still pass a single
+    finite-difference check while failing at a different step size (a
+    `feedback_gate_can_bind_artifact`-class trap).
+
+    This function now computes ``beta_eff = beta / stop_gradient(max(vals))``
+    and uses ``beta_eff`` in place of a raw *beta* everywhere above.
+    Because ``vals``' own current max scales out of the product exactly,
+    ``beta_eff * max(vals) == beta`` ALWAYS, regardless of the field's
+    physical units -- the ``log(count)/beta`` swallow above cannot recur
+    at any finite field magnitude, at any *beta*, including the default.
+    ``stop_gradient`` on the normalizer is deliberate: without it, the
+    returned scalar would differentiate the (physically meaningless)
+    rescaling itself rather than approximating ``max``; with it, the
+    gradient is the standard softmax-weighted average at the CURRENT
+    call's ``beta_eff`` (a real, directionally-correct signal, recomputed
+    fresh -- and re-normalized -- every call).
+
+    What *beta* now controls (and does not control): a larger *beta*
+    tightens the approximation -- the softmax value can exceed the true
+    ``max(vals)`` by a factor of at most ``1 + log(count)/beta`` (default
+    ``beta=1.0`` is therefore LOOSE for a field with many samples: e.g.
+    ~14.8x at ``count=1e6``), so raise *beta* (5-50 is a reasonable range
+    for most plane sizes) for a tighter approximation once you know you
+    need one, exactly as before -- but the DEFAULT is now safe at any
+    field magnitude, merely loose, never rounding-noise. A large *beta* no
+    longer risks the old top-end overflow footgun either: ``beta_eff *
+    vals`` is bounded by *beta* itself (``vals <= max(vals)`` by
+    definition, so ``beta_eff * vals <= beta_eff * max(vals) == beta``),
+    not by the field's unknown absolute scale, so any finite *beta* you'd
+    plausibly choose (up to jax.nn.logsumexp's own internal
+    max-subtraction headroom) is safe.
     """
     if beta <= 0.0:
         raise ValueError(f"field_softmax: beta must be positive, got {beta}")
@@ -320,7 +334,15 @@ def field_softmax(
         vals = jnp.concatenate(
             [jnp.abs(arrays[n]).reshape(-1) ** 2 for n in name_list]
         )
-        return logsumexp(beta * vals) / beta
+        scale = jax.lax.stop_gradient(jnp.max(vals))
+        # Guard the degenerate all-zero-field case (scale == 0) rather
+        # than dividing by it; beta_eff = beta there reproduces the
+        # pre-auto-scale behaviour, which is harmless because vals is
+        # uniformly 0 too (logsumexp(0)/beta = log(count)/beta exactly
+        # either way -- there is no signal to lose).
+        scale_safe = jnp.where(scale > 0, scale, jnp.asarray(1.0, dtype=vals.dtype))
+        beta_eff = beta / scale_safe
+        return logsumexp(beta_eff * vals) / beta_eff
 
     return objective
 
@@ -481,7 +503,26 @@ def jacobian_fwd(
     which tangent direction is being evaluated. If you change ``sim_fn``
     in a way that breaks that invariant, ``jax.vmap`` raises loudly
     (``out_axes=None`` on an output that DOES depend on the mapped axis is
-    a vmap error, not a silent wrong answer).
+    a vmap error, not a silent wrong answer). ``batch_tangents=False``
+    (the sequential path) has NO ``jax.vmap`` of its own to inherit that
+    check from -- it just calls ``jax.jvp`` ``n_t`` times in a plain
+    Python loop and returns ``values[0]``, so without an explicit guard a
+    ``sim_fn`` that violates the invariant would silently return one
+    arbitrary tangent row's primal on that path instead of raising. This
+    function closes that gap on the sequential path via two guards, so
+    the memory-vs-speed knob is not also a safety-vs-speed knob: (1) a
+    ``jax.eval_shape`` abstract trace of the SAME ``out_axes=(None, 0)``
+    vmap the batched path actually runs -- shape-only, zero FLOPs, zero
+    extra memory (verified: reproduces the identical
+    ``ValueError`` a real violating vmap call raises, including when this
+    whole call is itself wrapped in an outer ``jax.jit`` by the caller,
+    since ``eval_shape`` is trace-time like ``vmap``'s own check); (2)
+    when running eagerly (params are not themselves tracers, so the
+    computed primal values are concrete), an exact pairwise comparison of
+    all ``n_t`` sequentially-computed primal values, raising ``ValueError``
+    on any mismatch -- a strictly stronger, numeric confirmation of the
+    same invariant, skipped only when it is not expressible (under an
+    enclosing ``jax.jit``, where guard (1) is the check in effect).
 
     Cost characterization: NOT "a few times one solve" -- see
     ``scripts/benchmark_jacobian_fwd.py`` (regenerable; run it for current
@@ -528,13 +569,28 @@ def jacobian_fwd(
         faster than the sequential control at n_t in {4, 10}), higher peak
         memory (``O(state) * (1 + n_t)``, all ``n_t`` tangent copies live
         at once). ``False``: run the ``n_t`` directions as independent
-        sequential ``jax.jvp`` calls inside one ``jit`` -- the memory-vs-speed
-        knob, trading the wall-time win for a peak that scales with ONE
-        tangent copy at a time instead of ``n_t`` (measured: primal-sharing
-        still holds sequentially, at ``~1 + n_t`` compute but with a lower
-        peak than the batched path scales to as ``n_t`` grows). The two
-        paths are DIFFERENT XLA programs and may disagree at float32
-        reassociation scale (~1e-6 relative); they are not bit-identical.
+        sequential ``jax.jvp`` calls in a plain Python loop -- the
+        memory-vs-speed knob, trading the wall-time win for a peak that
+        scales with ONE tangent copy at a time instead of ``n_t``
+        (measured: primal-sharing still holds sequentially, at ``~1 + n_t``
+        compute but with a lower peak than the batched path scales to as
+        ``n_t`` grows). CORRECTION: this function does not call
+        ``jax.jit`` itself on EITHER path -- there is no ``jax.jit``
+        anywhere in this module (verify: ``grep jax.jit rfx/observables.py``
+        returns nothing). ``batch_tangents=False`` runs the ``n_t``
+        sequential ``jax.jvp`` calls exactly as written, at whatever JIT
+        boundary the CALLER supplies (eager if the caller does not
+        ``jax.jit`` anything; compiled as part of one program if the
+        caller wraps its own outer function, as
+        ``scripts/benchmark_jacobian_fwd.py`` and
+        ``tests/test_jacobian_fwd.py`` both do for compiled/jaxpr
+        measurement) -- an earlier version of this docstring claimed
+        ``jax.jit`` wrapping was part of this function's own behaviour,
+        which was never true. The two paths (batched vs. sequential) are
+        DIFFERENT XLA programs and may disagree at float32 reassociation
+        scale (~1e-6 relative); they are not bit-identical. See "Fail-loud
+        fences" below for how the two paths' SAFETY differs, not just
+        their performance.
 
     Returns
     -------
@@ -585,14 +641,22 @@ def jacobian_fwd(
       be a measured SILENT NO-OP (bit-identical value AND tangent at
       ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps) before the fence was
       added. Do not read this as "n_warmup is safe elsewhere": on the
-      non-uniform lane where it IS implemented, ``n_warmup`` measurably
-      truncates the reverse-mode gradient with an error that grows
-      smoothly -- ~6-7% at half the pre-loss-window length, 58% at the
-      loss-window boundary itself, exactly zero once far enough beyond it
-      (issue #626 part 2) -- it is not fenced there (truncated-BPTT is a
-      legitimate, if approximate, construction), and any future
-      non-uniform extension of this function must account for that bias,
-      not treat ``n_warmup`` as free memory relief.
+      non-uniform lane where it IS implemented, ``n_warmup`` truncation
+      error DEPENDS ON DISTANCE FROM THE SOURCE TO THE DESIGN REGION, not
+      merely on ``n_warmup``'s value -- it is (near-)exact while
+      ``n_warmup`` stays below the wavefront's arrival time at the design
+      region (``K_safe ~= floor(min_distance(source, design_region) /
+      (C0 * dt))``) and grows sharply beyond it, up to ~6-7% at half the
+      pre-loss-window length, 58% at the loss-window boundary itself,
+      exactly zero once far enough beyond it, FOR A NEAR-SOURCE
+      placement specifically (issue #626 part 2 / addendum -- a
+      far-from-source placement measured error <0.04% for every
+      ``n_warmup <= K_safe``, see ``rfx/nonuniform.py``'s ``n_warmup
+      split`` comment for the full measured curves and formula) -- it is
+      not fenced there (truncated-BPTT is a legitimate, if
+      placement-dependent, construction), and any future non-uniform
+      extension of this function must account for ``K_safe``, not treat
+      ``n_warmup`` as uniformly lossy OR uniformly free.
     - **[DOCS ONLY -- inert, not a raise]** ``checkpoint`` /
       ``checkpoint_segments``: measured EXACTLY NEUTRAL under forward mode
       (flops/temp bytes identical across ``checkpoint=False``,
@@ -642,6 +706,20 @@ def jacobian_fwd(
             _jvp_row, in_axes=0, out_axes=(None, 0),
         )(tangent_batch)
     else:
+        # Guard 1 (trace-time, works eager or under an outer jax.jit):
+        # abstractly trace the SAME out_axes=(None, 0) vmap the batched
+        # path actually runs, via jax.eval_shape -- shape-only, zero
+        # FLOPs, zero extra memory (that O(n_t) memory cost is exactly
+        # what this branch exists to avoid). If sim_fn's primal genuinely
+        # depends on the tangent direction, this raises the identical
+        # ValueError a real vmap(..., out_axes=(None, 0)) call would, so
+        # the sequential path inherits the batched path's fail-loud
+        # invariant instead of silently returning one arbitrary row's
+        # primal. See jacobian_fwd's "API TRAP" docstring section.
+        jax.eval_shape(
+            lambda t: jax.vmap(_jvp_row, in_axes=0, out_axes=(None, 0))(t),
+            tangent_batch,
+        )
         values = []
         jac_rows = []
         for i in range(n_t):
@@ -650,6 +728,35 @@ def jacobian_fwd(
             values.append(v)
             jac_rows.append(j)
         value = values[0]
+        # Guard 2 (eager only -- a strictly stronger numeric check on top
+        # of guard 1, skipped under an outer jax.jit where the primal
+        # values are still abstract tracers and cannot be compared as
+        # concrete numbers): every sequentially-computed primal must
+        # agree EXACTLY with value (they are, mathematically, n_t
+        # independent evaluations of the same sim_fn(params)).
+        params_leaves = jax.tree_util.tree_leaves(params)
+        if params_leaves and not isinstance(params_leaves[0], jax.core.Tracer):
+            value_leaves = jax.tree_util.tree_leaves(value)
+            for i, v in enumerate(values[1:], start=1):
+                mismatched = [
+                    idx for idx, (a, b) in enumerate(
+                        zip(value_leaves, jax.tree_util.tree_leaves(v))
+                    )
+                    if not bool(jnp.array_equal(a, b))
+                ]
+                if mismatched:
+                    raise ValueError(
+                        "jacobian_fwd(batch_tangents=False): the primal "
+                        f"value from tangent row {i} differs from tangent "
+                        f"row 0's at output leaf index/indices "
+                        f"{mismatched} -- sim_fn's primal output depends "
+                        "on which tangent direction is being evaluated, "
+                        "violating jax.jvp's primal/tangent independence "
+                        "contract. batch_tangents=True would raise this "
+                        "as a jax.vmap out_axes=(None, 0) error (see "
+                        "jacobian_fwd's docstring, 'API TRAP'); fix "
+                        "sim_fn to be a pure function of params alone."
+                    )
         jacobian = jax.tree_util.tree_map(
             lambda *rows: jnp.stack(rows, axis=0), *jac_rows,
         )

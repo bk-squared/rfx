@@ -2588,7 +2588,8 @@
       "devices",
       "exchange_interval",
       "port_s11_freqs",
-      "rlc_values_override"
+      "rlc_values_override",
+      "_removed_kwargs"
     ],
     "mesh_intelligence_report": [
       "n_steps",

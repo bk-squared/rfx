@@ -6,6 +6,107 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — arc-audit follow-up: flaky benchmark gate, an over-general `n_warmup` claim, an unsafe `field_softmax` default, and asymmetric `jacobian_fwd` safety
+
+An independent adversarial audit of the e4b565c..ce44661 merge arc (10 PRs,
+issues #571/#577/#578/#579/#582/#620/#622/#623/#625/#626/#632) found five
+of our own mistakes after merge. This entry documents the fixes; it is a
+correction of the arc's own errors, not new feature work.
+
+- **Benchmark flakiness (issue #632 follow-up)**:
+  `tests/test_benchmark_jacobian_fwd.py` asserted `intercept_vs_plain_ratio`
+  landed in `[0.5x, 2.0x]` for EVERY column including `wall_s` — confirmed
+  red on main (commit 55fa85b, CI run 31464443445, fast-suite shard 1:
+  `wall_s = 0.474`, just outside the band) and green again on the very
+  next commit with no code change, exactly the machine-dependence #632
+  itself had already diagnosed for this quantity (0.98-1.10 CPU vs
+  1.41-1.87 on an RTX 4090). The assertion now gates only the
+  deterministic compiler-derived columns (`flops`, `temp_bytes`); `wall_s`
+  is still computed and left in the table for a human/CI-log reader, never
+  gated. The batched-vs-sequential wall-time comparison (same file) is the
+  same class of check and gets the same treatment: reported, not asserted.
+  `tests/test_jacobian_fwd.py`'s G3 (jaxpr-structural, backend-independent)
+  remains the authoritative primal-sharing check.
+- **`n_warmup` truncation error is placement-dependent, not universal
+  (issue #626 addendum)**: the shipped curve (near-source design cell,
+  ~3 cells from the source) is the WORST case, not the general case. A
+  far-from-source counter-fixture (design cell 62 cells from the source)
+  measures the AD gradient matching the K=0 FD oracle to 0.008-0.036% for
+  every sampled `n_warmup` at or below the wavefront's arrival time at the
+  design region, only degrading past it — new committed script
+  `scripts/diagnostics/i626_n_warmup_wavefront_locality.py`. Corrected
+  guidance ships in `rfx/nonuniform.py`'s `n_warmup split` comment,
+  `Simulation.forward()`'s `n_warmup` docstring, `rfx.observables.
+  jacobian_fwd`'s fence note, and `rfx.runners.distributed_nu.
+  run_nonuniform_distributed_pec`'s docstring: compute
+  `K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))`;
+  `n_warmup <= K_safe` is (near-)exact. No runtime warning ships —
+  `forward()` does not know which cells are the "design region" (that
+  concept was deliberately removed with `design_mask`, issue #625), so a
+  warning built on a guess would be exactly the kind of unverifiable claim
+  this repo's own discipline forbids; the formula is documentation, not
+  an automated check.
+- **`rfx.observables.field_softmax`'s default `beta=1.0` was unsafe at
+  realistic field magnitudes (issue #619)**: at the old, unscaled
+  `logsumexp(beta*vals)/beta` formulation, a physically tiny field
+  (`|field|**2` ~1e-10 to 1e-22, this repo's own DFT-plane accumulator
+  range) at the default beta made the objective sit at ~100.000002% of
+  the design-independent constant `log(count)/beta` — both the value and
+  gradient measured rounding noise, not physics. `field_softmax` now
+  auto-scales internally, `beta_eff = beta / stop_gradient(max(vals))`,
+  which makes `beta_eff * max(vals) == beta` identically regardless of
+  the field's physical units — the swallow cannot recur at any finite
+  magnitude, at any beta, including the default (now merely LOOSE at
+  low beta, never rounding-noise). `beta` is DIMENSIONLESS after this
+  change. New regression tests:
+  `tests/test_observables_dft_field.py::test_field_softmax_default_beta_is_scale_invariant`
+  (verifies `field_softmax(c*vals) == c*field_softmax(vals)` at the
+  default beta across 30 orders of magnitude) and
+  `::test_field_softmax_default_beta_gradient_not_rounding_noise` (direct
+  FD-vs-AD check at a physically tiny field magnitude). The existing
+  FD-vs-AD gates' `_SOFTMAX_BETA` and `examples/inverse_design/
+  field_observable_shielding.py`'s `BETA` are re-calibrated for the new
+  dimensionless meaning (measured, not guessed).
+- **`jacobian_fwd`'s two tangent-batching paths had asymmetric safety and
+  one false docstring claim**: the docstring stated `batch_tangents=False`
+  runs its sequential `jax.jvp` calls "inside one `jit`" — there is no
+  `jax.jit` anywhere in `rfx/observables.py`; the claim was never true
+  (corrected). More substantively: the batched path (`jax.vmap(...,
+  out_axes=(None, 0))`) raises loudly if `sim_fn`'s primal genuinely
+  depends on the tangent direction (an API-purity invariant); the
+  sequential path had no equivalent check and would have silently
+  returned one arbitrary tangent row's primal. It now carries two guards:
+  (1) a `jax.eval_shape` abstract trace of the same `out_axes=(None, 0)`
+  vmap — zero FLOPs, zero extra memory, works whether or not the caller
+  wraps the call in an outer `jax.jit`; (2) an eager exact pairwise
+  comparison of the actually-computed primal values (skipped only under
+  an enclosing `jax.jit`, where values are not yet concrete). New tests
+  `tests/test_jacobian_fwd.py::test_g8_*` cover both guards, including a
+  deliberately broken `custom_jvp` rule that violates the invariant, a
+  cross-call-impurity case guard 1 structurally cannot see (only guard 2
+  catches it), and confirmation neither guard false-positives on a normal
+  `sim_fn` or breaks under an outer `jax.jit` (the benchmark script's own
+  usage pattern).
+- **Small fixes**: `tests/test_n_warmup.py`'s "three uniform-lane
+  siblings" comment corrected to two (`design_mask` was removed outright,
+  issue #625, one commit before this comment was added — not fenced, so
+  it is not part of this taxonomy). `Simulation.forward()`'s removed-kwarg
+  error used to read `TypeError: _ExecuteMixin.forward() got an
+  unexpected keyword argument 'design_mask'`, leaking the internal mixin
+  class name (the public surface is `Simulation.forward`) with no reason
+  or replacement; `forward()` now accepts `**_removed_kwargs` and raises a
+  `TypeError` naming the removal reason and the one-line migration path
+  instead (`rfx/api/_execute.py::_reject_removed_forward_kwargs`) — still
+  a plain `TypeError`, still matched by `tests/test_design_mask_removed.py`'s
+  existing `pytest.raises(TypeError, match="design_mask")` assertions, plus
+  a new test pinning the improved message. `docs/public/guide/
+  memory-reduction.mdx` gained a "Restricting which cells carry a
+  derivative" section (the `design_mask` migration path previously existed
+  only in this CHANGELOG, not in public docs).
+- `docs/guides/api_symbol_inventory.json` regenerated
+  (`python scripts/check_api_reference.py --write`) for `forward()`'s new
+  `_removed_kwargs` parameter.
+
 ### Removed — `design_mask` deleted from every public surface (issue #625, BREAKING)
 
 - `design_mask` is deleted, not deprecated, from every entry point that
@@ -170,6 +271,13 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   now three configurations / two raises / one docs-only trap, since
   `design_mask` — one of the prior four — was removed outright rather
   than fenced).
+- **Addendum (arc-audit follow-up, below): the curve above is a
+  NEAR-SOURCE worst case, not a universal property of `n_warmup`.** See
+  the "Fixed — arc-audit follow-up" entry near the top of this file for
+  the corrected, distance-dependent statement and the `K_safe` formula —
+  read this entry's measured numbers as "what happens once the wavefront
+  has already reached the design region," not as "what `n_warmup` always
+  does."
 
 ### Changed — `benchmark_jacobian_fwd.py`'s intercept/plain witness text now flags itself as CPU-calibrated (issue #632)
 

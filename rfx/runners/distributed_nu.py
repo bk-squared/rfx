@@ -2045,14 +2045,20 @@ def run_nonuniform_distributed_pec(
         ``stop_gradient``'d so AD builds no tape for that transient.
         Only the trailing ``n_steps - n_warmup`` steps participate in
         reverse-mode autodiff.  Must satisfy ``n_warmup < n_steps``.
-        This is an APPROXIMATION, not merely a memory optimisation: the
-        returned gradient is truncated and grows increasingly biased
-        (magnitude-underestimated) as ``n_warmup`` approaches the loss
-        window -- measured ~6-7% at half the pre-loss-window length, 58%
-        at the loss-window boundary itself, exactly zero once far enough
-        beyond it; see the ``n_warmup split`` comment in
-        :func:`rfx.nonuniform.run_nonuniform` for the measured error curve
-        (issue #626 part 2).
+        Truncation error DEPENDS ON DISTANCE FROM THE SOURCE TO THE
+        DESIGN REGION, not merely on ``n_warmup``'s value: it is
+        (near-)exact while ``n_warmup`` stays below the wavefront's
+        arrival time at the design region (``K_safe ~= floor(
+        min_distance(source, design_region) / (C0 * dt))``) and grows
+        increasingly biased (magnitude-underestimated) beyond it -- for a
+        NEAR-SOURCE placement specifically, measured ~6-7% at half the
+        pre-loss-window length, 58% at the loss-window boundary itself,
+        exactly zero once far enough beyond it; a far-from-source
+        placement measured <0.04% error for every ``n_warmup <= K_safe``.
+        See the ``n_warmup split`` comment in
+        :func:`rfx.nonuniform.run_nonuniform` for both measured curves,
+        the ``K_safe`` formula, and the source scripts (issue #626 part 2
+        / addendum).
     emit_time_series : bool, optional
         Phase 2F.  When ``True`` (default), the runner accumulates per-
         step probe samples and returns ``time_series`` as a

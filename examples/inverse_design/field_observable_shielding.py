@@ -80,20 +80,31 @@ LEAK_NEAR_X_M = 0.080
 LEAK_FAR_X_M = 0.130
 
 EPS_MIN, EPS_MAX = 1.0, 6.0
-# field_softmax sharpness: rfx's TFSF/DFT-accumulator normalization puts
-# raw |field|^2 at this geometry around 1e-22 (the same tiny-absolute-unit
-# convention documented for NTFF power elsewhere in this repo, e.g.
-# maximize_directivity's docstring notes ~1e-27 raw values) -- BETA must
-# scale to THAT, not to an O(1) assumption. Measured empirically
-# (scripts/tune sweep in the #579 PR body): loss/grad converge (the
-# log(count)/beta constant term becomes negligible) by beta ~ 1e24-1e25;
-# 2e24 sits inside that converged plateau with margin.
-BETA = 2.0e24
+# field_softmax sharpness: BETA is now DIMENSIONLESS (rfx.observables.
+# field_softmax auto-scales internally as beta_eff = beta /
+# stop_gradient(max(vals)), so beta_eff * max(vals) == BETA identically
+# regardless of the field's physical units -- see field_softmax's own
+# docstring). This example's raw |field|^2 sits around 1e-22 at this
+# geometry (the same tiny-absolute-unit convention documented for NTFF
+# power elsewhere in this repo, e.g. maximize_directivity's docstring
+# notes ~1e-27 raw values), which is exactly the magnitude the OLD
+# unscaled beta had to be hand-tuned against (previously BETA=2e24, so
+# that beta*max(vals) cleared the log(count)/beta noise floor). With
+# auto-scaling that hand-tuning is no longer needed: measured (this
+# script's fixture) val0/grad_max stay finite and well-behaved across
+# BETA in [1, 50], tightening from val0=1.42e-21 at BETA=1 toward the
+# true max as BETA grows (val0=2.03e-22 at BETA=50); BETA=20 sits
+# comfortably past this fixture's log(count) noise floor with margin
+# without over-sharpening the gradient.
+BETA = 20.0
 N_STEPS = 500
 N_ITERS = 12
-# Gradient descent step: measured |grad|_max ~ 1e-23 at this beta/geometry
-# (same tiny-unit consequence as BETA above) -- LR is sized so a full step
-# moves the most-sensitive layer's eps_r by a fraction of an eps_r unit.
+# Gradient descent step: measured |grad|_max ~ 1.0e-23 (BETA=20, this
+# fixture) -- essentially unchanged across BETA in [1, 50] (a
+# softmax-weighted average stays near the individual field cells' own
+# ~1e-22 magnitude regardless of temperature), so the pre-auto-scale LR
+# still applies unmodified. LR is sized so a full step moves the
+# most-sensitive layer's eps_r by a fraction of an eps_r unit.
 LR = 1.0e22
 
 

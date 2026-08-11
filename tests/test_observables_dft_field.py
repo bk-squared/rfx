@@ -70,26 +70,33 @@ _SLAB_HI_M = (18 * _DX, _NY * _DX, _NZ * _DX)
 _PIXEL_POS_M = (14 * _DX, 10 * _DX, 10 * _DX)  # geometry-leg single design pixel
 _N_STEPS = 160
 _FD_H = 0.02
-# field_softmax needs beta scale-matched to the field magnitude (see
-# rfx.observables.field_softmax's docstring warning) -- this sim's
-# max|field|^2 measures ~5e-10 to 5.4e-10 on both legs, with
+# field_softmax is now auto-scaled (rfx.observables.field_softmax computes
+# beta_eff = beta / stop_gradient(max(vals)) internally), so beta below is
+# DIMENSIONLESS -- it no longer needs hand-matching to this sim's raw
+# max|field|^2 (~5e-10 to 5.4e-10 on both legs). The original footgun this
+# fixture caught (#619): at the OLD unscaled beta=1.0, with
 # count = n_freqs*n1*n2 = 1*31*31 = 961 elements on the single registered
-# plane, so log(count)/beta ~ 6.87/beta is the CONSTANT (design-variable-
-# independent) floor logsumexp(beta*vals)/beta never drops below. At
-# beta=1.0 that constant totally dominates: the objective sits at
-# ~100.000002% of log(961), both AD and FD differentiate rounding noise in
-# that constant rather than physics, and the two coincidentally agreed at
-# h=0.02 (< 5% rel_err) while DISAGREEING at h=0.01 (18.9% rel_err, same
-# AD value) -- proof the original green was luck, not a real measurement.
-# Measured sweep (geometry leg, h=0.02, same sim): beta=1e9 -> 0.257%,
-# beta=1e10 -> 0.177%, beta=1e11 -> 0.112% rel_err, monotonically
-# tightening as beta pushes past the log(count)/beta regime toward the
-# true max (beta*max(vals) ~ 1e11*5e-10 = 50, comfortably >> log(961)~6.87
-# and comfortably below the ~3.4e38 float32 overflow ceiling the
-# docstring warns about). beta=1e11 is used below, and re-verified across
-# THREE h values (not one) so a future coincidental-rounding regression
-# cannot slip back in unnoticed.
-_SOFTMAX_BETA = 1e11
+# plane, log(count)/beta ~ 6.87 totally dominated the objective (it sat at
+# ~100.000002% of log(961)) -- both AD and FD differentiated rounding
+# noise in that constant rather than physics, and the two coincidentally
+# agreed at h=0.02 (< 5% rel_err) while DISAGREEING at h=0.01 (18.9%
+# rel_err, same AD value) -- proof the original green was luck, not a
+# real measurement. Post-auto-scale, beta_eff*max(vals) == beta ALWAYS by
+# construction, so this failure mode cannot recur at any beta -- but
+# stop_gradient on the normalizer means FD (which re-evaluates the WHOLE
+# renormalization at each perturbed point) and AD (which correctly omits
+# that renormalization's own derivative, by design) are not evaluating
+# quite the same thing, and disagree by a few percent at low-to-moderate
+# beta_eff. Re-measured sweep (geometry leg, same sim, three h values):
+# beta=10 -> up to 34.0% rel_err, beta=30 -> up to 7.8%, beta=50 -> up to
+# 3.5%, beta=100 -> up to 1.2%, beta=200 -> up to 0.7% -- monotonically
+# tightening as beta grows (the stop_gradient-omitted term's relative
+# contribution shrinks as the softmax concentrates on fewer terms near the
+# true max), comfortably below the existing 5% gate at beta=200 with
+# similar headroom to the pre-auto-scale calibration. beta=200 is used
+# below, re-verified across THREE h values (not one) so a future
+# coincidental-rounding regression cannot slip back in unnoticed.
+_SOFTMAX_BETA = 200.0
 _SOFTMAX_FD_H_VALUES = (0.01, 0.02, 0.04)
 # A single-Yee-cell material perturbation (the geometry/topology leg) has a
 # proportionally tiny effect on a bulk plane-energy sum -- real,
@@ -270,6 +277,95 @@ def test_field_softmax_geometry_leg_ad_matches_fd():
         g_fd = _central_fd_f64(obj, rho0, h)
         _assert_ad_matches_fd(
             g_ad, g_fd, label=f"field_softmax geometry (1-pixel) leg (h={h})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# (1b) Issue #619 regression: the DEFAULT beta must be safe at ANY field
+# magnitude, not merely at values a caller happened to hand-tune against.
+# Synthetic fixtures (no FDTD -- fast), same _fake_result pattern as (3).
+# ---------------------------------------------------------------------------
+
+def test_field_softmax_default_beta_is_scale_invariant():
+    """The pre-fix implementation computed logsumexp(beta*vals)/beta
+    directly against raw vals, so at a physically tiny field magnitude and
+    the default beta=1.0, the design-independent constant log(count)/beta
+    dominated: the output collapsed toward THAT CONSTANT regardless of
+    the field's actual scale (measured, #619 -- see _SOFTMAX_BETA's
+    comment above). field_softmax now auto-scales internally
+    (beta_eff = beta / stop_gradient(max(vals))), which makes it exactly
+    homogeneous of degree 1 in vals: rescaling every field value by a
+    positive constant c rescales the output by the SAME c, at ANY beta
+    including the default -- a clean, exact invariant the pre-fix
+    implementation violated at small c. Verified at field-magnitude
+    scales spanning rfx's own documented realistic DFT-accumulator range
+    (vals ~1e-22 to ~1e-8, per field_softmax's and this file's docstrings)
+    plus an O(1) and a large point for symmetry.
+    """
+    rng = np.random.default_rng(0)
+    base_field = jnp.asarray(
+        rng.uniform(0.5, 1.5, size=(3, 3, 2)), dtype=jnp.float32
+    ).astype(jnp.complex64)
+    softmax_default = field_softmax("p")  # beta left at its default (1.0)
+
+    def value_at_vals_scale(vals_scale: float) -> float:
+        # vals = |field|**2, so scaling vals by `vals_scale` means scaling
+        # the field itself by sqrt(vals_scale).
+        field = base_field * jnp.asarray(vals_scale, dtype=jnp.float32) ** 0.5
+        result = _fake_result(p=field)
+        return float(softmax_default(result))
+
+    v_ref = value_at_vals_scale(1.0)
+    assert v_ref > 0.0
+
+    for vals_scale in (1e-22, 1e-10, 1e2, 1e8):
+        v = value_at_vals_scale(vals_scale)
+        expected = v_ref * vals_scale
+        assert np.isfinite(v) and v > 0.0, (
+            f"field_softmax(default beta) not finite/positive at vals_scale="
+            f"{vals_scale:.0e}: {v}"
+        )
+        rel = abs(v - expected) / expected
+        assert rel < 1e-3, (
+            f"field_softmax(default beta) is not scale-invariant at "
+            f"vals_scale={vals_scale:.0e}: got {v:.6e}, expected "
+            f"{expected:.6e} (ratio={v / expected:.6f}). Pre-fix, this "
+            "ratio collapsed toward a magnitude-independent constant "
+            "instead of tracking vals_scale -- the exact #619 footgun."
+        )
+
+
+def test_field_softmax_default_beta_gradient_not_rounding_noise():
+    """Direct FD-vs-AD check at the DEFAULT beta and a physically tiny
+    field magnitude (vals ~1e-20, inside rfx's own documented realistic
+    DFT-accumulator range) -- the exact operating point at which the
+    pre-fix implementation's gradient measured rounding noise in
+    log(count)/beta rather than physics (#619)."""
+    rng = np.random.default_rng(1)
+    base = jnp.asarray(rng.uniform(0.5, 1.5, size=(3, 3)), dtype=jnp.float32)
+    field_scale = 1e-10  # |field|**2 ~ 1e-20, matching the realistic range
+    softmax_default = field_softmax("p")
+
+    def obj(alpha):
+        arr = base.at[1, 1].set(alpha) * field_scale
+        result = _fake_result(p=arr.astype(jnp.complex64))
+        return softmax_default(result)
+
+    alpha0 = 1.0
+    g_ad = float(jax.grad(obj)(jnp.asarray(alpha0, dtype=jnp.float32)))
+    assert np.isfinite(g_ad) and g_ad != 0.0, (
+        f"gradient collapsed at tiny field magnitude: {g_ad} -- the exact "
+        "#619 rounding-noise failure mode."
+    )
+    for h in (0.01, 0.02, 0.04):
+        with enable_x64():
+            fp = obj(jnp.asarray(alpha0 + h, dtype=jnp.float32))
+            fm = obj(jnp.asarray(alpha0 - h, dtype=jnp.float32))
+            g_fd = float((fp - fm) / (2.0 * h))
+        rel = abs(g_ad - g_fd) / max(abs(g_fd), 1e-300)
+        assert rel < 0.05, (
+            f"AD vs FD mismatch at tiny field magnitude (h={h}): "
+            f"g_ad={g_ad:.6e} g_fd={g_fd:.6e} rel_err={rel * 100:.2f}%"
         )
 
 

@@ -49,6 +49,52 @@ from rfx.api._spec import (
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Arc-audit follow-up item 5(b): a removed public kwarg (currently just
+# `design_mask`, issue #625) used to surface as the bare Python default --
+# `TypeError: _ExecuteMixin.forward() got an unexpected keyword argument
+# 'design_mask'` -- which leaks this mixin's internal class name (the
+# public surface is `Simulation.forward`, never `_ExecuteMixin.forward`)
+# and gives no reason or replacement. `forward()` now accepts
+# `**_removed_kwargs` and calls this helper so a removed kwarg gets a
+# `TypeError` naming the actual reason and the one-line migration path
+# instead. Deliberately still a `TypeError` (not some other exception
+# type) -- `tests/test_design_mask_removed.py` pins "the kwarg is
+# rejected" via `pytest.raises(TypeError, match="design_mask")`, and this
+# only changes the MESSAGE, not the exception class or that contract.
+# ---------------------------------------------------------------------------
+_REMOVED_FORWARD_KWARGS: dict = {
+    "design_mask": (
+        "removed entirely in issue #625, not deprecated: it was measured "
+        "to save ZERO reverse-mode AD memory (partial-eval residuals have "
+        "whole-array granularity) while corrupting the gradient in every "
+        "configuration tested. For memory relief use checkpoint_every / "
+        "checkpoint_segments; to restrict which cells carry a derivative, "
+        "wrap eps_override yourself: eps = jnp.where(region, eps, "
+        "jax.lax.stop_gradient(eps)) -- see CHANGELOG.md 'Removed — "
+        "design_mask' and docs/public/guide/memory-reduction.mdx."
+    ),
+}
+
+
+def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
+    """Raise a TypeError for an unrecognised forward() kwarg, naming the
+    reason and replacement for a KNOWN removed one (see
+    ``_REMOVED_FORWARD_KWARGS``) instead of leaking ``_ExecuteMixin`` (the
+    internal mixin, not the public ``Simulation.forward`` surface)."""
+    parts = []
+    for name in removed_kwargs:
+        reason = _REMOVED_FORWARD_KWARGS.get(name)
+        if reason is not None:
+            parts.append(f"'{name}' was {reason}")
+        else:
+            parts.append(f"'{name}' is not a recognised forward() keyword argument")
+    raise TypeError(
+        "Simulation.forward() got unexpected keyword argument(s) "
+        f"{sorted(removed_kwargs)}: " + " | ".join(parts)
+    )
+
+
 class _DispatchPlan(NamedTuple):
     """Resolved execution lane for a single ``run()`` / ``forward()`` call.
 
@@ -2362,6 +2408,7 @@ class _ExecuteMixin:
         exchange_interval: int = 1,
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
+        **_removed_kwargs,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -2424,32 +2471,56 @@ class _ExecuteMixin:
             initial transient (issue #40).  Only the trailing
             ``n_steps - n_warmup`` steps participate in autodiff.  Must
             satisfy ``n_warmup < n_steps``.  Default ``0`` (all steps
-            differentiated).  This is an APPROXIMATION, not merely a memory
-            optimisation: severing the carry at the warmup boundary also
-            severs every gradient path from a design variable's influence
-            during steps ``< n_warmup`` back into the loss, so the returned
-            gradient is a systematically truncated (magnitude-underestimated)
-            version of the true one whenever the design variable's
-            derivative-relevant support extends into the warmup window.
-            Measured on the non-uniform lane (issue #626 part 2, two
-            independent design-cell placements): error stays near this
-            repo's AD-vs-FD noise floor (≲1.5%) while ``n_warmup`` is up to
-            roughly a quarter of the pre-loss-window step count, then grows
-            smoothly and monotonically — ~6-7% at half the pre-loss-window
-            length, >20% by three-quarters, 58% AT the loss-window boundary
-            itself (``n_warmup`` equal to the pre-loss-window length), and
-            EXACTLY zero once ``n_warmup`` extends far enough into the loss
-            window that no differentiable sample remains (measured: exactly
-            0.0, not merely small, in one fixture once ``n_warmup`` covers
-            ~19/20 of the loss window). Forward (non-AD) output is exactly
-            ``n_warmup``-invariant (bit-identical);
-            only the gradient is affected. Currently only supported on the
-            non-uniform / distributed-non-uniform forward paths; on the
-            uniform single-device lane it raises ``NotImplementedError``
-            (issue #626 — previously silently accepted and ignored, worse
-            than an error).  Use *checkpoint_segments* for uniform-lane
-            reverse-mode memory relief instead — it is exact, at the cost of
-            recompute rather than gradient accuracy.
+            differentiated).
+
+            The truncation error DEPENDS ON DISTANCE FROM THE SOURCE TO THE
+            DESIGN REGION — it is not simply "an approximation" that always
+            costs accuracy (an earlier version of this docstring implied the
+            error applies unconditionally; that was an overgeneralization
+            from a single, worst-case fixture — see below). Severing the
+            carry severs every gradient path through steps ``< n_warmup``,
+            but only steps during which the WAVEFRONT HAS ALREADY REACHED
+            the design region carry any such path to sever; before the
+            wavefront arrives the field there is ~0, so severing those
+            steps discards ~nothing and the gradient is (near-)exact.
+            Compute a safe bound yourself::
+
+                K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))
+
+            (grid steps for the wavefront to reach the closest design cell,
+            ``C0`` = vacuum lightspeed, ``dt`` = ``sim._build_grid().dt`` /
+            ``sim._build_nonuniform_grid().dt`` — a conservative floor valid
+            for any slower propagation). ``n_warmup <= K_safe`` is
+            (near-)exact; well beyond it, error grows and can reach the
+            full gradient magnitude by the time ``n_warmup`` reaches the
+            loss window. Two measured regimes (issue #626 part 2 /
+            addendum, both vs an independent central-FD oracle): a
+            NEAR-SOURCE placement (design cell ~3 cells from the source, so
+            ``K_safe ~ 0``) shows error growing smoothly from a ~1.5% noise
+            floor up to 58% at the loss-window boundary itself, and EXACTLY
+            zero (gradient fully vanished) once ``n_warmup`` extends far
+            enough into the loss window (``tests/test_n_warmup.py::
+            test_warmup_truncation_error_grows_with_k``); a
+            FAR-FROM-SOURCE placement (design cell 62 cells from the
+            source, ``K_safe=108`` measured from the grid's own ``dt``)
+            shows AD matching the ``n_warmup=0`` FD oracle to
+            0.008-0.036% for every sampled ``n_warmup`` at or below
+            ``K_safe``, only starting to degrade past it (0.63% at
+            ``K_safe`` + 12, growing to 75% by ``K_safe`` + 92) —
+            ``scripts/diagnostics/i626_n_warmup_wavefront_locality.py``.
+            The near-source curve above is the WORST case, not the general
+            case: use ``K_safe`` to decide whether YOUR source/design
+            placement is in the exact or the truncated regime before
+            assuming ``n_warmup`` costs accuracy. Forward (non-AD) output
+            is exactly ``n_warmup``-invariant (bit-identical) in every
+            placement measured; only the gradient is affected. Currently
+            only supported on the non-uniform / distributed-non-uniform
+            forward paths; on the uniform single-device lane it raises
+            ``NotImplementedError`` (issue #626 — previously silently
+            accepted and ignored, worse than an error).  Use
+            *checkpoint_segments* for uniform-lane reverse-mode memory
+            relief instead — it is exact regardless of placement, at the
+            cost of recompute rather than gradient accuracy.
         skip_preflight : bool
             Skip the consolidated :meth:`preflight` validation suite that
             normally runs before the forward simulation (default False).
@@ -2513,6 +2584,9 @@ class _ExecuteMixin:
         ForwardResult
             Minimal differentiable observables (time series and optional NTFF).
         """
+        if _removed_kwargs:
+            _reject_removed_forward_kwargs(_removed_kwargs)
+
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
         # / pending GPU evidence.  The flag lives at module scope so we

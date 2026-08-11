@@ -261,6 +261,32 @@ uniform (single-device) mesh, `forward(n_warmup=...)` itself raises
 The plan applies a conservative safety multiplier before setting the fit
 flags and records it in `plan.fit_safety_factor`.
 
+### Restricting which cells carry a derivative
+
+`forward(design_mask=...)` was removed entirely (issue #625) rather than
+deprecated: it was measured to save **zero** reverse-mode AD memory (JAX's
+partial-eval residuals have whole-array granularity, so confining a design
+variable to a fraction of the grid does not shrink the tape) while
+corrupting the gradient in every configuration tested. It is not a memory
+option — do not look for a direct replacement kwarg.
+
+If you actually need to restrict which cells carry a derivative (not for
+memory — for design-region hygiene, e.g. keeping a gradient from leaking
+into a PML/absorber region), construct the restriction yourself at the
+`eps_override` call site, one line:
+
+```python
+eps = jnp.where(region_mask, eps, jax.lax.stop_gradient(eps))
+result = sim.forward(eps_override=eps, ...)
+```
+
+`region_mask` is a boolean array (or broadcastable to `eps`'s shape) that is
+`True` inside the design region. This is forward-identity (`stop_gradient`
+does not change the value, only the gradient), and the resulting per-cell
+gradient is exactly zero outside `region_mask` and exactly equal to the
+unmasked gradient inside it. For actual memory reduction, use
+`checkpoint_every` / `checkpoint_segments` above instead.
+
 For a uniform run, gate execution on the fit flags before applying the selected
 checkpoint value:
 

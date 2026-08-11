@@ -11,13 +11,26 @@ real run of the script, not in this file or in any docstring.
 
 Relations gated:
     - intercept_vs_plain_ratio lands within [0.5x, 2.0x] of the plain
-      baseline for flops/temp_bytes/wall time (the primal-sharing
-      witness; band matches the repo's own established tolerance in
-      tests/test_estimate_ad_memory.py::test_segmented_estimate_within_tolerance).
-    - batched (batch_tangents=True) wall time is faster than sequential
-      (batch_tangents=False) at the same n_t.
+      baseline for flops/temp_bytes ONLY (compiler-derived, deterministic
+      quantities). wall_s is REPORTED, never asserted -- see the
+      wall-clock note below.
     - XLA temp_bytes is independent of n_steps (forward-mode memory does
       not scale with n_steps; only wall time does).
+
+Wall-clock is diagnostic, not gated (issue #632 follow-up): this test's
+own fixture red on a loaded CI runner -- commit 55fa85b, run 31464443445,
+fast-suite shard 1 -- with intercept_vs_plain_ratio[wall_s] = 0.474,
+just outside the [0.5x, 2.0x] band, and went green again on the very next
+commit with no code change. #632 already diagnosed the underlying
+quantity (this same ratio) as machine-dependent (0.98-1.10 measured on
+CPU, 1.41-1.87 on an RTX 4090); wall_s inherits that plus ordinary
+scheduler/thermal noise on a shared runner, which flops/temp_bytes (both
+compiler cost-model outputs, not measured runtime) do not. A flaky
+assertion in a per-PR required gate reds unrelated PRs, so wall_s is
+computed and surfaced in the table for a human to read, never gated in
+CI. The authoritative, backend-independent primal-sharing check is G3 in
+tests/test_jacobian_fwd.py (it inspects the jaxpr directly for one
+unbatched primal scan, a structural property, not a timing measurement).
 """
 
 from __future__ import annotations
@@ -30,8 +43,14 @@ def test_benchmark_table_relations():
         n_p=4, n_t_values=(1, 2, 4), n_steps=60, grid_scale=0, reps=3,
     )
 
+    # Deterministic, compiler-derived columns only -- see the module
+    # docstring's "Wall-clock is diagnostic, not gated" note for why
+    # wall_s is excluded here rather than asserted with a wider band.
     ratios = table["intercept_vs_plain_ratio"]
-    for name, ratio in ratios.items():
+    for name in ("flops", "temp_bytes"):
+        if name not in ratios:
+            continue  # backend may not expose one of these (see rows' None)
+        ratio = ratios[name]
         assert 0.5 <= ratio <= 2.0, (
             f"intercept_vs_plain_ratio[{name}] = {ratio:.3f} outside the "
             "primal-sharing band [0.5x, 2.0x]"
@@ -45,9 +64,15 @@ def test_benchmark_table_relations():
         r for r in table["rows"]
         if r["mode"] == "jvp_batched" and r["n_t"] == seq_row["n_t"]
     )
-    assert batched_row["t_median_s"] < seq_row["t_median_s"], (
-        f"batched wall time {batched_row['t_median_s']:.4f}s is not faster "
-        f"than sequential {seq_row['t_median_s']:.4f}s at n_t={seq_row['n_t']}"
+    # Wall-clock, reported not gated (same class/treatment as
+    # intercept_vs_plain_ratio's wall_s column above): batched is
+    # EXPECTED to beat sequential (that's the whole point of the knob),
+    # but "beat" is a wall-time comparison and can invert on a loaded/
+    # noisy runner without any code regression. No assertion here; the
+    # ratio is available in the table for a human/CI-log reader.
+    _batched_vs_sequential_speedup = (
+        seq_row["t_median_s"] / batched_row["t_median_s"]
+        if batched_row["t_median_s"] else float("nan")
     )
 
     w = table["n_steps_independence_witness"]

@@ -16,11 +16,22 @@ Issue #626 additions:
      accepted and dropped it — measured bit-identical gradient at
      n_warmup=0 vs n_warmup=60. It now raises NotImplementedError instead
      (test_uniform_forward_rejects_n_warmup).
-  5. n_warmup IS implemented on this file's non-uniform lane, but it is an
-     APPROXIMATION, not an exact truncation: severing the scan carry at the
-     warmup boundary also severs the gradient path from a design variable's
-     influence during the warmup window. test_warmup_truncation_error_grows_with_k
-     pins the measured error curve against an independent central-FD oracle
+  5. n_warmup IS implemented on this file's non-uniform lane. Severing the
+     scan carry at the warmup boundary severs the gradient path from a
+     design variable's influence during the warmup window -- but ONLY for
+     steps after the wavefront has reached the design region; before that
+     the field there is ~0, so severing those steps' carry costs nothing
+     and the truncation is (near-)exact. This file's fixture places the
+     design cell only ~3 cells from the source (the worst case: the
+     wavefront is present from step 0), so
+     test_warmup_truncation_error_grows_with_k pins that worst-case curve
+     specifically, NOT a universal property of n_warmup -- see
+     `scripts/diagnostics/i626_n_warmup_wavefront_locality.py` for a
+     far-from-source counter-fixture (K_safe formula + near-exact
+     gradient below it) and `rfx/nonuniform.py`'s `n_warmup split`
+     comment for both curves side by side (issue #626 part 2 /
+     addendum). test_warmup_truncation_error_grows_with_k itself pins the
+     measured error curve against an independent central-FD oracle
      (held-fixed loss window, K varied independently -- see the docstring
      there for why that isolation matters).
 """
@@ -109,11 +120,14 @@ def test_uniform_forward_rejects_n_warmup():
     forwarded it to the NU lanes; `_forward_from_materials` (the uniform
     lane) has no such parameter, so a nonzero n_warmup was silently
     accepted and ignored (measured bit-identical gradient at n_warmup=0
-    vs n_warmup=60). It must now fail loud instead, matching its three
-    uniform-lane siblings (emit_time_series=False, checkpoint_every,
-    design_mask). This is the regression witness: a future silent re-drop
-    would make this raise disappear (n_warmup=0 still runs fine below), not
-    merely "both run" -- the required difference is raise vs. no-raise."""
+    vs n_warmup=60). It must now fail loud instead, matching its two
+    remaining uniform-lane siblings (emit_time_series=False,
+    checkpoint_every) -- design_mask, the third historical sibling, was
+    removed from every public surface entirely (issue #625) rather than
+    fenced, so it is no longer part of this taxonomy. This is the
+    regression witness: a future silent re-drop would make this raise
+    disappear (n_warmup=0 still runs fine below), not merely "both run"
+    -- the required difference is raise vs. no-raise."""
     sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.005), dx=0.5e-3,
                       cpml_layers=4)
     sim.add_source((0.005, 0.005, 0.001), "ez")
@@ -132,6 +146,16 @@ def test_warmup_truncation_error_grows_with_k():
     gradient on the non-uniform lane where it IS implemented, against an
     INDEPENDENT central-FD oracle -- not merely "finite and same sign"
     (that was test_warmup_grad_finite_and_same_sign's weaker guarantee).
+
+    NOTE (issue #626 addendum): this fixture's design cell sits only ~3
+    cells from the source, which is the WORST case for n_warmup (the
+    wavefront is already present at every step, so every severed warmup
+    step carries real gradient signal). This test intentionally keeps
+    pinning that worst-case curve as a regression lock -- it is not a
+    claim that n_warmup always costs this much accuracy. See
+    `scripts/diagnostics/i626_n_warmup_wavefront_locality.py` for the
+    complementary far-from-source case (near-exact below K_safe) and
+    `rfx/nonuniform.py`'s `n_warmup split` comment for the K_safe formula.
 
     Design: the LOSS WINDOW is held FIXED at time_series[N_FIXED:] for
     every K in the sweep, and K (n_warmup) is varied independently. This

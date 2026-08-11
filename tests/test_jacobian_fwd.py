@@ -684,3 +684,126 @@ def test_g7_falsifier_severed_tape_reads_exactly_zero():
     # the transcript for a PR body excerpt; the assertions above are the
     # real gate.
     print(transcript)
+
+
+# ---------------------------------------------------------------------------
+# G8: batch_tangents=False's own out_axes=(None, 0) guard (arc-audit
+# follow-up item 4b). The batched path inherits a fail-loud check for free
+# from jax.vmap(..., out_axes=(None, 0)) -- see the API TRAP note in
+# jacobian_fwd's docstring. The sequential path has no vmap of its own, so
+# without an explicit guard a sim_fn that violates the "primal independent
+# of tangent" invariant would silently return one arbitrary tangent row's
+# primal instead of raising. `leaky`/`leaky_jvp` below is a deliberately
+# broken custom_jvp rule -- jax.jvp does not itself enforce primal purity,
+# so this is the only way to construct a genuine violation: the primal
+# output is defined to depend on the tangent argument.
+# ---------------------------------------------------------------------------
+
+@jax.custom_jvp
+def _leaky(x):
+    return x
+
+
+@_leaky.defjvp
+def _leaky_jvp(primals, tangents):
+    (x,), (t,) = primals, tangents
+    return x + jnp.sum(t), t  # BUG (deliberate): primal leaks the tangent
+
+
+def _leaky_sim_fn(params):
+    return _leaky(params)
+
+
+def _pure_sim_fn(params):
+    return jnp.sum(params ** 2)
+
+
+def test_g8_sequential_guard_raises_on_tangent_dependent_primal():
+    """The sequential path must raise -- the SAME class of error the
+    batched path raises for free -- not silently return a wrong primal.
+    Guard 1 (jax.eval_shape) catches THIS construction: `_leaky`'s primal/
+    tangent coupling is visible to vmap's batching interpreter even in a
+    single abstract trace, so it fires before the real sequential loop
+    (and before guard 2, which never gets a chance to run) -- the
+    "out_axes" message below IS guard 1 firing, not a fallback to the
+    default Python TypeError. See
+    test_g8_sequential_guard_catches_cross_call_impurity_guard1_cannot_see
+    below for the complementary case guard 1 structurally cannot detect."""
+    params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
+    tangents = jnp.eye(3, dtype=jnp.float32)  # explicit escape hatch: identity
+    # requires scalar leaves, and params here is one flat (3,) leaf.
+
+    with pytest.raises(ValueError, match="out_axes"):
+        jacobian_fwd(_leaky_sim_fn, params, tangents=tangents, batch_tangents=False)
+
+    # Confirm the batched path independently raises too (both paths agree
+    # this sim_fn is unsafe -- neither one is the "safe" escape hatch).
+    with pytest.raises(ValueError, match="out_axes"):
+        jacobian_fwd(_leaky_sim_fn, params, tangents=tangents, batch_tangents=True)
+
+
+def test_g8_sequential_guard_catches_cross_call_impurity_guard1_cannot_see():
+    """Guard 1 (jax.eval_shape) traces sim_fn's body exactly ONCE (vmap
+    batches rather than looping), so a side effect that only manifests
+    ACROSS repeated independent Python-level calls -- not visible as a
+    structural batching dependency inside one trace -- is invisible to
+    it. The real sequential loop (`batch_tangents=False`, no jit) DOES
+    call sim_fn n_t separate times in eager Python, so it genuinely can
+    observe such a thing. This is guard 2's reason to exist: an exact
+    pairwise comparison of the n_t actually-computed primal values."""
+    call_count = {"n": 0}
+
+    def side_effecting_sim_fn(params):
+        call_count["n"] += 1
+        # A real (if contrived) impurity: the primal depends on how many
+        # times this Python function has been called so far, which a
+        # single abstract trace cannot see, but n_t independent eager
+        # jax.jvp calls can.
+        return jnp.sum(params ** 2) + float(call_count["n"])
+
+    params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
+    tangents = jnp.eye(3, dtype=jnp.float32)
+
+    with pytest.raises(ValueError, match="depends on which tangent"):
+        jacobian_fwd(side_effecting_sim_fn, params, tangents=tangents, batch_tangents=False)
+
+
+def test_g8_sequential_guard_silent_for_well_behaved_sim_fn():
+    """No false positives: a normal, pure sim_fn must not trip the guard
+    on either path, and both paths must still agree on the actual value."""
+    params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
+    tangents = jnp.eye(3, dtype=jnp.float32)
+
+    value_seq, jac_seq = jacobian_fwd(_pure_sim_fn, params, tangents=tangents, batch_tangents=False)
+    value_batch, jac_batch = jacobian_fwd(_pure_sim_fn, params, tangents=tangents, batch_tangents=True)
+
+    assert value_seq == value_batch == jnp.sum(params ** 2)
+    np.testing.assert_allclose(np.asarray(jac_seq), np.asarray(jac_batch))
+
+
+def test_g8_sequential_guard_trace_time_check_survives_outer_jit():
+    """Guard 1 (jax.eval_shape) must fire even when jacobian_fwd itself is
+    called from inside an outer jax.jit -- exactly how
+    scripts/benchmark_jacobian_fwd.py and this file's own compiled-jaxpr
+    measurements (G3) invoke the sequential path. Guard 2 (the eager
+    numeric cross-check) cannot run under trace -- params are tracers --
+    so this specifically isolates guard 1."""
+    params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
+    tangents = jnp.eye(3, dtype=jnp.float32)
+
+    @jax.jit
+    def outer(p):
+        value, jacobian = jacobian_fwd(_leaky_sim_fn, p, tangents=tangents, batch_tangents=False)
+        return value
+
+    with pytest.raises(ValueError, match="out_axes"):
+        outer(params)
+
+    # And a well-behaved sim_fn must still compile and run fine under jit.
+    @jax.jit
+    def outer_ok(p):
+        value, jacobian = jacobian_fwd(_pure_sim_fn, p, tangents=tangents, batch_tangents=False)
+        return value, jacobian
+
+    value, jacobian = outer_ok(params)
+    assert float(value) == float(jnp.sum(params ** 2))

@@ -65,6 +65,31 @@ def test_forward_rejects_design_mask_kwarg():
         sim.forward(n_steps=2, design_mask=mask, skip_preflight=True)
 
 
+def test_forward_rejects_design_mask_kwarg_with_a_readable_message():
+    """Arc-audit follow-up item 5(b): the bare Python default for an
+    unrecognised keyword on forward() reads `TypeError:
+    _ExecuteMixin.forward() got an unexpected keyword argument
+    'design_mask'` -- it leaks `_ExecuteMixin` (an internal mixin;
+    `forward` is a public `Simulation` method) and gives no reason or
+    replacement. forward()'s `**_removed_kwargs` shim
+    (rfx/api/_execute.py's `_reject_removed_forward_kwargs`) replaces
+    that with a message naming the actual reason and the one-line
+    migration path, and does not mention `_ExecuteMixin` at all."""
+    sim = _build_uniform_sim()
+    mask = np.zeros(sim._build_grid().shape, dtype=bool)
+    with pytest.raises(TypeError) as exc_info:
+        sim.forward(n_steps=2, design_mask=mask, skip_preflight=True)
+    message = str(exc_info.value)
+    assert "_ExecuteMixin" not in message, (
+        f"error message leaks the internal mixin class name: {message!r}"
+    )
+    assert "design_mask" in message
+    assert "#625" in message or "625" in message
+    assert "checkpoint_every" in message or "checkpoint_segments" in message, (
+        "message should point at the memory-relief replacement"
+    )
+
+
 def test_forward_nonuniform_rejects_design_mask_kwarg():
     """The non-uniform lane used to be design_mask's only SUPPORTED lane;
     it must now reject the kwarg exactly like the uniform lane."""

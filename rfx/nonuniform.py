@@ -1400,24 +1400,50 @@ def run_nonuniform(
     # (issue #40). Only the trailing n_optimize = n_steps - n_warmup
     # steps participate in reverse-mode autodiff.
     #
-    # This is an APPROXIMATION, not merely a memory optimization: severing
-    # the carry also severs every gradient path from a design variable's
-    # influence during steps < n_warmup back into the loss. Forward output
-    # is exactly n_warmup-invariant (bit-identical), but the gradient is a
-    # truncated (magnitude-underestimated) version of the true one whenever
-    # the design variable's derivative-relevant support extends into the
-    # warmup window -- which it generally does for a static material/design
-    # parameter present throughout the whole run. Measured (issue #626 part
-    # 2, two independent design-cell placements, vs an independent central-
-    # FD oracle at n_warmup=0, fixture n_steps=100 / loss window [80,100)):
-    # error stays near this repo's AD-vs-FD noise floor (~1.5%) while
-    # n_warmup is up to roughly a quarter of the pre-loss-window step count,
-    # then grows smoothly and monotonically -- ~6-7% at half the
-    # pre-loss-window length, 58% AT the loss-window boundary itself
-    # (n_warmup equal to the pre-loss-window length), and EXACTLY zero
-    # (gradient fully vanished, not merely small) once n_warmup extends far
-    # enough into the loss window. Choose n_warmup with that bias curve in
-    # mind, not just a memory budget.
+    # The truncation error DEPENDS ON DISTANCE FROM THE SOURCE TO THE
+    # DESIGN REGION -- it is not a blanket property of n_warmup itself
+    # (corrects an earlier version of this comment that said the
+    # design-relevant support "generally" extends into the warmup window;
+    # see the #626 addendum below for why that was an overgeneralization
+    # from a single, worst-case fixture). Mechanism: severing the carry
+    # severs every gradient path from a design variable's influence during
+    # steps < n_warmup back into the loss -- but only steps during which
+    # the WAVEFRONT HAS ALREADY REACHED the design region carry any such
+    # influence to sever. Before the wavefront arrives, the field there
+    # (and hence the loss's sensitivity to that cell) is ~0, so severing
+    # those steps' carry discards ~nothing and the gradient is
+    # (near-)exact -- n_warmup is genuinely free compute/memory relief in
+    # that regime, not merely an approximation. Define
+    #     K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))
+    # (grid steps for the wavefront to reach the closest design cell, C0 =
+    # vacuum lightspeed -- a conservative floor valid for any slower,
+    # non-vacuum propagation). For n_warmup <= K_safe truncation error is
+    # negligible; beyond it, error grows and can reach the full gradient
+    # magnitude by the time n_warmup reaches the loss window.
+    #
+    # Forward output is exactly n_warmup-invariant (bit-identical) in every
+    # placement measured. Two measured regimes (issue #626 part 2 /
+    # addendum, both vs an independent central-FD oracle):
+    #   - NEAR-SOURCE placement (design cell ~3 cells from the source, so
+    #     K_safe ~ 0 -- the wavefront is already present at every step):
+    #     error grows smoothly and monotonically from a ~1.5% noise floor
+    #     at small n_warmup up to 58% at the loss-window boundary itself,
+    #     and EXACTLY zero (gradient fully vanished) once n_warmup extends
+    #     far enough into the loss window (fixture:
+    #     tests/test_n_warmup.py::test_warmup_truncation_error_grows_with_k,
+    #     n_steps=100, loss window [80,100)).
+    #   - FAR-FROM-SOURCE placement (design cell 62 cells from the source,
+    #     K_safe=108 measured from the grid's own dt): AD matches the
+    #     K=0 FD oracle to 0.008-0.036% rel_err for every sampled
+    #     n_warmup in {0,20,40,60,80,100} -- ALL <= K_safe -- and only
+    #     starts degrading past K_safe (0.63% at K=120, growing to 75% by
+    #     K=200), exactly the wavefront-arrival prediction (fixture:
+    #     scripts/diagnostics/i626_n_warmup_wavefront_locality.py,
+    #     n_steps=220, loss window [180,220)).
+    # The near-source curve is the WORST case, not the general case --
+    # use K_safe to decide whether a given source/design placement is in
+    # the exact or the truncated regime; do not read "n_warmup truncates
+    # the gradient" as true unconditionally.
     if n_warmup > 0:
         if n_warmup >= n_steps:
             raise ValueError(
