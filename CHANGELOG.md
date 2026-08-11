@@ -6,6 +6,55 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — import-time binding pollution in the uniform-grid runner (issue #628)
+
+- `rfx/runners/uniform.py` used to do `from rfx.simulation import run as
+  _run, run_until_decay as _run_until_decay` at MODULE level. That module is
+  imported lazily, the first time some `Simulation` call path actually needs
+  it, so if that first import happened while a test had
+  `rfx.simulation.run` monkeypatched, `rfx.runners.uniform._run`
+  permanently captured the patched stub — `monkeypatch`'s teardown restores
+  the attribute on the SOURCE module (`rfx.simulation`) but has no way to
+  reach the copy already bound into `rfx.runners.uniform`'s own namespace.
+  Every later uniform-lane run in that process then silently called the
+  stale stub. Order-dependent symptom: `pytest
+  tests/test_coax_two_port_fdtd.py tests/test_refplane_port_waves.py` gave
+  `1 failed, 63 passed` (a `TypeError` from the leaked stub in
+  `test_run_short_diagonals_byte_frozen_offdiagonals_move`); either file
+  alone, or the suite's usual collection order, passed clean.
+- Fix: late-bind via `from rfx import simulation as _simulation`, calling
+  `_simulation.run(...)` / `_simulation.run_until_decay(...)` — a module
+  reference resolved at CALL time, not import time, so it always reflects
+  whatever `rfx.simulation.run` currently is. Not a hot path: each is
+  called exactly once per `run_uniform()` invocation (the single entry
+  point into the compiled `jax.lax.scan` FDTD loop), so the extra
+  attribute lookup is negligible against that call's own runtime.
+- Same-shape audit (module-level `from rfx.X import Y` where `X` is
+  monkeypatched by a test somewhere in the suite) across `rfx/runners/`,
+  `rfx/api/`, `rfx/probes/`, and the package's other eager/lazy import
+  sites: no other instance is actually exposed. `rfx/__init__.py`,
+  `rfx/gpu.py`, `rfx/rcs.py`, and `rfx/sources/__init__.py` bind the same
+  `rfx.simulation`/`rfx.sources.coaxial_port` names, but all three import
+  eagerly, as part of `import rfx` itself, which necessarily completes
+  before any test can obtain a handle on the source module to patch it —
+  structurally impossible to race. `rfx/runners/__init__.py` re-exports
+  `run_uniform` from a module (`rfx.runners.uniform`) whose `run_uniform`
+  IS monkeypatched by `tests/test_passivity_guard_wiring.py`, but no
+  production call site consumes that package-level alias (every caller
+  imports `run_uniform` directly, locally, inside the calling function),
+  so a stale copy there is inert. `rfx/runners/distributed.py` and
+  `distributed_v2.py` import `make_source`/`make_j_source`/`make_probe`/
+  `make_port_source` from `rfx.simulation` the same lazily-bound way
+  `uniform.py` did, but none of those four names is patched by any current
+  test — left as module-level imports, flagged as the same latent shape
+  should a distributed-lane test ever patch one of them.
+- Regression tests: `tests/test_runner_import_binding.py`. The primary
+  test simulates the import-inside-patch-window sequence directly (forces
+  `rfx.runners.uniform` out of `sys.modules`, imports it inside an open
+  `monkeypatch.context()` on `rfx.simulation.run`, then asserts identity
+  after the window closes) — deterministic, independent of collection
+  order. A second, `@pytest.mark.slow` test locks the original two-file
+  subprocess repro as an ordering regression lock.
 ### Fixed — CPML hi-face pad was vacuum for domain-face-touching boxes (issue #627a; #627b attempted, found unsafe, reverted — deferred to issue #636)
 
 - Follow-up to #582's review, which found two gaps its uniform-vs-NU pad

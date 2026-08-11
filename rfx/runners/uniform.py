@@ -5,10 +5,16 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from rfx import simulation as _simulation
 from rfx.simulation import (
     make_source, make_j_source, make_probe, make_port_source, make_wire_port_sources,
-    run as _run, run_until_decay as _run_until_decay,
 )
+# `run`/`run_until_decay` stay a module reference (never `from ... import run as
+# _run`, #628): this module is first imported lazily, from inside
+# Simulation.run()/forward(), so an import-time alias can capture a
+# test-monkeypatched rfx.simulation.run permanently even after the patch is
+# torn down. Access as `_simulation.run(...)` so each call re-reads the
+# current attribute off the source module.
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
 from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
 from rfx.sources.waveguide_port import (
@@ -633,7 +639,7 @@ def run_uniform(
 
     # Main simulation
     if until_decay is not None:
-        sim_result = _run_until_decay(
+        sim_result = _simulation.run_until_decay(
             grid, materials,
             decay_by=until_decay,
             check_interval=decay_check_interval,
@@ -671,7 +677,7 @@ def run_uniform(
             stencil_order=sim._stencil_order,
         )
     else:
-        sim_result = _run(
+        sim_result = _simulation.run(
             grid, materials, n_steps,
             boundary=sim._boundary,
             cpml_axes=cpml_axes,
