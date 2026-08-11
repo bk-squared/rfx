@@ -2125,6 +2125,7 @@ class _ExecuteMixin:
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
+        n_warmup: int = 0,
         # run-only inputs
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -2238,6 +2239,22 @@ class _ExecuteMixin:
                     "checkpoint_every (segmented remat) is currently only "
                     "supported on the non-uniform forward path. For the "
                     "uniform path, use checkpoint_segments instead (issue #73)."
+                )
+            if n_warmup > 0:
+                raise NotImplementedError(
+                    "n_warmup (issue #40) is currently only supported on the "
+                    "non-uniform / distributed-non-uniform forward paths "
+                    "(_forward_from_materials has no warmup-split parameter); "
+                    "on the uniform lane it was previously accepted and "
+                    "silently ignored (issue #626 — measured bit-identical "
+                    "gradient at n_warmup=0 vs n_warmup=60), which is worse "
+                    "than an error. For reverse-mode memory relief on the "
+                    "uniform lane use checkpoint_segments instead (issue #73) "
+                    "— it is EXACT (no gradient approximation), unlike "
+                    "n_warmup which trades memory/compute for a truncated, "
+                    "increasingly biased gradient as n_warmup approaches the "
+                    "loss window (measured on the non-uniform lane, issue "
+                    "#626 part 2)."
                 )
             # n_steps for the uniform forward lane is resolved by the caller
             # from the grid it builds and reuses for material assembly.
@@ -2407,7 +2424,32 @@ class _ExecuteMixin:
             initial transient (issue #40).  Only the trailing
             ``n_steps - n_warmup`` steps participate in autodiff.  Must
             satisfy ``n_warmup < n_steps``.  Default ``0`` (all steps
-            differentiated).
+            differentiated).  This is an APPROXIMATION, not merely a memory
+            optimisation: severing the carry at the warmup boundary also
+            severs every gradient path from a design variable's influence
+            during steps ``< n_warmup`` back into the loss, so the returned
+            gradient is a systematically truncated (magnitude-underestimated)
+            version of the true one whenever the design variable's
+            derivative-relevant support extends into the warmup window.
+            Measured on the non-uniform lane (issue #626 part 2, two
+            independent design-cell placements): error stays near this
+            repo's AD-vs-FD noise floor (≲1.5%) while ``n_warmup`` is up to
+            roughly a quarter of the pre-loss-window step count, then grows
+            smoothly and monotonically — ~6-7% at half the pre-loss-window
+            length, >20% by three-quarters, 58% AT the loss-window boundary
+            itself (``n_warmup`` equal to the pre-loss-window length), and
+            EXACTLY zero once ``n_warmup`` extends far enough into the loss
+            window that no differentiable sample remains (measured: exactly
+            0.0, not merely small, in one fixture once ``n_warmup`` covers
+            ~19/20 of the loss window). Forward (non-AD) output is exactly
+            ``n_warmup``-invariant (bit-identical);
+            only the gradient is affected. Currently only supported on the
+            non-uniform / distributed-non-uniform forward paths; on the
+            uniform single-device lane it raises ``NotImplementedError``
+            (issue #626 — previously silently accepted and ignored, worse
+            than an error).  Use *checkpoint_segments* for uniform-lane
+            reverse-mode memory relief instead — it is exact, at the cost of
+            recompute rather than gradient accuracy.
         skip_preflight : bool
             Skip the consolidated :meth:`preflight` validation suite that
             normally runs before the forward simulation (default False).
@@ -2525,6 +2567,7 @@ class _ExecuteMixin:
             checkpoint_segments=checkpoint_segments,
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
+            n_warmup=n_warmup,
         )
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail

@@ -252,8 +252,14 @@ per segment; either extreme can increase peak memory, so use the value chosen
 by `plan_ad_memory(...)` rather than minimizing the segment count manually.
 
 `n_warmup` reduces the active reverse-mode timestep count and must satisfy
-`0 <= n_warmup < n_steps`. The plan applies a conservative safety multiplier
-before setting the fit flags and records it in `plan.fit_safety_factor`.
+`0 <= n_warmup < n_steps`. It is an APPROXIMATION, not merely a memory
+optimization — see `forward()`'s own `n_warmup` docstring for the measured
+gradient-truncation error curve — and `estimate_ad_memory`/`plan_ad_memory`
+report it as a hypothetical planning number regardless of mesh type; on the
+uniform (single-device) mesh, `forward(n_warmup=...)` itself raises
+`NotImplementedError` (non-uniform / distributed-non-uniform meshes only).
+The plan applies a conservative safety multiplier before setting the fit
+flags and records it in `plan.fit_safety_factor`.
 
 For a uniform run, gate execution on the fit flags before applying the selected
 checkpoint value:

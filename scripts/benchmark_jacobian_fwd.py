@@ -28,10 +28,18 @@ Measures, for `n_t` in `--n-t-values` (default 1, 4, 10) against one plain
       object, which this script does not attempt)
 
 and fits `cost(n_t) = a + b * n_t` through the first and last requested
-`n_t` -- the INTERCEPT `a` is the primal-sharing witness (it should land
-near one plain solve; see G3 in tests/test_jacobian_fwd.py for the
-structural, non-numeric version of the same claim) and the SLOPE `b` is
-the marginal per-tangent cost.
+`n_t` -- the INTERCEPT `a` is a DIAGNOSTIC primal-sharing witness (it
+should land near one plain solve on CPU, where it reads ~0.98-1.10) and
+the SLOPE `b` is the marginal per-tangent cost. The printed
+intercept/plain ratio is CPU-calibrated: a two-point fit pushes any fixed
+per-call overhead that does not scale with `n_t` (kernel launch, tiling)
+into the intercept, and that effect is largest where the marginal cost
+per tangent is smallest -- on an RTX 4090 the same ratio reads 1.4-1.9x
+across grid sizes (issue #632) with sharing intact. Do not treat this
+ratio as a regression signal on an accelerator; see G3 in
+tests/test_jacobian_fwd.py for the authoritative, backend-independent
+structural check (it inspects the jaxpr directly for one unbatched
+primal scan rather than fitting wall-clock/flops numbers).
 
 Fixture note (issue #577 cost-measurement discipline): the fixture registers
 NO point probes (no `add_probe`). The uniform forward lane cannot drop the
@@ -286,7 +294,17 @@ def _print_table(table: dict[str, Any]) -> None:
         print(f"  fit {name}: a={a:.4g} (intercept) b={b:.4g} (marginal cost per tangent)")
     for name, ratio in table["intercept_vs_plain_ratio"].items():
         print(f"  intercept/plain ratio ({name}): {ratio:.3f} "
-              f"(primal-sharing witness -- expect close to 1.0)")
+              f"(primal-sharing witness, DIAGNOSTIC not authoritative -- "
+              f"CPU-calibrated expectation ~1.0; on an accelerator this "
+              f"reads higher, e.g. 1.4-1.9x measured on an RTX 4090, "
+              f"because the two-point endpoint fit pushes fixed per-call "
+              f"overhead [kernel launch, tiling] that does not scale with "
+              f"n_t into the intercept, and that effect is largest where "
+              f"per-tangent marginal cost is smallest [issue #632]. Do not "
+              f"read a high ratio here as a sharing regression by itself "
+              f"-- G3 in tests/test_jacobian_fwd.py is the authoritative, "
+              f"backend-independent structural check: it inspects the "
+              f"jaxpr directly for one unbatched primal scan.)")
     w = table["n_steps_independence_witness"]
     print(
         f"  n_steps independence (n_t={w['n_t']}): temp_bytes "

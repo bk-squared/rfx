@@ -289,6 +289,18 @@ def optimize(
         10 for lower memory usage with minimal accuracy loss.
     verbose : bool
         Print progress every 10 iterations.
+    n_warmup : int
+        Forwarded verbatim to ``sim.forward(n_warmup=...)`` at every
+        iteration (issue #40). On a non-uniform / distributed-non-uniform
+        ``sim``, this trades an APPROXIMATE (truncated) gradient for
+        reduced reverse-mode memory/compute — see ``Simulation.forward``'s
+        own ``n_warmup`` docstring for the measured error curve (issue
+        #626 part 2); a design loop built on this objective inherits that
+        bias, not just a single forward call, so verify the bias is
+        acceptable for your loss window before using a nonzero value here.
+        On a uniform-mesh ``sim`` it raises ``NotImplementedError``
+        (issue #626 — previously a silent no-op). Default ``0`` (no
+        warmup split, full gradient).
     port_s11_freqs : array-like or None
         Frequencies (Hz) at which to accumulate per-port V/I DFTs in the
         JIT scan body so that ``result.s_params`` is populated with
@@ -663,6 +675,11 @@ def progressive_optimize(
         Latent-upsample interpolation ("linear", "nearest", "cubic").
     verbose : bool
         Print per-stage progress banner.
+    n_warmup : int
+        Forwarded to each stage's ``optimize(..., n_warmup=...)`` call —
+        see :func:`optimize`'s own ``n_warmup`` entry for the full
+        behaviour (issue #40/#626): an approximation on non-uniform
+        meshes, a fail-loud ``NotImplementedError`` on uniform ones.
 
     Returns
     -------

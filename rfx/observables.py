@@ -565,12 +565,12 @@ def jacobian_fwd(
     Three configurations are unsafe to combine with ``jacobian_fwd`` on
     ``sim_fn`` bodies built on ``Simulation.forward(...)``. This function
     is intentionally generic over *sim_fn* (it never sees ``forward()``'s
-    own keyword arguments -- they live inside your closure), so only the
-    first is enforced by a RAISE that propagates up through
-    ``jax.jvp`` from ``forward()``'s own pre-existing checks; the other two
-    have no raise to inherit and cannot be intercepted from outside the
-    closure, so they are DOCUMENTED traps instead. Read the RAISES/DOCS tag
-    on each before assuming "it didn't raise" means "it's fine":
+    own keyword arguments -- they live inside your closure), so the first
+    two are enforced by a RAISE that propagates up through ``jax.jvp``
+    from ``forward()``'s own pre-existing checks; the remaining one has no
+    raise to inherit and cannot be intercepted from outside the closure,
+    so it is a DOCUMENTED trap instead. Read the RAISES/DOCS tag on each
+    before assuming "it didn't raise" means "it's fine":
 
     - **[RAISES, inherited]** non-uniform + ``distributed=True`` with a
       registered DFT-plane probe: ``forward()`` itself raises
@@ -578,15 +578,21 @@ def jacobian_fwd(
       neither sharded runner accumulates DFT-plane fields. ``jacobian_fwd``
       scope is the uniform single-device lane only; a distributed
       ``sim_fn`` fails loud before this function's own machinery runs.
-    - **[DOCS ONLY -- no raise exists to inherit]** ``n_warmup``: measured
-      SILENT NO-OP on the uniform ``forward()`` lane (bit-identical value
-      AND tangent at ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps; issue
-      #626) -- it neither errors nor changes the result, so there is
-      nothing for ``jacobian_fwd`` (or ``forward()``) to fail loud on. If
-      your ``sim_fn`` passes a nonzero ``n_warmup`` expecting either a
-      memory saving (forward mode builds no tape, so there is none to
-      save) or a truncated-but-correct derivative (it silently is NOT
-      truncated), both expectations are wrong. Do not use it here.
+    - **[RAISES, inherited]** ``n_warmup``: ``forward()`` itself raises
+      ``NotImplementedError`` for a nonzero ``n_warmup`` on the uniform
+      lane (issue #626) -- so on ``jacobian_fwd``'s supported (uniform)
+      lane, a ``n_warmup``-using ``sim_fn`` already fails loud. It used to
+      be a measured SILENT NO-OP (bit-identical value AND tangent at
+      ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps) before the fence was
+      added. Do not read this as "n_warmup is safe elsewhere": on the
+      non-uniform lane where it IS implemented, ``n_warmup`` measurably
+      truncates the reverse-mode gradient with an error that grows
+      smoothly -- ~6-7% at half the pre-loss-window length, 58% at the
+      loss-window boundary itself, exactly zero once far enough beyond it
+      (issue #626 part 2) -- it is not fenced there (truncated-BPTT is a
+      legitimate, if approximate, construction), and any future
+      non-uniform extension of this function must account for that bias,
+      not treat ``n_warmup`` as free memory relief.
     - **[DOCS ONLY -- inert, not a raise]** ``checkpoint`` /
       ``checkpoint_segments``: measured EXACTLY NEUTRAL under forward mode
       (flops/temp bytes identical across ``checkpoint=False``,

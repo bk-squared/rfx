@@ -91,6 +91,100 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   was mask-specific. `tests/test_design_mask_removed.py` (new) pins that
   every entry point above now raises `TypeError`.
 
+### Fixed — `forward(n_warmup=...)` on the uniform lane now raises instead of silently doing nothing (**BEHAVIOUR CHANGE**) (issue #626)
+
+- `Simulation.forward()` declared and documented `n_warmup` but only
+  forwarded it to the non-uniform / distributed-non-uniform lanes;
+  `_forward_from_materials` (the uniform single-device lane) has no
+  warmup-split parameter at all, so a nonzero `n_warmup` on a uniform
+  mesh was silently accepted and ignored. Measured: gradient bit-identical
+  at `n_warmup=0` vs `n_warmup=60` on the uniform lane. A nonzero
+  `n_warmup` on the uniform lane now raises `NotImplementedError` in
+  `_dispatch_plan`, matching its two uniform-lane siblings
+  (`emit_time_series=False`, `checkpoint_every`; `design_mask`, the third
+  historical sibling, was removed entirely rather than fenced — see the
+  entry above).
+- **Decision: fail-loud, not implement.** `checkpoint_segments` already
+  gives the uniform lane an EXACT reverse-mode memory reduction
+  (~`sqrt(n_steps)` scaling, no gradient approximation). `n_warmup`, where
+  it IS implemented (the non-uniform lane), turns out to be an
+  APPROXIMATION rather than a free memory lever — see the next entry.
+  Porting that approximation to the uniform lane would add a new,
+  accuracy-lossy feature with no memory benefit `checkpoint_segments`
+  doesn't already cover exactly, and would require threading the
+  warmup/optimize scan split through the uniform-lane-only accumulators
+  the non-uniform lane doesn't have (S11 DFT, Kerr χ³, `mu_r_override` —
+  flux monitors, NTFF and lumped-RLC ADE state are already real
+  non-uniform-lane carries, so those three do NOT add to this cost).
+  Silently accepting-and-ignoring a kwarg is the SILENT_WRONG shape this
+  repo systematically eliminates; a clean raise is the responsible fix.
+- **`rfx.optimize.optimize()` is a second entry point for this behaviour
+  change**: it accepts `n_warmup` (forwarded straight to `sim.forward()`
+  at both the plain and progressive-resolution call sites), so
+  `optimize(..., n_warmup=5)` on a uniform-mesh `Simulation` now raises
+  through the optimizer too — the right outcome, and the surface where a
+  truncated gradient would otherwise actually drive a design loop.
+- **What n_warmup actually does, measured** (non-uniform lane, where it IS
+  implemented): it is NOT an exact truncation. Severing the scan carry at
+  the warmup boundary also severs every gradient path from a design
+  variable's influence during the warmup window back into the loss.
+  Swept `n_warmup=K` against an independent central-FD oracle (loss
+  window held FIXED across the sweep, K varied independently — the
+  existing `test_warmup_grad_finite_and_same_sign` test lets the loss
+  window track `warmup`, which conflates the two and cannot isolate the
+  effect) at two independent design-cell placements: forward output is
+  exactly `n_warmup`-invariant (bit-identical) in both; the gradient
+  error vs. the FD oracle stays near this repo's established AD-vs-FD
+  noise floor (≲1.5%) while K is up to roughly a quarter of the
+  pre-loss-window step count, then grows smoothly and monotonically —
+  fixture 1 (`n_steps=100`, loss window `[80, 100)`): K=0 → 0.25%, K=10 →
+  1.1%, K=30 → 3.3%, K=40 (half the pre-loss-window) → 6.6%, K=50 →
+  12.1%, K=70 → 35.2%, K=80 (the loss-window boundary itself) → 58.4%,
+  K=95 → exactly 0 (gradient fully vanished, not merely small). Two
+  further placements at weaker design/loss coupling (smaller true
+  gradient, so the FD oracle itself sits closer to the float32
+  single-cell noise floor) reproduce the SAME large-K collapse toward
+  the loss-window boundary, but do NOT cleanly reproduce monotonicity at
+  small/medium K — the low-K ordering there is noise-floor-dependent on
+  how well-conditioned the oracle is at that specific cell, which is why
+  the regression test below only asserts strict monotonicity from K=30
+  upward rather than across the whole sweep. Docstrings (`forward()`,
+  `run_nonuniform`, `run_nonuniform_distributed_pec`, `jacobian_fwd`) and
+  `docs/public/guide/memory-reduction.mdx` are updated to state this
+  curve plainly instead of framing `n_warmup` as a free memory lever.
+- **Caveat on the sweep's own monotonicity gate**: an h-sweep of the FD
+  oracle shows K=0 and K=10's errors sit inside the oracle's own noise
+  band (at `h=0.05` the K=10 point reads slightly BELOW K=0) — the
+  published `h=0.02` figures above are correct as measured, but a strict
+  monotonicity assertion across the *whole* sweep would bind that
+  noise-band coincidence. `tests/test_n_warmup.py`'s regression test
+  floors the low-K comparisons and only asserts strict monotonicity from
+  K=30 upward, where the trend is unambiguous.
+- Tests: `tests/test_n_warmup.py::test_uniform_forward_rejects_n_warmup`
+  (the fail-loud regression witness — pins raise vs. no-raise, not merely
+  "both run") and `::test_warmup_truncation_error_grows_with_k` (the
+  measured error-curve witness). `tests/test_jacobian_fwd.py`'s G6 fence
+  taxonomy moves `n_warmup` from a documented trap to an inherited raise
+  (`test_g6b_n_warmup_fence_raises` replaces
+  `test_g6b_n_warmup_is_a_documented_trap_not_a_raise`; the taxonomy is
+  now three configurations / two raises / one docs-only trap, since
+  `design_mask` — one of the prior four — was removed outright rather
+  than fenced).
+
+### Changed — `benchmark_jacobian_fwd.py`'s intercept/plain witness text now flags itself as CPU-calibrated (issue #632)
+
+- The printed `intercept/plain ratio (... -- expect close to 1.0)` line
+  read as a regression on an accelerator: it is 0.98-1.10 on CPU but
+  1.41-1.87 on an RTX 4090 (measured, VESSL runs 369367252824 /
+  369367252825, commit 27c4fad), because the two-point endpoint fit
+  pushes fixed per-call overhead (kernel launch, tiling) that does not
+  scale with `n_t` into the intercept, and that effect is largest exactly
+  where the marginal cost per tangent is smallest. Sharing is not broken
+  there. Reworded the printed line and the module docstring to state the
+  CPU calibration and point at G3 in `tests/test_jacobian_fwd.py` — a
+  jaxpr-structural, backend-independent check — as the authoritative
+  witness. No behaviour change.
+
 ### Fixed — uniform distributed lane's CPML/PEC x-hi wall displacement in the pad_x>0 lane (issue #623)
 
 - Same class as #622, in the sibling UNIFORM-grid runner:

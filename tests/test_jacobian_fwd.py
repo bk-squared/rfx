@@ -21,17 +21,18 @@ FENCE TAXONOMY (G6) -- read before editing G6: `jacobian_fwd` is generic
 over `sim_fn` (signature pinned to `sim_fn, params, tangents,
 batch_tangents` by `scripts/check_api_reference.py`'s inventory) and never
 sees `Simulation.forward()`'s own keyword arguments -- they live inside the
-caller's closure. One of the three documented fences is a RUNTIME RAISE
+caller's closure. Two of the three documented fences are RUNTIME RAISES
 that `jacobian_fwd` INHERITS for free (the underlying `forward()` call
 raises before `jacobian_fwd`'s own machinery runs, so the raise just
 propagates up through `jax.jvp`): non-uniform+distributed with a
-registered DFT-plane probe (the #619 fence). The other two -- `n_warmup`
-(a measured SILENT NO-OP on the uniform lane, issue #626) and
-`checkpoint`/`checkpoint_segments` (measured EXACTLY NEUTRAL under forward
-mode) -- have NO raise to inherit and cannot be intercepted from outside
-the closure without breaking the pinned generic signature, so they are
-DOCUMENTED traps rather than runtime checks; G6 pins the docstring text
-for those two instead of a raise.
+registered DFT-plane probe (the #619 fence), and `n_warmup` on the
+uniform lane (issue #626's own fence -- it used to be a measured SILENT
+NO-OP; the uniform lane now raises instead of silently ignoring it). The
+remaining one -- `checkpoint`/`checkpoint_segments` (measured EXACTLY
+NEUTRAL under forward mode) -- has NO raise to inherit and cannot be
+intercepted from outside the closure without breaking the pinned generic
+signature, so it is a DOCUMENTED trap rather than a runtime check; G6
+pins the docstring text for that one instead of a raise.
 
 (A fourth candidate, `design_mask`, was removed with the parameter itself
 in issue #625: the mask was measured to corrupt the gradient rather than
@@ -596,14 +597,26 @@ def test_g6_design_mask_kwarg_raises_type_error_not_a_fence():
         jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
 
 
-def test_g6b_n_warmup_is_a_documented_trap_not_a_raise():
-    """No forward()-level raise exists to inherit (n_warmup is a measured
-    SILENT NO-OP on the uniform lane) -- pin the docstring warning instead
-    so it cannot silently be dropped in a future edit."""
-    doc = jacobian_fwd.__doc__
-    assert "n_warmup" in doc
-    assert "SILENT NO-OP" in doc
-    assert "#626" in doc
+def test_g6b_n_warmup_fence_raises():
+    """Inherited from forward()'s own uniform-lane n_warmup fence (issue
+    #626): a nonzero n_warmup on the uniform lane raises
+    NotImplementedError regardless of AD mode. (Prior to the #626 fix this
+    was a measured SILENT NO-OP, not a raise -- see
+    tests/test_n_warmup.py::test_uniform_forward_rejects_n_warmup for the
+    forward()-level pin and docs/agent-memory/rfx-known-issues.md for the
+    measured bit-identical-gradient evidence that motivated the fence.)"""
+    sim = _build_sim()
+    grid = sim._build_grid()
+
+    def sim_fn(alpha):
+        eps = jnp.ones(grid.shape, dtype=jnp.float32) * alpha
+        result = sim.forward(
+            eps_override=eps, n_steps=2, n_warmup=1, skip_preflight=True,
+        )
+        return dft_field(_PLANE)(result)
+
+    with pytest.raises(NotImplementedError, match="n_warmup"):
+        jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
 
 
 def test_g6c_checkpoint_knobs_are_documented_inert_not_a_raise():

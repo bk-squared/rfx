@@ -1399,6 +1399,25 @@ def run_nonuniform(
     # stop_gradient'd so AD builds no tape for that transient lead-in
     # (issue #40). Only the trailing n_optimize = n_steps - n_warmup
     # steps participate in reverse-mode autodiff.
+    #
+    # This is an APPROXIMATION, not merely a memory optimization: severing
+    # the carry also severs every gradient path from a design variable's
+    # influence during steps < n_warmup back into the loss. Forward output
+    # is exactly n_warmup-invariant (bit-identical), but the gradient is a
+    # truncated (magnitude-underestimated) version of the true one whenever
+    # the design variable's derivative-relevant support extends into the
+    # warmup window -- which it generally does for a static material/design
+    # parameter present throughout the whole run. Measured (issue #626 part
+    # 2, two independent design-cell placements, vs an independent central-
+    # FD oracle at n_warmup=0, fixture n_steps=100 / loss window [80,100)):
+    # error stays near this repo's AD-vs-FD noise floor (~1.5%) while
+    # n_warmup is up to roughly a quarter of the pre-loss-window step count,
+    # then grows smoothly and monotonically -- ~6-7% at half the
+    # pre-loss-window length, 58% AT the loss-window boundary itself
+    # (n_warmup equal to the pre-loss-window length), and EXACTLY zero
+    # (gradient fully vanished, not merely small) once n_warmup extends far
+    # enough into the loss window. Choose n_warmup with that bias curve in
+    # mind, not just a memory budget.
     if n_warmup > 0:
         if n_warmup >= n_steps:
             raise ValueError(
