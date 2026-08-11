@@ -369,6 +369,80 @@ def test_field_softmax_default_beta_gradient_not_rounding_noise():
         )
 
 
+def test_field_softmax_beta_eff_overflow_returns_finite_not_nan():
+    """Arc-audit follow-up (verification round, item B1): auto-scaling
+    RELOCATES the top-end-overflow footgun from `beta*vals` to
+    `beta_eff = beta/max(vals)` rather than removing it -- at this
+    repo's realistic tiny field magnitude, `beta=2.0e24` (the literal
+    value `examples/inverse_design/field_observable_shielding.py`
+    carried before its own re-calibration in this same follow-up)
+    measured `value=nan, grad=nan` SILENTLY, no exception, before the
+    `jnp.isfinite(beta_eff)` clip was added. Pin: the clip keeps the
+    VALUE finite and correct (converging to the true max) at beta values
+    that would otherwise overflow beta_eff, including the exact
+    previously-nan `2.0e24`."""
+    rng = np.random.default_rng(2)
+    base = jnp.asarray(rng.uniform(0.5, 1.5, size=(3, 3)), dtype=jnp.float32)
+    field_scale = 1.0e-11  # |field|**2 ~ 1e-22, this repo's realistic range
+    field = (base * field_scale).astype(jnp.complex64)
+    result = _fake_result(p=field)
+    true_max = float(jnp.max(jnp.abs(field) ** 2))
+
+    for beta in (1.0e16, 1.0e17, 2.0e24, 1.0e30, 1.0e38):
+        val = float(field_softmax("p", beta=beta)(result))
+        assert np.isfinite(val), f"beta={beta:.1e}: value not finite: {val}"
+        rel = abs(val - true_max) / true_max
+        assert rel < 0.05, (
+            f"beta={beta:.1e}: clipped value {val:.6e} does not converge "
+            f"to true max {true_max:.6e} (rel_err {rel * 100:.2f}%)"
+        )
+
+
+def test_field_softmax_gradient_can_silently_collapse_past_the_recommended_beta_range():
+    """Companion to the overflow-guard test above: the VALUE clip does
+    NOT cover the gradient. Measured: the gradient matches FD accurately
+    through beta~1e15, then collapses to exactly 0.0 somewhere between
+    beta~1e16 and beta~1e17 -- the EXACT transition point is
+    fixture-dependent (measured to shift by up to 10x between two
+    fixtures differing only in element values), so this test does not
+    pin an exact cliff beta, only: (a) the documented-safe range (up to
+    1e15, decades past the recommended 5-50) stays accurate, and (b) a
+    beta comfortably past every fixture's measured transition
+    (1e18 -- two full orders of magnitude past the highest observed
+    cliff) is robustly, reproducibly exactly 0.0, not merely 'often'."""
+    rng = np.random.default_rng(3)
+    base = jnp.asarray(rng.uniform(0.5, 1.5, size=(3,)), dtype=jnp.float32)
+    field_scale = 1.0e-11
+
+    def make_obj(beta):
+        def obj(scale):
+            field = (base * scale * field_scale).astype(jnp.complex64)
+            result = _fake_result(p=field)
+            return field_softmax("p", beta=beta)(result)
+        return obj
+
+    h = 1e-3
+    for beta in (1e2, 1e6, 1e12, 1e15):
+        obj = make_obj(beta)
+        g_ad = float(jax.grad(obj)(jnp.asarray(1.0, dtype=jnp.float32)))
+        g_fd = float((obj(jnp.asarray(1.0 + h)) - obj(jnp.asarray(1.0 - h))) / (2 * h))
+        assert g_ad != 0.0, f"beta={beta:.1e}: gradient unexpectedly 0 inside the documented-safe range"
+        rel = abs(g_ad - g_fd) / max(abs(g_fd), 1e-300)
+        assert rel < 0.05, f"beta={beta:.1e}: AD vs FD mismatch {rel * 100:.2f}%"
+
+    # Robustly past the measured cliff (not pinning the cliff's exact
+    # location, which is fixture-dependent -- see the docstring above):
+    # a future numerical change either preserves this or deliberately
+    # closes it, not silently shifts it without anyone noticing.
+    obj_far = make_obj(1.0e18)
+    g_far = float(jax.grad(obj_far)(jnp.asarray(1.0, dtype=jnp.float32)))
+    assert g_far == 0.0, (
+        f"beta=1e18 gradient no longer exactly 0.0 (got {g_far!r}) -- the "
+        "measured collapse behaviour changed; re-measure and update the "
+        "docstring warning in rfx.observables.field_softmax."
+    )
+
+
 # ---------------------------------------------------------------------------
 # (2) Physics witness: run() and forward() must agree on the accumulator.
 # ---------------------------------------------------------------------------

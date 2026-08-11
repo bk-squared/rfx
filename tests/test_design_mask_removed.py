@@ -90,6 +90,48 @@ def test_forward_rejects_design_mask_kwarg_with_a_readable_message():
     )
 
 
+def test_no_public_simulation_method_leaks_a_mixin_class_name():
+    """Arc-audit follow-up (verification round): the _ExecuteMixin leak
+    fixed for forward() specifically (see
+    test_forward_rejects_design_mask_kwarg_with_a_readable_message) is
+    not one-off -- every method Simulation inherits from its five mixins
+    (_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin,
+    _ArtifactsMixin) used to keep that mixin's name in its __qualname__,
+    leaking into TypeError messages for ANY unrecognised keyword argument
+    on ANY public method, e.g. `sim.run(n_stepss=2)` reading
+    `_ExecuteMixin.run() got an unexpected keyword argument`.
+    `rfx/api/__init__.py` now rebinds every inherited method's
+    __qualname__ to `Simulation.<method>` at class composition time. Pin
+    both the qualname attribute directly and the resulting error message
+    for a representative method from each mixin."""
+    from rfx import Simulation
+    from rfx.api._preflight import _PreflightMixin
+    from rfx.api._sparams import _SparamMixin
+    from rfx.api._compile import _CompileMixin
+    from rfx.api._execute import _ExecuteMixin
+    from rfx.api._artifacts import _ArtifactsMixin
+
+    for mixin in (_PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin, _ArtifactsMixin):
+        for name, member in vars(mixin).items():
+            if name.startswith("_") or not callable(member):
+                continue
+            qualname = getattr(getattr(Simulation, name, None), "__qualname__", "")
+            assert not qualname.startswith(mixin.__name__), (
+                f"Simulation.{name} still leaks its defining mixin's name "
+                f"in __qualname__: {qualname!r}"
+            )
+            assert qualname == f"Simulation.{name}", (
+                f"Simulation.{name}.__qualname__ = {qualname!r}, expected "
+                f"'Simulation.{name}'"
+            )
+
+    sim = _build_uniform_sim()
+    with pytest.raises(TypeError, match=r"^Simulation\.run\(\)"):
+        sim.run(n_stepss=2)
+    with pytest.raises(TypeError, match=r"^Simulation\.preflight\(\)"):
+        sim.preflight(bogus_kwarg=1)
+
+
 def test_forward_nonuniform_rejects_design_mask_kwarg():
     """The non-uniform lane used to be design_mask's only SUPPORTED lane;
     it must now reject the kwarg exactly like the uniform lane."""

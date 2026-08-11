@@ -85,12 +85,18 @@ them off the result with `rfx.observables`:
   objective.
 - `field_softmax(names, beta=...)` -- a temperature-controlled soft-max
   over space + frequency, for a worst-case-bin (not average) objective.
-  **`beta` MUST be scale-matched to your `|field|**2` magnitude** (rfx's
-  DFT-accumulator units commonly sit far from O(1) — see the function's
-  own docstring warning and
-  `examples/inverse_design/field_observable_shielding.py`'s measured
-  `BETA` for a worked example); an unscaled `beta` can make the objective
-  silently dominated by a design-variable-independent constant.
+  `beta` is auto-scaled internally (`beta_eff = beta /
+  stop_gradient(max(vals))`) and DIMENSIONLESS — it no longer needs
+  hand-matching to `|field|**2`'s physical magnitude the way an earlier
+  version did (issue #619; rfx's DFT-accumulator units commonly sit far
+  from O(1)). The default (`beta=1.0`) is safe at any field magnitude,
+  merely loose; raise `beta` (5-50 is a reasonable range for most plane
+  sizes) for a tighter max approximation — see the function's own
+  docstring and `examples/inverse_design/field_observable_shielding.py`'s
+  measured `BETA` for a worked example. `beta` values tuned under the OLD
+  (pre-#619-fix) unscaled semantics do NOT carry over — see
+  `field_softmax`'s docstring "Auto-scaling" section for the migration
+  note.
 
 Composition is `lambda p: field_softmax(names)(sim.forward(eps_override=p))`
 — same factory-returns-`callable(Result)` style as `rfx.optimize_objectives`,

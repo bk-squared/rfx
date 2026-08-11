@@ -2487,28 +2487,40 @@ class _ExecuteMixin:
 
                 K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))
 
-            (grid steps for the wavefront to reach the closest design cell,
-            ``C0`` = vacuum lightspeed, ``dt`` = ``sim._build_grid().dt`` /
+            (``min_distance`` is the minimum over EVERY active source AND
+            over each source's own spatial extent, not just its nominal
+            position — a TFSF plane-wave source illuminates from an
+            entire box face, not a point; grid steps for the wavefront to
+            reach the closest design cell, ``C0`` = vacuum lightspeed,
+            ``dt`` = ``sim._build_grid().dt`` /
             ``sim._build_nonuniform_grid().dt`` — a conservative floor valid
-            for any slower propagation). ``n_warmup <= K_safe`` is
-            (near-)exact; well beyond it, error grows and can reach the
-            full gradient magnitude by the time ``n_warmup`` reaches the
-            loss window. Two measured regimes (issue #626 part 2 /
-            addendum, both vs an independent central-FD oracle): a
-            NEAR-SOURCE placement (design cell ~3 cells from the source, so
-            ``K_safe ~ 0``) shows error growing smoothly from a ~1.5% noise
-            floor up to 58% at the loss-window boundary itself, and EXACTLY
-            zero (gradient fully vanished) once ``n_warmup`` extends far
-            enough into the loss window (``tests/test_n_warmup.py::
+            for any slower propagation). ``n_warmup <= K_safe`` stays
+            within this repo's ~1.5% AD-vs-FD noise floor (near-exact,
+            <0.1%, well below ``K_safe``); well beyond ``K_safe``, error
+            grows further and can reach the full gradient magnitude by
+            the time ``n_warmup`` reaches the loss window. Two measured
+            regimes (issue #626 part 2 / addendum, both vs an independent
+            central-FD oracle): a NEAR-SOURCE placement (design cell ~3
+            cells from the source, so ``K_safe ~ 0``) shows error growing
+            smoothly from a ~1.5% noise floor up to 58% at the
+            loss-window boundary itself, and EXACTLY zero (gradient fully
+            vanished) once ``n_warmup`` extends far enough into the loss
+            window (``tests/test_n_warmup.py::
             test_warmup_truncation_error_grows_with_k``); a
             FAR-FROM-SOURCE placement (design cell 62 cells from the
             source, ``K_safe=108`` measured from the grid's own ``dt``)
-            shows AD matching the ``n_warmup=0`` FD oracle to
-            0.008-0.036% for every sampled ``n_warmup`` at or below
-            ``K_safe``, only starting to degrade past it (0.63% at
-            ``K_safe`` + 12, growing to 75% by ``K_safe`` + 92) —
-            ``scripts/diagnostics/i626_n_warmup_wavefront_locality.py``.
-            The near-source curve above is the WORST case, not the general
+            shows AD matching the ``n_warmup=0`` FD oracle to <0.01%
+            through ``K_safe``-20, then growing SMOOTHLY (not a sharp
+            cliff) as ``n_warmup`` approaches ``K_safe`` -- 0.26% at
+            ``K_safe``-4, 0.60% at ``K_safe``-2, 1.19% AT ``K_safe``
+            itself (still inside the noise floor above) -- continuing to
+            grow past it toward 75% by ``K_safe`` + 92 —
+            ``scripts/diagnostics/i626_n_warmup_wavefront_locality.py``
+            (finely sampled around ``K_safe``; an earlier version of this
+            docstring, read from a coarser sweep that skipped every point
+            near the boundary, overstated the transition as a sharp
+            cliff "exactly at K_safe"). The near-source curve above is
+            the WORST case, not the general
             case: use ``K_safe`` to decide whether YOUR source/design
             placement is in the exact or the truncated regime before
             assuming ``n_warmup`` costs accuracy. Forward (non-AD) output

@@ -2054,8 +2054,10 @@ def run_nonuniform_distributed_pec(
         NEAR-SOURCE placement specifically, measured ~6-7% at half the
         pre-loss-window length, 58% at the loss-window boundary itself,
         exactly zero once far enough beyond it; a far-from-source
-        placement measured <0.04% error for every ``n_warmup <= K_safe``.
-        See the ``n_warmup split`` comment in
+        placement stays within this repo's ~1.5% AD-vs-FD noise floor for
+        every ``n_warmup <= K_safe`` (growing smoothly, not a sharp
+        cliff, from <0.01% well below ``K_safe`` to ~1.2% AT ``K_safe``
+        itself). See the ``n_warmup split`` comment in
         :func:`rfx.nonuniform.run_nonuniform` for both measured curves,
         the ``K_safe`` formula, and the source scripts (issue #626 part 2
         / addendum).

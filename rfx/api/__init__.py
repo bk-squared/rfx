@@ -18,6 +18,7 @@ Usage
 
 from __future__ import annotations
 
+import inspect
 import math
 import json
 import jax
@@ -3792,6 +3793,41 @@ class Simulation(
         sim_kwargs = config.to_sim_kwargs()
         sim_kwargs.update(kwargs)
         return cls(**sim_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Arc-audit follow-up (verification round): every method Simulation
+# inherits from its five mixins keeps that mixin's name in its
+# __qualname__ (Python sets __qualname__ from the class body where a
+# function is DEFINED, not where it ends up bound via inheritance), which
+# leaks into user-facing TypeError messages for an unrecognised keyword
+# argument -- e.g. `TypeError: _ExecuteMixin.forward() got an unexpected
+# keyword argument 'design_mask'` instead of naming the actual public
+# surface, `Simulation.forward()`. This was fixed for forward()
+# specifically via an explicit **_removed_kwargs shim
+# (_reject_removed_forward_kwargs in rfx/api/_execute.py), but the
+# verifier found it is not one-off: ten public Simulation methods leak
+# the same way (e.g. `sim.run(n_stepss=2)` still says `_ExecuteMixin.
+# run() got an unexpected keyword argument`). Rebind __qualname__ on
+# every inherited method here, once, at class composition time, so all
+# of them read `Simulation.<method>` regardless of which mixin module
+# happens to define them. Structural only: does not change behaviour,
+# identity, or MRO -- only the __qualname__ string attribute Python's
+# own error formatting (and tracebacks, repr, etc.) reads from. Each of
+# these mixin classes is used ONLY by Simulation (verified: no other
+# `class ...(_ExecuteMixin` etc. anywhere in rfx/), so mutating the
+# function objects in place cannot affect any other class.
+# ---------------------------------------------------------------------------
+for _mixin in (
+    _PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin, _ArtifactsMixin,
+):
+    for _name, _member in vars(_mixin).items():
+        if (
+            inspect.isfunction(_member)
+            and _member.__qualname__ == f"{_mixin.__name__}.{_name}"
+        ):
+            _member.__qualname__ = f"Simulation.{_name}"
+del _mixin, _name, _member
 
 
 # ---------------------------------------------------------------------------

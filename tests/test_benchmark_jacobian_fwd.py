@@ -47,9 +47,25 @@ def test_benchmark_table_relations():
     # docstring's "Wall-clock is diagnostic, not gated" note for why
     # wall_s is excluded here rather than asserted with a wider band.
     ratios = table["intercept_vs_plain_ratio"]
+    # This CPU-only test fixture (JAX_PLATFORMS=cpu) must always expose
+    # both compiler-derived columns; a missing key here means
+    # scripts/benchmark_jacobian_fwd.py's own bare `except Exception`
+    # around cost_analysis()/memory_analysis() silently swallowed a real
+    # failure (info["flops"]/["temp_bytes"] = None), which would
+    # otherwise make the loop below skip both columns via `continue` and
+    # pass with NOTHING actually checked -- an empty gate that looks
+    # green. Assert the keys exist before trusting the loop's silence.
+    assert "flops" in ratios, (
+        "intercept_vs_plain_ratio has no 'flops' key -- the benchmark "
+        "script's cost_analysis() call likely failed silently (bare "
+        "except in _compile_and_measure); this CPU fixture must expose it"
+    )
+    assert "temp_bytes" in ratios, (
+        "intercept_vs_plain_ratio has no 'temp_bytes' key -- the benchmark "
+        "script's memory_analysis() call likely failed silently (bare "
+        "except in _compile_and_measure); this CPU fixture must expose it"
+    )
     for name in ("flops", "temp_bytes"):
-        if name not in ratios:
-            continue  # backend may not expose one of these (see rows' None)
         ratio = ratios[name]
         assert 0.5 <= ratio <= 2.0, (
             f"intercept_vs_plain_ratio[{name}] = {ratio:.3f} outside the "
@@ -64,12 +80,17 @@ def test_benchmark_table_relations():
         r for r in table["rows"]
         if r["mode"] == "jvp_batched" and r["n_t"] == seq_row["n_t"]
     )
-    # Wall-clock, reported not gated (same class/treatment as
-    # intercept_vs_plain_ratio's wall_s column above): batched is
-    # EXPECTED to beat sequential (that's the whole point of the knob),
-    # but "beat" is a wall-time comparison and can invert on a loaded/
-    # noisy runner without any code regression. No assertion here; the
-    # ratio is available in the table for a human/CI-log reader.
+    # Wall-clock, reported not gated -- but PRECAUTIONARY, not
+    # demonstrated: unlike intercept_vs_plain_ratio's wall_s column above
+    # (confirmed red on a real CI run, commit 55fa85b), this specific
+    # batched-vs-sequential inversion has never actually been observed
+    # (across every local run collected while developing this fix, 0/18
+    # samples inverted; worst measured margin 1.30x in batched's favor,
+    # still comfortably faster). It is de-gated on the SAME reasoning as
+    # wall_s (both are wall-clock, both are compiler/scheduler-dependent
+    # in principle) rather than on independent evidence that this
+    # particular comparison is actually flaky -- treat it as a
+    # consistency choice, not a second confirmed-red case.
     _batched_vs_sequential_speedup = (
         seq_row["t_median_s"] / batched_row["t_median_s"]
         if batched_row["t_median_s"] else float("nan")

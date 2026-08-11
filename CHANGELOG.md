@@ -11,7 +11,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 An independent adversarial audit of the e4b565c..ce44661 merge arc (10 PRs,
 issues #571/#577/#578/#579/#582/#620/#622/#623/#625/#626/#632) found five
 of our own mistakes after merge. This entry documents the fixes; it is a
-correction of the arc's own errors, not new feature work.
+correction of the arc's own errors, not new feature work. A second,
+independent verification pass over THIS entry's own fixes then found
+several more defects in them (an overflow guard that clipped the value
+but not the gradient, a NaN misdiagnosed as a tangent-dependence
+violation, a guard stricter than the code it was meant to match, an
+under-sampled falsifier sweep that itself overstated its claim, and the
+`_ExecuteMixin` leak turning out to be ten methods, not one) — folded
+into the same bullets below rather than filed separately, since they are
+corrections to fixes that had not yet shipped.
 
 - **Benchmark flakiness (issue #632 follow-up)**:
   `tests/test_benchmark_jacobian_fwd.py` asserted `intercept_vs_plain_ratio`
@@ -30,43 +38,39 @@ correction of the arc's own errors, not new feature work.
 - **`n_warmup` truncation error is placement-dependent, not universal
   (issue #626 addendum)**: the shipped curve (near-source design cell,
   ~3 cells from the source) is the WORST case, not the general case. A
-  far-from-source counter-fixture (design cell 62 cells from the source)
-  measures the AD gradient matching the K=0 FD oracle to 0.008-0.036% for
-  every sampled `n_warmup` at or below the wavefront's arrival time at the
-  design region, only degrading past it — new committed script
+  far-from-source counter-fixture (design cell 62 cells from the source,
+  `K_safe=108`) measures the AD gradient staying within this repo's own
+  established ~1.5% AD-vs-FD noise floor for every `n_warmup <= K_safe`:
+  <0.01% through `K_safe`-20 (deep sub-wavefront, near-exact), growing
+  SMOOTHLY (not a sharp cliff — a finer sweep bracketing `K_safe`, added
+  in the same verification round that found this, shows 0.26% at
+  `K_safe`-4, 0.60% at `K_safe`-2, 1.19% AT `K_safe` itself), only
+  exceeding that noise floor past `K_safe` — new committed script
   `scripts/diagnostics/i626_n_warmup_wavefront_locality.py`. Corrected
   guidance ships in `rfx/nonuniform.py`'s `n_warmup split` comment,
   `Simulation.forward()`'s `n_warmup` docstring, `rfx.observables.
   jacobian_fwd`'s fence note, and `rfx.runners.distributed_nu.
   run_nonuniform_distributed_pec`'s docstring: compute
-  `K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))`;
-  `n_warmup <= K_safe` is (near-)exact. No runtime warning ships —
+  `K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))`
+  (`min_distance` over every active source AND each source's own spatial
+  extent — a TFSF plane-wave source illuminates from an entire box face,
+  not a point);
+  `n_warmup <= K_safe` stays within the noise floor above (near-exact
+  deep below `K_safe`, merely noise-floor-comfortable AT it). No runtime
+  warning ships —
   `forward()` does not know which cells are the "design region" (that
   concept was deliberately removed with `design_mask`, issue #625), so a
   warning built on a guess would be exactly the kind of unverifiable claim
   this repo's own discipline forbids; the formula is documentation, not
   an automated check.
-- **`rfx.observables.field_softmax`'s default `beta=1.0` was unsafe at
-  realistic field magnitudes (issue #619)**: at the old, unscaled
-  `logsumexp(beta*vals)/beta` formulation, a physically tiny field
-  (`|field|**2` ~1e-10 to 1e-22, this repo's own DFT-plane accumulator
-  range) at the default beta made the objective sit at ~100.000002% of
-  the design-independent constant `log(count)/beta` — both the value and
-  gradient measured rounding noise, not physics. `field_softmax` now
-  auto-scales internally, `beta_eff = beta / stop_gradient(max(vals))`,
-  which makes `beta_eff * max(vals) == beta` identically regardless of
-  the field's physical units — the swallow cannot recur at any finite
-  magnitude, at any beta, including the default (now merely LOOSE at
-  low beta, never rounding-noise). `beta` is DIMENSIONLESS after this
-  change. New regression tests:
-  `tests/test_observables_dft_field.py::test_field_softmax_default_beta_is_scale_invariant`
-  (verifies `field_softmax(c*vals) == c*field_softmax(vals)` at the
-  default beta across 30 orders of magnitude) and
-  `::test_field_softmax_default_beta_gradient_not_rounding_noise` (direct
-  FD-vs-AD check at a physically tiny field magnitude). The existing
-  FD-vs-AD gates' `_SOFTMAX_BETA` and `examples/inverse_design/
-  field_observable_shielding.py`'s `BETA` are re-calibrated for the new
-  dimensionless meaning (measured, not guessed).
+- **`rfx.observables.field_softmax`'s `beta` semantics changed — see the
+  dedicated BREAKING entry below** (issue #619). Summary only here: the
+  old default was unsafe at realistic field magnitudes; `beta` is now
+  auto-scaled and DIMENSIONLESS. Filed as its own top-level BREAKING
+  entry, not folded into this list, because it silently changes the
+  numeric meaning of an existing top-level public-export parameter for
+  every caller who passed a non-default `beta` — unlike this list's other
+  four items, there is no raise or new error to notice it by.
 - **`jacobian_fwd`'s two tangent-batching paths had asymmetric safety and
   one false docstring claim**: the docstring stated `batch_tangents=False`
   runs its sequential `jax.jvp` calls "inside one `jit`" — there is no
@@ -103,9 +107,82 @@ correction of the arc's own errors, not new feature work.
   memory-reduction.mdx` gained a "Restricting which cells carry a
   derivative" section (the `design_mask` migration path previously existed
   only in this CHANGELOG, not in public docs).
+- **The `_ExecuteMixin` leak above was not one-off — verification round
+  fix, ten methods.** Every method `Simulation` inherits from its five
+  mixins (`_PreflightMixin`, `_SparamMixin`, `_CompileMixin`,
+  `_ExecuteMixin`, `_ArtifactsMixin`) kept that mixin's name in its
+  `__qualname__` (Python sets it from the class body where a function is
+  DEFINED, not where it is bound via inheritance), so ANY unrecognised
+  keyword argument on ANY public method leaked the internal mixin —
+  measured: `sim.run(n_stepss=2)` read `_ExecuteMixin.run() got an
+  unexpected keyword argument`. `rfx/api/__init__.py` now rebinds every
+  inherited method's `__qualname__` to `Simulation.<method>` once, at
+  class composition time (structural only — does not change behaviour,
+  identity, or MRO). New test:
+  `tests/test_design_mask_removed.py::test_no_public_simulation_method_leaks_a_mixin_class_name`.
 - `docs/guides/api_symbol_inventory.json` regenerated
   (`python scripts/check_api_reference.py --write`) for `forward()`'s new
   `_removed_kwargs` parameter.
+
+### Changed — `rfx.observables.field_softmax`'s `beta` is now auto-scaled and DIMENSIONLESS (**BREAKING**) (issue #619)
+
+- **The numeric meaning of `beta` changed for every existing caller who
+  passed a non-default value — silently, with no raise.** Before this
+  change, `field_softmax(names, beta=B)` computed
+  `logsumexp(B * vals) / B` directly against the raw `|field|**2` values,
+  so `B` had to be hand-matched to whatever physical units/magnitude the
+  DFT-plane accumulator happened to carry (commonly `|field|**2` ~1e-10
+  to 1e-22 in this repo). At the old default `beta=1.0`, a realistic
+  field magnitude made the objective sit at ~100.000002% of the
+  design-independent constant `log(count)/beta` — both the value and
+  gradient measured rounding noise, not physics (measured, `#619`).
+- **The fix**: `field_softmax` now computes
+  `beta_eff = beta / stop_gradient(max(vals))` and uses `beta_eff` in
+  place of a raw `beta` throughout, so `beta_eff * max(vals) == beta`
+  identically regardless of the field's physical units. `beta` is now
+  DIMENSIONLESS (a target sharpness — see the docstring's
+  "What beta now controls" section) rather than a raw multiplier on
+  `|field|**2`. The old rounding-noise swallow cannot recur at any
+  representable field magnitude, at any beta, including the default
+  (now merely LOOSE at low beta, never rounding-noise).
+- **MIGRATION — rescale any beta you already tuned.** A `beta` value
+  chosen under the OLD semantics (e.g. `beta=1e11`, tuned so
+  `beta * max(vals) ≈ 50` for a specific field magnitude) means something
+  completely different under the new one (`beta_eff * max(vals) == beta`
+  identically, so passing `beta=1e11` now targets a wildly over-sharp
+  softmax relative to the old intent). Do not carry an old numeric `beta`
+  forward unexamined: pick the new dimensionless value directly from the
+  "What beta now controls" guidance in the docstring (5-50 is a
+  reasonable range for most plane sizes), or recompute it as
+  `new_beta ≈ old_beta * old_max_vals` if you need to reproduce a
+  specific old operating point. This repo's own callers were re-tuned by
+  measurement, not by that formula: `tests/test_observables_dft_field.py`'s
+  `_SOFTMAX_BETA` (`1e11` raw → `200` dimensionless) and
+  `examples/inverse_design/field_observable_shielding.py`'s `BETA`
+  (`2.0e24` raw → `20` dimensionless).
+- **Follow-up fix, same verification round: the overflow footgun the
+  auto-scaling was meant to close RELOCATED rather than closed.**
+  `beta_eff = beta / max(vals)` can itself overflow for a large enough
+  `beta` against a tiny field — measured: at `max(vals)` ~2.24e-22,
+  `beta=2.0e24` (the literal value the shielding example carried before
+  its own re-calibration above) returned `value=nan, grad=nan` silently.
+  `field_softmax` now clips `beta_eff` to the working dtype's largest
+  finite value when it would overflow, keeping the VALUE finite and
+  accurate. The GRADIENT is a separate, tighter limit the clip does NOT
+  cover: it silently collapses to exactly `0.0` somewhere in the
+  `beta~1e15-1e17` range (fixture-dependent; a `1/beta_eff`
+  floating-point precision limit in the VJP, not fixed here) — both
+  thresholds sit many orders of magnitude above the recommended 5-50
+  range, so this is a documented edge, not a practical concern for any
+  beta this repo's own guidance recommends. New regression tests:
+  `test_field_softmax_beta_eff_overflow_returns_finite_not_nan` and
+  `test_field_softmax_gradient_can_silently_collapse_past_the_recommended_beta_range`.
+- New regression tests (scale-safety, distinct from the overflow tests
+  above): `test_field_softmax_default_beta_is_scale_invariant` (verifies
+  `field_softmax(c*vals) == c*field_softmax(vals)` at the default beta
+  across 30 orders of magnitude) and
+  `test_field_softmax_default_beta_gradient_not_rounding_noise` (direct
+  FD-vs-AD check at a physically tiny field magnitude).
 
 ### Removed — `design_mask` deleted from every public surface (issue #625, BREAKING)
 
@@ -271,7 +348,7 @@ correction of the arc's own errors, not new feature work.
   now three configurations / two raises / one docs-only trap, since
   `design_mask` — one of the prior four — was removed outright rather
   than fenced).
-- **Addendum (arc-audit follow-up, below): the curve above is a
+- **Addendum (arc-audit follow-up, ABOVE): the curve above is a
   NEAR-SOURCE worst case, not a universal property of `n_warmup`.** See
   the "Fixed — arc-audit follow-up" entry near the top of this file for
   the corrected, distance-dependent statement and the `K_safe` formula —

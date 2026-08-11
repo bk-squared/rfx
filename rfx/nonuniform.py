@@ -1415,11 +1415,17 @@ def run_nonuniform(
     # (near-)exact -- n_warmup is genuinely free compute/memory relief in
     # that regime, not merely an approximation. Define
     #     K_safe ~= floor(min_distance(source, design_region) / (C0 * dt))
-    # (grid steps for the wavefront to reach the closest design cell, C0 =
-    # vacuum lightspeed -- a conservative floor valid for any slower,
-    # non-vacuum propagation). For n_warmup <= K_safe truncation error is
-    # negligible; beyond it, error grows and can reach the full gradient
-    # magnitude by the time n_warmup reaches the loss window.
+    # where min_distance is the MINIMUM over EVERY active source AND over
+    # each source's own spatial extent (not just its nominal position) --
+    # a TFSF plane-wave source, for example, illuminates from an entire
+    # box face, not a point, so "distance from the source" means distance
+    # from the NEAREST point of that box to the nearest point of the
+    # design region. (grid steps for the wavefront to reach the closest
+    # design cell, C0 = vacuum lightspeed -- a conservative floor valid
+    # for any slower, non-vacuum propagation). For n_warmup <= K_safe
+    # truncation error is negligible; beyond it, error grows and can
+    # reach the full gradient magnitude by the time n_warmup reaches the
+    # loss window.
     #
     # Forward output is exactly n_warmup-invariant (bit-identical) in every
     # placement measured. Two measured regimes (issue #626 part 2 /
@@ -1433,17 +1439,30 @@ def run_nonuniform(
     #     tests/test_n_warmup.py::test_warmup_truncation_error_grows_with_k,
     #     n_steps=100, loss window [80,100)).
     #   - FAR-FROM-SOURCE placement (design cell 62 cells from the source,
-    #     K_safe=108 measured from the grid's own dt): AD matches the
-    #     K=0 FD oracle to 0.008-0.036% rel_err for every sampled
-    #     n_warmup in {0,20,40,60,80,100} -- ALL <= K_safe -- and only
-    #     starts degrading past K_safe (0.63% at K=120, growing to 75% by
-    #     K=200), exactly the wavefront-arrival prediction (fixture:
+    #     K_safe=108 measured from the grid's own dt): AD matches the K=0
+    #     FD oracle to <0.01% rel_err through K=88 (deep sub-wavefront,
+    #     K_safe-20), then grows SMOOTHLY -- not a sharp cliff -- as K
+    #     approaches K_safe: 0.015% at K=98, 0.098% at K=102, 0.259% at
+    #     K=104, 0.601% at K=106, 1.186% AT K=108 (=K_safe itself). Every
+    #     one of those K<=K_safe values sits comfortably inside this
+    #     repo's own established ~1.5% AD-vs-FD noise floor. Past K_safe
+    #     the curve keeps growing (1.56% at K=109, ~2.5% around K=112),
+    #     though non-monotonically farther out (numerical-dispersion
+    #     ripple, not noise) before the broader trend continues upward
+    #     toward the loss window (75% by K=200). K_safe is therefore a
+    #     BOUND on where truncation stays within the established noise
+    #     floor, not a literal discontinuity -- an earlier version of
+    #     this comment read the original coarse (multiples-of-20) sweep,
+    #     which skipped every point in [101,119], as "exactly the
+    #     wavefront-arrival prediction" and overstated how sharp the
+    #     transition is (fixture:
     #     scripts/diagnostics/i626_n_warmup_wavefront_locality.py,
-    #     n_steps=220, loss window [180,220)).
+    #     n_steps=220, loss window [180,220), finely sampled around
+    #     K_safe).
     # The near-source curve is the WORST case, not the general case --
     # use K_safe to decide whether a given source/design placement is in
-    # the exact or the truncated regime; do not read "n_warmup truncates
-    # the gradient" as true unconditionally.
+    # the exact-or-noise-floor or the truncated regime; do not read
+    # "n_warmup truncates the gradient" as true unconditionally.
     if n_warmup > 0:
         if n_warmup >= n_steps:
             raise ValueError(

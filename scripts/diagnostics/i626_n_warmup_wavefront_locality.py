@@ -34,6 +34,22 @@ computes K_safe from the grid's own `dt` and the source/design-cell
 geometry, and checks it against the measured K at which the truncation
 error starts departing from the near-source fixtures' noise floor.
 
+Verification-round correction: the original coarse sweep (multiples of
+20) never sampled inside [101, 119] and reported "error only starts
+growing once K crosses K_safe, exactly at the predicted boundary" as if
+K_safe marked a sharp cliff. A finer sweep bracketing K_safe shows a
+SMOOTH, monotonically growing curve starting well before K_safe (not a
+cliff): at this fixture's K_safe=108, K=104 measures 0.259%, K=106
+measures 0.601%, K=108 (=K_safe itself) measures 1.186% -- all still
+comfortably under this repo's own established ~1.5% AD-vs-FD noise floor
+(see e.g. `tests/test_n_warmup.py`'s docstrings), but not "near-exact to
+every printed digit" the way K<=100 is. The falsifier below now (a)
+samples finely around K_safe rather than only at multiples of 20, and
+(b) gates on the ~1.5% noise floor rather than an arbitrarily tight
+0.1%, which is what the formula's PRACTICAL claim actually needs to
+survive: K_safe is a useful, honest bound on where truncation is
+noise-floor-negligible, not a literal discontinuity.
+
 Run:
     PYTHONPATH=. JAX_PLATFORMS=cpu python scripts/diagnostics/i626_n_warmup_wavefront_locality.py
 """
@@ -111,7 +127,17 @@ def main():
           f"{(far_i - src_i) * DX * 1e3:.1f} mm)")
 
     h = 0.02
-    k_sweep = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
+
+    # Far cell's K_safe, computed up front so the sweep can bracket it
+    # finely -- multiples of 20 alone skip right over the boundary.
+    d_far_m = abs(far_i - src_i) * DX
+    k_safe_far = math.floor(d_far_m / (C0 * dt))
+    fine_bracket = sorted({
+        max(0, k_safe_far - d) for d in (20, 10, 6, 4, 2, 1, 0)
+    } | {k_safe_far + d for d in (1, 2, 4, 8, 12)})
+    coarse_tail = [0, 20, 40, 60, 80, 140, 160, 180, 200]
+    k_sweep = sorted(set(fine_bracket) | set(coarse_tail))
+    k_sweep = [K for K in k_sweep if K < N_STEPS]
 
     results = {}
     for label, ti in (("near", near_i), ("far", far_i)):
@@ -126,8 +152,6 @@ def main():
 
         row = []
         for K in k_sweep:
-            if K >= N_STEPS:
-                continue
             a0 = jnp.asarray(ALPHA0, dtype=jnp.float32)
             g_ad = float(jax.grad(lambda a: obj(a, n_warmup=K))(a0))
             rel = abs(g_ad - g_fd) / max(abs(g_fd), 1e-30)
@@ -136,24 +160,47 @@ def main():
             print(f"  K={K:4d}  AD={g_ad:14.6e}  rel_err={rel * 100:8.3f}%{flag}")
         results[label] = row
 
-    # ---- Falsifiable check: below K_safe, the far-cell gradient must
-    # match EVERY printed digit of the K=0 reference (near-exact, not
-    # merely "small error") -- this is the load-bearing claim, so assert
-    # it rather than just printing it.
+    # ---- Falsifiable check: below K_safe, the far-cell gradient stays
+    # within this repo's established ~1.5% AD-vs-FD noise floor -- the
+    # PRACTICAL claim K_safe needs to survive (see the module docstring's
+    # verification-round correction: it is a smooth, monotonically
+    # growing curve approaching K_safe, not a sharp cliff, so a tight
+    # <0.1% band across a merely-coarse sweep was an artifact of never
+    # sampling near the boundary, not evidence of near-exactness AT the
+    # boundary itself).
+    NOISE_FLOOR = 0.015  # this repo's own established AD-vs-FD tolerance
     far_row = results["far"]
     d_m = abs(far_i - src_i) * DX
     k_safe = math.floor(d_m / (C0 * dt))
     sub_wavefront = [(K, g_ad, rel) for K, g_ad, rel in far_row if K <= k_safe]
     assert sub_wavefront, "no sampled K falls below K_safe -- widen k_sweep or shrink separation"
+    assert k_safe in {K for K, _, _ in sub_wavefront}, (
+        "K_safe itself is not a sampled point -- fine_bracket construction changed; "
+        "the boundary value must be checked directly, not only points strictly below it"
+    )
     for K, g_ad, rel in sub_wavefront:
-        assert rel < 1e-3, (
+        assert rel < NOISE_FLOOR, (
             f"far cell K={K} (<= K_safe={k_safe}) rel_err={rel * 100:.4f}% -- "
-            "expected near-exact (<0.1%) below the wavefront-arrival horizon"
+            f"expected within this repo's ~{NOISE_FLOOR * 100:.1f}% AD-vs-FD "
+            "noise floor at or below the wavefront-arrival horizon"
+        )
+    # Separately confirm the DEEP sub-wavefront region (well below K_safe)
+    # really is near-exact, not merely inside the looser noise floor --
+    # this is where the "genuinely free, not merely approximate" claim
+    # lives.
+    deep = [(K, rel) for K, _, rel in sub_wavefront if K <= k_safe - 20]
+    assert deep, "no sampled K falls in the deep sub-wavefront region (K_safe - 20)"
+    for K, rel in deep:
+        assert rel < 1e-3, (
+            f"far cell K={K} (deep sub-wavefront, K_safe-{k_safe - K}) "
+            f"rel_err={rel * 100:.4f}% -- expected near-exact (<0.1%) well "
+            "below the wavefront-arrival horizon"
         )
     print(
-        f"\n[falsifier PASS] far cell: every sampled K <= K_safe={k_safe} "
-        f"matches the K=0 oracle to <0.1% (values: "
-        f"{[(K, round(rel * 100, 4)) for K, _, rel in sub_wavefront]})"
+        f"\n[falsifier PASS] far cell: every sampled K <= K_safe={k_safe} stays "
+        f"within the {NOISE_FLOOR * 100:.1f}% noise floor (values: "
+        f"{[(K, round(rel * 100, 4)) for K, _, rel in sub_wavefront]}); "
+        f"the deep sub-wavefront region (K <= K_safe-20) is near-exact (<0.1%)"
     )
 
     near_row = results["near"]
