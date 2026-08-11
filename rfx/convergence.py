@@ -429,7 +429,15 @@ def quick_convergence(
         new_sim = Simulation(
             freq_max=sim._freq_max,
             domain=sim._domain,
-            boundary=sim._boundary,
+            # Issue #647 grep sweep: clone the normalized BoundarySpec, not
+            # the collapsed `_boundary` string. `_boundary` is
+            # `spec.absorber_type or "pec"`, so every per-face detail — PEC /
+            # PMC / periodic faces and per-face thickness — was dropped and
+            # each refinement step silently ran a UNIFORM absorber on all six
+            # faces. `_boundary_spec` is the legacy scalar's normalized form
+            # too (`_build_spec_from_legacy`), so scalar-constructed
+            # simulations clone exactly as before.
+            boundary=sim._boundary_spec,
             cpml_layers=sim._cpml_layers,
             dx=dx,
             mode=sim._mode,

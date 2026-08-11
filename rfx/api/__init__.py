@@ -616,6 +616,47 @@ class Simulation(
         else:
             self._boundary_spec = self._build_spec_from_legacy()
 
+        # solver='adi' has no per-face absorber. Its absorbing layer is a
+        # graded sigma stamped on ALL SIX faces at the scalar cpml_layers
+        # (rfx/adi.py make_adi_absorbing_sigma{,_3d}, reached from
+        # rfx/api/_execute.py under `self._boundary == "cpml"`), and
+        # `self._boundary` is 'cpml' as soon as ANY face absorbs. So a
+        # per-face spec with PEC faces, or with a per-face thickness
+        # override, would silently get an absorber where the caller asked
+        # for a reflector — the SILENT_WRONG class preflight exists to
+        # remove (issue #647 grep sweep). Reject it instead of absorbing
+        # into a wall.
+        if self._solver == "adi" and self._cpml_layers > 0:
+            _adi_faces = {
+                f"{ax}_{side}":
+                    getattr(getattr(self._boundary_spec, ax), side)
+                for ax in "xyz" for side in ("lo", "hi")
+            }
+            _adi_thick = {
+                f"{ax}_{side}": getattr(
+                    getattr(self._boundary_spec, ax), f"{side}_thickness")
+                for ax in "xyz" for side in ("lo", "hi")
+            }
+            _nonuniform = (
+                set(_adi_faces.values()) != {"cpml"}
+                or any(t is not None and t != cpml_layers
+                       for t in _adi_thick.values())
+            )
+            if _nonuniform:
+                _layout = ", ".join(
+                    f"{face}={tok!r}"
+                    for face, tok in sorted(_adi_faces.items())
+                )
+                raise ValueError(
+                    "solver='adi' supports only a uniform absorber: its "
+                    "absorbing layer is stamped on all six faces at the "
+                    "scalar cpml_layers, so a per-face boundary layout "
+                    f"({_layout}) would silently absorb on the faces you "
+                    "declared as reflectors. Use solver='yee' for per-face "
+                    "boundaries, or make every face 'cpml' with no per-face "
+                    "thickness override."
+                )
+
         # T7 Phase 2 PR2: per-face CPML thickness now runs end-to-end
         # via the padded-profile engine in rfx/boundaries/cpml.py.
         # The Phase 1 guard _check_thickness_uniformity_phase1 has

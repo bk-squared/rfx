@@ -189,11 +189,16 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
     on the unpatched parent commit: that combination fails identically at
     ``precision="float32"`` through BOTH ``run()`` and ``forward()``, so it is
     a pre-existing per-face CPML geometry defect, not a precision defect and
-    not caused by issue #644. It is reported separately; pinning 4 layers here
-    keeps this test measuring the dtype policy it is named for, on a fixture
-    that actually reaches the CPML compute. Verified red-then-green: at 4
-    layers this raises the #644 lax.scan carry TypeError on the parent commit
-    and passes here.
+    not caused by issue #644. It was reported as issue #647 and is now FIXED
+    (``rfx/boundaries/cpml.py`` clamps the CPML scratch buffer per axis; the
+    #647 regression lock lives in
+    ``tests/test_boundary_spec_cpml_budget.py``), so 16 layers no longer
+    crashes. ``cpml_layers=4`` stays pinned anyway: this test is about the
+    psi dtype policy, and 4 layers is the smallest fixture that reaches the
+    CPML compute -- moving it now would only make the dtype assertion depend
+    on the buffer-clamp path as well. Verified red-then-green: at 4 layers
+    this raises the #644 lax.scan carry TypeError on the parent commit and
+    passes here.
     """
     from rfx.boundaries.spec import BoundarySpec, Boundary
 

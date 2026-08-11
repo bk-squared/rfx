@@ -269,6 +269,80 @@ def _cpml_noop_profile(n_layers: int) -> CPMLParams:
     )
 
 
+def _grid_extents(grid) -> tuple[int, int, int]:
+    """``(nx, ny, nz)`` for both ``Grid`` and ``NonUniformGrid``."""
+    if hasattr(grid, "shape"):
+        nx, ny, nz = grid.shape
+    else:
+        nx, ny, nz = grid.nx, grid.ny, grid.nz
+    return int(nx), int(ny), int(nz)
+
+
+def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
+    """Per-axis CPML scratch-buffer depth: ``min(n_alloc, axis_extent)``.
+
+    ``grid.cpml_layers`` is an ALLOCATION BUDGET, not a per-face absorber
+    thickness: every face profile is built with its OWN active layer count
+    and then no-op-padded up to the budget (``_pad_profile_at_end`` /
+    ``_pad_profile_at_start``), and a face with no absorber at all gets the
+    all-no-op ``_cpml_noop_profile``. An axis narrower than the budget
+    cannot hold that buffer — the face slices ``[:n]`` / ``[-n:]`` silently
+    shrink to the axis extent while the length-``n`` profile does not, and
+    the scan dies on ``mul got incompatible shapes for broadcasting``
+    (issue #647). Reachable two ways, both with a per-face ``BoundarySpec``:
+    an axis whose faces are all PEC/PMC (no padding at all, so its extent is
+    just the interior), or an absorbing axis whose per-face
+    ``lo_thickness`` / ``hi_thickness`` is well below the budget.
+
+    Clamping is exact rather than a quiet degradation, and that is WHY it is
+    a clamp and not a raise. A face's ACTIVE layer count equals the pad the
+    grid builder allocated for it (``Grid._face_pad``: ``face_layers[face]``
+    on an absorbing face, ``0`` on PEC/PMC/periodic), and every builder sizes
+    an axis as ``interior(>= 2) + pad_lo + pad_hi``. So
+    ``min(n_alloc, extent) >= max(pad_lo, pad_hi)`` always, and the entries
+    this drops — the tail of a lo profile, the head of a pre-flipped hi
+    profile — are exactly the no-op padding. Nothing absorbing is removed,
+    and the configuration the user asked for is fully realized. Raising
+    would instead reject a legitimate cavity-with-one-open-face.
+
+    Precedent for clamping over raising: the non-uniform runner already
+    drops non-absorbing axes from the applied set
+    (``rfx/nonuniform.py``: ``cpml_axes_eff`` keeps only axes with
+    ``pad_lo + pad_hi > 0``), which is why the #647 fixture survives the NU
+    lane and dies on the uniform one. ``_assert_absorber_fits`` below covers
+    the case this reasoning does NOT license.
+    """
+    nx, ny, nz = _grid_extents(grid)
+    return min(n_alloc, nx), min(n_alloc, ny), min(n_alloc, nz)
+
+
+def _assert_absorber_fits(grid, depths: tuple[int, int, int]) -> None:
+    """Reject a grid whose ALLOCATED absorber is wider than its own axis.
+
+    The clamp in :func:`_axis_buffer_depths` is only exact while every
+    face's allocated pad fits inside its axis. That invariant holds for
+    ``rfx.grid.Grid`` and ``rfx.nonuniform.NonUniformGrid`` by construction
+    (an axis is ``interior + pad_lo + pad_hi``), so this cannot fire from
+    any public constructor today — it exists so a future grid builder
+    cannot reintroduce a SILENTLY thinned absorber through the clamp. A
+    request that genuinely cannot be honoured is an error, not something to
+    round down.
+    """
+    for axis_idx, axis in enumerate("xyz"):
+        depth = depths[axis_idx]
+        for side in ("lo", "hi"):
+            pad = int(getattr(grid, f"pad_{axis}_{side}", 0) or 0)
+            if pad > depth:
+                raise ValueError(
+                    f"CPML face {axis}_{side} allocates {pad} absorbing "
+                    f"layers but the {axis} axis is only {depth} cell(s) "
+                    f"wide, so the absorber cannot be applied at its "
+                    f"requested thickness. Reduce cpml_layers (or that "
+                    f"face's lo_thickness/hi_thickness) or enlarge the "
+                    f"domain on {axis}."
+                )
+
+
 def init_cpml(grid, *, kappa_max: float | None = None,
               pec_faces: set[str] | None = None,
               pmc_faces: set[str] | None = None,
@@ -350,7 +424,13 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         dz_lo=dz_lo, dz_hi=dz_hi,
     )
 
-    nx, ny, nz = grid.shape if hasattr(grid, 'shape') else (grid.nx, grid.ny, grid.nz)
+    nx, ny, nz = _grid_extents(grid)
+    # Issue #647: the psi buffers are indexed by the SAME face slices the
+    # scan body applies, so they carry the same per-axis clamp. ``n_x ==
+    # n_y == n_z == n`` on every configuration that runs today, which keeps
+    # the CPMLState shapes — and therefore the JIT cache — untouched.
+    n_x, n_y, n_z = _axis_buffer_depths(grid, n)
+    _assert_absorber_fits(grid, (n_x, n_y, n_z))
 
     # Issue #644.  The psi_* arrays are ACCUMULATION state — a recursive
     # convolution integrated over every timestep — so they must never sit
@@ -375,26 +455,48 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     psi_dtype = jnp.promote_types(field_dtype, jnp.float32)
 
     def _zeros(dim_size: int, perp1: int, perp2: int) -> jnp.ndarray:
-        return jnp.zeros((n, perp1, perp2), dtype=psi_dtype)
+        return jnp.zeros((dim_size, perp1, perp2), dtype=psi_dtype)
 
     state = CPMLState(
-        # E-field psi (12 faces)
-        psi_ex_ylo=_zeros(n, nx, nz), psi_ex_yhi=_zeros(n, nx, nz),
-        psi_ex_zlo=_zeros(n, nx, ny), psi_ex_zhi=_zeros(n, nx, ny),
-        psi_ey_xlo=_zeros(n, ny, nz), psi_ey_xhi=_zeros(n, ny, nz),
-        psi_ey_zlo=_zeros(n, ny, nx), psi_ey_zhi=_zeros(n, ny, nx),
-        psi_ez_xlo=_zeros(n, nz, ny), psi_ez_xhi=_zeros(n, nz, ny),
-        psi_ez_ylo=_zeros(n, nz, nx), psi_ez_yhi=_zeros(n, nz, nx),
+        # E-field psi (12 faces). The leading dimension is the buffer depth
+        # of the face's OWN axis (#647), not the global budget.
+        psi_ex_ylo=_zeros(n_y, nx, nz), psi_ex_yhi=_zeros(n_y, nx, nz),
+        psi_ex_zlo=_zeros(n_z, nx, ny), psi_ex_zhi=_zeros(n_z, nx, ny),
+        psi_ey_xlo=_zeros(n_x, ny, nz), psi_ey_xhi=_zeros(n_x, ny, nz),
+        psi_ey_zlo=_zeros(n_z, ny, nx), psi_ey_zhi=_zeros(n_z, ny, nx),
+        psi_ez_xlo=_zeros(n_x, nz, ny), psi_ez_xhi=_zeros(n_x, nz, ny),
+        psi_ez_ylo=_zeros(n_y, nz, nx), psi_ez_yhi=_zeros(n_y, nz, nx),
         # H-field psi (12 faces)
-        psi_hx_ylo=_zeros(n, nx, nz), psi_hx_yhi=_zeros(n, nx, nz),
-        psi_hx_zlo=_zeros(n, nx, ny), psi_hx_zhi=_zeros(n, nx, ny),
-        psi_hy_xlo=_zeros(n, ny, nz), psi_hy_xhi=_zeros(n, ny, nz),
-        psi_hy_zlo=_zeros(n, ny, nx), psi_hy_zhi=_zeros(n, ny, nx),
-        psi_hz_xlo=_zeros(n, nz, ny), psi_hz_xhi=_zeros(n, nz, ny),
-        psi_hz_ylo=_zeros(n, nz, nx), psi_hz_yhi=_zeros(n, nz, nx),
+        psi_hx_ylo=_zeros(n_y, nx, nz), psi_hx_yhi=_zeros(n_y, nx, nz),
+        psi_hx_zlo=_zeros(n_z, nx, ny), psi_hx_zhi=_zeros(n_z, nx, ny),
+        psi_hy_xlo=_zeros(n_x, ny, nz), psi_hy_xhi=_zeros(n_x, ny, nz),
+        psi_hy_zlo=_zeros(n_z, ny, nx), psi_hy_zhi=_zeros(n_z, ny, nx),
+        psi_hz_xlo=_zeros(n_x, nz, ny), psi_hz_xhi=_zeros(n_x, nz, ny),
+        psi_hz_ylo=_zeros(n_y, nz, nx), psi_hz_yhi=_zeros(n_y, nz, nx),
     )
 
     return params, state
+
+
+def _clip_lo(arr, depth: int, n_alloc: int):
+    """Front ``depth`` entries of a lo-face profile (#647).
+
+    Returns the array UNCHANGED on the common ``depth == n_alloc`` path so
+    the emitted graph — and therefore every currently-working field byte —
+    is untouched. When the axis is narrower than the allocation budget the
+    dropped tail is no-op padding (see :func:`_axis_buffer_depths`).
+    """
+    return arr if depth >= n_alloc else arr[:depth]
+
+
+def _clip_hi(arr, depth: int, n_alloc: int):
+    """Trailing ``depth`` entries of a PRE-FLIPPED hi-face profile (#647).
+
+    Hi profiles are stored outermost-cell-last, so the active layers live at
+    the END and the head is the no-op padding — the mirror of
+    :func:`_clip_lo`.
+    """
+    return arr if depth >= n_alloc else arr[n_alloc - depth:]
 
 
 def _kappa_correction(kappa, curl_slice, shape_broadcast):
@@ -428,6 +530,7 @@ def apply_cpml_e(
     anisotropic grids).
     """
     n = grid.cpml_layers
+    n_x, n_y, n_z = _axis_buffer_depths(grid, n)
     dt = grid.dt
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
@@ -435,12 +538,12 @@ def apply_cpml_e(
     if materials is not None:
         _ce_full = dt / (materials.eps_r * EPS_0)  # (nx, ny, nz)
         # Pre-slice to each PML face region for broadcasting with psi arrays
-        ce_xlo = _ce_full[:n, :, :]
-        ce_xhi = _ce_full[-n:, :, :]
-        ce_ylo = _ce_full[:, :n, :]
-        ce_yhi = _ce_full[:, -n:, :]
-        ce_zlo = _ce_full[:, :, :n]
-        ce_zhi = _ce_full[:, :, -n:]
+        ce_xlo = _ce_full[:n_x, :, :]
+        ce_xhi = _ce_full[-n_x:, :, :]
+        ce_ylo = _ce_full[:, :n_y, :]
+        ce_yhi = _ce_full[:, -n_y:, :]
+        ce_zlo = _ce_full[:, :, :n_z]
+        ce_zhi = _ce_full[:, :, -n_z:]
     else:
         ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = dt / EPS_0
 
@@ -460,26 +563,26 @@ def apply_cpml_e(
         dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
 
     # X-axis profiles (hi-face pre-flipped at init time — no jnp.flip here).
-    b_x_lo = px_lo.b[:, None, None]
-    c_x_lo = px_lo.c[:, None, None]
-    k_x_lo = px_lo.kappa[:, None, None]
-    b_x_hi = px_hi.b[:, None, None]
-    c_x_hi = px_hi.c[:, None, None]
-    k_x_hi = px_hi.kappa[:, None, None]
+    b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]
+    c_x_lo = _clip_lo(px_lo.c, n_x, n)[:, None, None]
+    k_x_lo = _clip_lo(px_lo.kappa, n_x, n)[:, None, None]
+    b_x_hi = _clip_hi(px_hi.b, n_x, n)[:, None, None]
+    c_x_hi = _clip_hi(px_hi.c, n_x, n)[:, None, None]
+    k_x_hi = _clip_hi(px_hi.kappa, n_x, n)[:, None, None]
     # Y-axis profiles
-    b_y_lo = py_lo.b[:, None, None]
-    c_y_lo = py_lo.c[:, None, None]
-    k_y_lo = py_lo.kappa[:, None, None]
-    b_y_hi = py_hi.b[:, None, None]
-    c_y_hi = py_hi.c[:, None, None]
-    k_y_hi = py_hi.kappa[:, None, None]
+    b_y_lo = _clip_lo(py_lo.b, n_y, n)[:, None, None]
+    c_y_lo = _clip_lo(py_lo.c, n_y, n)[:, None, None]
+    k_y_lo = _clip_lo(py_lo.kappa, n_y, n)[:, None, None]
+    b_y_hi = _clip_hi(py_hi.b, n_y, n)[:, None, None]
+    c_y_hi = _clip_hi(py_hi.c, n_y, n)[:, None, None]
+    k_y_hi = _clip_hi(py_hi.kappa, n_y, n)[:, None, None]
     # Z-axis profiles (lo and hi independent by design)
-    b_zl = pz_lo.b[:, None, None]
-    c_zl = pz_lo.c[:, None, None]
-    k_zl = pz_lo.kappa[:, None, None]
-    b_zh = pz_hi.b[:, None, None]
-    c_zh = pz_hi.c[:, None, None]
-    k_zh = pz_hi.kappa[:, None, None]
+    b_zl = _clip_lo(pz_lo.b, n_z, n)[:, None, None]
+    c_zl = _clip_lo(pz_lo.c, n_z, n)[:, None, None]
+    k_zl = _clip_lo(pz_lo.kappa, n_z, n)[:, None, None]
+    b_zh = _clip_hi(pz_hi.b, n_z, n)[:, None, None]
+    c_zh = _clip_hi(pz_hi.c, n_z, n)[:, None, None]
+    k_zh = _clip_hi(pz_hi.kappa, n_z, n)[:, None, None]
 
     # Issue #644.  Accumulate the CPML corrections at the psi dtype, then
     # round back to the field storage dtype ONCE at the end.  Under
@@ -504,44 +607,44 @@ def apply_cpml_e(
 
     if "x" in axes:
         # --- X-lo: Ey correction from dHz/dx ---
-        hz_xlo = state.hz[:n, :, :]
-        hz_shifted_xlo = _shift_bwd(state.hz, 0)[:n, :, :]
+        hz_xlo = state.hz[:n_x, :, :]
+        hz_shifted_xlo = _shift_bwd(state.hz, 0)[:n_x, :, :]
         curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx_x_lo
 
         new_psi_ey_xlo = b_x_lo * cpml_state.psi_ey_xlo + c_x_lo * curl_hz_dx_xlo
-        ey = ey.at[:n, :, :].add(-ce_xlo * new_psi_ey_xlo)
-        ey = ey.at[:n, :, :].add(-ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo)
+        ey = ey.at[:n_x, :, :].add(-ce_xlo * new_psi_ey_xlo)
+        ey = ey.at[:n_x, :, :].add(-ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo)
 
         # --- X-hi: Ey correction from dHz/dx ---
-        hz_xhi = state.hz[-n:, :, :]
-        hz_shifted_xhi = _shift_bwd(state.hz, 0)[-n:, :, :]
+        hz_xhi = state.hz[-n_x:, :, :]
+        hz_shifted_xhi = _shift_bwd(state.hz, 0)[-n_x:, :, :]
         curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx_x_hi
 
         new_psi_ey_xhi = b_x_hi * cpml_state.psi_ey_xhi + c_x_hi * curl_hz_dx_xhi
-        ey = ey.at[-n:, :, :].add(-ce_xhi * new_psi_ey_xhi)
-        ey = ey.at[-n:, :, :].add(-ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi)
+        ey = ey.at[-n_x:, :, :].add(-ce_xhi * new_psi_ey_xhi)
+        ey = ey.at[-n_x:, :, :].add(-ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi)
 
         # --- X-lo: Ez correction from dHy/dx ---
-        hy_xlo = state.hy[:n, :, :]
-        hy_shifted_xlo = _shift_bwd(state.hy, 0)[:n, :, :]
+        hy_xlo = state.hy[:n_x, :, :]
+        hy_shifted_xlo = _shift_bwd(state.hy, 0)[:n_x, :, :]
         curl_hy_dx_xlo = (hy_xlo - hy_shifted_xlo) / dx_x_lo
         curl_hy_dx_xlo_t = jnp.transpose(curl_hy_dx_xlo, (0, 2, 1))
 
         new_psi_ez_xlo = b_x_lo * cpml_state.psi_ez_xlo + c_x_lo * curl_hy_dx_xlo_t
         correction_ez_xlo = jnp.transpose(new_psi_ez_xlo, (0, 2, 1))
-        ez = ez.at[:n, :, :].add(ce_xlo * correction_ez_xlo)
-        ez = ez.at[:n, :, :].add(ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo)
+        ez = ez.at[:n_x, :, :].add(ce_xlo * correction_ez_xlo)
+        ez = ez.at[:n_x, :, :].add(ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo)
 
         # --- X-hi: Ez correction from dHy/dx ---
-        hy_xhi = state.hy[-n:, :, :]
-        hy_shifted_xhi = _shift_bwd(state.hy, 0)[-n:, :, :]
+        hy_xhi = state.hy[-n_x:, :, :]
+        hy_shifted_xhi = _shift_bwd(state.hy, 0)[-n_x:, :, :]
         curl_hy_dx_xhi = (hy_xhi - hy_shifted_xhi) / dx_x_hi
         curl_hy_dx_xhi_t = jnp.transpose(curl_hy_dx_xhi, (0, 2, 1))
 
         new_psi_ez_xhi = b_x_hi * cpml_state.psi_ez_xhi + c_x_hi * curl_hy_dx_xhi_t
         correction_ez_xhi = jnp.transpose(new_psi_ez_xhi, (0, 2, 1))
-        ez = ez.at[-n:, :, :].add(ce_xhi * correction_ez_xhi)
-        ez = ez.at[-n:, :, :].add(ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi)
+        ez = ez.at[-n_x:, :, :].add(ce_xhi * correction_ez_xhi)
+        ez = ez.at[-n_x:, :, :].add(ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi)
     else:
         new_psi_ey_xlo = cpml_state.psi_ey_xlo
         new_psi_ey_xhi = cpml_state.psi_ey_xhi
@@ -554,56 +657,56 @@ def apply_cpml_e(
 
     if "y" in axes:
         # --- Y-lo: Ex correction from dHz/dy ---
-        hz_ylo = state.hz[:, :n, :]
-        hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n, :]
+        hz_ylo = state.hz[:, :n_y, :]
+        hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n_y, :]
         curl_hz_dy_ylo = (hz_ylo - hz_shifted_ylo) / dx_y_lo
 
         curl_hz_dy_ylo_t = jnp.transpose(curl_hz_dy_ylo, (1, 0, 2))
 
         new_psi_ex_ylo = b_y_lo * cpml_state.psi_ex_ylo + c_y_lo * curl_hz_dy_ylo_t
         correction_ex_ylo = jnp.transpose(new_psi_ex_ylo, (1, 0, 2))
-        ex = ex.at[:, :n, :].add(ce_ylo * correction_ex_ylo)
+        ex = ex.at[:, :n_y, :].add(ce_ylo * correction_ex_ylo)
         kappa_corr_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_hz_dy_ylo_t, (1, 0, 2))
-        ex = ex.at[:, :n, :].add(ce_ylo * kappa_corr_ylo)
+        ex = ex.at[:, :n_y, :].add(ce_ylo * kappa_corr_ylo)
 
         # --- Y-hi: Ex correction from dHz/dy ---
-        hz_yhi = state.hz[:, -n:, :]
-        hz_shifted_yhi = _shift_bwd(state.hz, 1)[:, -n:, :]
+        hz_yhi = state.hz[:, -n_y:, :]
+        hz_shifted_yhi = _shift_bwd(state.hz, 1)[:, -n_y:, :]
         curl_hz_dy_yhi = (hz_yhi - hz_shifted_yhi) / dx_y_hi
 
         curl_hz_dy_yhi_t = jnp.transpose(curl_hz_dy_yhi, (1, 0, 2))
 
         new_psi_ex_yhi = b_y_hi * cpml_state.psi_ex_yhi + c_y_hi * curl_hz_dy_yhi_t
         correction_ex_yhi = jnp.transpose(new_psi_ex_yhi, (1, 0, 2))
-        ex = ex.at[:, -n:, :].add(ce_yhi * correction_ex_yhi)
+        ex = ex.at[:, -n_y:, :].add(ce_yhi * correction_ex_yhi)
         kappa_corr_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_hz_dy_yhi_t, (1, 0, 2))
-        ex = ex.at[:, -n:, :].add(ce_yhi * kappa_corr_yhi)
+        ex = ex.at[:, -n_y:, :].add(ce_yhi * kappa_corr_yhi)
 
         # --- Y-lo: Ez correction from dHx/dy ---
-        hx_ylo = state.hx[:, :n, :]
-        hx_shifted_ylo = _shift_bwd(state.hx, 1)[:, :n, :]
+        hx_ylo = state.hx[:, :n_y, :]
+        hx_shifted_ylo = _shift_bwd(state.hx, 1)[:, :n_y, :]
         curl_hx_dy_ylo = (hx_ylo - hx_shifted_ylo) / dx_y_lo
 
         curl_hx_dy_ylo_t = jnp.transpose(curl_hx_dy_ylo, (1, 2, 0))
 
         new_psi_ez_ylo = b_y_lo * cpml_state.psi_ez_ylo + c_y_lo * curl_hx_dy_ylo_t
         correction_ez_ylo = jnp.transpose(new_psi_ez_ylo, (2, 0, 1))
-        ez = ez.at[:, :n, :].add(-ce_ylo * correction_ez_ylo)
+        ez = ez.at[:, :n_y, :].add(-ce_ylo * correction_ez_ylo)
         kappa_corr_ez_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_hx_dy_ylo_t, (2, 0, 1))
-        ez = ez.at[:, :n, :].add(-ce_ylo * kappa_corr_ez_ylo)
+        ez = ez.at[:, :n_y, :].add(-ce_ylo * kappa_corr_ez_ylo)
 
         # --- Y-hi: Ez correction from dHx/dy ---
-        hx_yhi = state.hx[:, -n:, :]
-        hx_shifted_yhi = _shift_bwd(state.hx, 1)[:, -n:, :]
+        hx_yhi = state.hx[:, -n_y:, :]
+        hx_shifted_yhi = _shift_bwd(state.hx, 1)[:, -n_y:, :]
         curl_hx_dy_yhi = (hx_yhi - hx_shifted_yhi) / dx_y_hi
 
         curl_hx_dy_yhi_t = jnp.transpose(curl_hx_dy_yhi, (1, 2, 0))
 
         new_psi_ez_yhi = b_y_hi * cpml_state.psi_ez_yhi + c_y_hi * curl_hx_dy_yhi_t
         correction_ez_yhi = jnp.transpose(new_psi_ez_yhi, (2, 0, 1))
-        ez = ez.at[:, -n:, :].add(-ce_yhi * correction_ez_yhi)
+        ez = ez.at[:, -n_y:, :].add(-ce_yhi * correction_ez_yhi)
         kappa_corr_ez_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_hx_dy_yhi_t, (2, 0, 1))
-        ez = ez.at[:, -n:, :].add(-ce_yhi * kappa_corr_ez_yhi)
+        ez = ez.at[:, -n_y:, :].add(-ce_yhi * kappa_corr_ez_yhi)
     else:
         new_psi_ex_ylo = cpml_state.psi_ex_ylo
         new_psi_ex_yhi = cpml_state.psi_ex_yhi
@@ -616,57 +719,57 @@ def apply_cpml_e(
 
     if "z" in axes:
         # --- Z-lo: Ex correction from dHy/dz ---
-        hy_zlo = state.hy[:, :, :n]
-        hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n]
+        hy_zlo = state.hy[:, :, :n_z]
+        hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n_z]
         curl_hy_dz_zlo = (hy_zlo - hy_shifted_zlo) / dz_lo
 
         curl_hy_dz_zlo_t = jnp.transpose(curl_hy_dz_zlo, (2, 0, 1))
 
         new_psi_ex_zlo = b_zl * cpml_state.psi_ex_zlo + c_zl * curl_hy_dz_zlo_t
         correction_ex_zlo = jnp.transpose(new_psi_ex_zlo, (1, 2, 0))
-        ex = ex.at[:, :, :n].add(-ce_zlo * correction_ex_zlo)
+        ex = ex.at[:, :, :n_z].add(-ce_zlo * correction_ex_zlo)
         # κ correction for Z-lo Ex
         kappa_corr_ex_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hy_dz_zlo_t, (1, 2, 0))
-        ex = ex.at[:, :, :n].add(-ce_zlo * kappa_corr_ex_zlo)
+        ex = ex.at[:, :, :n_z].add(-ce_zlo * kappa_corr_ex_zlo)
 
         # --- Z-hi: Ex correction from dHy/dz ---
-        hy_zhi = state.hy[:, :, -n:]
-        hy_shifted_zhi = _shift_bwd(state.hy, 2)[:, :, -n:]
+        hy_zhi = state.hy[:, :, -n_z:]
+        hy_shifted_zhi = _shift_bwd(state.hy, 2)[:, :, -n_z:]
         curl_hy_dz_zhi = (hy_zhi - hy_shifted_zhi) / dz_hi
 
         curl_hy_dz_zhi_t = jnp.transpose(curl_hy_dz_zhi, (2, 0, 1))
 
         new_psi_ex_zhi = b_zh * cpml_state.psi_ex_zhi + c_zh * curl_hy_dz_zhi_t
         correction_ex_zhi = jnp.transpose(new_psi_ex_zhi, (1, 2, 0))
-        ex = ex.at[:, :, -n:].add(-ce_zhi * correction_ex_zhi)
+        ex = ex.at[:, :, -n_z:].add(-ce_zhi * correction_ex_zhi)
         kappa_corr_ex_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hy_dz_zhi_t, (1, 2, 0))
-        ex = ex.at[:, :, -n:].add(-ce_zhi * kappa_corr_ex_zhi)
+        ex = ex.at[:, :, -n_z:].add(-ce_zhi * kappa_corr_ex_zhi)
 
         # --- Z-lo: Ey correction from dHx/dz ---
-        hx_zlo = state.hx[:, :, :n]
-        hx_shifted_zlo = _shift_bwd(state.hx, 2)[:, :, :n]
+        hx_zlo = state.hx[:, :, :n_z]
+        hx_shifted_zlo = _shift_bwd(state.hx, 2)[:, :, :n_z]
         curl_hx_dz_zlo = (hx_zlo - hx_shifted_zlo) / dz_lo
 
         curl_hx_dz_zlo_t = jnp.transpose(curl_hx_dz_zlo, (2, 1, 0))
 
         new_psi_ey_zlo = b_zl * cpml_state.psi_ey_zlo + c_zl * curl_hx_dz_zlo_t
         correction_ey_zlo = jnp.transpose(new_psi_ey_zlo, (2, 1, 0))
-        ey = ey.at[:, :, :n].add(ce_zlo * correction_ey_zlo)
+        ey = ey.at[:, :, :n_z].add(ce_zlo * correction_ey_zlo)
         kappa_corr_ey_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hx_dz_zlo_t, (2, 1, 0))
-        ey = ey.at[:, :, :n].add(ce_zlo * kappa_corr_ey_zlo)
+        ey = ey.at[:, :, :n_z].add(ce_zlo * kappa_corr_ey_zlo)
 
         # --- Z-hi: Ey correction from dHx/dz ---
-        hx_zhi = state.hx[:, :, -n:]
-        hx_shifted_zhi = _shift_bwd(state.hx, 2)[:, :, -n:]
+        hx_zhi = state.hx[:, :, -n_z:]
+        hx_shifted_zhi = _shift_bwd(state.hx, 2)[:, :, -n_z:]
         curl_hx_dz_zhi = (hx_zhi - hx_shifted_zhi) / dz_hi
 
         curl_hx_dz_zhi_t = jnp.transpose(curl_hx_dz_zhi, (2, 1, 0))
 
         new_psi_ey_zhi = b_zh * cpml_state.psi_ey_zhi + c_zh * curl_hx_dz_zhi_t
         correction_ey_zhi = jnp.transpose(new_psi_ey_zhi, (2, 1, 0))
-        ey = ey.at[:, :, -n:].add(ce_zhi * correction_ey_zhi)
+        ey = ey.at[:, :, -n_z:].add(ce_zhi * correction_ey_zhi)
         kappa_corr_ey_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hx_dz_zhi_t, (2, 1, 0))
-        ey = ey.at[:, :, -n:].add(ce_zhi * kappa_corr_ey_zhi)
+        ey = ey.at[:, :, -n_z:].add(ce_zhi * kappa_corr_ey_zhi)
     else:
         new_psi_ex_zlo = cpml_state.psi_ex_zlo
         new_psi_ex_zhi = cpml_state.psi_ex_zhi
@@ -709,15 +812,16 @@ def apply_cpml_h(
     guided-mode absorption (equivalent to UPML).
     """
     n = grid.cpml_layers
+    n_x, n_y, n_z = _axis_buffer_depths(grid, n)
     dt = grid.dt
     if materials is not None and hasattr(materials, 'mu_r'):
         _ch_full = dt / (materials.mu_r * MU_0)  # (nx, ny, nz)
-        ch_xlo = _ch_full[:n, :, :]
-        ch_xhi = _ch_full[-n:, :, :]
-        ch_ylo = _ch_full[:, :n, :]
-        ch_yhi = _ch_full[:, -n:, :]
-        ch_zlo = _ch_full[:, :, :n]
-        ch_zhi = _ch_full[:, :, -n:]
+        ch_xlo = _ch_full[:n_x, :, :]
+        ch_xhi = _ch_full[-n_x:, :, :]
+        ch_ylo = _ch_full[:, :n_y, :]
+        ch_yhi = _ch_full[:, -n_y:, :]
+        ch_zlo = _ch_full[:, :, :n_z]
+        ch_zhi = _ch_full[:, :, -n_z:]
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = dt / MU_0
 
@@ -735,26 +839,26 @@ def apply_cpml_h(
         dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
 
     # X-axis profiles (hi-face pre-flipped at init time).
-    b_x_lo = px_lo.b[:, None, None]
-    c_x_lo = px_lo.c[:, None, None]
-    k_x_lo = px_lo.kappa[:, None, None]
-    b_x_hi = px_hi.b[:, None, None]
-    c_x_hi = px_hi.c[:, None, None]
-    k_x_hi = px_hi.kappa[:, None, None]
+    b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]
+    c_x_lo = _clip_lo(px_lo.c, n_x, n)[:, None, None]
+    k_x_lo = _clip_lo(px_lo.kappa, n_x, n)[:, None, None]
+    b_x_hi = _clip_hi(px_hi.b, n_x, n)[:, None, None]
+    c_x_hi = _clip_hi(px_hi.c, n_x, n)[:, None, None]
+    k_x_hi = _clip_hi(px_hi.kappa, n_x, n)[:, None, None]
     # Y-axis profiles
-    b_y_lo = py_lo.b[:, None, None]
-    c_y_lo = py_lo.c[:, None, None]
-    k_y_lo = py_lo.kappa[:, None, None]
-    b_y_hi = py_hi.b[:, None, None]
-    c_y_hi = py_hi.c[:, None, None]
-    k_y_hi = py_hi.kappa[:, None, None]
+    b_y_lo = _clip_lo(py_lo.b, n_y, n)[:, None, None]
+    c_y_lo = _clip_lo(py_lo.c, n_y, n)[:, None, None]
+    k_y_lo = _clip_lo(py_lo.kappa, n_y, n)[:, None, None]
+    b_y_hi = _clip_hi(py_hi.b, n_y, n)[:, None, None]
+    c_y_hi = _clip_hi(py_hi.c, n_y, n)[:, None, None]
+    k_y_hi = _clip_hi(py_hi.kappa, n_y, n)[:, None, None]
     # Z-axis profiles
-    b_zl = pz_lo.b[:, None, None]
-    c_zl = pz_lo.c[:, None, None]
-    k_zl = pz_lo.kappa[:, None, None]
-    b_zh = pz_hi.b[:, None, None]
-    c_zh = pz_hi.c[:, None, None]
-    k_zh = pz_hi.kappa[:, None, None]
+    b_zl = _clip_lo(pz_lo.b, n_z, n)[:, None, None]
+    c_zl = _clip_lo(pz_lo.c, n_z, n)[:, None, None]
+    k_zl = _clip_lo(pz_lo.kappa, n_z, n)[:, None, None]
+    b_zh = _clip_hi(pz_hi.b, n_z, n)[:, None, None]
+    c_zh = _clip_hi(pz_hi.c, n_z, n)[:, None, None]
+    k_zh = _clip_hi(pz_hi.kappa, n_z, n)[:, None, None]
 
     # Issue #644 — same accumulate-at-psi-dtype, round-once policy as
     # apply_cpml_e above (no-op for float32 / float64 / complex64).
@@ -770,44 +874,44 @@ def apply_cpml_h(
 
     if "x" in axes:
         # --- X-lo: Hy correction from dEz/dx ---
-        ez_xlo = state.ez[:n, :, :]
-        ez_shifted_xlo = _shift_fwd(state.ez, 0)[:n, :, :]
+        ez_xlo = state.ez[:n_x, :, :]
+        ez_shifted_xlo = _shift_fwd(state.ez, 0)[:n_x, :, :]
         curl_ez_dx_xlo = (ez_shifted_xlo - ez_xlo) / dx_x_lo
 
         new_psi_hy_xlo = b_x_lo * cpml_state.psi_hy_xlo + c_x_lo * curl_ez_dx_xlo
-        hy = hy.at[:n, :, :].add(ch_xlo * new_psi_hy_xlo)
-        hy = hy.at[:n, :, :].add(ch_xlo * (1.0 / k_x_lo - 1.0) * curl_ez_dx_xlo)
+        hy = hy.at[:n_x, :, :].add(ch_xlo * new_psi_hy_xlo)
+        hy = hy.at[:n_x, :, :].add(ch_xlo * (1.0 / k_x_lo - 1.0) * curl_ez_dx_xlo)
 
         # --- X-hi: Hy correction from dEz/dx ---
-        ez_xhi = state.ez[-n:, :, :]
-        ez_shifted_xhi = _shift_fwd(state.ez, 0)[-n:, :, :]
+        ez_xhi = state.ez[-n_x:, :, :]
+        ez_shifted_xhi = _shift_fwd(state.ez, 0)[-n_x:, :, :]
         curl_ez_dx_xhi = (ez_shifted_xhi - ez_xhi) / dx_x_hi
 
         new_psi_hy_xhi = b_x_hi * cpml_state.psi_hy_xhi + c_x_hi * curl_ez_dx_xhi
-        hy = hy.at[-n:, :, :].add(ch_xhi * new_psi_hy_xhi)
-        hy = hy.at[-n:, :, :].add(ch_xhi * (1.0 / k_x_hi - 1.0) * curl_ez_dx_xhi)
+        hy = hy.at[-n_x:, :, :].add(ch_xhi * new_psi_hy_xhi)
+        hy = hy.at[-n_x:, :, :].add(ch_xhi * (1.0 / k_x_hi - 1.0) * curl_ez_dx_xhi)
 
         # --- X-lo: Hz correction from dEy/dx ---
-        ey_xlo = state.ey[:n, :, :]
-        ey_shifted_xlo = _shift_fwd(state.ey, 0)[:n, :, :]
+        ey_xlo = state.ey[:n_x, :, :]
+        ey_shifted_xlo = _shift_fwd(state.ey, 0)[:n_x, :, :]
         curl_ey_dx_xlo = (ey_shifted_xlo - ey_xlo) / dx_x_lo
         curl_ey_dx_xlo_t = jnp.transpose(curl_ey_dx_xlo, (0, 2, 1))
 
         new_psi_hz_xlo = b_x_lo * cpml_state.psi_hz_xlo + c_x_lo * curl_ey_dx_xlo_t
         correction_hz_xlo = jnp.transpose(new_psi_hz_xlo, (0, 2, 1))
-        hz = hz.at[:n, :, :].add(-ch_xlo * correction_hz_xlo)
-        hz = hz.at[:n, :, :].add(-ch_xlo * (1.0 / k_x_lo - 1.0) * curl_ey_dx_xlo)
+        hz = hz.at[:n_x, :, :].add(-ch_xlo * correction_hz_xlo)
+        hz = hz.at[:n_x, :, :].add(-ch_xlo * (1.0 / k_x_lo - 1.0) * curl_ey_dx_xlo)
 
         # --- X-hi: Hz correction from dEy/dx ---
-        ey_xhi = state.ey[-n:, :, :]
-        ey_shifted_xhi = _shift_fwd(state.ey, 0)[-n:, :, :]
+        ey_xhi = state.ey[-n_x:, :, :]
+        ey_shifted_xhi = _shift_fwd(state.ey, 0)[-n_x:, :, :]
         curl_ey_dx_xhi = (ey_shifted_xhi - ey_xhi) / dx_x_hi
         curl_ey_dx_xhi_t = jnp.transpose(curl_ey_dx_xhi, (0, 2, 1))
 
         new_psi_hz_xhi = b_x_hi * cpml_state.psi_hz_xhi + c_x_hi * curl_ey_dx_xhi_t
         correction_hz_xhi = jnp.transpose(new_psi_hz_xhi, (0, 2, 1))
-        hz = hz.at[-n:, :, :].add(-ch_xhi * correction_hz_xhi)
-        hz = hz.at[-n:, :, :].add(-ch_xhi * (1.0 / k_x_hi - 1.0) * curl_ey_dx_xhi)
+        hz = hz.at[-n_x:, :, :].add(-ch_xhi * correction_hz_xhi)
+        hz = hz.at[-n_x:, :, :].add(-ch_xhi * (1.0 / k_x_hi - 1.0) * curl_ey_dx_xhi)
     else:
         new_psi_hy_xlo = cpml_state.psi_hy_xlo
         new_psi_hy_xhi = cpml_state.psi_hy_xhi
@@ -820,56 +924,56 @@ def apply_cpml_h(
 
     if "y" in axes:
         # --- Y-lo: Hx correction from dEz/dy ---
-        ez_ylo = state.ez[:, :n, :]
-        ez_shifted_ylo = _shift_fwd(state.ez, 1)[:, :n, :]
+        ez_ylo = state.ez[:, :n_y, :]
+        ez_shifted_ylo = _shift_fwd(state.ez, 1)[:, :n_y, :]
         curl_ez_dy_ylo = (ez_shifted_ylo - ez_ylo) / dx_y_lo
 
         curl_ez_dy_ylo_t = jnp.transpose(curl_ez_dy_ylo, (1, 0, 2))
 
         new_psi_hx_ylo = b_y_lo * cpml_state.psi_hx_ylo + c_y_lo * curl_ez_dy_ylo_t
         correction_hx_ylo = jnp.transpose(new_psi_hx_ylo, (1, 0, 2))
-        hx = hx.at[:, :n, :].add(-ch_ylo * correction_hx_ylo)
+        hx = hx.at[:, :n_y, :].add(-ch_ylo * correction_hx_ylo)
         kappa_corr_hx_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_ez_dy_ylo_t, (1, 0, 2))
-        hx = hx.at[:, :n, :].add(-ch_ylo * kappa_corr_hx_ylo)
+        hx = hx.at[:, :n_y, :].add(-ch_ylo * kappa_corr_hx_ylo)
 
         # --- Y-hi: Hx correction from dEz/dy ---
-        ez_yhi = state.ez[:, -n:, :]
-        ez_shifted_yhi = _shift_fwd(state.ez, 1)[:, -n:, :]
+        ez_yhi = state.ez[:, -n_y:, :]
+        ez_shifted_yhi = _shift_fwd(state.ez, 1)[:, -n_y:, :]
         curl_ez_dy_yhi = (ez_shifted_yhi - ez_yhi) / dx_y_hi
 
         curl_ez_dy_yhi_t = jnp.transpose(curl_ez_dy_yhi, (1, 0, 2))
 
         new_psi_hx_yhi = b_y_hi * cpml_state.psi_hx_yhi + c_y_hi * curl_ez_dy_yhi_t
         correction_hx_yhi = jnp.transpose(new_psi_hx_yhi, (1, 0, 2))
-        hx = hx.at[:, -n:, :].add(-ch_yhi * correction_hx_yhi)
+        hx = hx.at[:, -n_y:, :].add(-ch_yhi * correction_hx_yhi)
         kappa_corr_hx_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_ez_dy_yhi_t, (1, 0, 2))
-        hx = hx.at[:, -n:, :].add(-ch_yhi * kappa_corr_hx_yhi)
+        hx = hx.at[:, -n_y:, :].add(-ch_yhi * kappa_corr_hx_yhi)
 
         # --- Y-lo: Hz correction from dEx/dy ---
-        ex_ylo = state.ex[:, :n, :]
-        ex_shifted_ylo = _shift_fwd(state.ex, 1)[:, :n, :]
+        ex_ylo = state.ex[:, :n_y, :]
+        ex_shifted_ylo = _shift_fwd(state.ex, 1)[:, :n_y, :]
         curl_ex_dy_ylo = (ex_shifted_ylo - ex_ylo) / dx_y_lo
 
         curl_ex_dy_ylo_t = jnp.transpose(curl_ex_dy_ylo, (1, 2, 0))
 
         new_psi_hz_ylo = b_y_lo * cpml_state.psi_hz_ylo + c_y_lo * curl_ex_dy_ylo_t
         correction_hz_ylo = jnp.transpose(new_psi_hz_ylo, (2, 0, 1))
-        hz = hz.at[:, :n, :].add(ch_ylo * correction_hz_ylo)
+        hz = hz.at[:, :n_y, :].add(ch_ylo * correction_hz_ylo)
         kappa_corr_hz_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_ex_dy_ylo_t, (2, 0, 1))
-        hz = hz.at[:, :n, :].add(ch_ylo * kappa_corr_hz_ylo)
+        hz = hz.at[:, :n_y, :].add(ch_ylo * kappa_corr_hz_ylo)
 
         # --- Y-hi: Hz correction from dEx/dy ---
-        ex_yhi = state.ex[:, -n:, :]
-        ex_shifted_yhi = _shift_fwd(state.ex, 1)[:, -n:, :]
+        ex_yhi = state.ex[:, -n_y:, :]
+        ex_shifted_yhi = _shift_fwd(state.ex, 1)[:, -n_y:, :]
         curl_ex_dy_yhi = (ex_shifted_yhi - ex_yhi) / dx_y_hi
 
         curl_ex_dy_yhi_t = jnp.transpose(curl_ex_dy_yhi, (1, 2, 0))
 
         new_psi_hz_yhi = b_y_hi * cpml_state.psi_hz_yhi + c_y_hi * curl_ex_dy_yhi_t
         correction_hz_yhi = jnp.transpose(new_psi_hz_yhi, (2, 0, 1))
-        hz = hz.at[:, -n:, :].add(ch_yhi * correction_hz_yhi)
+        hz = hz.at[:, -n_y:, :].add(ch_yhi * correction_hz_yhi)
         kappa_corr_hz_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_ex_dy_yhi_t, (2, 0, 1))
-        hz = hz.at[:, -n:, :].add(ch_yhi * kappa_corr_hz_yhi)
+        hz = hz.at[:, -n_y:, :].add(ch_yhi * kappa_corr_hz_yhi)
     else:
         new_psi_hx_ylo = cpml_state.psi_hx_ylo
         new_psi_hx_yhi = cpml_state.psi_hx_yhi
@@ -882,56 +986,56 @@ def apply_cpml_h(
 
     if "z" in axes:
         # --- Z-lo: Hx correction from dEy/dz ---
-        ey_zlo = state.ey[:, :, :n]
-        ey_shifted_zlo = _shift_fwd(state.ey, 2)[:, :, :n]
+        ey_zlo = state.ey[:, :, :n_z]
+        ey_shifted_zlo = _shift_fwd(state.ey, 2)[:, :, :n_z]
         curl_ey_dz_zlo = (ey_shifted_zlo - ey_zlo) / dz_lo
 
         curl_ey_dz_zlo_t = jnp.transpose(curl_ey_dz_zlo, (2, 0, 1))
 
         new_psi_hx_zlo = b_zl * cpml_state.psi_hx_zlo + c_zl * curl_ey_dz_zlo_t
         correction_hx_zlo = jnp.transpose(new_psi_hx_zlo, (1, 2, 0))
-        hx = hx.at[:, :, :n].add(ch_zlo * correction_hx_zlo)
+        hx = hx.at[:, :, :n_z].add(ch_zlo * correction_hx_zlo)
         kappa_corr_hx_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ey_dz_zlo_t, (1, 2, 0))
-        hx = hx.at[:, :, :n].add(ch_zlo * kappa_corr_hx_zlo)
+        hx = hx.at[:, :, :n_z].add(ch_zlo * kappa_corr_hx_zlo)
 
         # --- Z-hi: Hx correction from dEy/dz ---
-        ey_zhi = state.ey[:, :, -n:]
-        ey_shifted_zhi = _shift_fwd(state.ey, 2)[:, :, -n:]
+        ey_zhi = state.ey[:, :, -n_z:]
+        ey_shifted_zhi = _shift_fwd(state.ey, 2)[:, :, -n_z:]
         curl_ey_dz_zhi = (ey_shifted_zhi - ey_zhi) / dz_hi
 
         curl_ey_dz_zhi_t = jnp.transpose(curl_ey_dz_zhi, (2, 0, 1))
 
         new_psi_hx_zhi = b_zh * cpml_state.psi_hx_zhi + c_zh * curl_ey_dz_zhi_t
         correction_hx_zhi = jnp.transpose(new_psi_hx_zhi, (1, 2, 0))
-        hx = hx.at[:, :, -n:].add(ch_zhi * correction_hx_zhi)
+        hx = hx.at[:, :, -n_z:].add(ch_zhi * correction_hx_zhi)
         kappa_corr_hx_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ey_dz_zhi_t, (1, 2, 0))
-        hx = hx.at[:, :, -n:].add(ch_zhi * kappa_corr_hx_zhi)
+        hx = hx.at[:, :, -n_z:].add(ch_zhi * kappa_corr_hx_zhi)
 
         # --- Z-lo: Hy correction from dEx/dz ---
-        ex_zlo = state.ex[:, :, :n]
-        ex_shifted_zlo = _shift_fwd(state.ex, 2)[:, :, :n]
+        ex_zlo = state.ex[:, :, :n_z]
+        ex_shifted_zlo = _shift_fwd(state.ex, 2)[:, :, :n_z]
         curl_ex_dz_zlo = (ex_shifted_zlo - ex_zlo) / dz_lo
 
         curl_ex_dz_zlo_t = jnp.transpose(curl_ex_dz_zlo, (2, 1, 0))
 
         new_psi_hy_zlo = b_zl * cpml_state.psi_hy_zlo + c_zl * curl_ex_dz_zlo_t
         correction_hy_zlo = jnp.transpose(new_psi_hy_zlo, (2, 1, 0))
-        hy = hy.at[:, :, :n].add(-ch_zlo * correction_hy_zlo)
+        hy = hy.at[:, :, :n_z].add(-ch_zlo * correction_hy_zlo)
         kappa_corr_hy_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ex_dz_zlo_t, (2, 1, 0))
-        hy = hy.at[:, :, :n].add(-ch_zlo * kappa_corr_hy_zlo)
+        hy = hy.at[:, :, :n_z].add(-ch_zlo * kappa_corr_hy_zlo)
 
         # --- Z-hi: Hy correction from dEx/dz ---
-        ex_zhi = state.ex[:, :, -n:]
-        ex_shifted_zhi = _shift_fwd(state.ex, 2)[:, :, -n:]
+        ex_zhi = state.ex[:, :, -n_z:]
+        ex_shifted_zhi = _shift_fwd(state.ex, 2)[:, :, -n_z:]
         curl_ex_dz_zhi = (ex_shifted_zhi - ex_zhi) / dz_hi
 
         curl_ex_dz_zhi_t = jnp.transpose(curl_ex_dz_zhi, (2, 1, 0))
 
         new_psi_hy_zhi = b_zh * cpml_state.psi_hy_zhi + c_zh * curl_ex_dz_zhi_t
         correction_hy_zhi = jnp.transpose(new_psi_hy_zhi, (2, 1, 0))
-        hy = hy.at[:, :, -n:].add(-ch_zhi * correction_hy_zhi)
+        hy = hy.at[:, :, -n_z:].add(-ch_zhi * correction_hy_zhi)
         kappa_corr_hy_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ex_dz_zhi_t, (2, 1, 0))
-        hy = hy.at[:, :, -n:].add(-ch_zhi * kappa_corr_hy_zhi)
+        hy = hy.at[:, :, -n_z:].add(-ch_zhi * kappa_corr_hy_zhi)
     else:
         new_psi_hx_zlo = cpml_state.psi_hx_zlo
         new_psi_hx_zhi = cpml_state.psi_hx_zhi

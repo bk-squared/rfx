@@ -2054,6 +2054,7 @@ class _PreflightMixin:
             _w, cpml_thick_lo, cpml_thick_hi
         )
         self._validate_cfg_refplane_placement(_w)
+        self._validate_cfg_absorber_budget_vs_grid(_w, dx)
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
@@ -2474,39 +2475,152 @@ class _PreflightMixin:
         symmetric scalar forced both sides to the max and produced
         false positives on the reflector face.
 
+        Issue #647: the per-face LAYER COUNT now comes from
+        :meth:`_preflight_face_layers`, which reads
+        ``Boundary.lo_thickness`` / ``hi_thickness`` off the normalized
+        ``_boundary_spec``. Before that, every absorbing face was reported
+        at the global ``cpml_layers`` budget, so
+        ``z=Boundary(lo='pec', hi='cpml', hi_thickness=2)`` with
+        ``cpml_layers=16`` told every consumer the z_hi absorber was
+        ``16*dx`` when the grid allocates ``2*dx`` — an 8x over-report that
+        biases the MSL / waveguide clearance advisories (which use the
+        magnitude as a calibrated buffer, not just as a boolean).
+
         Returns ``(cpml_thick_lo, cpml_thick_hi, _pmc_faces_set)``.
         """
         _pmc_faces_set = set(self._boundary_spec.pmc_faces())
-        _axis_thickness = [cpml_thickness, cpml_thickness, cpml_thickness]
-        if (self._dz_profile is not None
-                and not is_tracer(self._dz_profile)
-                and self._boundary in ("cpml", "upml")
-                and self._cpml_layers > 0):
-            n = min(self._cpml_layers, len(self._dz_profile))
-            _axis_thickness[2] = float(sum(self._dz_profile[:n]))
+        _face_layers = self._preflight_face_layers()
+        # ``cpml_thickness`` is the BUDGET thickness (cpml_layers * dx, or 0
+        # on a non-absorbing boundary); per-cell thickness is that divided
+        # by the budget layer count.
+        _per_layer = (cpml_thickness / self._cpml_layers
+                      if self._cpml_layers else 0.0)
 
         def _face_thickness(ax_idx: int, side: str) -> float:
             ax_name = "xyz"[ax_idx]
-            face = f"{ax_name}_{side}"
-            if self._boundary not in ("cpml", "upml"):
+            n_face = _face_layers[f"{ax_name}_{side}"]
+            if n_face <= 0:
                 return 0.0
-            if ax_name == "z" and self._mode.startswith("2d"):
-                # 2D modes collapse z to a single cell with NO absorber
-                # (Grid sets pad_z_lo = pad_z_hi = 0 and strips z from
-                # cpml_axes — rfx/grid.py). Without this mirror rule the
-                # z thickness is the full cpml budget and every 2D
-                # source/probe at z=0 false-trips absorber_overlap
-                # (issue #166).
-                return 0.0
-            if face in self._pec_faces or face in _pmc_faces_set:
-                return 0.0
-            if ax_name in self._periodic_axes:
-                return 0.0
-            return _axis_thickness[ax_idx]
+            if (ax_name == "z"
+                    and self._dz_profile is not None
+                    and not is_tracer(self._dz_profile)):
+                # Non-uniform z aggregates real cell sizes rather than
+                # n*dx. The LEADING entries are used on both sides, as
+                # before -- a hi-face trailing aggregation would be more
+                # faithful on a graded profile but is a separate change
+                # with its own regression surface.
+                n = min(n_face, len(self._dz_profile))
+                return float(sum(self._dz_profile[:n]))
+            return n_face * _per_layer
 
         cpml_thick_lo = [_face_thickness(ax, "lo") for ax in range(3)]
         cpml_thick_hi = [_face_thickness(ax, "hi") for ax in range(3)]
         return cpml_thick_lo, cpml_thick_hi, _pmc_faces_set
+
+    def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
+        """``cpml_layers`` wider than an axis of the grid it is applied to.
+
+        Issue #647. ``cpml_layers`` is an ALLOCATION BUDGET shared by all
+        six faces, and the CPML scratch buffers are cut from it on every
+        axis — including axes that allocate no absorber at all. When the
+        budget exceeds an axis's own cell count the face slices ``[:n]`` /
+        ``[-n:]`` shrink to the axis while the length-``n`` coefficient
+        profile does not, and the run used to die inside the scan with a
+        broadcasting ``TypeError`` and NOTHING from preflight
+        ("All checks passed" was the measured output on the reported
+        fixture). ``rfx.boundaries.cpml`` now clamps the buffer per axis,
+        which is exact — the clamped region carries no active absorber
+        layers — so this is an advisory about a mis-sized number, not a
+        rejection: the requested absorber is realized in full.
+
+        Only reachable with a per-face ``BoundarySpec``. With a scalar
+        ``boundary='cpml'`` every axis is padded by ``2*cpml_layers``, so
+        the budget can never exceed an axis extent.
+
+        The extent arithmetic mirrors ``rfx.grid.Grid.__init__``
+        (``ceil(domain/dx) + 1 + pad_lo + pad_hi``) through
+        :meth:`_preflight_face_layers`; it inherits that helper's
+        waveguide-axis divergence, which makes this check UNDER-fire (never
+        over-fire) on waveguide-port simulations.
+        """
+        n_budget = int(self._cpml_layers or 0)
+        if n_budget <= 0 or dx <= 0:
+            return
+        face_layers = self._preflight_face_layers()
+        for ax_idx, ax_name in enumerate("xyz"):
+            if ax_name == "z" and self._mode.startswith("2d"):
+                continue
+            extent_m = (self._domain[ax_idx] if ax_idx < len(self._domain)
+                        else self._domain[-1])
+            pad_lo = face_layers[f"{ax_name}_lo"]
+            pad_hi = face_layers[f"{ax_name}_hi"]
+            n_cells = int(math.ceil(extent_m / dx)) + 1 + pad_lo + pad_hi
+            if n_budget <= n_cells:
+                continue
+            axis_boundary = getattr(self._boundary_spec, ax_name)
+            _w.warn(
+                PreflightWarning(
+                    f"cpml_layers={n_budget} exceeds the {ax_name}-axis grid "
+                    f"extent ({n_cells} cells: "
+                    f"ceil({_fmt_len(extent_m)}/{_fmt_len(dx)})+1 interior "
+                    f"nodes + {pad_lo}/{pad_hi} absorber cells, from "
+                    f"{ax_name}=Boundary(lo={axis_boundary.lo!r}, "
+                    f"hi={axis_boundary.hi!r})). The absorber you asked for "
+                    f"is unaffected — the layer budget is clamped to the "
+                    f"axis for the CPML scratch buffers only, and the "
+                    f"clamped region carries no active absorber layers "
+                    f"(issue #647). It does mean the layer count was sized "
+                    f"for a coarser mesh or a larger domain than this one; "
+                    f"set that face's lo_thickness/hi_thickness explicitly "
+                    f"if you meant a thinner absorber.",
+                    code="absorber_budget_exceeds_axis",
+                    source="_validate_cfg_absorber_budget_vs_grid",
+                ),
+                stacklevel=3,
+            )
+
+    def _preflight_face_layers(self) -> dict[str, int]:
+        """Allocated absorbing layers per face — preflight's mirror of
+        ``rfx.grid.Grid._face_pad`` (issue #647).
+
+        Keyed off the normalized ``_boundary_spec``, which is correct for
+        BOTH legacy scalar construction (``boundary='cpml'`` +
+        ``pec_faces=`` + ``set_periodic_axes()`` are all folded into it by
+        ``_build_spec_from_legacy``) and per-face ``BoundarySpec``
+        construction. A face is allocated
+        ``Boundary.resolved_{lo,hi}_thickness(cpml_layers)`` cells when its
+        own token absorbs, and 0 otherwise — which is what makes PEC / PMC
+        / periodic faces fall out without a separate rule.
+
+        Known divergence from ``Grid._face_pad``, deliberately not
+        mirrored: the grid drops non-port axes from ``cpml_axes`` when
+        waveguide ports are present, so on such a simulation this
+        over-reports the absorber on the non-port axes. That is the
+        pre-existing behaviour every current warning is calibrated
+        against; changing it belongs to a waveguide-lane change, not here.
+        """
+        n_default = int(self._cpml_layers or 0)
+        out: dict[str, int] = {}
+        spec = self._boundary_spec
+        for ax_name, boundary in (("x", spec.x), ("y", spec.y),
+                                  ("z", spec.z)):
+            for side in ("lo", "hi"):
+                face = f"{ax_name}_{side}"
+                token = getattr(boundary, side)
+                if token not in ("cpml", "upml"):
+                    out[face] = 0
+                elif ax_name == "z" and self._mode.startswith("2d"):
+                    # 2D modes collapse z to a single cell with NO absorber
+                    # (Grid sets pad_z_lo = pad_z_hi = 0 and strips z from
+                    # cpml_axes — rfx/grid.py). Without this mirror rule the
+                    # z thickness is the full cpml budget and every 2D
+                    # source/probe at z=0 false-trips absorber_overlap
+                    # (issue #166).
+                    out[face] = 0
+                else:
+                    resolve = getattr(boundary, f"resolved_{side}_thickness")
+                    out[face] = int(resolve(n_default))
+        return out
 
     def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
         """Warn about pec_faces + finite PEC objects co-existing.
@@ -3629,15 +3743,23 @@ class _PreflightMixin:
 
             # P2.6: CPML z-thickness on non-uniform mesh.
             # Skip on tracer profiles — advisory warning only.
+            # Issue #647: the cell count is the z faces' OWN allocation, not
+            # the global budget. Keyed off `_boundary_spec` via
+            # `_preflight_face_layers`, so a per-face spec whose z faces are
+            # PEC/PMC (allocation 0) no longer reports a thin absorber that
+            # does not exist, and a per-face `hi_thickness` is measured at the
+            # thickness it actually allocates.
+            _z_layers = max(self._preflight_face_layers()["z_lo"],
+                            self._preflight_face_layers()["z_hi"])
             if (self._boundary == "cpml"
-                    and self._cpml_layers > 0
+                    and _z_layers > 0
                     and not is_tracer(self._dz_profile)):
-                cpml_z_thick = sum(float(d) for d in self._dz_profile[:self._cpml_layers])
+                cpml_z_thick = sum(float(d) for d in self._dz_profile[:_z_layers])
                 if cpml_z_thick < cpml_thickness * 0.3:
                     _w.warn(
                         PreflightWarning(
                             f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
-                            f"({self._cpml_layers} cells), much thinner than "
+                            f"({_z_layers} cells), much thinner than "
                             f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
                             f"Absorbing performance may be asymmetric. "
                             f"Consider more z cells or fewer CPML layers.",
