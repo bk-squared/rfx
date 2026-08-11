@@ -177,10 +177,21 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_caught():
 
 
 def test_forward_float64_cpml_is_unaffected_by_the_644_guard():
-    import jax
-    jax.config.update("jax_enable_x64", True)
+    # Scoped x64, per this repo's own rule (CLAUDE.md, and see this
+    # package's own precision docstring): never flip jax_enable_x64
+    # process-globally in a test -- it leaks to every test scheduled after
+    # this one in the same pytest-split worker. Use the repo's version-
+    # robust scoped context (jax.experimental.enable_x64 upstream, or the
+    # tests/_x64_compat.py shim on newer JAX that removed it), matching
+    # the idiom in tests/test_coax_two_port_ad.py.
+    try:
+        from jax import enable_x64
+    except ImportError:  # older JAX (< ~0.4.31)
+        from tests._x64_compat import enable_x64
+
     sim = _cpml_sim(precision="float64")
-    result = sim.forward(n_steps=5, skip_preflight=True)
+    with enable_x64():
+        result = sim.forward(n_steps=5, skip_preflight=True)
     assert result is not None
 
 

@@ -2067,10 +2067,12 @@ class _PreflightMixin:
         1. ``precision="float64"`` requires JAX x64 mode already enabled by
            the caller (``jax.config.update("jax_enable_x64", True)`` or
            ``jax.experimental.enable_x64()``) — process-global JAX
-           behavior, not something ``Simulation`` can flip on its own (this
-           repo's own rule is to never do that at import/module scope; see
-           CLAUDE.md). Without this check, ``precision="float64"`` would
-           look accepted (no error) while silently running float32 fields
+           behavior, not something ``Simulation`` can flip on its own: this
+           package never flips ``jax_enable_x64`` at import/module scope,
+           since that would be permanent for the rest of the process and
+           is the caller's decision to make, not a library's to make for
+           them. Without this check, ``precision="float64"`` would look
+           accepted (no error) while silently running float32 fields
            (issue #630: the Yee update arithmetic used to re-quantize
            float64 fields to float32 every timestep even when storage WAS
            float64 -- that half is fixed, but storage never becoming
