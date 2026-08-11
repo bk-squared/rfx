@@ -177,8 +177,20 @@ def _geometry_objective(sim, functional, *, eps_bg=1.0, eps_fg=4.0):
 
 def _central_fd_f64(objective, x0: float, h: float):
     """Central finite difference with the comparison arithmetic in float64
-    (#527 discipline: the FDTD fields stay float32; only the loss/FD
-    comparison gains precision, scoped via enable_x64()).
+    (#527 discipline: on this gate's production config the FDTD fields
+    stay float32 storage; only the loss/FD comparison gains precision,
+    scoped via enable_x64()).
+
+    Storage vs arithmetic (issue #630): "fields stay float32" describes
+    STORAGE, not the Yee update's compute dtype. Before #630 the Yee
+    curl/update arithmetic was hard-pinned to float32 for ANY field
+    storage dtype, so setting fields to float64 alone would NOT have
+    removed the FD noise floor these gates sit above -- the arithmetic
+    would silently re-quantize back to float32 every timestep regardless.
+    #630 made the compute dtype follow storage
+    (``jnp.promote_types(field_dtype, jnp.float32)``); at this gate's
+    float32 storage that is still float32, so #630 changes nothing here
+    -- it only matters if a caller opts into ``precision="float64"``.
 
     The design-variable input is deliberately kept float32 (its natural
     dtype, matching eps_base — test_coax_two_port_ad.py established this:

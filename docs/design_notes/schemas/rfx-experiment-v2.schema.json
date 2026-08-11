@@ -45,7 +45,7 @@
         "domain_m": {"$ref": "#/$defs/positive_xyz"},
         "cell_size_m": {"type": "number", "exclusiveMinimum": 0},
         "freq_max_hz": {"type": "number", "exclusiveMinimum": 0},
-        "precision": {"enum": ["float32", "mixed"]}
+        "precision": {"enum": ["float32", "mixed", "float64"]}
       },
       "additionalProperties": false
     },

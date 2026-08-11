@@ -88,7 +88,7 @@ class TestSimulationMixedPrecision:
     def test_precision_parameter_validation(self):
         with pytest.raises(ValueError, match="precision"):
             Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.02),
-                       boundary="pec", precision="float64")
+                       boundary="pec", precision="float128")
 
     def test_mixed_precision_runs(self):
         """Mixed precision simulation completes without NaN."""

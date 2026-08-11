@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import math
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -2022,6 +2023,7 @@ class _PreflightMixin:
         absorber_label = "UPML" if self._boundary == "upml" else "CPML"
 
         # --- checks in original order ---------------------------------
+        self._validate_cfg_precision_x64(_w)
         self._validate_cfg_pec_faces_with_finite_pec(_w)
         self._validate_cfg_upml_refinement()
         self._validate_cfg_floquet_nonuniform()
@@ -2055,6 +2057,38 @@ class _PreflightMixin:
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _validate_cfg_precision_x64(self, _w) -> None:
+        """Warn when ``precision="float64"`` cannot actually take effect.
+
+        JAX silently downcasts float64 arrays to float32 unless the caller
+        has enabled x64 mode (``jax.config.update("jax_enable_x64", True)``
+        or ``jax.experimental.enable_x64()``) — this is process-global JAX
+        behavior, not something ``Simulation`` can flip on its own (this
+        repo's own rule is to never do that at import/module scope; see
+        CLAUDE.md). Without this check, ``precision="float64"`` would look
+        accepted (no error) while silently running float32 fields, which is
+        exactly the SILENT_WRONG class this preflight system exists to
+        catch (issue #630: the Yee update arithmetic used to re-quantize
+        float64 fields to float32 every timestep even when storage WAS
+        float64 -- that half is fixed, but storage never becoming float64
+        in the first place is a distinct, still-live footgun).
+        """
+        if self._precision != "float64":
+            return
+        if jax.config.jax_enable_x64:
+            return
+        _w.warn(PreflightWarning(
+            "precision='float64' was requested, but JAX x64 mode is not "
+            "enabled (jax.config.jax_enable_x64 is False). JAX silently "
+            "downcasts float64 arrays to float32, so fields will run at "
+            "float32 despite this setting. Enable x64 before constructing "
+            "this Simulation: jax.config.update('jax_enable_x64', True) "
+            "(process-global) or wrap the call in "
+            "jax.experimental.enable_x64() (scoped).",
+            code="precision_float64_without_x64",
+            source="_validate_cfg_precision_x64",
+        ))
 
     def _validate_cfg_tfsf_with_lumped_rlc(self, _w) -> None:
         """Warn: a lumped RLC element illuminated by a TFSF plane wave is unstable.

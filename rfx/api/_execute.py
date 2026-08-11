@@ -135,6 +135,22 @@ class _ExecuteMixin:
     ``Simulation`` instance (resolved via MRO).
     """
 
+    def _resolve_field_dtype(self):
+        """Map ``self._precision`` to the ``field_dtype`` the Yee core takes.
+
+        Shared by the uniform ``run()`` and ``forward()`` lanes (issue #630)
+        so both honour ``precision=`` identically — before this fix only
+        ``run()`` read ``self._precision`` here; ``forward()`` (the lane
+        FD-vs-AD gates use) always passed ``field_dtype=None`` regardless of
+        ``self._precision``, so ``precision="float64"`` was unreachable from
+        the differentiable path.
+        """
+        if self._precision == "mixed":
+            return jnp.float16
+        if self._precision == "float64":
+            return jnp.float64
+        return None
+
     # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
 
     def _check_stencil_order_supported(self, *, distributed: bool = False) -> None:
@@ -1537,6 +1553,7 @@ class _ExecuteMixin:
             flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
             return_state=False,
             stencil_order=self._stencil_order,
+            field_dtype=self._resolve_field_dtype(),
         )
 
         # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
@@ -3123,7 +3140,7 @@ class _ExecuteMixin:
             )
 
         from rfx.runners.uniform import run_uniform
-        _field_dtype = jnp.float16 if self._precision == "mixed" else None
+        _field_dtype = self._resolve_field_dtype()
         _res = run_uniform(
             self,
             n_steps=n_steps,

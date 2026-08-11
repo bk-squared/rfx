@@ -371,8 +371,13 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent():
     """Gate: ``compute_coaxial_two_port`` is differentiable end to end w.r.t.
     ``eps_scale`` and the float32 AD gradient (as shipped) matches a central
     finite difference computed with a float64 LOSS (scoped ``enable_x64()``
-    -- the FDTD fields stay float32 throughout; only the DFT-accumulator-
-    and-downstream math gains precision, exactly like MSL's own referee).
+    -- on this gate's production config the FDTD fields stay float32
+    STORAGE throughout; only the DFT-accumulator-and-downstream math gains
+    precision, exactly like MSL's own referee). Storage vs arithmetic
+    (issue #630): before #630 the Yee update's compute dtype was pinned to
+    float32 for any field storage dtype, so this gate's floor was never a
+    field-storage question in the first place; #630 makes compute dtype
+    follow storage (a no-op here, since storage IS float32 by default).
     This is the AD moat for the two-port coax method (mirrors
     ``tests/test_coax_end_to_end_ad.py::
     test_coax_reflection_grad_finite_and_fd_consistent`` for the 1-port

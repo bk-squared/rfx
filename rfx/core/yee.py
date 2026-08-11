@@ -209,10 +209,17 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         )
 
     # Compute dtype: the oblique-periodic Bloch path carries a complex field
-    # envelope P; the real path stays float32 (upcast for reduced-precision
-    # fields) and is byte-identical.
+    # envelope P; the real path computes at ``max(state dtype, float32)`` --
+    # upcast for reduced-precision (float16) fields (byte-identical for
+    # float32 storage), and PROMOTED for float64 storage so the arithmetic
+    # does not re-quantize a higher-precision field back to float32 every
+    # timestep (issue #630 -- the prior hard `jnp.float32` pin here silently
+    # discarded float64 field precision regardless of storage dtype).
     _fdtype = state.ex.dtype
-    _cdtype = jnp.complex64 if jnp.iscomplexobj(state.ex) else jnp.float32
+    _cdtype = (
+        jnp.complex64 if jnp.iscomplexobj(state.ex)
+        else jnp.promote_types(state.ex.dtype, jnp.float32)
+    )
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
@@ -271,10 +278,15 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
             f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
         )
 
-    # Compute dtype: complex for the Bloch envelope path, float32 for the real
-    # path (byte-identical; upcast covers reduced-precision fields).
+    # Compute dtype: complex for the Bloch envelope path, ``max(state dtype,
+    # float32)`` for the real path (byte-identical for float32 storage;
+    # upcast covers reduced-precision fields; promoted for float64 storage
+    # -- see the matching comment in update_h, issue #630).
     _fdtype = state.ex.dtype
-    _cdtype = jnp.complex64 if jnp.iscomplexobj(state.ex) else jnp.float32
+    _cdtype = (
+        jnp.complex64 if jnp.iscomplexobj(state.ex)
+        else jnp.promote_types(state.ex.dtype, jnp.float32)
+    )
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
@@ -332,10 +344,13 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         ``inv_d_h[N-1] = 0``. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (second return value).
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    ex = state.ex.astype(jnp.float32)
-    ey = state.ey.astype(jnp.float32)
-    ez = state.ez.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    ex = state.ex.astype(_cdtype)
+    ey = state.ey.astype(_cdtype)
+    ez = state.ez.astype(_cdtype)
     mu = materials.mu_r * MU_0
 
     # Forward differences with same shape (zero-pad via _shift_fwd)
@@ -352,9 +367,9 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
     )
 
-    hx = (state.hx.astype(jnp.float32) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(jnp.float32) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(jnp.float32) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -374,10 +389,13 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         k>=1, ``inv_d_e[0] = 1/d[0]``. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (first return value).
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
     eps = materials.eps_r * EPS_0
     sigma = materials.sigma
 
@@ -399,9 +417,9 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
     )
 
-    ex = (ca * state.ex.astype(jnp.float32) + cb * curl_x).astype(_fdtype)
-    ey = (ca * state.ey.astype(jnp.float32) + cb * curl_y).astype(_fdtype)
-    ez = (ca * state.ez.astype(jnp.float32) + cb * curl_z).astype(_fdtype)
+    ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
+    ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)
+    ez = (ca * state.ez.astype(_cdtype) + cb * curl_z).astype(_fdtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
@@ -506,13 +524,16 @@ def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
     Avoids recomputing material coefficients each timestep.
     Non-periodic boundaries only (uses ``_shift_fwd``).
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    ex = state.ex.astype(jnp.float32)
-    ey = state.ey.astype(jnp.float32)
-    ez = state.ez.astype(jnp.float32)
-    hx = (state.hx.astype(jnp.float32) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(jnp.float32) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(jnp.float32) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    ex = state.ex.astype(_cdtype)
+    ey = state.ey.astype(_cdtype)
+    ez = state.ez.astype(_cdtype)
+    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
@@ -529,13 +550,16 @@ def update_e_fast(
 
     Non-periodic boundaries only (uses ``_shift_bwd``).
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
-    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))).astype(_fdtype)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))).astype(_fdtype)
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
@@ -546,20 +570,25 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
     PEC baked into the coefficients.  This is the fastest path for the
     common case of non-periodic boundaries with uniform mesh.
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630). This is
+    # the GPU-only fast lane (rfx/simulation.py's update_he_fast dispatch);
+    # the uniform CPU lane routes through update_h/update_e above instead.
     _fdtype = state.ex.dtype
-    # --- H update (upcast to float32 for arithmetic) ---
-    ex = state.ex.astype(jnp.float32)
-    ey = state.ey.astype(jnp.float32)
-    ez = state.ez.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    # --- H update (upcast to _cdtype for arithmetic) ---
+    ex = state.ex.astype(_cdtype)
+    ey = state.ey.astype(_cdtype)
+    ez = state.ez.astype(_cdtype)
     ch = coeffs.ch
-    hx = (state.hx.astype(jnp.float32) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(jnp.float32) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(jnp.float32) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     # --- E update (with PEC baked into coefficients) ---
-    # Upcast newly computed H fields back to float32 for curl computation
-    hx_f = hx.astype(jnp.float32)
-    hy_f = hy.astype(jnp.float32)
-    hz_f = hz.astype(jnp.float32)
+    # Upcast newly computed H fields back to _cdtype for curl computation
+    hx_f = hx.astype(_cdtype)
+    hy_f = hy.astype(_cdtype)
+    hz_f = hz.astype(_cdtype)
     ex = (coeffs.ca_ex * ex + coeffs.cb_ex * ((hz_f - _shift_bwd(hz_f, 1)) - (hy_f - _shift_bwd(hy_f, 2)))).astype(_fdtype)
     ey = (coeffs.ca_ey * ey + coeffs.cb_ey * ((hx_f - _shift_bwd(hx_f, 2)) - (hz_f - _shift_bwd(hz_f, 0)))).astype(_fdtype)
     ez = (coeffs.ca_ez * ez + coeffs.cb_ez * ((hy_f - _shift_bwd(hy_f, 0)) - (hx_f - _shift_bwd(hx_f, 1)))).astype(_fdtype)
@@ -581,10 +610,13 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     on a non-uniform mesh. ``materials.sigma`` is still applied
     isotropically (matches the uniform-path :func:`update_e_aniso`).
     """
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
     sigma = materials.sigma
 
     abs_eps_ex = eps_ex * EPS_0
@@ -617,9 +649,9 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
         - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
     )
 
-    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
@@ -675,10 +707,13 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
 
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
     sigma = materials.sigma
 
     # Per-component lossy update coefficients in inv-eps form.
@@ -711,9 +746,9 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
         - (hx - bwd(hx, 1)) / dx
     )
 
-    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,
@@ -747,10 +782,13 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
 
+    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
+    # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
-    hx = state.hx.astype(jnp.float32)
-    hy = state.hy.astype(jnp.float32)
-    hz = state.hz.astype(jnp.float32)
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_cdtype)
+    hy = state.hy.astype(_cdtype)
+    hz = state.hz.astype(_cdtype)
     sigma = materials.sigma
 
     # Per-component absolute permittivity
@@ -785,9 +823,9 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
         - (hx - bwd(hx, 1)) / dx
     )
 
-    ex = (ca_ex * state.ex.astype(jnp.float32) + cb_ex * curl_x).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(jnp.float32) + cb_ey * curl_y).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(jnp.float32) + cb_ez * curl_z).astype(_fdtype)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,

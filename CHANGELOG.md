@@ -6,6 +6,60 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — Yee update arithmetic was hard-pinned to float32 regardless of field storage dtype (issue #630)
+
+- `rfx/core/yee.py`'s `update_h`/`update_e` computed `_cdtype = jnp.complex64
+  if jnp.iscomplexobj(state.ex) else jnp.float32` — the real (non-Bloch)
+  path's Yee curl/update ARITHMETIC was hard-pinned to float32 for ANY
+  field storage dtype. `_fdtype = state.ex.dtype` was used only to cast
+  the *result* back, so a float64 field carry was silently re-quantized to
+  float32 at the top of every timestep. The public API had no way to
+  reach float64 storage anyway (`precision=` only accepted `"float32"` /
+  `"mixed"`), so this was previously unobservable from outside — it
+  surfaced only once #630's investigation forced `field_dtype=jnp.float64`
+  directly at the `rfx/simulation.py` resolution site and found the FD
+  side of FD-vs-AD gates still capped at a ~1e-7 relative noise floor with
+  a non-monotone, sign-flipping sub-signal response (the AD side was
+  unaffected — the floor only ever inflated the FD reference).
+- Fix: `_cdtype` is now `jnp.promote_types(state.ex.dtype, jnp.float32)`
+  at both `update_h`/`update_e` call sites, plus the same substitution at
+  all 51 literal `.astype(jnp.float32)` field-arithmetic sites across the
+  NU (`update_h_nu`/`update_e_nu`), GPU-fast (`update_h_fast`/
+  `update_e_fast`/`update_he_fast`), and anisotropic
+  (`update_e_nu_aniso`/`update_e_aniso_inv`/`update_e_aniso`) lanes.
+  `jnp.promote_types(float16, float32) == float32` (preserves the
+  existing mixed-precision upcast intent unchanged) and
+  `jnp.promote_types(float32, float32) == float32` (byte-identical on the
+  production path — measured across `g_ad` and every FD-ladder rung).
+  Material coefficients (`eps_r`/`sigma`/`mu_r`) and the CPML profile
+  arrays stay float32 either way — those are fixed setup-time constants
+  that measurably bias the primal but do not create the per-timestep
+  rounding-lattice noise floor the compute-dtype pin did.
+- **New public knob**: `Simulation(..., precision="float64")` (alongside
+  the existing `"float32"` / `"mixed"`) routes float64 field storage (and
+  now, with the above fix, float64 Yee arithmetic) through both `run()`
+  and `forward()`. Requires the caller to have already enabled JAX's x64
+  mode (`jax.config.update("jax_enable_x64", True)` or
+  `jax.experimental.enable_x64()`); `preflight()` now warns
+  (`precision_float64_without_x64`) if `precision="float64"` is set
+  without x64 enabled, since JAX otherwise silently downcasts back to
+  float32 with no other signal. `forward()` previously never threaded
+  `field_dtype` at all (always float32 regardless of `precision=`), so
+  this also makes `precision="mixed"` reachable from `forward()` for the
+  first time.
+- **BEHAVIOUR CHANGE, opt-in only**: nothing changes for the default
+  `precision="float32"` or `precision="mixed"` paths (verified
+  byte-identical: primal, AD gradient, and every FD-ladder rung
+  unchanged). Only simulations that explicitly opt into
+  `precision="float64"` with x64 enabled see different (more accurate)
+  numbers.
+- Falsifier: reverting only the two `_cdtype` sites while keeping all 51
+  literal-site changes reproduces the stock (unpatched) float64-fields
+  result exactly — confirming `_cdtype` is the entire load-bearing change
+  and the literal-site changes alone are inert on the executed uniform CPU
+  lane (`update_he_fast` is GPU-only; the literals there and in the NU/
+  aniso lanes are unreachable from the CPU test suite either way).
+- No existing gate/tolerance changed; this PR does not tighten anything.
 ### Fixed — `vmap_material_sweep` didn't sweep the CPML absorber for material-named sweeps (issue #637)
 
 Found by an independent audit of the e4b565c..ce44661 arc: for a material-

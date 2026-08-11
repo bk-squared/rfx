@@ -96,7 +96,11 @@ _FD_H_VALUES_MATERIAL = (0.01, 0.02, 0.04)
 # the sweep starts at 0.02 for this leg specifically. This IS the h-drift
 # check the design contract asks for: a real derivative holds steady as h
 # grows past the noise floor, while a rounding-lattice coincidence would
-# not.
+# not. "float32" here is this gate's storage AND compute dtype (both
+# default float32, unaffected by issue #630's storage-vs-arithmetic fix);
+# it is not a claim that widening field STORAGE alone would raise this
+# floor -- pre-#630 the Yee compute dtype was pinned to float32
+# regardless of storage, so it wouldn't have.
 _FD_H_VALUES_GEOMETRY = (0.02, 0.04, 0.08)
 
 
@@ -181,7 +185,13 @@ def _material_only_objective(sim, functional, *, stop_gradient_tape: bool = Fals
 
 def _central_fd_f64(objective, x0: float, h: float):
     """Central FD, comparison arithmetic in float64 (#527/#579 discipline):
-    fields stay float32, only the FD/comparison math gains precision."""
+    on this gate's production config, fields stay float32 STORAGE; only
+    the FD/comparison math gains precision. "Fields stay float32" is a
+    storage statement, not an arithmetic one (issue #630): before #630 the
+    Yee update's compute dtype was hard-pinned to float32 regardless of
+    storage, so it would not have helped to widen fields here; #630 makes
+    compute dtype follow storage, which is a no-op at this gate's float32
+    default and only takes effect under ``precision="float64"``."""
     with enable_x64():
         fp = objective(jnp.asarray(x0 + h, dtype=jnp.float32))
         fm = objective(jnp.asarray(x0 - h, dtype=jnp.float32))

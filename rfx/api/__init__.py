@@ -302,11 +302,26 @@ class Simulation(
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
     precision : str
-        ``"float32"`` (default) or ``"mixed"``.  When ``"mixed"``,
-        field arrays (E, H) use float16 for ~2x memory reduction while
-        material coefficients and DFT accumulators stay float32.
-        Arithmetic is performed in float32 and cast back to float16
-        for storage.
+        ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
+        ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
+        reduction while material coefficients and DFT accumulators stay
+        float32.  When ``"float64"``, field arrays use float64 storage
+        AND the Yee update arithmetic runs at float64 (issue #630 — prior
+        releases hard-pinned the Yee curl/update arithmetic to float32
+        regardless of storage dtype, so float64 fields were silently
+        re-quantized to float32 every timestep; the arithmetic dtype is
+        now ``jnp.promote_types(field_dtype, jnp.float32)``, so
+        ``"float32"``/``"mixed"`` are numerically unaffected and
+        byte-identical to before).  ``"float64"`` requires JAX's x64 mode
+        to already be enabled by the caller (``jax.config.update(
+        "jax_enable_x64", True)`` or ``jax.experimental.enable_x64()``) —
+        without it JAX silently downcasts float64 arrays back to
+        float32, and ``preflight()`` warns if this mismatch is detected.
+        Material coefficients (``eps_r``/``sigma``/``mu_r``) and
+        precomputed CPML profile arrays stay float32 either way (fixed
+        setup-time constants measurably bias the primal but do not
+        create the per-timestep rounding-lattice noise floor that the
+        compute-dtype pin did — see issue #630's f64-lift measurement).
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
         ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in
@@ -378,8 +393,10 @@ class Simulation(
             spec = None  # deferred; folded in after legacy fields settle
         if freq_max <= 0:
             raise ValueError(f"freq_max must be positive, got {freq_max}")
-        if precision not in ("float32", "mixed"):
-            raise ValueError(f"precision must be 'float32' or 'mixed', got {precision!r}")
+        if precision not in ("float32", "mixed", "float64"):
+            raise ValueError(
+                f"precision must be 'float32', 'mixed', or 'float64', got {precision!r}"
+            )
         if solver not in ("yee", "adi"):
             raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
         if adi_cfl_factor <= 0:

@@ -166,7 +166,10 @@ def test_warmup_truncation_error_grows_with_k():
     (forward output is provably n_warmup-invariant per
     test_forward_matches_plain, so the oracle is unaffected by K) with
     comparison arithmetic in float64 (repo convention, tests/_x64_compat.py
-    + test_jacobian_fwd.py's _central_fd_f64).
+    + test_jacobian_fwd.py's _central_fd_f64 -- see that function's
+    docstring for the storage-vs-arithmetic distinction, issue #630: this
+    fixture's FDTD fields stay float32 storage, which was and remains
+    also the Yee compute dtype at that storage).
 
     Measured (this fixture, N_STEPS=100, N_FIXED=80, design cell offset
     from source/probe): rel_err vs. FD oracle is roughly

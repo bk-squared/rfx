@@ -185,8 +185,11 @@ def test_gradient_through_dft_plane():
         print(f"  FD check at ({ci},{cj},{ck}): AD={ad:.6e}, FD={fd:.6e}, err={rel_err:.4e}")
         # Relaxed tolerance: DFT accumulator values scale as O(dt) ≈ 5e-12,
         # so the objective and gradients are extremely small (~1e-24).
-        # Float32 FD at this scale has limited precision. We verify same
-        # sign + same order of magnitude (< 50% relative error).
+        # Float32 FD at this scale has limited precision (this test runs
+        # fully float32, no enable_x64() scoping -- both field storage and
+        # Yee compute dtype are float32, unaffected by issue #630's
+        # storage-vs-arithmetic distinction). We verify same sign + same
+        # order of magnitude (< 50% relative error).
         assert rel_err < 0.50, f"DFT plane gradient FD mismatch: rel_err={rel_err:.4f}"
 
 
