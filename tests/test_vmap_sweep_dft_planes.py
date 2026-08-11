@@ -429,6 +429,69 @@ class TestVmapMaterialSweepCpmlPad:
                 ref.dft_planes, rtol=1e-6, ctx=f"global sweep eps_r={ev}",
             )
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Known gap, issue #643 (opened from this PR's own review): "
+            "_extend_batched_cpml_pad does not reproduce "
+            "rfx.geometry.rasterize_grid.extend_cpml_pad_materials' "
+            "hi-face vacuum fallback (added by #627, PR #638) -- when the "
+            "naive interior-edge column is vacuum but the column one "
+            "further in is not (the case a Box's half-open [lo, hi) "
+            "rasterization produces for a structure flush with the "
+            "domain's hi face), the shared helper sources the pad from "
+            "that inner column; this file's vmap helper still reads the "
+            "naive (vacuum) column. Measured directly on this exact "
+            "fixture: worst per-bin DFT-plane relative error against "
+            "run() is 1.66e-2 (eps_r=2.0) / 4.25e-2 (eps_r=6.0) -- the "
+            "same order of magnitude as #637's own pre-fix defect, on "
+            "the one geometry #637's fix does not reach. strict=True so "
+            "this flips to an XPASS failure (not a silent pass) the day "
+            "someone closes #643 -- delete this test then, do not widen "
+            "it."
+        ),
+    )
+    def test_exact_hi_face_touch_matches_run_via_shared_fallback(self):
+        """Witness for issue #643 -- a slab whose bound sits EXACTLY on
+        the domain's hi face (all six CPML faces via a `Box((0,0,0),
+        domain)`, mirroring the #582/#627 discovery fixture), swept by
+        material name. `Simulation.run()` gets the x-hi/y-hi/z-hi pads
+        right post-#627 (the shared helper's fallback); the vmap fast
+        path does not. Every OTHER test in this file (and #637's own
+        representativeness sweep) deliberately nudges its geometry a
+        half-cell past the domain edge specifically to AVOID this case
+        (see ``_dft_sim`` and the alternate-geometry test's own inline
+        comments) -- without this xfail, nothing in the shipped suite
+        would ever touch the exact property #643 tracks."""
+        domain = (0.02, 0.02, 0.02)
+        cpml_layers = 6
+        dx = 0.002
+        eps_values = np.array([2.0, 6.0])
+        n_steps = 60
+
+        def sim_fn(eps_r):
+            sim = Simulation(freq_max=5e9, domain=domain, boundary="cpml",
+                              cpml_layers=cpml_layers, dx=dx)
+            sim.add_material("slab", eps_r=eps_r)
+            sim.add(Box((0, 0, 0), domain), material="slab")
+            sim.add_source((0.01, 0.01, 0.01), "ez",
+                            waveform=GaussianPulse(f0=3e9))
+            sim.add_probe((0.006, 0.01, 0.01), "ez")
+            sim.add_dft_plane_probe(axis="x", coordinate=0.006,
+                                     component="ez", n_freqs=4, name="p1")
+            return sim
+
+        vmap_res = vmap_material_sweep(
+            sim_fn(4.0), "slab.eps_r", eps_values, n_steps=n_steps,
+        )
+        for idx, ev in enumerate(eps_values):
+            ref = sim_fn(float(ev)).run(n_steps=n_steps, skip_preflight=True)
+            _assert_dft_planes_match(
+                {"p1": vmap_res.dft_planes["p1"][idx]},
+                ref.dft_planes, rtol=1e-6,
+                ctx=f"exact-hi-face-touch (#643) eps_r={ev}",
+            )
+
 
 class TestVmapDftPlaneX64:
     """#477/#484 x64-contract pin, scoped (never module-level, per repo

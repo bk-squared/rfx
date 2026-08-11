@@ -112,7 +112,15 @@ as issue #637's own pre-fix numbers, on a case this entry does not
 correct. Both PR bodies already flag reconciling the two helpers as
 follow-up work rather than something either PR should absorb now; this
 paragraph is that disclosure, not a promise of a later commit in this
-PR.
+PR. Tracked as **issue #643**, which also covers why the fix is not a
+drop-in (the batched arrays carry a leading sweep axis the shared
+helper's fallback test has to be evaluated per element against, not
+once) and its acceptance criterion (byte-identity between the batched
+path and `_assemble_materials` across #637's full geometry matrix plus
+this exact-hi-face case). Pinned by
+`tests/test_vmap_sweep_dft_planes.py::TestVmapMaterialSweepCpmlPad::test_exact_hi_face_touch_matches_run_via_shared_fallback`,
+marked `xfail(strict=True)` so it turns into a hard failure — not a
+silent pass — the day #643 is closed.
 
 ### Fixed — import-time binding pollution in the uniform-grid runner (issue #628)
 
