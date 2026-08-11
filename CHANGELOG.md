@@ -6,6 +6,106 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — `precision="mixed"` never worked with CPML boundaries (issue #644)
+
+`Simulation(boundary="cpml", precision="mixed").run(...)` raised a raw JAX
+`TypeError` ("scan body function carry input and carry output must have equal
+types ... `psi_hz_yhi` has type float16[...] but the corresponding output
+component has type float32[...]"). Pre-existing on every released version, and
+measured identical on the trees before and after the issue #630 compute-dtype
+work, so #630 neither caused nor fixed it.
+
+- **Mechanism.** `rfx/boundaries/cpml.py`'s `psi_*` auxiliary arrays were
+  allocated at the field storage dtype (float16 under `precision="mixed"`),
+  while the CPML profile coefficients (`b`/`c`/`kappa`) are hard-pinned
+  float32. `psi = b*psi + c*curl` therefore evaluated to float32 while the
+  `lax.scan` carry had been declared float16, and the carry signature stopped
+  matching its own input. Loud failure, never a silent wrong number.
+- **Fix.** The `psi_*` arrays are *accumulation* state — a recursive
+  convolution integrated over every timestep — so they are now allocated at
+  `jnp.promote_types(field_dtype, jnp.float32)` and never sit below float32.
+  This is deliberately NOT a flat float32 pin: `psi` followed `field_dtype`
+  for a reason (the issue #404 oblique-Bloch path needs a *complex* carry),
+  and a flat pin would have fixed float16 by silently breaking complex64. The
+  promotion satisfies every caller at once — float16 -> float32 (the fix),
+  float32 -> float32 (unchanged), float64 -> float64, complex64 -> complex64.
+  It is the same idiom already used by `rlc_carry_dtype` in `rfx/lumped.py`
+  and by #630's `_cdtype`.
+- **Second, latent defect fixed in the same path.** With float32 corrections
+  scattering into float16 fields, `apply_cpml_e`/`apply_cpml_h` tripped JAX's
+  "cannot safely cast value from dtype=float32 to dtype=float16" *FutureWarning*
+  — which JAX states "will result in an error" in a future release. Both
+  functions now accumulate at the psi dtype and round back to storage dtype
+  once at the end, instead of rounding at each of the four `.at[].add()` per
+  component. Measured no-op for float32/float64/complex64 (`promote_types` is
+  idempotent there). **This is deprecation-driven, not an accuracy
+  improvement, and is not claimed as one**: it moves the mixed+CPML absorption
+  floor from -59.5 dB to -59.7 dB, which is noise — the float16 *storage*
+  quantization dominates, not the per-add rounding. The justification stands
+  on its own: without it the #644 fix expires the moment JAX turns that
+  warning into an error.
+- **The `forward()` guard from #630 is removed.** #630 shipped a temporary
+  `NotImplementedError` in `_forward_from_materials` for `mixed` + CPML rather
+  than leak the raw JAX carry-dtype `TypeError` through the newly-`precision`-
+  aware `forward()`. The root cause is now fixed, so the guard is gone —
+  leaving it would have kept `mixed` + CPML blocked through `forward()`
+  forever. Its two regression pins in `tests/test_precision_lane_guard.py`
+  are **kept and inverted to assert success** rather than deleted: they encode
+  two genuinely distinct paths (a scalar `boundary="cpml"`, and a per-face
+  `BoundarySpec` carrying only one cpml face), and both must keep working.
+  Measured on the rebased tree: `run()` and `forward()` are now both green
+  across all of pec/cpml/upml x float32/mixed.
+- **Separate pre-existing defect uncovered by that guard removal — reported,
+  NOT fixed here.** The per-face guard test was passing for the wrong reason:
+  the guard raised before any CPML compute ran, so it never exercised the
+  per-face CPML path. With the guard gone, that fixture (per-face spec, PEC on
+  x/y, `cpml_layers=16` against unpadded 8-cell x/y axes) fails in
+  `apply_cpml_e` with a SHAPE error — `mul got incompatible shapes for
+  broadcasting: (16,1,1) vs (8,8,40)` — because the x/y face slices `[:n]`
+  still run on axes that were never padded. MEASURED on the unpatched parent
+  commit: identical failure at `precision="float32"` through both `run()` and
+  `forward()`, so it is a per-face CPML geometry defect, precision-independent
+  and unrelated to this issue. The condition is `cpml_layers` > the unpadded
+  width of a PEC axis; the test now pins `cpml_layers=4`, which reaches the
+  CPML compute and is red-then-green for the #644 dtype fix as intended.
+- **The absorption caveat is documented where users will see it**: the
+  `precision=` parameter docstring in `rfx/api/__init__.py` (which feeds the
+  API reference) now states the measured -76 dB -> -59.5 dB floor shift, notes
+  the numbers come from a specific fixture rather than being a universal
+  bound, and says plainly that `"mixed"` is not a drop-in `"float32"`
+  substitute for reflection coefficients, S-parameters, or anything near the
+  absorber floor.
+- **Production paths are bit-identical — verified as an identity claim, not a
+  tolerance.** SHA-256 of the raw field bytes (all six components) matches
+  between a `git archive` of the base commit and this branch across four
+  fixtures: PEC, CPML, lossy-material+CPML, and non-uniform-mesh+CPML, plus
+  `precision="mixed"`+PEC. The harness's sensitivity was demonstrated rather
+  than assumed: a deliberate 2 ppm perturbation of the CPML `alpha` profile
+  changes all three CPML fixture hashes and leaves both PEC hashes untouched
+  (PEC never constructs CPML state at all).
+- **Accuracy of `mixed` + CPML, measured — with a real cost worth knowing.**
+  On a 40^3 domain (dx = 3.0 mm, dt = 5.72 ps), mixed-vs-float32 relative L2
+  error on Ez is 0.20% at 50 steps and 0.23% at 100 steps. But float16 fields
+  raise the **absorber's residual floor**: total field energy 400 steps after
+  the pulse settles reaches -76.3 dB below peak in float32 and only -59.5 dB
+  in mixed — roughly **17 dB worse absorption**, consistent with float16's
+  ~9.8e-4 machine epsilon quantizing the field storage. `mixed` + CPML is
+  correct and stable (no NaN/Inf out to 800 steps), but it is not a drop-in
+  substitute for float32 when the quantity of interest is a low-level residual
+  or a reflection coefficient near the absorber floor.
+- **Test coverage — the reason this stayed invisible.** All 13 tests in
+  `tests/test_mixed_precision.py` used `boundary="pec"`, and PEC never builds
+  CPML state, so the CPML dtype path had zero coverage. The file was also
+  entirely `pytestmark = pytest.mark.gpu`, which `pyproject.toml`'s
+  `addopts = "-m 'not gpu and not slow and not slow_physics'"` deselects from
+  every default run — two independent reasons the gap could not be seen. The
+  file-level `gpu` mark is **removed** (measured: the original 13 tests run in
+  6.5 s wall on CPU, slowest 1.27 s — these are dtype/dispatch assertions, not
+  the "needs GPU / too slow on CPU" the marker is defined for), and CPML rows
+  are added: psi dtype policy per field dtype, the full boundary x precision
+  2x2 from the issue, mixed-vs-float32 agreement, an absorption witness in dB,
+  and a regression pin for the unsafe-cast warning. 24 tests, 17.3 s on CPU.
+
 ### Fixed — Yee update arithmetic was hard-pinned to float32 regardless of field storage dtype (issue #630)
 
 - `rfx/core/yee.py`'s `update_h`/`update_e` computed `_cdtype = jnp.complex64
@@ -102,6 +202,7 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   lane (`update_he_fast` is GPU-only; the literals there and in the NU/
   aniso lanes are unreachable from the CPU test suite either way).
 - No existing gate/tolerance changed; this PR does not tighten anything.
+
 ### Fixed — `vmap_material_sweep` didn't sweep the CPML absorber for material-named sweeps (issue #637)
 
 Found by an independent audit of the e4b565c..ce44661 arc: for a material-

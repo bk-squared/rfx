@@ -1523,47 +1523,6 @@ class _ExecuteMixin:
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 ))
 
-        # Issue #644 (pre-existing, NOT caused by #630 -- measured identical
-        # via run() on both the pre- and post-#630 trees): CPML's psi_*
-        # carry arrays are allocated at field_dtype (float16 for
-        # precision="mixed"), but the CPML coefficients are hard-pinned to
-        # float32, so `psi = b*psi + c*curl` promotes to float32 and the
-        # lax.scan carry signature no longer matches its own input --
-        # TypeError. This path was UNREACHABLE from forward() before #630
-        # (forward() silently ignored precision= entirely); #630 made
-        # forward() honour precision= for the first time (a genuine second
-        # fix -- see field_dtype=self._resolve_field_dtype() below), which
-        # newly surfaces this pre-existing defect through forward(). Fail
-        # loud with a clear, actionable rfx-layer message instead of
-        # degrading to a raw JAX carry-dtype TypeError. UPML does NOT hit
-        # this (measured: boundary="upml" + precision="mixed" runs clean
-        # on forward() -- the coefficient/carry dtype mismatch is CPML-only,
-        # rfx/boundaries/upml.py has no analogous hard-float32 psi carry
-        # promoted by a field_dtype-following one). float64 is unaffected
-        # (jnp.promote_types(float64, float32) == float64 matches storage,
-        # so the carry stays consistent) -- measured clean on forward().
-        if self._precision == "mixed":
-            _bspec = self._boundary_spec
-            _uses_cpml = any(
-                getattr(_bspec, _axis).lo == "cpml"
-                or getattr(_bspec, _axis).hi == "cpml"
-                for _axis in ("x", "y", "z")
-            )
-            if _uses_cpml:
-                raise NotImplementedError(
-                    "forward(): precision='mixed' with a CPML boundary "
-                    "face is not supported (issue #644, pre-existing -- "
-                    "not caused by this fix). The CPML psi_* carry arrays "
-                    "follow field_dtype (float16), but the CPML "
-                    "coefficients are hard-pinned to float32, so the "
-                    "update promotes float16->float32 and breaks the "
-                    "lax.scan carry contract with a raw JAX TypeError. Use "
-                    "precision='float32' (default) or 'float64' with CPML "
-                    "today; 'mixed' + CPML needs #644's fix (giving the "
-                    "psi_* arrays and CPML coefficients one consistent "
-                    "dtype policy) before it can work."
-                )
-
         result = _run(
             grid,
             materials,

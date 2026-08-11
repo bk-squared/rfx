@@ -333,6 +333,23 @@ class Simulation(
         non-uniform-mesh case (the distributed case is a call-time
         ``run()``/``forward()`` kwarg, invisible to preflight, so its
         `NotImplementedError` at dispatch is the only enforcement point).
+
+        ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary (issue #644):
+        float16 field storage is fine for transient and field-shape work
+        (measured 0.20% relative L2 error on Ez vs ``"float32"`` at 50
+        steps), but it raises the absorber's residual floor. On the
+        fixture in ``tests/test_mixed_precision.py`` — a 40**3 domain,
+        dx = 3.0 mm, point source, 400 steps — total field energy settles
+        to about -76 dB below peak under ``"float32"`` but only about
+        -59.5 dB under ``"mixed"``: roughly 17 dB worse, consistent with
+        float16's ~1e-3 machine epsilon quantizing the stored fields.
+        Those two numbers are from that one fixture, not a universal
+        bound; the floor scales with float16 epsilon, so expect the same
+        order wherever the field storage is float16. Practical rule:
+        ``"mixed"`` is not a drop-in ``"float32"`` substitute when the
+        quantity of interest is a reflection coefficient, an S-parameter,
+        or anything else living near the absorber floor — use
+        ``"float32"`` (the default) for those.
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
         ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in

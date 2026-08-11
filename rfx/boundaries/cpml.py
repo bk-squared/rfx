@@ -352,12 +352,30 @@ def init_cpml(grid, *, kappa_max: float | None = None,
 
     nx, ny, nz = grid.shape if hasattr(grid, 'shape') else (grid.nx, grid.ny, grid.nz)
 
+    # Issue #644.  The psi_* arrays are ACCUMULATION state — a recursive
+    # convolution integrated over every timestep — so they must never sit
+    # below float32, whatever the field STORAGE dtype is.  Following
+    # ``field_dtype`` verbatim put them at float16 under
+    # ``precision="mixed"`` while the profile coefficients (b/c/kappa) are
+    # hard-pinned float32, so ``psi = b*psi + c*curl`` promoted
+    # float16 -> float32 and the ``lax.scan`` carry signature stopped
+    # matching its own input (loud TypeError, never a silent wrong number).
+    #
+    # ``promote_types(field_dtype, float32)`` is the one policy that
+    # satisfies every caller at once:
+    #   float16   -> float32    the #644 fix; "float16 fields, float32
+    #                           accumulation" is exactly what this mode
+    #                           promises (tests/test_mixed_precision.py)
+    #   float32   -> float32    unchanged, bit-identical
+    #   float64   -> float64    matches storage; float32 coeffs promote up
+    #   complex64 -> complex64  preserves the #404 oblique Bloch path —
+    #                           which is WHY this followed field_dtype
+    #                           in the first place
+    # A flat ``float32`` pin would fix float16 and silently break complex64.
+    psi_dtype = jnp.promote_types(field_dtype, jnp.float32)
+
     def _zeros(dim_size: int, perp1: int, perp2: int) -> jnp.ndarray:
-        # psi carry dtype follows the field dtype so the lax.scan carry contract
-        # holds when fields are complex (#404 oblique Bloch path). Default
-        # float32 keeps the real path byte-identical. Real profile coeffs
-        # (b/c/kappa) stay float32 and multiply the psi carry without truncation.
-        return jnp.zeros((n, perp1, perp2), dtype=field_dtype)
+        return jnp.zeros((n, perp1, perp2), dtype=psi_dtype)
 
     state = CPMLState(
         # E-field psi (12 faces)
@@ -463,9 +481,22 @@ def apply_cpml_e(
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
 
-    ex = state.ex
-    ey = state.ey
-    ez = state.ez
+    # Issue #644.  Accumulate the CPML corrections at the psi dtype, then
+    # round back to the field storage dtype ONCE at the end.  Under
+    # ``precision="mixed"`` the corrections below are float32 (psi and the
+    # b/c/kappa coefficients both are) while the field is float16, so
+    # scattering them straight in would (a) round to float16 at each of the
+    # four ``.at[].add()`` per component instead of once, and (b) emit
+    # JAX's "cannot safely cast value from dtype=float32 to dtype=float16"
+    # FutureWarning, which JAX says "will result in an error" in a future
+    # release.  ``_work`` is a no-op cast for float32 / float64 / complex64
+    # (promote_types is idempotent there), so every non-mixed path stays
+    # bit-identical.
+    _fdtype = state.ex.dtype
+    _work = jnp.promote_types(_fdtype, jnp.float32)
+    ex = state.ex.astype(_work)
+    ey = state.ey.astype(_work)
+    ez = state.ez.astype(_work)
 
     # =========================================================
     # X-axis CPML: Ey correction (dHz/dx) and Ez correction (dHy/dx)
@@ -642,7 +673,10 @@ def apply_cpml_e(
         new_psi_ey_zlo = cpml_state.psi_ey_zlo
         new_psi_ey_zhi = cpml_state.psi_ey_zhi
 
-    state = state._replace(ex=ex, ey=ey, ez=ez)
+    # Round the accumulated corrections back to field storage dtype once
+    # (no-op unless precision="mixed" — see the _work note above).
+    state = state._replace(ex=ex.astype(_fdtype), ey=ey.astype(_fdtype),
+                           ez=ez.astype(_fdtype))
     cpml_state = cpml_state._replace(
         # x-axis
         psi_ey_xlo=new_psi_ey_xlo,
@@ -722,9 +756,13 @@ def apply_cpml_h(
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
 
-    hx = state.hx
-    hy = state.hy
-    hz = state.hz
+    # Issue #644 — same accumulate-at-psi-dtype, round-once policy as
+    # apply_cpml_e above (no-op for float32 / float64 / complex64).
+    _fdtype = state.hx.dtype
+    _work = jnp.promote_types(_fdtype, jnp.float32)
+    hx = state.hx.astype(_work)
+    hy = state.hy.astype(_work)
+    hz = state.hz.astype(_work)
 
     # =========================================================
     # X-axis CPML: Hy correction (dEz/dx) and Hz correction (dEy/dx)
@@ -900,7 +938,8 @@ def apply_cpml_h(
         new_psi_hy_zlo = cpml_state.psi_hy_zlo
         new_psi_hy_zhi = cpml_state.psi_hy_zhi
 
-    state = state._replace(hx=hx, hy=hy, hz=hz)
+    state = state._replace(hx=hx.astype(_fdtype), hy=hy.astype(_fdtype),
+                           hz=hz.astype(_fdtype))
     cpml_state = cpml_state._replace(
         # x-axis
         psi_hy_xlo=new_psi_hy_xlo,

@@ -17,15 +17,14 @@ the ONLY enforcement point there -- see that check's docstring).
 
 These tests are deliberately NOT `pytest.mark.gpu`: they only exercise the
 dispatch-time guard (a Python-level raise before any FDTD compute), so they
-run on CPU in the default local suite -- `tests/test_mixed_precision.py`'s
-numeric mixed-precision tests are module-wide `gpu`-marked and would
-otherwise be the only place this behavior is covered, deselected from the
-default local run.
+run on CPU in the default local suite. (`tests/test_mixed_precision.py` used
+to be module-wide `gpu`-marked, which is why it could not serve as that
+coverage; issue #644 removed that mark after measuring the file at 6.5 s on
+CPU, so it now runs in the default lane too.)
 
-Also covers a second, related precision guard added in the same follow-up:
-issue #644 (precision="mixed" + CPML, a pre-existing defect #630 newly made
-reachable from forward() -- see the module section below for the full
-mechanism).
+Also covers the `forward()` + CPML precision matrix, which issue #644 turned
+from a guarded-off combination into a working one -- see the module section
+below.
 """
 
 from __future__ import annotations
@@ -123,20 +122,30 @@ def test_uniform_lane_unaffected_by_the_new_guard(precision):
 
 
 # ---------------------------------------------------------------------------
-# Issue #644: precision="mixed" + CPML is a pre-existing, NOT-#630-caused
-# defect (measured identical via run() on the pre- and post-#630 trees; the
-# CPML psi_* carry follows field_dtype=float16 but the CPML coefficients are
-# hard-pinned to float32, breaking the lax.scan carry contract). #630 made
-# forward() honour precision= for the first time (previously it silently
-# ignored precision= and always ran float32), which newly makes this
-# pre-existing defect reachable from forward() -- these tests pin that the
-# NEW reachability surfaces a clear rfx-layer NotImplementedError instead of
-# degrading to a raw JAX carry-dtype TypeError, and that float32/float64
-# (unaffected -- promote_types(float64, float32) == float64 matches
-# storage, no carry-dtype mismatch) and UPML (measured: no analogous
-# hard-float32 psi carry) are untouched by this guard. Fixing #644 itself
-# (giving psi_* and the CPML coefficients one consistent dtype policy) is
-# explicitly out of scope here -- see issue #644.
+# Issue #644, RESOLVED: precision="mixed" + CPML now works through forward().
+#
+# It was a pre-existing, NOT-#630-caused defect (measured identical via run()
+# on the pre- and post-#630 trees): the CPML psi_* carry followed
+# field_dtype=float16 while the CPML coefficients are hard-pinned float32, so
+# `psi = b*psi + c*curl` promoted to float32 and broke the lax.scan carry
+# contract. #630 made forward() honour precision= for the first time, which
+# newly exposed it there, and #630 shipped a temporary forward() guard raising
+# NotImplementedError rather than leak a raw JAX carry-dtype TypeError.
+#
+# #644 fixed the root cause -- the psi_* arrays are ACCUMULATION state and are
+# now allocated at promote_types(field_dtype, float32), so they never sit
+# below float32 -- and REMOVED that guard. These tests were the guard's
+# regression pins; they are kept (rather than deleted) and inverted to assert
+# SUCCESS, because the two cases they encode are exactly the two that must
+# keep working: a plain scalar boundary="cpml", and a per-face BoundarySpec
+# carrying only ONE cpml face (the guard read self._boundary_spec, so the
+# per-face case is a genuinely distinct path, not a restatement).
+#
+# Caveat worth knowing when reading these: "mixed" + CPML is correct but
+# raises the absorber's residual floor (~-76 dB -> ~-59.5 dB on the fixture
+# in tests/test_mixed_precision.py). See the precision= docstring in
+# rfx/api/__init__.py. These tests pin reachability, not absorber quality --
+# tests/test_mixed_precision.py owns the numeric assertions.
 # ---------------------------------------------------------------------------
 
 def _cpml_sim(*, precision: str) -> Simulation:
@@ -151,20 +160,45 @@ def _cpml_sim(*, precision: str) -> Simulation:
     return sim
 
 
-def test_forward_mixed_cpml_raises_clean_notimplementederror_not_raw_typeerror():
+def test_forward_mixed_cpml_works():
+    """Was NotImplementedError (the #630-era guard), and a raw lax.scan carry
+    TypeError before that. Both are fixed at the root -- see issue #644."""
     sim = _cpml_sim(precision="mixed")
-    with pytest.raises(NotImplementedError, match="#644"):
-        sim.forward(n_steps=5, skip_preflight=True)
+    result = sim.forward(n_steps=5, skip_preflight=True)
+    assert result is not None
 
 
-def test_forward_mixed_cpml_per_face_boundary_spec_also_caught():
-    """The guard reads self._boundary_spec (always normalized, even from a
-    legacy scalar boundary=), so a per-face BoundarySpec with only ONE
-    CPML face must trip it too -- not just the all-faces-cpml scalar case."""
+def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
+    """A per-face BoundarySpec with only ONE cpml axis is a distinct path.
+
+    The removed guard read ``self._boundary_spec`` (always normalized, even
+    from a legacy scalar ``boundary=``), so this case tripped it separately
+    from the all-faces-cpml scalar case. The fix is in ``init_cpml``, which
+    every cpml face routes through, so this must now work too -- keeping the
+    case pins that the psi dtype policy is not somehow scalar-boundary-only.
+
+    ``cpml_layers=4`` is load-bearing and deliberate, NOT a tolerance being
+    loosened to get green. This test previously used the default 16 layers
+    and passed only because the guard raised BEFORE any CPML compute ran --
+    it never exercised the per-face CPML path at all. With the guard gone the
+    fixture turned out to be broken independently of precision: a per-face
+    spec whose PEC axes are narrower than ``cpml_layers`` (here 8 cells vs 16
+    layers) dies in ``apply_cpml_e`` with a SHAPE error,
+    ``mul got incompatible shapes for broadcasting: (16,1,1) vs (8,8,40)``,
+    because the x/y face slices ``[:n]`` still run on unpadded axes. MEASURED
+    on the unpatched parent commit: that combination fails identically at
+    ``precision="float32"`` through BOTH ``run()`` and ``forward()``, so it is
+    a pre-existing per-face CPML geometry defect, not a precision defect and
+    not caused by issue #644. It is reported separately; pinning 4 layers here
+    keeps this test measuring the dtype policy it is named for, on a fixture
+    that actually reaches the CPML compute. Verified red-then-green: at 4
+    layers this raises the #644 lax.scan carry TypeError on the parent commit
+    and passes here.
+    """
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
     sim = Simulation(
-        freq_max=5.0e9, domain=(0.02, 0.02, 0.02),
+        freq_max=5.0e9, domain=(0.02, 0.02, 0.02), cpml_layers=4,
         boundary=BoundarySpec(x="pec", y="pec", z=Boundary(lo="cpml", hi="cpml")),
         precision="mixed",
     )
@@ -172,11 +206,11 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_caught():
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
     )
-    with pytest.raises(NotImplementedError, match="#644"):
-        sim.forward(n_steps=5, skip_preflight=True)
+    result = sim.forward(n_steps=5, skip_preflight=True)
+    assert result is not None
 
 
-def test_forward_float64_cpml_is_unaffected_by_the_644_guard():
+def test_forward_float64_cpml_works():
     # Scoped x64, per this repo's own rule (CLAUDE.md, and see this
     # package's own precision docstring): never flip jax_enable_x64
     # process-globally in a test -- it leaks to every test scheduled after
@@ -195,7 +229,7 @@ def test_forward_float64_cpml_is_unaffected_by_the_644_guard():
     assert result is not None
 
 
-def test_forward_float32_cpml_is_unaffected_by_the_644_guard():
+def test_forward_float32_cpml_works():
     sim = _cpml_sim(precision="float32")
     result = sim.forward(n_steps=5, skip_preflight=True)
     assert result is not None
