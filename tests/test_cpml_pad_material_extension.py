@@ -148,14 +148,22 @@ def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
     grid = sim._build_grid()
     materials, *_ = sim._assemble_materials(grid)
     eps = np.asarray(materials.eps_r)
-    phx, phy = grid.pad_x_hi, grid.pad_y_hi
+    plx, phx = grid.pad_x_lo, grid.pad_x_hi
+    ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz = grid.pad_z_lo
     k = plz + 1
-    assert float(eps[-phx, grid.ny // 2, k]) == 1.0, (
+    # Sample transverse positions INSIDE the box's own extent (box spans
+    # interior indices 10..19 on both x and y), not the domain midpoint —
+    # a transverse position outside the box is vacuum under every design,
+    # including the rejected unbounded-scan one, so it cannot distinguish
+    # them. plx+15/ply+15 sit inside [10,20) and are the positions an
+    # unbounded backward scan (from the OPPOSITE face's pad) would walk
+    # through and incorrectly find the box's material.
+    assert float(eps[-phx, ply + 15, k]) == 1.0, (
         "x-hi pad picked up material across a genuine multi-cell vacuum "
         "gap — the hi-face fallback must be bounded to the rasterizer's "
         "documented one-column shortfall, not an unbounded scan")
-    assert float(eps[grid.nx // 2, -phy, k]) == 1.0, (
+    assert float(eps[plx + 15, -phy, k]) == 1.0, (
         "y-hi pad picked up material across a genuine multi-cell vacuum gap")
 
 

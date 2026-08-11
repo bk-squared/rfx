@@ -47,6 +47,24 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   `extend_cpml_pad_materials` call as `eps_r`/`sigma`/`mu_r`, using the
   identical per-cell hi-face source decision (same box, same dropped node,
   for every property of that box).
+  **Coverage caveat, found in review and NOT fixed here**: that per-cell
+  decision tests whether the naive column is "vacuum" by inspecting only
+  the static `eps_r`/`sigma`/`mu_r` arrays, so it cannot detect a
+  *pole-only* dispersive material — one whose background `eps_r` is left
+  at 1.0 and where the pole alone carries the dispersion. That pattern is
+  not a corner case: it is the public docs' own canonical recipe
+  (`docs/public/guide/materials-geometry.mdx`'s Lorentz example). Measured
+  (this repo's #582 fixture, `eps_r=1.0` pole vs `eps_r=4.0` pole): the
+  `eps_r=1.0` case gets pole cells replicated into the x-lo pad but ZERO
+  into the x-hi pad; `eps_r=4.0` gets the same nonzero count on both
+  faces. The committed regression test below uses `eps_r=4.0` and does
+  not exercise the `eps_r=1.0` case, so it does not catch this. **A
+  pole-only material's hi-face pad is therefore still mismatched at every
+  frequency, not just DC** — the fix in this entry closes (b) only for
+  materials that also carry a non-vacuum static signature. Left open
+  pending resolution of a separate, unrelated stability question raised
+  in review (a high-Q Lorentz pole composed with the CPML memory
+  variables in an edge-touching pad) before extending coverage further.
 - **Absorber-quality witness** (4000-step run, `eps_r=9.8, sigma=0.5,
   mu_r=2.5` slab spanning the full x/y extent, probe near the x-hi pad
   interface, `cpml_layers=8`, no subpixel smoothing): tail/peak energy
@@ -70,7 +88,24 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   step. PEC pad replication remains out of scope (PEC has never been
   extended into the pad on either path; a PEC surface intersecting a CPML
   boundary is a pre-existing, separate situation not addressed by #582 or
-  #627). Closes the two gaps #582's Scope clause deferred.
+  #627). Of the two gaps #582's Scope clause deferred: (a) is closed in
+  full; (b) is closed only for materials with a non-vacuum static
+  signature — see the coverage caveat above for what is still open for
+  pole-only materials.
+  **Also out of scope for both #582 and #627, found in review**:
+  `subpixel_smoothing=True` builds its anisotropic eps tensor (`aniso_eps`)
+  directly from `sim._geometry` shapes with a hardcoded
+  `background_eps=1.0` (`rfx/geometry/smoothing.py`'s
+  `compute_smoothed_eps` / `compute_smoothed_eps_nonuniform`, called from
+  `rfx/runners/uniform.py` and `rfx/runners/nonuniform.py`), independently
+  of — and without reading — the CPML-pad-extended `eps_r`/`sigma`/`mu_r`
+  arrays this entry and #582 fix. Verified directly: with
+  `subpixel_smoothing=True` the field update never sees the pad-replicated
+  material at all, on either path. In short, "impedance-matched absorber"
+  in this file and #582 has only ever meant the non-smoothed (staircase)
+  rasterization; the subpixel-smoothed path's CPML pad has always been
+  plain vacuum regardless of the adjacent structure, unaffected by either
+  fix.
 
 ### Fixed — arc-audit follow-up: flaky benchmark gate, an over-general `n_warmup` claim, an unsafe `field_softmax` default, and asymmetric `jacobian_fwd` safety
 
