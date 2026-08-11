@@ -61,12 +61,14 @@ def _po_sigma(phi_obs, theta_i_deg, W, h, lam):
     """PO / uniform-aperture bistatic sigma(phi) at theta_obs=pi/2 for a PEC
     plate in the y-z plane (normal-x lit face), ez polarization. Numeric
     aperture integral; the closed form below is its independent check."""
+    # numpy 2.0 removed ``np.trapz``; same shim as rfx/sources/coaxial_port.py.
+    trapezoid = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     k = 2 * np.pi / lam
     t = np.radians(theta_i_deg)
     y = np.linspace(-W / 2, W / 2, 1201)
     out = np.zeros_like(phi_obs, dtype=np.float64)
     for i, p in enumerate(phi_obs):
-        iy = np.trapz(np.exp(1j * k * (np.sin(p) - np.sin(t)) * y), y)
+        iy = trapezoid(np.exp(1j * k * (np.sin(p) - np.sin(t)) * y), y)
         out[i] = 4 * np.pi * ((k / (4 * np.pi)) * 2 * np.cos(t) * np.abs(iy) * h) ** 2
     return out
 
