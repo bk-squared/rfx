@@ -678,35 +678,88 @@ class TestVmapBatchedPadByteIdentity:
             kwargs, "slab.mu_r", np.array([1.0, 3.0]),
             base_kwargs=dict(mu_r=2.0))
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Known gap, issue #642, INHERITED not introduced by #643 -- "
-            "run() applies thin conductors AFTER pad extension "
-            "(rfx/api/_compile.py: extend_cpml_pad_materials, then the "
-            "_thin_conductors loop), while the batched path only ever "
-            "sees base_materials, which is already post-conductor. "
-            "Extending that array therefore replicates the conductor's "
-            "own sigma/eps_r into the pad, which run() never does. "
-            "Measured on the fixture below (NON-PEC thin conductor, "
-            "sigma_bulk=1e4): branch leaves 88 mismatched cells of "
-            "36501 (40 eps_r + 48 sigma, all inside the x pads); main "
-            "leaves 6592 (all eps_r, the #637/#643 defect, and zero "
-            "sigma because main only ever extended the ONE swept "
-            "field). So #643 is a 75x reduction overall AND a new "
-            "sigma-side mismatch this fixture did not have -- disclosed "
-            "rather than folded into #643, whose scope is the "
-            "pad-extension RULE, not the pipeline ORDER that #642 "
-            "tracks. A PEC thin conductor is unaffected (it routes to "
-            "pec_mask, not to the material arrays: 0 mismatched cells "
-            "on both). strict=True so this hard-fails the day #642 "
-            "lands, instead of rotting."
-        ),
+    @pytest.mark.parametrize(
+        "sigma_bulk,conductor_kind",
+        [(1.0e4, "non-PEC"), (5.8e7, "PEC")],
+        ids=["non_pec_conductor", "pec_conductor"],
     )
-    def test_thin_conductor_pad_leak_is_issue_642_not_643(self):
-        """#642 witness on the batched path. Kept next to the #643
-        matrix because the two are one line apart in the same pipeline
-        and the next person to touch either needs to see both."""
+    @pytest.mark.parametrize(
+        "param,values,base_value",
+        [("slab.eps_r", (2.0, 9.0), 4.0),
+         ("slab.sigma", (0.0, 0.05), 0.01),
+         ("slab.mu_r", (1.0, 3.0), 2.0)],
+        ids=["eps_r", "sigma", "mu_r"],
+    )
+    def test_thin_conductor_pad_matches_run(
+            self, sigma_bulk, conductor_kind, param, values, base_value):
+        """Issue #642: ``run()`` applies thin conductors AFTER the pad
+        extension (``rfx/api/_compile.py``: ``extend_cpml_pad_materials``,
+        then the ``_thin_conductors`` loop), so its padding carries the
+        background material and never the conductor.
+
+        HISTORY: this shipped with #643 as ``xfail(strict=True)``, because
+        #643's scope was the pad-extension RULE while this is the pipeline
+        ORDER. #643 made the batched path reuse the shared rule and could
+        not close this, since the batched path was handed the wrong INPUT
+        (``base_materials``, already post-conductor) rather than running
+        the wrong algorithm. Measured on the ``slab.eps_r`` row below:
+        88 mismatched cells per swept element of 12167 (40 ``eps_r`` +
+        48 ``sigma``, all inside the x pads) on #643's tree, 6592 on the
+        pre-#637 tree; **0** once ``_build_batched_materials`` re-derives
+        the PRE-conductor arrays and re-applies ``apply_thin_conductor``
+        after the extension. The ``sigma``/``mu_r`` sweeps were not in
+        the issue's own measurement and leak the same way (96 + 80 and
+        96 + 96 cells per pair respectively on #643's tree) -- the leak
+        is the conductor being replicated outward, so it does not depend
+        on which field is swept.
+
+        The PEC row is the must-pass companion, not filler: it measured
+        0 mismatched cells on every tree (a PEC conductor routes to
+        ``pec_mask``, not to the material arrays), so it is the case that
+        had to keep passing while the non-PEC case went from red to
+        green. An equality test can be satisfied by a fixture where
+        nothing could differ; ``test_thin_conductor_fixture_is_live``
+        below rules that out for the non-PEC row."""
+        field = param.split(".")[1]
+
+        def sim_fn(val):
+            kw = {"eps_r": 4.0, "sigma": 0.0, "mu_r": 1.0}
+            kw[field] = val
+            sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02), **kw)
+            sim.add_thin_conductor(
+                Box((0.0, 0.008, 0.008), (0.02, 0.012, 0.012)),
+                sigma_bulk=sigma_bulk, thickness=35e-6)
+            return sim
+
+        base_sim = sim_fn(base_value)
+        grid = base_sim._build_grid()
+        base_materials, *_ = base_sim._assemble_materials(grid)
+        vals = np.asarray(values, dtype=np.float32)
+        batched = _build_batched_materials(
+            base_sim, grid, base_materials, param, jnp.asarray(vals))
+        for idx, v in enumerate(vals):
+            want, *_ = sim_fn(float(v))._assemble_materials(grid)
+            for name in ("eps_r", "sigma", "mu_r"):
+                npt.assert_array_equal(
+                    np.asarray(getattr(batched, name)[idx]),
+                    np.asarray(getattr(want, name)),
+                    err_msg=(
+                        f"{conductor_kind} thin-conductor {name} pad "
+                        f"disagrees with run() at {param}={v} (#642)"),
+                )
+
+    def test_thin_conductor_fixture_is_live(self):
+        """Control for the non-PEC rows above: the conductor must sit ON
+        the column the pad replicates FROM, and the pad must nevertheless
+        carry the background material. Without this the equality above
+        could hold because the conductor is nowhere near a pad -- exactly
+        the vacuous-fixture failure mode #643's own matrix needed a
+        control for.
+
+        Asserts the two halves separately so a future failure says which
+        one moved: the conductor IS at the x-lo interior edge (so the old
+        code had something to replicate), and the x-lo pad is NOT the
+        conductor (so the new code does not replicate it)."""
         def sim_fn(eps_r):
             sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02),
                               eps_r=eps_r)
@@ -718,17 +771,39 @@ class TestVmapBatchedPadByteIdentity:
         base_sim = sim_fn(4.0)
         grid = base_sim._build_grid()
         base_materials, *_ = base_sim._assemble_materials(grid)
-        values = np.array([2.0, 9.0])
+        values = np.array([2.0, 9.0], dtype=np.float32)
         batched = _build_batched_materials(
             base_sim, grid, base_materials, "slab.eps_r",
             jnp.asarray(values))
+
+        plx = grid.pad_x_lo
+        assert plx > 0
+        # (y, z) inside the conductor bar: 0.008..0.012 m at dx=0.002 is
+        # interior nodes 4 and 5, i.e. grid index pad + 4.
+        jy = grid.pad_y_lo + 4
+        kz = grid.pad_z_lo + 4
+        # sigma_eff = sigma_bulk * thickness / dx
+        sigma_eff = 1.0e4 * 35e-6 / 0.002
+
         for idx, v in enumerate(values):
-            want, *_ = sim_fn(float(v))._assemble_materials(grid)
-            for name in ("eps_r", "sigma", "mu_r"):
-                npt.assert_array_equal(
-                    np.asarray(getattr(batched, name)[idx]),
-                    np.asarray(getattr(want, name)),
-                    err_msg=f"thin-conductor {name} pad leak (#642)")
+            eps = np.asarray(batched.eps_r[idx])
+            sig = np.asarray(batched.sigma[idx])
+            # Half 1: the conductor really is on the replication source.
+            assert sig[plx, jy, kz] == pytest.approx(sigma_eff), (
+                f"conductor absent from the x-lo interior edge column "
+                f"(sigma={sig[plx, jy, kz]}, expected {sigma_eff}) -- the "
+                f"fixture no longer exercises #642 and the equality test "
+                f"above is vacuous")
+            assert eps[plx, jy, kz] == pytest.approx(1.0)
+            # Half 2: and the pad is the background material anyway.
+            npt.assert_array_equal(
+                sig[:plx, jy, kz], np.zeros(plx, dtype=sig.dtype),
+                err_msg="conductor sigma leaked into the x-lo pad (#642)")
+            npt.assert_array_equal(
+                eps[:plx, jy, kz], np.full(plx, v, dtype=eps.dtype),
+                err_msg=("x-lo pad does not carry the swept slab eps_r -- "
+                         "either the conductor leaked (#642) or the pad "
+                         "extension regressed (#637/#643)"))
 
     def test_matrix_is_not_vacuous_swept_value_reaches_the_pad(self):
         """Control for the whole matrix above: at least one row must have

@@ -121,8 +121,37 @@ class _CompileMixin:
     def _assemble_materials(
         self,
         grid: Grid,
+        *,
+        include_thin_conductors: bool = True,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
+
+        Parameters
+        ----------
+        include_thin_conductors : bool, default True
+            When False, stop one step short of the finished arrays and
+            return the state as it is *before* the ``_thin_conductors``
+            loop below — i.e. geometry rasterized and the CPML pad
+            extended, but no thin conductor applied yet. Everything else
+            (pole masks, conformal-face PEC injection, the ``has_pec``
+            decision) is unchanged, so the only difference is that a
+            lossy conductor's cells still carry their background material
+            and a PEC conductor's cells are absent from ``pec_mask``.
+
+            Only ``rfx.vmap_sweep`` passes False, and it needs this
+            because the ORDER here is load-bearing: the pad is extended
+            BEFORE conductors are applied, so ``run()``'s padding never
+            contains a conductor. The batched sweep path has to re-extend
+            the pad for each swept value, and extending the *finished*
+            arrays would replicate the conductor outward — a pad
+            ``run()`` never builds (issue #642). Handing that path the
+            pre-conductor arrays and letting it re-apply the same shared
+            ``apply_thin_conductor`` afterwards reproduces this order
+            instead of approximating it.
+
+            The default is True and no other caller passes it, so
+            ``run()`` and every existing path are unaffected by
+            construction.
 
         Returns
         -------
@@ -219,13 +248,18 @@ class _CompileMixin:
 
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
-        # Apply thin conductors (P4: PEC thin sheets go to pec_mask)
-        for tc in self._thin_conductors:
-            materials, pec_mask = apply_thin_conductor(
-                grid, tc, materials, pec_mask=pec_mask)
-            if tc.is_pec:
-                pec_shapes.append(tc.shape)
-                has_pec_cells = True
+        # Apply thin conductors (P4: PEC thin sheets go to pec_mask).
+        # NOTE the position: this runs AFTER the pad extension above, so a
+        # conductor never lands in the CPML padding. rfx.vmap_sweep depends
+        # on being able to observe the state just before this loop — see
+        # ``include_thin_conductors`` in this method's docstring (#642).
+        if include_thin_conductors:
+            for tc in self._thin_conductors:
+                materials, pec_mask = apply_thin_conductor(
+                    grid, tc, materials, pec_mask=pec_mask)
+                if tc.is_pec:
+                    pec_shapes.append(tc.shape)
+                    has_pec_cells = True
 
         # Stage 1 conformal PEC face-shift (issue: WR-90 mesh-conv xfail).
         # When an axis is declared ``Boundary(conformal=True)`` we promote

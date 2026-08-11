@@ -6,6 +6,116 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — thin conductors leaked into the batched sweep's CPML pad (issue #642)
+
+`Simulation._assemble_materials` extends material values into the CPML pad
+and only THEN applies thin conductors, so `Simulation.run()`'s padding
+carries the background material and never a conductor. `vmap_material_sweep`
+was handed `base_materials` — the finished, post-conductor arrays — and
+re-extended those per swept value, replicating a non-PEC conductor's own
+`eps_r`/`sigma` outward into a pad `run()` never builds.
+
+#643 could not close this by making the extension rule more faithful,
+because the rule was never what was wrong: the batched path was given the
+wrong INPUT, not running the wrong algorithm.
+
+**Fix: the batched path is handed pre-conductor materials, and re-applies
+the conductors itself.** `Simulation._assemble_materials` gained a
+keyword-only `include_thin_conductors` (default `True`, and no caller other
+than `rfx/vmap_sweep.py` passes it, so every existing path is unaffected by
+construction). `_build_batched_materials`' material-named branch now
+re-derives the pre-conductor arrays through it, builds the sweep and the pad
+from those, and then re-applies the same shared
+`rfx.materials.thin_conductor.apply_thin_conductor` under `jax.vmap` — the
+package's single conductor rule, in the same order `run()` runs it, rather
+than a second copy of it. Production assembly ORDER is untouched; only what
+the batched path is given changed. The extra assembly is paid only when the
+simulation declares a thin conductor.
+
+- **0 mismatched cells, both material lanes, all three swept fields.**
+  Batched element *b* vs `_assemble_materials` for a simulation carrying
+  that swept value, on a `sigma_bulk=1e4` sheet spanning the domain's full
+  x extent (12167 cells per array, 36501 across the three). Per swept
+  element, main → this branch: `slab.eps_r` sweep 88 (40 `eps_r` + 48
+  `sigma`) → **0**; `slab.sigma` sweep 88 (48 + 40) → **0**; `slab.mu_r`
+  sweep 96 (48 + 48) → **0**. The `sigma` and `mu_r` sweeps were not in the
+  issue's own measurement and leak the same way — the leak is the conductor
+  being replicated outward, so it does not depend on which field is swept.
+  A PEC thin conductor measures 0 on both trees for all three (it routes to
+  `pec_mask`, not to the material arrays) and is committed as the must-pass
+  companion row, not as filler.
+- **This was not only an accuracy leak — it destabilised the run.** R5
+  decile dump of the probe envelope at `n_steps=400` with the pre-#642 pad
+  order restored: the batched path grows monotonically from decile 5
+  (`3.6e-9, 3.0e-8, 4.4e-8, 9.7e-8, 8.8e-7, 2.9e-4, 9.8e-2, 3.3e+01,
+  1.1e+04, 3.8e+06`, last/mid ratio 3.9e13) while the sequential reference
+  decays (last/mid 9.1e-3). Fixed, the batched path's deciles match
+  `run()`'s to every printed digit. Mechanism: a 175 S/m sheet
+  (`sigma_eff = sigma_bulk * thickness / dx`) replicated into the CPML pad,
+  on top of the absorber's own loss.
+- **`Simulation.run()` does not move.** SHA-256 over the raw bytes of the
+  final Yee field state plus the probe time series, base (`ef8a008`) vs
+  branch, on four lanes × with/without a non-PEC thin conductor — pec
+  (`6615242190bedfc9` / `d5a1a4614c419d12`), cpml (`a3ebcc1203fb43b1` /
+  `6cc2b67523278d4b`), lossy+CPML (`a52029cec52bca18` /
+  `97fd6ff74795c881`), non-uniform `dz_profile`+CPML (`9a79f62121917b85` /
+  `5a463547b098b69c`) — all 16 digests (fields + time series per row)
+  identical. Two negative controls: nudging `slab` `eps_r` 4.0 → 4.001
+  moves the digest, and forcing `include_thin_conductors=False` through
+  `run()`'s own assembly moves exactly the thin-conductor rows and leaves
+  the conductor-free rows untouched, so the harness is sensitive to the
+  edited line specifically and not merely to something.
+- **The `xfail(strict=True)` witness is now a normal passing test.**
+  `test_thin_conductor_pad_leak_is_issue_642_not_643` was verified XFAIL on
+  base, then XPASS(strict) — i.e. red — with the fix and the marker still
+  in place, and only then flipped. It is now
+  `test_thin_conductor_pad_matches_run`, parametrized over PEC/non-PEC
+  conductor × three swept fields, plus
+  `test_thin_conductor_fixture_is_live`: a non-vacuity control asserting
+  that the conductor really does sit on the column the pad replicates FROM
+  (so the old code had something to replicate) and that the pad carries the
+  background material anyway (so the new code does not replicate it).
+- **Not reached by this defect:** the global (unnamed-material) sweep,
+  which does no pad extension; and the non-uniform mesh path, where a
+  `dz_profile` makes the simulation ineligible for the vmap fast path
+  entirely (`_build_full_scan_fn` returns `None`) so the sequential
+  fallback — `run()` per value — is exact by construction.
+
+### Fixed — a sweep-parity test that could not see the defect it covers (issue #642b)
+
+`TestVmapSweepCPML::test_cpml_vmap_matches_sequential` ran at `n_steps=30`
+with `atol=1e-5, rtol=1e-4` and stayed green through the entire pre-#637
+era for a reason unrelated to the physics it names: the pulse had not
+meaningfully reached the absorber, so no pad defect could show. Both knobs
+are now measured rather than chosen, by injecting each defect and sweeping
+`n_steps`, reporting `max|diff| / (atol + rtol*|reference|)` — the quantity
+the assertion actually tests, so >1 means it fails.
+
+- **Run length.** With `_extend_batched_cpml_pad` disabled (the pre-#637
+  defect), under the OLD gate: `0.098` at 30 steps, `0.337` at 45, `1.010`
+  at 60, `7.218` at 90, `26.77` at 120, `60.77` at 200. It first crosses at
+  60 — by 1%, which cross-machine float jitter can erase, so 60 is not a
+  safe pick even though it nominally "sees it".
+- **Tolerance is an independent axis, not cosmetic.** The tighter gate
+  catches that same defect at `97x` at the ORIGINAL `n_steps=30`, where the
+  old gate saw `0.098x`. Both are moved because run length is what lets the
+  physics reach the absorber, while the tolerance is what a later
+  flake-chase is most likely to loosen; either alone leaves the other blind.
+- **`n_steps=200`, `atol=1e-8`, `rtol=1e-6`** is the only setting at which
+  BOTH parametrized rows are sensitive: `1.47e4x` over the gate for the
+  plain row's defect and `5.10e2x` for the thin-conductor row's (which
+  measures `0.937` — blind — at 120 AND at 150, then `5.10e2` at 200 and
+  `1.07e9` at 300; the jump is the divergence onset above). The clean tree
+  measures exactly `0.0` on both rows at every step count tried, so neither
+  knob costs anything.
+- **A third blindness shape, found while fixing the second.** The
+  thin-conductor fixture must span the full x extent: #642 is a
+  pad-EXTENSION leak, so the conductor has to sit on the column the x pads
+  replicate from. The first draft placed it interior (x 0.005–0.015) and
+  measured `7.5e-3` even at `n_steps=200` — blind by GEOMETRY, on top of
+  the "blind by run length" and "compared quantity cannot differ" shapes
+  the issue names. Recorded in the fixture so it is not undone.
+
 ### Fixed — two independent implementations of one CPML pad-extension rule, reconciled (issue #643)
 
 #627 (PR #638) and #637 (PR #641) each needed material values extended
@@ -167,6 +277,8 @@ longer a second copy to do so.
   production-side change this issue's own byte-identity requirement
   argues against bundling. Pinned by
   `test_thin_conductor_pad_leak_is_issue_642_not_643`, `xfail(strict=True)`.
+  **CLOSED since** — see the #642 entry above; the witness went XPASS(strict)
+  and is now a normal test under a new name.
 - Memory footprint note: the material-named branch now materialises all
   three `(n_batch, Nx, Ny, Nz)` arrays instead of one plus two broadcast
   views, because the joint pad decision needs all three. Materials go from

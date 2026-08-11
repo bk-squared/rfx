@@ -39,6 +39,7 @@ import numpy as np
 
 from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
+from rfx.materials.thin_conductor import apply_thin_conductor
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
     SourceSpec,
@@ -207,6 +208,52 @@ def _extend_batched_cpml_pad(
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 
 
+def _apply_batched_thin_conductors(
+    sim, grid, eps_r: jnp.ndarray, sigma: jnp.ndarray, mu_r: jnp.ndarray,
+):
+    """Apply ``sim``'s thin conductors to BATCHED material arrays, each
+    shape ``(n_batch, Nx, Ny, Nz)``, by running the package's single
+    conductor rule — ``rfx.materials.thin_conductor.apply_thin_conductor``
+    — once per batch element under ``jax.vmap``, in the same order
+    ``Simulation._assemble_materials`` runs it.
+
+    This is the second half of the #642 fix. ``_assemble_materials``
+    extends the CPML pad and only THEN applies conductors, so ``run()``'s
+    padding never contains one. The batched path re-extends the pad per
+    swept value; to reproduce ``run()`` it must therefore re-extend the
+    *pre-conductor* arrays and re-apply the conductors afterwards, which
+    is exactly this call plus the ``include_thin_conductors=False``
+    assembly in ``_build_batched_materials``. Doing it the other way
+    round — extending the finished arrays, as the code did before #642 —
+    replicates the conductor's own ``eps_r``/``sigma`` outward into a pad
+    that ``run()`` fills with the background material instead.
+
+    PEC thin conductors are a no-op here by construction: they route to
+    ``pec_mask``, which the caller takes from the full (conductor-
+    inclusive) assembly and which does not vary across the sweep. The
+    returned mask is therefore discarded, not ignored by oversight.
+
+    A no-op when the simulation declares no thin conductors — the caller
+    guards on that, so this never materialises a batched copy for the
+    overwhelmingly common case.
+
+    Returns
+    -------
+    (eps_r, sigma, mu_r) — same shapes as the inputs.
+    """
+    conductors = tuple(sim._thin_conductors)
+    if not conductors:
+        return eps_r, sigma, mu_r
+
+    def _one(e, s, m):
+        mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m)
+        for tc in conductors:
+            mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None)
+        return mats.eps_r, mats.sigma, mats.mu_r
+
+    return jax.vmap(_one)(eps_r, sigma, mu_r)
+
+
 def _build_batched_materials(
     sim,
     grid,
@@ -237,6 +284,24 @@ def _build_batched_materials(
     pad rule rather than a second copy of it): without it, every swept
     batch element would run against a pad matched to the BASE material
     instead of its own.
+
+    **Thin conductors and pipeline ORDER (issue #642).**
+    ``_assemble_materials`` extends the pad and only THEN applies thin
+    conductors, so ``run()``'s padding carries the background material,
+    never the conductor. ``base_materials`` is the finished, post-conductor
+    array; re-extending it would copy the conductor's own ``eps_r`` /
+    ``sigma`` outward into the pad. #643 could not close that by making
+    the extension rule more faithful, because the rule was never the
+    problem — the batched path was handed the wrong INPUT. So when the
+    simulation declares thin conductors, the material-named branch below
+    re-derives the PRE-conductor arrays from the same assembler
+    (``include_thin_conductors=False``), builds the sweep and the pad from
+    those, and re-applies the same shared ``apply_thin_conductor``
+    afterwards — reproducing ``run()``'s order rather than approximating
+    its output. That also fixes a second consequence of the old order: a
+    conductor overlapping the swept material's cells is overwritten by the
+    swept value under the old code, whereas ``run()`` lets the conductor
+    win (it is applied last).
     """
     mat_name, field = _parse_param_name(param_name)
     n_batch = len(param_values)
@@ -246,6 +311,16 @@ def _build_batched_materials(
     mu_r = base_materials.mu_r
 
     if mat_name is not None:
+        # #642: build from the state run() extends the pad from, i.e.
+        # before its own thin-conductor pass. Only pay for the extra
+        # assembly when there is a conductor to be wrong about.
+        if sim._thin_conductors:
+            pre_materials, *_ = sim._assemble_materials(
+                grid, include_thin_conductors=False)
+            eps_r = pre_materials.eps_r
+            sigma = pre_materials.sigma
+            mu_r = pre_materials.mu_r
+
         # Build a mask for the specific material
         sim._resolve_material(mat_name)
         mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
@@ -277,6 +352,12 @@ def _build_batched_materials(
         # hand-maintained copy of it.
         batch_eps, batch_sigma, batch_mu = _extend_batched_cpml_pad(
             batch_eps, batch_sigma, batch_mu, grid,
+        )
+
+        # #642: and only NOW the conductors, which is where
+        # _assemble_materials applies them relative to the extension above.
+        batch_eps, batch_sigma, batch_mu = _apply_batched_thin_conductors(
+            sim, grid, batch_eps, batch_sigma, batch_mu,
         )
     else:
         # Global sweep: apply to all non-background cells
