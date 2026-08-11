@@ -119,7 +119,10 @@ except ImportError:  # older JAX (< ~0.4.31)
     from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import Simulation, GaussianPulse, Box
-from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
+from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.vmap_sweep import (
+    vmap_material_sweep, VmapSweepResult, _build_batched_materials,
+)
 
 _FALLBACK_MATCH = "Falling back to sequential"
 
@@ -145,16 +148,20 @@ def _dft_sim(boundary: str = "cpml", eps_r: float = 4.0,
     # docstring) so a hi bound landing EXACTLY on the domain edge drops
     # that edge node from the box's own mask -- unrelated to #637, but it
     # interacts with it post-#627 (rfx.geometry.rasterize_grid's hi-face
-    # vacuum fallback, closes-#627 fce1091): run() now correctly
-    # recovers that node via the fallback, this file's vmap helper
-    # doesn't reproduce that fallback (out of scope here, see the #637
-    # CHANGELOG entry's "Overlap with issue #627" paragraph), so without
-    # this margin every test built on this fixture would fail for a
-    # SEPARATE, already-disclosed reason unrelated to what they test.
-    # The margin is far short of entering the CPML pad itself (half a
-    # cell vs. the pad's full cpml_layers=6 cells), so it only recovers
-    # the one excluded interior node -- confirmed directly (0 mask cells
-    # inside the pad region) before landing this change.
+    # vacuum fallback, closes-#627 fce1091). The margin was added because
+    # the vmap helper did not reproduce that fallback, so every test
+    # built on this fixture would otherwise have failed for a SEPARATE,
+    # already-disclosed reason unrelated to what they test. #643 closed
+    # that gap (the helper now vmaps the shared rule, so the exact-edge
+    # case agrees bit-for-bit too -- see
+    # test_exact_hi_face_touch_matches_run_via_shared_fallback and
+    # TestVmapBatchedPadByteIdentity's all_six_faces_exact_hi row). The
+    # margin is KEPT so the numbers quoted throughout this file stay
+    # attached to the geometry they were measured on; it is no longer
+    # load-bearing. It is far short of entering the CPML pad itself
+    # (half a cell vs. the pad's full cpml_layers=6 cells), so it only
+    # recovers the one excluded interior node -- confirmed directly
+    # (0 mask cells inside the pad region) before landing this change.
     sim.add(Box((0.005, 0, 0), (0.015, 0.021, 0.021)), material="substrate")
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=GaussianPulse(f0=3e9),
                     amplitude_kind=amplitude_kind)
@@ -429,40 +436,41 @@ class TestVmapMaterialSweepCpmlPad:
                 ref.dft_planes, rtol=1e-6, ctx=f"global sweep eps_r={ev}",
             )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Known gap, issue #643 (opened from this PR's own review): "
-            "_extend_batched_cpml_pad does not reproduce "
-            "rfx.geometry.rasterize_grid.extend_cpml_pad_materials' "
-            "hi-face vacuum fallback (added by #627, PR #638) -- when the "
-            "naive interior-edge column is vacuum but the column one "
-            "further in is not (the case a Box's half-open [lo, hi) "
-            "rasterization produces for a structure flush with the "
-            "domain's hi face), the shared helper sources the pad from "
-            "that inner column; this file's vmap helper still reads the "
-            "naive (vacuum) column. Measured directly on this exact "
-            "fixture: worst per-bin DFT-plane relative error against "
-            "run() is 1.66e-2 (eps_r=2.0) / 4.25e-2 (eps_r=6.0) -- the "
-            "same order of magnitude as #637's own pre-fix defect, on "
-            "the one geometry #637's fix does not reach. strict=True so "
-            "this flips to an XPASS failure (not a silent pass) the day "
-            "someone closes #643 -- delete this test then, do not widen "
-            "it."
-        ),
-    )
     def test_exact_hi_face_touch_matches_run_via_shared_fallback(self):
-        """Witness for issue #643 -- a slab whose bound sits EXACTLY on
-        the domain's hi face (all six CPML faces via a `Box((0,0,0),
-        domain)`, mirroring the #582/#627 discovery fixture), swept by
-        material name. `Simulation.run()` gets the x-hi/y-hi/z-hi pads
-        right post-#627 (the shared helper's fallback); the vmap fast
-        path does not. Every OTHER test in this file (and #637's own
-        representativeness sweep) deliberately nudges its geometry a
-        half-cell past the domain edge specifically to AVOID this case
-        (see ``_dft_sim`` and the alternate-geometry test's own inline
-        comments) -- without this xfail, nothing in the shipped suite
-        would ever touch the exact property #643 tracks."""
+        """Regression lock for issue #643, CLOSED -- a slab whose bound
+        sits EXACTLY on the domain's hi face (all six CPML faces via a
+        `Box((0,0,0), domain)`, mirroring the #582/#627 discovery
+        fixture), swept by material name.
+
+        HISTORY: this test shipped with #637 as ``xfail(strict=True)``.
+        Its gap was real: ``_extend_batched_cpml_pad`` reproduced
+        ``_assemble_materials``' PRE-#627 rule (a straight edge-slice
+        copy) and so missed the hi-face inner-column fallback #627 added
+        to ``rfx.geometry.rasterize_grid.extend_cpml_pad_materials``.
+        ``Simulation.run()`` read the material in its x/y/z-hi pads; the
+        vmap path read vacuum. Measured worst per-bin DFT-plane relative
+        error against ``run()`` on this exact fixture: 1.66e-2
+        (eps_r=2.0) / 4.25e-2 (eps_r=6.0). #643 removed the second copy
+        of the rule entirely -- ``_extend_batched_cpml_pad`` now vmaps
+        the shared helper over the sweep axis -- and this comparison is
+        exactly ``0.0`` at every bin for both elements. The marker is
+        gone rather than the test: this is the only fixture in the suite
+        that sits exactly on the domain edge (``_dft_sim`` and the
+        alternate-geometry test both nudge a half-cell past it on
+        purpose), so it is the only thing pinning the fallback's
+        reachability from the batched path.
+
+        NON-VACUITY PRECONDITION (assert-first, before the equality
+        assert): the same arc already produced one test that passed for
+        the wrong reason -- the alternate-geometry test's first draft
+        used a hi-face-touching box that never reached the pad at all,
+        so it agreed pre- and post-fix while measuring nothing. Here the
+        precondition is checked directly against ``run()``'s own
+        assembled materials: the x-hi pad must read the slab's eps_r,
+        NOT vacuum, which is true only because #627's fallback fires.
+        If a future rasterizer change made this fixture stop exercising
+        the fallback, the precondition fails loudly instead of the
+        equality passing vacuously."""
         domain = (0.02, 0.02, 0.02)
         cpml_layers = 6
         dx = 0.002
@@ -481,6 +489,36 @@ class TestVmapMaterialSweepCpmlPad:
                                      component="ez", n_freqs=4, name="p1")
             return sim
 
+        # --- precondition: this fixture really does exercise #627's
+        # hi-face fallback, i.e. run()'s x-hi pad is NOT vacuum and the
+        # naive source column (the last interior column) IS.
+        probe_sim = sim_fn(4.0)
+        probe_grid = probe_sim._build_grid()
+        probe_mats, *_ = probe_sim._assemble_materials(probe_grid)
+        eps = np.asarray(probe_mats.eps_r)
+        phx = probe_grid.pad_x_hi
+        assert phx > 0, "fixture lost its x-hi CPML pad"
+        # Sample the transverse CENTRE. Not the whole pad slab: the same
+        # half-open rasterization also drops this box's y/z hi nodes, so
+        # genuine vacuum survives at those transverse coordinates in
+        # run()'s OWN arrays -- asserting "all of the pad is 4.0" would
+        # assert something false about run(), not about the vmap path.
+        cy, cz = probe_grid.shape[1] // 2, probe_grid.shape[2] // 2
+        naive_src = eps[-phx - 1, cy, cz]
+        inner_src = eps[-phx - 2, cy, cz]
+        hi_pad = eps[-phx:, cy, cz]
+        assert naive_src == 1.0 and inner_src == 4.0, (
+            "fixture no longer reproduces the half-open-hi vacuum column "
+            "the #627 fallback exists for (naive source column "
+            f"{naive_src}, inner column {inner_src}) -- this test would "
+            "pass vacuously; rebuild the fixture, do not delete the assert"
+        )
+        assert np.all(hi_pad == 4.0), (
+            "run()'s x-hi pad is not the slab material -- #627's hi-face "
+            f"fallback did not fire, so there is nothing here for the "
+            f"batched path to match (pad column: {hi_pad})"
+        )
+
         vmap_res = vmap_material_sweep(
             sim_fn(4.0), "slab.eps_r", eps_values, n_steps=n_steps,
         )
@@ -491,6 +529,247 @@ class TestVmapMaterialSweepCpmlPad:
                 ref.dft_planes, rtol=1e-6,
                 ctx=f"exact-hi-face-touch (#643) eps_r={ev}",
             )
+
+
+def _matrix_sim(shape_lo, shape_hi, *, boundary="cpml", cpml_layers=6,
+                domain=(0.02, 0.02, 0.02), dx=0.002, boundary_spec=None,
+                eps_r=4.0, sigma=0.0, mu_r=1.0, second_material=False):
+    """Builder for the #643 byte-identity matrix. One knob per matrix
+    dimension; the sweep itself is applied by the caller through
+    ``add_material``'s three material fields."""
+    kwargs = {"boundary": boundary_spec if boundary_spec is not None
+              else boundary}
+    if cpml_layers is not None:
+        kwargs["cpml_layers"] = cpml_layers
+    sim = Simulation(freq_max=5e9, domain=domain, dx=dx, **kwargs)
+    sim.add_material("slab", eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+    sim.add(Box(shape_lo, shape_hi), material="slab")
+    if second_material:
+        # A lossy, magnetic second material -- the ONLY way the shared
+        # helper's JOINT vacuum predicate can differ from a per-field one
+        # (#637's own note: none of its fixtures carried such a material,
+        # so the two predicates were indistinguishable there).
+        sim.add_material("lossy", eps_r=1.0, sigma=0.02, mu_r=2.0)
+        sim.add(Box((0.0, 0.0, 0.0), (0.006, 0.02, 0.02)), material="lossy")
+    sim.add_source((0.01, 0.01, 0.01), "ez", waveform=GaussianPulse(f0=3e9))
+    sim.add_probe((0.006, 0.01, 0.01), "ez")
+    return sim
+
+
+_D = (0.02, 0.02, 0.02)
+
+# (id, builder-kwargs) -- the geometry/boundary matrix from issue #643's
+# acceptance criterion: #637's own matrix PLUS the exact-hi-face case.
+_BYTE_IDENTITY_MATRIX = [
+    ("single_face_xlo", dict(shape_lo=(0.0, 0.006, 0.006),
+                             shape_hi=(0.008, 0.014, 0.014))),
+    ("all_six_faces_exact_hi", dict(shape_lo=(0.0, 0.0, 0.0), shape_hi=_D)),
+    ("all_six_faces_past_hi", dict(shape_lo=(0.0, 0.0, 0.0),
+                                   shape_hi=(0.021, 0.021, 0.021))),
+    ("corner_touch", dict(shape_lo=(0.0, 0.0, 0.0),
+                          shape_hi=(0.008, 0.008, 0.008))),
+    ("inset_no_face_touch", dict(shape_lo=(0.006, 0.006, 0.006),
+                                 shape_hi=(0.014, 0.014, 0.014))),
+    ("transverse_span_yz", dict(shape_lo=(0.005, 0.0, 0.0),
+                                shape_hi=(0.015, 0.02, 0.02))),
+    ("cpml_layers_0", dict(shape_lo=(0.0, 0.0, 0.0), shape_hi=_D,
+                           cpml_layers=0)),
+    ("pec", dict(shape_lo=(0.0, 0.0, 0.0), shape_hi=_D, boundary="pec",
+                 cpml_layers=None)),
+    ("upml", dict(shape_lo=(0.0, 0.0, 0.0), shape_hi=_D, boundary="upml")),
+    # periodic is only expressible through a BoundarySpec, and only
+    # symmetrically per axis -- x periodic (pad 0 on both x faces) with
+    # y/z still absorbing is the mixed case worth pinning.
+    ("periodic_x_cpml_yz", dict(
+        shape_lo=(0.0, 0.0, 0.0), shape_hi=_D,
+        boundary_spec=BoundarySpec(
+            x=Boundary(lo="periodic", hi="periodic"), y="cpml", z="cpml"))),
+    ("two_materials", dict(shape_lo=(0.006, 0.0, 0.0), shape_hi=(0.02, 0.02, 0.02),
+                           second_material=True)),
+    ("asymmetric_per_face_pads", dict(
+        shape_lo=(0.0, 0.0, 0.0), shape_hi=_D, cpml_layers=None,
+        boundary_spec=BoundarySpec(
+            x=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=9),
+            y=Boundary(lo="pec", hi="cpml", hi_thickness=6),
+            z=Boundary(lo="cpml", hi="pec", lo_thickness=7),
+        ))),
+]
+
+
+class TestVmapBatchedPadByteIdentity:
+    """Issue #643's acceptance criterion, as a committed matrix.
+
+    What the batched path builds for element *b* must be BYTE-IDENTICAL
+    to what ``Simulation._assemble_materials`` builds for a simulation
+    carrying that swept value -- all three material arrays, every cell,
+    across the geometry/boundary matrix #637 used (single face, all six
+    faces, corner, inset, ``cpml_layers=0``, pec, upml, periodic, two
+    materials, asymmetric per-face pads) PLUS the exact-hi-face-touching
+    case #643 is about.
+
+    This is the mechanism-level lock. It costs no time-stepping, so it
+    can afford to be wide where the DFT-plane equivalence tests (which
+    do step) have to be narrow. #637 shipped ONE such comparison on ONE
+    fixture; the reason #643 existed at all is that a rule can be right
+    on the one fixture that is checked and wrong on the class.
+
+    Both directions are exercised on every row: the swept field is
+    compared for equality (it must MOVE with the sweep and still match
+    run()), and the two unswept fields are compared too (they must NOT
+    drift -- the shared helper takes one joint decision across all
+    three, so a swept value that empties a column changes the other two
+    arrays' pads as well, and that coupling has to match run() rather
+    than merely be self-consistent)."""
+
+    @staticmethod
+    def _assert_identical(kwargs, param, values, base_kwargs):
+        base_sim = _matrix_sim(**{**kwargs, **base_kwargs})
+        grid = base_sim._build_grid()
+        base_materials, *_ = base_sim._assemble_materials(grid)
+        batched = _build_batched_materials(
+            base_sim, grid, base_materials, param, jnp.asarray(values))
+
+        field = param.split(".")[1]
+        for idx, v in enumerate(values):
+            want_sim = _matrix_sim(**{**kwargs, **{field: float(v)}})
+            want, *_ = want_sim._assemble_materials(grid)
+            for name in ("eps_r", "sigma", "mu_r"):
+                npt.assert_array_equal(
+                    np.asarray(getattr(batched, name)[idx]),
+                    np.asarray(getattr(want, name)),
+                    err_msg=(
+                        f"batched {name} at {param}={v} disagrees with "
+                        f"run()'s own _assemble_materials -- the batched "
+                        f"pad rule and the shared rule have drifted "
+                        f"again (#643)"
+                    ),
+                )
+
+    @pytest.mark.parametrize(
+        "case_id,kwargs",
+        _BYTE_IDENTITY_MATRIX,
+        ids=[c[0] for c in _BYTE_IDENTITY_MATRIX],
+    )
+    def test_eps_r_sweep_byte_identical_to_assemble_materials(
+            self, case_id, kwargs):
+        self._assert_identical(
+            kwargs, "slab.eps_r", np.array([2.0, 4.0, 9.0]),
+            base_kwargs=dict(eps_r=4.0))
+
+    @pytest.mark.parametrize(
+        "case_id,kwargs",
+        _BYTE_IDENTITY_MATRIX,
+        ids=[c[0] for c in _BYTE_IDENTITY_MATRIX],
+    )
+    def test_sigma_sweep_byte_identical_to_assemble_materials(
+            self, case_id, kwargs):
+        self._assert_identical(
+            kwargs, "slab.sigma", np.array([0.0, 0.05]),
+            base_kwargs=dict(sigma=0.01))
+
+    @pytest.mark.parametrize(
+        "case_id,kwargs",
+        _BYTE_IDENTITY_MATRIX,
+        ids=[c[0] for c in _BYTE_IDENTITY_MATRIX],
+    )
+    def test_mu_r_sweep_byte_identical_to_assemble_materials(
+            self, case_id, kwargs):
+        self._assert_identical(
+            kwargs, "slab.mu_r", np.array([1.0, 3.0]),
+            base_kwargs=dict(mu_r=2.0))
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Known gap, issue #642, INHERITED not introduced by #643 -- "
+            "run() applies thin conductors AFTER pad extension "
+            "(rfx/api/_compile.py: extend_cpml_pad_materials, then the "
+            "_thin_conductors loop), while the batched path only ever "
+            "sees base_materials, which is already post-conductor. "
+            "Extending that array therefore replicates the conductor's "
+            "own sigma/eps_r into the pad, which run() never does. "
+            "Measured on the fixture below (NON-PEC thin conductor, "
+            "sigma_bulk=1e4): branch leaves 88 mismatched cells of "
+            "36501 (40 eps_r + 48 sigma, all inside the x pads); main "
+            "leaves 6592 (all eps_r, the #637/#643 defect, and zero "
+            "sigma because main only ever extended the ONE swept "
+            "field). So #643 is a 75x reduction overall AND a new "
+            "sigma-side mismatch this fixture did not have -- disclosed "
+            "rather than folded into #643, whose scope is the "
+            "pad-extension RULE, not the pipeline ORDER that #642 "
+            "tracks. A PEC thin conductor is unaffected (it routes to "
+            "pec_mask, not to the material arrays: 0 mismatched cells "
+            "on both). strict=True so this hard-fails the day #642 "
+            "lands, instead of rotting."
+        ),
+    )
+    def test_thin_conductor_pad_leak_is_issue_642_not_643(self):
+        """#642 witness on the batched path. Kept next to the #643
+        matrix because the two are one line apart in the same pipeline
+        and the next person to touch either needs to see both."""
+        def sim_fn(eps_r):
+            sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02),
+                              eps_r=eps_r)
+            sim.add_thin_conductor(
+                Box((0.0, 0.008, 0.008), (0.02, 0.012, 0.012)),
+                sigma_bulk=1.0e4, thickness=35e-6)
+            return sim
+
+        base_sim = sim_fn(4.0)
+        grid = base_sim._build_grid()
+        base_materials, *_ = base_sim._assemble_materials(grid)
+        values = np.array([2.0, 9.0])
+        batched = _build_batched_materials(
+            base_sim, grid, base_materials, "slab.eps_r",
+            jnp.asarray(values))
+        for idx, v in enumerate(values):
+            want, *_ = sim_fn(float(v))._assemble_materials(grid)
+            for name in ("eps_r", "sigma", "mu_r"):
+                npt.assert_array_equal(
+                    np.asarray(getattr(batched, name)[idx]),
+                    np.asarray(getattr(want, name)),
+                    err_msg=f"thin-conductor {name} pad leak (#642)")
+
+    def test_matrix_is_not_vacuous_swept_value_reaches_the_pad(self):
+        """Control for the whole matrix above: at least one row must have
+        the swept value actually LANDING in the CPML pad, otherwise every
+        equality in this class could hold trivially (both sides vacuum).
+
+        This is the same failure the alternate-geometry test's first
+        draft had -- a fixture that agreed before and after the fix
+        because it never reached the pad. Pinned as its own test so the
+        matrix cannot silently become decorative."""
+        kwargs = dict(_BYTE_IDENTITY_MATRIX[1][1])   # all_six_faces_exact_hi
+        base_sim = _matrix_sim(**kwargs, eps_r=4.0)
+        grid = base_sim._build_grid()
+        base_materials, *_ = base_sim._assemble_materials(grid)
+        batched = _build_batched_materials(
+            base_sim, grid, base_materials, "slab.eps_r",
+            jnp.asarray([2.0, 9.0]))
+
+        phx = grid.pad_x_hi
+        assert phx > 0
+        # Sample the transverse CENTRE of the x-hi pad. Not the whole
+        # slab: the same half-open rasterization that motivates #627's
+        # fallback also leaves genuine vacuum at the y/z hi nodes this
+        # box excludes, and run() reproduces that exactly -- asserting
+        # "all of the pad is the material" would be asserting something
+        # false about run() too, not about the batched path.
+        cy, cz = grid.shape[1] // 2, grid.shape[2] // 2
+        hi_col_0 = np.asarray(batched.eps_r[0])[-phx:, cy, cz]
+        hi_col_1 = np.asarray(batched.eps_r[1])[-phx:, cy, cz]
+        assert np.all(hi_col_0 == 2.0), (
+            "swept value 2.0 did not reach the x-hi pad "
+            f"(got {hi_col_0}) -- the matrix above would be comparing "
+            "vacuum against vacuum"
+        )
+        assert np.all(hi_col_1 == 9.0), (
+            f"swept value 9.0 did not reach the x-hi pad (got {hi_col_1})"
+        )
+        # ...and the two elements must actually DIFFER there, which is
+        # the property #637 + #643 together buy. On main this column read
+        # 1.0 for BOTH elements (the #643 defect).
+        assert not np.array_equal(hi_col_0, hi_col_1)
 
 
 class TestVmapDftPlaneX64:

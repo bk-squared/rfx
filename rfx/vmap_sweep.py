@@ -38,6 +38,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
+from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
     SourceSpec,
@@ -124,118 +125,86 @@ def _parse_param_name(param_name: str) -> tuple[str | None, str]:
 
 
 def _extend_batched_cpml_pad(
-    field: jnp.ndarray, grid, *,
-    companion_eps_r: jnp.ndarray, companion_sigma: jnp.ndarray,
-    companion_mu_r: jnp.ndarray,
-) -> jnp.ndarray:
-    """Re-extend a BATCHED material field, shape ``(n_batch, Nx, Ny, Nz)``,
-    into the CPML padding — the batched analogue of the per-face edge-slice
-    replication in ``Simulation._assemble_materials``
-    (``rfx/api/_compile.py:192-228``).
+    eps_r: jnp.ndarray, sigma: jnp.ndarray, mu_r: jnp.ndarray, grid,
+):
+    """Extend BATCHED material arrays, each shape ``(n_batch, Nx, Ny, Nz)``,
+    into the CPML padding, by running the package's single pad-extension
+    rule — ``rfx.geometry.rasterize_grid.extend_cpml_pad_materials`` — once
+    per batch element under ``jax.vmap``.
 
     ``jnp.where(mask, param_values, base_field)`` (the caller) only ever
     touches the physical-domain-interior cells that ``mask`` covers
     (``Shape.mask`` returns False everywhere in the padding, since padding
     cells map to physical coordinates outside the declared domain). The
-    padding faces of ``base_field`` were replicated from the BASE
-    simulation's edge slice, so every batch element inherits the base
-    material's absorber there regardless of its own swept value (issue
-    #637). Re-running the same per-face copy on the already-batch-correct
-    interior — same face order (x_lo, x_hi, y_lo, y_hi, z_lo, z_hi), same
-    "copy the interior-edge slice outward" rule — makes each batch
-    element's padding match what ``Simulation.run()`` would build for that
-    same swept value, since the interior edge cell each pad cell copies
-    from is now correctly set per batch element.
+    padding faces of ``base_materials`` were replicated from the BASE
+    simulation's edge slice, so every batch element would otherwise
+    inherit the base material's absorber there regardless of its own
+    swept value (issue #637). Re-running the shared rule on the
+    already-batch-correct interior makes each batch element's padding
+    byte-identical to what ``Simulation.run()`` builds for that same
+    swept value.
 
-    **No-worse guard (issue #643 interaction, found in review).** #627
-    (``rfx.geometry.rasterize_grid.extend_cpml_pad_materials``, PR #638)
-    added a hi-face fallback this function does not reproduce: when the
-    naive interior-edge column is vacuum but the column one further in is
-    not (the case a ``Box`` flush with the domain's hi face produces,
-    since ``Box``'s rasterization is half-open and drops that exact
-    node), the shared helper sources the pad from the inner column
-    instead. Post-#627, ``base_materials`` already carries that corrected
-    value at affected pad cells. Without this guard, this function would
-    unconditionally overwrite those cells with the (vacuum) naive column
-    — actively DISCARDING a value that was already right, for every swept
-    batch element, not merely failing to reach a cell that was always
-    wrong.
+    **Why ``jax.vmap`` and not a hand-written batched copy (issue #643).**
+    #637's original version of this function reproduced
+    ``_assemble_materials``' rule *as it stood at the time* — a straight
+    per-face edge-slice copy — in a second, hand-maintained
+    implementation. #627 (PR #638) then changed that rule underneath it,
+    adding a per-transverse-cell hi-face fallback (if the naive
+    interior-edge column is vacuum but the column one further in is not,
+    replicate from that inner column instead, recovering the node a
+    ``Box`` flush with the domain's hi face loses to half-open ``[lo,
+    hi)`` rasterization). The two copies then disagreed for exactly that
+    geometry: ``run()``'s x-hi pad read the material, the batched path
+    read vacuum. That is the defect this repo's own feature-discovery
+    rule names — two hand-maintained copies of one rule is the defect,
+    not which copy is right — so the copy is gone rather than resynced.
 
-    The guard: only overwrite a pad cell if its own source column is NOT
-    vacuum, where "vacuum" is the SAME joint test
-    ``rfx.geometry.rasterize_grid._vacuum`` uses --
-    ``eps_r == 1.0 & sigma == 0.0 & mu_r == 1.0`` -- not a per-field
-    approximation. An earlier version of this guard tested only the
-    field being extended against its own default (1.0 for eps_r/mu_r,
-    0.0 for sigma); measured against the representativeness sweep, that
-    version left two elements (of 14 measured, both ``swept != base``)
-    measurably worse than no guard at all, on the same class of geometry
-    the joint test is defined for -- a predicate mismatch with the rest
-    of the package, not a physics problem. The joint test resolved both.
-    ``companion_eps_r``/``companion_sigma``/``companion_mu_r`` are the
-    three material arrays to evaluate that joint test against at each
-    pad cell's source column: pass ``field`` itself for whichever of the
-    three IS the field being extended here (so the test uses each batch
-    element's OWN swept value for that field), and the base
-    (constant-across-batch, ``(Nx, Ny, Nz)``) array for the other two —
-    they are not swept, and their own padding is already correct as
-    inherited wholesale from ``base_materials``.
+    ``vmap`` is what makes reuse possible at all. The shared helper slices
+    axes 0/1/2 and evaluates its vacuum predicate on whole transverse
+    planes; the batched arrays carry a leading sweep axis, and the
+    predicate's answer differs per element (one swept value can leave a
+    column vacuum where another does not). Mapping over that leading axis
+    hides it from the helper entirely, so the helper sees exactly the
+    ``(Nx, Ny, Nz)`` arrays it was written for and its fallback test is
+    evaluated against each element's OWN materials — no axis-aware
+    rewrite, no third implementation.
 
-    Where the source IS (jointly) vacuum, skip the overwrite — the
-    destination keeps whatever was already there, which is exactly
-    ``base_materials``' own (possibly #627a-corrected) value, since
-    nothing upstream of this function ever touches pad cells for cells
-    the sweep mask does not cover. This does NOT reproduce #627's
-    fallback (a genuinely-covered swept batch element with a non-base
-    value still won't reach that specific pad cell correctly — see the
-    ``test_exact_hi_face_touch_matches_run_via_shared_fallback`` xfail,
-    issue #643, the actual reconciliation) — it only guarantees this
-    function never makes a cell worse than doing nothing would have.
+    All three arrays are extended together in ONE call, not one at a time:
+    the shared helper takes a single ``use_inner`` decision from the joint
+    vacuum predicate (``eps_r == 1 & sigma == 0 & mu_r == 1``) and applies
+    it to all three, so a swept value that turns a column vacuum for one
+    element changes that element's ``sigma``/``mu_r`` pad too. A per-field
+    call cannot express that coupling.
+
+    Note this runs on ``base_materials``-derived arrays, i.e. arrays whose
+    pad cells are ALREADY extended (by the base simulation's own
+    assembly). That is not a double-application: every pad cell is
+    overwritten by one of the three passes, and each pass's source lies
+    either in the interior (identical in both) or in a pad region that a
+    later pass overwrites, so the result depends only on the interior
+    values — which are the batch-correct ones. Verified by the
+    byte-identity matrix in
+    ``tests/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
 
     A no-op on any face with zero pad depth (non-CPML boundary, or a
     reflector/periodic face with ``pad=0`` on that side), so this is safe
-    to call unconditionally.
+    to call unconditionally; with every face at zero it returns its inputs
+    untouched rather than materialising broadcast views through ``vmap``.
+
+    Returns
+    -------
+    (eps_r, sigma, mu_r) — same shapes as the inputs.
     """
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz, phz = grid.pad_z_lo, grid.pad_z_hi
-    out = field
+    if max(plx, phx, ply, phy, plz, phz) <= 0:
+        return eps_r, sigma, mu_r
 
-    # Companions are either the batched field itself (ndim 4, whichever of
-    # the three this call is extending) or the base's constant-across-batch
-    # array (ndim 3, the other two) -- add a leading size-1 axis to the
-    # latter so every slice below broadcasts against the batch dimension.
-    def _as_batched(a):
-        return a if a.ndim == 4 else a[None]
+    def _one(e, s, m):
+        return extend_cpml_pad_materials(e, s, m, plx, phx, ply, phy, plz, phz)
 
-    c_eps = _as_batched(companion_eps_r)
-    c_sigma = _as_batched(companion_sigma)
-    c_mu = _as_batched(companion_mu_r)
-
-    def _guarded_set(out, dst_sl, src_sl):
-        src = out[src_sl]
-        cur = out[dst_sl]
-        vacuum = (
-            (c_eps[src_sl] == 1.0)
-            & (c_sigma[src_sl] == 0.0)
-            & (c_mu[src_sl] == 1.0)
-        )
-        new = jnp.where(vacuum, cur, src)
-        return out.at[dst_sl].set(new)
-
-    if plx > 0:
-        out = _guarded_set(out, np.s_[:, :plx, :, :], np.s_[:, plx:plx + 1, :, :])
-    if phx > 0:
-        out = _guarded_set(out, np.s_[:, -phx:, :, :], np.s_[:, -phx - 1:-phx, :, :])
-    if ply > 0:
-        out = _guarded_set(out, np.s_[:, :, :ply, :], np.s_[:, :, ply:ply + 1, :])
-    if phy > 0:
-        out = _guarded_set(out, np.s_[:, :, -phy:, :], np.s_[:, :, -phy - 1:-phy, :])
-    if plz > 0:
-        out = _guarded_set(out, np.s_[:, :, :, :plz], np.s_[:, :, :, plz:plz + 1])
-    if phz > 0:
-        out = _guarded_set(out, np.s_[:, :, :, -phz:], np.s_[:, :, :, -phz - 1:-phz])
-    return out
+    return jax.vmap(_one)(eps_r, sigma, mu_r)
 
 
 def _build_batched_materials(
@@ -263,9 +232,11 @@ def _build_batched_materials(
     cells only, via ``Shape.mask``. Unlike the global case, ``mask`` is
     False everywhere in the CPML padding (padding cells sit outside the
     physical domain ``Shape.mask`` tests against), so the padding is
-    handled separately below via ``_extend_batched_cpml_pad`` (issue #637):
-    without it, every swept batch element would run against a pad matched
-    to the BASE material instead of its own.
+    handled separately below via ``_extend_batched_cpml_pad`` (issue #637;
+    issue #643 for why that now routes through the package's single shared
+    pad rule rather than a second copy of it): without it, every swept
+    batch element would run against a pad matched to the BASE material
+    instead of its own.
     """
     mat_name, field = _parse_param_name(param_name)
     n_batch = len(param_values)
@@ -282,47 +253,31 @@ def _build_batched_materials(
             if entry.material_name == mat_name:
                 mask = mask | entry.shape.mask(grid)
 
+        # For each batch: where mask, use param_values[b]; else keep base.
+        # The two unswept fields still have to be broadcast to the batch
+        # shape, because the pad extension below takes ONE joint decision
+        # across all three (see _extend_batched_cpml_pad) and a swept value
+        # can change that decision per element.
+        batch_eps = jnp.broadcast_to(eps_r[None], (n_batch,) + eps_r.shape)
+        batch_sigma = jnp.broadcast_to(sigma[None], (n_batch,) + sigma.shape)
+        batch_mu = jnp.broadcast_to(mu_r[None], (n_batch,) + mu_r.shape)
+        swept = param_values[:, None, None, None]   # (n_batch, 1, 1, 1)
         if field == "eps_r":
-            # For each batch: where mask, use param_values[b]; else keep base
-            batch_eps = jnp.where(
-                mask[None],  # (1, Nx, Ny, Nz)
-                param_values[:, None, None, None],  # (n_batch, 1, 1, 1)
-                eps_r[None],  # (1, Nx, Ny, Nz)
-            )
-            # #637: the mask above only covers the physical-domain interior
-            # -- extend the (now per-batch-correct) interior into the CPML
-            # pad the same way the base simulation would for each swept
-            # value, instead of leaving the base material's pad fill.
-            batch_eps = _extend_batched_cpml_pad(
-                batch_eps, grid, companion_eps_r=batch_eps,
-                companion_sigma=sigma, companion_mu_r=mu_r,
-            )
-            batch_sigma = jnp.broadcast_to(sigma[None], (n_batch,) + sigma.shape)
-            batch_mu = jnp.broadcast_to(mu_r[None], (n_batch,) + mu_r.shape)
+            batch_eps = jnp.where(mask[None], swept, eps_r[None])
         elif field == "sigma":
-            batch_eps = jnp.broadcast_to(eps_r[None], (n_batch,) + eps_r.shape)
-            batch_sigma = jnp.where(
-                mask[None],
-                param_values[:, None, None, None],
-                sigma[None],
-            )
-            batch_sigma = _extend_batched_cpml_pad(
-                batch_sigma, grid, companion_eps_r=eps_r,
-                companion_sigma=batch_sigma, companion_mu_r=mu_r,
-            )
-            batch_mu = jnp.broadcast_to(mu_r[None], (n_batch,) + mu_r.shape)
+            batch_sigma = jnp.where(mask[None], swept, sigma[None])
         else:  # mu_r
-            batch_eps = jnp.broadcast_to(eps_r[None], (n_batch,) + eps_r.shape)
-            batch_sigma = jnp.broadcast_to(sigma[None], (n_batch,) + sigma.shape)
-            batch_mu = jnp.where(
-                mask[None],
-                param_values[:, None, None, None],
-                mu_r[None],
-            )
-            batch_mu = _extend_batched_cpml_pad(
-                batch_mu, grid, companion_eps_r=eps_r,
-                companion_sigma=sigma, companion_mu_r=batch_mu,
-            )
+            batch_mu = jnp.where(mask[None], swept, mu_r[None])
+
+        # #637: the mask above only covers the physical-domain interior --
+        # extend the (now per-batch-correct) interior into the CPML pad the
+        # same way the base simulation would for each swept value, instead
+        # of leaving the base material's pad fill. #643: via the package's
+        # single shared rule, vmapped over the sweep axis, not a second
+        # hand-maintained copy of it.
+        batch_eps, batch_sigma, batch_mu = _extend_batched_cpml_pad(
+            batch_eps, batch_sigma, batch_mu, grid,
+        )
     else:
         # Global sweep: apply to all non-background cells
         if field == "eps_r":

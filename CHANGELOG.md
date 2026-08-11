@@ -6,6 +6,174 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — two independent implementations of one CPML pad-extension rule, reconciled (issue #643)
+
+#627 (PR #638) and #637 (PR #641) each needed material values extended
+from the interior edge into the CPML pad, and each landed its own
+implementation. #627 then changed the rule — adding a per-transverse-cell
+hi-face fallback (if the naive interior-edge column is vacuum but the
+column one further in is not, replicate from that inner column instead,
+recovering the node a `Box` flush with the domain's hi face loses to
+`Box`'s half-open `[lo, hi)` rasterization) — while `_extend_batched_cpml_pad`
+in `rfx/vmap_sweep.py` went on reproducing the PRE-#627 rule. For a slab
+sitting exactly on a domain face, `Simulation.run()` read the material in
+its hi pads and `vmap_material_sweep` read vacuum.
+
+**Fix: the second copy is gone, not resynced.** `_extend_batched_cpml_pad`
+now calls the package's single shared rule,
+`rfx.geometry.rasterize_grid.extend_cpml_pad_materials`, under
+`jax.vmap` over the sweep axis. That is what makes reuse possible at all:
+the shared helper slices axes 0/1/2 and evaluates its vacuum predicate on
+whole transverse planes, while the batched arrays carry a leading sweep
+axis whose elements can answer that predicate differently; mapping over
+that axis hides it from the helper, so the helper sees exactly the
+`(Nx, Ny, Nz)` arrays it was written for and its fallback is evaluated
+against each element's own materials. No axis-aware rewrite, no third
+implementation. All three material arrays are now extended in ONE call
+(the helper takes a single `use_inner` decision from the joint vacuum
+predicate and applies it to all three, so a swept value that empties a
+column changes that element's `sigma`/`mu_r` pad too — a coupling the
+per-field version could not express). The no-worse guard #641 added is
+deleted along with the copy it was guarding: it existed only because that
+copy could discard a value #627 had already got right, and there is no
+longer a second copy to do so.
+
+- **Acceptance criterion met.** Byte-identity between what the batched
+  path builds for element *b* and what `Simulation._assemble_materials`
+  builds for a simulation carrying that swept value, across #637's
+  geometry/boundary matrix plus the exact-hi-face case: single face, all
+  six faces (exact-hi AND past-hi), corner, inset, transverse span,
+  `cpml_layers=0`, pec, upml, periodic-x with CPML y/z, two materials
+  (the second lossy AND magnetic, the only shape that can distinguish
+  the joint vacuum predicate from a per-field one — #637 noted none of
+  its fixtures could), and asymmetric per-face pads. 12 rows x 3 swept
+  fields (`eps_r`, `sigma`, `mu_r`) = 36 comparisons, all three arrays
+  each, 0 mismatched cells. On main, 18 of those 36 fail. Committed as
+  `TestVmapBatchedPadByteIdentity`.
+- **The `xfail(strict=True)` witness is now a normal passing test.**
+  `test_exact_hi_face_touch_matches_run_via_shared_fallback` was verified
+  XFAIL on base and XPASS(strict) — i.e. red — with the fix, before the
+  marker was removed. Its DFT-plane comparison against `run()` is exactly
+  `0.0` at every bin for both swept elements, versus the 1.66e-2 /
+  4.25e-2 #637 measured. It gained an assert-first non-vacuity
+  precondition (run()'s x-hi pad must read the slab, the naive source
+  column must read vacuum) so it cannot later pass by no longer
+  exercising the fallback — the failure mode this same arc already hit
+  once, when the alternate-geometry test's first draft used a fixture
+  that never reached the pad.
+- **#637's 7-configuration representativeness sweep, re-run per swept
+  element (14 elements), three states.** #637's harness is not committed
+  anywhere in the repo, so these fixtures are RECONSTRUCTED from the #637
+  issue body (30x20x20 mm, dx=1 mm, `cpml_layers=8`, 200 steps, base 2.0
+  / 10.0, sweep {2.0, 10.0}) and PR #641's table; the absolute magnitudes
+  below are one to two orders below #641's, so this is a new sweep on the
+  same classes, not a reproduction of those numbers. Worst per-bin
+  DFT-plane relative error against `run()`:
+
+  | configuration | swept | pre-#637 | main | this branch |
+  |---|---|---|---|---|
+  | issue-table base=2.0 | 2.0 (=base) | 0.0 | 0.0 | **0.0** |
+  | issue-table base=2.0 | 10.0 | 7.7037e-04 | 7.5970e-04 | **0.0** |
+  | issue-table base=10.0 | 2.0 | 3.1653e-04 | 2.9872e-04 | **0.0** |
+  | issue-table base=10.0 | 10.0 (=base) | 0.0 | 0.0 | **0.0** |
+  | single-axis touch (y), base=3 | 2.0 | 3.1527e-04 | 2.8198e-04 | **0.0** |
+  | single-axis touch (y), base=3 | 6.0 | 7.2871e-04 | 7.3497e-04 | **0.0** |
+  | single-face touch (x_lo), base=5 | 2.5 | 2.2078e-06 | 0.0 | **0.0** |
+  | single-face touch (x_lo), base=5 | 9.0 | 3.8385e-06 | 0.0 | **0.0** |
+  | large delta, cpml=4, base=1.5 | 1.5 (=base) | 0.0 | 0.0 | **0.0** |
+  | large delta, cpml=4, base=1.5 | 12.0 | 1.4852e-02 | 1.1973e-02 | **0.0** |
+  | large delta, cpml=12, base=8 | 2.0 | 2.5857e-03 | 2.3729e-03 | **0.0** |
+  | large delta, cpml=12, base=8 | 14.0 | 5.3260e-03 | 4.1713e-03 | **0.0** |
+  | committed fixture, base=4, cpml=6 | 2.0 | 1.3487e-03 | 1.2792e-03 | **0.0** |
+  | committed fixture, base=4, cpml=6 | 6.0 | 1.9302e-03 | 1.5955e-03 | **0.0** |
+
+  Every element is exactly `0.0` with 0 mismatched material cells — not
+  "at or below a floor", bit-identical. No element is worse than either
+  prior state.
+
+- **#637's two disclosed residuals, explained and eliminated.** #641
+  shipped its guard with two elements measurably WORSE than the pre-#637
+  state (6.421e-2 -> 6.527e-2, +1.6%; 1.193e-2 -> 1.199e-2, +0.5%),
+  reproducible but with "their specific mechanism not established". They
+  are not a separate effect. Running one fixture through four batched-pad
+  states in the same tree (so no cross-tree float path is involved),
+  reporting BOTH the wrong-cell count against `_assemble_materials` and
+  the DFT-plane error. Comparator check first, since two of those states
+  are re-implementations: the `pre-#637` and `main (guard)` rows below
+  reproduce the real base-tree runs bit-for-bit (1920 cells /
+  1.3487e-03 / 1.9302e-03 and 1140 cells / 1.2792e-03 / 1.5955e-03
+  respectively, identical to the same fixture measured on an actual
+  checkout of each state), so the emulation is faithful and not an
+  artefact of the harness:
+
+  | fixture / element | state | wrong cells | worst rel err |
+  |---|---|---|---|
+  | committed fixture, swept 2.0 | pre-#637 | 1920 / 12167 | 1.3487e-03 |
+  | | main (guard) | 1140 | 1.2792e-03 |
+  | | #641 draft, no guard | 1140 | 1.8661e-03 |
+  | | this branch | **0** | **0.0** |
+  | committed fixture, swept 6.0 | pre-#637 | 1920 | 1.9302e-03 |
+  | | main (guard) | 1140 | 1.5955e-03 |
+  | | #641 draft, no guard | 1140 | 8.4886e-03 |
+  | | this branch | **0** | **0.0** |
+  | issue-table base=2.0, swept 2.0 (=base) | pre-#637 | 0 | 0.0 |
+  | | main (guard) | 0 | 0.0 |
+  | | #641 draft, no guard | 5120 | 2.0642e-04 |
+  | | this branch | **0** | **0.0** |
+
+  Two things fall out. The guard did what it was designed to (the
+  `swept == base` element: 5120 wrong cells and 2.06e-4 without it, 0 and
+  0.0 with it). And the metric is not monotone in the wrong-cell count:
+  main and the no-guard draft have the SAME 1140 wrong cells and differ
+  by 5.3x in error, while pre-#637 has 68% MORE wrong cells than main
+  and a smaller error on one element of this class. Mechanism: pre-#637
+  the whole pad was uniformly wrong (base's value); #637 corrects the
+  normal pad cells but cannot correct the hi-face-fallback cells, so it
+  leaves a permittivity STEP inside the absorber that the uniformly-wrong
+  pad did not have, and a step inside a CPML reflects. Whether that trade
+  reads better or worse than uniformly-wrong is fixture-dependent and has
+  no reason to be monotone — this branch's own reconstruction shows both
+  signs (of 14 elements, pre-#637 -> main: 10 improve, 3 unchanged at
+  exactly 0.0 — all three are `swept == base` — and 1 regresses,
+  single-axis-y swept 6.0 at 7.2871e-04 -> 7.3497e-04, +0.86%, the same
+  signature as #641's +0.5% / +1.6%). No third guard
+  variant was needed: byte-identity removes the choice, and both residual
+  elements' *class* is covered directly — on the committed fixture at
+  n_steps 300 / 400 / 600, where main measures 1.45e-2/1.61e-2,
+  3.52e-2/7.94e-2 and 1.69e-2/2.21e-2 (bracketing both disclosed
+  residuals), this branch measures exactly `0.0` at every bin.
+- **`Simulation.run()` does not move.** SHA-256 over the raw bytes of all
+  six final Yee field components plus the probe time series, base vs
+  branch, on four production lanes — pec (`e4dbb5fa327093d4`), cpml
+  (`a3a6bc1d733b36e7`), lossy+magnetic+CPML (`02bdd2db2572df1b`),
+  non-uniform `dz_profile`+CPML (`ef96cbf44e9aa14f`) — all 8 digests
+  (fields + time series per lane) identical. Negative control: bumping
+  `n_steps` 60 -> 61 changes all 8, so the harness can report
+  "different".
+- **Known gap this INHERITS and slightly widens, disclosed (issue #642).**
+  `run()` applies thin conductors AFTER pad extension; the batched path
+  only ever sees `base_materials`, which is already post-conductor, so
+  extending it replicates a non-PEC thin conductor's own `sigma`/`eps_r`
+  into the pad. Routing through the shared helper does not change that
+  ordering. Measured on a `sigma_bulk=1e4` thin conductor: this branch
+  leaves 88 mismatched cells of 36501 (40 `eps_r` + 48 `sigma`, all
+  inside the x pads) where main leaves 6592 (all `eps_r`; zero `sigma`,
+  because main only ever extended the ONE swept field) — a 75x reduction
+  overall AND a new sigma-side mismatch on this fixture. A PEC thin
+  conductor is unaffected (it routes to `pec_mask`, not to the material
+  arrays: 0 mismatched cells on both). Not fixed here: #643's scope is
+  the pad-extension RULE, #642's is the pipeline ORDER, and closing it
+  needs the batched path to see pre-conductor materials, which is a
+  production-side change this issue's own byte-identity requirement
+  argues against bundling. Pinned by
+  `test_thin_conductor_pad_leak_is_issue_642_not_643`, `xfail(strict=True)`.
+- Memory footprint note: the material-named branch now materialises all
+  three `(n_batch, Nx, Ny, Nz)` arrays instead of one plus two broadcast
+  views, because the joint pad decision needs all three. Materials go from
+  ~1 to ~3 batched arrays against the ~6 the batched field state already
+  carries. Unchanged for the global sweep path and for any simulation with
+  no CPML pad on any face (early return, inputs untouched).
+
 ### Fixed — `precision="mixed"` never worked with CPML boundaries (issue #644)
 
 `Simulation(boundary="cpml", precision="mixed").run(...)` raised a raw JAX
