@@ -5,9 +5,8 @@ one-off investigation tooling tied to closed or superseded RF/EM
 investigations (WR-90 waveguide-port extractor, V/I-split port camp, TFSF
 leakage probes, slab S11 phase, issue #31/#40/#44/#48 nonuniform-mesh +
 patch FFRP, Y2 Kottke-dilation gradient, and their VESSL job specs). They
-were swept here by roadmap task **W6.7** to keep `scripts/` (the
-grep-first feature-discovery surface mandated by
-`.claude/rules/rfx-feature-discovery.md`) uncluttered.
+were moved here by roadmap task **W6.7** to keep the active `scripts/`
+surface uncluttered.
 
 Nothing here is referenced by CI, tests, the public-docs export pipeline,
 or `scripts/diagnostics/port_external_reference_requirements.json`. They

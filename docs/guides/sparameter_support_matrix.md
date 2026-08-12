@@ -138,18 +138,15 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 - The uniform thru-line check uses `|S21|` in `(0.90, 1.05)` and
   `Re(Z0)` in `(40, 65) ohm` for the cited `dx=80 um` setup.
 - The analytic quarter-wave-notch case
-  (`validation/crossval/06b_msl_notch_filter_uniform.py`) last reported
-  `1.63%` frequency error, `-34.3 dB` notch depth, and median
-  `Re(Z0)=48.6 ohm`. That run predates the #511/#507 extractor fixes
-  (PR #516 / `f95240f`) and has not been regenerated since — there is no
-  committed RESULT ARTIFACT from a post-#511 rerun, though the producer
-  script itself is committed and manifest-registered (claims-bearing,
-  `pr-fast`/`gpu-manual` tiers). Treat this number as describing the
-  superseded extractor until issue #519 re-runs it and commits a
-  refreshed result.
+  (`validation/crossval/06b_msl_notch_filter_uniform.py`) was rerun after the
+  #511/#507 extractor fixes. Its committed 2026-08-09 run log
+  (`validation/crossval/_06b_notch_uniform_logs/20260809T_run.log`) reports
+  `1.63%` frequency error, `-34.2 dB` notch depth, and median
+  `Re(Z0)=57.9 ohm`; it passes the listed gates of frequency error `<15%`,
+  notch depth `<-10 dB`, and median `Re(Z0)` in `(40, 65) ohm`.
 - The committed matched-geometry OpenEMS comparison at `dx=50 um` reports a
-  `5.8%` notch-frequency difference, linear `|S21|` mean difference `0.105`,
-  and maximum difference `0.2172` over 2.5--6 GHz. This is a characterized
+  `5.8%` notch-frequency difference, linear `|S21|` mean difference `0.1147`,
+  and maximum difference `0.2078` over 2.5--6 GHz. This is a characterized
   external check, not a tight cross-solver match. See
   `tests/fixtures/msl_notch_e4/comparison_summary.json`.
 - `scripts/diagnostics/replay_msl_3probe_dump.py`'s independent 3-probe

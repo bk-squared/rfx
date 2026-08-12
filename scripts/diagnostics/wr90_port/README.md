@@ -1,18 +1,16 @@
 # WR-90 waveguide-port field comparison harness
 
 Cell-by-cell triple cross-validation between **rfx**, **OpenEMS**, and
-**Meep** at WR-90 port planes. Used to localise the residual
-per-frequency `|S11|` oscillation in rfx PEC-short reflection that
-patch-level fixes have failed to close after 7+ sessions (see status
-in `docs/agent-memory/rfx-known-issues.md`).
+**Meep** at WR-90 port planes. It was used to investigate the apparent
+per-frequency `|S11|` oscillation in rfx PEC-short reflection; the
+comparator correction and its historical result are documented below.
 
 ## Why this lives here, not in `scripts/spikes/<date>/`
 
 `scripts/spikes/<date>/` is reserved for dated experimental ablations
-that may be deleted later. This harness is the **stable** field-level
-diagnostic surface: every architectural candidate after 2026-04-28
-must report numbers from these scripts before being considered viable
-or refuted. Promoting it out of `spikes/` makes that contract explicit.
+that may be deleted later. This directory preserves the stable historical
+consumers used in the 2026-04-28 comparison. It is an internal diagnostic
+record, not a public supported or clean-clone-reproducible workflow.
 
 ## Tools
 
@@ -33,28 +31,15 @@ crossval/11 constants and the comparator follows.
 
 ## Reference dumps
 
-OpenEMS HDF5 reference dumps are produced by the companion script in
-the `microwave-energy` repo:
+OpenEMS and optional Meep HDF5 reference dumps are external prerequisites;
+they are not committed in this repository, and neither their complete input
+contract nor the historical producer commands are available in a clean clone.
+Accordingly, this directory is archived diagnostic evidence rather than a
+reproducible cross-solver workflow. The commands below only document how the
+tracked consumers were historically invoked; compatible filenames alone do
+not establish provenance or comparability.
 
-```bash
-python /root/workspace/byungkwan-workspace/research/microwave-energy/openems_simulation/wr90_sparam_reference.py \
-  --resolutions 1 \
-  --geometries pec_short \
-  --output /tmp/openems_wr90/openems_r1_pec_short.json \
-  --dump-port-fields \
-  --dump-output-dir /tmp/openems_wr90/dumps_r1 \
-  --threads 4
-```
-
-The `--dump-port-fields` flag tells OpenEMS to emit
-`{E,H}field_{source_plane,mon_left_plane}.h5` per resolution under the
-`--dump-output-dir`. `s11_from_dumps.py` and
-`dump_compare_openems_vs_rfx.py` consume that directory directly via
-their `--openems-dump-dir` arg. (Matching Meep dumps come from
-`microwave-energy/meep_simulation/wr90_sparam_reference.py` with the
-same dump flag; they are optional.)
-
-## Running
+## Historical consumer commands
 
 Stable apples-to-apples `|S11|` recipe at R=1 (1 mm cells, ~30 cells/λ):
 
@@ -107,16 +92,16 @@ appearing in earlier research notes and codex attempts under
 `scripts/spikes/2026-04-28/refuted_codex_archive/` is a comparator
 artefact, not a real rfx FDTD residual.
 
-## Investigation pointers
+## Historical evidence in this clone
 
-- Full 2026-04-28 codex investigation:
-  `docs/research_notes/2026-04-28_codex_arch_attempts.md`
-- Cross-session candidate list and refutation log: memory
-  `project_wr90_architectural_candidates.md`
-- Known-issue entry with all closed sub-bullets:
-  `docs/agent-memory/rfx-known-issues.md` (PEC-short item)
-- Archived refuted source/probe code:
-  `scripts/spikes/2026-04-28/refuted_codex_archive/`
+- Comparator correction and the four tracing scripts:
+  commit `2fb9b76`, `pec_short_position_sweep.py`, `boundary_cell_trim.py`,
+  `h_normal_average_test.py`, and `production_vs_raw_same_sim.py`.
+- Archived refuted source/probe code and its recorded verdict:
+  `scripts/spikes/2026-04-28/refuted_codex_archive/`.
+
+Detailed cross-session notes and the original external-run records are not
+available in a clean clone.
 
 ## Adding a new architectural candidate
 
@@ -128,7 +113,6 @@ artefact, not a real rfx FDTD residual.
    the canonical baseline.
 3. Report numbers via `s11_from_dumps.py` at R=1 and R=2 against
    OpenEMS and Meep on the same `mon_left` plane.
-4. Land the verdict in
-   `docs/agent-memory/rfx-known-issues.md` (PEC-short entry) and
-   memory `project_wr90_architectural_candidates.md` whether the
-   candidate passes or fails.
+4. Record the verdict with the candidate change and the tracked diagnostic
+   artifacts used to support it. Historical private issue logs are unavailable
+   in a clean clone.

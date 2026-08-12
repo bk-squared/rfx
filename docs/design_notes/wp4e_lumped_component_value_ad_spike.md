@@ -3,6 +3,15 @@
 Status: **R2-STOP (design note is the deliverable).** No production source was changed.
 Date: 2026-07-08. Branch: `worktree-agent-accfde1ea794a65c2`.
 
+> **Current-status note (2026-08-11):** This file is the pre-implementation
+> spike and preserves its original R2-STOP verdict below. The setup-layer gap
+> was subsequently closed: the uniform single-device `forward(...)` path now
+> accepts differentiable scalar R/L/C values through
+> `rlc_values_override`. Current user guidance lives in
+> `docs/public/guide/gradient-behavior.md` and
+> `docs/public/guide/inverse-design.md`; do not read the historical verdict
+> below as a current API limitation.
+
 ## Question
 
 Can a lumped element's component value (R, L, or C from

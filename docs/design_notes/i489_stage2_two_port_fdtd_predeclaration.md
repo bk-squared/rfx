@@ -1,21 +1,22 @@
 # 2026-08-02 — #489 stage 2: two-drive coax 2-port FDTD, pre-run predeclaration
 
-Written BEFORE the first full-fidelity FDTD run, per this repo's R2-tight physics-run
-discipline (`research/rfx/CLAUDE.md`, RF/EM intensifier: one clean pre-declared attempt
-per mechanism hypothesis). `docs/research_notes/` is gitignored in this public repo (see
-`docs/.gitignore`), so this predeclaration lives here (`docs/design_notes/`, tracked)
-instead, to satisfy "committed" without fighting that convention.
+Written BEFORE the first full-fidelity FDTD run under this repository's
+one-clean-predeclared-attempt discipline. This tracked design note is the
+public predeclaration and preserves the assumptions that the later run tested.
 
-## R1 — memory cited
+> **Current-status note (2026-08-11):** The predeclared stage later completed
+> and `compute_coaxial_two_port(...)` is now **validated with scope** for its
+> documented two-drive, azimuthally symmetric through-line geometry family.
+> The current envelope and evidence pointers live in
+> `docs/guides/sparameter_support_matrix.md`; this file remains the historical
+> before-run record.
 
-- `docs/research_notes/20260729_i489_coax_two_port_design.md` (this worktree, local):
-  **binding verdicts** — (1) the single-ratio rule `S[j,i]=b_j/a_i` is DEAD (measured
-  0.0800 terminator floor); (2) the through-line identity gate is RETIRED (half-cell
-  reference-plane ambiguity 0.0455–0.1365 across 4–12 GHz); (3) gates must be finalized
-  from MEASURED behavior on the real fixture, not pre-declared; (4) ship labeled
-  EXPERIMENTAL — every gateable DUT is azimuthally symmetric, TE11 cutoff 25.17 GHz
-  survives evanescently to the first probe at ~0.10, so a symmetric-DUT battery
-  certifies a class that excludes the transition-discontinuity class #489 targets.
+## R1 — tracked context
+
+- The current support classification and committed evidence for the completed
+  stage live in `docs/guides/sparameter_support_matrix.md`. This historical
+  predeclaration does not preserve conclusions or measurements whose only
+  source was untracked local design work.
 - `rfx/sources/coaxial_port.py:1755` `solve_two_port_from_wave_amplitudes` docstring —
   the two-drive `S = B @ inv(A)` solve, its cond(A) blind spots, and why passivity
   (not reciprocity, not cond(A)) is the only handle on a systematic a/b mislabel.
@@ -74,11 +75,10 @@ again. "out of the network" (b2) = -z = A-branch = `forward_amp` again.
 `a_port = result.backward_amp` and `b_port = result.forward_amp`.** This is verified
 independently below via a fast structural test that pushes PLANTED analytic V(z)
 values through the real assembly code path (bypassing FDTD) for a KNOWN, asymmetric
-synthetic two-port, before any FDTD time is spent — the exact mitigation this repo's
-memory (`feedback_agreement_is_not_independence`, `project_rfx_dof_differentiability`
-#488 mixed-port arc) recommends for a defect family that a symmetric through-line
-fixture cannot itself expose (`test_both_drive_swap_gap_requires_the_downstream_
-passivity_handle` in `tests/test_coax_two_port_solve.py` documents exactly this gap).
+synthetic two-port, before any FDTD time is spent. The tracked
+`tests/test_coax_two_port_solve.py::test_both_drive_swap_gap_requires_the_downstream_passivity_handle`
+documents why this check is needed for a defect that a symmetric through-line
+fixture cannot expose.
 
 ## Qualitative expectations (NO numeric gates predeclared — R2/design-note binding)
 

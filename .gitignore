@@ -16,7 +16,7 @@ CLAUDE.md
 AGENTS.md
 .claude/
 
-# docs/ publication boundaries live in docs/.gitignore
+# docs/ Git-tracking and remilab.ai publication boundaries live in docs/.gitignore.
 
 # Internal scripts (debugging, infra sync, GPU validation)
 scripts/validate_codex_fixes.py

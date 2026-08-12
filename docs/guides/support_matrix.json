@@ -92,7 +92,11 @@
       "use": "local_refinement_code_path"
     },
     "adi": {
-      "status": "not_documented"
+      "status": "experimental",
+      "public_docs_policy": "bounded_public_workflow",
+      "solver": "Zheng-Chen-Zhang ADI",
+      "limits": "lossless 3D PEC-cavity eigenfrequency within 2% at adi_cfl_factor=2; factor 5 is stable but outside that accuracy envelope; explicit Yee remains required for claims-bearing 3D physics",
+      "validated_speedup": false
     },
     "distributed": {
       "status": "not_documented"

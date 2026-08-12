@@ -8,6 +8,13 @@ and the port models are known to differ by ~0.20 in |S| before any physics is in
 question (see the ceiling section below).
 Date: 2026-07-25. Branch: `feat/geometry-setup-interop`.
 
+> **Current-status note (2026-08-11):** The rfx design document and openEMS
+> emitter described here remain implemented and contract-tested; import from a
+> foreign solver remains research-only. Paths and line numbers below record the
+> 2026-07-25 implementation snapshot, while the named symbols and decisions are
+> the durable contract. Use `rfx/interop/` and its contract tests for the
+> current layout; this note is not evidence of cross-solver physics agreement.
+
 ## Question
 
 Can an rfx design (geometry **and** setup — materials, excitations,

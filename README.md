@@ -11,7 +11,7 @@
 
 **Differentiable 3D FDTD electromagnetic simulator for RF and microwave engineering — powered by JAX.**
 
-**v1.6.6** — GPU-scaled `lax.scan` time-stepping, per-port-family S-parameter extractors, and structured preflight guards that surface setup errors before a run.
+**v1.6.7** — GPU-scaled `lax.scan` time-stepping, per-port-family S-parameter extractors, and structured preflight guards that surface setup errors before a run.
 
 > **Project status:** active RF/FDTD simulator. Start with the uniform Cartesian
 > Yee solver. For other features, follow the geometry, mesh, frequency, and
@@ -375,7 +375,7 @@ Working from a fresh clone with an LLM agent? Start with the purpose-built agent
   title        = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
   institution  = {REMI Lab, Chungnam National University},
   year         = {2026},
-  version      = {1.6.6},
+  version      = {1.6.7},
   url          = {https://github.com/bk-squared/rfx}
 }
 ```

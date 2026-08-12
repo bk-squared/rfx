@@ -1,10 +1,10 @@
-# Public-doc repo-sync surfaces should stay trackable.
+# docs/public/** is the only canonical remilab.ai site source and stays trackable.
 !/public/
 !/public/**
 !/guides/
 !/guides/**
 
-# Local/internal-only docs should never be published or synced to the public repo.
+# Local/private notes should never be published, exported, deployed, or synced to gitops.
 /.omx/
 /References/
 /agent/
@@ -23,6 +23,7 @@
 /design_notes/ai-native-*.md
 /design_notes/ai_native_*.md
 
-# Public AI-agent docs are deployed to /rfx/agent/* and must remain trackable.
+# docs/agent/** is Git-repository public for external LLM agents, but excluded from
+# remilab.ai navigation, export, deployment snapshots, and gitops. Keep it trackable.
 !/agent/
 !/agent/**

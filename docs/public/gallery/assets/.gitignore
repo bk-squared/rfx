@@ -4,8 +4,8 @@
 # on VESSL (scripts/precompute_gallery_artifacts.py) and the large media are
 # synced into the gitops repo separately (see gallery-deploy/DEPLOYMENT.md).
 #
-# Small samples ARE committed so the public pages render: PNG thumbnails,
-# manifest.json, sparams.json, and small Touchstone files.
+# Small samples ARE committed so the public pages render: PNG/GIF media,
+# manifest and metric JSON, and small Touchstone files.
 
 # --- ignore large generated media / volume files ---
 *.mp4

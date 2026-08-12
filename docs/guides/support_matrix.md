@@ -38,7 +38,7 @@ resonances, benchmarked NTFF cases, and the explicitly listed port results.
 | Coaxial-line reflection | **limited** | `compute_coaxial_line_reflection(...)` requires float32 precision, a three-dimensional second-order uniform Yee grid, CPML tokens on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, no periodic axes, and exactly one `face="top"` coaxial port. It is documented over the stated frequency, termination, impedance, and mesh ranges, not as a general coaxial-network solver. |
 | Nonuniform meshes | **limited by feature** | See the table below. Support for one observable does not imply support for another. |
 | SBP-SAT/subgridding | **not documented** | No current public workflow. |
-| ADI | **not documented** | Not part of the public correctness baseline. |
+| ADI | **experimental** | Public workflow exists for the Zheng–Chen–Zhang ADI lane. A lossless 3D PEC-cavity eigenfrequency is within the documented 2% gate at `adi_cfl_factor=2`; factor 5 is stable but outside that accuracy envelope. Use explicit Yee for claims-bearing 3D physics; no production stiff-mesh speedup is validated. |
 | Distributed execution | **not documented** | Execution scaling is separate from numerical correctness. |
 | Floquet/Bloch S-parameters | **experimental** | Excitation and diagnostic helpers exist, but there is no documented high-level Floquet S-parameter API. |
 

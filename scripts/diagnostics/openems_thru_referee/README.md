@@ -6,12 +6,12 @@ Independent cross-solver anchor for the reference-plane port-wave architecture
 model; the one structural difference is the port family — rfx vertical wire
 point-feeds vs openEMS 3 mm MSL launch spans — stated below where it matters).
 
-Run: VESSL `369367246600` (2026-07-10, remilab-c0, source-built openEMS per the
-`vessl_crossval_external.yaml` bootstrap; solve time 8.1 s at dx=0.5 mm).
-Full log: `docs/research_notes/vessl_logs/openems_thru_referee_369367246600.log`
-(local-only). Result: `results/thru_openems_dx500um.json` (committed; note: the
-final closing brace was restored during log extraction — the container stream
-dropped the last line at stop; all numeric content is verbatim).
+Run: VESSL `369367246600` (2026-07-10, remilab-c0, source-built openEMS;
+solve time 8.1 s at dx=0.5 mm). The historical full log and job bootstrap
+are unavailable in a clean clone. Result:
+`results/thru_openems_dx500um.json` (committed; note: the final closing brace
+was restored during log extraction — the container stream dropped the last
+line at stop; all numeric content is verbatim).
 
 ## Comparison, 3–7 GHz (17 openEMS points / 9 rfx bins)
 
@@ -33,8 +33,7 @@ This record is a bracket, not a judgment: it states where the two solvers land
 on the same geometry class. No committed rfx gate cites these numbers; the
 battery's gates remain anchored to the in-repo closed-box flux referee.
 
-Note: the VESSL YAML for this lane is local-only (repo-wide `**/vessl*.yaml`
-ignore; maintained harnesses are the tracked exceptions). It is a verbatim
-derivative of `scripts/vessl_crossval_external.yaml` with the rfx-runtime
-stage removed; the README above records every deviation, so the lane is
-reproducible from the template + this document.
+The historical VESSL job YAML is unavailable in a clean clone. The tracked
+`scripts/vessl_crossval_external.yaml` is related template material, not a
+reconstruction of that job; use this record and the committed result only as
+historical diagnostic evidence.

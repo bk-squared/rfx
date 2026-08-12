@@ -23,6 +23,15 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 - [Differentiable-design guidance](/rfx/guide/autodiff-adjoint/) was tightened: it separates JAX-traced objectives and finite-difference gradient checks from the final port/resonance/far-field physics validation.
 - [Non-uniform mesh guidance](/rfx/guide/nonuniform-mesh/) now frames graded-z meshes as a bounded workflow for thin layered structures, stating the unsupported combinations and the caller's validation responsibilities up front.
 
+## v1.6.7 — July 2026
+- Open-domain oblique RCS is available through `compute_rcs(theta_inc != 0)` for its documented uniform-grid, `ez`-polarized Method-B TFSF envelope; unsupported combinations fail explicitly.
+- The opt-in plane-wave design lane adds complex-Bloch TFSF in `run()`, uniform `forward()` support, differentiable `mu_r_override`, and `compute_rcs_jax`.
+- `rfx.MeshShape` imports voxelized STL, OBJ, and PLY geometry; STEP support is available with the `cad` extra. Mesh import is not differentiable.
+- `rfx.interop` can emit a validated design document and a runnable openEMS script for representable simulations.
+- `run(until_decay=..., radiated_flux_box=...)` can stop on radiated-energy flux, and MSL extraction now resolves automatic probe offsets against both documented clearances. Returned MSL S-matrices enforce passivity by default while retaining raw results in `S_raw`.
+
+## v1.6.6 — June 2026
+- Maintenance-only release: a behavior-preserving rectangular-waveguide mode-solver refactor and shipped-documentation hygiene. There was no public API or user-visible behavior change.
 ## v1.6.5 — June 2026
 
 - [Validation reporting](/rfx/guide/validation/) is stricter: a promoted port-family result now requires magnitude evidence, a phase-consistency witness, an AD-vs-finite-difference check where gradients are part of the claim, and committed (reproducible) artifacts.

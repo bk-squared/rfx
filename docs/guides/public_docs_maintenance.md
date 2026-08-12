@@ -12,7 +12,7 @@ This policy keeps repository docs and the public `remilab.ai/rfx` surface in syn
 | `docs/guides/public_surface_scope_inventory_*.md` | maintainer inventory for repository surfaces outside public support scope | reviewed before public-doc refreshes |
 | gitops `seed-pages/rfx` | deployed `remilab.ai/rfx` snapshot | `python scripts/check_public_docs_sync.py --format text` |
 
-`docs/agent/**`, `docs/research_notes/**`, development records, and incomplete pages are not public-doc source surfaces.
+`docs/public/**` is the only public-doc source surface. `docs/agent/**` is Git-repository public guidance for external LLM agents, but is excluded from `remilab.ai` navigation, export, deployment snapshots, and gitops. `docs/agent-memory/**` and `docs/research_notes/**` are private/ignored; development records and incomplete pages are not public-doc source surfaces.
 
 ## PR slicing
 
@@ -65,7 +65,7 @@ Allowed places for those terms are support contracts, maintainer inventories, or
 
 ## remilab.ai/rfx maintenance
 
-`remilab.ai/rfx` is a first-class deliverable. The deploy snapshot should be regenerated from this repository using `scripts/export_public_docs_to_gitops.py`. Do not hand-edit the gitops snapshot as a parallel source of truth.
+`remilab.ai/rfx` is a first-class deliverable. `docs/public/**` is the only canonical site source; the gitops deploy snapshot should be regenerated from it using `scripts/export_public_docs_to_gitops.py`. Do not hand-edit the gitops snapshot as a parallel source of truth.
 
 Expected deploy root:
 

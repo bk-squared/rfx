@@ -13,9 +13,9 @@ This document defines the source-of-truth and deployment boundaries for the publ
 | `docs/public/examples/` | public runnable-example hub pages deployed to `/rfx/examples/*` | yes |
 | `docs/public/validation/` | public evidence and benchmark pages deployed to `/rfx/validation/*` | yes |
 | `docs/public/api/` | curated public API pages deployed to `/rfx/api/*` | yes |
-| `docs/agent/` | repo-local operating notes | no; keep out of public navigation and deploy snapshots |
+| `docs/agent/` | Git-repository-public operating guidance for external LLM agents | no; exclude from `remilab.ai` navigation, export, deploy snapshots, and gitops |
 | `docs/guides/` | support contracts and maintainer policies | repo-maintainer source, link selectively from public pages |
-| `docs/research_notes/` | planning, handoffs, chronology | repo-local only |
+| `docs/research_notes/` | private research planning, handoffs, chronology | no; ignored and kept out of public sources and gitops |
 
 `infra/remilab-sites-gitops/.../seed-pages/rfx` is the **deploy snapshot**. It should be regenerated from this repo, not used as a parallel authoring home.
 
@@ -46,14 +46,14 @@ Secondary context-linked public hubs:
 - `/rfx/api/`
 - `/rfx/api/generated/`
 
-The sidebar grouping can be maintained in gitops, but page content and route inventory should originate from `docs/public/` in this repo.
+The sidebar grouping can be maintained in gitops, but `docs/public/**` is the only canonical site source; page content and route inventory originate there in this repo.
 
 ## Publication exclusions
 
 Do not publish or link the following as production docs:
 
 - guide pages without complete user-facing content;
-- repo-local operating notes;
+- `docs/agent/**`, which is Git-repository public for external LLM agents but excluded from `remilab.ai` navigation, export, deploy snapshots, and gitops;
 - planning notes, development records, run-log identifiers, or exploratory narratives;
 - unimplemented features and temporary validation scaffolds.
 
@@ -105,6 +105,6 @@ This split avoids blocking source-repo authoring on cross-repo drift before the 
 ## Immediate migration posture
 
 - `docs/public/index.mdx`, `docs/public/guide/`, `docs/public/examples/`, `docs/public/validation/`, and `docs/public/api/` are the **canonical public sources**.
-- `docs/agent/` should remain repo-local and unlinked from the public site unless a separate user-facing documentation plan promotes it.
+- `docs/agent/**` is Git-repository public for external LLM agents, but remains site-private: do not add it to `remilab.ai` navigation, export it, deploy it, or include it in gitops snapshots.
 - `docs/guide/` is intentionally reduced to a single redirect-style entrypoint and should not receive new content.
 - `docs/api/` remains generated-only and optional; when present it should be exported as a subordinate deep-reference surface, not treated as the primary authored API contract.
