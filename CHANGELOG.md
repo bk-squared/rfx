@@ -6,6 +6,62 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — a material flush with the domain face left a one-cell vacuum gap before its CPML pad (issue #655)
+
+A `Box` (or any shape) whose hi face lands on the domain's last interior node
+lost exactly that node from its rasterized mask. #627a taught the hi-face CPML
+pad to source its material from one column further in when that happens, but
+wrote the material only to the *pad* — so the dropped node stayed vacuum and
+became a spurious one-cell film sandwiched between the structure and its own
+impedance-matched absorber:
+
+```
+[pad = material][... interior = material ...][ONE VACUUM CELL][pad = material]
+```
+
+This affected **non-dispersive materials** on the shipped path, every hi face
+(x/y/z), the non-uniform lane, and `Sphere`/`Cylinder` as well as `Box` — it hit
+any geometry drawn out to an absorbing face, which is the ordinary way to build
+a substrate, a waveguide fill or a half-space.
+
+**Measured reflection off the phantom film** (1-D plane-wave FDTD, `eps_r=4`
+filling the domain, periodic transverse, CPML on z; isolated by field-level DFT
+subtraction against the same fixture with the box drawn half a cell past the
+face, so the pad is identical and only the one node differs):
+
+| dx | cells/λ₀ @10 GHz | \|r\| (flux DFT) | \|r\| (probe FFT) | thin-film theory |
+|---|---|---|---|---|
+| 0.25 mm | 120 | 0.0321 | 0.0385 | 0.0393 |
+| 0.50 mm | 60 | 0.0830 | 0.0792 | 0.0786 |
+| 1.00 mm | 30 | 0.1914 | 0.1570 | 0.1572 |
+| **1.50 mm** | **20 (rfx's default `c0/freq_max/20`)** | **0.2377** | 0.2644 | 0.2358 |
+
+At the default mesh that is **−12.5 dB, 5.6 % of incident power**, off a film
+that should not exist. The error grows as the mesh gets *coarser*, the opposite
+of the direction a convergence check looks in — a fine-mesh-only test would
+understate it ~6x. Theory is
+`|r| = 2π(dx/λ₀)(ε_m−1)/(2√ε_m)` for a one-cell vacuum layer.
+
+**Fix**, in the shared `rfx.geometry.rasterize_grid.extend_cpml_pad_materials`
+(so the uniform, non-uniform and batched assemblers all get it at once): where
+the #627a fallback fires, the replicated value is written to the outermost
+interior column as well as to the pad. That is precisely what makes the hi face
+behave like the lo face, where `_extend_lo` replicates the boundary node itself
+and pad and boundary node cannot disagree. **The rasterizer is untouched** — the
+half-open `[lo, hi)` convention is deliberate and load-bearing (see the `Box`
+docstring), and the defect is not Box-specific anyway.
+
+The one-column bound from #627a is inherited unchanged, so a genuine multi-cell
+air gap before the absorber is still never bridged. `run()` is **byte-identical**
+for geometry that does not touch a face (SHA-256 over raw field bytes across
+PEC / CPML / lossy+CPML / mu_r+CPML / non-uniform+CPML / periodic-mixed).
+After the fix, drawing a box flush with the face and drawing it half a cell past
+the face produce bit-identical runs.
+
+Regression locks: `tests/test_cpml_pad_face_notch.py` (11 tests, pinned at the
+default mesh; 9 of them verified red on the unfixed tree, the other 2 being the
+paired must-still-be-vacuum over-fire guards).
+
 ### Fixed — thin conductors leaked into the batched sweep's CPML pad (issue #642)
 
 `Simulation._assemble_materials` extends material values into the CPML pad

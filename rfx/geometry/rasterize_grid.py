@@ -285,6 +285,37 @@ def extend_cpml_pad_materials(
     considered and rejected: it would bridge that common air gap and smear
     an unrelated interior structure's material into the pad.
 
+    **The dropped node itself is repaired too (#655).** #627a fixed where
+    the pad SOURCES its material but still wrote it only to the pad, so the
+    dropped node stayed vacuum and became a one-cell film sandwiched
+    between the structure and its own matched absorber:
+    ``[material][vacuum][pad = material]``. Measured on a 1-D plane-wave
+    fixture (eps_r=4 filling the domain, reflection isolated by field-level
+    DFT subtraction against the same fixture with the box drawn half a cell
+    past the face, so only that node differs): ``|r|`` = 0.238 at rfx's own
+    default mesh ``dx = c0/freq_max/20`` (20 cells/lambda0), 0.191 at 30,
+    0.083 at 60, 0.032 at 120 — matching thin-film theory
+    ``2*pi*(dx/lambda0)*(eps_m-1)/(2*sqrt(eps_m))`` to within 22 % over the
+    range and 0.8 % at the default. The error GROWS as the mesh coarsens,
+    the opposite of the direction a convergence check looks in.
+
+    Where the fallback fires, ``src`` is therefore written to the outermost
+    interior column as well as to the pad. That is what makes the hi face
+    behave like the lo face: ``_extend_lo`` replicates the boundary node
+    itself, so its pad and its boundary node cannot disagree by
+    construction. It inherits the one-column bound above unchanged, so a
+    genuine air gap is still not bridged, on either side of the boundary.
+    Where the fallback does NOT fire the write is value-for-value what is
+    already there — ``run()`` is byte-identical for geometry that does not
+    touch a face (verified over PEC / CPML / lossy+CPML / mu_r+CPML /
+    non-uniform+CPML / periodic-mixed, SHA-256 over raw field bytes).
+
+    This is deliberately NOT a rasterizer change: the half-open convention
+    is load-bearing (see the ``Box`` docstring), and the defect is not even
+    Box-specific — ``Sphere`` and ``Cylinder`` have closed axis predicates
+    and reach the same state through the float32 knife edge instead, which
+    an array-pattern repair covers and a rasterizer edit would not.
+
     **Dispersion-pole extension was tried and reverted (#627b).** An
     earlier revision of this function extended Debye/Lorentz pole masks
     into the pad the same way, via an ``extra_masks`` parameter, so a
@@ -334,6 +365,18 @@ def extend_cpml_pad_materials(
             src = a[outer_sl]
             if use_inner is not None:
                 src = jnp.where(use_inner, a[inner_sl], src)
+                # #655: the pad is not the only place that lost the node.
+                # Where the fallback fired, the LAST INTERIOR column is the
+                # dropped node itself, so writing ``src`` only to the pad
+                # leaves it vacuum and sandwiches a one-cell gap between the
+                # structure and its own matched pad. Write ``src`` to the
+                # boundary column as well, which is precisely what makes the
+                # hi face behave like the lo face: ``_extend_lo`` replicates
+                # the boundary node itself, so its pad and its boundary node
+                # can never disagree. Where the fallback did NOT fire,
+                # ``src is a[outer_sl]`` and this is a value-for-value
+                # rewrite of what is already there — byte-identical.
+                a = a.at[outer_sl].set(src)
             new_arrays.append(a.at[dst_sl].set(src))
         return new_arrays
 

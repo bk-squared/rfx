@@ -504,14 +504,29 @@ class TestVmapMaterialSweepCpmlPad:
         # run()'s OWN arrays -- asserting "all of the pad is 4.0" would
         # assert something false about run(), not about the vmap path.
         cy, cz = probe_grid.shape[1] // 2, probe_grid.shape[2] // 2
-        naive_src = eps[-phx - 1, cy, cz]
-        inner_src = eps[-phx - 2, cy, cz]
         hi_pad = eps[-phx:, cy, cz]
-        assert naive_src == 1.0 and inner_src == 4.0, (
-            "fixture no longer reproduces the half-open-hi vacuum column "
-            "the #627 fallback exists for (naive source column "
-            f"{naive_src}, inner column {inner_src}) -- this test would "
-            "pass vacuously; rebuild the fixture, do not delete the assert"
+        # The precondition is "the rasterizer drops this box's x-hi boundary
+        # node, so the fallback has something to recover". Before #655 that
+        # was readable off the ASSEMBLED array, because the recovered value
+        # went only into the pad and the dropped node stayed vacuum. #655
+        # writes it into the node as well, so the assembled array no longer
+        # shows the drop -- by design. Read the precondition off the box's
+        # own rasterized mask instead, which is where the drop actually
+        # happens and is what this guard always meant.
+        probe_shape = probe_sim._geometry[0].shape
+        raw = np.asarray(probe_shape.mask(probe_grid))
+        naive_src = raw[-phx - 1, cy, cz]
+        inner_src = raw[-phx - 2, cy, cz]
+        assert not naive_src and inner_src, (
+            "fixture no longer reproduces the half-open-hi dropped node "
+            "the #627 fallback exists for (rasterized mask at the last "
+            f"interior column {bool(naive_src)}, one further in "
+            f"{bool(inner_src)}) -- this test would pass vacuously; "
+            "rebuild the fixture, do not delete the assert"
+        )
+        assert eps[-phx - 1, cy, cz] == 4.0, (
+            "the dropped boundary node was not repaired in run()'s own "
+            f"arrays (reads {eps[-phx - 1, cy, cz]}) -- issue #655"
         )
         assert np.all(hi_pad == 4.0), (
             "run()'s x-hi pad is not the slab material -- #627's hi-face "

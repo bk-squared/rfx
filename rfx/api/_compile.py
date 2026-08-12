@@ -123,6 +123,7 @@ class _CompileMixin:
         grid: Grid,
         *,
         include_thin_conductors: bool = True,
+        include_cpml_pad_extension: bool = True,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
@@ -152,6 +153,24 @@ class _CompileMixin:
             The default is True and no other caller passes it, so
             ``run()`` and every existing path are unaffected by
             construction.
+        include_cpml_pad_extension : bool, default True
+            When False, skip the CPML pad extension entirely and return the
+            arrays exactly as the geometry rasterized them — vacuum in the
+            padding, and vacuum at any boundary node the rasterizer dropped.
+
+            Same caller, same reason, one issue later. #637/#643 let the
+            batched sweep re-extend already-extended arrays, on the argument
+            that "every pad cell is overwritten by one of the three passes,
+            so the result depends only on the INTERIOR values — which are
+            the batch-correct ones". #655 made the shared rule repair the
+            dropped hi-face boundary NODE as well as the pad, which is an
+            interior cell that ``Shape.mask`` does not cover — so that
+            premise stopped holding and the batched path inherited the BASE
+            material there instead of its own swept value. Handing it the
+            un-extended arrays and letting the shared rule take the whole
+            decision per swept element restores the premise rather than
+            patching around it (issue #642's lesson: the batched path was
+            given the wrong INPUT, not running the wrong algorithm).
 
         Returns
         -------
@@ -233,7 +252,9 @@ class _CompileMixin:
         # and no exception, so nothing downstream catches it. See
         # extend_cpml_pad_materials's docstring and the follow-up issue
         # (filed separately, tracking the stability factorial).
-        if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
+        if (include_cpml_pad_extension
+                and self._boundary in ("cpml", "upml")
+                and self._cpml_layers > 0):
             # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Reflector /
             # periodic faces have pad=0 on that side and the corresponding
             # replicate step is skipped so the interior cells are not

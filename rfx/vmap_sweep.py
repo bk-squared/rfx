@@ -177,14 +177,18 @@ def _extend_batched_cpml_pad(
     element changes that element's ``sigma``/``mu_r`` pad too. A per-field
     call cannot express that coupling.
 
-    Note this runs on ``base_materials``-derived arrays, i.e. arrays whose
-    pad cells are ALREADY extended (by the base simulation's own
-    assembly). That is not a double-application: every pad cell is
-    overwritten by one of the three passes, and each pass's source lies
-    either in the interior (identical in both) or in a pad region that a
-    later pass overwrites, so the result depends only on the interior
-    values — which are the batch-correct ones. Verified by the
-    byte-identity matrix in
+    **The caller must hand this UN-extended arrays (issue #655).** The
+    correctness argument is that the result depends only on the interior
+    values, which the caller has already made batch-correct; pad cells are
+    all overwritten by one of the three passes, so their incoming contents
+    are irrelevant. #637/#643 relied on that to feed already-extended
+    ``base_materials`` in. #655 then made the shared rule repair the
+    dropped hi-face boundary NODE too — an INTERIOR cell, and one
+    ``Shape.mask`` does not cover — so an already-extended input carries
+    the BASE material at that node and the "interior is batch-correct"
+    premise fails. The caller therefore now assembles with
+    ``include_cpml_pad_extension=False``. Verified by the byte-identity
+    matrix in
     ``tests/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
 
     A no-op on any face with zero pad depth (non-CPML boundary, or a
@@ -312,14 +316,22 @@ def _build_batched_materials(
 
     if mat_name is not None:
         # #642: build from the state run() extends the pad from, i.e.
-        # before its own thin-conductor pass. Only pay for the extra
-        # assembly when there is a conductor to be wrong about.
-        if sim._thin_conductors:
-            pre_materials, *_ = sim._assemble_materials(
-                grid, include_thin_conductors=False)
-            eps_r = pre_materials.eps_r
-            sigma = pre_materials.sigma
-            mu_r = pre_materials.mu_r
+        # before its own thin-conductor pass.
+        # #655: and before the pad extension itself. The shared rule now
+        # also repairs the hi-face boundary NODE the rasterizer dropped,
+        # and that node is an INTERIOR cell ``mask`` does not cover, so
+        # substituting into already-extended arrays leaves the base
+        # material's value sitting there and then replicates it outward —
+        # run() would have the swept value. Taking the un-extended arrays
+        # restores the invariant ``_extend_batched_cpml_pad`` documents
+        # (its result depends only on interior values, which must all be
+        # batch-correct) instead of special-casing the node here.
+        pre_materials, *_ = sim._assemble_materials(
+            grid, include_thin_conductors=False,
+            include_cpml_pad_extension=False)
+        eps_r = pre_materials.eps_r
+        sigma = pre_materials.sigma
+        mu_r = pre_materials.mu_r
 
         # Build a mask for the specific material
         sim._resolve_material(mat_name)
