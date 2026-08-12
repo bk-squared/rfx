@@ -6,6 +6,41 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — two S-parameter lanes computed the ring-down settling witness and never compared it to its own -40 dB bar (issue #662)
+
+`settling_db` is the repo's mechanical form of the -40 dB ring-down settling
+rule: above that line the fixed-length record ended while the structure was
+still ringing, so the single-bin DFTs behind every S value of that run
+integrate a cut transient. `compute_coaxial_two_port` and
+`compute_coax_msl_transition` computed the witness, documented the -40 dB bar
+in their own result docstrings, and never made the comparison — a caller
+reading `.s_params` got a plausible-looking truncation artifact in silence.
+Both now route the witness through the same `_warn_if_ringdown_truncated`
+warner the waveguide/MSL/mixed lanes already used, so all five lanes share one
+threshold constant and one warning shape.
+
+Measured on the committed coax through-line fixture (domain 8x8x60 mm,
+`freq_max` 40 GHz), before the fix:
+
+| `n_steps` | `settling_db` (dB) | warnings emitted |
+|---|---|---|
+| 400 | -6.84 / -6.93 | 0 |
+| 700 | -28.15 / -29.46 | 0 |
+| 1500 | -43.97 / -44.53 | 0 |
+| 3000 | -67.26 / -68.09 | 0 |
+
+The first two rows violate the bar by 33 and 12 dB. They now warn, naming
+every violating drive, its measured value, and the record-length knob that
+lane is actually driven by (`n_steps` for the coax lanes, `num_periods` for
+the others).
+
+No extracted number changes: SHA-256 over `S`/`Z0`/`beta` (MSL fixture) and
+over `s_params`/`gamma`/`cond_a`/`recurrence_residual`/`fit_residual` (coax
+fixture) are identical before and after, including on the run where the new
+warning fires. The differentiable (`eps_scale`) channel leaves `settling_db`
+`nan` by design — the witness needs a concrete time series — and stays
+silent; the warner's finite mask, not luck, is what keeps it that way.
+
 ### Fixed — a material flush with the domain face left a one-cell vacuum gap before its CPML pad (issue #655)
 
 A `Box` (or any shape) whose hi face lands on the domain's last interior node

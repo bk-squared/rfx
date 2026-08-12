@@ -128,7 +128,14 @@ to column power ~1.8e3 that shrink monotonically with record length.
 `MSLSMatrixResult.settling_db` (worst end/peak `Ez²` ratio over all port
 probe planes per driven run — multiple planes because a single plane is
 standing-wave-node sensitive, with a measured 18 dB spread across planes on
-one under-settled record) and warns when a run exceeds the line. The rule
+one under-settled record) and warns when a run exceeds the line. Every lane
+that carries the witness enforces the same line through the same warner
+(issue #662): `compute_waveguide_s_matrix`, `compute_msl_s_matrix`,
+`compute_mixed_s_matrix`, `compute_coaxial_two_port` and
+`compute_coax_msl_transition`. The witness is `nan`, and the warning
+correspondingly silent, on the differentiable (`eps_scale`/`eps_override`)
+channels — they cannot build it without concretising a traced time series,
+so on those channels the rule stays the caller's to satisfy. The rule
 does not apply to closed PEC domains (energy conservation is correct there)
 or to CW drive.
 

@@ -316,20 +316,44 @@ def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
 
 
 def _warn_if_ringdown_truncated(
-    settling_db: np.ndarray, port_names: tuple, *, num_periods: float
+    settling_db: np.ndarray,
+    port_names: tuple,
+    *,
+    num_periods: float | None = None,
+    n_steps: int | None = None,
 ) -> None:
     """Emit one aggregate warning when a driven run's record is truncated.
 
     The witness makes the project's ring-down settling rule mechanical
     (docs/guides/simulation_methodology.md): end/peak
     Ez^2 at the port probe planes, per driven run. Above −40 dB the fixed
-    ``num_periods`` record ended while the structure was still ringing, so
+    record ended while the structure was still ringing, so
     the single-bin DFTs underlying V/I — and every S value of that run —
     integrate a truncated transient. Measured consequence on the Sheen-1990
     LPF (dx=200 µm, resonant stopband): num_periods=20 left the witness hot
     and produced |S| column-power poles up to ~1.8e3 that shrank
     monotonically as the record grew (20→60 periods: worst pole 62→8.8),
     while absorber depth (8→24 CPML layers) did not move them.
+
+    Every lane that computes ``settling_db`` must route it through here
+    (issue #662: the coax two-port and coax<->MSL transition lanes computed
+    the witness, documented the −40 dB bar in their result docstrings, and
+    never compared the two — a caller reading ``.s_params`` got a
+    plausible-looking truncation artifact in silence). Pass whichever
+    record-length knob the lane is actually driven by: ``num_periods`` for
+    the waveguide/MSL/mixed lanes, ``n_steps`` for the coax lanes — the
+    warning names that knob so its remedy is directly actionable.
+
+    NaN entries are skipped by the finite mask, which is what keeps the
+    differentiable paths quiet: they leave ``settling_db`` NaN on purpose
+    (the witness needs a concrete time series, and a traced one cannot be
+    Python-branched on). All callers pass a concrete host-side NumPy array,
+    so nothing here branches on a tracer.
+
+    All violating drives are named, not just the worst: the record length is
+    a per-drive property with a per-drive remedy, and naming only the worst
+    would hide a second drive needing the same fix. It stays ONE warning per
+    call (issue #470: per-probe advisory flooding buried the genuine ones).
     """
     finite = np.isfinite(settling_db)
     hot = finite & (settling_db > _SETTLING_WITNESS_DB)
@@ -338,6 +362,12 @@ def _warn_if_ringdown_truncated(
 
     import warnings
 
+    if num_periods is not None:
+        knob, record = "num_periods", f"num_periods={num_periods:g}"
+    elif n_steps is not None:
+        knob, record = "n_steps", f"n_steps={int(n_steps):d}"
+    else:  # pragma: no cover - guarded by the call sites
+        knob, record = "the record length", "fixed-length"
     per_run = ", ".join(
         f"port {port_names[i] if i < len(port_names) else i} driven: "
         f"{settling_db[i]:+.1f} dB"
@@ -345,14 +375,13 @@ def _warn_if_ringdown_truncated(
     )
     warnings.warn(
         "ring-down settling witness FAILED (end/peak energy above "
-        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The num_periods="
-        f"{num_periods:g} record ended while the structure was still "
+        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
+        "record ended while the structure was still "
         "ringing, so the DFT-based S-parameters of the affected run(s) are "
         "truncation artifacts wherever the structure is resonant — expect "
-        "spurious |S| poles and passivity violations. Increase num_periods "
-        "until the witness is below −40 dB before quoting any S value "
-        "(see the result's settling_db field — MSLSMatrixResult and, since "
-        "issue #538, WaveguideSMatrixResult).",
+        "spurious |S| poles and passivity violations. Increase "
+        f"{knob} until the witness is below −40 dB before quoting any S "
+        "value (see the result's settling_db field).",
         stacklevel=2,
     )
 
@@ -5662,6 +5691,13 @@ class _SparamMixin:
             status=status,
             flux_monitors=(flux_by_drive if extra_flux_monitors else None),
         )
+        # Issue #662: the witness above is computed but was never compared to
+        # the -40 dB bar this result's own docstring documents. NaN on the
+        # eps_scale path is skipped by the warner's finite mask (this array is
+        # host-side numpy on every path, so no tracer is branched on here).
+        _warn_if_ringdown_truncated(
+            settling_db, ("port1", "port2"), n_steps=int(n_steps),
+        )
         return _finalize_sparam_result(
             result_obj,
             extractor="compute_coaxial_two_port",
@@ -6350,6 +6386,12 @@ class _SparamMixin:
             settling_db=settling_db,
             status="experimental",
             flux_monitors=(flux_by_drive if extra_flux_monitors else None),
+        )
+        # Issue #662, same gap as compute_coaxial_two_port. ``n_steps`` here is
+        # the RESOLVED record length (num_periods was folded into it above), and
+        # it is the knob that overrides num_periods, so it is the actionable one.
+        _warn_if_ringdown_truncated(
+            settling_db, ("coax", "msl"), n_steps=int(n_steps),
         )
         return _finalize_sparam_result(
             result_obj,

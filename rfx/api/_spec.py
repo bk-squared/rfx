@@ -1347,7 +1347,12 @@ class CoaxialTwoPortResult:
     ``settling_db`` is a per-drive ring-down witness (worst end/peak E^2 ratio,
     dB, over one point probe per array — same convention as the MSL/mixed
     lanes; above -40 dB suggests the fixed-length record may have been
-    truncated before the structure rang down).
+    truncated before the structure rang down). Since issue #662 that bar is
+    ENFORCED, not just documented: a violating drive emits a
+    ``UserWarning`` naming the drive and its measured value, so a truncated
+    record can no longer return a plausible-looking ``s_params`` in silence.
+    It stays a warning, never an exception — short diagnostic runs are a
+    legitimate use of this method.
 
     **``eps_scale`` (differentiable) path** (:meth:`compute_coaxial_two_port`'s
     own ``eps_scale`` parameter, issue #489 leg 3): ``status`` takes a FOURTH
@@ -1858,7 +1863,9 @@ class CoaxMSLTransitionResult:
     settling_db : (2,) float
         Ring-down settling witness per drive (worst end/peak field-energy
         ratio, dB; above -40 dB = truncation suspect — see repo ring-down
-        convention).
+        convention). Since issue #662 that bar is ENFORCED, not just
+        documented: a violating drive emits a ``UserWarning`` (never an
+        exception) naming the drive and its measured value.
     status : str
         ``"experimental"`` always (this lane makes no pass/fail physics
         claim beyond what the calling test's own predeclared gate states;
