@@ -25,7 +25,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx.core.yee import EPS_0, FDTDState, _shift_bwd
+from rfx.core.yee import EPS_0, FDTDState, _shift_bwd, ade_state_dtype
 
 
 class LorentzPole(NamedTuple):
@@ -105,6 +105,8 @@ def init_lorentz(
     materials,
     dt: float,
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
+    *,
+    field_dtype=None,
 ) -> tuple[LorentzCoeffs, LorentzState]:
     """Initialize Lorentz/Drude ADE coefficients and state.
 
@@ -114,6 +116,14 @@ def init_lorentz(
     materials : MaterialArrays (eps_r = ε_∞)
     dt : float
     mask : optional spatial mask
+    field_dtype : jnp dtype, optional
+        Dtype of the E/H field storage this ADE state will be driven by.
+        The P carry is allocated at ``ade_state_dtype(field_dtype)`` —
+        ``promote_types(field_dtype, float32)``. ``None`` (the default, for
+        callers that do not thread it) means the ambient default float with
+        the same float32 floor. This used to be a hard ``dtype=jnp.float32``
+        pin, which made ``precision="float64"`` + any pole fail the
+        ``lax.scan`` carry contract (issue #656).
 
     Returns
     -------
@@ -150,9 +160,16 @@ def init_lorentz(
             b_arr = jnp.where(pole_mask, b_val, 0.0)
             c_arr = jnp.where(pole_mask, c_val, 0.0)
         else:
-            a_arr = jnp.full(shape, a_val, dtype=jnp.float32)
-            b_arr = jnp.full(shape, b_val, dtype=jnp.float32)
-            c_arr = jnp.full(shape, c_val, dtype=jnp.float32)
+            # No dtype pin: ``a_val``/``b_val``/``c_val`` are numpy scalars
+            # (``dt`` is ``grid.dt``, an np.float64), so this matches the
+            # masked branch above, which has always produced whatever
+            # ``jnp.where`` promotes to. A hard float32 here made the two
+            # branches disagree and capped the ADE coefficients at float32
+            # under ``precision="float64"`` (issue #656). With x64 off JAX
+            # clamps to float32, so the default lane is unchanged.
+            a_arr = jnp.full(shape, a_val)
+            b_arr = jnp.full(shape, b_val)
+            c_arr = jnp.full(shape, c_val)
 
         a_list.append(a_arr)
         b_list.append(b_arr)
@@ -171,7 +188,7 @@ def init_lorentz(
 
     coeffs = LorentzCoeffs(ca=ca, cb=cb, a=a, b=b, c=c, cc=cc)
 
-    zeros = jnp.zeros((n_poles,) + shape, dtype=jnp.float32)
+    zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(
         px=zeros, py=zeros.copy(), pz=zeros.copy(),
         px_prev=zeros.copy(), py_prev=zeros.copy(), pz_prev=zeros.copy(),
@@ -193,11 +210,31 @@ def update_e_lorentz(
     Update order:
     1. P^{n+1} = a P^n + b P^{n-1} + c E^n  (explicit)
     2. E^{n+1} = Ca E^n + Cb curl(H) - Cc Σ(P^{n+1} - P^n)
+
+    Dtype note (issue #656)
+    -----------------------
+    Both outputs are narrowed back to the dtype of the carry they came from,
+    the ``rfx.core.yee.update_e`` idiom (#630) plus #646's "let the body
+    derive its dtype from the carry". Allocation-site promotion alone does
+    NOT close this scan: ``ca``/``cb``/``cc`` and (masked) ``a``/``b``/``c``
+    are built at setup time from ``dt``, which is ``grid.dt``, a **numpy
+    float64 scalar** — and numpy scalars are STRONGLY typed in JAX where
+    Python floats are weak. So under x64 the coefficients are float64 and
+    this body would return float64 for a float32 field/P carry.
+
+    ``_pdtype`` promotes rather than pinning to ``lor_state.px.dtype`` on
+    purpose: with a real P carry and a COMPLEX field (oblique Bloch, #404) it
+    stays complex, so the carry mismatch is still raised. Pinning would cast
+    the imaginary part away and close the scan on wrong physics — the
+    dispersive branches ignore the Bloch phase entirely.
     """
     def bwd(arr, axis):
         if periodic[axis]:
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
+
+    _fdtype = state.ex.dtype
+    _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
     ca, cb, cc = coeffs.ca, coeffs.cb, coeffs.cc
@@ -209,9 +246,12 @@ def update_e_lorentz(
     curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
 
     # P^{n+1} = a P^n + b P^{n-1} + c E^n (per pole)
-    px_new = a * lor_state.px + b * lor_state.px_prev + c * state.ex[None]
-    py_new = a * lor_state.py + b * lor_state.py_prev + c * state.ey[None]
-    pz_new = a * lor_state.pz + b * lor_state.pz_prev + c * state.ez[None]
+    px_new = (a * lor_state.px + b * lor_state.px_prev
+              + c * state.ex[None]).astype(_pdtype)
+    py_new = (a * lor_state.py + b * lor_state.py_prev
+              + c * state.ey[None]).astype(_pdtype)
+    pz_new = (a * lor_state.pz + b * lor_state.pz_prev
+              + c * state.ez[None]).astype(_pdtype)
 
     # ΔP = P^{n+1} - P^n, summed over poles
     dpx = jnp.sum(px_new - lor_state.px, axis=0)
@@ -219,9 +259,9 @@ def update_e_lorentz(
     dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
     # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP
-    ex_new = ca * state.ex + cb * curl_x - cc * dpx
-    ey_new = ca * state.ey + cb * curl_y - cc * dpy
-    ez_new = ca * state.ez + cb * curl_z - cc * dpz
+    ex_new = (ca * state.ex + cb * curl_x - cc * dpx).astype(_fdtype)
+    ey_new = (ca * state.ey + cb * curl_y - cc * dpy).astype(_fdtype)
+    ez_new = (ca * state.ez + cb * curl_z - cc * dpz).astype(_fdtype)
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,

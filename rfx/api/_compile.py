@@ -349,17 +349,27 @@ class _CompileMixin:
         dt: float,
         debye_spec: _DebyeSpec | None,
         lorentz_spec: _LorentzSpec | None,
+        *,
+        field_dtype=None,
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
-        """Initialize Debye/Lorentz coefficients for the given materials."""
+        """Initialize Debye/Lorentz coefficients for the given materials.
+
+        ``field_dtype`` is the field storage dtype the ADE state will be
+        driven by; the P carry is allocated at
+        ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
+        ``None`` get the ambient default float with a float32 floor.
+        """
         debye = None
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
-            debye = init_debye(debye_poles, materials, dt, mask=debye_masks)
+            debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
+                               field_dtype=field_dtype)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles, lorentz_masks = lorentz_spec
-            lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks)
+            lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
+                                   field_dtype=field_dtype)
 
         return materials, debye, lorentz
 

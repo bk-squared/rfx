@@ -427,6 +427,13 @@ def _update_e_with_optional_dispersion(
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
 
+    # Narrow every output back to the dtype of the carry it came from
+    # (issue #656) — same policy as the single-model bodies in
+    # rfx/materials/{debye,lorentz}.py, which carry the full rationale.
+    _fdtype = state.ex.dtype
+    _dpdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
+    _lpdtype = jnp.promote_types(lorentz_state.px.dtype, _fdtype)
+
     hx, hy, hz = state.hx, state.hy, state.hz
 
     curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
@@ -440,17 +447,17 @@ def _update_e_with_optional_dispersion(
         lorentz_coeffs.a * lorentz_state.px
         + lorentz_coeffs.b * lorentz_state.px_prev
         + lorentz_coeffs.c * ex_old[None]
-    )
+    ).astype(_lpdtype)
     py_l_new = (
         lorentz_coeffs.a * lorentz_state.py
         + lorentz_coeffs.b * lorentz_state.py_prev
         + lorentz_coeffs.c * ey_old[None]
-    )
+    ).astype(_lpdtype)
     pz_l_new = (
         lorentz_coeffs.a * lorentz_state.pz
         + lorentz_coeffs.b * lorentz_state.pz_prev
         + lorentz_coeffs.c * ez_old[None]
-    )
+    ).astype(_lpdtype)
 
     dpx_l = jnp.sum(px_l_new - lorentz_state.px, axis=0)
     dpy_l = jnp.sum(py_l_new - lorentz_state.py, axis=0)
@@ -471,19 +478,19 @@ def _update_e_with_optional_dispersion(
         + cb * curl_x
         + jnp.sum(cc_debye * debye_state.px, axis=0)
         - cc_lorentz * dpx_l
-    )
+    ).astype(_fdtype)
     ey_new = (
         ca * ey_old
         + cb * curl_y
         + jnp.sum(cc_debye * debye_state.py, axis=0)
         - cc_lorentz * dpy_l
-    )
+    ).astype(_fdtype)
     ez_new = (
         ca * ez_old
         + cb * curl_z
         + jnp.sum(cc_debye * debye_state.pz, axis=0)
         - cc_lorentz * dpz_l
-    )
+    ).astype(_fdtype)
 
     new_fdtd = state._replace(
         ex=ex_new,
@@ -492,9 +499,12 @@ def _update_e_with_optional_dispersion(
         step=state.step + 1,
     )
     new_debye = DebyeState(
-        px=debye_coeffs.alpha * debye_state.px + debye_coeffs.beta * (ex_new[None] + ex_old[None]),
-        py=debye_coeffs.alpha * debye_state.py + debye_coeffs.beta * (ey_new[None] + ey_old[None]),
-        pz=debye_coeffs.alpha * debye_state.pz + debye_coeffs.beta * (ez_new[None] + ez_old[None]),
+        px=(debye_coeffs.alpha * debye_state.px
+            + debye_coeffs.beta * (ex_new[None] + ex_old[None])).astype(_dpdtype),
+        py=(debye_coeffs.alpha * debye_state.py
+            + debye_coeffs.beta * (ey_new[None] + ey_old[None])).astype(_dpdtype),
+        pz=(debye_coeffs.alpha * debye_state.pz
+            + debye_coeffs.beta * (ez_new[None] + ez_old[None])).astype(_dpdtype),
     )
     new_lorentz = LorentzState(
         px=px_l_new,

@@ -621,8 +621,16 @@ def run_uniform(
         from rfx.simulation import make_source as _make_src
         sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
 
+    # Thread the field storage dtype into the ADE carry (issue #656), the
+    # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
+    # RLC carries.  ``None`` here means "default precision", which
+    # ``rfx.simulation.run`` resolves to float32 — resolve it identically so
+    # ``precision="float32"`` keeps a float32 ADE carry even when x64 has
+    # been enabled elsewhere in the process, and ``precision="mixed"``
+    # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
-        materials, grid.dt, debye_spec, lorentz_spec)
+        materials, grid.dt, debye_spec, lorentz_spec,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
 
     # NTFF box
     ntff_box = None

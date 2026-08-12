@@ -58,6 +58,48 @@ def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDS
     )
 
 
+def ade_state_dtype(field_dtype=None):
+    """Dtype for a dispersion ADE polarization carry, given the field dtype.
+
+    One policy, shared by ``rfx.materials.debye.init_debye`` and
+    ``rfx.materials.lorentz.init_lorentz`` (allocation); the matching scan
+    bodies derive their output dtype from the carry they were handed, so the
+    ``lax.scan`` carry closes (issue #656, same family as #630/#644/#646).
+
+    ``promote_types(field_dtype, float32)`` — PROMOTE, never pin, never a bare
+    copy of the field dtype:
+
+    * float16 (``precision="mixed"``) -> float32.  The float32 floor is
+      mandatory: P is a recursive accumulator (``P^{n+1}`` is built from
+      ``P^n``/``P^{n-1}``), and float16's 11-bit mantissa would destroy it.
+      ``precision="mixed"`` promises float16 FIELDS with float32 accumulation.
+    * float32 (the default)             -> float32.  Unchanged, x64 or not.
+    * float64 (``precision="float64"``) -> float64.  The hard float32 pin this
+      replaces is what made any Debye/Lorentz/Drude pole crash there.
+    * complex64                         -> complex64.  A flat float32 pin
+      would silently drop the imaginary part; ``promote_types`` preserves it.
+
+    ``field_dtype=None`` (a caller that does not thread the field dtype)
+    falls back to the ambient default float with the same float32 floor —
+    the ``rfx.lumped.init_rlc_state`` precedent from #646 — so the carry
+    tracks ``jax_enable_x64`` instead of pinning under it.
+
+    The float64 row needs x64 actually enabled: the ``jnp.result_type``
+    wrapper clamps an unavailable float64 back to float32, so this returns a
+    dtype that is allocatable rather than one ``jnp.zeros`` would silently
+    truncate. Same clamp, and same wrapper, as ``farfield.ntff_accum_dtype``;
+    it is the documented ``precision="float64"``-without-x64 footgun that
+    ``preflight()`` reports as ``precision_float64_without_x64``.
+
+    NOTE the complex row is a policy statement, not a supported lane: the
+    dispersive branches of ``update_e_dispersive`` ignore the Bloch phase
+    (#404), so oblique-Bloch + dispersion is unsupported and still raises a
+    carry-dtype mismatch rather than closing on wrong physics.
+    """
+    base = jnp.result_type(float) if field_dtype is None else jnp.dtype(field_dtype)
+    return jnp.result_type(jnp.promote_types(base, jnp.float32))
+
+
 def init_materials(shape: tuple[int, int, int]) -> MaterialArrays:
     """Initialize free-space material arrays."""
     ones = jnp.ones(shape, dtype=jnp.float32)

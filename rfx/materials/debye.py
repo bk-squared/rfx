@@ -29,7 +29,9 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx.core.yee import EPS_0, FDTDState, MaterialArrays, _shift_bwd
+from rfx.core.yee import (
+    EPS_0, FDTDState, MaterialArrays, _shift_bwd, ade_state_dtype,
+)
 
 
 class DebyePole(NamedTuple):
@@ -76,6 +78,8 @@ def init_debye(
     materials: MaterialArrays,
     dt: float,
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
+    *,
+    field_dtype=None,
 ) -> tuple[DebyeCoeffs, DebyeState]:
     """Initialize Debye ADE coefficients and auxiliary state.
 
@@ -90,6 +94,14 @@ def init_debye(
     mask : (nx, ny, nz) bool array or per-pole mask list, optional
         Where to apply Debye dispersion. If a list/tuple is provided,
         it must align one-to-one with ``poles``.
+    field_dtype : jnp dtype, optional
+        Dtype of the E/H field storage this ADE state will be driven by.
+        The P carry is allocated at ``ade_state_dtype(field_dtype)`` —
+        ``promote_types(field_dtype, float32)``. ``None`` (the default, for
+        callers that do not thread it) means the ambient default float with
+        the same float32 floor. This used to be a hard ``dtype=jnp.float32``
+        pin, which made ``precision="float64"`` + any pole fail the
+        ``lax.scan`` carry contract (issue #656).
 
     Returns
     -------
@@ -125,8 +137,14 @@ def init_debye(
             a_arr = jnp.where(pole_mask, a, 0.0)
             b_arr = jnp.where(pole_mask, b, 0.0)
         else:
-            a_arr = jnp.full(shape, a, dtype=jnp.float32)
-            b_arr = jnp.full(shape, b, dtype=jnp.float32)
+            # No dtype pin — see the matching note in
+            # ``rfx.materials.lorentz.init_lorentz`` (issue #656): ``a``/``b``
+            # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
+            # this now matches the masked branch above instead of capping the
+            # ADE coefficients at float32 under ``precision="float64"``.
+            # With x64 off JAX clamps to float32: default lane unchanged.
+            a_arr = jnp.full(shape, a)
+            b_arr = jnp.full(shape, b)
 
         alpha_list.append(a_arr)
         beta_list.append(b_arr)
@@ -155,7 +173,7 @@ def init_debye(
     coeffs = DebyeCoeffs(ca=ca, cb=cb, cc=cc, alpha=alpha, beta=beta)
 
     # Zero-initialized polarization state
-    p_zeros = jnp.zeros((n_poles,) + shape, dtype=jnp.float32)
+    p_zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = DebyeState(px=p_zeros, py=p_zeros.copy(), pz=p_zeros.copy())
 
     return coeffs, state
@@ -178,11 +196,22 @@ def update_e_debye(
     1. Compute curl(H) (backward differences)
     2. E^{n+1} = Ca·E^n + Cb·curl(H) + Σ_p Cc_p·P_p^n
     3. P_p^{n+1} = α_p·P_p^n + β_p·(E^{n+1} + E^n)
+
+    Dtype note (issue #656)
+    -----------------------
+    Both outputs are narrowed back to the dtype of the carry they came from.
+    See the fuller note on ``rfx.materials.lorentz.update_e_lorentz``: the
+    coefficients are built at setup time from ``dt`` (``grid.dt``, a numpy
+    float64 scalar, STRONGLY typed in JAX), so allocation-site promotion
+    alone does not close this scan.
     """
     def bwd(arr, axis):
         if periodic[axis]:
             return jnp.roll(arr, 1, axis)
         return _shift_bwd(arr, axis)
+
+    _fdtype = state.ex.dtype
+    _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
     ca, cb, cc = coeffs.ca, coeffs.cb, coeffs.cc
@@ -197,14 +226,20 @@ def update_e_debye(
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
     # E^{n+1} = Ca·E^n + Cb·curl(H) + Σ_p Cc_p·P_p^n
-    ex_new = ca * ex_old + cb * curl_x + jnp.sum(cc * debye_state.px, axis=0)
-    ey_new = ca * ey_old + cb * curl_y + jnp.sum(cc * debye_state.py, axis=0)
-    ez_new = ca * ez_old + cb * curl_z + jnp.sum(cc * debye_state.pz, axis=0)
+    ex_new = (ca * ex_old + cb * curl_x
+              + jnp.sum(cc * debye_state.px, axis=0)).astype(_fdtype)
+    ey_new = (ca * ey_old + cb * curl_y
+              + jnp.sum(cc * debye_state.py, axis=0)).astype(_fdtype)
+    ez_new = (ca * ez_old + cb * curl_z
+              + jnp.sum(cc * debye_state.pz, axis=0)).astype(_fdtype)
 
     # P_p^{n+1} = α_p·P_p^n + β_p·(E^{n+1} + E^n)
-    px_new = alpha * debye_state.px + beta * (ex_new[None] + ex_old[None])
-    py_new = alpha * debye_state.py + beta * (ey_new[None] + ey_old[None])
-    pz_new = alpha * debye_state.pz + beta * (ez_new[None] + ez_old[None])
+    px_new = (alpha * debye_state.px
+              + beta * (ex_new[None] + ex_old[None])).astype(_pdtype)
+    py_new = (alpha * debye_state.py
+              + beta * (ey_new[None] + ey_old[None])).astype(_pdtype)
+    pz_new = (alpha * debye_state.pz
+              + beta * (ez_new[None] + ez_old[None])).astype(_pdtype)
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,
