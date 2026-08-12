@@ -422,6 +422,10 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         msl_min_probe_clearance,
         msl_nearest_downstream_reflector,
     )
+    from rfx.sources.msl_port import (
+        _MSL_AXIS_INDEX as _MSL_AX,
+        msl_axis_roles as _msl_axis_roles,
+    )
 
     dx_u = float(grid.dx)
     clear = msl_min_probe_clearance(float(sim._freq_max))
@@ -432,14 +436,19 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             resolved.append(pe)
             continue
         span = (int(pe.n_probes) - 1) * int(pe.n_probe_spacing)
+        # Issue #661: project position/domain onto this port's propagation
+        # and width axes before handing them to the x-frame helper.
+        _prop_ax, _width_ax, _, _ = _msl_axis_roles(pe.direction)
+        _ip = _MSL_AX[_prop_ax]
+        _iw = _MSL_AX[_width_ax]
         d_refl, _ = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", []),
-            x_probe=float(pe.position[0]),
-            x_feed=float(pe.position[0]),
-            y_feed=float(pe.position[1]),
+            x_probe=float(pe.position[_ip]),
+            x_feed=float(pe.position[_ip]),
+            y_feed=float(pe.position[_iw]),
             w_trace=float(pe.width),
             dx=dx_u,
-            domain_y=float(sim._domain[1]),
+            domain_y=float(sim._domain[_iw]),
             direction=pe.direction,
         )
         if not np.isfinite(d_refl):
@@ -2569,9 +2578,13 @@ class _SparamMixin:
         from rfx.probes.msl_wave_decomp import extract_msl_nprobe
         from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
         from rfx.sources.msl_port import (
-            MSLPort,
-            _msl_yz_cells,
+            msl_ampere_pair,
+            msl_axis_roles,
+            msl_cell,
+            msl_cross_section_span,
             msl_loop_current,
+            msl_physical_point,
+            msl_port_from_entry,
             msl_probe_x_coords_n,
         )
 
@@ -2668,20 +2681,10 @@ class _SparamMixin:
         # geometry registered — see _resolve_msl_auto_offsets).
         entries = _resolve_msl_auto_offsets(self, entries, grid)
 
-        # Build MSLPort descriptors and probe x-coords once (geometry shared).
-        msl_ports: list[MSLPort] = []
-        for pe in entries:
-            x_feed, y_centre, z_lo = pe.position
-            msl_ports.append(MSLPort(
-                feed_x=float(x_feed),
-                y_lo=float(y_centre - pe.width / 2),
-                y_hi=float(y_centre + pe.width / 2),
-                z_lo=float(z_lo),
-                z_hi=float(z_lo + pe.height),
-                direction=pe.direction,
-                impedance=pe.impedance,
-                excitation=pe.waveform,
-            ))
+        # Build MSLPort descriptors and probe coords once (geometry shared).
+        # Issue #661: msl_port_from_entry projects ``position`` onto the
+        # port frame for whichever in-plane axis ``direction`` names.
+        msl_ports = [msl_port_from_entry(pe) for pe in entries]
 
         # N-probe placement (issue #80 Fix C). Probe n sits at
         # offset + n*spacing cells from the feed plane. N >= 3.
@@ -2708,24 +2711,46 @@ class _SparamMixin:
         # Per-axis cell-size arrays for V/I integration. Both uniform and
         # non-uniform grids are supported — NonUniformGrid exposes per-cell
         # dx_arr/dy_arr/dz (NOT *_profile); see _msl_cell_profile.
-        dy_arr = _msl_cell_profile(grid, "y", grid.ny)
-        dz_arr = _msl_cell_profile(grid, "z", grid.nz)
+        #
+        # Issue #661: ports may point along different in-plane axes, so the
+        # transverse profiles are resolved PER PORT. The substrate-normal
+        # profile is always z (the normal axis is welded — see
+        # msl_axis_roles), which is why the modal-voltage integration below
+        # needs no per-port branch.
+        _axis_n = {"x": grid.nx, "y": grid.ny, "z": grid.nz}
+
+        def _prof(ax):
+            return _msl_cell_profile(grid, ax, _axis_n[ax])
+
+        dz_arr = _prof("z")     # substrate-normal profile (V integration)
 
         # Fixed cross-section indices per port (same across all runs).
+        # Names are the historical x-frame names; their MEANING is
+        # (width, substrate-normal): ``j_*`` indexes the trace-width axis
+        # and ``k_*`` the normal axis. A DFT plane normal to the
+        # propagation axis is stored as [freq, width, normal] for BOTH
+        # "x" and "y" plane normals (probes.py: axis 0 -> (ny, nz),
+        # axis 1 -> (nx, nz)), so these indices address the recorded
+        # planes directly without a per-direction branch.
         port_idx_meta = []
         for mp in msl_ports:
-            cells = _msl_yz_cells(grid, mp)
-            j_set = sorted({c[1] for c in cells})
-            k_set = sorted({c[2] for c in cells})
-            j_lo, j_hi = j_set[0], j_set[-1]
-            k_lo, k_hi = k_set[0], k_set[-1]
-            j_centre = (j_lo + j_hi) // 2
-            k_top = k_hi  # trace sits at the top of the substrate
+            span = msl_cross_section_span(grid, mp)
+            a_ax, b_ax = msl_ampere_pair(mp.direction)
             port_idx_meta.append(dict(
-                j_lo=j_lo, j_hi=j_hi,
-                k_lo=k_lo, k_hi=k_hi,
-                j_centre=j_centre, k_top=k_top,
+                j_lo=span["w_lo"], j_hi=span["w_hi"],
+                k_lo=span["n_lo"], k_hi=span["n_hi"],
+                j_centre=span["w_centre"], k_top=span["n_hi"],
                 height=mp.z_hi - mp.z_lo,
+                i_feed=span["i_feed"],
+                prop_axis=span["prop_axis"], width_axis=span["width_axis"],
+                normal_axis=span["normal_axis"], sign=span["sign"],
+                prop_idx=span["prop_idx"], width_idx=span["width_idx"],
+                normal_idx=span["normal_idx"],
+                # Closed-Ampere-loop transverse pair (a_hat x b_hat = p_hat).
+                a_axis=a_ax, b_axis=b_ax,
+                a_is_width=(a_ax == span["width_axis"]),
+                a_arr=_prof(a_ax), b_arr=_prof(b_ax),
+                h_a=f"h{a_ax}", h_b=f"h{b_ax}",
             ))
 
         # Analytic Hammerstad-Jensen anchor per port (issue #80 Fix C).
@@ -2760,12 +2785,10 @@ class _SparamMixin:
                 eps_r_ref = float(pe.eps_r_sub)
             else:
                 k_mid = (meta["k_lo"] + meta["k_hi"]) // 2
-                i_feed_p = _msl_yz_cells(grid, msl_ports[p_idx])[0][0]
-                eps_r_ref = float(
-                    np.asarray(
-                        _msl_materials.eps_r[i_feed_p, meta["j_centre"], k_mid]
-                    )
+                eps_cell = msl_cell(
+                    pe.direction, meta["i_feed"], meta["j_centre"], k_mid
                 )
+                eps_r_ref = float(np.asarray(_msl_materials.eps_r[eps_cell]))
             z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
                 pe.width, pe.height, eps_r_ref
             )
@@ -2781,10 +2804,16 @@ class _SparamMixin:
         trace_k_per_port: list[tuple[int, int]] = []
         for p_idx in range(n_ports):
             meta = port_idx_meta[p_idx]
-            i_feed_p = _msl_yz_cells(grid, msl_ports[p_idx])[0][0]
+            # Walk UP the substrate-normal axis (always z) from the
+            # substrate top, at the feed cell on the propagation axis and
+            # the trace centre on the width axis (issue #661).
+            _sel = [0, 0, 0]
+            _sel[meta["prop_idx"]] = meta["i_feed"]
+            _sel[meta["width_idx"]] = meta["j_centre"]
+            _sel[meta["normal_idx"]] = slice(meta["k_top"], None)
             col = (
                 None if _msl_pec_mask is None
-                else _msl_pec_mask[i_feed_p, meta["j_centre"], meta["k_top"]:]
+                else _msl_pec_mask[tuple(_sel)]
             )
             k_pec = np.array([], dtype=int) if col is None else np.where(col)[0]
             if k_pec.size == 0:
@@ -2844,13 +2873,18 @@ class _SparamMixin:
             # textbook ring-down witness.
             _witness_base = len(self._probes)
             _witness_counts: list[int] = []
-            for pe_w, pxs_w in zip(entries, probe_xs):
+            for pe_w, pxs_w, meta_w in zip(entries, probe_xs, port_idx_meta):
+                _w_centre_m = float(pe_w.position[meta_w["width_idx"]])
+                _n_lo_m = float(pe_w.position[meta_w["normal_idx"]])
                 for _x_w in pxs_w:
+                    # ``_x_w`` is a coordinate on the PROPAGATION axis;
+                    # rebuild the physical point for this port's direction.
                     self.add_probe(
-                        position=(
+                        position=msl_physical_point(
+                            pe_w.direction,
                             float(_x_w),
-                            float(pe_w.position[1]),
-                            float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                            _w_centre_m,
+                            _n_lo_m + 0.5 * float(pe_w.height),
                         ),
                         component="ez",
                     )
@@ -2897,27 +2931,32 @@ class _SparamMixin:
                 hy_probe_names: list[str] = [None] * n_ports  # type: ignore
                 hz_probe_names: list[str] = [None] * n_ports  # type: ignore
                 for p_idx, (mp, pxs) in enumerate(zip(msl_ports, probe_xs)):
+                    # Plane normal = this port's PROPAGATION axis; the two
+                    # H components are the closed-Ampere-loop pair
+                    # (a_hat x b_hat = p_hat), not a fixed (hy, hz).
+                    _meta_p = port_idx_meta[p_idx]
+                    _plane_axis = _meta_p["prop_axis"]
                     for q_idx, x_coord in enumerate(pxs):
                         nm = f"_msl_run{driven}_p{p_idx}_ez{q_idx}"
                         self.add_dft_plane_probe(
-                            axis="x", coordinate=float(x_coord),
+                            axis=_plane_axis, coordinate=float(x_coord),
                             component="ez", freqs=jnp.asarray(freqs_arr),
                             name=nm,
                         )
                         ez_probe_names[p_idx].append(nm)
-                    nm_hy = f"_msl_run{driven}_p{p_idx}_hy"
+                    nm_hy = f"_msl_run{driven}_p{p_idx}_{_meta_p['h_a']}"
                     self.add_dft_plane_probe(
-                        axis="x", coordinate=float(pxs[0]),
-                        component="hy", freqs=jnp.asarray(freqs_arr),
+                        axis=_plane_axis, coordinate=float(pxs[0]),
+                        component=_meta_p["h_a"], freqs=jnp.asarray(freqs_arr),
                         name=nm_hy,
                     )
                     hy_probe_names[p_idx] = nm_hy
-                    # Hz plane probe at probe 0 — the side legs of the
+                    # H_b plane probe at probe 0 — the other leg pair of the
                     # closed Ampere-loop current (issue #80 stage S1).
-                    nm_hz = f"_msl_run{driven}_p{p_idx}_hz"
+                    nm_hz = f"_msl_run{driven}_p{p_idx}_{_meta_p['h_b']}"
                     self.add_dft_plane_probe(
-                        axis="x", coordinate=float(pxs[0]),
-                        component="hz", freqs=jnp.asarray(freqs_arr),
+                        axis=_plane_axis, coordinate=float(pxs[0]),
+                        component=_meta_p["h_b"], freqs=jnp.asarray(freqs_arr),
                         name=nm_hz,
                     )
                     hz_probe_names[p_idx] = nm_hz
@@ -2988,6 +3027,10 @@ class _SparamMixin:
                         # trace_k_per_port is the same PEC search the
                         # current integration uses, so V and I share one
                         # conductor plane by construction.
+                        # ez_plane is [freq, width, normal] for an x- OR a
+                        # y-normal plane alike (issue #661), so j_centre /
+                        # k_lo / k_hi address it unchanged and the dz_arr
+                        # here is always the substrate-normal profile.
                         vs.append(msl_modal_voltage(
                             ez_plane, j_centre=meta["j_centre"],
                             k_lo=meta["k_lo"],
@@ -3027,11 +3070,31 @@ class _SparamMixin:
                     # contour (bottom/top Hy legs + left/right Hz legs) and
                     # carries the +x current-sign convention.
                     k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
+                    # Issue #661: msl_loop_current wants the planes in the
+                    # right-handed transverse frame [freq, a, b] with
+                    # a_hat x b_hat = p_hat. The recorded planes are
+                    # [freq, width, normal]. For "+x"/"-x" the pair is
+                    # (y, z) = (width, normal) — already in frame, no
+                    # transpose, byte-identical to the pre-#661 call. For
+                    # "+y"/"-y" the pair is (z, x) = (normal, width), so
+                    # the two axes swap and the spans swap with them.
+                    # Do NOT "simplify" this into a plain x<->y rename:
+                    # that is a reflection, it flips the sign of I, and it
+                    # inverts S silently (see _MSL_CYCLIC_PAIR).
+                    if meta["a_is_width"]:
+                        _ha, _hb = hy_plane, hz_plane
+                        _a_lo, _a_hi = meta["j_lo"], meta["j_hi"]
+                        _b_lo, _b_hi = k_tr_lo, k_tr_hi
+                    else:
+                        _ha = jnp.transpose(hy_plane, (0, 2, 1))
+                        _hb = jnp.transpose(hz_plane, (0, 2, 1))
+                        _a_lo, _a_hi = k_tr_lo, k_tr_hi
+                        _b_lo, _b_hi = meta["j_lo"], meta["j_hi"]
                     i_f = msl_loop_current(
-                        hy_plane, hz_plane,
-                        j_lo=meta["j_lo"], j_hi=meta["j_hi"],
-                        k_trace_lo=k_tr_lo, k_trace_hi=k_tr_hi,
-                        dy_arr=dy_arr, dz_arr=dz_arr,
+                        _ha, _hb,
+                        j_lo=_a_lo, j_hi=_a_hi,
+                        k_trace_lo=_b_lo, k_trace_hi=_b_hi,
+                        dy_arr=meta["a_arr"], dz_arr=meta["b_arr"],
                         direction=msl_ports[p_idx].direction,
                     )
                     i_first_per_port.append(i_f)
@@ -3063,7 +3126,9 @@ class _SparamMixin:
                     # while leaving the genuine ~20-27% 3-cell Yee-staircase Z0 warning on
                     # both ports. NB: the raw current dump (raw_i1) intentionally keeps
                     # its un-normalized sign; only the DERIVED Z0 is sign-normalized.
-                    dir_sign = 1.0 if msl_ports[p_idx].direction == "+x" else -1.0
+                    dir_sign = float(
+                        msl_axis_roles(msl_ports[p_idx].direction)[3]
+                    )
                     z0_fit = jnp.asarray(res_p["z0"], dtype=_complex_dtype) * dir_sign
                     raw_z0 = raw_z0.at[driven, p_idx, :].set(z0_fit)
                     raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
@@ -3631,6 +3696,20 @@ class _SparamMixin:
                 "waveguide/Floquet ports are not part of the validated "
                 "mixed lane (issue #488)."
             )
+        _mixed_non_x = [
+            pe.name for pe in self._msl_ports
+            if pe.direction not in ("+x", "-x")
+        ]
+        if _mixed_non_x:
+            raise NotImplementedError(
+                "compute_mixed_s_matrix() v1 covers '+x'/'-x' MSL ports "
+                f"only; {_mixed_non_x} are not x-directed. The y-directed "
+                "MSL lane landed in issue #661 for compute_msl_s_matrix(); "
+                "this mixed lane is itself EXPERIMENTAL (issue #488) with "
+                "both diagonals unverified, so it is fenced rather than "
+                "extended untested. Use compute_msl_s_matrix() for a pure "
+                "MSL multiport."
+            )
         if self._coaxial_ports:
             raise NotImplementedError(
                 "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
@@ -4168,16 +4247,29 @@ class _SparamMixin:
             # scan that lands on the wrong branch SWAPS the two wave
             # roles and flips the sign of (alpha - gamma) — and therefore
             # of z0 = (alpha - gamma)/I1. Measured on one fixture: the
-            # fitted sign differs between num_periods=4 and 20. On top of
-            # that, `msl_loop_current`'s docstring (rfx/sources/
-            # msl_port.py, "the returned I is positive for a forward
-            # quasi-TEM wave") and compute_msl_s_matrix's #140 dir_sign
-            # comment ("a -x port's fitted z0 inherits a negative sign")
-            # describe OPPOSITE conventions; that contradiction is
-            # unresolved and is tracked in issue #524 (together with the
-            # two orphaned #507 loose ends: the passive port's ~30 ohm
-            # termination reading and the 0.194-vs-0.073 drive
-            # asymmetry), not papered over here.
+            # fitted sign differs between num_periods=4 and 20.
+            #
+            # The SECOND half of what this comment used to allege — that
+            # `msl_loop_current`'s docstring ("the returned I is positive
+            # for a forward quasi-TEM wave") and compute_msl_s_matrix's
+            # #140 dir_sign comment ("a -x port's fitted z0 inherits a
+            # negative sign") describe OPPOSITE conventions — was
+            # measured during issue #661 and is a PROSE defect only, now
+            # corrected in msl_loop_current's docstring. Own-drive
+            # diagonal on the committed thru fixture:
+            # Re((alpha-gamma)/I1) = +57.52 ohm at the "+x" port and
+            # -57.56 ohm at the "-x" port (same magnitude to 0.08%), so
+            # the #140 comment described the code and the docstring's
+            # blanket claim was scoped wrong. The lane is self-consistent
+            # about it: |S11|=|S22| to 5 decimals, reciprocity 1.27e-05,
+            # column power <= 0.99998, both reported Z0 positive. No code
+            # changed. The beta-branch instability above is separate and
+            # still stands.
+            #
+            # Issue #524 remains open for its other two items (the
+            # passive port's ~30 ohm termination reading and the
+            # 0.194-vs-0.073 drive asymmetry, both orphaned from #507);
+            # see #524.
             #
             # The fit is still computed and EXPOSED (return_diagnostics)
             # because it is the only handle on the open 30-vs-48 ohm

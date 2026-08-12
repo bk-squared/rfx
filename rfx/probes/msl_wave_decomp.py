@@ -220,25 +220,33 @@ def register_msl_plane_probes(
     """
     import numpy as np
     from rfx.sources.msl_port import (
-        MSLPort, _msl_yz_cells, msl_probe_x_coords,
+        _msl_yz_cells, msl_port_from_entry, msl_probe_x_coords,
     )
 
     if name_prefix is None:
         name_prefix = f"msl_p{port_index}"
 
     pe = sim._msl_ports[port_index]
+
+    # Issue #661: this helper is the retained 3-probe geometry primitive
+    # (diagnostic only — the production S-matrix path is
+    # compute_msl_s_matrix). Its cross-section bookkeeping below reads
+    # ``c[1]``/``c[2]`` as (y, z) and registers x-normal plane probes with
+    # a fixed (ez, hy, hz) component set, all of which are x-frame. Rather
+    # than generalise an off-production path without its own evidence, a
+    # non-x port is refused here — the alternative would be returning an
+    # x-flavoured answer for a y-directed port.
+    if pe.direction not in ("+x", "-x"):
+        raise NotImplementedError(
+            f"register_msl_plane_probes supports direction '+x'/'-x' only, "
+            f"got {pe.direction!r} for port {port_index}. This is the "
+            f"retained 3-probe DIAGNOSTIC primitive, not the production "
+            f"S-matrix path; use Simulation.compute_msl_s_matrix(), which "
+            f"handles every supported direction."
+        )
+
     grid = sim._build_grid()
-    x_feed, y_centre, z_lo = pe.position
-    mp = MSLPort(
-        feed_x=float(x_feed),
-        y_lo=float(y_centre - pe.width / 2),
-        y_hi=float(y_centre + pe.width / 2),
-        z_lo=float(z_lo),
-        z_hi=float(z_lo + pe.height),
-        direction=pe.direction,
-        impedance=pe.impedance,
-        excitation=pe.waveform,
-    )
+    mp = msl_port_from_entry(pe)
 
     pxs = msl_probe_x_coords(
         grid, mp,

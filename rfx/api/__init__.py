@@ -1505,14 +1505,37 @@ class Simulation(
 
         Parameters
         ----------
-        position : (x_feed, y_centre, z_lo)
-            Feed plane x, trace centre y, and substrate bottom z.
+        position : (x, y, z_lo)
+            Physical feed-plane point. The coordinate on the PROPAGATION
+            axis (named by ``direction``) is the feed plane; the
+            coordinate on the other in-board axis is the trace centre;
+            ``z`` is the substrate bottom. So a ``"+x"`` port reads it as
+            ``(x_feed, y_centre, z_lo)`` and a ``"+y"`` port as
+            ``(x_centre, y_feed, z_lo)``.
         width : float
-            Trace width in metres (y extent of the port).
+            Trace width in metres, spanning the in-board axis that is NOT
+            the propagation axis (y for an x-directed port, x for a
+            y-directed one).
         height : float
-            Substrate thickness in metres (z extent of the port).
-        direction : "+x" or "-x"
-            Direction the launched wave propagates.
+            Substrate thickness in metres — always the z extent, because
+            the substrate normal is fixed to z (see ``direction``).
+        direction : str
+            One of ``"+x"``, ``"-x"``, ``"+y"``, ``"-y"`` — the direction
+            the launched wave propagates. The board lies in the xy-plane
+            and the substrate normal is always z, so the feed may run
+            along either in-board axis (issue #661: a CAD-imported board
+            does not get to choose its orientation).
+
+            ``"+z"`` / ``"-z"`` are REJECTED with a clear error rather
+            than supported: a z-propagating microstrip needs its
+            substrate normal along x or y, which ``position`` + scalar
+            ``height`` cannot express, and which the Laplace mode solve,
+            the ``"ez"`` source component, the modal voltage
+            ``V = Σ Ez·dz`` and the trace-conductor PEC scan all assume.
+            Accepting it would return a z-normal answer for a board that
+            is not oriented that way.
+
+            ``mode="eigenmode"`` remains ``"+x"``/``"-x"`` only.
         impedance : float
             Target Z0 in ohms (default 50). Used for the σ distribution.
         waveform : GaussianPulse or callable, optional
@@ -1572,8 +1595,10 @@ class Simulation(
             if no such dielectric is found it falls back to 1.0, which is
             conservative (largest ``lam_min_eff`` → largest offset).
         """
-        if direction not in ("+x", "-x"):
-            raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
+        from rfx.sources.msl_port import msl_axis_roles as _msl_axis_roles
+        # Raises with the substrate-normal explanation for "+z"/"-z" and a
+        # plain domain error otherwise (issue #661).
+        _msl_axis_roles(direction)
         if width <= 0:
             raise ValueError(f"width must be positive, got {width}")
         if height <= 0:
@@ -1582,6 +1607,15 @@ class Simulation(
             raise ValueError(f"impedance must be positive, got {impedance}")
         if mode not in ("eigenmode", "laplace", "uniform"):
             raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
+        if mode == "eigenmode" and direction not in ("+x", "-x"):
+            raise NotImplementedError(
+                f"add_msl_port(mode='eigenmode', direction={direction!r}) is "
+                "not supported: the Schelkunoff J+M launch hard-codes the "
+                "x-axis TFSF correction pair and rides on the FDFD eigenmode "
+                "solver, which is a documented dead-end kept under a strict "
+                "xfail. Use mode='laplace' (the default) for a y-directed "
+                "port (issue #661)."
+            )
         # Wavelength-bound probe-placement defaults (issue #80 Fix B).
         # Cell-counted and fixed-µm defaults both placed probe 1 inside the
         # source reactive zone and the 3-probe quadratic at the q→1
@@ -1598,8 +1632,13 @@ class Simulation(
             eps_r_sub_estimate = float(eps_r_sub)
         else:
             eps_r_sub_estimate = 1.0
-            x_feed, y_centre, z_lo = position
-            probe_pt = (x_feed, y_centre, z_lo + height / 2.0)
+            # ``position`` is physical and ``height`` is always along z
+            # (the substrate normal), so the substrate mid-point probe is
+            # direction-independent (issue #661).
+            probe_pt = (
+                float(position[0]), float(position[1]),
+                float(position[2]) + height / 2.0,
+            )
             for ge in self._geometry:
                 try:
                     (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()

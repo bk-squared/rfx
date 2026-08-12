@@ -6,6 +6,112 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `add_msl_port(direction=...)` accepts the in-board axes (issue #661)
+
+`direction` now takes `"+x"`, `"-x"`, `"+y"` and `"-y"`. A microstrip feed
+entering a board along y no longer forces the whole model to be rotated —
+which mattered because for a CAD-imported `MeshShape` that workaround does
+not exist at all (the mesh import path takes no rotation argument).
+
+`"+z"` / `"-z"` raise `ValueError` naming the reason. This is a documented
+rejection, not an omission: the port's geometry contract is `position =
+(x, y, z_lo)` plus a scalar `height`, which fixes the substrate normal to z.
+A z-propagating microstrip needs its normal along x or y, and the normal
+axis is what the static-Laplace cross-section solve, the `"ez"` source
+component, the modal voltage `V = Σ Ez·dz` and the trace-conductor PEC scan
+all reference. Accepting `"+z"` would have returned a z-normal answer for a
+board lying in a different plane. `mode="eigenmode"` stays `"+x"`/`"-x"`
+only (its Schelkunoff J+M launch hard-codes the x-axis TFSF correction pair
+and rides on a solver that is a fenced dead-end), and the EXPERIMENTAL
+`compute_mixed_s_matrix` lane (#488) is fenced to x rather than extended
+untested.
+
+**The axis inventory was measured, not read.** Instrumenting the live
+extractor split it into stages bound to the *propagation* axis (probe
+ladder, DFT plane normal, the `dx_feed` in the port conductance, the
+port-to-CPML and probe-span preflight checks — all relabelings), stages
+welded to the *substrate normal* (the four listed above), and stages that
+are genuinely axis-free (the N-probe fit, which consumes probe coordinates
+and only their differences; the Hammerstad-Jensen anchor; the multi-drive
+`S = B A⁻¹` solve).
+
+**The dangerous part was the Ampère loop, and it fails silently.** The
+closed-contour current needs the right-handed transverse pair `(a, b)` with
+`â × b̂ = p̂`. Deriving it as a plain `x ↔ y` rename is a reflection, not a
+rotation. Measured on the committed thru fixture's own recorded H planes:
+the cyclic pair reproduces the x-port current to `9.2e-08` relative, the
+naive swap returns exactly `−I` (ratio `−1.00000009`). That flip exchanges
+`a` and `b`, mapping `S = B A⁻¹` to `A B⁻¹ = S⁻¹`; for the low-loss matched
+line every MSL fixture uses, `S` is nearly unitary, so `S⁻¹ ≈ S†` — `|S11|`
+moves only `0.17905 → 0.17875`, `max ||S| − |S_swapped||` is `1.3e-03`,
+column power stays under 1, and `cond(A)` is `1.32`. **No guard in the lane
+fires.** What actually changes is `arg(S21)`, which is exactly negated (the
+two angles sum to ≤ 0.02° across the band — a negative group delay); the
+complex error is `max |S − S_swapped| = 1.912`. The equivalence test
+therefore compares complex `S`; a magnitude-only comparison would have
+passed on this exact bug.
+
+**Falsifier — a y-directed port on the x↔y mirrored fixture reproduces the
+x-directed result** (12 bins, `num_periods=12`, dx=80 µm, CPU float32):
+
+| quantity | agreement |
+|---|---|
+| `max \|S_x − S_y\|` | `3.86e-06` |
+| rel `max \|Z0_x − Z0_y\|` | `2.14e-04` |
+| rel `max \|β_x − β_y\|` | `3.09e-05` |
+| `settling_db` | x `[−98.47, −102.96]`, y `[−98.49, −102.91]` |
+
+Both lanes emit the same advisory set. The three tolerances differ because
+the quantities differ in conditioning, not by choice: `S` is a well-
+conditioned V·I split plus a 2×2 solve and sits at the float32 floor, while
+`β` and `Z0` ride on the N-probe least-squares fit that
+`rfx/probes/msl_wave_decomp.py` runs in float32 by explicit cast, with
+`Z0 = (α − γ)/I` compounding that fit's residual through a difference.
+
+**Existing x-directed behaviour is byte-identical.** SHA-256 over the
+extracted `S`, `Z0` and `β` on the committed thru fixture
+(`test_msl_thru_line_passive_gate` geometry, `n_freqs=30`,
+`num_periods=12`), base `fd37c62` vs branch:
+
+```
+S     eb69f37dcf72a8fcd88a532a9607ff4e20a72199aecfadc2538b37a30f0592b6
+Z0    7873d42cc7c2668d32e7cfc05afce28ddcb8b48c91465faad4e1c215dc49b64c
+beta  529b08fa31f1255b6e63ad4599e7f972444c0167eca43bebde4b73ada5761277
+```
+
+identical on both trees, reproducing the recorded calibration
+(mean |S11| 0.115946, mean |S21| 0.993048, mean Re(Z0) 57.5710 Ω). A
+negative control — the trace width nudged by one part in 10⁴ — moves all
+three digests, so the lock is sensitive rather than vacuous. No committed
+gate or tolerance was changed; the one contract assertion that moved is
+`tests/test_msl_port.py`, which pinned `"+y"` as invalid — the limitation
+this issue removes.
+
+Note for anisotropic meshes: the port conductance scales as `1/d_prop`, so
+on a cubic grid an x-flavoured σ applied to a y port is bit-identical to
+the correct one. The end-to-end rotation-equivalence test runs on a cubic
+mesh and is therefore blind to that stage;
+`test_port_conductance_uses_the_propagation_axis_cell_size` covers it on a
+deliberately anisotropic grid.
+
+**Sign-convention prose corrected along the way (see #524).** Generalising
+the `+x`/`-x` current convention to four directions meant resolving whether
+the contradiction #524 records is real in the code or only in the prose.
+Measured: it is prose only, and the `msl_loop_current` docstring is the
+wrong statement. On the committed thru fixture, each port on its own drive,
+`Re((α − γ)/I1)` reads **+57.52 Ω** at the `"+x"` port and **−57.56 Ω** at
+the `"-x"` port — same magnitude to 0.08 %, opposite sign. So the `#140`
+`dir_sign` comment described the code accurately, while the docstring's
+unqualified "the returned `I` is positive for a forward quasi-TEM wave"
+holds only for a positive-going port. The lane is self-consistent about it:
+`dir_sign` restores both reported `Z0` to positive, the wave split consumes
+the un-normalised current at every port, and the shipped `S` is physical
+(`|S11| = |S22|` to 5 decimals, reciprocity `max ||S21| − |S12|| = 1.27e-05`,
+column power ≤ 0.99998). The docstring is corrected and
+`test_loop_current_negates_on_the_direction_sign_only` pins what it now
+says. No code changed for this. #524 stays open for its other two items —
+the passive port's ~30 Ω termination reading and the 0.194-vs-0.073 drive
+asymmetry — which this work does not touch.
 ### Fixed — two S-parameter lanes computed the ring-down settling witness and never compared it to its own -40 dB bar (issue #662)
 
 `settling_db` is the repo's mechanical form of the -40 dB ring-down settling

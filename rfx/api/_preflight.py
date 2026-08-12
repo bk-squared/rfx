@@ -438,6 +438,14 @@ def msl_nearest_downstream_reflector(
     for the nearest box edge at or beyond ``x_probe`` along the propagation
     direction, or ``(inf, None)`` when nothing qualifies.
 
+    Axis generality (issue #661): the parameter names are the ``"+x"``-frame
+    names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
+    ``y_feed`` is the trace centreline on the WIDTH axis and ``domain_y``
+    that axis's domain extent — the two axes are resolved from ``direction``
+    via :func:`~rfx.sources.msl_port.msl_axis_roles`, so a ``"+y"`` port
+    compares box y-extents along the feed axis and box x-extents across the
+    trace width. Callers pass coordinates already projected onto those roles.
+
     Exclusions (both are #469-arc corrections to the pre-existing
     heuristic):
 
@@ -455,8 +463,11 @@ def msl_nearest_downstream_reflector(
     * **ground-plane-like boxes** (y-extent ≥ 80 % of the domain y).
     """
     from rfx.geometry.csg import Box as _Box
+    from rfx.sources.msl_port import _MSL_AXIS_INDEX, msl_axis_roles
 
-    sign = 1.0 if direction == "+x" else -1.0
+    _prop_ax, _width_ax, _n_ax, sign = msl_axis_roles(direction)
+    _ip = _MSL_AXIS_INDEX[_prop_ax]
+    _iw = _MSL_AXIS_INDEX[_width_ax]
     nearest_d = float("inf")
     nearest_label = None
     for ge in geometry:
@@ -465,8 +476,9 @@ def msl_nearest_downstream_reflector(
         if not isinstance(shape, _Box) or str(mat).lower() != "pec":
             continue
         lo, hi = shape.corner_lo, shape.corner_hi
-        box_x_lo, box_x_hi = float(lo[0]), float(hi[0])
-        box_y_lo, box_y_hi = float(lo[1]), float(hi[1])
+        # "x" = propagation axis, "y" = trace-width axis (issue #661).
+        box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
+        box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
         box_y_extent = box_y_hi - box_y_lo
         # Skip the line being measured (see docstring).
         if (
@@ -497,8 +509,9 @@ def msl_nearest_downstream_reflector(
         if d < nearest_d:
             nearest_d = d
             nearest_label = (
-                f"PEC Box at x∈[{box_x_lo*1e3:.2f},{box_x_hi*1e3:.2f}]mm "
-                f"y∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
+                f"PEC Box at {_prop_ax}∈[{box_x_lo*1e3:.2f},"
+                f"{box_x_hi*1e3:.2f}]mm "
+                f"{_width_ax}∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
             )
     return nearest_d, nearest_label
 
@@ -541,6 +554,12 @@ def msl_absorber_compliant_offset_max(
 
     Returns ``None`` if no offset in ``[off_lo, guess_hi]`` clears
     (the compliant interval is empty).
+
+    Axis generality (issue #661): ``domain_x`` / ``ct_lo`` / ``ct_hi``
+    describe the port's PROPAGATION axis, not x specifically —
+    ``msl_probe_x_coords_n`` already walks whichever axis ``port.direction``
+    names, so the caller passes that axis's domain extent and CPML
+    thicknesses.
     """
     from rfx.sources.msl_port import msl_probe_x_coords_n as _probe_x_coords_n
 
@@ -4135,37 +4154,55 @@ class _PreflightMixin:
         # must never crash a run over a diagnostics helper, so a failed
         # grid build falls back to the pre-fix continuous formula at the
         # site below rather than raising or skipping checks 4/4a/4b.
-        from rfx.sources.msl_port import MSLPort as _MSLPort, msl_probe_x_coords_n as _probe_x_coords_n
+        from rfx.sources.msl_port import (
+            _MSL_AXIS_INDEX as _MSL_AX,
+            msl_axis_roles as _msl_axis_roles,
+            msl_port_from_entry as _msl_port_from_entry,
+            msl_probe_x_coords_n as _probe_x_coords_n,
+        )
         try:
             _msl_grid = self._build_grid()
         except Exception:
             _msl_grid = None
 
         for pe in self._msl_ports:
-            x_feed, y_centre, z_lo = pe.position
+            # Issue #661: every check below runs on the port's OWN axes.
+            # ``prop`` is the propagation axis (checks 3/4/4a fire along
+            # it), ``width`` the trace-width axis (check 1 fires across
+            # it). For a "+x" port these are x and y, i.e. the historical
+            # behaviour; for a "+y" port they swap, and quoting the wrong
+            # one would measure clearance against the wrong wall.
+            _prop_ax, _width_ax, _norm_ax, _dir_sign = _msl_axis_roles(
+                pe.direction
+            )
+            _ip = _MSL_AX[_prop_ax]
+            _iw = _MSL_AX[_width_ax]
+            _inr = _MSL_AX[_norm_ax]
+            x_feed = float(pe.position[_ip])
+            y_centre = float(pe.position[_iw])
             w_trace = float(pe.width)
             h_sub = float(pe.height)
             recommended = 2.0 * h_sub
 
-            # ---- 1. Lateral (y) clearance ----
+            # ---- 1. Lateral (trace-width axis) clearance ----
             trace_y_lo = y_centre - w_trace / 2.0
             trace_y_hi = y_centre + w_trace / 2.0
-            ly = float(domain[1])
+            ly = float(domain[_iw])
             # Reference position on each y side = the exterior-frame edge
             # (_absorber_boundary_for_axis; None on an inactive/periodic
             # face, treated as the plain domain edge) PLUS the explicit
             # calibrated buffer (issue #500 / MH2 — see class docstring):
             # cpml_thick_{lo,hi} = n_cpml*dx, zero on a PEC/PMC face.
             _ly_lo_b, _ly_hi_b = _absorber_boundary_for_axis(
-                ly, cpml_thick_lo[1], cpml_thick_hi[1]
+                ly, cpml_thick_lo[_iw], cpml_thick_hi[_iw]
             )
-            y_abs_lo = (_ly_lo_b if _ly_lo_b is not None else 0.0) + cpml_thick_lo[1]
-            y_abs_hi = (_ly_hi_b if _ly_hi_b is not None else ly) - cpml_thick_hi[1]
+            y_abs_lo = (_ly_lo_b if _ly_lo_b is not None else 0.0) + cpml_thick_lo[_iw]
+            y_abs_hi = (_ly_hi_b if _ly_hi_b is not None else ly) - cpml_thick_hi[_iw]
             clearance_lo = trace_y_lo - y_abs_lo
             clearance_hi = y_abs_hi - trace_y_hi
             for side, c, buf in (
-                ("−y", clearance_lo, cpml_thick_lo[1]),
-                ("+y", clearance_hi, cpml_thick_hi[1]),
+                (f"−{_width_ax}", clearance_lo, cpml_thick_lo[_iw]),
+                (f"+{_width_ax}", clearance_hi, cpml_thick_hi[_iw]),
             ):
                 if c < recommended:
                     pct = max(0.0, (1.0 - c / recommended)) * 15.0
@@ -4178,8 +4215,8 @@ class _PreflightMixin:
                             f"buffer) < recommended {recommended*1e6:.0f}µm "
                             f"(= 2·h_sub). Fringing field will be clipped → Z0 "
                             f"may be biased HIGH by ~{pct:.0f}%, mesh-conv may "
-                            f"diverge. Increase domain y-extent OR move port "
-                            f"further from sidewall.",
+                            f"diverge. Increase domain {_width_ax}-extent OR "
+                            f"move port further from sidewall.",
                             code="msl_port_geometry",
                             source="_check_msl_port_geometry",
                         ),
@@ -4264,33 +4301,40 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
 
-            # ---- 3. Port-to-CPML distance in x ----
+            # ---- 3. Port-to-CPML distance along the PROPAGATION axis ----
             # Issue #500 / MH2: same reference as check 1 — exterior-frame
-            # edge PLUS the explicit calibrated buffer.
+            # edge PLUS the explicit calibrated buffer. Issue #661: the
+            # source-side wall is the LOW wall for a positive-going port
+            # and the HIGH wall for a negative-going one, on whichever
+            # axis ``direction`` names.
             _lx_lo_b, _lx_hi_b = _absorber_boundary_for_axis(
-                float(domain[0]), cpml_thick_lo[0], cpml_thick_hi[0]
+                float(domain[_ip]), cpml_thick_lo[_ip], cpml_thick_hi[_ip]
             )
-            x_abs_lo = (_lx_lo_b if _lx_lo_b is not None else 0.0) + cpml_thick_lo[0]
+            x_abs_lo = (_lx_lo_b if _lx_lo_b is not None else 0.0) + cpml_thick_lo[_ip]
             x_abs_hi = (
-                (_lx_hi_b if _lx_hi_b is not None else float(domain[0]))
-                - cpml_thick_hi[0]
+                (_lx_hi_b if _lx_hi_b is not None else float(domain[_ip]))
+                - cpml_thick_hi[_ip]
             )
             x_clearance = (
-                x_feed - x_abs_lo if pe.direction == "+x"
+                x_feed - x_abs_lo if _dir_sign > 0
                 else x_abs_hi - x_feed
             )
             if x_clearance < recommended:
-                _x_buf = cpml_thick_lo[0] if pe.direction == "+x" else cpml_thick_hi[0]
+                _x_buf = (
+                    cpml_thick_lo[_ip] if _dir_sign > 0
+                    else cpml_thick_hi[_ip]
+                )
                 _w.warn(
                     PreflightWarning(
-                        f"MSL port '{pe.name}' at x={x_feed*1e3:.2f}mm, "
+                        f"MSL port '{pe.name}' at {_prop_ax}="
+                        f"{x_feed*1e3:.2f}mm, "
                         f"direction={pe.direction!r}: distance to nearest "
-                        f"x-CPML = {x_clearance*1e6:.0f}µm (domain edge + "
-                        f"{_fmt_len(_x_buf)} calibrated CPML buffer) < "
+                        f"{_prop_ax}-CPML = {x_clearance*1e6:.0f}µm (domain "
+                        f"edge + {_fmt_len(_x_buf)} calibrated CPML buffer) < "
                         f"recommended {recommended*1e6:.0f}µm (= 2·h_sub). "
                         f"Source-side CPML reflection may inflate |S11|. Move "
                         f"port further from boundary OR increase domain "
-                        f"x-extent.",
+                        f"{_prop_ax}-extent.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -4317,18 +4361,9 @@ class _PreflightMixin:
             n_off = pe.n_probe_offset if pe.n_probe_offset is not None else 5
             n_sp = pe.n_probe_spacing if pe.n_probe_spacing is not None else 3
             n_pr = getattr(pe, "n_probes", 5) or 5
-            sign = 1.0 if pe.direction == "+x" else -1.0
+            sign = float(_dir_sign)
 
-            _mp = _MSLPort(
-                feed_x=float(x_feed),
-                y_lo=float(y_centre - w_trace / 2.0),
-                y_hi=float(y_centre + w_trace / 2.0),
-                z_lo=float(z_lo),
-                z_hi=float(z_lo + h_sub),
-                direction=pe.direction,
-                impedance=float(pe.impedance),
-                excitation=pe.waveform,
-            )
+            _mp = _msl_port_from_entry(pe)
             _probe_ladder = None
             if _msl_grid is not None:
                 try:
@@ -4386,7 +4421,7 @@ class _PreflightMixin:
                 y_feed=y_centre,
                 w_trace=w_trace,
                 dx=dx,
-                domain_y=float(domain[1]),
+                domain_y=float(domain[_iw]),
                 direction=pe.direction,
             )
 
@@ -4463,11 +4498,11 @@ class _PreflightMixin:
             # NU-grid deepest probe sits at 3.24mm. Exact parity with
             # every other quantity this whole function already computes
             # off the scalar ``dx`` parameter, so not a new limitation.
-            _domain_x = float(domain[0])
+            _domain_x = float(domain[_ip])
             _deep_idx = n_pr - 1
             _abs_margin = _ABSORBER_PROXIMITY_CELLS * dx
             _abs_headroom = (
-                _domain_x - x_feed if pe.direction == "+x" else x_feed
+                _domain_x - x_feed if _dir_sign > 0 else x_feed
             )
             _abs_hsub_cells = int(round(5.0 * h_sub / dx))
             _abs_off_lo = max(3, _abs_hsub_cells)
@@ -4486,8 +4521,8 @@ class _PreflightMixin:
                 _abs_off_max = msl_absorber_compliant_offset_max(
                     _msl_grid, _mp,
                     n_probes=n_pr, n_spacing=n_sp, off_lo=_abs_off_lo,
-                    domain_x=_domain_x, ct_lo=cpml_thick_lo[0],
-                    ct_hi=cpml_thick_hi[0], dx=dx, guess_hi=_abs_guess_hi,
+                    domain_x=_domain_x, ct_lo=cpml_thick_lo[_ip],
+                    ct_hi=cpml_thick_hi[_ip], dx=dx, guess_hi=_abs_guess_hi,
                 )
             else:
                 # Fallback (grid build failed): the pre-fix algebraic
@@ -4503,12 +4538,13 @@ class _PreflightMixin:
                 else "no compliant n_probe_offset exists on this feed "
                 "length (interval empty)"
             )
-            if _coord_in_absorber(x_deep, _domain_x, cpml_thick_lo[0], cpml_thick_hi[0]):
+            if _coord_in_absorber(x_deep, _domain_x, cpml_thick_lo[_ip], cpml_thick_hi[_ip]):
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                        f"probe {_deep_idx} (deepest, x={x_deep*1e3:.2f}mm) is "
-                        f"past the domain edge (domain x-extent [0, "
+                        f"probe {_deep_idx} (deepest, {_prop_ax}="
+                        f"{x_deep*1e3:.2f}mm) is "
+                        f"past the domain edge (domain {_prop_ax}-extent [0, "
                         f"{_domain_x*1e3:.2f}]mm) — inside the CPML absorbing "
                         f"region. The N-probe extractor's clean-travelling-"
                         f"wave assumption is void there: signal is attenuated "
@@ -4520,7 +4556,7 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
             elif _coord_near_absorber(
-                x_deep, _domain_x, cpml_thick_lo[0], cpml_thick_hi[0], dx
+                x_deep, _domain_x, cpml_thick_lo[_ip], cpml_thick_hi[_ip], dx
             ):
                 # Issue #510 review round-2 (nit B): this site was missed
                 # when the "just past which" rephrasing (see the matching
@@ -4532,7 +4568,8 @@ class _PreflightMixin:
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                        f"probe {_deep_idx} (deepest, x={x_deep*1e3:.2f}mm) is "
+                        f"probe {_deep_idx} (deepest, {_prop_ax}="
+                        f"{x_deep*1e3:.2f}mm) is "
                         f"within {_ABSORBER_PROXIMITY_CELLS} cells "
                         f"({_fmt_len(_abs_margin)}) of the domain edge, just "
                         f"past which the CPML absorber is active. Fields "
@@ -4564,12 +4601,13 @@ class _PreflightMixin:
             # feed / reference plane but are out of scope here (issue
             # #510 review, disclosed rather than fixed).
             _span_lo, _span_hi = (
-                (x_feed, x_deep) if pe.direction == "+x" else (x_deep, x_feed)
+                (x_feed, x_deep) if _dir_sign > 0 else (x_deep, x_feed)
             )
             for _other in list(self._msl_ports) + list(self._ports):
                 if _other is pe:
                     continue
-                _other_x = _other.position[0]
+                # Issue #661: compare on THIS port's propagation axis.
+                _other_x = _other.position[_ip]
                 if _span_lo < _other_x < _span_hi:
                     _other_name = getattr(_other, "name", None)
                     # Issue #510 review (BLOCKING 3): the previous label
@@ -4586,9 +4624,10 @@ class _PreflightMixin:
                     _w.warn(
                         PreflightWarning(
                             f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                            f"probe span x∈[{_span_lo*1e3:.2f}, "
+                            f"probe span {_prop_ax}∈[{_span_lo*1e3:.2f}, "
                             f"{_span_hi*1e3:.2f}]mm crosses the feed plane "
-                            f"of {_other_owner_txt} at x={_other_x*1e3:.2f}mm. "
+                            f"of {_other_owner_txt} at {_prop_ax}="
+                            f"{_other_x*1e3:.2f}mm. "
                             f"A feed is a source discontinuity the "
                             f"reflector scan above cannot see; probes "
                             f"sampling across it break the N-probe "

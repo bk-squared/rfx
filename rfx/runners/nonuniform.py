@@ -324,24 +324,17 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
     the (possibly σ-updated) ``materials`` and ``pec_mask``.
     """
     from rfx.sources.msl_port import (
-        MSLPort,
         _msl_yz_cells,
         compute_msl_mode_profile,
         make_msl_port_sources,
+        msl_cell,
+        msl_cross_section_span,
+        msl_port_from_entry,
         setup_msl_port,
     )
     for pe in sim._msl_ports:
-        x_feed, y_centre, z_lo = pe.position
-        mp = MSLPort(
-            feed_x=float(x_feed),
-            y_lo=float(y_centre - pe.width / 2),
-            y_hi=float(y_centre + pe.width / 2),
-            z_lo=float(z_lo),
-            z_hi=float(z_lo + pe.height),
-            direction=pe.direction,
-            impedance=pe.impedance,
-            excitation=pe.waveform,
-        )
+        # Issue #661: one shared projection of position -> port frame.
+        mp = msl_port_from_entry(pe)
         port_mode = getattr(pe, "mode", "laplace")
         if port_mode == "eigenmode":
             raise NotImplementedError(
@@ -353,17 +346,15 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
             )
         # laplace / uniform: build the static-Laplace Ez mode profile from the
         # substrate eps_r read concretely under the trace centre.
-        cells = _msl_yz_cells(grid, mp)
-        j_set = sorted({c[1] for c in cells})
-        k_set = sorted({c[2] for c in cells})
-        j_centre = (j_set[0] + j_set[-1]) // 2
-        k_mid = (k_set[0] + k_set[-1]) // 2
-        i_feed = cells[0][0]
+        span = msl_cross_section_span(grid, mp)
+        k_mid = (span["n_lo"] + span["n_hi"]) // 2
+        eps_cell = msl_cell(
+            pe.direction, span["i_feed"], span["w_centre"], k_mid
+        )
         if pe.eps_r_sub is not None:
             eps_r_sub = float(pe.eps_r_sub)
         else:
-            eps_r_sub = float(np.asarray(
-                materials_concrete.eps_r[i_feed, j_centre, k_mid]))
+            eps_r_sub = float(np.asarray(materials_concrete.eps_r[eps_cell]))
         mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)

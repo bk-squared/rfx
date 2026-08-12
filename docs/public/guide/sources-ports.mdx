@@ -264,6 +264,24 @@ mesh/source/port combinations are rejected rather than silently returning
 `None`. `num_periods` defaults to 40 because MSL transients drain slowly. The
 thru-line and notch examples define the tested uniform-Yee configurations.
 
+### Feed direction
+
+`direction` accepts `"+x"`, `"-x"`, `"+y"` and `"-y"`. The board lies in the
+xy-plane, so the feed may run along either in-board axis — useful when the
+geometry comes from a CAD import and you do not get to choose its orientation.
+`position` is a physical `(x, y, z)` point: the coordinate on the propagation
+axis is the feed plane, the coordinate on the other in-board axis is the trace
+centre, and `z` is the substrate bottom. `width` spans whichever in-board axis
+is *not* the propagation axis.
+
+`"+z"` / `"-z"` raise `ValueError`. The substrate normal is fixed to z by the
+`position` + scalar `height` contract, so a z-propagating microstrip would need
+its substrate normal along x or y — which that contract cannot express, and
+which the mode solve, the `"ez"` source component, the modal voltage and the
+trace-conductor scan all assume. Rotate the board instead.
+
+`mode="eigenmode"` remains `"+x"` / `"-x"` only.
+
 ---
 
 ## Waveguide port (`add_waveguide_port`)

@@ -400,43 +400,36 @@ def run_uniform(
     # MSL ports — full cross-section distributed feed
     if getattr(sim, "_msl_ports", None):
         from rfx.sources.msl_port import (
-            MSLPort,
             _msl_yz_cells,
             compute_msl_mode_profile,
             make_msl_port_sources,
             make_msl_port_sources_jm,
+            msl_cell,
+            msl_cross_section_span,
+            msl_port_from_entry,
             setup_msl_port,
         )
         for pe in sim._msl_ports:
-            x_feed, y_centre, z_lo = pe.position
-            mp = MSLPort(
-                feed_x=float(x_feed),
-                y_lo=float(y_centre - pe.width / 2),
-                y_hi=float(y_centre + pe.width / 2),
-                z_lo=float(z_lo),
-                z_hi=float(z_lo + pe.height),
-                direction=pe.direction,
-                impedance=pe.impedance,
-                excitation=pe.waveform,
-            )
+            # Issue #661: one shared projection of position -> port frame.
+            mp = msl_port_from_entry(pe)
             mode_profile = None
             eigenmode_data = None
             port_mode = getattr(pe, "mode", "uniform")
-            if port_mode == "eigenmode":
-                from rfx.sources.msl_eigenmode import compute_msl_eigenmode_profile
+            if port_mode in ("eigenmode", "laplace"):
                 # Substrate eps_r: use explicit value if provided,
                 # otherwise read from the FDTD eps_r array directly
                 # under the trace centre (most representative cell).
-                cells = _msl_yz_cells(grid, mp)
-                k_set = sorted({c[2] for c in cells})
-                j_set = sorted({c[1] for c in cells})
-                j_centre = (j_set[0] + j_set[-1]) // 2
-                k_mid = (k_set[0] + k_set[-1]) // 2
-                i_feed = cells[0][0]
+                span = msl_cross_section_span(grid, mp)
+                k_mid = (span["n_lo"] + span["n_hi"]) // 2
+                eps_cell = msl_cell(
+                    pe.direction, span["i_feed"], span["w_centre"], k_mid
+                )
                 if pe.eps_r_sub is not None:
                     eps_r_sub = float(pe.eps_r_sub)
                 else:
-                    eps_r_sub = float(np.asarray(materials.eps_r[i_feed, j_centre, k_mid]))
+                    eps_r_sub = float(np.asarray(materials.eps_r[eps_cell]))
+            if port_mode == "eigenmode":
+                from rfx.sources.msl_eigenmode import compute_msl_eigenmode_profile
                 # Build frequency array from grid for β(ω) curve
                 freqs_for_em = np.linspace(
                     sim._freq_max / 10.0, sim._freq_max, 20)
@@ -447,16 +440,6 @@ def run_uniform(
                 mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
             elif port_mode == "laplace":
                 # Explicit static-Laplace Ez-only mode (no J+M).
-                cells = _msl_yz_cells(grid, mp)
-                k_set = sorted({c[2] for c in cells})
-                j_set = sorted({c[1] for c in cells})
-                j_centre = (j_set[0] + j_set[-1]) // 2
-                k_mid = (k_set[0] + k_set[-1]) // 2
-                i_feed = cells[0][0]
-                if pe.eps_r_sub is not None:
-                    eps_r_sub = float(pe.eps_r_sub)
-                else:
-                    eps_r_sub = float(np.asarray(materials.eps_r[i_feed, j_centre, k_mid]))
                 mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)

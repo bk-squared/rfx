@@ -238,10 +238,31 @@ def test_add_msl_port_api():
     assert entry.height == 2.54e-4
     assert entry.name == "msl_0"
 
-    # Invalid direction.
-    with pytest.raises(ValueError):
-        sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
-                         width=1e-3, height=2.54e-4, direction="+y")
+    # In-plane directions are all accepted (issue #661): the board lies in
+    # the xy-plane, so the feed may run along either in-board axis. This
+    # assertion used to read ``pytest.raises(ValueError)`` for "+y" — that
+    # was the limitation #661 removes, not a physics bound.
+    for _d in ("-x", "+y", "-y"):
+        sim_d = Simulation(freq_max=10e9, domain=(5e-3, 3e-3, 1e-3))
+        sim_d.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
+                           height=2.54e-4, direction=_d)
+        assert sim_d._msl_ports[0].direction == _d
+
+    # Out-of-plane directions are REJECTED, and the error must say why:
+    # the substrate normal is welded to z by the position/height contract.
+    for _d in ("+z", "-z"):
+        with pytest.raises(ValueError, match="substrate normal"):
+            sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
+                             height=2.54e-4, direction=_d)
+    # Garbage directions still raise the plain domain error.
+    for _d in ("x", "+w", "", None):
+        with pytest.raises(ValueError):
+            sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
+                             height=2.54e-4, direction=_d)
+    # mode='eigenmode' stays x-only.
+    with pytest.raises(NotImplementedError, match="eigenmode"):
+        sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
+                         height=2.54e-4, direction="+y", mode="eigenmode")
     # Invalid width.
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
