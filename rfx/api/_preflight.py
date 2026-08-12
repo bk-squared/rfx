@@ -3016,9 +3016,26 @@ class _PreflightMixin:
         merely refined. The only genuine issue-#61 case left is a Box
         whose bounding box extends to a NEGATIVE coordinate or past
         ``domain_extent`` — i.e. literally drawn into the exterior pad.
+
+        Issue #660 reporting change: one warning per crossed AXIS naming the
+        entry count, the worst offender and its overshoot distance, instead of
+        one message per geometry entry that named neither.
         """
         if cpml_thickness > 0 and self._boundary == "cpml":
-            for entry in self._geometry:
+            # Issue #660: collect every crossing first, warn ONCE per axis.
+            # The pre-#660 loop warned inside the entry loop with a message
+            # carrying only the material name and the axis, so a 61-solid CAD
+            # import emitted 61 lines of which 56 were byte-identical
+            # (measured), and the overshoot distance — the one number that
+            # separates a one-cell rounding artefact from an 11mm
+            # coordinate-origin error — was computed and thrown away. The
+            # crossed boundary and the offending bbox face are printed for the
+            # same reason; ``_GeometryEntry`` carries no id/name field (only
+            # ``shape`` + ``material_name``, verified), so the entry is
+            # identified by its index and shape type, and the full per-entry
+            # index list rides in the structured finding's ``loc``.
+            per_axis: dict[int, list[tuple]] = {}
+            for idx, entry in enumerate(self._geometry):
                 if hasattr(entry.shape, "bounding_box"):
                     try:
                         c1, c2 = entry.shape.bounding_box()
@@ -3029,24 +3046,67 @@ class _PreflightMixin:
                                 continue
                             d = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
                             lo_b, hi_b = _absorber_boundary_for_axis(d, thick_lo, thick_hi)
-                            lo_hit = lo_b is not None and c1[ax] < lo_b
-                            hi_hit = hi_b is not None and c2[ax] > hi_b
-                            if lo_hit or hi_hit:
-                                _w.warn(
-                                    PreflightWarning(
-                                        f"Material '{entry.material_name}' extends "
-                                        f"into CPML region along {'xyz'[ax]}-axis. "
-                                        f"{absorber_label} modifies field updates — "
-                                        f"geometry inside the absorber is physically "
-                                        f"meaningless (issue #61).",
-                                        code="geometry_in_absorber",
-                                        source="_validate_cfg_geometry_in_cpml",
-                                    ),
-                                    stacklevel=3,
-                                )
-                                break
+                            over_lo = (
+                                lo_b - c1[ax]
+                                if (lo_b is not None and c1[ax] < lo_b) else None
+                            )
+                            over_hi = (
+                                c2[ax] - hi_b
+                                if (hi_b is not None and c2[ax] > hi_b) else None
+                            )
+                            if over_lo is None and over_hi is None:
+                                continue
+                            # A bbox can cross both faces (a shape wider than
+                            # the domain); report the deeper crossing.
+                            if over_hi is not None and (over_lo is None or over_hi >= over_lo):
+                                over, side, coord, bound = over_hi, "hi", c2[ax], hi_b
+                            else:
+                                over, side, coord, bound = over_lo, "lo", c1[ax], lo_b
+                            per_axis.setdefault(ax, []).append((
+                                over, idx, entry.material_name,
+                                type(entry.shape).__name__, side, coord, bound,
+                            ))
+                            # One finding per entry, first crossing axis —
+                            # unchanged from pre-#660.
+                            break
                     except (NotImplementedError, TypeError):
                         pass
+
+            for ax in sorted(per_axis):
+                recs = per_axis[ax]
+                axis = "xyz"[ax]
+                over, idx, mat, kind, side, coord, bound = max(recs, key=lambda r: r[0])
+                msg = (
+                    f"Material '{mat}' (geometry entry #{idx}, {kind}) extends "
+                    f"into CPML region along {axis}-axis: bbox {side} face at "
+                    f"{_fmt_len(coord)} is {_fmt_len(over)} past the "
+                    f"{axis}-{side} absorber boundary at {_fmt_len(bound)}."
+                )
+                if len(recs) > 1:
+                    msg += (
+                        f" {len(recs)} geometry entries cross the {axis}-axis "
+                        f"absorber (worst shown; overshoot "
+                        f"{_fmt_len(min(r[0] for r in recs))} to "
+                        f"{_fmt_len(over)}); per-entry index, face and "
+                        f"overshoot in this finding's loc."
+                    )
+                msg += (
+                    f" {absorber_label} modifies field updates — geometry "
+                    f"inside the absorber is physically meaningless (issue #61)."
+                )
+                # Per-entry detail lives here rather than in N warning lines:
+                # every crossing entry's index, crossed face and overshoot.
+                _w.warn(
+                    PreflightWarning(
+                        msg,
+                        code="geometry_in_absorber",
+                        loc="geometry[" + ",".join(
+                            f"#{r[1]} {r[4]} {_fmt_len(r[0])}" for r in recs
+                        ) + "]",
+                        source="_validate_cfg_geometry_in_cpml",
+                    ),
+                    stacklevel=3,
+                )
 
     def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
         """P1.8: Port/source/probe inside PEC geometry.
