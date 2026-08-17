@@ -3077,7 +3077,7 @@ class _ExecuteMixin:
                 "compute_s_params": compute_s_params,
                 "s_param_freqs": s_param_freqs,
                 "s_param_n_steps": s_param_n_steps,
-                "report_every": report_every,
+                **({} if report_every is None else {"report_every": report_every}),
             })
             from rfx.runners.distributed_v2 import run_distributed
             _res = run_distributed(
@@ -3102,7 +3102,7 @@ class _ExecuteMixin:
             _nu_dropped = {
                 "snapshot": snapshot,
                 "conformal_pec": conformal_pec,
-                "report_every": report_every,
+                **({} if report_every is None else {"report_every": report_every}),
             }
             if _nu_until_decay is None:
                 _nu_dropped["until_decay"] = until_decay
@@ -3158,7 +3158,7 @@ class _ExecuteMixin:
 
         if plan.lane == "run_adi":
             self._warn_unsupported_run_kwargs("adi", {
-                "report_every": report_every,
+                **({} if report_every is None else {"report_every": report_every}),
             })
             if until_decay is not None:
                 raise ValueError("solver='adi' does not support until_decay yet")
@@ -3186,7 +3186,7 @@ class _ExecuteMixin:
                 "snapshot": snapshot,
                 "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
-                "report_every": report_every,
+                **({} if report_every is None else {"report_every": report_every}),
             })
             subgrid_n_steps = n_steps
             if subgrid_n_steps is None:
@@ -3250,8 +3250,8 @@ class _ExecuteMixin:
             pec_mask=pec_mask,
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
-            report_every=report_every,
-            report_label=report_label,
+            **({} if report_every is None else
+               {"report_every": report_every, "report_label": report_label}),
         )
         self._warn_run_sparams_if_nonpassive(_res)
         self._warn_postrun_energy_witness(

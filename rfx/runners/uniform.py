@@ -666,8 +666,8 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
-            report_every=report_every,
-            report_label=report_label,
+            **({} if report_every is None else
+               {"report_every": report_every, "report_label": report_label}),
         )
     else:
         sim_result = _simulation.run(
@@ -697,8 +697,8 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
-            report_every=report_every,
-            report_label=report_label,
+            **({} if report_every is None else
+               {"report_every": report_every, "report_label": report_label}),
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),

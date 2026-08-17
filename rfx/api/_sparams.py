@@ -2999,12 +2999,21 @@ class _SparamMixin:
                     planes = fwd_result.dft_planes or {}
                     _ts_result = fwd_result
                 else:
+                    # Pass the progress kwargs ONLY when reporting is on:
+                    # default-off must preserve the CALL SIGNATURE, not just
+                    # the numbers. CI shard 2 proved why — test doubles that
+                    # monkeypatch sim.run with a fixed signature broke on the
+                    # unconditional kwarg, and in two tests the TypeError was
+                    # swallowed by a fallback except and surfaced as
+                    # DID-NOT-WARN instead (PR #555 class).
                     result = self.run(
                         n_steps=n_steps,
                         num_periods=num_periods,
                         compute_s_params=False,
-                        report_every=report_every,
-                        report_label=f"MSL drive p{driven + 1}/{n_ports}",
+                        **({} if report_every is None else {
+                            "report_every": report_every,
+                            "report_label": f"MSL drive p{driven + 1}/{n_ports}",
+                        }),
                     )
                     planes = result.dft_planes or {}
                     _ts_result = result
