@@ -415,6 +415,86 @@ def test_rejected_under_jit():
         solve(jnp.ones(shape, dtype=jnp.float32))
 
 
+def _traced_solve(transform):
+    """Drive run(report_every=...) under *transform* via the MATERIALS route.
+
+    This is the route that matters: under a bare ``grad``/``vmap`` the
+    carry and ``xs`` stay concrete and the tracer reaches the scan body
+    only through the material arrays, captured in the body's closure. A
+    guard that inspected carry/xs alone let this through and printed
+    progress lines at trace time.
+    """
+    grid = Grid(freq_max=20e9, domain=(0.004, 0.004, 0.004), dx=5e-4,
+                cpml_layers=4)
+    shape = (grid.nx, grid.ny, grid.nz)
+    n_steps = 20
+    t = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    x = (t - 5 * grid.dt) / (3 * grid.dt)
+    wf = -2.0 * x * jnp.exp(-(x ** 2))
+    c = (grid.nx // 2, grid.ny // 2, grid.nz // 2)
+    src = [_sim.SourceSpec(i=c[0], j=c[1], k=c[2], component="ez",
+                           waveform=wf)]
+    probes = [_sim.ProbeSpec(i=c[0] - 2, j=c[1], k=c[2], component="ez")]
+
+    def obj(eps):
+        mats = MaterialArrays(eps_r=eps,
+                              sigma=jnp.zeros(shape, dtype=jnp.float32),
+                              mu_r=jnp.ones(shape, dtype=jnp.float32))
+        res = _sim.run(grid, mats, n_steps, boundary="cpml", sources=src,
+                       probes=probes, report_every=5)
+        return jnp.sum(res.time_series ** 2)
+
+    eps0 = jnp.ones(shape, dtype=jnp.float32)
+    if transform == "grad":
+        return jax.grad(obj)(eps0)
+    if transform == "vmap":
+        return jax.vmap(obj)(jnp.stack([eps0, eps0 * 1.01]))
+    return jax.jit(obj)(eps0)
+
+
+@pytest.mark.parametrize("transform", ["jit", "grad", "vmap"])
+def test_rejected_under_every_transform_via_materials(transform, capsys):
+    """grad and vmap must be caught too, not only jit.
+
+    The tracer arrives through the materials closure under bare grad/vmap,
+    so a guard limited to carry_init/xs stays silent and prints trace-time
+    lines with a fabricated elapsed and rate.
+    """
+    with pytest.raises(ValueError, match="cannot run under jax.jit"):
+        _traced_solve(transform)
+    assert "[PROGRESS]" not in capsys.readouterr().out, (
+        "a progress line was printed at trace time before the guard fired"
+    )
+
+
+def test_grouped_concat_matches_flat_concat():
+    """The bounded-arity join must be byte-identical to the flat one.
+
+    ``concat_chunks`` groups the concatenate because a flat
+    ``jnp.concatenate`` takes one argument per chunk and XLA's compile cost
+    grows superlinearly in argument count (measured 232 s at 22,500 chunks
+    against 0.99 s grouped). Concatenation is associative so the bytes must
+    not move -- that is what makes the optimisation admissible at all.
+    """
+    from rfx.progress import _CONCAT_GROUP, concat_chunks
+
+    rng = np.random.default_rng(0)
+    # More chunks than one group, so the grouping actually recurses.
+    n_chunks = _CONCAT_GROUP * 2 + 3
+    parts = [(jnp.asarray(rng.standard_normal((3, 2)), dtype=jnp.float32),)
+             for _ in range(n_chunks)]
+
+    flat = jax.tree_util.tree_map(
+        lambda *ps: jnp.concatenate(ps, axis=0), *parts)
+    grouped = concat_chunks(parts)
+
+    assert np.asarray(grouped[0]).shape == (3 * n_chunks, 2)
+    assert (np.asarray(flat[0]).tobytes()
+            == np.asarray(grouped[0]).tobytes()), (
+        "grouped concatenation moved bytes; it must be exactly associative"
+    )
+
+
 def test_rejected_with_checkpoint_segments():
     with pytest.raises(NotImplementedError, match="checkpoint_segments"):
         _low_level_run_with_segments()
@@ -431,7 +511,15 @@ def _low_level_run_with_segments():
                     checkpoint_segments=4, report_every=5)
 
 
-@pytest.mark.parametrize("bad", [0, -1, 0.5])
+@pytest.mark.parametrize("bad", [
+    0, -1, 0.5, 1000.5,
+    float("inf"),   # int(inf) raises OverflowError, not ValueError
+    float("nan"),
+    True,           # Python bools are ints; True would mean "every step"
+    False,
+    "100",
+    None.__class__,
+])
 def test_rejects_nonsense_report_every(bad):
     with pytest.raises(ValueError, match="report_every"):
         validate_report_every(bad, n_steps=100)

@@ -1734,11 +1734,19 @@ def run(
         synchronisation (without it the host would dispatch every chunk at
         once and print a fabricated rate), all full chunks share one XLA
         executable while a ragged final chunk compiles once more, and the
-        per-chunk outputs are concatenated once at the end.
+        per-chunk outputs are joined once at the end with a bounded-arity
+        grouped concatenate (a flat one takes an argument per chunk, which
+        cost 232 s at 22,500 chunks against 0.99 s grouped).
 
         Forward-only: it reads the host wall clock, so it raises under
         ``jax.jit``/``grad``/``vmap`` and is rejected together with
-        ``checkpoint_segments``.
+        ``checkpoint_segments``. The trace check inspects the carry, the
+        per-step ``xs`` and the material / geometry arrays — the routes
+        ``forward()`` and ``optimize()`` actually trace through — rather
+        than asking JAX whether a trace is active, which its current API
+        does not expose. A tracer reaching the scan body by some other
+        closure alone would print trace-time lines; the computed values
+        stay byte-identical either way.
     report_label : str
         Short tag prefixed to each progress line, e.g. ``"MSL drive p1"``,
         so the per-drive solves of one ``compute_*_s_matrix`` call are
@@ -1930,6 +1938,14 @@ def run(
                 n_steps=n_steps,
                 report_every=report_every,
                 label=report_label,
+                # A tracer from forward()/optimize() arrives through the
+                # material and geometry arrays, which the scan body captures
+                # in its closure — carry_init and xs stay concrete under bare
+                # grad/vmap, so checking only those would let the request
+                # through and print trace-time lines.
+                trace_probes=(materials, aniso_eps, aniso_inv_eps,
+                              pec_mask, pec_occupancy, conformal_weights,
+                              kerr_chi3, debye, lorentz, tfsf),
             )
     else:
         if report_every is not None:
@@ -2489,7 +2505,12 @@ def run_until_decay(
     _reporter = None
     if report_every is not None:
         _report_every = validate_report_every(report_every, n_steps=max_steps)
-        check_not_traced(carry)
+        # Probe the material/geometry arrays too, not just the carry: under
+        # a bare grad/vmap the carry stays concrete and the tracer rides in
+        # through the closure instead.
+        check_not_traced(carry, materials, aniso_eps, aniso_inv_eps,
+                         pec_mask, pec_occupancy, conformal_weights,
+                         kerr_chi3, debye, lorentz, tfsf)
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
 

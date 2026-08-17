@@ -30,10 +30,17 @@ Two solve shapes need two mechanisms:
 Design rules this module obeys:
 
 * **Nothing branches on a traced value.** Every loop bound and comparison
-  here is Python-int arithmetic on concrete values. Because wall-clock
-  reporting is meaningless under tracing (a traced call would print once, at
-  trace time, with a fabricated elapsed), :func:`check_not_traced` rejects
-  the request loudly instead of silently emitting a wrong line.
+  here is Python-int arithmetic on concrete values.
+* **Tracing is rejected on the routes it actually arrives by, and the guard
+  claims no more than that.** Wall-clock reporting is meaningless under a
+  trace, so :func:`check_not_traced` raises when a tracer is found — but it
+  is a check on the pytrees it is HANDED, not a general "is a trace active?"
+  test, which JAX 0.10 does not expose. Callers pass the carry, the
+  per-step ``xs`` AND the material / geometry arrays, which is how
+  ``forward()`` / ``optimize()`` trace this code. A tracer arriving solely
+  through some other closure escapes the guard and produces trace-time
+  progress lines; measured, the computed values stay byte-identical in that
+  case, so the leak is cosmetic. See :func:`check_not_traced`.
 * **Reporting must not change a result.** With ``report_every=None`` the
   caller runs the unchanged code path, so identity is by construction; with
   reporting on, the chunk loop is numerically a continuation.
@@ -52,11 +59,25 @@ from rfx.core.jax_utils import is_tracer
 __all__ = [
     "ProgressReporter",
     "check_not_traced",
+    "concat_chunks",
     "scan_with_progress",
     "validate_report_every",
 ]
 
 _PREFIX = "  [PROGRESS]"
+
+# Bounded argument count per concatenate call. `jnp.concatenate` takes one
+# ARGUMENT per chunk, and XLA trace+compile cost grows superlinearly in the
+# argument count -- which bites exactly the long runs this feature exists
+# for. Measured on a (225000, 20) float32 assembly, first (compiling) call:
+#
+#     chunks   flat jnp.concatenate   grouped (this constant)
+#      2,250              2.567 s                   0.133 s
+#     22,500            232.2   s                   0.994 s
+#
+# Grouping is exact: concatenation is associative, so the joined bytes are
+# unchanged (locked by test_grouped_concat_matches_flat_concat).
+_CONCAT_GROUP = 64
 
 _TRACED_MSG = (
     "report_every is a host-side progress feature and cannot run under "
@@ -87,12 +108,19 @@ def validate_report_every(report_every: object, *, n_steps: int) -> int:
     """
     if is_tracer(report_every):
         raise ValueError(_TRACED_MSG)
-    try:
-        every = int(report_every)
-    except (TypeError, ValueError):
+    if isinstance(report_every, bool):
+        # Python bools ARE ints, so True would silently mean "every step".
         raise ValueError(
             f"report_every must be an integer number of steps or None, got "
-            f"{report_every!r}"
+            f"{report_every!r} (a bool). Pass None to disable reporting."
+        )
+    try:
+        every = int(report_every)
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError is what int(float('inf')) raises.
+        raise ValueError(
+            f"report_every must be a finite integer number of steps or None, "
+            f"got {report_every!r}"
         ) from None
     if every != report_every:
         # Truncating 1000.5 -> 1000 would silently report on a cadence the
@@ -114,9 +142,25 @@ def validate_report_every(report_every: object, *, n_steps: int) -> int:
 def check_not_traced(*trees: object) -> None:
     """Raise if any leaf of *trees* is a JAX tracer.
 
-    Called before the host chunk loop so a ``report_every`` request made
-    under ``jit``/``grad``/``vmap`` fails with an explanation instead of
-    printing a trace-time line.
+    Scope, stated exactly, because a guard that is believed to cover more
+    than it does is worse than a narrow one:
+
+    **This inspects the trees it is handed, and nothing else.** It is not a
+    general "is a JAX trace active?" test — JAX 0.10 exposes no such API
+    (``jax.core.trace_state_clean`` does not exist), and a freshly built
+    constant is a tracer only under ``jit``, not under bare ``grad`` or
+    ``vmap``. So callers must hand it every input a tracer could realistically
+    arrive on. :func:`rfx.simulation.run` passes the initial carry, the
+    per-step ``xs``, and the material / geometry arrays, which is the route
+    ``forward()`` and ``optimize()`` actually use.
+
+    What escapes it: a tracer that reaches the scan body ONLY through a
+    closure the caller did not pass here — e.g. hand-built coefficient
+    arrays under a bare ``jax.grad`` around the low-level entry point. In
+    that case progress lines are printed once, at trace time, with a
+    meaningless elapsed and rate. **The computed result is unaffected** —
+    reporting-on and reporting-off are byte-identical under ``grad`` and
+    ``vmap`` — so this is a cosmetic leak, not a correctness hole.
     """
     import jax
 
@@ -124,6 +168,34 @@ def check_not_traced(*trees: object) -> None:
         for leaf in jax.tree_util.tree_leaves(tree):
             if is_tracer(leaf):
                 raise ValueError(_TRACED_MSG)
+
+
+def concat_chunks(chunk_outputs: list):
+    """Join per-chunk scan outputs along the step axis, exactly.
+
+    Uses bounded-arity grouping rather than one flat
+    ``jnp.concatenate(*all_chunks)`` -- see :data:`_CONCAT_GROUP` for the
+    measured reason. Concatenation is associative, so the result is
+    bit-identical to the flat form; only the XLA compile cost differs.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    if len(chunk_outputs) == 1:
+        return chunk_outputs[0]
+
+    parts = list(chunk_outputs)
+    while len(parts) > 1:
+        grouped = []
+        for i in range(0, len(parts), _CONCAT_GROUP):
+            group = parts[i:i + _CONCAT_GROUP]
+            if len(group) == 1:
+                grouped.append(group[0])
+            else:
+                grouped.append(jax.tree_util.tree_map(
+                    lambda *ps: jnp.concatenate(ps, axis=0), *group))
+        parts = grouped
+    return parts[0]
 
 
 class ProgressReporter:
@@ -197,6 +269,7 @@ def scan_with_progress(
     report_every: int,
     label: str = "",
     stream: object | None = None,
+    trace_probes: tuple = (),
 ):
     """``jax.lax.scan(body, carry_init, xs)`` split into host-side chunks.
 
@@ -210,21 +283,31 @@ def scan_with_progress(
     share one XLA executable (identical shapes); a ragged final chunk
     compiles once more.
 
-    Cost, so it is not buried: each report inserts a device
-    synchronisation (without one the host would dispatch every chunk
-    immediately and print all the lines at t = 0 with a fabricated rate),
-    and the per-chunk ``outputs`` are concatenated once at the end, so peak
-    memory transiently holds both the chunk pieces and the joined array.
-    For the S-parameter runs this feature targets, ``outputs`` is a
-    ``(n_steps, n_probes)`` time series that is negligible beside the field
-    arrays; a snapshot-recording run pays the concatenation on the snapshot
-    stack too, so prefer a large ``report_every`` there.
+    ``trace_probes`` are extra pytrees checked for tracers alongside
+    ``carry_init`` and ``xs``. Pass the material / geometry arrays here: a
+    tracer entering the scan body through them is captured in ``body``'s
+    closure and is otherwise invisible to :func:`check_not_traced` (see its
+    docstring for exactly what that guard does and does not cover).
+
+    Costs, so they are not buried:
+
+    * Each report inserts a device synchronisation. Without one the host
+      would dispatch every chunk immediately and print all the lines at
+      t = 0 with a fabricated rate.
+    * The per-chunk ``outputs`` are joined once at the end, so peak memory
+      transiently holds both the chunk pieces and the joined array. For the
+      S-parameter runs this targets, ``outputs`` is a ``(n_steps, n_probes)``
+      time series that is negligible beside the field arrays; a
+      snapshot-recording run pays it on the snapshot stack too.
+    * The join is grouped rather than one flat ``jnp.concatenate`` over
+      every chunk, because a flat concatenate takes one ARGUMENT per chunk
+      and XLA's compile cost grows superlinearly in argument count — 232 s
+      at 22,500 chunks, against 0.99 s grouped. See :func:`concat_chunks`.
     """
     import jax
-    import jax.numpy as jnp
 
     every = validate_report_every(report_every, n_steps=n_steps)
-    check_not_traced(carry_init, xs)
+    check_not_traced(carry_init, xs, *trace_probes)
 
     n_steps = int(n_steps)
     if n_steps <= 0:
@@ -263,10 +346,4 @@ def scan_with_progress(
         done = hi
         reporter.report(done)
 
-    if len(chunk_outputs) == 1:
-        outputs = chunk_outputs[0]
-    else:
-        outputs = jax.tree_util.tree_map(
-            lambda *parts: jnp.concatenate(parts, axis=0), *chunk_outputs
-        )
-    return carry, outputs
+    return carry, concat_chunks(chunk_outputs)

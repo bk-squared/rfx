@@ -2949,16 +2949,28 @@ class _ExecuteMixin:
             ``n_steps`` scan and ``until_decay``); the distributed,
             non-uniform, ADI and subgridded lanes warn and drop it rather
             than silently producing no output. It is forward-only and
-            raises under ``jax.jit``/``grad``/``vmap``.
+            raises under ``jax.jit``/``grad``/``vmap`` (the check inspects
+            the carry, the per-step inputs and the material / geometry
+            arrays — the routes ``forward()``/``optimize()`` trace through).
 
             On the fixed-``n_steps`` scan the reporting turns the single
             compiled scan into ``ceil(n_steps / report_every)`` calls to
             the SAME compiled scan with ``carry`` threaded through — a
             continuation, not a re-solve, and bit-exact against
             ``report_every=None`` (locked by
-            ``tests/test_run_progress_reporting.py``). Pick
-            ``report_every`` large enough that a chunk is many seconds of
-            work; each report costs one device synchronisation.
+            ``tests/test_run_progress_reporting.py``).
+
+            Each report costs one device synchronisation plus one print.
+            On a 118k-cell CPU fixture that cost was **not resolvable above
+            the measurement noise** at any cadence tried: a paired
+            off-vs-off self-control read -4.8% [-9.3, -0.9], and every
+            cadence from 2000 down to 25 landed inside that floor. The one
+            clean figure is +0.7-0.8% for a single-chunk run, bounding the
+            fixed per-report cost. So choose ``report_every`` for a useful
+            reporting interval, not to minimise an overhead this benchmark
+            could not detect; only the direction (finer cadence costs more)
+            is established. None of this speaks to the large-grid GPU
+            regime, which was not measured.
         report_label : str
             Short tag prefixed to each progress line (e.g. ``"drive p1"``).
             Ignored when ``report_every`` is None.
