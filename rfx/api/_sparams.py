@@ -2477,6 +2477,7 @@ class _SparamMixin:
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         enforce_passivity: bool = True,
+        report_every: int | None = None,
     ) -> "MSLSMatrixResult":
         """Compute the MSL S-matrix using N-probe numerical de-embedding.
 
@@ -2570,6 +2571,16 @@ class _SparamMixin:
             not segment count; issue #73). Forwarded to :meth:`forward`; raises
             ``NotImplementedError`` on the uniform path — use
             ``checkpoint_segments`` there.
+        report_every : int or None
+            Issue #667 — progress reporting for long solves. Forwarded to
+            each per-drive :meth:`run` call, tagged ``MSL drive pI/N`` so
+            the drives are distinguishable in a log. ``None`` (default) is
+            OFF and leaves the solve byte-identical. The measured case this
+            exists for: a 42.15 M-cell / 225,000-step call whose last log
+            line was written at second 0 and was still the last line 4 h
+            10 min later, with no way to tell slow from wedged. Ignored
+            (with a warning) on the differentiable ``eps_override``
+            channel, which routes through the traced :meth:`forward`.
 
         Returns
         -------
@@ -2967,6 +2978,17 @@ class _SparamMixin:
                 # into the V/I assembly. Otherwise fall back to run()
                 # for imperative (non-AD) workflows.
                 if eps_override is not None:
+                    if report_every is not None:
+                        import warnings as _w667
+                        _w667.warn(
+                            "report_every is ignored on the "
+                            "compute_msl_s_matrix(eps_override=...) channel: "
+                            "that channel routes through forward(), which is "
+                            "the differentiable (traced) path, and host-side "
+                            "wall-clock progress reporting cannot run under a "
+                            "trace (issue #667).",
+                            UserWarning, stacklevel=2,
+                        )
                     fwd_result = self.forward(
                         eps_override=eps_override,
                         n_steps=n_steps,
@@ -2981,6 +3003,8 @@ class _SparamMixin:
                         n_steps=n_steps,
                         num_periods=num_periods,
                         compute_s_params=False,
+                        report_every=report_every,
+                        report_label=f"MSL drive p{driven + 1}/{n_ports}",
                     )
                     planes = result.dft_planes or {}
                     _ts_result = result

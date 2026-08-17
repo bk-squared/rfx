@@ -22,6 +22,10 @@ from rfx.core.yee import (
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_occupancy
+from rfx.progress import (
+    ProgressReporter, check_not_traced, scan_with_progress,
+    validate_report_every,
+)
 
 
 # CFL derating for the (2,4) fourth-order-in-space stencil.  The wider
@@ -1671,6 +1675,8 @@ def run(
     return_state: bool = True,
     mag_sources: list | None = None,
     stencil_order: int = 2,
+    report_every: int | None = None,
+    report_label: str = "",
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -1711,6 +1717,32 @@ def run(
     return_state : bool
         If False, do not expose the final FDTD state in the result.
         This shrinks the differentiable output surface for optimisation.
+    report_every : int or None
+        Issue #667. When set, emit one ``  [PROGRESS] ...`` line to stdout
+        every *N* steps: steps done / total, wall elapsed, implied rate and
+        ETA. ``None`` (default) is OFF and runs the unchanged single-scan
+        code path, so existing callers are byte-identical by construction.
+
+        When set, the same compiled scan is driven from the host in
+        ``report_every``-step chunks with ``carry`` threaded through, so the
+        result is a continuation and not a re-solve; the DFT accumulators
+        and every port / flux / monitor state live in that carry.
+        Bit-exactness against ``report_every=None`` is locked by
+        ``tests/test_run_progress_reporting.py``.
+
+        Costs, measured rather than hidden: each report inserts one device
+        synchronisation (without it the host would dispatch every chunk at
+        once and print a fabricated rate), all full chunks share one XLA
+        executable while a ragged final chunk compiles once more, and the
+        per-chunk outputs are concatenated once at the end.
+
+        Forward-only: it reads the host wall clock, so it raises under
+        ``jax.jit``/``grad``/``vmap`` and is rejected together with
+        ``checkpoint_segments``.
+    report_label : str
+        Short tag prefixed to each progress line, e.g. ``"MSL drive p1"``,
+        so the per-drive solves of one ``compute_*_s_matrix`` call are
+        distinguishable in a log. Ignored when ``report_every`` is None.
 
     Returns
     -------
@@ -1884,8 +1916,33 @@ def run(
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+        if report_every is None:
+            final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+        else:
+            # Issue #667: same scan, driven from the host in chunks so a
+            # multi-hour solve emits progress. The carry threads through
+            # untouched (DFT accumulators, port/flux/monitor state, NTFF
+            # compensation), so this is a continuation and not a re-solve.
+            # The ``report_every is None`` branch above is byte-identical to
+            # the pre-#667 code by construction.
+            final_carry, outputs = scan_with_progress(
+                body, carry_init, xs,
+                n_steps=n_steps,
+                report_every=report_every,
+                label=report_label,
+            )
     else:
+        if report_every is not None:
+            raise NotImplementedError(
+                "report_every is not supported together with "
+                "checkpoint_segments: segmented checkpointing is itself a "
+                "scan-of-scans whose segment boundaries pin the AD "
+                "rematerialisation points, and host-side progress chunking "
+                "would have to cut the same axis. Progress reporting is a "
+                "forward-only feature — drop checkpoint_segments for a "
+                "monitored forward solve, or drop report_every for the "
+                "memory-limited gradient solve."
+            )
         # Segmented checkpointing (issue #73): split the n_steps scan into
         # K segments of size s and rematerialise each segment as a unit.
         # Forward keeps only K segment-boundary carries (instead of all
@@ -2116,6 +2173,8 @@ def run_until_decay(
     mag_sources: list | None = None,
     checkpoint_segments: int | None = None,
     stencil_order: int = 2,
+    report_every: int | None = None,
+    report_label: str = "",
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -2213,6 +2272,17 @@ def run_until_decay(
          for flux / S-parameter / transmission gating on guided / low-loss
          closed geometries — for those use a fixed ``n_steps`` via
          :func:`run` (see ``validation/crossval/03_straight_waveguide_flux.py``).
+    report_every : int or None
+        Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
+        steps plus a final line at the actual stop step. ``None`` (default)
+        is OFF. This lane is already a Python loop, so the tick is a pure
+        addition on Python ints — it never reads a field value and cannot
+        perturb the result. The denominator is ``max_steps``, i.e. a CAP:
+        the line marks it ``(cap)`` and the ETA is an upper bound, because a
+        decay stop can fire at any check.
+    report_label : str
+        Short tag prefixed to each progress line. Ignored when
+        ``report_every`` is None.
 
     Returns
     -------
@@ -2411,6 +2481,18 @@ def run_until_decay(
     all_probes = []
     actual_steps = 0
 
+    # Issue #667 progress ticker. This lane is already a host loop, so the
+    # tick is a pure addition: it reads Python ints (``actual_steps``,
+    # ``report_every``) and never touches a traced value or a field value,
+    # so it cannot perturb the result. ``max_steps`` is a CAP, not a known
+    # length — the line says so and the ETA is an upper bound.
+    _reporter = None
+    if report_every is not None:
+        _report_every = validate_report_every(report_every, n_steps=max_steps)
+        check_not_traced(carry)
+        _reporter = ProgressReporter(
+            max_steps, label=report_label, total_is_cap=True)
+
     for step in range(max_steps):
         step_idx = jnp.array(step, dtype=jnp.int32)
         src_vals = src_waveforms[step]
@@ -2419,6 +2501,12 @@ def run_until_decay(
 
         all_probes.append(probe_out)
         actual_steps = step + 1
+
+        if _reporter is not None and actual_steps % _report_every == 0:
+            # Block first: JAX dispatch is asynchronous, so an unsynchronised
+            # tick would report the host's dispatch rate, not the solve rate.
+            jax.block_until_ready(carry["fdtd"])
+            _reporter.report(actual_steps)
 
         if use_absorbing and use_flux_stop:
             # #388 opt-in: RADIATED-FLUX stop. Compute the net outgoing Poynting flux at each
@@ -2467,6 +2555,13 @@ def run_until_decay(
             if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
                 if val_sq < decay_by * peak_sq:
                     break
+
+    if _reporter is not None and _reporter.last_reported != actual_steps:
+        # The decay stop lands on an arbitrary step, so without this line the
+        # log's last progress entry would understate the run by up to
+        # report_every steps and never show where it actually stopped.
+        jax.block_until_ready(carry["fdtd"])
+        _reporter.report(actual_steps)
 
     # #388: measured static-remnant advisory on an absorbing-lane ENERGY cap-hit (the energy
     # criterion never fired). Complements the pre-run waveform-DC advisory. Not applicable to

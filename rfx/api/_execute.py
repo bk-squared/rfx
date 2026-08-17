@@ -614,6 +614,11 @@ class _ExecuteMixin:
                 "S-matrix assembly is not plumbed through this path",
             "s_param_n_steps":
                 "S-matrix assembly is not plumbed through this path",
+            "report_every":
+                "host-side progress chunking (issue #667) is wired on the "
+                "uniform lane only; this path would run silently to "
+                "completion, so the request is reported rather than "
+                "dropped in silence",
         }
         if reason_overrides:
             reasons.update(reason_overrides)
@@ -2840,6 +2845,8 @@ class _ExecuteMixin:
         devices: list | None = None,
         exchange_interval: int = 1,
         skip_preflight: bool = False,
+        report_every: int | None = None,
+        report_label: str = "",
     ) -> Result:
         """Run the simulation.
 
@@ -2930,6 +2937,31 @@ class _ExecuteMixin:
             the distributed runner.  Default 1 (every step).  Higher
             values (2-4) reduce synchronization overhead at the cost of
             O(interval * dt) boundary error.
+        report_every : int or None
+            Issue #667 — progress reporting for long solves. When set,
+            print one ``  [PROGRESS] ...`` line every *N* timesteps giving
+            steps done / total, wall elapsed, implied rate and ETA, on the
+            same stdout channel as preflight so a redirected job log
+            captures it. ``None`` (default) is OFF and leaves the solve on
+            its unchanged code path, so nothing moves for existing callers.
+
+            Supported on the **uniform lane only** (both the fixed
+            ``n_steps`` scan and ``until_decay``); the distributed,
+            non-uniform, ADI and subgridded lanes warn and drop it rather
+            than silently producing no output. It is forward-only and
+            raises under ``jax.jit``/``grad``/``vmap``.
+
+            On the fixed-``n_steps`` scan the reporting turns the single
+            compiled scan into ``ceil(n_steps / report_every)`` calls to
+            the SAME compiled scan with ``carry`` threaded through — a
+            continuation, not a re-solve, and bit-exact against
+            ``report_every=None`` (locked by
+            ``tests/test_run_progress_reporting.py``). Pick
+            ``report_every`` large enough that a chunk is many seconds of
+            work; each report costs one device synchronisation.
+        report_label : str
+            Short tag prefixed to each progress line (e.g. ``"drive p1"``).
+            Ignored when ``report_every`` is None.
 
         Returns
         -------
@@ -3033,6 +3065,7 @@ class _ExecuteMixin:
                 "compute_s_params": compute_s_params,
                 "s_param_freqs": s_param_freqs,
                 "s_param_n_steps": s_param_n_steps,
+                "report_every": report_every,
             })
             from rfx.runners.distributed_v2 import run_distributed
             _res = run_distributed(
@@ -3057,6 +3090,7 @@ class _ExecuteMixin:
             _nu_dropped = {
                 "snapshot": snapshot,
                 "conformal_pec": conformal_pec,
+                "report_every": report_every,
             }
             if _nu_until_decay is None:
                 _nu_dropped["until_decay"] = until_decay
@@ -3111,6 +3145,9 @@ class _ExecuteMixin:
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
 
         if plan.lane == "run_adi":
+            self._warn_unsupported_run_kwargs("adi", {
+                "report_every": report_every,
+            })
             if until_decay is not None:
                 raise ValueError("solver='adi' does not support until_decay yet")
             if snapshot is not None:
@@ -3137,6 +3174,7 @@ class _ExecuteMixin:
                 "snapshot": snapshot,
                 "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
+                "report_every": report_every,
             })
             subgrid_n_steps = n_steps
             if subgrid_n_steps is None:
@@ -3200,6 +3238,8 @@ class _ExecuteMixin:
             pec_mask=pec_mask,
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
+            report_every=report_every,
+            report_label=report_label,
         )
         self._warn_run_sparams_if_nonpassive(_res)
         self._warn_postrun_energy_witness(

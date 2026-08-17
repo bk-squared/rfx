@@ -167,6 +167,8 @@ def run_uniform(
     pec_mask=None,
     kerr_chi3=None,
     field_dtype=None,
+    report_every: int | None = None,
+    report_label: str = "",
 ):
     """Run the uniform-grid simulation path.
 
@@ -664,6 +666,8 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
+            report_every=report_every,
+            report_label=report_label,
         )
     else:
         sim_result = _simulation.run(
@@ -693,6 +697,8 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
+            report_every=report_every,
+            report_label=report_label,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),

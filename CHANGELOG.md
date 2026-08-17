@@ -6,6 +6,74 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `report_every=N` makes a long solve supervisable (issue #667)
+
+A solve printed nothing between the call and its return, so a slow run was
+indistinguishable from a hang. The case that prompted it: a 42.15 M-cell /
+225,000-step `compute_msl_s_matrix` whose last log line was written at
+second 0 and was still the last line 4 h 10 min later, with the job still
+`running`. A rate extrapolated from the same campaign's 12.6 M and 24.5 M-cell
+runs predicted ~2 h and was wrong, because per-cell throughput falls at
+larger grids — so there was no way to tell a bad estimate from a stuck job
+except by waiting.
+
+`Simulation.run(report_every=N)`, `compute_msl_s_matrix(report_every=N)` and
+the low-level `rfx.simulation.run` / `run_until_decay` now emit one line per
+N steps on preflight's stdout channel:
+
+```
+  [PROGRESS] MSL drive p1/2: 500/787 steps (63.5%) | elapsed 0:00:02 | 185.9 steps/s | ETA 0:00:01
+```
+
+**The default is `None` — off — and nothing moves for existing callers.**
+With `report_every=None` the solve executes the unchanged single-`lax.scan`
+code path, so identity there is structural rather than tested-into.
+
+**Turning it on does not move a number either, and that is gated rather
+than asserted.** `run()` is one `jax.lax.scan`, and printing from inside the
+scan body would mean `jax.debug.print` / `io_callback` on the hot path.
+Instead the same compiled scan is driven from the host in `report_every`-step
+chunks with `carry` threaded through. The carry already holds the DFT
+accumulators and every port / flux / monitor state, so this is a
+continuation, not a re-solve. `tests/test_run_progress_reporting.py` locks
+that with SHA-256 digests over raw field bytes, the probe time series and the
+extracted `S` / `Z0` / `beta` — equal, not merely close — including chunk
+sizes that leave a ragged final chunk, and with a negative control proving
+the digests move when the physics does. The same architecture (host loop over
+constant-length jitted chunks) already shipped on the non-uniform
+`until_decay` lane in #383.
+
+Measured cost (69k-cell CPU fixture, 4000 steps, median of 3):
+
+| `report_every` | median s | vs off |
+|---|---|---|
+| off (`None`) | 8.255 | — |
+| 2000 (2 chunks) | 8.137 | −1.4 % |
+| 500 (8 chunks) | 8.341 | +1.0 % |
+| 100 (40 chunks) | 8.240 | −0.2 % |
+| 25 (160 chunks) | 9.138 | **+10.7 %** |
+
+Each report costs one device synchronisation, so the +10.7 % row is what
+happens when a chunk is only ~50 ms of work. Size `report_every` so a chunk
+is seconds of work; on the 42 M-cell case that motivated this, a 1000-step
+chunk is minutes. XLA compilations were counted directly: full chunks share
+one executable and a ragged final chunk compiles once more (200 steps →
+1 scan compile unchunked, 1 at `report_every=50`, 2 at `report_every=60`).
+
+Scope and fences, stated rather than discovered later:
+
+- **Uniform lane only.** The distributed, non-uniform, ADI and subgridded
+  lanes emit a `UserWarning` naming the reason instead of running silently
+  to completion with the request dropped.
+- **Forward-only.** It reads the host wall clock, so under
+  `jax.jit`/`grad`/`vmap` it raises rather than printing one fabricated line
+  at trace time. `compute_msl_s_matrix(eps_override=...)` routes through the
+  traced `forward()` and warns that it is ignored there.
+- Rejected together with `checkpoint_segments`, whose own scan-of-scans
+  segmentation cuts the same axis.
+- Nothing in the path branches on a traced value; every loop bound is
+  Python-int arithmetic.
+
 ### Added — `add_msl_port(direction=...)` accepts the in-board axes (issue #661)
 
 `direction` now takes `"+x"`, `"-x"`, `"+y"` and `"-y"`. A microstrip feed

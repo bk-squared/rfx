@@ -1744,7 +1744,9 @@
         "field_dtype",
         "return_state",
         "mag_sources",
-        "stencil_order"
+        "stencil_order",
+        "report_every",
+        "report_label"
       ]
     },
     "run_adi_2d": {
@@ -1885,7 +1887,9 @@
         "return_state",
         "mag_sources",
         "checkpoint_segments",
-        "stencil_order"
+        "stencil_order",
+        "report_every",
+        "report_label"
       ]
     },
     "save_experiment_report": {
@@ -2534,7 +2538,8 @@
       "eps_override",
       "checkpoint_every",
       "checkpoint_segments",
-      "enforce_passivity"
+      "enforce_passivity",
+      "report_every"
     ],
     "compute_waveguide_s_matrix": [
       "n_steps",
@@ -2650,7 +2655,9 @@
       "conformal_min_weight",
       "devices",
       "exchange_interval",
-      "skip_preflight"
+      "skip_preflight",
+      "report_every",
+      "report_label"
     ],
     "set_periodic_axes": [
       "axes"
