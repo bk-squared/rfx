@@ -1291,8 +1291,10 @@ class Simulation(
             (#671). Both the uniform and the non-uniform (``dz_profile``)
             ``run()``/S-parameter lanes apply the operator; lanes that do
             not (distributed, subgridded, ADI, UPML, dispersive-overlap,
-            multimode-waveguide, MSL, optimize/topology drivers) refuse f0
-            sheets loudly rather than silently dropping them. The sheet
+            multimode-waveguide, MSL-junction/mixed, optimize/topology
+            drivers) refuse f0 sheets loudly rather than silently dropping
+            them; ``compute_msl_s_matrix`` applies the sheet through its
+            ``run()``/``forward()`` device dispatches (#679). The sheet
             contributes NO PEC cells and no ``materials.sigma``/``eps_r``
             entries.
 

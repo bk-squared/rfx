@@ -133,22 +133,6 @@ def _wr90(n_modes=1):
     return sim
 
 
-def _msl_thru():
-    """Two-port MSL thru line (same shape as the fast MSL fixtures) with a
-    sheet floating in the substrate region."""
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032), dx=2e-4,
-                     boundary="cpml", cpml_layers=8)
-    sim.add_material("sub", eps_r=2.2)
-    sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
-    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0010)), material="pec")
-    _sheet(sim, Box((0.004, 0.003, 0.002), (0.008, 0.005, 0.002)))
-    sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
-                     direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
-    sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
-                     direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
-    return sim
-
-
 def _mixed_probe_fed_msl():
     """Probe-fed MSL board for the mixed (wire + MSL) lane. Ladder geometry
     copied from the working fixture in tests/test_mixed_port_sparam.py so
@@ -248,12 +232,6 @@ def test_fence_distributed_nonuniform_forward():
                                distributed=True)
     _fence(go, where=("_execute.py", "forward"),
            match=r"on the distributed non-uniform forward\(\) lane")
-
-
-def test_fence_msl_s_matrix():
-    _fence(lambda: _msl_thru().compute_msl_s_matrix(n_steps=4, n_freqs=3),
-           where=("_sparams.py", "compute_msl_s_matrix"),
-           match=r"on the MSL S-parameter lane")
 
 
 def test_fence_msl_junction_mixed_s_matrix():
@@ -481,8 +459,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_run"),
     ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
-    ("rfx/api/_sparams.py", "compute_msl_s_matrix", "MSL S-parameter"):
-        (__name__, "test_fence_msl_s_matrix"),
     ("rfx/api/_sparams.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),

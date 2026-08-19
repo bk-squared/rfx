@@ -264,6 +264,17 @@ A `True` entry is not an accuracy guarantee.
 - `mode="eigenmode"` is unsupported and raises `NotImplementedError`.
 - SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported for
   this calculation.
+- Surface-impedance sheets (`add_thin_conductor(...,
+  surface_impedance_f0=...)`) are applied on this lane's device runs (#679):
+  every FDTD dispatch goes through `run()`/`forward()`, which realize the
+  sheet node-thin via the #677 per-step operator. The trace itself must stay
+  a PEC `Box` (an f0 sheet never enters the PEC mask the Ampere-loop current
+  and V span anchor on, and the lane raises if no PEC trace is found).
+  Combination refusals (dispersive substrate, subpixel/conformal, UPML,
+  ADI/subgridded/distributed) fire at the run-lane entry. A sheet lying
+  inside a probed span biases the lossless-line N-probe `Z0`/`q` fit (the
+  honesty guard may warn) while the V-I S extraction stays valid. The mixed
+  (wire + MSL junction) lane still refuses f0 sheets.
 - Strong-reflector `|S11|`'s roughly 0.16--0.22 "staircase-Z0 floor" this
   document used to cite is **RETIRED** (issue #487) — it was substantially
   the #511 modal-voltage span and #507 far-port-echo single-ratio assembly

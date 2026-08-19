@@ -2530,6 +2530,24 @@ class _SparamMixin:
         projection warning fires, and ``S`` may exceed the bound (measured
         sigma_max 1.18 on a coarse thru).
 
+        Surface-impedance sheets (``add_thin_conductor(...,
+        surface_impedance_f0=...)``) are supported on this lane (#677/#679):
+        the sheet is realized node-thin by the per-step operator inside the
+        ``run()``/``forward()`` device dispatches — no lane-level ctx is
+        built here. Combination refusals (dispersive substrate,
+        subpixel/conformal, ``boundary='upml'``, ADI / subgridded /
+        distributed) fire downstream at the run-lane entry with run-lane
+        wording. The TRACE must remain PEC: an f0 sheet never enters
+        ``pec_mask``, and the closed Ampere-loop current and the V span
+        anchor on PEC trace nodes. The Hammerstad-Jensen beta/Z0 anchors
+        and the real-beta N-probe fit assume a lossless line, so a sheet
+        lying INSIDE a probed span adds per-length loss the fit cannot
+        represent — reported ``Z0``/``q`` shift (the Z0 honesty guard may
+        warn) while the V-I production S stays valid. A non-z-normal sheet
+        (x/y-normal) carries Ez in its tangential edge set: crossing the
+        feed plane or the V-integration column it legitimately modifies the
+        measured/launched Ez — place sheets clear of feed and probe planes.
+
         For each registered MSL port, runs one FDTD simulation with that
         port driven and the others passive.  The passive ports are NOT
         assumed matched — measured ``|a_passive/a_driven| = 0.07-0.51``
@@ -2805,8 +2823,17 @@ class _SparamMixin:
         # land beta outside the scan window for a loaded substrate.
         from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
         _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
-        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
-        _refuse_f0(self._thin_conductors, "MSL S-parameter")
+        # #679: surface_impedance_f0 sheets are supported on this lane. NO
+        # ctx is built here — every device dispatch below goes through the
+        # public run()/forward(), which assemble their own materials with
+        # sheet_specs and build the ctx against their OWN final pec_mask
+        # (run: _execute.py -> runners/uniform.py build_sheet_impedance_ctx;
+        # forward: _execute.py; NU lanes: runners/nonuniform.py). The anchor
+        # assembly below is deliberately sheet-free (apply_thin_conductor
+        # emits nothing without a sheet_specs collector) — correct, because
+        # an f0 sheet carries no eps and never enters pec_mask. This lane
+        # has NO vacuum reference run, so there is no strip_sheet_impedance
+        # analogue.
         _msl_assembled = (
             self._assemble_materials_nu(grid) if is_nonuniform
             else self._assemble_materials(grid)
@@ -2861,7 +2888,12 @@ class _SparamMixin:
                     "above the substrate top for MSL port "
                     f"{entries[p_idx].name!r}; the closed Ampere-loop "
                     "current (issue #80 stage S1) needs the trace PEC. "
-                    "Add the microstrip trace as a Box(material='pec')."
+                    "Add the microstrip trace as a Box(material='pec'). "
+                    "A surface_impedance_f0 thin conductor is NOT a trace "
+                    "conductor here — it never enters pec_mask, and the "
+                    "Ampere-loop current and V span anchor on PEC trace "
+                    "nodes. Keep the trace PEC and use f0 sheets for "
+                    "auxiliary lossy metal only."
                 )
             trace_k_per_port.append((
                 int(meta["k_top"] + int(k_pec.min())),
