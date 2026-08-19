@@ -300,7 +300,8 @@
           "shape",
           "sigma_bulk",
           "thickness",
-          "eps_r"
+          "eps_r",
+          "surface_impedance_f0"
         ],
         "properties": {
           "shape": {
@@ -314,6 +315,13 @@
           },
           "eps_r": {
             "type": "number"
+          },
+          "surface_impedance_f0": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Issue #669: opt-in Leontovich surface-impedance loss; null = legacy DC/PEC behaviour, a number is the band-centre fit frequency f0 in Hz."
           }
         }
       }

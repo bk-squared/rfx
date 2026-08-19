@@ -521,6 +521,14 @@ _THIN_CONDUCTOR_FIELDS: dict[str, _F] = {
     "sigma_bulk": _NUM,
     "thickness": _NUM,
     "eps_r": _NUM,
+    # Issue #669: opt-in Leontovich surface-impedance loss. None = the legacy
+    # DC/PEC behaviour; a number is the band-centre fit frequency f0 in Hz.
+    # Design state (which loss model the sheet uses), not run control, so it
+    # belongs in the document; None round-trips as JSON null.
+    "surface_impedance_f0": _F(
+        dump=lambda v, w: None if v is None else check_number(v, what=w),
+        load=lambda v, w: None if v is None else check_number(v, what=w),
+    ),
 }
 
 _COAXIAL_PORT_FIELDS: dict[str, _F] = {
