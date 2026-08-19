@@ -28,9 +28,23 @@ G5   default-off run byte identity: kwarg-absent vs
 G8   reference-strip negative control: the NU reference run's explicit
      ``strip_sheet_impedance`` changes S/observables on a sheet-bearing
      device and is a byte-level no-op on a sheet-free control.
-G9   lane fences: GPU baked fast path excludes sheets; distributed /
-     subgridded / ADI / dispersive-overlap / crossing-normal combinations
-     refuse loudly.
+G9   lane fences, THIS module's share only: the GPU baked fast path
+     excludes sheets; the two distributed runners, UPML, the two
+     dispersive-overlap lanes and the crossing-normal builder refuse
+     loudly. Each of those enters through its own lane (or, for the
+     builder, is a pure unit).
+
+     The other G9 fences named in the #677 commit — ADI run/forward,
+     subgridded, distributed multi-device, NU-forward, MSL, MSL-junction,
+     waveguide subpixel + multimode, optimize (both meshes),
+     gradient-check, topology, material-fit, NU anisotropic-eps, uniform
+     subpixel/conformal, forward-dispersive — are pinned in
+     ``tests/test_sheet_lane_fences.py``, which enters each lane's public
+     entry point AND asserts the raising frame, so a dropped call site
+     reds. That file's ``FENCE_REGISTRY`` is the single inventory of every
+     #677 fence and names the pinning test for each, including the ones
+     that live here; its ``test_every_fence_in_the_source_is_pinned``
+     fails if a fence exists with no registered test.
 """
 
 import warnings
@@ -387,6 +401,14 @@ def test_g9_distributed_runners_refuse():
 
 
 def test_g9_refusal_helper_message_names_the_lane():
+    """UNIT test of the helper's message formatting ONLY.
+
+    It proves nothing about whether any lane calls the helper: delete
+    ``refuse_f0_sheets(self._thin_conductors, "ADI run()")`` from
+    ``rfx/api/_execute.py`` and this test stays green (measured
+    2026-08-19) while ``sim.run(solver="adi")`` stops refusing. The
+    call-site proofs live in ``tests/test_sheet_lane_fences.py``.
+    """
     tc = ThinConductor(shape=Box((0, 0, 0), (1e-3, 1e-3, 0)),
                        sigma_bulk=1e4, thickness=35e-6,
                        surface_impedance_f0=F0)

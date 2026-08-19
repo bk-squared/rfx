@@ -100,6 +100,16 @@ fixture, JAX CPU float32):
   xfail(strict=True) kept with the new fingerprint) and the next O3 step
   remains the guide COMPARATOR, not another sheet mechanism.
 
+  O4a under the same re-measure: the sqrt-law discriminator SPLIT. Read on
+  the clean free-standing-sheet transmission oracle the x4 ratio is 0.5025
+  — inside ``O4A_BAND`` [0.40, 0.60], and that leg is the green physics
+  tooth. Read on THIS guide fixture the ratio is 0.6089 — outside the same
+  band, and it ships as ``test_sqrt_sigma_discriminator_o4a_guide_leg``,
+  xfail(strict=True) against the UNWIDENED band, with the measured 0.6089
+  regression-locked green in a third test so drift cannot hide under the
+  expected failure. The pre-#677 slab's 0.517 quoted in the R2-STOP block
+  above is the OLD realization's number and is not the current state.
+
 Mesh-refinement falsifier — pre-declared, run 2026-08-19 (PRE-#677
   realization), gate untouched,
   and NOT resolving: the same oracle at dx = 0.500 / 0.250 / 0.125 mm
@@ -173,6 +183,15 @@ N_STEPS = 4000
 MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
 MEASURED_ALPHA_TWO_PLANE = 0.72494  # two-plane-ratio comparator, same run
 MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1|
+MEASURED_GUIDE_SQRT_RATIO = 0.6089  # alpha(4*sigma)/alpha(sigma), guide fit
+
+# O4a band: Leontovich predicts alpha ~ sqrt(1/sigma), so a x4 in
+# sigma_bulk halves the loss -> 0.50. A DC (thickness-fold) sheet would
+# predict 0.25. The [0.40, 0.60] window separates the two models and is
+# the HISTORICAL band — it is not widened here. See the two O4a tests: the
+# clean transmission oracle passes it (0.5025) and the guide fit does not
+# (0.6089), which is why the guide leg ships xfail(strict=True).
+O4A_BAND = (0.40, 0.60)
 # gate_from_envelope(MEASURED_ENVELOPE) = 0.51 would EXCEED the 0.15
 # contract hard cap, so the committed gate is the cap itself and the O3
 # test is xfail(strict=True): red today, loudly, and a future pass is
@@ -379,35 +398,77 @@ def test_alpha_oracle_o3():
         f"(err {err:.3%} > gate {ALPHA_GATE:.2f}); resid={out['resid'][0]:.4f}")
 
 
+def _guide_sqrt_ratio():
+    """alpha(4*sigma)/alpha(sigma) from the guide fit (cached runs)."""
+    a1 = _cached("base")["alpha"][0]
+    a4 = _cached("sig4", sigma_bulk=4e4)["alpha"][0]
+    return float(a4 / a1)
+
+
 @pytest.mark.slow_physics
 def test_sqrt_sigma_discriminator_o4a():
-    """O4a: sigma_bulk x4 => loss ratio in [0.40, 0.60] (Leontovich
-    predicts 0.50; the DC sheet model predicts 0.25 — outside the gate,
-    so wrong-model wiring fails here).
+    """O4a (PHYSICS tooth, GREEN): sigma_bulk x4 => loss ratio inside the
+    historical ``O4A_BAND`` (Leontovich predicts 0.50; a DC thickness-fold
+    sheet predicts 0.25 — outside the band, so wrong-model wiring fails
+    here).
 
-    #677 retarget with root-cause: the PHYSICS discriminant now reads the
-    clean free-standing-sheet transmission oracle (below), where the x4
-    ratio measured 0.5025 — the guide-based ratio moved to 0.6089 under
-    the node-thin operator, 0.015 OUTSIDE the historical [0.40, 0.60]
-    band, and the independent transmission oracle attributes that
-    excursion to the guide fixture's span-average contamination (its
-    profile is non-exponential; see the #677 RE-MEASURE record), not to
-    the sheet's sigma-scaling. The band is NOT widened; the tooth moved
-    to the uncontaminated observable, and the guide ratio is pinned below
-    as a diagnostic so any further drift still surfaces."""
-    # physics discriminant: transmission ratio (shares the ref run's
-    # normalization out — Rs(4 sigma) = Rs/2 -> T ratio ~ 0.5)
+    #677 retarget: the discriminant reads the clean free-standing-sheet
+    transmission oracle, where the x4 ratio measured 0.5025. The guide-fit
+    ratio moved to 0.6089 under the node-thin operator, OUTSIDE the same
+    band, and is asserted against that same unwidened band in the
+    xfail(strict=True) sibling below rather than being folded into this
+    test's pass. Moving the tooth to the uncontaminated observable is a
+    retarget with a named root cause (the guide profile is
+    non-exponential — see the #677 RE-MEASURE record and the O3 xfail
+    reason); it is not a relaxation of the band, which is byte-identical
+    to what shipped before #677."""
     t1 = _transmission_spectra(SIGMA_BULK)
     t4 = _transmission_spectra(4 * SIGMA_BULK)
     ratio_t = float(t4[2] / t1[2])          # f0 bin
-    assert 0.40 <= ratio_t <= 0.60, ratio_t
+    lo, hi = O4A_BAND
+    assert lo <= ratio_t <= hi, ratio_t
 
-    # diagnostic pin: the guide-based ratio at its measured value (0.6089,
-    # 2026-08-19 #677 re-measure) — a regression lock, not a physics gate
-    a1 = _cached("base")["alpha"][0]
-    a4 = _cached("sig4", sigma_bulk=4e4)["alpha"][0]
-    ratio = a4 / a1
-    assert abs(ratio - 0.6089) <= 0.05, ratio
+
+@pytest.mark.slow_physics
+@pytest.mark.xfail(
+    strict=True,
+    reason="#677 re-measure (2026-08-19): the GUIDE-fit sqrt-law ratio is "
+           "0.6089, outside the unwidened historical O4A_BAND "
+           "[0.40, 0.60] — RED, and kept red rather than accommodated. "
+           "Same attribution as the O3 xfail above: the independent "
+           "free-standing-sheet transmission oracle reproduces the x4 "
+           "ratio at 0.5025 (test_sqrt_sigma_discriminator_o4a) and the "
+           "closed form to 4.4% frequency-flat, so the excursion is the "
+           "guide fixture's span-average contamination, not the sheet's "
+           "sigma scaling. Fix the guide comparator/fixture before "
+           "touching the operator. Do NOT widen O4A_BAND; a future pass "
+           "must remove this marker explicitly. The measured value itself "
+           "is regression-locked GREEN in "
+           "test_o4a_guide_ratio_regression_lock, so drift away from "
+           "0.6089 surfaces there rather than hiding under this xfail.",
+)
+def test_sqrt_sigma_discriminator_o4a_guide_leg():
+    """O4a guide leg (contract band, currently RED — see xfail reason)."""
+    ratio = _guide_sqrt_ratio()
+    lo, hi = O4A_BAND
+    assert lo <= ratio <= hi, ratio
+
+
+@pytest.mark.slow_physics
+def test_o4a_guide_ratio_regression_lock():
+    """DIAGNOSTIC pin (not a physics pass): the guide-fit sqrt-law ratio
+    stays within +-5% of ``MEASURED_GUIDE_SQRT_RATIO``.
+
+    Same +-5% relative convention as ``test_alpha_envelope_regression_lock``
+    on this fixture's other measured quantities — a lock on what WAS
+    measured, deliberately not a two-sided physics window centred anywhere
+    convenient. It is GREEN on purpose: an assertion buried inside the
+    xfail(strict=True) sibling would be swallowed by the expected failure,
+    so drift in either direction has to be checked from outside it."""
+    ratio = _guide_sqrt_ratio()
+    assert abs(ratio / MEASURED_GUIDE_SQRT_RATIO - 1.0) <= 0.05, (
+        f"guide sqrt-law ratio moved: {ratio:.5f} vs recorded "
+        f"{MEASURED_GUIDE_SQRT_RATIO}")
 
 
 @pytest.mark.slow_physics

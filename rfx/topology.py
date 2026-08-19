@@ -386,6 +386,14 @@ def topology_optimize(
         Contains final density, permittivity, loss history, and beta history.
     """
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
+    # #677 lane fence, deliberately ABOVE the optional-dependency import:
+    # the surface-impedance sheet is unsupported on this lane whether or not
+    # optax happens to be installed, and hoisting it is what lets
+    # tests/test_sheet_lane_fences.py pin THIS call site in an environment
+    # without the [optimization] extra (a fence pinned only where an optional
+    # package exists is a fence nothing checks in the default CI image).
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    _refuse_f0(sim._thin_conductors, "topology-optimization")
     try:
         import optax
     except ImportError:
@@ -450,8 +458,6 @@ def topology_optimize(
     if filt_r is not None:
         filter_radius_cells = filt_r / grid.dx
 
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
-    _refuse_f0(sim._thin_conductors, "topology-optimization")
     base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
     base_eps_r = base_materials.eps_r
     base_sigma = base_materials.sigma

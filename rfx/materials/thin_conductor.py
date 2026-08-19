@@ -503,7 +503,14 @@ def has_f0_sheets(thin_conductors) -> bool:
 
 
 def refuse_f0_sheets(thin_conductors, lane: str) -> None:
-    """Raise if ``thin_conductors`` contains an f0 sheet (#677 lane fence)."""
+    """Raise if ``thin_conductors`` contains an f0 sheet (#677 lane fence).
+
+    ``lane`` must be UNIQUE per call site: it is what
+    ``tests/test_sheet_lane_fences.py`` matches on to tell which of the
+    fences fired, alongside a check on the raising frame. A new call site
+    also needs a row in that file's ``FENCE_REGISTRY`` and a test entering
+    its lane — the inventory guard there fails otherwise.
+    """
     if has_f0_sheets(thin_conductors):
         raise ValueError(
             f"surface-impedance (surface_impedance_f0) thin conductors are "
