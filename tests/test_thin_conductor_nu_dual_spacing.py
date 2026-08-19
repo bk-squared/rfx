@@ -153,7 +153,17 @@ def _graded_sheet_sigma(zc, **tc_kwargs):
             pec_faces=sim._boundary_spec.pec_faces(),
             pmc_faces=sim._boundary_spec.pmc_faces(),
             cpml_axes="xyz")
-        sigma = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
+        specs = []
+        mats = assemble_materials_nu(sim, grid, sheet_specs=specs)[0]
+        if tc_kwargs.get("surface_impedance_f0") is not None:
+            # #677: the f0 sheet no longer rides materials.sigma — the
+            # realized per-node sheet conductivity is on the emitted spec,
+            # which is the SAME quantity this fixture always measured.
+            assert float(np.asarray(mats.sigma).max()) == 0.0
+            assert len(specs) == 1
+            sigma = np.asarray(specs[0].sigma_sheet)
+        else:
+            sigma = np.asarray(mats.sigma)
     nz = np.argwhere(sigma > 0)
     assert len(nz) > 0
     ks = sorted({int(i[2]) for i in nz})
@@ -367,13 +377,22 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
     alpha, resid = _fit_alpha(xs, np.abs(acc[0, i0:i1 + 1, j]))
     ts = np.abs(np.asarray(result.time_series)[:, 0])
     tail = ts[int(0.95 * len(ts)):].max()
-    # sheet-node geometry actually realized
-    sigma = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
+    # sheet-node geometry actually realized. #677: the sheets live on the
+    # emitted specs (sigma_sheet = (1/Rs0)/dual per node), not in
+    # materials.sigma — assert the arrays are sheet-free (absorber only,
+    # <= 2 S/m) and read the realized nodes off the specs.
+    specs = []
+    mats_nu = assemble_materials_nu(sim, grid, sheet_specs=specs)[0]
+    assert float(np.asarray(mats_nu.sigma).max()) <= 2.0 + 1e-6
+    assert len(specs) == 2, len(specs)
+    sigma = np.zeros_like(np.asarray(mats_nu.sigma))
+    for sp in specs:
+        sigma = sigma + np.asarray(sp.sigma_sheet)
     primal = np.asarray(grid.dz)
     dual = np.asarray(e_node_dual_spacings(grid.dz))
     rs0 = float(leontovich_rs(F0, SIGMA_BULK))
-    # the graded absorber tops out at 2 S/m; a plate's folded sigma_eff is
-    # 1/(Rs0*dual) ~ 800-1350 S/m, so 100 S/m separates them with 8x margin
+    # a plate's realized sigma_sheet is 1/(Rs0*dual) ~ 800-1350 S/m, so
+    # 100 S/m separates it from the absorber with 8x margin (tooth kept)
     sheet_ks = sorted({int(k) for k in np.argwhere(sigma > 100.0)[:, 2]})
     assert len(sheet_ks) == 2, (sheet_ks, float(sigma.max()))
     out = {

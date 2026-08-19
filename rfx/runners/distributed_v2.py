@@ -567,6 +567,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
 
     if exchange_interval > 1:

@@ -169,6 +169,7 @@ def run_uniform(
     field_dtype=None,
     report_every: int | None = None,
     report_label: str = "",
+    sheet_specs=None,
 ):
     """Run the uniform-grid simulation path.
 
@@ -197,6 +198,32 @@ def run_uniform(
     Result
     """
     from rfx.api import Result, WaveguideSParamResult
+
+    # #677 v1 fences for the surface-impedance sheet operator (loud, never
+    # silent): the operator replaces the standard isotropic E update at its
+    # edges, so lanes that swap that update out are refused.
+    if sheet_specs:
+        if sim._boundary == "upml":
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported with boundary='upml' (#677 v1): UPML replaces "
+                "the whole E update with its split-field form, which the "
+                "sheet operator would silently override at its edges. Use "
+                "boundary='cpml' or 'pec'.")
+        if subpixel_smoothing or conformal_pec:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported with subpixel_smoothing / conformal_pec "
+                "(#677 v1): the sheet operator assumes the plain isotropic "
+                "E update at its edges (Stage-1/2 conformal and Kottke "
+                "lanes are untouched by #677).")
+        if debye_spec is not None or lorentz_spec is not None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets combined "
+                "with dispersive (Debye/Lorentz) materials in one run are "
+                "not supported (#677 v1): the sheet operator would "
+                "silently override the ADE dispersion update at its "
+                "edges. Remove the dispersive material or the f0 sheet.")
 
     materials = base_materials
 
@@ -628,6 +655,13 @@ def run_uniform(
     if sim._lumped_rlc:
         rlc_metas = [build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc]
 
+    # #677: assemble the surface-impedance sheet ctx against the FINAL
+    # pec_mask of this run (after the wire-port live-cell clearing above —
+    # PEC wins on overlapping edges). Crossing-normal refusal lives in the
+    # builder.
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    sheet_ctx = build_sheet_impedance_ctx(sheet_specs, pec_mask=pec_mask)
+
     # Main simulation
     if until_decay is not None:
         sim_result = _simulation.run_until_decay(
@@ -666,6 +700,7 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
+            sheet_impedance=sheet_ctx,
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
         )
@@ -697,6 +732,7 @@ def run_uniform(
             field_dtype=field_dtype,
             mag_sources=mag_sources or None,
             stencil_order=sim._stencil_order,
+            sheet_impedance=sheet_ctx,
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
         )

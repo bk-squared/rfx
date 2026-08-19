@@ -450,6 +450,8 @@ def topology_optimize(
     if filt_r is not None:
         filter_radius_cells = filt_r / grid.dx
 
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    _refuse_f0(sim._thin_conductors, "topology-optimization")
     base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
     base_eps_r = base_materials.eps_r
     base_sigma = base_materials.sigma

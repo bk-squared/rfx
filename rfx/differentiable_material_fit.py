@@ -515,6 +515,8 @@ def differentiable_material_fit(
         sim = sim_factory(eps_inf, debye_poles, lorentz_poles)
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
+        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        _refuse_f0(sim._thin_conductors, "differentiable material fit")
         materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(grid)
 
         # Setup ports (fold port impedance into materials)

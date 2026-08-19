@@ -1277,14 +1277,24 @@ class Simulation(
             path. When set to a positive frequency (Hz), the sheet — for ANY
             ``sigma_bulk > 0``, metals included — is modelled as a resistive
             sheet of sheet resistance ``Rs0 = sqrt(pi*f0*mu0/sigma_bulk)``
-            (the thick-conductor surface resistance at ``f0``), realized as
-            ``sigma_eff = 1/(Rs0*d_norm)`` through the existing lossy
-            thin-conductor fold on BOTH the uniform and the non-uniform
-            (``dz_profile``) lanes, with ``d_norm`` the local spacing normal
-            to the sheet: the cell size on a uniform grid, and on a graded
-            one the E-node DUAL spacing ``(d[k-1]+d[k])/2``, which is the
-            length that node's sigma acts over (the two agree wherever the
-            adjacent cells are equal). The sheet contributes NO PEC cells.
+            (the thick-conductor surface resistance at ``f0``), realized
+            NODE-THIN (#677): a per-step operator applies an exact
+            exponential-stepping resistive update ``E = A*E + B*curlH``
+            with sheet conductivity ``sigma_sheet = (1/Rs0)/d_norm`` on
+            exactly the tangential E edges a PEC sheet on the same cells
+            would zero — so toggling ``surface_impedance_f0`` on a metal
+            changes LOSS, never the conductor's surface position (before
+            #677 the sheet folded into ``materials.sigma`` as a full-cell
+            slab, moving resonances by geometry). ``d_norm`` is the local
+            spacing normal to the sheet: the cell size on a uniform grid,
+            and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``
+            (#671). Both the uniform and the non-uniform (``dz_profile``)
+            ``run()``/S-parameter lanes apply the operator; lanes that do
+            not (distributed, subgridded, ADI, UPML, dispersive-overlap,
+            multimode-waveguide, MSL, optimize/topology drivers) refuse f0
+            sheets loudly rather than silently dropping them. The sheet
+            contributes NO PEC cells and no ``materials.sigma``/``eps_r``
+            entries.
 
             Model scope (be precise about what you get):
 
@@ -1301,24 +1311,29 @@ class Simulation(
               mode (Leontovich loss is thickness-independent).
             - **Transmission leakage** ``(2*Rs/eta0)**2`` makes the sheet
               unusable for shielding-effectiveness claims beyond ~60 dB.
-            - The folded ``sigma`` is isotropic per cell, so the
-              sheet-normal E component is also loaded (second-order,
-              screened) — inherited caveat of the lossy fold.
+              (Validated against the closed form ``T = 2Rs/(2Rs+eta0)``
+              to within a few percent, frequency-flat —
+              tests/test_leontovich_alpha_oracle.py.)
+            - The operator touches TANGENTIAL sheet edges only; the
+              sheet-normal E component is never loaded (#677 removed the
+              pre-existing isotropic-fold caveat).
             - ``f0`` and ``sigma_bulk`` are differentiable DoFs in f0 mode
-              (closed forms ``d(sigma_eff)/df0 = -sigma_eff/(2*f0)``,
-              ``d(sigma_eff)/d(sigma_bulk) = +sigma_eff/(2*sigma_bulk)``).
-              Traced values skip the concrete-value validation below.
+              (closed forms ``d(sigma_sheet)/df0 = -sigma_sheet/(2*f0)``,
+              ``d(sigma_sheet)/d(sigma_bulk) =
+              +sigma_sheet/(2*sigma_bulk)``). Geometry (the rasterized
+              mask) stays non-differentiable. Traced values skip the
+              concrete-value validation below.
 
             Sheet shapes (issue #674): ANY shape implementing
             ``mask_on_coords`` and ``bounding_box`` may carry a
             surface-impedance sheet — a patterned ground plane with
             clearance holes, a meandered arm, an imported CAD outline
             (:class:`~rfx.geometry.mesh_import.MeshShape`), a disc, a
-            strip. The fold is per occupied cell, so a hole is simply a
-            cell the fold never touches. What is NOT supported is a body
-            with HEIGHT: the sheet must rasterize to exactly ONE cell layer
-            along its normal, because ``sigma_eff`` is the conductance of a
-            single E node. A 3-D solid, a bent/L-shaped sheet, or a slab
+            strip. The realization is per occupied cell, so a hole is
+            simply a cell the operator never touches. What is NOT supported
+            is a body with HEIGHT: the sheet must rasterize to exactly ONE
+            cell layer along its normal, because ``sigma_sheet`` is the
+            conductance of a single E node. A 3-D solid, a bent/L-shaped sheet, or a slab
             thicker than a cell raises ``ValueError`` when the grid is
             built — folding such a body per cell would multiply the sheet
             conductance by the layer count while still reporting ``Rs0``.

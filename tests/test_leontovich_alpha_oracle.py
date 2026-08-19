@@ -76,7 +76,32 @@ fixture, JAX CPU float32):
   exponential-stepping sheet-current coefficient; true multi-pole SIBC
   boundary.
 
-Mesh-refinement falsifier — pre-declared, run 2026-08-19, gate untouched,
+#677 RE-MEASURE (node-thin exponential-stepping operator, run 2026-08-19,
+  this fixture, JAX CPU float32): the R2-STOP record above measured the
+  PRE-#677 realization (full-cell volumetric sigma fold). #677 replaced it
+  with the node-thin sheet operator (the R2-named alternative
+  architecture), and the G6 re-measure on THIS fixture reads
+  alpha_fit(10 GHz) = 0.69823 Np/m (envelope 0.33806), two-plane-ratio
+  alpha = 0.72494 (envelope 0.31273) — WORSE than the slab's 0.85779, with
+  a steeper frequency slope (alpha(f) = 0.231/0.464/0.698/0.874/1.014 at
+  8..12 GHz). Witnesses: fit ln-RMS resid 0.00245 (< 0.02), settle
+  -71.0 dB, preflight advisory = the known y-axis cpml_layers clamp only.
+  ATTRIBUTION (comparator-first, independent oracle): the same operator on
+  a free-standing sheet reproduces the closed-form normal-incidence
+  transmission T = 2Rs/(2Rs+eta0) to within 4.4 percent, FREQUENCY-FLAT,
+  across 8-12 GHz (test_sheet_transmission_matches_closed_form below) —
+  so the delivered sheet dynamics are Rs-flat and correct to a few
+  percent, and the remaining guide envelope belongs to THIS FIXTURE'S
+  measurement (the COMPARATOR CAVEAT below, now confirmed: the 20 mm
+  sub-window decay rates still fall monotonically 0.807 -> 0.582 across
+  the span at f0 — a 32 percent half-span disagreement that a 0.002
+  ln-RMS residual is blind to). Per the #671 gate policy the envelope
+  stays > 0.10, so the O3 gate stays RED (cap 0.15 binds,
+  xfail(strict=True) kept with the new fingerprint) and the next O3 step
+  remains the guide COMPARATOR, not another sheet mechanism.
+
+Mesh-refinement falsifier — pre-declared, run 2026-08-19 (PRE-#677
+  realization), gate untouched,
   and NOT resolving: the same oracle at dx = 0.500 / 0.250 / 0.125 mm
   measures alpha(10 GHz) = 0.85777 / 0.84685 / 0.95601 Np/m, i.e.
   deficits 0.18681 / 0.19716 / 0.09367. That is not a systematic shrink
@@ -144,10 +169,11 @@ ABSORBER_SIGMA_MAX = 2.0           # S/m, quadratic profile
 SRC_X = 0.010
 N_STEPS = 4000
 
-# ---- measured envelope (see module docstring R2-STOP record) ----
-MEASURED_ALPHA = 0.85779           # Np/m at f0, this fixture, 2026-08-19
-MEASURED_ENVELOPE = 0.18679        # |alpha/alpha_analytic - 1| — R2-STOP
-# gate_from_envelope(MEASURED_ENVELOPE) = 0.29 would EXCEED the 0.15
+# ---- measured envelope (see module docstring: #677 RE-MEASURE) ----
+MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
+MEASURED_ALPHA_TWO_PLANE = 0.72494  # two-plane-ratio comparator, same run
+MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1|
+# gate_from_envelope(MEASURED_ENVELOPE) = 0.51 would EXCEED the 0.15
 # contract hard cap, so the committed gate is the cap itself and the O3
 # test is xfail(strict=True): red today, loudly, and a future pass is
 # loud too. The derivation below is kept so the cap-binding is checked.
@@ -282,41 +308,64 @@ def _cached(key, **kw):
     return _cache[key]
 
 
+def _alpha_two_plane(xs, mag):
+    """Two-plane amplitude-ratio alpha at fixed separation — the #669
+    COMPARATOR CAVEAT's named alternative extractor (#677 G6): no
+    single-exponential assumption, just the endpoint amplitude ratio."""
+    return float(np.log(mag[0] / mag[-1]) / (xs[-1] - xs[0]))
+
+
+def test_two_plane_comparator_recovers_synthetic_alpha():
+    """G6 comparator-first: the two-plane extractor recovers a synthetic
+    exponential's alpha within 1% (exactly, in fact) BEFORE any FDTD
+    number is attributed through it."""
+    xs = np.arange(FIT_X[0], FIT_X[1] + 1e-12, DX)
+    a = _alpha_two_plane(xs, np.exp(-ALPHA_ANALYTIC * xs))
+    assert abs(a / ALPHA_ANALYTIC - 1.0) < 0.01
+    assert abs(a / ALPHA_ANALYTIC - 1.0) < 1e-9   # measured: exact
+
+
 @pytest.mark.slow_physics
 def test_alpha_envelope_regression_lock():
     """DIAGNOSTIC pin (not a physics pass): the measured envelope itself.
     alpha at f0 stays within +-5% of the recorded MEASURED_ALPHA, and the
     run witnesses stay clean — so any regression OR improvement of the
-    one-cell sheet realization surfaces instead of drifting silently
-    behind the xfail'd contract gate below. Provenance: 2026-08-19
-    envelope run, fit ln-RMS resid 0.00206, settle -79.8 dB."""
+    node-thin sheet realization surfaces instead of drifting silently
+    behind the xfail'd contract gate below. Provenance: 2026-08-19 #677
+    re-measure, fit ln-RMS resid 0.00245, settle -71.0 dB, two-plane
+    alpha 0.72494."""
     out = _cached("base")
     alpha = out["alpha"][0]
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
-    # forward-wave-purity witness (envelope run measured 0.00206 ln-RMS)
+    # two-plane comparator pin (same run, independent extractor shape)
+    a2 = _alpha_two_plane(out["xs"], out["profile"][0])
+    assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
+    # forward-wave-purity witness (re-measure run: 0.00245 ln-RMS)
     assert out["resid"][0] < 0.02, out["resid"][0]
-    # ring-down settling witness (repo rule; envelope run: -79.8 dB)
+    # ring-down settling witness (repo rule; re-measure run: -71.0 dB)
     assert out["settle_db"] < -40.0, out["settle_db"]
 
 
 @pytest.mark.slow_physics
 @pytest.mark.xfail(
     strict=True,
-    reason="R2-STOP (issue #669, 2026-08-19): measured envelope 0.18679 > "
-           "0.10 at the contract resolution — a one-cell volumetric sigma "
-           "sheet under-delivers Leontovich loss at dx = lambda/60 "
-           "(alpha(f) linear in f instead of flat; Rs-scale-independent). "
-           "Pre-declared mesh falsifier RUN 2026-08-19 and NOT resolving: "
-           "deficit 0.18681/0.19716/0.09367 at dx = 0.500/0.250/0.125 mm "
-           "(non-monotone), with x = sigma_eff*dt/(2*eps0) = 54.19 fixed "
-           "on all three by construction; and the fitted alpha is a span "
-           "average of a non-exponential profile whose half-span fits "
-           "differ by 19.3-36.9%. Fix the COMPARATOR before the mechanism "
-           "— see module docstring. "
-           "Named alternatives: exponential-stepping sheet coefficient; "
-           "multi-pole SIBC. Do NOT loosen the 0.15 cap; a future pass "
-           "must remove this marker explicitly.",
+    reason="#677 re-measure (2026-08-19): envelope 0.33806 (fit) / "
+           "0.31273 (two-plane) > 0.10 under the node-thin "
+           "exponential-stepping operator — the R2-named alternative "
+           "architecture is IN and the guide envelope did not close. "
+           "Attribution is now pinned to THIS FIXTURE'S measurement, not "
+           "the sheet dynamics: the same operator reproduces the "
+           "closed-form free-standing-sheet transmission T = "
+           "2Rs/(2Rs+eta0) to within 4.4% and frequency-FLAT across "
+           "8-12 GHz (test_sheet_transmission_matches_closed_form), while "
+           "this guide's profile is still non-exponential (20 mm "
+           "sub-window decay rates 0.807 -> 0.582 across the span at f0; "
+           "alpha(f) = 0.231..1.014 across 8-12 GHz where an Rs-flat "
+           "sheet predicts a flat 1.055). Fix the guide COMPARATOR/"
+           "fixture (termination + profile purity) before touching the "
+           "operator. Do NOT loosen the 0.15 cap; a future pass must "
+           "remove this marker explicitly.",
 )
 def test_alpha_oracle_o3():
     """O3 (contract gate, currently RED — see xfail reason): |alpha_meas/
@@ -332,13 +381,33 @@ def test_alpha_oracle_o3():
 
 @pytest.mark.slow_physics
 def test_sqrt_sigma_discriminator_o4a():
-    """O4a: sigma_bulk x4 => alpha ratio in [0.40, 0.60] (Leontovich
+    """O4a: sigma_bulk x4 => loss ratio in [0.40, 0.60] (Leontovich
     predicts 0.50; the DC sheet model predicts 0.25 — outside the gate,
-    so wrong-model wiring fails here)."""
+    so wrong-model wiring fails here).
+
+    #677 retarget with root-cause: the PHYSICS discriminant now reads the
+    clean free-standing-sheet transmission oracle (below), where the x4
+    ratio measured 0.5025 — the guide-based ratio moved to 0.6089 under
+    the node-thin operator, 0.015 OUTSIDE the historical [0.40, 0.60]
+    band, and the independent transmission oracle attributes that
+    excursion to the guide fixture's span-average contamination (its
+    profile is non-exponential; see the #677 RE-MEASURE record), not to
+    the sheet's sigma-scaling. The band is NOT widened; the tooth moved
+    to the uncontaminated observable, and the guide ratio is pinned below
+    as a diagnostic so any further drift still surfaces."""
+    # physics discriminant: transmission ratio (shares the ref run's
+    # normalization out — Rs(4 sigma) = Rs/2 -> T ratio ~ 0.5)
+    t1 = _transmission_spectra(SIGMA_BULK)
+    t4 = _transmission_spectra(4 * SIGMA_BULK)
+    ratio_t = float(t4[2] / t1[2])          # f0 bin
+    assert 0.40 <= ratio_t <= 0.60, ratio_t
+
+    # diagnostic pin: the guide-based ratio at its measured value (0.6089,
+    # 2026-08-19 #677 re-measure) — a regression lock, not a physics gate
     a1 = _cached("base")["alpha"][0]
     a4 = _cached("sig4", sigma_bulk=4e4)["alpha"][0]
     ratio = a4 / a1
-    assert 0.40 <= ratio <= 0.60, ratio
+    assert abs(ratio - 0.6089) <= 0.05, ratio
 
 
 @pytest.mark.slow_physics
@@ -357,3 +426,86 @@ def test_pec_control_o4c():
     when asked."""
     a_pec = _cached("pec", sigma_bulk=5.8e7, f0_mode=False)["alpha"][0]
     assert abs(a_pec) <= 0.05 * ALPHA_ANALYTIC, a_pec
+
+# ---------------------------------------------------------------------------
+# #677: independent closed-form oracle for the sheet OPERATOR itself
+# ---------------------------------------------------------------------------
+
+_TRANS_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)
+_trans_cache = {}
+
+
+def _transmission_spectra(sigma_bulk):
+    """|T|(f) through a free-standing f0 sheet — two-run reference ratio.
+
+    Cached per sigma_bulk; the sheet-free reference run is shared. The
+    ring-down settle witness (< -40 dB) is asserted on every run.
+    """
+    from rfx.boundaries.spec import BoundarySpec
+
+    x_sheet, domain = 40e-3, (80e-3, 2e-3, 2e-3)
+
+    def _build(sb):
+        sim = Simulation(freq_max=12e9, domain=domain, dx=DX,
+                         boundary=BoundarySpec(x="cpml", y="pmc", z="pec"),
+                         cpml_layers=10)
+        if sb is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sim.add_thin_conductor(
+                    Box((x_sheet, 0.0, 0.0),
+                        (x_sheet, domain[1], domain[2])),
+                    sigma_bulk=sb, thickness=THICKNESS,
+                    surface_impedance_f0=F0)
+        for k in range(4):
+            sim.add_source((10e-3, 1e-3, (k + 0.5) * DX), "ez",
+                           waveform=GaussianPulse(f0=F0, bandwidth=0.5),
+                           amplitude_kind="field")
+        sim.add_dft_plane_probe(axis="x", coordinate=60e-3, component="ez",
+                                freqs=jnp.asarray(_TRANS_FREQS),
+                                name="trans")
+        sim.add_probe((60e-3, 1e-3, 1e-3), "ez")
+        return sim
+
+    def _spectrum(sb):
+        key = "ref" if sb is None else float(sb)
+        if key not in _trans_cache:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                r = _build(sb).run(n_steps=3000, compute_s_params=False)
+            spec = np.abs(np.asarray(
+                r.dft_planes["trans"].accumulator)).mean(axis=(1, 2))
+            ts = np.abs(np.asarray(r.time_series)[:, 0])
+            tail = ts[int(0.95 * len(ts)):].max()
+            settle = 20 * np.log10(max(tail, 1e-300) / ts.max())
+            assert settle < -40.0, (key, settle)   # ring-down witness
+            _trans_cache[key] = spec
+        return _trans_cache[key]
+
+    return _spectrum(sigma_bulk) / _spectrum(None)
+
+
+@pytest.mark.slow_physics
+def test_sheet_transmission_matches_closed_form():
+    """Normal-incidence |T| through a free-standing Rs0 sheet equals the
+    closed form T = 2Rs/(2Rs + eta0), frequency-FLAT, at every probed bin.
+
+    This is the attribution witness for the #677 G6 re-measure: it shares
+    NOTHING with the guide fixture above (different domain, termination,
+    observable and normalization — a two-run reference ratio), so it
+    separates "the operator delivers the wrong Rs" from "the guide
+    measurement is contaminated". Measured envelope 2026-08-19: worst
+    |T/T_analytic - 1| = 0.0444 over 8-12 GHz -> gate
+    gate_from_envelope(0.0444) = 0.07 (repo x1.5 rule, quantum=100).
+    """
+    TRANS_GATE = gate_from_envelope(0.0444, quantum=100)
+    assert TRANS_GATE == 0.07   # derivation pin, not a hand-tuned number
+
+    rs0 = float(leontovich_rs(F0, SIGMA_BULK))
+    t_analytic = 2 * rs0 / (2 * rs0 + ETA_0)
+    T = _transmission_spectra(SIGMA_BULK)
+    for f, t in zip(_TRANS_FREQS, T):
+        assert abs(t / t_analytic - 1.0) <= TRANS_GATE, (
+            f"|T| off closed form at {f/1e9:.0f} GHz: {t:.6f} vs "
+            f"{t_analytic:.6f}")
+

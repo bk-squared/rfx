@@ -887,6 +887,7 @@ def _build_nu_scan(
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
+    sheet_impedance=None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion, #383).
 
@@ -958,6 +959,15 @@ def _build_nu_scan(
 
     use_pec_mask = pec_mask is not None
     use_pec_occupancy = pec_occupancy is not None
+
+    # #677 surface-impedance sheet: exponential-stepping A/B built once
+    # from the FINAL scan materials; applied per step at tangential edges
+    # in step_fn (after apply_pec_mask, before sources/DFT sampling).
+    use_sheet_impedance = sheet_impedance is not None
+    if use_sheet_impedance:
+        from rfx.materials.thin_conductor import sheet_update_coeffs
+        sheet_coeffs = sheet_update_coeffs(
+            sheet_impedance.sigma_sheet, materials, dt)
 
     if sources:
         src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
@@ -1124,6 +1134,10 @@ def _build_nu_scan(
             from rfx.sources.tfsf import update_tfsf_1d_h
             tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
 
+        # Snapshot E^n for the #677 sheet operator (it REPLACES the
+        # standard update at masked tangential edges with A*E^n + B*curlH).
+        e_prev_sheet = (st.ex, st.ey, st.ez) if use_sheet_impedance else None
+
         # E update: use ADE-aware path when dispersive materials are present
         debye_new = None
         lorentz_new = None
@@ -1161,6 +1175,22 @@ def _build_nu_scan(
             st = apply_pec_mask(st, pec_mask)
         if use_pec_occupancy:
             st = apply_pec_occupancy(st, pec_occupancy)
+
+        # #677 node-thin surface-impedance sheet operator. Contract slot:
+        # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap),
+        # BEFORE sources and the port DFT sampling below. curlH comes from
+        # the SAME shared stencil helper update_e_nu uses, on the same
+        # H^{n+1/2} the E update consumed.
+        if use_sheet_impedance:
+            from rfx.core.yee import curl_h_nu as _curl_h_nu
+            from rfx.materials.thin_conductor import (
+                apply_sheet_impedance_e as _apply_sheet_e)
+            _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
+            _curls = _curl_h_nu(
+                st.hx.astype(_scd), st.hy.astype(_scd), st.hz.astype(_scd),
+                inv_dx, inv_dy, inv_dz)
+            st = _apply_sheet_e(st, e_prev_sheet, _curls,
+                                sheet_impedance, sheet_coeffs)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         new_rlc_states = None
@@ -1399,6 +1429,7 @@ def run_nonuniform(
     checkpoint_every: int | None = None,
     n_warmup: int = 0,
     aniso_eps: tuple | None = None,
+    sheet_impedance=None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -1438,6 +1469,7 @@ def run_nonuniform(
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
+        sheet_impedance=sheet_impedance,
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
@@ -1761,6 +1793,7 @@ def run_nonuniform_until_decay(
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
+    sheet_impedance=None,
 ) -> dict:
     """Run non-uniform FDTD until the interior-domain energy decays (#383).
 
@@ -1858,6 +1891,7 @@ def run_nonuniform_until_decay(
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
+        sheet_impedance=sheet_impedance,
     )
     step_fn = setup.step_fn
     carry = setup.carry_init

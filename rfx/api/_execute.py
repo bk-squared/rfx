@@ -931,6 +931,7 @@ class _ExecuteMixin:
         rlc_values_override: dict | None = None,
         _sparam_drive_idx: int | None = None,
         _return_raw_port_sparams: bool = False,
+        sheet_impedance: object | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -956,6 +957,8 @@ class _ExecuteMixin:
           returned unchanged.
         """
         if self._solver == "adi":
+            from rfx.materials.thin_conductor import refuse_f0_sheets
+            refuse_f0_sheets(self._thin_conductors, "ADI forward")
             return self._run_adi_from_materials(
                 grid,
                 materials,
@@ -1558,6 +1561,7 @@ class _ExecuteMixin:
             flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
             return_state=False,
             stencil_order=self._stencil_order,
+            sheet_impedance=sheet_impedance,
             field_dtype=self._resolve_field_dtype(),
         )
 
@@ -2755,6 +2759,9 @@ class _ExecuteMixin:
             )
 
         if plan.lane == "fwd_distributed_nu":
+            from rfx.materials.thin_conductor import refuse_f0_sheets
+            refuse_f0_sheets(self._thin_conductors,
+                             "distributed non-uniform forward()")
             return self._forward_distributed_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -2786,7 +2793,9 @@ class _ExecuteMixin:
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
         grid = self._build_grid()
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = self._assemble_materials(grid)
+        _fwd_sheet_specs: list = []
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = self._assemble_materials(
+            grid, sheet_specs=_fwd_sheet_specs)
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
             materials = MaterialArrays(
@@ -2801,6 +2810,19 @@ class _ExecuteMixin:
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
+        # #677: node-thin sheet ctx against the final forward pec_mask
+        # (PEC wins on overlapping edges).
+        from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+        _fwd_sheet_ctx = build_sheet_impedance_ctx(
+            _fwd_sheet_specs, pec_mask=pec_mask)
+        if _fwd_sheet_ctx is not None and (
+                debye_spec is not None or lorentz_spec is not None):
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets combined "
+                "with dispersive (Debye/Lorentz) materials in one run are "
+                "not supported (#677 v1): the sheet operator would "
+                "silently override the ADE dispersion update at its edges.")
+
         _res = self._forward_from_materials(
             grid,
             materials,
@@ -2814,6 +2836,7 @@ class _ExecuteMixin:
             kerr_chi3=kerr_chi3,
             port_s11_freqs=port_s11_freqs,
             rlc_values_override=rlc_values_override,
+            sheet_impedance=_fwd_sheet_ctx,
         )
         _warn_if_nonfinite_result(_res, context="forward")
         return _res
@@ -3079,6 +3102,8 @@ class _ExecuteMixin:
                 "s_param_n_steps": s_param_n_steps,
                 **({} if report_every is None else {"report_every": report_every}),
             })
+            from rfx.materials.thin_conductor import refuse_f0_sheets
+            refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
             from rfx.runners.distributed_v2 import run_distributed
             _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
@@ -3154,9 +3179,13 @@ class _ExecuteMixin:
             return _res
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(grid)
+        _run_sheet_specs: list = []
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(
+            grid, sheet_specs=_run_sheet_specs)
 
         if plan.lane == "run_adi":
+            from rfx.materials.thin_conductor import refuse_f0_sheets
+            refuse_f0_sheets(self._thin_conductors, "ADI run()")
             self._warn_unsupported_run_kwargs("adi", {
                 **({} if report_every is None else {"report_every": report_every}),
             })
@@ -3180,6 +3209,8 @@ class _ExecuteMixin:
 
         # ---- Subgridded lane ----
         if plan.lane == "run_subgridded":
+            from rfx.materials.thin_conductor import refuse_f0_sheets
+            refuse_f0_sheets(self._thin_conductors, "subgridded (SBP-SAT) run()")
             self._warn_unsupported_run_kwargs("subgridded (SBP-SAT)", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -3250,6 +3281,7 @@ class _ExecuteMixin:
             pec_mask=pec_mask,
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
+            sheet_specs=_run_sheet_specs,
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
         )

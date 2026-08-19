@@ -189,7 +189,18 @@ def _uniform_sigma(shape, **kw):
         sim.add_thin_conductor(shape, sigma_bulk=SIGMA_BULK,
                                thickness=THICKNESS, **kw)
     grid = sim._build_grid()
-    mats, _, _, pec_mask, *_ = sim._assemble_materials(grid)
+    specs = []
+    mats, _, _, pec_mask, *_ = sim._assemble_materials(
+        grid, sheet_specs=specs)
+    if kw.get("surface_impedance_f0") is not None:
+        # #677: the f0 sheet is emitted as a SheetImpedanceSpec instead of
+        # a materials.sigma fold; sigma_sheet is the SAME per-node realized
+        # quantity every assertion in this module was written against, so
+        # the helpers return it in f0 mode (and assert the arrays stayed
+        # sheet-free).
+        assert float(np.asarray(mats.sigma).max()) == 0.0
+        assert len(specs) == 1
+        return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
     return np.asarray(mats.sigma), pec_mask, grid, sim
 
 
@@ -212,7 +223,14 @@ def _nu_sigma(shape, **kw):
         sim.add_thin_conductor(shape, sigma_bulk=SIGMA_BULK,
                                thickness=THICKNESS, **kw)
         grid = _nu_grid(sim)
-        mats, _, _, pec_mask = assemble_materials_nu(sim, grid)
+        specs = []
+        mats, _, _, pec_mask = assemble_materials_nu(
+            sim, grid, sheet_specs=specs)
+    if kw.get("surface_impedance_f0") is not None:
+        # #677 retarget — see _uniform_sigma
+        assert float(np.asarray(mats.sigma).max()) == 0.0
+        assert len(specs) == 1
+        return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
     return np.asarray(mats.sigma), pec_mask, grid, sim
 
 
@@ -467,9 +485,14 @@ def test_design_ir_records_a_registered_nonbox_sheet_and_refuses_the_rest():
     assert tc.shape == disc
     assert float(tc.surface_impedance_f0) == F0
     sig_a, _, _, _ = _uniform_sigma(disc, surface_impedance_f0=F0)
-    sig_b = np.asarray(
-        back._assemble_materials(back._build_grid())[0].sigma)
-    assert _sha(sig_a) == _sha(sig_b)
+    specs_b = []
+    mats_b = back._assemble_materials(
+        back._build_grid(), sheet_specs=specs_b)[0]
+    # #677: the round-tripped sim emits the identical sheet spec (arrays
+    # stay sheet-free on both sides)
+    assert float(np.asarray(mats_b.sigma).max()) == 0.0
+    assert len(specs_b) == 1
+    assert _sha(sig_a) == _sha(np.asarray(specs_b[0].sigma_sheet))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -623,7 +646,12 @@ def test_occupancy_guard_does_not_break_the_traced_mesh_path():
 
     def loss(scale):
         sim._dz_profile = base * scale
-        return jnp.sum(assemble_materials_nu(sim, _nu_grid(sim))[0].sigma)
+        specs = []
+        assemble_materials_nu(sim, _nu_grid(sim), sheet_specs=specs)
+        # #677: the sheet quantity (and its mesh derivative) lives on the
+        # emitted spec now; the occupancy guard must still skip the traced
+        # mask instead of raising ConcretizationTypeError.
+        return jnp.sum(specs[0].sigma_sheet)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -661,7 +689,14 @@ def test_vmap_batched_build_folds_a_nonbox_sheet_identically():
         sim, grid, base, "substrate.eps_r", jnp.asarray(eps_values))
     assert batched.sigma.shape[0] == 2
     for idx, eps_val in enumerate(eps_values):
-        serial, *_ = make(float(eps_val))._assemble_materials(grid)
+        specs = []
+        serial, *_ = make(float(eps_val))._assemble_materials(
+            grid, sheet_specs=specs)
         assert np.array_equal(np.asarray(batched.sigma[idx]),
                               np.asarray(serial.sigma))
-        assert float(np.asarray(serial.sigma).max()) > 0.0
+        # #677: both builds are sheet-free in sigma; the non-Box sheet
+        # lands on the emitted spec exactly as on the serial build (the
+        # sweep itself takes the sequential fallback which applies it).
+        assert float(np.asarray(serial.sigma).max()) == 0.0
+        assert len(specs) == 1
+        assert float(np.asarray(specs[0].sigma_sheet).max()) > 0.0

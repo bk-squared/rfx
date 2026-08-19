@@ -85,6 +85,40 @@ def apply_pec_faces(state, faces: set[str]) -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
+def tangential_edge_masks(cell_mask):
+    """Per-component tangential E-edge masks for a boolean CELL mask.
+
+    The single source of the thin-sheet neighbor rule (#677): a component
+    is tangential to the masked body iff the body extends >= 2 cells in
+    that component's direction (i.e. has a masked neighbor along it). A
+    one-cell-thick sheet therefore selects only its in-plane (tangential)
+    E components; the sheet-normal component's mask is all-False by
+    construction.
+
+    Shared by :func:`apply_pec_mask` (which zeroes the selected edges) and
+    the surface-impedance sheet operator
+    (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
+    applies a resistive update on them), so the PEC and sheet footprints
+    are structurally identical — pinned by
+    tests/test_sheet_impedance_operator.py (G4 footprint identity).
+
+    Parameters
+    ----------
+    cell_mask : (nx, ny, nz) boolean array
+
+    Returns
+    -------
+    (mask_ex, mask_ey, mask_ez) boolean arrays, same shape.
+    """
+    mask_ex = cell_mask & (
+        jnp.roll(cell_mask, 1, axis=0) | jnp.roll(cell_mask, -1, axis=0))
+    mask_ey = cell_mask & (
+        jnp.roll(cell_mask, 1, axis=1) | jnp.roll(cell_mask, -1, axis=1))
+    mask_ez = cell_mask & (
+        jnp.roll(cell_mask, 1, axis=2) | jnp.roll(cell_mask, -1, axis=2))
+    return mask_ex, mask_ey, mask_ez
+
+
 def apply_pec_mask(state, pec_mask) -> object:
     """Zero tangential E-field components at PEC geometry cells.
 
@@ -102,12 +136,7 @@ def apply_pec_mask(state, pec_mask) -> object:
     # Per-component masks: zero E only where PEC has extent in that direction
     # Ex(i,j,k) zeroed if pec(i,j,k) AND neighbor PEC in x
     # (if no x-neighbor is PEC → thin x-sheet → Ex is normal → preserve)
-    mask_ex = pec_mask & (
-        jnp.roll(pec_mask, 1, axis=0) | jnp.roll(pec_mask, -1, axis=0))
-    mask_ey = pec_mask & (
-        jnp.roll(pec_mask, 1, axis=1) | jnp.roll(pec_mask, -1, axis=1))
-    mask_ez = pec_mask & (
-        jnp.roll(pec_mask, 1, axis=2) | jnp.roll(pec_mask, -1, axis=2))
+    mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask)
 
     return state._replace(
         ex=state.ex * (1.0 - mask_ex.astype(state.ex.dtype)),

@@ -373,7 +373,8 @@
         "grid",
         "conductor",
         "materials",
-        "pec_mask"
+        "pec_mask",
+        "sheet_specs"
       ]
     },
     "apply_thirds_rule": {
@@ -964,7 +965,8 @@
         "conformal_weights",
         "aniso_inv_eps",
         "checkpoint_segments",
-        "return_settling"
+        "return_settling",
+        "sheet_impedance"
       ]
     },
     "extract_waveguide_sparams": {
@@ -1746,7 +1748,8 @@
         "mag_sources",
         "stencil_order",
         "report_every",
-        "report_label"
+        "report_label",
+        "sheet_impedance"
       ]
     },
     "run_adi_2d": {
@@ -1841,7 +1844,8 @@
         "emit_time_series",
         "checkpoint_every",
         "n_warmup",
-        "aniso_eps"
+        "aniso_eps",
+        "sheet_impedance"
       ]
     },
     "run_until_decay": {
@@ -1889,7 +1893,8 @@
         "checkpoint_segments",
         "stencil_order",
         "report_every",
-        "report_label"
+        "report_label",
+        "sheet_impedance"
       ]
     },
     "save_experiment_report": {

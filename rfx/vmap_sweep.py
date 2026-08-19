@@ -252,6 +252,10 @@ def _apply_batched_thin_conductors(
     def _one(e, s, m):
         mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m)
         for tc in conductors:
+            # #677: an f0 (surface-impedance) conductor is a no-op on the
+            # material arrays by design — the sheet is a per-step operator
+            # ctx now, and sims carrying one never reach the fast path
+            # (has_f0_sheets ineligibility in _build_full_scan_fn).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None)
         return mats.eps_r, mats.sigma, mats.mu_r
 
@@ -685,6 +689,15 @@ def _build_full_scan_fn(
     #     into the fast-path scan body);
     #   - non-uniform mesh profiles: scan bodies assume a uniform grid.
     if boundary == "upml":
+        return None, None
+    #   - surface-impedance (f0) sheets (#677): the sheet is a per-step
+    #     node-thin operator ctx, not a materials.sigma fold, and neither
+    #     vmap scan body applies it — the fast path would silently sweep a
+    #     sheet-FREE model. The sequential fallback runs Simulation.run()
+    #     per value, which applies the ctx (batch-invariant by
+    #     construction there).
+    from rfx.materials.thin_conductor import has_f0_sheets
+    if has_f0_sheets(getattr(sim, "_thin_conductors", None)):
         return None, None
     if getattr(sim, "_lumped_rlc", None):
         return None, None

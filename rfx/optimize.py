@@ -365,6 +365,8 @@ def optimize(
         from rfx.nonuniform import position_to_index as _nu_pos_to_idx
         lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
         hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
+        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
         base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(grid)
         period = 1.0 / float(sim._freq_max)
         # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
@@ -374,6 +376,8 @@ def optimize(
         grid = sim._build_grid()
         lo_idx = list(grid.position_to_index(region.corner_lo))
         hi_idx = list(grid.position_to_index(region.corner_hi))
+        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        _refuse_f0(sim._thin_conductors, "optimize() design")
         base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(grid)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
@@ -530,6 +534,8 @@ def gradient_check(
         Contains ad_grad, fd_grad, and relative_error.
     """
     grid = sim._build_grid()
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
+    _refuse_f0_gc(sim._thin_conductors, "gradient-check")
     base_materials, _, _, _, _, _, _ = sim._assemble_materials(grid)
     base_eps = base_materials.eps_r
 

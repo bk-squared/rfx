@@ -94,8 +94,12 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # Build grid + materials exactly as the uniform forward lane does.
     grid = sim._build_grid()
+    _sheet_specs: list = []
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-        sim._assemble_materials(grid)
+        sim._assemble_materials(grid, sheet_specs=_sheet_specs)
+    # #677: node-thin sheet ctx, applied by every per-drive forward run.
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    _sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
@@ -170,6 +174,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             port_s11_freqs=freqs,
             _sparam_drive_idx=j,
             _return_raw_port_sparams=True,
+            sheet_impedance=_sheet_ctx,
         )
 
         accs = raw["wire"] if wire_mode else raw["lumped"]

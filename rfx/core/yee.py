@@ -291,6 +291,58 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
+def curl_h(hx, hy, hz, dx: float, periodic: tuple,
+           stencil_order: int = 2, bloch: tuple | None = None):
+    """curl(H) at the E edges on a uniform grid (backward staggered diffs).
+
+    Factored out of :func:`update_e` (#677) so the surface-impedance sheet
+    operator and the E-update kernel share ONE stencil — any drift between
+    the two would silently violate the sheet operator's G3 free-space
+    identity gate. Callers pass H components already cast to the compute
+    dtype; the expressions are byte-identical to the pre-#677 inline code.
+    """
+    so = stencil_order
+    # dHz/dy - dHy/dz
+    curl_x = (
+        _diff_bwd_o(hz, 1, periodic, so, bloch) / dx
+        - _diff_bwd_o(hy, 2, periodic, so, bloch) / dx
+    )
+    # dHx/dz - dHz/dx
+    curl_y = (
+        _diff_bwd_o(hx, 2, periodic, so, bloch) / dx
+        - _diff_bwd_o(hz, 0, periodic, so, bloch) / dx
+    )
+    # dHy/dx - dHx/dy
+    curl_z = (
+        _diff_bwd_o(hy, 0, periodic, so, bloch) / dx
+        - _diff_bwd_o(hx, 1, periodic, so, bloch) / dx
+    )
+    return curl_x, curl_y, curl_z
+
+
+def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz):
+    """curl(H) at the E edges on a non-uniform grid (backward diffs).
+
+    Factored out of :func:`update_e_nu` (#677) for the same shared-stencil
+    reason as :func:`curl_h`. ``inv_dx/inv_dy/inv_dz`` are the E-update
+    inverse spacings ``inv_d_e`` from
+    ``rfx.nonuniform._profile_to_inv_arrays``.
+    """
+    curl_x = (
+        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
+        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
+    )
+    curl_y = (
+        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
+        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
+    )
+    curl_z = (
+        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
+        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
+    )
+    return curl_x, curl_y, curl_z
+
+
 @partial(jax.jit, static_argnums=(4, 5, 6))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
@@ -340,22 +392,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
     cb = (dt / eps) / (1.0 + sigma_dt_2eps)
 
-    # curl H components via backward staggered differences (order=2 byte-identical)
-    # dHz/dy - dHy/dz
-    curl_x = (
-        _diff_bwd_o(hz, 1, periodic, so, bloch) / dx
-        - _diff_bwd_o(hy, 2, periodic, so, bloch) / dx
-    )
-    # dHx/dz - dHz/dx
-    curl_y = (
-        _diff_bwd_o(hx, 2, periodic, so, bloch) / dx
-        - _diff_bwd_o(hz, 0, periodic, so, bloch) / dx
-    )
-    # dHy/dx - dHx/dy
-    curl_z = (
-        _diff_bwd_o(hy, 0, periodic, so, bloch) / dx
-        - _diff_bwd_o(hx, 1, periodic, so, bloch) / dx
-    )
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
 
     ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
     ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)
@@ -446,18 +483,7 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     cb = (dt / eps) / (1.0 + sigma_dt_2eps)
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
 
     ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
     ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)

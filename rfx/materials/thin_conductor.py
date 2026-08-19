@@ -29,7 +29,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import MU_0, MaterialArrays
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays
 from rfx.geometry.csg import Shape
 
 # Threshold above which a thin conductor is treated as PEC sheet.
@@ -221,6 +221,7 @@ def apply_thin_conductor(
     conductor: ThinConductor,
     materials: MaterialArrays,
     pec_mask: jnp.ndarray | None = None,
+    sheet_specs: list | None = None,
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
@@ -234,6 +235,15 @@ def apply_thin_conductor(
     materials : MaterialArrays
     pec_mask : bool array or None
         Existing PEC mask.  Updated in-place for PEC thin sheets.
+    sheet_specs : list or None
+        Collector for surface-impedance (``surface_impedance_f0``) sheets
+        (#677). An f0-mode conductor no longer touches the material arrays;
+        when a list is passed, a :class:`SheetImpedanceSpec` is appended to
+        it for the caller to assemble into a runtime
+        :class:`SheetImpedanceCtx`. When ``None`` (legacy callers), the f0
+        branch still validates the sheet but emits nothing — the assembled
+        arrays are sheet-free either way, and lanes that cannot apply the
+        ctx must refuse f0 sheets at their entry point.
 
     Returns
     -------
@@ -250,22 +260,29 @@ def apply_thin_conductor(
         return materials, pec_mask
 
     if conductor.surface_impedance_f0 is not None:
-        # Leontovich (band-centre) surface-impedance mode (issue #669): the
-        # sheet is a resistive sheet of sheet resistance Rs0 = sqrt(pi*f0*
-        # mu0/sigma_bulk), realized through the same lossy fold as
-        # sigma_eff = 1/(Rs0 * d_norm) so that sigma_eff*d_norm = 1/Rs0
-        # exactly. Thickness deliberately does NOT enter: Leontovich loss
-        # for a conductor much thicker than its skin depth is thickness-
-        # independent (that is the honest physics, not a gap). grid.dx is
-        # the local normal spacing (Grid is uniform AND cubic on this lane,
-        # so the normal axis does not enter the arithmetic here — it is read
-        # only to guard the rasterized occupancy).
+        # Leontovich (band-centre) surface-impedance mode (issues #669/#677):
+        # the sheet is a resistive sheet of sheet resistance Rs0 =
+        # sqrt(pi*f0*mu0/sigma_bulk). Since #677 it is NOT folded into
+        # ``materials.sigma`` (that realized the sheet as a full-cell slab —
+        # the conductor surfaces moved half a cell each side and toggling f0
+        # moved resonances by GEOMETRY, measured 27.03/32.40 ->
+        # 26.02/29.18 GHz on the stacked patch-pair A/B). Instead it is
+        # emitted as a :class:`SheetImpedanceSpec` and realized NODE-THIN by
+        # the per-step operator :func:`apply_sheet_impedance_e` on exactly
+        # the tangential E edges ``apply_pec_mask`` would zero — the PEC and
+        # f0 footprints are structurally identical, so the f0 toggle changes
+        # loss, never geometry. ``eps_r`` is deliberately left at the
+        # background value (the sheet is a surface, not a dielectric fill).
         #
-        # #674: the fold itself is per-occupied-cell and shape-agnostic, so
-        # any ``mask_on_coords`` shape may deliver ``mask``. What the shape
-        # must still satisfy is that it rasterizes to ONE cell layer along its
-        # normal; ``check_sheet_occupancy`` is the guard, and it is what the
-        # #669 Box-only restriction was standing in for.
+        # Thickness deliberately does NOT enter: Leontovich loss for a
+        # conductor much thicker than its skin depth is thickness-
+        # independent. ``sigma_sheet = G/d_dual`` with G = 1/Rs0 keeps
+        # ``sigma_sheet * d_dual == 1/Rs0`` exactly per node (the O2 tooth;
+        # grid.dx is both primal and dual on this uniform cubic lane).
+        #
+        # #674: any ``mask_on_coords`` shape may deliver ``mask``; it must
+        # rasterize to ONE cell layer along its normal
+        # (``check_sheet_occupancy``).
         lo, hi = sheet_bounds(conductor.shape)
         if lo is None or hi is None:
             raise ValueError(
@@ -273,16 +290,225 @@ def apply_thin_conductor(
                 "requires a shape with an axis-aligned bounding box (Box "
                 "corner_lo/corner_hi, or Shape.bounding_box()) — the sheet "
                 "normal is read from it; refusing to fold it blind.")
-        check_sheet_occupancy(mask, sheet_normal_axis(lo, hi), lane="uniform")
-        sigma_eff = 1.0 / (
-            leontovich_rs(conductor.surface_impedance_f0,
-                          conductor.sigma_bulk) * grid.dx)
-    else:
-        # Lossy thin conductor (DC fold): effective conductivity preserves
-        # the DC sheet resistance R_s = 1/(sigma_bulk*t).
-        sigma_eff = conductor.sigma_bulk * (conductor.thickness / grid.dx)
+        n_axis = sheet_normal_axis(lo, hi)
+        check_sheet_occupancy(mask, n_axis, lane="uniform")
+        g_sheet = 1.0 / leontovich_rs(conductor.surface_impedance_f0,
+                                      conductor.sigma_bulk)
+        if sheet_specs is not None:
+            sigma_sheet = jnp.where(mask, g_sheet / grid.dx, 0.0)
+            sheet_specs.append(SheetImpedanceSpec(
+                mask=mask, normal_axis=n_axis, g_sheet=g_sheet,
+                sigma_sheet=sigma_sheet))
+        # Materials are returned UNCHANGED: assembled arrays are sheet-free
+        # by design since #677. A caller that runs the fields without
+        # applying the sheet ctx must refuse f0 sheets at its entry point
+        # (see Simulation lanes) — the assembly itself is not the fence.
+        return materials, pec_mask
+
+    # Lossy thin conductor (DC fold): effective conductivity preserves
+    # the DC sheet resistance R_s = 1/(sigma_bulk*t).
+    sigma_eff = conductor.sigma_bulk * (conductor.thickness / grid.dx)
 
     eps_r = jnp.where(mask, conductor.eps_r, materials.eps_r)
     sigma = jnp.where(mask, sigma_eff, materials.sigma)
 
     return MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=materials.mu_r), pec_mask
+
+
+# ---------------------------------------------------------------------------
+# Surface-impedance sheet operator (issue #677, Design B)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SheetImpedanceSpec:
+    """One rasterized surface-impedance (f0) sheet.
+
+    Emitted by :func:`apply_thin_conductor` (uniform lane) and
+    ``rfx.runners.nonuniform.assemble_materials_nu`` (NU lane) instead of a
+    ``materials.sigma`` fold (#677). ``sigma_sheet`` is the per-node sheet
+    conductivity ``G/d_dual`` (S/m) on the sheet cells and 0 elsewhere, with
+    ``d_dual`` the E-node DUAL spacing along the sheet normal (== grid.dx on
+    the uniform cubic lane; ``e_node_dual_spacings`` per node on NU — the
+    #671 invariant, so ``sigma_sheet * Rs0 * d_dual == 1`` per node).
+    ``g_sheet = 1/Rs0`` stays AD-live in ``f0`` and ``sigma_bulk``
+    (d(1/Rs0)/df0 = -(1/Rs0)/(2 f0); d(1/Rs0)/dsigma_bulk =
+    +(1/Rs0)/(2 sigma_bulk) — the #669 closed forms with flipped signs,
+    since G = 1/Rs0).
+    """
+    mask: object          # (nx, ny, nz) bool — one-layer cell mask
+    normal_axis: int      # 0/1/2
+    g_sheet: object       # scalar sheet conductance per square, 1/Rs0 (S)
+    sigma_sheet: object   # (nx, ny, nz) float — G/d_dual at sheet cells
+
+
+@dataclass(frozen=True)
+class SheetImpedanceCtx:
+    """Assembled runtime context for all f0 sheets of one run.
+
+    ``mask_ex/ey/ez`` are the TANGENTIAL edge masks from the shared
+    ``rfx.boundaries.pec.tangential_edge_masks`` neighbor rule — literally
+    the same edges ``apply_pec_mask`` would zero for the same cell mask
+    (G4 footprint identity), minus any edge the run's PEC mask already
+    owns (PEC wins on overlap). The sheet-normal component's mask is
+    all-False for a one-layer sheet by construction, so the normal E edge
+    is never touched.
+    """
+    mask_ex: object
+    mask_ey: object
+    mask_ez: object
+    sigma_sheet: object   # accumulated over sheets; 0 off-sheet
+
+
+def build_sheet_impedance_ctx(sheet_specs, pec_mask=None):
+    """Union a run's :class:`SheetImpedanceSpec` list into a runtime ctx.
+
+    Refuses crossing/overlapping sheets with DIFFERENT normals (their
+    edge-set union is not a sheet operator's contract — two planes crossing
+    share edges whose loss would double-count with no defined normal).
+    Same-normal overlaps ADD conductance (parallel sheets on one node —
+    physical). PEC-owned edges are excluded so ``apply_pec_mask`` (which
+    runs first) wins on overlap.
+
+    Returns ``None`` for an empty spec list.
+    """
+    from rfx.boundaries.pec import tangential_edge_masks
+    from rfx.core.jax_utils import is_tracer
+
+    specs = list(sheet_specs or ())
+    if not specs:
+        return None
+    for i in range(len(specs)):
+        for j in range(i + 1, len(specs)):
+            a, b = specs[i], specs[j]
+            if a.normal_axis == b.normal_axis:
+                continue
+            inter = a.mask & b.mask
+            if not (is_tracer(inter) or getattr(inter, "ndim", 0) != 3):
+                if bool(jnp.any(inter)):
+                    raise ValueError(
+                        "surface-impedance sheets with DIFFERENT normal axes "
+                        f"('{'xyz'[a.normal_axis]}' and "
+                        f"'{'xyz'[b.normal_axis]}') overlap on the grid. "
+                        "Crossing f0 sheets share edges whose sheet normal "
+                        "is undefined, so the operator refuses rather than "
+                        "double-counting their loss. Split the geometry so "
+                        "f0 sheets of different orientation do not share "
+                        "cells (PEC sheets may still cross freely).")
+    union = specs[0].mask
+    sigma_sheet = specs[0].sigma_sheet
+    for sp in specs[1:]:
+        union = union | sp.mask
+        sigma_sheet = sigma_sheet + sp.sigma_sheet
+    mask_ex, mask_ey, mask_ez = tangential_edge_masks(union)
+    if pec_mask is not None:
+        pex, pey, pez = tangential_edge_masks(pec_mask)
+        mask_ex = mask_ex & ~pex
+        mask_ey = mask_ey & ~pey
+        mask_ez = mask_ez & ~pez
+    return SheetImpedanceCtx(mask_ex=mask_ex, mask_ey=mask_ey,
+                             mask_ez=mask_ez, sigma_sheet=sigma_sheet)
+
+
+def sheet_update_coeffs(sigma_sheet, materials, dt):
+    """Holland exponential-stepping E-update coefficients (A, B) (#677).
+
+    Exact per-step integration of the Ampere ODE at a sheet edge,
+    ``eps dE/dt + sigma_tot E = curlH`` with ``sigma_tot = sigma_bg +
+    sigma_sheet`` held constant over the step::
+
+        x2 = sigma_tot * dt / (eps0 * eps_r)
+        A  = exp(-x2)
+        B  = -expm1(-x2) / sigma_tot      (== (1 - exp(-x2)) / sigma_tot)
+
+    Sign note (the #677 contract's documented flips): ``-expm1(-x2)`` is
+    the POSITIVE quantity ``1 - exp(-x2)``; ``expm1`` is used so B keeps
+    full precision at small x2 (B -> dt/eps as sigma_tot -> 0, matching
+    the lossless update), while at large x2 the update reduces to
+    ``E = curlH/sigma_tot`` — the resistive-sheet limit ``E_tan = Rs*Js``.
+    Exact per-step decay at ANY sigma: no flip-mode (A > 0 always),
+    unconditionally stable, unlike the semi-implicit (1-x)/(1+x) form
+    whose ca goes negative past x = 1.
+
+    Ambient precision (PROMOTE, never PIN): coefficients are computed in
+    the dtype jnp promotes from the inputs; callers cast at apply time.
+    ``eps_r`` is the BACKGROUND permittivity at the sheet cells (the f0
+    branch no longer overwrites it, #677).
+    """
+    eps = materials.eps_r * EPS_0
+    sigma_tot = materials.sigma + sigma_sheet
+    x2 = sigma_tot * dt / eps
+    a = jnp.exp(-x2)
+    # Safe division: off-sheet vacuum cells have sigma_tot == 0; their
+    # (unused there) B limit is dt/eps. The where-guard keeps forward and
+    # AD free of 0/0.
+    safe = jnp.where(sigma_tot > 0, sigma_tot, 1.0)
+    b = jnp.where(sigma_tot > 0, -jnp.expm1(-x2) / safe, dt / eps)
+    return a, b
+
+
+def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):
+    """Apply the node-thin resistive-sheet E update at tangential edges.
+
+    Runs AFTER ``apply_pec_mask``/``apply_pec_occupancy`` and BEFORE
+    S-parameter DFT sampling and source injection (same contract slot the
+    PEC mask owns; see rfx/simulation.py make_core_step). At every masked
+    tangential edge the standard E-update result is REPLACED by::
+
+        E^{n+1} = A * E^n + B * curlH^{n+1/2}
+
+    with ``curls`` computed by the SAME stencil helpers the kernels use
+    (``rfx.core.yee.curl_h`` / ``curl_h_nu``) from the same H the E-update
+    consumed. Everywhere off-mask the state passes through untouched; the
+    sheet-normal edge is never touched (its mask is all-False for a
+    one-layer sheet).
+
+    Parameters
+    ----------
+    state : FDTDState after the standard E update + boundary operators.
+    e_prev : (ex, ey, ez) tuple — the E fields BEFORE the E update (E^n).
+    curls : (curl_x, curl_y, curl_z) from the shared curl helper.
+    ctx : SheetImpedanceCtx
+    coeffs : (A, B) from :func:`sheet_update_coeffs`.
+    """
+    a, b = coeffs
+    _fdtype = state.ex.dtype
+    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
+    ex = jnp.where(
+        ctx.mask_ex,
+        (a * e_prev[0].astype(_cdtype) + b * curls[0]).astype(_fdtype),
+        state.ex)
+    ey = jnp.where(
+        ctx.mask_ey,
+        (a * e_prev[1].astype(_cdtype) + b * curls[1]).astype(_fdtype),
+        state.ey)
+    ez = jnp.where(
+        ctx.mask_ez,
+        (a * e_prev[2].astype(_cdtype) + b * curls[2]).astype(_fdtype),
+        state.ez)
+    return state._replace(ex=ex, ey=ey, ez=ez)
+
+
+def has_f0_sheets(thin_conductors) -> bool:
+    """True when any registered thin conductor is in surface-impedance mode.
+
+    The single predicate run lanes use to REFUSE f0 sheets they cannot
+    apply (distributed, subgridded, ADI, ... — #677 G9). Since the sheet
+    no longer rides ``materials.sigma``, a lane that ignores the ctx would
+    silently simulate NO sheet at all (the #369 vaporized-metal class), so
+    unsupported lanes must call this and raise loudly.
+    """
+    return any(
+        getattr(tc, "surface_impedance_f0", None) is not None
+        for tc in (thin_conductors or ()))
+
+
+def refuse_f0_sheets(thin_conductors, lane: str) -> None:
+    """Raise if ``thin_conductors`` contains an f0 sheet (#677 lane fence)."""
+    if has_f0_sheets(thin_conductors):
+        raise ValueError(
+            f"surface-impedance (surface_impedance_f0) thin conductors are "
+            f"not supported on the {lane} lane: the sheet is realized by a "
+            f"per-step node-thin operator (#677), which this lane does not "
+            f"apply — running would silently simulate NO sheet at all. Use "
+            f"the uniform or non-uniform run()/S-parameter lanes, or drop "
+            f"surface_impedance_f0 (PEC or DC-fold sheets are fine here).")

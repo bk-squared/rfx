@@ -1849,6 +1849,7 @@ def extract_waveguide_s_matrix(
     aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    sheet_impedance: object | None = None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
 
@@ -1922,6 +1923,7 @@ def extract_waveguide_s_matrix(
             aniso_inv_eps=aniso_inv_eps,
             checkpoint=_wg_checkpoint,
             checkpoint_segments=checkpoint_segments,
+            sheet_impedance=sheet_impedance,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
@@ -1978,6 +1980,7 @@ def extract_waveguide_s_matrix_flux(
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     ref_materials_per_port: "list | None" = None,
+    sheet_impedance: object | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
@@ -2107,6 +2110,9 @@ def extract_waveguide_s_matrix_flux(
             if ref_materials_per_port is not None else ref_materials
         )
         _flux_checkpoint = checkpoint_segments is not None
+        # #677: the vacuum/straight-guide REFERENCE deliberately runs with
+        # NO sheet ctx (explicit strip — the sheet no longer rides
+        # materials.sigma, so vacuum materials alone do not strip it).
         ref_result = run_simulation(
             grid, ref_mat_drive, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
@@ -2152,6 +2158,7 @@ def extract_waveguide_s_matrix_flux(
             aniso_inv_eps=aniso_inv_eps,
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
+            sheet_impedance=sheet_impedance,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
@@ -2236,6 +2243,7 @@ def extract_waveguide_s_params_normalized(
     ref_aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    sheet_impedance: object | None = None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Two-run normalized waveguide S-matrix.
 
@@ -2343,6 +2351,9 @@ def extract_waveguide_s_params_normalized(
             for idx, cfg in enumerate(template_cfgs)
         ]
         _norm_checkpoint = checkpoint_segments is not None
+        # #677: the vacuum REFERENCE deliberately runs with NO sheet ctx
+        # (explicit strip — vacuum materials alone do not strip a sheet
+        # that no longer rides materials.sigma).
         ref_result = run_simulation(
             grid, ref_materials, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
@@ -2392,6 +2403,7 @@ def extract_waveguide_s_params_normalized(
             aniso_inv_eps=aniso_inv_eps,
             checkpoint=_norm_checkpoint,
             checkpoint_segments=checkpoint_segments,
+            sheet_impedance=sheet_impedance,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()

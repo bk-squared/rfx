@@ -124,6 +124,7 @@ class _CompileMixin:
         *,
         include_thin_conductors: bool = True,
         include_cpml_pad_extension: bool = True,
+        sheet_specs: list | None = None,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
@@ -277,7 +278,8 @@ class _CompileMixin:
         if include_thin_conductors:
             for tc in self._thin_conductors:
                 materials, pec_mask = apply_thin_conductor(
-                    grid, tc, materials, pec_mask=pec_mask)
+                    grid, tc, materials, pec_mask=pec_mask,
+                    sheet_specs=sheet_specs)
                 if tc.is_pec:
                     pec_shapes.append(tc.shape)
                     has_pec_cells = True
@@ -557,11 +559,11 @@ class _CompileMixin:
         )
 
     def _assemble_materials_nu(
-        self, grid: NonUniformGrid,
+        self, grid: NonUniformGrid, sheet_specs: list | None = None,
     ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
         """Build material arrays and dispersion specs for non-uniform grid."""
         from rfx.runners.nonuniform import assemble_materials_nu
-        return assemble_materials_nu(self, grid)
+        return assemble_materials_nu(self, grid, sheet_specs=sheet_specs)
 
     def _pos_to_nu_index(self, grid: NonUniformGrid, pos):
         """Convert physical (x, y, z) to non-uniform grid indices."""

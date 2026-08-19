@@ -654,6 +654,7 @@ def _build_step_setup(
     mag_sources: list,
     stencil_order: int = 2,
     wire_refplane_sparams: "list | None" = None,
+    sheet_impedance: "object | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -1020,6 +1021,8 @@ def _build_step_setup(
         use_lumped_rlc=use_lumped_rlc,
         use_kerr=use_kerr,
         use_mag_sources=use_mag_sources,
+        use_sheet_impedance=sheet_impedance is not None,
+        sheet_impedance=sheet_impedance,
         cpml_params=cpml_params,
         cpml_axes=cpml_axes,
         upml_coeffs=upml_coeffs,
@@ -1194,6 +1197,10 @@ class _StepContext:
     # existing caller byte-identical)
     use_wire_refplanes: bool = False
     wire_refplane_meta: tuple = ()
+    # issue #677 node-thin surface-impedance sheet operator (defaults keep
+    # every existing caller byte-identical)
+    use_sheet_impedance: bool = False
+    sheet_impedance: Any = None
 
     # ---- output extractors ----
     monitor_component: str = "ez"
@@ -1234,6 +1241,17 @@ def make_core_step(ctx: _StepContext):
     pec_axes = ctx.pec_axes
     aniso_eps = ctx.aniso_eps
     aniso_inv_eps = ctx.aniso_inv_eps
+
+    # #677 surface-impedance sheet: Holland exponential-stepping A/B built
+    # once from the FINAL run materials (background eps_r/sigma at the sheet
+    # cells + the ctx's sigma_sheet), applied per step at tangential edges.
+    if ctx.use_sheet_impedance:
+        from rfx.materials.thin_conductor import (
+            apply_sheet_impedance_e as _apply_sheet_e,
+            sheet_update_coeffs as _sheet_update_coeffs,
+        )
+        _sheet_coeffs = _sheet_update_coeffs(
+            ctx.sheet_impedance.sigma_sheet, materials, dt)
 
     def core_step(carry, step_idx, src_vals, mag_src_vals):
         st = carry["fdtd"]
@@ -1317,6 +1335,11 @@ def make_core_step(ctx: _StepContext):
             # Snapshot E^n before the linear E-update for the reactive Kerr
             # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
             e_prev_kerr = (st.ex, st.ey, st.ez) if ctx.use_kerr else None
+            # Snapshot E^n for the #677 sheet operator (it REPLACES the
+            # standard update at masked tangential edges with
+            # A*E^n + B*curlH, so it needs the pre-update E).
+            e_prev_sheet = (
+                (st.ex, st.ey, st.ez) if ctx.use_sheet_impedance else None)
 
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
@@ -1383,6 +1406,25 @@ def make_core_step(ctx: _StepContext):
 
             if ctx.use_pec_occupancy:
                 st = apply_pec_occupancy(st, ctx.pec_occupancy)
+
+            # #677 node-thin surface-impedance sheet operator. Contract slot:
+            # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap —
+            # PEC-owned edges are already excluded from the ctx masks at
+            # build time, and running after keeps the ordering honest),
+            # BEFORE the S-param DFT sampling and source injection below.
+            # curlH comes from the SAME shared stencil helper update_e uses,
+            # on the same H^{n+1/2} the E update consumed (H is unchanged
+            # between the E update and this slot).
+            if ctx.use_sheet_impedance:
+                from rfx.core.yee import curl_h as _curl_h
+                _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
+                _curls = _curl_h(
+                    st.hx.astype(_scd), st.hy.astype(_scd),
+                    st.hz.astype(_scd), dx, periodic,
+                    ctx.stencil_order, ctx.bloch)
+                st = _apply_sheet_e(
+                    st, e_prev_sheet, _curls, ctx.sheet_impedance,
+                    _sheet_coeffs)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         if ctx.use_lumped_rlc:
@@ -1677,6 +1719,7 @@ def run(
     stencil_order: int = 2,
     report_every: int | None = None,
     report_label: str = "",
+    sheet_impedance: object | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -1798,6 +1841,7 @@ def run(
         field_dtype=field_dtype,
         mag_sources=mag_sources,
         stencil_order=stencil_order,
+        sheet_impedance=sheet_impedance,
     )
     carry_init = _setup.carry_init
     dt = _setup.dt
@@ -1840,6 +1884,9 @@ def run(
         and not _ctx["use_lumped_rlc"]
         and not _ctx["use_kerr"]
         and not _ctx["use_mag_sources"]
+        # #677: the GPU baked fast path has an inline H+E update with no
+        # sheet-operator slot; per-plane baking is a documented follow-up.
+        and not _ctx["use_sheet_impedance"]
         and aniso_eps is None
         and periodic == (False, False, False)
     )
@@ -2191,6 +2238,7 @@ def run_until_decay(
     stencil_order: int = 2,
     report_every: int | None = None,
     report_label: str = "",
+    sheet_impedance: object | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -2352,6 +2400,7 @@ def run_until_decay(
         field_dtype=field_dtype,
         mag_sources=mag_sources,
         stencil_order=stencil_order,
+        sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
     dx = _setup.dx

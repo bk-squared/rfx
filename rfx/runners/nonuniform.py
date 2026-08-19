@@ -62,6 +62,7 @@ def build_nonuniform_grid(
 def assemble_materials_nu(
     sim,
     grid: NonUniformGrid,
+    sheet_specs: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Build material arrays and dispersion specs for non-uniform grid.
 
@@ -228,26 +229,42 @@ def assemble_materials_nu(
             bshape[n_axis] = int(d_norm.shape[0])
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             if _f0 is not None:
-                # #674 guard: the fold normalizes ONE E node along the sheet
-                # normal, so the rasterized sheet must occupy exactly one
-                # layer there — and must not have vaporized.
+                # #674 guard: the realization normalizes ONE E node along the
+                # sheet normal, so the rasterized sheet must occupy exactly
+                # one layer there — and must not have vaporized.
                 check_sheet_occupancy(m, n_axis, lane="non-uniform")
-                # Leontovich band-centre surface-impedance mode (issue
-                # #669): sigma_eff = 1/(Rs0 * d_norm) per node, with d_norm
-                # the LOCAL E-node dual spacing along the sheet normal, so
-                # sigma_eff * Rs0 * d_norm == 1 on every layer of a graded
-                # mesh. Thickness deliberately does not enter (Leontovich
-                # loss is thickness-independent). Sheet placement (argmin
-                # E-node, #371) and mask logic are shared with the DC fold.
-                from rfx.materials.thin_conductor import leontovich_rs
+                # Leontovich band-centre surface-impedance mode (#669/#677):
+                # since #677 the sheet does NOT fold into materials.sigma
+                # (that realized it as a full-cell slab and moved resonances
+                # by geometry, issue #677). It is emitted as a
+                # SheetImpedanceSpec with sigma_sheet = (1/Rs0)/d_norm per
+                # node — d_norm the LOCAL E-node dual spacing along the
+                # sheet normal (#671), so sigma_sheet * Rs0 * d_norm == 1 on
+                # every layer of a graded mesh — and realized NODE-THIN by
+                # the per-step operator on the apply_pec_mask tangential
+                # edge set. Thickness deliberately does not enter
+                # (Leontovich loss is thickness-independent). eps_r stays at
+                # background (a sheet is a surface, not a dielectric fill).
+                #
+                # Invariant (NU two-run S reference): the sheet is NOT
+                # resident in materials.sigma, so the reference run's
+                # sigma_override does NOT strip it — the reference must
+                # strip the sheet ctx EXPLICITLY
+                # (run_nonuniform_path(strip_sheet_impedance=True); the
+                # rfx/api/_sparams.py NU vacuum-reference call site does).
+                from rfx.materials.thin_conductor import (
+                    SheetImpedanceSpec, leontovich_rs)
                 rs0 = leontovich_rs(_f0, tc.sigma_bulk)
-                sigma_eff = 1.0 / (rs0 * d_norm.reshape(bshape))
-            else:
-                sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
-            # Invariant (NU two-run S reference): the sheet lives entirely in
-            # materials.sigma, so the reference run's sigma_override strips
-            # it. Any future surface-impedance term NOT resident in
-            # materials.sigma must add its own reference strip.
+                g_sheet = 1.0 / rs0
+                if sheet_specs is not None:
+                    sigma_sheet = jnp.where(
+                        m, (g_sheet / d_norm).reshape(bshape) *
+                        jnp.ones_like(materials.sigma), 0.0)
+                    sheet_specs.append(SheetImpedanceSpec(
+                        mask=m, normal_axis=n_axis, g_sheet=g_sheet,
+                        sigma_sheet=sigma_sheet))
+                continue
+            sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
             materials = MaterialArrays(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
@@ -453,6 +470,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
                         strip_interior_pec: bool = False,
+                        strip_sheet_impedance: bool = False,
                         until_decay: float | None = None,
                         decay_check_interval: int = 50,
                         decay_min_steps: int = 100,
@@ -585,7 +603,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             if ax not in (sim._periodic_axes or "")
         ),
     )
-    materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)
+    _sheet_specs: list = []
+    materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(
+        sim, grid, sheet_specs=_sheet_specs)
+    if strip_sheet_impedance:
+        # #677 EXPLICIT reference strip: the surface-impedance sheet no
+        # longer rides materials.sigma, so the two-run vacuum reference's
+        # sigma_override cannot strip it — dropping the ctx here is the
+        # reference-run analogue of strip_interior_pec below. Pinned by the
+        # G8 negative control (tests/test_sheet_impedance_operator.py).
+        _sheet_specs = []
 
     # Two-run S-matrix vacuum reference: drop the interior-geometry PEC
     # (the rasterized iris / wall / post) so the reference is a clean
@@ -1035,7 +1062,32 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
         ntff_data_init = init_ntff_data(ntff_box)
 
+    # #677: assemble the surface-impedance sheet ctx from the specs the
+    # assembler emitted, against the FINAL pec_mask of this run (PEC wins on
+    # overlapping edges). Crossing-normal refusal lives in the builder.
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
+    if sheet_ctx is not None:
+        # v1 fences (loud, never silent): the sheet operator replaces the
+        # standard E update at its edges, which is only correct against the
+        # plain isotropic update_e_nu path.
+        if debye_spec is not None or lorentz_spec is not None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets combined "
+                "with dispersive (Debye/Lorentz) materials in one run are "
+                "not supported (#677 v1): the sheet operator would "
+                "silently override the ADE dispersion update at its edges. "
+                "Remove the dispersive material or the f0 sheet.")
+        if aniso_eps is not None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets combined "
+                "with subpixel_smoothing / anisotropic permittivity are "
+                "not supported (#677 v1): the sheet operator assumes the "
+                "isotropic E update at its edges. Disable "
+                "subpixel_smoothing or drop the f0 sheet.")
+
     _shared_run_kwargs = dict(
+        sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,
         pec_mask=pec_mask,
         pec_occupancy=pec_occupancy_override,

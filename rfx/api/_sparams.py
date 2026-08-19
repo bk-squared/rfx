@@ -1960,7 +1960,23 @@ class _SparamMixin:
             )
 
         grid = self._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(grid)
+        _wg_sheet_specs: list = []
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(
+            grid, sheet_specs=_wg_sheet_specs)
+        # #677: node-thin sheet ctx for the DEVICE runs of this lane. The
+        # PEC here is folded to sigma=1e10 below rather than run as a
+        # mask, but the edge exclusion still uses the assembled pec_mask
+        # so sheet and PEC never contend for one edge; the vacuum
+        # REFERENCE runs never receive the ctx (explicit strip at the
+        # extractor call sites).
+        from rfx.materials.thin_conductor import build_sheet_impedance_ctx as _build_sheet_ctx
+        _wg_sheet_ctx = _build_sheet_ctx(_wg_sheet_specs, pec_mask=pec_mask_wg)
+        if _wg_sheet_ctx is not None and subpixel_smoothing:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported with subpixel_smoothing / conformal on the "
+                "waveguide S-matrix lane (#677 v1): the sheet operator "
+                "assumes the plain isotropic E update at its edges.")
         # Waveguide S-matrix runner doesn't support pec_mask yet.
         # Fold PEC mask back into high sigma for compatibility.
         # **Stage 2 caveat**: when ``subpixel_smoothing="kottke_pec"`` is
@@ -2175,6 +2191,13 @@ class _SparamMixin:
             )
             ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
 
+        if has_multimode and _wg_sheet_ctx is not None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported on the multimode waveguide S-matrix path "
+                "(#677 v1): the multimode extractors do not thread the "
+                "sheet operator ctx, so the runs would silently simulate "
+                "NO sheet. Use n_modes=1 ports or drop the f0 sheet.")
         if has_multimode:
             # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
             port_mode_cfgs: list[list] = []
@@ -2381,6 +2404,7 @@ class _SparamMixin:
                 ref_materials_per_port=ref_materials_per_port,
                 checkpoint_segments=checkpoint_segments,
                 return_settling=True,
+                sheet_impedance=_wg_sheet_ctx,
             )
             s_params, settling_db = s_params
         elif normalize:
@@ -2407,6 +2431,7 @@ class _SparamMixin:
                 ref_aniso_inv_eps=ref_aniso_inv_eps,
                 checkpoint_segments=checkpoint_segments,
                 return_settling=True,
+                sheet_impedance=_wg_sheet_ctx,
             )
             s_params, settling_db = s_params
         else:
@@ -2426,6 +2451,7 @@ class _SparamMixin:
                 aniso_inv_eps=aniso_inv_eps,
                 checkpoint_segments=checkpoint_segments,
                 return_settling=True,
+                sheet_impedance=_wg_sheet_ctx,
             )
         reference_planes = np.array(
             [
@@ -2779,6 +2805,8 @@ class _SparamMixin:
         # land beta outside the scan window for a loaded substrate.
         from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
         _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
+        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        _refuse_f0(self._thin_conductors, "MSL S-parameter")
         _msl_assembled = (
             self._assemble_materials_nu(grid) if is_nonuniform
             else self._assemble_materials(grid)
@@ -3897,6 +3925,8 @@ class _SparamMixin:
 
         # One materials assembly shared by the HJ eps anchor AND every
         # drive run (materials do not depend on excite flags).
+        from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
+        _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
         materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
             self._assemble_materials(grid)
         pec_mask_np = None if pec_mask is None else np.asarray(pec_mask)
@@ -6734,6 +6764,12 @@ class _SparamMixin:
                     sigma_override=vacuum_sigma,
                     attach_waveguide_flux=_flux_mode,
                     strip_interior_pec=True,
+                    # #677: the surface-impedance sheet no longer rides
+                    # materials.sigma, so sigma_override=vacuum does NOT
+                    # strip it — the ctx must be stripped EXPLICITLY here,
+                    # beside strip_interior_pec, or the "empty guide"
+                    # reference would still carry the lossy sheet.
+                    strip_sheet_impedance=True,
                 )
 
                 dev_wg = dev_result.waveguide_ports or {}

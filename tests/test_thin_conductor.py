@@ -551,7 +551,15 @@ def test_leontovich_rs_pure_function_o1a():
 def test_leontovich_dc_limit_equivalence_o1b():
     """O1b (the issue's DC gate, pure algebra): for (sigma_dc, t) chosen so
     that 1/(sigma_dc*t) == Rs0, the legacy DC fold's sigma_eff equals the
-    f0-mode sigma_eff on the same grid to rtol 1e-9, on BOTH lanes.
+    f0-mode realized sheet conductivity on the same grid to rtol 1e-9, on
+    BOTH lanes.
+
+    #677 retarget, equivalent discriminant: the f0 sheet no longer rides
+    ``materials.sigma`` — it is emitted as a ``SheetImpedanceSpec`` whose
+    ``sigma_sheet`` is exactly the per-node quantity the old fold wrote
+    into the arrays, so the identity under test (realized sheet
+    conductance == DC sheet conductance when 1/(sigma_dc*t) == Rs0) is
+    asserted on ``spec.sigma_sheet`` instead of ``materials.sigma``.
     """
     from tests._x64_compat import enable_x64
     from rfx.core.yee import init_materials
@@ -574,9 +582,24 @@ def test_leontovich_dc_limit_equivalence_o1b():
             ("f0", ThinConductor(shape=shape, sigma_bulk=sigma_bulk,
                                  thickness=t, surface_impedance_f0=f0)),
         ):
+            specs = []
             mats, _ = apply_thin_conductor(grid, tc,
-                                           init_materials(grid.shape), None)
-            got[name] = float(jnp.max(mats.sigma))
+                                           init_materials(grid.shape), None,
+                                           sheet_specs=specs)
+            if name == "dc":
+                arr_dc = float(jnp.max(mats.sigma))
+                # rtol 1e-9 is the ALGEBRA gate; the DC fold's array write
+                # goes through the float32 material arrays, so the pure-x64
+                # DC algebra is the comparand and the array is pinned to it
+                # at float32 resolution (same split as the NU block below).
+                got[name] = sigma_dc * t / grid.dx
+                assert arr_dc > 0
+                assert abs(arr_dc - got[name]) / got[name] < 1e-6
+            else:
+                # #677: f0 emits a spec and leaves the arrays sheet-free
+                assert float(jnp.max(mats.sigma)) == 0.0
+                assert len(specs) == 1
+                got[name] = float(jnp.max(specs[0].sigma_sheet))
         assert got["dc"] > 0
         assert abs(got["f0"] - got["dc"]) / got["dc"] < 1e-9, got
 
@@ -596,7 +619,16 @@ def test_leontovich_dc_limit_equivalence_o1b():
         ):
             sim = _nu_graded_sim(**kw)
             grid_nu = _nu_graded_grid(sim)
-            sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
+            specs = []
+            mats_nu = assemble_materials_nu(sim, grid_nu,
+                                            sheet_specs=specs)[0]
+            if name == "dc":
+                sig = np.asarray(mats_nu.sigma)
+            else:
+                # #677: sheet-free arrays + one emitted spec
+                assert float(np.asarray(mats_nu.sigma).max()) == 0.0
+                assert len(specs) == 1
+                sig = np.asarray(specs[0].sigma_sheet)
             nz = np.argwhere(sig > 0)
             assert len(nz) > 0
             dz_local = float(np.asarray(grid_nu.dz)[int(nz[0][2])])
@@ -641,8 +673,14 @@ def test_leontovich_algebraic_realization_o2():
     shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
     tc = ThinConductor(shape=shape, sigma_bulk=sigma_bulk, thickness=35e-6,
                        surface_impedance_f0=f0)
-    mats, _ = apply_thin_conductor(grid, tc, init_materials(grid.shape), None)
-    sig = np.asarray(mats.sigma)
+    specs = []
+    mats, _ = apply_thin_conductor(grid, tc, init_materials(grid.shape), None,
+                                   sheet_specs=specs)
+    # #677: arrays stay sheet-free; the realized per-node sheet conductivity
+    # lives on the emitted spec.
+    assert float(np.asarray(mats.sigma).max()) == 0.0
+    assert len(specs) == 1
+    sig = np.asarray(specs[0].sigma_sheet)
     cells = sig[sig > 0]
     assert cells.size > 0
     np.testing.assert_allclose(cells * rs0 * grid.dx, 1.0, rtol=1e-6)
@@ -652,7 +690,11 @@ def test_leontovich_algebraic_realization_o2():
         sim = _nu_graded_sim(zc=zc, sigma_bulk=sigma_bulk, thickness=35e-6,
                              surface_impedance_f0=f0)
         grid_nu = _nu_graded_grid(sim)
-        sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
+        specs = []
+        mats_nu = assemble_materials_nu(sim, grid_nu, sheet_specs=specs)[0]
+        assert float(np.asarray(mats_nu.sigma).max()) == 0.0  # sheet-free
+        assert len(specs) == 1
+        sig = np.asarray(specs[0].sigma_sheet)
         nz = np.argwhere(sig > 0)
         assert len(nz) > 0
         primal = np.asarray(grid_nu.dz)
@@ -694,17 +736,27 @@ def test_leontovich_routing_no_pec_cells_both_lanes():
         sim.add_thin_conductor(
             Box((1e-3, 1e-3, 1e-3), (5e-3, 5e-3, 1e-3)),
             sigma_bulk=5.8e7, surface_impedance_f0=10e9)
-    mats, _, _, pec_mask, *_ = sim._assemble_materials(sim._build_grid())
+    specs_u = []
+    mats, _, _, pec_mask, *_ = sim._assemble_materials(
+        sim._build_grid(), sheet_specs=specs_u)
     assert pec_mask is None or int(np.asarray(pec_mask).sum()) == 0
-    sig = np.asarray(mats.sigma)
-    assert (sig > 0).sum() > 0
+    # #677: metal-with-f0 flows down the SHEET route (spec emitted, arrays
+    # sheet-free), never the PEC route — sigma_sheet can legally exceed the
+    # 1e6 routing threshold (spec-level predicate only).
+    assert float(np.asarray(mats.sigma).max()) == 0.0
+    assert len(specs_u) == 1
+    assert (np.asarray(specs_u[0].sigma_sheet) > 0).sum() > 0
 
     # NU lane
     sim_nu = _nu_graded_sim(sigma_bulk=5.8e7, surface_impedance_f0=10e9)
     grid_nu = _nu_graded_grid(sim_nu)
-    mats_nu, _, _, pec_nu = assemble_materials_nu(sim_nu, grid_nu)
+    specs_nu = []
+    mats_nu, _, _, pec_nu = assemble_materials_nu(
+        sim_nu, grid_nu, sheet_specs=specs_nu)
     assert pec_nu is None or int(np.asarray(pec_nu).sum()) == 0
-    assert (np.asarray(mats_nu.sigma) > 0).sum() > 0
+    assert float(np.asarray(mats_nu.sigma).max()) == 0.0
+    assert len(specs_nu) == 1
+    assert (np.asarray(specs_nu[0].sigma_sheet) > 0).sum() > 0
 
 
 def test_leontovich_ad_gates_o5():
@@ -727,9 +779,13 @@ def test_leontovich_ad_gates_o5():
         # is_pec-order pin: evaluating the routing predicate on a TRACED
         # sigma_bulk must not raise while f0 is set.
         assert tc.is_pec is False
+        specs = []
         mats, _ = apply_thin_conductor(grid, tc,
-                                       init_materials(grid.shape), None)
-        return jnp.sum(mats.sigma)
+                                       init_materials(grid.shape), None,
+                                       sheet_specs=specs)
+        # #677: gradients flow through the emitted spec's sigma_sheet (the
+        # realized sheet quantity); the arrays are sheet-free by design.
+        return jnp.sum(specs[0].sigma_sheet)
 
     with enable_x64():
         f0, sb = jnp.float64(10e9), jnp.float64(1e4)
