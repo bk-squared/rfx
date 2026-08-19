@@ -64,8 +64,12 @@ def assemble_materials_nu(
     """Build material arrays and dispersion specs for non-uniform grid.
 
     Delegates to the shared rasterize_geometry() with non-uniform coordinates.
-    Supports all shape types, Debye/Lorentz poles, chi3, and PEC thin
-    conductors (lossy thin conductors are not yet supported here — see below).
+    Supports all shape types, Debye/Lorentz poles, chi3, and thin conductors:
+    PEC sheets OR into pec_mask; lossy sheets fold into sigma with the LOCAL
+    cell size normal to the sheet (#373) — both the DC fold
+    (sigma_bulk*t/d_norm) and the opt-in Leontovich surface-impedance mode
+    (sigma_eff = 1/(Rs0*d_norm) when surface_impedance_f0 is set, issue
+    #669). Only non-Box LOSSY sheets on the legacy DC path warn-and-skip.
 
     Returns
     -------
@@ -158,7 +162,19 @@ def assemble_materials_nu(
         for tc in lossy_tcs:
             lo = getattr(tc.shape, "corner_lo", None)
             hi = getattr(tc.shape, "corner_hi", None)
+            _f0 = getattr(tc, "surface_impedance_f0", None)
             if lo is None or hi is None:
+                if _f0 is not None:
+                    # Defensive mirror of the add-time check (issue #669):
+                    # a surface-impedance sheet must fail LOUD, never
+                    # warn-and-skip (the #369 silently-vaporized-metal
+                    # class). Reachable only for a ThinConductor built
+                    # outside add_thin_conductor().
+                    raise ValueError(
+                        "surface-impedance (surface_impedance_f0) thin "
+                        "conductor requires a Box shape "
+                        "(corner_lo/corner_hi); refusing to skip it on the "
+                        "non-uniform path.")
                 import warnings as _warnings
                 _warnings.warn(
                     "lossy thin conductor with a non-Box shape is not yet "
@@ -170,7 +186,23 @@ def assemble_materials_nu(
             d_norm = jnp.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
             bshape = [1, 1, 1]
             bshape[n_axis] = int(d_norm.shape[0])
-            sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
+            if _f0 is not None:
+                # Leontovich band-centre surface-impedance mode (issue
+                # #669): sigma_eff = 1/(Rs0 * d_norm) per cell, with d_norm
+                # the LOCAL cell size along the sheet normal, so
+                # sigma_eff * Rs0 * d_norm == 1 on every layer of a graded
+                # mesh. Thickness deliberately does not enter (Leontovich
+                # loss is thickness-independent). Sheet placement (argmin
+                # E-node, #371) and mask logic are shared with the DC fold.
+                from rfx.materials.thin_conductor import leontovich_rs
+                rs0 = leontovich_rs(_f0, tc.sigma_bulk)
+                sigma_eff = 1.0 / (rs0 * d_norm.reshape(bshape))
+            else:
+                sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
+            # Invariant (NU two-run S reference): the sheet lives entirely in
+            # materials.sigma, so the reference run's sigma_override strips
+            # it. Any future surface-impedance term NOT resident in
+            # materials.sigma must add its own reference strip.
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             materials = MaterialArrays(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),

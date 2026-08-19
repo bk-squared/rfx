@@ -928,7 +928,10 @@ class _PreflightMixin:
                         "That is usually what you want for metal many skin "
                         "depths thick, and switching to add_thin_conductor() "
                         "would not change it; but it means the sheet carries "
-                        "no conductor loss and its thickness is not modelled."
+                        "no conductor loss and its thickness is not modelled. "
+                        "For band-centre conductor loss use "
+                        "add_thin_conductor(..., surface_impedance_f0=...) "
+                        "(Leontovich surface resistance, issue #669)."
                         if is_pec else
                         " Use non-uniform mesh or reduce dx."
                     )
@@ -2063,6 +2066,7 @@ class _PreflightMixin:
         self._validate_cfg_no_sources(_w)
         self._validate_cfg_tfsf_with_lumped_rlc(_w)
         self._validate_cfg_unresolved_pulse(_w, dx)
+        self._validate_cfg_thin_conductor_surface_impedance(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
@@ -3723,6 +3727,90 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
+        """Advisories for Leontovich (surface_impedance_f0) sheets (#669).
+
+        Two advisory-tier checks per f0-mode thin conductor, both on
+        CONCRETE values only (traced f0/sigma_bulk/thickness skip them):
+
+        (a) ``thickness < 3 * delta(f0)`` with skin depth
+            ``delta = sqrt(2/(2*pi*f0*mu0*sigma_bulk))`` — the
+            thick-conductor (Leontovich) model is invalid for thin films;
+            the DC sheet path (omit ``surface_impedance_f0``) is the
+            correct model there.
+        (b) ``|f0 - source centre| / source centre > 0.20`` — Rs is frozen
+            at ``f0`` with relative band error ``|sqrt(f/f0)-1|``; a source
+            band centred far from f0 makes that error claims-relevant.
+
+        Thresholds 3x and 20% are fixed by the issue #669 implementation
+        contract.
+        """
+        from rfx.core.yee import MU_0 as _MU0
+
+        f0_sheets = [tc for tc in getattr(self, "_thin_conductors", ())
+                     if getattr(tc, "surface_impedance_f0", None) is not None]
+        if not f0_sheets:
+            return
+
+        src_f0s: list[float] = []
+        for family in ("_ports", "_msl_ports", "_waveguide_ports",
+                       "_coaxial_ports", "_floquet_ports"):
+            for entry in getattr(self, family, ()) or ():
+                wf = getattr(entry, "waveform", None)
+                wf0 = getattr(wf, "f0", None)
+                if wf0 is not None and not is_tracer(wf0):
+                    try:
+                        src_f0s.append(float(wf0))
+                    except (TypeError, ValueError):
+                        pass
+
+        for i, tc in enumerate(f0_sheets):
+            f0 = tc.surface_impedance_f0
+            sb = tc.sigma_bulk
+            t = tc.thickness
+            if is_tracer(f0) or is_tracer(sb):
+                continue
+            f0 = float(f0)
+            sb = float(sb)
+            delta = math.sqrt(2.0 / (2.0 * math.pi * f0 * _MU0 * sb))
+            if not is_tracer(t) and 0.0 < float(t) < 3.0 * delta:
+                _w.warn(
+                    PreflightWarning(
+                        f"surface_impedance_f0 thin conductor #{i}: "
+                        f"thickness {_fmt_len(float(t))} is below 3 skin "
+                        f"depths ({_fmt_len(3.0 * delta)} at f0 = "
+                        f"{f0:.4g} Hz, delta = {_fmt_len(delta)}). The "
+                        f"thick-conductor (Leontovich) surface-resistance "
+                        f"model is invalid for thin films — omit "
+                        f"surface_impedance_f0 and use the DC sheet path "
+                        f"(sigma_bulk*t/d), which is the correct model "
+                        f"there.",
+                        code="thin_conductor_leontovich_thin_film",
+                        source="_validate_cfg_thin_conductor_surface_impedance",
+                    ),
+                    stacklevel=3,
+                )
+            for sf in src_f0s:
+                if sf > 0.0 and abs(f0 - sf) / sf > 0.20:
+                    _w.warn(
+                        PreflightWarning(
+                            f"surface_impedance_f0 thin conductor #{i}: "
+                            f"f0 = {f0:.4g} Hz is more than 20% away from "
+                            f"the source centre frequency {sf:.4g} Hz. Rs "
+                            f"is frozen at f0 with relative band error "
+                            f"|sqrt(f/f0)-1| — at the source centre that "
+                            f"is {abs(math.sqrt(sf / f0) - 1.0):.1%}. Set "
+                            f"surface_impedance_f0 to the band centre you "
+                            f"actually analyse.",
+                            code="thin_conductor_leontovich_band_offset",
+                            source=(
+                                "_validate_cfg_thin_conductor_"
+                                "surface_impedance"),
+                        ),
+                        stacklevel=3,
+                    )
+                    break
 
     def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         """Warn when a pulse waveform is unresolved by the time step (#386).

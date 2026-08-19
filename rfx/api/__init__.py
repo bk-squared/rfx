@@ -1239,6 +1239,7 @@ class Simulation(
         sigma_bulk: float = 5.8e7,
         thickness: float = 35e-6,
         eps_r: float = 1.0,
+        surface_impedance_f0: float | None = None,
     ) -> "Simulation":
         """Add a thin conductor with subcell correction.
 
@@ -1256,8 +1257,11 @@ class Simulation(
             1e6 S/m the shape becomes a lossy sheet whose conductivity is
             ``sigma_bulk * thickness / dx``, where ``thickness`` IS load-bearing.
             Every real metal — copper 5.8e7, aluminium 3.5e7, even stainless
-            steel 1.4e6 — is on the PEC side, so for metals this call models a
-            lossless perfect sheet and nothing else.
+            steel 1.4e6 — is on the PEC side, so by default
+            (``surface_impedance_f0`` unset) for metals this call models a
+            lossless perfect sheet and nothing else. Pass
+            ``surface_impedance_f0`` to opt in to band-centre Leontovich
+            conductor loss instead (see below).
         thickness : float
             Physical thickness (metres). Default: 35 µm (1 oz copper).
             **Only used on the lossy path** (``sigma_bulk < 1e6``); ignored
@@ -1265,6 +1269,47 @@ class Simulation(
         eps_r : float
             Relative permittivity (default 1.0). Lossy path only, same as
             ``thickness``.
+        surface_impedance_f0 : float or None
+            Opt-in band-centre Leontovich surface-impedance loss
+            (issue #669). Default ``None`` = exact legacy behaviour on every
+            path. When set to a positive frequency (Hz), the sheet — for ANY
+            ``sigma_bulk > 0``, metals included — is modelled as a resistive
+            sheet of sheet resistance ``Rs0 = sqrt(pi*f0*mu0/sigma_bulk)``
+            (the thick-conductor surface resistance at ``f0``), realized as
+            ``sigma_eff = 1/(Rs0*d_norm)`` through the existing lossy
+            thin-conductor fold on BOTH the uniform and the non-uniform
+            (``dz_profile``) lanes, with ``d_norm`` the local cell size
+            normal to the sheet. The sheet then contributes NO PEC cells.
+
+            Model scope (be precise about what you get):
+
+            - **Magnitude loss only.** The reactive part ``Xs = Rs``
+              (internal inductance) is NOT modelled, so resonances read
+              slightly high in frequency.
+            - **Frequency-flat within a run**: ``Rs`` is frozen at ``f0``
+              with relative band error ``|sqrt(f/f0) - 1|`` (about +-11%
+              across an 8-12 GHz band centred at 10 GHz).
+            - **Thick-conductor model**: valid for ``thickness >= ~3``
+              skin depths at ``f0``. For thin films the DC path (omit this
+              kwarg, ``sigma_bulk < 1e6``) is the correct model;
+              ``thickness`` deliberately does NOT enter ``sigma_eff`` in f0
+              mode (Leontovich loss is thickness-independent).
+            - **Transmission leakage** ``(2*Rs/eta0)**2`` makes the sheet
+              unusable for shielding-effectiveness claims beyond ~60 dB.
+            - The folded ``sigma`` is isotropic per cell, so the
+              sheet-normal E component is also loaded (second-order,
+              screened) — inherited caveat of the lossy fold.
+            - ``f0`` and ``sigma_bulk`` are differentiable DoFs in f0 mode
+              (closed forms ``d(sigma_eff)/df0 = -sigma_eff/(2*f0)``,
+              ``d(sigma_eff)/d(sigma_bulk) = +sigma_eff/(2*sigma_bulk)``).
+              Traced values skip the concrete-value validation below.
+
+            Validation at add time (concrete values only): ``f0 <= 0`` and
+            ``sigma_bulk <= 0`` with ``f0`` set each raise ``ValueError``;
+            a non-Box shape (no ``corner_lo``/``corner_hi``) with ``f0``
+            set raises ``ValueError`` on BOTH lanes (the #369
+            silently-vaporized-metal class; the legacy DC path keeps its
+            NU warn-and-skip for non-Box shapes).
 
         Notes
         -----
@@ -1298,9 +1343,39 @@ class Simulation(
         is electromagnetically a half-space — but it is a real limit for
         anything whose loss budget IS the conductor, e.g. resonator Q.
         """
+        from rfx.core.jax_utils import is_tracer
+        if surface_impedance_f0 is not None:
+            # Concrete-value checks only: traced f0 / sigma_bulk are legal
+            # differentiable DoFs and skip these (documented above).
+            if (not is_tracer(surface_impedance_f0)
+                    and float(surface_impedance_f0) <= 0.0):
+                raise ValueError(
+                    f"add_thin_conductor: surface_impedance_f0="
+                    f"{surface_impedance_f0!r} must be a positive frequency "
+                    f"in Hz (band centre for the Leontovich surface "
+                    f"resistance).")
+            if not is_tracer(sigma_bulk) and float(sigma_bulk) <= 0.0:
+                raise ValueError(
+                    f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
+                    f"> 0 when surface_impedance_f0 is set — Rs0 = "
+                    f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
+            if (getattr(shape, "corner_lo", None) is None
+                    or getattr(shape, "corner_hi", None) is None):
+                # Fail loud on BOTH lanes rather than inherit the NU
+                # warn-and-skip (the #369 silently-vaporized-metal class):
+                # the NU lossy fold needs corner_lo/corner_hi to find the
+                # sheet-normal axis, and a surface-impedance sheet that
+                # silently vanishes on one lane is a wrong answer, not a
+                # degraded one.
+                raise ValueError(
+                    "add_thin_conductor: surface_impedance_f0 requires a Box "
+                    "shape (corner_lo/corner_hi); non-Box surface-impedance "
+                    "sheets are not supported on either lane (conformal "
+                    "sheets are future work).")
         tc = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk,
             thickness=thickness, eps_r=eps_r,
+            surface_impedance_f0=surface_impedance_f0,
         )
         # Tell the caller which model they actually got. The predicate is
         # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
@@ -1320,11 +1395,29 @@ class Simulation(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
                 f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
                 f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
-                f"eps_r; only the shape's rasterisation counts. No "
-                f"conductor loss and no "
-                f"sub-cell thickness for metals: every metal is above this "
-                f"threshold, so a lower sigma_bulk would be a different "
-                f"material, not thinner copper (known gap, issue #504).",
+                f"eps_r. Every metal is above this threshold — a lower "
+                f"sigma_bulk would be a different material, not thinner "
+                f"copper (issue #504). For conductor loss pass "
+                f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
+                f"issue #669).",
+                stacklevel=2,
+            )
+        if surface_impedance_f0 is not None:
+            import warnings
+            if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
+                _rs0 = float(tc.r_s_leontovich)
+                _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
+            else:
+                _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "
+                           "not evaluated here)")
+            warnings.warn(
+                f"add_thin_conductor: surface_impedance_f0="
+                f"{surface_impedance_f0!r} Hz — Leontovich surface-"
+                f"resistance sheet with {_rs_txt}. Rs is FREQUENCY-FLAT "
+                f"within the run, frozen at f0, with relative band error "
+                f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
+                f"inductance) is NOT modeled, so resonances read slightly "
+                f"high.",
                 stacklevel=2,
             )
         self._thin_conductors.append(tc)

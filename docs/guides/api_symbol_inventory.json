@@ -2424,7 +2424,8 @@
       "shape",
       "sigma_bulk",
       "thickness",
-      "eps_r"
+      "eps_r",
+      "surface_impedance_f0"
     ],
     "add_vector_probe": [
       "position"

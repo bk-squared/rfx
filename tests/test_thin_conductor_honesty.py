@@ -74,10 +74,19 @@ def test_thickness_does_not_affect_a_metal_sheet():
 
 
 def test_every_real_metal_is_on_the_pec_side():
-    """The threshold sits below every metal, so 'lower sigma_bulk' is not a knob."""
+    """With surface_impedance_f0 ABSENT, the threshold sits below every
+    metal, so 'lower sigma_bulk' is not a knob. The kwarg-absent scope is
+    the pin (issue #669): passing surface_impedance_f0 re-routes the SAME
+    metal to the lossy Leontovich fold, which the second block asserts.
+    """
     shape = _sheet()
     for sigma in (5.8e7, 3.5e7, 4.1e7, 1.4e6):      # Cu, Al, Ag, stainless
+        # kwarg ABSENT (default None) — the legacy routing must hold exactly
         assert ThinConductor(shape=shape, sigma_bulk=sigma, thickness=35e-6).is_pec
+        # kwarg set — the same metal becomes a lossy resistive sheet
+        assert not ThinConductor(shape=shape, sigma_bulk=sigma,
+                                 thickness=35e-6,
+                                 surface_impedance_f0=10e9).is_pec
     for sigma in (9.9e5, 1e5, 1e4):                  # below threshold only
         assert not ThinConductor(shape=shape, sigma_bulk=sigma, thickness=35e-6).is_pec
 
@@ -124,6 +133,53 @@ def test_warning_fires_for_a_metal():
 def test_warning_is_silent_below_the_threshold():
     """The lossy path honours both parameters, so it must not be warned about."""
     assert _warn_for(sigma_bulk=1e4, thickness=35e-6) == []
+
+
+def test_flag_on_warning_quotes_rs0_and_band_error_formula():
+    """Leontovich mode (issue #669) wording pin: the add-time warning must
+    quote the computed Rs0 in ohms and the frequency-flat band-error
+    formula |sqrt(f/f0)-1|, and must disclose that Xs is not modeled."""
+    msgs = _warn_for(sigma_bulk=1e4, thickness=2e-4,
+                     surface_impedance_f0=10e9)
+    assert len(msgs) == 1, msgs
+    m = msgs[0]
+    # Rs0 = sqrt(pi*1e10*mu0/1e4) = 1.987 ohm/sq, printed to 4 sig figs
+    assert "Rs0 = 1.987" in m, m
+    assert "|sqrt(f/f0)-1|" in m, m
+    assert "Xs = Rs" in m and "NOT modeled" in m, m
+
+
+def test_leontovich_preflight_advisories_fire_and_stay_off():
+    """Issue #669 advisory pins: (a) thickness < 3*delta(f0) advises the
+    thick-conductor model is invalid for thin films (and the DC path is
+    the right model); (b) f0 more than 20% from the source centre advises
+    that Rs is frozen at f0. Both stay OFF for the oracle-style operating
+    point (thickness >= 3*delta, f0 == source centre)."""
+    from rfx import GaussianPulse
+
+    def _preflight_for(thickness, f0, src_f0):
+        sim = _sim()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim.add_thin_conductor(_sheet(), sigma_bulk=1e4,
+                                   thickness=thickness,
+                                   surface_impedance_f0=f0)
+        sim.add_source((3e-3, 3e-3, 1.5e-3), "ez",
+                       waveform=GaussianPulse(f0=src_f0),
+                       amplitude_kind="field")
+        return list(sim.preflight())
+
+    # operating point: delta(10 GHz, 1e4 S/m) = 50.3 um, 3*delta = 151 um
+    quiet = " ".join(_preflight_for(2e-4, 10e9, 10e9))
+    assert "thick-conductor" not in quiet
+    assert "frozen at f0" not in quiet
+
+    thin = " ".join(_preflight_for(35e-6, 10e9, 10e9))
+    assert "below 3 skin depths" in thin and "thin films" in thin
+    assert "omit surface_impedance_f0" in thin
+
+    offband = " ".join(_preflight_for(2e-4, 10e9, 5e9))
+    assert "frozen at f0" in offband and "|sqrt(f/f0)-1|" in offband
 
 
 def test_warning_names_the_deciding_quantity_and_states_no_false_inequality():

@@ -480,3 +480,250 @@ def test_is_thin_classification_uses_local_cell_width():
     # The local cell width at a fine-region centre is the fine size (0.5mm), so a
     # 1.2mm-extent box there spans multiple fine cells (volume), not one.
     assert n_cells(zc, 2.0e-3, 3.2e-3) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Leontovich surface-impedance mode (issue #669)
+# ---------------------------------------------------------------------------
+
+def _nu_graded_grid(sim):
+    """Build the graded NU grid the #373 fixtures use (dz 0.5mm x8 + 1.5mm x8)."""
+    from rfx.runners.nonuniform import build_nonuniform_grid
+    return build_nonuniform_grid(
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
+        sim._dz_profile, dx_profile=sim._dx_profile,
+        dy_profile=sim._dy_profile,
+        pec_faces=(sim._boundary_spec.pec_faces()
+                   if sim._boundary_spec is not None else None),
+        pmc_faces=(sim._boundary_spec.pmc_faces()
+                   if sim._boundary_spec is not None else None),
+        cpml_axes="".join(a for a in "xyz"
+                          if a not in (sim._periodic_axes or "")))
+
+
+def _nu_graded_sim(**tc_kwargs):
+    """Sim + graded-dz thin conductor, reusing the #373 fixture geometry."""
+    import warnings
+    from rfx.api import Simulation
+
+    dx = 0.5e-3
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8
+    L = 24 * dx
+    zc = 8.0e-3                       # coarse region, dz_local = 1.5 mm
+    sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
+                     boundary="cpml", cpml_layers=6)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim.add_thin_conductor(
+            Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)), **tc_kwargs)
+    return sim
+
+
+def test_leontovich_rs_pure_function_o1a():
+    """O1a: leontovich_rs(10 GHz, copper) equals the hand-computed constant.
+
+    Hand computation (x64): sqrt(pi * 1e10 * 1.25663706212e-6 / 5.8e7)
+    = sqrt(6.8066237248e-4) = 2.6089507e-2 ohm/sq (the contract's pinned
+    "2.609e-2" stated to 8 significant figures — 4 significant figures
+    cannot carry an rtol 1e-6 comparison). And it must equal the inline
+    formula to rtol 1e-12 (same algebra, x64).
+    """
+    from tests._x64_compat import enable_x64
+    from rfx.core.yee import MU_0
+    from rfx.materials.thin_conductor import leontovich_rs
+
+    with enable_x64():
+        rs = float(leontovich_rs(jnp.float64(10e9), jnp.float64(5.8e7)))
+        assert abs(rs - 2.6089507e-2) / 2.6089507e-2 < 1e-6, rs
+        inline = float(jnp.sqrt(jnp.pi * jnp.float64(10e9) * MU_0
+                                / jnp.float64(5.8e7)))
+        assert abs(rs - inline) / inline < 1e-12
+
+
+def test_leontovich_dc_limit_equivalence_o1b():
+    """O1b (the issue's DC gate, pure algebra): for (sigma_dc, t) chosen so
+    that 1/(sigma_dc*t) == Rs0, the legacy DC fold's sigma_eff equals the
+    f0-mode sigma_eff on the same grid to rtol 1e-9, on BOTH lanes.
+    """
+    from tests._x64_compat import enable_x64
+    from rfx.core.yee import init_materials
+    from rfx.materials.thin_conductor import leontovich_rs
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    f0, sigma_bulk = 10e9, 1e4
+    with enable_x64():
+        rs0 = float(leontovich_rs(jnp.float64(f0), jnp.float64(sigma_bulk)))
+        t = 35e-6
+        sigma_dc = 1.0 / (rs0 * t)         # 1/(sigma_dc*t) == Rs0 exactly
+
+        # -- uniform lane --
+        grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
+        shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
+        got = {}
+        for name, tc in (
+            ("dc", ThinConductor(shape=shape, sigma_bulk=sigma_dc,
+                                 thickness=t)),
+            ("f0", ThinConductor(shape=shape, sigma_bulk=sigma_bulk,
+                                 thickness=t, surface_impedance_f0=f0)),
+        ):
+            mats, _ = apply_thin_conductor(grid, tc,
+                                           init_materials(grid.shape), None)
+            got[name] = float(jnp.max(mats.sigma))
+        assert got["dc"] > 0
+        assert abs(got["f0"] - got["dc"]) / got["dc"] < 1e-9, got
+
+        # -- non-uniform lane (graded dz, coarse-region sheet) --
+        # The NU assembly's arrays are float32 by design (PROMOTE never
+        # PIN governs the solver, not the assembler), so the rtol 1e-9
+        # equivalence — a pure-algebra gate — is asserted on the two fold
+        # FORMULAS evaluated in x64 with the REAL local d_norm taken from
+        # the NU grid; the assembled f32 array is then pinned to that
+        # algebra at float32 resolution. Comparing two f32 arrays at 1e-9
+        # would be impossible arithmetic, not a stronger gate.
+        got_nu = {}
+        for name, kw in (
+            ("dc", dict(sigma_bulk=sigma_dc, thickness=t)),
+            ("f0", dict(sigma_bulk=sigma_bulk, thickness=t,
+                        surface_impedance_f0=f0)),
+        ):
+            sim = _nu_graded_sim(**kw)
+            grid_nu = _nu_graded_grid(sim)
+            sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
+            nz = np.argwhere(sig > 0)
+            assert len(nz) > 0
+            dz_local = float(np.asarray(grid_nu.dz)[int(nz[0][2])])
+            got_nu[name] = (float(sig.max()), dz_local)
+        assert got_nu["dc"][1] == got_nu["f0"][1]          # same sheet layer
+        dz_local = got_nu["dc"][1]
+        alg_dc = sigma_dc * t / dz_local                    # x64 algebra
+        alg_f0 = 1.0 / (rs0 * dz_local)
+        assert abs(alg_f0 - alg_dc) / alg_dc < 1e-9, (alg_dc, alg_f0)
+        assert abs(got_nu["dc"][0] - alg_dc) / alg_dc < 1e-6
+        assert abs(got_nu["f0"][0] - alg_f0) / alg_f0 < 1e-6
+
+
+def test_leontovich_algebraic_realization_o2():
+    """O2: per cell, sigma_eff * Rs0 * d_norm == 1 within rel err < 1e-6
+    (float32), on the uniform grid AND the graded NU fixture."""
+    from rfx.core.yee import init_materials
+    from rfx.materials.thin_conductor import leontovich_rs
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    f0, sigma_bulk = 10e9, 1e4
+    rs0 = float(leontovich_rs(f0, sigma_bulk))
+
+    # uniform
+    grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
+    shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
+    tc = ThinConductor(shape=shape, sigma_bulk=sigma_bulk, thickness=35e-6,
+                       surface_impedance_f0=f0)
+    mats, _ = apply_thin_conductor(grid, tc, init_materials(grid.shape), None)
+    sig = np.asarray(mats.sigma)
+    cells = sig[sig > 0]
+    assert cells.size > 0
+    np.testing.assert_allclose(cells * rs0 * grid.dx, 1.0, rtol=1e-6)
+
+    # graded NU (reuses the test fixture dz = [0.5mm]*8 + [1.5mm]*8)
+    sim = _nu_graded_sim(sigma_bulk=sigma_bulk, thickness=35e-6,
+                         surface_impedance_f0=f0)
+    grid_nu = _nu_graded_grid(sim)
+    sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
+    nz = np.argwhere(sig > 0)
+    assert len(nz) > 0
+    dz_arr = np.asarray(grid_nu.dz)
+    for idx in nz:
+        d_norm = dz_arr[idx[2]]
+        prod = sig[tuple(idx)] * rs0 * d_norm
+        assert abs(prod - 1.0) < 1e-6, (idx, prod)
+
+
+def test_leontovich_routing_no_pec_cells_both_lanes():
+    """Routing table: a METAL (sigma_bulk >= 1e6) with surface_impedance_f0
+    set contributes NO pec_mask cells and flows down the lossy sigma fold —
+    on both lanes. Folded sigma_eff can legally exceed the 1e6 routing
+    threshold (spec-level predicate, never applied to assembled arrays)."""
+    import warnings
+    from rfx.api import Simulation
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    # uniform lane
+    sim = Simulation(freq_max=10e9, domain=(6e-3, 6e-3, 3e-3), dx=1e-3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim.add_thin_conductor(
+            Box((1e-3, 1e-3, 1e-3), (5e-3, 5e-3, 1e-3)),
+            sigma_bulk=5.8e7, surface_impedance_f0=10e9)
+    mats, _, _, pec_mask, *_ = sim._assemble_materials(sim._build_grid())
+    assert pec_mask is None or int(np.asarray(pec_mask).sum()) == 0
+    sig = np.asarray(mats.sigma)
+    assert (sig > 0).sum() > 0
+
+    # NU lane
+    sim_nu = _nu_graded_sim(sigma_bulk=5.8e7, surface_impedance_f0=10e9)
+    grid_nu = _nu_graded_grid(sim_nu)
+    mats_nu, _, _, pec_nu = assemble_materials_nu(sim_nu, grid_nu)
+    assert pec_nu is None or int(np.asarray(pec_nu).sum()) == 0
+    assert (np.asarray(mats_nu.sigma) > 0).sum() > 0
+
+
+def test_leontovich_ad_gates_o5():
+    """O5 (x64 scoped per-test, never module-level): closed-form gradients
+    through the fold — d(sigma_eff)/d(f0) == -sigma_eff/(2*f0) and
+    d(sigma_eff)/d(sigma_bulk) == +sigma_eff/(2*sigma_bulk), rel err < 1e-5;
+    plus the is_pec-order pin: a traced sigma_bulk with f0 set must not
+    raise on is_pec evaluation (None-check short-circuits the float
+    compare)."""
+    import jax
+    from tests._x64_compat import enable_x64
+    from rfx.core.yee import init_materials
+
+    grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
+    shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
+
+    def sig_sum(f0, sb):
+        tc = ThinConductor(shape=shape, sigma_bulk=sb, thickness=35e-6,
+                           surface_impedance_f0=f0)
+        # is_pec-order pin: evaluating the routing predicate on a TRACED
+        # sigma_bulk must not raise while f0 is set.
+        assert tc.is_pec is False
+        mats, _ = apply_thin_conductor(grid, tc,
+                                       init_materials(grid.shape), None)
+        return jnp.sum(mats.sigma)
+
+    with enable_x64():
+        f0, sb = jnp.float64(10e9), jnp.float64(1e4)
+        s0 = float(sig_sum(f0, sb))
+        g_f0 = float(jax.grad(sig_sum, argnums=0)(f0, sb))
+        g_sb = float(jax.grad(sig_sum, argnums=1)(f0, sb))
+        assert abs(g_f0 - (-s0 / (2 * 10e9))) / abs(s0 / (2 * 10e9)) < 1e-5
+        assert abs(g_sb - (s0 / (2 * 1e4))) / (s0 / (2 * 1e4)) < 1e-5
+
+
+def test_leontovich_add_time_validation():
+    """Concrete-value ValueErrors at add time; NU defensive fail-loud for a
+    non-Box f0-mode ThinConductor constructed outside the API (the #369
+    silently-vaporized-metal class must never warn-and-skip in f0 mode)."""
+    import pytest
+    from rfx.api import Simulation
+    from rfx.geometry.csg import Sphere
+    from rfx.runners.nonuniform import assemble_materials_nu
+
+    sim = Simulation(freq_max=10e9, domain=(6e-3, 6e-3, 3e-3), dx=1e-3)
+    sheet = Box((1e-3, 1e-3, 1e-3), (5e-3, 5e-3, 1e-3))
+    with pytest.raises(ValueError, match="positive frequency"):
+        sim.add_thin_conductor(sheet, surface_impedance_f0=0.0)
+    with pytest.raises(ValueError, match="sigma_bulk"):
+        sim.add_thin_conductor(sheet, sigma_bulk=-1.0,
+                               surface_impedance_f0=1e9)
+    with pytest.raises(ValueError, match="Box"):
+        sim.add_thin_conductor(Sphere((3e-3, 3e-3, 1.5e-3), 1e-3),
+                               surface_impedance_f0=1e9)
+
+    # NU lane defensive mirror: bypass add_thin_conductor entirely.
+    sim_nu = _nu_graded_sim(sigma_bulk=1e4, thickness=35e-6)
+    sim_nu._thin_conductors[0] = ThinConductor(
+        shape=Sphere((6e-3, 6e-3, 8e-3), 1e-3), sigma_bulk=1e4,
+        thickness=35e-6, surface_impedance_f0=10e9)
+    grid_nu = _nu_graded_grid(sim_nu)
+    with pytest.raises(ValueError, match="refusing to skip"):
+        assemble_materials_nu(sim_nu, grid_nu)
