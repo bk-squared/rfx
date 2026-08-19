@@ -1309,12 +1309,31 @@ class Simulation(
               ``d(sigma_eff)/d(sigma_bulk) = +sigma_eff/(2*sigma_bulk)``).
               Traced values skip the concrete-value validation below.
 
+            Sheet shapes (issue #674): ANY shape implementing
+            ``mask_on_coords`` and ``bounding_box`` may carry a
+            surface-impedance sheet — a patterned ground plane with
+            clearance holes, a meandered arm, an imported CAD outline
+            (:class:`~rfx.geometry.mesh_import.MeshShape`), a disc, a
+            strip. The fold is per occupied cell, so a hole is simply a
+            cell the fold never touches. What is NOT supported is a body
+            with HEIGHT: the sheet must rasterize to exactly ONE cell layer
+            along its normal, because ``sigma_eff`` is the conductance of a
+            single E node. A 3-D solid, a bent/L-shaped sheet, or a slab
+            thicker than a cell raises ``ValueError`` when the grid is
+            built — folding such a body per cell would multiply the sheet
+            conductance by the layer count while still reporting ``Rs0``.
+            A sheet that rasterizes to ZERO cells raises too: a sub-cell
+            mesh slab registers only where a grid node falls inside it, and
+            silently vaporized metal is the #369 class. (A ``Box`` drawn
+            with equal lo/hi on its normal axis snaps to the nearest node by
+            construction, so it always satisfies both.)
+
             Validation at add time (concrete values only): ``f0 <= 0`` and
-            ``sigma_bulk <= 0`` with ``f0`` set each raise ``ValueError``;
-            a non-Box shape (no ``corner_lo``/``corner_hi``) with ``f0``
-            set raises ``ValueError`` on BOTH lanes (the #369
-            silently-vaporized-metal class; the legacy DC path keeps its
-            NU warn-and-skip for non-Box shapes).
+            ``sigma_bulk <= 0`` with ``f0`` set each raise ``ValueError``,
+            as does a shape with no ``mask_on_coords`` or no bounding box.
+            The rasterized one-layer and non-empty checks need the grid, so
+            they raise at build time, on BOTH lanes (the legacy DC path
+            keeps its NU warn-and-skip for non-Box shapes).
 
         Notes
         -----
@@ -1349,6 +1368,7 @@ class Simulation(
         anything whose loss budget IS the conductor, e.g. resonator Q.
         """
         from rfx.core.jax_utils import is_tracer
+        from rfx.materials.thin_conductor import sheet_bounds
         if surface_impedance_f0 is not None:
             # Concrete-value checks only: traced f0 / sigma_bulk are legal
             # differentiable DoFs and skip these (documented above).
@@ -1364,19 +1384,26 @@ class Simulation(
                     f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
                     f"> 0 when surface_impedance_f0 is set — Rs0 = "
                     f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-            if (getattr(shape, "corner_lo", None) is None
-                    or getattr(shape, "corner_hi", None) is None):
-                # Fail loud on BOTH lanes rather than inherit the NU
-                # warn-and-skip (the #369 silently-vaporized-metal class):
-                # the NU lossy fold needs corner_lo/corner_hi to find the
-                # sheet-normal axis, and a surface-impedance sheet that
-                # silently vanishes on one lane is a wrong answer, not a
-                # degraded one.
+            # #674: any shape that can rasterize itself is allowed — the
+            # fold is per occupied cell and shape-agnostic. Two structural
+            # requirements survive, and both fail loud on BOTH lanes rather
+            # than inherit the NU warn-and-skip (the #369
+            # silently-vaporized-metal class: a sheet that vanishes on one
+            # lane is a wrong answer, not a degraded one).
+            if not callable(getattr(shape, "mask_on_coords", None)):
                 raise ValueError(
-                    "add_thin_conductor: surface_impedance_f0 requires a Box "
-                    "shape (corner_lo/corner_hi); non-Box surface-impedance "
-                    "sheets are not supported on either lane (conformal "
-                    "sheets are future work).")
+                    f"add_thin_conductor: surface_impedance_f0 requires a "
+                    f"shape that implements mask_on_coords(x, y, z) — the "
+                    f"sheet is rasterized from that mask on both lanes, and "
+                    f"{type(shape).__name__} does not provide it.")
+            if sheet_bounds(shape) == (None, None):
+                raise ValueError(
+                    f"add_thin_conductor: surface_impedance_f0 requires a "
+                    f"shape with an axis-aligned bounding box (Box "
+                    f"corner_lo/corner_hi, or Shape.bounding_box()) — the "
+                    f"sheet NORMAL is read from it, and on a graded mesh that "
+                    f"normal decides which dual spacing normalizes the fold. "
+                    f"{type(shape).__name__} provides neither.")
         tc = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk,
             thickness=thickness, eps_r=eps_r,

@@ -3746,6 +3746,7 @@ class _PreflightMixin:
         than 10%.
         """
         from rfx.nonuniform import node_positions_from_profile
+        from rfx.materials.thin_conductor import sheet_bounds
 
         tcs = [tc for tc in getattr(self, "_thin_conductors", ())
                if not getattr(tc, "is_pec", False)]
@@ -3756,8 +3757,16 @@ class _PreflightMixin:
             return
 
         for i, tc in enumerate(tcs):
-            lo = getattr(tc.shape, "corner_lo", None)
-            hi = getattr(tc.shape, "corner_hi", None)
+            # Bounds source (issue #674): a surface-impedance sheet may be any
+            # ``mask_on_coords`` shape, so read its bounding box; the legacy DC
+            # fold is still Box-only on this lane (it warn-and-skips a non-Box
+            # sheet), and advising about a sheet that is not folded would be
+            # worse than silence.
+            if getattr(tc, "surface_impedance_f0", None) is not None:
+                lo, hi = sheet_bounds(tc.shape)
+            else:
+                lo = getattr(tc.shape, "corner_lo", None)
+                hi = getattr(tc.shape, "corner_hi", None)
             if lo is None or hi is None:
                 continue
             extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
@@ -3774,12 +3783,31 @@ class _PreflightMixin:
             # hand-rolled nearest-node rule (#562 review F2, #568).
             nodes = np.asarray(node_positions_from_profile(d),
                                dtype=np.float64)
-            mids = [np.array([0.5 * (float(lo[a]) + float(hi[a]))])
-                    for a in range(3)]
-            args = list(mids)
-            args[n_axis] = nodes
-            hit = np.flatnonzero(
-                np.asarray(tc.shape.mask_on_coords(*args)).reshape(-1))
+            _other = tuple(a for a in range(3) if a != n_axis)
+
+            def _occupied_layers(fracs, _tc=tc, _lo=lo, _hi=hi,
+                                 _n_axis=n_axis, _nodes=nodes,
+                                 _other=_other):
+                args = []
+                for a in range(3):
+                    if a == _n_axis:
+                        args.append(_nodes)
+                        continue
+                    a_lo, a_hi = float(_lo[a]), float(_hi[a])
+                    args.append(np.array(
+                        [a_lo + f * (a_hi - a_lo) for f in fracs],
+                        dtype=np.float64))
+                m = np.asarray(_tc.shape.mask_on_coords(*args))
+                return np.flatnonzero(m.any(axis=_other))
+
+            # Bounding-box centre first — for a Box that is the whole story,
+            # and it is bit-identically the probe this check has always run.
+            hit = _occupied_layers((0.5,))
+            if hit.size == 0:
+                # #674: a PATTERNED sheet can have its bbox centre inside a
+                # clearance hole, which would read as "no sheet here" and
+                # silently drop the advisory. Fan out before giving up.
+                hit = _occupied_layers((0.1, 0.3, 0.5, 0.7, 0.9))
             if hit.size == 0:
                 continue
             k = int(hit[0])

@@ -292,7 +292,15 @@ def test_preflight_advises_on_a_sheet_landing_on_a_grading_step():
 # FDTD: attenuation must not depend on where the sheet sits in the grading
 # ---------------------------------------------------------------------------
 
-def _build_guide_nu(profile_mm):
+def _default_sheet(zs):
+    """The committed sheet shape: a zero-thickness Box spanning the guide."""
+    return Box((0.0, 0.0, zs), (DOMAIN[0], DOMAIN[1], zs))
+
+
+def _build_guide_nu(profile_mm, sheet_shape=None):
+    """``sheet_shape`` (issue #674) is a ``zs -> Shape`` factory; the default
+    reproduces the committed Box guide exactly."""
+    sheet_shape = _default_sheet if sheet_shape is None else sheet_shape
     prof = np.asarray(profile_mm, dtype=float) * MM
     assert abs(prof.sum() - DOMAIN[2]) < 1e-12, prof.sum()
     sim = Simulation(
@@ -310,7 +318,7 @@ def _build_guide_nu(profile_mm):
                 material=f"abs{i}")
     for zs in (Z_SHEET_LO, Z_SHEET_HI):
         sim.add_thin_conductor(
-            Box((0.0, 0.0, zs), (DOMAIN[0], DOMAIN[1], zs)),
+            sheet_shape(zs),
             sigma_bulk=SIGMA_BULK, thickness=THICKNESS,
             surface_impedance_f0=F0)
     for k in range(9):
@@ -336,13 +344,18 @@ def _nu_grid_of(sim):
 _cache = {}
 
 
-def _run_nu_guide(name):
-    """One guide run on PROFILES[name]; cached across the tests below."""
-    if name in _cache:
-        return _cache[name]
+def _run_nu_guide(name, sheet_shape=None, tag="box"):
+    """One guide run on PROFILES[name]; cached across the tests below.
+
+    ``sheet_shape``/``tag`` (issue #674) swap in a non-Box sheet of the same
+    footprint; ``tag`` keys the cache so the two variants never collide.
+    """
+    key = (name, tag)
+    if key in _cache:
+        return _cache[key]
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        sim = _build_guide_nu(PROFILES[name])
+        sim = _build_guide_nu(PROFILES[name], sheet_shape=sheet_shape)
         grid = _nu_grid_of(sim)
         n_steps = int(np.ceil(T_PHYS / float(grid.dt)))
         result = sim.run(n_steps=n_steps, compute_s_params=False)
@@ -373,7 +386,7 @@ def _run_nu_guide(name):
                    for k in sheet_ks],
         "warnings": [str(w.message) for w in rec],
     }
-    _cache[name] = out
+    _cache[key] = out
     return out
 
 

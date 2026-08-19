@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -51,6 +52,111 @@ def leontovich_rs(f0, sigma_bulk):
     ``f0`` and ``sigma_bulk``.
     """
     return jnp.sqrt(jnp.pi * jnp.asarray(f0) * MU_0 / sigma_bulk)
+
+
+def sheet_bounds(shape):
+    """Axis-aligned bounds of a thin-conductor shape, or ``(None, None)``.
+
+    The ``Box`` fields are read FIRST so a Box takes bit-identically the same
+    arithmetic it took before non-Box sheets were allowed (issue #674);
+    everything else falls back to the ``Shape`` protocol's
+    :meth:`~rfx.geometry.csg.Shape.bounding_box`. ``Box.bounding_box()``
+    returns exactly ``(corner_lo, corner_hi)``, so the two routes agree there
+    by construction — the ordering is about provable identity, not about
+    disagreeing values.
+
+    A shape that offers neither returns ``(None, None)``; the caller decides
+    whether that is a skip (legacy DC fold) or a hard error (f0 mode).
+    """
+    lo = getattr(shape, "corner_lo", None)
+    hi = getattr(shape, "corner_hi", None)
+    if lo is not None and hi is not None:
+        return lo, hi
+    bbox = getattr(shape, "bounding_box", None)
+    if bbox is None:
+        return None, None
+    try:
+        lo, hi = bbox()
+    except NotImplementedError:
+        return None, None
+    return lo, hi
+
+
+def sheet_normal_axis(lo, hi) -> int:
+    """Index (0/1/2) of the thinnest bounding-box axis — the sheet normal."""
+    extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
+    return min(range(3), key=lambda i: extents[i])
+
+
+def check_sheet_occupancy(mask, n_axis: int, *, lane: str) -> None:
+    """Guard a surface-impedance sheet's RASTERIZED occupancy (issue #674).
+
+    ``sigma_eff = 1/(Rs0*d_norm)`` is a per-occupied-cell fold and is
+    shape-agnostic, which is what lets an arbitrary ``mask_on_coords`` shape
+    replace the Box the #669 contract scoped it to. What is NOT shape-agnostic
+    is the assumption behind the normalization: the sheet is realized on ONE E
+    node along its normal. Two ways a non-Box shape breaks that, both silent
+    without this check:
+
+    - **zero cells** — a mesh slab thinner than a cell registers only where a
+      grid node falls inside it, so a 35 um sheet that misses every node plane
+      vaporizes (the #369 silently-vaporized-metal class, which is the failure
+      the #669 Box guard was standing in for);
+    - **more than one layer** — a 3-D body with height (an imported solid, an
+      L-bracket, a slab thicker than a cell) would fold the sheet conductance
+      once PER layer, multiplying the loss by the layer count while reporting
+      the requested ``Rs0``.
+
+    Concrete masks only: a traced mask (differentiable-mesh path) skips the
+    check rather than raising a ``ConcretizationTypeError``. The reduction runs
+    on-device first so a large grid pays one small host transfer, not a copy of
+    the whole boolean field.
+    """
+    from rfx.core.jax_utils import is_tracer
+
+    if is_tracer(mask) or getattr(mask, "ndim", 0) != 3:
+        return
+    other = tuple(a for a in range(3) if a != n_axis)
+    occupied = np.asarray(jnp.any(mask, axis=other))
+    layers = np.flatnonzero(occupied)
+    axis_name = "xyz"[n_axis]
+    if layers.size == 0:
+        raise ValueError(
+            f"add_thin_conductor(surface_impedance_f0=...): the sheet shape "
+            f"rasterizes to ZERO cells on this grid ({lane} lane), so it would "
+            f"silently vanish instead of loading the field (issue #369 class). "
+            f"A slab thinner than one cell only registers where a grid node "
+            f"falls inside it: centre it on a node plane, thicken it to at "
+            f"least one cell, or draw it as a Box with equal lo/hi on its "
+            f"normal axis (that snaps to the nearest node by construction).")
+    if layers.size > 1:
+        # If a DIFFERENT axis does resolve to one layer, the shape is probably
+        # a flat sheet whose bounding box simply does not name its normal
+        # (a footprint narrower than the thickness, or a cubic bounding box).
+        # Saying which axis turns a confusing refusal into an actionable one.
+        flat_axes = [
+            "xyz"[a] for a in range(3) if a != n_axis
+            and int(np.count_nonzero(np.asarray(jnp.any(
+                mask, axis=tuple(b for b in range(3) if b != a))))) == 1]
+        hint = (
+            f" (The sheet normal is taken from the THINNEST bounding-box axis, "
+            f"which is {axis_name}; the rasterized body does span exactly one "
+            f"layer along {'/'.join(flat_axes)}, so if that is the intended "
+            f"normal, redraw the sheet so its thickness is its smallest "
+            f"bounding-box extent.)" if flat_axes else "")
+        raise ValueError(
+            f"add_thin_conductor(surface_impedance_f0=...): the sheet shape "
+            f"rasterizes to {layers.size} cell layers along its normal "
+            f"(axis {axis_name}, indices {int(layers[0])}..{int(layers[-1])}) "
+            f"on the {lane} lane.{hint} A Leontovich surface-impedance sheet is "
+            f"realized on ONE E node along its normal — sigma_eff = "
+            f"1/(Rs0*d_norm) is the sheet conductance of a single node — so a "
+            f"body with HEIGHT (an imported 3-D solid, a bent/L-shaped sheet, "
+            f"a slab thicker than a cell) is not a sheet: folding it per cell "
+            f"would multiply the sheet conductance by the layer count while "
+            f"still reporting Rs0. Flat, sub-cell-thick sheets of any FOOTPRINT "
+            f"(patterned planes, clearance holes, imported mesh outlines) are "
+            f"supported; conformal and volumetric conductors are not.")
 
 
 @dataclass(frozen=True)
@@ -151,7 +257,23 @@ def apply_thin_conductor(
         # exactly. Thickness deliberately does NOT enter: Leontovich loss
         # for a conductor much thicker than its skin depth is thickness-
         # independent (that is the honest physics, not a gap). grid.dx is
-        # the local normal spacing (Grid is uniform on this lane).
+        # the local normal spacing (Grid is uniform AND cubic on this lane,
+        # so the normal axis does not enter the arithmetic here — it is read
+        # only to guard the rasterized occupancy).
+        #
+        # #674: the fold itself is per-occupied-cell and shape-agnostic, so
+        # any ``mask_on_coords`` shape may deliver ``mask``. What the shape
+        # must still satisfy is that it rasterizes to ONE cell layer along its
+        # normal; ``check_sheet_occupancy`` is the guard, and it is what the
+        # #669 Box-only restriction was standing in for.
+        lo, hi = sheet_bounds(conductor.shape)
+        if lo is None or hi is None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) thin conductor "
+                "requires a shape with an axis-aligned bounding box (Box "
+                "corner_lo/corner_hi, or Shape.bounding_box()) — the sheet "
+                "normal is read from it; refusing to fold it blind.")
+        check_sheet_occupancy(mask, sheet_normal_axis(lo, hi), lane="uniform")
         sigma_eff = 1.0 / (
             leontovich_rs(conductor.surface_impedance_f0,
                           conductor.sigma_bulk) * grid.dx)

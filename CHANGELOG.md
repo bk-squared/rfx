@@ -6,6 +6,39 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
+
+`add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre
+Leontovich conductor loss — used to refuse any shape that was not a `Box`. The
+sheets that dominate conductor loss on a printed board are patterned: ground
+planes with clearance holes, meandered arms, outlines that arrive from CAD as
+meshes. Those all stayed lossless PEC, which is the one case the feature exists
+for.
+
+The restriction was scoping, not physics: `sigma_eff = 1/(Rs0 * d_norm)` is a
+per-occupied-cell fold, and thin conductors have rasterized through
+`mask_on_coords` on both lanes since issue #369. Any shape implementing
+`mask_on_coords` and `bounding_box` — `Cylinder`, `Sphere`, `MeshShape`, your
+own — may now carry a surface-impedance sheet, on the uniform and the graded
+(`dz_profile`) lane alike. A hole is simply a cell the fold never touches.
+
+Two structural requirements replace the shape check, and both fail loud rather
+than degrade quietly:
+
+- the shape must rasterize to **exactly one cell layer along its normal** — a
+  body with height (an imported solid, a bent sheet, a slab thicker than a
+  cell) is not a sheet, and folding it per cell would multiply the sheet
+  conductance by the layer count while still reporting `Rs0`;
+- it must rasterize to **at least one cell** — a sub-cell mesh slab registers
+  only where a grid node falls inside it, and silently vaporized metal is the
+  issue #369 class.
+
+Existing models do not move: a `Box` sheet takes the same bounds and the same
+arithmetic it always did, and a Box expressed as an equivalent mask shape folds
+a bit-identical `sigma` on both lanes. The issue #669 transition-node oracle
+re-run with non-Box plates reproduces its numbers exactly (alpha ratios 0.9984
+and 1.0005 against their locally-uniform controls).
+
 ### Added — `report_every=N` makes a long solve supervisable (issue #667)
 
 A solve printed nothing between the call and its return, so a slow run was

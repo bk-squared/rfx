@@ -741,9 +741,13 @@ def test_leontovich_ad_gates_o5():
 
 
 def test_leontovich_add_time_validation():
-    """Concrete-value ValueErrors at add time; NU defensive fail-loud for a
-    non-Box f0-mode ThinConductor constructed outside the API (the #369
-    silently-vaporized-metal class must never warn-and-skip in f0 mode)."""
+    """Concrete-value ValueErrors at add time, plus the two STRUCTURAL
+    refusals that survived #674 (which lifted the Box-only restriction): a
+    shape that cannot rasterize itself, and one that cannot say where its
+    normal is. The rasterized refusals (a body with HEIGHT, a sheet that
+    folds zero cells) need the grid and so raise at build time — NU
+    defensive mirror below; full non-Box contract in
+    tests/test_thin_conductor_nonbox_sheet.py."""
     import pytest
     from rfx.api import Simulation
     from rfx.geometry.csg import Sphere
@@ -756,15 +760,27 @@ def test_leontovich_add_time_validation():
     with pytest.raises(ValueError, match="sigma_bulk"):
         sim.add_thin_conductor(sheet, sigma_bulk=-1.0,
                                surface_impedance_f0=1e9)
-    with pytest.raises(ValueError, match="Box"):
-        sim.add_thin_conductor(Sphere((3e-3, 3e-3, 1.5e-3), 1e-3),
-                               surface_impedance_f0=1e9)
 
-    # NU lane defensive mirror: bypass add_thin_conductor entirely.
+    class _NoMask:
+        def bounding_box(self):
+            return (0.0, 0.0, 1e-3), (5e-3, 5e-3, 1e-3)
+
+    class _NoBounds:
+        def mask_on_coords(self, x, y, z):
+            return sheet.mask_on_coords(x, y, z)
+
+    with pytest.raises(ValueError, match="mask_on_coords"):
+        sim.add_thin_conductor(_NoMask(), surface_impedance_f0=1e9)
+    with pytest.raises(ValueError, match="bounding box"):
+        sim.add_thin_conductor(_NoBounds(), surface_impedance_f0=1e9)
+
+    # NU lane defensive mirror: bypass add_thin_conductor entirely. A sphere
+    # is a legal shape CLASS now, so it clears the add-time checks and is
+    # refused where the grid can see it is not a sheet.
     sim_nu = _nu_graded_sim(sigma_bulk=1e4, thickness=35e-6)
     sim_nu._thin_conductors[0] = ThinConductor(
         shape=Sphere((6e-3, 6e-3, 8e-3), 1e-3), sigma_bulk=1e4,
         thickness=35e-6, surface_impedance_f0=10e9)
     grid_nu = _nu_graded_grid(sim_nu)
-    with pytest.raises(ValueError, match="refusing to skip"):
+    with pytest.raises(ValueError, match="cell layers along its normal"):
         assemble_materials_nu(sim_nu, grid_nu)

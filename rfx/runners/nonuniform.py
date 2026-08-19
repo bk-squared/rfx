@@ -9,6 +9,7 @@ from rfx.grid import C0
 from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
+from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
 from rfx.nonuniform import (
     NonUniformGrid,
     e_node_dual_spacings,
@@ -180,11 +181,19 @@ def assemble_materials_nu(
         # and jnp.where keeps the sigma field (an AD-live material)
         # differentiable.
         for tc in lossy_tcs:
-            lo = getattr(tc.shape, "corner_lo", None)
-            hi = getattr(tc.shape, "corner_hi", None)
             _f0 = getattr(tc, "surface_impedance_f0", None)
-            if lo is None or hi is None:
-                if _f0 is not None:
+            if _f0 is not None:
+                # #674: a surface-impedance sheet may be ANY
+                # ``mask_on_coords`` shape — the fold below is per occupied
+                # cell and shape-agnostic, and the rasterization on this lane
+                # has been coords-based since #369. What the shape still owes
+                # is an axis-aligned bounding box, because the sheet NORMAL
+                # (hence which axis' dual spacing normalizes the fold) is read
+                # from it. ``sheet_bounds`` reads Box's corner_lo/corner_hi
+                # first, so a Box takes bit-identically the arithmetic it took
+                # before this generalization.
+                lo, hi = sheet_bounds(tc.shape)
+                if lo is None or hi is None:
                     # Defensive mirror of the add-time check (issue #669):
                     # a surface-impedance sheet must fail LOUD, never
                     # warn-and-skip (the #369 silently-vaporized-metal
@@ -192,22 +201,37 @@ def assemble_materials_nu(
                     # outside add_thin_conductor().
                     raise ValueError(
                         "surface-impedance (surface_impedance_f0) thin "
-                        "conductor requires a Box shape "
-                        "(corner_lo/corner_hi); refusing to skip it on the "
-                        "non-uniform path.")
-                import warnings as _warnings
-                _warnings.warn(
-                    "lossy thin conductor with a non-Box shape is not yet "
-                    "supported on the non-uniform path and was skipped.",
-                    stacklevel=2)
-                continue
+                        "conductor requires a shape with an axis-aligned "
+                        "bounding box (Box corner_lo/corner_hi, or "
+                        "Shape.bounding_box()) to locate its normal; "
+                        "refusing to skip it on the non-uniform path.")
+            else:
+                # Legacy DC fold: left exactly as #373 shipped it. A non-Box
+                # DC sheet still warn-and-skips here — #674 asked for the
+                # surface-impedance mode, and turning a documented
+                # warn-and-skip into a fold is a behaviour change for existing
+                # models, so it is a separate decision, not a side effect.
+                lo = getattr(tc.shape, "corner_lo", None)
+                hi = getattr(tc.shape, "corner_hi", None)
+                if lo is None or hi is None:
+                    import warnings as _warnings
+                    _warnings.warn(
+                        "lossy thin conductor with a non-Box shape is not yet "
+                        "supported on the non-uniform path and was skipped.",
+                        stacklevel=2)
+                    continue
             extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
             n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
             d_norm = e_node_dual_spacings(
                 (grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
             bshape = [1, 1, 1]
             bshape[n_axis] = int(d_norm.shape[0])
+            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             if _f0 is not None:
+                # #674 guard: the fold normalizes ONE E node along the sheet
+                # normal, so the rasterized sheet must occupy exactly one
+                # layer there — and must not have vaporized.
+                check_sheet_occupancy(m, n_axis, lane="non-uniform")
                 # Leontovich band-centre surface-impedance mode (issue
                 # #669): sigma_eff = 1/(Rs0 * d_norm) per node, with d_norm
                 # the LOCAL E-node dual spacing along the sheet normal, so
@@ -224,7 +248,6 @@ def assemble_materials_nu(
             # materials.sigma, so the reference run's sigma_override strips
             # it. Any future surface-impedance term NOT resident in
             # materials.sigma must add its own reference strip.
-            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             materials = MaterialArrays(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
