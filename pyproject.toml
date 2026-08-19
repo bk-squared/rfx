@@ -44,6 +44,14 @@ rfx-diagnose = "rfx.diagnostics:main"
 [project.optional-dependencies]
 optimization = ["optax>=0.1.7"]
 visualization = ["matplotlib>=3.7", "pillow"]
+# jax-metal 0.1.1 is a legacy experimental plug-in whose compatible JAX stack
+# must not float with the core dependencies. Keep this lane opt-in and out of
+# the aggregate `all` extra.
+metal = [
+    "jax==0.4.34; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "jaxlib==0.4.34; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "jax-metal==0.1.1; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 cad = ["trimesh>=4", "rtree>=1", "cascadio>=0.0.14"]  # MeshShape CAD import (#358): rtree=watertight-contains backend, cascadio=STEP/OpenCASCADE loader
 dashboard = ["streamlit>=1.30", "pandas"]
 # ruff pinned <0.16: CI installs it unpinned, and 0.16.0 turned on UP035/UP037 (pyupgrade)
@@ -75,13 +83,14 @@ rfx = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not gpu and not slow and not slow_physics'"
+addopts = "-m 'not gpu and not metal and not slow and not slow_physics'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
+    "metal: tests requiring the experimental Apple Metal backend (select explicitly with '-m metal')",
     "distributed: tests that require multi-device / distributed setup (deselect with '-m not distributed')",
     "slow_physics: release-tag-time physics regression gate (V173-A bit-identity); opt-in with '-m slow_physics'",
-    "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially in the dedicated weekly slow-tests-highmem job, ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
+    "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially in the dedicated weekly slow-tests-highmem job, ADDITIVE to slow/slow_physics/gpu/metal (never excludes from the default fast lane on its own — addopts above only filters not gpu/metal/slow/slow_physics)",
 ]
 
 [tool.mypy]

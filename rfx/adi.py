@@ -19,7 +19,16 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import EPS_0, MU_0
+
+
+def _reject_metal_adi(context: str) -> None:
+    """Keep the unverified implicit solver outside the Metal research lane."""
+    reject_unsupported_metal(
+        context,
+        "The ADI solver's batched tridiagonal scans",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +535,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     ez, hx, hy : final field arrays
     probe_data : (n_steps, n_probes) array or None
     """
+    _reject_metal_adi("run_adi_2d()")
     use_cpml = cpml_params is not None
     if use_cpml and cpml_state is None:
         raise ValueError("cpml_state is required when cpml_params is provided")
@@ -903,6 +913,7 @@ def run_adi_3d(
     ex, ey, ez, hx, hy, hz : final field arrays
     probe_data : (n_steps, n_probes) array or None
     """
+    _reject_metal_adi("run_adi_3d()")
     if sources is None:
         sources = []
     if probes is None:

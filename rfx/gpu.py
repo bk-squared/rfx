@@ -1,8 +1,8 @@
 """GPU acceleration utilities.
 
-JAX runs on GPU transparently when ``jaxlib`` is installed with CUDA
-support.  This module provides device information, benchmarking, and
-helpers for batch parameter sweeps via ``jax.vmap``.
+JAX runs on a supported GPU transparently when the corresponding backend
+plugin is installed.  This module provides device information, benchmarking,
+and helpers for batch parameter sweeps via ``jax.vmap``.
 """
 
 from __future__ import annotations
@@ -12,6 +12,12 @@ from typing import NamedTuple
 
 import jax
 
+from rfx.backends import (
+    current_backend,
+    is_accelerator_platform,
+    is_gpu_platform,
+    normalize_platform,
+)
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
@@ -28,15 +34,43 @@ class DeviceInfo(NamedTuple):
     gpu_available: bool
     devices: list[dict]
 
+    @property
+    def metal_available(self) -> bool:
+        """Whether an Apple Metal device is present.
+
+        This is a property rather than a NamedTuple field so the historical
+        three-item tuple contract remains unchanged.
+        """
+        return self.backend == "metal" or any(
+            normalize_platform(device.get("platform")) == "metal"
+            for device in self.devices
+        )
+
+    @property
+    def accelerator_available(self) -> bool:
+        """Whether any known GPU or TPU accelerator is present."""
+        return is_accelerator_platform(self.backend) or any(
+            is_accelerator_platform(device.get("platform"))
+            for device in self.devices
+        )
+
 
 def device_info() -> DeviceInfo:
     """Report available JAX compute devices."""
     devices = jax.devices()
+    backend = current_backend()
     return DeviceInfo(
-        backend=jax.default_backend(),
-        gpu_available=any(d.platform == "gpu" for d in devices),
+        backend=backend,
+        gpu_available=(
+            is_gpu_platform(backend)
+            or any(is_gpu_platform(d) for d in devices)
+        ),
         devices=[
-            {"id": d.id, "kind": d.device_kind, "platform": d.platform}
+            {
+                "id": d.id,
+                "kind": d.device_kind,
+                "platform": normalize_platform(d),
+            }
             for d in devices
         ],
     )
@@ -66,7 +100,7 @@ def benchmark(
     if grid_sizes is None:
         grid_sizes = [(20, 20, 20), (40, 40, 40), (80, 80, 80)]
 
-    backend = jax.default_backend()
+    backend = current_backend()
     results = []
 
     for shape in grid_sizes:

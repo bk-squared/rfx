@@ -16,7 +16,7 @@ def test_device_info():
     """device_info() returns valid DeviceInfo."""
     info = device_info()
     assert isinstance(info, DeviceInfo)
-    assert info.backend in ("cpu", "gpu", "tpu")
+    assert info.backend in ("cpu", "gpu", "cuda", "rocm", "metal", "tpu")
     assert len(info.devices) > 0
     assert "id" in info.devices[0]
     assert "platform" in info.devices[0]

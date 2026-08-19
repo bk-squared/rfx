@@ -21,6 +21,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.backends import is_metal_backend
 from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Box  # noqa: F401  (referenced by moved docstrings/comments)
@@ -150,6 +151,40 @@ class _ExecuteMixin:
         if self._precision == "float64":
             return jnp.float64
         return None
+
+    def _reject_unsupported_metal_execution(
+        self,
+        context: str,
+        extra_features: tuple[str, ...] = (),
+    ) -> None:
+        """Fail before an unsupported JAX Metal allocation or dispatch.
+
+        ``skip_preflight=True`` is useful for callers that already validated a
+        setup, but it must not bypass backend capability fences.  This guard is
+        therefore separate from the advisory/structured preflight report and
+        runs on every execution entry point.
+        """
+        if not is_metal_backend():
+            return
+        unsupported = [
+            *self._metal_research_unsupported_features(),
+            *extra_features,
+        ]
+        if not unsupported:
+            return
+        # Preserve order while avoiding repeated explanations when a call-time
+        # request overlaps a configured feature.
+        unsupported = list(dict.fromkeys(unsupported))
+        raise NotImplementedError(
+            f"{context} is outside rfx's experimental Apple Metal research "
+            "lane. Unsupported request: "
+            + ", ".join(unsupported)
+            + ". Metal is limited to single-device, uniform, second-order "
+            "Yee, real-float32 time-domain Simulation.run(). Apple jax-metal "
+            "does not support the complex device dtypes used by RF spectral "
+            "observables, and its reverse-mode scan is not safe. Start a fresh "
+            "CPU process with JAX_PLATFORMS=cpu for this workload."
+        )
 
     # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
 
@@ -2652,6 +2687,15 @@ class _ExecuteMixin:
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
 
+        # The pinned legacy jax-metal plug-in segfaults in the reverse-mode
+        # lax.scan path used by this API.  Block the whole differentiable entry
+        # point (including a seemingly primal call that callers may later wrap
+        # in jax.grad) rather than risk terminating the Python process.
+        self._reject_unsupported_metal_execution(
+            "Simulation.forward()",
+            ("Simulation.forward()/reverse-mode AD",),
+        )
+
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
         # / pending GPU evidence.  The flag lives at module scope so we
@@ -3003,6 +3047,27 @@ class _ExecuteMixin:
         # override (e.g. for A/B regression diagnosis).
         if conformal_pec is None:
             conformal_pec = bool(self._boundary_spec.conformal_faces())
+
+        _metal_call_features: list[str] = []
+        if self._port_sparameter_entries() and compute_s_params is not False:
+            _metal_call_features.append(
+                "lumped/wire S-parameter accumulation (set compute_s_params=False)"
+            )
+        if s_param_freqs is not None or s_param_n_steps is not None:
+            _metal_call_features.append("S-parameter frequency accumulation")
+        if radiated_flux_box is not None:
+            _metal_call_features.append("radiated-flux stopping/monitoring")
+        if devices is not None:
+            _metal_call_features.append("explicit devices=/distributed execution")
+        if subpixel_smoothing not in (False, None):
+            _metal_call_features.append("subpixel smoothing")
+        if conformal_pec:
+            _metal_call_features.append("conformal PEC")
+        if checkpoint:
+            _metal_call_features.append("checkpoint/reverse-mode preparation")
+        self._reject_unsupported_metal_execution(
+            "Simulation.run()", tuple(_metal_call_features)
+        )
 
         if self._coaxial_ports:
             raise NotImplementedError(

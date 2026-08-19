@@ -19,6 +19,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.backends import is_metal_backend
 from rfx.core.jax_utils import is_tracer
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.coaxial_port import CoaxialPort
@@ -1631,6 +1632,18 @@ def _assemble_coax_msl_transition_from_voltages(
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
+    @staticmethod
+    def _reject_metal_sparameter_calculator(calculator: str) -> None:
+        """Fail before a Metal plugin sees an unsupported complex array."""
+        if is_metal_backend():
+            raise NotImplementedError(
+                f"{calculator} is unavailable on the experimental Metal "
+                "research backend because Apple's JAX Metal plugin does not "
+                "support the complex64/complex128 arrays required for "
+                "S-parameter extraction. Start a fresh CPU process with "
+                "JAX_PLATFORMS=cpu for this calculation."
+            )
+
     def compute_waveguide_s_matrix(
         self,
         *,
@@ -1772,6 +1785,9 @@ class _SparamMixin:
             and the companion evidence gate test
             ``tests/test_waveguide_tjunction_e4e5_gates.py``.
         """
+        self._reject_metal_sparameter_calculator(
+            "compute_waveguide_s_matrix()"
+        )
         if not normalize:
             import warnings
             warnings.warn(
@@ -2586,6 +2602,7 @@ class _SparamMixin:
         -------
         MSLSMatrixResult
         """
+        self._reject_metal_sparameter_calculator("compute_msl_s_matrix()")
         from rfx.probes.msl_wave_decomp import extract_msl_nprobe
         from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
         from rfx.sources.msl_port import (
@@ -3692,6 +3709,7 @@ class _SparamMixin:
         -------
         MixedSMatrixResult
         """
+        self._reject_metal_sparameter_calculator("compute_mixed_s_matrix()")
         import dataclasses as _dc
 
         from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
@@ -4586,6 +4604,8 @@ class _SparamMixin:
         CoaxialSMatrixResult
         """
 
+        self._reject_metal_sparameter_calculator("compute_coaxial_s_matrix()")
+
         import warnings
         warnings.warn(
             "compute_coaxial_s_matrix() (single-plane V/I in a closed PEC box) is "
@@ -4912,6 +4932,10 @@ class _SparamMixin:
         ``eps_scale=None`` the result is byte-identical to the validated numpy
         path. The AD↔FD gate is ``tests/test_coax_end_to_end_ad.py``.
         """
+
+        self._reject_metal_sparameter_calculator(
+            "compute_coaxial_line_reflection()"
+        )
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:
             raise ValueError(
@@ -5394,6 +5418,8 @@ class _SparamMixin:
         The registered-monitor guard is unchanged: monitors registered ON
         this sim still raise, because this method builds its own probes.
         """
+
+        self._reject_metal_sparameter_calculator("compute_coaxial_two_port()")
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:
             raise ValueError(
@@ -6010,6 +6036,7 @@ class _SparamMixin:
         -------
         CoaxMSLTransitionResult
         """
+        self._reject_metal_sparameter_calculator("compute_coax_msl_transition()")
         from rfx.sources.coaxial_port import (
             CoaxialPort as _CoaxPort,
             build_coaxial_tem_plane_source_specs,

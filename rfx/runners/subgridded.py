@@ -8,6 +8,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import EPS_0, MU_0
 from rfx.grid import Grid
 
@@ -684,6 +685,10 @@ def run_subgridded_path(
     subgrid S-parameter configurations are rejected by the public request and
     validation layers before this runner is reached.
     """
+    reject_unsupported_metal(
+        "run_subgridded_path()",
+        "Mesh refinement/subgridding",
+    )
     main_result = _run_subgridded_once(
         sim,
         grid_coarse,

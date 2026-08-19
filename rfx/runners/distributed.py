@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
@@ -1304,6 +1305,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    reject_unsupported_metal(
+        "rfx.runners.distributed.run_distributed()",
+        "Multi-device/distributed execution",
+    )
     import warnings
 
     if sim._boundary == "upml":

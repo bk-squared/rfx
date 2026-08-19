@@ -23,6 +23,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import C0
+from rfx.backends import is_metal_backend
 from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
@@ -1542,6 +1543,17 @@ class _PreflightMixin:
 
         issues = PreflightReport()
 
+        if is_metal_backend():
+            issues.append(PreflightIssue(
+                "Apple Metal cannot run any rfx S-parameter calculator: "
+                "the extraction paths require unsupported complex64/complex128 "
+                "device arrays. Start a fresh CPU process with "
+                "JAX_PLATFORMS=cpu.",
+                severity="error",
+                code="metal_backend_unsupported",
+                source="preflight_sparameters",
+            ))
+
         try:
             if key == "run":
                 self._validate_run_sparameter_request(
@@ -2045,6 +2057,7 @@ class _PreflightMixin:
         absorber_label = "UPML" if self._boundary == "upml" else "CPML"
 
         # --- checks in original order ---------------------------------
+        self._validate_cfg_metal_research_backend(_w)
         self._validate_cfg_precision_x64(_w)
         self._validate_cfg_pec_faces_with_finite_pec(_w)
         self._validate_cfg_upml_refinement()
@@ -2082,6 +2095,110 @@ class _PreflightMixin:
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+
+    def _metal_research_unsupported_features(self) -> list[str]:
+        """Return configured features outside the experimental Metal lane.
+
+        Apple's legacy ``jax-metal`` plug-in does not implement JAX complex
+        dtypes, while rfx frequency-domain observables allocate complex device
+        arrays.  The plug-in also segfaults in the reverse-mode scan used by
+        :meth:`Simulation.forward` on the pinned research stack.  Keep this
+        list configuration-only so both :meth:`preflight` and the execution
+        guards can reuse it before any unsupported device allocation occurs.
+        Call-time options (for example ``compute_s_params``) are checked in
+        ``rfx.api._execute``.
+        """
+        unsupported: list[str] = []
+        if self._precision != "float32":
+            unsupported.append(f"precision={self._precision!r}")
+        if self._solver != "yee":
+            unsupported.append(f"solver={self._solver!r}")
+        if self._stencil_order != 2:
+            unsupported.append(f"stencil_order={self._stencil_order}")
+        if any(
+            profile is not None
+            for profile in (self._dx_profile, self._dy_profile, self._dz_profile)
+        ):
+            unsupported.append("non-uniform mesh profile")
+        if self._refinement is not None:
+            unsupported.append("subgridding/refinement")
+        if self._periodic_axes:
+            unsupported.append("periodic boundaries")
+        if self._boundary_spec.conformal_faces():
+            unsupported.append("conformal PEC boundary faces")
+        if self._thin_conductors:
+            unsupported.append("thin/surface-impedance conductors")
+        if self._lumped_rlc:
+            unsupported.append("lumped RLC elements")
+        material_specs = []
+        for entry in self._geometry:
+            try:
+                material_specs.append(self._resolve_material(entry.material_name))
+            except KeyError:
+                # The normal material validation owns unknown names. Do not
+                # replace its more specific diagnostic with a backend error.
+                continue
+        if any(spec.debye_poles or spec.lorentz_poles for spec in material_specs):
+            unsupported.append("dispersive Debye/Lorentz materials")
+        if any(spec.chi3 != 0.0 for spec in material_specs):
+            unsupported.append("nonlinear Kerr materials")
+        if self._dft_planes:
+            unsupported.append("DFT plane probes (complex64)")
+        if self._flux_monitors:
+            unsupported.append("flux monitors (complex64)")
+        if self._ntff is not None:
+            unsupported.append("NTFF/far-field accumulation (complex64)")
+        if self._floquet_ports:
+            unsupported.append("Floquet/Bloch fields (complex64)")
+        if self._waveguide_ports:
+            unsupported.append("waveguide-port spectra")
+        if self._msl_ports:
+            unsupported.append("microstrip-port spectra")
+        if self._coaxial_ports:
+            unsupported.append("coaxial-port spectra")
+        if self._tfsf is not None:
+            unsupported.append("TFSF sources")
+        return unsupported
+
+    def _validate_cfg_metal_research_backend(self, _w) -> None:
+        """Describe or reject the exact, forward-only Metal research lane."""
+        if not is_metal_backend():
+            return
+
+        unsupported = self._metal_research_unsupported_features()
+        if unsupported:
+            _w.warn(
+                PreflightErrorWarning(
+                    "The experimental Apple Metal backend supports only the "
+                    "single-device, uniform, second-order Yee, real-float32 "
+                    "time-domain run() lane in rfx. This configuration requests "
+                    + ", ".join(unsupported)
+                    + ". Apple jax-metal does not support float64 or complex "
+                    "device dtypes, and the pinned plug-in is not safe for "
+                    "reverse-mode AD. Run this workload in a fresh CPU process "
+                    "with JAX_PLATFORMS=cpu, or remove the listed features.",
+                    code="metal_backend_unsupported",
+                    source="_validate_cfg_metal_research_backend",
+                ),
+                stacklevel=3,
+            )
+            return
+
+        _w.warn(
+            PreflightWarning(
+                "Apple Metal is an experimental, research-only backend: this "
+                "configuration passes the real-float32 forward time-domain "
+                "eligibility fence. The smoke-tested baseline is limited to "
+                "basic PEC/CPML runs, static isotropic materials, point/lumped "
+                "sources, and field probes; it is not a claims-bearing "
+                "CPU/CUDA validation lane. Reverse-mode AD and "
+                "frequency-domain/complex observables require a fresh CPU "
+                "process with JAX_PLATFORMS=cpu.",
+                code="metal_research_backend",
+                source="_validate_cfg_metal_research_backend",
+            ),
+            stacklevel=3,
+        )
 
     def _validate_cfg_precision_x64(self, _w) -> None:
         """Warn when ``precision`` cannot actually take effect.

@@ -14,6 +14,37 @@ Status terms:
 - **not documented** — code may exist, but there is no current public workflow
 - **unsupported** — the requested combination should raise an actionable error
 
+## Execution backends
+
+Backend status is separate from feature status: a feature listed as supported
+below is available on a backend only within that backend's limits.
+
+| Backend | Status | Current limits |
+|---|---|---|
+| JAX CPU | **supported** | Reference execution lane on Linux and macOS; the feature-specific restrictions below still apply. |
+| NVIDIA CUDA | **supported** | Documented accelerated lane; the feature-specific restrictions below and the installed JAX/CUDA compatibility requirements still apply. |
+| Apple Metal (`darwin`/`arm64`) | **experimental** | Research-only: uniform Cartesian second-order Yee grid, one local device, forward time-domain execution, real `float32` fields, static isotropic materials, point sources, and basic time-domain field probes only. A lumped port may be a time-domain excitation only with `compute_s_params=False`. No claims-bearing validation is established. |
+
+Official JAX [does not support Mac GPU
+execution](https://docs.jax.dev/en/latest/installation.html#mac-gpu). The
+`metal` extra instead installs Apple's [legacy experimental
+plug-in](https://developer.apple.com/metal/jax/) with the exact compatible
+stack `jax==0.4.34`, `jaxlib==0.4.34`, and `jax-metal==0.1.1`. It is not part of
+the `all` extra.
+
+On Metal, reverse-mode AD and optimization are **unsupported** and CPU-only;
+the measured reverse-mode path ends in a native-process segmentation fault.
+Port spectra/S-parameters (including waveguide, MSL, and coaxial calculators),
+DFT/frequency-domain observables, flux, NTFF/far-field, Floquet/Bloch, complex
+dtypes, `float64`, distributed execution, nonuniform or refined meshes,
+batched/`vmap` sweeps, full-field snapshots, fourth-order stencils, conformal
+PEC, subpixel smoothing, and ADI are also unsupported. The same applies to
+anisotropic, Debye/Lorentz/Kerr materials, TFSF, periodic boundaries,
+thin/surface-impedance conductors, and lumped RLC; these workflows must run on
+CPU. Force the reference backend with
+`JAX_PLATFORMS=cpu python your_script.py`. A Metal observation must be
+reproduced on CPU before it is treated as scientific evidence.
+
 ## Current documented baseline
 
 The general baseline is a uniform Cartesian Yee grid with `pec`, `cpml`, or

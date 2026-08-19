@@ -37,6 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.backends import is_metal_backend
 from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.materials.thin_conductor import apply_thin_conductor
@@ -955,6 +956,22 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    if is_metal_backend() and sim._dft_planes:
+        raise NotImplementedError(
+            "vmap_material_sweep() with DFT plane probes is unavailable on "
+            "the experimental Apple Metal research backend because the "
+            "accumulators require unsupported complex64 arrays. Remove the "
+            "DFT planes for a real time-domain sweep, or start a fresh CPU "
+            "process with JAX_PLATFORMS=cpu."
+        )
+    if is_metal_backend():
+        # This fast path bypasses Simulation.run() and has no real-device Metal
+        # validation of its batched scan. Keep it outside the deliberately
+        # narrow single-run research lane even for an otherwise basic config.
+        sim._reject_unsupported_metal_execution(
+            "vmap_material_sweep()",
+            ("vmap/batched material-sweep execution",),
+        )
     if return_fields:
         raise ValueError(
             "return_fields=True is not implemented on vmap_material_sweep "

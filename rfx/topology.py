@@ -42,6 +42,8 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import is_metal_backend
+
 
 # ---------------------------------------------------------------------------
 # TopologyDesignRegion
@@ -385,6 +387,14 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    if is_metal_backend():
+        raise NotImplementedError(
+            "topology_optimize() is unavailable on the experimental Apple "
+            "Metal research backend. It differentiates a lax.scan FDTD run "
+            "through jax.value_and_grad, and the pinned jax-metal stack can "
+            "terminate the native process on that reverse-mode path. Start "
+            "a fresh CPU process with JAX_PLATFORMS=cpu."
+        )
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     try:
         import optax

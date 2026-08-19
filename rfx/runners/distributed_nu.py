@@ -33,6 +33,7 @@ from jax import lax
 from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
@@ -2083,6 +2084,10 @@ def run_nonuniform_distributed_pec(
            "debye_state_sharded": DebyeState or None,
            "lorentz_state_sharded": LorentzState or None}``
     """
+    reject_unsupported_metal(
+        "run_nonuniform_distributed_pec()",
+        "Distributed non-uniform execution and its scan/AD paths",
+    )
     if n_devices != sharded_grid.n_devices:
         raise ValueError(
             f"n_devices={n_devices} != sharded_grid.n_devices="

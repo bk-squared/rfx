@@ -6,6 +6,7 @@ import math
 
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.subgridding.disjoint_3d import (
     init_disjoint_subgrid_3d,
     step_disjoint_z_slab_sat_3d,
@@ -35,6 +36,10 @@ def run_disjoint_stage2_path(
     production claims remain blocked by validation until waveform and external
     gates pass.
     """
+    reject_unsupported_metal(
+        "run_disjoint_stage2_path()",
+        "Disjoint mesh-refinement execution",
+    )
     from rfx.api import Result
 
     unsupported_ports = [pe for pe in sim._ports if pe.impedance > 0.0]

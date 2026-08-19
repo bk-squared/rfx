@@ -36,6 +36,7 @@ import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jax.experimental.shard_map import shard_map
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
@@ -567,6 +568,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    reject_unsupported_metal(
+        "rfx.runners.distributed_v2.run_distributed()",
+        "Multi-device/sharded execution",
+    )
     import warnings
 
     if exchange_interval > 1:
