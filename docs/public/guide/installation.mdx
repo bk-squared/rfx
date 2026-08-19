@@ -51,7 +51,7 @@ The diagnostic's final short run is the installed-package execution check.
 Examples under `examples/` are available only from a source checkout; they are
 not installed as wheel data.
 
-## GPU support
+## NVIDIA CUDA GPU support
 
 ```bash
 pip install --upgrade "jax[cuda12]"
@@ -59,6 +59,69 @@ python -c "import jax; print(jax.devices())"
 ```
 
 See the official JAX installation guide for CUDA/cuDNN details.
+
+## Experimental Apple Metal research lane
+
+This opt-in lane is for exploratory forward runs on an Apple-silicon
+(`darwin`/`arm64`) Mac running macOS Sonoma 14.4 or newer. It is not the normal JAX GPU support path: the
+[official JAX installation guide](https://docs.jax.dev/en/latest/installation.html#mac-gpu)
+lists Mac GPU as unsupported and directs users to CPU. rfx therefore treats
+Apple's [legacy experimental `jax-metal`
+plug-in](https://developer.apple.com/metal/jax/) as research-only.
+
+Install the Xcode command-line tools if the Mac does not already have them,
+then create an isolated environment:
+
+```bash
+xcode-select --install
+python3 -m venv .venv-metal
+source .venv-metal/bin/activate
+python -m pip install --upgrade pip wheel
+python -m pip install "rfx-fdtd[metal]"
+python -c "import jax; print(jax.__version__, jax.default_backend(), jax.devices())"
+rfx-diagnose
+```
+
+The `metal` extra uses exact pins: `jax==0.4.34`, `jaxlib==0.4.34`, and
+`jax-metal==0.1.1`. These legacy plug-in dependencies are deliberately absent
+from the `all` extra so a development install cannot silently replace its JAX
+stack.
+
+The only Metal research scope is:
+
+- a uniform Cartesian Yee grid;
+- the second-order stencil, without refinement, conformal PEC, or subpixel
+  smoothing;
+- one local device and a forward-only time-domain run;
+- real `float32` fields; and
+- static isotropic materials, point sources, and basic time-domain field
+  probes. A lumped `add_port()` is usable as a real time-domain excitation
+  only with explicit `compute_s_params=False`.
+
+Metal is unsupported for reverse-mode AD or optimization: the measured
+reverse-mode path terminates the Python process with a native segmentation
+fault. It is also unsupported for port spectra/S-parameters (including the
+waveguide, MSL, and coaxial calculators), DFT/frequency-domain observables,
+flux, NTFF/far-field, Floquet/Bloch, complex dtypes, `float64`, distributed
+execution, batched/`vmap` sweeps, full-field snapshots, nonuniform or refined
+meshes, fourth-order stencils, conformal PEC, subpixel/anisotropic materials,
+Debye/Lorentz/Kerr materials, TFSF, periodic boundaries,
+thin/surface-impedance conductors, lumped RLC, and ADI. Use CPU for all of those
+workflows and reproduce a Metal observation there before making a scientific
+claim.
+
+To keep the Metal packages installed but force JAX back to its CPU backend:
+
+```bash
+JAX_PLATFORMS=cpu rfx-diagnose
+JAX_PLATFORMS=cpu python your_script.py
+```
+
+In a source checkout, the opt-in hardware gate is:
+
+```bash
+python -m pytest -o addopts='' tests/test_metal_e2e.py
+```
 
 ## Development install
 
@@ -81,8 +144,10 @@ The `dev` extra includes:
 ## System requirements
 
 - Python: 3.10 / 3.11 / 3.12
-- CPU: modern x86_64
-- GPU: NVIDIA + CUDA 12+ for acceleration
+- CPU: modern x86_64 or Apple silicon (`arm64`)
+- Supported GPU acceleration: NVIDIA + CUDA 12+
+- Experimental research GPU: Apple silicon Metal, within the forward-only
+  `float32` scope above
 - RAM: 4 GB minimum, 16 GB+ recommended for larger 3D runs
 
 ## Next steps

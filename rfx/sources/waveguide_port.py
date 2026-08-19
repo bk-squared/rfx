@@ -210,7 +210,9 @@ class WaveguidePortConfig(NamedTuple):
     # not zeroed by apply_pec_faces — Ez is "normal" by convention).
     # Sentinel `(0, 0)` triggers a fallback in `_aperture_dA` for low-
     # level callers that bypass `init_waveguide_port`.
-    aperture_dA: jnp.ndarray = jnp.zeros((0, 0), dtype=jnp.float32)
+    aperture_dA: np.ndarray | jnp.ndarray = np.zeros(
+        (0, 0), dtype=np.float32,
+    )
     h_offset: tuple[float, float] = (0.0, 0.0)
     mode_indices: tuple[int, int] = (0, 0)
 

@@ -25,7 +25,7 @@
 
 | | |
 |---|---|
-| **GPU-accelerated** | 7,309 Mcells/s on RTX 4090 via `jax.lax.scan` JIT ([benchmarks](docs/public/guide/benchmarks.mdx)) |
+| **NVIDIA GPU-accelerated** | 7,309 Mcells/s on RTX 4090 via `jax.lax.scan` JIT ([benchmarks](docs/public/guide/benchmarks.mdx)) |
 | **Differentiable** | `jax.grad` through the time-domain solver for sensitivity and inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameters, Harminv, far-field / RCS |
 | **Per-family S-parameters** | lumped/wire, microstrip, rectangular waveguide, and coaxial paths use distinct calculators |
@@ -35,8 +35,8 @@
 ## Installation
 
 ```bash
-pip install rfx-fdtd                  # CPU
-pip install "jax[cuda12]" rfx-fdtd    # GPU (JAX + CUDA)
+pip install rfx-fdtd                  # CPU (including macOS)
+pip install "jax[cuda12]" rfx-fdtd    # NVIDIA GPU (JAX + CUDA)
 ```
 
 Development install:
@@ -45,6 +45,49 @@ Development install:
 git clone https://github.com/bk-squared/rfx.git
 cd rfx && pip install -e ".[all]"
 ```
+
+### Experimental Apple Metal research lane
+
+Apple-silicon Macs have a separate, opt-in research lane:
+
+```bash
+python3 -m venv .venv-metal
+source .venv-metal/bin/activate
+python -m pip install --upgrade pip wheel
+python -m pip install "rfx-fdtd[metal]"
+python -c "import jax; print(jax.default_backend(), jax.devices())"
+rfx-diagnose
+```
+
+The extra pins `jax==jaxlib==0.4.34` and `jax-metal==0.1.1` on macOS Sonoma
+14.4+; it is deliberately not included in `.[all]`. Official JAX [does not support Mac GPU
+execution](https://docs.jax.dev/en/latest/installation.html#mac-gpu), so this
+uses Apple's [legacy experimental Metal
+plug-in](https://developer.apple.com/metal/jax/), not the supported JAX GPU
+path.
+
+The Metal research scope is only a uniform-grid, single-device, second-order
+Yee forward time-domain run with real `float32` fields and basic field probes.
+The tested baseline uses static isotropic materials plus point sources; a
+lumped `add_port()` may be used as a real time-domain excitation only when
+`compute_s_params=False` is explicit. Reverse-mode AD has produced a
+native-process segmentation fault and is unsupported; run AD and optimization
+on CPU. Port spectra/S-parameters (including waveguide, MSL, and coaxial
+calculators), DFT/frequency-domain observables, flux, NTFF/far-field,
+Floquet/Bloch, batched/`vmap` sweeps, full-field snapshots, complex dtypes, and
+`float64` are also unsupported on Metal.
+Nonuniform/refined meshes, fourth-order stencils, conformal PEC, subpixel or
+anisotropic materials, Debye/Lorentz/Kerr materials, TFSF, periodic boundaries,
+thin/surface-impedance conductors, and lumped RLC remain outside this lane.
+Reproduce any Metal observation on a supported CPU lane before treating it as
+a scientific result. Force that lane for any command with, for example:
+
+```bash
+JAX_PLATFORMS=cpu python your_script.py
+```
+
+From a source checkout, run the real-device gate with
+`python -m pytest -o addopts='' tests/test_metal_e2e.py`.
 
 ## Quick Start
 

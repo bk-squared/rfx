@@ -6,6 +6,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx import simulation as _simulation
+from rfx.backends import is_metal_backend
 # Every rfx.simulation symbol this module needs goes through `_simulation.*`
 # (never `from rfx.simulation import X as _x`, #628): this module is first
 # imported lazily, from inside Simulation.run()/forward(), so an import-time
@@ -197,6 +198,52 @@ def run_uniform(
     Result
     """
     from rfx.api import Result, WaveguideSParamResult
+
+    if is_metal_backend():
+        extra_features: list[str] = []
+        if sim._port_sparameter_entries() and compute_s_params is not False:
+            extra_features.append(
+                "lumped/wire S-parameter accumulation (set compute_s_params=False)"
+            )
+        if s_param_freqs is not None or s_param_n_steps is not None:
+            extra_features.append("S-parameter frequency accumulation")
+        if radiated_flux_box is not None:
+            extra_features.append("radiated-flux stopping/monitoring")
+        if subpixel_smoothing not in (False, None):
+            extra_features.append("subpixel smoothing")
+        if conformal_pec:
+            extra_features.append("conformal PEC")
+        if checkpoint:
+            extra_features.append("checkpoint/reverse-mode preparation")
+        if snapshot is not None:
+            extra_features.append("full-field snapshots")
+        if debye_spec is not None or lorentz_spec is not None:
+            extra_features.append("dispersive Debye/Lorentz materials")
+        if kerr_chi3 is not None:
+            extra_features.append("nonlinear Kerr materials")
+        if field_dtype is not None and jnp.dtype(field_dtype) != jnp.dtype(jnp.float32):
+            extra_features.append(f"field dtype {jnp.dtype(field_dtype)}")
+        sim._reject_unsupported_metal_execution(
+            "run_uniform()",
+            tuple(extra_features),
+        )
+        _simulation._reject_unsupported_metal_low_level(
+            "run_uniform()",
+            traced_values=(
+                base_materials,
+                debye_spec,
+                lorentz_spec,
+                pec_mask,
+                kerr_chi3,
+            ),
+            checkpoint=checkpoint,
+            debye=debye_spec,
+            lorentz=lorentz_spec,
+            kerr_chi3=kerr_chi3,
+            field_dtype=field_dtype,
+            radiated_flux_box=radiated_flux_box,
+            snapshot=snapshot,
+        )
 
     materials = base_materials
 

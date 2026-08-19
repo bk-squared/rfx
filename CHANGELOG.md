@@ -39,6 +39,22 @@ a bit-identical `sigma` on both lanes. The issue #669 transition-node oracle
 re-run with non-Box plates reproduces its numbers exactly (alpha ratios 0.9984
 and 1.0005 against their locally-uniform controls).
 
+### Added — experimental Apple Metal research lane
+
+Apple-silicon macOS users can opt into `rfx-fdtd[metal]`, which pins the
+legacy compatible stack `jax==jaxlib==0.4.34` and `jax-metal==0.1.1`. Backend
+reporting now recognizes Metal, diagnostics identify it as experimental, and
+the solver keeps Metal on the portable PEC update path.
+
+The supported research baseline is deliberately narrow: single-device,
+uniform second-order Yee, real-float32, forward time-domain runs with static
+isotropic materials, point/lumped excitation, and basic field probes. Metal
+hardware smoke tests cover PEC, CPML, dielectric geometry, and explicit
+time-domain-only lumped-port use. Reverse-mode AD was observed to terminate the
+native process, while Apple's plug-in does not support the complex dtypes used
+by rfx spectral/RF observables. Those and other unverified advanced paths now
+fail before allocation with an actionable `JAX_PLATFORMS=cpu` fallback.
+
 ### Added — `report_every=N` makes a long solve supervisable (issue #667)
 
 A solve printed nothing between the call and its return, so a slow run was

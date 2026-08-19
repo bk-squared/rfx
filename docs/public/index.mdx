@@ -29,7 +29,7 @@ If a capability is not listed here or on the [Support Boundaries](/rfx/api/suppo
 
 | Feature | Detail |
 |---|---|
-| **GPU acceleration** | JAX/JIT execution for large 3-D grids |
+| **NVIDIA GPU acceleration** | JAX/JIT execution for large 3-D grids through the documented CUDA lane |
 | **Differentiable workflows** | `jax.grad` through selected JAX-traced objectives; validate the final RF observable within its documented limits |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameter helpers, Harminv, far-field utilities |
 | **Recommended examples** | the ordered tutorials under `examples/tutorials/` (start at `examples/README.md`), plus the inverse-design examples |
@@ -43,11 +43,28 @@ If a capability is not listed here or on the [Support Boundaries](/rfx/api/suppo
 pip install rfx-fdtd
 ```
 
-GPU support depends on your JAX/CUDA environment:
+NVIDIA GPU support depends on your JAX/CUDA environment:
 
 ```bash
 pip install "jax[cuda12]" rfx-fdtd
 ```
+
+Apple Metal is a separate, experimental research lane rather than documented
+JAX GPU support. On Apple silicon, install it with:
+
+```bash
+pip install "rfx-fdtd[metal]"
+```
+
+Use it only for uniform, single-device, second-order Yee forward time-domain
+runs with real `float32` fields and basic field probes. A lumped port can be a
+time-domain excitation only with `compute_s_params=False`. AD,
+complex/`float64`, port spectra/S-parameters, DFT, flux, NTFF/far-field,
+Floquet/Bloch, batched/`vmap` sweeps, full-field snapshots, refined meshes,
+conformal PEC, and subpixel smoothing are unsupported there; the installation
+guide lists the remaining advanced material/source exclusions.
+See [Installation](guide/installation/) for the exact pinned stack and the
+`JAX_PLATFORMS=cpu` fallback.
 
 ---
 

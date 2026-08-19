@@ -24,6 +24,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_h_nu, update_e_nu, EPS_0, MU_0,
@@ -32,6 +33,14 @@ from rfx.boundaries.pec import apply_pec, apply_pec_mask, apply_pec_occupancy
 from rfx.core.jax_utils import is_tracer
 
 C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
+
+
+def _reject_metal_nonuniform(context: str) -> None:
+    """Keep the non-uniform solver outside the verified Metal lane."""
+    reject_unsupported_metal(
+        context,
+        "Non-uniform meshes and their lax.scan AD path",
+    )
 
 
 class NonUniformGrid(NamedTuple):
@@ -1416,6 +1425,7 @@ def run_nonuniform(
         identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
         dt is scalar on both paths so no per-axis weighting is required.
     """
+    _reject_metal_nonuniform("run_nonuniform()")
     setup = _build_nu_scan(
         grid, materials, n_steps,
         pec_mask=pec_mask,
@@ -1830,6 +1840,7 @@ def run_nonuniform_until_decay(
         the fire condition actually held (workspace rule R5) must call
         this module function directly.
     """
+    _reject_metal_nonuniform("run_nonuniform_until_decay()")
     if check_interval < 1:
         raise ValueError(
             f"check_interval must be >= 1, got {check_interval}")

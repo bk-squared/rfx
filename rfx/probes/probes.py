@@ -12,6 +12,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
 from rfx.grid import Grid
 from rfx.sources.sources import LumpedPort
@@ -1404,6 +1405,10 @@ def extract_s_matrix_wire(
         By default, returns an S-matrix. With ``return_vi_dump=True``, the
         bundle also carries raw phasors and per-port wire cell counts.
     """
+    reject_unsupported_metal(
+        "extract_s_matrix_wire()",
+        "Wire-port S-parameter extraction and its complex DFT arrays",
+    )
     import numpy as np
     from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
@@ -1413,7 +1418,6 @@ def extract_s_matrix_wire(
     from rfx.sources.sources import (
         setup_wire_port,
         apply_wire_port,
-        _wire_port_cells,
         _wire_port_live_cells,
     )
 

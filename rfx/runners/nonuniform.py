@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.grid import C0
 from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import init_debye
@@ -518,6 +519,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     -------
     Result
     """
+    reject_unsupported_metal(
+        "run_nonuniform_path()",
+        "Non-uniform meshes and their scan/decay execution paths",
+    )
     from rfx.api import Result
 
     # Flux monitors: the NU scan body now accumulates Poynting-flux DFTs

@@ -15,6 +15,8 @@ from typing import Any, Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import is_metal_backend, supports_baked_pec_fast_path
+from rfx.core.jax_utils import is_tracer
 from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
@@ -1639,6 +1641,114 @@ def make_core_step(ctx: _StepContext):
     return core_step
 
 
+def _reject_unsupported_metal_low_level(
+    context: str,
+    *,
+    traced_values: tuple,
+    checkpoint: bool = False,
+    checkpoint_segments: int | None = None,
+    dft_planes: tuple | list = (),
+    flux_monitors: tuple | list = (),
+    waveguide_ports: tuple | list = (),
+    ntff: object | None = None,
+    port_sparams: tuple = (),
+    debye: tuple | None = None,
+    lorentz: tuple | None = None,
+    tfsf: tuple | None = None,
+    aniso_eps: tuple | None = None,
+    aniso_inv_eps: tuple | None = None,
+    pec_occupancy: object | None = None,
+    conformal_weights: tuple | None = None,
+    lumped_rlc: tuple | list = (),
+    kerr_chi3: jnp.ndarray | None = None,
+    mag_sources: tuple | list = (),
+    periodic: tuple[bool, bool, bool] | None = None,
+    field_dtype=None,
+    stencil_order: int = 2,
+    radiated_flux_box: tuple | None = None,
+    snapshot: SnapshotSpec | None = None,
+) -> None:
+    """Fence unsafe or unverified low-level execution on Apple Metal.
+
+    ``run`` and ``run_until_decay`` are public independently of the high-level
+    :class:`Simulation` API.  Keep their Metal capability decision in one
+    place so an alternate execution loop cannot bypass the dtype and AD
+    protections applied by the other.
+    """
+    if not is_metal_backend():
+        return
+
+    unsupported: list[str] = []
+    leaves = jax.tree_util.tree_leaves(traced_values)
+    if checkpoint or checkpoint_segments is not None:
+        unsupported.append("checkpoint/reverse-mode preparation")
+    if any(is_tracer(leaf) for leaf in leaves):
+        unsupported.append("JAX-transformed/automatic-differentiation input")
+    invalid_dtypes: set[str] = set()
+    for leaf in leaves:
+        dtype = getattr(leaf, "dtype", None)
+        if dtype is None:
+            continue
+        try:
+            normalized_dtype = jnp.dtype(dtype)
+        except TypeError:
+            continue
+        is_complex = jnp.issubdtype(normalized_dtype, jnp.complexfloating)
+        is_non_float32 = (
+            jnp.issubdtype(normalized_dtype, jnp.floating)
+            and normalized_dtype != jnp.dtype(jnp.float32)
+        )
+        if is_complex or is_non_float32:
+            invalid_dtypes.add(str(normalized_dtype))
+    if invalid_dtypes:
+        unsupported.append(
+            "array dtype(s) " + ", ".join(sorted(invalid_dtypes))
+        )
+    if dft_planes:
+        unsupported.append("DFT plane probes (complex64)")
+    if flux_monitors:
+        unsupported.append("flux monitors (complex64/complex128)")
+    if waveguide_ports:
+        unsupported.append("waveguide-port spectra")
+    if ntff is not None:
+        unsupported.append("NTFF/far-field accumulation")
+    if any(port_sparams):
+        unsupported.append("port S-parameter accumulation")
+    if debye is not None or lorentz is not None:
+        unsupported.append("dispersive Debye/Lorentz materials")
+    if tfsf is not None:
+        unsupported.append("TFSF sources")
+    if aniso_eps is not None or aniso_inv_eps is not None:
+        unsupported.append("anisotropic/subpixel material tensors")
+    if conformal_weights is not None or pec_occupancy is not None:
+        unsupported.append("conformal/subcell PEC")
+    if lumped_rlc:
+        unsupported.append("lumped RLC elements")
+    if kerr_chi3 is not None:
+        unsupported.append("nonlinear Kerr materials")
+    if mag_sources:
+        unsupported.append("magnetic sources")
+    if periodic is not None and any(periodic):
+        unsupported.append("periodic boundaries")
+    if field_dtype is not None and jnp.dtype(field_dtype) != jnp.dtype(jnp.float32):
+        unsupported.append(f"field dtype {jnp.dtype(field_dtype)}")
+    if stencil_order != 2:
+        unsupported.append(f"stencil_order={stencil_order}")
+    if radiated_flux_box is not None:
+        unsupported.append("radiated-flux decay monitoring")
+    if snapshot is not None:
+        unsupported.append("full-field snapshots")
+    if unsupported:
+        raise NotImplementedError(
+            f"{context} cannot execute this request on the experimental "
+            "Apple Metal research backend: "
+            + ", ".join(dict.fromkeys(unsupported))
+            + ". Metal is limited to the real-float32 forward time-domain "
+            "research lane. Start a fresh CPU process with "
+            "JAX_PLATFORMS=cpu for this workload."
+        )
+
+
 def run(
     grid: Grid,
     materials: MaterialArrays,
@@ -1767,6 +1877,52 @@ def run(
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
+    # High-level Simulation entry points perform richer capability checks, but
+    # this low-level runner is public and is also called directly by a few
+    # optimisation helpers. Fence unsafe dtype/AD paths before setup allocates.
+    _reject_unsupported_metal_low_level(
+        "rfx.simulation.run()",
+        traced_values=(
+            materials,
+            debye,
+            lorentz,
+            tfsf,
+            sources,
+            aniso_eps,
+            aniso_inv_eps,
+            pec_mask,
+            pec_occupancy,
+            conformal_weights,
+            kerr_chi3,
+            mag_sources,
+        ),
+        checkpoint=checkpoint,
+        checkpoint_segments=checkpoint_segments,
+        dft_planes=dft_planes,
+        flux_monitors=flux_monitors,
+        waveguide_ports=waveguide_ports,
+        ntff=ntff,
+        port_sparams=(
+            wire_port_sparams,
+            lumped_port_sparams,
+            wire_refplane_sparams,
+        ),
+        debye=debye,
+        lorentz=lorentz,
+        tfsf=tfsf,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        lumped_rlc=lumped_rlc,
+        kerr_chi3=kerr_chi3,
+        mag_sources=mag_sources,
+        periodic=periodic,
+        field_dtype=field_dtype,
+        stencil_order=stencil_order,
+        snapshot=snapshot,
+    )
+
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
         grid=grid,
@@ -1823,10 +1979,11 @@ def run(
     #
     # The fast path bakes PEC boundary enforcement into the update
     # coefficients (zero ca/cb at boundary cells), eliminating 12
-    # per-step scatter operations.  This is always beneficial on GPU
-    # (scatter ops launch separate kernels) and beneficial on CPU for
-    # grids above ~500K cells where the scatter ops cause cache eviction.
-    _on_gpu = jax.default_backend() != "cpu"
+    # per-step scatter operations.  This is always beneficial on the tested
+    # CUDA/ROCm GPU path (scatter ops launch separate kernels). Metal stays on
+    # the generic path until this optimisation has its own correctness and
+    # performance coverage there.
+    _on_fast_path_backend = supports_baked_pec_fast_path()
     _ctx = _setup.ctx_kwargs
     _fast_eligible = (
         not _ctx["use_cpml"]
@@ -1843,14 +2000,17 @@ def run(
         and aniso_eps is None
         and periodic == (False, False, False)
     )
-    # On GPU the baked-PEC path eliminates expensive scatter-update
-    # kernel launches — always beneficial.  On CPU, XLA fuses scatter
-    # ops efficiently so the extra coefficient arrays hurt at small-to-
-    # medium grids; enable only when explicitly requested via GPU backend.
+    # On CUDA/ROCm the baked-PEC path eliminates expensive scatter-update
+    # kernel launches. On other backends it has not been proven safe and
+    # beneficial, so the centralized backend allowlist keeps it disabled.
     # The GPU fast path has an INLINE 2nd-order stencil (update_he_fast),
     # so it must never be used for stencil_order=4 — that would silently
     # produce a 2nd-order result. Gate it on order==2.
-    use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
+    use_fast_he = (
+        _fast_eligible
+        and _on_fast_path_backend
+        and stencil_order == 2
+    )
     _fast_coeffs = (
         precompute_coeffs(materials, dt, dx, pec_axes=_setup.pec_axes)
         if use_fast_he else None
@@ -2321,6 +2481,46 @@ def run_until_decay(
     lumped_port_sparams = lumped_port_sparams or []
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
+
+    _reject_unsupported_metal_low_level(
+        "rfx.simulation.run_until_decay()",
+        traced_values=(
+            materials,
+            debye,
+            lorentz,
+            tfsf,
+            sources,
+            aniso_eps,
+            aniso_inv_eps,
+            pec_mask,
+            pec_occupancy,
+            conformal_weights,
+            kerr_chi3,
+            mag_sources,
+        ),
+        checkpoint=checkpoint,
+        checkpoint_segments=checkpoint_segments,
+        dft_planes=dft_planes,
+        flux_monitors=flux_monitors,
+        waveguide_ports=waveguide_ports,
+        ntff=ntff,
+        port_sparams=(wire_port_sparams, lumped_port_sparams),
+        debye=debye,
+        lorentz=lorentz,
+        tfsf=tfsf,
+        aniso_eps=aniso_eps,
+        aniso_inv_eps=aniso_inv_eps,
+        pec_occupancy=pec_occupancy,
+        conformal_weights=conformal_weights,
+        lumped_rlc=lumped_rlc,
+        kerr_chi3=kerr_chi3,
+        mag_sources=mag_sources,
+        periodic=periodic,
+        field_dtype=field_dtype,
+        stencil_order=stencil_order,
+        radiated_flux_box=radiated_flux_box,
+        snapshot=snapshot,
+    )
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(

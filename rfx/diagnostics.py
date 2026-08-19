@@ -21,6 +21,12 @@ import platform
 import sys
 from importlib import metadata
 
+from rfx.backends import (
+    is_accelerator_platform,
+    normalize_platform,
+    supports_baked_pec_fast_path,
+)
+
 # ---------------------------------------------------------------------------
 # Report primitives
 # ---------------------------------------------------------------------------
@@ -119,17 +125,37 @@ def _check_jax(report: _Report) -> None:
         )
         return
 
-    # Backend / devices. A GPU backend is reported as PASS; CPU-only is a WARN
-    # (large 3D runs will be slow) but never a failure.
+    # Backend / devices. CUDA and ROCm are established accelerated paths.
+    # Apple's JAX Metal plugin is useful for research but remains experimental,
+    # so identify it explicitly instead of either calling it CPU-only or
+    # presenting it as equivalent to the CUDA/ROCm support envelope.
+    metal_present = False
     try:
         devices = jax.devices()
-        platforms = sorted({d.platform for d in devices})
+        platforms = sorted({normalize_platform(d) for d in devices})
+        metal_present = "metal" in platforms
         device_repr = ", ".join(str(d) for d in devices)
-        if any(p in ("gpu", "cuda", "rocm") for p in platforms):
+        if metal_present:
+            metal_version = _version_of("jax-metal")
+            report.record(
+                WARN,
+                "jax backend",
+                "Metal backend present (experimental; "
+                f"jax-metal {metal_version}): {device_repr}",
+                critical=False,
+            )
+        elif any(supports_baked_pec_fast_path(p) for p in platforms):
             report.record(
                 PASS,
                 "jax backend",
                 f"GPU backend present: {device_repr}",
+                critical=False,
+            )
+        elif any(is_accelerator_platform(p) for p in platforms):
+            report.record(
+                PASS,
+                "jax backend",
+                f"accelerator backend present: {device_repr}",
                 critical=False,
             )
         else:
@@ -148,11 +174,22 @@ def _check_jax(report: _Report) -> None:
             critical=False,
         )
 
-    # x64 precision. rfx's S-parameter DFT accumulators run at reduced
-    # precision when x64 is disabled — a real rfx caveat, so WARN if off.
+    # x64 precision. Metal cannot run rfx's float64 workflows, so recommending
+    # JAX_ENABLE_X64 there is misleading. Other backends retain the existing
+    # reduced-precision warning when x64 is disabled.
     try:
         x64 = bool(jax.config.read("jax_enable_x64"))
-        if x64:
+        if metal_present:
+            configured = "enabled in JAX config" if x64 else "disabled"
+            report.record(
+                WARN,
+                "jax x64",
+                "Metal is limited to real float32 workflows in rfx's "
+                f"experimental support ({configured}); use the CPU backend "
+                "for float64 or complex workflows",
+                critical=False,
+            )
+        elif x64:
             report.record(PASS, "jax x64", "enabled (float64 available)", critical=False)
         else:
             report.record(

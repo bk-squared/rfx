@@ -19,6 +19,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_h, update_e,
@@ -2411,6 +2412,10 @@ def run_subgridded_jit(
         Diagnostic-only experiment: also inject soft source waveforms on the
         overlapping coarse grid when sources lie inside the refined region.
     """
+    reject_unsupported_metal(
+        "run_subgridded_jit()",
+        "JIT-compiled mesh refinement/subgridding",
+    )
     # Unpack the bundled options into same-named locals so the body below is
     # byte-unchanged from the historical keyword-argument signature.
     pec_mask_c = opts.pec_mask_c

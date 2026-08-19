@@ -1,6 +1,75 @@
 {
-  "version": 2,
+  "version": 3,
   "recommended_configuration": "uniform_yee_rf",
+  "execution_backends": {
+    "jax_cpu": {
+      "status": "supported",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "role": "reference_execution_lane",
+      "limits": "feature-specific restrictions still apply"
+    },
+    "nvidia_cuda": {
+      "status": "supported",
+      "role": "documented_accelerated_lane",
+      "limits": "feature-specific restrictions and JAX/CUDA compatibility requirements still apply"
+    },
+    "apple_metal": {
+      "status": "experimental",
+      "role": "research_only",
+      "platform": "darwin_arm64",
+      "distribution_extra": "metal",
+      "stack": {
+        "jax": "0.4.34",
+        "jaxlib": "0.4.34",
+        "jax-metal": "0.1.1"
+      },
+      "scope": [
+        "uniform_cartesian_yee",
+        "second_order_stencil",
+        "single_local_device",
+        "forward_time_domain_only",
+        "real_float32_fields",
+        "static_isotropic_materials",
+        "point_sources",
+        "basic_time_domain_field_probes",
+        "lumped_time_domain_excitation_with_compute_s_params_false"
+      ],
+      "unsupported": [
+        "reverse_mode_ad",
+        "optimization",
+        "port_spectra_and_s_parameters",
+        "waveguide_msl_and_coaxial_port_calculators",
+        "dft_and_frequency_domain_observables",
+        "s_parameters",
+        "flux",
+        "ntff_and_far_field",
+        "floquet_and_bloch",
+        "complex_dtypes",
+        "float64",
+        "distributed_execution",
+        "vmap_and_batched_sweeps",
+        "full_field_snapshots",
+        "nonuniform_meshes",
+        "mesh_refinement_and_subgridding",
+        "fourth_order_stencils",
+        "conformal_pec",
+        "subpixel_smoothing",
+        "anisotropic_materials",
+        "debye_lorentz_and_kerr_materials",
+        "tfsf_sources",
+        "periodic_boundaries",
+        "thin_and_surface_impedance_conductors",
+        "lumped_rlc_elements",
+        "adi"
+      ],
+      "known_failure": "reverse-mode AD can terminate the native process with a segmentation fault",
+      "fallback": "JAX_PLATFORMS=cpu",
+      "claims_policy": "reproduce on CPU before treating an observation as scientific evidence"
+    }
+  },
   "configurations": {
     "uniform_yee_rf": {
       "status": "supported",

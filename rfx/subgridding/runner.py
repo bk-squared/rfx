@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from rfx.backends import reject_unsupported_metal
 from rfx.core.yee import (
     FDTDState, MaterialArrays, update_h, update_e,
 )
@@ -60,6 +61,10 @@ def run_subgridded(
     -------
     dict with keys: state_c, state_f, time_series, config
     """
+    reject_unsupported_metal(
+        "rfx.subgridding.run_subgridded()",
+        "Mesh refinement/subgridding",
+    )
     sources_f = sources_f or []
     probe_indices_f = probe_indices_f or []
     probe_components = probe_components or []

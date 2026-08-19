@@ -68,6 +68,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.backends import is_metal_backend
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 
@@ -407,6 +408,15 @@ def differentiable_material_fit(
         spectrum (same normalization as the loss) — previously this field
         was always ``None``.
     """
+    if is_metal_backend():
+        raise NotImplementedError(
+            "differentiable_material_fit() is unavailable on the "
+            "experimental Apple Metal research backend. It requires both "
+            "reverse-mode differentiation through the FDTD scan and complex "
+            "DFT arrays, neither of which is supported by the pinned "
+            "jax-metal stack. Start a fresh CPU process with "
+            "JAX_PLATFORMS=cpu."
+        )
     from rfx.simulation import run as sim_run, make_port_source, make_probe
     from rfx.sources.sources import LumpedPort, setup_lumped_port
 
