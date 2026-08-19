@@ -281,3 +281,11 @@ sim.add_thin_conductor(
 - **σ_bulk < 10⁶ S/m** (resistive films, inks): rfx sets an effective conductivity
   `σ_eff = σ_bulk · (thickness / Δx)` on the intersected Yee cells rather than
   fully filling them, preserving the sheet resistance `R_s = 1 / (σ_bulk · thickness)`.
+
+On a graded mesh (`dz_profile`), `Δx` above is the spacing between the midpoints
+of the two cells either side of the sheet — `(d[k-1] + d[k]) / 2` — not either
+cell on its own. That is the length the sheet's conductivity actually acts over
+in the update, so the sheet resistance you asked for is what you get wherever
+the sheet lands. The two are the same number whenever the neighbouring cells
+match, which is every uniform mesh. If a sheet does land on a grading step,
+preflight says so.

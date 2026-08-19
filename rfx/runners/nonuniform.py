@@ -11,6 +11,7 @@ from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.nonuniform import (
     NonUniformGrid,
+    e_node_dual_spacings,
     interior_cells,
     make_nonuniform_grid,
     run_nonuniform,
@@ -66,10 +67,11 @@ def assemble_materials_nu(
     Delegates to the shared rasterize_geometry() with non-uniform coordinates.
     Supports all shape types, Debye/Lorentz poles, chi3, and thin conductors:
     PEC sheets OR into pec_mask; lossy sheets fold into sigma with the LOCAL
-    cell size normal to the sheet (#373) — both the DC fold
-    (sigma_bulk*t/d_norm) and the opt-in Leontovich surface-impedance mode
-    (sigma_eff = 1/(Rs0*d_norm) when surface_impedance_f0 is set, issue
-    #669). Only non-Box LOSSY sheets on the legacy DC path warn-and-skip.
+    E-node DUAL spacing normal to the sheet (#373, corrected #669-review) —
+    both the DC fold (sigma_bulk*t/d_norm) and the opt-in Leontovich
+    surface-impedance mode (sigma_eff = 1/(Rs0*d_norm) when
+    surface_impedance_f0 is set, issue #669). Only non-Box LOSSY sheets on
+    the legacy DC path warn-and-skip.
 
     Returns
     -------
@@ -151,14 +153,32 @@ def assemble_materials_nu(
                 pec_mask = pec_mask | tc.shape.mask_on_coords(
                     coords.x, coords.y, coords.z)
         # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
-        # cell size NORMAL to the sheet, not a uniform grid.dx. The sheet has
-        # bulk conductivity sigma_bulk and physical thickness t but occupies one
-        # Yee cell of size d_norm along its normal; preserving the sheet
-        # resistance R_s = 1/(sigma_bulk*t) needs sigma_eff = sigma_bulk*t/d_norm
-        # with d_norm the LOCAL cell size at the sheet's cell (grid.dz varies on
-        # a graded mesh). AD-safe: sigma_eff is a smooth function of the
-        # sigma_bulk*t DoF times a grid constant, and jnp.where keeps the
-        # sigma field (an AD-live material) differentiable.
+        # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
+        # bulk conductivity sigma_bulk and physical thickness t but is realized
+        # on ONE E node along its normal; preserving the sheet resistance
+        # R_s = 1/(sigma_bulk*t) needs sigma_eff = sigma_bulk*t/d_norm with
+        # d_norm the length that node's sigma actually acts over.
+        #
+        # That length is the DUAL spacing (d[k-1]+d[k])/2, NOT the primal cell
+        # d[k] (#669 review). The NU E update divides the curl at node k by
+        # inv_d_e[k] = 2/(d[k-1]+d[k]) (rfx/nonuniform.py), so multiplying the
+        # discrete Ampere law at that node by (d[k-1]+d[k])/2 turns the loss
+        # term into a surface current sigma_eff*dual*E — the realized sheet
+        # conductance is sigma_eff*dual. Dividing by the primal d[k] instead
+        # realizes R_s*d[k]/dual, correct only where the two adjacent cells are
+        # equal (all uniform meshes, and NU nodes away from a grading step) and
+        # wrong by the local cell ratio ON a transition: measured attenuation
+        # ratio 1.2021 (0.25/0.50 mm step) and 0.6214 (1.00/0.25 mm step)
+        # against the matched-mesh case, where a mesh-independent sheet must
+        # give 1.000. This corrects the legacy #373 DC fold as well as the
+        # #669 Leontovich mode — NU DC thin conductors at grading transitions
+        # now realize their specified sheet resistance instead of a
+        # cell-ratio-scaled one.
+        #
+        # AD-safe: sigma_eff is a smooth function of the sigma_bulk*t DoF times
+        # a grid quantity built with jnp (so a traced dz_profile still flows),
+        # and jnp.where keeps the sigma field (an AD-live material)
+        # differentiable.
         for tc in lossy_tcs:
             lo = getattr(tc.shape, "corner_lo", None)
             hi = getattr(tc.shape, "corner_hi", None)
@@ -183,13 +203,14 @@ def assemble_materials_nu(
                 continue
             extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
             n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
-            d_norm = jnp.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
+            d_norm = e_node_dual_spacings(
+                (grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
             bshape = [1, 1, 1]
             bshape[n_axis] = int(d_norm.shape[0])
             if _f0 is not None:
                 # Leontovich band-centre surface-impedance mode (issue
-                # #669): sigma_eff = 1/(Rs0 * d_norm) per cell, with d_norm
-                # the LOCAL cell size along the sheet normal, so
+                # #669): sigma_eff = 1/(Rs0 * d_norm) per node, with d_norm
+                # the LOCAL E-node dual spacing along the sheet normal, so
                 # sigma_eff * Rs0 * d_norm == 1 on every layer of a graded
                 # mesh. Thickness deliberately does not enter (Leontovich
                 # loss is thickness-independent). Sheet placement (argmin

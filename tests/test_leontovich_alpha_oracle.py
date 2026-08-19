@@ -60,26 +60,53 @@ fixture, JAX CPU float32):
   (no-silent-gate-loosening): gate_from_envelope(0.18679) = 0.29 exceeds
   the 0.15 contract hard cap, so the committed gate is the cap and
   ``test_alpha_oracle_o3`` is marked xfail(strict=True) — the red is
-  loud, and a future pass is loud too. Every witness was clean (fit
-  ln-RMS residual 0.00206, settle -79.8 dB, comparator chain validated),
-  and the discriminators PASS (O4a sqrt-sigma ratio 0.517, O4b
-  thickness-invariance 7e-6, O4c PEC control 0.0071 Np/m), so the fold
-  implements exactly the contracted algebra and loss moves only when
-  asked — the deficit is in the delivered sheet DYNAMICS, not in the
-  wiring. Mechanism fingerprint: alpha(f) = 0.688/0.769/0.858/0.943/
-  1.025 Np/m at 8/9/10/11/12 GHz — linear in f through the origin, while
-  an ideal Rs-flat sheet predicts a FLAT 1.055. Attribution witnesses
-  (research note): a dx = 0.25 mm refinement run left alpha(10 GHz)
-  essentially unchanged (0.847), FALSIFYING the pre-declared
-  "O(dx) sheet discretization" hypothesis, and a 10x-smaller-Rs0 case
-  (sigma_bulk = 1e6) shows the SAME fractional deficit (0.174) — the
-  deficit is mesh-independent and Rs-scale-independent, mechanism
-  UNIDENTIFIED. Named alternatives per the R2-STOP protocol (not built
-  here): exponential-stepping sheet-current coefficient; true multi-pole
-  SIBC boundary.
+  loud, and a future pass is loud too. Every witness was clean at
+  the time (fit ln-RMS residual 0.00206, settle -79.8 dB, comparator
+  chain validated — but see the COMPARATOR CAVEAT below, which the
+  ln-RMS residual is blind to), and the discriminators PASS (O4a
+  sqrt-sigma ratio 0.517, O4b thickness-invariance 7e-6, O4c PEC control
+  0.0071 Np/m), so the fold implements exactly the contracted algebra and
+  loss moves only when asked — the deficit is in the delivered sheet
+  DYNAMICS, not in the wiring. Mechanism fingerprint: alpha(f) =
+  0.688/0.769/0.858/0.943/1.025 Np/m at 8/9/10/11/12 GHz — linear in f
+  through the origin, while an ideal Rs-flat sheet predicts a FLAT 1.055.
+  A 10x-smaller-Rs0 case (sigma_bulk = 1e6) shows the SAME fractional
+  deficit (0.174), so the deficit is Rs-scale-independent. Named
+  alternatives per the R2-STOP protocol (not built here):
+  exponential-stepping sheet-current coefficient; true multi-pole SIBC
+  boundary.
+
+Mesh-refinement falsifier — pre-declared, run 2026-08-19, gate untouched,
+  and NOT resolving: the same oracle at dx = 0.500 / 0.250 / 0.125 mm
+  measures alpha(10 GHz) = 0.85777 / 0.84685 / 0.95601 Np/m, i.e.
+  deficits 0.18681 / 0.19716 / 0.09367. That is not a systematic shrink
+  with dx — it RISES at the first refinement — so the pre-declared "O(dx)
+  one-cell sheet discretization" hypothesis is not supported; a flat
+  constant offset is not supported either. Note that the operating point
+  x = sigma_eff*dt/(2*eps0) measures 54.19 on ALL THREE meshes:
+  sigma_eff = 1/(Rs0*dx) grows as 1/dx while dt falls as dx, so refining
+  THIS fixture cannot move x and cannot probe an x-driven mechanism at
+  all. (An earlier note recorded dx = 0.25 mm as "essentially unchanged,
+  0.847" and concluded mesh-independence; 0.84685 reproduces, but the
+  quarter-resolution point shows two points did not establish a trend.)
+
+COMPARATOR CAVEAT — why that sweep does not settle it, and what to fix
+  first: the fitted alpha is a SPAN AVERAGE of a profile that is not a
+  single exponential. The local decay rate over 20 mm sub-windows falls
+  monotonically across the 25-125 mm fit span on every mesh: 1.043 ->
+  0.757 Np/m at dx = 0.5 mm, 1.077 -> 0.706 at 0.25 mm, 1.229 -> 0.637 at
+  0.125 mm; the two half-span fits differ by 19.3% / 8.3% / 36.9% of
+  alpha. The ln-RMS residual does NOT surface this (0.00206 / 0.00201 /
+  0.00313) — a slow curvature over a 100 mm span leaves tiny per-point
+  residuals while moving the slope a lot, so a small residual is not a
+  purity witness for a DECAY-RATE fit. The mesh-to-mesh differences above
+  therefore sit inside the measurement's own window sensitivity. The next
+  step on O3 is the COMPARATOR (a fit that does not assume one
+  exponential, or a two-plane amplitude ratio at fixed separation), not
+  another mechanism attempt on the sheet.
 Full per-bin dump, alpha(f) trace, verbatim preflight output, the
-mesh-refinement attribution witness and the sigma_bulk = 1e6
-deep-screened evidence case: docs/research_notes/
+mesh-refinement sweep with its per-window decay-rate table, and the
+sigma_bulk = 1e6 deep-screened evidence case: docs/research_notes/
 2026-08-19_leontovich_sheet_envelope.md (local-only).
 """
 
@@ -279,8 +306,14 @@ def test_alpha_envelope_regression_lock():
     reason="R2-STOP (issue #669, 2026-08-19): measured envelope 0.18679 > "
            "0.10 at the contract resolution — a one-cell volumetric sigma "
            "sheet under-delivers Leontovich loss at dx = lambda/60 "
-           "(alpha(f) linear in f instead of flat; mesh- and Rs-scale-"
-           "independent; see module docstring). "
+           "(alpha(f) linear in f instead of flat; Rs-scale-independent). "
+           "Pre-declared mesh falsifier RUN 2026-08-19 and NOT resolving: "
+           "deficit 0.18681/0.19716/0.09367 at dx = 0.500/0.250/0.125 mm "
+           "(non-monotone), with x = sigma_eff*dt/(2*eps0) = 54.19 fixed "
+           "on all three by construction; and the fitted alpha is a span "
+           "average of a non-exponential profile whose half-span fits "
+           "differ by 19.3-36.9%. Fix the COMPARATOR before the mechanism "
+           "— see module docstring. "
            "Named alternatives: exponential-stepping sheet coefficient; "
            "multi-pole SIBC. Do NOT loosen the 0.15 cap; a future pass "
            "must remove this marker explicitly.",

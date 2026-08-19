@@ -1255,7 +1255,9 @@ class Simulation(
             never read (:func:`rfx.materials.thin_conductor.apply_thin_conductor`
             returns the material arrays untouched and only ORs the mask). Below
             1e6 S/m the shape becomes a lossy sheet whose conductivity is
-            ``sigma_bulk * thickness / dx``, where ``thickness`` IS load-bearing.
+            ``sigma_bulk * thickness / d_norm``, where ``thickness`` IS
+            load-bearing and ``d_norm`` is the local sheet-normal spacing
+            (see ``surface_impedance_f0`` below for the graded-mesh case).
             Every real metal — copper 5.8e7, aluminium 3.5e7, even stainless
             steel 1.4e6 — is on the PEC side, so by default
             (``surface_impedance_f0`` unset) for metals this call models a
@@ -1278,8 +1280,11 @@ class Simulation(
             (the thick-conductor surface resistance at ``f0``), realized as
             ``sigma_eff = 1/(Rs0*d_norm)`` through the existing lossy
             thin-conductor fold on BOTH the uniform and the non-uniform
-            (``dz_profile``) lanes, with ``d_norm`` the local cell size
-            normal to the sheet. The sheet then contributes NO PEC cells.
+            (``dz_profile``) lanes, with ``d_norm`` the local spacing normal
+            to the sheet: the cell size on a uniform grid, and on a graded
+            one the E-node DUAL spacing ``(d[k-1]+d[k])/2``, which is the
+            length that node's sigma acts over (the two agree wherever the
+            adjacent cells are equal). The sheet contributes NO PEC cells.
 
             Model scope (be precise about what you get):
 

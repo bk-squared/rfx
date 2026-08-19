@@ -224,6 +224,34 @@ def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.n
     return inv_d_e, inv_d_h
 
 
+def e_node_dual_spacings(profile_full):
+    """Per-node DUAL spacing — the length an E node's material acts over.
+
+    ``inv_d_e[k] = 2/(d[k-1]+d[k])`` (``inv_d_e[0] = 1/d[0]``) is the metric
+    the non-uniform E update divides the curl by, so the control volume of
+    the E node at index ``k`` extends half a cell either side::
+
+        dual[k] = (d[k-1] + d[k]) / 2     (k >= 1);   dual[0] = d[0]
+
+    which is exactly ``1/inv_d_e``. Anything folded into ``materials.sigma``
+    at an E node is a volumetric quantity whose realized SHEET value is
+    ``sigma * dual[k]`` — never ``sigma * d[k]``. Dividing a sheet fold by
+    the primal cell ``d[k]`` instead realizes ``Rs * d[k]/dual[k]``, which
+    is right only where the two adjacent cells are equal; on a grading
+    transition it is wrong by up to the local cell ratio (issue #669 review:
+    a Leontovich sheet on a 0.25/0.50 mm transition node measured an
+    attenuation ratio of 1.2021 against the matched-mesh case, and 0.6214 on
+    a 1.00/0.25 mm one, where a mesh-independent sheet must give 1.000).
+
+    Computed as ``(d[k-1]+d[k])/2`` rather than ``1/inv_d_e`` so a uniform
+    profile returns the cell size bit-exactly (``0.5*(d+d) == d`` in
+    floating point, while ``1/(2/(d+d))`` need not be). ``jnp`` throughout so
+    a traced ``dz_profile`` (mesh-as-design-variable) stays differentiable.
+    """
+    arr = jnp.asarray(profile_full)
+    return jnp.concatenate([arr[:1], 0.5 * (arr[:-1] + arr[1:])])
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,

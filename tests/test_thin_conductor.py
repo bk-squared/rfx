@@ -501,15 +501,23 @@ def _nu_graded_grid(sim):
                           if a not in (sim._periodic_axes or "")))
 
 
-def _nu_graded_sim(**tc_kwargs):
-    """Sim + graded-dz thin conductor, reusing the #373 fixture geometry."""
+def _nu_graded_sim(zc=8.0e-3, **tc_kwargs):
+    """Sim + graded-dz thin conductor, reusing the #373 fixture geometry.
+
+    ``dz = [0.5 mm] x8 + [1.5 mm] x8`` puts interior E nodes at 0, 0.5, ...,
+    4.0 mm then 5.5, 7.0, 8.5, ... mm. The default ``zc = 8.0 mm`` lands the
+    sheet on node 8.5 mm, deep in the coarse region, where the two adjacent
+    cells are EQUAL (dual spacing == primal cell == 1.5 mm). ``zc = 4.0 mm``
+    lands it exactly ON the grading transition, where they differ
+    (d_below = 0.5 mm, d_above = 1.5 mm, dual = 1.0 mm) — the case that
+    discriminates the two normalizations.
+    """
     import warnings
     from rfx.api import Simulation
 
     dx = 0.5e-3
     dz = [0.5e-3] * 8 + [1.5e-3] * 8
     L = 24 * dx
-    zc = 8.0e-3                       # coarse region, dz_local = 1.5 mm
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
                      boundary="cpml", cpml_layers=6)
     with warnings.catch_warnings():
@@ -603,16 +611,32 @@ def test_leontovich_dc_limit_equivalence_o1b():
 
 
 def test_leontovich_algebraic_realization_o2():
-    """O2: per cell, sigma_eff * Rs0 * d_norm == 1 within rel err < 1e-6
-    (float32), on the uniform grid AND the graded NU fixture."""
+    """O2: per NODE, sigma_eff * Rs0 * d_dual == 1 within rel err < 1e-6
+    (float32), on the uniform grid, on a matched-node NU fixture, AND on a
+    sheet sitting ON a grading transition.
+
+    ``d_dual`` is the E-node DUAL spacing ``1/inv_d_e``, i.e.
+    ``(d[k-1]+d[k])/2`` — the length the node's sigma actually acts over,
+    because the NU E update divides the curl at node k by
+    ``inv_d_e[k] = 2/(d[k-1]+d[k])``. It equals the primal cell ``d[k]``
+    wherever the two adjacent cells are equal, which is why the first two
+    blocks below cannot tell the two normalizations apart; the third block
+    puts the sheet on a 0.5/1.5 mm transition, where they differ by 1.5x,
+    and asserts BOTH that the dual product is 1 and that the primal product
+    is not — so this gate can no longer pass while the fold divides by the
+    primal cell (it did before the #669 review: the sheet then realized
+    Rs*d[k]/dual, measured as a 1.2021 / 0.6214 attenuation ratio against
+    the matched-mesh case in tests/test_thin_conductor_nu_dual_spacing.py).
+    """
     from rfx.core.yee import init_materials
     from rfx.materials.thin_conductor import leontovich_rs
+    from rfx.nonuniform import e_node_dual_spacings
     from rfx.runners.nonuniform import assemble_materials_nu
 
     f0, sigma_bulk = 10e9, 1e4
     rs0 = float(leontovich_rs(f0, sigma_bulk))
 
-    # uniform
+    # uniform (primal == dual by construction)
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
     tc = ThinConductor(shape=shape, sigma_bulk=sigma_bulk, thickness=35e-6,
@@ -623,18 +647,35 @@ def test_leontovich_algebraic_realization_o2():
     assert cells.size > 0
     np.testing.assert_allclose(cells * rs0 * grid.dx, 1.0, rtol=1e-6)
 
-    # graded NU (reuses the test fixture dz = [0.5mm]*8 + [1.5mm]*8)
-    sim = _nu_graded_sim(sigma_bulk=sigma_bulk, thickness=35e-6,
-                         surface_impedance_f0=f0)
-    grid_nu = _nu_graded_grid(sim)
-    sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
-    nz = np.argwhere(sig > 0)
-    assert len(nz) > 0
-    dz_arr = np.asarray(grid_nu.dz)
-    for idx in nz:
-        d_norm = dz_arr[idx[2]]
-        prod = sig[tuple(idx)] * rs0 * d_norm
-        assert abs(prod - 1.0) < 1e-6, (idx, prod)
+    # graded NU (dz = [0.5mm]*8 + [1.5mm]*8): matched node, then transition
+    for zc, expect_split in ((8.0e-3, False), (4.0e-3, True)):
+        sim = _nu_graded_sim(zc=zc, sigma_bulk=sigma_bulk, thickness=35e-6,
+                             surface_impedance_f0=f0)
+        grid_nu = _nu_graded_grid(sim)
+        sig = np.asarray(assemble_materials_nu(sim, grid_nu)[0].sigma)
+        nz = np.argwhere(sig > 0)
+        assert len(nz) > 0
+        primal = np.asarray(grid_nu.dz)
+        dual = np.asarray(e_node_dual_spacings(grid_nu.dz))
+        # the dual spacing must be the reciprocal of the metric the E update
+        # actually uses — pinned so the two cannot drift apart
+        np.testing.assert_allclose(
+            dual * np.asarray(grid_nu.inv_dz), 1.0, rtol=1e-6)
+        ks = sorted({int(i[2]) for i in nz})
+        assert len(ks) == 1, ks
+        k = ks[0]
+        if expect_split:
+            assert abs(dual[k] / primal[k] - 1.0) > 0.3, (
+                f"transition fixture is not discriminating: dual "
+                f"{dual[k]:.4e} vs primal {primal[k]:.4e}")
+        for idx in nz:
+            prod = sig[tuple(idx)] * rs0 * dual[idx[2]]
+            assert abs(prod - 1.0) < 1e-6, (idx, prod)
+        if expect_split:
+            prod_primal = float(sig[tuple(nz[0])]) * rs0 * primal[k]
+            assert abs(prod_primal - 1.0) > 0.3, (
+                f"fold normalized by the PRIMAL cell at a grading "
+                f"transition (product {prod_primal:.5f})")
 
 
 def test_leontovich_routing_no_pec_cells_both_lanes():

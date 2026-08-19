@@ -2067,6 +2067,7 @@ class _PreflightMixin:
         self._validate_cfg_tfsf_with_lumped_rlc(_w)
         self._validate_cfg_unresolved_pulse(_w, dx)
         self._validate_cfg_thin_conductor_surface_impedance(_w)
+        self._validate_cfg_thin_conductor_graded_node(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
@@ -3724,6 +3725,93 @@ class _PreflightMixin:
                     "Simulation will produce zero fields.",
                     code="no_sources",
                     source="_validate_cfg_no_sources",
+                ),
+                stacklevel=3,
+            )
+
+    def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
+        """Advisory: a LOSSY thin conductor landing on a grading transition.
+
+        A lossy sheet folds into ``materials.sigma`` at ONE E node along its
+        normal, and the length that node's sigma acts over is the DUAL spacing
+        ``(d[k-1]+d[k])/2`` — not either adjacent cell. Where the two adjacent
+        cells are equal the distinction is invisible, which is precisely how
+        the pre-#669-review fold (which divided by the primal cell ``d[k]``)
+        stayed silent: every uniform mesh and every NU node away from a step
+        agrees. This check surfaces the case that does not agree.
+
+        Advisory tier, concrete profiles only, LOSSY sheets only — a PEC thin
+        sheet goes into ``pec_mask`` and folds no sigma, so it has no sheet
+        resistance to normalize. Threshold: adjacent cells differing by more
+        than 10%.
+        """
+        from rfx.nonuniform import node_positions_from_profile
+
+        tcs = [tc for tc in getattr(self, "_thin_conductors", ())
+               if not getattr(tc, "is_pec", False)]
+        if not tcs:
+            return
+        profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
+        if all(p is None or is_tracer(p) for p in profiles):
+            return
+
+        for i, tc in enumerate(tcs):
+            lo = getattr(tc.shape, "corner_lo", None)
+            hi = getattr(tc.shape, "corner_hi", None)
+            if lo is None or hi is None:
+                continue
+            extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
+            n_axis = min(range(3), key=lambda a: extents[a])
+            prof = profiles[n_axis]
+            if prof is None or is_tracer(prof):
+                continue
+            d = np.asarray(prof, dtype=np.float64)
+            if d.size < 2:
+                continue
+
+            # Locate the node the RUN will realize the sheet on, through the
+            # production path (node positions + the shape's own mask), not a
+            # hand-rolled nearest-node rule (#562 review F2, #568).
+            nodes = np.asarray(node_positions_from_profile(d),
+                               dtype=np.float64)
+            mids = [np.array([0.5 * (float(lo[a]) + float(hi[a]))])
+                    for a in range(3)]
+            args = list(mids)
+            args[n_axis] = nodes
+            hit = np.flatnonzero(
+                np.asarray(tc.shape.mask_on_coords(*args)).reshape(-1))
+            if hit.size == 0:
+                continue
+            k = int(hit[0])
+
+            # cells adjacent to node k: d[k-1] below, d[k] above. The lo face
+            # (k == 0) and the last node (k == d.size, backed by the bounding
+            # -node duplicate d[k] == d[k-1]) are matched by construction.
+            if k == 0 or k >= d.size:
+                continue
+            d_below, d_above = float(d[k - 1]), float(d[k])
+            small, large = sorted((d_below, d_above))
+            if small <= 0.0 or (large / small) - 1.0 <= 0.10:
+                continue
+            axis_name = "xyz"[n_axis]
+            dual = 0.5 * (d_below + d_above)
+            _w.warn(
+                PreflightWarning(
+                    f"lossy thin conductor #{i} sits at "
+                    f"{axis_name} = {_fmt_len(float(nodes[k]))}, an E node "
+                    f"whose adjacent cells differ by "
+                    f"{(large / small - 1.0):.0%} ({_fmt_len(d_below)} below, "
+                    f"{_fmt_len(d_above)} above). Its sheet fold is "
+                    f"normalized by the E-node DUAL spacing "
+                    f"{_fmt_len(dual)} — the length that node's sigma acts "
+                    f"over — which is neither adjacent cell. That IS the "
+                    f"correct normalization, but a sheet on a grading step is "
+                    f"where the realized sheet resistance is most "
+                    f"mesh-sensitive: move the sheet onto a locally uniform "
+                    f"node (or flatten the grading there) if its loss is "
+                    f"claims-bearing.",
+                    code="thin_conductor_graded_node",
+                    source="_validate_cfg_thin_conductor_graded_node",
                 ),
                 stacklevel=3,
             )
