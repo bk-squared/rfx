@@ -906,7 +906,11 @@ class Simulation(
             cell; a 2D grid is treated as ONE CELL DEEP (``dz`` one cell,
             duck-typed to ``dx``), so ``dV = dx**3`` on a cubic 2D grid,
             not the per-unit-length ``dx**2``
-            (``rfx/api/_source_semantics.py``).
+            (``rfx/api/_source_semantics.py``). On a non-uniform mesh
+            ``dV`` is the E node's control volume — the primal per-cell
+            width on the component's own axis and the DUAL spacing
+            ``(d[k-1]+d[k])/2`` on the two transverse axes (issue #672);
+            the two coincide on a uniform profile.
 
             .. deprecated:: 1.7
                ``None`` (the current default) keeps the legacy PER-PATH

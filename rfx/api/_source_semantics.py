@@ -52,6 +52,17 @@ mesh-as-design-variable paths and ``scale != 1.0`` would raise
 ``dx`` (``getattr(grid, 'dy', dx)`` pattern, repo engineering
 principle 3) — i.e. ``dV = dx**3`` on a cubic 2D grid, not the
 per-unit-length ``dx**2``.
+
+Non-uniform meshes (issue #672): ``dV`` is the E node's CONTROL VOLUME,
+not the product of three per-cell widths. An ``E_a`` component is an edge
+along its own axis and sits on a node on the other two, so
+
+    dV = d_a[idx_a] * dual_b[idx_b] * dual_c[idx_c],
+    dual[k] = (d[k-1] + d[k]) / 2   (``rfx.nonuniform.e_node_dual_spacings``)
+
+with ``(a, b, c)`` the component's own axis and the two transverse ones.
+On a uniform profile ``dual == d`` bit-exactly, so the sentence above is
+unchanged there.
 """
 
 from __future__ import annotations

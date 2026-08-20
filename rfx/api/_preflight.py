@@ -2068,6 +2068,8 @@ class _PreflightMixin:
         self._validate_cfg_unresolved_pulse(_w, dx)
         self._validate_cfg_thin_conductor_surface_impedance(_w)
         self._validate_cfg_thin_conductor_graded_node(_w)
+        self._validate_cfg_source_on_graded_node(_w)
+        self._validate_cfg_wire_port_on_graded_node(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
@@ -3843,6 +3845,139 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    # ---- issue #672: primal-vs-dual metrics at a source / wire-port node --
+
+    _AXIS_OF_COMPONENT = {"ex": 0, "ey": 1, "ez": 2}
+
+    def _graded_node_report(self, axis: int, coord: float):
+        """``(node_pos, d_below, d_above, dual, ratio)`` when the E node
+        nearest ``coord`` on ``axis`` sits on a >10% grading step, else None.
+
+        Concrete profiles only (a tracer profile is skipped, matching the
+        #671 check). The node is located with ``node_positions_from_profile``
+        — the production node convention — not a hand-rolled rule (#562
+        review F2, #568). ``k == 0`` and ``k >= d.size`` are matched by
+        construction and never report.
+        """
+        from rfx.nonuniform import node_positions_from_profile
+
+        prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
+        if prof is None or is_tracer(prof):
+            return None
+        d = np.asarray(prof, dtype=np.float64)
+        if d.size < 2:
+            return None
+        nodes = np.asarray(node_positions_from_profile(d), dtype=np.float64)
+        k = int(np.argmin(np.abs(nodes - float(coord))))
+        if k == 0 or k >= d.size:
+            return None
+        d_below, d_above = float(d[k - 1]), float(d[k])
+        small, large = sorted((d_below, d_above))
+        if small <= 0.0 or (large / small) - 1.0 <= 0.10:
+            return None
+        return (float(nodes[k]), d_below, d_above,
+                0.5 * (d_below + d_above), large / small)
+
+    def _validate_cfg_source_on_graded_node(self, _w) -> None:
+        """Advisory: a current source sitting on a grading transition (#672).
+
+        ``make_current_source`` divides the waveform by the E node's control
+        volume, which is the PRIMAL per-cell width on the component's own
+        axis and the DUAL spacing on the two TRANSVERSE axes. The parallel
+        axis is exact by construction, so only the transverse axes are
+        checked. Advisory tier: the normalization IS correct now — this
+        flags where the realized current moment is most mesh-sensitive.
+
+        The counterfactual ratio in the message is ``d[k] / dual``, where
+        ``d[k]`` is the cell ABOVE the node (``d_above``) — that is the width
+        the pre-#672 code actually used on every axis, so it is the one that
+        makes the number and the sentence describe the same thing. Using
+        ``max(d_below, d_above)`` instead, as this message did until the #673
+        split review, silently reported the wrong cell on every DOWN-step
+        node (where ``d_above < d_below``).
+        """
+        entries = [pe for pe in getattr(self, "_ports", ())
+                   if float(getattr(pe, "impedance", 0.0)) == 0.0]
+        if not entries:
+            return
+        for pe in entries:
+            axis = self._AXIS_OF_COMPONENT.get(pe.component)
+            if axis is None:
+                continue
+            for a in (ax for ax in range(3) if ax != axis):
+                rep = self._graded_node_report(a, pe.position[a])
+                if rep is None:
+                    continue
+                node_pos, d_below, d_above, dual, ratio = rep
+                _w.warn(
+                    PreflightWarning(
+                        f"current source at {pe.position} "
+                        f"(component {pe.component}) sits at "
+                        f"{'xyz'[a]} = {_fmt_len(node_pos)}, an E node whose "
+                        f"adjacent cells differ by {(ratio - 1.0):.0%} "
+                        f"({_fmt_len(d_below)} below, {_fmt_len(d_above)} "
+                        f"above). {'xyz'[a]} is one of this component's two "
+                        f"TRANSVERSE axes, so its control volume takes the "
+                        f"DUAL spacing {_fmt_len(dual)} there — not the "
+                        f"primal cell {_fmt_len(d_above)} — and the realized "
+                        f"current moment would be off by "
+                        f"{d_above / dual:.3f}x "
+                        f"on this axis alone if the primal cell were used "
+                        f"(issue #672). That IS handled, but a source on a "
+                        f"grading step is where the injected amplitude is "
+                        f"most mesh-sensitive: move it onto a locally "
+                        f"uniform node if its amplitude is claims-bearing.",
+                        code="source_on_graded_node",
+                        source="_validate_cfg_source_on_graded_node",
+                    ),
+                    stacklevel=3,
+                )
+
+    def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
+        """Advisory: a wire port whose Ampere loop straddles a grading step.
+
+        The port current is the discrete Ampere loop on the DUAL face
+        pierced by the port's E edge, each leg weighted by the dual spacing
+        along that H component's own axis — the two axes TRANSVERSE to the
+        port component. ``V`` uses the primal edge length and is exact
+        either way, so only the loop-leg axes are checked. An EXCITED port
+        also drives through ``make_current_source``, so the source-side
+        normalization above applies to it as well.
+        """
+        entries = [pe for pe in getattr(self, "_ports", ())
+                   if getattr(pe, "extent", None) is not None]
+        if not entries:
+            return
+        for pe in entries:
+            axis = self._AXIS_OF_COMPONENT.get(pe.component)
+            if axis is None:
+                continue
+            for a in (ax for ax in range(3) if ax != axis):
+                rep = self._graded_node_report(a, pe.position[a])
+                if rep is None:
+                    continue
+                node_pos, d_below, d_above, dual, ratio = rep
+                _w.warn(
+                    PreflightWarning(
+                        f"wire port at {pe.position} "
+                        f"(component {pe.component}) sits at "
+                        f"{'xyz'[a]} = {_fmt_len(node_pos)}, an E node whose "
+                        f"adjacent cells differ by {(ratio - 1.0):.0%} "
+                        f"({_fmt_len(d_below)} below, {_fmt_len(d_above)} "
+                        f"above). {'xyz'[a]} is one of the port's two "
+                        f"Ampere-loop axes, so that leg is weighted by the "
+                        f"DUAL spacing {_fmt_len(dual)} (issue #672). The "
+                        f"extracted Z_in = -V/I, and every S-parameter built "
+                        f"on it, is most mesh-sensitive here: move the port "
+                        f"onto a locally uniform node (or flatten the "
+                        f"grading there) if its S-parameters are "
+                        f"claims-bearing.",
+                        code="wire_port_on_graded_node",
+                        source="_validate_cfg_wire_port_on_graded_node",
+                    ),
+                    stacklevel=3,
+                )
 
     def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         """Advisories for Leontovich (surface_impedance_f0) sheets (#669).

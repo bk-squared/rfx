@@ -215,29 +215,53 @@ def test_current_source_uses_per_cell_volume():
         sigma=jnp.zeros(shape, dtype=jnp.float32),
     )
 
-    # Two positions: one in the 1mm region, one in the 0.5mm region
-    i_coarse, j_coarse, k = position_to_index(g, (0.5e-3, 0.5e-3, 0.5e-3))
-    i_fine, j_fine, _ = position_to_index(g, (4.25e-3, 4.25e-3, 0.5e-3))
+    # Two positions, both on LOCALLY UNIFORM nodes: one inside the 1mm run,
+    # one inside the 0.5mm run. The original spelling probed 4.25mm, which
+    # ties between nodes 4.0 and 4.5 and resolves to node 4 — the grading
+    # TRANSITION itself, where the primal cell (0.5mm) and the dual spacing
+    # (0.75mm) differ. It expected 4, the primal-only answer, and issue #672
+    # showed the control volume takes the DUAL spacing on the two axes
+    # transverse to the component. The transition node is now covered
+    # explicitly below with the value the dual rule gives.
+    i_coarse, j_coarse, k = position_to_index(g, (2.0e-3, 2.0e-3, 0.5e-3))
+    i_fine, j_fine, _ = position_to_index(g, (5.0e-3, 5.0e-3, 0.5e-3))
+    i_step, j_step, _ = position_to_index(g, (4.0e-3, 4.0e-3, 0.5e-3))
 
     dx_np = np.asarray(g.dx_arr)
-    # Guarantee we really did land in different cell sizes
+    # Guarantee we really did land in different cell sizes, and that the two
+    # main probes sit where primal == dual (adjacent cells equal).
     assert abs(float(dx_np[i_coarse]) - 1e-3) < 1e-6
     assert abs(float(dx_np[i_fine]) - 0.5e-3) < 1e-6
+    assert float(dx_np[i_coarse - 1]) == float(dx_np[i_coarse])
+    assert float(dx_np[i_fine - 1]) == float(dx_np[i_fine])
+    assert float(dx_np[i_step - 1]) != float(dx_np[i_step])
 
     def _unit(t):
         return jnp.float32(1.0)
 
-    src_coarse = make_current_source(
-        g, (i_coarse, j_coarse, k), "ez", _unit, n_steps=1, materials=materials)
-    src_fine = make_current_source(
-        g, (i_fine, j_fine, k), "ez", _unit, n_steps=1, materials=materials)
+    def _wf(idx):
+        src = make_current_source(
+            g, idx, "ez", _unit, n_steps=1, materials=materials)
+        return float(np.asarray(src[4])[0])
 
-    wf_coarse = float(np.asarray(src_coarse[4])[0])
-    wf_fine = float(np.asarray(src_fine[4])[0])
+    wf_coarse = _wf((i_coarse, j_coarse, k))
+    wf_fine = _wf((i_fine, j_fine, k))
+    wf_step = _wf((i_step, j_step, k))
 
     # cb is identical (same eps, same dt). The only difference is 1/dV.
+    # Both probes sit on locally uniform nodes, so dual == primal there:
     # dV_fine = 0.5mm * 0.5mm * 1mm = 0.25e-9
     # dV_coarse = 1mm * 1mm * 1mm = 1e-9
     # ratio = 4
     ratio = wf_fine / wf_coarse
     assert abs(ratio - 4.0) < 0.01, f"expected dV ratio 4, got {ratio:.4f}"
+
+    # On the transition node both TRANSVERSE axes are graded 1mm/0.5mm, so
+    # dV_step = 0.75mm * 0.75mm * 1mm = 0.5625e-9 and the ratio against the
+    # coarse node is (1/0.75)^2 = 1.7778 — not the 4 the primal-only rule
+    # would give, and not the 1 a naive "same cell size" reading would
+    # (issue #672).
+    ratio_step = wf_step / wf_coarse
+    assert abs(ratio_step - (1.0 / 0.75) ** 2) < 0.01, (
+        f"expected dual-spacing dV ratio {(1.0/0.75)**2:.4f} at the grading "
+        f"transition, got {ratio_step:.4f}")
