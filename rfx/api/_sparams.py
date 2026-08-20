@@ -2534,10 +2534,25 @@ class _SparamMixin:
         surface_impedance_f0=...)``) are supported on this lane (#677/#679):
         the sheet is realized node-thin by the per-step operator inside the
         ``run()``/``forward()`` device dispatches — no lane-level ctx is
-        built here. Combination refusals (dispersive substrate,
-        subpixel/conformal, ``boundary='upml'``, ADI / subgridded /
-        distributed) fire downstream at the run-lane entry with run-lane
-        wording. The TRACE must remain PEC: an f0 sheet never enters
+        built here. Combination refusals fire downstream at whichever lane
+        entry the call actually reaches, and the two channels carry their
+        OWN copies: on ``run()`` the dispersive-substrate and
+        ``boundary='upml'`` refusals come from ``run_uniform`` with run-lane
+        wording, while the ``forward()`` / ``eps_override`` channel never
+        enters ``run_uniform`` and raises instead from the forward-lane
+        entry in ``rfx/api/_execute.py``, naming that lane. #679 added the
+        ``upml`` half there: before it, an ``eps_override`` call on a
+        ``boundary='upml'`` sim silently ran the very combination ``run()``
+        refuses (the sheet operator overwriting UPML's split-field E update
+        at its edges). ADI refuses on both channels through the shared
+        ``refuse_f0_sheets`` helper; the subgridded and distributed lanes
+        carry their own call sites at whichever entry reaches them —
+        ``FENCE_REGISTRY`` in ``tests/test_sheet_lane_fences.py`` is the
+        authoritative per-lane list, AST-guarded against drift.
+        ``subpixel_smoothing`` / ``conformal_pec`` are ``run()``-only
+        keywords, so that combination is unreachable on the ``eps_override``
+        channel rather than refused there.
+        The TRACE must remain PEC: an f0 sheet never enters
         ``pec_mask``, and the closed Ampere-loop current and the V span
         anchor on PEC trace nodes. The Hammerstad-Jensen beta/Z0 anchors
         and the real-beta N-probe fit assume a lossless line, so a sheet

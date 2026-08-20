@@ -2815,6 +2815,22 @@ class _ExecuteMixin:
         from rfx.materials.thin_conductor import build_sheet_impedance_ctx
         _fwd_sheet_ctx = build_sheet_impedance_ctx(
             _fwd_sheet_specs, pec_mask=pec_mask)
+        # #679: the same UPML refusal run_uniform carries. forward() reaches
+        # the solver by its own route (it never enters run_uniform), so
+        # WITHOUT this the eps_override / forward() channel silently ran the
+        # combination run() refuses: _forward_from_materials passes
+        # boundary='upml' straight through, simulation.py applies
+        # apply_upml_e and then lets the sheet operator overwrite that
+        # split-field E at its edges. Gated on self._boundary alone, exactly
+        # like run_uniform, so the two channels accept the same configs.
+        if _fwd_sheet_ctx is not None and self._boundary == "upml":
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported with boundary='upml' on the uniform forward() / "
+                "eps_override lane (#677 v1): UPML replaces the whole E "
+                "update with its split-field form, which the sheet operator "
+                "would silently override at its edges. Use boundary='cpml' "
+                "or 'pec'.")
         if _fwd_sheet_ctx is not None and (
                 debye_spec is not None or lorentz_spec is not None):
             raise ValueError(

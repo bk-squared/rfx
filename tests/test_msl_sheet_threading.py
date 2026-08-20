@@ -25,10 +25,34 @@ Plus the dispatch smokes the scout's plan asked for: fast threading witness
 Fixture: the calibrated dx=80um RO4350B laplace thru of
 ``test_msl_port_integration.py``, shortened to L_LINE=8mm. The sheet is
 z-normal, floating in the air 2 cells above the 1-cell trace, x in
-[4.5, 7.5] mm — clear of both feed planes (x=2/10 mm) and both N-probe
-spans (offset 5, spacing 3, n=5 -> x in [2.4, 3.36] and [8.64, 9.6] mm),
-so the lossless-line N-probe fit hazard (per-length loss inside a probed
-span) is avoided by construction; see compute_msl_s_matrix's docstring.
+[4.5, 7.5] mm — clear of both feed planes (x=2/10 mm).
+
+It is NOT clear of the N-probe spans, and an earlier version of this
+docstring said it was. ``add_msl_port`` ignores the ``_MSLPortEntry``
+offset/spacing defaults (5/3) whenever the caller omits them and
+auto-resolves instead (``rfx/api/__init__.py``:1813-1837), giving
+offset=31, spacing=12 here — measured during a real
+``compute_msl_s_matrix`` call on this fixture:
+
+    +x probes  x = [4.48, 5.44, 6.40, 7.36, 8.32] mm
+    -x probes  x = [7.52, 6.56, 5.60, 4.64, 3.68] mm
+    sheet      x = [4.56, 7.44] mm  (cells 65..101)
+
+Three of five probes per port sit ON the sheet. The result survives
+because production ``S`` reads **probe 0 only** (the V-I split at the
+reference plane), and probe 0 clears the sheet by exactly ONE cell
+(80um) at each port: p1 probe 0 at cell 64 vs first sheet cell 65, p2
+probe 0 at cell 102 vs last sheet cell 101. The retained N-probe fit
+diagnostics (``Z0``, ``beta``, ``q``) ARE biased by the sheet inside
+their span; they are not asserted on here, and they never enter ``S``
+(``rfx/api/_sparams.py``: the wave split uses the analytic
+Hammerstad-Jensen ``z0_hj_per_port``).
+
+That one-cell margin is the whole protection, so
+``test_probe0_clears_the_sheet`` below asserts it from the resolved
+coordinates. Widening ``SHEET_X`` by one cell at each end would put
+probe 0 on a lossy plane and silently invalidate every oracle in this
+module.
 
 Preflight context (R5 / preflight-quoting rule) — every settled run below
 emits the same 7 ADVISORY preflight findings, re-printed verbatim by
@@ -77,7 +101,7 @@ LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
 LZ = H_SUB + 1.5e-3
 SHEET_F0 = 3.5e9              # band-centre for Rs0 (in the gate band)
 SHEET_Z = H_SUB + 3.5 * DX    # 2 cells above the 1-cell trace, in air
-SHEET_X = (4.5e-3, 7.5e-3)    # clear of feeds and probe spans (see docstring)
+SHEET_X = (4.5e-3, 7.5e-3)    # clear of feeds; probe 0 clears it by ONE cell (see docstring)
 SHEET_HALF_W = 0.7e-3
 
 #: The full-settle frequency grid (matches the golden capture exactly).
@@ -453,3 +477,60 @@ def test_ad_smoke_eps_override_grad_finite_with_sheet():
     assert float(grad) != 0.0, (
         "gradient is exactly 0.0 — the eps_override tape may be severed "
         "(#515 class) on the sheet-bearing forward() dispatch")
+
+
+def test_probe0_clears_the_sheet():
+    """The oracles in this module rest on probe 0 never sampling the sheet.
+
+    Production ``S`` is the V-I split at probe 0, so a sheet overlapping
+    probe 0 would put the reference plane, the voltage integration and the
+    Ampere-loop current on a lossy conductor. Every oracle here would be
+    biased and none of them would fail.
+
+    The margin is ONE cell per port, and ``add_msl_port`` AUTO-RESOLVES the
+    probe offset and spacing rather than using the ``_MSLPortEntry``
+    defaults, so it can vanish from an edit to ``SHEET_X``, to the frequency
+    band or to ``DX`` -- none of which look like they touch probing.
+
+    Compared in GRID indices against the RASTERIZED mask, because that is
+    what decides whether probe 0 samples a sheet cell. Nominal ``SHEET_X``
+    against physical probe coordinates is the wrong comparison: the grid
+    carries CPML pads that physical coordinates exclude, and Box
+    rasterization is node-based, so the two differ by cells.
+    """
+    from rfx.api._sparams import _resolve_msl_auto_offsets
+    from rfx.sources.msl_port import msl_port_from_entry, msl_probe_x_coords_n
+
+    sim = build_msl_thru(sheet=("f0", _sigma_bulk_for_rs0(1.0)))
+    grid = sim._build_grid()
+
+    specs: list = []
+    sim._assemble_materials(grid, sheet_specs=specs)
+    assert len(specs) == 1, f"expected one sheet spec, got {len(specs)}"
+    mask = np.asarray(specs[0].mask)
+    sheet_ix = np.where(mask.any(axis=(1, 2)))[0]
+    assert sheet_ix.size, "sheet rasterized to zero cells"
+    ix_lo, ix_hi = int(sheet_ix.min()), int(sheet_ix.max())
+
+    entries = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid)
+    assert entries, "fixture registered no MSL ports"
+
+    for pe in entries:
+        xs = msl_probe_x_coords_n(
+            grid, msl_port_from_entry(pe),
+            n_probes=int(pe.n_probes),
+            n_offset_cells=pe.n_probe_offset,
+            n_spacing_cells=pe.n_probe_spacing,
+        )
+        ix0 = int(grid.position_to_index(
+            (float(xs[0]), 0.5 * LY, SHEET_Z))[0])
+        assert not (ix_lo <= ix0 <= ix_hi), (
+            f"port {pe.name!r}: probe 0 is at grid ix {ix0}, INSIDE the "
+            f"rasterized sheet [{ix_lo}, {ix_hi}]. S would be measured on a "
+            f"lossy plane and every oracle here would be silently biased."
+        )
+        gap = min(abs(ix0 - ix_lo), abs(ix0 - ix_hi))
+        assert gap >= 1, (
+            f"port {pe.name!r}: probe 0 at grid ix {ix0} is only {gap} cells "
+            f"from the rasterized sheet [{ix_lo}, {ix_hi}]."
+        )

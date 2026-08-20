@@ -359,6 +359,20 @@ def test_fence_nonuniform_run_anisotropic_eps():
            match=r"anisotropic permittivity")
 
 
+def test_fence_forward_upml():
+    """#679: ``run()``'s UPML refusal lives in ``run_uniform``, which
+    ``forward()`` never enters — so the ``forward()`` / ``eps_override``
+    channel needs its OWN copy, and before #679 it had none: the same sim
+    raised on ``run()`` and silently simulated a sheet over UPML's
+    split-field E update on ``forward()``. The frame is the load-bearing
+    half here, exactly as for the dispersive pair below."""
+    def go():
+        _cube(boundary="upml", cpml_layers=6).forward(
+            n_steps=4, skip_preflight=True)
+    _fence(go, where=("_execute.py", "forward"),
+           match=r"boundary='upml' on the uniform forward\(\) / eps_override")
+
+
 def test_fence_forward_dispersive_overlap():
     """``run()``'s dispersive fence lives in ``run_uniform``; ``forward()``
     carries its OWN copy in ``_execute.forward``, so the message match is
@@ -482,6 +496,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
          "test_g9_distributed_runners_refuse"),
 
     # --- inline "(#677 v1)" fences ---
+    ("rfx/api/_execute.py", "forward",
+     "boundary='upml' on the uniform forward()"):
+        (__name__, "test_fence_forward_upml"),
     ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
         (__name__, "test_fence_forward_dispersive_overlap"),
     ("rfx/api/_sparams.py", "compute_waveguide_s_matrix",
