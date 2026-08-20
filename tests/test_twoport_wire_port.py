@@ -15,11 +15,13 @@ reactive load between two wire ports. Verify:
      Fabry-Perot comb) and |S21| has a monotonic low-pass rolloff
      through the source band.
 
-  2. **Passivity check** — |S11|² + |S21|² ≤ 1 across the band
-     (small tolerance for CPML numerical loss).
+  2. **Envelope lock on a known-wrong S column** (#313 / #318) — NOT a
+     passivity check, and not expected behaviour. The driven column does
+     not track the load. See ``test_two_port_s_envelope_on_matched_line``.
 
-  3. **Direction auto-detect** — a port near x=0 gets direction
-     "-x", near x=dom_x gets "+x".
+  3. **Direction is inert** — ``direction`` must not change the S matrix
+     at all (issue #673); it stays on the port spec only for the
+     reference-plane path.
 
 These are BASIC regression tests, not full validation — the
 claims-bearing MSL notch validation lives in
@@ -108,6 +110,13 @@ def test_two_port_s_matrix_has_nonzero_s21():
     column 0 must have a non-zero S[1, 0] (transmission). This is the
     bare-minimum fix validation — crossval 13 before this change got
     S21 = 0 identically because only diagonal entries were filled.
+
+    The VALUE moved with issue #673's wave-split convention fix: max|S21|
+    on this fixture was 0.56519 before and is 2.62928 now. The threshold
+    below is a floor-of-the-numerical-noise check, not an accuracy gate —
+    the NU off-diagonal normalization is known-wrong (#308 receive channel,
+    #318 per-cell Z0; see ``test_two_port_s_envelope_on_matched_line``), so
+    the magnitude carries no physical meaning.
     """
     sim = _build_line()
     freqs = jnp.linspace(1e9, 8e9, 101)
@@ -127,11 +136,67 @@ def test_two_port_s_matrix_has_nonzero_s21():
     )
 
 
-def test_two_port_passivity_on_matched_line():
-    """|S11|² + |S21|² ≤ 1 + ε on a passive lossless line. The CPML +
-    substrate-mode mismatch leaks some energy, so we allow a loose
-    tolerance of 1.15 (i.e., up to 15 % apparent "gain" due to
-    numerical noise).
+def test_two_port_s_envelope_on_matched_line():
+    """Envelope lock on a KNOWN-WRONG S column. NOT a passivity gate, and
+    NOT a statement that these values are expected behaviour.
+
+    This test used to assert ``max(|S11|^2 + |S21|^2) < 1.5`` and call it
+    "relaxed passivity". That framing was wrong twice over, and so was the
+    first replacement for it. What is actually true:
+
+    1. **The old gate passed because S11 was reported as its RECIPROCAL.**
+       The NU wave split branched on the port's ``direction``, and the "-x"
+       branch (which port 1 of this fixture uses) was the exact reciprocal
+       of the correct one. Reciprocating a >1 number lands under 1, which is
+       what kept the gate green. Fixed in #673.
+
+    2. **The whole S column here is known-WRONG — diagonal included.** An
+       earlier revision of this docstring framed the driven-port diagonal as
+       merely "not bounded by 1". It is worse than unbounded: it does not
+       track the load at all. Measured on the UNIFORM (validated) lane, same
+       geometry, only ``excite`` flipped, ``n_live = 4``:
+
+           passive  S11(0.2 GHz) = -0.600000   (== analytic (1-n)/(1+n))
+           driven   S11(0.2 GHz) = +0.999670 - 0.022145j
+
+       The quasi-static input impedance is identical in both cases, so a
+       consistent extractor must report the same number. Review measured the
+       same failure directly against known loads: a matched ``R_L = Z0 = 50``
+       (``Gamma = 0``) reads ``S11 = +0.35426`` and a PEC short
+       (``Gamma = -1``) reads ``+0.26780``.
+
+       Root cause is the #313 / #318 family: V and I are sampled at ONE cell,
+       so the measured Z is the per-cell ``Z0/n_live`` while the reflection
+       formula references the whole-port ``Z0``. #318 records the same class
+       ("physical termination Z0*(n_live/n)", not Z0). Compare the #313
+       do-not-repeat: "the port-cell |S21| envelope ... is a REGRESSION LOCK,
+       not physics" — this is that, for the whole column.
+
+    3. **The NU off-diagonal is wrong in its own right.** It uses the
+       receive channel issue #308 removed and the full Z0 instead of the
+       per-cell ``Z0/n_live`` (#318). Measured against the validated uniform
+       multi-port extractor on an IDENTICAL grid, ``S21_NU/S21_uniform`` is
+       -1.000+0.006j at ``n_live = 2`` and 0.62 at ``n_live = 4`` — an
+       n_live-dependent normalization error, not a sign. Fixing it needs
+       n_live threaded into the NU wire-port spec.
+
+    What #673 DID fix is that ``direction`` no longer changes the answer.
+    The PASSIVE diagonal is lane-identical and hits its closed form; that is
+    pinned in ``tests/test_nu_wire_port_lane_parity.py``. Nothing about the
+    DRIVEN column below is validated.
+
+    So: this asserts finiteness and freezes the measured envelope, purely so
+    the numbers cannot drift unnoticed. Measured on this branch (4000 steps,
+    2-6 GHz, 51 bins):
+
+        max(|S11|^2 + |S21|^2) = 28.511
+        |S11| in [1.18966, 4.64846],  |S21| in [0.35934, 2.62724]
+
+    The value also depends on the V/I sampling ordering, which is OPEN as
+    issue #683 (it read 11.003 with the pre-injection ordering that was
+    pulled from this branch). Any correct fix to #313 / #318 / #683 will red
+    this test; that is the point. Re-derive and re-document when it happens —
+    do not "restore" the number.
     """
     sim = _build_line()
     freqs = jnp.linspace(2e9, 6e9, 51)
@@ -142,21 +207,32 @@ def test_two_port_passivity_on_matched_line():
     )
     S = np.asarray(result.s_params)
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
+    assert np.all(np.isfinite(S)), "non-finite entry in the S matrix"
     p_total = np.abs(S11) ** 2 + np.abs(S21) ** 2
-    # Relaxed passivity: not a strict physics constraint because the
-    # rfx wire port isn't a true microstrip port and the CPML doesn't
-    # absorb the TEM mode perfectly, but the values should stay within
-    # a reasonable envelope.
-    assert np.max(p_total) < 1.5, (
-        f"Passivity grossly violated: max(|S11|²+|S21|²) = "
-        f"{float(np.max(p_total)):.3f}"
+    measured = 28.511
+    assert abs(float(np.max(p_total)) / measured - 1.0) < 0.05, (
+        f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} moved "
+        f"off the recorded {measured} envelope. This is an envelope lock on "
+        f"a KNOWN-WRONG column (#313/#318, and #683 for the sampling "
+        f"ordering), not a physics gate — read the docstring before "
+        f"re-pinning it."
     )
 
 
-def test_direction_auto_detect():
-    """Passing `direction=None` should auto-detect the port's outward
-    normal from its position. Verify by comparing the S-matrix with
-    explicit vs auto-detected direction: they should match.
+def test_direction_does_not_change_the_s_matrix():
+    """``direction`` must be inert in the wave decomposition (issue #673).
+
+    This assertion is unchanged — explicit vs auto-detected ``direction``
+    must give the same S matrix — but what it guards changed. It used to
+    read as "auto-detection picks the direction I would have passed"; it
+    now pins that NO choice of ``direction`` can reach the (a, b) split at
+    all. ``direction`` is still carried on the port spec because the
+    reference-plane path (``add_port(reference_plane_cells=...)``) needs it
+    for the outboard sign.
+
+    Before #673 the "-x"/"-y" branch returned the reciprocal of the
+    "+x"/"+y" one, so this test passed only because ``_auto_direction``
+    happened to pick the same string the fixture passed explicitly.
     """
     sim_explicit = _build_line(with_direction=True)
     sim_auto = _build_line(with_direction=False)
