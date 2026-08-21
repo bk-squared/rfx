@@ -42,6 +42,7 @@ from rfx.core.yee import (
     _shift_bwd,
 )
 from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
+from rfx.boundaries.pec import tangential_edge_masks
 from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
@@ -770,9 +771,13 @@ def _apply_pec_mask_nu_shmap(state: FDTDState, sharded_pec_mask, mesh,
     seam ghost cells must not be acted on.
 
     The implementation:
-      * computes the per-component tangential mask (PEC AND has-PEC-
-        neighbour-in-tangential-axis) on the local slab including ghost
-        cells, identical math to ``rfx/boundaries/pec.py::apply_pec_mask``;
+      * computes the per-component tangential mask on the local slab
+        including ghost cells by CALLING
+        ``rfx.boundaries.pec.tangential_edge_masks`` — the same function
+        ``apply_pec_mask`` calls, so the two lanes cannot drift apart
+        again (they did: this site kept an inlined ``jnp.roll`` copy of
+        the rule through #689 and wrapped at the y and z domain faces
+        after the single-device lane stopped);
       * gates the mask so ghost-cell rows are forced to ``False`` before
         zeroing the field — interior real cells use their slab-local
         neighbour computation, and the **first/last real cells** see the
@@ -790,16 +795,27 @@ def _apply_pec_mask_nu_shmap(state: FDTDState, sharded_pec_mask, mesh,
         check_rep=False,
     )
     def _pec_mask(ex, ey, ez, mask):
-        # Tangential masks (per-component): PEC AND has-PEC-neighbour
-        # in the component's own direction.
-        # Use _shift_fwd / _shift_bwd-like inline rolls without wrap so
-        # ghost cells do not introduce wrap artefacts.  jnp.roll wraps
-        # in pure JAX, but inside a slab that is fine because the slab
-        # already includes the seam neighbours via ghost cells; ghost
-        # rows are forced to False below.
-        mask_ex = mask & (jnp.roll(mask, 1, axis=0) | jnp.roll(mask, -1, axis=0))
-        mask_ey = mask & (jnp.roll(mask, 1, axis=1) | jnp.roll(mask, -1, axis=1))
-        mask_ez = mask & (jnp.roll(mask, 1, axis=2) | jnp.roll(mask, -1, axis=2))
+        # ONE neighbour rule for both lanes: call the shared helper rather
+        # than re-spelling it (#689 changed the rule and this copy did not
+        # follow, so the two lanes disagreed at a y/z domain face —
+        # measured on two 4x4 plates in a (6,6,10) domain, real cells only:
+        #
+        #   placement           single-device      this lane, inlined roll
+        #   z faces  k=0 & k=9  [32, 32,  0]       [32, 32, 32]
+        #   y faces  j=0 & j=5  [32,  0, 32]       [32, 32, 32]
+        #   z interior k=1,k=8  [32, 32,  0]       [32, 32,  0]   (agreed)
+        #
+        # ``periodic=(True, False, False)``: the SHARDED axis keeps the
+        # wrap, which is what the inlined copy relied on and is correct
+        # here — a slab's ghost rows carry the seam neighbour's PEC status
+        # (``shard_pec_mask_x_slab``), and the wrap only ever reaches
+        # indices 0 and nx_local-1, both ghosts, both forced False below.
+        # So no REAL cell sees the x wrap and the x behaviour is unchanged.
+        # y and z have no ghosts and no periodic BC on this lane (the NU
+        # runners install none), so they take the same zero-pad convention
+        # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
+        mask_ex, mask_ey, mask_ez = tangential_edge_masks(
+            mask, (True, False, False))
 
         # Force ghost rows to False so we never touch a neighbour rank's
         # cells.  Real cells span [ghost, nx_local - ghost).

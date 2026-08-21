@@ -133,14 +133,26 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     consumers must be handed the SAME ``periodic``, or that identity is
     computed against two different neighbour rules.
 
-    NOT moved in lockstep, and worth knowing before the next reader
-    rediscovers it: :func:`apply_pec_occupancy` below, its distributed
-    twin in ``rfx/runners/distributed_nu.py``, and the AD-smooth dilation
-    in ``rfx/geometry/smoothing.py`` still spell the rule with ``roll``.
-    The hard and soft PEC paths therefore differ at a non-periodic domain
-    face. Widening #689 into the differentiable-geometry lane was out of
-    its scope; ``tests/test_topology.py`` does not discriminate either way
-    (its mask spans the full y/z extent, where wrap and zero pad agree).
+    The distributed NU lane's hard-PEC kernel
+    (``rfx/runners/distributed_nu.py::_apply_pec_mask_nu_shmap``) also
+    CALLS this function, with ``periodic=(True, False, False)`` — its
+    sharded x axis keeps the wrap because a slab's ghost rows carry the
+    seam neighbour and are forced ``False`` afterwards. It used to carry
+    an inlined ``roll`` copy of the rule, did not follow #689, and so
+    disagreed with the single-device lane at a y or z domain face
+    (measured, two 4x4 plates in a (6,6,10) domain: ``[32, 32, 32]``
+    there against ``[32, 32, 0]`` here). Pinned by
+    ``tests/test_distributed_nu_pec_mask_lane_parity.py``.
+
+    Still NOT moved in lockstep, and worth knowing before the next reader
+    rediscovers it: the SOFT PEC path — :func:`apply_pec_occupancy` below,
+    its distributed twin ``_apply_pec_occupancy_nu_shmap``, and the
+    AD-smooth dilation in ``rfx/geometry/smoothing.py`` — still spells the
+    rule with ``roll``, so hard and soft PEC differ at a non-periodic
+    domain face. Widening #689 into the differentiable-geometry lane was
+    out of its scope; ``tests/test_topology.py`` does not discriminate
+    either way (its mask spans the full y/z extent, where wrap and zero
+    pad agree).
 
     Parameters
     ----------
