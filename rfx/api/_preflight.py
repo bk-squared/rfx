@@ -3935,18 +3935,27 @@ class _PreflightMixin:
                 )
 
     def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
-        """Advisory: a wire port whose Ampere loop straddles a grading step.
+        """Advisory: an impedance port whose control volume straddles a step.
 
         The port current is the discrete Ampere loop on the DUAL face
         pierced by the port's E edge, each leg weighted by the dual spacing
         along that H component's own axis — the two axes TRANSVERSE to the
         port component. ``V`` uses the primal edge length and is exact
-        either way, so only the loop-leg axes are checked. An EXCITED port
+        either way, so only the transverse axes are checked. An EXCITED port
         also drives through ``make_current_source``, so the source-side
         normalization above applies to it as well.
+
+        Since #688 the same two dual spacings also size the TERMINATION
+        conductance (``sigma = n_live * d_par / (Z0 * dual_b * dual_c)``),
+        which is why this now covers single-cell lumped ports too: they
+        carry no ``extent``, so the old filter skipped them entirely while
+        they sat on the identical metric (measured, a lumped ez port on a
+        2:1 step on both transverse axes printed ``[PREFLIGHT] All checks
+        passed.`` while carrying the same 1.7778x conductance error).
         """
         entries = [pe for pe in getattr(self, "_ports", ())
-                   if getattr(pe, "extent", None) is not None]
+                   if getattr(pe, "extent", None) is not None
+                   or float(getattr(pe, "impedance", 0.0)) > 0.0]
         if not entries:
             return
         for pe in entries:
@@ -3958,16 +3967,20 @@ class _PreflightMixin:
                 if rep is None:
                     continue
                 node_pos, d_below, d_above, dual, ratio = rep
+                kind = ("wire port" if getattr(pe, "extent", None) is not None
+                        else "lumped port")
                 _w.warn(
                     PreflightWarning(
-                        f"wire port at {pe.position} "
+                        f"{kind} at {pe.position} "
                         f"(component {pe.component}) sits at "
                         f"{'xyz'[a]} = {_fmt_len(node_pos)}, an E node whose "
                         f"adjacent cells differ by {(ratio - 1.0):.0%} "
                         f"({_fmt_len(d_below)} below, {_fmt_len(d_above)} "
                         f"above). {'xyz'[a]} is one of the port's two "
-                        f"Ampere-loop axes, so that leg is weighted by the "
-                        f"DUAL spacing {_fmt_len(dual)} (issue #672). The "
+                        f"Ampere-loop axes, so the DUAL spacing "
+                        f"{_fmt_len(dual)} weights BOTH that leg of the loop "
+                        f"that measures I (issue #672) and the termination "
+                        f"conductance that realizes Z0 (issue #688). The "
                         f"extracted Z_in = -V/I, and every S-parameter built "
                         f"on it, is most mesh-sensitive here: move the port "
                         f"onto a locally uniform node (or flatten the "

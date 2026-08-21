@@ -12,6 +12,7 @@ from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
 from rfx.nonuniform import (
     NonUniformGrid,
+    e_node_dual_spacing_at,
     e_node_dual_spacings,
     interior_cells,
     make_nonuniform_grid,
@@ -761,24 +762,42 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     "PEC."
                 )
 
-            _dx_np = np.asarray(grid.dx_arr)
-            _dy_np = np.asarray(grid.dy_arr)
+            # float64 so these are the SAME numbers the extractor reads at
+            # rfx/nonuniform.py (`_dx_arr_np`/`_dy_arr_np`, both float64).
+            # sigma and I must be sized on one set of metrics. Bit-identical
+            # on a uniform profile.
+            _dx_np = np.asarray(grid.dx_arr, dtype=np.float64)
+            _dy_np = np.asarray(grid.dy_arr, dtype=np.float64)
             for (ci, cj, ck), live in zip(_cells_ijk, live_flags):
                 dxi = float(_dx_np[ci])
                 dyj = float(_dy_np[cj])
+                dual_xi = float(e_node_dual_spacing_at(_dx_np, ci))
+                dual_yj = float(e_node_dual_spacing_at(_dy_np, cj))
+                dual_zk = float(e_node_dual_spacing_at(grid.dz, ck))
                 # 3D wire port: σ = n_live * d_parallel / (Z0 * d_perp1 * d_perp2)
                 # Each LIVE cell in the wire carries 1/n_live of total
                 # impedance Z0 (issue #318 — dead cells excluded).
+                #
+                # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the
+                # two axes TRANSVERSE to the port component — the same
+                # metrics `wire_port_current` weights its Ampere legs by
+                # (#672). They are the sides of the dual face the conduction
+                # current pierces, so V/I closes only if the termination and
+                # the measurement use one metric family. d_parallel stays
+                # PRIMAL: it is the length of the E edge V is taken over.
+                # The old primal spelling for d_perp is right only where the
+                # two transverse axes are locally uniform (measured 1.7778x
+                # too small a conductance on a 2:1 step on both).
                 if live:
                     if axis == 2:
                         d_cell = float(grid.dz[ck])
-                        dp1, dp2 = dxi, dyj
+                        dp1, dp2 = dual_xi, dual_yj
                     elif axis == 1:
                         d_cell = dyj
-                        dp1, dp2 = dxi, float(grid.dz[ck])
+                        dp1, dp2 = dual_xi, dual_zk
                     else:
                         d_cell = dxi
-                        dp1, dp2 = dyj, float(grid.dz[ck])
+                        dp1, dp2 = dual_yj, dual_zk
                     sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
                     materials = materials._replace(
                         sigma=materials.sigma.at[ci, cj, ck].add(
@@ -825,23 +844,38 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         else:
             # Single-cell lumped port
             i, j, k = idx
-            dxi = float(np.asarray(grid.dx_arr)[i])
-            dyj = float(np.asarray(grid.dy_arr)[j])
+            _dx_np = np.asarray(grid.dx_arr, dtype=np.float64)
+            _dy_np = np.asarray(grid.dy_arr, dtype=np.float64)
+            dxi = float(_dx_np[i])
+            dyj = float(_dy_np[j])
+            dual_xi = float(e_node_dual_spacing_at(_dx_np, i))
+            dual_yj = float(e_node_dual_spacing_at(_dy_np, j))
+            dual_zk = float(e_node_dual_spacing_at(grid.dz, k))
             # 3D lumped port: σ = d_parallel / (Z0 * d_perp1 * d_perp2)
             # This ensures correct power dissipation P = V²/Z0 in
             # anisotropic cells where dz ≠ dx.  The old formula
             # σ = 1/(Z0*d_parallel) is only valid for cubic cells.
+            #
+            # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the two
+            # axes transverse to the port component (the sides of the dual
+            # face the conduction current pierces), matching the metrics
+            # the wire-port Ampere loop uses (#672). d_parallel stays PRIMAL
+            # — it is the E edge V is taken over. Sharpening the sentence
+            # above: the primal spelling for d_perp is valid whenever the
+            # two TRANSVERSE axes are locally uniform, which is strictly
+            # weaker than cubic and is what actually makes the uniform lane
+            # right.
             axis_map = {"ex": 0, "ey": 1, "ez": 2}
             port_axis = axis_map[pe.component]
             if port_axis == 2:
                 d_parallel = float(grid.dz[k])
-                d_perp1, d_perp2 = dxi, dyj
+                d_perp1, d_perp2 = dual_xi, dual_yj
             elif port_axis == 1:
                 d_parallel = dyj
-                d_perp1, d_perp2 = dxi, float(grid.dz[k])
+                d_perp1, d_perp2 = dual_xi, dual_zk
             else:
                 d_parallel = dxi
-                d_perp1, d_perp2 = dyj, float(grid.dz[k])
+                d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
             materials = materials._replace(
                 sigma=materials.sigma.at[i, j, k].add(sigma_port))
