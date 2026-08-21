@@ -660,7 +660,16 @@ def run_uniform(
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sheet_ctx = build_sheet_impedance_ctx(sheet_specs, pec_mask=pec_mask)
+    # #689: the same effective periodic flags the stepper will apply, so the
+    # sheet and PEC footprints keep the G4 identity. ``simulation.py``
+    # normalizes None -> all-False and forces z periodic on a 2-D grid;
+    # mirror both here rather than passing the raw local.
+    _sheet_periodic = (False, False, False) if periodic is None else tuple(
+        bool(v) for v in periodic)
+    if grid.is_2d:
+        _sheet_periodic = (_sheet_periodic[0], _sheet_periodic[1], True)
+    sheet_ctx = build_sheet_impedance_ctx(sheet_specs, pec_mask=pec_mask,
+                                          periodic=_sheet_periodic)
 
     # Main simulation
     if until_decay is not None:

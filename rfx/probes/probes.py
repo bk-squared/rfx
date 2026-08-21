@@ -1179,6 +1179,11 @@ def extract_s_matrix(
             # time-gating-heuristic bug (issue #72).
             if pec_mask is not None:
                 from rfx.boundaries.pec import apply_pec_mask
+                # #689: default (non-periodic) is correct — preflight
+                # `_validate_periodic_sparameter_request` refuses
+                # lumped/wire S-params under periodic axes (#206), and
+                # this eager re-run is non-periodic by construction.
+                # 2-D safety comes from the length-1-axis guard.
                 state = apply_pec_mask(state, pec_mask)
 
             # Record V / I at all ports BEFORE source injection so that
@@ -1503,6 +1508,11 @@ def extract_s_matrix_wire(
 
             if pec_mask is not None:
                 from rfx.boundaries.pec import apply_pec_mask
+                # #689: default (non-periodic) is correct — preflight
+                # `_validate_periodic_sparameter_request` refuses
+                # lumped/wire S-params under periodic axes (#206), and
+                # this eager re-run is non-periodic by construction.
+                # 2-D safety comes from the length-1-axis guard.
                 state = apply_pec_mask(state, pec_mask)
 
             # Record V / I at all ports BEFORE source injection so that

@@ -99,6 +99,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         sim._assemble_materials(grid, sheet_specs=_sheet_specs)
     # #677: node-thin sheet ctx, applied by every per-drive forward run.
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    # #689: default (non-periodic) — preflight refuses lumped/wire
+    # S-params under periodic axes (#206), matching apply_pec_mask here.
     _sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
 
     if n_steps is None:

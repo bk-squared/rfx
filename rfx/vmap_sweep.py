@@ -582,7 +582,8 @@ def _build_vmap_scan_fn(
 
             if use_pec_mask:
                 from rfx.boundaries.pec import apply_pec_mask
-                st = apply_pec_mask(st, pec_mask)
+                # #689: pass the run's periodic flags (see pec.py).
+                st = apply_pec_mask(st, pec_mask, periodic)
 
             # Non-J soft sources (raw field add, no Cb dependence)
             for idx_s, (si, sj, sk, sc) in enumerate(src_meta):

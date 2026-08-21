@@ -1402,7 +1402,9 @@ def make_core_step(ctx: _StepContext):
                 st = apply_conformal_pec(st, ctx.conformal_weights[0], ctx.conformal_weights[1], ctx.conformal_weights[2])
             elif ctx.use_pec_mask:
                 from rfx.boundaries.pec import apply_pec_mask
-                st = apply_pec_mask(st, ctx.pec_mask)
+                # #689: the tangential-edge rule keeps the wrap only on
+                # genuinely periodic axes, so hand it the run's flags.
+                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic)
 
             if ctx.use_pec_occupancy:
                 st = apply_pec_occupancy(st, ctx.pec_occupancy)

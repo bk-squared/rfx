@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
+from rfx.core.yee import _shift_bwd, _shift_fwd
+
 
 def apply_pec(state, axes: str = "xyz") -> object:
     """Apply PEC (E_tan = 0) at domain boundaries.
@@ -85,41 +87,84 @@ def apply_pec_faces(state, faces: set[str]) -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
-def tangential_edge_masks(cell_mask):
+def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     """Per-component tangential E-edge masks for a boolean CELL mask.
 
     The single source of the thin-sheet neighbor rule (#677): a component
     is tangential to the masked body iff the body extends >= 2 cells in
     that component's direction (i.e. has a masked neighbor along it). A
     one-cell-thick sheet therefore selects only its in-plane (tangential)
-    E components; the sheet-normal component's mask is all-False by
-    construction.
+    E components.
+
+    Boundary convention (#689). The neighbour lookup used to be
+    ``jnp.roll`` on every axis, which wraps: on a NON-periodic axis, a
+    one-cell body on the ``0`` face and another on the ``n-1`` face saw
+    each other through the domain and BOTH had their sheet-normal
+    component selected. Whether a component is tangential or normal to a
+    body is a property of the body, so translating the same pair one cell
+    inward must not change the answer — and it did (measured, two 4x4
+    plates in a (6,6,10) domain: per-component nnz [32, 32, 32] on the
+    faces versus [32, 32, 0] anywhere inside). Non-periodic axes now use
+    the explicit zero pad ``rfx.core.yee._shift_bwd/_shift_fwd``, which is
+    also the convention the solver's own curl uses for out-of-domain H.
+
+    The wrap is kept, deliberately, on two kinds of axis — both measured,
+    neither assumed:
+
+    * ``periodic[ax]`` — cell ``0`` and cell ``n-1`` really are
+      neighbours there, so a body straddling the seam is contiguous.
+      A seam-straddling body one cell either side goes from 8 selected
+      edges to 0 under an unconditional zero pad. Callers on a periodic
+      lane MUST pass their run's flags; the default is the non-periodic
+      convention.
+    * ``cell_mask.shape[ax] == 1`` — the 2-D lane. ``rfx/simulation.py``
+      forces ``periodic[2] = True`` when ``grid.is_2d``, and with
+      ``nz == 1`` the wrap is what makes a body self-adjacent along z.
+      An unconditional zero pad selects zero Ez edges there, i.e. every
+      2-D run with interior PEC silently loses that PEC (measured
+      max|Ez| inside the block 0.0 -> 2.60e+06).
 
     Shared by :func:`apply_pec_mask` (which zeroes the selected edges) and
     the surface-impedance sheet operator
     (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
     applies a resistive update on them), so the PEC and sheet footprints
     are structurally identical — pinned by
-    tests/test_sheet_impedance_operator.py (G4 footprint identity).
+    tests/test_sheet_impedance_operator.py (G4 footprint identity). Both
+    consumers must be handed the SAME ``periodic``, or that identity is
+    computed against two different neighbour rules.
+
+    NOT moved in lockstep, and worth knowing before the next reader
+    rediscovers it: :func:`apply_pec_occupancy` below, its distributed
+    twin in ``rfx/runners/distributed_nu.py``, and the AD-smooth dilation
+    in ``rfx/geometry/smoothing.py`` still spell the rule with ``roll``.
+    The hard and soft PEC paths therefore differ at a non-periodic domain
+    face. Widening #689 into the differentiable-geometry lane was out of
+    its scope; ``tests/test_topology.py`` does not discriminate either way
+    (its mask spans the full y/z extent, where wrap and zero pad agree).
 
     Parameters
     ----------
     cell_mask : (nx, ny, nz) boolean array
+    periodic : (bool, bool, bool)
+        Per-axis periodic-boundary flags for the run. Defaults to the
+        non-periodic convention.
 
     Returns
     -------
     (mask_ex, mask_ey, mask_ez) boolean arrays, same shape.
     """
-    mask_ex = cell_mask & (
-        jnp.roll(cell_mask, 1, axis=0) | jnp.roll(cell_mask, -1, axis=0))
-    mask_ey = cell_mask & (
-        jnp.roll(cell_mask, 1, axis=1) | jnp.roll(cell_mask, -1, axis=1))
-    mask_ez = cell_mask & (
-        jnp.roll(cell_mask, 1, axis=2) | jnp.roll(cell_mask, -1, axis=2))
-    return mask_ex, mask_ey, mask_ez
+    masks = []
+    for ax in range(3):
+        if cell_mask.shape[ax] == 1 or periodic[ax]:
+            neighbor = (jnp.roll(cell_mask, 1, axis=ax)
+                        | jnp.roll(cell_mask, -1, axis=ax))
+        else:
+            neighbor = _shift_bwd(cell_mask, ax) | _shift_fwd(cell_mask, ax)
+        masks.append(cell_mask & neighbor)
+    return tuple(masks)
 
 
-def apply_pec_mask(state, pec_mask) -> object:
+def apply_pec_mask(state, pec_mask, periodic=(False, False, False)) -> object:
     """Zero tangential E-field components at PEC geometry cells.
 
     For thin PEC sheets (1 cell thick), only tangential E-components
@@ -132,11 +177,17 @@ def apply_pec_mask(state, pec_mask) -> object:
     state : FDTDState
     pec_mask : (nx, ny, nz) boolean array
         True where material is PEC.
+    periodic : (bool, bool, bool)
+        The run's per-axis periodic flags, forwarded to
+        :func:`tangential_edge_masks`. The default is the non-periodic
+        convention, so a caller on a periodic lane must pass its own
+        flags — see that function's boundary-convention note (#689).
+        A length-1 axis is handled without it.
     """
     # Per-component masks: zero E only where PEC has extent in that direction
     # Ex(i,j,k) zeroed if pec(i,j,k) AND neighbor PEC in x
     # (if no x-neighbor is PEC → thin x-sheet → Ex is normal → preserve)
-    mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask)
+    mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask, periodic)
 
     return state._replace(
         ex=state.ex * (1.0 - mask_ex.astype(state.ex.dtype)),

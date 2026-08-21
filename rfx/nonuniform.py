@@ -691,6 +691,32 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     return (i, j, k, component, waveform_out)
 
 
+def _bwd_neighbor(h, idx, axis):
+    """``h`` one cell back along ``axis``, using the SAME out-of-domain
+    convention the NU E-update uses.
+
+    ``rfx.core.yee._shift_bwd`` (rfx/core/yee.py) pads explicitly with zero,
+    so ``_curl_h_nu`` reads 0 for H outside the domain. Before #689 this
+    helper spelled the backward read as a raw ``h[i - 1]``, which at
+    ``i == 0`` is Python's negative index — H at the OPPOSITE face of the
+    domain. That made a 4-term local Ampere loop depend on a field cell it
+    does not enclose, and it disagreed with the very curl the port current
+    is supposed to be the loop integral of.
+
+    A length-1 axis carries no variation along itself, so the difference
+    along it is 0 (return the cell itself, matching the uniform lane's
+    2-D behaviour). NU grids are 3-D today, so that branch is defensive.
+    """
+    i = int(idx[axis])
+    if h.shape[axis] == 1:
+        return h[idx]
+    if i == 0:
+        return jnp.zeros_like(h[idx])
+    back = list(idx)
+    back[axis] = i - 1
+    return h[tuple(back)]
+
+
 def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
                       dual_x, dual_y, dual_z):
     """Enclosed current from the discrete Ampere loop at a wire-port cell.
@@ -712,16 +738,27 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     whole thing with a single ``dx`` and still be correct there.
 
     Signs match the pre-#672 code exactly; only the metrics changed.
+
+    Out-of-domain H is ZERO (#689). Each backward read goes through
+    :func:`_bwd_neighbor`, which pads the way ``_curl_h_nu`` /
+    ``rfx.core.yee._shift_bwd`` pad, so the port current is the loop
+    integral of the same curl the E-update integrates. The previous raw
+    ``[mi - 1]`` spelling wrapped at index 0 to the opposite domain face:
+    on an 8-cell axis, adding 1000 to H at the far face moved the port
+    current by 1000 * dual, which a 4-term local loop must never do.
+    A wire port lands at index 0 whenever it sits flush against a PEC /
+    PMC / periodic face, since those faces get no CPML pad.
     """
+    idx = (mi, mj, mk)
     if comp == "ez":
-        return ((hy[mi, mj, mk] - hy[mi - 1, mj, mk]) * dual_y
-                - (hx[mi, mj, mk] - hx[mi, mj - 1, mk]) * dual_x)
+        return ((hy[idx] - _bwd_neighbor(hy, idx, 0)) * dual_y
+                - (hx[idx] - _bwd_neighbor(hx, idx, 1)) * dual_x)
     if comp == "ex":
-        return ((hz[mi, mj, mk] - hz[mi, mj - 1, mk]) * dual_z
-                - (hy[mi, mj, mk] - hy[mi, mj, mk - 1]) * dual_y)
+        return ((hz[idx] - _bwd_neighbor(hz, idx, 1)) * dual_z
+                - (hy[idx] - _bwd_neighbor(hy, idx, 2)) * dual_y)
     if comp == "ey":
-        return ((hx[mi, mj, mk] - hx[mi, mj, mk - 1]) * dual_x
-                - (hz[mi, mj, mk] - hz[mi - 1, mj, mk]) * dual_z)
+        return ((hx[idx] - _bwd_neighbor(hx, idx, 2)) * dual_x
+                - (hz[idx] - _bwd_neighbor(hz, idx, 0)) * dual_z)
     raise ValueError(f"wire_port_current: unknown component {comp!r}")
 
 
@@ -1268,6 +1305,9 @@ def _build_nu_scan(
         # PEC
         st = apply_pec(st)
         if use_pec_mask:
+            # #689: default (non-periodic) is correct here — the NU
+            # stepper installs no periodic BC at all, and NU grids are
+            # 3-D, so both of the wrap-keeping guards are inert.
             st = apply_pec_mask(st, pec_mask)
         if use_pec_occupancy:
             st = apply_pec_occupancy(st, pec_occupancy)

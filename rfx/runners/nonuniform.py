@@ -1066,6 +1066,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # assembler emitted, against the FINAL pec_mask of this run (PEC wins on
     # overlapping edges). Crossing-normal refusal lives in the builder.
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    # #689: default (non-periodic) — the NU stepper installs no periodic
+    # BC and NU grids are 3-D, matching its apply_pec_mask call.
     sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
     if sheet_ctx is not None:
         # v1 fences (loud, never silent): the sheet operator replaces the

@@ -13,6 +13,25 @@ the pre-refactor expressions (development-methodology refactor rule: a
 code-motion refactor is gated by bit identity, not tolerance). If either
 helper's algebra drifts, the drift shows up here before it shows up as a
 subtle sheet-vs-kernel stencil mismatch in physics.
+
+#689 moved one of the two references, and it is worth being explicit about
+what moved and what did not. ``tangential_edge_masks`` used ``jnp.roll`` on
+every axis; the wrap is correct only where cell 0 and cell n-1 really are
+neighbours, so it now applies on a PERIODIC axis or a length-1 (2-D) axis
+and a zero pad applies otherwise. The gate below is rewritten, not
+loosened, and it got teeth rather than losing them:
+
+  * the ``jnp.roll`` reference is kept and now pins the PERIODIC branch
+    byte-exactly, so that branch is still literally the pre-#689 rule;
+  * a second reference built from ``_shift_bwd`` / ``_shift_fwd`` pins the
+    non-periodic branch byte-exactly;
+  * an interior-slice comparison pins that the change is confined to the
+    two boundary slices of each axis — which is why no committed physics
+    number moves.
+
+The boundary behaviour itself (the defect, both wrap-keeping guards, and
+the 2-D end-to-end witness) is pinned in
+``tests/test_pec_mask_boundary_convention.py``.
 """
 
 import numpy as np
@@ -22,6 +41,7 @@ from rfx.core.yee import (
     MaterialArrays,
     _diff_bwd_o,
     _shift_bwd,
+    _shift_fwd,
     curl_h,
     curl_h_nu,
     init_state,
@@ -49,7 +69,12 @@ def _rand_materials(rng):
 
 
 def test_tangential_edge_masks_bit_identity_with_inline_rule():
-    """Shared helper == the pre-#677 inline neighbor rule, exact booleans."""
+    """Periodic branch == the pre-#677/#689 inline roll rule, exact booleans.
+
+    ``_SHAPE`` is (9,8,7) with a random 30%-fill mask, so index 0 and index
+    n-1 are populated on all three axes — the fixture DOES exercise the
+    boundary, which is what made this gate the one that encoded the defect.
+    """
     rng = np.random.default_rng(677)
     mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
 
@@ -58,10 +83,40 @@ def test_tangential_edge_masks_bit_identity_with_inline_rule():
     ref_ey = mask & (jnp.roll(mask, 1, axis=1) | jnp.roll(mask, -1, axis=1))
     ref_ez = mask & (jnp.roll(mask, 1, axis=2) | jnp.roll(mask, -1, axis=2))
 
-    got_ex, got_ey, got_ez = tangential_edge_masks(mask)
+    got_ex, got_ey, got_ez = tangential_edge_masks(mask, (True, True, True))
     assert np.array_equal(np.asarray(got_ex), np.asarray(ref_ex))
     assert np.array_equal(np.asarray(got_ey), np.asarray(ref_ey))
     assert np.array_equal(np.asarray(got_ez), np.asarray(ref_ez))
+
+
+def test_tangential_edge_masks_bit_identity_with_inline_zero_pad_rule():
+    """Non-periodic branch == an inline zero-pad rule, exact booleans (#689)."""
+    rng = np.random.default_rng(677)
+    mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
+
+    ref = [mask & (_shift_bwd(mask, ax) | _shift_fwd(mask, ax))
+           for ax in range(3)]
+    got = tangential_edge_masks(mask)          # default: non-periodic
+    for ax in range(3):
+        assert np.array_equal(np.asarray(got[ax]), np.asarray(ref[ax])), ax
+
+
+def test_tangential_edge_masks_interior_bit_identity_with_the_pre_689_rule():
+    """The #689 change is confined to the two boundary slices of each axis,
+    which is the 'no committed number moves' gate."""
+    rng = np.random.default_rng(677)
+    mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
+    got = tangential_edge_masks(mask)
+    for ax in range(3):
+        old = mask & (jnp.roll(mask, 1, axis=ax) | jnp.roll(mask, -1, axis=ax))
+        sl = [slice(None)] * 3
+        sl[ax] = slice(1, -1)
+        sl = tuple(sl)
+        assert np.array_equal(np.asarray(got[ax][sl]),
+                              np.asarray(old[sl])), ax
+        # ... and it is NOT a no-op overall on this fixture, so the gate has
+        # teeth: index 0 / n-1 do differ.
+        assert not np.array_equal(np.asarray(got[ax]), np.asarray(old)), ax
 
 
 def test_apply_pec_mask_uses_shared_rule_bit_identity():

@@ -378,7 +378,8 @@ class SheetImpedanceCtx:
     sigma_sheet: object   # accumulated over sheets; 0 off-sheet
 
 
-def build_sheet_impedance_ctx(sheet_specs, pec_mask=None):
+def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
+                             periodic=(False, False, False)):
     """Union a run's :class:`SheetImpedanceSpec` list into a runtime ctx.
 
     Refuses crossing/overlapping sheets with DIFFERENT normals (their
@@ -391,6 +392,12 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None):
     between them is NOT loaded (#690); each component is kept only where
     some covering sheet has it tangential. PEC-owned edges are excluded so
     ``apply_pec_mask`` (which runs first) wins on overlap.
+
+    ``periodic`` is forwarded to ``tangential_edge_masks`` for BOTH the
+    sheet union and the PEC subtraction (#689). Handing the two different
+    flags would compute the #677 G4 footprint identity against two
+    different neighbour rules; the caller must pass the same flags its
+    ``apply_pec_mask`` gets.
 
     Returns ``None`` for an empty spec list.
     """
@@ -443,7 +450,7 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None):
     for m in per_axis:
         if m is not None:
             union = m if union is None else (union | m)
-    masks = list(tangential_edge_masks(union))
+    masks = list(tangential_edge_masks(union, periodic))
     for c in range(3):
         # ``allow``: cells covered by at least one sheet for which component
         # ``c`` is TANGENTIAL.  A component normal to every covering sheet is
@@ -456,7 +463,7 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None):
             else jnp.zeros_like(masks[c])
     mask_ex, mask_ey, mask_ez = masks
     if pec_mask is not None:
-        pex, pey, pez = tangential_edge_masks(pec_mask)
+        pex, pey, pez = tangential_edge_masks(pec_mask, periodic)
         mask_ex = mask_ex & ~pex
         mask_ey = mask_ey & ~pey
         mask_ez = mask_ez & ~pez
