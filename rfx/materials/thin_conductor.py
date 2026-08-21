@@ -393,6 +393,15 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
     some covering sheet has it tangential. PEC-owned edges are excluded so
     ``apply_pec_mask`` (which runs first) wins on overlap.
 
+    That per-component veto is skipped on a LENGTH-1 axis, where "normal to
+    the sheet" is not a direction the grid can represent — see the loop
+    below. Note the exception is the degenerate axis ONLY, not
+    ``periodic[c]``: on a periodic axis of length > 1 cells 0 and n-1 are
+    genuinely different cells, so two one-layer films sitting either side of
+    the seam are still two films and the edge between them is still their
+    gap. Widening the exception to ``periodic[c]`` would re-open #690 across
+    the seam; ``test_periodic_seam_gap_edge_stays_vetoed`` pins that.
+
     ``periodic`` is forwarded to ``tangential_edge_masks`` for BOTH the
     sheet union and the PEC subtraction (#689). Handing the two different
     flags would compute the #677 G4 footprint identity against two
@@ -452,6 +461,22 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
             union = m if union is None else (union | m)
     masks = list(tangential_edge_masks(union, periodic))
     for c in range(3):
+        if union.shape[c] == 1:
+            # DEGENERATE AXIS — leave the classification alone.  With one
+            # cell along ``c`` there is no "normal to c" direction to be
+            # normal to: every body spans the whole axis and is its own
+            # neighbour through the wrap ``tangential_edge_masks``
+            # deliberately keeps on a length-1 axis.  ``sheet_normal_axis``
+            # still names ``c`` the thinnest bounding-box axis, so on the
+            # 2-D lane (nz == 1) a flat patch reports ``normal_axis = 2``
+            # and the veto below would zero ``mask_ez`` — the ONLY live E
+            # component in ``mode="2d_tmz"``, making the sheet
+            # bit-identically inert (measured on a 6x6-cell copper patch,
+            # 20x20x1 grid: f0/none peak|Ez| = 1.000000 at the patch node
+            # against pec/none = 0.000000).  Skipped whole, not narrowed to
+            # ``masks[c] & allow``: with a second sheet of a different
+            # normal present, that AND would drop this sheet's own edges.
+            continue
         # ``allow``: cells covered by at least one sheet for which component
         # ``c`` is TANGENTIAL.  A component normal to every covering sheet is
         # a gap edge, not a sheet edge.
