@@ -39,8 +39,9 @@ an unconditional zero pad is a worse bug than the one it fixes:
 
     Preflight on that fixture, verbatim (the probe is inside the PEC on
     purpose, which is the whole point of the measurement):
-    ``[PREFLIGHT] Port/source at (0.01, 0.01, 0) is inside PEC geometry
-    'pec'. Field will be zero. Move source outside PEC.``
+    ``  [PREFLIGHT] Port/source at (0.01, 0.01, 0) is inside PEC geometry
+    'pec'. Field will be zero. Move source outside PEC.`` (the two-space
+    indent is part of the printed line)
 
   * a genuinely periodic axis, where cell 0 and cell n-1 ARE neighbours.
     A body straddling the seam one cell either side ({n-1, 0}) goes from

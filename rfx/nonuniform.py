@@ -743,11 +743,24 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     :func:`_bwd_neighbor`, which pads the way ``_curl_h_nu`` /
     ``rfx.core.yee._shift_bwd`` pad, so the port current is the loop
     integral of the same curl the E-update integrates. The previous raw
-    ``[mi - 1]`` spelling wrapped at index 0 to the opposite domain face:
-    on an 8-cell axis, adding 1000 to H at the far face moved the port
-    current by 1000 * dual, which a 4-term local loop must never do.
-    A wire port lands at index 0 whenever it sits flush against a PEC /
-    PMC / periodic face, since those faces get no CPML pad.
+    ``[mi - 1]`` spelling was a NEGATIVE index at ``mi == 0``, i.e. H at
+    the opposite domain face, which a 4-term LOCAL loop must never touch.
+
+    Scope, stated because #689's commit body overstated it: this is a
+    STENCIL correctness fix, not a repair of a measured wrong number. The
+    cell it used to read, the last index of the axis, holds 0.0 at runtime
+    anyway — ``inv_d_h[N-1] = 0`` by construction
+    (``_profile_to_inv_arrays``) and the last row is grid pad. Measured on
+    a 21-cell NU run with an ez wire port flush against x_lo (``mi == 0``),
+    sampling every H component's last plane on every axis at every one of
+    300 steps: max|H| there was 0.000000e+00 throughout, under
+    ``boundary="pec"`` and under ``boundary="cpml"``, against global
+    max|H| of 1.9e+07 and 1.8e+04. So the two spellings agree on any state
+    the stepper can produce, and the +1000 perturbation the #689 oracles
+    use is not reachable by the solver. Keep the fix — a local loop should
+    not read a cell it does not enclose, and the two spellings agreeing
+    only by a coincidence of the pad arrays is not a property worth
+    depending on — but do not describe it as a live defect.
     """
     idx = (mi, mj, mk)
     if comp == "ez":

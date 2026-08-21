@@ -1,5 +1,15 @@
 """#689 site 1 — the NU wire-port Ampere loop must not wrap at index 0.
 
+SCOPE FIRST, because #689's commit body overstated this one and a later
+reviewer had to correct it: what follows is a STENCIL fix, not the repair
+of a measured wrong number. No committed result moved, and none could
+have — see "WHY THIS IS NOT A LIVE DEFECT" at the end. It is kept because
+a local operator should not read a cell it does not enclose, and because
+the two spellings agreeing only through a coincidence of the pad arrays is
+not a property worth depending on. The oracles below are unit-level: they
+drive the function with random fields, which is a state the stepper does
+not produce.
+
 Defect (external review against 4eb7fa4).
 ``rfx.nonuniform.wire_port_current`` spelled each backward H read as a raw
 ``h[mi - 1, ...]``. At ``mi == 0`` that is Python's negative index, i.e. H
@@ -40,6 +50,25 @@ Interior indices are untouched by either oracle, which is why no committed
 #672 number moves (that module tests at LOOP_IDX = (K_STEP, K_STEP,
 K_STEP) and at (6,6,6) / (2,2,2), all interior). The interior-agreement
 test below pins that explicitly.
+
+WHY THIS IS NOT A LIVE DEFECT. The cell the old spelling read — the LAST
+index of the wrapping axis — holds 0.0 at runtime, so both spellings
+return the same number on any state the solver can reach. Two independent
+reasons: ``_profile_to_inv_arrays`` sets ``inv_d_h[N-1] = 0``, which kills
+the H-update term that would write that plane, and the last row is grid
+pad. Measured, not inferred: a 21-cell NU run with an ez wire port flush
+against x_lo (so ``mi == 0``, the configuration this fix is about),
+sampling every H component's last plane on every axis at all 300 steps —
+
+    boundary   max|H| on the last plane   global max|H|
+    pec              0.000000e+00           1.943588e+07
+    cpml             0.000000e+00           1.769709e+04
+
+The +1000 perturbation ORACLE 1 injects is therefore unreachable by the
+stepper. That does not make the oracle wrong (it tests the function's
+contract, which is what a unit test is for), but it does mean nothing in
+the repo was computing a wrong current before this change. The measurement
+above is the reason the module claims a stencil fix and not a bug fix.
 """
 
 import numpy as np

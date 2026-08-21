@@ -1180,8 +1180,9 @@ def extract_s_matrix(
             if pec_mask is not None:
                 from rfx.boundaries.pec import apply_pec_mask
                 # #689: default (non-periodic) is correct — preflight
-                # `_validate_periodic_sparameter_request` refuses
-                # lumped/wire S-params under periodic axes (#206), and
+                # `_validate_run_sparameter_request` (rfx/api/_preflight.py)
+                # refuses lumped/wire S-params under periodic axes (#206,
+                # NotImplementedError), and
                 # this eager re-run is non-periodic by construction.
                 # 2-D safety comes from the length-1-axis guard.
                 state = apply_pec_mask(state, pec_mask)
@@ -1509,8 +1510,9 @@ def extract_s_matrix_wire(
             if pec_mask is not None:
                 from rfx.boundaries.pec import apply_pec_mask
                 # #689: default (non-periodic) is correct — preflight
-                # `_validate_periodic_sparameter_request` refuses
-                # lumped/wire S-params under periodic axes (#206), and
+                # `_validate_run_sparameter_request` (rfx/api/_preflight.py)
+                # refuses lumped/wire S-params under periodic axes (#206,
+                # NotImplementedError), and
                 # this eager re-run is non-periodic by construction.
                 # 2-D safety comes from the length-1-axis guard.
                 state = apply_pec_mask(state, pec_mask)
