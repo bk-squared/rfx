@@ -287,6 +287,34 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
     return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
 
 
+def _axis_dual_size(grid, axis: str, idx: int) -> float:
+    """E-node DUAL spacing at index ``idx`` along ``axis``.
+
+    ``dual[k] = (d[k-1] + d[k]) / 2`` (``dual[0] = d[0]``) — the control
+    volume the non-uniform E update divides its curl by. Delegates to
+    :func:`rfx.nonuniform.e_node_dual_spacing_at` so this repo has one
+    spelling of the rule. On a uniform mesh dual == primal bit-exactly, so
+    every non-``NonUniformGrid`` caller falls through to
+    :func:`_axis_cell_size` and is byte-identical.
+
+    Why the port termination needs it (issue #691): the realized conductance
+    of a stamped σ is ``G = σ · dual_b · dual_c / d_parallel``, fixed by the
+    discrete Ampere / Joule control volume of the E node — NOT by which
+    extractor later reads the port. An earlier fence claimed the MSL port was
+    exempt because its V/I route is Gwarek rather than the #672 Ampere loop;
+    that reasoning is wrong and must not be reinstated.
+    """
+    from rfx.nonuniform import NonUniformGrid, e_node_dual_spacing_at
+    if isinstance(grid, NonUniformGrid):
+        per_cell = np.asarray(
+            {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis],
+            dtype=np.float64,
+        )
+        clamped = max(0, min(int(idx), int(per_cell.shape[0]) - 1))
+        return float(e_node_dual_spacing_at(per_cell, clamped))
+    return _axis_cell_size(grid, axis, idx)
+
+
 def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     """Return the (i, j, k) grid indices spanning the MSL cross-section.
 
@@ -789,8 +817,19 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         sigma = materials.sigma
         for cell in cells:
             i, j, k = cell
-            d_prop = _axis_cell_size(grid, ax_p, cell[ip])
-            d_width = _axis_cell_size(grid, ax_w, cell[iw])
+            # #691: the two axes TRANSVERSE to the port component (which is
+            # always "ez", along the substrate NORMAL) enter through the dual
+            # face the cell current pierces, so d_prop / d_width are DUAL
+            # spacings; d_norm stays PRIMAL — it is the E edge the cell
+            # voltage is taken over. With this spelling every cell realizes
+            # G_cell = n_z/(Z0·n_y) exactly, on any grading, so the
+            # series-in-normal / parallel-in-width total is exactly 1/Z0.
+            # The old all-primal form was off by dual/primal on each
+            # transverse axis (measured on a 2:1 dx grading with the feed on
+            # the transition node: Y·Z0 = 0.750 fine->coarse, 1.500
+            # coarse->fine, 1.000 on a uniform control).
+            d_prop = _axis_dual_size(grid, ax_p, cell[ip])
+            d_width = _axis_dual_size(grid, ax_w, cell[iw])
             d_norm = _axis_cell_size(grid, ax_n, cell[inr])
             sigma_cell = (
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
@@ -802,9 +841,16 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     # cross-section, magnitude chosen so that the time-averaged power
     # dissipated equals V²/Z0 when V is the TEM voltage.
     #
-    #     P_diss  = σ · dx_feed · ∫∫ |Ez(y,z)|² dy dz
+    #     P_diss  = σ · dual_prop · ∫∫ |Ez(y,z)|² dual_w dy · d_norm dz
     #     V²/Z0   = matched-load power
-    #     ⇒ σ    = 1 / (Z0 · dx_feed · ∫∫ |ez_w|² dy dz)
+    #     ⇒ σ    = 1 / (Z0 · dual_prop · ∫∫ |ez_w|² dual_w d_norm)
+    #
+    # #691: the Joule control volume of an "ez" node is
+    # d_norm(PRIMAL) · dual_prop · dual_width, so the propagation- and
+    # width-axis factors are DUAL spacings and only the normal-axis factor is
+    # the primal cell. The scalar ``dy``/``dz`` the mode profile carries are
+    # the single cells at the trace/substrate corner, which is also wrong on
+    # a mesh graded across the cross-section — the sum below is per-cell.
     #
     # ez_w is the normalised mode shape (∫ez_w·dz = 1V at trace centre),
     # so V_TEM = V_src and the integral is taken over the full fringing
@@ -814,19 +860,30 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     j_box_lo = int(mode_profile["j_grid_lo"])
     k_box_lo = int(mode_profile["k_grid_lo"])
     n_z_sub = int(mode_profile["n_z_sub"])
-    dy = float(mode_profile["dy"])
-    dz = float(mode_profile["dz"])
     # Issue #661: project physical cells onto (width, normal) indices.
     ip = int(mode_profile["prop_idx"])
     iw = int(mode_profile["width_idx"])
     inr = int(mode_profile["normal_idx"])
     ax_p = str(mode_profile["prop_axis"])
+    ax_w = str(mode_profile["width_axis"])
+    ax_n = str(mode_profile["normal_axis"])
 
     # i_feed is constant across cell_indices, on the PROPAGATION axis.
     i_feed = cell_indices[0][ip]
-    dx_feed = float(_axis_cell_size(grid, ax_p, i_feed))
+    dx_feed = float(_axis_dual_size(grid, ax_p, i_feed))
 
-    integrand = float(np.sum(ez_profile * ez_profile) * dy * dz)
+    # Per-cell cross-section weights: DUAL along the width axis, PRIMAL along
+    # the substrate normal. ``dy``/``dz`` from the mode profile stay in use
+    # for the Laplace box geometry only. On a uniform mesh this reduces to
+    # ``sum(ez**2) * dy * dz`` to the last bits.
+    w_dual = np.array(
+        [_axis_dual_size(grid, ax_w, j_box_lo + jl)
+         for jl in range(ez_profile.shape[0])], dtype=np.float64)
+    n_prim = np.array(
+        [_axis_cell_size(grid, ax_n, k_box_lo + kl)
+         for kl in range(ez_profile.shape[1])], dtype=np.float64)
+    integrand = float(np.sum(
+        ez_profile * ez_profile * w_dual[:, None] * n_prim[None, :]))
     if integrand <= 0:
         return materials
     sigma_uniform = 1.0 / (port.impedance * dx_feed * integrand)

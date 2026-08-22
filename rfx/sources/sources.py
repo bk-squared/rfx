@@ -15,41 +15,115 @@ from rfx.grid import Grid
 from rfx.core.yee import EPS_0
 
 
-def _axis_cell_sizes(grid, k_index: int = 0) -> tuple[float, float, float]:
-    """Return (dx, dy, dz) cell sizes, handling both Grid and NonUniformGrid.
+_PORT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
-    For uniform Grid: dx = dy = dz = grid.dx.
-    For NonUniformGrid: dx, dy are uniform; dz comes from grid.dz[k_index].
+
+def _nu_cell_arrays(grid):
+    """Per-cell (dx, dy, dz) arrays for a ``NonUniformGrid``, else ``None``.
+
+    Read as float64 — the same dtype the already-corrected termination stamp
+    in ``rfx/runners/nonuniform.py`` uses — so the sigma a port stamps and the
+    metrics an extractor weights its Ampere legs by are one set of numbers.
     """
-    dx = float(grid.dx)
-    dy = float(getattr(grid, 'dy', dx))
-    dz_arr = getattr(grid, 'dz', None)
-    dz = float(dz_arr[k_index]) if dz_arr is not None else dx
-    return dx, dy, dz
+    dx_arr = getattr(grid, "dx_arr", None)
+    if dx_arr is None:
+        return None
+    import numpy as _np
+    return (
+        _np.asarray(dx_arr, dtype=_np.float64),
+        _np.asarray(grid.dy_arr, dtype=_np.float64),
+        _np.asarray(grid.dz, dtype=_np.float64),
+    )
+
+
+def _axis_cell_sizes(grid, position_ijk: tuple[int, int, int]
+                     ) -> tuple[float, float, float]:
+    """PRIMAL (dx, dy, dz) cell sizes AT ``position_ijk``.
+
+    Uniform ``Grid`` is cubic and carries a single scalar, so all three are
+    ``grid.dx`` — byte-identical to the pre-#691 spelling.
+
+    ``NonUniformGrid`` carries per-cell ``dx_arr`` / ``dy_arr`` / ``dz``.
+    This used to read the SCALAR ``grid.dx`` / ``grid.dy`` for the x and y
+    sizes, which on that grid are the BOUNDARY cell sizes (see the
+    ``NonUniformGrid`` field comments) — the wrong cell everywhere the mesh
+    is graded, not merely at a grading step. Measured (issue #691) on a
+    0.5/1.0 mm doubly-graded fixture, a nominal 50 ohm parallel-R RLC element
+    realized 12.5 ohm at a LOCALLY UNIFORM node in the coarse region.
+    """
+    arrs = _nu_cell_arrays(grid)
+    if arrs is None:
+        dx = float(grid.dx)
+        dy = float(getattr(grid, "dy", dx))
+        dz_arr = getattr(grid, "dz", None)
+        dz = float(dz_arr[position_ijk[2]]) if dz_arr is not None else dx
+        return dx, dy, dz
+    dx_arr, dy_arr, dz_arr = arrs
+    return (float(dx_arr[position_ijk[0]]),
+            float(dy_arr[position_ijk[1]]),
+            float(dz_arr[position_ijk[2]]))
+
+
+def _axis_dual_sizes(grid, position_ijk: tuple[int, int, int]
+                     ) -> tuple[float, float, float]:
+    """E-node DUAL spacings ``(dual_x, dual_y, dual_z)`` at ``position_ijk``.
+
+    ``dual[k] = (d[k-1] + d[k]) / 2`` (``dual[0] = d[0]``) — the control
+    volume the non-uniform E update actually divides its curl by. Delegates
+    to :func:`rfx.nonuniform.e_node_dual_spacing_at` so there is one spelling
+    of that rule. On a uniform mesh dual == primal bit-exactly, so a uniform
+    ``Grid`` returns the same three numbers :func:`_axis_cell_sizes` does.
+    """
+    arrs = _nu_cell_arrays(grid)
+    if arrs is None:
+        return _axis_cell_sizes(grid, position_ijk)
+    from rfx.nonuniform import e_node_dual_spacing_at
+    return tuple(
+        float(e_node_dual_spacing_at(arrs[ax], int(position_ijk[ax])))
+        for ax in range(3)
+    )
+
+
+def port_dual_transverse(grid, position_ijk: tuple[int, int, int],
+                         component: str) -> tuple[float, float]:
+    """The two DUAL spacings transverse to ``component`` at the node.
+
+    They are the sides of the dual face the node's conduction / displacement
+    current pierces, i.e. the area factor in the discrete Ampere law the E
+    update integrates. Anything folded into ``sigma`` or ``eps_r`` at an E
+    node realizes its lumped value through THIS area — never through the
+    primal cell widths (issue #691, and #672/#688 for the current that
+    measures it).
+    """
+    duals = _axis_dual_sizes(grid, position_ijk)
+    axis = _PORT_AXIS[component]
+    return tuple(duals[i] for i in range(3) if i != axis)
 
 
 def port_sigma(grid, position_ijk: tuple[int, int, int],
                component: str, impedance: float) -> float:
     """Compute lumped port equivalent conductivity for anisotropic cells.
 
-    σ = d_parallel / (Z0 · d_perp1 · d_perp2)
+    σ = d_parallel_primal / (Z0 · dual_perp1 · dual_perp2)
 
-    This ensures P_dissipated = V²/Z0 regardless of cell aspect ratio.
-    For cubic cells (dx=dy=dz=d), reduces to 1/(Z0·d).
+    ``d_parallel`` is PRIMAL — it is the length of the E edge the port
+    voltage ``V = E·d_parallel`` is taken over. The two transverse factors
+    are DUAL: the realized conductance of a stamped σ is
+    ``G = σ·dual_b·dual_c/d_parallel``, fixed by the E node's discrete
+    Ampere / Joule control volume (issue #691). This ensures
+    P_dissipated = V²/Z0 regardless of cell aspect ratio; for cubic cells
+    (dx=dy=dz=d) it reduces to 1/(Z0·d).
     """
-    dx, dy, dz = _axis_cell_sizes(grid, k_index=position_ijk[2])
-    sizes = [dx, dy, dz]
-    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
-    d_par = sizes[axis]
-    d_perp = [sizes[i] for i in range(3) if i != axis]
+    axis = _PORT_AXIS[component]
+    d_par = _axis_cell_sizes(grid, position_ijk)[axis]
+    d_perp = port_dual_transverse(grid, position_ijk, component)
     return d_par / (impedance * d_perp[0] * d_perp[1])
 
 
 def port_d_parallel(grid, position_ijk: tuple[int, int, int],
                     component: str) -> float:
-    """Return the cell size along the port's E-field direction."""
-    dx, dy, dz = _axis_cell_sizes(grid, k_index=position_ijk[2])
-    return [dx, dy, dz][{"ex": 0, "ey": 1, "ez": 2}[component]]
+    """Return the PRIMAL cell size along the port's E-field direction."""
+    return _axis_cell_sizes(grid, position_ijk)[_PORT_AXIS[component]]
 
 
 @dataclass(frozen=True)

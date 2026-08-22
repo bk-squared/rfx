@@ -239,8 +239,19 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     """Fold R and C into material arrays at the element cell.
 
     For **parallel** topology:
-    - R: adds sigma_R = 1 / (R * dx) to the cell conductivity.
-    - C: adds eps_r_extra = C / (dx * EPS_0) to the cell permittivity.
+    - R: adds ``sigma_R = d_par / (R * dual_b * dual_c)`` to the cell
+      conductivity (:func:`rfx.sources.sources.port_sigma`).
+    - C: adds ``eps_r_extra = C * d_par / (EPS_0 * dual_b * dual_c)`` to the
+      cell permittivity.
+
+    Both realize their lumped value through the E node's dual face, whose
+    sides are the DUAL spacings on the two axes transverse to the element
+    component — not the primal cell widths, and not one scalar cell size.
+    The C fold used to read ``C / (d_par * EPS_0)``, which is
+    ``C * d_par / (EPS_0 * d_par**2)``: right only on a CUBIC cell, so it is
+    wrong on any anisotropic UNIFORM grid too, not only a graded one
+    (issue #691; measured on a uniform 1.0/0.5/0.25 mm cell, a nominal 1 pF
+    realized 0.125 pF as ``ex`` and 8.0 pF as ``ez``).
 
     For **series** topology with multiple components (R+C, R+L+C, etc.):
     - R and C are handled by the series ADE (shared current), so they
@@ -264,14 +275,20 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
 
     # Parallel topology, or series with a single component: fold into material
     # Use axis-aware formula: σ_R = d_parallel / (R · d_perp1 · d_perp2)
-    from rfx.sources.sources import port_sigma as _port_sigma, port_d_parallel as _d_par
+    from rfx.sources.sources import (
+        port_sigma as _port_sigma,
+        port_d_parallel as _d_par,
+        port_dual_transverse as _dual_perp,
+    )
     if spec.R > 0:
         sigma = sigma.at[i, j, k].add(
             _port_sigma(grid, (i, j, k), spec.component, spec.R))
 
     if spec.C > 0:
         d_par = _d_par(grid, (i, j, k), spec.component)
-        eps_r = eps_r.at[i, j, k].add(spec.C / (d_par * EPS_0))
+        dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
+        eps_r = eps_r.at[i, j, k].add(
+            spec.C * d_par / (EPS_0 * dual_b * dual_c))
 
     return materials._replace(sigma=sigma, eps_r=eps_r)
 
@@ -367,7 +384,11 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
     if spec.topology == "series" and _series_needs_ade(spec):
         return materials
 
-    from rfx.sources.sources import port_sigma as _port_sigma, port_d_parallel as _d_par
+    from rfx.sources.sources import (
+        port_sigma as _port_sigma,
+        port_d_parallel as _d_par,
+        port_dual_transverse as _dual_perp,
+    )
     if spec.R > 0:  # static presence check on the plain-float spec
         R = _resolve_value(spec.R, r_val)
         sigma = sigma.at[i, j, k].add(
@@ -376,7 +397,10 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
     if spec.C > 0:
         C = _resolve_value(spec.C, c_val)
         d_par = _d_par(grid, (i, j, k), spec.component)
-        eps_r = eps_r.at[i, j, k].add(C / (d_par * EPS_0))
+        dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
+        # Same dual-face fold as the concrete path (#691). d_par / dual_b /
+        # dual_c are plain floats from the grid, so a traced C stays traced.
+        eps_r = eps_r.at[i, j, k].add(C * d_par / (EPS_0 * dual_b * dual_c))
 
     return materials._replace(sigma=sigma, eps_r=eps_r)
 
