@@ -2220,7 +2220,8 @@
       "params": [
         "state",
         "grid",
-        "port"
+        "port",
+        "periodic"
       ]
     },
     "wire_port_voltage": {
