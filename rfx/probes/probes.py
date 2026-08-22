@@ -125,11 +125,68 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     return -field[i, j, k] * grid.dx
 
 
-def port_current(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
+def _bwd_h(h, idx, axis, periodic=(False, False, False)):
+    """``h`` one cell back along ``axis``, with the SAME out-of-domain
+    convention the uniform E update uses.
+
+    Uniform-lane twin of :func:`rfx.nonuniform._bwd_neighbor` (issue #689),
+    and this is where the rule ships: ``rfx/__init__.py`` re-exports
+    ``wire_port_current`` as the public ``rfx.wire_port_current``, and both
+    extractors here sit behind ``extract_s_matrix`` / ``extract_s_matrix_wire``.
+
+    ``update_e()`` differences H through ``_diff_bwd_o`` -> ``rfx.core.yee.
+    _shift_bwd``, which pads explicitly with ZERO on a non-periodic axis. The
+    raw ``state.h*[i - 1]`` these extractors used to spell is, at ``i == 0``,
+    Python's negative index — H at the OPPOSITE face of the domain. A 4-term
+    LOCAL Ampere loop must not read a cell it does not enclose. Measured at
+    head on a (11,11,11) pec grid with dx = 0.2 mm and the port at index 0:
+    perturbing that far-face H cell by 1e6 moved the reported current by
+    exactly ±1e6·dx = ±200.0 A on all six (component, back-read axis)
+    branches of EACH extractor — twelve in total (issue #692; the issue text
+    says 1e6·dx², the loop weight is one factor of dx, not two).
+
+    The wrap is KEPT, deliberately, on the two kinds of axis #689 measured it
+    to be load-bearing on — an unconditional zero pad is a regression there:
+
+    * ``h.shape[axis] == 1`` — the 2-D lane. ``rfx/simulation.py`` forces
+      ``periodic[2] = True`` when ``grid.is_2d`` and ``nz == 1``; the wrap is
+      what makes the single z cell its own neighbour. (``(0 - 1) % 1 == 0``,
+      so this branch returns the cell itself, matching ``_bwd_neighbor``.)
+    * ``periodic[axis]`` — cell ``0`` and cell ``n-1`` really are neighbours.
+      Callers on a periodic lane must pass their run's flags.
+
+    The default is the NON-periodic convention, and it is the right default
+    for every shipped caller: preflight ``_validate_run_sparameter_request``
+    (``rfx/api/_preflight.py``) refuses lumped/wire S-parameters under
+    periodic axes (#206, ``NotImplementedError``), so no periodic run reaches
+    these extractors today.
+    """
+    n = h.shape[axis]
+    i = int(idx[axis])
+    if n == 1 or periodic[axis]:
+        back = list(idx)
+        back[axis] = (i - 1) % n
+        return h[tuple(back)]
+    if i == 0:
+        return jnp.zeros_like(h[idx])
+    back = list(idx)
+    back[axis] = i - 1
+    return h[tuple(back)]
+
+
+def port_current(state, grid: Grid, port: LumpedPort,
+                 periodic=(False, False, False)) -> jnp.ndarray:
     """Current through the lumped port via Ampere's law loop integral.
 
-    Integrates H around the port cell using the same curl convention as
-    update_e() in yee.py (backward differences: H[i] - H[i-1]).
+    Integrates H around the port cell with the backward-difference curl
+    convention ``update_e()`` in ``yee.py`` uses — INCLUDING its
+    out-of-domain padding, which goes through ``_diff_bwd_o`` ->
+    ``rfx.core.yee._shift_bwd`` and is an explicit ZERO, not a wrap. This
+    docstring used to claim "the same curl convention as update_e()" while
+    every backward read was a raw ``h[i-1]``; issue #689 falsified that
+    claim on the non-uniform twin and #692 fixes it here. Each backward read
+    now goes through :func:`_bwd_h`, which keeps the wrap only on a length-1
+    (2-D) or genuinely periodic axis.
 
     For an Ez port at (i, j, k):
         I = (Hy[i,j,k] - Hy[i-1,j,k] - Hx[i,j,k] + Hx[i,j-1,k]) * dx
@@ -145,37 +202,47 @@ def port_current(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     state : FDTDState
     grid : Grid
     port : LumpedPort
+    periodic : (bool, bool, bool)
+        Per-axis periodic flags for the run. Default is the non-periodic
+        convention — see :func:`_bwd_h` for why that is right for every
+        shipped caller.
 
     Returns
     -------
     float scalar
     """
-    idx = grid.position_to_index(port.position)
-    i, j, k = idx
+    idx = tuple(grid.position_to_index(port.position))
     dx = grid.dx
 
-    if port.component == "ez":
-        # curl_z = (Hy[i,j,k] - Hy[i-1,j,k] - Hx[i,j,k] + Hx[i,j-1,k]) / dx
-        i_loop = (
-            state.hy[i, j, k] - state.hy[i - 1, j, k]
-            - state.hx[i, j, k] + state.hx[i, j - 1, k]
-        ) * dx
-    elif port.component == "ex":
-        # curl_x = (Hz[i,j,k] - Hz[i,j-1,k] - Hy[i,j,k] + Hy[i,j,k-1]) / dx
-        i_loop = (
-            state.hz[i, j, k] - state.hz[i, j - 1, k]
-            - state.hy[i, j, k] + state.hy[i, j, k - 1]
-        ) * dx
-    elif port.component == "ey":
-        # curl_y = (Hx[i,j,k] - Hx[i,j,k-1] - Hz[i,j,k] + Hz[i-1,j,k]) / dx
-        i_loop = (
-            state.hx[i, j, k] - state.hx[i, j, k - 1]
-            - state.hz[i, j, k] + state.hz[i - 1, j, k]
-        ) * dx
-    else:
-        raise ValueError(f"Unknown port component: {port.component!r}")
+    return _ampere_loop(state, idx, port.component, dx, periodic)
 
-    return i_loop
+
+def _ampere_loop(state, idx, component, dx, periodic):
+    """4-term discrete Ampere loop at ``idx`` on a uniform (cubic) grid.
+
+    Single spelling shared by :func:`port_current` and
+    :func:`wire_port_current` — they were two verbatim copies of the same
+    six branches, and #692 had to fix the same wrap twice because of it.
+    """
+    if component == "ez":
+        # curl_z = (Hy[i,j,k] - Hy[i-1,j,k] - Hx[i,j,k] + Hx[i,j-1,k]) / dx
+        return (
+            state.hy[idx] - _bwd_h(state.hy, idx, 0, periodic)
+            - state.hx[idx] + _bwd_h(state.hx, idx, 1, periodic)
+        ) * dx
+    if component == "ex":
+        # curl_x = (Hz[i,j,k] - Hz[i,j-1,k] - Hy[i,j,k] + Hy[i,j,k-1]) / dx
+        return (
+            state.hz[idx] - _bwd_h(state.hz, idx, 1, periodic)
+            - state.hy[idx] + _bwd_h(state.hy, idx, 2, periodic)
+        ) * dx
+    if component == "ey":
+        # curl_y = (Hx[i,j,k] - Hx[i,j,k-1] - Hz[i,j,k] + Hz[i-1,j,k]) / dx
+        return (
+            state.hx[idx] - _bwd_h(state.hx, idx, 2, periodic)
+            - state.hz[idx] + _bwd_h(state.hz, idx, 0, periodic)
+        ) * dx
+    raise ValueError(f"Unknown port component: {component!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -742,17 +809,22 @@ def wire_port_voltage(state, grid, port) -> jnp.ndarray:
     return -field[mid[0], mid[1], mid[2]] * grid.dx
 
 
-def wire_port_current(state, grid, port) -> jnp.ndarray:
+def wire_port_current(state, grid, port,
+                      periodic=(False, False, False)) -> jnp.ndarray:
     """Current through a WirePort via Ampere's law at the midpoint cell.
 
-    Uses H-field loop integral at the center cell of the wire,
-    identical to the single-cell port_current() calculation.
+    Uses the H-field loop integral at the center cell of the wire, the same
+    :func:`_ampere_loop` :func:`port_current` uses. Out-of-domain H is ZERO
+    (#692) — see :func:`_bwd_h` for the rule and for the two axis kinds that
+    keep the wrap.
 
     Parameters
     ----------
     state : FDTDState
     grid : Grid
     port : WirePort
+    periodic : (bool, bool, bool)
+        Per-axis periodic flags for the run; default non-periodic.
 
     Returns
     -------
@@ -762,28 +834,9 @@ def wire_port_current(state, grid, port) -> jnp.ndarray:
 
     cells = _wire_port_cells(grid, port)
     mid = cells[len(cells) // 2]
-    i, j, k = mid
     dx = grid.dx
 
-    if port.component == "ez":
-        i_loop = (
-            state.hy[i, j, k] - state.hy[i - 1, j, k]
-            - state.hx[i, j, k] + state.hx[i, j - 1, k]
-        ) * dx
-    elif port.component == "ex":
-        i_loop = (
-            state.hz[i, j, k] - state.hz[i, j - 1, k]
-            - state.hy[i, j, k] + state.hy[i, j, k - 1]
-        ) * dx
-    elif port.component == "ey":
-        i_loop = (
-            state.hx[i, j, k] - state.hx[i, j, k - 1]
-            - state.hz[i, j, k] + state.hz[i - 1, j, k]
-        ) * dx
-    else:
-        raise ValueError(f"Unknown port component: {port.component!r}")
-
-    return i_loop
+    return _ampere_loop(state, tuple(mid), port.component, dx, periodic)
 
 
 # ---------------------------------------------------------------------------
