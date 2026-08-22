@@ -722,10 +722,29 @@ def compute_msl_mode_profile(
 
     # Normalise so ∫Ez·dz at the trace centre = 1 V (in COARSE cells,
     # which is what the FDTD source uses).
+    #
+    # ``v_centre`` is a MODAL VOLTAGE: the line integral of Ez along the
+    # substrate-normal axis at the trace-centre column.  The Ez node at
+    # normal index k sits on the PRIMAL z-edge of length ``dz_arr[k]``, so
+    # the discrete line integral is ``Σ_k Ez[k]·dz_arr[k]`` — per cell.  A
+    # single scalar ``dz`` is only correct when every edge in the span has
+    # that length.
+    #
+    # The reader fixes the spelling, not a convention chosen here:
+    # ``rfx.api._sparams.msl_modal_voltage`` extracts V as
+    # ``Σ_k ez_plane[...,k] * float(dz_arr[k])``.  Normalising against a
+    # scalar leaves the injected "1 V" mode carrying a different voltage
+    # than the extractor reads back, and — since #691 made the σ sizing
+    # integral per-cell — the two scalar-``dz`` errors no longer cancel.
+    # Measured on a 2:1 z-graded substrate, realized termination impedance
+    # against a nominal 50 Ω: 135.56 Ω with the scalar, 50.00 Ω with this.
     j_trace_coarse_lo = laplace_pad_y_coarse
     j_trace_coarse_hi = laplace_pad_y_coarse + (n_y_trace - 1)
     j_centre_coarse = (j_trace_coarse_lo + j_trace_coarse_hi) // 2
-    v_centre = float(np.sum(ez_coarse_full[j_centre_coarse, :]) * dz)
+    dz_span = np.array(
+        [_axis_cell_size(grid, normal_axis, k_grid_lo + k_c)
+         for k_c in range(n_z_sub)], dtype=np.float64)
+    v_centre = float(np.sum(ez_coarse_full[j_centre_coarse, :] * dz_span))
     if abs(v_centre) > 1e-30:
         ez_coarse_full = ez_coarse_full / v_centre
 

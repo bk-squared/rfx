@@ -397,3 +397,149 @@ def test_uniform_grid_capacitance_fold_is_byte_identical_to_the_pre_691_form():
                              position=(1e-3, 1e-3, 1e-3), component=component)
         out = setup_rlc_materials(grid, spec, _mats(grid))
         assert np.float32(out.eps_r[idx]) == old_form
+
+
+# ---------------------------------------------------------------------------
+# Site 2b — compute_msl_mode_profile's 1 V normalisation
+#
+# The two gates above hand-build ``mode_profile`` so the metric under test is
+# isolated from the Laplace solve.  That is why they could not see the
+# regression this section closes: the profile's OWN normalisation still
+# divided by a single scalar ``dz`` while #691 made the sigma-sizing integral
+# per-cell, so the two scalar-dz errors stopped cancelling.  Everything below
+# therefore runs the REAL ``compute_msl_mode_profile``.
+# ---------------------------------------------------------------------------
+
+MSL_DX_PROF = np.array([0.2 * MM] * 4 + [0.4 * MM] * 6 + [0.2 * MM] * 4)   # 2:1
+MSL_DY_PROF = np.array([0.15 * MM] * 4 + [0.45 * MM] * 6 + [0.15 * MM] * 4)  # 3:1
+
+
+def _msl_graded_fixture(z_ratio):
+    """MSL on a substrate graded ``z_ratio`` along the substrate NORMAL.
+
+    x is graded 2:1 and y 3:1, so ``dual_x != dual_y != dual_z`` at every node
+    and an axis permutation cannot pass.
+    """
+    fine = 0.1 * MM
+    dz_prof = np.array([fine] * 2 + [fine * z_ratio] * 2 + [0.2 * MM] * 10,
+                       dtype=np.float64)
+    grid = make_nonuniform_grid(
+        (0.0, 0.0), dz_prof, float(MSL_DX_PROF[0]),
+        dx_profile=MSL_DX_PROF, dy_profile=MSL_DY_PROF, cpml_layers=0,
+        pec_faces={"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"},
+    )
+    x_edges = np.concatenate([[0.0], np.cumsum(MSL_DX_PROF)])
+    y_edges = np.concatenate([[0.0], np.cumsum(MSL_DY_PROF)])
+    z_edges = np.concatenate([[0.0], np.cumsum(dz_prof)])
+    port = MSLPort(
+        feed_x=float(x_edges[5]),
+        y_lo=float(y_edges[5]), y_hi=float(y_edges[9]),
+        z_lo=0.0, z_hi=float(z_edges[4]),
+        direction="+x", impedance=50.0,
+    )
+    return grid, port
+
+
+@pytest.mark.parametrize("z_ratio", [1.0, 2.0, 4.0])
+def test_msl_mode_profile_carries_one_volt_through_the_extractors_own_reader(
+        z_ratio):
+    """``compute_msl_mode_profile`` documents its output as "normalised so
+    that integrating Ez·dz along z at the trace centre yields 1 V".
+
+    ``v_centre`` is a MODAL VOLTAGE — a line integral of Ez along the
+    substrate normal — and on the Yee grid the Ez node at normal index k sits
+    on the PRIMAL edge of length ``dz_arr[k]``, so the discrete integral is
+    ``Σ_k Ez[k]·dz_arr[k]``.  The oracle here is not that statement but the
+    READER: ``rfx.api._sparams.msl_modal_voltage``, the extractor that turns
+    a recorded Ez plane into V, written for a different lane.  If the two
+    disagree the injected "1 V" mode is not the volt the S-matrix reads back.
+
+    Measured with the pre-fix scalar-``dz`` spelling on this fixture:
+    V = 1.263197 (z_ratio 1), 1.631995 (2), 2.369591 (4).
+    """
+    from rfx.api._sparams import msl_modal_voltage
+    from rfx.sources.msl_port import compute_msl_mode_profile
+
+    grid, port = _msl_graded_fixture(z_ratio)
+    mp = compute_msl_mode_profile(grid, port, 4.4)
+    ez = np.asarray(mp["ez_profile"])
+    j_lo, k_lo, n_z = int(mp["j_grid_lo"]), int(mp["k_grid_lo"]), int(mp["n_z_sub"])
+    j_centre = (int(mp["trace_j_lo"]) + int(mp["trace_j_hi"])) // 2
+
+    # Register the profile onto a full (n_freqs, ny, nz) plane the way the
+    # source does, then let the extractor integrate it.  ``k_hi`` is
+    # exclusive: here it is the top of the profile's own span, which is the
+    # span the source injects over.
+    ez_plane = np.zeros((1, grid.shape[1], grid.shape[2]), dtype=np.float64)
+    ez_plane[0, j_lo:j_lo + ez.shape[0], k_lo:k_lo + ez.shape[1]] = ez
+    v = msl_modal_voltage(
+        jnp.asarray(ez_plane), j_centre=j_centre,
+        k_lo=k_lo, k_hi=k_lo + n_z, dz_arr=np.asarray(grid.dz),
+    )
+    assert float(v[0]) == pytest.approx(1.0, rel=1e-9), (
+        f"z_ratio {z_ratio}: profile carries V = {float(v[0])} V, not 1 V — "
+        f"the normalisation and the extractor disagree about ∫Ez·dz"
+    )
+
+
+@pytest.mark.parametrize("z_ratio", [1.0, 2.0, 4.0])
+def test_msl_eigenmode_realizes_z0_end_to_end_on_a_graded_substrate(z_ratio):
+    """End-to-end: profile solve -> sigma sizing -> realized impedance.
+
+    ``Z_realized = V_port² / P_diss`` with both halves read from the solver's
+    own metrics (``1/grid.inv_d*`` and ``grid.d*_arr``), never from
+    ``e_node_dual_spacing_at``.  #691 made ``P_diss`` exactly ``1/Z0`` but
+    left ``V_port`` scalar-normalised, so the realized impedance moved by
+    ``V_port²`` and got WORSE than before that commit.
+
+    Measured on this fixture at HEAD 856ac9b: 79.78 Ω (z_ratio 1),
+    133.17 Ω (2), 280.75 Ω (4), against a nominal 50 Ω.
+    """
+    from rfx.sources.msl_port import compute_msl_mode_profile
+
+    grid, port = _msl_graded_fixture(z_ratio)
+    mp = compute_msl_mode_profile(grid, port, 4.4)
+    out = setup_msl_port(grid, port, _mats(grid), mode_profile=mp)
+
+    ez = np.asarray(mp["ez_profile"])
+    j_lo, k_lo = int(mp["j_grid_lo"]), int(mp["k_grid_lo"])
+    j_c = (int(mp["trace_j_lo"]) + int(mp["trace_j_hi"])) // 2 - j_lo
+    dz_prim = np.array([_oracle_primal(grid, (0, 0, k_lo + k))[2]
+                        for k in range(ez.shape[1])])
+    v_port = float(np.sum(ez[j_c, :] * dz_prim))
+
+    power = 0.0
+    for cell in mp["cell_indices"]:
+        duals = _oracle_duals(grid, cell)
+        d_norm = _oracle_primal(grid, cell)[2]
+        e = ez[cell[1] - j_lo, cell[2] - k_lo]
+        power += float(out.sigma[cell]) * e * e * d_norm * duals[0] * duals[1]
+
+    z_realized = v_port * v_port / power
+    assert z_realized == pytest.approx(float(port.impedance), rel=1e-6), (
+        f"z_ratio {z_ratio}: realized {z_realized:.2f} ohm against a nominal "
+        f"{float(port.impedance):.2f} ohm (V_port = {v_port:.6f}, "
+        f"P*Z0 = {power * float(port.impedance):.6f})"
+    )
+
+
+def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form():
+    """Per-cell weighting must not move the uniform lane.
+
+    ``np.sum(ez * dz_span)`` and ``np.sum(ez) * dz`` are NOT algebraically
+    guaranteed to agree bit-for-bit even when every ``dz_span`` entry equals
+    ``dz`` — each product rounds separately and ``dz`` is not a power of two
+    — so this is a MEASURED pin on this fixture, not an identity.  If it ever
+    reds, check the delta before touching it: a last-bit move is acceptable,
+    a visible one is not.
+    """
+    from rfx.sources.msl_port import compute_msl_mode_profile
+
+    grid = Grid(freq_max=2e10, domain=(4e-3, 4e-3, 2e-3), dx=0.1 * MM,
+                cpml_layers=4)
+    port = MSLPort(feed_x=1.0 * MM, y_lo=1.8 * MM, y_hi=2.2 * MM,
+                   z_lo=0.0, z_hi=0.3 * MM, direction="+x", impedance=50.0)
+    ez = np.asarray(compute_msl_mode_profile(grid, port, 4.4)["ez_profile"])
+    assert float(ez.sum()) == 73361.79312530009
+    assert float((ez * ez).sum()) == 169878467.3801139
+    assert float(ez.max()) == 4556.98256846321
