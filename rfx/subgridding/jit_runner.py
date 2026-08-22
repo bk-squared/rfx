@@ -32,6 +32,7 @@ from rfx.subgridding.sbp_sat_3d import (
 )
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0
+from rfx.probes.probes import _ampere_loop
 
 
 class SubgridResult(NamedTuple):
@@ -2081,32 +2082,24 @@ def _make_step_fn(ctx):
             i_dft = carry["lumped_sparam_i"]
 
             def _sample_lumped_vi(i, j, k, comp):
-                if comp == "ez":
-                    voltage = -ez_f_new[i, j, k] * dx_f
-                    current = (
-                        st_f.hy[i, j, k]
-                        - st_f.hy[i - 1, j, k]
-                        - st_f.hx[i, j, k]
-                        + st_f.hx[i, j - 1, k]
-                    ) * dx_f
-                elif comp == "ex":
-                    voltage = -ex_f_new[i, j, k] * dx_f
-                    current = (
-                        st_f.hz[i, j, k]
-                        - st_f.hz[i, j - 1, k]
-                        - st_f.hy[i, j, k]
-                        + st_f.hy[i, j, k - 1]
-                    ) * dx_f
-                elif comp == "ey":
-                    voltage = -ey_f_new[i, j, k] * dx_f
-                    current = (
-                        st_f.hx[i, j, k]
-                        - st_f.hx[i, j, k - 1]
-                        - st_f.hz[i, j, k]
-                        + st_f.hz[i - 1, j, k]
-                    ) * dx_f
-                else:
+                # #692: the SHARED Ampere loop. This used to be a fourth
+                # verbatim copy of the six branches with a raw `h[i-1]`, so a
+                # lumped port at index 0 on a back-read axis integrated H
+                # from the OPPOSITE face of the fine domain — a cell the
+                # local loop does not enclose.
+                #
+                # `periodic` is hard-coded False on all three axes because
+                # this runner has no periodic lane: `periodic` does not
+                # appear anywhere in this module, and the subgrid E/H updates
+                # it drives are built without one. The other guard
+                # `_bwd_h` keeps — a length-1 (2-D) axis — is driven off
+                # `h.shape[axis]`, not off these flags, so it still applies.
+                _e_new = {"ex": ex_f_new, "ey": ey_f_new, "ez": ez_f_new}
+                if comp not in _e_new:
                     raise ValueError(f"Unknown lumped S-parameter component: {comp!r}")
+                voltage = -_e_new[comp][i, j, k] * dx_f
+                current = _ampere_loop(
+                    st_f, (i, j, k), comp, dx_f, (False, False, False))
                 return voltage, current
 
             for idx_lp, (li, lj, lk, lc, _z0) in enumerate(lumped_sparam_meta):

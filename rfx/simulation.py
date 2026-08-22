@@ -1448,21 +1448,29 @@ def make_core_step(ctx: _StepContext):
 
         # Wire port S-param DFT accumulation BEFORE source injection so
         # that sampled V/I reflects only the load/cavity response.
+        if ctx.use_wire_sparams or ctx.use_lumped_sparams:
+            from rfx.probes.probes import _ampere_loop
         if ctx.use_wire_sparams:
             new_wire_accs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
                 v_dft, i_dft, vinc_dft = accs
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
                 v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                if wp_meta.component == "ez":
-                    i_val = (st.hy[mi,mj,mk] - st.hy[mi-1,mj,mk]
-                             - st.hx[mi,mj,mk] + st.hx[mi,mj-1,mk]) * dx
-                elif wp_meta.component == "ex":
-                    i_val = (st.hz[mi,mj,mk] - st.hz[mi,mj-1,mk]
-                             - st.hy[mi,mj,mk] + st.hy[mi,mj,mk-1]) * dx
-                else:
-                    i_val = (st.hx[mi,mj,mk] - st.hx[mi,mj,mk-1]
-                             - st.hz[mi,mj,mk] + st.hz[mi-1,mj,mk]) * dx
+                # #692: the SHARED loop, not a fourth inline copy. This block
+                # used to spell the six branches verbatim with a raw
+                # `h[i-1]`, so a port at index 0 read H from the OPPOSITE
+                # face of the domain — and this lane is the one described at
+                # the top of this file as "an AD-compatible alternative to
+                # the Python-loop extract_s_matrix path", i.e. it must agree
+                # with `probes.port_current` cell for cell. Measured against
+                # the helper on random H: the two spellings disagreed at 9 of
+                # 21 sampled (index, component) cells, every one of them at
+                # an index with a zero coordinate on a back-read axis.
+                # `_ampere_loop` is jit-safe here: `component` is a static
+                # str and `mi/mj/mk` are static Python ints (see
+                # WireSParamSpec), so every branch resolves at trace time.
+                i_val = _ampere_loop(
+                    st, (mi, mj, mk), wp_meta.component, dx, periodic)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_wire_accs.append((
@@ -1480,15 +1488,9 @@ def make_core_step(ctx: _StepContext):
                 v_dft_l, i_dft_l = accs
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
                 v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                if lp_meta.component == "ez":
-                    i_val_l = (st.hy[li,lj,lk] - st.hy[li-1,lj,lk]
-                               - st.hx[li,lj,lk] + st.hx[li,lj-1,lk]) * dx
-                elif lp_meta.component == "ex":
-                    i_val_l = (st.hz[li,lj,lk] - st.hz[li,lj-1,lk]
-                               - st.hy[li,lj,lk] + st.hy[li,lj,lk-1]) * dx
-                else:
-                    i_val_l = (st.hx[li,lj,lk] - st.hx[li,lj,lk-1]
-                               - st.hz[li,lj,lk] + st.hz[li-1,lj,lk]) * dx
+                # #692: shared loop — see the wire-port block above.
+                i_val_l = _ampere_loop(
+                    st, (li, lj, lk), lp_meta.component, dx, periodic)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_lumped_accs.append((

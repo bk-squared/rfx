@@ -19,6 +19,9 @@ stencil-consistency fix, not a repair of a measured wrong |S|.  The value is
 that the two lanes stop disagreeing about a convention.
 """
 
+import pathlib
+import re
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -252,3 +255,136 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
     assert glob > 1.0, glob
     assert second_last > 1e-3, second_last   # the interior really is excited
     assert last == 0.0, last
+
+
+# ---------------------------------------------------------------------------
+# #692 follow-up — the OTHER copies of this loop
+#
+# The commit that introduced `_ampere_loop` claimed the six duplicated
+# branches had been consolidated.  They had not: three more verbatim copies
+# survived with the raw `[i-1]` wrap —
+#
+#   rfx/simulation.py  (wire-port and lumped-port S-param accumulators, both
+#                       inside `Simulation.run()`'s jit scan, described at
+#                       rfx/simulation.py:105 as "an AD-compatible alternative
+#                       to the Python-loop extract_s_matrix path")
+#   rfx/subgridding/jit_runner.py  (`_sample_lumped_vi`)
+#
+# so the branch shipped two spellings of one loop that DISAGREE.  Measured on
+# random H, `_ampere_loop` against the inlined `[i-1]` arithmetic: 9 of 21
+# sampled (index, component) cells differ, every one at an index with a zero
+# coordinate on a back-read axis — e.g. at (0,0,0) all three components, at
+# (0,5,5) ey and ez.
+#
+# Why the gates below are structural rather than an end-to-end |S11|
+# comparison: 856ac9b MEASURED that the last-index H plane is identically zero
+# during a real uniform-lane run (the outermost E plane is pinned by
+# `apply_pec` and `_shift_fwd` pads zero beyond it), so the wrap is a runtime
+# NO-OP and no physical observable can separate the two spellings.  What can
+# be gated is that there is only ONE spelling left, and that the scan lane is
+# the one calling it.
+# ---------------------------------------------------------------------------
+
+#: A SCALAR point read of an H component one cell back, e.g. ``hy[i-1, j, k]``
+#: or ``hx[i, j, k - 1]``.  Subscripts containing a ``:`` are excluded so the
+#: slice-based stencils in adi.py / sbp_sat_2d.py / tfsf_2d.py do not match —
+#: those are whole-array differences with their own pad conventions, not
+#: single-cell Ampere loops.
+_RAW_BACKWARD_H = re.compile(r"\bh[xyz]\s*\[[^]:]*-\s*1\s*[,\]]")
+
+#: Files allowed to spell a scalar backward H read directly: the two places
+#: that DEFINE the convention.
+_BACKWARD_H_DEFINERS = {
+    "rfx/probes/probes.py",       # _bwd_h — the uniform-lane rule
+    "rfx/nonuniform.py",          # _bwd_neighbor — the non-uniform twin
+}
+
+
+def test_no_module_hand_rolls_a_backward_h_read_outside_the_two_definers():
+    """No fifth copy.
+
+    This loop has now been fixed three times (#689 on the non-uniform lane,
+    #692 on the public probes, and here for the jit-scan and subgrid lanes)
+    because it kept being duplicated.  A new inline `h[i-1]` is how that
+    recurs, so it is gated rather than trusted.
+
+    If this reds on a NEW site, the fix is to call `_ampere_loop` (or
+    `_bwd_h` for a single leg), not to add the path to the allowlist.  The
+    allowlist is for files that DEFINE the convention, and there are two.
+    """
+    root = pathlib.Path(__file__).resolve().parents[1]
+    offenders = []
+    for path in sorted((root / "rfx").rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        if rel in _BACKWARD_H_DEFINERS:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            if _RAW_BACKWARD_H.search(line):
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "inline backward-H reads outside _bwd_h / _bwd_neighbor:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_the_subgrid_runner_binds_the_shared_loop_not_a_local_copy():
+    """`rfx/subgridding/jit_runner.py` imports `_ampere_loop` at module level,
+    so a regression there would be a rebind rather than a new inline block."""
+    import rfx.probes.probes as _probes
+    import rfx.subgridding.jit_runner as _jit
+
+    assert _jit._ampere_loop is _probes._ampere_loop
+
+
+def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
+    """LANE-DISCRIMINATING: it is `rfx/simulation.py`'s scan body, not the
+    Python-loop extractor, that must be routed through the shared helper.
+
+    The spy records the CALLER's file and function, so a call arriving from
+    `probes.port_current` / `probes.wire_port_current` (the other lane, which
+    also goes through `_ampere_loop`) cannot satisfy this assertion.  It also
+    pins the arguments: the port's static index, and the run's own `periodic`
+    flags rather than a hard-coded tuple.
+    """
+    import inspect
+
+    import rfx.probes.probes as _probes
+    from rfx import Simulation
+    from rfx.sources.sources import GaussianPulse
+
+    real = _probes._ampere_loop
+    calls = []
+
+    def spy(state, idx, component, dx, periodic):
+        frame = inspect.currentframe().f_back
+        calls.append({
+            "file": pathlib.Path(frame.f_code.co_filename).as_posix(),
+            "func": frame.f_code.co_name,
+            "idx": tuple(int(v) for v in idx),
+            "component": component,
+            "periodic": tuple(bool(b) for b in periodic),
+        })
+        return real(state, idx, component, dx, periodic)
+
+    _probes._ampere_loop = spy
+    try:
+        sim = Simulation(freq_max=5e9, domain=(0.06, 0.03, 0.02), dx=3e-3,
+                         boundary="cpml", cpml_layers=6)
+        sim.add_port(position=(0.03, 0.015, 0.01), component="ez",
+                     impedance=50.0,
+                     waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+                     extent=0.006)
+        sim.run(n_steps=12, compute_s_params=True, skip_preflight=True)
+    finally:
+        _probes._ampere_loop = real
+
+    from_scan = [c for c in calls if c["file"].endswith("rfx/simulation.py")]
+    assert from_scan, (
+        "rfx/simulation.py's scan body never called the shared Ampere loop — "
+        "it is spelling the six branches inline again. Callers seen: "
+        + repr(sorted({(c["file"], c["func"]) for c in calls}))
+    )
+    for call in from_scan:
+        assert call["component"] in ("ex", "ey", "ez")
+        assert len(call["idx"]) == 3
+        assert len(call["periodic"]) == 3
