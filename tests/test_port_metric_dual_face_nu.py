@@ -35,7 +35,8 @@ import pytest
 
 from rfx.core.yee import EPS_0
 from rfx.grid import Grid
-from rfx.lumped import LumpedRLCSpec, setup_rlc_materials, setup_rlc_materials_traced
+from rfx.lumped import (LumpedRLCSpec, build_rlc_meta, setup_rlc_materials,
+                        setup_rlc_materials_traced)
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.simulation import MaterialArrays
 from rfx.sources.msl_port import MSLPort, msl_cross_section_span, setup_msl_port
@@ -543,3 +544,269 @@ def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form(
     assert float(ez.sum()) == 73361.79312530009
     assert float((ez * ez).sum()) == 169878467.3801139
     assert float(ez.max()) == 4556.98256846321
+
+
+# ---------------------------------------------------------------------------
+# Site 3 — the lumped RLC ADE itself (build_rlc_meta + _update_parallel /
+# _update_series)
+#
+# 1d3cc9c corrected `port_d_parallel`, which `build_rlc_meta` reads, and so
+# MOVED the realized inductance of `add_lumped_rlc(L=...)` on the NU lane
+# without a gate.  Nothing here covered an NU inductor at all.
+#
+# The element current has to become a current DENSITY through the node's DUAL
+# face, and the inductor's implicit self-coupling `gamma` has to use the same
+# area:
+#
+#     E^{n+1} = (D0*E_std - I^n / dual_area) / (D0 + gamma)
+#     I^{n+1} = I^n + (dt*d_par/L) * E^{n+1}
+#     gamma   = dt * d_par / (L * dual_area)
+#
+# The old pair spelled both with `d_par**2`.  That is self-consistent — it is
+# the correct scheme for a CUBIC cell — which is why the error is a clean
+# scale factor: the field sees an inductor of `L * d_par**2 / dual_area`.
+# ---------------------------------------------------------------------------
+
+#: ``e_new`` is read back out of a float32 field array, so any quantity
+#: derived from it carries float32 storage rounding.  MEASURED worst case over
+#: the 9 (component, node) cells below: |ratio - 1| = 1.353e-07, which is
+#: 1.13x ``np.finfo(np.float32).eps``.  The gates use 8x that eps -- a margin
+#: over the storage bound, and still four orders tighter than the SMALLEST
+#: defect being gated (ey at a locally-uniform node read 1.0125, i.e. 1.25 %).
+#: Do not tighten below the float32 bound; do not loosen without recomputing
+#: it.
+_F32_METRIC_REL = 8.0 * float(np.finfo(np.float32).eps)
+
+
+def _rlc_state_with_current(i_L):
+    from rfx.lumped import init_rlc_state
+    return init_rlc_state()._replace(inductor_current=jnp.asarray(i_L))
+
+
+def _single_node_state(grid, component, idx, e_value):
+    from rfx.core.yee import FDTDState
+    z = jnp.zeros(grid.shape)
+    fields = {n: z for n in ("ex", "ey", "ez", "hx", "hy", "hz")}
+    fields[component] = z.at[idx].set(e_value)
+    return FDTDState(**fields, step=jnp.asarray(0))
+
+
+def _oracle_dual_area(grid, idx, component):
+    """Area of the dual face the element current pierces, from the solver's
+    own E-update metrics — never from ``port_dual_transverse``."""
+    duals = _oracle_duals(grid, idx)
+    ax = AXIS[component]
+    b, c = [duals[t] for t in range(3) if t != ax]
+    return b * c
+
+
+def _graded_node(component, node):
+    """(grid, spec position, idx) for an element at ``node`` on all 3 axes."""
+    grid = _graded_grid()
+    pos = (_node_position(DX_PROF, node),
+           _node_position(DY_PROF, node),
+           _node_position(DZ_PROF, node))
+    return grid, pos, (node, node, node)
+
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+@pytest.mark.parametrize("node", sorted(NODE_KINDS))
+def test_nu_parallel_inductor_realizes_its_henries_on_a_graded_mesh(
+        component, node):
+    """``L_realized / L`` must be 1 at every node kind on every axis.
+
+    OPERATIONAL definition, so this cannot pass by restating the rule.  The
+    discrete Ampere law at the node says the field is loaded with
+    ``I_implied = -dual_area * D0 * (E_new - E_std)``; the element's own ODE
+    (``L dI/dt = E*d_par``) produced ``i_L_new``.  The inductance the FIELD
+    sees is therefore ``L * i_L_new / I_implied``.  ``dual_area`` comes from
+    ``1/grid.inv_d*``.
+
+    Measured before this gate existed (x2/y3/z4 fixture, target 1.0)::
+
+        node 3 fine->coarse     ex 3.333333  ey 2.160000  ez 1.422222
+        node 5 locally-uniform  ex 1.388889  ey 1.012500  ez 0.711111
+        node 7 coarse->fine     ex 0.833333  ey 0.240000  ez 0.088889
+
+    and at the commit BEFORE 1d3cc9c, ex node 3 read 0.833333 — that commit
+    moved it from 20 % low to 233 % high without a test noticing.
+    """
+    from rfx.lumped import _update_parallel
+
+    grid, pos, idx = _graded_node(component, node)
+    L = 1e-9
+    spec = LumpedRLCSpec(R=0.0, L=L, C=0.0, topology="parallel",
+                         position=pos, component=component)
+    mats = setup_rlc_materials(grid, spec, _mats(grid))
+    meta = build_rlc_meta(grid, spec, mats)
+    assert (meta.i, meta.j, meta.k) == idx
+
+    e_std, i_L = 3.7, 2.5e-3
+    state = _single_node_state(grid, component, idx, e_std)
+    new_state, rlc_new = _update_parallel(
+        state, _rlc_state_with_current(i_L), meta)
+    e_new = float(getattr(new_state, component)[idx])
+    i_new = float(rlc_new.inductor_current)
+
+    area = _oracle_dual_area(grid, idx, component)
+    i_implied = -area * meta.D0 * (e_new - e_std)
+    ratio = i_new / i_implied
+    assert ratio == pytest.approx(1.0, rel=_F32_METRIC_REL), (
+        f"{component} at a {NODE_KINDS[node]} node: L_realized/L = {ratio}"
+    )
+
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+@pytest.mark.parametrize("node", sorted(NODE_KINDS))
+def test_nu_series_element_loads_the_node_through_its_dual_face(
+        component, node):
+    """``_update_series`` has its own current-density conversion.
+
+    Read the area back out of the update rather than trusting the field:
+    ``(D0 + gamma)*E_new = D0*E_std - I_new/area`` inverts to
+    ``area = -I_new / ((D0 + gamma)*E_new - D0*E_std)``, which holds whatever
+    ``gamma`` is, so this gate isolates the area alone.
+    """
+    from rfx.lumped import _update_series
+
+    grid, pos, idx = _graded_node(component, node)
+    spec = LumpedRLCSpec(R=25.0, L=2e-9, C=0.0, topology="series",
+                         position=pos, component=component)
+    mats = setup_rlc_materials(grid, spec, _mats(grid))
+    meta = build_rlc_meta(grid, spec, mats)
+    assert meta.is_series, "fixture must exercise the series ADE"
+
+    e_std, i_s = 3.7, 2.5e-3
+    state = _single_node_state(grid, component, idx, e_std)
+    new_state, rlc_new = _update_series(
+        state, _rlc_state_with_current(i_s), meta)
+    e_new = float(getattr(new_state, component)[idx])
+    i_new = float(rlc_new.inductor_current)
+
+    denom = (meta.D0 + meta.gamma) * e_new - meta.D0 * e_std
+    area_implied = -i_new / denom
+    area_oracle = _oracle_dual_area(grid, idx, component)
+    assert area_implied == pytest.approx(area_oracle, rel=_F32_METRIC_REL), (
+        f"{component} at a {NODE_KINDS[node]} node: the series ADE converts "
+        f"its current through {area_implied} m^2, the node's dual face is "
+        f"{area_oracle} m^2 (primal d_par**2 would be "
+        f"{_oracle_primal(grid, idx)[AXIS[component]] ** 2})"
+    )
+
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+@pytest.mark.parametrize("node", sorted(NODE_KINDS))
+def test_nu_traced_rlc_meta_carries_the_same_fold_as_the_concrete_twin(
+        component, node):
+    """``forward()`` uses ``build_rlc_meta_traced``.  If only the concrete
+    builder were fixed the differentiable lane would keep the cubic-cell
+    inductance and the two lanes would disagree — the failure this repo has
+    hit twice recently."""
+    from rfx.lumped import build_rlc_meta_traced, setup_rlc_materials_traced
+
+    grid, pos, idx = _graded_node(component, node)
+    spec = LumpedRLCSpec(R=25.0, L=2e-9, C=1e-12, topology="parallel",
+                         position=pos, component=component)
+    concrete = build_rlc_meta(
+        grid, spec, setup_rlc_materials(grid, spec, _mats(grid)))
+    traced = build_rlc_meta_traced(
+        grid, spec, setup_rlc_materials_traced(grid, spec, _mats(grid)))
+    assert float(traced.dual_area) == pytest.approx(
+        float(concrete.dual_area), rel=1e-12)
+    assert float(traced.gamma) == pytest.approx(float(concrete.gamma), rel=1e-12)
+    assert float(concrete.dual_area) == pytest.approx(
+        _oracle_dual_area(grid, idx, component), rel=1e-12)
+
+
+def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
+    """On a cubic ``Grid`` ``dual_area == d_par**2``, so every ADE observable
+    must be unchanged.
+
+    ``gamma`` itself moves by exactly 1 ULP in float64 — ``dt*d/(L*(d*d))``
+    is 1.9065748695310059 where ``dt/(L*d)`` was 1.9065748695310056 — because
+    the two algebraically identical spellings round differently and ``d`` is
+    not a power of two.  The pins below are the OBSERVABLES after 200 driven
+    steps, which are float32 and bit-identical across that move; they are the
+    thing that must not change.
+    """
+    from rfx.core.yee import FDTDState
+    from rfx.lumped import _update_parallel, _update_series, init_rlc_state
+
+    grid = Grid(freq_max=1e10, domain=(2e-3, 2e-3, 2e-3), dx=0.2 * MM,
+                cpml_layers=4)
+    pos = (1e-3, 1e-3, 1e-3)
+    idx = tuple(int(v) for v in grid.position_to_index(pos))
+
+    def drive(topology, R, L, C, component, steps=200):
+        spec = LumpedRLCSpec(R=R, L=L, C=C, topology=topology,
+                             position=pos, component=component)
+        mats = setup_rlc_materials(grid, spec, _mats(grid))
+        meta = build_rlc_meta(grid, spec, mats)
+        z = jnp.zeros(grid.shape)
+        state = FDTDState(**{n: z for n in ("ex", "ey", "ez", "hx", "hy", "hz")},
+                          step=jnp.asarray(0))
+        rlc = init_rlc_state()
+        step_fn = _update_series if meta.is_series else _update_parallel
+        for n in range(steps):
+            amp = np.sin(2.0 * np.pi * 5e9 * n * float(grid.dt))
+            state = state._replace(
+                **{component: getattr(state, component).at[idx].add(amp)})
+            state, rlc = step_fn(state, rlc, meta)
+        return (float(getattr(state, component)[idx]),
+                float(rlc.inductor_current))
+
+    assert drive("parallel", 0.0, 1e-9, 0.0, "ez") == (
+        -0.10559134930372238, 6.394681690835569e-07)
+    assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
+        66.87545013427734, 0.0006415600073523819)
+    assert drive("series", 50.0, 1e-9, 0.0, "ex") == (
+        -0.6224570274353027, 6.808482453379838e-07)
+    assert drive("series", 50.0, 1e-9, 1e-12, "ey") == (
+        -0.3608303666114807, 6.59729153085209e-07)
+
+
+# ---------------------------------------------------------------------------
+# Site 4 — a TRACED mesh must fail LOUDLY, and that is a behaviour change
+# ---------------------------------------------------------------------------
+
+def test_a_traced_mesh_raises_instead_of_returning_a_zero_gradient():
+    """INTENTIONAL behaviour change, gated so it is not "fixed" back.
+
+    ``_axis_cell_sizes`` used to read the SCALAR ``grid.dx`` / ``grid.dy`` for
+    the two transverse axes.  Those stay plain floats when the profile is
+    traced, so a traced ``dx_profile`` with a concrete ``dz`` did not raise:
+    measured at d62d0e0 (the commit before #691), ``jax.grad`` RETURNED, with
+    a gradient of exactly 0.0 — while the value it returned was sized from
+    the BOUNDARY cell rather than the cell at the port node.
+
+    A wrong number carrying a silently zero gradient is worse than a crash:
+    an optimiser reads it as a converged, insensitive design variable.  That
+    is the #294 empty-window-gradient class.  So the limitation is unchanged
+    — this path has always needed concrete spacings — but it is now loud, and
+    the error says so rather than surfacing a raw
+    ``TracerArrayConversionError`` from inside numpy.
+    """
+    import jax
+
+    dz = np.array([0.2 * MM] * 10)
+    base_dx = np.array([0.5 * MM] * 3 + [1.0 * MM] * 4 + [0.5 * MM] * 3)
+
+    def objective(scale):
+        profile = jnp.asarray(base_dx) * scale
+        grid = make_nonuniform_grid(
+            (0.0, 0.0), dz, float(base_dx[0]),
+            dx_profile=profile, dy_profile=profile, cpml_layers=0,
+            pec_faces={"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"},
+        )
+        return port_sigma(grid, (5, 5, 5), "ez", 50.0)
+
+    with pytest.raises(NotImplementedError, match="CONCRETE per-cell mesh"):
+        jax.grad(objective)(1.0)
+
+
+def test_a_concrete_mesh_still_reaches_the_port_metric():
+    """The guard must key on TRACING, not on the grid being non-uniform —
+    otherwise it would break every concrete NU port."""
+    grid = _graded_grid()
+    assert port_sigma(grid, (5, 5, 5), "ez", 50.0) > 0.0
+    assert port_d_parallel(grid, (5, 5, 5), "ez") > 0.0

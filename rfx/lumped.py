@@ -195,11 +195,17 @@ class RLCCellMeta(NamedTuple):
     component: str
     has_inductor: bool
     has_capacitor: bool     # True when C > 0
-    gamma: float   # dt / (L * dx) — inductor ADE term (0 if L == 0)
+    gamma: float   # dt * d_par / (L * dual_area) — inductor ADE term (0 if L == 0)
     D0: float      # eps/dt + sigma/2 — Yee denominator at cell
-    dx: float      # cell size
+    dx: float      # PRIMAL cell size along the component axis (the E edge
+                   # the element voltage V = E*d_par is taken over)
     dt_dx_over_L: float  # dt * dx / L — for I_L update (0 if L == 0)
     dt_over_C_dx: float  # dt / (C * dx) — for capacitor ADE (0 if C == 0)
+    dual_area: float     # dual_b * dual_c — the area of the dual face the
+                         # element current pierces, i.e. the E node's discrete
+                         # Ampere control-volume cross-section.  The element
+                         # current becomes a current DENSITY through this area,
+                         # never through dx**2 (which assumes a cubic cell).
     R: float               # resistance in ohms
     dt: float              # timestep in seconds
     is_series: bool        # True for series topology
@@ -300,9 +306,12 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
     sigma at the cell reflect the R and C contributions.
     """
     from rfx.sources.sources import port_d_parallel as _d_par
+    from rfx.sources.sources import port_dual_transverse as _dual_t
     idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
+    _b, _c = _dual_t(grid, idx, spec.component)
+    dual_area = _b * _c
     dt = grid.dt
 
     eps = float(materials.eps_r[i, j, k]) * EPS_0
@@ -315,7 +324,16 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
     if has_inductor:
-        gamma = dt / (spec.L * d_par)
+        # gamma is the implicit self-coupling of the inductor into the E
+        # update.  Eliminating I^{n+1} = I^n + (dt*d_par/L)*E^{n+1} from the
+        # Ampere balance  D0*(E^{n+1} - E_std) = -I^{n+1}/dual_area  gives
+        #     E^{n+1} = (D0*E_std - I^n/dual_area) / (D0 + gamma),
+        #     gamma   = dt * d_par / (L * dual_area).
+        # The old spelling dt/(L*d_par) is that with dual_area = d_par**2,
+        # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
+        # I/(dx*dx) below, which is why the pair realized an inductance
+        # L * d_par**2 / dual_area instead of L (issue #691 follow-up).
+        gamma = dt * d_par / (spec.L * dual_area)
         dt_dx_over_L = dt * d_par / spec.L
     else:
         gamma = 0.0
@@ -336,6 +354,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
         dx=d_par,
         dt_dx_over_L=dt_dx_over_L,
         dt_over_C_dx=dt_over_C_dx,
+        dual_area=dual_area,
         R=spec.R,
         dt=dt,
         is_series=is_series,
@@ -419,9 +438,12 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     ``jax.grad``.  Must be called AFTER ``setup_rlc_materials_traced``.
     """
     from rfx.sources.sources import port_d_parallel as _d_par
+    from rfx.sources.sources import port_dual_transverse as _dual_t
     idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
+    _b, _c = _dual_t(grid, idx, spec.component)
+    dual_area = _b * _c
     dt = grid.dt
 
     # No float() coercion: eps/sigma at the cell may carry a folded R/C tracer.
@@ -440,7 +462,8 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     C = _resolve_value(spec.C, c_val)
 
     if has_inductor:
-        gamma = dt / (L * d_par)
+        # Same fold as the concrete twin above; see its comment.
+        gamma = dt * d_par / (L * dual_area)
         dt_dx_over_L = dt * d_par / L
     else:
         gamma = 0.0
@@ -461,6 +484,7 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
         dx=d_par,
         dt_dx_over_L=dt_dx_over_L,
         dt_over_C_dx=dt_over_C_dx,
+        dual_area=dual_area,
         R=R,
         dt=dt,
         is_series=is_series,
@@ -484,15 +508,19 @@ def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta):
     i_L = rlc_state.inductor_current
     Q = rlc_state.capacitor_charge
 
-    dx = meta.dx
     D0 = meta.D0
     gamma = meta.gamma
 
-    # E^{n+1} = (D0 * E_std - I_L^n / dx^2) / (D0 + gamma)
+    # E^{n+1} = (D0 * E_std - I_L^n / dual_area) / (D0 + gamma)
+    #
+    # The element current becomes a current DENSITY through the dual face it
+    # pierces -- ``dual_b * dual_c``, the E node's Ampere control-volume
+    # cross-section -- NOT through ``d_par**2``, which is that area only on a
+    # cubic cell.
     A = D0 + gamma
     e_new = jnp.where(
         meta.has_inductor,
-        (D0 * e_std - i_L / (dx * dx)) / A,
+        (D0 * e_std - i_L / meta.dual_area) / A,
         e_std,
     )
 
@@ -522,14 +550,15 @@ def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta):
             (1 + dt*R/(2*L)) * I_s^{n+1} = (1 - dt*R/(2*L)) * I_s^n
                                             + (dt/L) * (V_cell - Q^n/C)
             Q^{n+1} = Q^n + dt * I_s^{n+1}
-            J_s = I_s^{n+1} / dx^2  (current density correction)
+            J_s = I_s^{n+1} / dual_area  (current density correction)
 
         E-field correction: the standard Yee update did not account for
         the series current sink.  We correct by subtracting J_s from
         the update:
-            E^{n+1} = (D0 * E_std - I_s^{n+1} / dx^2) / (D0 + gamma)
+            E^{n+1} = (D0 * E_std - I_s^{n+1} / dual_area) / (D0 + gamma)
 
-        where gamma = dt/(L*dx) couples the inductor.
+        where gamma = dt*d_par/(L*dual_area) couples the inductor and
+        ``dual_area`` is the dual face the element current pierces.
 
     Case 2: no inductor (L == 0), has R and/or C
         RC series: R * dQ/dt + Q/C = E*dx
@@ -557,8 +586,8 @@ def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta):
     # --- Case 1: has inductor ---
     # Semi-implicit: (1 + dt*R/(2L)) * I_new = (1 - dt*R/(2L)) * I_old
     #                + (dt/L) * (V_cell - Q/C)
-    # where dt/L = gamma * dx  and  dt*R/(2L) = gamma*dx*R / (2*dx) ... let's
-    # use direct expressions for clarity.
+    # dt/L is recovered below from dt_dx_over_L (= dt*d_par/L), which carries
+    # no area factor -- do NOT route it through gamma, which does.
 
     # Precomputed: dt_dx_over_L = dt*dx/L, gamma = dt/(L*dx)
     # dt/L = dt_dx_over_L / dx  (when L > 0)
@@ -595,13 +624,13 @@ def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta):
 
     # E-field correction: subtract series current density from standard update.
     # For the inductor path, use the coupled correction:
-    #   E^{n+1} = (D0 * E_std - I_new / dx^2) / (D0 + gamma)
+    #   E^{n+1} = (D0 * E_std - I_new / dual_area) / (D0 + gamma)
     # For the RC-only path (no inductor), gamma=0 so:
-    #   E^{n+1} = E_std - I_new / (D0 * dx^2)
+    #   E^{n+1} = E_std - I_new / (D0 * dual_area)
     # Both simplify to the same formula since gamma=0 when L=0.
     gamma = meta.gamma  # 0 when L == 0
     A = D0 + gamma
-    e_new = (D0 * e_std - i_new / (dx * dx)) / jnp.maximum(A, 1e-30)
+    e_new = (D0 * e_std - i_new / meta.dual_area) / jnp.maximum(A, 1e-30)
 
     # For elements with no active ADE (shouldn't happen for series with
     # at least one nonzero component, but guard anyway)
