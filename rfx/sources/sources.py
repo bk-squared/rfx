@@ -24,16 +24,49 @@ def _nu_cell_arrays(grid):
     Read as float64 — the same dtype the already-corrected termination stamp
     in ``rfx/runners/nonuniform.py`` uses — so the sigma a port stamps and the
     metrics an extractor weights its Ampere legs by are one set of numbers.
+
+    A TRACED mesh (mesh-as-design-variable) raises. That is INTENTIONAL and it
+    is a deliberate behaviour change — see the ``NotImplementedError`` below.
     """
     dx_arr = getattr(grid, "dx_arr", None)
     if dx_arr is None:
         return None
     import numpy as _np
-    return (
-        _np.asarray(dx_arr, dtype=_np.float64),
-        _np.asarray(grid.dy_arr, dtype=_np.float64),
-        _np.asarray(grid.dz, dtype=_np.float64),
-    )
+    import jax
+    try:
+        return (
+            _np.asarray(dx_arr, dtype=_np.float64),
+            _np.asarray(grid.dy_arr, dtype=_np.float64),
+            _np.asarray(grid.dz, dtype=_np.float64),
+        )
+    except jax.errors.TracerArrayConversionError as exc:
+        # DELIBERATE, and a change from the pre-#691 behaviour rather than a
+        # restatement of it. Before #691 this read the SCALAR ``grid.dx`` /
+        # ``grid.dy`` for the two transverse axes; those are plain floats even
+        # when the profile is traced, so a traced ``dx_profile`` with a
+        # concrete ``dz`` did not raise — it RAN, sized the port from the
+        # BOUNDARY cell instead of the cell at the node, and returned a
+        # gradient of exactly 0.0 (measured: ``jax.grad`` -> 0.0, grad-norm
+        # 0.0). A wrong number carrying a silently zero gradient is the worse
+        # outcome: an optimiser reads it as a converged, insensitive design
+        # variable. This is the #294 empty-window-gradient class.
+        #
+        # So the limitation is unchanged — the port metric has always needed
+        # concrete per-cell spacings — but it is now LOUD. Do not "restore"
+        # the old behaviour by falling back to the scalars.
+        raise NotImplementedError(
+            "port metrics (port_sigma / port_d_parallel / "
+            "port_dual_transverse) need CONCRETE per-cell mesh spacings: the "
+            "realized conductance of a stamped sigma is fixed by the E node's "
+            "discrete Ampere control volume, which is built from the cell "
+            "sizes AT the port node. This grid carries a TRACED profile "
+            "(mesh-as-design-variable), which is not supported on this path. "
+            "Differentiate with respect to the port/material values on a "
+            "concrete mesh instead.\n\n"
+            "Before issue #691 this did not raise: it silently used the "
+            "BOUNDARY cell size for the two transverse axes and returned a "
+            "gradient of exactly 0.0 w.r.t. the mesh. Raising is intentional."
+        ) from exc
 
 
 def _axis_cell_sizes(grid, position_ijk: tuple[int, int, int]
