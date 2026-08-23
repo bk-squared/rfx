@@ -823,22 +823,27 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     """
     if not getattr(sim, "_msl_auto_offset_min", None):
         return list(sim._msl_ports)
-    if any(
-        getattr(sim, name, None) is not None
-        for name in ("_dz_profile", "_dx_profile", "_dy_profile")
-    ):
-        # NU lane — MUST mirror the driver's is_nonuniform predicate (all
-        # THREE profiles, compute_msl_s_matrix): the solve is defined for
-        # uniform grids only and the driver keeps the stored value there,
-        # so the document must freeze the stored value too. A dz-only
-        # check here shipped a real divergence (dx/dy-profile-only MSL
-        # sims dumped a solved offset the driver never uses — PR #478
-        # review MAJOR, regression-locked in
-        # test_auto_offset_dump_matches_driver_on_dx_profile_nu).
-        return list(sim._msl_ports)
     from rfx.api._sparams import _resolve_msl_auto_offsets
 
-    grid = sim._build_grid()
+    # MUST mirror the driver: hand ``_resolve_msl_auto_offsets`` the SAME
+    # grid ``compute_msl_s_matrix`` would build, and let the one shared
+    # function take the whole decision. This used to be a SECOND predicate
+    # here ("any of the three profiles set -> keep the stored value"),
+    # written to mirror the driver's blanket NU bail-out; a dz-only
+    # version of it shipped a real divergence once (dx/dy-profile-only MSL
+    # sims dumped a solved offset the driver never used — PR #478 review
+    # MAJOR, regression-locked in
+    # test_auto_offset_dump_matches_driver_on_dx_profile_nu). Since #686
+    # the driver's bail-out is per-port and keys on that port's
+    # PROPAGATION axis, so a copy here could drift again in a new way —
+    # passing the driver's grid to the driver's own function removes the
+    # copy instead of updating it.
+    is_nonuniform = any(
+        getattr(sim, name, None) is not None
+        for name in ("_dz_profile", "_dx_profile", "_dy_profile")
+    )
+    grid = (sim._build_nonuniform_grid() if is_nonuniform
+            else sim._build_grid())
     return list(_resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid))
 
 

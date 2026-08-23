@@ -28,7 +28,11 @@ from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_mas
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
-from rfx.materials.thin_conductor import apply_thin_conductor
+from rfx.materials.thin_conductor import (
+    CONDUCTOR_SIGMA_THRESHOLD as _CONDUCTOR_SIGMA_THRESHOLD,
+    apply_thin_conductor,
+    conductor_footprint,
+)
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.waveguide_port import (
     WaveguidePort,
@@ -395,6 +399,85 @@ class _CompileMixin:
                                    field_dtype=field_dtype)
 
         return materials, debye, lorentz
+
+    # Default sigma floor for "this cell is a conductor" (#695). Two
+    # decades below the PEC promotion threshold so ordinary lossy
+    # dielectrics (sigma ~ 1e-3 - 1e0 S/m) stay out while a real
+    # conductor -- including a DC-fold thin-conductor sheet, whose
+    # sigma_eff = sigma_bulk*t/dx is thousands of S/m -- lands in.
+    CONDUCTOR_SIGMA_THRESHOLD = _CONDUCTOR_SIGMA_THRESHOLD
+
+    def conductor_mask(
+        self,
+        grid=None,
+        *,
+        sigma_threshold: float | None = None,
+    ):
+        """Return the FULL conductor cell footprint of this simulation.
+
+        Since #677 a surface-impedance (``surface_impedance_f0``) thin
+        conductor is a node-thin per-step operator: it touches neither
+        ``pec_mask`` nor ``materials.sigma``, so the obvious hand-written
+        conductor test ``pec_mask | (sigma > 1e3)`` finds NOTHING for a
+        board whose every trace is an f0 sheet and reports a healthy
+        model as disconnected.  There are now three places a conductor
+        can live, and this accessor is the one spelling that covers all
+        three::
+
+            pec_mask | (sigma > sigma_threshold) | union(f0 sheet masks)
+
+        Parameters
+        ----------
+        grid : Grid or NonUniformGrid or None
+            Grid to rasterize against.  ``None`` (default) builds the
+            grid this simulation would actually run on -- the non-uniform
+            grid when any of ``dx_profile`` / ``dy_profile`` /
+            ``dz_profile`` is set, the uniform grid otherwise -- so the
+            returned mask has the shape of the real run's arrays.
+        sigma_threshold : float or None
+            Conductivity (S/m) at or above which a cell counts as
+            conductor.  Default :attr:`CONDUCTOR_SIGMA_THRESHOLD`
+            (``1e3``).  The comparison is strict ``>``, matching the
+            ``sigma > 1e3`` spelling this replaces.
+
+        Returns
+        -------
+        jnp.ndarray
+            Boolean array of ``grid.shape``.  All-False when the model
+            has no conductor at all.
+
+        Notes
+        -----
+        The f0 contribution is the sheet's rasterized CELL mask (the
+        one-layer footprint ``apply_pec_mask`` would zero for the same
+        shape), not the tangential EDGE masks the runtime operator
+        applies.  Cell footprint is what a connectivity / occupancy check
+        wants; the edge masks live on ``SheetImpedanceCtx``.
+        """
+        thr = (self.CONDUCTOR_SIGMA_THRESHOLD if sigma_threshold is None
+               else float(sigma_threshold))
+        is_nonuniform = (
+            self._dx_profile is not None
+            or self._dy_profile is not None
+            or self._dz_profile is not None
+        )
+        if grid is None:
+            grid = (self._build_nonuniform_grid() if is_nonuniform
+                    else self._build_grid())
+        sheet_specs: list = []
+        if isinstance(grid, NonUniformGrid):
+            materials, _, _, pec_mask = self._assemble_materials_nu(
+                grid, sheet_specs=sheet_specs)
+        else:
+            materials, _, _, pec_mask, _, _, _ = self._assemble_materials(
+                grid, sheet_specs=sheet_specs)
+        return conductor_footprint(
+            pec_mask=pec_mask,
+            sigma=materials.sigma,
+            sheet_masks=[sp.mask for sp in sheet_specs],
+            sigma_threshold=thr,
+            shape=grid.shape,
+        )
 
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients."""

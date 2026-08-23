@@ -111,38 +111,47 @@ class TestSimulationNonUniform:
         ts = np.asarray(result.time_series)
         assert ts.shape[0] == 20
 
-    def test_nonuniform_upml_smoke(self):
-        """boundary='upml' accepts a nonuniform dz_profile and stays stable.
+    def test_nonuniform_absorber_smoke(self):
+        """A nonuniform dz_profile with an absorbing boundary stays stable.
 
-        Commit 85de45f disentangled the scalar-dx curl scaling in UPML.
-        This regression pins that nonuniform + UPML (a) constructs,
-        (b) runs, (c) produces a non-trivial signal, (d) does not blow up.
+        Pins that nonuniform + absorber (a) constructs, (b) runs,
+        (c) produces a non-trivial signal, (d) does not blow up.
+
+        Was written as ``boundary='upml'`` and titled a UPML regression.
+        It never exercised UPML: the NU runner dispatches its absorber on
+        ``cpml_layers > 0`` and never reads the boundary type, so this
+        fixture ran CPML the whole time (issue #680 — measured 0
+        ``apply_upml_e`` calls on the NU lane against 1 on the uniform
+        lane for otherwise identical configs). Since #680 the NU lane
+        REFUSES ``boundary='upml'``; this fixture now names the absorber
+        it actually runs, and the refusal itself is pinned in
+        ``tests/test_nonuniform_upml_guard.py``.
         """
         dz = np.array([0.4e-3] * 4 + [0.6e-3] * 6)
         sim = Simulation(
             freq_max=5e9, domain=(0.02, 0.02, 0.01),
             dx=0.5e-3, dz_profile=dz, cpml_layers=8,
-            boundary="upml",
+            boundary="cpml",
         )
         sim.add_source((0.01, 0.01, 0.0025), "ez")
         sim.add_probe((0.01, 0.01, 0.0025), "ez")
         result = sim.run(n_steps=100, compute_s_params=False)
         ts = np.asarray(result.time_series)
         assert ts.shape[0] == 100
-        assert np.all(np.isfinite(ts)), "UPML+nonuniform produced NaN/Inf"
+        assert np.all(np.isfinite(ts)), "CPML+nonuniform produced NaN/Inf"
         peak = float(np.max(np.abs(ts)))
         assert peak > 0.0, "signal stayed zero — source / probe mismatch"
         # Late-time amplitude must not exceed the initial pulse — absorbing
         # boundary should damp energy, never source it.
         assert float(np.max(np.abs(ts[-20:]))) <= 1.05 * peak, (
             f"late-time peak {np.max(np.abs(ts[-20:])):.3e} > 1.05x "
-            f"early peak {peak:.3e} — UPML sourcing energy"
+            f"early peak {peak:.3e} — absorber sourcing energy"
         )
 
     def test_nonuniform_ntff_box_accumulates(self):
         """NTFF box accumulates on NU mesh and yields finite far-field.
 
-        Runs an ez dipole inside the box on a graded-dz UPML domain
+        Runs an ez dipole inside the box on a graded-dz CPML domain
         for 150 steps. Asserts: (a) result exposes ntff_data/ntff_box,
         (b) all 6 face accumulators are finite and at least one has
         non-zero magnitude, (c) compute_far_field returns a finite
@@ -156,7 +165,7 @@ class TestSimulationNonUniform:
             domain=(0.02, 0.02, 0.01),
             dx=0.5e-3,
             dz_profile=dz,
-            boundary="upml",
+            boundary="cpml",
         )
         sim.add_source((0.01, 0.01, 0.004), "ez")
         sim.add_ntff_box(
@@ -210,7 +219,7 @@ class TestSimulationNonUniform:
                 domain=(0.02, 0.02, 0.01),
                 dx=0.5e-3,
                 dz_profile=dz,
-                boundary="upml",
+                boundary="cpml",
             )
             sim.add_source((0.01, 0.01, 0.005), "ez")
             sim.add_dft_plane_probe(
@@ -389,7 +398,7 @@ class TestSimulationNonUniform:
                 domain=domain,
                 dx=0.5e-3,
                 dz_profile=dz,
-                boundary="upml",
+                boundary="cpml",
             )
             sim.add_source(
                 src_pos, "ez",
@@ -634,17 +643,17 @@ class TestNTFFOnNonUniform:
     """NTFF + NU single-device composition (T5 polish — distributed
     variant deferred pending VESSL evidence)."""
 
-    @pytest.mark.filterwarnings("ignore:NTFF box extends into UPML")
+    @pytest.mark.filterwarnings("ignore:NTFF box extends into CPML")
     def test_ntff_data_populated_on_nu_path(self):
         """``sim.run(..., add_ntff_box(...))`` on a NU mesh returns a
         non-None ``ntff_data`` with the expected box-face layout."""
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 16, dtype=np.float64)
         sim = Simulation(
             freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
-            dx=0.5e-3, dz_profile=dz, boundary="upml",
+            dx=0.5e-3, dz_profile=dz, boundary="cpml",
         )
         sim.add_source((0.01, 0.01, 0.004), "ez")
-        # Interior z spans ~[2mm, 7.6mm] (UPML 4 layers * 0.5mm each
+        # Interior z spans ~[2mm, 7.6mm] (CPML 4 layers * 0.5mm each
         # end). Keep NTFF box well inside to silence the advisory.
         sim.add_ntff_box(
             corner_lo=(0.006, 0.006, 0.003),

@@ -85,6 +85,7 @@ result is accurate.
 | Combination | Status | What is documented |
 |---|---|---|
 | Periodic/Floquet port + nonuniform mesh | **unsupported** | Preflight or the calculation must fail. |
+| `boundary="upml"` + nonuniform mesh | **unsupported** | The run must fail. The non-uniform runner has no UPML implementation — its absorber dispatch keys on the CPML layer count and never reads the boundary type — so this combination was accepted and silently ran CPML while `sim._boundary` still reported `upml` (issue #680). Use `boundary="cpml"` on a graded mesh. |
 | NTFF + graded z | **limited** | A short-dipole directivity case agrees with the 1.76 dBi theory within about 0.05 dB (`tests/test_farfield_nonuniform.py`). Other source and geometry combinations need separate validation. |
 | DFT plane or full-plane flux + graded z | **experimental** | The calculation runs, but no general RF-accuracy statement is documented. |
 | TFSF + graded z | **experimental** | Only normal incidence along `+x` or `-x` (`angle_deg=0`) runs. Oblique incidence and incidence along `+z` or `-z` raise. |

@@ -538,6 +538,24 @@ _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {
          "test_g9_fast_path_excludes_sheets"),
 }
 
+#: ``has_f0_sheets(...)`` call sites in ``rfx/`` that are NOT lane fences.
+#:
+#: The AST scan treats every ``has_f0_sheets`` call outside
+#: ``thin_conductor.py`` as a lane-eligibility fence, because that is what
+#: every such call was when the scan was written. A call that only ASKS the
+#: question — to size something, to label an artifact — refuses nothing and
+#: has no lane to test, so demanding a FENCE_REGISTRY row for it would mean
+#: registering a refusal that does not exist. Each row here names the call
+#: site and why it is not a fence; the guard still binds on every other
+#: call, and a row that stops matching the source is reported as stale, so
+#: this list cannot silently outlive its call site.
+_NON_FENCE_F0_QUERIES: dict[tuple[str, str, str], str] = {
+    ("rfx/api/__init__.py", "_ad_memory_static_accounting", "has_f0_sheets"):
+        "#696 memory ACCOUNTING: adds the sheet operator's three edge masks "
+        "+ sigma_sheet to the forward working-set estimate. It changes a "
+        "reported number, never whether the lane runs.",
+}
+
 _RFX_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rfx")
 
@@ -611,8 +629,12 @@ def test_every_fence_in_the_source_is_pinned():
     """
     found = _scan_source_fences()
     registered = set(FENCE_REGISTRY)
-    missing = sorted(set(found) - registered)
+    non_fence = set(_NON_FENCE_F0_QUERIES)
+    missing = sorted(set(found) - registered - non_fence)
     stale = sorted(registered - set(found))
+    # A non-fence row that no longer matches any call site is stale too —
+    # otherwise the exemption list would outlive the code it excuses.
+    stale += sorted(non_fence - set(found))
     assert not missing, (
         "these #677 lane fences exist in rfx/ but no test is registered for "
         f"them — add a lane-level test and a FENCE_REGISTRY row: {missing}")

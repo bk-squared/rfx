@@ -28,6 +28,66 @@ C0 = 299792458.0
 
 
 # ---------------------------------------------------------------------------
+# Auto-config planning heuristic — ONE shape rule, ONE byte rule (#696)
+#
+# Both halves of the memory budget go through these: the DECISION half
+# (``auto_configure``'s ``max_memory_mb`` coarsening loop, which picks dx)
+# and the REPORTING half (``SimConfig.grid_shape`` /
+# ``SimConfig.estimated_memory_mb``, which is what the user reads and what
+# the documented postcondition ``estimated_memory_mb <= max_memory_mb`` is
+# written against).
+#
+# They used to be two hand-written copies that disagreed twice over: the
+# loop counted z as ``ceil(domain_z/dx)`` while the property counted the
+# ``dz_profile``, and the loop's byte formula omitted the property's NTFF
+# and dispersion terms. So the loop stopped coarsening at a number the
+# property never reproduced, and the postcondition failed on boards that
+# need a non-uniform z. Measured on a 40x30mm FR4 board with a 0.508 mm
+# substrate and a 35 um trace, budget 500 MB: the loop accepted
+# dx = 4.0 mm, and the config it returned reported 653.1 MB.
+# ---------------------------------------------------------------------------
+
+def _auto_grid_shape(domain, dx, cpml_layers, dz_profile=None):
+    """Planning grid shape ``(nx, ny, nz)`` including boundary pads.
+
+    ``+ 1 + 2*cpml_layers`` per axis is the uniform :class:`~rfx.grid.Grid`
+    rule. When ``dz_profile`` is set the z axis is counted from the PROFILE
+    instead — ``len(profile) + 1 + 2*cpml_layers``, which is what
+    :class:`~rfx.nonuniform.NonUniformGrid` builds. A graded stackup
+    normally refines below ``dx``, so ``ceil(domain_z/dx)`` describes a
+    uniform grid this configuration will never build AND under-counts it.
+
+    This stays the coarse pre-``Simulation`` heuristic: it does not model
+    per-face pads or 2-D mode. ``Simulation._ad_memory_static_accounting``
+    reads the built grid and is the accurate one; see its docstring.
+    """
+    nx = int(math.ceil(domain[0] / dx)) + 1 + 2 * cpml_layers
+    ny = int(math.ceil(domain[1] / dx)) + 1 + 2 * cpml_layers
+    if dz_profile is not None:
+        nz = int(len(dz_profile)) + 1 + 2 * cpml_layers
+    else:
+        nz = int(math.ceil(domain[2] / dx)) + 1 + 2 * cpml_layers
+    return (nx, ny, nz)
+
+
+def _auto_memory_mb(cells: int, cpml_layers: int) -> float:
+    """Planning memory heuristic in megabytes for ``cells`` cells.
+
+    6 field + 6 material float32 arrays, ~24 CPML psi arrays over ~15 % of
+    the domain, an NTFF surface-DFT term, 4 dispersion auxiliaries, and a
+    10x reverse-mode-AD factor. See
+    :attr:`SimConfig.estimated_memory_mb` for what each term stands for
+    and why this is not the production AD-memory contract.
+    """
+    cells = int(cells)
+    base_bytes = cells * 12 * 4
+    cpml_bytes = int(cells * 0.15 * 24 * 4) if cpml_layers > 0 else 0
+    ntff_bytes = int(6 * (cells ** 0.67) * 10 * 4 * 8)   # ~10 freqs estimate
+    disp_bytes = cells * 4 * 4
+    return (base_bytes + cpml_bytes + ntff_bytes + disp_bytes) * 10 / 1e6
+
+
+# ---------------------------------------------------------------------------
 # Feature analysis
 # ---------------------------------------------------------------------------
 
@@ -144,11 +204,19 @@ class SimConfig:
 
     @property
     def grid_shape(self) -> tuple[int, int, int]:
-        """Estimated grid shape (nx, ny, nz) including CPML padding."""
-        nx = int(math.ceil(self.domain[0] / self.dx)) + 1 + 2 * self.cpml_layers
-        ny = int(math.ceil(self.domain[1] / self.dx)) + 1 + 2 * self.cpml_layers
-        nz = int(math.ceil(self.domain[2] / self.dx)) + 1 + 2 * self.cpml_layers
-        return (nx, ny, nz)
+        """Estimated grid shape (nx, ny, nz) including CPML padding.
+
+        Issue #696: when ``dz_profile`` is set the z axis is counted from
+        the PROFILE, not from ``ceil(domain_z / dx)``. This property
+        described the UNIFORM grid even for a configuration whose whole
+        point is a graded z stackup, and a graded stackup normally
+        refines below ``dx`` — so the cell count, and every memory number
+        derived from it, came out LOW for exactly the meshes people size
+        GPUs for. The z term now matches ``NonUniformGrid``'s
+        ``len(profile) + pads + 1``.
+        """
+        return _auto_grid_shape(self.domain, self.dx, self.cpml_layers,
+                                self.dz_profile)
 
     @property
     def estimated_memory_mb(self) -> float:
@@ -182,20 +250,7 @@ class SimConfig:
             Estimated memory in megabytes.
         """
         nx, ny, nz = self.grid_shape
-        cells = nx * ny * nz
-        # 6 field + 6 material arrays (float32, 4 bytes each)
-        base_bytes = cells * 12 * 4
-        # CPML: ~24 auxiliary psi arrays in absorbing region (~15% of domain)
-        cpml_bytes = int(cells * 0.15 * 24 * 4) if self.cpml_layers > 0 else 0
-        # NTFF: 6 faces, each ~sqrt(cells) surface cells × n_freqs × 4 × 8 bytes
-        ntff_bytes = int(6 * (cells ** 0.67) * 10 * 4 * 8)  # ~10 freqs estimate
-        # Dispersion: 2 auxiliary arrays per Debye/Lorentz pole (~2 poles typical)
-        disp_bytes = cells * 4 * 4  # 4 arrays × float32
-        forward_bytes = base_bytes + cpml_bytes + ntff_bytes + disp_bytes
-        # Reverse-mode AD: ~10x forward for jax.grad through lax.scan
-        # (empirically measured at 9-30x; 10x is a conservative lower bound)
-        total_bytes = forward_bytes * 10
-        return total_bytes / 1e6
+        return _auto_memory_mb(nx * ny * nz, self.cpml_layers)
 
     @property
     def cells_per_wavelength(self) -> float:
@@ -417,17 +472,27 @@ def auto_configure(
         _phys_extent = tuple(
             (bbox_hi[i] - bbox_lo[i]) + 2 * margin for i in range(3)
         )
+        # #696: the z extent the profile spans. ``margin`` and the geometry
+        # are already fixed here, so this is dx-independent and the profile
+        # below is a pure function of the candidate dx — the same call
+        # step 4 makes with the dx this loop settles on.
+        _phys_z = (max(f[1] for f in features.z_features) + margin
+                   if needs_nonuniform_z else None)
         for _ in range(20):  # safety limit on iterations
             _domain = tuple(max(d, 8 * dx) for d in _phys_extent)
             _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
             _cpml = max(_cpml_cells_now, cpml_cells)
-            _nx = int(math.ceil(_domain[0] / dx)) + 1 + 2 * _cpml
-            _ny = int(math.ceil(_domain[1] / dx)) + 1 + 2 * _cpml
-            _nz = int(math.ceil(_domain[2] / dx)) + 1 + 2 * _cpml
+            # #696: measure the candidate against the grid this config
+            # will actually build, with the byte rule the returned
+            # SimConfig reports. Counting z as ceil(domain_z/dx) and
+            # dropping the NTFF/dispersion terms made the loop stop at a
+            # number ``estimated_memory_mb`` never reproduced, so the
+            # documented postcondition failed on non-uniform-z boards.
+            _dz_prof = (_make_dz_profile(features.z_features, _phys_z, dx)
+                        if needs_nonuniform_z else None)
+            _nx, _ny, _nz = _auto_grid_shape(_domain, dx, _cpml, _dz_prof)
             _cells = _nx * _ny * _nz
-            # 12 field/mat arrays + CPML psi overhead, ×10 for AD through lax.scan
-            _cpml_frac = 0.15 if _cpml > 0 else 0.0
-            _est_mb = _cells * (12 + 24 * _cpml_frac) * 4 * 10 / 1e6
+            _est_mb = _auto_memory_mb(_cells, _cpml)
             if _est_mb <= max_memory_mb:
                 # Accept this dx and update domain/cpml to match
                 domain = _domain

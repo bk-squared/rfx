@@ -48,6 +48,10 @@
           "status": "unsupported",
           "limits": "hard_fail"
         },
+        "upml_absorber": {
+          "status": "unsupported",
+          "limits": "hard_fail — the non-uniform runner implements CPML only; boundary='upml' used to be accepted and silently run CPML (issue #680)"
+        },
         "ntff": {
           "status": "limited",
           "limits": "limited to the benchmarked short-dipole directivity case; other sources and geometries need separate validation"

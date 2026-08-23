@@ -43,6 +43,7 @@ from rfx.materials.thin_conductor import (  # noqa: F401
     _PEC_SIGMA_THRESHOLD,
     ThinConductor,
     apply_thin_conductor,
+    has_f0_sheets,
 )
 from rfx.sources.waveguide_port import (
     WaveguidePort,  # noqa: F401
@@ -1301,6 +1302,22 @@ class Simulation(
             ``run()``/``forward()`` device dispatches (#679). The sheet
             contributes NO PEC cells and no ``materials.sigma``/``eps_r``
             entries.
+
+            **Consequence for material inspection (#695): an f0 sheet is
+            INVISIBLE to the assembled arrays.** It is absent from
+            ``pec_mask`` and it adds nothing to ``materials.sigma``, so a
+            conductor test written the obvious way --
+            ``pec_mask | (sigma > 1e3)`` -- finds no metal at all on a
+            board whose traces are all f0 sheets, and a connectivity
+            check built on it reports a perfectly healthy model as
+            disconnected. Use :meth:`Simulation.conductor_mask`, which
+            returns ``pec_mask | (sigma > threshold) | union(f0 sheet
+            cell masks)`` -- the whole conductor footprint in one
+            spelling, on the grid the run will actually use. The runtime
+            edge masks (``mask_ex/ey/ez``) live on the
+            ``SheetImpedanceCtx`` the runners build; the accessor returns
+            the CELL footprint, which is what an occupancy or
+            connectivity check wants.
 
             Model scope (be precise about what you get):
 
@@ -2672,17 +2689,51 @@ class Simulation(
 
     # ---- AD memory estimation (issue #30 CHECK 4) ----
     def _ad_memory_static_accounting(self) -> dict[str, int]:
-        """Return shared static byte accounting for AD memory artifacts."""
+        """Return shared static byte accounting for AD memory artifacts.
+
+        Issue #696: the cell count comes from the grid the SOLVE WILL
+        ACTUALLY BUILD — ``_build_nonuniform_grid()`` when any mesh
+        profile is set, ``_build_grid()`` otherwise — not from a private
+        re-derivation of the shape. The re-derivation
+        (``ceil(extent/dx) + 1 + 2*cpml_layers`` per axis) silently
+        disagreed with both real grids wherever the shape depends on
+        anything it did not model: per-face pads (a ``pec``/``pmc``/
+        ``periodic`` face allocates 0 cells on that side) and 2-D mode
+        (``nz == 1``). Measured on a 20x20mm graded-dz stackup, dx=0.2mm,
+        cpml_layers=8: with PEC y faces the re-derivation says 0.780 M
+        cells against the real NU grid's 0.674 M (+15.7 %); in
+        ``mode="2d_tmz"`` it says 1.602 M against the real 0.014 M
+        (117x). The estimate is what a user sizes a GPU with, so a grid
+        it does not describe is worse than no estimate.
+
+        ``grid_kind`` names which grid the numbers describe and travels
+        with the estimate into its artifact — a uniform-lane ``dt`` has
+        already been mistaken for the NU one here.
+        """
         dx = self._dx or (C0 / self._freq_max / 20.0)
+        is_nonuniform = any(
+            p is not None
+            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
+        )
+        grid_kind = "nonuniform" if is_nonuniform else "uniform"
+        grid_source = "built"
+        try:
+            _grid = (self._build_nonuniform_grid() if is_nonuniform
+                     else self._build_grid())
+            nx, ny, nz = (int(v) for v in _grid.shape)
+        except Exception:
+            # Keep a number rather than raising out of a planning helper;
+            # the fallback is the pre-#696 arithmetic and is LABELLED as
+            # such so the artifact does not present it as the real grid.
+            def _nx(extent: float, prof) -> int:
+                if prof is not None:
+                    return len(prof) + 1 + 2 * self._cpml_layers
+                return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
 
-        def _nx(extent: float, prof) -> int:
-            if prof is not None:
-                return len(prof) + 1 + 2 * self._cpml_layers
-            return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
-
-        nx = _nx(self._domain[0], self._dx_profile)
-        ny = _nx(self._domain[1], self._dy_profile)
-        nz = _nx(self._domain[2], self._dz_profile)
+            nx = _nx(self._domain[0], self._dx_profile)
+            ny = _nx(self._domain[1], self._dy_profile)
+            nz = _nx(self._domain[2], self._dz_profile)
+            grid_source = "estimated_from_domain"
         cells = int(nx * ny * nz)
 
         # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
@@ -2694,7 +2745,18 @@ class Simulation(
             if self._cpml_layers > 0
             else 0
         )
-        forward_bytes = field_bytes + material_bytes + cpml_bytes
+        # Surface-impedance (f0) sheet operator (#677) — three boolean
+        # tangential edge masks plus one float32 sigma_sheet array, all
+        # full-grid, resident for the whole run. Counted here because
+        # they are NOT part of the six material arrays above: since #677
+        # the sheet touches neither pec_mask nor materials.sigma, so the
+        # estimate for a lossy board was the estimate for the SAME board
+        # without loss — which is exactly the model that then fit on the
+        # same GPU (#696).
+        sheet_bytes = 0
+        if has_f0_sheets(getattr(self, "_thin_conductors", ())):
+            sheet_bytes = cells * (3 * 1 + bytes_per_cell)
+        forward_bytes = field_bytes + material_bytes + cpml_bytes + sheet_bytes
 
         # NTFF DFT state: 6 faces × n_freqs × face cells × (3 E + 3 H) × complex64.
         ntff_bytes = 0
@@ -2713,8 +2775,11 @@ class Simulation(
             "field_bytes": field_bytes,
             "material_bytes": material_bytes,
             "cpml_bytes": cpml_bytes,
+            "sheet_bytes": sheet_bytes,
             "forward_bytes": forward_bytes,
             "ntff_bytes": ntff_bytes,
+            "grid_kind": grid_kind,
+            "grid_source": grid_source,
         }
 
 
@@ -2927,6 +2992,10 @@ class Simulation(
             checkpoint_segments=checkpoint_segments_i,
             ad_active_steps=active_steps,
             ad_segmented_active_segments=segmented_active_segments,
+            grid_kind=accounting["grid_kind"],
+            grid_source=accounting["grid_source"],
+            grid_shape=(accounting["nx"], accounting["ny"], accounting["nz"]),
+            sheet_gb=accounting["sheet_bytes"] * to_gb,
         )
 
     def explain_ad_memory(
@@ -2959,6 +3028,7 @@ class Simulation(
         field_bytes = accounting["field_bytes"]
         material_bytes = accounting["material_bytes"]
         cpml_bytes = accounting["cpml_bytes"]
+        sheet_bytes = accounting["sheet_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
         cells = accounting["cells"]
         bytes_per_cell = accounting["bytes_per_cell"]
@@ -3100,6 +3170,22 @@ class Simulation(
                 explanation=tape_explanation,
             ),
             *live_components,
+            _component(
+                "surface_impedance_sheet_state",
+                sheet_bytes,
+                "forward_working_set",
+                unit="sheet-operator-array",
+                count=None,
+                bytes_per_unit=None,
+                explanation=(
+                    "Surface-impedance (surface_impedance_f0) sheet "
+                    "operator state: three boolean tangential edge masks "
+                    "plus sigma_sheet, all full-grid. Zero when no f0 "
+                    "sheet is registered. Since #677 the sheet is in "
+                    "neither pec_mask nor materials.sigma, so nothing "
+                    "else in this accounting covers it (#696)."
+                ),
+            ),
             _component(
                 "ntff_dft_state",
                 ntff_bytes,
@@ -3853,17 +3939,16 @@ class Simulation(
 
         dx = self._dx or (C0 / self._freq_max / 20.0)
 
-        def _axis_cells(extent: float, profile) -> int:
-            if profile is not None:
-                return int(len(profile)) + 1 + 2 * self._cpml_layers
-            return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
-
+        # #696: one shape source, shared with estimate_ad_memory — the
+        # grid the solve will actually build. This method carried its own
+        # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
+        # report's cell count and its AD estimate could describe two
+        # different grids, neither of them the one that runs.
+        _accounting = self._ad_memory_static_accounting()
         grid_shape = (
-            _axis_cells(self._domain[0], self._dx_profile),
-            _axis_cells(self._domain[1], self._dy_profile),
-            _axis_cells(self._domain[2], self._dz_profile),
+            _accounting["nx"], _accounting["ny"], _accounting["nz"],
         )
-        cells = int(grid_shape[0] * grid_shape[1] * grid_shape[2])
+        cells = int(_accounting["cells"])
 
         axis_min = [
             float(np.min(self._dx_profile)) if self._dx_profile is not None else dx,

@@ -446,7 +446,7 @@ def test_refplane_requires_pec_trace_at_plane():
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x",
                  reference_plane_cells=3)
-    with pytest.raises(ValueError, match="no PEC conductor"):
+    with pytest.raises(ValueError, match="no conductor found"):
         _raw_drive(sim)
 
 

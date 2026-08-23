@@ -2558,6 +2558,10 @@
       "strict_passivity",
       "port_reference_sims"
     ],
+    "conductor_mask": [
+      "grid",
+      "sigma_threshold"
+    ],
     "estimate_ad_memory": [
       "n_steps",
       "available_memory_gb",

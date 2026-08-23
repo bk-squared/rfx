@@ -95,6 +95,34 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     )
 
 
+def _refplane_conductor_mask(pec_mask, sheet_ctx):
+    """Full conductor footprint for the reference-plane trace scan (#695).
+
+    ``pec_mask | (sheet cells)``. The f0 sheet contributes NOTHING to
+    ``pec_mask`` or ``materials.sigma`` since #677, so the bare
+    ``pec_mask`` this used to pass made a sheet-traced transmission line
+    look like an empty cross-section. ``sheet_ctx.sigma_sheet`` is
+    ``> 0`` exactly on the sheet cells, so the footprint is available
+    without re-assembling materials.
+
+    Returns ``pec_mask`` unchanged when there is no sheet ctx, or when
+    either input is traced — this caller already requires concrete values
+    and a traced OR would only relocate the failure.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import conductor_footprint
+
+    if sheet_ctx is None:
+        return pec_mask
+    sig = getattr(sheet_ctx, "sigma_sheet", None)
+    if sig is None or is_tracer(sig) or (pec_mask is not None and is_tracer(pec_mask)):
+        return pec_mask
+    return conductor_footprint(
+        pec_mask=pec_mask,
+        sheet_masks=[jnp.asarray(sig) > 0.0],
+    )
+
+
 class _DispatchPlan(NamedTuple):
     """Resolved execution lane for a single ``run()`` / ``forward()`` call.
 
@@ -709,6 +737,37 @@ class _ExecuteMixin:
         for w in config.warnings:
             _w.warn(w, stacklevel=3)
 
+    def _reject_upml_on_nonuniform(self, lane: str) -> None:
+        """Refuse ``boundary='upml'`` on a non-uniform lane (#680).
+
+        ``rfx/nonuniform.py`` has no UPML implementation at all: its
+        absorber dispatch is ``use_cpml = grid.cpml_layers > 0``, which
+        keys on the layer COUNT and never reads ``sim._boundary``. So a
+        non-uniform run asked for UPML silently got CPML instead —
+        measured on a 4x4x3 mm ez-dipole domain, otherwise identical
+        configs: ``apply_upml_e`` called 1x on the uniform lane and 0x on
+        the NU lane, with ``sim._boundary`` still reading ``'upml'``
+        afterwards, so even a post-hoc audit reported the wrong absorber.
+
+        Refuse at lane entry, in the style of the sibling distributed
+        guard, rather than substituting: the two absorbers have different
+        reflection and different material-in-pad semantics, and a silently
+        swapped one is exactly the class that made a "UPML + non-uniform"
+        regression test pass while never touching UPML.
+        """
+        if self._boundary != "upml" or self._cpml_layers <= 0:
+            return
+        raise ValueError(
+            f"boundary='upml' does not support the {lane} lane: the "
+            "non-uniform runner implements CPML only (rfx/nonuniform.py "
+            "dispatches on cpml_layers > 0 and never reads the boundary "
+            "type), so this configuration used to run CPML while "
+            "sim._boundary kept reporting 'upml' (issue #680). Pass "
+            "boundary='cpml' to run the absorber that is actually "
+            "implemented here, or drop the mesh profile(s) to use the "
+            "uniform lane, which does implement UPML."
+        )
+
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True,
@@ -1176,7 +1235,20 @@ class _ExecuteMixin:
                         n_cells=int(pe.reference_plane_cells),
                         freqs=_s11_freqs_arr,
                         port_index=_sparam_port_idx,
-                        pec_mask=pec_mask,
+                        # #695: hand it the FULL conductor footprint, not
+                        # the bare pec_mask. Since #677 an f0 sheet is a
+                        # node-thin operator present in neither pec_mask
+                        # nor materials.sigma, so a sheet-traced line
+                        # reached build_wire_refplane_specs as "no metal"
+                        # and raised on a healthy model. The ctx's
+                        # sigma_sheet is nonzero exactly on the sheet
+                        # cells, so no re-assembly is needed here. Skipped
+                        # under a tracer: this whole branch already
+                        # requires concrete pec_mask values (see the
+                        # comment above), and a traced OR would only move
+                        # the failure.
+                        pec_mask=_refplane_conductor_mask(
+                            pec_mask, sheet_impedance),
                     ))
                 continue
 
@@ -2316,6 +2388,8 @@ class _ExecuteMixin:
                 # f3cab7c) has been removed. The single-device PMC runtime
                 # hook lives in rfx/simulation.py:703-705 and the sharded
                 # PMC helpers live in each runner next to their PEC analog.
+                self._reject_upml_on_nonuniform(
+                    "distributed non-uniform forward()")
                 _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
                 _reject_lane_precision("fwd_distributed_nu")
                 return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
@@ -2323,6 +2397,7 @@ class _ExecuteMixin:
             if is_nonuniform:
                 # Let the NU runner build grid/materials so it can apply the
                 # NU-aware pec_mask and port/source setup against per-axis widths.
+                self._reject_upml_on_nonuniform("non-uniform forward()")
                 _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
                 _reject_lane_precision("fwd_nonuniform")
                 return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
@@ -2423,6 +2498,7 @@ class _ExecuteMixin:
 
         # ---- Non-uniform mesh lane ----
         if is_nonuniform:
+            self._reject_upml_on_nonuniform("non-uniform run()")
             _n = n_steps
             if _n is None:
                 _n = self._nu_n_steps(num_periods)

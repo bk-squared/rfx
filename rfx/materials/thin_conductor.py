@@ -606,3 +606,64 @@ def refuse_f0_sheets(thin_conductors, lane: str) -> None:
             f"apply — running would silently simulate NO sheet at all. Use "
             f"the uniform or non-uniform run()/S-parameter lanes, or drop "
             f"surface_impedance_f0 (PEC or DC-fold sheets are fine here).")
+
+
+# Default sigma floor for "this assembled cell is a conductor" (#695).
+# Two decades BELOW ``_PEC_SIGMA_THRESHOLD`` on purpose: it is a test on
+# assembled sigma ARRAYS (where a DC-fold sheet's sigma_eff or a bulk
+# metal both land far above it) rather than the spec-level PEC routing
+# predicate above, and ordinary lossy dielectrics (1e-3 - 1e0 S/m) must
+# stay out.
+CONDUCTOR_SIGMA_THRESHOLD = 1e3
+
+
+def conductor_footprint(
+    pec_mask=None,
+    sigma=None,
+    sheet_masks=(),
+    *,
+    sigma_threshold: float = CONDUCTOR_SIGMA_THRESHOLD,
+    shape=None,
+):
+    """Union the three places a conductor can live into ONE cell mask (#695).
+
+    Since #677 a surface-impedance (``surface_impedance_f0``) thin conductor
+    is a node-thin per-step operator: it is absent from ``pec_mask`` AND
+    contributes nothing to ``materials.sigma``.  The obvious hand-written
+    conductor test ``pec_mask | (sigma > 1e3)`` therefore finds NOTHING on a
+    board whose traces are all f0 sheets, and any check built on it reports
+    a healthy model as having no metal.  This is the one spelling::
+
+        pec_mask | (sigma > sigma_threshold) | union(sheet_masks)
+
+    Every argument is optional so callers can pass only what they hold:
+    ``pec_mask`` (bool array or None), ``sigma`` (float array or None), and
+    ``sheet_masks`` (iterable of bool cell masks — ``SheetImpedanceSpec.mask``
+    values, or ``ctx.sigma_sheet > 0`` when only the assembled ctx is in
+    hand).  ``shape`` seeds an all-False result when every input is None.
+
+    Raises ``ValueError`` when nothing at all was supplied and no ``shape``
+    is given — returning a scalar False there would be the same silent
+    "found no metal" the function exists to prevent.
+    """
+    out = None
+    if sigma is not None:
+        out = jnp.asarray(sigma) > float(sigma_threshold)
+    if pec_mask is not None:
+        pm = jnp.asarray(pec_mask).astype(bool)
+        out = pm if out is None else (out | pm)
+    for m in (sheet_masks or ()):
+        if m is None:
+            continue
+        sm = jnp.asarray(m).astype(bool)
+        out = sm if out is None else (out | sm)
+    if out is None:
+        if shape is None:
+            raise ValueError(
+                "conductor_footprint: nothing to union (pec_mask, sigma and "
+                "sheet_masks are all None/empty) and no `shape` was given to "
+                "seed an all-False mask. Refusing to invent a conductor-free "
+                "answer the caller cannot distinguish from 'I was handed "
+                "nothing' (#695).")
+        return jnp.zeros(tuple(shape), dtype=bool)
+    return out

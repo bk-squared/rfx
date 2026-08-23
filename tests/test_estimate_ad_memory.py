@@ -339,8 +339,18 @@ def test_public_imports_and_json_roundtrip():
         "checkpoint_segments",
         "ad_active_steps",
         "ad_segmented_active_segments",
+        # #696: the artifact must LABEL which grid it describes and carry
+        # the sheet-operator term, otherwise a number sized against the
+        # uniform grid is indistinguishable from one sized against the NU
+        # grid the solve actually steps.
+        "grid_kind",
+        "grid_source",
+        "grid_shape",
+        "sheet_gb",
     }
     assert estimate.to_dict()["evidence_class"] == "static_estimate"
+    assert estimate.to_dict()["grid_kind"] in ("uniform", "nonuniform")
+    assert estimate.to_dict()["grid_source"] == "built"
     plan_keys = {
         "evidence_class",
         "n_steps",
@@ -968,8 +978,15 @@ def test_explain_ad_memory_decomposes_selected_estimate():
         "cpml_auxiliary_state",
         "segmented_boundary_field_tape",
         "segmented_live_segment_tape",
+        # #696: the f0 sheet operator's three edge masks + sigma_sheet are
+        # a full-grid forward allocation that nothing else counts (since
+        # #677 the sheet is in neither pec_mask nor materials.sigma). The
+        # component is always present and reads 0 GB when no f0 sheet is
+        # registered, as here.
+        "surface_impedance_sheet_state",
         "ntff_dft_state",
     } == set(components)
+    assert components["surface_impedance_sheet_state"]["memory_gb"] == 0.0
     assert components["segmented_boundary_field_tape"]["kind"] == "reverse_ad_saved_state"
     assert components["segmented_boundary_field_tape"]["count"] == (
         2 * explanation.estimate.ad_segmented_active_segments

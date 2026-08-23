@@ -23,6 +23,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+import warnings
 from pathlib import Path
 
 import jax
@@ -1718,18 +1719,10 @@ def test_auto_msl_offset_is_frozen_resolved_in_the_document():
     assert document2["excitations"]["msl_ports"][0]["n_probe_offset"] == 26
 
 
-def test_auto_offset_dump_matches_driver_on_dx_profile_nu():
-    """PR #478 review MAJOR regression lock: the dump-time NU predicate must
-    mirror the DRIVER's (all three profiles). A dz-only check let a
-    dx_profile-only MSL sim dump a SOLVED offset (26) while the real driver
-    routes that sim through the NU lane and keeps the stored lower edge
-    (20) — a rebuilt design would place its probes where the original never
-    measured. The document must freeze the value the driver actually uses."""
+def _nu_offset_fixture(**profiles):
     DX = 2e-4
-    nx = int(round(0.020 / DX))
     sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=DX,
-                     boundary="cpml", cpml_layers=8,
-                     dx_profile=np.full(nx, DX))  # dx-profile-only NU
+                     boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")
     sim.add(Box((0.001, 0.01316 - 0.0012065, 0.000794),
@@ -1739,8 +1732,76 @@ def test_auto_offset_dump_matches_driver_on_dx_profile_nu():
     sim.add_msl_port(position=(0.0025, 0.01316, 0.0), width=0.002413,
                      height=0.000794, direction="+x", impedance=50.0,
                      eps_r_sub=2.2, name="p1")
+    return sim
+
+
+def _driver_offset(sim):
+    """What compute_msl_s_matrix would actually use for this sim."""
+    from rfx.api._sparams import _resolve_msl_auto_offsets
+    is_nu = any(getattr(sim, n, None) is not None
+                for n in ("_dx_profile", "_dy_profile", "_dz_profile"))
+    grid = sim._build_nonuniform_grid() if is_nu else sim._build_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        (pe,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid)
+    return pe.n_probe_offset
+
+
+def test_auto_offset_dump_matches_driver_on_dx_profile_nu():
+    """PR #478 review MAJOR regression lock: the dumped offset must be the
+    one the DRIVER uses, on a non-uniform mesh too.
+
+    The invariant is document == driver; the NUMBER moved 20 -> 26 with
+    issue #686. This fixture's ``dx_profile`` is ``np.full(nx, DX)`` — a
+    UNIFORM-VALUED profile, which takes the NU code path without grading
+    any axis. The old blanket bail-out ("any NU grid -> keep the stored
+    lower edge") therefore skipped the #469 interval solve here even
+    though the propagation axis has one single cell size to count in.
+    Since #686 the solve runs and returns the same 26 the uniform grid
+    returns (``test_auto_offset_dump_freezes_the_resolved_value``), and
+    the document follows it, which is what this test locks."""
+    DX = 2e-4
+    nx = int(round(0.020 / DX))
+    sim = _nu_offset_fixture(dx_profile=np.full(nx, DX))
+    assert sim._msl_auto_offset_min == {"p1": 20}   # stored lower edge
 
     document = design_to_dict(sim)
     (port_doc,) = document["excitations"]["msl_ports"]
-    # driver NU lane keeps the stored lower edge -> so must the document
+    assert port_doc["n_probe_offset"] == _driver_offset(sim)
+    assert port_doc["n_probe_offset"] == 26
+
+
+def test_auto_offset_dump_keeps_stored_edge_when_propagation_axis_is_graded():
+    """Issue #686 other direction: a GRADED propagation axis still bails.
+
+    The port is '+x' and dx really varies here, so a cell-counted probe
+    interval has no single cell size to count in — the stored upstream
+    lower edge is kept, and the document freezes that same value."""
+    DX = 2e-4
+    nx = int(round(0.020 / DX))
+    dxp = np.full(nx, DX)
+    dxp[nx // 4:3 * nx // 4] = DX * 1.5      # graded interior, matched ends
+    sim = _nu_offset_fixture(dx_profile=dxp)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        document = design_to_dict(sim)
+    (port_doc,) = document["excitations"]["msl_ports"]
     assert port_doc["n_probe_offset"] == 20
+    assert port_doc["n_probe_offset"] == _driver_offset(sim)
+    # and the skip is no longer silent
+    assert any("interval solve (issue #469) SKIPPED" in str(w.message)
+               for w in caught), [str(w.message) for w in caught]
+
+
+def test_auto_offset_dump_solves_on_a_z_graded_stackup():
+    """Issue #686 headline: a dz_profile does not grade x.
+
+    A boundary-fitted z stackup with an x-propagating microstrip used to
+    skip the solve silently; the interval is well defined there."""
+    dz = 0.2e-3 * 1.07 ** np.arange(14, dtype=float)
+    sim = _nu_offset_fixture(dz_profile=dz)
+    document = design_to_dict(sim)
+    (port_doc,) = document["excitations"]["msl_ports"]
+    assert port_doc["n_probe_offset"] == _driver_offset(sim)
+    assert port_doc["n_probe_offset"] == 26

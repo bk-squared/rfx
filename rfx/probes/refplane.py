@@ -146,10 +146,13 @@ def _trace_bbox_at_plane(pec2d: np.ndarray, seed_uv: tuple[int, int]):
         cand = np.argwhere(pec2d)
         if cand.size == 0:
             raise ValueError(
-                "reference_plane_cells: no PEC conductor found in the "
+                "reference_plane_cells: no conductor found in the "
                 "reference-plane cross-section — the plane V/I method "
-                "requires a PEC signal trace (uniform transmission line) "
-                "at the plane. Check the port direction and N.")
+                "requires a conducting signal trace (uniform transmission "
+                "line) at the plane. Check the port direction and N, and "
+                "check that the caller passed the full conductor footprint "
+                "(#695: an f0 surface-impedance sheet is in neither "
+                "`pec_mask` nor `materials.sigma`).")
         d2 = (cand[:, 0] - su) ** 2 + (cand[:, 1] - sv) ** 2
         su, sv = (int(x) for x in cand[int(np.argmin(d2))])
     # 4-connected BFS
@@ -200,8 +203,14 @@ def build_wire_refplane_specs(
         N — the reference-plane offset in cells; the second (Zc) plane
         registers at 2N.
     pec_mask : array-like of bool
-        The geometry PEC mask BEFORE port-cell clearing (the trace
-        conductor must be present at the plane cross-sections).
+        The CONDUCTOR footprint BEFORE port-cell clearing (the trace
+        conductor must be present at the plane cross-sections). Despite
+        the historical parameter name this is not required to be the bare
+        ``pec_mask``: pass the full footprint from
+        :meth:`rfx.Simulation.conductor_mask` /
+        :func:`rfx.materials.thin_conductor.conductor_footprint` so a
+        ``surface_impedance_f0`` trace — invisible to ``pec_mask`` and to
+        ``materials.sigma`` since #677 — is seen (#695).
 
     Returns
     -------
@@ -222,9 +231,17 @@ def build_wire_refplane_specs(
             f"direction ('+x'/'-x'/'+y'/'-y'), got {direction!r}")
     if pec_mask is None:
         raise ValueError(
-            "reference_plane_cells: the simulation has no PEC geometry — "
-            "the plane V/I method requires a PEC signal trace (uniform "
-            "transmission line).")
+            "reference_plane_cells: the simulation has no conductor at the "
+            "reference planes — the plane V/I method requires a conducting "
+            "signal trace (uniform transmission line). Note (#695): the "
+            "caller must hand this the FULL conductor footprint "
+            "(`Simulation.conductor_mask()` / "
+            "`rfx.materials.thin_conductor.conductor_footprint`), not the "
+            "bare `pec_mask`: since #677 a surface_impedance_f0 sheet is a "
+            "node-thin operator that appears in NEITHER `pec_mask` NOR "
+            "`materials.sigma`, so a sheet-traced board handed a bare "
+            "`pec_mask` reaches this line reading 'no metal' on a perfectly "
+            "healthy model.")
     n_cells = int(n_cells)
     if n_cells < 1:
         raise ValueError(f"reference_plane_cells must be >= 1, got {n_cells}")

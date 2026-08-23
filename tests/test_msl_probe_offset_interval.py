@@ -143,3 +143,221 @@ def test_driver_applies_the_solve_end_to_end():
     sim = _sim_with_feed_and_patch(patch_x0=0.0075, patch_x1=0.010)
     with pytest.warns(UserWarning, match="mutually unsatisfiable"):
         sim.compute_msl_s_matrix(freqs=np.array([5e9, 10e9]), n_steps=1)
+
+
+
+
+# ---------------------------------------------------------------------------
+# Issue #686 — the bail-out is about the PROPAGATION axis, not "any axis".
+#
+# The pre-#686 gate was ``getattr(grid, "dz", None) is not None``: it fired on
+# every NonUniformGrid. Its stated reason ("cell-counted intervals are
+# ill-defined under graded dx") is a statement about the axis the probes march
+# along, and a dz_profile does not grade dx. For an x-propagating port the
+# interval is well defined on a z-graded mesh and the solve simply never ran.
+#
+# EVERY test below runs over all four supported directions. The first cut of
+# these tests used '+x' throughout — including both halves of the
+# anti-permutation test — and an implementation that ignored the port's axis
+# entirely (``(dx_arr, dy_arr, dz)[axis]`` -> ``[0]``, i.e. "always read dx")
+# passed the whole file unchanged while re-instating the exact #686 defect for
+# '+y'/'-y' ports. A direction-blind axis gate cannot be gated by
+# direction-blind fixtures.
+# ---------------------------------------------------------------------------
+
+#: The board is defined in the port's own (propagation, width) frame and
+#: mapped onto (x, y) per direction, so all four directions get the SAME
+#: geometry in the frame that matters and therefore the same hand arithmetic
+#: as the uniform case above: stored edge 20, solved midpoint 26.
+_L_P = DOMAIN[0]          # 0.020 m along the propagation axis
+_L_W = DOMAIN[1]          # 0.02632 m across it
+_W_C = Y_C                # trace centre on the width axis
+_N_P = int(round(_L_P / DX))    # 100 interior cells along propagation
+_N_W = int(round(_L_W / DX))    # 132 interior cells across
+
+_ALL_DIRECTIONS = ("+x", "-x", "+y", "-y")
+
+
+def _board_domain(direction):
+    """Domain for a board whose feed runs along ``direction``'s axis."""
+    return ((_L_P, _L_W, DOMAIN[2]) if direction[1] == "x"
+            else (_L_W, _L_P, DOMAIN[2]))
+
+
+def _pw(direction, p, w):
+    """Map a (propagation, width) coordinate to (x, y) for ``direction``.
+
+    A '-' direction mirrors the propagation coordinate, so the port still
+    launches INTO the board and the patch is still downstream of the feed.
+    """
+    q = p if direction[0] == "+" else _L_P - p
+    return (q, w) if direction[1] == "x" else (w, q)
+
+
+def _pw_box(direction, p0, p1, w0, w1, z0, z1):
+    x0, y0 = _pw(direction, p0, w0)
+    x1, y1 = _pw(direction, p1, w1)
+    return Box((min(x0, x1), min(y0, y1), z0),
+               (max(x0, x1), max(y0, y1), z1))
+
+
+def _nu_sim(direction="+x", **profiles):
+    """The Sheen-parameter feed+patch board, oriented along ``direction``."""
+    dom = _board_domain(direction)
+    sim = Simulation(freq_max=20e9, domain=dom, dx=DX,
+                     boundary="cpml", cpml_layers=8, **profiles)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (dom[0], dom[1], H_SUB)), material="sub")
+    # the port's own feed trace (contains the feed plane -> excluded)
+    sim.add(_pw_box(direction, 0.001, 0.012466,
+                    _W_C - W_TRACE / 2, _W_C + W_TRACE / 2,
+                    H_SUB, H_SUB + DX), material="pec")
+    # the patch = downstream reflector
+    sim.add(_pw_box(direction, 0.012466, 0.015006, 0.003, 0.02332,
+                    H_SUB, H_SUB + DX), material="pec")
+    px, py = _pw(direction, 0.0025, _W_C)
+    sim.add_msl_port(position=(px, py, 0.0), width=W_TRACE, height=H_SUB,
+                     direction=direction, impedance=50.0, eps_r_sub=2.2,
+                     name="p1")
+    return sim
+
+
+def _graded(n, d0, ratio):
+    """Graded interior with both boundary cells back at ``d0``.
+
+    make_nonuniform_grid requires profile[0] == profile[-1] == dx for the
+    x/y axes (the CPML cells use the boundary spacing). ``ratio == 1.0``
+    yields a uniform-VALUED profile: the NU code path runs, nothing grades.
+    """
+    prof = np.full(n, d0, dtype=float)
+    prof[n // 4:3 * n // 4] = d0 * ratio
+    return prof
+
+
+def _profiles(direction, *, prop_ratio=1.0, width_ratio=1.0):
+    """dx/dy profiles grading this port's PROPAGATION and WIDTH axes.
+
+    Both in-board axes always carry an explicit profile, so which one is
+    graded is the only difference between the cases below — and the two
+    ratios are never equal, so an implementation that read the wrong axis
+    would have to agree by coincidence rather than by construction.
+    """
+    prop = _graded(_N_P, DX, prop_ratio)
+    width = _graded(_N_W, DX, width_ratio)
+    return ({"dx_profile": prop, "dy_profile": width}
+            if direction[1] == "x"
+            else {"dx_profile": width, "dy_profile": prop})
+
+
+def _resolved(sim):
+    grid = sim._build_nonuniform_grid()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid)
+    return entries[0].n_probe_offset, caught
+
+
+def _skips(caught):
+    return [str(w.message) for w in caught if "SKIPPED" in str(w.message)]
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_z_graded_stackup_now_runs_the_solve(direction):
+    """The headline case: graded dz, in-board port -> the solve runs.
+
+    26 is the same midpoint the uniform grid resolves to (see
+    ``test_auto_offset_moves_to_interval_midpoint_with_reflector``); the
+    propagation axis is ungraded, so the cell count is the same one.
+    """
+    dz = 0.2e-3 * 1.07 ** np.arange(14, dtype=float)
+    assert float(dz.max() / dz.min()) > 2.0, "fixture dz is not graded"
+    sim = _nu_sim(direction, dz_profile=dz)
+    assert sim._msl_auto_offset_min == {"p1": 20}
+    off, caught = _resolved(sim)
+    assert off == 26, f"expected the solved midpoint 26, got {off}"
+    assert not _skips(caught)
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_uniform_valued_profile_is_not_grading(direction):
+    """Uniform-valued dx AND dy profiles take the NU path, grade nothing."""
+    sim = _nu_sim(direction, **_profiles(direction))
+    off, caught = _resolved(sim)
+    assert off == 26
+    assert not _skips(caught)
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_graded_width_axis_does_not_block_the_solve(direction):
+    """Grading the WIDTH axis must not bail: the probes do not march
+    along it, so the cell count they need is still single-valued."""
+    sim = _nu_sim(direction, **_profiles(direction, width_ratio=1.25))
+    off, caught = _resolved(sim)
+    assert off == 26
+    assert not _skips(caught)
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_graded_propagation_axis_bails_out_and_says_so(direction):
+    """Graded propagation axis: keep the stored edge, but WARN."""
+    sim = _nu_sim(direction, **_profiles(direction, prop_ratio=1.5))
+    off, caught = _resolved(sim)
+    assert off == 20, "a graded propagation axis must keep the stored edge"
+    msgs = _skips(caught)
+    assert len(msgs) == 1, msgs
+    assert f"propagation axis {direction[1]} is GRADED" in msgs[0]
+    assert f"direction={direction!r}" in msgs[0]
+    assert "'p1'" in msgs[0]
+    assert "#686" in msgs[0]
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_axis_roles_are_not_permutable(direction):
+    """The gate must read THIS port's propagation axis — not a fixed one.
+
+    Both cases below grade exactly one in-board axis, at DIFFERENT ratios,
+    and differ only in WHICH role that axis plays for this port. Any
+    implementation that reads a hard-coded axis instead of the port's own
+    gets one of the two backwards for at least one direction: '[0]'
+    (always dx) inverts both '+y' and '-y', '[1]' (always dy) inverts both
+    '+x' and '-x', and '[2]' (always dz) fails the z-graded test above.
+    """
+    graded_prop, _ = _resolved(
+        _nu_sim(direction, **_profiles(direction, prop_ratio=1.5)))
+    assert graded_prop == 20, (
+        f"{direction}: grading the propagation axis must bail out")
+
+    graded_width, _ = _resolved(
+        _nu_sim(direction, **_profiles(direction, width_ratio=1.25)))
+    assert graded_width == 26, (
+        f"{direction}: grading the width axis must NOT bail out")
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_traced_profile_is_reported_as_unevaluable(direction):
+    """A mesh-as-design-variable profile cannot be inspected host-side —
+    keep the stored edge and say WHY, rather than silently."""
+    import jax
+    import jax.numpy as jnp
+
+    base = np.full(_N_P, DX)
+    axis_kw = "dx_profile" if direction[1] == "x" else "dy_profile"
+
+    def _probe(prof):
+        sim = _nu_sim(direction, **{axis_kw: prof})
+        grid = sim._build_nonuniform_grid()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            entries = _resolve_msl_auto_offsets(
+                sim, list(sim._msl_ports), grid)
+        _probe.result = (entries[0].n_probe_offset,
+                         [str(w.message) for w in caught])
+        return jnp.sum(prof)
+
+    jax.jit(_probe)(jnp.asarray(base))
+    off, msgs = _probe.result
+    assert off == 20
+    skipped = [m for m in msgs if "SKIPPED" in m]
+    assert len(skipped) == 1, msgs
+    assert "traced" in skipped[0]
+    assert f"the {direction[1]}-axis cell sizes are a traced" in skipped[0]

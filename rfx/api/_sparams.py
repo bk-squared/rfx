@@ -386,6 +386,49 @@ def _warn_if_ringdown_truncated(
     )
 
 
+def _msl_axis_spacing(grid, axis: int):
+    """Cell spacing along one grid axis, and whether that axis is GRADED.
+
+    Returns ``(spacing_m, graded, evaluable)``:
+
+    * uniform :class:`~rfx.grid.Grid` — ``(grid.dx, False, True)``: every
+      axis carries the one scalar spacing.
+    * :class:`~rfx.nonuniform.NonUniformGrid` — the axis's own interior
+      cell-size array decides. ``graded`` is True when max/min differ by
+      more than 1e-6 relative.  ``spacing_m`` is the (single) interior
+      cell size when the axis is ungraded, ``None`` when it is graded.
+    * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
+      the answer is not available host-side.
+
+    Issue #686: the #469 probe-offset interval solve used to bail on ANY
+    non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
+    stated reason — "cell-counted intervals are ill-defined under graded
+    dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``
+    does not grade dx. For a microstrip the propagation axis is x or y,
+    so on a z-graded mesh (the boundary-fitted stackup case) the interval
+    is perfectly well defined and the solve simply never ran.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.nonuniform import NonUniformGrid, interior_cells
+
+    if not isinstance(grid, NonUniformGrid):
+        return float(grid.dx), False, True
+    arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
+    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
+    pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
+    if is_tracer(arr):
+        return None, None, False
+    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi),
+                       dtype=np.float64)
+    if cells.size == 0:
+        return None, None, False
+    lo, hi = float(cells.min()), float(cells.max())
+    if lo <= 0.0:
+        return None, None, False
+    graded = (hi - lo) / lo > 1e-6
+    return (None if graded else lo), graded, True
+
+
 def _resolve_msl_auto_offsets(sim, entries, grid):
     """Issue #469: solve the probe-offset interval for AUTO-offset ports.
 
@@ -406,13 +449,24 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
       priority — the fringing transient is the historically dominant
       corruption, issue #80).
 
-    Explicit offsets are never touched; NU grids keep the stored value
-    (cell-counted intervals are ill-defined under graded dx). The solve
-    always starts from the STORED lower edge
-    (``sim._msl_auto_offset_min``), so repeated calls are idempotent.
-    Returns a new entries list; ``sim`` is not mutated.
+    Explicit offsets are never touched. The solve always starts from the
+    STORED lower edge (``sim._msl_auto_offset_min``), so repeated calls are
+    idempotent. Returns a new entries list; ``sim`` is not mutated.
+
+    Non-uniform meshes (issue #686). The bail-out is per PORT and keys on
+    that port's PROPAGATION axis, not on "is any axis graded". A
+    cell-counted probe interval is ill-defined when the axis the probes
+    march along has varying cell sizes — which is a statement about the
+    propagation axis alone. A ``dz_profile`` does not grade dx, and a
+    microstrip propagates along x or y, so the previous
+    ``getattr(grid, "dz", None) is not None`` gate silently disabled the
+    solve on exactly the boundary-fitted z-stackup meshes where it is
+    both well defined and wanted. When the propagation axis IS graded (or
+    is a traced profile the host cannot inspect) the stored value is kept
+    as before — but the skip now WARNS once per call instead of being
+    silent.
     """
-    if not sim._msl_auto_offset_min or getattr(grid, "dz", None) is not None:
+    if not sim._msl_auto_offset_min:
         return entries
 
     import dataclasses
@@ -427,9 +481,9 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         msl_axis_roles as _msl_axis_roles,
     )
 
-    dx_u = float(grid.dx)
     clear = msl_min_probe_clearance(float(sim._freq_max))
     resolved: list = []
+    _graded_skips: list[str] = []
     for pe in entries:
         off_min = sim._msl_auto_offset_min.get(pe.name)
         if off_min is None:
@@ -441,7 +495,24 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         _prop_ax, _width_ax, _, _ = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
         _iw = _MSL_AX[_width_ax]
-        d_refl, _ = msl_nearest_downstream_reflector(
+        # Issue #686: the bail-out is about THIS port's propagation axis.
+        dx_u, _graded, _evaluable = _msl_axis_spacing(grid, _ip)
+        if not _evaluable:
+            _graded_skips.append(
+                f"{pe.name!r} (direction={pe.direction!r}): the "
+                f"{_prop_ax}-axis cell sizes are a traced "
+                f"mesh-as-design-variable profile and cannot be inspected "
+                f"host-side")
+            resolved.append(pe)
+            continue
+        if _graded:
+            _graded_skips.append(
+                f"{pe.name!r} (direction={pe.direction!r}): the "
+                f"propagation axis {_prop_ax} is GRADED, so a cell-counted "
+                f"probe interval has no single cell size to count in")
+            resolved.append(pe)
+            continue
+        d_refl, _, _unevaluated = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", []),
             x_probe=float(pe.position[_ip]),
             x_feed=float(pe.position[_ip]),
@@ -450,7 +521,21 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             dx=dx_u,
             domain_y=float(sim._domain[_iw]),
             direction=pe.direction,
+            # Issue #685: same conductor rule as the assembler, and thin
+            # conductors included, so the solved offset is not derived
+            # from a scan that was blind to most of the metal.
+            resolve_material=sim._resolve_material,
+            thin_conductors=getattr(sim, "_thin_conductors", ()),
+            pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         )
+        if _unevaluated:
+            _graded_skips.append(
+                f"{pe.name!r} (direction={pe.direction!r}): the downstream "
+                f"reflector scan could not evaluate "
+                f"{len(_unevaluated)} conductor(s) — "
+                + "; ".join(_unevaluated))
+            resolved.append(pe)
+            continue
         if not np.isfinite(d_refl):
             resolved.append(pe)
             continue
@@ -476,6 +561,18 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 stacklevel=3,
             )
             resolved.append(pe)
+    if _graded_skips:
+        warnings.warn(
+            "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
+            + str(len(_graded_skips)) + " port(s); the stored upstream-only "
+            "lower edge is kept, so the downstream reflector clearance is "
+            "NOT enforced for them: " + "; ".join(_graded_skips)
+            + ". This used to be silent for every non-uniform mesh (issue "
+            "#686). Set n_probe_offset explicitly on these ports, or make "
+            "the propagation axis uniform, if the deepest probe's "
+            "clearance matters.",
+            stacklevel=3,
+        )
     return resolved
 
 

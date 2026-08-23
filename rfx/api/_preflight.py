@@ -431,12 +431,51 @@ def msl_nearest_downstream_reflector(
     dx: float,
     domain_y: float,
     direction: str,
+    resolve_material=None,
+    thin_conductors=(),
+    pec_sigma_threshold: float = 1e6,
 ):
-    """Distance from ``x_probe`` to the nearest downstream PEC discontinuity.
+    """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
-    Walks registered PEC ``Box`` shapes and returns ``(distance_m, label)``
-    for the nearest box edge at or beyond ``x_probe`` along the propagation
-    direction, or ``(inf, None)`` when nothing qualifies.
+    Walks every registered CONDUCTOR and returns
+    ``(distance_m, label, unevaluated)`` for the nearest one at or beyond
+    ``x_probe`` along the propagation direction — ``(inf, None,
+    unevaluated)`` when nothing qualifies. ``unevaluated`` is the list of
+    conductors this scan could NOT place (one string each); it is what
+    lets the caller distinguish "nothing is nearby" from "I could not
+    look" (issue #685).
+
+    What counts as a conductor (issue #685). This used to be
+    ``isinstance(shape, Box) and str(material_name).lower() == "pec"``,
+    which was blind to two whole classes:
+
+    * **PEC-PROMOTED materials** — a conductor registered with
+      ``sigma >= 1e6`` under any other name. That is the common case for
+      imported CAD, where every conductor may be called ``"metal"``. Pass
+      ``resolve_material`` (normally ``sim._resolve_material``) and the
+      test becomes the same ``sigma >= pec_sigma_threshold`` rule the
+      assembler itself uses to build ``pec_mask``. Without it the legacy
+      name test is kept so old callers do not change behaviour.
+    * **non-``Box`` shapes** — ``Sheet``, ``MeshShape`` (#358), CSG
+      results. Any shape with a ``bounding_box()`` is now placed by that
+      box; a bounding box OVERSTATES a non-convex outline, which is the
+      conservative direction for a clearance advisory (it can only bring
+      the reported reflector nearer, never push it away). A shape with no
+      usable bounding box goes to ``unevaluated`` instead of being
+      skipped in silence.
+
+    ``thin_conductors`` (normally ``sim._thin_conductors``) are scanned
+    too: a thin PEC sheet, a DC-fold lossy sheet and a
+    ``surface_impedance_f0`` sheet are all metal to a wave on the line,
+    and since #677 the f0 one is in neither ``pec_mask`` nor
+    ``materials.sigma``, so nothing else would ever see it.
+
+    Observed consequence of the old scan: on a board whose reflectors were
+    all thin conductors, it found none. Probe 0 then sat well inside this
+    repo's own downstream rule (``msl_min_probe_clearance``) and its
+    upstream rule (``5*h_sub``), and two further probes landed physically
+    on metal -- with nothing warned. The old scan read only volumetric
+    ``geometry``, so a board built from sheets was invisible to it.
 
     Axis generality (issue #661): the parameter names are the ``"+x"``-frame
     names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
@@ -470,12 +509,74 @@ def msl_nearest_downstream_reflector(
     _iw = _MSL_AXIS_INDEX[_width_ax]
     nearest_d = float("inf")
     nearest_label = None
-    for ge in geometry:
+    unevaluated: list[str] = []
+
+    def _is_conductor(material_name) -> bool:
+        if resolve_material is None:
+            # Legacy name test, kept for callers that cannot resolve.
+            return str(material_name).lower() == "pec"
+        try:
+            mat = resolve_material(material_name)
+        except Exception:
+            unevaluated.append(
+                f"geometry entry with material {material_name!r}: the "
+                f"material could not be resolved, so its conductivity is "
+                f"unknown")
+            return False
+        sigma = getattr(mat, "sigma", None)
+        if sigma is None:
+            return str(material_name).lower() == "pec"
+        try:
+            return float(sigma) >= float(pec_sigma_threshold)
+        except (TypeError, ValueError):
+            # A traced sigma (material-as-design-variable) cannot be
+            # compared host-side.
+            unevaluated.append(
+                f"geometry entry with material {material_name!r}: sigma is "
+                f"not a concrete number (traced design variable), so PEC "
+                f"promotion cannot be decided host-side")
+            return False
+
+    def _bounds(shape, what: str):
+        lo = getattr(shape, "corner_lo", None)
+        hi = getattr(shape, "corner_hi", None)
+        if lo is not None and hi is not None:
+            return lo, hi
+        bbox = getattr(shape, "bounding_box", None)
+        if bbox is None:
+            unevaluated.append(
+                f"{what} ({type(shape).__name__}): no corner_lo/corner_hi "
+                f"and no bounding_box(), so it cannot be placed on the line")
+            return None, None
+        try:
+            lo, hi = bbox()
+        except Exception as exc:
+            unevaluated.append(
+                f"{what} ({type(shape).__name__}): bounding_box() raised "
+                f"{type(exc).__name__}, so it cannot be placed on the line")
+            return None, None
+        return lo, hi
+
+    # (shape, label_prefix, is_bbox_derived) for every registered conductor.
+    candidates: list = []
+    for _gi, ge in enumerate(geometry):
         shape = getattr(ge, "shape", None)
         mat = getattr(ge, "material_name", "")
-        if not isinstance(shape, _Box) or str(mat).lower() != "pec":
+        if shape is None or not _is_conductor(mat):
             continue
-        lo, hi = shape.corner_lo, shape.corner_hi
+        candidates.append((shape, f"conductor '{mat}'",
+                           not isinstance(shape, _Box)))
+    for _ti, tc in enumerate(thin_conductors or ()):
+        tshape = getattr(tc, "shape", None)
+        if tshape is None:
+            continue
+        candidates.append((tshape, f"thin_conductor[{_ti}]",
+                           not isinstance(tshape, _Box)))
+
+    for shape, _what, _from_bbox in candidates:
+        lo, hi = _bounds(shape, _what)
+        if lo is None or hi is None:
+            continue
         # "x" = propagation axis, "y" = trace-width axis (issue #661).
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
         box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
@@ -508,12 +609,13 @@ def msl_nearest_downstream_reflector(
                 d = 0.0
         if d < nearest_d:
             nearest_d = d
+            _how = " (bounding box)" if _from_bbox else ""
             nearest_label = (
-                f"PEC Box at {_prop_ax}∈[{box_x_lo*1e3:.2f},"
+                f"{_what}{_how} at {_prop_ax}∈[{box_x_lo*1e3:.2f},"
                 f"{box_x_hi*1e3:.2f}]mm "
                 f"{_width_ax}∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
             )
-    return nearest_d, nearest_label
+    return nearest_d, nearest_label, unevaluated
 
 
 def msl_absorber_compliant_offset_max(
@@ -2048,6 +2150,7 @@ class _PreflightMixin:
         self._validate_cfg_precision_x64(_w)
         self._validate_cfg_pec_faces_with_finite_pec(_w)
         self._validate_cfg_upml_refinement()
+        self._validate_cfg_upml_nonuniform_lane(_w)
         self._validate_cfg_floquet_nonuniform()
         self._validate_cfg_absorber_placement(
             _w, dx, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
@@ -2686,6 +2789,84 @@ class _PreflightMixin:
                 code="upml_refinement",
                 source="_validate_cfg_upml_refinement",
             )
+
+    def _validate_cfg_upml_nonuniform_lane(self, _w) -> None:
+        """Advisory: ``boundary='upml'`` + a mesh profile is refused at run.
+
+        Same shape as ``_validate_cfg_precision_x64``'s non-uniform arm:
+        the enforcement point is ``_reject_upml_on_nonuniform`` at lane
+        entry (``rfx/api/_execute.py``), which ``skip_preflight=True``
+        does NOT bypass. This warning exists so the coming ``ValueError``
+        is explained before the run reaches it, and so a
+        ``skip_preflight=True`` caller still sees the reason in the one
+        place they do look. Without it ``preflight()`` printed "All checks
+        passed" and ``run()`` then refused, which reads as a preflight
+        that does not know what the runner will do.
+
+        The advisory carries its BASIS, not just its verdict, so a reader
+        can tell a live guard from a stale one:
+
+        * observed — on a 4x4x3 mm ez-dipole domain, two configs identical
+          apart from the mesh profile: ``apply_upml_e`` ran 1x on the
+          uniform lane and 0x on the non-uniform lane, while
+          ``sim._boundary`` still read ``'upml'`` afterwards;
+        * mechanism — ``rfx/nonuniform.py`` picks its absorber with
+          ``use_cpml = grid.cpml_layers > 0`` (line 1051) and never reads
+          the boundary type; every ``apply_upml_e``/``apply_upml_h`` call
+          site is in the uniform scan body in ``rfx/simulation.py``. There
+          is no UPML code on that lane to reach;
+        * cost — CPML and UPML differ in reflection and in how material
+          inside the pad is handled, so the run was a different absorber's
+          result, and any post-hoc audit of ``sim._boundary`` reported the
+          absorber that never ran;
+        * alternative — ``boundary='cpml'`` runs what IS implemented here;
+          dropping the mesh profile(s) reaches the uniform lane, which
+          does implement UPML;
+        * falsifier — this guard is stale the moment ``rfx/nonuniform.py``
+          dispatches its absorber on the boundary type instead of on
+          ``cpml_layers``, or an ``apply_upml_*`` call site appears
+          outside ``rfx/simulation.py``. Both are one grep.
+
+        Fires on exactly the condition ``_reject_upml_on_nonuniform``
+        raises on (``boundary == 'upml'`` and ``cpml_layers > 0``), plus
+        the mesh-profile test that its call sites supply — so the advisory
+        and the error cannot disagree about which configs are refused.
+        """
+        is_nonuniform = (
+            self._dx_profile is not None
+            or self._dy_profile is not None
+            or self._dz_profile is not None
+        )
+        if not is_nonuniform or self._boundary != "upml":
+            return
+        if self._cpml_layers <= 0:
+            return
+        _w.warn(PreflightWarning(
+            "boundary='upml' was requested with a non-uniform mesh "
+            "(dx/dy/dz profile set), but the non-uniform runner has no "
+            "UPML code at all: rfx/nonuniform.py selects its absorber "
+            "with `use_cpml = grid.cpml_layers > 0` and never reads the "
+            "boundary type, and every apply_upml_e/apply_upml_h call site "
+            "is in the uniform scan body (rfx/simulation.py). Measured "
+            "before this was guarded (4x4x3 mm ez-dipole, configs "
+            "identical apart from the mesh profile): apply_upml_e ran 1x "
+            "on the uniform lane and 0x on the non-uniform lane while "
+            "sim._boundary still read 'upml', so the run was CPML and "
+            "even a post-hoc audit reported the absorber that never ran "
+            "(issue #680). That is not a slightly worse UPML — CPML and "
+            "UPML differ in reflection and in how material inside the pad "
+            "is treated. Use boundary='cpml' to run the absorber that is "
+            "implemented on this lane, or drop the mesh profile(s) to "
+            "reach the uniform lane, which does implement UPML. "
+            "run()/forward() raise ValueError at lane entry rather than "
+            "proceed; this advisory explains that error in advance and "
+            "covers skip_preflight=True, which does NOT bypass the lane "
+            "guard. This guard is stale if rfx/nonuniform.py ever "
+            "dispatches its absorber on the boundary type, or if an "
+            "apply_upml_* call site appears outside rfx/simulation.py.",
+            code="upml_nonuniform_lane_unsupported",
+            source="_validate_cfg_upml_nonuniform_lane",
+        ))
 
     def _validate_cfg_floquet_nonuniform(self) -> None:
         """P1.1: Floquet + non-uniform mesh — no silent fallback allowed."""
@@ -4766,16 +4947,46 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
 
-            nearest_d, nearest_label = msl_nearest_downstream_reflector(
-                getattr(self, "_geometry", []),
-                x_probe=x_deep,
-                x_feed=x_feed,
-                y_feed=y_centre,
-                w_trace=w_trace,
-                dx=dx,
-                domain_y=float(domain[_iw]),
-                direction=pe.direction,
-            )
+            nearest_d, nearest_label, _unevaluated = \
+                msl_nearest_downstream_reflector(
+                    getattr(self, "_geometry", []),
+                    x_probe=x_deep,
+                    x_feed=x_feed,
+                    y_feed=y_centre,
+                    w_trace=w_trace,
+                    dx=dx,
+                    domain_y=float(domain[_iw]),
+                    direction=pe.direction,
+                    # Issue #685: decide conductor-ness by the SAME
+                    # sigma >= threshold rule the assembler uses, and
+                    # scan thin conductors, instead of matching the
+                    # literal material name "pec" on Box shapes only.
+                    resolve_material=self._resolve_material,
+                    thin_conductors=getattr(self, "_thin_conductors", ()),
+                    pec_sigma_threshold=self._PEC_SIGMA_THRESHOLD,
+                )
+
+            if _unevaluated:
+                # Issue #685: this scan could not distinguish "nothing is
+                # nearby" from "I could not look". Say which, rather than
+                # letting an unplaceable conductor read as a clean line.
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"the downstream-reflector clearance scan could NOT "
+                        f"evaluate {len(_unevaluated)} registered "
+                        f"conductor(s), so a 'clear' result here is not "
+                        f"evidence that the probes are clear — "
+                        + "; ".join(_unevaluated)
+                        + ". Give those shapes an axis-aligned bounding box "
+                        "(or place the probes explicitly with "
+                        "n_probe_offset) before trusting "
+                        "`compute_msl_s_matrix`'s Z₀ / |S11| here.",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
 
             if nearest_d < min_probe_clear and nearest_label is not None:
                 # Interval framing (issue #469): the compliant window is

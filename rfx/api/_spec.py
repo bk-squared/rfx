@@ -119,6 +119,23 @@ class AD_MemoryEstimate(NamedTuple):
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
     ad_segmented_active_segments: int | None = None
+    #: Which grid the numbers describe (#696): ``"uniform"`` or
+    #: ``"nonuniform"``. The estimate used to be derived from a private
+    #: re-derivation of the shape that matched NEITHER grid wherever
+    #: per-face pads or 2-D mode changed it, and nothing in the artifact
+    #: said which grid it meant — a uniform-lane ``dt`` has already been
+    #: mistaken for the NU one in this repo.
+    grid_kind: str | None = None
+    #: ``"built"`` when the shape came from the grid the solve will
+    #: build, ``"estimated_from_domain"`` when the grid build failed and
+    #: the legacy domain arithmetic was used as a fallback.
+    grid_source: str | None = None
+    grid_shape: tuple[int, int, int] | None = None
+    #: Surface-impedance (f0) sheet operator state — three boolean
+    #: tangential edge masks plus ``sigma_sheet`` (#677). Zero when no f0
+    #: sheet is registered. It was counted NOWHERE before #696, so a
+    #: lossy board estimated identically to the same board without loss.
+    sheet_gb: float | None = None
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -144,6 +161,15 @@ class AD_MemoryEstimate(NamedTuple):
             "checkpoint_segments": self.checkpoint_segments,
             "ad_active_steps": self.ad_active_steps,
             "ad_segmented_active_segments": self.ad_segmented_active_segments,
+            "grid_kind": self.grid_kind,
+            "grid_source": self.grid_source,
+            "grid_shape": (
+                None if self.grid_shape is None
+                else [int(v) for v in self.grid_shape]
+            ),
+            "sheet_gb": (
+                None if self.sheet_gb is None else float(self.sheet_gb)
+            ),
         }
 
     def to_json(self, **kwargs: object) -> str:
