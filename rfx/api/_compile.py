@@ -261,6 +261,20 @@ class _CompileMixin:
         # mu==1 vacuum test (#627a/#655) and must see the corrected
         # interior; and before the thin-conductor loop further down, which
         # is why the PEC thin-sheet masks are collected here directly.
+        #
+        # STRUCTURAL DEBT, named rather than left to be rediscovered. This
+        # rule sits at the two CALL SITES (here and
+        # rfx/runners/nonuniform.py's assemble_materials_nu), not inside the
+        # shared rasterize_geometry() body, so a third caller inherits the
+        # ORIGINAL defect silently -- today rfx/runners/subgridded.py:203,
+        # the FINE region (cell CENTRES, cv12/13-fenced experimental), still
+        # unfixed. Hand-copied rules drifting apart is this repo's recurring
+        # failure mode (#689: the neighbour rule inlined a second time in
+        # the distributed kernel, disagreeing at a domain face), so
+        # promoting the resample INTO rasterize_geometry is the real fix.
+        # Not taken here only because that function receives neither the
+        # run's periodic flags nor the lane's half-steps, both of which this
+        # rule needs; widening its signature is a separate change.
         _cx, _cy, _cz = _grid_coords(grid)
         _coords = GridCoords(x=_cx, y=_cy, z=_cz, shape=grid.shape)
         # NOT gated on ``include_thin_conductors``. That flag exists so the

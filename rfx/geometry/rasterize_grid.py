@@ -294,7 +294,7 @@ def sheet_normal_live_axis_masks(
     declared_sheets=(),
     periodic=(False, False, False),
 ):
-    """Cells where a node-thin conductor leaves exactly ONE E component live.
+    """Cells whose statics still feed a node-thin conductor's NORMAL E edge.
 
     A conductor thinner than a cell is realized node-thin: it occupies one
     cell layer, ``rfx.boundaries.pec.apply_pec_mask`` zeroes the two
@@ -318,6 +318,32 @@ def sheet_normal_live_axis_masks(
     live components, which sit at two or three different half-cell offsets;
     one isotropic scalar per cell cannot serve them, so those cells are
     left alone rather than served wrongly.
+
+    **Scope, stated exactly.** "Exactly one live component" is literal for
+    a hard-PEC sheet: ``apply_pec_mask`` zeroes the other two, so the
+    stored ``eps_r`` feeds one edge and nothing else. It is NOT literal for
+    a ``surface_impedance_f0`` sheet — those tangential edges are alive,
+    resistively updated by
+    :func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, and
+    :func:`rfx.materials.thin_conductor.sheet_update_coeffs` reads the SAME
+    ``materials.eps_r`` (its docstring: "eps_r is the BACKGROUND
+    permittivity at the sheet cells"). On that path this function names the
+    cells whose NORMAL edge is served correctly, and the tangential
+    coefficients move with it.
+
+    That side effect is nil at any real metal, and the reason is the
+    resistive-sheet limit rather than luck. Measured, copper at 28 GHz on a
+    31.43 um cell (skin depth 394.9 nm, Rs0 = 0.0437 ohm/sq, sigma_sheet =
+    7.288e5 S/m, dt = 5.992e-14 s): ``A = 0.000000e+00`` and
+    ``B = 1.372111e-06`` at ``eps_r`` 1.0, and the same two numbers at
+    ``eps_r`` 3.38. ``x2 = sigma_tot*dt/(eps0*eps_r)`` is 4.93e+03 and
+    1.46e+03 there, both far enough into ``A -> 0``, ``B -> 1/sigma_tot``
+    that ``B`` equals ``1/sigma_sheet`` to every printed digit — the
+    ``E_tan = Rs*Js`` limit, which contains no eps. The coefficients do
+    separate on a sheet three orders of magnitude more resistive
+    (sigma_sheet 1e3 S/m: A 1.15e-03 vs 1.35e-01), which is not a metal.
+    Pinned by
+    ``tests/test_sheet_node_permittivity.py::test_f0_sheet_coefficients_are_in_the_resistive_limit``.
 
     Parameters
     ----------
@@ -386,6 +412,23 @@ def _subcell_box_axis_window(entry_shape, axis, node_coords, half_steps_axis):
     answer at a point: is the shifted point inside ``[lo, hi)``? Restricted to
     Box because for a Box the bounding box IS the shape; for a Sphere or a
     Cylinder it is not, and the plain shifted mask stays exact there.
+
+    **It is skipped on the differentiable-mesh lane, and that diverges.**
+    Deciding "is this Box thinner than its LOCAL cell" needs concrete node
+    coordinates and a concrete half-step, so this returns ``None`` as soon as
+    either is a tracer — which is the traced-``dz_profile`` lane, and any
+    ``jit`` whose half-steps are arguments rather than closed-over constants.
+    The resample then falls back to the plain shifted mask, i.e. to exactly
+    the ``Box`` thin-branch re-snap this window exists to avoid. So for the
+    combination (sub-cell dielectric Box + node-thin conductor + traced mesh)
+    the traced primal is a different model from the eager one: measured on
+    the fixture of
+    ``tests/test_sheet_node_permittivity.py::test_subcell_dielectric_fill_does_not_follow_the_shifted_sample``,
+    eager ``eps_r`` 3.38 against traced 3.52. A gradient taken there is a
+    gradient of that other model, and nothing reports it at run time. Narrow
+    — it needs all three conditions at once — but silent, so it is written
+    down rather than left to be found as "the gradient is for a different
+    model". Pinned by ``test_traced_mesh_skips_the_subcell_window``.
     """
     lo = getattr(entry_shape, "corner_lo", None)
     hi = getattr(entry_shape, "corner_hi", None)
@@ -491,6 +534,12 @@ def resample_sheet_node_materials(
     **It does not invent dielectric.** An OUTER conductor with air above
     resamples to air, because that is what is at its live edge. Only a cell
     whose live edge genuinely sits in a dielectric gets one.
+
+    **The "one live component" phrasing is exact only for hard PEC.** A
+    ``surface_impedance_f0`` sheet keeps its tangential edges alive too, and
+    they read the same ``eps_r``, so the resample moves their update
+    coefficients as well — by nothing at any real metal, for the measured
+    reason written out in :func:`sheet_normal_live_axis_masks`.
 
     **A sub-cell DIELECTRIC needs its own rule**, see
     :func:`_subcell_box_axis_window`: ``Box``'s thin branch would re-snap it

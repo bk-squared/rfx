@@ -111,6 +111,21 @@ def assemble_materials_nu(
     # outward. It runs before the thin-conductor fold further down for the
     # same reason, which is why the PEC thin-sheet masks are collected
     # here rather than read off the later pec_mask.
+    #
+    # STRUCTURAL DEBT, named rather than left to be rediscovered. This rule
+    # sits at the two CALL SITES (here and rfx/api/_compile.py's
+    # _build_materials), not inside the shared rasterize_geometry() body
+    # both of them call, so a third caller inherits the ORIGINAL defect
+    # silently. Today that third caller is rfx/runners/subgridded.py:203
+    # (the FINE region, sampled at cell CENTRES; cv12/13-fenced
+    # experimental), and it is unfixed. Hand-copied rules drifting apart is
+    # this repo's recurring failure mode -- #689 found the neighbour rule
+    # inlined a second time in the distributed kernel, disagreeing at a
+    # domain face -- so promoting the resample INTO rasterize_geometry, and
+    # letting every caller inherit it, is the real fix. It was not taken
+    # here only because rasterize_geometry receives neither the run's
+    # periodic flags nor the lane's half-steps, both of which this rule
+    # needs; widening its signature is a separate change.
     _pec_tc_masks, _f0_sheets = collect_thin_conductor_sheet_inputs(
         getattr(sim, "_thin_conductors", None),
         lambda shape: shape.mask_on_coords(coords.x, coords.y, coords.z),
