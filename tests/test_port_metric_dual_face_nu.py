@@ -533,6 +533,23 @@ def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form(
     — so this is a MEASURED pin on this fixture, not an identity.  If it ever
     reds, check the delta before touching it: a last-bit move is acceptable,
     a visible one is not.
+
+    It red on CI at the last-bit level, exactly as written above, and the
+    delta was checked before this line moved.  Authored on this workstation
+    the sum is ...530009; GitHub's ubuntu runner gives ...530007.  That is
+    2e-11 absolute on 7.3e4 = **2.7e-16 relative**, one to two float64 ULP,
+    and it is a REDUCTION-ORDER difference, not a code-path difference: the
+    per-cell form multiplies inside the sum, so a different BLAS/pairwise
+    reduction order rounds elsewhere.  `==` was therefore pinning the host,
+    not the physics.
+
+    The tolerance below is 1e-13 relative — about 370x the observed
+    cross-machine drift, and still four orders tighter than any physical
+    move this test exists to catch.  A real regression here (dual face vs
+    primal cell, or a scalar dz creeping back in) is percent-level on a
+    graded axis; on this uniform fixture it would move the profile shape,
+    not its last bit.  If the delta ever exceeds 1e-13, that is a code
+    change and the root cause must be written before this number is touched.
     """
     from rfx.sources.msl_port import compute_msl_mode_profile
 
@@ -541,9 +558,14 @@ def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form(
     port = MSLPort(feed_x=1.0 * MM, y_lo=1.8 * MM, y_hi=2.2 * MM,
                    z_lo=0.0, z_hi=0.3 * MM, direction="+x", impedance=50.0)
     ez = np.asarray(compute_msl_mode_profile(grid, port, 4.4)["ez_profile"])
-    assert float(ez.sum()) == 73361.79312530009
-    assert float((ez * ez).sum()) == 169878467.3801139
-    assert float(ez.max()) == 4556.98256846321
+    for got, want, label in ((float(ez.sum()), 73361.79312530009, "sum"),
+                             (float((ez * ez).sum()), 169878467.3801139, "sum of squares"),
+                             (float(ez.max()), 4556.98256846321, "max")):
+        assert abs(got - want) <= 1e-13 * abs(want), (
+            f"{label}: {got!r} vs pinned {want!r} "
+            f"(relative {abs(got - want) / abs(want):.3e} > 1e-13) — this is "
+            f"larger than a reduction-order move; find the root cause before "
+            f"repinning")
 
 
 # ---------------------------------------------------------------------------
