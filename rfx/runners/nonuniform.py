@@ -82,6 +82,8 @@ def assemble_materials_nu(
     """
     from rfx.geometry.rasterize_grid import (
         rasterize_geometry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
+        collect_thin_conductor_sheet_inputs, periodic_flags_from_axes,
+        resample_sheet_node_materials,
     )
 
     coords = coords_from_nonuniform_grid(grid)
@@ -93,6 +95,44 @@ def assemble_materials_nu(
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
     )
     materials, debye_spec, lorentz_spec, pec_mask, _pec_shapes, _kerr_chi3 = result
+
+    # Node-thin conductors: sample the statics where the LIVE edge is.
+    # A sub-cell conductor has no volume, so nothing writes eps_r at its
+    # node (a PEC entry writes only pec_mask) and the node keeps vacuum
+    # wherever the surrounding dielectric boxes abut the metal faces
+    # instead of spanning its thickness. The one E component the sheet
+    # leaves alive is the sheet-NORMAL one, and it sits half a primal cell
+    # away, inside that dielectric. See resample_sheet_node_materials.
+    #
+    # Runs BEFORE the CPML pad extension below, deliberately: that step
+    # sources the pad from the outermost interior column and treats
+    # eps==1 & sigma==0 & mu==1 as vacuum (#627a/#655), so it must see the
+    # corrected interior, not a stale vacuum it would then replicate
+    # outward. It runs before the thin-conductor fold further down for the
+    # same reason, which is why the PEC thin-sheet masks are collected
+    # here rather than read off the later pec_mask.
+    _pec_tc_masks, _f0_sheets = collect_thin_conductor_sheet_inputs(
+        getattr(sim, "_thin_conductors", None),
+        lambda shape: shape.mask_on_coords(coords.x, coords.y, coords.z),
+    )
+    _cond_mask = pec_mask
+    for _m in _pec_tc_masks:
+        _cond_mask = _m if _cond_mask is None else (_cond_mask | _m)
+    if _cond_mask is not None or _f0_sheets:
+        _eps_s, _sigma_s = resample_sheet_node_materials(
+            sim._geometry, sim._resolve_material, coords,
+            materials.eps_r, materials.sigma,
+            half_steps=(jnp.asarray(grid.dx_arr) * 0.5,
+                        jnp.asarray(grid.dy_arr) * 0.5,
+                        jnp.asarray(grid.dz) * 0.5),
+            conductor_cell_mask=_cond_mask,
+            declared_sheets=_f0_sheets,
+            periodic=periodic_flags_from_axes(
+                getattr(sim, "_periodic_axes", "")),
+            pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
+        )
+        materials = MaterialArrays(
+            eps_r=_eps_s, sigma=_sigma_s, mu_r=materials.mu_r)
 
     # Extend material properties into CPML padding so that guided modes in
     # dielectric waveguides see an impedance-matched absorber (equivalent to

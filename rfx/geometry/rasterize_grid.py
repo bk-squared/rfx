@@ -234,6 +234,330 @@ def rasterize_geometry(
     return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, kerr_chi3
 
 
+def collect_thin_conductor_sheet_inputs(thin_conductors, mask_fn):
+    """Split thin conductors into the two inputs the sheet resample needs.
+
+    One rule, both lanes: a PEC thin sheet joins the PEC cell union (its
+    normal is then read from the union's own adjacency, exactly as
+    ``apply_pec_mask`` reads it), while a surface-impedance (``f0``) sheet
+    is NOT in ``pec_mask`` at all and carries its own declared normal axis
+    (``sheet_normal_axis``, the same reader
+    ``apply_thin_conductor``/``assemble_materials_nu`` use to pick which
+    dual spacing normalizes it).
+
+    A legacy DC-fold conductor is neither: it writes a VOLUMETRIC
+    ``sigma``/``eps_r`` fold into its cell (``thin_conductor.py``'s
+    ``eps_r = where(mask, conductor.eps_r, ...)``), so its cell is not a
+    node-thin surface and the resample must not touch it.
+
+    Parameters
+    ----------
+    thin_conductors : iterable or None
+    mask_fn : callable(shape) -> bool array
+        Lane's rasterizer for a shape (``shape.mask(grid)`` uniform,
+        ``shape.mask_on_coords(...)`` non-uniform).
+
+    Returns
+    -------
+    (pec_masks, declared_sheets)
+        ``pec_masks`` is a list of boolean arrays to OR into the PEC cell
+        union; ``declared_sheets`` is a list of ``(mask, normal_axis)``.
+    """
+    pec_masks = []
+    declared_sheets = []
+    if not thin_conductors:
+        return pec_masks, declared_sheets
+    from rfx.materials.thin_conductor import sheet_bounds, sheet_normal_axis
+    for tc in thin_conductors:
+        if getattr(tc, "is_pec", False):
+            pec_masks.append(mask_fn(tc.shape))
+            continue
+        if getattr(tc, "surface_impedance_f0", None) is None:
+            continue
+        lo, hi = sheet_bounds(tc.shape)
+        if lo is None or hi is None:
+            # The f0 lanes raise on this; do not pre-empt their message.
+            continue
+        declared_sheets.append((mask_fn(tc.shape), sheet_normal_axis(lo, hi)))
+    return pec_masks, declared_sheets
+
+
+def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
+    """``"xy"`` -> ``(True, True, False)``; ``None``/``""`` -> all False."""
+    s = periodic_axes or ""
+    return tuple(ax in s for ax in "xyz")
+
+
+def sheet_normal_live_axis_masks(
+    conductor_cell_mask,
+    *,
+    declared_sheets=(),
+    periodic=(False, False, False),
+):
+    """Cells where a node-thin conductor leaves exactly ONE E component live.
+
+    A conductor thinner than a cell is realized node-thin: it occupies one
+    cell layer, ``rfx.boundaries.pec.apply_pec_mask`` zeroes the two
+    in-plane (tangential) E edges of that cell and deliberately LEAVES the
+    sheet-normal edge alone, because that edge carries the surface charge.
+    This function returns, per axis, the cells for which that surviving
+    component is the axis' own — i.e. the cells whose stored ``eps_r`` /
+    ``sigma`` still feed a live field update.
+
+    The classification is the SAME rule the operator uses
+    (:func:`rfx.boundaries.pec.tangential_edge_masks`, on the SAME union
+    cell mask, with the SAME ``periodic`` flags), so "this cell's eps is
+    still live along axis n" cannot disagree with "apply_pec_mask left
+    component n alone at this cell". Classifying per shape instead would
+    disagree: a patterned plane drawn as abutting 1-cell boxes reads thin
+    in the in-plane axes box-by-box and solid as a union (the #690
+    measurement, in the other direction).
+
+    Restricted to cells thin along EXACTLY ONE axis. A body thin along two
+    (a sub-cell wire) or three (an isolated cell) axes keeps two or three
+    live components, which sit at two or three different half-cell offsets;
+    one isotropic scalar per cell cannot serve them, so those cells are
+    left alone rather than served wrongly.
+
+    Parameters
+    ----------
+    conductor_cell_mask : (nx, ny, nz) bool array or None
+        Union of every PEC-like conductor cell (geometry PEC entries plus
+        PEC thin conductors). ``None`` contributes nothing.
+    declared_sheets : iterable of (mask, normal_axis)
+        Surface-impedance (``surface_impedance_f0``) sheets, which are NOT
+        in the PEC mask and carry their own declared normal axis (#690).
+    periodic : (bool, bool, bool)
+        The run's per-axis periodic flags, forwarded unchanged.
+
+    Returns
+    -------
+    (mask_x, mask_y, mask_z) boolean arrays.
+    """
+    from rfx.boundaries.pec import tangential_edge_masks
+
+    masks = None
+    if conductor_cell_mask is not None:
+        tang = tangential_edge_masks(conductor_cell_mask, periodic)
+        masks = [conductor_cell_mask & ~t for t in tang]
+
+    for m, ax in declared_sheets:
+        if masks is None:
+            masks = [jnp.zeros(m.shape, dtype=jnp.bool_) for _ in range(3)]
+        masks[int(ax)] = masks[int(ax)] | m
+
+    if masks is None:
+        return None
+
+    # ONE restriction, applied once to the assembled per-axis claims: keep a
+    # cell only where exactly one axis claims it. That covers both ways a cell
+    # can be ambiguous -- a body thin along two or three axes (a sub-cell wire,
+    # an isolated cell), whose two or three live components sit at two or three
+    # different half-cell offsets that one isotropic scalar cannot serve; and a
+    # cell claimed by sheets of two different normals. It is deliberately NOT
+    # split into a per-body guard plus an overlap guard: each covered the
+    # other's cases, so neither could be falsified alone (measured -- mutating
+    # either one left all 18 tests of
+    # tests/test_sheet_node_permittivity.py green).
+    claimed = sum(m.astype(jnp.int32) for m in masks)
+    unique = claimed == 1
+    return tuple(m & unique for m in masks)
+
+
+def _subcell_box_axis_window(entry_shape, axis, node_coords, half_steps_axis):
+    """``(lo, hi)`` if this shape is a BOX thinner than its local cell, else None.
+
+    Why the resample needs this. ``Box.mask_on_coords`` has a thin branch: a
+    shape thinner than the local cell claims the ONE node nearest its midpoint
+    (``csg.py``), so it survives instead of vaporizing. That is right for the
+    main rasterization, and wrong for a half-cell-shifted re-sample, where the
+    branch re-runs against the SHIFTED nodes and re-snaps the shape onto
+    whichever of them now happens to be nearest.
+
+    Measured on a real board: two identical 17 um buried-level dielectric
+    fills, both registered at their mid-plane, both with the shifted sample
+    point ~7 um ABOVE the fill's top face. One re-snapped onto the shifted
+    node and one did not — the two candidate shifted nodes are equidistant
+    from the fill midpoint by construction, so float32 rounding decided
+    (eps_r 3.520 at one level, 3.380 at the other, from the same geometry).
+    A material value must not be decided that way.
+
+    So for a sub-cell Box the resample asks the only question that has an
+    answer at a point: is the shifted point inside ``[lo, hi)``? Restricted to
+    Box because for a Box the bounding box IS the shape; for a Sphere or a
+    Cylinder it is not, and the plain shifted mask stays exact there.
+    """
+    lo = getattr(entry_shape, "corner_lo", None)
+    hi = getattr(entry_shape, "corner_hi", None)
+    if lo is None or hi is None:
+        return None
+    if is_tracer(half_steps_axis) or is_tracer(node_coords):
+        return None
+    lo_ax, hi_ax = float(lo[axis]), float(hi[axis])
+    extent = hi_ax - lo_ax
+    nodes = np.asarray(node_coords, dtype=np.float64)
+    half = np.asarray(half_steps_axis, dtype=np.float64)
+    if nodes.size == 0:
+        return None
+    idx = int(np.argmin(np.abs(nodes - 0.5 * (lo_ax + hi_ax))))
+    flat = half.reshape(-1)
+    d_local = 2.0 * float(flat[min(idx, flat.size - 1)] if flat.size > 1
+                          else flat[0])
+    if extent > d_local * 1.01:
+        return None
+    return lo_ax, hi_ax
+
+
+def _statics_on_coords(geometry_entries, material_resolver, coords_shifted,
+                       coords_node, axis, half_steps_axis, shape,
+                       pec_sigma_threshold):
+    """``eps_r`` / ``sigma`` from the geometry entries at the shifted point.
+
+    Same entry order and same PEC branch as :func:`rasterize_geometry` (a PEC
+    entry writes neither), so this is that function's statics read at a
+    different sample point. Sub-cell Boxes take the half-open window test
+    described in :func:`_subcell_box_axis_window` instead of the thin branch's
+    argmin.
+    """
+    eps_r = jnp.ones(shape, dtype=jnp.float32)
+    sigma = jnp.zeros(shape, dtype=jnp.float32)
+    sx, sy, sz = coords_shifted
+    for entry in geometry_entries:
+        mat = material_resolver(entry.material_name)
+        if mat.sigma >= pec_sigma_threshold:
+            continue
+        mask = entry.shape.mask_on_coords(sx, sy, sz)
+        window = _subcell_box_axis_window(
+            entry.shape, axis, coords_node[axis], half_steps_axis)
+        if window is not None:
+            lo_ax, hi_ax = window
+            ax_c = coords_shifted[axis]
+            inside = (ax_c >= lo_ax) & (ax_c < hi_ax)
+            bshape = [1, 1, 1]
+            bshape[axis] = inside.shape[0]
+            unshifted = entry.shape.mask_on_coords(*coords_node)
+            mask = (mask | unshifted) & inside.reshape(bshape)
+        eps_r = jnp.where(mask, mat.eps_r, eps_r)
+        sigma = jnp.where(mask, mat.sigma, sigma)
+    return eps_r, sigma
+
+
+def resample_sheet_node_materials(
+    geometry_entries,
+    material_resolver,
+    coords: GridCoords,
+    eps_r,
+    sigma,
+    *,
+    half_steps,
+    conductor_cell_mask=None,
+    declared_sheets=(),
+    periodic=(False, False, False),
+    pec_sigma_threshold: float = 1e6,
+):
+    """Sample a node-thin conductor cell's statics where its LIVE edge sits.
+
+    **The defect.** ``eps_r[i,j,k]`` is a point sample at the E NODE
+    ``z[k]`` (``_axis_node_positions``: ``edges[:-1]``). A conductor thinner
+    than a cell has no volume: it is registered on one node, contributes a
+    PEC/sheet cell there, and NOTHING writes ``eps_r`` at that node — a PEC
+    entry deliberately writes only ``pec_mask`` (``rasterize_geometry``,
+    ``_compile._build_materials``). Where the surrounding dielectric boxes
+    abut the conductor's faces instead of spanning its thickness — which is
+    what a real stackup or a CAD export gives, the metal layer being a slot
+    no dielectric fills — that node keeps the default vacuum.
+
+    That vacuum is not harmless, because the one E component the sheet
+    leaves alive is the sheet-NORMAL one, and rfx's own staggering
+    (``rfx/geometry/smoothing.py``: "Ez lives at (i, j, k+0.5)") puts it at
+    ``z[k] + dz[k]/2`` — half a cell away from the sample point, inside the
+    dielectric above, not inside the metal. So the cavity a stacked pair
+    bounds carries one vacuum cell in series.
+
+    Measured, mid-plane-registered 17 um copper between eps_r 3.52 below and
+    3.38 above on a 31.43 um graded mesh: ``eps_r`` at the sheet node 1.000,
+    and a 14-cell series sum ``sum(d/eps_r)`` of 149.72 um against the
+    physical stack's 127.59 um — the gap reads 17.3 % wider and the coupling
+    capacitance 14.8 % low. The whole error is that one cell:
+    ``31.43*(1 - 1/3.38) = 22.13 um == 149.72 - 127.59``. Reproduces
+    identically on the uniform lane, so it is not a graded-mesh artefact.
+
+    **The fix.** For exactly the cells of
+    :func:`sheet_normal_live_axis_masks`, re-sample ``eps_r`` and ``sigma``
+    from the same geometry, on the same mesh, at ``coord + d/2`` along that
+    cell's live axis. No geometry moves and no mesh changes; the sample
+    point moves onto the field point it feeds.
+
+    **It does not invent dielectric.** An OUTER conductor with air above
+    resamples to air, because that is what is at its live edge. Only a cell
+    whose live edge genuinely sits in a dielectric gets one.
+
+    **A sub-cell DIELECTRIC needs its own rule**, see
+    :func:`_subcell_box_axis_window`: ``Box``'s thin branch would re-snap it
+    onto whichever shifted node is now nearest, which for a mid-plane
+    registered fill is a float32 tie-break, so a sub-cell Box takes a
+    half-open window test along the resampled axis instead.
+
+    **Deliberately not resampled.**
+
+    * ``mu_r`` — it feeds the H update, which is staggered differently and
+      is masked by ``apply_pec_h_mask``, not by the tangential-edge rule.
+    * Debye/Lorentz pole masks and ``chi3`` — a sheet node whose live edge
+      lands in a dispersive dielectric takes that material's ``eps_r``
+      (its ``eps_inf``) but not its poles, so it behaves as the lossless
+      high-frequency limit of the right material instead of as vacuum.
+      Moving a resonant pole mask onto a new cell is the change #627b
+      measured turning a stable run divergent, so it is a separate decision
+      with its own stability argument, not a side effect of this one.
+      Pinned by ``tests/test_sheet_node_permittivity.py``.
+
+    Parameters
+    ----------
+    geometry_entries, material_resolver, coords, pec_sigma_threshold
+        As :func:`rasterize_geometry`.
+    eps_r, sigma : arrays
+        The node-sampled statics to correct.
+    half_steps : sequence of 3
+        Half the PRIMAL cell size per axis — scalar ``dx/2`` on the uniform
+        lane, ``(dx_arr/2, dy_arr/2, dz/2)`` on the non-uniform one. The
+        offset is always ``+``: node ``k`` is the LOWER edge of primal cell
+        ``k`` and the normal E edge sits at ``+d[k]/2`` from it.
+    conductor_cell_mask, declared_sheets, periodic
+        As :func:`sheet_normal_live_axis_masks`.
+
+    Returns
+    -------
+    (eps_r, sigma)
+    """
+    axis_masks = sheet_normal_live_axis_masks(
+        conductor_cell_mask,
+        declared_sheets=declared_sheets,
+        periodic=periodic,
+    )
+    if axis_masks is None:
+        return eps_r, sigma
+
+    base = [coords.x, coords.y, coords.z]
+    for axis in range(3):
+        m = axis_masks[axis]
+        # Eager lanes skip an axis with no sheet outright (one extra
+        # rasterization pass per axis otherwise). Under jit the predicate is
+        # a tracer, so all three axes are taken and the result is identical.
+        if not is_tracer(m) and not bool(jnp.any(m)):
+            continue
+        shifted = list(base)
+        shifted[axis] = base[axis] + jnp.asarray(half_steps[axis],
+                                                 dtype=base[axis].dtype)
+        eps_s, sigma_s = _statics_on_coords(
+            geometry_entries, material_resolver,
+            tuple(shifted), tuple(base), axis, half_steps[axis],
+            coords.shape, pec_sigma_threshold,
+        )
+        eps_r = jnp.where(m, eps_s, eps_r)
+        sigma = jnp.where(m, sigma_s, sigma)
+    return eps_r, sigma
+
+
 def extend_cpml_pad_materials(
     eps_r: jnp.ndarray,
     sigma: jnp.ndarray,

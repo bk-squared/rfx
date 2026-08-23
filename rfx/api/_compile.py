@@ -18,14 +18,20 @@ import numpy as np  # noqa: F401  (used by moved method bodies)
 
 from rfx.grid import Grid, C0  # noqa: F401  (used by moved method bodies)
 from rfx.core.yee import MaterialArrays  # noqa: F401
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, _grid_coords
 # NOTE: import from _pole_keying, NOT rfx.geometry.rasterize_grid — importing
 # that SUBMODULE at import-rfx time setattr's the module over the public
 # ``rasterize`` FUNCTION on the rfx.geometry package (name collision;
 # broke the rcs_scattering tutorial's ``from rfx.geometry import
 # rasterize``).
 from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_masks
-from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
+from rfx.geometry.rasterize_grid import (
+    GridCoords,
+    collect_thin_conductor_sheet_inputs,
+    extend_cpml_pad_materials,
+    periodic_flags_from_axes,
+    resample_sheet_node_materials,
+)
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.materials.thin_conductor import (
@@ -238,6 +244,49 @@ class _CompileMixin:
             if mat.lorentz_poles:
                 for pole in mat.lorentz_poles:
                     _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
+
+        # Node-thin conductors: sample the statics where the LIVE edge is.
+        # A sub-cell conductor has no volume, so the PEC branch above wrote
+        # only pec_mask and nothing wrote eps_r at its node — which keeps
+        # vacuum wherever the surrounding dielectric boxes abut the metal
+        # faces instead of spanning its thickness. The one E component the
+        # sheet leaves alive is the sheet-NORMAL one, half a cell away,
+        # inside that dielectric. Same rule, same function as the
+        # non-uniform lane (rfx/runners/nonuniform.py) — see
+        # resample_sheet_node_materials for the measurement and for what is
+        # deliberately NOT resampled (mu_r, dispersion poles, chi3).
+        #
+        # Position: BEFORE the pad extension below, which sources the pad
+        # from the outermost interior column under an eps==1 & sigma==0 &
+        # mu==1 vacuum test (#627a/#655) and must see the corrected
+        # interior; and before the thin-conductor loop further down, which
+        # is why the PEC thin-sheet masks are collected here directly.
+        _cx, _cy, _cz = _grid_coords(grid)
+        _coords = GridCoords(x=_cx, y=_cy, z=_cz, shape=grid.shape)
+        # NOT gated on ``include_thin_conductors``. That flag exists so the
+        # batched sweep gets PRE-conductor arrays and re-applies the fold
+        # itself (#642); this reads the conductors' MASKS only and folds
+        # nothing, so gating it would give the batched lane a different
+        # material at every thin-conductor sheet node than the single-run
+        # lane -- the hand-ported-rule divergence this fix exists to avoid.
+        _pec_tc_masks, _f0_sheets = collect_thin_conductor_sheet_inputs(
+            self._thin_conductors, lambda shape: shape.mask(grid),
+        )
+        _cond_mask = pec_mask if has_pec_cells else None
+        for _m in _pec_tc_masks:
+            _cond_mask = _m if _cond_mask is None else (_cond_mask | _m)
+        if _cond_mask is not None or _f0_sheets:
+            _half = float(grid.dx) * 0.5
+            eps_r, sigma = resample_sheet_node_materials(
+                self._geometry, self._resolve_material, _coords,
+                eps_r, sigma,
+                half_steps=(_half, _half, _half),
+                conductor_cell_mask=_cond_mask,
+                declared_sheets=_f0_sheets,
+                periodic=periodic_flags_from_axes(
+                    getattr(self, "_periodic_axes", "")),
+                pec_sigma_threshold=self._PEC_SIGMA_THRESHOLD,
+            )
 
         # Extend material properties into CPML padding so that guided
         # modes in dielectric waveguides see an impedance-matched absorber
