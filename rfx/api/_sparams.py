@@ -936,6 +936,59 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
             )
 
 
+def _warn_ntff_box_dropped(sim, method_name: str) -> None:
+    """Issue #704 — one warning per S-matrix call when an NTFF box would be dropped.
+
+    ``add_ntff_box()`` registers a far-field monitor, but the S-matrix
+    result classes (``MSLSMatrixResult``, ``WaveguideSMatrixResult``,
+    ``CoaxialSMatrixResult``) carry no ``ntff_data``/``ntff_box`` fields, so
+    whatever the per-drive solves record is discarded with nothing said —
+    the same silent-drop class as #695/#685. Called ONCE at each S-matrix
+    entry (after the cheap guards, before any FDTD), never per port, so a
+    call covers all its drives with a single message (#697 principle 8).
+
+    Mutation falsification (both directions, run 2026-08-24 in this
+    worktree against ``tests/test_ntff_smatrix_drop_warning.py``):
+    - warn DELETED (early ``return`` above the ``warnings.warn``):
+      3 failed, 3 passed — ``test_msl_warns_with_ntff_box``,
+      ``test_waveguide_warns_with_ntff_box``,
+      ``test_coaxial_warns_with_ntff_box`` each red with verbatim
+      ``Failed: DID NOT WARN. No warnings of type (<class 'UserWarning'>,)
+      were emitted.``
+    - warn made UNCONDITIONAL (``if sim._ntff is None: return`` deleted):
+      the three ``*_silent_without_ntff_box`` tests each red with verbatim
+      ``TypeError: cannot unpack non-iterable NoneType object`` from the
+      ``sim._ntff`` unpack below on the no-box fixtures.
+    Intact code: 6 passed.
+    """
+    if sim._ntff is None:
+        return
+    import warnings
+
+    corner_lo, corner_hi, ntff_freqs = sim._ntff
+    n_f = int(np.asarray(ntff_freqs).shape[0])
+    warnings.warn(
+        f"{method_name}: an NTFF box is registered on this simulation "
+        f"(add_ntff_box, corners {tuple(float(c) for c in corner_lo)} -> "
+        f"{tuple(float(c) for c in corner_hi)} m, {n_f} frequencies) but "
+        "this S-matrix path returns NO far-field data — the registered "
+        "monitor's recording is dropped. OBSERVED: the result class of "
+        "this method carries no ntff_data/ntff_box fields, so the "
+        "radiation pattern you asked for is lost for every driven-port "
+        "solve in this call. WHY: threading NTFF data out of the "
+        "per-drive S-matrix solves (one pattern per drive) is not "
+        "implemented — issue #704 tracks that full fix; this warning "
+        "closes only the silent part. REMEDY: call run() on this "
+        "simulation for far-field patterns (Result.ntff_data/ntff_box "
+        "from the same port drive), or drop the NTFF box from "
+        "S-matrix-only runs to save its DFT cost. STALE-IF: this "
+        "method's result class grows ntff_data/ntff_box (issue #704 "
+        "full threading), at which point remove this warning.",
+        UserWarning,
+        stacklevel=3,
+    )
+
+
 def _assemble_mixed_power_wave_s(
     v_lw, i_lw, v0_msl, i_msl,
     z0_lw, n_live_lw, z0_hj_msl,
@@ -1931,6 +1984,9 @@ class _SparamMixin:
                     f"{len(port_reference_sims)}"
                 )
 
+        # Issue #704 audit: same silent NTFF drop class as the MSL path.
+        _warn_ntff_box_dropped(self, "compute_waveguide_s_matrix()")
+
         # Non-uniform-mesh dispatch. Earlier the uniform scan ran with
         # the coarse boundary dx and silently ignored ``dx_profile`` /
         # ``dy_profile`` (handover v2 experiment 12). The dedicated NU
@@ -2801,6 +2857,9 @@ class _SparamMixin:
                 "compute_msl_s_matrix() is not supported with solver='adi'; "
                 "use the uniform Yee solver."
             )
+
+        # Issue #704: an NTFF box would be silently dropped on this path.
+        _warn_ntff_box_dropped(self, "compute_msl_s_matrix()")
 
         entries = list(self._msl_ports)
         n_ports = len(entries)
@@ -4804,6 +4863,9 @@ class _SparamMixin:
             raise NotImplementedError(
                 "compute_coaxial_s_matrix() supports the uniform Yee lane only."
             )
+
+        # Issue #704 audit: same silent NTFF drop class as the MSL path.
+        _warn_ntff_box_dropped(self, "compute_coaxial_s_matrix()")
 
         ports: list[CoaxialPort] = list(self._coaxial_ports)
         n_ports = len(ports)
