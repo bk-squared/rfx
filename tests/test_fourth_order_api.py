@@ -157,8 +157,12 @@ def test_order4_cfl_derated():
         wire_port_sparams=[], lumped_port_sparams=[], lumped_rlc=[],
         kerr_chi3=None, field_dtype=None, mag_sources=[],
     )
-    setup2 = _build_step_setup(grid, mats, stencil_order=2, **common)
-    setup4 = _build_step_setup(grid, mats, stencil_order=4, **common)
+    # pec_two_plane_mask=None = the pre-#706 one-plane semantics; this test
+    # is about the stencil-order CFL derating, not the slab realization.
+    setup2 = _build_step_setup(grid, mats, stencil_order=2,
+                               pec_two_plane_mask=None, **common)
+    setup4 = _build_step_setup(grid, mats, stencil_order=4,
+                               pec_two_plane_mask=None, **common)
 
     assert setup2.dt == grid.dt, "order=2 dt must equal the undertated grid.dt"
     assert setup4.dt == pytest.approx(grid.dt * _ORDER4_CFL_FACTOR, rel=1e-9)
