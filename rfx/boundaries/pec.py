@@ -167,16 +167,109 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     """
     masks = []
     for ax in range(3):
-        if cell_mask.shape[ax] == 1 or periodic[ax]:
-            neighbor = (jnp.roll(cell_mask, 1, axis=ax)
-                        | jnp.roll(cell_mask, -1, axis=ax))
-        else:
-            neighbor = _shift_bwd(cell_mask, ax) | _shift_fwd(cell_mask, ax)
+        bwd, fwd = _axis_neighbors(cell_mask, ax, periodic)
+        neighbor = bwd | fwd
         masks.append(cell_mask & neighbor)
     return tuple(masks)
 
 
-def apply_pec_mask(state, pec_mask, periodic=(False, False, False)) -> object:
+def _axis_neighbors(cell_mask, ax, periodic):
+    """Per-axis (backward, forward) neighbour occupancy of ``cell_mask``.
+
+    THE single spelling of the #689 boundary convention, shared by
+    :func:`tangential_edge_masks` and :func:`two_plane_extension_masks`
+    (a hand-copied second rule is this repo's recurring defect — #689/#690
+    class).  Wrap (``jnp.roll``) on periodic axes and on length-1 axes
+    (the 2-D lane's self-adjacency); explicit zero pad
+    (``_shift_bwd``/``_shift_fwd``) otherwise — the same out-of-domain
+    convention the solver's curl uses.
+    """
+    if cell_mask.shape[ax] == 1 or periodic[ax]:
+        return jnp.roll(cell_mask, 1, axis=ax), jnp.roll(cell_mask, -1, axis=ax)
+    return _shift_bwd(cell_mask, ax), _shift_fwd(cell_mask, ax)
+
+
+def _place_at_next_plane(mask, ax, periodic):
+    """Move a per-cell-index selection to the NEXT plane index along ``ax``.
+
+    ``out[k+1] = mask[k]`` — used to realize a one-cell slab's FAR face
+    (issue #706).  Same #689 convention as :func:`_axis_neighbors`: on a
+    periodic (or length-1) axis the k = n-1 selection wraps to plane 0
+    (the seam-straddling far face IS plane 0 there); on a non-periodic
+    axis it is dropped (plane n has no array entry — a slab in the last
+    cell has its far face on the domain boundary, owned by the domain
+    BC).
+    """
+    if mask.shape[ax] == 1 or periodic[ax]:
+        return jnp.roll(mask, 1, axis=ax)
+    return _shift_bwd(mask, ax)
+
+
+def two_plane_extension_masks(pec_mask, two_plane_mask,
+                              periodic=(False, False, False)):
+    """Extra E-edge zero masks realizing the OPT-IN two-plane slab (#706).
+
+    ``apply_pec_mask``'s base rule zeroes ONE tangential-E entry per PEC
+    cell index — the cell's LOWER node plane — so a PEC body filling
+    exactly one cell along its normal presents only its bottom face and
+    its own cell volume stays live (eigenmode-witnessed in #706: the
+    measured lateral-mode ladder pinned L_eff = gap + t, excluding the
+    face-to-face family at the first gap).  For bodies the user flagged
+    ``two_plane=True``, this function adds, per axis ``a`` on which the
+    body's cell run has length exactly 1 (no PEC neighbour on either
+    side along ``a``, evaluated against the FULL ``pec_mask`` union so a
+    flagged cell abutting another PEC body is a >= 2-cell run and gets
+    NOTHING extra — thick bodies are unchanged, the k+2 plane is out of
+    scope):
+
+    * the same tangential-E selection the base rule made at plane ``k``,
+      replicated at the NEXT plane ``k+1`` (the slab's far face) — the
+      lateral footprint gating (a component is only zeroed where the
+      body has a neighbour along the component's own axis) is inherited
+      from the base masks rather than re-derived, so the two planes
+      cannot disagree at the slab's lateral rim;
+    * the slab's interior normal-E edge ``E_a(k)`` (it lies strictly
+      inside the conductor once both faces are walls — leaving it live
+      would leave a driveable edge between two shielding planes).
+
+    Array edges and periodic seams follow the shared #689 convention via
+    :func:`_axis_neighbors` / :func:`_place_at_next_plane`.  The
+    intersection with the live ``pec_mask`` means cells cleared after
+    assembly (e.g. wire-port live-cell clearing) contribute no
+    extension.
+
+    Parameters
+    ----------
+    pec_mask : (nx, ny, nz) boolean array
+        FULL PEC cell union of the run (post any clearing).
+    two_plane_mask : (nx, ny, nz) boolean array
+        Cells of the geometry entries flagged ``two_plane=True``.
+    periodic : (bool, bool, bool)
+        The run's per-axis periodic flags (#689).
+
+    Returns
+    -------
+    (extra_ex, extra_ey, extra_ez) boolean arrays to OR into the base
+    tangential-edge masks.
+    """
+    base = tangential_edge_masks(pec_mask, periodic)
+    extras = [jnp.zeros_like(pec_mask) for _ in range(3)]
+    for ax in range(3):
+        bwd, fwd = _axis_neighbors(pec_mask, ax, periodic)
+        run1 = two_plane_mask & pec_mask & ~bwd & ~fwd
+        # Interior normal-E edge of the slab: inside the conductor.
+        extras[ax] = extras[ax] | run1
+        # Far-face plane k+1: replicate the base tangential selection.
+        for t in range(3):
+            if t == ax:
+                continue
+            extras[t] = extras[t] | _place_at_next_plane(
+                base[t] & run1, ax, periodic)
+    return tuple(extras)
+
+
+def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
+                   two_plane_mask=None) -> object:
     """Zero tangential E-field components at PEC geometry cells.
 
     For thin PEC sheets (1 cell thick), only tangential E-components
@@ -195,11 +288,24 @@ def apply_pec_mask(state, pec_mask, periodic=(False, False, False)) -> object:
         convention, so a caller on a periodic lane must pass its own
         flags — see that function's boundary-convention note (#689).
         A length-1 axis is handled without it.
+    two_plane_mask : (nx, ny, nz) boolean array or None
+        OPT-IN (issue #706): cells of PEC bodies flagged
+        ``two_plane=True``.  Where such a body fills exactly one cell
+        along an axis, the far-face plane ``k+1`` is also zeroed and the
+        slab's interior normal edge is shielded — see
+        :func:`two_plane_extension_masks`.  ``None`` (the default) is
+        bit-identical to the historical one-plane behaviour.
     """
     # Per-component masks: zero E only where PEC has extent in that direction
     # Ex(i,j,k) zeroed if pec(i,j,k) AND neighbor PEC in x
     # (if no x-neighbor is PEC → thin x-sheet → Ex is normal → preserve)
     mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask, periodic)
+    if two_plane_mask is not None:
+        ex2, ey2, ez2 = two_plane_extension_masks(
+            pec_mask, two_plane_mask, periodic)
+        mask_ex = mask_ex | ex2
+        mask_ey = mask_ey | ey2
+        mask_ez = mask_ez | ez2
 
     return state._replace(
         ex=state.ex * (1.0 - mask_ex.astype(state.ex.dtype)),

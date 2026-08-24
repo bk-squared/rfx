@@ -969,6 +969,10 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    # #706: neither the vmap fast path nor the sequential fallback is
+    # witnessed with the two-plane slab realization — refuse loudly
+    # rather than run the one-plane behaviour the user opted out of.
+    sim._refuse_two_plane("vmap_material_sweep (batched)")
     if return_fields:
         raise ValueError(
             "return_fields=True is not implemented on vmap_material_sweep "

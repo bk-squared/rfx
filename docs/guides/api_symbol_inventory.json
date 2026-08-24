@@ -1736,6 +1736,7 @@
         "aniso_inv_eps",
         "aniso_inv_eps_smooth",
         "pec_mask",
+        "pec_two_plane_mask",
         "pec_occupancy",
         "conformal_weights",
         "wire_port_sparams",
@@ -1823,6 +1824,7 @@
         "materials",
         "n_steps",
         "pec_mask",
+        "pec_two_plane_mask",
         "pec_occupancy",
         "sources",
         "probes",
@@ -1881,6 +1883,7 @@
         "aniso_inv_eps",
         "aniso_inv_eps_smooth",
         "pec_mask",
+        "pec_two_plane_mask",
         "pec_occupancy",
         "conformal_weights",
         "wire_port_sparams",
@@ -2286,7 +2289,8 @@
     ],
     "add": [
       "shape",
-      "material"
+      "material",
+      "two_plane"
     ],
     "add_coaxial_matched_load": [
       "port_index",

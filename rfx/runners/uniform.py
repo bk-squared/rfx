@@ -309,6 +309,16 @@ def run_uniform(
 
         # Conformal replaces binary pec_mask
         pec_mask = None
+        # #706: conformal weights know nothing of the two-plane opt-in
+        # and the binary mask it extends is gone — refuse loudly.
+        sim._refuse_two_plane("conformal-PEC")
+
+    # #706: opt-in two-plane slab mask, rasterized on the SAME grid as
+    # pec_mask. None when no entry is flagged (bit-identical one-plane
+    # path). The extension rule intersects with the live pec_mask inside
+    # apply_pec_mask, so the wire-port live-cell clearing above is
+    # honoured automatically.
+    pec_two_plane_mask = sim._two_plane_cell_mask(grid)
 
     # Build sources and probes for the compiled runner
     sources = []
@@ -702,6 +712,7 @@ def run_uniform(
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
             pec_mask=pec_mask,
+            pec_two_plane_mask=pec_two_plane_mask,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,
@@ -734,6 +745,7 @@ def run_uniform(
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
             pec_mask=pec_mask,
+            pec_two_plane_mask=pec_two_plane_mask,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_rlc=rlc_metas,

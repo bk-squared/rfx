@@ -1001,6 +1001,7 @@ def _build_nu_scan(
     n_steps: int,
     *,
     pec_mask=None,
+    pec_two_plane_mask=None,
     pec_occupancy=None,
     sources: list = None,
     probes: list = None,
@@ -1321,7 +1322,8 @@ def _build_nu_scan(
             # #689: default (non-periodic) is correct here — the NU
             # stepper installs no periodic BC at all, and NU grids are
             # 3-D, so both of the wrap-keeping guards are inert.
-            st = apply_pec_mask(st, pec_mask)
+            st = apply_pec_mask(st, pec_mask,
+                                two_plane_mask=pec_two_plane_mask)
         if use_pec_occupancy:
             st = apply_pec_occupancy(st, pec_occupancy)
 
@@ -1592,6 +1594,7 @@ def run_nonuniform(
     n_steps: int,
     *,
     pec_mask=None,
+    pec_two_plane_mask=None,
     pec_occupancy=None,
     sources: list = None,
     probes: list = None,
@@ -1635,6 +1638,7 @@ def run_nonuniform(
     setup = _build_nu_scan(
         grid, materials, n_steps,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy,
         sources=sources,
         probes=probes,
@@ -1997,6 +2001,7 @@ def run_nonuniform_until_decay(
     radiated_flux_box: tuple | None = None,
     flux_env_checks: int = 4,
     pec_mask=None,
+    pec_two_plane_mask=None,
     pec_occupancy=None,
     sources: list = None,
     probes: list = None,
@@ -2095,6 +2100,7 @@ def run_nonuniform_until_decay(
     setup = _build_nu_scan(
         grid, materials, max_steps,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy,
         sources=sources,
         probes=probes,

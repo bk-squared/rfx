@@ -644,6 +644,7 @@ def _build_step_setup(
     aniso_inv_eps: "tuple | None",
     aniso_inv_eps_smooth: bool,
     pec_mask: object,
+    pec_two_plane_mask: object,
     pec_occupancy: object,
     conformal_weights: "tuple | None",
     wire_port_sparams: list,
@@ -1034,6 +1035,7 @@ def _build_step_setup(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         kerr_chi3=kerr_chi3,
@@ -1176,6 +1178,7 @@ class _StepContext:
     aniso_eps: Any = None
     aniso_inv_eps: Any = None
     pec_mask: Any = None
+    pec_two_plane_mask: Any = None
     pec_occupancy: Any = None
     conformal_weights: Any = None
     kerr_chi3: Any = None
@@ -1404,7 +1407,8 @@ def make_core_step(ctx: _StepContext):
                 from rfx.boundaries.pec import apply_pec_mask
                 # #689: the tangential-edge rule keeps the wrap only on
                 # genuinely periodic axes, so hand it the run's flags.
-                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic)
+                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic,
+                                    two_plane_mask=ctx.pec_two_plane_mask)
 
             if ctx.use_pec_occupancy:
                 st = apply_pec_occupancy(st, ctx.pec_occupancy)
@@ -1710,6 +1714,7 @@ def run(
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
+    pec_two_plane_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
@@ -1835,6 +1840,7 @@ def run(
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         wire_port_sparams=wire_port_sparams,
@@ -2229,6 +2235,7 @@ def run_until_decay(
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
+    pec_two_plane_mask: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
@@ -2395,6 +2402,7 @@ def run_until_decay(
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         wire_port_sparams=wire_port_sparams,

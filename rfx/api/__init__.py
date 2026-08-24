@@ -859,11 +859,85 @@ class Simulation(
 
     # ---- geometry ----
 
-    def add(self, shape: Shape, *, material: str) -> "Simulation":
-        """Add a geometric shape filled with a named material."""
-        self._resolve_material(material)  # validate early
-        self._geometry.append(_GeometryEntry(shape=shape, material_name=material))
+    def add(self, shape: Shape, *, material: str,
+            two_plane: bool = False) -> "Simulation":
+        """Add a geometric shape filled with a named material.
+
+        Parameters
+        ----------
+        shape : Shape
+        material : str
+            Registered or library material name.
+        two_plane : bool
+            OPT-IN (issue #706), PEC materials only.  The default
+            one-plane realization zeroes one tangential-E entry per PEC
+            cell — the cell's LOWER node plane — so a PEC body filling
+            exactly ONE cell along its normal presents only its bottom
+            face as an electrical wall and its own cell volume stays
+            live (eigenmode-witnessed: a cavity bounded by such sheets
+            measures L_eff = plane-to-plane, one sheet allotment longer
+            than face-to-face).  With ``two_plane=True``, any one-cell
+            run of this body along an axis also zeroes the tangential
+            components at the NEXT node plane (``k+1``) and shields the
+            slab's interior normal edge, so the body presents BOTH
+            faces: a face-registered slab, not a node-registered plane.
+            The two models answer different intents; the default stays
+            the #677-validated one-plane behaviour, bit-identical when
+            this flag is off.  Bodies >= 2 cells thick along an axis are
+            unchanged by the flag on that axis.  Supported on the
+            uniform run()/forward() scan and the non-uniform runner;
+            vmap sweeps, subgridding, distributed-NU, ADI and conformal
+            PEC refuse loudly.
+        """
+        mat = self._resolve_material(material)  # validate early
+        if two_plane and mat.sigma < self._PEC_SIGMA_THRESHOLD:
+            raise ValueError(
+                f"add(..., two_plane=True): material {material!r} (sigma="
+                f"{mat.sigma:g} S/m) is not PEC (threshold "
+                f"{self._PEC_SIGMA_THRESHOLD:g} S/m). The two-plane slab "
+                "realization (issue #706) is defined for hard-PEC bodies "
+                "only; surface-impedance (f0) sheets are a different "
+                "operator and are deliberately untouched."
+            )
+        self._geometry.append(_GeometryEntry(
+            shape=shape, material_name=material, two_plane=two_plane))
         return self
+
+    def _two_plane_cell_mask(self, grid=None, mask_fn=None):
+        """Union CELL mask of geometry entries flagged ``two_plane`` (#706).
+
+        Returns ``None`` when no entry is flagged (the common case — every
+        lane treats ``None`` as the bit-identical one-plane path).
+        ``mask_fn`` lets the non-uniform lane rasterize with the SAME
+        coords-based call its material assembly uses, so the flagged mask
+        cannot land on different cells than the pec_mask it extends.
+        """
+        flagged = [e for e in self._geometry
+                   if getattr(e, "two_plane", False)]
+        if not flagged:
+            return None
+        if mask_fn is None:
+            mask_fn = lambda shape: shape.mask(grid)
+        m = None
+        for e in flagged:
+            em = mask_fn(e.shape)
+            m = em if m is None else (m | em)
+        return m
+
+    def _refuse_two_plane(self, lane: str) -> None:
+        """Raise when a two_plane-flagged entry reaches an unsupported lane.
+
+        Loud refusal beats silently running the one-plane realization the
+        user explicitly opted out of (issue #706).
+        """
+        if any(getattr(e, "two_plane", False) for e in self._geometry):
+            raise NotImplementedError(
+                f"two_plane=True PEC slabs (issue #706) are not supported "
+                f"on the {lane} lane. Supported: the uniform run()/"
+                "forward() scan and the non-uniform runner. Remove the "
+                "flag (accepting the one-plane realization) or switch "
+                "lanes."
+            )
 
     # ---- sources (non-port) ----
 

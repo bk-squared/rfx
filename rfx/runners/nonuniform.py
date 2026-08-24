@@ -1177,10 +1177,23 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
 
+    # #706: opt-in two-plane slab mask, rasterized with the SAME
+    # coords-based call assemble_materials_nu uses for geometry PEC, so
+    # the flagged cells cannot land off the pec_mask they extend. The
+    # reference-run strip (strip_interior_pec) drops it with the mask it
+    # extends.
+    pec_two_plane_mask = None
+    if not strip_interior_pec:
+        from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+        _tp_coords = coords_from_nonuniform_grid(grid)
+        pec_two_plane_mask = sim._two_plane_cell_mask(
+            mask_fn=lambda sh: sh.mask_on_coords(
+                _tp_coords.x, _tp_coords.y, _tp_coords.z))
     _shared_run_kwargs = dict(
         sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,
         pec_mask=pec_mask,
+        pec_two_plane_mask=pec_two_plane_mask,
         pec_occupancy=pec_occupancy_override,
         sources=sources,
         probes=probes,
