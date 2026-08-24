@@ -211,3 +211,132 @@ def test_mesh_rejects_traced_coordinates():
 
     with pytest.raises(NotImplementedError, match="cannot be traced/jitted"):
         jax.jit(rasterize)(coords)
+
+
+# --------------------------------------------------------------------------- #
+# #687 — deterministic rasterization of surface-registered sample points.
+#
+# The boundary-fitted meshers register conductor sheets at mid-plane NODES, so
+# rasterization sample points land exactly on mesh faces. trimesh's
+# ``contains`` decides such points along an OS-entropy-random ray direction
+# (measured 2026-08-24: a sample 1 ulp off a sheet's lateral face flipped
+# inside/outside across 40 fresh calls, states 0,1,1,0,1,0,...; a point
+# 0.2 um strictly INSIDE a face returned True,False,False,... over 8 calls).
+# MeshShape therefore casts its own fixed-direction parity rays from a
+# tie-break-nudged origin (mesh_import.py module block).
+
+
+def _box_volume_expectation(x, y, z, lo, hi, tie_break=False):
+    """Analytic Box VOLUME-branch occupancy: half-open [lo, hi) per axis
+    (csg.py convention), computed in float64 on the exact sample coords.
+
+    ``tie_break=True`` states the documented #687 contract for samples INSIDE
+    the sub-nanometre tie band of a face: they resolve as the half-open test
+    of the NUDGED coordinate, i.e. ``lo <= x + eps_ax < hi`` with the fixed
+    per-axis nudge component — identical to the plain rule everywhere farther
+    than ~1e-12 m from a face, lo-inclusive/hi-exclusive ON it."""
+    from rfx.geometry.mesh_import import _TIE_BREAK_EPS_M, _D1
+    e = _TIE_BREAK_EPS_M * _D1 if tie_break else np.zeros(3)
+    mx = (x + e[0] >= lo[0]) & (x + e[0] < hi[0])
+    my = (y + e[1] >= lo[1]) & (y + e[1] < hi[1])
+    mz = (z + e[2] >= lo[2]) & (z + e[2] < hi[2])
+    return mx[:, None, None] & my[None, :, None] & mz[None, None, :]
+
+
+def test_surface_on_nodes_matches_box_convention_both_sides():
+    """A cube whose every face lands EXACTLY on grid nodes must rasterize to
+    the Box half-open [lo, hi) convention — on-surface lo-face nodes inside,
+    on-surface hi-face nodes outside, and the node one step off each face
+    correct on BOTH sides.
+
+    Mutation-falsified both directions (measured 2026-08-24, this worktree;
+    output verbatim):
+    - defect direction — ``_contains_deterministic`` replaced by the original
+      ``self._mesh.contains``: this test FAILS
+      ``AssertionError: cells=343 expected 512 wrong=169`` (every on-surface
+      node resolved outside), and the sheet test FAILS
+      ``AssertionError: build 3 differs from build 0`` (the RNG coin flip
+      itself);
+    - overcorrection direction — tie-break direction negated (``-_D1``):
+      this test FAILS ``AssertionError: cells=512 expected 512 wrong=338``
+      ([lo, hi) became (lo, hi] on every axis: right count, planes shifted).
+      The sheet test alone does NOT catch this one — its tie-band
+      expectation imports ``_D1`` and mutates with the implementation —
+      which is why THIS test states its expectation without the module
+      constants;
+    - nudge removed (``_TIE_BREAK_EPS_M = 0.0``): FAILS at
+      ``AssertionError: 1-ulp-below-lo-face sample must tie-break INSIDE``
+      (the exact-on-node planes happened to resolve correctly under this
+      fixture's arithmetic, so the shifted-plane assertion below is what
+      pins the nudge), and the sheet test FAILS ``sheet occupancy != f64
+      half-open tie-break expectation (wrong=1)``.
+    """
+    dx = 50e-6
+    nodes = np.arange(13) * dx                       # exact f64 multiples
+    lo, hi = (3 * dx,) * 3, (11 * dx,) * 3
+    cube = trimesh.creation.box(bounds=[lo, hi])
+    m = np.asarray(MeshShape(cube).mask_on_coords(nodes, nodes, nodes))
+    expect = _box_volume_expectation(nodes, nodes, nodes, lo, hi)
+    assert np.array_equal(m, expect), (
+        f"cells={int(m.sum())} expected {int(expect.sum())} "
+        f"wrong={int((m ^ expect).sum())}")
+    # both sides of the lo x-face, spelled out
+    assert m[3, 6, 6] and not m[2, 6, 6], "lo face: on-surface in, one-out out"
+    # both sides of the hi x-face
+    assert m[10, 6, 6] and not m[11, 6, 6], "hi face: one-in in, on-surface out"
+
+    # A sample plane 1 ulp BELOW the lo face is a tie-class point whose f64
+    # answer is 'outside' but whose intended registration is the face; the
+    # documented tie-break (positive nudge ~1e-12 m, orders above ulp noise)
+    # must pull it INSIDE deterministically — this is the assertion that pins
+    # the nudge itself (without it the outcome follows per-point roundoff).
+    x_shift = nodes.copy()
+    x_shift[3] = np.nextafter(nodes[3], -np.inf)     # 1 ulp below the face
+    m2 = np.asarray(MeshShape(trimesh.creation.box(bounds=[lo, hi]))
+                    .mask_on_coords(x_shift, nodes, nodes))
+    assert m2[3, 6, 6], "1-ulp-below-lo-face sample must tie-break INSIDE"
+
+
+def test_mid_plane_registered_sheet_deterministic_and_correct_both_sides():
+    """The issue-#687 class: a 17 um sheet registered at its mid-plane node,
+    lateral faces on cumsum-derived (float-noisy) nodes. Repeated fresh
+    builds must be bit-identical (the issue's falsifier: 'build three times,
+    compare with np.array_equal — today they differ'), and the mid-plane
+    row must match the f64 analytic expectation on both sides of each
+    lateral face.
+
+    Pre-fix measurement on THIS fixture (2026-08-24): per-build inside-count
+    alternated 17/18 across 40 fresh ``mesh.contains`` builds — states of the
+    flipping corner sample: 0,1,1,0,1,0,1,1,1,1,0,1,... (OS-entropy RNG).
+    Post-fix: 40/40 builds identical.
+    """
+    dx = 50e-6
+    dz = np.full(15, 31.43e-6)
+    znodes = np.concatenate([[0.0], np.cumsum(dz)])
+    zmid = float(znodes[7])                          # mid-plane-registered
+    xnodes = np.cumsum(np.full(12, dx)) - dx
+    rng = np.random.default_rng(0)                   # jitter is the fixture
+
+    def _jit(v):
+        return v + rng.integers(-4, 5, size=np.shape(v)) * np.spacing(v)
+
+    xs, ys = _jit(xnodes), _jit(xnodes)
+    lo = (float(xnodes[3]), float(xnodes[3]), zmid - 8.5e-6)
+    hi = (float(xnodes[8]), float(xnodes[8]), zmid + 8.5e-6)
+
+    masks = []
+    for _ in range(5):                               # fresh MeshShape: no cache
+        sheet = trimesh.creation.box(bounds=[lo, hi])
+        masks.append(np.asarray(MeshShape(sheet).mask_on_coords(xs, ys, znodes)))
+    for k, mk in enumerate(masks[1:], 1):
+        assert np.array_equal(masks[0], mk), f"build {k} differs from build 0"
+
+    m = masks[0]
+    expect = _box_volume_expectation(xs, ys, znodes, lo, hi, tie_break=True)
+    assert np.array_equal(m, expect), (
+        f"sheet occupancy != f64 half-open tie-break expectation "
+        f"(wrong={int((m ^ expect).sum())})")
+    # both sides of the lateral surface at the registered mid-plane, spelled
+    # out: strictly-inside node occupied, strictly-outside node empty.
+    assert m[4, 5, 7] and m[7, 5, 7], "interior mid-plane cells must be PEC"
+    assert not m[2, 5, 7] and not m[9, 5, 7], "exterior mid-plane cells empty"
