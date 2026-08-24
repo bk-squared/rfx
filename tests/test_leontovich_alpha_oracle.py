@@ -99,6 +99,8 @@ fixture, JAX CPU float32):
   stays > 0.10, so the O3 gate stays RED (cap 0.15 binds,
   xfail(strict=True) kept with the new fingerprint) and the next O3 step
   remains the guide COMPARATOR, not another sheet mechanism.
+  [SUPERSEDED by #700 — see O3 MODEL RE-PAIR below: the comparator step
+  was taken; the closed-form pairing is retired as the enforced gate.]
 
   O4a under the same re-measure: the sqrt-law discriminator SPLIT. Read on
   the clean free-standing-sheet transmission oracle the x4 ratio is 0.5025
@@ -138,11 +140,78 @@ COMPARATOR CAVEAT — why that sweep does not settle it, and what to fix
   therefore sit inside the measurement's own window sensitivity. The next
   step on O3 is the COMPARATOR (a fit that does not assume one
   exponential, or a two-plane amplitude ratio at fixed separation), not
-  another mechanism attempt on the sheet.
+  another mechanism attempt on the sheet. [DONE in #700: the caveat's
+  non-exponential profile IS the two-mode beat — see O3 MODEL RE-PAIR
+  below.]
+O3 MODEL RE-PAIR (#700, measured 2026-08-24, this fixture, JAX CPU
+  float32): the #700 scout solved the fixture's EXACT transverse spectrum
+  with no discretization anywhere and showed the closed form
+  alpha = Rs/(eta0*b) is NOT an eigenvalue of the structure as built: the
+  1-cell PEC backing stubs (the #642-avoidance choice above) make the
+  z-stack PEC | g air | sheet | b air | sheet | g air | PEC a 4-conductor
+  line whose spectrum holds a strictly lossless z-uniform TEM supermode
+  (uniform Hy -> zero current jump at each sheet -> zero dissipation), a
+  symmetric lossy supermode at 6.326 Np/m (f0) and an antisymmetric one
+  at 5.273 Np/m — nothing near 1.055. The gap-only launch beats the
+  lossless mode against the symmetric lossy one, and the fitted alpha is
+  that transient's slope. This one mechanism owns every recorded symptom:
+  the 0.33806 envelope, the linear-in-f fingerprint (the launch split
+  |c_lossy/c_lossless| moves 0.41 -> 1.35 across 8-12 GHz — reproduced
+  by this file's model fit), the non-exponential sub-window profile
+  (0.807 -> 0.582), and the dx-immunity of the deficit (0.3381 -> 0.3323
+  at half the cell). The sheet operator is exonerated independently by
+  energy closure: measured dissipation over Rs|J|^2/2 = 0.992-1.016 at
+  every bin (scout s700_c). The enforced O3 gate is therefore RE-PAIRED
+  with the exact 4-conductor model (tests/_transverse_resonance_o3.py):
+  per-bin measured alpha vs the model's two-mode-transient prediction on
+  this probe span, both extraction routes (Ez midplane fit, Hy midplane
+  fit), gate O3_MODEL_GATE = gate_from_envelope(0.05677) = 0.09 (repo
+  x1.5 rule, quantum=100) — an envelope in the few-percent class where
+  the closed-form pairing needed a 0.15 cap and still sat 2.3x outside
+  it. Measured re-pair table (settle -71.0 dB; preflight = the known
+  y-axis cpml_layers clamp advisory, #647 class, quoted in the run log):
+    f (GHz)               8        9       10       11       12
+    model fit rel rms   0.0056   0.0026   0.0033   0.0034   0.0038
+    alpha_model         0.21865  0.44116  0.66653  0.85158  0.99350
+    alpha_Ez-fit (err)  0.23106  0.46383  0.69823  0.87370  1.01433
+                        (5.68%)  (5.14%)  (4.76%)  (2.60%)  (2.10%)
+    alpha_Hy-fit (err)  0.23103  0.45586  0.67940  0.86829  1.00813
+                        (5.66%)  (3.33%)  (1.93%)  (1.96%)  (1.47%)
+  The closed form STAYS in this file as the documented LIMIT ANCHOR, not
+  as the gate: it is what the model's symmetric lossy supermode converges
+  to as the stub term Rs/(2*eta0*g) vanishes (limit-reduction self-check,
+  rel err b/(2g), gated), and the measured f0 distance to it (0.33806)
+  stays pinned through MEASURED_ALPHA in the regression lock — a true
+  statement about the fixture geometry, not about the sheet. The O4a
+  guide leg (0.6089, xfail) shares this mechanism qualitatively but is
+  NOT quantified by #700 and its gate is untouched.
+  MUTATION RECORD (2026-08-24; each mutation applied alone in a copy of
+  this tree, the named tests re-run, then reverted — the committed state
+  is the green direction, 12 passed + 1 xfailed):
+    M1 model stub term deleted (z_top: through(Z, g) -> through(Z, 0.0)):
+       test_o3_model_limit_reduces_to_closed_form RED ("RuntimeError:
+       symmetric lossy supermode not found near alpha ~ 6.3289");
+       test_o3_model_fits_measured_field RED ("model fit not trustworthy
+       at 8 GHz: 0.1356 > 0.01"); test_alpha_oracle_o3 RED.
+    M2 closed-form pairing reintroduced (a_model = ALPHA_ANALYTIC):
+       test_alpha_oracle_o3 RED ("Ez-fit alpha at 8 GHz: 0.23106 vs
+       model 1.05482 (err 78.095% > gate 0.09)"); at f0 the deficit is
+       the recorded 33.8% (#677-era; the pre-#677 slab measured 18.7%).
+    M3 envelope tightened below the measurement (0.05677 -> 0.03, pin
+       0.05): test_alpha_oracle_o3 RED ("Ez-fit alpha at 8 GHz: 0.23106
+       vs model 0.21865 (err 5.677% > gate 0.05)").
+    M4 Yee z-registration broken (z_nodes (k+1/2)*DX -> k*DX):
+       test_o3_model_fits_measured_field RED ("model fit not trustworthy
+       at 8 GHz: 0.1242 > 0.01") and test_alpha_oracle_o3 RED — the
+       field-fit gate senses the half-cell Hy stagger, so it is a real
+       registration witness, not a rubber stamp.
+
 Full per-bin dump, alpha(f) trace, verbatim preflight output, the
 mesh-refinement sweep with its per-window decay-rate table, and the
 sigma_bulk = 1e6 deep-screened evidence case: docs/research_notes/
-2026-08-19_leontovich_sheet_envelope.md (local-only).
+2026-08-19_leontovich_sheet_envelope.md (local-only). #700 scout report
+(exact-spectrum solve, energy closure, blind-predicted g/dx/b sweeps):
+issue #700 verdict comment, 2026-08-24.
 """
 
 import warnings
@@ -157,6 +226,7 @@ from rfx.materials.thin_conductor import leontovich_rs
 from rfx.core.yee import EPS_0, MU_0
 
 from tests._gate_policy import gate_from_envelope
+from tests import _transverse_resonance_o3 as _trm
 
 ETA_0 = float(np.sqrt(MU_0 / EPS_0))
 
@@ -182,8 +252,26 @@ N_STEPS = 4000
 # ---- measured envelope (see module docstring: #677 RE-MEASURE) ----
 MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
 MEASURED_ALPHA_TWO_PLANE = 0.72494  # two-plane-ratio comparator, same run
-MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1|
+MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1| — the
+#   closed-form pairing's envelope, kept as the documented LIMIT-ANCHOR
+#   record (#700): the fixture's alpha_fit is 34% below Rs/(eta0*b)
+#   because the closed form is not an eigenvalue of this 4-conductor
+#   fixture, not because the sheet under-dissipates.
 MEASURED_GUIDE_SQRT_RATIO = 0.6089  # alpha(4*sigma)/alpha(sigma), guide fit
+
+# ---- #700 re-pair: exact 4-conductor comparator (tests/_transverse_resonance_o3) ----
+O3_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)
+G_STUB = Z_SHEET_LO                # PEC backing-stub depth = 0.5 mm (1 cell)
+RS0 = float(leontovich_rs(F0, SIGMA_BULK))
+# measured 2026-08-24 (this fixture, JAX CPU float32): per-bin
+# |alpha_meas/alpha_model - 1| worst case over both extract routes
+# (Ez midplane fit and Hy midplane fit) and all five bins:
+O3_MODEL_ENVELOPE = 0.05677        # worst bin (8 GHz, Ez route)
+O3_MODEL_GATE = gate_from_envelope(O3_MODEL_ENVELOPE, quantum=100)
+assert O3_MODEL_GATE == 0.09, O3_MODEL_GATE
+# model-fit trust gate: scout measured 0.26-0.56% rel rms across bins;
+# committed at ~2x margin. The O3 gate refuses to run on a worse fit.
+O3_FIELD_FIT_RMS_GATE = 0.01
 
 # O4a band: Leontovich predicts alpha ~ sqrt(1/sigma), so a x4 in
 # sigma_bulk halves the loss -> 0.50. A DC (thickness-fold) sheet would
@@ -192,12 +280,16 @@ MEASURED_GUIDE_SQRT_RATIO = 0.6089  # alpha(4*sigma)/alpha(sigma), guide fit
 # clean transmission oracle passes it (0.5025) and the guide fit does not
 # (0.6089), which is why the guide leg ships xfail(strict=True).
 O4A_BAND = (0.40, 0.60)
-# gate_from_envelope(MEASURED_ENVELOPE) = 0.51 would EXCEED the 0.15
-# contract hard cap, so the committed gate is the cap itself and the O3
-# test is xfail(strict=True): red today, loudly, and a future pass is
-# loud too. The derivation below is kept so the cap-binding is checked.
-ALPHA_GATE = min(gate_from_envelope(MEASURED_ENVELOPE, quantum=100), 0.15)
-assert ALPHA_GATE == 0.15, "cap must bind while the envelope exceeds 0.10"
+# The closed-form pairing (|alpha/alpha_analytic - 1| vs a 0.15 cap,
+# xfail(strict=True) since the 2026-08-19 R2-STOP) is RETIRED as the
+# enforced O3 gate by #700: the closed form is not an eigenvalue of this
+# fixture (see O3 MODEL RE-PAIR in the module docstring), so gating
+# against it measured the stub geometry, not the sheet. The closed form
+# stays in this file as the documented limit anchor
+# (test_comparator_quadrature_reproduces_closed_form and the model's
+# limit-reduction self-check); the enforced gate is now
+# test_alpha_oracle_o3 against the exact 4-conductor model with
+# O3_MODEL_GATE above.
 
 
 def _build_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True,
@@ -231,6 +323,12 @@ def _build_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True,
                        amplitude_kind="field")
     sim.add_dft_plane_probe(axis="z", coordinate=3.0e-3, component="ez",
                             freqs=jnp.asarray(freqs), name="midplane")
+    # #700 model comparator instrumentation: full Hy(x, z) at the y
+    # midplane. A DFT accumulator is a passive observer — adding it does
+    # not perturb the time stepping (scout-verified: the instrumented run
+    # reproduces MEASURED_ALPHA = 0.69823 bit-for-bit at f0).
+    sim.add_dft_plane_probe(axis="y", coordinate=0.001, component="hy",
+                            freqs=jnp.asarray(freqs), name="yhy")
     sim.add_probe((0.060, 0.001, 3.0e-3), "ez")   # settling witness
     return sim
 
@@ -267,6 +365,14 @@ def _run_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True, thickness=THICKNESS,
         out["alpha"].append(a)
         out["resid"].append(r)
         out["profile"].append(mag)
+    # #700: complex Hy(x, z) over the fit span for the model comparator.
+    # Hy z-nodes sit at (k + 1/2)*DX on the Yee grid (12 nodes across the
+    # 6 mm stack, z = 0 at the bottom PEC).
+    hy = np.asarray(result.dft_planes["yhy"].accumulator)
+    kz0 = grid.pad_z_lo
+    nz = int(round(DOMAIN[2] / DX))
+    out["hy_plane"] = hy[:, i0:i1 + 1, kz0:kz0 + nz]
+    out["z_nodes"] = (np.arange(nz) + 0.5) * DX
     ts = np.abs(np.asarray(result.time_series)[:, 0])
     tail = ts[int(0.95 * len(ts)):].max()
     out["settle_db"] = float(20 * np.log10(max(tail, 1e-300) / ts.max()))
@@ -327,6 +433,15 @@ def _cached(key, **kw):
     return _cache[key]
 
 
+_F0_IDX = O3_FREQS.index(F0)
+
+
+def _base():
+    """The shared base run — all five O3_FREQS bins in one run (#700);
+    single-frequency consumers index the F0 bin via _F0_IDX."""
+    return _cached("base", freqs=O3_FREQS)
+
+
 def _alpha_two_plane(xs, mag):
     """Two-plane amplitude-ratio alpha at fixed separation — the #669
     COMPARATOR CAVEAT's named alternative extractor (#677 G6): no
@@ -353,54 +468,118 @@ def test_alpha_envelope_regression_lock():
     behind the xfail'd contract gate below. Provenance: 2026-08-19 #677
     re-measure, fit ln-RMS resid 0.00245, settle -71.0 dB, two-plane
     alpha 0.72494."""
-    out = _cached("base")
-    alpha = out["alpha"][0]
+    out = _base()
+    alpha = out["alpha"][_F0_IDX]
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
     # two-plane comparator pin (same run, independent extractor shape)
-    a2 = _alpha_two_plane(out["xs"], out["profile"][0])
+    a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
     assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
     # forward-wave-purity witness (re-measure run: 0.00245 ln-RMS)
-    assert out["resid"][0] < 0.02, out["resid"][0]
+    assert out["resid"][_F0_IDX] < 0.02, out["resid"][_F0_IDX]
     # ring-down settling witness (repo rule; re-measure run: -71.0 dB)
     assert out["settle_db"] < -40.0, out["settle_db"]
 
 
+def test_o3_model_limit_reduces_to_closed_form():
+    """LIMIT-REDUCTION self-check for the #700 model comparator (house
+    comparator rule, research/CLAUDE.md: a new comparator must reproduce
+    a known-good limit as a checkable artifact in its own tests).
+
+    As the PEC backing stub deepens the stub-current loss term vanishes
+    and the exact symmetric lossy supermode's alpha must converge to the
+    closed form Rs/(eta0*b) = 1.05482 Np/m, following the rate law
+    rel_err = b/(2g) (see tests/_transverse_resonance_o3 docstring).
+    Gated, not printed: per-step the residual must shrink (log-space,
+    ratio <= 0.55; measured ~0.50 per g-doubling), track b/(2g) to 2%
+    relative, and end below 0.10 (measured 0.0784 at g = 32 mm).
+    Measured ladder 2026-08-24: rel err 4.99747 / 2.49953 / 1.24989 /
+    0.62497 / 0.31250 / 0.15628 / 0.07842 for g = 0.5..32 mm.
+    """
+    rel_prev = None
+    for g in (0.5e-3, 1e-3, 2e-3, 4e-3, 8e-3, 16e-3, 32e-3):
+        kx = _trm.find_symmetric_lossy_mode(F0, B_PLATE, g, RS0, ETA_0)
+        rel = -kx.imag / ALPHA_ANALYTIC - 1.0
+        assert rel > 0.0, (g, rel)
+        assert abs(rel / (B_PLATE / (2.0 * g)) - 1.0) < 0.02, (g, rel)
+        if rel_prev is not None:
+            assert rel <= 0.55 * rel_prev, (g, rel, rel_prev)
+        rel_prev = rel
+    assert rel_prev < 0.10, rel_prev
+    # and the base fixture's spectrum has NO mode at the closed form:
+    # the nearest lossy mode sits at ~6x it (6.326 Np/m at f0)
+    modes = _trm.find_modes(F0, B_PLATE, G_STUB, RS0, ETA_0)
+    lossy = [-m.imag for m in modes if -m.imag > 0.1]
+    assert lossy and min(lossy) > 4.0 * ALPHA_ANALYTIC, modes
+
+
+def _model_fits(out):
+    """Per-bin exact-model fits to the measured Hy(x, z) plane (cached)."""
+    if "model_fits" not in _cache:
+        _cache["model_fits"] = [
+            _trm.fit_hy_field(out["xs"], out["z_nodes"],
+                              out["hy_plane"][fi], f, B_PLATE, G_STUB,
+                              RS0, ETA_0)
+            for fi, f in enumerate(O3_FREQS)]
+    return _cache["model_fits"]
+
+
 @pytest.mark.slow_physics
-@pytest.mark.xfail(
-    strict=True,
-    reason="#677 re-measure (2026-08-19): envelope 0.33806 (fit) / "
-           "0.31273 (two-plane) > 0.10 under the node-thin "
-           "exponential-stepping operator — the R2-named alternative "
-           "architecture is IN and the guide envelope did not close. "
-           "Attribution is now pinned to THIS FIXTURE'S measurement, not "
-           "the sheet dynamics: the same operator reproduces the "
-           "closed-form free-standing-sheet transmission T = "
-           "2Rs/(2Rs+eta0) to within 4.4% and frequency-FLAT across "
-           "8-12 GHz (test_sheet_transmission_matches_closed_form), while "
-           "this guide's profile is still non-exponential (20 mm "
-           "sub-window decay rates 0.807 -> 0.582 across the span at f0; "
-           "alpha(f) = 0.231..1.014 across 8-12 GHz where an Rs-flat "
-           "sheet predicts a flat 1.055). Fix the guide COMPARATOR/"
-           "fixture (termination + profile purity) before touching the "
-           "operator. Do NOT loosen the 0.15 cap; a future pass must "
-           "remove this marker explicitly.",
-)
+def test_o3_model_fits_measured_field():
+    """FIELD-FIT self-check for the #700 model comparator (house rule,
+    part 2): on THIS committed fixture the 3-supermode expansion (three
+    complex amplitudes fitted, mode shapes and kx exact) must reproduce
+    the measured 2-D Hy(x, z) over the whole fit span to <= 1% relative
+    rms at every bin (O3_FIELD_FIT_RMS_GATE; scout measured 0.26-0.56%).
+    A field this well described by {lossless TEM + symmetric lossy
+    supermode} IS the mechanism statement of #700: the fitted alpha is a
+    two-mode transient, not an eigenvalue."""
+    out = _base()
+    for f, ft in zip(O3_FREQS, _model_fits(out)):
+        assert ft["rel_resid"] <= O3_FIELD_FIT_RMS_GATE, (
+            f"model fit degraded at {f/1e9:.0f} GHz: rel rms "
+            f"{ft['rel_resid']:.4f} > {O3_FIELD_FIT_RMS_GATE}")
+
+
+@pytest.mark.slow_physics
 def test_alpha_oracle_o3():
-    """O3 (contract gate, currently RED — see xfail reason): |alpha_meas/
-    alpha_analytic - 1| <= ALPHA_GATE (0.15 contract hard cap)."""
-    out = _cached("base")
+    """O3 (contract gate, RE-PAIRED by #700 — GREEN): per-bin measured
+    alpha vs the exact 4-conductor model's two-mode-transient prediction
+    for this probe span, |alpha_meas/alpha_model - 1| <= O3_MODEL_GATE,
+    on BOTH extraction routes (Ez midplane fit — the fixture's canonical
+    extractor — and Hy midplane fit, the field the model is fitted on).
+
+    The pre-#700 pairing gated |alpha_meas/ALPHA_ANALYTIC - 1| against a
+    0.15 cap and was strict-xfail RED at envelope 0.33806. #700 showed
+    the closed form Rs/(eta0*b) is not an eigenvalue of this fixture (the
+    1-cell PEC backing stubs make it a 4-conductor line whose spectrum
+    holds a lossless supermode and a 6.33 Np/m lossy one — nothing at
+    1.055), so that red measured stub geometry, not sheet physics. The
+    model prediction uses the same probe span; only the three complex
+    launch amplitudes are fitted (the trust gate above bounds the fit).
+    Envelope provenance for O3_MODEL_GATE: see O3 MODEL RE-PAIR in the
+    module docstring."""
+    out = _base()
     assert not any("PreflightError" in w for w in out["warnings"])
-    alpha = out["alpha"][0]
-    err = abs(alpha / ALPHA_ANALYTIC - 1.0)
-    assert err <= ALPHA_GATE, (
-        f"alpha={alpha:.5f} Np/m vs analytic {ALPHA_ANALYTIC:.5f} "
-        f"(err {err:.3%} > gate {ALPHA_GATE:.2f}); resid={out['resid'][0]:.4f}")
+    assert out["settle_db"] < -40.0, out["settle_db"]
+    for fi, (f, ft) in enumerate(zip(O3_FREQS, _model_fits(out))):
+        assert ft["rel_resid"] <= O3_FIELD_FIT_RMS_GATE, (
+            f"model fit not trustworthy at {f/1e9:.0f} GHz: "
+            f"{ft['rel_resid']:.4f}")
+        a_model = ft["alpha_model"]
+        for route, a_meas in (("Ez-fit", out["alpha"][fi]),
+                              ("Hy-fit", ft["alpha_meas"])):
+            err = abs(a_meas / a_model - 1.0)
+            assert err <= O3_MODEL_GATE, (
+                f"{route} alpha at {f/1e9:.0f} GHz: {a_meas:.5f} vs "
+                f"model {a_model:.5f} (err {err:.3%} > gate "
+                f"{O3_MODEL_GATE}); fit resid={out['resid'][fi]:.4f}, "
+                f"settle={out['settle_db']:.1f} dB")
 
 
 def _guide_sqrt_ratio():
     """alpha(4*sigma)/alpha(sigma) from the guide fit (cached runs)."""
-    a1 = _cached("base")["alpha"][0]
+    a1 = _base()["alpha"][_F0_IDX]
     a4 = _cached("sig4", sigma_bulk=4e4)["alpha"][0]
     return float(a4 / a1)
 
@@ -448,7 +627,14 @@ def test_sqrt_sigma_discriminator_o4a():
            "0.6089 surfaces there rather than hiding under this xfail.",
 )
 def test_sqrt_sigma_discriminator_o4a_guide_leg():
-    """O4a guide leg (contract band, currently RED — see xfail reason)."""
+    """O4a guide leg (contract band, currently RED — see xfail reason).
+
+    #700 scope note: the stub-supermode mechanism that the O3 re-pair
+    quantified (see O3 MODEL RE-PAIR in the module docstring)
+    qualitatively explains this excursion too — the guide-fit ratio reads
+    a two-mode transient whose launch split moves with sigma — but it is
+    NOT quantified for this observable; #700 deliberately leaves this
+    gate untouched."""
     ratio = _guide_sqrt_ratio()
     lo, hi = O4A_BAND
     assert lo <= ratio <= hi, ratio
@@ -475,7 +661,7 @@ def test_o4a_guide_ratio_regression_lock():
 def test_thickness_invariance_o4b():
     """O4b: thickness x2 => |delta alpha|/alpha <= 0.02 (f0 mode is
     thickness-independent; the DC model would halve alpha)."""
-    a1 = _cached("base")["alpha"][0]
+    a1 = _base()["alpha"][_F0_IDX]
     a2 = _cached("thick2", thickness=2 * THICKNESS)["alpha"][0]
     assert abs(a2 - a1) / a1 <= 0.02, (a1, a2)
 
