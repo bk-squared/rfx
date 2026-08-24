@@ -278,7 +278,8 @@
         "additionalProperties": false,
         "required": [
           "shape",
-          "material_name"
+          "material_name",
+          "two_plane"
         ],
         "properties": {
           "shape": {
@@ -286,6 +287,10 @@
           },
           "material_name": {
             "type": "string"
+          },
+          "two_plane": {
+            "type": "boolean",
+            "description": "Issue #706 opt-in. False (the historical default): a PEC body filling exactly one cell along its normal presents ONE electrical wall, its lower node plane; the cell volume is live (eigenmode-witnessed: cavity ladder pins L_eff = gap + t). True: both bounding planes are walls and the interior edge is shielded; thick bodies are unchanged either way. Part of the physical design, not a solver knob: the two values are different electromagnetic models of the same drawn body."
           }
         }
       }

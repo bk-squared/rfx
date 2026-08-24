@@ -484,6 +484,10 @@ def _ivec(n: int) -> _F:
 _GEOMETRY_FIELDS: dict[str, _F] = {
     "shape": _SHAPE,
     "material_name": _STR,
+    # issue #706: the opt-in two-plane realization is part of the physical
+    # design (which electrical model a one-cell slab means), so it round-trips.
+    # False is the historical default and loads bit-identically.
+    "two_plane": _BOOL,
 }
 
 # ``_PortEntry`` holds two physically different objects, discriminated only by
