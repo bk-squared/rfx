@@ -26,6 +26,13 @@ from rfx.grid import C0
 from rfx.core.yee import MaterialArrays
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
+# Bound at import time ON PURPOSE (issue #703 check 2): the live-edge check
+# must keep its own reference to the real resample even when a test (or a
+# regression) replaces the module attribute the ASSEMBLY resolves — the
+# check exists to notice exactly that divergence.
+from rfx.geometry.rasterize_grid import (
+    resample_sheet_node_materials as _resample_sheet_node_materials,
+)
 
 
 def _fmt_len(meters: float) -> str:
@@ -163,6 +170,206 @@ def _coord_near_absorber(
     near_lo = lo_b is not None and lo_b <= coord < lo_b + margin
     near_hi = hi_b is not None and hi_b - margin < coord <= hi_b
     return near_lo or near_hi
+
+
+# --------------------------------------------------------------------------
+# Issue #703: campaign statics checks — tunables + shared lazy context.
+#
+# Four failure classes a month-long external cross-validation hit, all
+# statically detectable before the first time step (issue #703; message
+# design per docs/design_notes/preflight_lessons_from_a_long_crossval.md:
+# every finding carries OBSERVED / WHY / COST / REMEDY / STALE-IF plus a
+# COVERAGE clause, and each check aggregates into ONE message per run —
+# the #697 failure mode was 84 advisories with 93% duplication).
+#
+# The gate values are module-level on purpose: the falsification tests
+# monkeypatch them in BOTH directions (loosen -> firing fixture goes
+# silent; tighten -> silent fixture fires) to prove each gate is
+# load-bearing (tests/test_preflight_campaign_statics*.py).
+# --------------------------------------------------------------------------
+
+# Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
+# tolerated rasterized-cell-count spread inside one congruence group. The
+# tolerance is one cell: the smallest extent of the incident class (a
+# node-thin sheet) rasterizes to a single cell, so any spread beyond one
+# cell means the lattice sees two different solids where the design has one.
+_CONGRUENCE_EXTENT_QUANTUM_M = 1e-9
+_CONGRUENCE_SPREAD_TOL_CELLS = 1
+# Check 2 — relative tolerance for "assigned statics == statics at the live
+# edge" (float32 arrays; 1e-4 is ~1e3 ULP at eps_r ~ 4, far below any real
+# material contrast).
+_LIVE_EDGE_RTOL = 1e-4
+# Check 3 — advisory threshold on either electrical-thickness measure.
+_CAVITY_THICKNESS_TOL = 0.01
+# Check 4 — off-lattice face residual as a fraction of the axis extent.
+_OFF_LATTICE_EDGE_TOL = 5e-3
+# Shared cap on named offenders per aggregated message.
+_CAMPAIGN_MAX_OFFENDERS = 5
+# "Thinner than its local cell" margin — same 1% slack as
+# rfx.geometry.rasterize_grid._subcell_box_axis_window.
+_CAMPAIGN_SUBCELL_FACTOR = 1.01
+
+
+def _sorted_box_corners(shape):
+    """``(lo, hi)`` float64 arrays for a Box-like shape, else ``(None, None)``."""
+    lo = getattr(shape, "corner_lo", None)
+    hi = getattr(shape, "corner_hi", None)
+    if lo is None or hi is None:
+        return None, None
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    return np.minimum(lo, hi), np.maximum(lo, hi)
+
+
+class _CampaignStaticsContext:
+    """Shared lazily-built state for the four issue-#703 campaign checks.
+
+    Built fresh per ``_validate_simulation_config`` call and deliberately
+    NOT cached on the ``Simulation`` (an ``add_box`` after a preflight
+    would leave a cached grid/mask stale). The grid, sample coordinates
+    and per-entry masks come from the PRODUCTION builders — the check must
+    see the run's rasterization, not a hand model of it (the
+    ``_validate_cfg_graded_box_rasterization`` lesson: a hand model of the
+    sampling diverged from the rasterizer on exactly the cases it existed
+    to catch).
+    """
+
+    _NARROW_EXCS = (ValueError, TypeError, NotImplementedError, KeyError,
+                    AttributeError, IndexError)
+
+    def __init__(self, sim):
+        self.sim = sim
+        self.error: str | None = None
+        self.lane: str | None = None
+        self.grid = None
+        self.coords = None       # production GridCoords (E-node samples)
+        self.nodes = None        # 3x float64 node-position arrays
+        self.spacings = None     # 3x float64 per-cell spacing arrays
+        self._entry_masks: dict[int, np.ndarray] = {}
+        self._assembled = None
+        self.assembly_error: str | None = None
+        self._build()
+
+    def _build(self) -> None:
+        sim = self.sim
+        profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
+        if is_tracer(sim._dx) or any(
+                p is not None and is_tracer(p) for p in profiles):
+            # Same precedent as _validate_cfg_graded_box_rasterization:
+            # a traced mesh has no concrete node positions to check.
+            self.error = "traced-mesh"
+            return
+        from rfx.geometry.rasterize_grid import (
+            GridCoords, _axis_node_positions, coords_from_nonuniform_grid,
+        )
+        try:
+            if any(p is not None for p in profiles):
+                self.lane = "nonuniform"
+                grid = sim._build_nonuniform_grid()
+                self.coords = coords_from_nonuniform_grid(grid)
+                nodes, spacings = [], []
+                for d_arr, pad in (
+                    (grid.dx_arr, getattr(grid, "pad_x_lo", grid.cpml_layers)),
+                    (grid.dy_arr, getattr(grid, "pad_y_lo", grid.cpml_layers)),
+                    (grid.dz, getattr(grid, "pad_z_lo", grid.cpml_layers)),
+                ):
+                    d_np = np.asarray(d_arr, dtype=np.float64)
+                    nodes.append(_axis_node_positions(d_np, int(pad)))
+                    spacings.append(d_np)
+            else:
+                self.lane = "uniform"
+                grid = sim._build_grid()
+                from rfx.geometry.csg import _grid_coords
+                cx, cy, cz = _grid_coords(grid)
+                self.coords = GridCoords(x=cx, y=cy, z=cz, shape=grid.shape)
+                d = float(grid.dx)
+                nodes, spacings = [], []
+                for n, pad in zip(grid.shape, grid.axis_pads):
+                    nodes.append((np.arange(n, dtype=np.float64) - pad) * d)
+                    spacings.append(np.full(n, d, dtype=np.float64))
+            self.grid = grid
+            self.nodes = nodes
+            self.spacings = spacings
+        except self._NARROW_EXCS as exc:  # malformed config; preflight
+            self.error = f"{type(exc).__name__}: {exc}"  # must not crash
+
+    def rasterize(self, shape) -> np.ndarray:
+        """This shape's PRODUCTION mask on this lane's grid, cached."""
+        m = self._entry_masks.get(id(shape))
+        if m is None:
+            if self.lane == "uniform":
+                m = np.asarray(shape.mask(self.grid))
+            else:
+                m = np.asarray(shape.mask_on_coords(
+                    self.coords.x, self.coords.y, self.coords.z))
+            self._entry_masks[id(shape)] = m
+        return m
+
+    def conductor_entries(self):
+        """``(box_entries, other_entries)`` of PEC-class geometry entries."""
+        sim = self.sim
+        boxes, others = [], []
+        for i, entry in enumerate(sim._geometry):
+            mat = sim._resolve_material(entry.material_name)
+            if mat.sigma < sim._PEC_SIGMA_THRESHOLD:
+                continue
+            lo, _hi = _sorted_box_corners(entry.shape)
+            if isinstance(entry.shape, Box) and lo is not None:
+                boxes.append((i, entry))
+            else:
+                others.append((i, entry))
+        return boxes, others
+
+    def local_spacing(self, axis: int, coord: float) -> float:
+        nodes = self.nodes[axis]
+        j = int(np.searchsorted(nodes, coord)) - 1
+        j = min(max(j, 0), len(self.spacings[axis]) - 1)
+        return float(self.spacings[axis][j])
+
+    def node_thin_axes(self, shape) -> list[int]:
+        """Axes along which this Box is thinner than its local cell."""
+        lo, hi = _sorted_box_corners(shape)
+        if lo is None:
+            return []
+        mid = 0.5 * (lo + hi)
+        return [
+            a for a in range(3)
+            if float(hi[a] - lo[a])
+            <= self.local_spacing(a, float(mid[a])) * _CAMPAIGN_SUBCELL_FACTOR
+        ]
+
+    def assembled(self):
+        """``(materials, pec_mask)`` from the PRODUCTION assembly, once."""
+        if self._assembled is None and self.assembly_error is None:
+            sim = self.sim
+            try:
+                if self.lane == "uniform":
+                    mats, _, _, pec_mask, _, _, _ = (
+                        sim._assemble_materials(self.grid))
+                else:
+                    mats, _, _, pec_mask = sim._assemble_materials_nu(self.grid)
+                self._assembled = (mats, pec_mask)
+            except self._NARROW_EXCS as exc:
+                self.assembly_error = f"{type(exc).__name__}: {exc}"
+        return self._assembled
+
+    def sub_lattice_offsets(self, lo_corner) -> list[float]:
+        """Per-axis fractional offset (in cells) of a corner from the node below."""
+        offs = []
+        for a in range(3):
+            nodes = self.nodes[a]
+            c = float(lo_corner[a])
+            j = int(np.searchsorted(nodes, c + 1e-15)) - 1
+            j = min(max(j, 0), len(nodes) - 2)
+            d = float(nodes[j + 1] - nodes[j])
+            o = ((c - float(nodes[j])) / d) % 1.0
+            # A corner within float rounding of a node is ON the node
+            # (cumsum-built NU nodes carry ~1e-15 m rounding, which the
+            # bare modulo would print as 1.000 cells instead of 0).
+            if o > 1.0 - 1e-6 or o < 1e-6:
+                o = 0.0
+            offs.append(o)
+        return offs
 
 
 class PreflightWarning(UserWarning):
@@ -2184,6 +2391,7 @@ class _PreflightMixin:
         )
         self._validate_cfg_refplane_placement(_w)
         self._validate_cfg_absorber_budget_vs_grid(_w, dx)
+        self._validate_cfg_campaign_statics(_w)
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
@@ -5202,6 +5410,645 @@ class _PreflightMixin:
                         ),
                         stacklevel=3,
                     )
+
+    # ------------------------------------------------------------------
+    # Issue #703: campaign statics checks. Four failure classes a month
+    # of external cross-validation hit, all detectable before the first
+    # time step. Shared state (grid, coords, per-entry masks, assembly)
+    # is built once in _CampaignStaticsContext; each check emits at most
+    # ONE aggregated advisory (the #697 duplication lesson).
+    # ------------------------------------------------------------------
+
+    def _validate_cfg_campaign_statics(self, _w) -> None:
+        """Umbrella for the four issue-#703 checks; builds the shared context.
+
+        Skips silently when the model has no conductor at all (nothing any
+        of the four checks looks at), and on a traced mesh (no concrete
+        node positions — the ``_validate_cfg_graded_box_rasterization``
+        precedent). On a context-build failure it says so instead of
+        reading as clean: a guard that cannot evaluate the model must not
+        be indistinguishable from a guard that found nothing (#685 class).
+        """
+        try:
+            has_conductor = any(
+                self._resolve_material(e.material_name).sigma
+                >= self._PEC_SIGMA_THRESHOLD
+                for e in self._geometry
+            ) or bool(self._thin_conductors)
+        except KeyError:
+            return  # unresolved material name; add_box/run raise elsewhere
+        if not has_conductor:
+            return
+        ctx = _CampaignStaticsContext(self)
+        if ctx.error == "traced-mesh":
+            return
+        if ctx.error is not None:
+            _w.warn(PreflightWarning(
+                "the issue-#703 campaign statics checks (congruent-conductor "
+                "rasterization parity, sheet live-edge material consistency, "
+                "sheet-cavity electrical thickness, off-lattice design-edge "
+                f"census) could NOT run: {ctx.error}. Their silence on this "
+                "run means 'not evaluated', not 'clean' (#685 class: a guard "
+                "that cannot see the model must say so).",
+                code="campaign_statics_unavailable",
+                source="_validate_cfg_campaign_statics",
+            ))
+            return
+        self._validate_cfg_congruent_rasterization_parity(_w, ctx)
+        self._validate_cfg_sheet_live_edge_materials(_w, ctx)
+        self._validate_cfg_sheet_cavity_thickness(_w, ctx)
+        self._validate_cfg_off_lattice_design_edges(_w, ctx)
+
+    @staticmethod
+    def _congruence_origin_shift(ctx, members, counts):
+        """Predict the best lattice-origin slide for a flagged group.
+
+        Uniform lane only (a per-axis "origin shift" is well-defined only
+        when the spacing is one number). Candidates are the shifts that
+        snap a member's lo face onto a node, plus the shifts that snap
+        each pairwise symmetry plane onto a node or half-node (a mirror
+        pair rasterizes symmetrically when its mirror plane sits on a node
+        or half-node). Each candidate is scored by RE-RASTERIZING the
+        members through the production ``mask_on_coords`` on shifted node
+        coordinates — no second copy of the occupancy rule.
+
+        Returns ``(axis_index, shift_m, predicted_spread)`` or ``None``.
+        """
+        if ctx.lane != "uniform":
+            return None
+        d = float(ctx.grid.dx)
+        fracs = np.array([ctx.sub_lattice_offsets(lo)
+                          for (_i, _e, lo, _hi) in members])
+
+        def _wrap_spread(col):
+            s = np.sort(np.asarray(col))
+            gaps = np.diff(np.concatenate([s, s[:1] + 1.0]))
+            return 1.0 - float(np.max(gaps))
+
+        ax = int(np.argmax([_wrap_spread(fracs[:, a]) for a in range(3)]))
+        cands: set[float] = set()
+        for f in fracs[:, ax]:
+            cands.add(round(-float(f) * d, 15))
+            cands.add(round((1.0 - float(f)) * d, 15))
+        centers = [0.5 * float(lo[ax] + hi[ax])
+                   for (_i, _e, lo, hi) in members]
+        for i in range(len(centers)):
+            for j in range(i + 1, len(centers)):
+                plane = 0.5 * (centers[i] + centers[j])
+                r = plane % (d / 2.0)
+                cands.add(round(-r, 15))
+                cands.add(round(d / 2.0 - r, 15))
+        cands.discard(0.0)
+        cand_list = sorted(c for c in cands if abs(c) <= d)[:16]
+
+        base = [np.asarray(ctx.coords.x), np.asarray(ctx.coords.y),
+                np.asarray(ctx.coords.z)]
+        best = None
+        for s in cand_list:
+            shifted = list(base)
+            shifted[ax] = base[ax] + np.float32(s)
+            cnts = [int(np.asarray(e.shape.mask_on_coords(*shifted)).sum())
+                    for (_i, e, _lo, _hi) in members]
+            spread = max(cnts) - min(cnts)
+            if best is None or (spread, abs(s)) < (best[2], abs(best[1])):
+                best = (ax, s, spread)
+        if best is None or best[2] >= (max(counts) - min(counts)):
+            return None
+        return best
+
+    def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
+        """#703 check 1: congruent conductors must rasterize congruently.
+
+        Groups conductor Box entries by congruence (sorted extents equal
+        within ``_CONGRUENCE_EXTENT_QUANTUM_M`` — mirror images and
+        right-angle rotations share the key by construction) and compares
+        each member's rasterized cell count from the production mask path.
+        A spread beyond ``_CONGRUENCE_SPREAD_TOL_CELLS`` means the lattice
+        broke a symmetry the design has. Runs on BOTH the uniform and the
+        non-uniform lane (the counts and offsets come from that lane's own
+        builders); the origin-shift suggestion is uniform-lane only.
+        """
+        boxes, others = ctx.conductor_entries()
+        n_tc = len(self._thin_conductors)
+        if len(boxes) < 2:
+            return
+        groups: dict[tuple, list] = {}
+        for i, entry in boxes:
+            lo, hi = _sorted_box_corners(entry.shape)
+            ext = np.sort(hi - lo)
+            key = tuple(int(round(float(e) / _CONGRUENCE_EXTENT_QUANTUM_M))
+                        for e in ext)
+            groups.setdefault(key, []).append((i, entry, lo, hi))
+
+        flagged = []
+        n_groups = 0
+        for key, members in groups.items():
+            if len(members) < 2:
+                continue
+            n_groups += 1
+            counts = [int(ctx.rasterize(e.shape).sum())
+                      for (_i, e, _lo, _hi) in members]
+            spread = max(counts) - min(counts)
+            if spread > _CONGRUENCE_SPREAD_TOL_CELLS:
+                flagged.append((key, members, counts, spread))
+        if not flagged:
+            return
+
+        flagged.sort(key=lambda t: -t[3])
+        key, members, counts, spread = flagged[0]
+        smallest_ext = key[0] * _CONGRUENCE_EXTENT_QUANTUM_M
+        member_desc = "; ".join(
+            f"geometry[{i}] '{e.material_name}' {c} cells, "
+            "lo-corner sub-lattice offsets (x,y,z)=("
+            + ", ".join(f"{o:.3f}" for o in ctx.sub_lattice_offsets(lo))
+            + ") cells"
+            for (i, e, lo, _hi), c in zip(members, counts)
+        )
+        shift = self._congruence_origin_shift(ctx, members, counts)
+        if shift is not None:
+            ax_name = "xyz"[shift[0]]
+            remedy = (
+                f"REMEDY: slide the lattice origin by {_fmt_len(shift[1])} "
+                f"along {ax_name} (re-rasterized with that slide, the "
+                f"group's spread drops to {shift[2]} cell(s)), or move the "
+                "members' shared symmetry plane onto a node or half-node."
+            )
+        elif ctx.lane == "nonuniform":
+            remedy = (
+                "REMEDY: place the members at positions congruent modulo "
+                "the local cell size (no origin-shift prediction on the "
+                "non-uniform lane — a single per-axis slide is not "
+                "well-defined when the spacing varies)."
+            )
+        else:
+            remedy = (
+                "REMEDY: place the members at positions congruent modulo "
+                "the cell size (no candidate origin slide improved the "
+                "spread — the members' offsets differ on more than one "
+                "axis, so equalizing them needs a geometry move)."
+            )
+        _w.warn(PreflightWarning(
+            f"{len(flagged)} congruent-conductor group(s) rasterize to "
+            "UNEQUAL cell counts on this lattice (design-identical solids, "
+            "different meshes). Worst group (sorted extents "
+            + " x ".join(_fmt_len(k * _CONGRUENCE_EXTENT_QUANTUM_M)
+                         for k in key)
+            + f"): {member_desc}. OBSERVED: cell-count spread {spread} > "
+            f"tolerance {_CONGRUENCE_SPREAD_TOL_CELLS} cell (one cell along "
+            f"the group's smallest extent, {_fmt_len(smallest_ext)}). WHY: "
+            "congruent Boxes whose faces sit at different sub-cell offsets "
+            "are sampled by different node sets, so the mesh invents an "
+            "asymmetry the design does not have — a mirror pair whose "
+            "mirror plane is off-lattice rasterizes asymmetrically with the "
+            "same sign in every pair. COST (measured, issue #703): mirror "
+            "pairs 173 vs 183 cells (5.6%) from a mirror plane 0.26 cells "
+            "off the lattice; an A/B run pair differing ONLY by a 13µm "
+            "lattice-origin slide moved |S11| up to 3.5 dB per bin and "
+            f"improved every aggregate agreement metric. {remedy} "
+            f"COVERAGE: examined {len(boxes)} conductor Box entries in "
+            f"{n_groups} congruence group(s) of >=2 members on the "
+            f"{ctx.lane} lane; skipped {len(others)} non-Box conductor "
+            "entr(y/ies) (MeshShape and other non-Box shapes have no "
+            f"analytic congruence key) and {n_tc} thin-conductor sheet(s) "
+            "(not congruence-grouped). STALE IF: re-rasterizing the named "
+            "members gives equal counts (spread <= tolerance), or "
+            "conductors stop being sampled on the E-node lattice.",
+            code="congruent_conductor_rasterization_parity",
+            source="_validate_cfg_congruent_rasterization_parity",
+        ))
+
+    def _validate_cfg_sheet_live_edge_materials(self, _w, ctx) -> None:
+        """#703 check 2: a node-thin sheet's live edge runs on the right material.
+
+        For exactly the cells :func:`sheet_normal_live_axis_masks` classifies
+        as carrying one live (sheet-normal) E component — the operator's own
+        rule, reused, never re-copied — compare the ASSEMBLED ``eps_r`` /
+        ``sigma`` against the geometry re-sampled at ``node + d/2`` along
+        the live axis. On current main this passes by construction (#702:
+        the assembly itself calls ``resample_sheet_node_materials``); the
+        check is the regression guard for that call being dropped or moved,
+        and the named coverage gap for the subgridded FINE lane, which
+        still inherits the original defect.
+        """
+        from rfx.geometry.rasterize_grid import (
+            collect_thin_conductor_sheet_inputs, periodic_flags_from_axes,
+        )
+        boxes, others = ctx.conductor_entries()
+        node_thin = [
+            (i, e) for i, e in boxes
+            if len(ctx.node_thin_axes(e.shape)) == 1
+        ]
+        has_tc = bool(self._thin_conductors)
+        refinement = getattr(self, "_refinement", None)
+        if not node_thin and not has_tc:
+            return
+
+        assembled = ctx.assembled()
+        if assembled is None:
+            _w.warn(PreflightWarning(
+                "the sheet live-edge material check could NOT run (the "
+                f"production assembly failed: {ctx.assembly_error}); its "
+                "silence means 'not evaluated', not 'clean' (#685 class).",
+                code="campaign_statics_unavailable",
+                source="_validate_cfg_sheet_live_edge_materials",
+            ))
+            return
+        mats, _pec_mask_assembled = assembled
+
+        # Rebuild the exact conductor union the assembly's resample saw:
+        # geometry PEC entries + PEC thin sheets (NOT the returned
+        # pec_mask, which may carry later injections), plus the declared
+        # f0 sheets — same helper, same lane mask function.
+        cond = None
+        for _i, e in boxes + others:
+            m = ctx.rasterize(e.shape)
+            cond = m if cond is None else (cond | m)
+        pec_tc_masks, f0_sheets = collect_thin_conductor_sheet_inputs(
+            self._thin_conductors, ctx.rasterize)
+        for m in pec_tc_masks:
+            cond = np.asarray(m) if cond is None else (cond | np.asarray(m))
+        periodic = periodic_flags_from_axes(
+            getattr(self, "_periodic_axes", ""))
+
+        from rfx.geometry.rasterize_grid import sheet_normal_live_axis_masks
+        axis_masks = sheet_normal_live_axis_masks(
+            cond, declared_sheets=f0_sheets, periodic=periodic)
+
+        fine_clause = ""
+        if refinement is not None:
+            fine_clause = (
+                "; the add_refinement FINE region is NOT examined and is "
+                "KNOWN-UNFIXED — rfx/runners/subgridded.py rasterizes the "
+                "fine region at cell centres and never calls "
+                "resample_sheet_node_materials, so its sheet cells inherit "
+                "the original #702 defect (that clause is stale the moment "
+                "that file gains the call — one grep)"
+            )
+
+        offenders = []
+        n_mismatch = 0
+        n_f0_cells = 0
+        if axis_masks is not None:
+            if ctx.lane == "uniform":
+                h = float(ctx.grid.dx) * 0.5
+                half_steps = (h, h, h)
+            else:
+                half_steps = (jnp.asarray(ctx.grid.dx_arr) * 0.5,
+                              jnp.asarray(ctx.grid.dy_arr) * 0.5,
+                              jnp.asarray(ctx.grid.dz) * 0.5)
+            eps_exp, sigma_exp = _resample_sheet_node_materials(
+                self._geometry, self._resolve_material, ctx.coords,
+                mats.eps_r, mats.sigma,
+                half_steps=half_steps,
+                conductor_cell_mask=cond,
+                declared_sheets=f0_sheets,
+                periodic=periodic,
+                pec_sigma_threshold=self._PEC_SIGMA_THRESHOLD,
+            )
+            eps_a = np.asarray(mats.eps_r, dtype=np.float64)
+            eps_e = np.asarray(eps_exp, dtype=np.float64)
+            sig_a = np.asarray(mats.sigma, dtype=np.float64)
+            sig_e = np.asarray(sigma_exp, dtype=np.float64)
+            f0_union = np.zeros(eps_a.shape, dtype=bool)
+            for m, _ax in f0_sheets:
+                f0_union |= np.asarray(m)
+            n_f0_cells = int(f0_union.sum())
+            for a in range(3):
+                live = np.asarray(axis_masks[a])
+                if not live.any():
+                    continue
+                bad_eps = live & (
+                    np.abs(eps_a - eps_e)
+                    > _LIVE_EDGE_RTOL * np.maximum(np.abs(eps_e), 1.0))
+                # sigma is NOT compared at f0 sheet cells: the sheet fold
+                # deliberately writes sigma_eff there after the resample.
+                bad_sig = live & ~f0_union & (
+                    np.abs(sig_a - sig_e)
+                    > _LIVE_EDGE_RTOL * np.maximum(np.abs(sig_e), 1.0))
+                bad = bad_eps | bad_sig
+                n_mismatch += int(bad.sum())
+                for idx in np.argwhere(bad)[:3]:
+                    t = tuple(int(v) for v in idx)
+                    offenders.append(
+                        f"cell {t} (live axis {'xyz'[a]}): assigned "
+                        f"eps_r {eps_a[t]:.4g} / sigma {sig_a[t]:.4g} vs "
+                        f"live-edge sample eps_r {eps_e[t]:.4g} / sigma "
+                        f"{sig_e[t]:.4g}")
+        if n_mismatch == 0 and not fine_clause:
+            return
+        if n_mismatch:
+            head = (
+                f"{n_mismatch} node-thin conductor cell(s) carry statics "
+                "that DISAGREE with the material at their live "
+                "(sheet-normal) E edge. Worst: "
+                + "; ".join(offenders[:_CAMPAIGN_MAX_OFFENDERS]) + ". "
+                "OBSERVED: assigned cell eps_r/sigma differ from the "
+                "geometry re-sampled at node + d/2 along the live axis by "
+                f"more than rtol {_LIVE_EDGE_RTOL:g}. "
+            )
+        else:
+            head = (
+                "the coarse-lane sheet live-edge material check PASSED, "
+                "but this run also configures add_refinement. "
+            )
+        _w.warn(PreflightWarning(
+            head +
+            "WHY: a sub-cell conductor is registered on one node and "
+            "nothing writes eps_r there, while the one E component the "
+            "sheet leaves alive sits half a cell away inside the "
+            "neighbouring material — the #702 class: the live edge runs on "
+            "eps_r 1.0 where the physical stack has no air at all. COST "
+            "(measured, #702/#703): one such cell made a cavity read 17.3% "
+            "wider as a series capacitance (sum d/eps, which governs "
+            "coupling across a gap far below a wavelength) and dropped the "
+            "coupling capacitance 14.8%, while the phase measure "
+            "(sum d*sqrt(eps)) moved only 3.2% — a reader checking phase "
+            "alone calls it benign. REMEDY: this is a RASTERIZATION "
+            "regression, not a modelling choice — the assembly is expected "
+            "to re-sample sheet-node statics at the live edge "
+            "(resample_sheet_node_materials, called from "
+            "rfx/api/_compile.py and rfx/runners/nonuniform.py); do NOT "
+            "paper over it with a filler dielectric box. COVERAGE: "
+            f"examined the {ctx.lane} lane's assembled arrays "
+            f"({len(node_thin)} node-thin conductor Box entr(y/ies), "
+            f"{len(self._thin_conductors)} thin-conductor sheet(s)); sigma "
+            f"not compared at {n_f0_cells} surface-impedance sheet cell(s) "
+            "(the sheet fold writes sigma there on purpose)"
+            + fine_clause + ". STALE IF: the resample call sites move into "
+            "rasterize_geometry (then compare against that shared body), "
+            "or apply_pec_mask stops leaving the sheet-normal edge alive.",
+            code="sheet_live_edge_material_mismatch",
+            source="_validate_cfg_sheet_live_edge_materials",
+        ))
+
+    def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
+        """#703 check 3: report each sheet-bounded cavity's electrical thickness.
+
+        For adjacent node-thin conductor sheets along an axis with
+        dielectric between, compare the MESH electrical thickness
+        (node-to-node, over the run's own cells and assembled ``eps_r``)
+        against the PHYSICAL face-to-face stack from the geometry Box
+        spans, in BOTH measures: ``sum(d/eps)`` (series capacitance) and
+        ``sum(d*sqrt(eps))`` (phase length). Advisory above
+        ``_CAVITY_THICKNESS_TOL`` on either — a quantified limit of the
+        zero-thickness sheet model, not a defect.
+        """
+        boxes, _others = ctx.conductor_entries()
+        # Sheet census: geometry Boxes thin along exactly one axis, plus
+        # PEC thin-conductor Box sheets (same node-thin realization).
+        sheet_sources = [(f"geometry[{i}]", e.shape, e.material_name)
+                         for i, e in boxes]
+        for ti, tc in enumerate(self._thin_conductors):
+            if getattr(tc, "is_pec", False) and isinstance(tc.shape, Box):
+                sheet_sources.append(
+                    (f"thin_conductor[{ti}]", tc.shape, "pec"))
+        sheets = []
+        for label, shape, _matname in sheet_sources:
+            axes = ctx.node_thin_axes(shape)
+            if len(axes) != 1:
+                continue
+            a = axes[0]
+            m = ctx.rasterize(shape)
+            if not m.any():
+                continue
+            occ = np.flatnonzero(
+                m.any(axis=tuple(x for x in range(3) if x != a)))
+            if occ.size != 1:
+                continue  # did not snap to a single node layer
+            sheets.append((label, shape, a, int(occ[0]), m.any(axis=a)))
+        if len(sheets) < 2:
+            return
+        assembled = ctx.assembled()
+        if assembled is None:
+            return  # check 2 already reported the assembly failure
+        mats, pec_mask = assembled
+        eps_arr = np.asarray(mats.eps_r, dtype=np.float64)
+        pec_np = (np.asarray(pec_mask) if pec_mask is not None
+                  else np.zeros(eps_arr.shape, dtype=bool))
+
+        nonbox_diel = sum(
+            1 for e in self._geometry
+            if not isinstance(e.shape, Box)
+            and self._resolve_material(e.material_name).sigma
+            < self._PEC_SIGMA_THRESHOLD)
+
+        results = []
+        n_pairs = 0
+        n_skipped_pec_between = 0
+        lam0 = C0 / float(self._freq_max)
+        for a in range(3):
+            axis_sheets = sorted((s for s in sheets if s[2] == a),
+                                 key=lambda s: s[3])
+            for si in range(len(axis_sheets)):
+                for sj in range(si + 1, len(axis_sheets)):
+                    lab1, sh1, _a1, k1, foot1 = axis_sheets[si]
+                    lab2, sh2, _a2, k2, foot2 = axis_sheets[sj]
+                    if k2 <= k1:
+                        continue
+                    overlap = foot1 & foot2
+                    if not overlap.any():
+                        continue
+                    # adjacency: no third sheet node strictly between over
+                    # the shared footprint
+                    blocked = any(
+                        k1 < s[3] < k2 and (s[4] & overlap).any()
+                        for s in axis_sheets)
+                    if blocked:
+                        continue
+                    n_pairs += 1
+                    idxs = np.argwhere(overlap)
+                    cen = idxs.mean(axis=0)
+                    rep = idxs[int(np.argmin(
+                        ((idxs - cen) ** 2).sum(axis=1)))]
+                    inplane = [x for x in range(3) if x != a]
+                    col = [0, 0, 0]
+                    col[inplane[0]] = int(rep[0])
+                    col[inplane[1]] = int(rep[1])
+                    # mesh sums: cells k1 .. k2-1 (node-to-node)
+                    mesh_cap = mesh_phase = 0.0
+                    pec_between = False
+                    for kk in range(k1, k2):
+                        col[a] = kk
+                        t = tuple(col)
+                        if kk > k1 and pec_np[t]:
+                            pec_between = True
+                            break
+                        d_loc = float(ctx.spacings[a][kk])
+                        ee = float(eps_arr[t])
+                        mesh_cap += d_loc / ee
+                        mesh_phase += d_loc * math.sqrt(ee)
+                    if pec_between:
+                        n_skipped_pec_between += 1
+                        continue
+                    lo1, hi1 = _sorted_box_corners(sh1)
+                    lo2, hi2 = _sorted_box_corners(sh2)
+                    g_lo, g_hi = float(hi1[a]), float(lo2[a])
+                    if g_hi <= g_lo:
+                        continue
+                    # in-plane physical point: centre of the two boxes'
+                    # in-plane intersection
+                    p = [0.0, 0.0, 0.0]
+                    for ia in inplane:
+                        lo_ov = max(float(lo1[ia]), float(lo2[ia]))
+                        hi_ov = min(float(hi1[ia]), float(hi2[ia]))
+                        p[ia] = 0.5 * (lo_ov + hi_ov)
+                    cuts = {g_lo, g_hi}
+                    diel_boxes = []
+                    for e in self._geometry:
+                        mat = self._resolve_material(e.material_name)
+                        if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
+                            continue
+                        blo, bhi = _sorted_box_corners(e.shape)
+                        if blo is None:
+                            continue  # non-Box: counted in coverage
+                        if not all(blo[ia] <= p[ia] < bhi[ia]
+                                   for ia in inplane):
+                            continue
+                        diel_boxes.append((blo, bhi, float(mat.eps_r)))
+                        for c in (float(blo[a]), float(bhi[a])):
+                            if g_lo < c < g_hi:
+                                cuts.add(c)
+                    edges = sorted(cuts)
+                    phys_cap = phys_phase = 0.0
+                    for e_lo, e_hi in zip(edges[:-1], edges[1:]):
+                        zm = 0.5 * (e_lo + e_hi)
+                        ee = 1.0
+                        for blo, bhi, be in diel_boxes:
+                            if blo[a] <= zm < bhi[a]:
+                                ee = be  # entry order: later wins
+                        phys_cap += (e_hi - e_lo) / ee
+                        phys_phase += (e_hi - e_lo) * math.sqrt(ee)
+                    if phys_cap <= 0.0 or phys_phase <= 0.0:
+                        continue
+                    d_cap = mesh_cap / phys_cap - 1.0
+                    d_phase = mesh_phase / phys_phase - 1.0
+                    if (abs(d_cap) > _CAVITY_THICKNESS_TOL
+                            or abs(d_phase) > _CAVITY_THICKNESS_TOL):
+                        gap = g_hi - g_lo
+                        node_span = float(ctx.nodes[a][k2]
+                                          - ctx.nodes[a][k1])
+                        governs = ("the capacitance measure (sum d/eps) "
+                                   "governs (gap << lambda at freq_max)"
+                                   if gap < 0.1 * lam0 else
+                                   "the phase measure (sum d*sqrt(eps)) "
+                                   "governs (gap not << lambda)")
+                        results.append((max(abs(d_cap), abs(d_phase)), (
+                            f"[{'xyz'[a]}] {lab1}(node k={k1})/"
+                            f"{lab2}(k={k2}) at in-plane column "
+                            f"({int(rep[0])},{int(rep[1])}): "
+                            f"sum(d/eps) mesh "
+                            f"{_fmt_len(mesh_cap)} vs physical "
+                            f"{_fmt_len(phys_cap)} ({d_cap:+.1%}); "
+                            f"sum(d*sqrt(eps)) mesh {_fmt_len(mesh_phase)} "
+                            f"vs physical {_fmt_len(phys_phase)} "
+                            f"({d_phase:+.1%}); node-to-node "
+                            f"{_fmt_len(node_span)} vs face-to-face "
+                            f"{_fmt_len(gap)}; {governs}")))
+        if not results:
+            return
+        results.sort(key=lambda t: -t[0])
+        lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
+        _w.warn(PreflightWarning(
+            f"{len(results)} sheet-bounded cavit(y/ies) differ from the "
+            "physical stack by more than "
+            f"{_CAVITY_THICKNESS_TOL:.0%} in electrical thickness: {lines}. "
+            "OBSERVED: mesh sums run node-to-node across the run's own "
+            "cells and assembled eps_r; physical sums run face-to-face "
+            "through the geometry Box spans at the pair's shared column — "
+            "the difference is the zero-thickness sheet model's honest "
+            "cost (each sheet's thickness collapses onto its node) plus "
+            "any off-lattice registration. WHY BOTH MEASURES: the same "
+            "defect class measured 17.3% as a series capacitance and 3.2% "
+            "as phase length (#703) — a bare percentage invites "
+            "'correcting' a right number into a wrong one, so both are "
+            "printed and the governing one is named. REMEDY: none required "
+            "for the sheet model itself (this is a quantified limit, not a "
+            "defect); if the governing measure's delta matters for a "
+            "claims-bearing number, resolve the sheet thickness with cells "
+            "or correct the extracted quantity by the printed delta. "
+            f"COVERAGE: examined {n_pairs} adjacent sheet pair(s) from "
+            f"{len(sheets)} node-thin conductor sheet(s) on the {ctx.lane} "
+            f"lane; physical stack computed from Box entries only — "
+            f"{nonbox_diel} non-Box dielectric entr(y/ies) ignored (said "
+            f"so, per #703); {n_skipped_pec_between} pair(s) skipped "
+            "(conductor between). STALE IF: re-summing the printed column "
+            "disagrees with these numbers, or sheets stop being registered "
+            "node-thin.",
+            code="sheet_cavity_electrical_thickness",
+            source="_validate_cfg_sheet_cavity_thickness",
+        ))
+
+    def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
+        """#703 check 4: census of conductor design edges landing off-lattice.
+
+        Per conductor Box and axis (sub-cell axes excluded — the node-thin
+        snap is checks 2/3's domain), the largest distance from a face to
+        its nearest E-node, relative to the axis extent. A resonant
+        dimension realized ``dL`` off its design length detunes
+        ``df/f ~ dL/L``. One aggregated advisory above
+        ``_OFF_LATTICE_EDGE_TOL``, worst offenders first.
+        """
+        boxes, others = ctx.conductor_entries()
+        if not boxes:
+            return
+        offenders = []
+        n_axes = 0
+        n_thin_axes = 0
+        for i, e in boxes:
+            lo, hi = _sorted_box_corners(e.shape)
+            mid = 0.5 * (lo + hi)
+            for a in range(3):
+                ext = float(hi[a] - lo[a])
+                if ext <= (ctx.local_spacing(a, float(mid[a]))
+                           * _CAMPAIGN_SUBCELL_FACTOR):
+                    n_thin_axes += 1
+                    continue
+                n_axes += 1
+                nodes = ctx.nodes[a]
+                res = max(
+                    float(np.min(np.abs(nodes - float(lo[a])))),
+                    float(np.min(np.abs(nodes - float(hi[a])))),
+                )
+                rel = res / ext
+                if rel > _OFF_LATTICE_EDGE_TOL:
+                    offenders.append((rel, i, e.material_name, a, ext, res))
+        if not offenders:
+            return
+        offenders.sort(key=lambda t: -t[0])
+        lines = "; ".join(
+            f"geometry[{i}] '{name}' {'xyz'[a]}: extent {_fmt_len(ext)}, "
+            f"worst face residual {_fmt_len(res)} ({rel:.2%} of the "
+            f"extent, df/f ~ {rel:.2%})"
+            for rel, i, name, a, ext, res
+            in offenders[:_CAMPAIGN_MAX_OFFENDERS])
+        _w.warn(PreflightWarning(
+            f"{len(offenders)} conductor-Box design edge(s) sit off-lattice "
+            f"by more than {_OFF_LATTICE_EDGE_TOL:.1%} of their extent "
+            f"(worst {min(len(offenders), _CAMPAIGN_MAX_OFFENDERS)} "
+            f"listed): {lines}. OBSERVED: distance from each Box face to "
+            "its nearest E-node on this run's own node coordinates; the "
+            "rasterized edge quantizes onto a node, so the realized extent "
+            "can differ from the design by up to the printed residual, and "
+            "a resonant dimension realized dL off detunes df/f ~ dL/L. "
+            "COST (measured, #703): a uniform-mesh sweep rounded ONE "
+            "substrate thickness by 8-10% across three 'convergence' "
+            "points — three different boards solved under one name; the "
+            "same campaign's board survived at dx=50µm only because every "
+            "patterned dimension happened to be an exact multiple of 50µm. "
+            "REMEDY: choose dx commensurate with the patterned dimensions, "
+            "slide the lattice origin onto the worst face, or (non-uniform "
+            "lane) place mesh nodes on the design edges. COVERAGE: "
+            f"examined {n_axes} axis extent(s) on {len(boxes)} conductor "
+            f"Box entr(y/ies) on the {ctx.lane} lane; {n_thin_axes} "
+            "sub-cell axis extent(s) excluded (the node-thin snap is the "
+            f"live-edge/cavity checks' domain); {len(others)} non-Box "
+            "conductor entr(y/ies) skipped (no analytic face coordinates). "
+            "STALE IF: |face - nearest node| on the run's node coordinates "
+            "does not reproduce the printed residuals, or box faces stop "
+            "rasterizing on the E-node lattice.",
+            code="off_lattice_design_edges",
+            source="_validate_cfg_off_lattice_design_edges",
+        ))
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
