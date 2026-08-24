@@ -274,25 +274,34 @@ class TestOptInSurface:
 # ---------------------------------------------------------------------------
 
 class TestOffStateBitIdentity:
-    def test_fields_byte_equal_to_main(self):
-        """One-cell-sheet fixture, 300 steps: every field array and the
-        probe series must be BYTE-equal to the golden captured from main
-        (8e00497) before this feature branch touched the mask path.  The
-        one-plane behaviour is load-bearing (#677) — any drift here is a
-        defect, not a tolerance question.
+    """OFF-state contract: with no entry flagged, the #706 machinery is
+    INERT — not "close", inert.  The one-plane behaviour is load-bearing
+    (#677), so any drift here is a defect, not a tolerance question.
 
-        Mutation falsification M2 (default-on: make ``apply_pec_mask``
-        substitute ``two_plane_mask = pec_mask`` when handed ``None``):
-        this test FAILED — ``AssertionError: ex not byte-equal to main's
-        golden`` — and the OFF leg of the eigenmode witness moved off
-        the one-plane ladder: measured
-        ``(49892402360.13057, 47773072574.131676)`` at its 1% gate
-        (49.8924 GHz = the two-plane value, 4.44% off the one-plane
-        prediction).  Reverted after measurement.
-        """
-        fix = os.path.join(os.path.dirname(__file__), "fixtures",
-                           "two_plane_706", "off_state_golden.npz")
-        ref = np.load(fix)
+    HISTORY.  The first version of this contract byte-compared against a
+    golden .npz captured from main on the authoring workstation.  It red
+    on CI within the hour: GitHub's runner produces last-bit float
+    differences (reduction order — the same cross-machine class that red
+    the #698 mode-profile pin), so the golden pinned the HOST, not the
+    contract.  The two tests below state the same contract WITHOUT any
+    cross-machine artifact: everything is computed twice in ONE process
+    on ONE machine, so byte-equality is exact by rights and any mismatch
+    is the feature leaking.
+
+    Mutation coverage of the PAIR, measured on this rewrite (M2 = inside
+    ``apply_pec_mask``, substitute ``two_plane_mask = pec_mask`` when
+    handed ``None`` — forced default-on):
+    ``test_unflagged_sim_never_reaches_the_extension`` RED
+    (``two_plane_extension_masks invoked 2x``); the byte-equality test
+    alone SURVIVES M2 because the mutation contaminates both of its legs
+    identically — the two tests are complementary, not redundant: the
+    spy catches invocation leaks, the byte test catches a path handing a
+    non-None mask to ``apply_pec_mask`` without going through the
+    collector.  Verbatim: ``1 failed, 1 passed``; clean tree
+    ``22 passed``.
+    """
+
+    def _fixture(self):
         L = 16 * DX
         sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec")
         sim.add_material("diel22", eps_r=2.2)
@@ -305,17 +314,54 @@ class TestOffStateBitIdentity:
                        amplitude_kind="current")
         sim.add_probe((11.5 * DX, 9.5 * DX, 4.5 * DX), "ex")
         sim.add_probe((5.5 * DX, 6.5 * DX, 11.5 * DX), "ez")
-        res = sim.run(n_steps=300)
-        st = res.state
-        for name, got in (("ex", st.ex), ("ey", st.ey), ("ez", st.ez),
-                          ("hx", st.hx), ("hy", st.hy), ("hz", st.hz),
-                          ("time_series", res.time_series)):
-            g = _np(got)
-            r = ref[name]
-            assert g.dtype == r.dtype, name
-            assert np.array_equal(g, r), (
-                f"{name} not byte-equal to main's golden — the OFF state "
-                "must be bit-identical (#706 opt-in contract)")
+        return sim
+
+    def test_unflagged_sim_never_reaches_the_extension(self, monkeypatch):
+        """A sim with no ``two_plane`` entry must not INVOKE the rule at
+        all.  Stronger than comparing outputs: if the extension is never
+        called, it cannot have contributed, on any hardware."""
+        import rfx.boundaries.pec as _pecmod
+        calls = []
+        real = _pecmod.two_plane_extension_masks
+
+        def _spy(*a, **k):
+            calls.append(1)
+            return real(*a, **k)
+
+        monkeypatch.setattr(_pecmod, "two_plane_extension_masks", _spy)
+        self._fixture().run(n_steps=60)
+        assert not calls, (
+            f"two_plane_extension_masks invoked {len(calls)}x on a sim "
+            "with no flagged entry — the OFF state must be inert (#706)")
+
+    def test_off_state_byte_equal_to_integration_bypassed_run(self,
+                                                              monkeypatch):
+        """Same process, same machine: a normal flag-free run must be
+        BYTE-equal to a run with the #706 integration surgically forced
+        off (the union-mask collector returns None, exactly the pre-#706
+        code path).  Cross-machine float drift cannot enter — both legs
+        share one BLAS, one XLA, one reduction order."""
+        res_a = self._fixture().run(n_steps=300)
+
+        from rfx.api import Simulation as _S
+        monkeypatch.setattr(_S, "_two_plane_cell_mask",
+                            lambda self, *a, **k: None)
+        res_b = self._fixture().run(n_steps=300)
+
+        for name, ga, gb in (
+                ("ex", res_a.state.ex, res_b.state.ex),
+                ("ey", res_a.state.ey, res_b.state.ey),
+                ("ez", res_a.state.ez, res_b.state.ez),
+                ("hx", res_a.state.hx, res_b.state.hx),
+                ("hy", res_a.state.hy, res_b.state.hy),
+                ("hz", res_a.state.hz, res_b.state.hz),
+                ("time_series", res_a.time_series, res_b.time_series)):
+            a, b = _np(ga), _np(gb)
+            assert a.dtype == b.dtype, name
+            assert np.array_equal(a, b), (
+                f"{name}: flag-free run differs from the "
+                "integration-bypassed run — the OFF state must be "
+                "bit-identical to the pre-#706 path (#706 opt-in contract)")
 
 
 # ---------------------------------------------------------------------------
