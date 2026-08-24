@@ -36,8 +36,12 @@ Rs/(eta0*b) exactly as the stub term Rs/(2*eta0*g) -> 0 with deepening
 stub — rel-to-closed-form error b/(2g), halving per g-doubling. That
 convergence is gated in ``test_o3_model_limit_reduces_to_closed_form``
 (the ladder stops at g = 32 mm: by g = 64 mm the stub's transverse
-electrical length kz*g approaches the stub resonance pi/2 and the
-small-kz*g branch ends).
+seed for the symmetric lossy root stops landing in its basin — the
+adversarial verifier tracked the branch itself to g >= 80 mm with the
+closed-form residual still shrinking monotonically, 0.078 -> 0.036, and
+kz*g(64 mm) = 0.98+0.96j, nowhere near the stub resonance pi/2 — so the
+ladder's end is a SEEDING limitation of find_symmetric_lossy_mode, not
+a property of the physics).
 
 Method: impedance transformation up the stack. For the TM field
 (Ex, Ez, Hy; y-invariant, exp(-j kx x) propagation) each air layer is a
@@ -146,7 +150,8 @@ def find_symmetric_lossy_mode(f, b, g, rs, eta0):
     self-check: as g deepens the stub term vanishes and the exact root's
     alpha must converge to the closed form rs/(eta0*b). Returns complex kx
     or raises RuntimeError if no root is found in the expected window
-    (e.g. beyond the stub transverse resonance kz*g ~ pi/2)."""
+    (measured: a seed outside the root's basin — the branch itself
+    continues past g = 80 mm; see the module docstring)."""
     k0 = 2.0 * np.pi * f / C0
     a_pert = rs / (eta0 * b) + rs / (2.0 * eta0 * g)
     for re_s in (1 + 2e-5, 1 + 1e-4, 1 + 4e-4, 1 + 1e-3):
