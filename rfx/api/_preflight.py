@@ -201,6 +201,16 @@ _CONGRUENCE_SPREAD_TOL_CELLS = 1
 _LIVE_EDGE_RTOL = 1e-4
 # Check 3 — advisory threshold on either electrical-thickness measure.
 _CAVITY_THICKNESS_TOL = 0.01
+# Check 3 — a node-thin sheet "owns" a mesh cell when one cell holds this
+# fraction of the sheet AND is that fraction full of it. A face-registered
+# sheet (both faces on nodes) fills its cell ~1.0 and owns it; a mid-plane
+# registered sheet straddles two cells, filling neither by more than half,
+# and owns none — it is realized as a zero-thickness node. This decides
+# WHICH of the two mechanisms the message attributes a pair's excess to,
+# not how far the cavity is summed: an owned cell is still inside the
+# electrical cavity, because rfx zeroes only tangential E on a one-cell
+# PEC sheet and the cell's normal-E edge stays live.
+_CAVITY_SHEET_CELL_FILL_FRAC = 0.9
 # Check 4 — off-lattice face residual as a fraction of the axis extent.
 _OFF_LATTICE_EDGE_TOL = 5e-3
 # Shared cap on named offenders per aggregated message.
@@ -219,6 +229,32 @@ def _sorted_box_corners(shape):
     lo = np.asarray(lo, dtype=np.float64)
     hi = np.asarray(hi, dtype=np.float64)
     return np.minimum(lo, hi), np.maximum(lo, hi)
+
+
+def _shape_bounds(shape):
+    """``(lo, hi, exact)`` for any Shape that reports a bounding box.
+
+    ``exact`` is True when the bounding box IS the shape (a :class:`Box`),
+    False when it merely bounds it. ``None`` when the shape reports no
+    bounds at all — the caller must then count the entry as skipped rather
+    than treat it as clean.
+    """
+    lo, hi = _sorted_box_corners(shape)
+    if lo is not None:
+        return lo, hi, isinstance(shape, Box)
+    bb = getattr(shape, "bounding_box", None)
+    if bb is None:
+        return None
+    try:
+        blo, bhi = bb()
+        blo = np.asarray(blo, dtype=np.float64)
+        bhi = np.asarray(bhi, dtype=np.float64)
+    except (TypeError, ValueError, AttributeError, IndexError,
+            NotImplementedError):
+        return None
+    if blo.shape != (3,) or bhi.shape != (3,):
+        return None
+    return np.minimum(blo, bhi), np.maximum(blo, bhi), False
 
 
 class _CampaignStaticsContext:
@@ -319,6 +355,76 @@ class _CampaignStaticsContext:
             else:
                 others.append((i, entry))
         return boxes, others
+
+    def congruence_entries(self):
+        """``(keyed, unkeyed)`` conductor entries for the congruence check.
+
+        ``keyed`` is ``(index, entry, lo, hi, exact)`` for every conductor
+        entry that reports a bounding box through the public ``Shape``
+        protocol; ``unkeyed`` is the rest, which the message must name as
+        skipped.
+
+        Deliberately NOT :meth:`conductor_entries`'s Box/non-Box split. A
+        patterned metal LAYER is the incident class, and a ``Box`` cannot
+        represent one — a Box fills the layer's clearance holes with metal
+        — so such a layer arrives as a user-defined ``Shape`` (CAD sheet
+        collapsed to one cell). An ``isinstance(shape, Box)`` census put
+        every one of those into "skipped", which is how the check stayed
+        silent on the very mirror pairs it was written for. Congruence
+        needs an extent, not a Box: any shape that reports its bounds can
+        be grouped, and whether the bounds ARE the shape is carried along
+        (``exact``) so the message can say what it inferred.
+        """
+        sim = self.sim
+        keyed, unkeyed = [], []
+        for i, entry in enumerate(sim._geometry):
+            mat = sim._resolve_material(entry.material_name)
+            if mat.sigma < sim._PEC_SIGMA_THRESHOLD:
+                continue
+            bounds = _shape_bounds(entry.shape)
+            if bounds is None:
+                unkeyed.append((i, entry))
+            else:
+                keyed.append((i, entry, bounds[0], bounds[1], bounds[2]))
+        return keyed, unkeyed
+
+    def sheet_own_cell(self, axis: int, lo_a: float, hi_a: float,
+                       node_idx: int):
+        """The mesh cell this node-thin sheet FILLS along ``axis``, or None.
+
+        A sheet whose two faces are registered as nodes occupies exactly
+        one cell; a sheet registered at its mid-plane straddles two and
+        fills neither, so it owns none and is realized as a
+        zero-thickness node. Only the two cells touching the sheet's own
+        node are candidates.
+
+        Owning a cell does NOT take that cell out of the cavity — the
+        cell's normal-E edge is live (``apply_pec_mask`` zeroes only
+        tangential E on a one-cell PEC sheet), so its permittivity is in
+        series with the gap. The caller uses this to say WHICH mechanism
+        a cavity's excess came from.
+        """
+        thick = float(hi_a) - float(lo_a)
+        if thick <= 0.0:
+            return None
+        nodes = self.nodes[axis]
+        best = None
+        for j in (node_idx - 1, node_idx):
+            if j < 0 or j + 1 >= len(nodes):
+                continue
+            c_lo, c_hi = float(nodes[j]), float(nodes[j + 1])
+            width = c_hi - c_lo
+            if width <= 0.0:
+                continue
+            overlap = min(float(hi_a), c_hi) - max(float(lo_a), c_lo)
+            if overlap <= 0.0:
+                continue
+            score = min(overlap / thick, overlap / width)
+            if score < _CAVITY_SHEET_CELL_FILL_FRAC:
+                continue
+            if best is None or score > best[1]:
+                best = (j, score)
+        return None if best is None else best[0]
 
     def local_spacing(self, axis: int, coord: float) -> float:
         nodes = self.nodes[axis]
@@ -5472,13 +5578,21 @@ class _PreflightMixin:
         members through the production ``mask_on_coords`` on shifted node
         coordinates — no second copy of the occupancy rule.
 
+        Restricted to groups whose members are all analytic Boxes: the
+        scoring re-rasterizes every member once per candidate, and for a
+        shape whose occupancy is a point-in-mesh query that is a preflight
+        that runs for minutes. A group with an inexact member gets the
+        geometry-move remedy instead, and the message says which.
+
         Returns ``(axis_index, shift_m, predicted_spread)`` or ``None``.
         """
         if ctx.lane != "uniform":
             return None
+        if not all(exact for (_i, _e, _lo, _hi, exact) in members):
+            return None
         d = float(ctx.grid.dx)
         fracs = np.array([ctx.sub_lattice_offsets(lo)
-                          for (_i, _e, lo, _hi) in members])
+                          for (_i, _e, lo, _hi, _x) in members])
 
         def _wrap_spread(col):
             s = np.sort(np.asarray(col))
@@ -5491,7 +5605,7 @@ class _PreflightMixin:
             cands.add(round(-float(f) * d, 15))
             cands.add(round((1.0 - float(f)) * d, 15))
         centers = [0.5 * float(lo[ax] + hi[ax])
-                   for (_i, _e, lo, hi) in members]
+                   for (_i, _e, lo, hi, _x) in members]
         for i in range(len(centers)):
             for j in range(i + 1, len(centers)):
                 plane = 0.5 * (centers[i] + centers[j])
@@ -5508,7 +5622,7 @@ class _PreflightMixin:
             shifted = list(base)
             shifted[ax] = base[ax] + np.float32(s)
             cnts = [int(np.asarray(e.shape.mask_on_coords(*shifted)).sum())
-                    for (_i, e, _lo, _hi) in members]
+                    for (_i, e, _lo, _hi, _x) in members]
             spread = max(cnts) - min(cnts)
             if best is None or (spread, abs(s)) < (best[2], abs(best[1])):
                 best = (ax, s, spread)
@@ -5519,26 +5633,37 @@ class _PreflightMixin:
     def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         """#703 check 1: congruent conductors must rasterize congruently.
 
-        Groups conductor Box entries by congruence (sorted extents equal
-        within ``_CONGRUENCE_EXTENT_QUANTUM_M`` — mirror images and
-        right-angle rotations share the key by construction) and compares
-        each member's rasterized cell count from the production mask path.
+        Groups conductor entries by congruence (same shape class, sorted
+        bounding-box extents equal within
+        ``_CONGRUENCE_EXTENT_QUANTUM_M`` — mirror images and right-angle
+        rotations share the key by construction) and compares each
+        member's rasterized cell count from the production mask path.
         A spread beyond ``_CONGRUENCE_SPREAD_TOL_CELLS`` means the lattice
         broke a symmetry the design has. Runs on BOTH the uniform and the
         non-uniform lane (the counts and offsets come from that lane's own
         builders); the origin-shift suggestion is uniform-lane only.
+
+        The census is :meth:`_CampaignStaticsContext.congruence_entries`,
+        NOT the Box-only one: a patterned metal LAYER — the incident class
+        — cannot be a ``Box`` (a Box fills its clearance holes), so it
+        arrives as a user-defined ``Shape`` and a Box-only census skipped
+        every member of every mirror pair. For a member whose bounding box
+        is not the shape, equal bounds do not PROVE congruence, so the
+        message says how many members were keyed that way.
         """
-        boxes, others = ctx.conductor_entries()
+        keyed, unkeyed = ctx.congruence_entries()
         n_tc = len(self._thin_conductors)
-        if len(boxes) < 2:
+        if len(keyed) < 2:
             return
         groups: dict[tuple, list] = {}
-        for i, entry in boxes:
-            lo, hi = _sorted_box_corners(entry.shape)
+        for i, entry, lo, hi, exact in keyed:
             ext = np.sort(hi - lo)
-            key = tuple(int(round(float(e) / _CONGRUENCE_EXTENT_QUANTUM_M))
-                        for e in ext)
-            groups.setdefault(key, []).append((i, entry, lo, hi))
+            key = (
+                type(entry.shape).__name__,
+                tuple(int(round(float(e) / _CONGRUENCE_EXTENT_QUANTUM_M))
+                      for e in ext),
+            )
+            groups.setdefault(key, []).append((i, entry, lo, hi, exact))
 
         flagged = []
         n_groups = 0
@@ -5547,7 +5672,7 @@ class _PreflightMixin:
                 continue
             n_groups += 1
             counts = [int(ctx.rasterize(e.shape).sum())
-                      for (_i, e, _lo, _hi) in members]
+                      for (_i, e, _lo, _hi, _x) in members]
             spread = max(counts) - min(counts)
             if spread > _CONGRUENCE_SPREAD_TOL_CELLS:
                 flagged.append((key, members, counts, spread))
@@ -5556,14 +5681,21 @@ class _PreflightMixin:
 
         flagged.sort(key=lambda t: -t[3])
         key, members, counts, spread = flagged[0]
-        smallest_ext = key[0] * _CONGRUENCE_EXTENT_QUANTUM_M
+        ext_key = key[1]
+        smallest_ext = ext_key[0] * _CONGRUENCE_EXTENT_QUANTUM_M
+        n_inexact = sum(1 for (_i, _e, _lo, _hi, x) in members if not x)
         member_desc = "; ".join(
             f"geometry[{i}] '{e.material_name}' {c} cells, "
             "lo-corner sub-lattice offsets (x,y,z)=("
             + ", ".join(f"{o:.3f}" for o in ctx.sub_lattice_offsets(lo))
             + ") cells"
-            for (i, e, lo, _hi), c in zip(members, counts)
+            for (i, e, lo, _hi, _x), c in zip(members, counts)
         )
+        inferred = (
+            f"INFERRED: {n_inexact} member(s) of the worst group are keyed "
+            "by a bounding box that is not the shape itself, so equal "
+            "bounds bound congruence rather than proving it — read the "
+            "named members before acting. " if n_inexact else "")
         shift = self._congruence_origin_shift(ctx, members, counts)
         if shift is not None:
             ax_name = "xyz"[shift[0]]
@@ -5580,6 +5712,14 @@ class _PreflightMixin:
                 "non-uniform lane — a single per-axis slide is not "
                 "well-defined when the spacing varies)."
             )
+        elif n_inexact:
+            remedy = (
+                "REMEDY: place the members at positions congruent modulo "
+                "the cell size (no origin-shift prediction for this group "
+                f"— {n_inexact} member(s) are not analytic Boxes, and "
+                "scoring candidate slides would re-rasterize each of them "
+                "16 times inside preflight)."
+            )
         else:
             remedy = (
                 "REMEDY: place the members at positions congruent modulo "
@@ -5590,13 +5730,13 @@ class _PreflightMixin:
         _w.warn(PreflightWarning(
             f"{len(flagged)} congruent-conductor group(s) rasterize to "
             "UNEQUAL cell counts on this lattice (design-identical solids, "
-            "different meshes). Worst group (sorted extents "
+            f"different meshes). Worst group ({key[0]}, sorted extents "
             + " x ".join(_fmt_len(k * _CONGRUENCE_EXTENT_QUANTUM_M)
-                         for k in key)
+                         for k in ext_key)
             + f"): {member_desc}. OBSERVED: cell-count spread {spread} > "
             f"tolerance {_CONGRUENCE_SPREAD_TOL_CELLS} cell (one cell along "
             f"the group's smallest extent, {_fmt_len(smallest_ext)}). WHY: "
-            "congruent Boxes whose faces sit at different sub-cell offsets "
+            "congruent solids whose faces sit at different sub-cell offsets "
             "are sampled by different node sets, so the mesh invents an "
             "asymmetry the design does not have — a mirror pair whose "
             "mirror plane is off-lattice rasterizes asymmetrically with the "
@@ -5605,14 +5745,15 @@ class _PreflightMixin:
             "off the lattice; an A/B run pair differing ONLY by a 13µm "
             "lattice-origin slide moved |S11| up to 3.5 dB per bin and "
             f"improved every aggregate agreement metric. {remedy} "
-            f"COVERAGE: examined {len(boxes)} conductor Box entries in "
-            f"{n_groups} congruence group(s) of >=2 members on the "
-            f"{ctx.lane} lane; skipped {len(others)} non-Box conductor "
-            "entr(y/ies) (MeshShape and other non-Box shapes have no "
-            f"analytic congruence key) and {n_tc} thin-conductor sheet(s) "
-            "(not congruence-grouped). STALE IF: re-rasterizing the named "
-            "members gives equal counts (spread <= tolerance), or "
-            "conductors stop being sampled on the E-node lattice.",
+            f"COVERAGE: examined {len(keyed)} conductor entr(y/ies) that "
+            f"report a bounding box, in {n_groups} congruence group(s) of "
+            f">=2 members on the {ctx.lane} lane; skipped {len(unkeyed)} "
+            "conductor entr(y/ies) whose shape reports no bounding box "
+            f"(no congruence key) and {n_tc} thin-conductor sheet(s) (not "
+            f"congruence-grouped). {inferred}STALE IF: "
+            "re-rasterizing the named members gives equal counts (spread "
+            "<= tolerance), or conductors stop being sampled on the E-node "
+            "lattice.",
             code="congruent_conductor_rasterization_parity",
             source="_validate_cfg_congruent_rasterization_parity",
         ))
@@ -5815,7 +5956,11 @@ class _PreflightMixin:
                 m.any(axis=tuple(x for x in range(3) if x != a)))
             if occ.size != 1:
                 continue  # did not snap to a single node layer
-            sheets.append((label, shape, a, int(occ[0]), m.any(axis=a)))
+            s_lo, s_hi = _sorted_box_corners(shape)
+            own = ctx.sheet_own_cell(a, float(s_lo[a]), float(s_hi[a]),
+                                     int(occ[0]))
+            sheets.append(
+                (label, shape, a, int(occ[0]), m.any(axis=a), own))
         if len(sheets) < 2:
             return
         assembled = ctx.assembled()
@@ -5841,8 +5986,8 @@ class _PreflightMixin:
                                  key=lambda s: s[3])
             for si in range(len(axis_sheets)):
                 for sj in range(si + 1, len(axis_sheets)):
-                    lab1, sh1, _a1, k1, foot1 = axis_sheets[si]
-                    lab2, sh2, _a2, k2, foot2 = axis_sheets[sj]
+                    lab1, sh1, _a1, k1, foot1, own1 = axis_sheets[si]
+                    lab2, sh2, _a2, k2, foot2, _own2 = axis_sheets[sj]
                     if k2 <= k1:
                         continue
                     overlap = foot1 & foot2
@@ -5864,8 +6009,34 @@ class _PreflightMixin:
                     col = [0, 0, 0]
                     col[inplane[0]] = int(rep[0])
                     col[inplane[1]] = int(rep[1])
-                    # mesh sums: cells k1 .. k2-1 (node-to-node)
+                    # Mesh sums: cells k1 .. k2-1, node-to-node. That
+                    # span is what the fields see, INCLUDING the lower
+                    # sheet's own cell when the sheet fills one:
+                    # apply_pec_mask zeroes only TANGENTIAL E on a
+                    # one-cell PEC sheet, so the sheet cell's
+                    # normal-E edge stays live and its permittivity is
+                    # in the cavity (rfx/boundaries/pec.py; pinned by
+                    # test_face_registered_sheet_cell_is_a_live_edge).
+                    # Face registration therefore does NOT shorten the
+                    # electrical cavity — it swaps a collapsed sheet for
+                    # a live vacuum gap — so the sum stays and
+                    # ``own1`` is used to ATTRIBUTE the excess below,
+                    # not to trim the span.
+                    # A sheet puts a live edge INSIDE this cavity only
+                    # when its own PEC node's cell is the cell it fills
+                    # — the lower-face-registered case, ``own == k``. An
+                    # upper-face-registered sheet fills cell ``k-1``
+                    # while its live edge is cell ``k``: above the cavity
+                    # for the upper sheet, and for the lower sheet a
+                    # dielectric cell whose eps the #702 resample already
+                    # takes from the live edge. And the upper sheet's own
+                    # node ``k2`` is never inside ``range(k1, k2)``. So
+                    # ``own1 == k1`` is the whole condition.
+                    own_cell = k1 if (own1 is not None and own1 == k1) \
+                        else None
                     mesh_cap = mesh_phase = 0.0
+                    own_cap = own_d = 0.0
+                    own_eps = None
                     pec_between = False
                     for kk in range(k1, k2):
                         col[a] = kk
@@ -5877,6 +6048,8 @@ class _PreflightMixin:
                         ee = float(eps_arr[t])
                         mesh_cap += d_loc / ee
                         mesh_phase += d_loc * math.sqrt(ee)
+                        if kk == own_cell:
+                            own_cap, own_d, own_eps = d_loc / ee, d_loc, ee
                     if pec_between:
                         n_skipped_pec_between += 1
                         continue
@@ -5943,7 +6116,16 @@ class _PreflightMixin:
                             f"vs physical {_fmt_len(phys_phase)} "
                             f"({d_phase:+.1%}); node-to-node "
                             f"{_fmt_len(node_span)} vs face-to-face "
-                            f"{_fmt_len(gap)}; {governs}")))
+                            f"{_fmt_len(gap)}; {governs}"
+                            + ("" if own_eps is None else (
+                                "; of the sum(d/eps) mesh total, "
+                                f"{_fmt_len(own_cap)} is {lab1}'s OWN "
+                                f"cell ({_fmt_len(own_d)} at eps_r "
+                                f"{own_eps:.3f}) — that sheet fills one "
+                                "cell, and rfx zeroes only TANGENTIAL E "
+                                "on a one-cell PEC sheet, so the cell's "
+                                "normal-E edge stays live and sits "
+                                "INSIDE the cavity")))))
         if not results:
             return
         results.sort(key=lambda t: -t[0])
@@ -5957,7 +6139,18 @@ class _PreflightMixin:
             "through the geometry Box spans at the pair's shared column — "
             "the difference is the zero-thickness sheet model's honest "
             "cost (each sheet's thickness collapses onto its node) plus "
-            "any off-lattice registration. WHY BOTH MEASURES: the same "
+            "any off-lattice registration. TWO MECHANISMS, and any pair "
+            "naming an OWN cell above has the second one: a sheet "
+            "registered at its MID-PLANE collapses onto one node and the "
+            "gap reads mid-plane to mid-plane (a modelling trade — which "
+            "face the plane sits on — not a fixable defect), while a "
+            "sheet whose two FACES are registered fills one cell, and "
+            "rfx zeroes only tangential E on a one-cell PEC sheet, so "
+            "that cell's normal-E edge is live and its permittivity sits "
+            "inside the cavity. Face registration therefore does not "
+            "shorten the electrical cavity; it trades a collapsed sheet "
+            "for a live gap, which reads WORSE when that cell is vacuum. "
+            "WHY BOTH MEASURES: the same "
             "defect class measured 17.3% as a series capacitance and 3.2% "
             "as phase length (#703) — a bare percentage invites "
             "'correcting' a right number into a wrong one, so both are "
@@ -5965,7 +6158,13 @@ class _PreflightMixin:
             "for the sheet model itself (this is a quantified limit, not a "
             "defect); if the governing measure's delta matters for a "
             "claims-bearing number, resolve the sheet thickness with cells "
-            "or correct the extracted quantity by the printed delta. "
+            "or correct the extracted quantity by the printed delta. For "
+            "an OWN-cell term the eps_r printed for that cell IS "
+            "addressable: it is whatever the geometry puts on the live "
+            "edge (issue #702), so a stack whose dielectric abuts the "
+            "sheet's faces leaves vacuum there — extend the abutting "
+            "dielectric across the sheet's cell, or register the sheet's "
+            "mid-plane instead of its faces, and that term goes. "
             f"COVERAGE: examined {n_pairs} adjacent sheet pair(s) from "
             f"{len(sheets)} node-thin conductor sheet(s) on the {ctx.lane} "
             f"lane; physical stack computed from Box entries only — "
