@@ -77,12 +77,21 @@ SMOKE = os.environ.get("SMOKE", "0") == "1"
 F_TARGET = notch.F_TARGET
 FREQS_BAND = np.linspace(4.5e9, 8.5e9, 9)
 
+# phase1b: optimize notch SELECTIVITY, not raw |S21(f_t)| — phase1a's arm C
+# exploited the single-frequency objective with a broadband metal brick.
+# Passband transmissions are normalized per-frequency by the EMPTY-LINE
+# reference so the uncalibrated extractor scale cancels.
+TAG = "phase1b"
+FREQS_OPT = np.array([4.5e9, 5.25e9, 6.0e9, 6.75e9, 7.5e9])
+IDX_NOTCH = 2
+W_PB = float(os.environ.get("W_PB", 1.0))
+
 # Design region: sprouts from the trace top edge, spans the stub footprint
 # generously (the analytic 7.37 mm stub fits well inside 12 mm).
 REGION_WX = 3.0e-3
 REGION_LY = 12.0e-3
-FILTER_R_CELLS = 2.0
-BETA_STAGES = ((0, 8.0), (20, 16.0), (40, 32.0))
+FILTER_R_CELLS = 2.5
+BETA_STAGES = ((0, 8.0), (20, 32.0), (40, 128.0))
 N_ITERS = 4 if SMOKE else 60
 LR = 0.2
 NUM_PERIODS = 4.0 if SMOKE else 10.0
@@ -129,7 +138,7 @@ def main() -> int:
 
     os.environ["RFX_PEC_OCC_KOTTKE"] = "0" if arm == "C" else "1"
 
-    f_opt = np.asarray([F_TARGET])
+    f_opt = FREQS_OPT
     sim, grid, trace_y_hi, d_set, p_set = build_setup(f_opt)
     ix, iy, iz = region_indices(grid, trace_y_hi)
     ndx, ndy = len(ix), len(iy)
@@ -148,7 +157,7 @@ def main() -> int:
     x_probes = jnp.array([0.0, d_set.delta, 2.0 * d_set.delta], dtype=jnp.float32)
 
     print(
-        f"[phase1:{arm}] grid={shape3} region={ndx}x{ndy}={ndx*ndy} cells "
+        f"[phase1b:{arm}] grid={shape3} region={ndx}x{ndy}={ndx*ndy} cells "
         f"iz={iz} n_steps={n_steps} k={k_seg} iters={N_ITERS} smoke={SMOKE} "
         f"kottke={os.environ['RFX_PEC_OCC_KOTTKE']} sigma0={args.sigma0} q={args.qramp}"
     )
@@ -192,10 +201,22 @@ def main() -> int:
         s21 = res_p["alpha"] / (res_d["alpha"] + 1e-30)
         return s21, fr
 
+    # Empty-line reference (occ = 0 everywhere): per-frequency normalization
+    # so the diverged extractor's absolute scale cancels out of the objective.
+    occ_empty = jnp.zeros(shape3, dtype=jnp.float32)
+    s21_ref, _ = s21_ft(occ_empty, None, n_steps, freqs_j, beta0, d_set, p_set)
+    s21_ref_mag = jnp.abs(s21_ref) + 1e-30
+    pb_idx = jnp.asarray([i for i in range(len(FREQS_OPT)) if i != IDX_NOTCH])
+    print(f"[phase1b:{arm}] empty-line |S21| ref = "
+          f"{[round(float(x),4) for x in s21_ref_mag]}")
+
     def loss(theta, beta):
         occ, sigma, _ = fields_from_theta(theta, beta)
         s21, _ = s21_ft(occ, sigma, n_steps, freqs_j, beta0, d_set, p_set)
-        return jnp.abs(s21[0]) ** 2
+        t = jnp.abs(s21) / s21_ref_mag           # normalized transmission
+        j_notch = t[IDX_NOTCH] ** 2               # suppress at f_t
+        j_pass = jnp.mean((t[pb_idx] - 1.0) ** 2)  # preserve passband
+        return j_notch + W_PB * j_pass
 
     key = jax.random.PRNGKey(SEED)
     theta0 = 0.0 + 0.01 * jax.random.normal(key, (ndx, ndy), dtype=jnp.float32)
@@ -225,17 +246,18 @@ def main() -> int:
         _, g = grad_fn(theta0, beta_g)
         rng = np.random.default_rng(1)
         cells = [(int(rng.integers(0, ndx)), int(rng.integers(0, ndy))) for _ in range(2)]
-        eps_fd = 1e-2
         for (ci, cj) in cells:
-            tp = theta0.at[ci, cj].add(eps_fd)
-            tm = theta0.at[ci, cj].add(-eps_fd)
-            jp = float(loss(tp, beta_g))
-            jm = float(loss(tm, beta_g))
-            fd = (jp - jm) / (2 * eps_fd)
-            ad = float(g[ci, cj])
-            rel = abs(ad - fd) / (abs(fd) + 1e-12)
-            fd_report.append(dict(cell=[ci, cj], ad=ad, fd=fd, rel_err=rel))
-            print(f"[phase1:{arm}] gradcheck cell({ci},{cj}) AD={ad:+.4e} FD={fd:+.4e} rel={rel:.3f}")
+            for eps_fd in (3e-2, 1e-2):  # two-step sweep: FD noise vs truncation
+                tp = theta0.at[ci, cj].add(eps_fd)
+                tm = theta0.at[ci, cj].add(-eps_fd)
+                jp = float(loss(tp, beta_g))
+                jm = float(loss(tm, beta_g))
+                fd = (jp - jm) / (2 * eps_fd)
+                ad = float(g[ci, cj])
+                rel = abs(ad - fd) / (abs(fd) + 1e-12)
+                fd_report.append(dict(cell=[ci, cj], eps=eps_fd, ad=ad, fd=fd, rel_err=rel))
+                print(f"[phase1b:{arm}] gradcheck cell({ci},{cj}) eps={eps_fd:.0e} "
+                      f"AD={ad:+.4e} FD={fd:+.4e} rel={rel:.3f}")
 
     # ---- Adam with beta continuation ----
     import optax
@@ -251,9 +273,9 @@ def main() -> int:
         theta = optax.apply_updates(theta, upd)
         hist.append(dict(iter=it, J=float(j_val), beta=beta_now))
         if it % 5 == 0 or it == N_ITERS - 1:
-            print(f"[phase1:{arm}] it={it:3d} beta={beta_now:4.0f} "
+            print(f"[phase1b:{arm}] it={it:3d} beta={beta_now:4.0f} "
                   f"J={float(j_val):.5f} ({time.time()-t0:.0f}s)")
-            np.savez(OUT / f"phase1_{arm}_theta.npz", theta=np.asarray(theta), it=it)
+            np.savez(OUT / f"{TAG}_{arm}_theta.npz", theta=np.asarray(theta), it=it)
 
     # ---- final: binarized hard re-evaluation, long window, full band ----
     _, _, rho_final = fields_from_theta(theta, BETA_STAGES[-1][1])
@@ -287,29 +309,43 @@ def main() -> int:
         return s21, ez
 
     s21_hard, ez_hard = hard_eval(occ_hard)
+    s21_hard_ref, _ = hard_eval(jnp.zeros(shape3, dtype=jnp.float32))
     it_t = int(np.argmin(np.abs(FREQS_BAND - F_TARGET)))
     j_hard = float(np.abs(s21_hard[it_t]) ** 2)
     db_hard = 10 * np.log10(j_hard + 1e-15)
+    # selectivity metrics on the hard design, empty-line-normalized
+    t_hard = np.abs(s21_hard) / (np.abs(s21_hard_ref) + 1e-30)
+    pb_mask = np.abs(FREQS_BAND - F_TARGET) > 0.9e9
+    t_notch = float(t_hard[it_t])
+    t_pb = float(np.mean(t_hard[pb_mask]))
+    contrast_db = 20 * np.log10((t_pb + 1e-12) / (t_notch + 1e-12))
 
     # oracle reference: the analytic lambda/4 stub, binarized, same evaluator
     occ_stub = notch.build_stub_occ(grid2, trace_y_hi2, jnp.asarray(float(notch.L_TARGET_AN)))
     occ_stub = (np.asarray(occ_stub) > 0.5).astype(np.float32)
     s21_stub, _ = hard_eval(jnp.asarray(occ_stub))
     j_stub = float(np.abs(s21_stub[it_t]) ** 2)
+    t_stub = np.abs(s21_stub) / (np.abs(s21_hard_ref) + 1e-30)
+    stub_contrast_db = 20 * np.log10(
+        (float(np.mean(t_stub[pb_mask])) + 1e-12) / (float(t_stub[it_t]) + 1e-12))
 
-    print(f"[phase1:{arm}] FINAL J_soft={hist[-1]['J']:.5f} fill={fill:.2f} "
-          f"J_hard(f_t)={j_hard:.5f} ({db_hard:.1f} dB) "
-          f"oracle-stub J_hard={j_stub:.5f} ({10*np.log10(j_stub+1e-15):.1f} dB)")
+    print(f"[phase1b:{arm}] FINAL J_soft={hist[-1]['J']:.5f} fill={fill:.2f} "
+          f"t_notch={t_notch:.4f} t_pb={t_pb:.4f} CONTRAST={contrast_db:.1f} dB "
+          f"(oracle stub contrast {stub_contrast_db:.1f} dB) "
+          f"J_hard(f_t)={j_hard:.5f} ({db_hard:.1f} dB)")
 
-    out = dict(arm=arm, smoke=SMOKE, n_iters=N_ITERS, n_steps=n_steps,
+    out = dict(tag=TAG, arm=arm, smoke=SMOKE, n_iters=N_ITERS, n_steps=n_steps,
                n_eval=n_eval, region=[ndx, ndy], sigma0=args.sigma0,
-               qramp=args.qramp, fill_hard=fill, J_hard_ft=j_hard,
-               J_hard_ft_db=db_hard, J_oracle_stub=j_stub,
+               qramp=args.qramp, w_pb=W_PB, fill_hard=fill, J_hard_ft=j_hard,
+               J_hard_ft_db=db_hard, t_notch=t_notch, t_pb=t_pb,
+               contrast_db=contrast_db, J_oracle_stub=j_stub,
+               oracle_contrast_db=stub_contrast_db,
                s21_hard_band_db=[float(20 * np.log10(abs(x) + 1e-12)) for x in s21_hard],
+               t_hard_band=[float(x) for x in t_hard],
                freqs_GHz=[f / 1e9 for f in FREQS_BAND],
                fd_report=fd_report, history=hist)
-    (OUT / f"phase1_{arm}.json").write_text(json.dumps(out, indent=2))
-    np.savez(OUT / f"phase1_{arm}_final.npz", theta=np.asarray(theta),
+    (OUT / f"{TAG}_{arm}.json").write_text(json.dumps(out, indent=2))
+    np.savez(OUT / f"{TAG}_{arm}_final.npz", theta=np.asarray(theta),
              rho=np.asarray(rho_final), hard=hard, ez=ez_hard)
 
     fig, axes = plt.subplots(1, 4, figsize=(19, 4.2))
@@ -320,13 +356,14 @@ def main() -> int:
     axes[1].set_title("final density"); fig.colorbar(im, ax=axes[1], shrink=0.8)
     im = axes[2].imshow(hard.T, origin="lower", cmap="gray_r", vmin=0, vmax=1, aspect="auto")
     axes[2].set_title(f"binarized (fill {fill:.2f})"); fig.colorbar(im, ax=axes[2], shrink=0.8)
-    axes[3].plot(out["freqs_GHz"], out["s21_hard_band_db"], "o-")
+    axes[3].plot(out["freqs_GHz"], 20 * np.log10(np.asarray(out["t_hard_band"]) + 1e-12), "o-")
     axes[3].axvline(F_TARGET / 1e9, ls="--", c="r")
-    axes[3].set_title(f"hard |S21| band, J(f_t)={db_hard:.1f} dB")
-    fig.suptitle(f"phase1 arm {arm}: free-form metal TO, {ndx}x{ndy} cells")
+    axes[3].set_ylabel("normalized |S21| (dB)")
+    axes[3].set_title(f"hard t(f), contrast={contrast_db:.1f} dB")
+    fig.suptitle(f"{TAG} arm {arm}: selective notch TO, {ndx}x{ndy} cells, w_pb={W_PB}")
     fig.tight_layout()
-    fig.savefig(OUT / f"phase1_{arm}.png", dpi=110)
-    print(f"[phase1:{arm}] wrote {OUT}/phase1_{arm}.json/.png/.npz")
+    fig.savefig(OUT / f"{TAG}_{arm}.png", dpi=110)
+    print(f"[phase1b:{arm}] wrote {OUT}/{TAG}_{arm}.json/.png/.npz")
     return 0
 
 

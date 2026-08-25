@@ -1,0 +1,97 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 94 lines of #369367256120.
+[11:40:51.495458] workload awaiting to start
+[11:40:51.495558] Workload status changed to pending
+[11:40:58.423333] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[11:40:58.423333] Workload is in queue for scheduling. Please wait...
+[11:41:06.992043] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[11:41:06.992043] Workload is in queue for scheduling. Please wait...
+[11:41:09.755311] VESSL Workload assigned successfully. Starting soon.
+[11:41:10.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[11:41:10.000000] Created container vops-init
+[11:41:10.000000] Started container vops-init
+[11:41:11.000000] Creating VESSL Workload...
+[11:41:11.000000] Created container run-exec
+[11:41:11.000000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[11:41:11.001000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[11:41:12.000000] Started container run-sidecar
+[11:41:12.000000] Created container vops-sidecar
+[11:41:12.000000] Created container ttyd-sidecar
+[11:41:12.000000] Starting VESSL Workload...
+[11:41:12.000000] Started container vops-sidecar
+[11:41:12.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[11:41:12.000000] Started container run-exec
+[11:41:12.000000] Started container fluentbit
+[11:41:12.000000] Created container fluentbit
+[11:41:12.000000] Container image "quay.io/vessl-ai/fluent-bit:2.1.6" already present on machine
+[11:41:12.000000] Container image "quay.io/vessl-ai/sidecar:v0.0.3" already present on machine
+[11:41:12.000000] Created container run-sidecar
+[11:41:12.614315] Installing VESSL CLI...
+[11:41:13.283087] workload reported alive as pod run-execution-q29tadwml14g-0
+[11:41:13.283187] Workload status changed to initializing
+[11:41:14.498802] + set +x
+[11:41:16.569584] vessl, version 0.1.199
+[11:41:19.635436] workload reported alive as pod run-execution-q29tadwml14g-0
+[11:41:19.635536] Workload status changed to running
+[11:41:19.824794] + mkdir -p /root
+[11:41:19.826778] + cd /root
+[11:41:19.827613] + set -euo pipefail
+[11:41:19.827654] + CLONE=/root/workspace/bk-workspace/rfx-metal
+[11:41:19.827666] + test -f /root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py
+[11:41:19.838109] + pip install --quiet '/root/workspace/bk-workspace/rfx-metal[all]'
+[11:41:19.838210] + tail -2
+[11:41:45.825934] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[11:41:45.826224] + pip install --quiet optax matplotlib
+[11:41:45.826230] + tail -1
+[11:41:46.419309] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[11:41:46.419442] + python -c 'import jax; print('"'"'JAX'"'"', jax.devices()); import rfx; print('"'"'rfx'"'"', rfx.__file__)'
+[11:41:46.698060] JAX [CudaDevice(id=0)]
+[11:41:47.343897] rfx /usr/local/lib/python3.10/dist-packages/rfx/__init__.py
+[11:41:47.538739] + nvidia-smi '--query-gpu=name,memory.total' '--format=csv'
+[11:41:47.573076] name, memory.total [MiB]
+[11:41:47.573094] NVIDIA GeForce RTX 4090, 24564 MiB
+[11:41:47.575099] + mkdir -p /output/metal_phase1_C
+[11:41:47.576758] + cd /root/workspace/bk-workspace/rfx-metal
+[11:41:47.576784] + python -u research/metal_to/phase1_freeform_ab.py --arm C
+[11:41:50.891701]   [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+[11:41:50.891737]   [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[11:41:50.891742]   [PREFLIGHT] 1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' y: extent 600µm, worst face residual 35µm (5.83% of the extent, df/f ~ 5.83%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 2 axis extent(s) on 1 conductor Box entr(y/ies) on the uniform lane; 1 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+[11:41:50.891757]   [PREFLIGHT] MSL port 'msl_0': only 2 substrate cell(s) in z (h_sub=254µm, dx=127µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 64µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) — see the mixed-cell-danger-zone check below.
+[11:41:50.891759]   [PREFLIGHT] MSL port 'msl_1': only 2 substrate cell(s) in z (h_sub=254µm, dx=127µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 64µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) — see the mixed-cell-danger-zone check below.
+[11:41:50.960078] [phase1:C] grid=(279, 180, 19) region=24x94=2256 cells iz=2 n_steps=4623 k=67 iters=60 smoke=False kottke=0 sigma0=5.0 q=3.0
+[11:41:51.229361] jax.errors.SimplifiedTraceback: For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+[11:41:51.229373] 
+[11:41:51.229375] The above exception was the direct cause of the following exception:
+[11:41:51.229376] 
+[11:41:51.229378] Traceback (most recent call last):
+[11:41:51.229380]   File "/root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py", line 329, in <module>
+[11:41:51.230815]     raise SystemExit(main())
+[11:41:51.230822]   File "/root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py", line 244, in main
+[11:41:51.231787]     (j_val, g) = grad_fn(theta, beta_now)
+[11:41:51.231788]   File "/root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py", line 196, in loss
+[11:41:51.232630]     occ, sigma, _ = fields_from_theta(theta, beta)
+[11:41:51.232632]   File "/root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py", line 161, in fields_from_theta
+[11:41:51.233631]     rho_f = apply_density_filter(rho, FILTER_R_CELLS)
+[11:41:51.233633]   File "/usr/local/lib/python3.10/dist-packages/rfx/topology.py", line 129, in apply_density_filter
+[11:41:51.233634]     r_int = int(jnp.ceil(radius_cells))
+[11:41:51.233636] jax.errors.ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: traced array with shape float32[]
+[11:41:51.233638] The problem arose with the `int` function. If trying to convert the data type of a value, try using `x.astype(int)` or `jnp.array(x, int)` instead.
+[11:41:51.233639] The error occurred while tracing the function loss at /root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py:195 for jit. This value became a tracer due to JAX operations on these lines:
+[11:41:51.233640] 
+[11:41:51.233641]   operation a:f32[] = ceil b
+[11:41:51.233643]     from line /usr/local/lib/python3.10/dist-packages/rfx/topology.py:129 (apply_density_filter)
+[11:41:51.233644] 
+[11:41:51.233646] See https://jax.readthedocs.io/en/latest/errors.html#jax.errors.ConcretizationTypeError
+[11:41:51.563712] workload reported done
+[11:41:51.563812] Workload status changed to stopping
+[11:41:55.863592] workload reported done
+[11:41:55.863692] Workload status changed to waitToBeKilled
+[11:41:56.000000] Stopping container vops-sidecar
+[11:41:56.000000] Stopping container run-sidecar
+[11:41:56.000000] Stopping container run-exec
+[11:41:56.000000] Terminating VESSL Workload...
+[11:41:56.000000] Stopping container ttyd-sidecar
+[11:41:56.000000] Stopping container fluentbit
+[11:41:56.774697] workload failed
+[11:41:56.774797] Workload status changed to failed

@@ -1,0 +1,51 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 48 lines of #369367256122.
+[11:57:21.984648] workload awaiting to start
+[11:57:21.984748] Workload status changed to pending
+[11:57:26.592610] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[11:57:26.592610] Workload is in queue for scheduling. Please wait...
+[11:57:30.038571] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[11:57:30.038571] Workload is in queue for scheduling. Please wait...
+[11:57:32.348986] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[11:57:32.348986] Workload is in queue for scheduling. Please wait...
+[11:57:44.376673] VESSL Workload assigned successfully. Starting soon.
+[11:57:45.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[11:57:45.000000] Created container vops-init
+[11:57:45.000000] Started container vops-init
+[11:57:46.000000] Creating VESSL Workload...
+[11:57:46.000000] Created container ttyd-sidecar
+[11:57:46.000000] Starting VESSL Workload...
+[11:57:46.000000] Started container vops-sidecar
+[11:57:46.000000] Created container run-exec
+[11:57:46.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[11:57:46.000000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[11:57:46.000000] Container image "quay.io/vessl-ai/fluent-bit:2.1.6" already present on machine
+[11:57:46.000000] Created container run-sidecar
+[11:57:46.001000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[11:57:46.865518] Installing VESSL CLI...
+[11:57:47.419151] workload reported alive as pod run-execution-cz0a9hpsnqz3-0
+[11:57:47.419251] Workload status changed to initializing
+[11:57:48.503473] + set +x
+[11:57:51.593861] vessl, version 0.1.199
+[11:57:53.655673] workload reported alive as pod run-execution-cz0a9hpsnqz3-0
+[11:57:53.655773] Workload status changed to running
+[11:57:53.894853] + mkdir -p /root
+[11:57:53.896882] + cd /root
+[11:57:53.897534] + set -euo pipefail
+[11:57:53.897563] + CLONE=/root/workspace/bk-workspace/rfx-metal
+[11:57:53.897572] + test -f /root/workspace/bk-workspace/rfx-metal/research/metal_to/phase1_freeform_ab.py
+[11:57:53.905921] + pip install --quiet '/root/workspace/bk-workspace/rfx-metal[all]'
+[11:57:53.905967] + tail -2
+[11:58:11.555892]   ERROR: Failed building wheel for rfx-fdtd
+[11:58:11.555915] ERROR: Could not build wheels for rfx-fdtd, which is required to install pyproject.toml-based projects
+[11:58:11.571049] workload reported done
+[11:58:11.571150] Workload status changed to stopping
+[11:58:17.925426] workload reported done
+[11:58:17.925527] Workload status changed to waitToBeKilled
+[11:58:20.000000] Stopping container vops-sidecar
+[11:58:20.000000] Stopping container run-sidecar
+[11:58:20.000000] Stopping container run-exec
+[11:58:20.000000] Terminating VESSL Workload...
+[11:58:20.000000] Stopping container ttyd-sidecar
+[11:58:20.757915] workload failed
