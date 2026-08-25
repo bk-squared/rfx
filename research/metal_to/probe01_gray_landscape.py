@@ -160,7 +160,7 @@ def main() -> int:
         res_p = extract_msl_nprobe(v_p, x_probes, _i_from_plane(fr, p_set.hy_name, p_set), beta0)
         s11 = res_d["gamma"] / (res_d["alpha"] + 1e-30)
         s21 = res_p["alpha"] / (res_d["alpha"] + 1e-30)
-        ez_map = np.abs(np.asarray(fr.dft_planes["ez_surface"]))[0]
+        ez_map = np.abs(np.asarray(fr.dft_planes["ez_surface"].accumulator))[0]
         return np.asarray(s11), np.asarray(s21), ez_map
 
     rows = []
