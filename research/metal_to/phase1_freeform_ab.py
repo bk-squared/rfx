@@ -213,7 +213,12 @@ def main() -> int:
                              "pec_occupancy_override — STOP (needs core support)")
 
     # ---- gate 1: AD-vs-FD at init (A and B) ----
-    grad_fn = jax.jit(jax.value_and_grad(loss), static_argnums=())
+    # NOTE: no jax.jit wrapper — under jit even constants become abstract and
+    # rfx.topology.apply_density_filter's `int(jnp.ceil(radius))` kernel-size
+    # computation raises ConcretizationTypeError. Plain value_and_grad traces
+    # with concrete constants (the notch example's pattern); forward() jits
+    # the scan internally, so the per-iteration overhead is negligible.
+    grad_fn = jax.value_and_grad(loss)
     fd_report = []
     if arm in ("A", "B") and not SMOKE:
         beta_g = BETA_STAGES[0][1]
