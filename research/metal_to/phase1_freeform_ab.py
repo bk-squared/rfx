@@ -81,7 +81,7 @@ FREQS_BAND = np.linspace(4.5e9, 8.5e9, 9)
 # exploited the single-frequency objective with a broadband metal brick.
 # Passband transmissions are normalized per-frequency by the EMPTY-LINE
 # reference so the uncalibrated extractor scale cancels.
-TAG = "phase1b"
+TAG = "phase1c"
 FREQS_OPT = np.array([4.5e9, 5.25e9, 6.0e9, 6.75e9, 7.5e9])
 IDX_NOTCH = 2
 W_PB = float(os.environ.get("W_PB", 1.0))
@@ -133,8 +133,15 @@ def main() -> int:
     ap.add_argument("--arm", choices=("A", "B", "C"), required=True)
     ap.add_argument("--sigma0", type=float, default=5.0)
     ap.add_argument("--qramp", type=float, default=3.0)
+    ap.add_argument("--iters", type=int, default=N_ITERS)
+    ap.add_argument("--init", choices=("uniform", "low", "stub"), default="uniform",
+                    help="theta init: uniform rho=0.5 | low rho=0.25 | analytic-stub seed")
     args = ap.parse_args()
     arm = args.arm
+    n_iters = args.iters
+    beta_stages = ((0, 8.0), (n_iters // 3, 32.0), (2 * n_iters // 3, 128.0))
+    global TAG
+    TAG = f"{TAG}_{args.init}_i{n_iters}"
 
     os.environ["RFX_PEC_OCC_KOTTKE"] = "0" if arm == "C" else "1"
 
@@ -158,7 +165,7 @@ def main() -> int:
 
     print(
         f"[phase1b:{arm}] grid={shape3} region={ndx}x{ndy}={ndx*ndy} cells "
-        f"iz={iz} n_steps={n_steps} k={k_seg} iters={N_ITERS} smoke={SMOKE} "
+        f"iz={iz} n_steps={n_steps} k={k_seg} iters={n_iters} init={args.init} smoke={SMOKE} "
         f"kottke={os.environ['RFX_PEC_OCC_KOTTKE']} sigma0={args.sigma0} q={args.qramp}"
     )
 
@@ -219,11 +226,21 @@ def main() -> int:
         return j_notch + W_PB * j_pass
 
     key = jax.random.PRNGKey(SEED)
-    theta0 = 0.0 + 0.01 * jax.random.normal(key, (ndx, ndy), dtype=jnp.float32)
+    noise = 0.01 * jax.random.normal(key, (ndx, ndy), dtype=jnp.float32)
+    if args.init == "uniform":
+        theta0 = 0.0 + noise                       # rho ~ 0.5
+    elif args.init == "low":
+        theta0 = -1.1 + noise                      # rho ~ 0.25
+    else:  # "stub": seed with the analytic lambda/4 stub, softly
+        occ_seed3 = notch.build_stub_occ(grid, trace_y_hi,
+                                         jnp.asarray(float(notch.L_TARGET_AN)))
+        seed2d = np.asarray(occ_seed3)[ix_lo:ix_hi, iy_lo:iy_hi, iz]
+        theta0 = jnp.asarray(np.where(seed2d > 0.5, 2.0, -2.0),
+                             dtype=jnp.float32) + noise
 
     # ---- gate 2: arm B's sigma must matter (fail loud on silent ignore) ----
     if arm == "B":
-        occ0, sig0, _ = fields_from_theta(theta0, BETA_STAGES[0][1])
+        occ0, sig0, _ = fields_from_theta(theta0, beta_stages[0][1])
         s_a, _ = s21_ft(occ0, None, n_steps, freqs_j, beta0, d_set, p_set)
         big = jnp.zeros(shape3, dtype=jnp.float32).at[ix_lo:ix_hi, iy_lo:iy_hi, iz].set(1.0e4)
         s_b, _ = s21_ft(occ0, big, n_steps, freqs_j, beta0, d_set, p_set)
@@ -242,7 +259,7 @@ def main() -> int:
     grad_fn = jax.value_and_grad(loss)
     fd_report = []
     if arm in ("A", "B") and not SMOKE:
-        beta_g = BETA_STAGES[0][1]
+        beta_g = beta_stages[0][1]
         _, g = grad_fn(theta0, beta_g)
         rng = np.random.default_rng(1)
         cells = [(int(rng.integers(0, ndx)), int(rng.integers(0, ndy))) for _ in range(2)]
@@ -266,19 +283,19 @@ def main() -> int:
     state = opt.init(theta)
     hist = []
     t0 = time.time()
-    for it in range(N_ITERS):
-        beta_now = max(b for s, b in BETA_STAGES if it >= s)
+    for it in range(n_iters):
+        beta_now = max(b for s_, b in beta_stages if it >= s_)
         (j_val, g) = grad_fn(theta, beta_now)
         upd, state = opt.update(g, state)
         theta = optax.apply_updates(theta, upd)
         hist.append(dict(iter=it, J=float(j_val), beta=beta_now))
-        if it % 5 == 0 or it == N_ITERS - 1:
+        if it % 5 == 0 or it == n_iters - 1:
             print(f"[phase1b:{arm}] it={it:3d} beta={beta_now:4.0f} "
                   f"J={float(j_val):.5f} ({time.time()-t0:.0f}s)")
             np.savez(OUT / f"{TAG}_{arm}_theta.npz", theta=np.asarray(theta), it=it)
 
     # ---- final: binarized hard re-evaluation, long window, full band ----
-    _, _, rho_final = fields_from_theta(theta, BETA_STAGES[-1][1])
+    _, _, rho_final = fields_from_theta(theta, beta_stages[-1][1])
     hard = (np.asarray(rho_final) > 0.5).astype(np.float32)
     fill = float(hard.mean())
 
@@ -334,7 +351,7 @@ def main() -> int:
           f"(oracle stub contrast {stub_contrast_db:.1f} dB) "
           f"J_hard(f_t)={j_hard:.5f} ({db_hard:.1f} dB)")
 
-    out = dict(tag=TAG, arm=arm, smoke=SMOKE, n_iters=N_ITERS, n_steps=n_steps,
+    out = dict(tag=TAG, arm=arm, smoke=SMOKE, n_iters=n_iters, init=args.init, n_steps=n_steps,
                n_eval=n_eval, region=[ndx, ndy], sigma0=args.sigma0,
                qramp=args.qramp, w_pb=W_PB, fill_hard=fill, J_hard_ft=j_hard,
                J_hard_ft_db=db_hard, t_notch=t_notch, t_pb=t_pb,
