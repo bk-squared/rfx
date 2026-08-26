@@ -582,16 +582,38 @@ def test_until_decay_reports_and_is_bit_exact(capsys):
 # --------------------------------------------------------------------------
 
 
-def test_nonuniform_lane_warns_instead_of_going_quiet():
+def _nu_sim():
     dz = np.concatenate([np.full(8, 5e-4), np.full(16, 2.5e-4)])
-    sim = Simulation(freq_max=20e9, domain=(0.004, 0.004, float(dz.sum())),
-                     dx=5e-4, dz_profile=dz, boundary="cpml", cpml_layers=4)
+    return Simulation(freq_max=20e9, domain=(0.004, 0.004, float(dz.sum())),
+                      dx=5e-4, dz_profile=dz, boundary="cpml", cpml_layers=4)
+
+
+def test_nonuniform_lane_reports_progress(capsys):
+    """Contract updated by the #667 NU extension: the NU lane now SUPPORTS
+    report_every (chunked host loop, forced-N escape) instead of warning
+    that it is uniform-lane-only. Deeper equivalence gates live in
+    tests/test_nu_progress_chunking.py."""
+    sim = _nu_sim()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim.run(n_steps=10, report_every=5)
+        sim.run(n_steps=10, report_every=5, report_label="nu-lane")
     msgs = [str(w.message) for w in caught if "report_every" in str(w.message)]
-    assert msgs, "the non-uniform lane must not drop report_every in silence"
-    assert "uniform lane only" in msgs[0]
+    assert not msgs, f"supported kwarg must not warn: {msgs}"
+    out = capsys.readouterr().out
+    assert "nu-lane" in out and "10/10 steps" in out, \
+        f"expected NU progress lines, got: {out!r}"
+
+
+def test_nonuniform_lane_warns_on_the_checkpoint_fallback():
+    """The one combo that still drops report_every (grad-tape checkpoint on
+    the forward-only chunked loop) must keep saying so."""
+    sim = _nu_sim()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim.run(n_steps=10, report_every=5, checkpoint=True)
+    msgs = [str(w.message) for w in caught if "report_every" in str(w.message)]
+    assert msgs, "the checkpoint fallback must not drop report_every in silence"
+    assert "checkpoint" in msgs[0]
 
 
 # --------------------------------------------------------------------------
