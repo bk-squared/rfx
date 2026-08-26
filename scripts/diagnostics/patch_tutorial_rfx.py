@@ -62,8 +62,13 @@ NUM_PERIODS = int(os.environ.get("PT_NUM_PERIODS", "250"))
 # PT_TWO_PLANE=1: #706 two-plane realization of the one-cell ground/patch
 # sheets — the radiation-damping A/B on a matched textbook radiator.
 _TP = dict(two_plane=True) if os.environ.get("PT_TWO_PLANE", "0") == "1" else {}
-eps_eff = (sub_epsR + 1) / 2 + (sub_epsR - 1) / 2 * (1 + 12 * (sub_thick / patch_w)) ** -0.5
-F_GUESS = C0 / (2 * patch_l * math.sqrt(eps_eff))
+# #693 root cause lived here: F_GUESS used patch_l (40 mm) as the resonant
+# length, so the nearest-mode selector always picked the 40 mm CROSS mode
+# (2.21 GHz) and that number became the committed envelope. The probe feed
+# is offset along x and 32 mm lies along x, so the design mode's resonant
+# length is patch_w = 32 mm (TL width = patch_l).
+eps_eff = (sub_epsR + 1) / 2 + (sub_epsR - 1) / 2 * (1 + 12 * (sub_thick / patch_l)) ** -0.5
+F_GUESS = C0 / (2 * patch_w * math.sqrt(eps_eff))
 
 RESULT_DIR = os.path.join(os.path.dirname(__file__), "cv05_investigation_results")
 os.makedirs(RESULT_DIR, exist_ok=True)

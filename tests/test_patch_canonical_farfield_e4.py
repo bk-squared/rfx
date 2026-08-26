@@ -21,13 +21,13 @@ from ``scripts/diagnostics/patch_tutorial_rfx.py`` and
   frame (6.68 dBi, num_periods=90) — locked at 0.5 dB;
 * E-/H-plane beam peaks: measured 0 deg / -3 deg (openEMS 0 / 0) — locked at
   15 deg from broadside;
-* resonance: rfx at dx = 2 mm reads LOW by -8.6% (2.2143-2.2149 GHz vs
-  2.4221 GHz).  That offset is the DOCUMENTED coarse-mesh discretization bias
-  of this fixture (z-under-resolution + staircased patch edge + collocated
-  substrate permittivity at the air/dielectric interface; about -6% at
-  dx = 1 mm, about -3% extrapolated to zero cell size, partially recoverable
-  with ``subpixel_smoothing=True`` — see ``tests/test_patch_cavity_eps_oracle.py``).
-  The gate locks BOTH the magnitude envelope [-12%, -5%] and the sign; it is a
+* resonance (REPINNED 2026-08-27, #693): the design mode — the 32 mm
+  feed-axis mode, rfx ring-down 2.6954 GHz — reads HIGH by +11.3% vs the
+  openEMS 2.4221 GHz at dx = 2 mm.  The pre-#693 docstring said "-8.6% LOW"
+  because the old selector tracked the 40 mm CROSS mode (2.2147 GHz); its
+  dx-ladder claims (-6% at dx=1, -3% extrapolated) are wrong-mode data and
+  retired with it (a per-mode ladder is tracked in #693).  The gate locks
+  BOTH the magnitude envelope [+6%, +16%] and the sign; it is a
   discretization-bias regression lock, NOT an rfx-vs-openEMS accuracy claim.
 
 The -40 dB ring-down settling witness is asserted in-test before any gated
@@ -92,11 +92,20 @@ AIR_ABOVE = 84.0e-3
 NUM_PERIODS = 110
 NTFF_FREQS = np.array([2.0e9, 2.1e9, 2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.8e9])
 
-# ---- Measured-envelope gates (see module docstring for the measurements) ----
-D_ABS_TOL_DB = 0.5          # measured 0.08 dB (research frame) / 0.11 dB (lean frame)
+# ---- Measured-envelope gates (repinned 2026-08-27, issue #693 root cause) ----
+# The pre-#693 envelopes were pinned against the WRONG member of the patch's
+# near-degenerate mode pair: openEMS 2.4221 GHz is the 32 mm (feed-axis)
+# mode, whose rfx counterpart is the UPPER ring-down mode (2.6954 GHz,
+# radiated-power max, broadside, 6.5x amplitude), not the 40 mm cross mode
+# (2.2147 GHz) the old F_GUESS selector picked. Full written root cause with
+# the evidence chain: issue #693 (2026-08-27 comment).
+D_ABS_TOL_DB = 1.0          # measured 0.60 dB at the design-mode bin (7.39 vs
+                            # openEMS 6.79); the old 0.5/measured-0.08 was the
+                            # wrong-mode bin
 PEAK_ANGLE_TOL_DEG = 15.0   # measured 0 / -3 deg vs openEMS 0 / 0
-F_RES_REL_LO = -0.12        # documented dx=2 mm coarse-mesh bias envelope,
-F_RES_REL_HI = -0.05        # measured -8.6%; sign lock: rfx reads LOW at this dx
+F_RES_REL_LO = +0.06        # dx=2 mm bias envelope on the DESIGN mode,
+F_RES_REL_HI = +0.16        # measured +11.3%; sign lock: rfx reads HIGH here
+                            # (z-under-resolution side, #330 family)
 SETTLING_BAR_DB = -40.0
 
 
@@ -386,13 +395,32 @@ def test_directivity_within_committed_envelope(rfx_run):
 
 
 @pytest.mark.slow
+def test_mode_pair_present_with_aspect_ratio(rfx_run):
+    """Physics lock born from #693: the 32x40 patch supports a near-degenerate
+    TM mode pair whose frequency ratio tracks the aspect ratio (TL model
+    f32/f40 = 1.232 at these eps_eff; measured 2.6954/2.2147 = 1.217).  Any
+    selector or realization change that loses one member — the failure mode
+    that produced the wrong-mode envelope — fails here by name instead of
+    surfacing as an inexplicable offset sign flip."""
+    fs = sorted(m.freq for m in rfx_run["modes"] if 1.8e9 < m.freq < 3.1e9)
+    assert len(fs) >= 2, (
+        f"mode pair lost: only {[f/1e9 for f in fs]} GHz in 1.8-3.1 GHz — "
+        "the 32x40 patch must show both TM members (#693)")
+    ratio = fs[-1] / fs[0]
+    assert 1.15 <= ratio <= 1.30, (
+        f"mode-pair ratio {ratio:.3f} outside the aspect-locked band "
+        f"[1.15, 1.30] (modes {[round(f/1e9, 4) for f in fs]} GHz)")
+
+
+@pytest.mark.slow
 def test_f_res_inside_documented_coarse_dx_envelope(rfx_run):
-    """ENVELOPE REGRESSION LOCK, not accuracy: at dx = 2 mm the rfx resonance of
-    this fixture reads LOW vs the committed openEMS reference by a documented
-    -8.6% discretization bias (see module docstring for the mechanism and the
-    dx ladder). Locked at [-12%, -5%] with the sign as part of the
-    characterization — a run that lands high, or further than -12% low, or on
-    the non-radiating ~2.79 GHz mode, fails."""
+    """ENVELOPE REGRESSION LOCK, not accuracy: at dx = 2 mm the rfx DESIGN
+    mode (32 mm feed-axis; far-field-identified) reads HIGH vs the committed
+    openEMS reference by a measured +11.3% discretization bias (#693 root
+    cause: the old [-12%, -5%] envelope was pinned on the 40 mm cross mode).
+    Locked at [+6%, +16%] with the sign as part of the characterization — a
+    run that lands low, or beyond +16%, or on a wrong member of the mode
+    pair, fails."""
     ref = _load_reference()
     f_ref = ref["f_res_ghz"] * 1e9
     rel = (rfx_run["f_radiating_hz"] - f_ref) / f_ref
