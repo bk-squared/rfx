@@ -271,7 +271,9 @@ class _ExecuteMixin:
                         decay_max_steps: int = 50_000,
                         decay_energy_consecutive: int = 2,
                         radiated_flux_box: tuple | None = None,
-                        flux_env_checks: int = 4):
+                        flux_env_checks: int = 4,
+                        report_every: int | None = None,
+                        report_label: str = ""):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -304,6 +306,8 @@ class _ExecuteMixin:
             subpixel_smoothing=subpixel_smoothing,
             checkpoint=checkpoint,
             until_decay=until_decay,
+            report_every=report_every,
+            report_label=report_label,
             decay_check_interval=decay_check_interval,
             decay_min_steps=decay_min_steps,
             decay_max_steps=decay_max_steps,
@@ -3229,7 +3233,6 @@ class _ExecuteMixin:
             _nu_dropped = {
                 "snapshot": snapshot,
                 "conformal_pec": conformal_pec,
-                **({} if report_every is None else {"report_every": report_every}),
             }
             if _nu_until_decay is None:
                 _nu_dropped["until_decay"] = until_decay
@@ -3259,6 +3262,8 @@ class _ExecuteMixin:
                     )
             _res = self._run_nonuniform(
                 n_steps=n_steps,
+                report_every=report_every,
+                report_label=report_label,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 subpixel_smoothing=subpixel_smoothing,

@@ -523,6 +523,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         checkpoint=False,
                         emit_time_series=True, checkpoint_every=None,
                         n_warmup=0,
+                        report_every=None, report_label="",
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
                         strip_interior_pec: bool = False,
@@ -1231,9 +1232,39 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             decay_energy_consecutive=decay_energy_consecutive,
             radiated_flux_box=radiated_flux_box,
             flux_env_checks=flux_env_checks,
+            report_every=report_every,
+            report_label=report_label,
+            **_shared_run_kwargs,
+        )
+    elif (report_every is not None and not checkpoint
+          and checkpoint_every is None and not n_warmup):
+        # #667 on the NU lane: drive the SAME chunked host loop the decay
+        # stop uses, with the stop disabled (decay_by=0.0 is that loop's
+        # documented forced-N escape) and min_steps past the end so no
+        # energy check ever runs. Chunk re-entry threads the full carry
+        # (bit-identity locked by tests/test_nu_progress_chunking.py).
+        from rfx.progress import validate_report_every
+        _re = validate_report_every(report_every, n_steps=n_steps)
+        r = run_nonuniform_until_decay(
+            grid, materials,
+            decay_by=0.0,
+            check_interval=_re,
+            min_steps=n_steps + 1,
+            max_steps=n_steps,
+            decay_energy_consecutive=1,
+            report_every=_re,
+            report_label=report_label,
             **_shared_run_kwargs,
         )
     else:
+        if report_every is not None:
+            import warnings
+            warnings.warn(
+                f"report_every={report_every} is ignored on this non-uniform "
+                "run: chunked progress (#667) composes with neither "
+                "checkpoint/segmented-remat nor n_warmup on the NU lane "
+                "(the chunked loop is forward-only).",
+                UserWarning, stacklevel=2)
         r = run_nonuniform(
             grid, materials, n_steps,
             checkpoint=checkpoint,

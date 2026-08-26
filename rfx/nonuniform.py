@@ -2000,6 +2000,8 @@ def run_nonuniform_until_decay(
     decay_energy_consecutive: int = 2,
     radiated_flux_box: tuple | None = None,
     flux_env_checks: int = 4,
+    report_every: int | None = None,
+    report_label: str = "",
     pec_mask=None,
     pec_two_plane_mask=None,
     pec_occupancy=None,
@@ -2198,6 +2200,13 @@ def run_nonuniform_until_decay(
     decay_checks: list = []
     ys_chunks = []
     steps_done = 0
+    reporter = None
+    if report_every:
+        from rfx.progress import ProgressReporter
+        # decay_by == 0.0 is the documented forced-N escape: max_steps is then
+        # the exact run length, not a cap, and the line should not say "(cap)".
+        reporter = ProgressReporter(max_steps, label=report_label,
+                                    total_is_cap=(decay_by > 0.0))
 
     while steps_done < max_steps:
         this_chunk = min(int(check_interval), max_steps - steps_done)
@@ -2208,6 +2217,11 @@ def run_nonuniform_until_decay(
         carry, ys = _run_chunk(carry, xs)
         ys_chunks.append(ys)
         steps_done += this_chunk
+        if reporter is not None and (
+                steps_done - reporter.last_reported >= int(report_every)
+                or steps_done >= max_steps):
+            jax.block_until_ready(carry["fdtd"])   # honest wall-clock rate
+            reporter.report(steps_done)
 
         # Stop check at the chunk boundary (check-step-only — the whole-domain
         # reduction / surface integral is the expensive part).
@@ -2243,7 +2257,10 @@ def run_nonuniform_until_decay(
     # the NU lane too, so a cap-hit without firing means the energy criterion could not
     # self-terminate — warn if the remnant is electrostatic). Function-local import avoids
     # a module-level simulation<->nonuniform cycle.
-    if not decayed_fired and not use_flux_stop:
+    # decay_by == 0.0 is the forced-N escape (fixed-step progress route):
+    # running to max_steps is the DESIGN there, not a failed stop — the
+    # static-remnant advisory would be a false alarm.
+    if not decayed_fired and not use_flux_stop and decay_by > 0.0:
         from rfx.simulation import _warn_static_remnant_cap_hit
         _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
