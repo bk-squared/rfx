@@ -984,7 +984,7 @@ def _build_step_setup(
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs)
+        (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
         for probe in dft_planes
     )
     waveguide_meta = tuple(waveguide_ports)
@@ -1580,14 +1580,26 @@ def make_core_step(ctx: _StepContext):
         if ctx.use_dft_planes:
             t_plane = st.step * dt
             new_dft_planes = []
-            for acc, (component, axis, index, freqs) in zip(carry["dft_planes"], ctx.dft_meta):
+            for acc, (component, axis, index, freqs, region) in zip(
+                carry["dft_planes"], ctx.dft_meta
+            ):
                 field = getattr(st, component)
-                if axis == 0:
-                    plane = field[index, :, :]
-                elif axis == 1:
-                    plane = field[:, index, :]
+                if region is None:
+                    lo1 = lo2 = 0
+                    if axis == 0:
+                        hi1, hi2 = field.shape[1], field.shape[2]
+                    elif axis == 1:
+                        hi1, hi2 = field.shape[0], field.shape[2]
+                    else:
+                        hi1, hi2 = field.shape[0], field.shape[1]
                 else:
-                    plane = field[:, :, index]
+                    lo1, hi1, lo2, hi2 = region
+                if axis == 0:
+                    plane = field[index, lo1:hi1, lo2:hi2]
+                elif axis == 1:
+                    plane = field[lo1:hi1, index, lo2:hi2]
+                else:
+                    plane = field[lo1:hi1, lo2:hi2, index]
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
                 new_dft_planes.append(
                     acc + plane[None, :, :] * phase[:, None, None] * dt

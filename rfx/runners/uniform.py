@@ -520,6 +520,7 @@ def run_uniform(
                 freqs=freqs_arr,
                 grid_shape=grid.shape,
                 dft_total_steps=n_steps,
+                region=sim._dft_plane_regions.get(pe.name),
             )
         )
 

@@ -593,6 +593,12 @@ class Simulation(
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
+        # Runtime-only crop metadata for internal DFT planes. Public
+        # add_dft_plane_probe registrations remain full-plane and the
+        # design-IR record stays unchanged.
+        self._dft_plane_regions: dict[
+            str, tuple[int, int, int, int]
+        ] = {}
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []

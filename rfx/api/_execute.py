@@ -157,6 +157,8 @@ class _DispatchPlan(NamedTuple):
 
 
 class _ExecuteMixin:
+    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
+
     """Execute cluster mixin: forward / run dispatch + per-path runners.
 
     Mixed into ``Simulation``; all methods stay bound methods on a
@@ -1450,6 +1452,7 @@ class _ExecuteMixin:
                         freqs=freqs_arr,
                         grid_shape=grid.shape,
                         dft_total_steps=n_steps,
+                        region=self._dft_plane_regions.get(pe.name),
                     )
                 )
 

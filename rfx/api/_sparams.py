@@ -1779,6 +1779,8 @@ def _assemble_coax_msl_transition_from_voltages(
 
 
 class _SparamMixin:
+    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
+
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
     def compute_waveguide_s_matrix(
@@ -3073,6 +3075,7 @@ class _SparamMixin:
 
         # Stash existing add_dft_plane_probe registrations and restore on exit.
         saved_dft = list(self._dft_planes)
+        saved_dft_regions = dict(self._dft_plane_regions)
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         saved_probes = list(self._probes)
@@ -3169,6 +3172,7 @@ class _SparamMixin:
 
                 # Register DFT plane probes for V (Ez) and I (Hy).
                 self._dft_planes = list(saved_dft)
+                self._dft_plane_regions = dict(saved_dft_regions)
                 ez_probe_names: list[list[str]] = [[] for _ in range(n_ports)]
                 hy_probe_names: list[str] = [None] * n_ports  # type: ignore
                 hz_probe_names: list[str] = [None] * n_ports  # type: ignore
@@ -3185,13 +3189,27 @@ class _SparamMixin:
                             component="ez", freqs=jnp.asarray(freqs_arr),
                             name=nm,
                         )
+                        self._dft_plane_regions[nm] = (
+                            _meta_p["j_centre"],
+                            _meta_p["j_centre"] + 1,
+                            _meta_p["k_lo"],
+                            trace_k_per_port[p_idx][0],
+                        )
                         ez_probe_names[p_idx].append(nm)
+                    _k_tr_lo, _k_tr_hi = trace_k_per_port[p_idx]
+                    _h_crop_region = (
+                        _meta_p["j_lo"] - 1,
+                        _meta_p["j_hi"] + 1,
+                        _k_tr_lo - 1,
+                        _k_tr_hi + 1,
+                    )
                     nm_hy = f"_msl_run{driven}_p{p_idx}_{_meta_p['h_a']}"
                     self.add_dft_plane_probe(
                         axis=_plane_axis, coordinate=float(pxs[0]),
                         component=_meta_p["h_a"], freqs=jnp.asarray(freqs_arr),
                         name=nm_hy,
                     )
+                    self._dft_plane_regions[nm_hy] = _h_crop_region
                     hy_probe_names[p_idx] = nm_hy
                     # H_b plane probe at probe 0 — the other leg pair of the
                     # closed Ampere-loop current (issue #80 stage S1).
@@ -3201,6 +3219,7 @@ class _SparamMixin:
                         component=_meta_p["h_b"], freqs=jnp.asarray(freqs_arr),
                         name=nm_hz,
                     )
+                    self._dft_plane_regions[nm_hz] = _h_crop_region
                     hz_probe_names[p_idx] = nm_hz
 
                 # G-AD-WIRE: when eps_override is provided use the
@@ -3278,6 +3297,7 @@ class _SparamMixin:
                     vs = []
                     for nm in ez_probe_names[p_idx]:
                         ez_plane = jnp.asarray(planes[nm].accumulator)
+                        _v_region = self._dft_plane_regions.get(nm)
                         # ez_plane shape: (n_freqs, ny, nz)
                         # Top of the V span = the RASTERIZED trace's bottom
                         # node, not round(h_sub/dx) (= meta["k_hi"]): Box
@@ -3295,12 +3315,30 @@ class _SparamMixin:
                         # y-normal plane alike (issue #661), so j_centre /
                         # k_lo / k_hi address it unchanged and the dz_arr
                         # here is always the substrate-normal profile.
-                        vs.append(msl_modal_voltage(
-                            ez_plane, j_centre=meta["j_centre"],
-                            k_lo=meta["k_lo"],
-                            k_hi=trace_k_per_port[p_idx][0],
-                            dz_arr=dz_arr, dtype=_complex_dtype,
-                        ))
+                        if (
+                            _v_region is not None
+                            and ez_plane.shape[1:] == (
+                                _v_region[1] - _v_region[0],
+                                _v_region[3] - _v_region[2],
+                            )
+                        ):
+                            vs.append(msl_modal_voltage(
+                                ez_plane,
+                                j_centre=0,
+                                k_lo=0,
+                                k_hi=_v_region[3] - _v_region[2],
+                                dz_arr=dz_arr[_v_region[2]:_v_region[3]],
+                                dtype=_complex_dtype,
+                            ))
+                        else:
+                            # Replay fixtures and third-party test doubles
+                            # may still return legacy full-plane arrays.
+                            vs.append(msl_modal_voltage(
+                                ez_plane, j_centre=meta["j_centre"],
+                                k_lo=meta["k_lo"],
+                                k_hi=trace_k_per_port[p_idx][0],
+                                dz_arr=dz_arr, dtype=_complex_dtype,
+                            ))
                     v_per_port.append(vs)
                     # G-AD-WIRE: keep on JAX tape when eps_override is
                     # set. np.asarray() would concretise a JAX tracer and
@@ -3308,6 +3346,17 @@ class _SparamMixin:
                     # jnp.ndarray and still works for numpy arrays.
                     hy_plane = jnp.asarray(planes[hy_probe_names[p_idx]].accumulator)
                     hz_plane = jnp.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    _h_region = self._dft_plane_regions.get(
+                        hy_probe_names[p_idx]
+                    )
+                    _h_is_cropped = (
+                        _h_region is not None
+                        and hy_plane.shape[1:] == (
+                            _h_region[1] - _h_region[0],
+                            _h_region[3] - _h_region[2],
+                        )
+                        and hz_plane.shape == hy_plane.shape
+                    )
                     # Leapfrog E/H half-step time correction. add_dft_plane_probe
                     # timestamps EVERY component at t = step·dt
                     # (rfx/probes/probes.py:457), but H lives half a step behind E
@@ -3334,6 +3383,18 @@ class _SparamMixin:
                     # contour (bottom/top Hy legs + left/right Hz legs) and
                     # carries the +x current-sign convention.
                     k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
+                    if _h_is_cropped:
+                        assert _h_region is not None
+                        _w_lo, _w_hi, _n_lo, _n_hi = _h_region
+                        _j_lo = meta["j_lo"] - _w_lo
+                        _j_hi = meta["j_hi"] - _w_lo
+                        _k_lo = k_tr_lo - _n_lo
+                        _k_hi = k_tr_hi - _n_lo
+                    else:
+                        _w_lo, _w_hi = 0, hy_plane.shape[1]
+                        _n_lo, _n_hi = 0, hy_plane.shape[2]
+                        _j_lo, _j_hi = meta["j_lo"], meta["j_hi"]
+                        _k_lo, _k_hi = k_tr_lo, k_tr_hi
                     # Issue #661: msl_loop_current wants the planes in the
                     # right-handed transverse frame [freq, a, b] with
                     # a_hat x b_hat = p_hat. The recorded planes are
@@ -3347,18 +3408,22 @@ class _SparamMixin:
                     # inverts S silently (see _MSL_CYCLIC_PAIR).
                     if meta["a_is_width"]:
                         _ha, _hb = hy_plane, hz_plane
-                        _a_lo, _a_hi = meta["j_lo"], meta["j_hi"]
-                        _b_lo, _b_hi = k_tr_lo, k_tr_hi
+                        _a_lo, _a_hi = _j_lo, _j_hi
+                        _b_lo, _b_hi = _k_lo, _k_hi
+                        _a_arr = meta["a_arr"][_w_lo:_w_hi]
+                        _b_arr = meta["b_arr"][_n_lo:_n_hi]
                     else:
                         _ha = jnp.transpose(hy_plane, (0, 2, 1))
                         _hb = jnp.transpose(hz_plane, (0, 2, 1))
-                        _a_lo, _a_hi = k_tr_lo, k_tr_hi
-                        _b_lo, _b_hi = meta["j_lo"], meta["j_hi"]
+                        _a_lo, _a_hi = _k_lo, _k_hi
+                        _b_lo, _b_hi = _j_lo, _j_hi
+                        _a_arr = meta["a_arr"][_n_lo:_n_hi]
+                        _b_arr = meta["b_arr"][_w_lo:_w_hi]
                     i_f = msl_loop_current(
                         _ha, _hb,
                         j_lo=_a_lo, j_hi=_a_hi,
                         k_trace_lo=_b_lo, k_trace_hi=_b_hi,
-                        dy_arr=meta["a_arr"], dz_arr=meta["b_arr"],
+                        dy_arr=_a_arr, dz_arr=_b_arr,
                         direction=msl_ports[p_idx].direction,
                     )
                     i_first_per_port.append(i_f)
@@ -3792,6 +3857,7 @@ class _SparamMixin:
             return result
         finally:
             self._dft_planes = saved_dft
+            self._dft_plane_regions = saved_dft_regions
             self._msl_ports = saved_msl
             self._ports = saved_ports
             self._probes = saved_probes
