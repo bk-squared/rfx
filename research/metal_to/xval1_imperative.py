@@ -82,6 +82,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--design", choices=("empty", "oracle", "B_stub", "C_low"),
                     required=True)
+    ap.add_argument("--stub_mm", type=float, default=None,
+                    help="oracle only: override the stub length (mm). The analytic "
+                         "lambda/4 length does NOT land the notch on target at this "
+                         "mesh (eps_eff staircase), so a fair classical baseline is "
+                         "the mesh-CALIBRATED length, swept with this flag.")
     args = ap.parse_args()
     d = args.design
 
@@ -102,13 +107,18 @@ def main() -> int:
     iz = int(np.argmin(np.abs(zc - (notch.H_SUB + 0.5 * notch.DX))))
 
     n_boxes = 0
+    stub_len = None
     if d == "oracle":
+        stub_len = (args.stub_mm * 1e-3 if args.stub_mm is not None
+                    else float(notch.L_TARGET_AN))
         stub_x_lo = x_mid - notch.W_TRACE / 2.0
         stub_x_hi = x_mid + notch.W_TRACE / 2.0
         sim.add(Box((stub_x_lo, trace_y_hi, notch.H_SUB),
-                    (stub_x_hi, trace_y_hi + float(notch.L_TARGET_AN),
+                    (stub_x_hi, trace_y_hi + stub_len,
                      notch.H_SUB + notch.DX)), material="pec")
         n_boxes = 1
+        print(f"[xval1:oracle] stub length {stub_len*1e3:.3f} mm "
+              f"(analytic {float(notch.L_TARGET_AN)*1e3:.3f} mm)")
     elif d in DESIGNS:
         sub, fname = DESIGNS[d]
         hard = np.load(HERE / "out_vessl" / sub / fname)["hard"]
@@ -145,7 +155,7 @@ def main() -> int:
     s11 = np.asarray(res.S[0, 0, :])
     db21 = 20 * np.log10(np.abs(s21) + 1e-30)
     it = int(np.argmin(np.abs(f - notch.F_TARGET)))
-    out = dict(design=d, n_boxes=n_boxes, wall_s=round(wall, 1),
+    out = dict(design=d, stub_mm=(None if stub_len is None else stub_len*1e3), n_boxes=n_boxes, wall_s=round(wall, 1),
                num_periods=NUM_PERIODS, freqs_GHz=[float(x) / 1e9 for x in f],
                s21_db=[float(x) for x in db21],
                s21_db_at_target=float(db21[it]),
@@ -156,10 +166,11 @@ def main() -> int:
                settled=settled,
                reliable_bins=[int(reliable.sum()), int(reliable.size)],
                passivity_worst=(float(np.max(pcorr)) if pcorr.size else None))
-    (OUT / f"{d}.json").write_text(json.dumps(out, indent=2))
+    tag = d if stub_len is None else f"{d}_{stub_len*1e3:.2f}mm"
+    (OUT / f"{tag}.json").write_text(json.dumps(out, indent=2))
     print(f"[xval1:{d}] |S21|(6 GHz)={db21[it]:+.2f} dB · "
           f"min {out['depth_min_db']:+.2f} dB @ {out['f_min_GHz']:.2f} GHz · "
-          f"{wall:.0f}s -> {OUT}/{d}.json")
+          f"{wall:.0f}s -> {OUT}/{tag}.json")
     return 0
 
 
