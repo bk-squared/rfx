@@ -531,7 +531,13 @@ def apply_cpml_e(
     """
     n = grid.cpml_layers
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
-    dt = grid.dt
+    # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
+    # float32 mu_r it silently promoted the ch coefficients to f64 and
+    # the field scatter demoted them back per step (measured, #665's
+    # FutureWarning). A Python float is weak-typed in BOTH numpy and
+    # JAX, so the coefficients follow the ambient material dtype
+    # (#646 family: promote-never-pin).
+    dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
     # Falls back to free-space eps_0 when materials is None.
@@ -813,7 +819,13 @@ def apply_cpml_h(
     """
     n = grid.cpml_layers
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
-    dt = grid.dt
+    # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
+    # float32 mu_r it silently promoted the ch coefficients to f64 and
+    # the field scatter demoted them back per step (measured, #665's
+    # FutureWarning). A Python float is weak-typed in BOTH numpy and
+    # JAX, so the coefficients follow the ambient material dtype
+    # (#646 family: promote-never-pin).
+    dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     if materials is not None and hasattr(materials, 'mu_r'):
         _ch_full = dt / (materials.mu_r * MU_0)  # (nx, ny, nz)
         ch_xlo = _ch_full[:n_x, :, :]
@@ -824,6 +836,7 @@ def apply_cpml_h(
         ch_zhi = _ch_full[:, :, -n_z:]
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = dt / MU_0
+
 
     # Unpack per-face profiles and cell sizes (T7 Phase 2 PR1).
     if isinstance(cpml_params, CPMLAxisParams):
