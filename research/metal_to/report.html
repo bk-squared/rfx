@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rfx 자유형 금속 위상최적화 — Phase-0/1 결과</title>
+<title>rfx 자유형 금속 위상최적화 — 교차검증까지</title>
 <style>
 :root {
   color-scheme: light;
@@ -97,17 +97,17 @@ code{background:var(--grid);padding:.1em .38em;border-radius:4px;font-size:.87em
 <body>
 <div class="wrap">
 <header>
-  <h1>자유형 금속 위상최적화가 고전 스텁 설계를 넘어섰습니다</h1>
-  <p class="sub">rfx 미분가능 3-D FDTD · Phase-0/1 캠페인 결과 — 2 256셀 자유형 금속 밀도로 6 GHz 노치 필터 설계</p>
-  <p class="meta">2026-08-25 · 브랜치 <code>feat/metal-topology-ramp</code> · VESSL RTX 4090 잡 11건 · 판정 지표는 모두 <b>이진화 후 하드 PEC 재평가</b> 기준</p>
+  <h1>자유형 금속 위상최적화가 고전 스텁과 동등한 성능에 도달했습니다</h1>
+  <p class="sub">rfx 미분가능 3-D FDTD · 2 256셀 자유형 금속 밀도로 6 GHz 노치 필터 설계 — 독립 경로 교차검증으로 최초 결론을 정정한 기록</p>
+  <p class="meta">2026-08-25 실험 · 2026-08-26 교차검증 정정 · 브랜치 <code>feat/metal-topology-ramp</code> · VESSL RTX 4090 잡 21건 · 최종 판정은 <b>독립 하드 PEC 형상 + 독립 추출기</b> 기준</p>
 </header>
 
-<div class="tiles"><div class="tile"><div class="tval">+21.5 dB</div><div class="tlab">통과대역 대비 노치 대비도</div><div class="tsub">우승 설계 (B · 스텁 씨앗)</div></div>
-<div class="tile"><div class="tval">2.2×</div><div class="tlab">고전 λ/4 스텁 대비</div><div class="tsub">오라클 9.8 dB · 동일 평가기</div></div>
-<div class="tile"><div class="tval">-43.3 dB</div><div class="tlab">6 GHz 노치 깊이</div><div class="tsub">이진화 + 하드 PEC 재평가</div></div>
-<div class="tile"><div class="tval">12%</div><div class="tlab">금속 채움률</div><div class="tsub">2 256셀 설계 영역</div></div></div>
+<div class="tiles"><div class="tile"><div class="tval">+30.5 dB</div><div class="tlab">자유형 설계 (씨앗 없음)</div><div class="tsub">독립 형상·독립 추출기 검증</div></div>
+<div class="tile"><div class="tval">+31.6 dB</div><div class="tlab">메시 보정 고전 스텁</div><div class="tsub">7.00 mm · 같은 조건</div></div>
+<div class="tile"><div class="tval">-1.0 dB</div><div class="tlab">차이 — 동등, 우세 아님</div><div class="tsub">최초 보고 2.2배는 철회</div></div>
+<div class="tile"><div class="tval">-34.8 dB</div><div class="tlab">6 GHz 노치 깊이</div><div class="tsub">정착 −119 dB · 신뢰 82/82</div></div></div>
 
-<div class="callout"><p>확정된 T-MTT 논문에서 자유형 금속 위상최적화는 <b>“주요 미해결 한계”</b>로 남아 있었고, 유전체 예제조차 고전 합성법의 성능을 <i>회복</i>할 뿐 넘어서지는 못했습니다. 이번 캠페인은 그 선을 넘습니다 — 자유형 금속 설계가 동일 평가기에서 고전 λ/4 스텁의 <b>2.2배 대비도</b>를 달성했습니다.</p></div>
+<div class="callout"><p><b>정정 기록입니다.</b> 8월 25일에는 자유형 설계가 고전 λ/4 스텁의 2.2배 대비도를 냈다고 보고했습니다. 이튿날 독립 경로로 교차검증하니 그 마진의 대부분이 두 가지 낙관 편향이었고, 공정하게 다시 재면 <b>자유형 설계는 고전 스텁과 동등</b>합니다(30.5 대 31.6 dB). 넘어서지는 못했습니다. 확정된 T-MTT 논문이 유전체 테이퍼에 대해 쓴 문장 — “기울기는 고전 합성법의 성능을 회복하지, 능가하지 않는다” — 이 자유형 금속에도 그대로 적용됩니다.</p></div>
 
 <h2><span class="n">01</span>왜 어려웠나 — 회색 금속 통과 구간을 실측하다</h2>
 <p class="lede">밀도 기반 위상최적화는 “금속 없음(0)”에서 “금속 있음(1)”까지 중간 밀도를 반드시 지나갑니다. 그 구간에서 목적함수가 어떻게 생겼는지를 먼저 측정했습니다. 검증된 노치 지오메트리에서 스텁을 해석적 λ/4 길이로 <b>고정</b>하고 점유율만 0→1로 올린 결과입니다.</p>
@@ -310,15 +310,218 @@ code{background:var(--grid);padding:.1em .38em;border-radius:4px;font-size:.87em
   </div>
 </div>
 
-<h2><span class="n">05</span>한계 — 다음 단계에서 닫아야 할 것</h2>
+<h2><span class="n">05</span>교차검증 — 결론이 뒤집힌 지점</h2>
+<p class="lede">여기까지의 수치는 모두 <b>최적화에 쓴 것과 같은 연산자</b>로 잰 값이고, 비교 대상인 고전 스텁은 <b>해석식이 준 길이 그대로</b>였습니다. 두 가지 모두 유리한 쪽으로 기울 수 있어서, 설계를 실제 PEC 상자로 다시 세워 독립 추출기로 풀고(형상·추출 경로 교체), 고전 스텁에도 같은 메시에서 길이를 맞출 기회를 줬습니다.</p>
+<div class="card">
+  <h3>고전 스텁에 같은 메시 보정을 허용하면</h3>
+  <p class="cap">해석적 길이 7.37 mm는 이 메시에서 노치를 5.70 GHz에 놓습니다 · 목표에 앉히는 길이는 7.00 mm</p>
+  <svg viewBox="0 0 680 300" class="chart" role="img" aria-label="통과대역↔노치 대비도 (dB) vs 고전 스텁 길이 (mm)">
+<line class="grid" x1="58" y1="258.0" x2="584" y2="258.0"/>
+<text class="tick" x="49" y="262.0" text-anchor="end">-10</text>
+<line class="grid" x1="58" y1="203.8" x2="584" y2="203.8"/>
+<text class="tick" x="49" y="207.8" text-anchor="end">0</text>
+<line class="grid" x1="58" y1="149.6" x2="584" y2="149.6"/>
+<text class="tick" x="49" y="153.6" text-anchor="end">10</text>
+<line class="grid" x1="58" y1="95.3" x2="584" y2="95.3"/>
+<text class="tick" x="49" y="99.3" text-anchor="end">20</text>
+<line class="grid" x1="58" y1="41.1" x2="584" y2="41.1"/>
+<text class="tick" x="49" y="45.1" text-anchor="end">30</text>
+<text class="tick" x="110.6" y="276" text-anchor="middle">5.8</text>
+<text class="tick" x="268.4" y="276" text-anchor="middle">6.4</text>
+<text class="tick" x="426.2" y="276" text-anchor="middle">7</text>
+<text class="tick" x="523.5" y="276" text-anchor="middle">7.37</text>
+<line class="axis" x1="58" y1="258" x2="584" y2="258"/>
+<path class="ln s2" d="M110.6,235.5 L189.5,206.3 L268.4,166.9 L347.3,132.7 L426.2,32.6 L523.5,134.3"/>
+<circle class="pt s2" cx="110.6" cy="235.5" r="4.5" data-tip="스텁 5.80 mm: 대비도 -5.9 dB"/>
+<circle class="pt s2" cx="189.5" cy="206.3" r="4.5" data-tip="스텁 6.10 mm: 대비도 -0.5 dB"/>
+<circle class="pt s2" cx="268.4" cy="166.9" r="4.5" data-tip="스텁 6.40 mm: 대비도 +6.8 dB"/>
+<circle class="pt s2" cx="347.3" cy="132.7" r="4.5" data-tip="스텁 6.70 mm: 대비도 +13.1 dB"/>
+<circle class="pt s2" cx="426.2" cy="32.6" r="4.5" data-tip="스텁 7.00 mm: 대비도 +31.6 dB"/>
+<circle class="pt s2" cx="523.5" cy="134.3" r="4.5" data-tip="스텁 7.37 mm: 대비도 +12.8 dB"/>
+<text class="dlab s2t" x="533.5" y="138.3">고전 스텁 (메시 보정 스윕)</text>
+<text class="axlab" x="321" y="294" text-anchor="middle">고전 스텁 길이 (mm)</text>
+<text class="axlab" transform="translate(14,136) rotate(-90)" text-anchor="middle">통과대역↔노치 대비도 (dB)</text>
+</svg>
+</div>
+<div class="card">
+  <h3>독립 경로 대역 응답</h3>
+  <p class="cap">실제 PEC 상자 형상 · 독립 추출기 · 80주기 창(정착 −119 dB, 신뢰 82/82)</p>
+  <div class="legend"><span><i style="background:var(--s1)"></i>C 자유형(씨앗 없음)</span><span><i style="background:var(--s2)"></i>고전 보정 7.00 mm</span><span><i style="background:var(--s3)"></i>고전 해석적 7.37 mm</span></div>
+  <svg viewBox="0 0 680 300" class="chart" role="img" aria-label="빈 선로 대비 |S21| (dB) vs 주파수 (GHz)">
+<line class="grid" x1="58" y1="258.0" x2="584" y2="258.0"/>
+<text class="tick" x="49" y="262.0" text-anchor="end">-40</text>
+<line class="grid" x1="58" y1="205.0" x2="584" y2="205.0"/>
+<text class="tick" x="49" y="209.0" text-anchor="end">-30</text>
+<line class="grid" x1="58" y1="151.9" x2="584" y2="151.9"/>
+<text class="tick" x="49" y="155.9" text-anchor="end">-20</text>
+<line class="grid" x1="58" y1="98.9" x2="584" y2="98.9"/>
+<text class="tick" x="49" y="102.9" text-anchor="end">-10</text>
+<line class="grid" x1="58" y1="45.8" x2="584" y2="45.8"/>
+<text class="tick" x="49" y="49.8" text-anchor="end">0</text>
+<text class="tick" x="58.0" y="276" text-anchor="middle">4.5</text>
+<text class="tick" x="189.5" y="276" text-anchor="middle">5.5</text>
+<text class="tick" x="321.0" y="276" text-anchor="middle">6.5</text>
+<text class="tick" x="452.5" y="276" text-anchor="middle">7.5</text>
+<text class="tick" x="584.0" y="276" text-anchor="middle">8.5</text>
+<line class="axis" x1="58" y1="258" x2="584" y2="258"/>
+<line class="vline" x1="255.2" y1="14" x2="255.2" y2="258"/>
+<text class="vlab" x="261.2" y="26">목표 6.0 GHz</text>
+<path class="ln s1" d="M58.0,63.3 L71.1,65.3 L84.3,67.6 L97.4,70.1 L110.6,73.0 L123.8,76.4 L136.9,80.4 L150.1,84.9 L163.2,90.3 L176.4,96.6 L189.5,104.2 L202.6,113.6 L215.8,125.6 L228.9,142.1 L242.1,167.9 L255.2,230.7 L268.4,202.2 L281.6,159.8 L294.7,138.8 L307.9,124.7 L321.0,114.3 L334.1,106.2 L347.3,99.6 L360.4,94.2 L373.6,89.5 L386.8,85.4 L399.9,81.9 L413.1,78.8 L426.2,76.1 L439.4,73.6 L452.5,71.4 L465.6,69.4 L478.8,67.6 L491.9,65.9 L505.1,64.4 L518.2,63.1 L531.4,61.8 L544.5,60.6 L557.7,59.5 L570.9,58.5 L584.0,57.6"/>
+<path class="ln s2" d="M58.0,64.5 L71.1,66.4 L84.3,68.6 L97.4,71.1 L110.6,74.0 L123.8,77.2 L136.9,81.1 L150.1,85.5 L163.2,90.7 L176.4,96.8 L189.5,104.3 L202.6,113.5 L215.8,125.4 L228.9,141.7 L242.1,167.9 L255.2,234.2 L268.4,198.2 L281.6,157.2 L294.7,136.1 L307.9,122.1 L321.0,111.7 L334.1,103.5 L347.3,96.8 L360.4,91.2 L373.6,86.5 L386.8,82.4 L399.9,78.8 L413.1,75.7 L426.2,72.9 L439.4,70.4 L452.5,68.2 L465.6,66.2 L478.8,64.4 L491.9,62.8 L505.1,61.3 L518.2,59.9 L531.4,58.7 L544.5,57.6 L557.7,56.6 L570.9,55.6 L584.0,54.7"/>
+<path class="ln s3" d="M58.0,69.7 L71.1,72.5 L84.3,75.7 L97.4,79.4 L110.6,83.7 L123.8,88.8 L136.9,94.9 L150.1,102.4 L163.2,111.7 L176.4,123.7 L189.5,140.4 L202.6,167.4 L215.8,241.3 L228.9,191.4 L242.1,152.8 L255.2,132.4 L268.4,118.7 L281.6,108.5 L294.7,100.5 L307.9,94.0 L321.0,88.6 L334.1,84.0 L347.3,80.0 L360.4,76.6 L373.6,73.6 L386.8,70.9 L399.9,68.5 L413.1,66.5 L426.2,64.6 L439.4,62.9 L452.5,61.3 L465.6,59.9 L478.8,58.7 L491.9,57.5 L505.1,56.5 L518.2,55.5 L531.4,54.6 L544.5,53.8 L557.7,53.1 L570.9,52.4 L584.0,51.8"/>
+<circle class="pt s1" cx="58.0" cy="63.3" r="4.5" data-tip="자유형 · 4.50 GHz: -3.3 dB"/>
+<circle class="pt s1" cx="71.1" cy="65.3" r="4.5" data-tip="자유형 · 4.60 GHz: -3.7 dB"/>
+<circle class="pt s1" cx="84.3" cy="67.6" r="4.5" data-tip="자유형 · 4.70 GHz: -4.1 dB"/>
+<circle class="pt s1" cx="97.4" cy="70.1" r="4.5" data-tip="자유형 · 4.80 GHz: -4.6 dB"/>
+<circle class="pt s1" cx="110.6" cy="73.0" r="4.5" data-tip="자유형 · 4.90 GHz: -5.1 dB"/>
+<circle class="pt s1" cx="123.8" cy="76.4" r="4.5" data-tip="자유형 · 5.00 GHz: -5.8 dB"/>
+<circle class="pt s1" cx="136.9" cy="80.4" r="4.5" data-tip="자유형 · 5.10 GHz: -6.5 dB"/>
+<circle class="pt s1" cx="150.1" cy="84.9" r="4.5" data-tip="자유형 · 5.20 GHz: -7.4 dB"/>
+<circle class="pt s1" cx="163.2" cy="90.3" r="4.5" data-tip="자유형 · 5.30 GHz: -8.4 dB"/>
+<circle class="pt s1" cx="176.4" cy="96.6" r="4.5" data-tip="자유형 · 5.40 GHz: -9.6 dB"/>
+<circle class="pt s1" cx="189.5" cy="104.2" r="4.5" data-tip="자유형 · 5.50 GHz: -11.0 dB"/>
+<circle class="pt s1" cx="202.6" cy="113.6" r="4.5" data-tip="자유형 · 5.60 GHz: -12.8 dB"/>
+<circle class="pt s1" cx="215.8" cy="125.6" r="4.5" data-tip="자유형 · 5.70 GHz: -15.0 dB"/>
+<circle class="pt s1" cx="228.9" cy="142.1" r="4.5" data-tip="자유형 · 5.80 GHz: -18.1 dB"/>
+<circle class="pt s1" cx="242.1" cy="167.9" r="4.5" data-tip="자유형 · 5.90 GHz: -23.0 dB"/>
+<circle class="pt s1" cx="255.2" cy="230.7" r="4.5" data-tip="자유형 · 6.00 GHz: -34.8 dB"/>
+<circle class="pt s1" cx="268.4" cy="202.2" r="4.5" data-tip="자유형 · 6.10 GHz: -29.5 dB"/>
+<circle class="pt s1" cx="281.6" cy="159.8" r="4.5" data-tip="자유형 · 6.20 GHz: -21.5 dB"/>
+<circle class="pt s1" cx="294.7" cy="138.8" r="4.5" data-tip="자유형 · 6.30 GHz: -17.5 dB"/>
+<circle class="pt s1" cx="307.9" cy="124.7" r="4.5" data-tip="자유형 · 6.40 GHz: -14.9 dB"/>
+<circle class="pt s1" cx="321.0" cy="114.3" r="4.5" data-tip="자유형 · 6.50 GHz: -12.9 dB"/>
+<circle class="pt s1" cx="334.1" cy="106.2" r="4.5" data-tip="자유형 · 6.60 GHz: -11.4 dB"/>
+<circle class="pt s1" cx="347.3" cy="99.6" r="4.5" data-tip="자유형 · 6.70 GHz: -10.1 dB"/>
+<circle class="pt s1" cx="360.4" cy="94.2" r="4.5" data-tip="자유형 · 6.80 GHz: -9.1 dB"/>
+<circle class="pt s1" cx="373.6" cy="89.5" r="4.5" data-tip="자유형 · 6.90 GHz: -8.2 dB"/>
+<circle class="pt s1" cx="386.8" cy="85.4" r="4.5" data-tip="자유형 · 7.00 GHz: -7.5 dB"/>
+<circle class="pt s1" cx="399.9" cy="81.9" r="4.5" data-tip="자유형 · 7.10 GHz: -6.8 dB"/>
+<circle class="pt s1" cx="413.1" cy="78.8" r="4.5" data-tip="자유형 · 7.20 GHz: -6.2 dB"/>
+<circle class="pt s1" cx="426.2" cy="76.1" r="4.5" data-tip="자유형 · 7.30 GHz: -5.7 dB"/>
+<circle class="pt s1" cx="439.4" cy="73.6" r="4.5" data-tip="자유형 · 7.40 GHz: -5.2 dB"/>
+<circle class="pt s1" cx="452.5" cy="71.4" r="4.5" data-tip="자유형 · 7.50 GHz: -4.8 dB"/>
+<circle class="pt s1" cx="465.6" cy="69.4" r="4.5" data-tip="자유형 · 7.60 GHz: -4.4 dB"/>
+<circle class="pt s1" cx="478.8" cy="67.6" r="4.5" data-tip="자유형 · 7.70 GHz: -4.1 dB"/>
+<circle class="pt s1" cx="491.9" cy="65.9" r="4.5" data-tip="자유형 · 7.80 GHz: -3.8 dB"/>
+<circle class="pt s1" cx="505.1" cy="64.4" r="4.5" data-tip="자유형 · 7.90 GHz: -3.5 dB"/>
+<circle class="pt s1" cx="518.2" cy="63.1" r="4.5" data-tip="자유형 · 8.00 GHz: -3.2 dB"/>
+<circle class="pt s1" cx="531.4" cy="61.8" r="4.5" data-tip="자유형 · 8.10 GHz: -3.0 dB"/>
+<circle class="pt s1" cx="544.5" cy="60.6" r="4.5" data-tip="자유형 · 8.20 GHz: -2.8 dB"/>
+<circle class="pt s1" cx="557.7" cy="59.5" r="4.5" data-tip="자유형 · 8.30 GHz: -2.6 dB"/>
+<circle class="pt s1" cx="570.9" cy="58.5" r="4.5" data-tip="자유형 · 8.40 GHz: -2.4 dB"/>
+<circle class="pt s1" cx="584.0" cy="57.6" r="4.5" data-tip="자유형 · 8.50 GHz: -2.2 dB"/>
+<circle class="pt s2" cx="58.0" cy="64.5" r="4.5" data-tip="보정 고전 · 4.50 GHz: -3.5 dB"/>
+<circle class="pt s2" cx="71.1" cy="66.4" r="4.5" data-tip="보정 고전 · 4.60 GHz: -3.9 dB"/>
+<circle class="pt s2" cx="84.3" cy="68.6" r="4.5" data-tip="보정 고전 · 4.70 GHz: -4.3 dB"/>
+<circle class="pt s2" cx="97.4" cy="71.1" r="4.5" data-tip="보정 고전 · 4.80 GHz: -4.8 dB"/>
+<circle class="pt s2" cx="110.6" cy="74.0" r="4.5" data-tip="보정 고전 · 4.90 GHz: -5.3 dB"/>
+<circle class="pt s2" cx="123.8" cy="77.2" r="4.5" data-tip="보정 고전 · 5.00 GHz: -5.9 dB"/>
+<circle class="pt s2" cx="136.9" cy="81.1" r="4.5" data-tip="보정 고전 · 5.10 GHz: -6.6 dB"/>
+<circle class="pt s2" cx="150.1" cy="85.5" r="4.5" data-tip="보정 고전 · 5.20 GHz: -7.5 dB"/>
+<circle class="pt s2" cx="163.2" cy="90.7" r="4.5" data-tip="보정 고전 · 5.30 GHz: -8.5 dB"/>
+<circle class="pt s2" cx="176.4" cy="96.8" r="4.5" data-tip="보정 고전 · 5.40 GHz: -9.6 dB"/>
+<circle class="pt s2" cx="189.5" cy="104.3" r="4.5" data-tip="보정 고전 · 5.50 GHz: -11.0 dB"/>
+<circle class="pt s2" cx="202.6" cy="113.5" r="4.5" data-tip="보정 고전 · 5.60 GHz: -12.8 dB"/>
+<circle class="pt s2" cx="215.8" cy="125.4" r="4.5" data-tip="보정 고전 · 5.70 GHz: -15.0 dB"/>
+<circle class="pt s2" cx="228.9" cy="141.7" r="4.5" data-tip="보정 고전 · 5.80 GHz: -18.1 dB"/>
+<circle class="pt s2" cx="242.1" cy="167.9" r="4.5" data-tip="보정 고전 · 5.90 GHz: -23.0 dB"/>
+<circle class="pt s2" cx="255.2" cy="234.2" r="4.5" data-tip="보정 고전 · 6.00 GHz: -35.5 dB"/>
+<circle class="pt s2" cx="268.4" cy="198.2" r="4.5" data-tip="보정 고전 · 6.10 GHz: -28.7 dB"/>
+<circle class="pt s2" cx="281.6" cy="157.2" r="4.5" data-tip="보정 고전 · 6.20 GHz: -21.0 dB"/>
+<circle class="pt s2" cx="294.7" cy="136.1" r="4.5" data-tip="보정 고전 · 6.30 GHz: -17.0 dB"/>
+<circle class="pt s2" cx="307.9" cy="122.1" r="4.5" data-tip="보정 고전 · 6.40 GHz: -14.4 dB"/>
+<circle class="pt s2" cx="321.0" cy="111.7" r="4.5" data-tip="보정 고전 · 6.50 GHz: -12.4 dB"/>
+<circle class="pt s2" cx="334.1" cy="103.5" r="4.5" data-tip="보정 고전 · 6.60 GHz: -10.9 dB"/>
+<circle class="pt s2" cx="347.3" cy="96.8" r="4.5" data-tip="보정 고전 · 6.70 GHz: -9.6 dB"/>
+<circle class="pt s2" cx="360.4" cy="91.2" r="4.5" data-tip="보정 고전 · 6.80 GHz: -8.6 dB"/>
+<circle class="pt s2" cx="373.6" cy="86.5" r="4.5" data-tip="보정 고전 · 6.90 GHz: -7.7 dB"/>
+<circle class="pt s2" cx="386.8" cy="82.4" r="4.5" data-tip="보정 고전 · 7.00 GHz: -6.9 dB"/>
+<circle class="pt s2" cx="399.9" cy="78.8" r="4.5" data-tip="보정 고전 · 7.10 GHz: -6.2 dB"/>
+<circle class="pt s2" cx="413.1" cy="75.7" r="4.5" data-tip="보정 고전 · 7.20 GHz: -5.6 dB"/>
+<circle class="pt s2" cx="426.2" cy="72.9" r="4.5" data-tip="보정 고전 · 7.30 GHz: -5.1 dB"/>
+<circle class="pt s2" cx="439.4" cy="70.4" r="4.5" data-tip="보정 고전 · 7.40 GHz: -4.6 dB"/>
+<circle class="pt s2" cx="452.5" cy="68.2" r="4.5" data-tip="보정 고전 · 7.50 GHz: -4.2 dB"/>
+<circle class="pt s2" cx="465.6" cy="66.2" r="4.5" data-tip="보정 고전 · 7.60 GHz: -3.8 dB"/>
+<circle class="pt s2" cx="478.8" cy="64.4" r="4.5" data-tip="보정 고전 · 7.70 GHz: -3.5 dB"/>
+<circle class="pt s2" cx="491.9" cy="62.8" r="4.5" data-tip="보정 고전 · 7.80 GHz: -3.2 dB"/>
+<circle class="pt s2" cx="505.1" cy="61.3" r="4.5" data-tip="보정 고전 · 7.90 GHz: -2.9 dB"/>
+<circle class="pt s2" cx="518.2" cy="59.9" r="4.5" data-tip="보정 고전 · 8.00 GHz: -2.7 dB"/>
+<circle class="pt s2" cx="531.4" cy="58.7" r="4.5" data-tip="보정 고전 · 8.10 GHz: -2.4 dB"/>
+<circle class="pt s2" cx="544.5" cy="57.6" r="4.5" data-tip="보정 고전 · 8.20 GHz: -2.2 dB"/>
+<circle class="pt s2" cx="557.7" cy="56.6" r="4.5" data-tip="보정 고전 · 8.30 GHz: -2.0 dB"/>
+<circle class="pt s2" cx="570.9" cy="55.6" r="4.5" data-tip="보정 고전 · 8.40 GHz: -1.8 dB"/>
+<circle class="pt s2" cx="584.0" cy="54.7" r="4.5" data-tip="보정 고전 · 8.50 GHz: -1.7 dB"/>
+<circle class="pt s3" cx="58.0" cy="69.7" r="4.5" data-tip="해석적 · 4.50 GHz: -4.5 dB"/>
+<circle class="pt s3" cx="71.1" cy="72.5" r="4.5" data-tip="해석적 · 4.60 GHz: -5.0 dB"/>
+<circle class="pt s3" cx="84.3" cy="75.7" r="4.5" data-tip="해석적 · 4.70 GHz: -5.6 dB"/>
+<circle class="pt s3" cx="97.4" cy="79.4" r="4.5" data-tip="해석적 · 4.80 GHz: -6.3 dB"/>
+<circle class="pt s3" cx="110.6" cy="83.7" r="4.5" data-tip="해석적 · 4.90 GHz: -7.1 dB"/>
+<circle class="pt s3" cx="123.8" cy="88.8" r="4.5" data-tip="해석적 · 5.00 GHz: -8.1 dB"/>
+<circle class="pt s3" cx="136.9" cy="94.9" r="4.5" data-tip="해석적 · 5.10 GHz: -9.3 dB"/>
+<circle class="pt s3" cx="150.1" cy="102.4" r="4.5" data-tip="해석적 · 5.20 GHz: -10.7 dB"/>
+<circle class="pt s3" cx="163.2" cy="111.7" r="4.5" data-tip="해석적 · 5.30 GHz: -12.4 dB"/>
+<circle class="pt s3" cx="176.4" cy="123.7" r="4.5" data-tip="해석적 · 5.40 GHz: -14.7 dB"/>
+<circle class="pt s3" cx="189.5" cy="140.4" r="4.5" data-tip="해석적 · 5.50 GHz: -17.8 dB"/>
+<circle class="pt s3" cx="202.6" cy="167.4" r="4.5" data-tip="해석적 · 5.60 GHz: -22.9 dB"/>
+<circle class="pt s3" cx="215.8" cy="241.3" r="4.5" data-tip="해석적 · 5.70 GHz: -36.8 dB"/>
+<circle class="pt s3" cx="228.9" cy="191.4" r="4.5" data-tip="해석적 · 5.80 GHz: -27.5 dB"/>
+<circle class="pt s3" cx="242.1" cy="152.8" r="4.5" data-tip="해석적 · 5.90 GHz: -20.2 dB"/>
+<circle class="pt s3" cx="255.2" cy="132.4" r="4.5" data-tip="해석적 · 6.00 GHz: -16.3 dB"/>
+<circle class="pt s3" cx="268.4" cy="118.7" r="4.5" data-tip="해석적 · 6.10 GHz: -13.7 dB"/>
+<circle class="pt s3" cx="281.6" cy="108.5" r="4.5" data-tip="해석적 · 6.20 GHz: -11.8 dB"/>
+<circle class="pt s3" cx="294.7" cy="100.5" r="4.5" data-tip="해석적 · 6.30 GHz: -10.3 dB"/>
+<circle class="pt s3" cx="307.9" cy="94.0" r="4.5" data-tip="해석적 · 6.40 GHz: -9.1 dB"/>
+<circle class="pt s3" cx="321.0" cy="88.6" r="4.5" data-tip="해석적 · 6.50 GHz: -8.1 dB"/>
+<circle class="pt s3" cx="334.1" cy="84.0" r="4.5" data-tip="해석적 · 6.60 GHz: -7.2 dB"/>
+<circle class="pt s3" cx="347.3" cy="80.0" r="4.5" data-tip="해석적 · 6.70 GHz: -6.4 dB"/>
+<circle class="pt s3" cx="360.4" cy="76.6" r="4.5" data-tip="해석적 · 6.80 GHz: -5.8 dB"/>
+<circle class="pt s3" cx="373.6" cy="73.6" r="4.5" data-tip="해석적 · 6.90 GHz: -5.2 dB"/>
+<circle class="pt s3" cx="386.8" cy="70.9" r="4.5" data-tip="해석적 · 7.00 GHz: -4.7 dB"/>
+<circle class="pt s3" cx="399.9" cy="68.5" r="4.5" data-tip="해석적 · 7.10 GHz: -4.3 dB"/>
+<circle class="pt s3" cx="413.1" cy="66.5" r="4.5" data-tip="해석적 · 7.20 GHz: -3.9 dB"/>
+<circle class="pt s3" cx="426.2" cy="64.6" r="4.5" data-tip="해석적 · 7.30 GHz: -3.5 dB"/>
+<circle class="pt s3" cx="439.4" cy="62.9" r="4.5" data-tip="해석적 · 7.40 GHz: -3.2 dB"/>
+<circle class="pt s3" cx="452.5" cy="61.3" r="4.5" data-tip="해석적 · 7.50 GHz: -2.9 dB"/>
+<circle class="pt s3" cx="465.6" cy="59.9" r="4.5" data-tip="해석적 · 7.60 GHz: -2.7 dB"/>
+<circle class="pt s3" cx="478.8" cy="58.7" r="4.5" data-tip="해석적 · 7.70 GHz: -2.4 dB"/>
+<circle class="pt s3" cx="491.9" cy="57.5" r="4.5" data-tip="해석적 · 7.80 GHz: -2.2 dB"/>
+<circle class="pt s3" cx="505.1" cy="56.5" r="4.5" data-tip="해석적 · 7.90 GHz: -2.0 dB"/>
+<circle class="pt s3" cx="518.2" cy="55.5" r="4.5" data-tip="해석적 · 8.00 GHz: -1.8 dB"/>
+<circle class="pt s3" cx="531.4" cy="54.6" r="4.5" data-tip="해석적 · 8.10 GHz: -1.7 dB"/>
+<circle class="pt s3" cx="544.5" cy="53.8" r="4.5" data-tip="해석적 · 8.20 GHz: -1.5 dB"/>
+<circle class="pt s3" cx="557.7" cy="53.1" r="4.5" data-tip="해석적 · 8.30 GHz: -1.4 dB"/>
+<circle class="pt s3" cx="570.9" cy="52.4" r="4.5" data-tip="해석적 · 8.40 GHz: -1.2 dB"/>
+<circle class="pt s3" cx="584.0" cy="51.8" r="4.5" data-tip="해석적 · 8.50 GHz: -1.1 dB"/>
+<text class="dlab s3t" x="594.0" y="55.8">고전 해석적 7.37 mm</text>
+<text class="dlab s2t" x="594.0" y="73.7">고전 보정 7.00 mm</text>
+<text class="dlab s1t" x="594.0" y="91.6">C 자유형(씨앗 없음)</text>
+<text class="axlab" x="321" y="294" text-anchor="middle">주파수 (GHz)</text>
+<text class="axlab" transform="translate(14,136) rotate(-90)" text-anchor="middle">빈 선로 대비 |S21| (dB)</text>
+</svg>
+</div>
+<table>
+  <thead><tr><th>설계</th><th style="text-align:right">대비도 (dB)</th><th style="text-align:right">6 GHz 억제</th><th style="text-align:right">통과대역</th><th style="text-align:right">자기 최소점</th></tr></thead>
+  <tbody>
+    <tr><td>고전 스텁 · 메시 보정 7.00 mm</td><td class="num">+31.6</td><td class="num">-35.5</td><td class="num">-3.9</td><td class="num">-35.5 dB @ 6.00 GHz</td></tr>
+    <tr class="win"><td>C 자유형 · 씨앗 없음</td><td class="num">+30.5</td><td class="num">-34.8</td><td class="num">-4.3</td><td class="num">-34.8 dB @ 6.00 GHz</td></tr>
+    <tr><td>B 스텁씨앗</td><td class="num">+18.8</td><td class="num">-23.0</td><td class="num">-4.2</td><td class="num">-34.7 dB @ 6.10 GHz</td></tr>
+    <tr><td>고전 스텁 · 해석적 7.37 mm</td><td class="num">+12.8</td><td class="num">-16.3</td><td class="num">-3.5</td><td class="num">-36.8 dB @ 5.70 GHz</td></tr>
+  </tbody>
+</table>
+<p>두 가지 낙관 편향이 잡혔습니다. <b>첫째, 기준선이 보정되지 않았습니다</b> — 해석적 길이는 이 메시에서 노치를 5.70 GHz에 놓기 때문에, 처음 잰 마진의 상당 부분은 “기울기가 이겼다”가 아니라 “고전 설계가 빗나갔다”였습니다. 같은 메시를 주면 고전 스텁은 목표에서 -35.5 dB를 냅니다. <b>둘째, 같은 연산자로 평가했습니다</b> — 실제 형상으로 다시 풀자 두 자유형 설계의 순위가 뒤집혔습니다. 씨앗을 준 설계는 폭이 좁은 고Q 스텁이라 하드 형상에서 공진이 6.10 GHz로 밀렸고, 씨앗 없이 찾은 분산형 설계는 6.00 GHz에 그대로 앉았습니다.</p>
+<p><b>남는 결론은 이렇습니다.</b> 전송선 이론을 전혀 주지 않고 랜덤 저밀도에서 출발한 자유형 탐색이 <b>사람이 유도한 고전 설계와 같은 수준</b>에 도달했습니다(+30.5 대 +31.6 dB). 확정 논문이 자유형 이진 금속을 “주요 미해결 한계”로 적어 둔 것을 생각하면 이것만으로도 선을 하나 넘은 것이지만, <b>능가했다는 주장은 철회</b>합니다.</p>
+<p>덧붙일 관점 하나: 단일 주파수 노치는 유효 자유도가 하나뿐이고 닫힌 해가 존재하는 문제입니다. 2 256개 변수 탐색이 λ/4 스텁을 이길 수 없는 게 오히려 정상이고, 할 수 있는 최선은 그것을 <i>찾아내는</i> 것입니다. 기울기의 우위를 보이려면 닫힌 해가 없는 문제 — 다중 대역, 비대칭 제약, 면적·형상 제약이 걸린 배치 — 로 옮겨야 합니다.</p>
+
+<h2><span class="n">06</span>한계 — 다음 단계에서 닫아야 할 것</h2>
 <ul>
-  <li><b>통과대역 삽입손실이 아직 큽니다.</b> 우승 설계의 통과대역 평균 투과는 0.40(약 −8 dB)로, 실용 필터의 −1 dB급과는 거리가 있습니다. 통과대역 가중치를 1에서 3·10으로 올려 스윕하는 것이 다음 실험입니다. 대비도 우위 자체는 정의된 지표 위에서 유효합니다.</li>
+  <li><b>통과대역 삽입손실.</b> 독립 경로에서 잰 통과대역 평균은 -4.3 dB입니다(처음 보고한 −8 dB는 의도적으로 발산된 평면 추출기에서 나온 값이라 신뢰할 수 없습니다). 실용 필터의 −1 dB급과는 여전히 거리가 있어, 통과대역 가중치를 올려 스윕하는 것이 다음 실험입니다.</li>
+  <li><b>비교 설계가 문제를 고르는 방식.</b> 닫힌 해가 있는 문제에서는 동등이 최선입니다. 다중 대역·비대칭·면적 제약처럼 고전 합성법이 답을 주지 못하는 문제로 옮겨야 기울기의 실질 이득이 드러납니다.</li>
   <li><b>메쉬 전이성 미검증.</b> 방금 T-MTT 논문에 “표준 설계 절차”로 써넣은 2단계 검사(2배 세분화 메쉬 재평가 → 실패 시 프로덕션 해상도에서 재최적화)를 이 결과에 그대로 적용해야 합니다.</li>
-  <li><b>추출기 절대 스케일 미보정.</b> 이 캠페인의 모든 수치는 같은 평가기 안에서의 정규화 비교로만 유효합니다.</li>
+  <li><b>추출기 절대 스케일</b>은 교차검증 경로에서 해소됐습니다(빈 선로가 0.00 dB). 다만 최적화 루프 안의 수치는 여전히 정규화 비교로만 유효합니다.</li>
   <li><b>AD-vs-FD 기울기 검증은 방법론적으로 미결.</b> 합성 목적함수에서 유한차분 잡음이 커서 단순 2점 차분으로는 판정되지 않습니다. 방향미분 리처드슨 설계가 필요합니다. 하강 증거(매끈한 100배 감소)는 기울기가 <i>유용</i>함을 말하지만 <i>정확도 수치</i>로 인용할 수는 없습니다.</li>
   <li>지오메트리 1종, 잡음 시드 1종. C-균일 잡 하나는 하강 도중 인프라 사유로 중단되어 재실행 대상입니다.</li>
 </ul>
-<p>다음 단계는 통과대역 가중치 스윕, 우승 설계의 메쉬 전이성 게이트, 두 번째 지오메트리, 그리고 이 캠페인을 근거 자료로 삼은 <b>rfx 코어 패치 제안</b>(전도성 RAMP 보간을 위상최적화 경로에 정식 편입)입니다.</p>
+<p>다음 단계는 닫힌 해가 없는 설계 문제로의 이동, 통과대역 가중치 스윕, 메시 전이성 게이트(필터 반경을 셀이 아닌 mm로 고정하는 수정 포함), 외부 솔버(openEMS) 2단계 교차검증, 그리고 이 캠페인을 근거 자료로 삼은 <b>rfx 코어 패치 제안</b>입니다. 코어 패치의 1순위는 위상최적화 API가 금속을 전경 물질로 쓸 때 <b>기본값이 여전히 옛 감쇠 경로</b>라는 점입니다.</p>
 
 <footer>
   코드·결과·판정 노트: <code>bk-squared/rfx</code> 브랜치 <code>feat/metal-topology-ramp</code>,

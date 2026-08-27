@@ -78,6 +78,26 @@ for k in runs:
     npz[k] = np.load(VES / f"phase1c_{arm}_{init}" / f"phase1c_{init}_i150_{arm}_final.npz")
 
 seed = np.load(OUT / "phase1b_stub_i1_C_final.npz")
+
+# tier-1 / 1b cross-validation (independent hard-PEC geometry + extractor)
+XV = VES / "xval1"
+xv = {f.stem: json.loads(f.read_text()) for f in XV.glob("*.json")}
+_xf = np.array(xv["empty"]["freqs_GHz"]); _xe = np.array(xv["empty"]["s21_db"])
+_xit = int(np.argmin(abs(_xf - 6.0))); _xpb = abs(_xf - 6.0) > 0.9
+
+
+def xv_metrics(key):
+    t = np.array(xv[key]["s21_db"]) - _xe
+    return dict(notch=float(t[_xit]), pb=float(np.mean(t[_xpb])),
+                contrast=float(np.mean(t[_xpb]) - t[_xit]),
+                fmin=xv[key]["f_min_GHz"], dmin=xv[key]["depth_min_db"],
+                t=[float(v) for v in t])
+
+
+_sweep = sorted((xv[k]["stub_mm"], k) for k in xv if k.startswith("oracle_"))
+_cal_key = max(_sweep, key=lambda sk: xv_metrics(sk[1])["contrast"])[1]
+CAL = xv_metrics(_cal_key); CAL["stub_mm"] = xv[_cal_key]["stub_mm"]
+XVB = xv_metrics("B_stub"); XVC = xv_metrics("C_low"); XVO = xv_metrics("oracle")
 ORACLE = runs[("B", "stub")]["oracle_contrast_db"]
 win = runs[("B", "stub")]
 freqs = win["freqs_GHz"]
@@ -218,6 +238,26 @@ for name, slot, key in bandsets:
             f"{name} · {f:.2f} GHz: {20*np.log10(max(v,1e-6)):.1f} dB")
            for f, v in zip(freqs, t)]
     series.append(dict(name=name, slot=slot, pts=pts))
+# --- cross-validation charts (independent hard-PEC path) ---
+_sw = [(xv[k]["stub_mm"], xv_metrics(k)["contrast"]) for _, k in _sweep]
+_sw.sort()
+chart_sweep = line_chart(
+    [dict(name="고전 스텁 (메시 보정 스윕)", slot=2,
+          pts=[(L, c, f"스텁 {L:.2f} mm: 대비도 {c:+.1f} dB") for L, c in _sw])],
+    (5.6, 7.6), (-10, 35), "고전 스텁 길이 (mm)", "통과대역↔노치 대비도 (dB)",
+    yticks=[-10, 0, 10, 20, 30], xticks=[5.8, 6.4, 7.0, 7.37])
+
+chart_xband = line_chart(
+    [dict(name="C 자유형(씨앗 없음)", slot=1,
+          pts=[(f, v, f"자유형 · {f:.2f} GHz: {v:.1f} dB") for f, v in zip(_xf, XVC["t"])]),
+     dict(name=f"고전 보정 {CAL['stub_mm']:.2f} mm", slot=2,
+          pts=[(f, v, f"보정 고전 · {f:.2f} GHz: {v:.1f} dB") for f, v in zip(_xf, CAL["t"])]),
+     dict(name="고전 해석적 7.37 mm", slot=3,
+          pts=[(f, v, f"해석적 · {f:.2f} GHz: {v:.1f} dB") for f, v in zip(_xf, XVO["t"])])],
+    (4.5, 8.5), (-40, 6), "주파수 (GHz)", "빈 선로 대비 |S21| (dB)",
+    xticks=[4.5, 5.5, 6.5, 7.5, 8.5], yticks=[-40, -30, -20, -10, 0],
+    vline=6.0, vlab="목표 6.0 GHz")
+
 chart_band = line_chart(series, (4.5, 8.5), (-32, 6),
                         "주파수 (GHz)", "정규화 |S21| (dB)",
                         xticks=[4.5, 5.5, 6.5, 7.5, 8.5],
@@ -261,10 +301,10 @@ table_html = "\n".join(rows_tbl)
 
 W = win
 tiles = [
-    (f"{W['contrast_db']:+.1f} dB", "통과대역 대비 노치 대비도", "우승 설계 (B · 스텁 씨앗)"),
-    (f"{W['contrast_db']/ORACLE:.1f}×", "고전 λ/4 스텁 대비", f"오라클 {ORACLE:.1f} dB · 동일 평가기"),
-    (f"{W['J_hard_ft_db']:.1f} dB", "6 GHz 노치 깊이", "이진화 + 하드 PEC 재평가"),
-    (f"{W['fill_hard']*100:.0f}%", "금속 채움률", "2 256셀 설계 영역"),
+    (f"{XVC['contrast']:+.1f} dB", "자유형 설계 (씨앗 없음)", "독립 형상·독립 추출기 검증"),
+    (f"{CAL['contrast']:+.1f} dB", "메시 보정 고전 스텁", f"{CAL['stub_mm']:.2f} mm · 같은 조건"),
+    (f"{XVC['contrast']-CAL['contrast']:+.1f} dB", "차이 — 동등, 우세 아님", "최초 보고 2.2배는 철회"),
+    (f"{XVC['dmin']:.1f} dB", "6 GHz 노치 깊이", "정착 −119 dB · 신뢰 82/82"),
 ]
 tiles_html = "\n".join(
     f'<div class="tile"><div class="tval">{esc(v)}</div><div class="tlab">{esc(l)}</div>'
@@ -278,7 +318,7 @@ maps_html = "\n".join(
 HTML = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rfx 자유형 금속 위상최적화 — Phase-0/1 결과</title>
+<title>rfx 자유형 금속 위상최적화 — 교차검증까지</title>
 <style>
 :root {{
   color-scheme: light;
@@ -374,14 +414,14 @@ code{{background:var(--grid);padding:.1em .38em;border-radius:4px;font-size:.87e
 <body>
 <div class="wrap">
 <header>
-  <h1>자유형 금속 위상최적화가 고전 스텁 설계를 넘어섰습니다</h1>
-  <p class="sub">rfx 미분가능 3-D FDTD · Phase-0/1 캠페인 결과 — 2 256셀 자유형 금속 밀도로 6 GHz 노치 필터 설계</p>
-  <p class="meta">2026-08-25 · 브랜치 <code>feat/metal-topology-ramp</code> · VESSL RTX 4090 잡 11건 · 판정 지표는 모두 <b>이진화 후 하드 PEC 재평가</b> 기준</p>
+  <h1>자유형 금속 위상최적화가 고전 스텁과 동등한 성능에 도달했습니다</h1>
+  <p class="sub">rfx 미분가능 3-D FDTD · 2 256셀 자유형 금속 밀도로 6 GHz 노치 필터 설계 — 독립 경로 교차검증으로 최초 결론을 정정한 기록</p>
+  <p class="meta">2026-08-25 실험 · 2026-08-26 교차검증 정정 · 브랜치 <code>feat/metal-topology-ramp</code> · VESSL RTX 4090 잡 21건 · 최종 판정은 <b>독립 하드 PEC 형상 + 독립 추출기</b> 기준</p>
 </header>
 
 <div class="tiles">{tiles_html}</div>
 
-<div class="callout"><p>확정된 T-MTT 논문에서 자유형 금속 위상최적화는 <b>“주요 미해결 한계”</b>로 남아 있었고, 유전체 예제조차 고전 합성법의 성능을 <i>회복</i>할 뿐 넘어서지는 못했습니다. 이번 캠페인은 그 선을 넘습니다 — 자유형 금속 설계가 동일 평가기에서 고전 λ/4 스텁의 <b>2.2배 대비도</b>를 달성했습니다.</p></div>
+<div class="callout"><p><b>정정 기록입니다.</b> 8월 25일에는 자유형 설계가 고전 λ/4 스텁의 2.2배 대비도를 냈다고 보고했습니다. 이튿날 독립 경로로 교차검증하니 그 마진의 대부분이 두 가지 낙관 편향이었고, 공정하게 다시 재면 <b>자유형 설계는 고전 스텁과 동등</b>합니다(30.5 대 31.6 dB). 넘어서지는 못했습니다. 확정된 T-MTT 논문이 유전체 테이퍼에 대해 쓴 문장 — “기울기는 고전 합성법의 성능을 회복하지, 능가하지 않는다” — 이 자유형 금속에도 그대로 적용됩니다.</p></div>
 
 <h2><span class="n">01</span>왜 어려웠나 — 회색 금속 통과 구간을 실측하다</h2>
 <p class="lede">밀도 기반 위상최적화는 “금속 없음(0)”에서 “금속 있음(1)”까지 중간 밀도를 반드시 지나갑니다. 그 구간에서 목적함수가 어떻게 생겼는지를 먼저 측정했습니다. 검증된 노치 지오메트리에서 스텁을 해석적 λ/4 길이로 <b>고정</b>하고 점유율만 0→1로 올린 결과입니다.</p>
@@ -439,15 +479,42 @@ code{{background:var(--grid);padding:.1em .38em;border-radius:4px;font-size:.87e
   </div>
 </div>
 
-<h2><span class="n">05</span>한계 — 다음 단계에서 닫아야 할 것</h2>
+<h2><span class="n">05</span>교차검증 — 결론이 뒤집힌 지점</h2>
+<p class="lede">여기까지의 수치는 모두 <b>최적화에 쓴 것과 같은 연산자</b>로 잰 값이고, 비교 대상인 고전 스텁은 <b>해석식이 준 길이 그대로</b>였습니다. 두 가지 모두 유리한 쪽으로 기울 수 있어서, 설계를 실제 PEC 상자로 다시 세워 독립 추출기로 풀고(형상·추출 경로 교체), 고전 스텁에도 같은 메시에서 길이를 맞출 기회를 줬습니다.</p>
+<div class="card">
+  <h3>고전 스텁에 같은 메시 보정을 허용하면</h3>
+  <p class="cap">해석적 길이 7.37 mm는 이 메시에서 노치를 5.70 GHz에 놓습니다 · 목표에 앉히는 길이는 7.00 mm</p>
+  {chart_sweep}
+</div>
+<div class="card">
+  <h3>독립 경로 대역 응답</h3>
+  <p class="cap">실제 PEC 상자 형상 · 독립 추출기 · 80주기 창(정착 −119 dB, 신뢰 82/82)</p>
+  <div class="legend"><span><i style="background:var(--s1)"></i>C 자유형(씨앗 없음)</span><span><i style="background:var(--s2)"></i>고전 보정 {CAL['stub_mm']:.2f} mm</span><span><i style="background:var(--s3)"></i>고전 해석적 7.37 mm</span></div>
+  {chart_xband}
+</div>
+<table>
+  <thead><tr><th>설계</th><th style="text-align:right">대비도 (dB)</th><th style="text-align:right">6 GHz 억제</th><th style="text-align:right">통과대역</th><th style="text-align:right">자기 최소점</th></tr></thead>
+  <tbody>
+    <tr><td>고전 스텁 · 메시 보정 {CAL['stub_mm']:.2f} mm</td><td class="num">{CAL['contrast']:+.1f}</td><td class="num">{CAL['notch']:.1f}</td><td class="num">{CAL['pb']:.1f}</td><td class="num">{CAL['dmin']:.1f} dB @ {CAL['fmin']:.2f} GHz</td></tr>
+    <tr class="win"><td>C 자유형 · 씨앗 없음</td><td class="num">{XVC['contrast']:+.1f}</td><td class="num">{XVC['notch']:.1f}</td><td class="num">{XVC['pb']:.1f}</td><td class="num">{XVC['dmin']:.1f} dB @ {XVC['fmin']:.2f} GHz</td></tr>
+    <tr><td>B 스텁씨앗</td><td class="num">{XVB['contrast']:+.1f}</td><td class="num">{XVB['notch']:.1f}</td><td class="num">{XVB['pb']:.1f}</td><td class="num">{XVB['dmin']:.1f} dB @ {XVB['fmin']:.2f} GHz</td></tr>
+    <tr><td>고전 스텁 · 해석적 7.37 mm</td><td class="num">{XVO['contrast']:+.1f}</td><td class="num">{XVO['notch']:.1f}</td><td class="num">{XVO['pb']:.1f}</td><td class="num">{XVO['dmin']:.1f} dB @ {XVO['fmin']:.2f} GHz</td></tr>
+  </tbody>
+</table>
+<p>두 가지 낙관 편향이 잡혔습니다. <b>첫째, 기준선이 보정되지 않았습니다</b> — 해석적 길이는 이 메시에서 노치를 5.70 GHz에 놓기 때문에, 처음 잰 마진의 상당 부분은 “기울기가 이겼다”가 아니라 “고전 설계가 빗나갔다”였습니다. 같은 메시를 주면 고전 스텁은 목표에서 {CAL['notch']:.1f} dB를 냅니다. <b>둘째, 같은 연산자로 평가했습니다</b> — 실제 형상으로 다시 풀자 두 자유형 설계의 순위가 뒤집혔습니다. 씨앗을 준 설계는 폭이 좁은 고Q 스텁이라 하드 형상에서 공진이 6.10 GHz로 밀렸고, 씨앗 없이 찾은 분산형 설계는 6.00 GHz에 그대로 앉았습니다.</p>
+<p><b>남는 결론은 이렇습니다.</b> 전송선 이론을 전혀 주지 않고 랜덤 저밀도에서 출발한 자유형 탐색이 <b>사람이 유도한 고전 설계와 같은 수준</b>에 도달했습니다({XVC['contrast']:+.1f} 대 {CAL['contrast']:+.1f} dB). 확정 논문이 자유형 이진 금속을 “주요 미해결 한계”로 적어 둔 것을 생각하면 이것만으로도 선을 하나 넘은 것이지만, <b>능가했다는 주장은 철회</b>합니다.</p>
+<p>덧붙일 관점 하나: 단일 주파수 노치는 유효 자유도가 하나뿐이고 닫힌 해가 존재하는 문제입니다. 2 256개 변수 탐색이 λ/4 스텁을 이길 수 없는 게 오히려 정상이고, 할 수 있는 최선은 그것을 <i>찾아내는</i> 것입니다. 기울기의 우위를 보이려면 닫힌 해가 없는 문제 — 다중 대역, 비대칭 제약, 면적·형상 제약이 걸린 배치 — 로 옮겨야 합니다.</p>
+
+<h2><span class="n">06</span>한계 — 다음 단계에서 닫아야 할 것</h2>
 <ul>
-  <li><b>통과대역 삽입손실이 아직 큽니다.</b> 우승 설계의 통과대역 평균 투과는 0.40(약 −8 dB)로, 실용 필터의 −1 dB급과는 거리가 있습니다. 통과대역 가중치를 1에서 3·10으로 올려 스윕하는 것이 다음 실험입니다. 대비도 우위 자체는 정의된 지표 위에서 유효합니다.</li>
+  <li><b>통과대역 삽입손실.</b> 독립 경로에서 잰 통과대역 평균은 {XVC['pb']:.1f} dB입니다(처음 보고한 −8 dB는 의도적으로 발산된 평면 추출기에서 나온 값이라 신뢰할 수 없습니다). 실용 필터의 −1 dB급과는 여전히 거리가 있어, 통과대역 가중치를 올려 스윕하는 것이 다음 실험입니다.</li>
+  <li><b>비교 설계가 문제를 고르는 방식.</b> 닫힌 해가 있는 문제에서는 동등이 최선입니다. 다중 대역·비대칭·면적 제약처럼 고전 합성법이 답을 주지 못하는 문제로 옮겨야 기울기의 실질 이득이 드러납니다.</li>
   <li><b>메쉬 전이성 미검증.</b> 방금 T-MTT 논문에 “표준 설계 절차”로 써넣은 2단계 검사(2배 세분화 메쉬 재평가 → 실패 시 프로덕션 해상도에서 재최적화)를 이 결과에 그대로 적용해야 합니다.</li>
-  <li><b>추출기 절대 스케일 미보정.</b> 이 캠페인의 모든 수치는 같은 평가기 안에서의 정규화 비교로만 유효합니다.</li>
+  <li><b>추출기 절대 스케일</b>은 교차검증 경로에서 해소됐습니다(빈 선로가 0.00 dB). 다만 최적화 루프 안의 수치는 여전히 정규화 비교로만 유효합니다.</li>
   <li><b>AD-vs-FD 기울기 검증은 방법론적으로 미결.</b> 합성 목적함수에서 유한차분 잡음이 커서 단순 2점 차분으로는 판정되지 않습니다. 방향미분 리처드슨 설계가 필요합니다. 하강 증거(매끈한 100배 감소)는 기울기가 <i>유용</i>함을 말하지만 <i>정확도 수치</i>로 인용할 수는 없습니다.</li>
   <li>지오메트리 1종, 잡음 시드 1종. C-균일 잡 하나는 하강 도중 인프라 사유로 중단되어 재실행 대상입니다.</li>
 </ul>
-<p>다음 단계는 통과대역 가중치 스윕, 우승 설계의 메쉬 전이성 게이트, 두 번째 지오메트리, 그리고 이 캠페인을 근거 자료로 삼은 <b>rfx 코어 패치 제안</b>(전도성 RAMP 보간을 위상최적화 경로에 정식 편입)입니다.</p>
+<p>다음 단계는 닫힌 해가 없는 설계 문제로의 이동, 통과대역 가중치 스윕, 메시 전이성 게이트(필터 반경을 셀이 아닌 mm로 고정하는 수정 포함), 외부 솔버(openEMS) 2단계 교차검증, 그리고 이 캠페인을 근거 자료로 삼은 <b>rfx 코어 패치 제안</b>입니다. 코어 패치의 1순위는 위상최적화 API가 금속을 전경 물질로 쓸 때 <b>기본값이 여전히 옛 감쇠 경로</b>라는 점입니다.</p>
 
 <footer>
   코드·결과·판정 노트: <code>bk-squared/rfx</code> 브랜치 <code>feat/metal-topology-ramp</code>,
