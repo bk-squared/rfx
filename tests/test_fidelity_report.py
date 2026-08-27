@@ -253,3 +253,99 @@ def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
     assert not z_off, (
         "a sub-cell body must not be reported as a percentage of its own "
         f"thickness as well: {z_off}")
+
+
+# ---------------------------------------------------------------------------
+# #729 site 1: the DOMAIN row must count grid CELLS, not NODES.
+#
+# `_node_arrays` builds one array entry per NODE (grid.shape[a] entries for
+# n cells, since an n-cell span needs n+1 nodes — rfx/grid.py's fence-post
+# comment). Summing that whole array as if each entry were a cell inflated
+# an exactly-commensurate domain's "realized" length by one dx on every
+# axis and raised a false [domain-extent-quantized] finding, while the
+# entity row for a Box filling the identical span (which reads `nodes`,
+# not `sizes`) was correct. The domain row is the ONLY row for
+# cavity/waveguide models where the box IS the geometry (cv09, cv14, cv21),
+# so this defect landed exactly where the report is trusted most.
+# ---------------------------------------------------------------------------
+
+
+def _dom(rep):
+    for item in rep:
+        if item["entity"].startswith("domain"):
+            return item
+    raise AssertionError(f"domain pseudo-entity missing from report: "
+                         f"{[x['entity'] for x in rep]}")
+
+
+def test_commensurate_domain_reports_zero_domain_findings():
+    """An exactly-commensurate domain must raise NO domain finding, and its
+    realized extent must agree with the entity row for a Box filling it."""
+    sim = Simulation(freq_max=10e9, domain=(20e-3, 10e-3, 10e-3), dx=1e-3,
+                     boundary="pec")
+    sim.add_material("m", eps_r=2.0)
+    sim.add(Box((0, 0, 0), (20e-3, 10e-3, 10e-3)), material="m")
+    rep = sim.fidelity_report(print_report=False)
+    dom, geo = _dom(rep), _geo(rep, 0)
+    assert [f["kind"] for f in dom["findings"]] == []
+    for a, declared_um in enumerate((20000.0, 10000.0, 10000.0)):
+        assert abs(dom["axes"][a]["realized_extent_um"] - declared_um) < 1e-3
+        assert abs(dom["axes"][a]["realized_extent_um"]
+                   - geo["axes"][a]["realized_extent_um"]) < 1e-3
+
+
+def test_incommensurate_domain_reports_the_ceil_realized_length():
+    """WR-90 at dx=1mm: 22.86mm -> 23.000mm is the same quote-realized value
+    validation/crossval/11_waveguide_port_wr90.py:232 pins as
+    A_WG_REALIZED — an independent, repo-internal oracle for this number."""
+    sim = Simulation(freq_max=12e9, domain=(22.86e-3, 10.16e-3, 30e-3),
+                     dx=1e-3, boundary="pec")
+    dom = _dom(sim.fidelity_report(print_report=False))
+    assert dom["axes"][0]["n_cells"] == 23
+    assert abs(dom["axes"][0]["realized_extent_um"] - 23000.0) < 1e-3
+    assert abs(dom["axes"][1]["realized_extent_um"] - 11000.0) < 1e-3
+    assert abs(dom["axes"][2]["realized_extent_um"] - 30000.0) < 1e-3
+    assert [(f["kind"], f["axis"]) for f in dom["findings"]] == [
+        ("domain-extent-quantized", "x"), ("domain-extent-quantized", "y")]
+
+
+def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
+    """Enumerate-and-classify: for every (boundary, pad symmetry, mesh
+    resolution, uniformity, dimensionality) the realized extent must be
+    ceil(L/dx)*dx, never grid.shape[a]*dx (the node-count bug's
+    signature)."""
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    L = (20e-3, 10e-3, 10e-3)
+    asym = BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                        y=Boundary(lo="cpml", hi="pmc"), z="pec")
+    cases = []
+    for dx in (1e-3, 0.5e-3, 0.25e-3):           # mesh 1x / 2x / 4x
+        cases.append((f"pec dx={dx}", dict(boundary="pec", dx=dx)))
+        cases.append((f"cpml4 dx={dx}",
+                      dict(boundary="cpml", cpml_layers=4, dx=dx)))
+    cases.append(("nonuniform dz", dict(boundary="pec", dx=1e-3,
+                                        dz_profile=np.full(10, 1e-3))))
+    cases.append(("asymmetric pads", dict(boundary=asym, cpml_layers=6,
+                                          dx=1e-3)))
+    cases.append(("2d_tmz", dict(boundary="pec", dx=1e-3, mode="2d_tmz")))
+
+    bad = []
+    for tag, kw in cases:
+        dxv = kw["dx"]
+        sim = Simulation(freq_max=10e9, domain=L, **kw)
+        dom = _dom(sim.fidelity_report(print_report=False))
+        for a in range(3):
+            if tag == "2d_tmz" and a == 2:
+                # z is not solved in 2D (grid.nz == 1): must not raise a
+                # domain-extent-quantized finding on it.
+                if any(f["axis"] == "z" for f in dom["findings"]):
+                    bad.append((tag, "z", "unexpected finding on z"))
+                continue
+            want_cells = int(np.ceil(L[a] / dxv))
+            got_cells = dom["axes"][a]["n_cells"]
+            got_um = dom["axes"][a]["realized_extent_um"]
+            if (got_cells != want_cells
+                    or abs(got_um - want_cells * dxv * 1e6) > 1e-2):
+                bad.append((tag, "xyz"[a], got_cells, want_cells, got_um))
+    assert not bad, f"domain row counted NODES as cells: {bad}"

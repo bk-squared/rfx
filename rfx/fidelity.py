@@ -132,21 +132,42 @@ def fidelity_report(sim, print_report: bool = True):
     # entities at all), and the first implementation printed "0 entities, 0
     # findings" for them — a clean bill of health for an unaudited structure
     # (found by the crossval sweep: cv09/cv14/cv21, 2026-08-27).
+    # The domain row must read `nodes`, the SAME fence-post-correct array
+    # the entity rows read below (nodes[a][i0], nodes[a][i1 + 1]) — not
+    # `sizes`, which has one entry per NODE. Summing `sizes` counted a span
+    # of n nodes as n cells and inflated an exactly-commensurate domain's
+    # "realized" length by one cell on every axis (issue #729 site 1,
+    # 2026-08-27: a 21-node/20-cell span read back as 21000 um instead of
+    # 20000 um, with a false [domain-extent-quantized] finding attached).
+    is_2d = getattr(grid, "is_2d", False)  # NonUniformGrid has no is_2d attr
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
     for a in range(3):
-        n_int = len(sizes[a]) - int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))            - int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
-        realized = float(np.sum(sizes[a][
-            int(getattr(grid, f"pad_{_axis_names()[a]}_lo")):
-            len(sizes[a]) - int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))]))
+        p_lo = int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))
+        p_hi = int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
+        i_lo = p_lo
+        # Clamp the INDEX, not just the count: an unclamped i_hi can go
+        # negative if the pads ever consumed the whole axis, and indexing
+        # nodes[a][i_hi] would then wrap instead of reading as empty.
+        i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
+        n_int = max(i_hi - i_lo, 0)
+        realized = float(nodes[a][i_hi] - nodes[a][i_lo])
         declared = float(domain[a]) if a < len(domain) else 0.0
+        # z is not solved in 2D (grid.nz == 1, Lz is ignored — rfx/grid.py);
+        # comparing it against the declared z would replace one meaningless
+        # number (the old node/cell miscount) with another (a 0.0 um
+        # "realized" length reported as a domain-extent-quantized finding).
+        axis_not_solved = is_2d and _axis_names()[a] == "z"
         ax = dict(axis=_axis_names()[a], n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),
                   realized_um=(0.0, realized * 1e6),
                   face_residual_um=(0.0, abs(realized - declared) * 1e6),
                   declared_extent_um=declared * 1e6,
                   realized_extent_um=realized * 1e6)
+        if axis_not_solved:
+            ax["note"] = "axis-not-solved (2D mode: Lz is ignored)"
         dom_item["axes"].append(ax)
-        if declared > 0 and abs(realized - declared) > 0.005 * declared:
+        if (not axis_not_solved and declared > 0
+                and abs(realized - declared) > 0.005 * declared):
             dom_item["findings"].append(dict(
                 kind="domain-extent-quantized", axis=ax["axis"],
                 detail=f"declared {declared * 1e6:.1f} um realized "

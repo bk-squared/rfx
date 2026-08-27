@@ -696,11 +696,16 @@ def init_waveguide_port(
     # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
     # gives min |S11| = 0.9997. The half-weight was a 2026-04-26 staging
     # compromise (Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
-    # reciprocity at the cost of capping PEC-short closure. With DROP,
-    # one mesh-conv |S21| test currently regresses (xfail-locked in
-    # tests/test_waveguide_port_validation_battery.py); the receive-side
-    # multi-mode extractor (per the dead-end note's recommendation) is the
-    # path to recovering that without re-introducing the PEC-short cap.
+    # reciprocity at the cost of capping PEC-short closure.
+    #
+    # 2026-04-29 update: test_mesh_convergence_s21_scaled_cpml in
+    # tests/test_waveguide_port_validation_battery.py is a LIVE, currently
+    # green committed gate under DROP, not xfail. The 2026-04-22..04-29 jitter
+    # that briefly locked it as xfail was root-caused to Box.mask_on_coords
+    # closed-closed semantics (issue #75), not to the DROP weight; see that
+    # test's docstring. The receive-side multi-mode extractor (per the
+    # dead-end note's recommendation) remains the path to recovering
+    # PEC-short closure without capping it via the half-weight kludge.
     #
     # Detection: +face is PEC iff axis fully PEC (not in cpml_axes) OR per-
     # face spec marks it PEC. Only fires when slice reaches the grid edge.
