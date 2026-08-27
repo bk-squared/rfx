@@ -172,7 +172,12 @@ def build():
                      cpml_layers=n_cpml)
     sim.add_material("sub", eps_r=sub_epsR, sigma=SIGMA)
     sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec", **_TP)
-    sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
+    # PT_FILL_GROUND_CELL=1 (#693 follow-up): extend the substrate across the
+    # ground sheet's own cell so its live normal-E edge samples eps_r 3.38,
+    # not vacuum — the preflight sheet-cavity check measured that vacuum cell
+    # as +84.5% electrical thickness, and this is the REMEDY it prints.
+    _sub_lo = z_gnd_lo if os.environ.get("PT_FILL_GROUND_CELL", "0") == "1" else z_sub_lo
+    sim.add(Box((gx_lo, gy_lo, _sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
     sim.add(Box((patch_x_lo, patch_y_lo, z_patch_lo),
                 (patch_x_hi, patch_y_hi, z_patch_hi)), material="pec", **_TP)
     src_z = z_sub_lo + dz_sub * 1.5
