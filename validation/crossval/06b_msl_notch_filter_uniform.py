@@ -94,18 +94,42 @@ Mesh convention (issue #723, 2026-08-27):
   above the (40, 65) Ω gate floor below (window unchanged; NOT re-pinned
   by this change — that needs a fresh solve, see "Runtime" below).
 
-  Runtime and the envelope this re-pins: measured grid shape (this run,
-  ``sim._build_grid().shape``) dx=80µm -> (442, 232, 31) = 3,178,864
+  Runtime and the re-pinned envelope: measured grid shape
+  (``sim._build_grid().shape``) dx=80µm -> (442, 232, 31) = 3,178,864
   cells; dx=63.5µm -> (553, 280, 37) = 5,729,080 cells (1.802x). Combined
   with the ~1.260x more timesteps (dt ∝ dx), wall clock scales ~2.271x.
-  The committed baseline (``_06b_notch_uniform_logs/20260809T_run.log``)
-  measured "... done in 2599.6s" at dx=80µm -> a ~5902s (98 min) CPU
-  projection at dx=63.5µm on a GPU-less pod (NOT measured — no solve was
-  run to produce this docstring). That same log's PRE-FIX envelope,
-  which a fresh run at this mesh must re-pin with written provenance
-  (not silently, and not by this script's authors alone):
-  "Notch frequency (rfx) = 3.627 GHz", "Notch frequency error = 1.63 %",
-  "Notch depth |S21| = -34.2 dB", "Re(Z0) median = 57.9 Ω".
+
+  MEASURED (2026-08-27, VESSL 369367256574, remilab-c0 single RTX4090,
+  log ``_06b_notch_uniform_logs/20260827T131217Z_run.log``, solve 329.2s,
+  exit 0). Pre-fix column is the committed dx=80µm baseline,
+  ``_06b_notch_uniform_logs/20260809T_run.log``:
+
+                              dx=80µm      dx=63.5µm    gate
+    Notch frequency (rfx)     3.627 GHz    3.627 GHz    --
+    Notch frequency (analytic) 3.687 GHz   3.679 GHz    --
+    Notch frequency error     1.63 %       1.40 %       < 15 %
+    Notch depth |S21|         -34.2 dB     -43.3 dB     < -10 dB
+    Re(Z0) median             57.9 Ω       46.5 Ω       (40, 65) Ω
+
+  THE Z0 COLUMN IS THE RESULT, not the notch column. Against
+  Hammerstad-Jensen on the board each mesh actually solves, Re(Z0) goes
+  from +20.9% (57.9 Ω vs HJ(600,254) = 47.90 Ω) to +0.7% (46.5 Ω vs
+  HJ(635,254) = 46.18 Ω) — a 30x reduction in the port-impedance bias.
+  That is exactly what this script's OWN preflight predicted before the
+  change ("+20.2% vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells";
+  ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``), and it lands
+  within 0.9% of that sweep's committed "aligned h_sub/4" row
+  (z0_measured_ohm = 46.098). The notch depth also deepens 9 dB, the
+  resonance being better resolved on an aligned substrate.
+
+  THE NOTCH-FREQUENCY ROW IS BIN-LIMITED and must not be read as
+  "unchanged". ``compute_msl_s_matrix(n_freqs=100)`` over the 7 GHz band
+  gives 70.7 MHz bins = 1.95% at 3.627 GHz, so one bin is WIDER than the
+  1.40% error being reported and both meshes' notches land in the same
+  bin by construction. The improvement from 1.63% to 1.40% is the
+  ANALYTIC reference moving (3.6872 -> 3.6790 GHz as u goes 2.362 ->
+  2.500), not a measured shift in rfx's notch. Any future claim about
+  this script's notch-frequency accuracy needs a finer sweep first.
 
   KNOWN LIMITATION, filed as #729 (NOT folded into #723): at every
   ALIGNED dx, ``add_msl_port``'s own cross-section audit
@@ -155,8 +179,9 @@ demo** that the new port API can resolve a stub-notch resonance without
 the wire-port + absorber workaround.
 
 Run: ``python validation/crossval/06b_msl_notch_filter_uniform.py``
-(CPU-only projection ~98 min; see "Runtime" above — not measured by this
-change).
+(GPU-measured 329.2s solve on a single RTX4090; a CPU run of this mesh
+was abandoned at 2 h 52 m unfinished — this script is GPU-lane, see the
+manifest's cpu_runner note and "Runtime" above).
 """
 
 import os

@@ -133,7 +133,7 @@
         "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json",
         "tests/fixtures/msl_notch_e4/msl_stub_notch_openems_dx50.json"
       ],
-      "cpu_runner": {"excluded_reason": "CPU-infeasible: the committed dx=80um baseline measured 2599.6s on CPU (validation/crossval/_06b_notch_uniform_logs/20260809T_run.log); the dx=63.5um mesh this script now ships (issue #723) projects to ~5902s (~98 min) by the measured 2.271x cell/timestep scaling -- NOT itself measured, no CPU solve was run for this change. Run on GPU, or budget ~100 min CPU."},
+      "cpu_runner": {"excluded_reason": "CPU-infeasible, now measured rather than projected: a CPU run of the dx=63.5um mesh this script ships (issue #723) was abandoned UNFINISHED at 2h52m wall (JAX CPU held only ~1.9 cores on a 32-core pod), against a 2.271x cell/timestep projection from the committed dx=80um 2599.6s baseline (validation/crossval/_06b_notch_uniform_logs/20260809T_run.log). The same mesh solves in 329.2s on a single RTX4090 (VESSL 369367256574, log _06b_notch_uniform_logs/20260827T131217Z_run.log). Run on GPU; do not budget a CPU slot for it."},
       "scheduled_external_order": null,
       "failure_sentinel": null
     },
