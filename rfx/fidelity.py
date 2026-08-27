@@ -249,8 +249,35 @@ def fidelity_report(sim, print_report: bool = True):
                       declared_extent_um=(d_hi - d_lo) * 1e6,
                       realized_extent_um=(r_hi - r_lo) * 1e6)
             ext = ax["declared_extent_um"]
+            # Local cell size on this axis over the body's span — the scale a
+            # placement can actually be resolved to.
+            cell_um = float(np.mean(sizes[a][i0:i1 + 1])) * 1e6
+            ax["cell_um"] = cell_um
+            ax["sub_cell"] = bool(ext < cell_um)
             if ext > 0:
                 worst = max(ax["face_residual_um"])
+                # A body thinner than a cell cannot be placed more precisely
+                # than the lattice allows, so quoting its offset as a fraction
+                # of its own sub-cell thickness produces numbers like "181% of
+                # 17 um" that read as catastrophic and mean only "it landed in
+                # a cell". For those, report against the CELL (found by the
+                # crossval sweep and by an external review of issue #725).
+                if ax["sub_cell"]:
+                    if worst > 0.25 * cell_um:
+                        item["findings"].append(dict(
+                            kind="sub-cell-placement", axis=ax["axis"],
+                            detail=f"declared extent {ext:.1f} um is smaller "
+                                   f"than the local cell {cell_um:.1f} um; the "
+                                   f"body lands {worst:.1f} um "
+                                   f"({worst / cell_um:.2f} cell) from its "
+                                   "declared face. Placement quantizes to the "
+                                   "lattice — a percentage of the declared "
+                                   "extent is not a meaningful measure here",
+                            remedy="place a mesh node on the declared face, or "
+                                   "resolve the body with >= 1 cell, if this "
+                                   "placement is load-bearing"))
+                    axes.append(ax)      # the axis record is still reported
+                    continue
                 if worst > 0.005 * ext:
                     d_ext = ax["realized_extent_um"] - ext
                     size_txt = (f"SIZE {ax['realized_extent_um']:.1f} um "
@@ -271,15 +298,23 @@ def fidelity_report(sim, print_report: bool = True):
                         # A curved/implicit shape has no face to put a node on;
                         # its bounding box is sampled, so the honest statement
                         # is where the realized body sits and how big it is.
+                        d_mid = (ax["declared_um"][0] + ax["declared_um"][1]) / 2
+                        r_mid = (ax["realized_um"][0] + ax["realized_um"][1]) / 2
                         item["findings"].append(dict(
                             kind="bbox-offset", axis=ax["axis"],
+                            midpoint_shift_um=r_mid - d_mid,
                             detail=f"PLACEMENT off by {worst:.1f} um "
                                    f"({100 * worst / ext:.2f}% of the declared "
                                    f"{ext:.1f} um extent); {size_txt}. Curved "
-                                   "boundary sampled cell-wise: placement can "
-                                   "shift by up to a cell, and the size "
-                                   "changes with the staircase — both are "
-                                   "reported above, neither is assumed",
+                                   f"boundary sampled cell-wise; midpoint "
+                                   f"shift {r_mid - d_mid:+.1f} um "
+                                   f"({(r_mid - d_mid) / cell_um:+.2f} cell). "
+                                   "A non-Box mask samples NODE coordinates "
+                                   "while these bounds are cell EDGES, so up "
+                                   "to half a cell of the offset is a readout "
+                                   "convention, not a displacement — the "
+                                   "midpoint shift is the convention-free "
+                                   "number",
                             remedy="refine the local cell size if either the "
                                    "placement or the realized size is "
                                    "load-bearing for the comparison"))
