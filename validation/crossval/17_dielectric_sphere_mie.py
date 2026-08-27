@@ -73,6 +73,60 @@ consistent 3-domain SPREAD metric 1.87/3.07/3.95/5.21 dB (gated) jumps to
 ka = 1.25 ever exceeds its gate, move the coarse fence DOWN to ka <= 1.0
 rather than widen the gate.
 
+GEOMETRY-FIDELITY CONVENTION (issue #725, applied 2026-08-27; PR #721
+review group C — material-path twin of the same fix in
+``16_pec_sphere_mie_ka_sweep.py``, applied here in lockstep): a sphere is
+a CURVED body, so no cell size realizes it exactly, and a bounding-box
+extent mismatch is NOT load-bearing here — trace the reference chain in
+``run_point``: the radius enters ONLY through ``ka`` (the Mie series
+argument) and ``pi_a2 = pi * a**2`` (the RCS normalization), never through
+extent. The adopted fix is issue #725 option 1: evaluate the dielectric
+Mie series at the REALIZED effective radius ``a_eff`` derived from the
+occupied-cell count ``N`` of the rasterized sphere (the binary
+``rasterize`` dielectric interface makes ``N`` exact — no sub-cell
+averaging to blur it), ``a_eff = (3*N*dx**3/(4*pi))**(1/3)``, instead of
+the declared radius. This ONE ``pi_a2`` (now a_eff-based) feeds BOTH
+``mie_dbsm`` and ``rfx_sigma_over_pi_a2`` in ``run_point``, so the two
+normalizations move together by construction (PR #721 review, required
+change 1) — geometry here is identical to the PEC sweep at the same
+(ka, cpr, clear_cells), since rasterization does not depend on the
+material value.
+  * Measured a_eff/a at every gated coarse point (cpr=6.4): ka=0.50
+    a_eff/a=0.988032 (N=1082, -1.197%), ka=0.75 a_eff/a=0.988032
+    (N=1082, -1.197%), ka=1.00 a_eff/a=0.989330 (N=1127, -1.067%),
+    ka=1.25 a_eff/a=0.995401 (N=1169, -0.460%). fine-rung WITNESS
+    (cpr=12.8, not gated): ka=0.75/1.00 a_eff/a=0.999168 (N=8952,
+    -0.083%).
+  * Reference-side shift, Mie(ka_eff, a_eff) - Mie(ka, a), at each gated
+    point: ka=0.50 -0.3026 dB, ka=0.75 -0.2788 dB, ka=1.00 -0.1913 dB,
+    ka=1.25 -0.0173 dB.
+  * Envelope consequence, recomputed ARITHMETICALLY from the already-
+    committed fixture rows (no FDTD re-run): coarse envelope 4.181 ->
+    4.164 dB, gate stays round-up(env x 1.5) = 6.3 dB (no movement here
+    — unlike the PEC fine rung, this leg's envelope was already close to
+    a 0.1 dB quantum boundary from below). fine-rung witness envelope
+    3.745 -> 3.765 dB, still comfortably (> 0.7x) below the coarse
+    envelope, so the "no fine rung gated" decision is unchanged. No gate
+    constant needs to move in this script; GATE_COARSE_DB below is
+    unaffected by this revision.
+  * Per-row geometric gate (PR #721 review, required change 8, NEW):
+    ``A_EFF_TOL_COARSE`` below asserts ``|a_eff/a - 1| <= 1.5%`` at
+    cpr=6.4 (measured worst case 1.197% above) — checks the geometry
+    claim SEPARATELY from the dB tolerance so a_eff can never silently
+    absorb a real rasterization regression.
+  * Centre offset and the falsifier: identical mechanism and per-point
+    numbers to the PEC sweep (same rasterization, same mesh) — see
+    ``16_pec_sphere_mie_ka_sweep.py``'s GEOMETRY-FIDELITY CONVENTION
+    note for the full derivation; not re-run independently here.
+  * ``claim_scope`` in the fixture payload below still states the OLD
+    (declared-radius) convention. Per PR #721 review required change 3,
+    updating it — and the internal-consistency assertions in
+    ``tests/test_rcs_dielectric_sphere_mie_gates.py`` (:254-277, both
+    the ``rfx_monostatic_dbsm`` and ``mie_dbsm`` halves) and the
+    AST-pinned prose binding (:102-121) — is deferred to the next
+    ``--write-fixture`` regeneration, done in lockstep with the fixture
+    and artifact JSON so the suite never observes a mismatched pair.
+
 NOTE on preflight: this script drives the functional ``compute_rcs`` entry
 point, which runs NO preflight. The operating-point guarantees (internal-
 wavelength floor, cells-per-radius floor, cell-unit clearance, transit-scaled
@@ -147,6 +201,11 @@ KA_FINE_WITNESS = [0.75, 1.0]   # cpr-12.8 scan committed as WITNESS, not gated
 # constant to the fixture record (PR #475 D1/D2 lessons). No silent change.
 GATE_COARSE_DB = 6.3    # scan envelope 4.18 dB (ka=1.25, clearance 30)
 
+# Per-row geometric gate on the reference convention itself (issue #725
+# required change 8) — see the module docstring's GEOMETRY-FIDELITY
+# CONVENTION note. Measured worst case at cpr=6.4 is 1.197%.
+A_EFF_TOL_COARSE = 0.015   # 1.5% of declared radius, cpr=6.4
+
 
 # --------------------------------------------------------------------------- #
 # Dielectric Mie oracle (Bohren & Huffman), re-derived in-script + witnesses.
@@ -208,6 +267,16 @@ def validate_oracle() -> dict:
 
 
 def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
+    """One monostatic point at the derived operating point. Returns a record.
+
+    Reference convention (issue #725, applied 2026-08-27 — see the module
+    docstring's GEOMETRY-FIDELITY CONVENTION note): the Mie series below is
+    evaluated at the REALIZED effective radius ``a_eff``, derived from the
+    occupied-cell count of the rasterized sphere, not the declared
+    ``radius``. ``pi_a2`` is the ONE variable both ``mie_dbsm`` and
+    ``rfx_sigma_over_pi_a2`` consume, so the two normalizations move
+    together by construction.
+    """
     radius = ka * LAM / (2 * np.pi)
     res = max(RES_FLOOR, int(np.ceil(2 * np.pi * cpr / ka)))
     dx = LAM / res
@@ -217,6 +286,9 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
     n_steps = int(max(700, np.ceil(2.2 * domain / C0 / grid.dt)) * steps_mult)
     center = (domain / 2,) * 3
     eps_r, sigma = rasterize(grid, [(Sphere(center=center, radius=radius), EPS_R, 0.0)])
+    n_occupied = int(np.sum(np.asarray(eps_r) > 1.0))
+    a_eff = (3 * n_occupied * dx ** 3 / (4 * np.pi)) ** (1.0 / 3.0)
+    ka_eff = 2 * np.pi * a_eff / LAM
     mats = MaterialArrays(eps_r=eps_r, sigma=sigma,
                           mu_r=jnp.ones(grid.shape, dtype=jnp.float32))
     t0 = time.time()
@@ -231,14 +303,17 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
         # no-op for this sweep at 2x the compute (PR #476 review, F1).
     )
     wall = time.time() - t0
-    pi_a2 = np.pi * radius ** 2
+    pi_a2 = np.pi * a_eff ** 2   # REALIZED effective radius (issue #725 option 1)
     mono = float(result.monostatic_rcs[0])
-    mie_over = mie_backscatter_over_pi_a2(M_IDX, ka)
+    mie_over = mie_backscatter_over_pi_a2(M_IDX, ka_eff)
     mie_dbsm = float(10 * np.log10(mie_over * pi_a2))
     return {
         "ka": ka, "cells_per_radius": cpr, "clear_cells": clear_cells,
         "resolution": res, "grid": list(grid.shape), "n_steps": n_steps,
         "a_over_dx": round(radius / dx, 2),
+        "n_occupied": n_occupied,
+        "a_eff_over_a": round(a_eff / radius, 6),
+        "ka_eff": round(ka_eff, 4),
         "rfx_monostatic_dbsm": round(mono, 4),
         "mie_dbsm": round(mie_dbsm, 4),
         "rfx_sigma_over_pi_a2": round(10 ** (mono / 10.0) / pi_a2, 6),
@@ -253,7 +328,7 @@ def _fmt(r):
             f"clear={r['clear_cells']:2d} grid={tuple(r['grid'])} "
             f"steps={r['n_steps']:5d}  rfx {r['rfx_monostatic_dbsm']:8.2f} dBsm "
             f"vs Mie {r['mie_dbsm']:8.2f}  delta {r['delta_db']:+6.2f} dB "
-            f"({r['wall_s']:.0f}s)")
+            f"a_eff/a={r['a_eff_over_a']:.4f} ({r['wall_s']:.0f}s)")
 
 
 def main(argv):
@@ -272,8 +347,10 @@ def main(argv):
         r = run_point(ka, COARSE_CPR, CLEAR_CELLS_DEFAULT)
         gated.append(r)
         passed = abs(r["delta_db"]) <= GATE_COARSE_DB
-        ok &= passed
-        print(_fmt(r) + ("  PASS" if passed else "  FAIL"))
+        aeff_ok = abs(r["a_eff_over_a"] - 1.0) <= A_EFF_TOL_COARSE
+        ok &= passed and aeff_ok
+        print(_fmt(r) + ("  PASS" if passed else "  FAIL")
+              + ("" if aeff_ok else f"  A_EFF_OVER_A FAIL ({r['a_eff_over_a']:.4f})"))
 
     # No gated fine rung — a measured decision (module docstring): the
     # cpr-12.8 clearance scan (committed below as fine_rung_witness)
