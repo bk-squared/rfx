@@ -159,12 +159,17 @@
     "eps_r": 3.66,
     "f_max_hz": 5000000000.0,
     "h_sub_m": 0.000254,
+    "h_sub_realized_m": 0.0003,
     "l_line_m": 0.01,
     "n_freqs": 30,
+    "n_z_sub_realized": 6,
     "num_periods": 12,
     "port_margin_m": 0.002,
     "purpose": "rfx-side committed reference for #490 lane 2 (MSL phase referee)",
-    "w_trace_m": 0.0006
+    "trace_y_hi_realized_m": 0.0015499999999999984,
+    "trace_y_lo_realized_m": 0.0009499999999999995,
+    "w_trace_m": 0.0006,
+    "w_trace_realized_m": 0.0005999999999999989
   },
   "reference_plane_geometry": {
     "_grid": {

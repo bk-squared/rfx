@@ -119,6 +119,94 @@ reference.py``) was run at dx=50um for the SAME reason -- neither side
 reuses the committed dx=80um fixture.
 
 ============================================================================
+MESH CONVENTION (issue #723, 2026-08-27) -- keep dx=50um, build on rfx's
+REALIZED board, not its declared one
+============================================================================
+h_sub=254um/dx=50um above is the DECLARED substrate; it is off-lattice
+(5.08 cells) so the rfx fixture producer's rasterizer realizes h_sub as
+300um, not 254um (``sim.fidelity_report()``, quoted verbatim in
+``build_msl_thru_phase_dx50um_reference.py``'s own docstring: "z:
+declared [0.0, 254.0] um -> realized [0.0, 300.0] um"). Two options
+were considered: (a) pick a dx that realizes h_sub exactly (dx=50.8um =
+h_sub/5), or (b) keep dx=50um and build Stage B on rfx's REALIZED
+300um board. (b) is what this script does, for a reason SPECIFIC to
+this lane and not a re-litigation of cv06b's choice: dx=50.8um breaks
+the ``ref_plane_shift`` this script's entire reference-plane comparison
+depends on. Measured (issue #723 review): at dx=50um both ports'
+``ref_plane_shift`` land exactly on-lattice, 2500.0000um = 50.0000
+cells; at dx=50.8um they land at 2470.4000um (48.6299 cells) and
+2500.4000um (49.2205 cells) -- asymmetric AND off-lattice, which would
+reintroduce exactly the reference-plane ambiguity this script exists to
+resolve (see "DECLARED QUESTION" above). dx=50um was kept and the
+BOARD, not the mesh, was fixed to match.
+
+Consequence, sourced from the fixture's ``meta`` (populated by
+``_realized_board_geometry`` in the producer script) via ``layout`` in
+``_stage_b_layout``/``_build_stage_b`` here:
+  - ``h_sub`` (Stage B) = ``meta['h_sub_realized_m']`` = 300um, not the
+    declared 254um. ``B_H_SUB_M`` (254e-6) remains ONLY the declared-vs-
+    declared drift guard in ``_assert_matches_rfx_fixture``.
+  - ``meta['w_trace_realized_m']`` is carried in ``layout`` too (for any
+    reader/test that wants it standalone) but Stage B's own geometry
+    build does not need it as a separate variable: it is already baked
+    into the realized ``trace_y_lo``/``trace_y_hi`` bounds below.
+    Numerically ~600um at THIS fixture (W_TRACE=600um DOES divide
+    dx=50um exactly, 12 cells) -- the width itself is not what moves
+    here; the placement is (next bullet).
+  - ``trace_y_lo``/``trace_y_hi`` = ``meta['trace_y_lo_realized_m']`` /
+    ``meta['trace_y_hi_realized_m']`` -- rfx's ACTUAL realized trace
+    bounds, NOT re-derived as ``ly_clear/2 +/- w_trace/2``. Measured:
+    rfx's realized trace centre is 1250.0um, but rfx's realized
+    substrate centre is 1225.0um (both this fixture) -- a 25um
+    (half-cell) offset, because the trace is drawn symmetric about the
+    DECLARED domain centre while the substrate box realizes
+    asymmetrically. Re-deriving Stage B's trace as
+    "substrate-centre +/- width/2" would land Stage B's trace at 1225um
+    -- 25um from where rfx's own trace actually sits. This fix
+    DELIBERATELY copies rfx's off-centre placement onto Stage B instead,
+    so both solvers describe the identical board, asymmetry included.
+  - The ``#325``-class drift guard right before ``mesh.AddLine("z",
+    z_lines_sub)`` now asserts Stage B's own rasterized substrate cell
+    count against ``meta['n_z_sub_realized']`` (rfx's OWN realized cell
+    count, 6 at this fixture) instead of ``round(B_H_SUB_M/B_DX_M)``
+    (5, the declared-board count) -- the old assert would fail by
+    construction post-fix (6 != 5) even when Stage B and rfx agree with
+    EACH OTHER, which is what this guard is actually meant to catch.
+
+NOT FIXED by this change, and not this issue's to fix: this same 254um
+substrate at dx=50um is ALSO what
+``scripts/diagnostics/build_msl_notch_rfx_dx50.py`` (the cv06b/E4
+fixture's rfx-side producer, a DIFFERENT script/fixture from this one)
+realizes -- that producer carries the identical #723 defect and is
+EXPLICITLY DEFERRED, not fixed, in this change; see its own docstring.
+rfx's realized trace not being centred on rfx's own realized board
+(above) is a rasterization-convention artifact of THIS producer's
+``_build_sim``, not a Stage B bug -- filed for awareness, not action,
+alongside this note.
+
+Regenerating the committed fixture (a fresh FDTD solve) is NOT required
+just to add the realized-geometry fields above: see
+``_realized_board_geometry`` in ``build_msl_thru_phase_dx50um_
+reference.py`` (grid + material assembly only, no time stepping) and
+that script's docstring for why a metadata-only patch of the committed
+JSON is the preferred re-pin path over a full re-run (#723 REQUIRED
+11). Until the fixture is regenerated with these fields,
+``_stage_b_layout`` raises ``KeyError`` naming exactly what is missing
+and how to regenerate, rather than silently falling back to the
+declared board.
+
+Downstream truth this change requires updating (not silently left
+stale): ``tests/test_msl_phase_referee_header.py``'s
+``test_f_notch_an_matches_cv06b_closed_form`` recomputes
+``u = 600e-6/254e-6`` and calls it "the SAME closed form
+06b_msl_notch_filter_uniform.py uses" -- under cv06b's OWN #723 fix,
+cv06b now computes ``u`` from ITS realized 635.0um trace width, not the
+declared 600um, so the two scripts' closed forms describe two DIFFERENT
+boards even though the test stays numerically green (nothing here
+imports cv06b's ``u``). See that test's own docstring for the correction
+and ``manifest.json``'s matching ``references[0].name`` wording.
+
+============================================================================
 PRECEDENT TICK-LIST (2026-08-03 addendum to ``external_solver_
 comparator.md``: quote precedent headers IN FULL, tick every recorded
 failure against this design BEFORE writing code)
@@ -883,6 +971,19 @@ A_N_FREQS = 1601  # tutorial's own np.linspace(1e6, f_max, 1601)
 # Stage B geometry constants -- declared here for readability, CROSS-
 # CHECKED against the committed rfx fixture at runtime (see
 # _assert_matches_rfx_fixture). All lengths in metres.
+#
+# B_H_SUB_M / B_W_TRACE_M are the DECLARED-nominal values (issue #723):
+# they feed ONLY _assert_matches_rfx_fixture's declared-vs-declared drift
+# guard (confirming this script and the fixture producer still declare
+# the SAME nominal board). They are NOT what Stage B actually builds --
+# 254/50=5.08 substrate cells is off-lattice, so the rfx fixture producer
+# (``scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py``)
+# rasterizes h_sub to 300um, not 254um (fidelity_report, quoted in that
+# script's docstring). ``_build_stage_b`` sources the REALIZED h_sub,
+# w_trace and trace y-placement from ``layout`` (populated by
+# ``_stage_b_layout`` from the fixture's ``meta['h_sub_realized_m']``
+# etc.) so both solvers land on the SAME 300um board -- see "Mesh
+# convention" further down.
 # ---------------------------------------------------------------------------
 B_EPS_R = 3.66
 B_H_SUB_M = 254e-6
@@ -1238,6 +1339,23 @@ def _stage_b_layout(fixture: dict) -> dict:
     convention.
     """
     _assert_matches_rfx_fixture(fixture)
+    meta = fixture["meta"]
+    realized_keys = (
+        "h_sub_realized_m", "w_trace_realized_m",
+        "trace_y_lo_realized_m", "trace_y_hi_realized_m",
+        "n_z_sub_realized",
+    )
+    missing = [k for k in realized_keys if k not in meta]
+    if missing:
+        raise KeyError(
+            f"rfx fixture {RFX_FIXTURE_PATH!r} predates issue #723's "
+            f"realized-geometry fields {missing} -- regenerate with "
+            f"'python scripts/diagnostics/build_msl_thru_phase_dx50um_"
+            f"reference.py --output {RFX_FIXTURE_PATH}' (adds these "
+            f"fields only; the freqs/S11/S21/Z0/beta arrays are governed "
+            f"by #723 REQUIRED 11 -- a metadata-only patch is the "
+            f"preferred re-pin path over a full re-solve)."
+        )
     geom = fixture["reference_plane_geometry"]
     grid = geom["_grid"]
 
@@ -1270,6 +1388,18 @@ def _stage_b_layout(fixture: dict) -> dict:
         "ref_plane_shift_port0_m": ref_plane_shift_port0_m,
         "ref_plane_shift_port1_m": ref_plane_shift_port1_m,
         "l12_m": l12_m,
+        # REALIZED (rasterized) board geometry, issue #723 -- see the
+        # Stage B geometry constants block above. trace_y_lo/hi are
+        # sourced VERBATIM from rfx's own realized bounds (not
+        # re-symmetrized about ly_clear/2), deliberately reproducing
+        # rfx's off-centre trace (realized trace centre 1250.0um vs
+        # realized substrate centre 1225.0um at this fixture) so Stage B
+        # solves the SAME board rfx did, asymmetry included.
+        "h_sub_realized_m": meta["h_sub_realized_m"],
+        "w_trace_realized_m": meta["w_trace_realized_m"],
+        "trace_y_lo_realized_m": meta["trace_y_lo_realized_m"],
+        "trace_y_hi_realized_m": meta["trace_y_hi_realized_m"],
+        "n_z_sub_realized": meta["n_z_sub_realized"],
     }
 
     # Config assertions (a regression here is a script bug, exit 3).
@@ -1453,11 +1583,13 @@ def _stage_b_substrate_z_mesh(h_sub: float, dx: float) -> tuple[np.ndarray, int]
     rasterization class (intended vs ACTUAL cell count silently
     disagreeing; rfx's own do-not-repeat here covered dx choice, not
     z-line PLACEMENT). Builds a uniform sub-mesh spanning EXACTLY
-    [0, h_sub] with ``round(h_sub/dx)`` cells (5 at this fixture's own
-    h_sub=254um/dx=50um -- NOT an even divisor, so each substrate cell is
-    ~50.8um, not exactly dx -- redistributing the mismatch across the
-    substrate instead of leaving one arbitrary sliver cell wherever an
-    unguided arange happened to cross z=h_sub).
+    [0, h_sub] with ``round(h_sub/dx)`` cells. Issue #723 update: ``h_sub``
+    passed in here is now rfx's REALIZED substrate thickness (300um at
+    this fixture's dx=50um), not the DECLARED 254um -- 300/50=6 cells
+    exactly (the declared 254um was NOT an even divisor at 5.08 cells,
+    which is the off-lattice defect #723 fixes by building Stage B on
+    the same board rfx actually solves). This function's own arithmetic
+    is unchanged; only its caller's ``h_sub`` argument changed meaning.
 
     Pure arithmetic, openEMS-free -- testable directly (see the header
     test's own rasterized-substrate-cell-count pin).
@@ -1556,11 +1688,15 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     y0, y1 = -pml_y, ly_clear + pml_y
     z1 = lz_clear + pml_z_hi  # z=0 is the PEC ground plane (z_lo, no padding)
 
-    y_centre = ly_clear / 2.0
-    w_trace = B_W_TRACE_M / unit
-    h_sub = B_H_SUB_M / unit
-    trace_y_lo = y_centre - w_trace / 2.0
-    trace_y_hi = y_centre + w_trace / 2.0
+    # REALIZED geometry (issue #723) -- NOT B_H_SUB_M/B_W_TRACE_M (those
+    # are declared-nominal, see the Stage B constants block above) and
+    # NOT re-symmetrized about ly_clear/2.0: trace_y_lo/hi come straight
+    # from rfx's own realized bounds (which already bake in the realized
+    # width) so this board matches rfx's exactly, off-centre trace
+    # included (see "Mesh convention" docstring section).
+    h_sub = layout["h_sub_realized_m"] / unit
+    trace_y_lo = layout["trace_y_lo_realized_m"] / unit
+    trace_y_hi = layout["trace_y_hi_realized_m"] / unit
 
     fdtd = openEMS(NrTS=nrts, EndCriteria=end_criteria)
     fdtd.SetGaussExcite(B_F0_HZ, B_FC_HZ)
@@ -1591,10 +1727,21 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
 
     # m6 fix: explicit substrate-top line (z=h_sub), not left to an
     # unguided uniform arange (see _stage_b_substrate_z_mesh docstring).
+    # #723: h_sub is now rfx's REALIZED substrate height (300um at this
+    # fixture, not the declared 254um), so the guard below cross-checks
+    # against rfx's OWN realized cell count (layout["n_z_sub_realized"],
+    # from the fixture's fidelity_report) rather than
+    # round(B_H_SUB_M/B_DX_M) -- asserting against the declared constant
+    # would be comparing Stage B's realized cell count to a DIFFERENT
+    # (declared) board and fail by construction (6 != 5) even when Stage
+    # B and rfx agree with each other.
     z_lines_sub, n_sub = _stage_b_substrate_z_mesh(h_sub, dx)
-    assert n_sub == round(B_H_SUB_M / B_DX_M), (
-        f"Stage B substrate rasterized cell count drifted: got {n_sub}, "
-        f"expected round(h_sub/dx)={round(B_H_SUB_M / B_DX_M)} (#325 class)"
+    assert n_sub == layout["n_z_sub_realized"], (
+        f"Stage B substrate rasterized cell count does not match rfx's "
+        f"own realized substrate cell count: got {n_sub}, rfx fixture "
+        f"says {layout['n_z_sub_realized']} (#723 class -- Stage B and "
+        f"rfx must land on the SAME realized board, not just the same "
+        f"declared one)."
     )
     z_lines_air = np.arange(h_sub, z1 + 0.5 * dx, dx)
     mesh.AddLine("z", z_lines_sub)

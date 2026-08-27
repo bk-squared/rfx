@@ -198,12 +198,27 @@ def test_declared_question_and_governance_notes_present():
 
 
 def test_f_notch_an_matches_cv06b_closed_form():
-    """Independently recompute the SAME Hammerstad-Jensen quarter-wave-notch
-    closed form ``validation/crossval/06b_msl_notch_filter_uniform.py`` uses
-    for this identical substrate/trace/stub combination, and check the two
-    land on the same value (5 sig figs) -- a regression lock on the
-    reproduce-gate's own oracle, and a cross-check that this script did not
-    silently diverge from the repo's existing validated formula.
+    """Independently recompute the Hammerstad-Jensen quarter-wave-notch
+    closed form ``validation/crossval/06b_msl_notch_filter_uniform.py``
+    uses, on the DECLARED 600um/254um board, and check the two land on the
+    same value (5 sig figs) -- a regression lock on the reproduce-gate's
+    own oracle, and a cross-check that this script did not silently
+    diverge from the repo's existing validated formula.
+
+    issue #723 (2026-08-27) CORRECTION: this is the SAME formula, but NOT
+    the same board as cv06b's own runtime output any more. ``module.
+    F_NOTCH_AN_HZ`` here is Stage A's value (A_MSL_WIDTH_UM=600,
+    A_SUBSTRATE_THICKNESS_UM=254 -- realized EXACTLY, Stage A's z-mesh is
+    an explicit ``linspace(0, 254, 5)``, not an off-lattice uniform
+    arange), so ``w_trace``/``h_sub`` below correctly describe what Stage
+    A solves. cv06b itself, under its own #723 fix, now computes ``u``
+    from its REALIZED trace width (635.0um, not the declared 600um) --
+    its analytic notch moved 3.6872 -> 3.6790 GHz. This test's hardcoded
+    600e-6/254e-6 therefore reproduces STAGE A's board and this test's own
+    ``expected``, not cv06b's current runtime ``F_NOTCH_AN`` -- the
+    assertion below stays numerically green because it was never
+    comparing against cv06b's live output (no import of cv06b exists
+    here), only against this module's OWN Stage-A constant.
     """
     module = _load_referee_module()
     c0 = 2.998e8
@@ -324,6 +339,17 @@ def test_ref_plane_shift_transform_independently_rederived():
             "w_trace_m": module.B_W_TRACE_M, "l_line_m": module.B_L_LINE_M,
             "port_margin_m": module.B_PORT_MARGIN_M, "dx_m": module.B_DX_M,
             "f_max_hz": module.B_F_MAX_HZ,
+            # issue #723: _stage_b_layout requires these unconditionally
+            # (a production fixture missing them raises KeyError rather
+            # than silently falling back to the declared board -- see
+            # that function's own docstring/comment). This test is about
+            # the ref_plane_shift TRANSFORM, not the realized-geometry
+            # values, so these are placeholders satisfying the contract.
+            "h_sub_realized_m": module.B_H_SUB_M,
+            "w_trace_realized_m": module.B_W_TRACE_M,
+            "trace_y_lo_realized_m": 0.0,
+            "trace_y_hi_realized_m": module.B_W_TRACE_M,
+            "n_z_sub_realized": round(module.B_H_SUB_M / module.B_DX_M),
         },
         "reference_plane_geometry": {
             "msl_0": {"feed_x_m": 0.002, "direction": "+x", "probe0_x_m": 0.0045},
@@ -875,10 +901,19 @@ def test_stage_b_substrate_z_mesh_rasterized_cell_count():
 
 def test_build_stage_b_asserts_substrate_cell_count_matches_constants():
     """The wiring inside _build_stage_b (not just the pure helper above)
-    must assert n_sub == round(B_H_SUB_M/B_DX_M) -- pinned by reading the
-    source for the assertion rather than only exercising the pure
-    function, since a future edit could call the helper with the wrong
-    arguments and still "pass" the isolated unit test above."""
+    must assert n_sub against something -- pinned by reading the source
+    for the assertion rather than only exercising the pure function,
+    since a future edit could call the helper with the wrong arguments
+    and still "pass" the isolated unit test above.
+
+    issue #723 (2026-08-27): the assertion target changed from
+    ``round(B_H_SUB_M / B_DX_M)`` (the DECLARED-board cell count, 5) to
+    ``layout["n_z_sub_realized"]`` (rfx's own REALIZED-board cell count,
+    6) -- the declared target would fail by construction post-fix even
+    when Stage B and rfx agree with each other, since h_sub is now
+    sourced from the fixture's realized value, not B_H_SUB_M. Both forms
+    satisfy this test's ``"n_sub =="`` fallback; the point pinned here is
+    only that SOME n_sub cross-check still exists in the wiring."""
     module = _load_referee_module()
     import inspect
     src = inspect.getsource(module._build_stage_b)

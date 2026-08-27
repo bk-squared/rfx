@@ -32,18 +32,122 @@ External cross-check (openEMS, 2026-07-05):
   working interpretation (open-end fringing as the driver of the split) is
   revised: the FEM value indicates the fringing correction is ~1-2%. The
   "err<15% vs analytic" gate below is rfx-vs-ANALYTIC and is NOT an
-  OpenEMS-class number. IMPORTANT: this example's shipped dx=80µm mesh (h_sub/dx=3.175, a
-  mixed-cell substrate) is UNDER-RESOLVED — at that mesh the openEMS MSL-port
-  extraction is itself non-physical (|S11|²+|S21|²≫1), so no external comparison
-  is valid at dx=80µm. Use dx≤64µm (≥4 substrate cells) for external-class work.
+  OpenEMS-class number. HISTORICAL: this paragraph describes the dx=80µm
+  mesh this script shipped at through 2026-08 — see "Mesh convention"
+  below for the dx=63.5µm mesh it ships at now. CAVEAT this fix does NOT
+  resolve: the E4 fixture (``tests/fixtures/msl_notch_e4/``) was produced
+  by ``scripts/diagnostics/build_msl_notch_rfx_dx50.py`` at DX=50µm, where
+  h_sub/dx=5.08 is itself off-lattice and realizes h_sub=300µm (not
+  254µm) — that producer carries the SAME #722/#723 defect this script
+  just fixed and is EXPLICITLY DEFERRED (see its own docstring), not
+  fixed here. So as of this change the E4/Palace comparison above and
+  this script solve DIFFERENT boards (300µm vs 254µm) — treat the
+  "rfx 3.63 GHz" and "Re(Z0) 57.9 Ω" figures above as belonging to the
+  300µm board, not to this script's own output.
+
+Mesh convention (issue #723, 2026-08-27):
+  DX = H_SUB / 4 = 63.5µm (was 80µm, h_sub/dx=3.175 — the "IMPORTANT"
+  paragraph above already called that mesh UNDER-RESOLVED for
+  external-class work). gcd(254, 600) = 2µm, so no single cubic cell size
+  makes both H_SUB and W_TRACE land exactly on the lattice at any sane
+  cost (63.5µm: 600/63.5=9.449 cells). This script resolves that by
+  REALIZING H_SUB exactly (the dimension the port-resolution preflight
+  checks and the Z0-bias sweep below both key off) and QUOTING THE
+  REALIZED W_TRACE in the analytic reference, rather than re-declaring
+  W_TRACE on a lattice multiple. ``_realized_trace_width()`` reads that
+  value live from ``sim.fidelity_report()`` after ``_build_sim()`` — NOT
+  a ``round(W_TRACE / DX) * DX`` re-derivation, which gives the WRONG
+  answer here (571.5µm / 9 cells) because the half-open ``[lo, hi)`` node
+  rasterization (``rfx.geometry.csg.Box``) counts the OVERLAPPED node
+  span, not the declared extent rounded to the nearest cell.
+
+  Verified via ``sim.fidelity_report()`` at DX=H_SUB/4 (this run, quoted
+  verbatim):
+    "geometry[0] 'ro4350b' ... z: declared [0.0, 254.0] um -> realized
+    [0.0, 254.0] um | face residuals (0.0, 0.0) um | extent 254.0 ->
+    254.0 um" — substrate thickness now EXACT (was +25.98% at dx=80µm).
+    "geometry[1] 'pec' ... y: declared [1016.0, 1616.0] um -> realized
+    [1016.0, 1651.0] um | face residuals (0.0, 35.0) um | extent 600.0 ->
+    635.0 um" and "geometry[2] 'pec' ... x: ... extent 600.0 -> 635.0 um"
+    — main trace and stub realize the SAME 635.0µm width (10 cells), so
+    ``u = W_realized / H_SUB`` = 2.500 describes one consistent board
+    (this was NOT true at dx=80µm: 560µm on the trace vs 640µm on the
+    stub). Total: 5 entities, 9 findings (was 12 at dx=80µm) — the two
+    retired findings are BOTH MSL-port substrate-resolution warnings
+    (below); the off-lattice conductor-edge warning is NOT retired (see
+    "Preflight honesty" below).
+
+  Reference-formula effect: u 2.362 (declared) -> 2.500 (realized) moves
+  ε_eff_HJ 2.869 -> 2.882 and the analytic notch 3.6872 -> 3.6790 GHz
+  (-0.22%) — small next to the current 15% gate.
+
+  Z0 anchor: ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` runs this
+  SAME W=600/h=254 RO4350B fixture through a predeclared dx grid that
+  includes this exact mesh — committed row (``msl_z0_bias_floor_sweep/
+  msl_z0_bias_floor_sweep.json``, label "aligned h_sub/4"): dx_um=63.5,
+  z0_measured_ohm=46.098, z0_hj_ohm=47.895 (HJ on the DECLARED 600/254
+  board). ``rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff``:
+  HJ(635µm, 254µm, 3.66) = 46.18 Ω, 0.18% from the measured 46.10 Ω, vs
+  HJ(600µm, 254µm, 3.66) = 47.90 Ω, 3.9% away — comparator-first evidence
+  that the realized width, not the declared one, is the right analytic
+  anchor on this mesh. Predicted post-fix median Re(Z0) ≈ 46.1 Ω, 15.2%
+  above the (40, 65) Ω gate floor below (window unchanged; NOT re-pinned
+  by this change — that needs a fresh solve, see "Runtime" below).
+
+  Runtime and the envelope this re-pins: measured grid shape (this run,
+  ``sim._build_grid().shape``) dx=80µm -> (442, 232, 31) = 3,178,864
+  cells; dx=63.5µm -> (553, 280, 37) = 5,729,080 cells (1.802x). Combined
+  with the ~1.260x more timesteps (dt ∝ dx), wall clock scales ~2.271x.
+  The committed baseline (``_06b_notch_uniform_logs/20260809T_run.log``)
+  measured "... done in 2599.6s" at dx=80µm -> a ~5902s (98 min) CPU
+  projection at dx=63.5µm on a GPU-less pod (NOT measured — no solve was
+  run to produce this docstring). That same log's PRE-FIX envelope,
+  which a fresh run at this mesh must re-pin with written provenance
+  (not silently, and not by this script's authors alone):
+  "Notch frequency (rfx) = 3.627 GHz", "Notch frequency error = 1.63 %",
+  "Notch depth |S21| = -34.2 dB", "Re(Z0) median = 57.9 Ω".
+
+  KNOWN LIMITATION, filed separately (NOT folded into #723): at every
+  ALIGNED dx, ``add_msl_port``'s own cross-section audit
+  (``rfx/sources/msl_port.py::msl_cross_section_span``) independently
+  rasterizes the substrate height and overshoots it by one cell — the
+  z_hi = h_sub face lands exactly on a node and ``Grid.position_to_index``
+  (round-to-nearest) resolves to the cell above. Measured during the
+  #723 review: n_z_sub=5 rows / 317.5µm at DX=H_SUB/4 (was n_z_sub=4 /
+  320µm at the old dx=80µm, where it coincidentally matched the then
+  26%-too-thick FDTD board), so the port's quasi-static Laplace mode
+  model solves a ~317.5µm substrate with the trace strip at z=317.5µm
+  while the FDTD board is exactly 254µm with the PEC wall at z=254µm
+  (z0_static 53.29 -> 56.88 Ω across that same measurement). This is an
+  rfx API rasterization behaviour, not a script-convention choice, and
+  the extraction reads real FDTD V/I fields rather than the port's
+  z0_static, so its effect is bounded by the committed
+  msl_z0_bias_floor_sweep row above (gamma_implied=-0.019,
+  mean_s11_raw=0.0223) — it does not block this fix, but needs its own
+  issue against ``msl_cross_section_span``.
+
+  Preflight honesty: this mesh retires BOTH MSL-port substrate-resolution
+  warnings ("only 3 substrate cell(s) in z ... Refine to dx ≤ 64µm" and
+  "h_sub/dx = 3.175 ... mixed-cell danger zone", both present at dx=80µm,
+  both ABSENT at dx=63.5µm). It does NOT retire, and marginally WORSENS,
+  the off-lattice conductor-edge warning — this run's own preflight,
+  quoted verbatim: dx=80µm "geometry[1] 'pec' y: extent 600µm, worst face
+  residual 28µm (4.67% of the extent)" -> dx=63.5µm "geometry[1] 'pec' y:
+  extent 600µm, worst face residual 28.5µm (4.75% of the extent)" — the
+  expected price of quoting the realized width instead of re-declaring
+  W_TRACE on a lattice multiple.
 
 Scope:
-  - Uniform mesh dx=80µm (the current narrow gate at ~3 substrate cells).
-    The retired cv06 used non-uniform; ``add_msl_port`` promotion remains
-    uniform-lane only until a separate non-uniform evidence ladder exists.
+  - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=
+    3.175, an UNDER-RESOLVED mixed-cell substrate per the "External
+    cross-check" paragraph above and this script's own MSL-port
+    preflight). The retired cv06 used non-uniform; ``add_msl_port``
+    promotion remains uniform-lane only until a separate non-uniform
+    evidence ladder exists.
   - Smaller domain than cv06 (line length 30mm vs 100mm) to keep
     runtime modest.
-  - Stub length 12mm (same as cv06) → analytic notch ~3.69 GHz.
+  - Stub length 12mm (same as cv06) → analytic notch ~3.68 GHz (realized
+    width; see "Mesh convention").
 
 Authoritative MSL port correctness gates: the unit + integration tests
 under ``tests/test_msl_port*.py``. This crossval is a **physics-level
@@ -51,6 +155,8 @@ demo** that the new port API can resolve a stub-notch resonance without
 the wire-port + absorber workaround.
 
 Run: ``python validation/crossval/06b_msl_notch_filter_uniform.py``
+(CPU-only projection ~98 min; see "Runtime" above — not measured by this
+change).
 """
 
 import os
@@ -77,12 +183,8 @@ STUB_LEN = 12e-3
 L_LINE = 30e-3        # vs cv06's 100mm
 PORT_MARGIN = 2e-3
 F_MAX = 7e9
-DX = 80e-6            # current narrow-gate cell size
-
-# Hammerstad-Jensen ε_eff for analytic notch frequency
-u = W_TRACE / H_SUB
-EPS_EFF = (EPS_R + 1) / 2 + (EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
-F_NOTCH_AN = C0 / (4 * STUB_LEN * np.sqrt(EPS_EFF))
+DX = H_SUB / 4         # 63.5um — REALIZE-DECLARED on z (issue #723); see
+                        # "Mesh convention" below.
 
 
 def _build_sim() -> Simulation:
@@ -138,18 +240,49 @@ def _build_sim() -> Simulation:
     return sim
 
 
+def _realized_trace_width(sim: Simulation) -> float:
+    """Main-trace width as the RASTERIZER actually realizes it (metres).
+
+    Read live from ``sim.fidelity_report()`` rather than re-derived with a
+    ``round(W_TRACE / DX) * DX`` formula: the half-open ``[lo, hi)`` node
+    convention (``rfx.geometry.csg.Box``) counts the OVERLAPPED node span,
+    not the rounded declared extent, and the two disagree by a cell at this
+    mesh (571.5um / 9 cells from the round() formula vs the true 635.0um /
+    10 cells — see the "Mesh convention" docstring section, issue #723
+    BLOCKER 1). ``geometry[1]`` is the main trace (added first of the two
+    PEC bodies in ``_build_sim``); its y-axis is transverse to propagation.
+    """
+    report = sim.fidelity_report(print_report=False)
+    for item in report:
+        if item["entity"] == "geometry[1] 'pec'":
+            for ax in item["axes"]:
+                if ax["axis"] == "y":
+                    return float(ax["realized_extent_um"]) * 1e-6
+    raise RuntimeError(
+        "_realized_trace_width: could not find geometry[1] 'pec' y-axis in "
+        "sim.fidelity_report() — did _build_sim()'s geometry order change?"
+    )
+
+
 def main() -> int:
     print("=" * 70)
     print("Crossval 06b: MSL Notch Filter (uniform mesh + add_msl_port)")
     print("=" * 70)
-    print(f"εr={EPS_R}, h_sub={H_SUB*1e6:.0f}µm, W={W_TRACE*1e6:.0f}µm")
+    print(f"εr={EPS_R}, h_sub={H_SUB*1e6:.0f}µm, W_declared={W_TRACE*1e6:.0f}µm")
     print(f"line length L={L_LINE*1e3:.0f}mm, stub L_stub={STUB_LEN*1e3:.1f}mm")
-    print(f"u={u:.3f}, ε_eff_HJ={EPS_EFF:.3f}, "
-          f"analytic notch f={F_NOTCH_AN/1e9:.3f} GHz")
-    print(f"mesh: dx={DX*1e6:.0f}µm, n_z_sub={int(round(H_SUB/DX))}")
-    print()
+    print(f"mesh: dx={DX*1e6:.1f}µm, n_z_sub={int(round(H_SUB/DX))}")
 
     sim = _build_sim()
+
+    # Hammerstad-Jensen ε_eff for the analytic notch — from the REALIZED
+    # trace width, not the declared one (issue #723; see "Mesh convention").
+    w_realized = _realized_trace_width(sim)
+    u = w_realized / H_SUB
+    EPS_EFF = (EPS_R + 1) / 2 + (EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
+    F_NOTCH_AN = C0 / (4 * STUB_LEN * np.sqrt(EPS_EFF))
+    print(f"W_realized={w_realized*1e6:.1f}µm, u={u:.3f}, ε_eff_HJ={EPS_EFF:.3f}, "
+          f"analytic notch f={F_NOTCH_AN/1e9:.3f} GHz")
+    print()
 
     print("Preflight:")
     sim.preflight(strict=False)

@@ -118,20 +118,22 @@
         {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
         {"kind": "external-solver", "name": "OpenEMS matched-geometry dx=50 um notch artifact", "required_for_script_pass": false}
       ],
-      "claim_scope": "uniform add_msl_port notch demonstration under loose analytic gates plus the committed matched-geometry dx=50 um OpenEMS characterized envelope; not a broad MSL-port claim",
+      "claim_scope": "uniform add_msl_port notch demonstration under loose analytic gates, at dx=63.5um=h_sub/4 (issue #723, was dx=80um). The committed matched-geometry dx=50 um OpenEMS/E4 artifacts in artifact_paths are NOT the same board as this script solves post-#723: this script's own substrate now realizes h_sub=254um exactly, while the E4 rfx leg (scripts/diagnostics/build_msl_notch_rfx_dx50.py, deferred, not fixed by #723) still realizes h_sub=300um at its own dx=50um. Treat the E4/OpenEMS comparison as characterizing a DIFFERENT (300um) board until that script is also fixed. Not a broad MSL-port claim.",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/06b_msl_notch_filter_uniform.py",
         "tests/test_msl_notch_e4_comparison_gates.py",
-        "scripts/diagnostics/build_msl_notch_openems_comparison.py"
+        "scripts/diagnostics/build_msl_notch_openems_comparison.py",
+        "scripts/diagnostics/report_msl_envelope.py",
+        "tests/test_physics_gate_reporting.py"
       ],
       "artifact_paths": [
         "tests/fixtures/msl_notch_e4/comparison_summary.json",
         "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json",
         "tests/fixtures/msl_notch_e4/msl_stub_notch_openems_dx50.json"
       ],
-      "cpu_runner": {"excluded_reason": "CPU-infeasible: > 700 s on CPU because of the uniform fine mesh and MSL-port de-embedding. Run on GPU."},
+      "cpu_runner": {"excluded_reason": "CPU-infeasible: the committed dx=80um baseline measured 2599.6s on CPU (validation/crossval/_06b_notch_uniform_logs/20260809T_run.log); the dx=63.5um mesh this script now ships (issue #723) projects to ~5902s (~98 min) by the measured 2.271x cell/timestep scaling -- NOT itself measured, no CPU solve was run for this change. Run on GPU, or budget ~100 min CPU."},
       "scheduled_external_order": null,
       "failure_sentinel": null
     },
@@ -410,7 +412,7 @@
       "references": [
         {
           "kind": "analytic",
-          "name": "Hammerstad-Jensen quarter-wave open-stub notch closed form (Stage A reproduce-gate oracle -- the SAME formula validation/crossval/06b_msl_notch_filter_uniform.py uses for the identical substrate/trace/stub combination)",
+          "name": "Hammerstad-Jensen quarter-wave open-stub notch closed form (Stage A reproduce-gate oracle -- the SAME formula validation/crossval/06b_msl_notch_filter_uniform.py uses, but describing Stage A's own declared/exact 600um/254um board, NOT cv06b's own runtime u any more: cv06b's #723 fix computes u from ITS realized 635.0um trace width, not the declared 600um -- see 20_msl_phase_referee.py's 'Mesh convention' docstring section and tests/test_msl_phase_referee_header.py::test_f_notch_an_matches_cv06b_closed_form)",
           "required_for_script_pass": true
         },
         {
@@ -419,7 +421,7 @@
           "required_for_script_pass": true
         }
       ],
-      "claim_scope": "Issue #490 lane 2, promoted 2026-08-04 (#490 reviewer judgment, run-1 VESSL 369367251705): one geometry (RO4350B thru line, W=600um, h_sub=254um, L12=5mm), one mesh (dx=50um), single drive. GATED: Stage A reproduces MSL_NotchFilter.py's own notch frequency against the Hammerstad-Jensen closed form; Stage B gates EACH solver's own de-embedded angle(S21) against that SAME solver's own measured beta (self-consistency, a 3-degree budget derived from a +-4-cell reference-plane positional-uncertainty allowance, resolving-power tested against a planted single-port referral drop), plus passivity and a scale-free excitation/settling guard, over the 3.0-4.5GHz gate band. REPORTED, NOT GATED: the raw cross-solver angle(S21) difference and its dispersion-corrected residual, beta_rfx vs beta_openems, and both solvers' |S21| -- run-1 measured 22/30 bins <=1deg, only bin 0 (500MHz) exceeding 3deg (4.13deg), max 0.304deg inside the gated band. Sub-1GHz bins are EXCLUDED from any claim: the 5mm line is ~0.03 guide wavelengths at 500MHz, where three-point port extraction is ill-conditioned (openEMS reads |S21| up to 1.0087 there, and 74% of that bin's own passivity-balance excess traces to |S21|^2-1). CalcPort's ref_plane_shift referral ROTATION is UNEXERCISED on this fixture -- the effective shift measures 0.0 by construction (MeasPlaneShift's own stencil placement, not the referral transform, is what aligns the two solvers' reference planes here) -- and remains untested for a target plane that falls off-grid. Does not characterize a different geometry, mesh density, or multi-drive configuration.",
+      "claim_scope": "Issue #490 lane 2, promoted 2026-08-04 (#490 reviewer judgment, run-1 VESSL 369367251705): one geometry (RO4350B thru line, W_declared=600um, h_sub_declared=254um, L12=5mm), one mesh (dx=50um), single drive. Issue #723 (2026-08-27): h_sub_declared=254um is off-lattice at dx=50um (5.08 cells) and rasterizes to h_sub_realized=300um; Stage B now builds on rfx's REALIZED board (h_sub=300um, and rfx's own off-centre trace placement, realized centre 1250um vs realized substrate centre 1225um) rather than the declared one -- see the script's own 'Mesh convention' docstring section. Requires the committed rfx fixture to carry the realized-geometry fields _stage_b_layout added for #723 (regenerate via scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py if it predates them). GATED: Stage A reproduces MSL_NotchFilter.py's own notch frequency against the Hammerstad-Jensen closed form; Stage B gates EACH solver's own de-embedded angle(S21) against that SAME solver's own measured beta (self-consistency, a 3-degree budget derived from a +-4-cell reference-plane positional-uncertainty allowance, resolving-power tested against a planted single-port referral drop), plus passivity and a scale-free excitation/settling guard, over the 3.0-4.5GHz gate band. REPORTED, NOT GATED: the raw cross-solver angle(S21) difference and its dispersion-corrected residual, beta_rfx vs beta_openems, and both solvers' |S21| -- run-1 measured 22/30 bins <=1deg, only bin 0 (500MHz) exceeding 3deg (4.13deg), max 0.304deg inside the gated band. Sub-1GHz bins are EXCLUDED from any claim: the 5mm line is ~0.03 guide wavelengths at 500MHz, where three-point port extraction is ill-conditioned (openEMS reads |S21| up to 1.0087 there, and 74% of that bin's own passivity-balance excess traces to |S21|^2-1). CalcPort's ref_plane_shift referral ROTATION is UNEXERCISED on this fixture -- the effective shift measures 0.0 by construction (MeasPlaneShift's own stencil placement, not the referral transform, is what aligns the two solvers' reference planes here) -- and remains untested for a target plane that falls off-grid. Does not characterize a different geometry, mesh density, or multi-drive configuration.",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
