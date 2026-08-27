@@ -92,12 +92,29 @@ review, required change 1).
     moves, ``rfx_monostatic_dbsm`` is untouched): coarse envelope
     2.178 -> 2.195 dB, gate stays round-up(env x 1.5) = 3.3 dB; fine
     envelope 2.651 -> 2.731 dB, gate MOVES round-up(env x 1.5) 4.0 ->
-    4.1 dB. This is a real gate LOOSENING and is deliberately NOT
-    applied by this revision — GATE_FINE_DB below stays 4.0 pending a
-    live ``--write-fixture`` regeneration and a written root-cause,
-    per the no-silent-gate-loosening rule (PR #721 review, required
-    change 8). Re-pinning GATE_FINE_DB is the follow-up PR's job, not
-    this one's.
+    4.1 dB. That is a gate LOOSENING, so it is NOT applied: GATE_FINE_DB
+    stays 4.0. RESOLVED (follow-up, 2026-08-27) — this is the decision,
+    not a deferral, and the two checks that read the gate behave
+    differently, so both are recorded:
+      - this script's OWN runtime check (below, ``env_fine`` from the
+        live scan) asks ``GATE_FINE_DB >= env_fine`` and
+        ``GATE_FINE_DB <= gate_from_envelope(env_fine) + 0.05``. At the
+        new envelope that is 4.0 >= 2.731 and 4.0 <= 4.15 — both hold, so
+        keeping 4.0 passes the script's own self-check and no run is
+        needed to justify it.
+      - ``tests/test_rcs_mie_ka_sweep_gates.py`` asserts EXACT equality
+        against the fixture-derived ``gate_from_envelope(env_fine)``, next
+        to a deliberately redundant hard literal ``== 4.0``. Today both
+        hold, because the committed fixture still carries the pre-a_eff
+        deltas. If the fixture is ever regenerated with
+        ``--write-fixture``, env_fine becomes 2.731 and the DERIVED assert
+        would demand 4.1 while the literal demands 4.0. Keeping 4.0 then
+        requires editing that derived assert, which that test's own
+        comment says needs a written root cause — by design.
+    So: keep 4.0. It is TIGHTER than the formula and the measurement
+    passes it (2.731 < 4.0), which is the whole reason not to apply 4.1.
+    GATE_COARSE_DB does NOT diverge: round-up(2.195 x 1.5) = 3.3, the
+    committed value.
   * Per-row geometric gate (PR #721 review, required change 8, NEW):
     ``A_EFF_TOL_COARSE``/``A_EFF_TOL_FINE`` below assert
     ``|a_eff/a - 1| <= 1.5%`` at cpr=6.4 and ``<= 0.5%`` at cpr=12.8
@@ -228,7 +245,11 @@ CLEARANCE_SCAN = [15, 20, 25, 30, 35, 40, 45]
 # fixture, re-derive the envelope from the committed clearance_scan, and
 # write a root-cause before ever touching these).
 GATE_COARSE_DB = 3.3   # = round-up(measured clearance-scan envelope x 1.5)
-GATE_FINE_DB = 4.0     # = round-up(measured clearance-scan envelope x 1.5), ka=2.0 only
+GATE_FINE_DB = 4.0     # ka=2.0 only. WAS round-up(envelope x 1.5); since #725
+                       # moved the fine envelope to 2.731 dB the formula would
+                       # give 4.1, i.e. a LOOSENING. 4.0 is kept deliberately —
+                       # tighter than the formula, and the measurement passes it.
+                       # Do NOT "fix" this up to 4.1. See the docstring.
 
 # Per-row geometric gate on the reference convention itself (issue #725
 # required change 8): asserted SEPARATELY from GATE_COARSE_DB/GATE_FINE_DB
