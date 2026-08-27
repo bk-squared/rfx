@@ -198,7 +198,7 @@ def fidelity_report(sim, print_report: bool = True):
         # later claimed by a conductor looks untouched in eps alone (trap T5).
         if mat_name not in ("pec", "lossy-sheet"):
             pec_frac = float(np.mean(pec_mask[mask]))
-            if pec_frac > 1e-9:
+            if 1e-9 < pec_frac <= 0.5:
                 item["findings"].append(dict(
                     kind="claimed-by-conductor",
                     detail=f"{100 * pec_frac:.1f}% of this dielectric's cells "
@@ -293,7 +293,27 @@ def fidelity_report(sim, print_report: bool = True):
                 remedy="none if the overhang is intentional; otherwise draw "
                        "the body to its physical bounds"))
 
-        if mat_name == "pec":
+        # Realization class follows the ASSEMBLY, not the material name: a
+        # model may declare its metal as a named material with a finite
+        # sigma (e.g. copper 5.8e7) and the assembly may still realize it as
+        # a PEC mask. Keying on the literal name "pec" made every sheet
+        # finding invisible on exactly such a model (the CST board,
+        # 2026-08-27) — the tool's whole purpose, silently skipped.
+        pec_frac_self = float(np.mean(pec_mask[mask]))
+        realized_conductor = pec_frac_self > 0.5
+        if realized_conductor and mat_name != "pec":
+            item["findings"].append(dict(
+                kind="declared-lossy-realized-pec",
+                detail=f"declared as material '{mat_name}' with sigma "
+                       f"{item['material'].get('sigma', 0.0):.4g} S/m, but "
+                       f"{100 * pec_frac_self:.0f}% of its cells are realized "
+                       "as PEC — the solve has a LOSSLESS perfect conductor, "
+                       "not the declared finite conductivity",
+                remedy="if conductor loss matters, use the surface-impedance "
+                       "path (add_thin_conductor(..., surface_impedance_f0=) "
+                       "or the sheet operator); if not, declare 'pec' so the "
+                       "model states what it solves"))
+        if realized_conductor:
             runs = [_max_run_length(mask, a) for a in range(3)]
             thin_axes = [a for a, r in enumerate(runs) if r == 1]
             if not thin_axes:
