@@ -45,6 +45,23 @@ def _fixture():
     return sim
 
 
+
+def _geo(rep, i):
+    """The report leads with a domain pseudo-entity and may append an
+    out-of-scope note, so tests address entities by name."""
+    for item in rep:
+        if item["entity"].startswith(f"geometry[{i}]"):
+            return item
+    raise AssertionError(f"geometry[{i}] missing from report: "
+                         f"{[x['entity'] for x in rep]}")
+
+
+def _tc(rep, i):
+    for item in rep:
+        if item["entity"].startswith(f"thin_conductor[{i}]"):
+            return item
+    raise AssertionError("thin_conductor missing")
+
 def _kinds(item):
     return [f["kind"] for f in item["findings"]]
 
@@ -52,22 +69,22 @@ def _kinds(item):
 def test_finding_classes_are_detected():
     rep = _fixture().fidelity_report(print_report=False)
 
-    ground = rep[0]
+    ground = _geo(rep, 0)
     assert "one-plane sheet" in ground["realization"]
     assert "sheet-own-cell-live" in _kinds(ground)
     assert ground["own_cell_eps_r"][1] <= 1.0 + 1e-6, "ground own-cell must read vacuum"
 
-    patch = rep[2]
+    patch = _geo(rep, 2)
     assert "off-lattice-face" in _kinds(patch)
     ax_x = patch["axes"][0]
     assert max(ax_x["face_residual_um"]) > 100.0
 
-    sub = rep[1]
+    sub = _geo(rep, 1)
     assert "materialization-overridden" in _kinds(sub)
     assert sub["assembled_matches_declared_frac"] < 0.999
     assert min(sub["assembled_eps_r"]) < 3.0   # the 2.2 override is visible
 
-    film = rep[4]
+    film = _geo(rep, 4)
     # Rasterization convention: a sub-cell box lands in its containing cell,
     # so a 50 um film is realized 500 um thick — caught as extent/face
     # distortion (the tool's job), not as absence.
@@ -75,20 +92,24 @@ def test_finding_classes_are_detected():
     assert film["axes"][2]["realized_extent_um"] > 5 * film["axes"][2]["declared_extent_um"]
     assert "off-lattice-face" in _kinds(film)
 
-    clamped = rep[5]
+    clamped = _geo(rep, 5)
     # Measured rasterization behaviour: an out-of-range box CLAMPS to the
     # boundary cells rather than vanishing — the report makes that visible as
     # a face residual of millimetres (declared z 9.0 mm vs realized at the
     # array edge). The "absent" branch stays in the tool defensively for
     # shapes whose mask is genuinely empty.
     assert clamped["n_cells"] > 0
-    assert max(clamped["axes"][2]["face_residual_um"]) > 900.0
-    assert "off-lattice-face" in _kinds(clamped)
+    # Classified as a domain clip (+ absorber overlap), NOT as a lattice
+    # misalignment: comparing a deliberately oversized body against its
+    # un-clipped declaration produced 99%-residual noise in the crossval
+    # sweep, so residuals are now measured against the clipped declaration.
+    assert "clipped-by-domain" in _kinds(clamped)
+    assert "inside-absorber" in _kinds(clamped)
 
 
 def test_exact_faces_report_zero_residual_in_domain_coords():
     rep = _fixture().fidelity_report(print_report=False)
-    ground = rep[0]
+    ground = _geo(rep, 0)
     for ax in ground["axes"]:
         assert max(ax["face_residual_um"]) < 1e-6, (
             f"exact face read nonzero residual on {ax['axis']}: {ax}")
@@ -103,3 +124,86 @@ def test_remedies_are_present_and_mechanical():
             assert f.get("remedy"), f"finding without a remedy: {f}"
             assert "df/f" not in f["detail"], (
                 "fidelity findings must never predict result-side impact")
+
+
+# ---------------------------------------------------------------------------
+# Adversarial traps (2026-08-27): models built to be WRONG in ways a user
+# would not notice. Every one of these was a MISS on the first implementation
+# — the tool reported "all clean" for models with invisible metal, silently
+# dropped conductivity, and conductors inside the absorber.
+# ---------------------------------------------------------------------------
+
+
+def _plain(dx=1e-3):
+    return Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3), dx=dx,
+                      boundary="cpml", cpml_layers=4)
+
+
+def test_thin_conductor_entities_are_audited():
+    """add_thin_conductor is a second declaration surface; auditing only
+    sim._geometry returned an EMPTY report — a false all-clear."""
+    sim = _plain()
+    sim.add_thin_conductor(Box((2e-3, 2e-3, 5e-3), (8e-3, 8e-3, 5.035e-3)),
+                           sigma_bulk=5.8e7)
+    rep = sim.fidelity_report(print_report=False)
+    item = _tc(rep, 0)
+    assert "sheet" in item["realization"]
+
+
+def test_conductivity_drop_is_caught_when_eps_is_unchanged():
+    """A later entity with the SAME eps but different sigma is invisible in
+    eps alone — sigma is a declared input and gets its own check."""
+    sim = _plain()
+    sim.add_material("lossy", eps_r=4.0, sigma=5.0)
+    sim.add_material("clean", eps_r=4.0, sigma=0.0)
+    sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 8e-3, 8e-3)), material="lossy")
+    sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 8e-3, 5e-3)), material="clean")
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    assert item["assembled_matches_declared_frac"] == 1.0, "eps is unchanged"
+    assert "sigma-mismatch" in [f["kind"] for f in item["findings"]]
+    assert item["assembled_sigma_matches_declared_frac"] < 0.6
+
+
+def test_dielectric_claimed_by_a_later_conductor_is_caught():
+    """PEC is a mask, not an eps change: the dielectric's cells still read the
+    declared eps while the conductor owns them."""
+    sim = _plain()
+    sim.add_material("sub", eps_r=9.0, sigma=0.0)
+    sim.add(Box((3e-3, 3e-3, 3e-3), (7e-3, 7e-3, 7e-3)), material="sub")
+    sim.add(Box((3e-3, 3e-3, 3e-3), (7e-3, 7e-3, 7e-3)), material="pec")
+    kinds = [f["kind"] for f in _geo(sim.fidelity_report(print_report=False), 0)["findings"]]
+    assert "claimed-by-conductor" in kinds
+
+
+def test_body_inside_the_absorber_is_caught():
+    sim = _plain()
+    sim.add(Box((-3e-3, 2e-3, 2e-3), (4e-3, 8e-3, 8e-3)), material="pec")
+    kinds = [f["kind"] for f in _geo(sim.fidelity_report(print_report=False), 0)["findings"]]
+    assert "inside-absorber" in kinds
+
+
+def test_inert_two_plane_request_is_reported():
+    sim = _plain()
+    sim.add(Box((2e-3, 2e-3, 3e-3), (8e-3, 8e-3, 6e-3)), material="pec",
+            two_plane=True)
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    assert "volumetric" in item["realization"]
+    assert "two-plane-inert" in [f["kind"] for f in item["findings"]]
+
+
+def test_multi_axis_thin_body_names_every_thin_axis():
+    sim = _plain()
+    sim.add(Box((2e-3, 5e-3, 5e-3), (8e-3, 5.5e-3, 5.5e-3)), material="pec")
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    assert "y+z" in item["realization"], item["realization"]
+
+
+def test_dispersive_material_states_that_poles_are_not_verified():
+    """Honesty over silence: the report audits instantaneous eps/sigma, so a
+    dispersive material must say what it does NOT check."""
+    sim = _plain()
+    from rfx.api._spec import DebyePole
+    sim.add_material("debye", eps_r=2.0, debye_poles=[DebyePole(delta_eps=3.0, tau=1e-11)])
+    sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 8e-3, 8e-3)), material="debye")
+    kinds = [f["kind"] for f in _geo(sim.fidelity_report(print_report=False), 0)["findings"]]
+    assert "dispersion-not-audited" in kinds
