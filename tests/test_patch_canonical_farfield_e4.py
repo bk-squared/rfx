@@ -98,7 +98,16 @@ NTFF_FREQS = np.array([2.0e9, 2.1e9, 2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.8e9])
 # mode, whose rfx counterpart is the UPPER ring-down mode (2.6954 GHz,
 # radiated-power max, broadside, 6.5x amplitude), not the 40 mm cross mode
 # (2.2147 GHz) the old F_GUESS selector picked. Full written root cause with
-# the evidence chain: issue #693 (2026-08-27 comment).
+# the evidence chain: issue #693 (2026-08-27 comments).
+#
+# MECHANISM (measured decomposition, #693 closure): the +11.3% is NOT
+# primarily a dx-convergence bias — the ladder measured it GROWING at finer
+# dx. It is the one-plane sheet realization: the ground sheet's own cell
+# sits inside the cavity as vacuum (+15%p, series-capacitance dilution of
+# eps_eff; preflight sheet-cavity check prints it as +84.5% electrical
+# thickness), plus the one-plane length cost, minus ~4%p in-plane staircase.
+# The CORRECTED realization (two_plane) lands at -4.7% (dx=2) and -1.5%
+# (dx=1, inside the patch's own bandwidth) — the dx=2 point is gated below.
 D_ABS_TOL_DB = 1.0          # measured 0.60 dB at the design-mode bin (7.39 vs
                             # openEMS 6.79); the old 0.5/measured-0.08 was the
                             # wrong-mode bin
