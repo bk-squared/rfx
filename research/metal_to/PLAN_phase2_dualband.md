@@ -1,9 +1,14 @@
-# Phase-2 plan — dual-band notch, and what we can honestly claim (2026-08-27)
+# Phase-2 plan — dual-band notch (2026-08-27, revised same day)
 
-Two literature surveys were run before writing this (classical multi-band bandstop
-synthesis; inverse-design prior art). Both changed the plan. The benchmark choice is
-now much better supported than when we proposed it; the novelty framing has to change,
-because the method class we were about to claim is occupied — including in T-MTT.
+**Operating rule for this phase (PI direction, 2026-08-27): do the research first and
+decide the novelty framing afterwards. Do not shape experiments to fit a claim.**
+The first draft of this plan violated that — it reorganized the arms around "what can we
+publish" the moment the prior-art survey landed. This version is organized around the
+open technical questions instead. Literature findings are kept only where they make the
+experiment *better*: they told us which spec is genuinely hard for classical synthesis
+(Part I) and which conductor interpolation the field already knows works (Part II). The
+publication-positioning notes are demoted to an appendix to be revisited at write-up
+time, after we know what is true.
 
 ---
 
@@ -46,7 +51,7 @@ cure for (3). The second classical escape — duplicating sections for depth, si
 of approximately 16 dB" (Rambabu et al., T-MTT 2006) — is also area, and the same bound
 closes it. One constraint, both escapes.
 
-Two further classical dead ends worth stating in the paper:
+Two further classical dead ends, recorded because they bound what the baseline can do:
 - **Narrow notches need impossible impedances.** Schiffman & Matthaei's own worked
   two-stub 5 %-stopband example needs Z1 = 949.9 Ω, Z2 = 899.9 Ω against a ~120 Ω
   microstrip ceiling.
@@ -59,13 +64,15 @@ dimensions … with the help of a full-wave EM solver"; Zheng et al. (2018) "The
 size of the filter is optimized by using HFSS with 0.1 GHz sweep step"; and even at a
 friendly ratio Chin & Lung designed 2.4/5.8 and measured 2.35/5.58 (−2.1 %, −3.8 %).
 
-## The single-frequency parity result now reads as a strength
+## Why the single-frequency parity result was the expected outcome
 
-For one notch, Schiffman & Matthaei's exact synthesis **is** the λ/4 open stub. A
-2 256-variable search cannot beat a provably exact solution — parity was the only
-available outcome, and our cross-validated measurement of exactly that (30.5 vs
-31.6 dB) is the calibration that makes a later multi-band claim credible. Say this
-explicitly; do not bury it.
+Worth recording as a technical fact, not as rhetoric: for one notch, Schiffman &
+Matthaei's exact synthesis **is** the λ/4 open stub. A 2 256-variable search cannot
+beat a provably exact solution, so parity was the only outcome available, and our
+cross-validated 30.5 vs 31.6 dB is a calibration of the pipeline rather than a
+disappointment. It also sets the expectation for this phase: if the dual-band spec
+likewise has an exact answer we have not found in the literature, parity is again the
+ceiling — and finding that out is a legitimate result.
 
 ## Targets to aim at (all measured numbers, full text)
 
@@ -76,23 +83,29 @@ explicitly; do not bury it.
 | Zheng 2018 | 3.5 / 7.5 | 2.14 | 25.2 / 17.3 dB | 15.9 % / 9.6 % | < 1.2 dB |
 | Basit 2022 (triple) | 5.1 / 6 / 8 | — | > 15 dB each | ~6 % each | < 0.85 dB |
 
-**Our target:** ≥ 20 dB in both bands; 3-dB notch fractional bandwidths matching the
-spec asymmetry (≈ 3.8 % lower, 1.7 % upper); passband IL < 1 dB; first spurious pushed
-above 10.6 GHz; footprint below two 3λ/4-spaced stub sections. **Bandwidth asymmetry
-and spurious placement are the two objectives where classical synthesis has no knob at
-all** — those are where a gradient can actually show something.
+**Working target (a yardstick, not a promise):** ≥ 20 dB in both bands; 3-dB notch
+fractional bandwidths matching the spec asymmetry (≈ 3.8 % lower, 1.7 % upper);
+passband IL < 1 dB; first spurious above 10.6 GHz; footprint below two 3λ/4-spaced stub
+sections. Bandwidth asymmetry and spurious placement are the two objectives where
+classical synthesis has no knob at all, so they are the most informative places to look
+— whichever way the measurement comes out.
 
 **Control experiment (do it):** also run 2.4 / 5.8 GHz (ratio 2.42), where Chin & Lung
-give a synthesized, fabricated and measured baseline. Matching classical there and
-beating it at 1.10 is a far stronger paper than either alone.
+give a synthesized, fabricated and measured baseline. It is the check that tells us
+whether our pipeline and our baseline are both sound — at a ratio classical handles
+well, we should tie. A win there would mean the baseline is broken, not that we are
+good.
 
 ---
 
-# Part II — Novelty: what we may NOT claim, and what is actually open
+# Part II — What the prior art teaches us about the IMPLEMENTATION
 
-The prior-art survey is unambiguous and this must be absorbed before any GPU time.
+The survey's value here is technical, not positional: an established line has already
+worked out how to represent a conductor as a continuous design variable, and its
+documented failure mode explains a result we already measured. That belongs in the
+experiment design. (The positioning material is in the appendix.)
 
-## Occupied (do not claim a first)
+## The relevant line of work
 
 - **Free-form binary metal topology optimization of planar PCB structures with
   S-parameter objectives, FDTD + adjoint gradient, fabricated and measured — is in
@@ -114,38 +127,7 @@ The prior-art survey is unambiguous and this must be absorbed before any GPU tim
   32×32 binary pixels, dual-band. Pixelated notch filters fabricated: Gomez et al.,
   Sci. Rep. 15, 2025 — 1 536 pixels, GA in CST, laser-ablated, −61 dB measured.
 
-## Open, in descending confidence
-
-1. **[HIGH] An equal-budget, same-grid, same-solver head-to-head between the gradient
-   and the binary heuristics that actually own this device class.** Hassan asserts a
-   2–3 order-of-magnitude advantage over pixel-GA **by citation, not measurement**;
-   Gomez spent ≈ 1 600 CST solves on 1 536 pixels; a gradient run costs ~2 solves per
-   iteration regardless of variable count. Nobody has run them against each other on
-   one grid, one objective, one solver, one budget. **This is also the natural extension
-   of what our accepted paper already did for the dielectric taper** (budget-matched
-   particle-swarm and GA trailing the gradient by ≥ 11.6 dB) — same experiment, moved
-   to binary metal on the device class where the heuristics are the incumbent.
-2. **[MEDIUM] A measured gray→binary rasterization penalty for conductors.** The Umeå
-   line reports thresholding as benign; the pixel line is binary by construction and has
-   nothing to report. We already have one datum from Phase-1: our stub-seeded design's
-   notch moved 6.00 → 6.10 GHz when re-rasterized as real geometry, while the
-   distributed design did not. "How many dB does binarization cost, which designs pay
-   it, and does re-optimizing at production resolution recover it" is the direct
-   analogue of the honesty move our accepted paper made for the Klopfenstein taper.
-3. **[MEDIUM] Bridging the two literatures.** Arsanjani (T-MTT 2025, pixelated
-   metasurface components) and Hassan (T-MTT 2020, density TO) do not cite each other.
-
-## The framing that survives contact with the literature
-
-> **"Gradient versus binary search on the pixel grid: an equal-budget comparison for
-> free-form microstrip filters, on a dual-band spec classical synthesis cannot
-> express."**
-
-The dual-band notch becomes the **testbed chosen because it stresses the optimizer**,
-not the claimed novelty. Hassan T-MTT 2020 gets cited in the **first paragraph of the
-introduction**, not buried in related work.
-
-## A physics correction that changes our implementation
+## The physics correction that changes our implementation
 
 Hassan's scheme interpolates **conductivity** and deliberately uses **no Heaviside
 projection**: intermediate conductivity is ohmically lossy, so an energy objective is
@@ -203,19 +185,24 @@ therefore quoted from the independent long-window S-matrix evaluation"). Concret
 ring-down settling witness as the gate on the verification window (all Phase-1
 cross-checks settled at ≈ −119 dB at 80 periods, so this is calibrated, not guessed).
 
-## Arms
+## Arms — each one answers a question we do not know the answer to
 
-| # | arm | purpose |
+| # | arm | the open question it answers |
 |---|---|---|
-| A | gradient, Hassan-style σ(ρ) + filter-radius continuation | the method |
-| B | gradient, A + Heaviside projection | ablation: does projection help conductors? |
-| C | **binary heuristic (BPSO or direct binary search) on the identical grid, matched solver budget** | **the headline comparison** |
-| D | classical two open stubs, lengths + positions swept in the same box | mesh-calibrated baseline |
-| E | classical SIR at the 2.4/5.8 control ratio | where classical is supposed to win |
+| A | gradient, conductivity interpolation + filter-radius continuation | **Can a gradient meet this spec at all inside the bounded box?** Nobody has told us; the box was chosen precisely because classical cannot. |
+| B | A + Heaviside projection | **Does projection help or hurt a conductor?** The established line says gray metal is already self-penalizing and uses no projection; our Phase-1 used projection and saw a collapse. Both cannot be right for our setup. |
+| C | binary heuristic (BPSO / direct binary search), same grid, budget counted in Maxwell solves | **Does the gradient actually buy anything here?** If a binary search on the same grid matches it, that is a real finding about this problem class and we should know it before building more machinery on the gradient. |
+| D | classical two open stubs, lengths + positions swept inside the same box | **Where exactly does classical fail, and by how much?** The premise of the whole benchmark. If a calibrated two-stub design meets the spec in this box, the benchmark is wrong and we pick another. |
+| E | classical SIR at the 2.4/5.8 control ratio (Chin & Lung: synthesized, fabricated, measured) | **Is our whole pipeline sane?** At a ratio classical handles well, we should tie, not win. A win there would mean our baseline is broken. |
 
-Budget matching for C is the crux and must be pre-registered: **count Maxwell solves,
-not iterations**. A gradient iteration = 1 forward + 1 backward ≈ 2 solves; give the
-heuristic the same total. Report the full budget-vs-quality curve, not one point.
+Arm D is the gate on the benchmark itself and runs FIRST — the Stage-0 window sweep
+already carries its geometry, so its answer arrives before any optimization is spent.
+Arm E is the sanity check that keeps us honest if A or C looks too good.
+
+For C, the budget must be pre-registered and counted in **Maxwell solves, not
+iterations** (a gradient iteration is 1 forward + 1 backward ≈ 2 solves), and the output
+is a budget-vs-quality curve, not a single point. That curve is the honest form of the
+comparison whichever way it comes out.
 
 ## Gates (all pre-registered, all already built or nearly so)
 
@@ -232,31 +219,36 @@ heuristic the same total. Report the full budget-vs-quality curve, not one point
 
 ## Staging
 
-- **Stage 0 (½ day).** Window adequacy: forward-only sweep of the two-stub classical
-  baseline at 20/30/45/90 periods, ring-down witness at each; fix descent and
-  verification windows from measurement. Also fix the σ(ρ) map and confirm the gradient
-  flows through it (AD-vs-FD, directional-derivative Richardson design — the Phase-1
-  two-point check was inconclusive and should not be repeated as-is).
-- **Stage 1 (1–2 days GPU).** Arms A, B, D on the WLAN spec. Success = the gradient
-  design meets ≥ 20 dB in both bands with the asymmetric bandwidths, where the
-  calibrated two-stub baseline in the same box cannot.
-- **Stage 2 (2–3 days GPU).** Arm C, the budget-matched heuristic, plus the
-  budget-vs-quality curve. This is the paper's headline figure.
-- **Stage 3.** Control at 2.4/5.8 (arm E) — the "classical should win, or at least tie"
-  check.
-- **Stage 4.** Core patch proposal to rfx from the accumulated evidence. First item is
-  not the RAMP interpolation but the fact that **`topology_optimize()` still defaults
-  to the legacy damping path when the foreground material is PEC** — the path our
-  probe measured as gradient-starved.
+- **Stage 0 (running).** Window adequacy on the classical two-stub design in the box:
+  ring-down witness and notch resolution at 20/30/45/90/140 periods. Fixes the descent
+  and verification windows by measurement. **It also answers arm D's first half** — a
+  CPU check at the Phase-1 window already shows the two-stub design landing at 4.80 and
+  5.60 GHz against 5.25/5.775 targets, in the direction the coupling literature
+  predicts, though the window was too short to trust the numbers.
+- **Stage 1.** Finish arm D properly: sweep stub lengths and positions inside the box at
+  the measured verification window. **Decision gate: if a calibrated two-stub design
+  meets the spec here, this benchmark is wrong and we choose a different one** rather
+  than proceeding.
+- **Stage 2.** Gradient arms A and B on the WLAN spec. Before optimizing, verify the
+  gradient through the conductivity map with a directional-derivative Richardson check
+  (the Phase-1 two-point finite-difference check was inconclusive and must not be
+  repeated as-is).
+- **Stage 3.** Arm C, budget-matched, with the budget-vs-quality curve.
+- **Stage 4.** Control at 2.4/5.8 (arm E).
+- **Stage 5.** Whatever the results turn out to need: mesh transferability at dx/2,
+  spurious-response placement above 10.6 GHz, and the rfx core-patch proposal (first
+  item: `topology_optimize()` still defaults to the legacy damping path when the
+  foreground material is PEC — the path our probe measured as gradient-starved).
 
-## Decision required from the PI before Stage 2
+## Scope question to settle before Stage 3 (not now)
 
-**Fabrication and measurement.** Hassan T-MTT 2020 and the pixelated line (Gomez 2025:
-laser-ablated, measured, and still a 160 MHz centre shift from ε_r tolerance and laser
-overcut) both build boards. A T-MTT regular paper on this device class will be asked
-"where is the board?", and free-form binary pixels have finer, more tolerance-sensitive
-features than a stub. Simulation-only is publishable as a letter or a benchmark paper;
-a regular paper likely is not. This is a scope/cost call, not a technical one.
+**Fabrication and measurement.** Relevant regardless of framing, because tolerance is a
+physics question here: Gomez et al. laser-ablated a pixelated notch filter and still
+measured a 160 MHz centre shift from ε_r tolerance and cutting overcut, and free-form
+binary pixels have finer, more tolerance-sensitive features than a stub. So even for our
+own understanding, a measured board would tell us how much of the simulated margin
+survives manufacture. Cost and timing are the PI's call, and nothing before Stage 3
+depends on it.
 
 ---
 
@@ -281,3 +273,50 @@ Full texts read for the load-bearing quotes: Schiffman & Matthaei 1964, Uchida 2
 Rambabu 2006, Chin & Lung 2009, Ning 2012, Rahman 2017, Zheng 2018, Basit 2022 (classical
 side); Hassan T-MTT 2020, Hassan TAP 2015, Gomez 2025 (inverse-design side). Everything
 else is metadata-verified but abstract-only and is flagged as such in the survey records.
+
+---
+
+# Appendix — positioning notes, to be revisited at write-up time
+
+**Do not let anything in this appendix steer an experiment.** It is recorded now only so
+the survey work is not lost, and it should be re-read after we know what the results are.
+
+## Where the survey thought the open ground was
+
+1. **[HIGH] An equal-budget, same-grid, same-solver head-to-head between the gradient
+   and the binary heuristics that actually own this device class.** Hassan asserts a
+   2–3 order-of-magnitude advantage over pixel-GA **by citation, not measurement**;
+   Gomez spent ≈ 1 600 CST solves on 1 536 pixels; a gradient run costs ~2 solves per
+   iteration regardless of variable count. Nobody has run them against each other on
+   one grid, one objective, one solver, one budget. **This is also the natural extension
+   of what our accepted paper already did for the dielectric taper** (budget-matched
+   particle-swarm and GA trailing the gradient by ≥ 11.6 dB) — same experiment, moved
+   to binary metal on the device class where the heuristics are the incumbent.
+2. **[MEDIUM] A measured gray→binary rasterization penalty for conductors.** The Umeå
+   line reports thresholding as benign; the pixel line is binary by construction and has
+   nothing to report. We already have one datum from Phase-1: our stub-seeded design's
+   notch moved 6.00 → 6.10 GHz when re-rasterized as real geometry, while the
+   distributed design did not. "How many dB does binarization cost, which designs pay
+   it, and does re-optimizing at production resolution recover it" is the direct
+   analogue of the honesty move our accepted paper made for the Klopfenstein taper.
+3. **[MEDIUM] Bridging the two literatures.** Arsanjani (T-MTT 2025, pixelated
+   metasurface components) and Hassan (T-MTT 2020, density TO) do not cite each other.
+
+## The framing that survives contact with the literature
+
+> **"Gradient versus binary search on the pixel grid: an equal-budget comparison for
+> free-form microstrip filters, on a dual-band spec classical synthesis cannot
+> express."**
+
+The dual-band notch becomes the **testbed chosen because it stresses the optimizer**,
+not the claimed novelty. Hassan T-MTT 2020 gets cited in the **first paragraph of the
+introduction**, not buried in related work.
+
+## What a skeptical reviewer asked of the first draft
+
+The prior-art survey listed the objections a T-MTT reviewer would raise against a
+"first free-form metal TO" framing — chiefly Hassan T-MTT 2020 (105 960 variables,
+fabricated and measured), Zhang & Xu MWTL 2024 (pixelated dual-band microstrip filter),
+and "why Heaviside at all when gray conductor is self-penalizing?". The last one is a
+physics question and has been promoted into the experiment as arm B. The rest are
+positioning and wait for results.
