@@ -107,7 +107,7 @@ Mesh convention (issue #723, 2026-08-27):
   "Notch frequency (rfx) = 3.627 GHz", "Notch frequency error = 1.63 %",
   "Notch depth |S21| = -34.2 dB", "Re(Z0) median = 57.9 Ω".
 
-  KNOWN LIMITATION, filed separately (NOT folded into #723): at every
+  KNOWN LIMITATION, filed as #729 (NOT folded into #723): at every
   ALIGNED dx, ``add_msl_port``'s own cross-section audit
   (``rfx/sources/msl_port.py::msl_cross_section_span``) independently
   rasterizes the substrate height and overshoots it by one cell — the
