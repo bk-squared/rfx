@@ -40,6 +40,13 @@ full-text-read source:
    WLAN bands)"; and the remedy they name is "to separate away from each resonator
    physically."
 
+**CORRECTED 2026-08-27 (see NOTE_stage0_window.md):** the box does *not* forbid
+Schiffman–Matthaei synthesis — the canonical λg/4 inverter spacing (8.05 mm = 63 cells)
+fits inside 94 cells. What it forbids is the anti-fringing 3λg/4 *option* and the
+N ≥ 3 resonator ladder. The binding constraint is therefore filter ORDER, not spacing:
+the Butterworth shape factor for this mask needs roughly four to five resonators per
+band, and the box admits about two planes. The original text below overstated this.
+
 **The footprint bound is what closes the classical escape hatches, and it is
 principled rather than arbitrary.** Schiffman & Matthaei (T-MTT 1964 — the exact
 bandstop synthesis) already prescribe separating stubs by **3λ0/4** "in order to avoid
@@ -175,6 +182,13 @@ The two band centres are **0.525 GHz apart**, so the Phase-1 window (0.90 GHz) *
 separate them** — this alone invalidates reusing Phase-1 settings. Resolving the
 100 MHz upper notch bandwidth would need ≈ 90 periods (~200 s/iteration, ~8 h per
 150-iteration arm).
+
+**CORRECTED 2026-08-27:** sizing the window by DFT resolution 1/T is the wrong
+criterion — for a settled transient the DFT is exact at any frequency, and the Stage-0
+measurement scores identically (M = 23.75) at 20 through 140 periods. **Settling is the
+accuracy gate; 1/T bounds only what may be claimed.** The two-window scheme below stays,
+for the right reason: 45 periods is where the response converges and 90 is where depth
+does, both verified by the settling witness.
 
 **Resolution — use our own paper's precedent:** size the descent window for *ranking
 designs*, and quote every final number from an independent long-window evaluation. The

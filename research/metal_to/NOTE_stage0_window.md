@@ -26,22 +26,53 @@ inside the bounded 12 × 9 mm box, imperative hard-PEC solve, rfx ring-down witn
 Cost is much better than the plan feared (the plan estimated ~200 s/iteration at
 90 periods from Phase-1 scaling; measured forward is 83 s, and the sweep runs at 48 s).
 
-## First datum on the benchmark premise
+## First datum on the benchmark premise — and two corrections to how it was first read
 
-The textbook design — each stub a quarter wave at its own band centre — lands its
-notches at **4.975 and 5.500 GHz against targets of 5.25 and 5.775 GHz: −5.2 % and
-−4.8 %, both pulled DOWN**, with the two notches barely separated (3.4 dB). The pull
-direction and magnitude are consistent with the coupling error the classical literature
-reports for closely spaced notch resonators (Rahman et al. measured 10–16 % on this same
-WLAN pair and named strong inter-resonator coupling as the cause; the prescribed cure is
-3λg/4 = 24 mm of separation, which this 12 mm box forbids).
+The textbook design lands its notches at **4.975 and 5.500 GHz against targets of 5.25
+and 5.775 GHz: −5.2 % and −4.8 %.** When first reported (2026-08-27, chat) I attributed
+that pull to inter-stub coupling and called it consistent with the classical literature.
+**That was wrong, and our own data refutes it.**
 
-**This is not yet evidence that classical fails.** A competent engineer would
-pre-distort the stub lengths to compensate the pull, and would also have stub width
-(hence impedance and bandwidth) as a free parameter. Arm D exists to give the classical
-design exactly those chances. What Stage 0 establishes is only that the *uncalibrated*
-textbook design misses by about a notch bandwidth, which is why the calibrated sweep is
-mandatory rather than optional.
+**Correction 1 — the pull is a calibration offset, not coupling.** The Phase-1 stub
+sweep contains six *single*-stub solves with no second stub anywhere. Analytic λ/4
+frequency vs measured notch:
+
+| L (mm) | 5.80 | 6.10 | 6.40 | 6.70 | 7.00 | 7.37 |
+|---|---|---|---|---|---|---|
+| offset | −5.6 % | −4.9 % | −6.0 % | −4.6 % | −5.1 % | −5.1 % |
+
+Mean ≈ −5.2 %, i.e. **the same offset the two-stub design shows**. It is the open-end
+and T-junction fringing extension plus the stub's own ε_eff differing from the line's —
+a constant an engineer removes by calibrating `f(L, W)` once. Three further arguments
+agree: a shunt stub's transmission zero is pinned at its own resonance for any
+separation (S21 = 0 ⟺ Y_stub → ∞); an ideal-line ABCD sweep over 2–24 mm separation
+moves the zeros by +0.03 %; and Rahman's 10–16 % is *mutually coupled CSRRs*, a
+different mechanism from shunt stubs. Also worth noting: 8 mm ≈ λg/4 at 5.5 GHz, so
+Stage-0 happened to pick the canonical inverter spacing, not a pathological one.
+
+**Correction 2 — the window criterion was stated wrongly.** The plan sized the record by
+DFT resolution 1/T. For a *fully settled* transient the DFT is exact at any evaluation
+frequency; 1/T bounds only the separation of two continuing sinusoids, i.e. what may be
+*claimed*, not the accuracy. The measurement proves it: scored on the frozen metric, the
+Stage-0 design reads **M = 23.74 / 23.75 / 23.75 / 23.75 / 23.75** at 20/30/45/90/140
+periods — identical to 0.01 dB. **Settling is the accuracy gate** (the 10-period run was
+invalid because it settled only to −18.8 dB, not because of resolution), and the
+resolution figure survives only as an interpretation limit: no feature narrower than
+100 MHz may be claimed, no notch centre quoted better than ±50 MHz.
+
+**Correction 3 — what actually makes this spec hard.** Scoring the Stage-0 design on the
+pre-registered metric is more informative than its notch frequencies: it already gets
+**S_L = 0 and S_U = 0 — both WLAN bands are rejected by more than 20 dB.** Its entire
+score comes from **S_G = 15.0** (the 5.45–5.625 GHz gap between the bands must transmit
+at ≤ 10 dB and is instead fully blocked) and **S_P = 8.75** (passband loss). The naive
+design is not two notches; it is one wide merged notch.
+
+So the benchmark's difficulty is **not** hitting two close frequencies — that is easy.
+It is producing skirts sharp enough to leave a transmitting gap between bands 525 MHz
+apart while keeping the passband, inside a box that admits about two resonator planes
+where the Butterworth shape factor says the spec needs four to five per band. That is a
+better-identified and more defensible premise than the one the plan opened with, and it
+is what arm D must be given every chance to defeat.
 
 ## Next
 
