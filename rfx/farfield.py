@@ -625,8 +625,49 @@ def compute_far_field_jax(
     grid,
     theta,
     phi,
+    *,
+    max_phase_bytes: float = 4e9,
 ):
-    """JAX-differentiable far-field computation for use inside jax.grad.
+    """JAX-differentiable far-field computation for use inside jax.grad."""
+    """
+    # The transform below materializes a (n_freqs, n_directions, n_cells)
+    # phase array per face. All three factors are unbounded, and a board
+    # pattern run (13 freqs, 181x72 directions, 3.3e5 cells/face) asked for
+    # 214 GB and died AFTER an 8-hour solve (issue #727). The sum over
+    # surface cells is independent per direction, so splitting theta is
+    # EXACT — the chunked and unchunked results agree to the bit (locked by
+    # tests/test_farfield_chunking.py). max_phase_bytes bounds that array;
+    # raise it to trade memory for fewer passes, or set it to inf to force
+    # the single-shot path.
+    theta = jnp.asarray(theta)
+    n_th_total = int(theta.shape[0])
+    if n_th_total > 1 and np.isfinite(max_phase_bytes):
+        n_cells = 0
+        for _name in dir(ntff_data):
+            if _name.startswith("J") and not _name.startswith("_"):
+                _arr = getattr(ntff_data, _name, None)
+                _shape = getattr(_arr, "shape", None)
+                if _shape and len(_shape) >= 2:
+                    n_cells = max(n_cells, int(np.prod(_shape[:-1])))
+        n_freqs = int(np.asarray(ntff_data.freqs).shape[0])
+        n_ph = int(jnp.asarray(phi).shape[0])
+        per_theta = max(1.0, n_freqs * n_ph * max(n_cells, 1) * 16.0)
+        chunk = int(max_phase_bytes // per_theta)
+        if 1 <= chunk < n_th_total:
+            parts = [
+                compute_far_field_jax(
+                    ntff_data, box, grid, theta[i:i + chunk], phi,
+                    max_phase_bytes=float("inf"))
+                for i in range(0, n_th_total, chunk)
+            ]
+            return FarFieldResult(
+                E_theta=jnp.concatenate([p.E_theta for p in parts], axis=1),
+                E_phi=jnp.concatenate([p.E_phi for p in parts], axis=1),
+                theta=theta,
+                phi=parts[0].phi,
+                freqs=parts[0].freqs,
+            )
+JAX-differentiable far-field computation for use inside jax.grad.
 
     Same physics as ``compute_far_field`` but uses ``jnp`` throughout,
     enabling end-to-end differentiation for far-field optimization
