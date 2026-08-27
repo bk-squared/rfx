@@ -903,6 +903,14 @@ class Simulation(
             shape=shape, material_name=material, two_plane=two_plane))
         return self
 
+    def fidelity_report(self, print_report: bool = True):
+        """Input-fidelity audit: declared vs solved, per entity, in input
+        units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
+        (design rule: never predicts result-side impact; rasterization,
+        realization class and materialization only)."""
+        from rfx.fidelity import fidelity_report as _fr
+        return _fr(self, print_report=print_report)
+
     def _two_plane_cell_mask(self, grid=None, mask_fn=None):
         """Union CELL mask of geometry entries flagged ``two_plane`` (#706).
 

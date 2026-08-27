@@ -336,3 +336,5 @@ __all__ = [
     "device_info", "benchmark",
     "export_training_data", "export_geometry_sdf",
 ]
+
+from rfx.fidelity import fidelity_report  # noqa: E402,F401
