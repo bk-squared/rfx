@@ -97,6 +97,61 @@ This fill is a RECORD-COMPLETION step only -- see MUST_MOVE_WHEN_VALIDATED
 below for what it does and does not decide about promotion.
 
 ============================================================================
+RUN-2 RESULT (2026-08-27, VESSL 369367256520) -- the #723 matched-board
+re-run. RUN-1 above is HISTORY: it was measured with Stage B on the
+DECLARED 254um board while rfx solved its realized 300um one.
+============================================================================
+Log: ``_20_msl_phase_referee_logs/20260827T102342Z_run.log``; full
+artifact ``_20_msl_phase_referee_logs/20260827T102342Z_result.json``
+(both git-tracked). Run-1's fixture pair stays committed and
+``tests/test_msl_phase_referee_header.py`` keeps pinning IT byte-exact --
+that test is a regression lock on the run-1 artifact, not a live-run
+gate, so it is unaffected by these numbers. ``overall_passed=True``;
+Stage B elapsed 4703 s, total 4755 s, 8 CPU on remilab-c0.
+
+GATED, run-1 -> run-2:
+  Stage A f_notch dev            0.4364% -> 0.4364%  (unchanged by
+    construction -- Stage A is the tutorial's own board, which #723 does
+    not touch; the bit-identical value is the control that says the
+    Stage B edit did not leak into Stage A)
+  passivity max balance          1.024   -> 1.0191   (ceiling 1.05)
+  openEMS self-consistency       0.642   -> 0.8241 deg (3 deg gate)
+  rfx self-consistency           0.121   -> 0.1207 deg (3 deg gate)
+
+THE COMPARATOR GOT MORE PHYSICAL, which is the result #723 predicts and
+the reason to prefer the matched board even though one reported metric
+moved the other way (below). openEMS's own |S21| over-unity bias --
+run-1's MEASURED PRECISION field calls it out as "29 of 30 bins read
+|S21|>1.0 (range 1.00076-1.00135 within the gated 3.0-4.5GHz band)" --
+is GONE in the gated band on the matched board: run-2 reads 0.99946 -
+1.00015 in-band (straddling unity instead of sitting entirely above it)
+and 16 of 30 bins over unity band-wide. The 500 MHz outlier survives
+essentially unchanged (1.00872 -> 1.00824), consistent with its own
+documented cause (ill-conditioned three-point extraction at ~0.03 guide
+wavelengths), not with the board.
+
+REPORTED (not gated) cross-solver comparison, run-1 -> run-2:
+  bins with |raw_phase_diff| <= 1 deg      22/30 -> 21/30
+  max |raw_phase_diff| in the gated band   0.304 -> 0.342 deg
+  bins over 3 deg                          1 (500 MHz, 4.13) -> 2
+                                           (500 MHz 5.73, 655 MHz 4.07)
+  beta_ratio_rfx_over_openems (in band)    ~1.003-1.008 -> 1.0085-1.0118
+
+Read honestly: cross-solver phase agreement did NOT improve, and inside
+the claimed 3.0-4.5 GHz band it degraded slightly (0.304 -> 0.342 deg,
+both roughly an order under any gate). Both bins that now exceed 3 deg
+sit at 500 and 655 MHz, inside the sub-1 GHz region this script's own
+claim_scope ALREADY excludes as ill-conditioned -- so the change did not
+move anything the script claims. The beta ratio moving away from 1 is
+the expected direction and is the mechanical evidence that the fix
+landed: only the openEMS side's board changed, a thicker substrate holds
+less field in the dielectric, so eps_eff and beta_openems both drop and
+the rfx/openEMS ratio rises. Run-1's better-looking phase number came
+from two different boards whose errors partly cancelled; that agreement
+was not evidence of anything. No gate is loosened here and none is
+moved -- run-2 is recorded alongside run-1, not in place of it.
+
+============================================================================
 DO-NOT-REPEAT (R1/R2 class -- read before choosing a mesh size)
 ============================================================================
 This fixture's substrate is RO4350B (eps_r=3.66, h_sub=254um) -- the
