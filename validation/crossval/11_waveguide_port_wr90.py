@@ -85,6 +85,78 @@ Status (2026-05-04):
   - This script remains a diagnostic reporter for the slab/reference-plane
     envelope. The authoritative correctness gates live in
     ``tests/test_waveguide_port_validation_battery.py``.
+
+Mesh / reference convention (issue #722, #724):
+  #722 requires that when a cell size does not divide a declared dimension,
+  the reference formula and the rasterized mesh must agree on ONE structure.
+  This script adopts **QUOTE-REALIZED**, not realize-declared-by-mesh:
+  DX_M stays 1 mm; F_CUTOFF_TE10 is computed from A_WG_REALIZED /
+  B_WG_REALIZED (= ceil(A_WG/DX_M)*DX_M = 23.000 mm, 11.000 mm at dx=1mm —
+  the walls the mesh actually rasterizes), not the declared 22.86 mm.
+  A mesh-based fix (DX_M -> 0.635 mm, which divides 22.86 mm and 10.16 mm
+  exactly) was evaluated and WITHDRAWN: measured by rasterizing this
+  script's own Box entities, it shrinks the propagation-axis slab length
+  L_slab from the declared/realized-at-1mm 10.000 mm to 9.525 mm (-4.75%)
+  and moves the PEC-short face from 145.000 mm to 145.415 mm (+0.415 mm,
+  up to 10.49 deg of fresh round-trip-phase error against a gate whose
+  committed margin is only 4.44 deg) — a LARGER instance of the #722
+  defect on the load-bearing axis than the 0.61% cross-section error it
+  would remove. At the unchanged dx = 1 mm the propagation axis is exact
+  today (slab L = 10.000 mm, short face = 145.000 mm), so it is preserved.
+
+  Ranked error budget (comparator-first — see repo rule: validate the
+  extractor before touching solver/reference physics):
+    1. DOMINANT, comparator-side: the port's transverse eigenproblem spans
+       n_nodes columns, not n_cells (rfx/api/_compile.py `_range_to_slice`,
+       `value_range is None` branch returns `(axis_pad, grid_size -
+       axis_pad)`), so its effective broad/narrow wall is `declared + dx`
+       at every resolution. Measured cfg.f_cutoff = 6.241218 GHz at
+       dx=1mm vs a QUOTE-REALIZED reference of 6.517391 GHz: -4.82%. This
+       survives every mesh (6.204954 GHz at dx=1.27mm, 6.378004 GHz at
+       dx=0.635mm) and is a comparator/extractor defect, not a geometry
+       defect — it is NOT fixed by this change; see followups.
+    2. Cross-section geometry: 0.61% (22.86 mm declared vs 23.000 mm
+       realized). Fixed here by quote-realized.
+  A zero-cost, in-script mitigation for term (1) IS applied below: both
+  ports are given `y_range=(0.0, A_WG_REALIZED - DX_M)` and
+  `z_range=(0.0, B_WG_REALIZED - DX_M)`, naming the last interior CELL
+  column of the cross-section instead of the default n_nodes span.
+  Measured: cfg.f_cutoff rises from 6.241218 GHz to 6.512162 GHz (-0.08%
+  vs the 6.517391 GHz quote-realized reference, vs -4.82% untrimmed).
+  CAVEAT (unverified by a solve — flagged for the run lane): trimming the
+  aperture makes `u_hi != u_grid_size`, which disables the PEC-ghost
+  aperture-weight zeroing at ``rfx/sources/waveguide_port.py`` that the
+  2026-04-27 DROP-weight fix (see pec-short docstring below) depends on.
+  This needs one pec-short run compared against
+  ``tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt`` before
+  being trusted for the |S11| gates.
+
+  `slab_L` (below, the dielectric-slab geometry) stays DECLARED at
+  10.000 mm rather than quote-realized: the longitudinal/propagation-axis
+  convention is genuinely unsettled (rfx/geometry/csg.py:130-140 — "make
+  the sensitivity to that half cell part of the reported envelope rather
+  than picking a rule"). At dx=1mm and PRODUCTION precision (see below)
+  the occupied-node band is [9.000, 10.000] mm with the declared value at
+  the TOP edge (i.e. the realized slab may be up to one cell SHORTER, not
+  longer). That half-cell sensitivity, `beta_d * 0.5 * DX_M` (up to ~9.76
+  deg at dx=1mm), is carried as part of the 60 deg slab-phase envelope
+  rather than resolved by a mesh or quote-realized rule.
+
+  PRECISION REQUIREMENT for any future re-measurement of this file's
+  geometry or fidelity: run with JAX_ENABLE_X64 unset or "0", matching
+  line 99 below. float32 knife-edge rasterization (rfx/geometry/csg.py:
+  92-111) moves occupied-node counts by a whole cell vs JAX_ENABLE_X64=1
+  (confirmed: dx=1mm slab occupies x-nodes 95..104, n=10, at x64=0 vs
+  95..105, n=11, at x64=1) — every number quoted above was measured at
+  x64=0 via ``sim._build_waveguide_port_config`` / ``fidelity_report()``.
+
+  CPML_LAYERS / _LAMBDA_G_LOW_M (below) are UNCHANGED by this edit: DX_M
+  stays 1 mm, so the derivation is not re-run. For the record: re-deriving
+  lambda_g from the new quote-realized cutoff (6.517391 GHz) gives
+  ~60.2455 mm -> an honest CPML_LAYERS of 46 (0.7137 of that lambda_g),
+  vs the current 43 (0.75 of the old, extractor-eigenvalue-derived
+  56.4 mm). Left at 43 to keep this change single-variable; not silently
+  loosened — see followups.
 """
 
 from __future__ import annotations
@@ -110,16 +182,26 @@ C0 = 2.998e8
 # =============================================================================
 # WR-90 geometry (X-band standard)
 # =============================================================================
-A_WG = 0.02286      # 22.86 mm broad dimension
-B_WG = 0.01016      # 10.16 mm narrow dimension
-F_CUTOFF_TE10 = C0 / (2.0 * A_WG)  # ≈ 6.557 GHz
+A_WG = 0.02286      # 22.86 mm broad dimension (declared WR-90 standard)
+B_WG = 0.01016      # 10.16 mm narrow dimension (declared WR-90 standard)
+
+DX_M = 0.001        # 1 mm, ≈ 30 cells per λ at 10 GHz. UNCHANGED by #722/#724
+                    # — see "Mesh / reference convention" above; a mesh-based
+                    # fix was evaluated and withdrawn.
+
+# QUOTE-REALIZED (#722, #724): the walls this dx actually rasterizes
+# (ceil(declared/dx)*dx), not the declared WR-90 values. At dx=1mm this is
+# 23.000 x 11.000 mm — an EXACT rectangular guide, so F_CUTOFF_TE10 below
+# is the true TE10 cutoff of the structure the solver builds.
+A_WG_REALIZED = float(np.ceil(A_WG / DX_M)) * DX_M   # = 0.023 m at dx=1mm
+B_WG_REALIZED = float(np.ceil(B_WG / DX_M)) * DX_M   # = 0.011 m at dx=1mm
+F_CUTOFF_TE10 = C0 / (2.0 * A_WG_REALIZED)  # ≈ 6.517 GHz (declared: 6.557 GHz)
 
 # Measurement band: X-band (8.2 – 12.4 GHz)
 FREQS_HZ = np.linspace(8.2e9, 12.4e9, 21)
 F0_HZ = float(FREQS_HZ.mean())
 BANDWIDTH_REL = 0.5  # of f0
 
-DX_M = 0.001        # 1 mm, ≈ 30 cells per λ at 10 GHz
 # DERIVED from lambda_g at the band edge, not chosen (#496; the pattern case 18
 # and #576 established). The history behind the old literal 20 is real and is
 # kept: 10 gave ~12% guided-mode reflection, 20 gave ~4% residual per
@@ -130,6 +212,14 @@ DX_M = 0.001        # 1 mm, ≈ 30 cells per λ at 10 GHz
 # y=z=pec): the padding lands on the propagation axis only, so 0.75 lambda_g
 # costs 1.19x the cells (grid 241x24x12 -> 287x24x12), not the ~3.9x it would
 # cost if CPML padded all three axes of a 23x10-cell cross-section.
+# _LAMBDA_G_LOW_M is a DERIVED VALUE (feeds CPML_LAYERS below), not a
+# comment — any DX_M change must re-derive it from the numerical cutoff at
+# that mesh. UNCHANGED here (DX_M frozen at 1mm): still derived from the
+# old extractor eigenvalue 6.241 GHz. For the record, re-deriving from
+# this file's new quote-realized F_CUTOFF_TE10 (6.517391 GHz) gives
+# lambda_g ~= 60.2455 mm -> an honest CPML_LAYERS of 46 (0.7137 of that
+# lambda_g), vs the 43 shipped here (0.75 of the value below). Left as-is
+# to keep this #722/#724 edit single-variable (issue #722 followup).
 _LAMBDA_G_LOW_M = 56.4e-3   # at 8.2 GHz, numerical TE10 cutoff 6.241 GHz
 CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW_M / DX_M))
 # Post-scan rect-DFT architecture (2026-04-25 refactor): all geometries
@@ -252,6 +342,12 @@ def _build_sim(
             sim.add_material(name, eps_r=eps_r, sigma=0.0)
             sim.add(Box(lo, hi), material=name)
     if pec_short_x is not None:
+        # NOTE (#722/#724): `pec_short_x + 2 * DX_M` is a cell-relative
+        # thickness (2 cells), not an absolute-coordinate extent — it
+        # violates the repo's absolute-coordinates convention. Inert here
+        # only because DX_M is frozen at 1 mm by this change (reflection
+        # plane stays exactly pec_short_x regardless of thickness); flag
+        # before ever moving DX_M in this script.
         sim.add(
             Box((pec_short_x, 0.0, 0.0),
                 (pec_short_x + 2 * DX_M, DOMAIN_Y, DOMAIN_Z)),
@@ -263,12 +359,29 @@ def _build_sim(
     # same absolute x-positions so the reported S-matrices are
     # referenced identically; otherwise an ~85° phase offset appears
     # purely from the plane difference (β·20 mm ≈ 190° at 10 GHz).
+    #
+    # y_range/z_range (#722/#724): trim the port aperture to the last
+    # interior CELL column of the realized cross-section instead of the
+    # default n_nodes span (rfx/api/_compile.py `_range_to_slice`, the
+    # `value_range is None` branch). Zero-cost mitigation for the
+    # DOMINANT cv11 error term (comparator/extractor cutoff, see
+    # docstring): measured cfg.f_cutoff 6.241218 -> 6.512162 GHz, -0.08%
+    # vs the 6.517391 GHz quote-realized reference instead of -4.82%.
+    # CAVEAT (unverified by a full solve — see docstring): this disables
+    # the PEC-ghost aperture-weight zeroing the pec-short 2026-04-27
+    # DROP-weight fix depends on; the lead should re-run pec-short before
+    # trusting the |S11| gates with this trim in place.
+    aperture_kw = dict(
+        y_range=(0.0, A_WG_REALIZED - DX_M),
+        z_range=(0.0, B_WG_REALIZED - DX_M),
+    )
     sim.add_waveguide_port(
         PORT_LEFT_X, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=port_freqs, f0=f0, bandwidth=bandwidth,
         waveform="modulated_gaussian",
         reference_plane=0.050,
         name="left",
+        **aperture_kw,
     )
     sim.add_waveguide_port(
         PORT_RIGHT_X, direction="-x", mode=(1, 0), mode_type="TE",
@@ -276,6 +389,7 @@ def _build_sim(
         waveform="modulated_gaussian",
         reference_plane=0.150,
         name="right",
+        **aperture_kw,
     )
     return sim
 

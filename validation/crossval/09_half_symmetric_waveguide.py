@@ -24,13 +24,39 @@ Physics:
     resonance as the full-domain all-PEC cavity.
 
 Setup:
-    - a = 22.86 mm (WR-90 broad wall), b = 10.16 mm, d = 30.0 mm.
-    - f_{101}(analytic) = 8.246 GHz.
-    - dx = 0.5 mm (uniform), cpml_layers = 0 on both runs.
+    - a = 22.86 mm (WR-90 broad wall), b = 10.16 mm, d = 30.48 mm (1.2 in).
+    - f_{101}(analytic) = 8.1964 GHz.
+    - dx = 0.635 mm = 0.025 in (uniform), cpml_layers = 0 on both runs.
       Closed cavities with cpml_layers=0 sidestep the PMC+CPML composition
       architectural gap.
     - Gaussian-pulse E_y source offset from center; E_y probe off-node.
     - Harminv on ringdown (skip first 25 %) to extract the dominant mode.
+
+Mesh / reference convention (issue #722, #724):
+    REALIZE-DECLARED-BY-MESH. dx = 0.025 in divides the WR-90 broad and
+    narrow walls (0.9 in, 0.4 in), the 1.2 in closure and the mirror plane
+    a/2 exactly (36 / 16 / 48 / 18 cells, verified from the built grid), so
+    the Pozar closed form above is evaluated on the dimensions the solve
+    actually has and no realized-value substitution appears anywhere in
+    this script. The closure length d is arbitrary — no external reference
+    pins it, unlike the WR-90 standard a and b — and was re-declared
+    30.00 -> 30.48 mm to obtain that commensurability. Note that gate 3
+    (half vs full) was already self-consistent before this change: the
+    half domain realized exactly half the full cavity's realized broad
+    wall. What this change fixes is gates 1-2, which compared a realized
+    cavity against a declared-dimension closed form.
+
+    MEASURED this dx = 0.635 mm mesh (PYTHONPATH=/root/rfx-sub/rfx python3
+    validation/crossval/09_half_symmetric_waveguide.py): grid nodes
+    (37,17,49) -> cells (36,16,48) -> walls (22.8600, 10.1600, 30.4800) mm
+    exactly; half-domain grid (19,17,49) -> half wall_x = 11.4300 mm, the
+    mirror plane, exactly half of 22.8600 mm. Solve: 'full: f = 8.1957 GHz,
+    Q = 5.04e+04', 'half: f = 8.3460 GHz, Q = 8.70e+04', gates
+    0.009% / 1.825% / 1.835%, all PASS, at 0.508x the wall clock of the
+    prior dx = 0.5 mm mesh (measured 20.1 s vs 39.6 s). Gates 2/3 degrade
+    from the prior mesh's 1.006% / 1.408% because the half cavity's
+    transverse resolution drops from 23 to 18 cells; both stay far inside
+    the 10% / 5% gates.
 
 PASS criteria:
     1. f_full within 10 % of analytic f_{101}.
@@ -58,13 +84,14 @@ from rfx.harminv import harminv
 C0 = 299_792_458.0
 
 # ----------------------------------------------------------------------
-# Cavity dimensions (WR-90 section with L=30mm closure)
+# Cavity dimensions (WR-90 section with L=30.48mm (1.2 in) closure)
 # ----------------------------------------------------------------------
 a = 22.86e-3     # broad wall (x-axis), metres
 b = 10.16e-3     # narrow wall (y-axis)
-d = 30.0e-3      # cavity length (z-axis)
+d = 30.48e-3     # cavity length (z-axis), 1.2 in — chosen so DX divides it exactly
 
-DX = 0.5e-3      # uniform cell size
+DX = 0.635e-3    # uniform cell size, 0.025 in — divides a, b, d and a/2 exactly
+                 # (issue #722/#724: REALIZE-DECLARED-BY-MESH, see docstring)
 N_STEPS = 4096
 FREQ_MAX = 20e9  # covers well above f_{101}
 
