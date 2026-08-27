@@ -198,7 +198,10 @@ def fidelity_report(sim, print_report: bool = True):
         # later claimed by a conductor looks untouched in eps alone (trap T5).
         if mat_name not in ("pec", "lossy-sheet"):
             pec_frac = float(np.mean(pec_mask[mask]))
-            if 1e-9 < pec_frac <= 0.5:
+            _declared_sigma = float(item["material"].get("sigma", 0.0) or 0.0)
+            # A metal-like declaration realized as PEC is its own finding
+            # below; here we mean a DIELECTRIC whose cells metal took over.
+            if pec_frac > 1e-9 and _declared_sigma < 1e6:
                 item["findings"].append(dict(
                     kind="claimed-by-conductor",
                     detail=f"{100 * pec_frac:.1f}% of this dielectric's cells "
@@ -301,7 +304,8 @@ def fidelity_report(sim, print_report: bool = True):
         # 2026-08-27) — the tool's whole purpose, silently skipped.
         pec_frac_self = float(np.mean(pec_mask[mask]))
         realized_conductor = pec_frac_self > 0.5
-        if realized_conductor and mat_name != "pec":
+        declared_sigma = float(item["material"].get("sigma", 0.0) or 0.0)
+        if realized_conductor and mat_name != "pec" and declared_sigma >= 1e6:
             item["findings"].append(dict(
                 kind="declared-lossy-realized-pec",
                 detail=f"declared as material '{mat_name}' with sigma "
