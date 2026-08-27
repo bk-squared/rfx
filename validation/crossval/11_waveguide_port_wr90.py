@@ -161,11 +161,34 @@ phase through beta. After, the reference is 6.517391 GHz and the trimmed
 extractor reads 6.512162 GHz: 0.08%. The two legs describe one guide, so
 the phase residuals collapse.
 
-GATES ARE NOT TIGHTENED to the new envelope by this change, even though
-every one of them is now loose. Tightening on a single run would breach
-this repo's own invariance-witness rule -- the numbers above have no
-run-length or mesh-2x witness behind them yet. Left as a follow-up with
-the measurement already in hand rather than done silently here.
+INVARIANCE WITNESS (run-length, 2026-08-27): the envelope above was
+re-measured with NUM_PERIODS_LONG doubled 200 -> 400 (15 min 36 s, same
+mesh, same everything else). EVERY gate line reproduces to 0.00%; the
+single exception is the slab S11 complex envelope, 0.0653 -> 0.0654
+(0.15%). The envelope is converged in run length, so these numbers are
+witnessed in the sense this repo requires before pinning.
+
+GATES ARE STILL NOT TIGHTENED, and the reason is no longer a missing
+witness -- it is two specific things:
+
+  1. The PHASE gates are not envelopes, they are decisions with written
+     derivations, so measuring better does not license moving them. The
+     slab 60 deg gate carries its own comment ("tightening below this
+     requires per-tool reference-plane de-embedding which is out of
+     scope"), and the pec-short 15 deg round-trip gate is derived from a
+     +-4-cell reference-plane positional-uncertainty allowance, not from
+     any measurement. A 3.26 deg reading does not shrink a +-4-cell
+     allowance.
+  2. SEQUENCING. The magnitude gates COULD be tightened on this witness,
+     but #729's port-aperture default is the next thing to move these
+     same numbers: cv11 currently corrects that defect in-script with an
+     explicit y_range/z_range, and if the rfx-side default is fixed the
+     workaround becomes redundant or a double correction, and this
+     envelope moves again. Pinning a tight gate immediately before a
+     change known to move it is how a gate becomes noise.
+
+So: tighten the magnitude gates after #729 settles, on a re-measured
+envelope, not here.
 
   `slab_L` (below, the dielectric-slab geometry) stays DECLARED at
   10.000 mm rather than quote-realized: the longitudinal/propagation-axis
