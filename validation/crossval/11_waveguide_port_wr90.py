@@ -114,7 +114,8 @@ Mesh / reference convention (issue #722, #724):
        dx=1mm vs a QUOTE-REALIZED reference of 6.517391 GHz: -4.82%. This
        survives every mesh (6.204954 GHz at dx=1.27mm, 6.378004 GHz at
        dx=0.635mm) and is a comparator/extractor defect, not a geometry
-       defect — it is NOT fixed by this change; see followups.
+       defect — it is NOT fixed by this change; filed as #729 (the
+       node-vs-cell class) with this measurement.
     2. Cross-section geometry: 0.61% (22.86 mm declared vs 23.000 mm
        realized). Fixed here by quote-realized.
   A zero-cost, in-script mitigation for term (1) IS applied below: both
@@ -123,13 +124,48 @@ Mesh / reference convention (issue #722, #724):
   column of the cross-section instead of the default n_nodes span.
   Measured: cfg.f_cutoff rises from 6.241218 GHz to 6.512162 GHz (-0.08%
   vs the 6.517391 GHz quote-realized reference, vs -4.82% untrimmed).
-  CAVEAT (unverified by a solve — flagged for the run lane): trimming the
-  aperture makes `u_hi != u_grid_size`, which disables the PEC-ghost
+  The CAVEAT this docstring carried before the run — that trimming the
+  aperture makes `u_hi != u_grid_size`, disabling the PEC-ghost
   aperture-weight zeroing at ``rfx/sources/waveguide_port.py`` that the
-  2026-04-27 DROP-weight fix (see pec-short docstring below) depends on.
-  This needs one pec-short run compared against
-  ``tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt`` before
-  being trusted for the |S11| gates.
+  2026-04-27 DROP-weight fix (see pec-short docstring below) depends on —
+  was RESOLVED by the run below: it does not cost the |S11| gates. The
+  pec-short |S11| envelope widens from 0.0004 to 0.0020 max_diff, which is
+  25x inside its own 0.050 gate, and the per-freq band still passes with
+  max |S11| = 1.0019 against a 1.05 passivity ceiling. Recorded as a real
+  (if small) cost, not waved away.
+
+RUN RESULT (2026-08-27, this pod, 8 min 44 s CPU at the unchanged
+dx = 1 mm mesh) -- the re-pin, measured before/after, no gate moved
+============================================================================
+Prior envelope: ``tests/fixtures/waveguide_broad_e5/
+cv11_wr90_fresh_stdout.txt``, refreshed by this change (that fixture is a
+provenance record cited from this docstring; grep confirms no test reads
+it, so refreshing it moves no gate).
+
+  gate line                                    before ->  after  (gate)
+  [pec-short S11 round-trip phase] max |dS|    10.56  ->   3.26  deg (15.0)
+  [pec-short S11 round-trip phase] mean |dS|    5.53  ->   1.45  deg
+  [pec-short |S11|] max_diff                  0.0004 -> 0.0020  (0.050)
+  [slab S11] |S| max_diff                     0.0708 -> 0.0141  (0.100)
+  [slab S11] |S| mean_diff                    0.0440 -> 0.0069
+  [slab S11] angle max_diff                    20.25 ->  8.94   deg (60.0)
+  [slab S11] |S_rfx-S_ref| max                0.1131 -> 0.0653  (0.300)
+  [slab S21] |S| max_diff                     0.0074 -> 0.0023  (0.070)
+  [slab S21] |S_rfx-S_ref| max                0.0156 -> 0.0132  (0.300)
+
+The mechanism is the one this section predicts, which is why the size of
+the move is not a surprise: before, the analytic comparators ran on
+6.557391 GHz (declared a) while the extractor's own effective wall was
+~24.0 mm (6.241218 GHz) -- a 4.8% cutoff mismatch that entered every
+phase through beta. After, the reference is 6.517391 GHz and the trimmed
+extractor reads 6.512162 GHz: 0.08%. The two legs describe one guide, so
+the phase residuals collapse.
+
+GATES ARE NOT TIGHTENED to the new envelope by this change, even though
+every one of them is now loose. Tightening on a single run would breach
+this repo's own invariance-witness rule -- the numbers above have no
+run-length or mesh-2x witness behind them yet. Left as a follow-up with
+the measurement already in hand rather than done silently here.
 
   `slab_L` (below, the dielectric-slab geometry) stays DECLARED at
   10.000 mm rather than quote-realized: the longitudinal/propagation-axis
