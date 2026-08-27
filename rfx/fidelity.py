@@ -120,6 +120,7 @@ def fidelity_report(sim, print_report: bool = True):
                        "bounds cannot be audited",
                 remedy="give the shape an axis-aligned bounding box")]))
             continue
+        boxlike = type(entry.shape).__name__ == "Box"
         mask = _entity_mask(entry, sim, grid, nonuniform)
         item = dict(entity=name, material=_declared_material(sim, entry.material_name),
                     declared_lo=tuple(float(v) for v in lo),
@@ -152,14 +153,35 @@ def fidelity_report(sim, print_report: bool = True):
             if ext > 0:
                 worst = max(ax["face_residual_um"])
                 if worst > 0.005 * ext:
-                    item["findings"].append(dict(
-                        kind="off-lattice-face", axis=ax["axis"],
-                        detail=f"face residual {worst:.1f} um = "
-                               f"{100 * worst / ext:.2f}% of the declared "
-                               f"{ext:.1f} um extent",
-                        remedy="place a mesh node on this face (non-uniform "
-                               "profile) or choose the cell size / origin "
-                               "commensurate with it"))
+                    d_ext = ax["realized_extent_um"] - ext
+                    if boxlike:
+                        item["findings"].append(dict(
+                            kind="off-lattice-face", axis=ax["axis"],
+                            detail=f"face residual {worst:.1f} um = "
+                                   f"{100 * worst / ext:.2f}% of the declared "
+                                   f"{ext:.1f} um extent; realized extent "
+                                   f"{ax['realized_extent_um']:.1f} um "
+                                   f"({d_ext:+.1f} um)",
+                            remedy="place a mesh node on this face "
+                                   "(non-uniform profile) or choose the cell "
+                                   "size / origin commensurate with it"))
+                    else:
+                        # A curved/implicit shape has no face to put a node on;
+                        # its bounding box is sampled, so the honest statement
+                        # is where the realized body sits and how big it is.
+                        item["findings"].append(dict(
+                            kind="bbox-offset", axis=ax["axis"],
+                            detail=f"bounding-box offset {worst:.1f} um = "
+                                   f"{100 * worst / ext:.2f}% of the declared "
+                                   f"{ext:.1f} um extent; realized extent "
+                                   f"{ax['realized_extent_um']:.1f} um "
+                                   f"({d_ext:+.1f} um). Curved boundary: the "
+                                   "rasterizer samples cells, so the body can "
+                                   "sit up to one cell off while keeping its "
+                                   "size",
+                            remedy="refine the local cell size, or shift the "
+                                   "lattice origin, if the placement (not just "
+                                   "the size) is load-bearing"))
             axes.append(ax)
         item["axes"] = axes
 
@@ -240,6 +262,7 @@ def _print(report):
                   f" | extent {ax['declared_extent_um']:.1f} -> "
                   f"{ax['realized_extent_um']:.1f} um")
         for f in it.get("findings", []):
-            print(f"    ! [{f['kind']}] {f['detail']}")
+            ax = f" {f['axis']}:" if f.get("axis") else ""
+            print(f"    ! [{f['kind']}]{ax} {f['detail']}")
             print(f"      remedy: {f['remedy']}")
         print()

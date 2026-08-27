@@ -981,6 +981,13 @@
         "i_probe_dft"
       ]
     },
+    "fidelity_report": {
+      "kind": "function",
+      "params": [
+        "sim",
+        "print_report"
+      ]
+    },
     "field_energy": {
       "kind": "function",
       "params": [
@@ -2589,6 +2596,9 @@
     "export_scene": [
       "path",
       "kwargs"
+    ],
+    "fidelity_report": [
+      "print_report"
     ],
     "forward": [
       "eps_override",
