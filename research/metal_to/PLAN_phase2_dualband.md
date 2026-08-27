@@ -12,6 +12,38 @@ time, after we know what is true.
 
 ---
 
+# PI decisions, 2026-08-27 — these override anything below that conflicts
+
+1. **The design box is two-sided.** Metal may go on both sides of the trace, 9 mm deep
+   per side, 12 mm along the line, applied identically to every arm. This is a
+   deliberate relaxation: we are not trying to engineer a box in which classical fails.
+   Consequence: the fixture changes, so the Stage-0 window calibration is re-run on the
+   new fixture before any sweep.
+2. **Tolerance robustness is part of the spec**, at ordinary PCB etching tolerance
+   (≈ ±50 µm). Implemented as the standard three-field robust formulation — over-etch
+   (eroded), nominal, under-etch (dilated) — with the worst case across fields reported
+   as the margin. Note the representable amounts: the coarse cell is 127 µm and the
+   refined cell 63.5 µm, so ±1 fine cell (±63.5 µm) is the closest honest match and
+   ±1 coarse cell (±127 µm) is over-penalising; whichever is used must be stated.
+3. **The phase is a MARGIN COMPARISON, not a feasibility gate.** The DEAD / CONTESTED /
+   LIVE gate is withdrawn. We do not discard the benchmark if the classical baseline
+   meets the spec. The deliverable is: for each approach, how much margin against the
+   mask, nominally and under etch tolerance, at what solver budget. A classical win is
+   a perfectly good result and gets reported as such.
+
+**What this changes about the arms.** They stay, but their purpose shifts from "does
+classical fail here?" to "what does each approach buy, and how robust is it?":
+- Arm D is no longer a gate on the benchmark; it is the reference margin.
+- The symmetry clause stands and matters more than before: identical metric, window,
+  hard-PEC re-solve, box, and minimum feature size for every arm, with a 3 dB band
+  reported as parity rather than as a win in either direction.
+- Robustness is the axis where the approaches are genuinely expected to differ. A wide
+  stub skirt is tolerance-insensitive; a high-order design that squeezes sharp skirts
+  out of a small box is not. Fragility under ±1 cell of etch is a *result*, whichever
+  arm it lands on.
+
+---
+
 # Part I — The benchmark: dual notch at the WLAN pair. Classical genuinely has no knob.
 
 **Spec: a through-line rejecting WLAN 5.15–5.35 GHz and 5.725–5.825 GHz, inside a
