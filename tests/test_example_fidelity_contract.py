@@ -43,6 +43,19 @@ classification_table and the Counter in this module's own analysis): of the
   crossval comparator subdirs, and the two research RCWA scripts) -- out of
   scope BY CONSTRUCTION.
 
+WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
+solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
+cv17, cv07, cv09, cv15), this gate reaches TWO: cv06b and cv11.
+cv20/cv16/cv17 are ``no_simulation`` and cv07/cv09/cv15 are
+``builder_fused_with_solve``, so a no-solve gate cannot see them as those
+scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
+is ``no_simulation``) or cv15's cavity (#740). It DOES pin
+differentiable_s11_design's two domain widths (#738); that script's third
+declared width, the port aperture, falls under fidelity_report's own
+out-of-scope port row. A green run here is not evidence that the #722
+campaign's class is closed -- closing it needs the remaining six scripts to
+grow a builder separable from their solve.
+
 Every one of the 47 is EXPLICITLY classified in
 ``tests/_example_fidelity_lib.CLASSIFICATION`` (enumerate-and-classify: a
 new script with no entry fails ``test_discovery_matches_classification_
