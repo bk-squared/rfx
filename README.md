@@ -25,7 +25,7 @@
 
 | | |
 |---|---|
-| **GPU-accelerated** | 7,309 Mcells/s peak on RTX 4090 (200³ grid, 24 GB; 5,249 on A6000) via `jax.lax.scan` JIT |
+| **GPU-accelerated** | 200³ grid on an RTX 4090: **7,266 Mcells/s** with PEC walls, **2,087 Mcells/s** with CPML absorbers — an open-boundary simulation pays the absorber, so quote the second for antenna/scattering work. Measured by marginal-cost differencing (`scripts/diagnostics/gpu_throughput_bench.py`); see the benchmark guide for other cards. |
 | **Differentiable** | `jax.grad` through the time-domain solver for sensitivity and inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameters, Harminv, far-field / RCS |
 | **Per-family S-parameters** | lumped/wire, microstrip, rectangular waveguide, and coaxial paths use distinct calculators |
