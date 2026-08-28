@@ -1,0 +1,50 @@
+# GPU throughput — measured numbers and what they mean
+
+Every figure here is a marginal-cost measurement from
+`scripts/diagnostics/gpu_throughput_bench.py`: two runs of different step
+counts are timed and differenced, so compilation, host dispatch and
+buffer setup subtract out and what remains is the compiled scan's
+per-step cost. Timing a whole `run()` instead reads several times too
+LOW at small grids (fixed cost dominates) — a ladder that RISES with grid
+size is the signature of that mistake.
+
+## The boundary condition is part of the number
+
+A CPML absorber updates auxiliary fields in its pad shells and enlarges
+the padded grid, so it costs more than a PEC wall — by 3.5x on the same
+200³ problem:
+
+| 200³, RTX 4090 | Mcells/s | padded cells |
+|---|---|---|
+| PEC walls | 7,266 (repeat 7,240) | 8.12 M |
+| CPML, 8 layers | 2,087 | 10.22 M |
+
+Quote the PEC figure only for closed-cavity work. Antenna, scattering
+and any open-boundary problem pays the absorber, so the CPML row is the
+honest number for those.
+
+(The PEC figure reproduces the 7,309 recorded on this card in April 2026
+to 0.6%, from a different harness — the two agree, but the original entry
+did not say which boundary it used, and readers took it for the
+open-boundary rate.)
+
+## Cards, CPML lane
+
+Measured 2026-08-25 on the same harness, `bare` = uniform mesh,
+`nu-z` = 4:1 graded z. Blank = out of memory at that size.
+
+| Mcells/s | 300³ bare | 400³ bare | 512³ bare | 300³ nu-z | 400³ nu-z | 512³ nu-z |
+|---|---|---|---|---|---|---|
+| H200 NVL (141 GB) | 4,446 | 4,350 | 3,394 | 4,068 | 3,823 | 3,225 |
+| RTX 4090 (24 GB) | 2,119 | 1,763 | — | 1,784 | 1,585 | — |
+| RTX A6000 (48 GB) | 975 | 673 | 484 | 560 | 343 | — |
+
+## Kernel rate is not production rate
+
+A production S-parameter run carries per-step DFT accumulation at every
+port bin, probe bookkeeping and lumped elements. Measured on a 256 M-cell
+board run: **628 Mcells/s on the H200**, against 4,350 for the bare
+kernel at a comparable size — a 7x gap that is path overhead, not the
+kernel. The gap grows with card speed (the A6000's was 1.3x), so a faster
+card buys less than its kernel ratio suggests until that path is
+addressed.
