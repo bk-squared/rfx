@@ -1,0 +1,407 @@
+{
+ "steps": 60000,
+ "layers": 12,
+ "alpha_rule_S_per_m": 0.5006925249515417,
+ "vacuum_floor_db": {
+  "shipped": -70.0999496617502,
+  "rule": -67.98347925922654,
+  "degradation_db": 2.1164704025236603
+ },
+ "C1-ON": {
+  "face": {
+   "g_per_step": -0.00013962723498017027,
+   "peak": 0.001327820704318583,
+   "last_window": 5.507479272637283e-07,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -0.00013008876678715156,
+   "peak": 0.0003705089329741895,
+   "last_window": 2.1168170860619284e-06,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -0.00013008876678715156,
+   "peak": 0.001327820704318583,
+   "last_window": 2.1168170860619284e-06,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 3881305747.945954,
+  "fft_probe": "c_ll_ez",
+  "pad_pole_cells": {
+   "x_lo": 3072,
+   "x_hi": 3072,
+   "y_lo": 3360,
+   "y_hi": 3360
+  },
+  "wall_s": 94.4,
+  "localization": {
+   "interior": 0.8624262181663362,
+   "face": 0.1091355041636537,
+   "corner": 0.028438277670010052,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C1-OFF": {
+  "face": {
+   "g_per_step": -4.1511409414916075e-05,
+   "peak": 0.0003534645074978471,
+   "last_window": 6.237517879981169e-08,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -4.7790771777123744e-05,
+   "peak": 4.291062941774726e-05,
+   "last_window": 2.0916939291737435e-09,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -4.1511409414916075e-05,
+   "peak": 0.0003534645074978471,
+   "last_window": 6.237517879981169e-08,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 77433798007.44427,
+  "fft_probe": "yhi_d2",
+  "pad_pole_cells": {
+   "x_lo": 0,
+   "x_hi": 0,
+   "y_lo": 0,
+   "y_hi": 0
+  },
+  "wall_s": 87.1,
+  "localization": {
+   "interior": 0.9762940360912321,
+   "face": 0.022140398237665285,
+   "corner": 0.001565565671102654,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C2-ON": {
+  "face": {
+   "g_per_step": -0.0001507585928567856,
+   "peak": 0.001477919053286314,
+   "last_window": 4.78809624837595e-07,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -0.0001289718552937221,
+   "peak": 0.0003610336279962212,
+   "last_window": 1.944692257893621e-06,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -0.0001289718552937221,
+   "peak": 0.001477919053286314,
+   "last_window": 1.944692257893621e-06,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 3881305747.945954,
+  "fft_probe": "c_ll_ez",
+  "pad_pole_cells": {
+   "x_lo": 1824,
+   "x_hi": 0,
+   "y_lo": 2016,
+   "y_hi": 0
+  },
+  "wall_s": 92.7,
+  "localization": {
+   "interior": 0.9229654088001225,
+   "face": 0.06189057421441112,
+   "corner": 0.015144016985466352,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C2-OFF": {
+  "face": {
+   "g_per_step": -5.650277775010842e-05,
+   "peak": 0.00036004226421937346,
+   "last_window": 4.8203396829649137e-08,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -2.159284418899856e-05,
+   "peak": 0.0001190684488392435,
+   "last_window": 4.996292268799607e-09,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -5.650277775010842e-05,
+   "peak": 0.00036004226421937346,
+   "last_window": 4.8203396829649137e-08,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 0.0,
+  "fft_probe": "ylo_d2",
+  "pad_pole_cells": {
+   "x_lo": 0,
+   "x_hi": 0,
+   "y_lo": 0,
+   "y_hi": 0
+  },
+  "wall_s": 110.9,
+  "localization": {
+   "interior": 0.9754476445369646,
+   "face": 0.022909529974455785,
+   "corner": 0.001642825488579586,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C3-ON": {
+  "face": {
+   "g_per_step": -2.5553561860359447e-07,
+   "peak": 0.00020246990607120097,
+   "last_window": 1.1778121589145485e-08,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": 6.525024923528072e-08,
+   "peak": 3.218560595996678e-05,
+   "last_window": 9.085823204912913e-10,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -2.5553561860359447e-07,
+   "peak": 0.00020246990607120097,
+   "last_window": 1.1778121589145485e-08,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 0.0,
+  "fft_probe": "ylo_d2",
+  "pad_pole_cells": {
+   "x_lo": 3072,
+   "x_hi": 3072,
+   "y_lo": 3360,
+   "y_hi": 3360
+  },
+  "wall_s": 103.7,
+  "localization": {
+   "interior": 0.9760925904419568,
+   "face": 0.022346392991480703,
+   "corner": 0.0015610165665624128,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C3-OFF": {
+  "face": {
+   "g_per_step": -1.0427248660582271e-07,
+   "peak": 0.00018803686543833464,
+   "last_window": 2.850759805994585e-08,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": 6.91706205820837e-08,
+   "peak": 4.5699118345510215e-05,
+   "last_window": 3.5064515735427904e-09,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -1.0427248660582271e-07,
+   "peak": 0.00018803686543833464,
+   "last_window": 2.850759805994585e-08,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 0.0,
+  "fft_probe": "ylo_d2",
+  "pad_pole_cells": {
+   "x_lo": 0,
+   "x_hi": 0,
+   "y_lo": 0,
+   "y_hi": 0
+  },
+  "wall_s": 137.1,
+  "localization": {
+   "interior": 0.9743248071519818,
+   "face": 0.023939870830019822,
+   "corner": 0.0017353220179984448,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C4-ON": {
+  "face": {
+   "g_per_step": 0.0005183669275856583,
+   "peak": 99545866240.0,
+   "last_window": 99545866240.0,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": 0.0005230685804210604,
+   "peak": 156937142272.0,
+   "last_window": 156937142272.0,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": 0.0005230685804210604,
+   "peak": 156937142272.0,
+   "last_window": 156937142272.0,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 2639987242.9722476,
+  "fft_probe": "c_hh_ez",
+  "pad_pole_cells": {
+   "x_lo": 3072,
+   "x_hi": 3072,
+   "y_lo": 3360,
+   "y_hi": 3360
+  },
+  "wall_s": 102.2,
+  "localization": {
+   "interior": 0.4044556712739195,
+   "face": 0.4630709229043921,
+   "corner": 0.13247340582168857,
+   "argmax_ij": [
+    5,
+    58
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C4-OFF": {
+  "face": {
+   "g_per_step": -0.0001851405500436207,
+   "peak": 0.008557611145079136,
+   "last_window": 5.090841455057671e-07,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -0.00018322537027824092,
+   "peak": 0.0005263428902253509,
+   "last_window": 3.850206820033009e-09,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -0.0001851405500436207,
+   "peak": 0.008557611145079136,
+   "last_window": 5.090841455057671e-07,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 1468602174.898469,
+  "fft_probe": "yhi_d2",
+  "pad_pole_cells": {
+   "x_lo": 0,
+   "x_hi": 0,
+   "y_lo": 0,
+   "y_hi": 0
+  },
+  "wall_s": 89.1,
+  "localization": {
+   "interior": 0.9257135177801629,
+   "face": 0.07148117782405786,
+   "corner": 0.0028053043957793878,
+   "argmax_ij": [
+    24,
+    24
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "C1-ON-f64": {
+  "face": {
+   "g_per_step": -0.000139615866204456,
+   "peak": 0.0013277990031688724,
+   "last_window": 5.508887016632028e-07,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -0.00013008816410258397,
+   "peak": 0.0003704984678501891,
+   "last_window": 2.1160874582880467e-06,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -0.00013008816410258397,
+   "peak": 0.0013277990031688724,
+   "last_window": 2.1160874582880467e-06,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 3881305747.945954,
+  "fft_probe": "c_ll_ez",
+  "pad_pole_cells": {
+   "x_lo": 3072,
+   "x_hi": 3072,
+   "y_lo": 3360,
+   "y_hi": 3360
+  },
+  "wall_s": 150.2,
+  "localization": {
+   "interior": 0.8625236923030289,
+   "face": 0.10906382335523514,
+   "corner": 0.02841248434173599,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ },
+ "verdict": "GUARDS-ONLY"
+}
