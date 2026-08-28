@@ -155,6 +155,45 @@ the step count where the measured separation is decisive (20,000 steps:
 instability itself (both variants, slow-marked) is added — deliverable 1
 does not depend on the attempt's outcome.
 
+## M1 outcome (recorded 2026-08-29, before M1b was designed further)
+
+**FALSIFIER F1 FIRED.** Max |lambda| minus 1 across every scanned case
+(1D face and 2D corner, shipped and rule alpha, 8 and 12 layers, C1/C3/C4
+materials) is at the +1e-12 level — eigen-solver roundoff. The per-cell
+composed ADE+CPML update is spectrally stable within the frozen-coefficient
+scope. H1 as stated is falsified; the shipped composition is NOT per-cell
+unstable. Consistent with the continuous-level Becache-Joly geometric
+criterion, which the Lorentz medium satisfies (vp*vg > 0 on both branches).
+The instability must involve what the frozen scan cannot see: profile
+grading, the interior/pad interface, the pad's outer PEC wall, or modes
+with complex transverse wavenumber. No thresholds were changed after the
+fact; the 1e-6/1e-9 gates stand as declared.
+
+## M1b / M1c — finite-operator diagnostics (declared BEFORE running them)
+
+M1b: exact FINITE 1D one-step operator, x-line of the fixture: 8-layer lo
+pad + 45 interior + 8-layer hi pad, Ez/Hy TM, PEC outer nodes (Ez=0),
+shipped graded profile per layer, statics eps_inf=4 everywhere (extended
+pads), pole (Q60) mask either interior-only (variant A = shipped) or
+extended into both pads (variant B). State [Ez, Hy, P, Pprev, psi_e,
+psi_h] per node, dense one-step matrix (~366 dim), exact eigenvalues.
+Prediction: B has rho > 1 + 1e-6, A <= 1 + 1e-9.
+Falsifier F1b: B staying <= 1 + 1e-6 falsifies the 1D interface/grading
+mechanism; then go to M1c.
+
+M1c (only if F1b fires): finite 2D TM corner operator, 61 x 55 grid of
+the fixture's x-y cross-section (pads on all four sides, PEC outer ring),
+eps_inf=4 + Q60 pole with mask variant A (interior slab only) vs B
+(extended into pads, corners included, exactly the array the piggyback
+extension produces in 2D), sparse largest-|lambda| eigensolve
+(ARPACK) on the ~30k-dim one-step operator implemented in numpy with the
+shipped update order/signs. Prediction: B has rho > 1 + 1e-6 and the
+eigenvector localizes in the pad; A <= 1 + 1e-9.
+Falsifier F1c: if B also stays <= 1 + 1e-6 in 2D, the linear mechanism is
+not reachable below 3D (or not by these reduced models); the root-cause
+statement then rests on M2's empirical operator measurement (growth rate +
+final-state localization) alone, reported as such.
+
 ## Runtime budget
 
 M1: seconds. M2: ~10 runs x ~2-5 min (156k cells x 60k steps, CPU JAX)
