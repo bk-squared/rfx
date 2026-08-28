@@ -129,6 +129,8 @@ from rfx.validation import (
     save_port_vi_dump_npz, validate_port_smatrix, assert_port_smatrix_valid,
 )
 from rfx.visualize import (
+    plot_rasterized_slice,
+    plot_stack_profile,
     plot_field_slice, plot_s_params, plot_radiation_pattern, plot_time_series,
     plot_rcs,
 )
@@ -329,7 +331,9 @@ __all__ = [
     "ArtifactBundle", "export_artifact_bundle",
     "save_state", "load_state",
     # visualization
-    "plot_field_slice", "plot_s_params", "plot_radiation_pattern",
+    "plot_field_slice", "plot_rasterized_slice",
+    "plot_stack_profile",
+    "plot_s_params", "plot_radiation_pattern",
     "plot_time_series", "plot_rcs", "plot_smith",
     "plot_geometry_3d", "plot_field_3d", "save_field_vtk", "save_field_animation",
     # gpu / surrogate

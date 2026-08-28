@@ -165,6 +165,322 @@ def plot_geometry_2d_slice(
     return fig
 
 
+def _slice_coords(sim, grid):
+    """E-node coordinates for whichever lane this grid belongs to.
+
+    Both helpers place the first INTERIOR node at 0 and give negative
+    coordinates to the CPML pad, so a ``Box((0,0,0),(Lx,Ly,Lz))`` tiles the
+    interior exactly and the drawn axes read in design coordinates.
+    """
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    from rfx.nonuniform import NonUniformGrid
+    c = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+         else coords_from_uniform_grid(grid))
+    return [np.asarray(c.x, dtype=float), np.asarray(c.y, dtype=float),
+            np.asarray(c.z, dtype=float)]
+
+
+def _edges_from_nodes(nodes):
+    """Cell edges as node midpoints, ends extrapolated by the end spacing.
+
+    pcolormesh needs N+1 edges for N cells. Deriving them from the node
+    coordinates keeps a GRADED axis to scale; ``imshow`` with a single
+    ``extent`` silently redraws a graded mesh as a uniform one.
+    """
+    n = np.asarray(nodes, dtype=float)
+    if n.size < 2:
+        d = 1.0 if n.size == 0 else max(abs(float(n[0])), 1.0)
+        base = 0.0 if n.size == 0 else float(n[0])
+        return np.array([base - 0.5 * d, base + 0.5 * d])
+    mid = 0.5 * (n[:-1] + n[1:])
+    return np.concatenate([[n[0] - (mid[0] - n[0])], mid,
+                           [n[-1] + (n[-1] - mid[-1])]])
+
+
+def plot_rasterized_slice(
+    sim,
+    *,
+    axis: int = 2,
+    position: float | None = None,
+    index: int | None = None,
+    show_declared: bool = True,
+    sigma_threshold: float | None = None,
+    figsize: tuple[float, float] = (8.0, 6.0),
+    title: str | None = None,
+    ax=None,
+):
+    """Draw the cells the SOLVE will use: conductors on top of permittivity.
+
+    :func:`plot_geometry_2d_slice` answers "what permittivity did I ask
+    for". This answers "what did the rasterizer actually build", which is a
+    different question and the one that goes wrong quietly:
+
+    * a one-cell PEC sheet carries no permittivity contrast of its own, so
+      **metal is invisible in an eps_r plot** — the conductor layer here is
+      drawn from :meth:`Simulation.conductor_mask`, which covers all three
+      places a conductor can live (``pec_mask``, ``sigma`` above the
+      conductor threshold, and the node-thin surface-impedance sheet
+      operator of #677, which touches neither of the first two);
+    * on a graded mesh the cells are not the same size, so the plot uses
+      ``pcolormesh`` on true cell edges rather than ``imshow`` with one
+      ``extent``;
+    * the grid is the one this simulation would RUN on — the non-uniform
+      grid whenever any of ``dx_profile`` / ``dy_profile`` / ``dz_profile``
+      is set.
+
+    Parameters
+    ----------
+    sim : Simulation
+    axis : int
+        Slice normal (0=x, 1=y, 2=z).
+    position : float or None
+        Physical coordinate (metres) along *axis* to slice at. The plane
+        chosen is the one that **holds conductor cells**, searched over the
+        nearest node and its two neighbours: a one-cell sheet's mask sits on
+        the LOWER node plane of its cell, so asking for the sheet's centre
+        lands one plane high and shows whatever else is there. Mutually
+        exclusive with ``index``.
+    index : int or None
+        Grid index along *axis*. Overrides ``position``. If both are None,
+        the plane with the most conductor cells is used.
+    show_declared : bool
+        Overlay the declared outline of every entry that HAS one — i.e. an
+        analytic box. Patterned bodies (imported meshes, sheets carved from
+        CAD) are skipped rather than drawn as their bounding box: on a real
+        board a divider arm measured 41% copper inside its own bbox, so a
+        bbox rectangle reads as "this was declared solid" and is worse than
+        no rectangle. The count of skipped bodies is put in the title so the
+        omission is visible rather than silent.
+    sigma_threshold : float or None
+        Passed to :meth:`Simulation.conductor_mask`.
+    figsize, title, ax
+        Usual matplotlib controls. ``ax`` draws into an existing axes.
+
+    Returns
+    -------
+    matplotlib Figure
+
+    Examples
+    --------
+    >>> fig = plot_rasterized_slice(sim, axis=2, position=1.6e-3)  # doctest: +SKIP
+    """
+    _require_mpl()
+    if axis not in (0, 1, 2):
+        raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
+    if index is not None and position is not None:
+        raise ValueError("pass index or position, not both")
+
+    from rfx.nonuniform import NonUniformGrid
+    is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
+             or sim._dz_profile is not None)
+    grid = sim._build_nonuniform_grid() if is_nu else sim._build_grid()
+    cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
+                      dtype=bool)
+    if isinstance(grid, NonUniformGrid):
+        eps = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r, dtype=float)
+    else:
+        eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
+    coords = _slice_coords(sim, grid)
+
+    n_along = cond.shape[axis]
+    per_plane = np.moveaxis(cond, axis, 0).reshape(n_along, -1).sum(axis=1)
+    if index is None:
+        if position is None:
+            index = int(np.argmax(per_plane)) if per_plane.max() else n_along // 2
+        else:
+            k = int(np.argmin(np.abs(coords[axis] - float(position))))
+            cand = [c for c in (k, k + 1, k - 1) if 0 <= c < n_along]
+            index = max(cand, key=lambda c: int(per_plane[c]))
+    if not 0 <= index < n_along:
+        raise IndexError(f"index {index} outside axis {axis} of length {n_along}")
+
+    keep = [a for a in (0, 1, 2) if a != axis]
+    take = [slice(None)] * 3
+    take[axis] = index
+    eps2, cond2 = eps[tuple(take)], cond[tuple(take)]
+    xe = _edges_from_nodes(coords[keep[0]]) * 1e3
+    ye = _edges_from_nodes(coords[keep[1]]) * 1e3
+
+    fig = ax.figure if ax is not None else None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    mesh = ax.pcolormesh(xe, ye, eps2.T, cmap="Blues", shading="flat",
+                         vmin=float(eps2.min()), vmax=float(eps2.max()))
+    fig.colorbar(mesh, ax=ax, label="relative permittivity \u03b5\u1d63")
+    ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
+                  cmap=_conductor_cmap(), vmin=0.0, vmax=1.0)
+
+    names = "xyz"
+    n_skipped = 0
+    if show_declared:
+        drawn = 0
+        for entry in getattr(sim, "_geometry", []):
+            shape = getattr(entry, "shape", entry)
+            lo = getattr(shape, "corner_lo", None)
+            hi = getattr(shape, "corner_hi", None)
+            if lo is None or hi is None:
+                # No analytic box -> its bounds are a BOUNDING BOX, not an
+                # outline. Drawing it would assert a solid rectangle the
+                # model never declared.
+                n_skipped += 1
+                continue
+            lo = [float(v) for v in lo]
+            hi = [float(v) for v in hi]
+            if not (lo[axis] - 1e-12 <= float(coords[axis][index]) <= hi[axis] + 1e-12):
+                continue
+            ax.add_patch(plt.Rectangle(
+                (lo[keep[0]] * 1e3, lo[keep[1]] * 1e3),
+                (hi[keep[0]] - lo[keep[0]]) * 1e3,
+                (hi[keep[1]] - lo[keep[1]]) * 1e3,
+                fill=False, edgecolor="#d55e00", lw=1.4, ls="--",
+                label=("declared outline (analytic box)"
+                       if drawn == 0 else None), zorder=5))
+            drawn += 1
+        if drawn:
+            ax.legend(fontsize=8, loc="upper right", framealpha=0.9)
+
+    ax.set_xlabel(f"{names[keep[0]]} (mm)")
+    ax.set_ylabel(f"{names[keep[1]]} (mm)")
+    ax.set_aspect("equal", adjustable="box")
+    skip_note = (f"; {n_skipped} patterned body/bodies have no analytic "
+                 "outline and are not outlined" if n_skipped else "")
+    ax.set_title(title or (
+        f"Rasterized {names[axis]}-slice at index {index} "
+        f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
+        f"{int(cond2.sum())} conductor cells{skip_note}"), fontsize=10)
+    fig.tight_layout()
+    return fig
+
+
+def plot_stack_profile(
+    sim,
+    *,
+    axis: int = 2,
+    at: tuple[float, float] | None = None,
+    sigma_threshold: float | None = None,
+    figsize: tuple[float, float] = (7.5, 7.0),
+    title: str | None = None,
+    ax=None,
+):
+    """Layer stack along one column: declared spans beside the realized cells.
+
+    The question this answers is "is my 6-layer board in the mesh the board I
+    drew". On a layered structure the failure is not visible in a plan view:
+    a laminate rounds to a different cell count, a foil lands one node high,
+    a sheet's own cell keeps the permittivity of whatever abuts it. All three
+    are a z-column reading.
+
+    Left column  — every geometry entry that spans this column, drawn over its
+    DECLARED extent along *axis*, labelled by material.
+    Right column — the cells the solve uses, each drawn at its true size, tinted
+    by assembled permittivity, with conductor cells hatched.
+
+    Parameters
+    ----------
+    sim : Simulation
+    axis : int
+        Stack normal (0=x, 1=y, 2=z). Default 2 — the usual PCB normal.
+    at : (float, float) or None
+        Physical coordinates (metres) of the column in the two remaining axes.
+        ``None`` picks the column carrying the most conductor cells, which is
+        the one worth reading on a patterned board.
+    sigma_threshold : float or None
+        Passed to :meth:`Simulation.conductor_mask`.
+
+    Returns
+    -------
+    matplotlib Figure
+    """
+    _require_mpl()
+    if axis not in (0, 1, 2):
+        raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
+    from rfx.nonuniform import NonUniformGrid
+
+    is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
+             or sim._dz_profile is not None)
+    grid = sim._build_nonuniform_grid() if is_nu else sim._build_grid()
+    cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
+                      dtype=bool)
+    if isinstance(grid, NonUniformGrid):
+        eps = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r, dtype=float)
+    else:
+        eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
+    coords = _slice_coords(sim, grid)
+    keep = [a for a in (0, 1, 2) if a != axis]
+
+    if at is None:
+        counts = np.moveaxis(cond, axis, -1).sum(axis=-1)
+        i0, i1 = np.unravel_index(int(np.argmax(counts)), counts.shape)
+    else:
+        i0 = int(np.argmin(np.abs(coords[keep[0]] - float(at[0]))))
+        i1 = int(np.argmin(np.abs(coords[keep[1]] - float(at[1]))))
+    take = [0, 0, 0]
+    take[keep[0]], take[keep[1]], take[axis] = i0, i1, slice(None)
+    eps_col = eps[tuple(take)]
+    cond_col = cond[tuple(take)]
+    edges = _edges_from_nodes(coords[axis]) * 1e3
+
+    fig = ax.figure if ax is not None else None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    # realized cells, true sizes
+    lo_e, hi_e = edges[:-1], edges[1:]
+    span = float(np.ptp(eps_col)) or 1.0
+    for k in range(eps_col.size):
+        shade = 0.92 - 0.42 * (float(eps_col[k]) - float(eps_col.min())) / span
+        ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
+                                   facecolor=str(max(shade, 0.0)),
+                                   edgecolor="0.55", lw=0.4))
+        if cond_col[k]:
+            ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
+                                       facecolor="#b03000", alpha=0.85,
+                                       edgecolor="#701e00", lw=0.5))
+
+    # declared spans of everything covering this column
+    x_at = float(coords[keep[0]][i0])
+    y_at = float(coords[keep[1]][i1])
+    drawn = 0
+    for entry in getattr(sim, "_geometry", []):
+        shape = getattr(entry, "shape", entry)
+        lo = getattr(shape, "corner_lo", None)
+        hi = getattr(shape, "corner_hi", None)
+        if lo is None or hi is None:
+            continue
+        lo = [float(v) for v in lo]
+        hi = [float(v) for v in hi]
+        if not (lo[keep[0]] - 1e-12 <= x_at <= hi[keep[0]] + 1e-12
+                and lo[keep[1]] - 1e-12 <= y_at <= hi[keep[1]] + 1e-12):
+            continue
+        mat = getattr(entry, "material", None)
+        ax.add_patch(plt.Rectangle((0.0, lo[axis] * 1e3), 1.0,
+                                   (hi[axis] - lo[axis]) * 1e3,
+                                   facecolor="#0072b2", alpha=0.30,
+                                   edgecolor="#0072b2", lw=0.9))
+        ax.text(0.5, 0.5 * (lo[axis] + hi[axis]) * 1e3, str(mat or "")[:14],
+                ha="center", va="center", fontsize=7)
+        drawn += 1
+
+    names = "xyz"
+    ax.set_xlim(-0.1, 2.35)
+    ax.set_ylim(edges.min(), edges.max())
+    ax.set_xticks([0.5, 1.65])
+    ax.set_xticklabels(["declared", "meshed"])
+    ax.set_ylabel(f"{names[axis]} (mm)")
+    ax.set_title(title or (
+        f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
+        f"{names[keep[1]]}={y_at * 1e3:.3f} mm — {drawn} declared bod(y/ies), "
+        f"{int(cond_col.sum())} conductor cell(s) (red)"), fontsize=10)
+    fig.tight_layout()
+    return fig
+
+
+def _conductor_cmap():
+    from matplotlib.colors import ListedColormap
+    return ListedColormap(["#b03000"])
+
+
 def plot_s_params(
     s_params: np.ndarray,
     freqs: np.ndarray,
