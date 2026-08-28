@@ -96,6 +96,37 @@ model `two_plane` walls and still prints the pre-fix +55% on this geometry —
 the realized `conductor_mask` (walls at k = 17, 18, 22) is the record, not
 that advisory.
 
+### Added — preflight advisory for dispersive material touching an absorbing face (issue #636)
+
+`preflight()` now emits a warning-severity `dispersive_pole_at_absorber_face`
+finding when a resonance-risk dispersive material — a high-Q, in-band Lorentz
+pole (`omega_0/(2*delta) >= 10`, `omega_0 <= 1.5*2*pi*freq_max`) or any
+Drude-type pole — touches a domain face that carries CPML/UPML. The pad
+extension replicates only the static `eps_r/sigma/mu_r` (#627a); pole masks are
+deliberately not replicated, so such a structure sees an absorber matched at
+`eps_inf` only: band-limited in-band reflection near the resonance. The
+advisory names the mitigations (an air gap before the face, more pole damping,
+moving the resonance out of band) and points at the measured evidence.
+
+That evidence closes the #636 question the #627b revert left open. A
+pre-declared one-attempt factorial (predeclaration, results, and root-cause
+analysis in `docs/design_notes/i636_cpml_pole_pad_predeclaration.md`; scripts
+under `validation/research/cpml_pole_pad/`) measured that extending pole masks
+into the pad excites surface-polariton interface modes of the material's
+`eps(omega) < 0` band inside the absorber — a regime where stretched-coordinate
+PMLs violate the geometric stability condition — and that no tested CPML
+parameter choice covers it: the CFS-corner alpha rule (`1.2*2*pi*f_top*eps0`,
+12 layers) stabilizes the Lorentz cells but the Drude cell still diverges
+(+5.2e-4/step at 60k steps). Pole extension therefore stays out, with no flag.
+The composed ADE+CPML update itself is proved stable per-cell, in 1D, and in
+2D by exact eigenvalue analysis — the instability needs the 3D interface.
+
+The stale 8,000-step physics lock (its separation criterion silently stopped
+distinguishing the variants when #655 moved the onset past 8,000 steps) is
+re-baselined: a new slow-lane test runs BOTH variants at 20,000 steps
+(shipped 0.2145 decays / extended 5.032 grows, re-measured margins), and the
+8,000-step test remains as the fast-lane shipped-decay canary.
+
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 
 `add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre

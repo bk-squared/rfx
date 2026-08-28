@@ -221,6 +221,102 @@ pads at slab z-levels and its spectrum peaks near the polariton band
 edge of eps(omega) = 0 (3.97 GHz for this material; the stable C1-ON
 residual already peaked at 3.88 GHz).
 
+## M2 outcome (recorded 2026-08-29) — FALSIFIER F2 FIRED: GUARDS-ONLY
+
+Full numbers in `validation/research/cpml_pole_pad/factorial_636_result.json`
+(+ `_f64.json`). Growth rate g = d ln(max|E| over pad probes)/dstep over
+the last 50% of 200-step envelopes at 60,000 steps; all runs finite.
+
+| cell | ON (poles extended, rule alpha, L12) | OFF control |
+|------|--------------------------------------|-------------|
+| C1 both-face Lorentz Q60 eps4 | g = -1.30e-4 (decays) | -4.2e-5 |
+| C1 float64 control            | g = -1.30e-4 (matches f32) | — |
+| C2 lo-only Lorentz Q60 eps4   | g = -1.29e-4 (decays) | -5.7e-5 |
+| C3 Lorentz Q5 eps_inf=1       | g = -2.6e-7 (floor; corner +6.5e-8 also in OFF -> noise) | -1.0e-7 |
+| C4 Drude eps_inf=1            | **g = +5.23e-4 DIVERGES** (peak 1.6e11) | -1.9e-4 |
+
+Vacuum floor: shipped alpha -70.1 dB, rule alpha -68.0 dB; degradation
++2.1 dB (within the 3 dB gate — the alpha rule itself is affordable).
+
+C4-ON free discriminators: 59% of final |E| mass in the x/y pads
+(face 0.46, corner 0.13), argmax inside the pad, spectrum peak
+2.64 GHz — INSIDE the Drude eps(omega)<0 band (omega < omega_p =
+2*pi*3e9). The two-sided falsifier fired -> guards-only, no tuning, as
+declared. The R2 attempt is spent.
+
+## M3 outcome — growing-mode localization (prediction confirmed)
+
+Known-unstable config (shipped alpha 0.05, 8 layers, poles extended,
+C1), 20,000 steps: g = +2.6e-4/step; 58% of final |E| mass in the x/y
+pads (face 0.50, corner 0.09), argmax in the x-lo/y-lo pad corner
+region; pad |E| z-profile peaks AT the slab's z-interface (k=15,
+slab k=11..14); spectrum peak 3.83 GHz — inside the polariton gap
+(eps<0 between omega_0 = 3 GHz and the eps=0 edge at 3.97 GHz),
+near the predicted band edge. Full numbers in
+`validation/research/cpml_pole_pad/localize_636_result.json`.
+
+## Root-cause statement (deliverable 2)
+
+The composed discrete update — ADE pole recurrence + CPML recursive
+convolution as shipped — is NOT itself unstable:
+
+1. Per-cell (frozen-coefficient von Neumann, exact shipped coefficient
+   formulas and update order): spectral radius <= 1 + 1e-12 for every
+   layer, wavenumber, material class (Q60/Q5 Lorentz, Drude), both
+   alphas, 8 and 12 layers, 1D face and 2D corner (M1).
+2. Finite 1D operator with the graded profile, both interfaces and the
+   outer PEC wall: rho = 1 to machine precision, poles extended or not
+   (M1b).
+3. Finite 2D TM x-y operator (corners, grading, PEC ring): rho < 1 for
+   both variants (M1c). Note the extended variant is pole-UNIFORM in
+   this plane — no material interface — which is exactly why it is
+   stable and why the mechanism was invisible below 3D.
+
+What diverges is an INTERFACE mode: extending the pole into the pad
+extends the slab's eps(omega) < 0 band (Lorentz polariton gap
+3.00-3.97 GHz; Drude omega < omega_p) into the absorber, and the
+structure's boundaries inside the pad (the slab's z-interfaces, pad
+corner wedges) then support surface-polariton waves at eps < 0. Both
+measured growing modes sit in that band (3.83 GHz Lorentz, 2.64 GHz
+Drude), concentrate in the pads, and peak at the slab's z-interface —
+and backward surface waves on negative-eps interfaces are the classic
+regime where stretched-coordinate PMLs violate the geometric stability
+condition (phase and group velocity anti-parallel along the absorber
+normal; Becache-Joly-type instability for plasmonic/NIM media). The
+z-confined interface is essential (thin-in-z fixtures never reproduced;
+1D/2D models without the interface are provably stable), which is why
+this evaded plane-wave and low-dimensional analysis.
+
+Consistent corollaries: raising the CFS alpha to the corner rule damps
+the NARROW Lorentz gap (C1/C2/C3 all stabilize — the gap-edge mode at
+3.8-3.9 GHz appears in the STABLE C1-ON residual too, decaying), but
+cannot rescue Drude, whose eps<0 band spans (0, omega_p); and the
+shipped statics-only pad is stable simply because a pad without poles
+has no eps<0 medium and therefore no surface-polariton branch.
+
+Implication honored by the guards-only outcome: no CPML parameter choice
+covered the declared factorial, so pole extension stays out (a stable
+pad for eps<0 media needs a reformulated dispersive PML, out of scope);
+the shipped behaviour keeps the band-limited eps_inf-matched pad, now
+surfaced by the preflight advisory `dispersive_pole_at_absorber_face`.
+
+## Guards landed (deliverable 1 + 4)
+
+- `tests/test_cpml_pad_material_extension.py::test_pole_extension_divergence_repro_636`
+  (slow lane): minimal committed repro + physics lock, both variants at
+  20,000 steps (shipped 0.2145 decays / extended 5.032 grows, measured
+  margins in the test); the 8,000-step lock re-scoped as the fast-lane
+  shipped-decay canary (its historical numbers were stale post-#655).
+- `rfx/api/_preflight.py::_validate_cfg_dispersive_pole_at_absorber_face`
+  advisory (code `dispersive_pole_at_absorber_face`), 8 targeted tests in
+  `tests/test_preflight_dispersive_pole_at_absorber.py`.
+- NOT landed (measured unsupportable): pole-mask extension in any form,
+  including behind the CFS alpha rule — C4 red. The `_vacuum`
+  pole-fold and alpha_max plumbing drafted during the session were
+  reverted with the fix branch; the pole-only-material fallback hole
+  (rasterize_grid.py `_vacuum`) remains open and documented in the
+  ledger.
+
 ## Runtime budget
 
 M1: seconds. M2: ~10 runs x ~2-5 min (156k cells x 60k steps, CPU JAX)
