@@ -39,6 +39,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CV06B = REPO_ROOT / "validation/crossval/06b_msl_notch_filter_uniform.py"
 RUN_LOG = (REPO_ROOT / "validation/crossval/_06b_notch_uniform_logs"
            / "20260827T131217Z_run.log")
+RUN_LOG_DX80 = (REPO_ROOT / "validation/crossval/_06b_notch_uniform_logs"
+                / "20260828T054132Z_dx80_origin_main_cdc38bc8_run.log")
 README = REPO_ROOT / "validation/README.md"
 MATRIX_MD = REPO_ROOT / "docs/guides/sparameter_support_matrix.md"
 MATRIX_JSON = REPO_ROOT / "docs/guides/sparameter_support_matrix.json"
@@ -48,6 +50,13 @@ BENCHMARKS = REPO_ROOT / "docs/public/guide/benchmarks.mdx"
 # The superseded dx=80um headline. Any carrier may mention these, but only
 # in a sentence that marks them as the old mesh.
 STALE_NUMBERS = ("1.63", "34.2", "57.9")
+
+
+def _z0_median(log_text: str) -> float:
+    """Parse ``Re(Z0) median = <x> Ω`` out of a committed cv06b run log."""
+    m = re.search(r"Re\(Z0\) median\s*=\s*(-?[\d.]+)", log_text)
+    assert m, "Re(Z0) median line missing from the run log"
+    return float(m.group(1))
 
 
 def _load_cv06b():
@@ -124,8 +133,13 @@ def test_z0_anchor_is_the_design_board_not_a_realized_one(cv06b):
     assert z0_realized_63 == pytest.approx(46.18, abs=0.02)
     assert z0_realized_80 == pytest.approx(57.46, abs=0.02)
 
-    # The measured medians, from the two committed logs.
-    z0_meas_63, z0_meas_80 = 46.5, 57.9
+    # The measured medians, PARSED from the two committed logs rather than
+    # retyped: the post-fix GPU run and the dx=80um re-measurement taken
+    # live on origin/main (cdc38bc8) for the #723 review.
+    z0_meas_63 = _z0_median(RUN_LOG.read_text(encoding="utf-8"))
+    z0_meas_80 = _z0_median(RUN_LOG_DX80.read_text(encoding="utf-8"))
+    assert z0_meas_63 == pytest.approx(46.5, abs=0.05)
+    assert z0_meas_80 == pytest.approx(57.9, abs=0.05)
     dev_realized_63 = abs(z0_meas_63 - z0_realized_63) / z0_realized_63 * 100
     dev_realized_80 = abs(z0_meas_80 - z0_realized_80) / z0_realized_80 * 100
     # Both under 1% -- i.e. the realized-board comparison does not separate
