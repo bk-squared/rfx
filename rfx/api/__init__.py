@@ -476,21 +476,29 @@ class Simulation(
         elif any(d <= 0 for d in domain):
             raise ValueError(f"domain dimensions must be positive, got {domain}")
 
-        # P2: Warn on abrupt grading in user-supplied dz_profile.
+        # P2: Warn on abrupt grading in a user-supplied profile. This ran
+        # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
+        # accepted in silence (#743) — the axes differ in which physics
+        # they carry, not in whether an abrupt ratio reflects.
         # Tracer profiles skip the warning — adjacent ratios can't be
         # computed host-side during tracing.
-        if (dz_profile is not None and not is_tracer(dz_profile)
-                and len(dz_profile) > 1):
-            import warnings as _w
-            ratios = np.array(dz_profile[1:]) / np.array(dz_profile[:-1])
-            max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-            if max_ratio > 1.3 + 1e-6:
-                _w.warn(
-                    f"dz_profile has max adjacent cell ratio {max_ratio:.2f} "
-                    f"(> 1.3). This may cause numerical reflections. "
-                    f"Use rfx.smooth_grading(dz_profile) to fix.",
-                    stacklevel=2,
-                )
+        for _axis_name, _profile in (("dz_profile", dz_profile),
+                                     ("dx_profile", dx_profile),
+                                     ("dy_profile", dy_profile)):
+            if (_profile is not None and not is_tracer(_profile)
+                    and len(_profile) > 1):
+                import warnings as _w
+                _p = np.asarray(_profile, dtype=float)
+                ratios = _p[1:] / _p[:-1]
+                max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
+                if max_ratio > 1.3 + 1e-6:
+                    _w.warn(
+                        f"{_axis_name} has max adjacent cell ratio "
+                        f"{max_ratio:.2f} (> 1.3). This may cause numerical "
+                        f"reflections. Use rfx.smooth_grading({_axis_name}) "
+                        "to fix.",
+                        stacklevel=2,
+                    )
 
         _valid_faces = {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
         if _explicit_spec:

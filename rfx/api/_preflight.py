@@ -257,6 +257,26 @@ def _shape_bounds(shape):
     return np.minimum(blo, bhi), np.maximum(blo, bhi), False
 
 
+def _local_cell(profile, lo, hi, fallback):
+    """Coarsest cell a body spans on one axis (#743).
+
+    ``profile`` is a per-cell size array whose cumulative sum gives node
+    positions from the padded array's origin; ``lo``/``hi`` are the body's
+    physical bounds. Returns ``fallback`` when there is no profile or the
+    span selects no cell, so callers keep their previous behaviour on a
+    uniform axis.
+    """
+    if profile is None:
+        return fallback
+    import numpy as _np
+    d = _np.asarray(profile, dtype=float)
+    edges = _np.concatenate([[0.0], _np.cumsum(d)])
+    inside = (edges[1:] > min(lo, hi)) & (edges[:-1] < max(lo, hi))
+    if not inside.any():
+        return fallback
+    return float(d[inside].max())
+
+
 class _CampaignStaticsContext:
     """Shared lazily-built state for the four issue-#703 campaign checks.
 
@@ -1291,7 +1311,17 @@ class _PreflightMixin:
             else:
                 continue
 
-            cell_sizes = [min_dx, min_dy, min_dz]
+            # Score against the LOCAL cell where this body actually sits,
+            # not the global minimum. Using the finest cell anywhere made
+            # the check vacuously green exactly where grading hurts — a
+            # body in a coarse region judged by a fine cell it never sees
+            # (#743). Falls back to the global minimum when a profile has
+            # no usable extent for this body.
+            cell_sizes = [
+                _local_cell(self._dx_profile, c1[0], c2[0], min_dx),
+                _local_cell(self._dy_profile, c1[1], c2[1], min_dy),
+                _local_cell(self._dz_profile, c1[2], c2[2], min_dz),
+            ]
 
             # FP1 refinement (2026-05-06): the partial-volume warning
             # at 3-5 cells along one axis is meaningful only for actual
