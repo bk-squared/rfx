@@ -603,11 +603,20 @@ class Simulation(
         #   _msl_auto_offset_min: port name -> the upstream-only lower
         #     edge stored when n_probe_offset was auto-resolved; the #469
         #     interval solve in compute_msl_s_matrix starts from it.
+        #   _msl_auto_probe_spacing: port name -> the registration-time
+        #     Hammerstad-Jensen eps_eff estimate, stored when
+        #     n_probe_spacing was auto. The #681 span solve in
+        #     _resolve_msl_auto_offsets widens the auto spacing toward
+        #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
+        #     the entry keeps the conservative registration default so
+        #     resolver-skip paths (graded propagation axis) never
+        #     overrun the feed.
         #   _internal_probe_indices: indices into self._probes of
         #     library-registered diagnostic probes (MSL settling
         #     witnesses); probe-placement preflight advisories and the
         #     #332 tail advisory skip them (issue #470 self-noise).
         self._msl_auto_offset_min: dict[str, int] = {}
+        self._msl_auto_probe_spacing: dict[str, float] = {}
         self._internal_probe_indices: set[int] = set()
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
@@ -1828,6 +1837,16 @@ class Simulation(
             ``n_probes=3`` this is exactly ``lam_min_eff/16`` (issue #80
             Fix B). Shrinking the adjacent spacing as ``n_probes`` grows
             keeps the probe array from running off short lines.
+
+            An AUTO spacing is additionally WIDENED at driver time
+            (issue #681): ``compute_msl_s_matrix`` /
+            ``compute_mixed_s_matrix`` re-solve it toward a total span of
+            ``(n_probes−1)·λ_g(f_max)/4`` (λ_g from the HJ ε_eff), capped
+            by the downstream-reflector interval and the absorbing
+            boundary — a ~0.1·λ_g span leaves the β fit noise-fragile
+            (measured: median β error 5.5% at 0.10 λ_g vs 0.8% at
+            0.30 λ_g under 1% probe noise). An explicit value is never
+            touched.
         n_probes : int
             Number of equally-spaced voltage probe planes registered for
             the N-probe least-squares wave-decomposition extractor (issue
@@ -1934,6 +1953,7 @@ class Simulation(
             # loudly when the interval is empty (feed too short for a
             # clean measurement). Explicit offsets are never touched.
             n_probe_offset = max(3, _lam_cells, _hsub_cells)
+        _spacing_is_auto = n_probe_spacing is None
         if n_probe_spacing is None:
             # Bind the default so the TOTAL N-probe array span stays
             # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),
@@ -1941,6 +1961,18 @@ class Simulation(
             # lam/16 — bit-identical to Fix B. As n_probes grows the
             # adjacent spacing shrinks so the probe array does not run
             # off short lines (issue #80 Fix C).
+            #
+            # Issue #681: this registration-time value is deliberately
+            # CONSERVATIVE (short). A ~0.1·λ_g span makes the N-probe
+            # β fit noise-fragile (measured: median β error 5.5% at
+            # 0.10 λ_g vs 0.8% at 0.30 λ_g under 1% probe noise), so
+            # the driver-time interval solve (_resolve_msl_auto_offsets)
+            # WIDENS an auto spacing toward span = (N−1)·λ_g(f_max)/4
+            # wherever the registered geometry allows — it has the full
+            # geometry (downstream reflector, absorber) that this method
+            # cannot see. The short value stored here is what
+            # resolver-skip paths (graded propagation axis) fall back
+            # to, so they can never overrun a short feed.
             span_total = lam_min_eff / 8.0
             n_probe_spacing = max(
                 2, int(round(span_total / (n_probes - 1) / _dx))
@@ -1974,6 +2006,17 @@ class Simulation(
             # effective offset from THIS stored lower edge every call, so
             # repeated calls do not drift.
             self._msl_auto_offset_min[name] = int(n_probe_offset)
+        if _spacing_is_auto:
+            # Same bookkeeping pattern for the auto spacing (issue #681):
+            # store the registration-time HJ eps_eff so the driver-time
+            # span solve can size λ_g(f_max)/4 per probe step from the
+            # SAME permittivity estimate every call (idempotent, and the
+            # design-IR dump resolves through the same function).
+            from rfx.sources.msl_eigenmode import (
+                hammerstad_jensen_z0_eps_eff as _hj,
+            )
+            _, _eps_eff_hj = _hj(width, height, eps_r_sub_estimate)
+            self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
 
         self._msl_ports.append(_MSLPortEntry(
             name=name,

@@ -492,6 +492,43 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     STORED lower edge (``sim._msl_auto_offset_min``), so repeated calls are
     idempotent. Returns a new entries list; ``sim`` is not mutated.
 
+    Auto probe SPACING (issue #681). A ~0.1·λ_g probe span leaves the
+    N-probe β fit noise-fragile: the two model columns ``e^{∓jβx}`` are
+    nearly collinear and the residual-vs-β curve is nearly flat, so probe
+    noise walks the fitted β far from truth (measured, 500-trial
+    Monte-Carlo at 1% probe noise, N=5: median β error 5.5% at a
+    0.10 λ_g span vs 0.81% at 0.30 λ_g — a 6.8× degradation). For ports
+    whose ``n_probe_spacing`` was auto (``sim._msl_auto_probe_spacing``,
+    keyed like the offset bookkeeping) this solve therefore WIDENS the
+    spacing from the conservative registration default toward
+
+        ``spacing = λ_g(f_max)/4``  (λ_g from the registration HJ ε_eff),
+
+    i.e. a total span of ``(N−1)·λ_g(f_max)/4`` (one full λ_g at f_max
+    for the default N=5 — two periods of the λ_g/2 standing-wave
+    pattern), capped by the SAME geometry this solve already knows:
+
+    * spacing ≤ λ_g(f_max)/4 also keeps every probe pair far from the
+      ``β ↔ 2π/s − β`` sampling alias (which enters the ±35% scan window
+      only for s ≳ 0.42·λ_g);
+    * with a downstream reflector, the span may consume at most HALF the
+      compliant interval ``[offset_min, offset_max]`` — the other half
+      stays with the #469 midpoint rule, preserving the measured-clean
+      upstream margin for probe 0 (the #469 Sheen measurement showed the
+      near edge contaminated);
+    * the deepest probe stays ``λ_g/4``-clear of the absorbing boundary
+      (an absorber face is a discontinuity like any reflector, and CPML
+      cells are non-physical), i.e. inside
+      ``domain_edge − clear − n_cpml·dx``.
+
+    On a feed too short for any widening the caps floor at the hard
+    minimum of 2 cells — byte-identical to the pre-#681 defaults on the
+    committed Sheen interval-test geometry — and the existing
+    empty-interval warning still fires when even that does not fit.
+    Explicit spacings are never touched. Graded/unevaluable propagation
+    axes keep the stored registration value (short and safe) via the
+    same skip-and-warn path as the offset solve.
+
     Non-uniform meshes (issue #686). The bail-out is per PORT and keys on
     that port's PROPAGATION axis, not on "is any axis graded". A
     cell-counted probe interval is ill-defined when the axis the probes
@@ -505,7 +542,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     as before — but the skip now WARNS once per call instead of being
     silent.
     """
-    if not sim._msl_auto_offset_min:
+    _auto_spacing = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
+    if not sim._msl_auto_offset_min and not _auto_spacing:
         return entries
 
     import dataclasses
@@ -525,13 +563,13 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     _graded_skips: list[str] = []
     for pe in entries:
         off_min = sim._msl_auto_offset_min.get(pe.name)
-        if off_min is None:
+        sp_eps_eff = _auto_spacing.get(pe.name)
+        if off_min is None and sp_eps_eff is None:
             resolved.append(pe)
             continue
-        span = (int(pe.n_probes) - 1) * int(pe.n_probe_spacing)
         # Issue #661: project position/domain onto this port's propagation
         # and width axes before handing them to the x-frame helper.
-        _prop_ax, _width_ax, _, _ = _msl_axis_roles(pe.direction)
+        _prop_ax, _width_ax, _, _dir_sign = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
         _iw = _MSL_AX[_width_ax]
         # Issue #686: the bail-out is about THIS port's propagation axis.
@@ -575,14 +613,52 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 + "; ".join(_unevaluated))
             resolved.append(pe)
             continue
-        if not np.isfinite(d_refl):
-            resolved.append(pe)
+        # --- Auto probe-spacing widening (issue #681, docstring above).
+        # Target λ_g(f_max)/4 per probe step, capped by half the reflector
+        # interval and by the absorber clearance; floors at the hard
+        # 2-cell minimum. Explicit spacings (sp_eps_eff is None) pass
+        # through untouched.
+        spacing = int(pe.n_probe_spacing)
+        off_base = int(off_min if off_min is not None else pe.n_probe_offset)
+        if sp_eps_eff is not None:
+            from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
+            _c0 = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
+            lam_g_fmax = _c0 / (
+                float(sim._freq_max) * float(sp_eps_eff) ** 0.5
+            )
+            _target = max(2, int(round(0.25 * lam_g_fmax / dx_u)))
+            _x_feed = float(pe.position[_ip])
+            _dist_edge = (
+                float(sim._domain[_ip]) - _x_feed
+                if _dir_sign > 0 else _x_feed
+            )
+            _n_cpml = int(getattr(grid, "cpml_layers", 0) or 0)
+            _b_dom = int((_dist_edge - clear) / dx_u) - _n_cpml - off_base
+            if np.isfinite(d_refl):
+                _b_refl = int((d_refl - clear) / dx_u) - off_base
+                _span_budget = min(_b_refl // 2, _b_dom)
+            else:
+                _span_budget = _b_dom
+            spacing = max(
+                2,
+                min(_target, _span_budget // (int(pe.n_probes) - 1)),
+            )
+        span = (int(pe.n_probes) - 1) * spacing
+        _fields: dict = {}
+        if spacing != int(pe.n_probe_spacing):
+            _fields["n_probe_spacing"] = spacing
+
+        if off_min is None or not np.isfinite(d_refl):
+            # Explicit offset, or no downstream reflector: no offset
+            # midpoint to solve — carry only the spacing resolution.
+            resolved.append(
+                dataclasses.replace(pe, **_fields) if _fields else pe
+            )
             continue
         off_max = int((d_refl - clear) / dx_u) - span
         if off_max >= off_min:
-            resolved.append(dataclasses.replace(
-                pe, n_probe_offset=(off_min + off_max) // 2,
-            ))
+            _fields["n_probe_offset"] = (off_min + off_max) // 2
+            resolved.append(dataclasses.replace(pe, **_fields))
         else:
             warnings.warn(
                 f"MSL port {pe.name!r}: the upstream and downstream "
@@ -599,12 +675,16 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 f"probes. Extend the feed line to fix (issue #469).",
                 stacklevel=3,
             )
-            resolved.append(pe)
+            resolved.append(
+                dataclasses.replace(pe, **_fields) if _fields else pe
+            )
     if _graded_skips:
         warnings.warn(
             "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
             + str(len(_graded_skips)) + " port(s); the stored upstream-only "
-            "lower edge is kept, so the downstream reflector clearance is "
+            "lower edge is kept (and any auto probe spacing keeps its "
+            "conservative registration default — no #681 span widening), "
+            "so the downstream reflector clearance is "
             "NOT enforced for them: " + "; ".join(_graded_skips)
             + ". This used to be silent for every non-uniform mesh (issue "
             "#686). Set n_probe_offset explicitly on these ports, or make "
