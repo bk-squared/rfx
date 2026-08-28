@@ -295,9 +295,11 @@ def test_commensurate_domain_reports_zero_domain_findings():
 
 
 def test_incommensurate_domain_reports_the_ceil_realized_length():
-    """WR-90 at dx=1mm: 22.86mm -> 23.000mm is the same quote-realized value
-    validation/crossval/11_waveguide_port_wr90.py:232 pins as
-    A_WG_REALIZED — an independent, repo-internal oracle for this number."""
+    """WR-90 at dx=1mm. The expected extents below are hand-computed from
+    the grid's own construction rule (rfx/grid.py:151, "N cells need N+1
+    nodes"): ceil(22.86/1)=23 cells -> 23.000 mm, ceil(10.16/1)=11 -> 11.000
+    mm, 30/1=30 -> 30.000 mm exactly. Literals, not a re-run of the code
+    under test: a node-count regression reports 24/12/31 and fails here."""
     sim = Simulation(freq_max=12e9, domain=(22.86e-3, 10.16e-3, 30e-3),
                      dx=1e-3, boundary="pec")
     dom = _dom(sim.fidelity_report(print_report=False))
@@ -349,3 +351,24 @@ def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
                     or abs(got_um - want_cells * dxv * 1e6) > 1e-2):
                 bad.append((tag, "xyz"[a], got_cells, want_cells, got_um))
     assert not bad, f"domain row counted NODES as cells: {bad}"
+
+
+def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):
+    """A dict-only note is not a mitigation. Without it rendered, the 2D z
+    row prints `extent 10000.0 -> 0.0 um` with no finding beside it — a
+    silent all-clear over a 100% displayed gap. This fails if `_print`
+    stops rendering `ax['note']`, or if the note stops naming the declared
+    length it is declining to compare."""
+    sim = Simulation(freq_max=10e9, domain=(20e-3, 10e-3, 10e-3), dx=1e-3,
+                     boundary="pec", mode="2d_tmz")
+    dom = _dom(sim.fidelity_report(print_report=True))
+    printed = capsys.readouterr().out
+    z = dom["axes"][2]
+    assert "axis-not-solved" in z.get("note", ""), z
+    assert "10000.0 um" in z["note"], (
+        "the note must quote the declared Lz it is not comparing")
+    assert z["note"] in printed, (
+        "the note is in the returned dict but not in the printed report:\n"
+        + printed)
+    # the x/y rows ARE compared, so they must NOT carry a note
+    assert "note" not in dom["axes"][0] and "note" not in dom["axes"][1]

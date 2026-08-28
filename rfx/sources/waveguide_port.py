@@ -702,8 +702,9 @@ def init_waveguide_port(
     # tests/test_waveguide_port_validation_battery.py is a LIVE, currently
     # green committed gate under DROP, not xfail. The 2026-04-22..04-29 jitter
     # that briefly locked it as xfail was root-caused to Box.mask_on_coords
-    # closed-closed semantics (issue #75), not to the DROP weight; see that
-    # test's docstring. The receive-side multi-mode extractor (per the
+    # closed-closed semantics (issue #75), not to the DROP weight; see the
+    # block comment directly above that test ("Test 6 — Mesh convergence of
+    # |S21| ..."). The receive-side multi-mode extractor (per the
     # dead-end note's recommendation) remains the path to recovering
     # PEC-short closure without capping it via the half-weight kludge.
     #

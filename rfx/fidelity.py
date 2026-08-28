@@ -95,6 +95,16 @@ def fidelity_report(sim, print_report: bool = True):
       the entity's cells vs the declared values (later entities may have
       overwritten earlier ones);
     * a mechanical remedy per finding class (no impact estimates).
+
+    The list LEADS with a ``"domain (the solved box)"`` pseudo-entity —
+    the only row a cavity/waveguide model has, since there the box IS the
+    geometry. Its per-axis ``n_cells`` / ``realized_extent_um`` are the
+    wall-to-wall CELL count and length, i.e. ``ceil(L/dx)`` cells, not the
+    ``ceil(L/dx) + 1`` node count the grid allocates. An axis the solve
+    does not have — ``z`` under ``mode="2d_tmz"``, where ``grid.nz == 1``
+    and the declared ``Lz`` is ignored — is not compared: that axis dict
+    carries a ``note`` key (rendered by the printed report) instead of a
+    finding.
     """
     nonuniform = any(getattr(sim, a, None) is not None
                      for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
@@ -139,15 +149,29 @@ def fidelity_report(sim, print_report: bool = True):
     # "realized" length by one cell on every axis (issue #729 site 1,
     # 2026-08-27: a 21-node/20-cell span read back as 21000 um instead of
     # 20000 um, with a false [domain-extent-quantized] finding attached).
-    is_2d = getattr(grid, "is_2d", False)  # NonUniformGrid has no is_2d attr
+    # NonUniformGrid has no is_2d attribute, so `grid.is_2d` would raise on
+    # the non-uniform lane; getattr keeps that lane running. KNOWN GAP, not
+    # fixed here: Simulation(mode="2d_tmz", dz_profile=...) builds a
+    # NonUniformGrid that carries no 2D marker at all, so the not-solved
+    # guard below never fires there and that lane still compares a z it does
+    # not solve. Pre-existing (the non-uniform builder ignores `mode`); the
+    # fix belongs with the builder, not with this reporter.
+    is_2d = getattr(grid, "is_2d", False)
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
     for a in range(3):
         p_lo = int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))
         p_hi = int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
         i_lo = p_lo
-        # Clamp the INDEX, not just the count: an unclamped i_hi can go
-        # negative if the pads ever consumed the whole axis, and indexing
-        # nodes[a][i_hi] would then wrap instead of reading as empty.
+        # DEFENSIVE ONLY — unreachable on both grid classes as they are
+        # built today, and NOT evidence that "the pads consumed the axis"
+        # is a state this code has ever seen. Grid: shape[a] = ceil(L/dx)
+        # + 1 + p_lo + p_hi, so i_hi - i_lo = ceil(L/dx) >= 0
+        # (rfx/grid.py:151). NonUniformGrid: shape[a] = p_lo + len(profile)
+        # + p_hi + 1 (the trailing bounding node, rfx/nonuniform.py
+        # _append_bounding_node), so i_hi - i_lo = len(profile) >= 1. The
+        # clamp exists so a future grid layout cannot turn a negative index
+        # into a silent wrap; it has no test because it has no reachable
+        # input.
         i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
         n_int = max(i_hi - i_lo, 0)
         realized = float(nodes[a][i_hi] - nodes[a][i_lo])
@@ -164,7 +188,11 @@ def fidelity_report(sim, print_report: bool = True):
                   declared_extent_um=declared * 1e6,
                   realized_extent_um=realized * 1e6)
         if axis_not_solved:
-            ax["note"] = "axis-not-solved (2D mode: Lz is ignored)"
+            ax["note"] = (
+                "axis-not-solved — 2D mode (grid.nz == 1): the declared "
+                f"Lz = {declared * 1e6:.1f} um is IGNORED by the solve and "
+                "the realized 0.0 um above is not a discrepancy to fix. "
+                "Read this row as 'not compared', not as a pass")
         dom_item["axes"].append(ax)
         if (not axis_not_solved and declared > 0
                 and abs(realized - declared) > 0.005 * declared):
@@ -508,6 +536,12 @@ def _print(report):
                   f"{ax['face_residual_um'][1]:.1f}) um"
                   f" | extent {ax['declared_extent_um']:.1f} -> "
                   f"{ax['realized_extent_um']:.1f} um")
+            # An axis carrying a note is one the report deliberately does
+            # NOT compare. Printing the row without the note leaves a
+            # displayed declared-vs-realized gap with no finding and no
+            # explanation next to it — a silent all-clear (#303 class).
+            if ax.get("note"):
+                print(f"       note: {ax['note']}")
         for f in it.get("findings", []):
             ax = f" {f['axis']}:" if f.get("axis") else ""
             print(f"    ! [{f['kind']}]{ax} {f['detail']}")
