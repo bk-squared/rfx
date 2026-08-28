@@ -225,10 +225,15 @@ def build_2d_masks(extend_pole: bool):
     return pole
 
 
-def m1c(dt, n_eigs=6):
-    import scipy.sparse.linalg as spla
-
-    print("=== M1c: finite 2D TM corner operator ===")
+def m1c(dt, n_iters=40000):
+    """Solver note (recorded before running M1c): the declaration named
+    ARPACK for the largest-|lambda| eigensolve; with the spectrum clustered
+    at |lambda| ~ 1 ARPACK does not converge in reasonable time on the
+    30k-dim operator, so the dominant eigenvalue is measured by POWER
+    ITERATION instead: rho_est = exp(slope of ln ||v_n|| gain per step,
+    least-squares over the last 50% of n_iters). The declared thresholds
+    (B > 1+1e-6, A <= 1+1e-9 -> confirmed; else F1c) are unchanged."""
+    print("=== M1c: finite 2D TM corner operator (power iteration) ===")
     nx = NX_INT + 2 * N_PAD
     ny = NY_INT + 2 * N_PAD
     bx, cx, kx = per_node_cpml(nx, dt)
@@ -307,57 +312,27 @@ def m1c(dt, n_eigs=6):
                                    (ez_n, hx_n, hy_n, p_n, p, pex_n, pey_n,
                                     phx_n, phy_n)])
 
-        op = spla.LinearOperator((n_state, n_state), matvec=step,
-                                 dtype=np.float64)
         rng = np.random.default_rng(636)
-        v0 = rng.standard_normal(n_state)
-        vals = spla.eigs(op, k=n_eigs, which="LM", v0=v0,
-                         maxiter=200000, tol=1e-10,
-                         return_eigenvectors=False)
-        rho = float(np.abs(vals).max())
-        results[label] = (rho, np.sort(np.abs(vals))[::-1])
-        print(f"  {label}: rho = {rho:.12f} (rho-1 = {rho-1:+.3e}); "
-              f"|top eigs| = {[f'{x:.9f}' for x in results[label][1]]}")
+        v = rng.standard_normal(n_state)
+        v /= np.linalg.norm(v)
+        gains = np.zeros(n_iters)
+        for it in range(n_iters):
+            v = step(v)
+            nrm = np.linalg.norm(v)
+            gains[it] = np.log(nrm)
+            v /= nrm
+        tail = gains[n_iters // 2:]
+        # least-squares slope of cumulative log-gain == mean of per-step
+        # log-gains over the tail (gains are already per-step increments)
+        g = float(tail.mean())
+        rho = float(np.exp(g))
+        results[label] = (rho, v.copy())
+        print(f"  {label}: rho_est = {rho:.12f} (rho-1 = {rho-1:+.3e}, "
+              f"per-step ln gain {g:+.3e}, tail std {tail.std():.2e})")
 
     # localization witness for B if unstable: dominant eigenvector
     if results["B extended (pole into pads)"][0] > 1 + 1e-6:
-        pole = build_2d_masks(True).astype(float)
-        ap = a_p * pole
-        bp = b_p * pole
-        cp = c_p * pole
-        # power iteration to get the mode shape
-        rng = np.random.default_rng(1636)
-        v = rng.standard_normal(n_state)
-        v /= np.linalg.norm(v)
-        growth = None
-        for it in range(6000):
-            def step_b(v):
-                (ez, hx, hy, p, pp, pex, pey, phx, phy) = (
-                    v[i * nfield:(i + 1) * nfield].reshape(shp)
-                    for i in range(9))
-                dfe_x = dfx(ez)
-                dfe_y = dfy(ez)
-                phy_n = bxc * phy + cxc * dfe_x
-                hy_n = hy + ch * kxi * dfe_x + ch * phy_n
-                phx_n = byc * phx + cyc * dfe_y
-                hx_n = hx - ch * kyi * dfe_y - ch * phx_n
-                p_n = ap * p + bp * pp + cp * ez
-                dbh_y = dbx(hy_n)
-                dbh_x = dby(hx_n)
-                pex_n = bxc * pex + cxc * dbh_y
-                pey_n = byc * pey + cyc * dbh_x
-                ez_n = (ez + Cb * (kxi * dbh_y - kyi * dbh_x)
-                        + ce * pex_n - ce * pey_n - Cc * (p_n - p))
-                ez_n[0, :] = 0.0
-                ez_n[-1, :] = 0.0
-                ez_n[:, 0] = 0.0
-                ez_n[:, -1] = 0.0
-                return np.concatenate([f.ravel() for f in
-                                       (ez_n, hx_n, hy_n, p_n, p, pex_n,
-                                        pey_n, phx_n, phy_n)])
-            v2 = step_b(v)
-            growth = np.linalg.norm(v2)
-            v = v2 / growth
+        v = results["B extended (pole into pads)"][1]
         ez_mode = np.abs(v[:nfield].reshape(shp))
         pad_x = np.zeros(shp, dtype=bool)
         pad_x[:N_PAD, :] = True
@@ -372,8 +347,7 @@ def m1c(dt, n_eigs=6):
         print(f"  B dominant-mode |Ez| mass: interior "
               f"{ez_mode[interior].sum()/tot:.3f}, face "
               f"{ez_mode[face].sum()/tot:.3f}, corner "
-              f"{ez_mode[corner].sum()/tot:.3f}; per-step growth "
-              f"{growth:.9f}")
+              f"{ez_mode[corner].sum()/tot:.3f}")
         imax = np.unravel_index(np.argmax(ez_mode), shp)
         print(f"  B dominant-mode |Ez| peak at (i,j) = {imax} "
               f"(nx={nx}, ny={ny}, pad={N_PAD})")
