@@ -73,11 +73,21 @@ def build_fix_a(load: str | float, *, dx=DX_A, nz=NZ_A, extent=EXTENT_A):
     """
     sim = Simulation(freq_max=10e9, domain=DOMAIN_A, dx=dx,
                      dz_profile=np.full(nz, dx), boundary="pec")
-    # Electrode plates: one FIX-A cell thick, abutting the gap ends.
-    sim.add(Box((PLATE_XY0, PLATE_XY0, 3.0e-3),
+    # Electrode plates: 1 mm (>= 2 cells) thick, abutting the gap ends.
+    # FIXTURE REVISION (2026-08-29, measured provenance — G0 FIXTURE
+    # INVALID on the original 1-cell plates, NOT a falsifier verdict):
+    # apply_pec_mask's thin-sheet rule preserves the normal E of a
+    # 1-cell-thick PEC plate (surface charge), so the bottom plate
+    # conducted at z=3.0 mm, not the intended z=3.5 mm gap face — the
+    # driven column then saw a live series Ez layer inside the plate
+    # (measured V(k6) = -(V7+V8) on the short fixture; the preflight
+    # sheet-cavity advisory reported the same +50% electrical gap).  A
+    # >= 2-cell plate zeroes the interior normal edges, restoring the
+    # declared terminals.  Gates are UNCHANGED.
+    sim.add(Box((PLATE_XY0, PLATE_XY0, 2.5e-3),
                 (PLATE_XY1, PLATE_XY1, GAP_Z0)), material="pec")
     sim.add(Box((PLATE_XY0, PLATE_XY0, GAP_Z1),
-                (PLATE_XY1, PLATE_XY1, 5.0e-3)), material="pec")
+                (PLATE_XY1, PLATE_XY1, 5.5e-3)), material="pec")
     sim.add_port(position=(DRV_XY[0], DRV_XY[1], GAP_Z0), component="ez",
                  impedance=Z0, extent=extent, excite=True, waveform=PULSE)
     if load == "short":
@@ -153,13 +163,29 @@ def a_wave(vp, i):
 
 
 def vsrc_hat(cap, n_steps):
-    """Whole-port Thevenin EMF V_src(w) = Z0 * What_cell(w).
+    """Whole-port Thevenin EMF V_src(w) = Z0 * I0_eff(w) (per-cell law).
 
-    What_cell = rect-DFT (x dt) of the per-cell injected CURRENT at the
-    driven mid cell.  The captured source table is in E-add units
-    (cb/dV) * I_cell(t) (make_current_source), so de-normalize by dV/cb
-    computed exactly as make_current_source does (concrete materials =
-    pre-port-fold: vacuum at the port cells in these fixtures).
+    I0_eff is the EFFECTIVE per-cell injected current implied by the
+    scan's own update: the captured table is added to E each step, so on
+    a port cell with folded sigma_port the injected current in amperes is
+
+        I0_eff(t) = -table(t) * A * eps * (1 + loss) / dt,
+        loss = sigma_port*dt/(2 eps),  A = dual_x*dual_y (ez port)
+
+    (the field-update coefficient at the port cell is
+    cb_eff = (dt/eps)/(1+loss), not make_current_source's sigma=0 cb).
+    UNITS-CONVERSION PROVENANCE (2026-08-29): the pre-declaration bound
+    What_cell to "the captured per-cell table ... a CURRENT (amperes) per
+    make_current_source"; measured against the pinned per-cell discrete
+    law I_loop = -(G+jwC)V + I0 (exact — I0_eff identical at both live
+    cells to <0.1%), the table is in E-add units and the amperes
+    conversion is the expression above: table*(dV/cb_free) is off by
+    (1+loss)/d_par (measured factor 1.06e4 = 2000 * 5.34 on FIX-A).
+    This is a harness units fix, computed ONLY from the captured table,
+    grid metrics and folded sigma — independent of the measured V/I —
+    and the F5 gates are unchanged.  (The injection-normalization
+    deviation itself is drive-amplitude only and cancels in S11; noted
+    for a separate issue.)
     """
     from rfx.nonuniform import e_node_dual_spacing_at
     grid = cap["grid"]
@@ -171,15 +197,15 @@ def vsrc_hat(cap, n_steps):
             table = np.asarray(s[4], dtype=np.float64)
     assert table is not None, "no captured source at driven mid cell"
     dt = float(grid.dt)
-    eps = 1.0 * EPS_0                     # vacuum port cell, sigma_conc = 0
-    cb = dt / eps
+    mats = cap["materials"]
+    eps = float(np.asarray(mats.eps_r[mid])) * EPS_0
+    sigma_port = float(np.asarray(mats.sigma[mid]))
+    loss = sigma_port * dt / (2.0 * eps)
     dxn = np.asarray(grid.dx_arr, dtype=np.float64)
     dyn = np.asarray(grid.dy_arr, dtype=np.float64)
-    dzn = np.asarray(grid.dz, dtype=np.float64)
-    dV = (float(e_node_dual_spacing_at(dxn, mid[0]))
-          * float(e_node_dual_spacing_at(dyn, mid[1]))
-          * float(dzn[mid[2]]))
-    i_cell = table * (dV / cb)            # amperes, already / n_live
+    area = (float(e_node_dual_spacing_at(dxn, mid[0]))
+            * float(e_node_dual_spacing_at(dyn, mid[1])))
+    i_cell = -table * area * eps * (1.0 + loss) / dt   # amperes
     n = min(n_steps, len(i_cell))
     t = np.arange(n) * dt
     what = (i_cell[None, :n]
@@ -355,6 +381,20 @@ def main():
     verdicts["F8"] = gate(ok, "F8 KVL witness",
                           f"|V_port|/|V_mid| at qs bins = "
                           f"{ratio[list(QS)].round(4)} (gate <0.1)")
+    # Mechanism report (NOT a gate; the F8 criterion stands un-widened and
+    # its verdict above is final): the criterion's premise was that a short
+    # forces sum(V_c) -> 0 while V_mid stays finite (the ledger fixture
+    # class, where the shorting PEC intersects the port's own extent).  On
+    # FIX-A's clean EXTERNAL short the per-cell relation
+    # V_c = (Z0/n)(I0 - I) makes every live-cell voltage collapse together
+    # with the sum (measured V7/V8 = 1.40), so the ratio tends to ~n_live
+    # regardless of how well KVL holds.  The physics F8 guards — the SUM
+    # being the KVL-constrained gap voltage — is witnessed by the wave-
+    # scale collapse reported here:
+    kvl = np.abs(vp_s8) / (Z0 * np.abs(i_s8))
+    print(f"  F8 mechanism: |V_port|/(Z0|I|) at qs bins = "
+          f"{kvl[list(QS)].round(4)} (KVL collapse ~1e-2); "
+          f"|V_mid| collapses with the sum, ratio -> ~n_live")
 
     # ---------------- F9: current-uniformity premise ----------------------
     sim = build_fix_a(50.0)
@@ -405,9 +445,9 @@ def fixc():
     """FIX-C thru-with-posts: reported prediction ONLY (never a gate)."""
     sim = Simulation(freq_max=10e9, domain=(14e-3, 10e-3, 8e-3), dx=DX_A,
                      dz_profile=np.full(NZ_A, DX_A), boundary="pec")
-    sim.add(Box((4.0e-3, 4.0e-3, 3.0e-3), (9.5e-3, 6.0e-3, GAP_Z0)),
+    sim.add(Box((4.0e-3, 4.0e-3, 2.5e-3), (9.5e-3, 6.0e-3, GAP_Z0)),
             material="pec")
-    sim.add(Box((4.0e-3, 4.0e-3, GAP_Z1), (9.5e-3, 6.0e-3, 5.0e-3)),
+    sim.add(Box((4.0e-3, 4.0e-3, GAP_Z1), (9.5e-3, 6.0e-3, 5.5e-3)),
             material="pec")
     sim.add_port(position=(4.5e-3, 5.0e-3, GAP_Z0), component="ez",
                  impedance=Z0, extent=EXTENT_A, excite=True, waveform=PULSE)

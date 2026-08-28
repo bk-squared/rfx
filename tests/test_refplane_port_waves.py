@@ -466,11 +466,21 @@ def test_forward_bitwise_unaffected_by_optin():
 
 
 def test_run_short_diagonals_byte_frozen_offdiagonals_move():
-    """run(compute_s_params=True) wiring at 64 steps: the opted run's
-    DIAGONALS are bitwise equal to the default run (byte-frozen legacy
-    path) while the off-diagonals move (the plane path is actually live).
-    64 steps is a plumbing witness, not physics — magnitudes are gated in
-    the SLOW lane below."""
+    """run(compute_s_params=True) wiring at 64 steps: the refplane-opted
+    run's diagonals stay on the BYTE-FROZEN legacy per-cell path while the
+    off-diagonals move (the plane path is actually live).
+
+    RE-PINNED for issue #764 (written provenance): this test used to
+    assert the opted diagonals bitwise EQUAL to the default run's — true
+    while both paths shared the legacy per-cell diagonal.  #764 moved the
+    DEFAULT run's driven diagonal to the whole-port physical reflection
+    S_jj = (V_port - Z0*I)/(V_port + Z0*I), while the #313 refplane
+    decomposer's diagonals are documented byte-frozen legacy — so the two
+    paths now intentionally DIFFER on the diagonal (the mixed-frame state
+    is documented in decompose_wire_s_matrix; a future "unification" that
+    silently re-equalizes them would re-break one side or the other and
+    must red this test).  64 steps is a plumbing witness, not physics —
+    magnitudes are gated in the SLOW lane below."""
     r_default = _build_thru().run(
         n_steps=64, compute_s_params=True, s_param_freqs=_FREQS,
         skip_preflight=True)
@@ -480,8 +490,12 @@ def test_run_short_diagonals_byte_frozen_offdiagonals_move():
     S0 = np.asarray(r_default.s_params)
     S1 = np.asarray(r_opted.s_params)
     assert S0.shape == S1.shape == (2, 2, len(_FREQS))
-    assert S1[0, 0].tobytes() == S0[0, 0].tobytes(), "S11 diagonal moved"
-    assert S1[1, 1].tobytes() == S0[1, 1].tobytes(), "S22 diagonal moved"
+    assert S1[0, 0].tobytes() != S0[0, 0].tobytes(), (
+        "S11 diagonals re-converged — either the refplane path lost its "
+        "byte-frozen legacy diagonal or the default path lost the #764 "
+        "whole-port driven diagonal")
+    assert S1[1, 1].tobytes() != S0[1, 1].tobytes(), (
+        "S22 diagonals re-converged — see the S11 message")
     assert S1[1, 0].tobytes() != S0[1, 0].tobytes(), (
         "S21 did not move — plane path not live on run()")
     assert S1[0, 1].tobytes() != S0[0, 1].tobytes(), (
