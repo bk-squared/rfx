@@ -228,13 +228,17 @@ def test_wg_port_evanescent_no_warning_below_threshold():
     threshold=0.90×7.5=6.75 GHz → 6.5 < 6.75, no evanescent warning.
 
     dx=0.002 (not the original 0.003): issue #738 made the 0.90×fc_next
-    margin heuristic read the RASTERIZED guide, and at dx=0.003 this
-    fixture's declared 40×20 mm guide rasterizes to 42×21 mm (dx=0.003
-    does not divide either), moving fc_TE20 to 7.138 GHz and the
-    threshold to 6.424 GHz — which 6.5 GHz then exceeds. This is a
-    fixture repair, not a gate move: at dx=0.002 the guide rasterizes to
-    exactly 40×20 mm (declared == aperture == guide), so the checker
-    reproduces the docstring's original 7.5/6.75 GHz verdict unchanged.
+    margin heuristic read the REALIZED guide, and dx=0.003 divides
+    neither 40 mm nor 20 mm. Measured on this fixture at dx=0.003 (both
+    y and z closed by PEC domain faces, so guide_source=domain_faces):
+    the guide rasterizes to 42.0000 × 21.0000 mm, the next cutoff lands
+    at 7.138 GHz (TE20 on 42 mm and TE01 on 21 mm are degenerate there)
+    and the threshold at 6.424 GHz — which 6.5 GHz then exceeds. So the
+    docstring above described a guide the fixture did not have. This is
+    a fixture repair, not a gate move: at dx=0.002 the same measurement
+    gives 40.0000 × 20.0000 mm with declared == rasterized on both axes,
+    and the checker reproduces the original 7.5/6.75 GHz verdict
+    unchanged (measured: preflight emits no findings at all).
     """
     import jax.numpy as jnp
     from rfx.boundaries.spec import BoundarySpec, Boundary
@@ -264,8 +268,8 @@ def test_wg_port_evanescent_warns_above_threshold():
     """freqs up to 7.0 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
     threshold=0.90×7.5=6.75 GHz → 7.0 > 6.75, evanescent warning must fire.
 
-    dx=0.002, see the sibling test above for why (issue #738 fixture
-    repair, not a gate move)."""
+    dx=0.002, see the sibling test above for the measurement (issue #738
+    fixture repair, not a gate move)."""
     import jax.numpy as jnp
     from rfx.boundaries.spec import BoundarySpec, Boundary
 

@@ -127,16 +127,22 @@ def _enumerate_emission_sites():
 # ANY of these numbers means the check-site surface moved and must be a
 # conscious edit to this file, not a silent side effect of an unrelated
 # change.
-_FROZEN_TOTAL_SITES = 81
-_FROZEN_LITERAL_CODE_COUNT = 53
+#
+# 81 -> 83 sites / 53 -> 55 literal codes, issue #738 (PR #745): the
+# waveguide-port check gained port_aperture_snap and
+# port_aperture_unrasterizable (2 new sites, 2 new codes) and its three
+# cutoff findings moved into one shared emitter that both the uniform
+# and the non-uniform lane call.
+_FROZEN_TOTAL_SITES = 83
+_FROZEN_LITERAL_CODE_COUNT = 55
 _FROZEN_DYNAMIC_SITES = frozenset({
     # (lineno, enclosing function) -- PreflightIssue(code=getattr(exc,
     # "code", "uncoded")): the code comes from whatever the caught
     # ValueError/PreflightConfigError happened to carry, not a literal
     # at this call site.
-    (1815, "preflight"),
-    (1844, "preflight"),
-    (1994, "preflight_sparameters"),
+    (2259, "preflight"),
+    (2288, "preflight"),
+    (2438, "preflight_sparameters"),
 })
 
 

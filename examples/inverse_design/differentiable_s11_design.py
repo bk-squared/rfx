@@ -23,13 +23,23 @@ import numpy as np
 from rfx import Simulation
 
 # ---------------------------------------------------------------------------
-# WR-90 geometry — identical to test_waveguide_s_matrix_ad_end_to_end
-# (tests/test_sparam_ad_end_to_end.py) so that CPU feasibility is proven.
+# WR-90 geometry. The companion CPU-feasibility gate is
+# test_waveguide_s_matrix_ad_end_to_end (tests/test_sparam_ad_end_to_end.py);
+# it keeps its own dx = 2 mm and a shorter 50 mm domain, so the two are no
+# longer cell-for-cell identical (see the dx note below).
 # ---------------------------------------------------------------------------
 
 _WR90_A = 22.86e-3    # broad wall (m)
 _WR90_B = 10.16e-3    # narrow wall (m)
-_WR90_DX = 2e-3       # cell size (m)
+# Cell size: dx must DIVIDE both wall dimensions, or the guide the solve
+# rasterizes is not the WR-90 guide the numbers below are computed from.
+# 22.86 / 10.16 = 9/4, so 22.86e-3 / 18 = 10.16e-3 / 8 = 1.27 mm is the
+# coarsest common divisor at a usable resolution. The previous 2 mm
+# divided neither: the mode template and cutoff were built from a
+# 22.000 x 10.000 mm aperture while every comment here quoted 22.86 x
+# 10.16 mm (issue #738 — preflight's port_aperture_snap now says so, and
+# this example aborted on it).
+_WR90_DX = 1.27e-3    # cell size (m)
 # Domain length: ports must clear the CPML absorber (issue #149 — the
 # original LX=0.05 with cpml_layers=8 x dx=2mm put BOTH port planes inside
 # the 16mm absorber; sim.preflight() flags exactly this).
@@ -37,7 +47,9 @@ _WR90_LX = 0.10       # domain length (m)
 
 # TE10 cutoff for WR-90: c/(2a) ≈ 6.56 GHz; all freqs here are above cutoff
 # AND below 0.90 x fc_TE20 = 11.8 GHz (preflight's next-mode contamination
-# bound — the original 8-12 GHz band tripped it at the top edge).
+# bound — the original 8-12 GHz band tripped it at the top edge). Those
+# numbers hold on the REALIZED guide only because dx divides a and b;
+# preflight reports 0 findings on this setup (issue #738).
 # f0 is set explicitly at band center — a source centered at/below cutoff
 # launches an evanescent crawl whose extracted S grows with n_steps
 # (issue #150; preflight code "port_source_below_cutoff" now guards this).
