@@ -90,7 +90,9 @@ def test_finding_classes_are_detected():
     # distortion (the tool's job), not as absence.
     assert film["n_cells"] > 0
     assert film["axes"][2]["realized_extent_um"] > 5 * film["axes"][2]["declared_extent_um"]
-    assert "off-lattice-face" in _kinds(film)
+    # A sub-cell film is reported against the CELL, not as a percentage of its
+    # own thickness (the 2026-08-28 convention fix).
+    assert "sub-cell-placement" in _kinds(film)
 
     clamped = _geo(rep, 5)
     # Measured rasterization behaviour: an out-of-range box CLAMPS to the
@@ -207,3 +209,47 @@ def test_dispersive_material_states_that_poles_are_not_verified():
     sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 8e-3, 8e-3)), material="debye")
     kinds = [f["kind"] for f in _geo(sim.fidelity_report(print_report=False), 0)["findings"]]
     assert "dispersion-not-audited" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Readout conventions (2026-08-28). Both of these were shipped wrong and were
+# caught by an external review of the issues this tool's output produced: a
+# sphere sitting dead centre of the grid it is solved on was reported as
+# "offset half a cell", and a 17 um sheet landing in its cell was reported as
+# "181% of the declared extent".
+# ---------------------------------------------------------------------------
+
+
+def test_curved_body_offset_reports_the_convention_free_midpoint():
+    from rfx.geometry.csg import Sphere
+    sim = Simulation(freq_max=10e9, domain=(20e-3, 20e-3, 20e-3), dx=1e-3,
+                     boundary="cpml", cpml_layers=4)
+    sim.add(Sphere(center=(10.5e-3, 10.5e-3, 10.5e-3), radius=4e-3),
+            material="pec")
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    offs = [f for f in item["findings"] if f["kind"] == "bbox-offset"]
+    assert offs, "a half-cell-shifted sphere should still be reported"
+    f = offs[0]
+    assert "midpoint_shift_um" in f, (
+        "a node-sampled mask compared against cell edges carries up to half a "
+        "cell of pure convention; the midpoint shift must be reported so the "
+        "reader can separate it from a real displacement")
+    assert "readout convention" in f["detail"]
+
+
+def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
+    sim = Simulation(freq_max=40e9, domain=(2e-3, 2e-3, 2e-3), dx=50e-6,
+                     boundary="cpml", cpml_layers=4)
+    sim.add(Box((0.5e-3, 0.5e-3, 0.98e-3), (1.5e-3, 1.5e-3, 0.997e-3)),
+            material="pec")            # 17 um sheet in a 50 um cell
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    kinds = _kinds(item)
+    assert "sub-cell-placement" in kinds
+    f = [x for x in item["findings"] if x["kind"] == "sub-cell-placement"][0]
+    assert "cell" in f["detail"] and "not a meaningful measure" in f["detail"]
+    # and the z axis must NOT also produce a percentage-of-extent finding
+    z_off = [x for x in item["findings"]
+             if x["kind"] == "off-lattice-face" and x.get("axis") == "z"]
+    assert not z_off, (
+        "a sub-cell body must not be reported as a percentage of its own "
+        f"thickness as well: {z_off}")

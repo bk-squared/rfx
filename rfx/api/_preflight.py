@@ -257,6 +257,26 @@ def _shape_bounds(shape):
     return np.minimum(blo, bhi), np.maximum(blo, bhi), False
 
 
+def _local_cell(profile, lo, hi, fallback):
+    """Coarsest cell a body spans on one axis (#743).
+
+    ``profile`` is a per-cell size array whose cumulative sum gives node
+    positions from the padded array's origin; ``lo``/``hi`` are the body's
+    physical bounds. Returns ``fallback`` when there is no profile or the
+    span selects no cell, so callers keep their previous behaviour on a
+    uniform axis.
+    """
+    if profile is None:
+        return fallback
+    import numpy as _np
+    d = _np.asarray(profile, dtype=float)
+    edges = _np.concatenate([[0.0], _np.cumsum(d)])
+    inside = (edges[1:] > min(lo, hi)) & (edges[:-1] < max(lo, hi))
+    if not inside.any():
+        return fallback
+    return float(d[inside].max())
+
+
 class _CampaignStaticsContext:
     """Shared lazily-built state for the four issue-#703 campaign checks.
 
@@ -1291,7 +1311,17 @@ class _PreflightMixin:
             else:
                 continue
 
-            cell_sizes = [min_dx, min_dy, min_dz]
+            # Score against the LOCAL cell where this body actually sits,
+            # not the global minimum. Using the finest cell anywhere made
+            # the check vacuously green exactly where grading hurts — a
+            # body in a coarse region judged by a fine cell it never sees
+            # (#743). Falls back to the global minimum when a profile has
+            # no usable extent for this body.
+            cell_sizes = [
+                _local_cell(self._dx_profile, c1[0], c2[0], min_dx),
+                _local_cell(self._dy_profile, c1[1], c2[1], min_dy),
+                _local_cell(self._dz_profile, c1[2], c2[2], min_dz),
+            ]
 
             # FP1 refinement (2026-05-06): the partial-volume warning
             # at 3-5 cells along one axis is meaningful only for actual
@@ -2985,6 +3015,18 @@ class _PreflightMixin:
         :meth:`_preflight_face_layers`; it inherits that helper's
         waveguide-axis divergence, which makes this check UNDER-fire (never
         over-fire) on waveguide-port simulations.
+
+        Issue #737/#742: skips any axis whose ``pad_lo`` and ``pad_hi`` are
+        both 0 -- a PEC-closed or periodic-closed axis allocates no absorber
+        on either face, so there is nothing for ``cpml_layers`` to exceed
+        and the advisory was firing on a boundary condition it should never
+        have been conditioned on. This adopts the allocation>0 convention
+        already used by every OTHER consumer of :meth:`_preflight_face_layers`:
+        :meth:`_validate_cfg_compute_cpml_thickness` (``if n_face <= 0:
+        return 0.0``), the nonuniform z-thickness check below (``_z_layers
+        > 0``, whose #647 comment states this identical rationale), and
+        ``cpml_axes_eff`` in ``rfx.nonuniform`` (``if (lo + hi) > 0``) --
+        this was the sole consumer that had not adopted it.
         """
         n_budget = int(self._cpml_layers or 0)
         if n_budget <= 0 or dx <= 0:
@@ -2997,6 +3039,11 @@ class _PreflightMixin:
                         else self._domain[-1])
             pad_lo = face_layers[f"{ax_name}_lo"]
             pad_hi = face_layers[f"{ax_name}_hi"]
+            if pad_lo <= 0 and pad_hi <= 0:
+                # Issue #737/#742: no allocation on either face of this
+                # axis (PEC/PMC-closed or periodic-closed) -- nothing to
+                # budget. See docstring for the allocation>0 precedent.
+                continue
             n_cells = int(math.ceil(extent_m / dx)) + 1 + pad_lo + pad_hi
             if n_budget <= n_cells:
                 continue

@@ -4,11 +4,13 @@
 THE REFEREE QUESTION (and what the referee actually found)
 ----------------------------------------------------------
 cv07's committed rfx-vs-openEMS cross-check
-(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~10% split in the
-"first S21 null" (defined there as argmin|S21| over 5-15 GHz): rfx 7.218 GHz,
-openEMS 7.983 GHz. Both are staircased FDTD; the committed narrative asked whether
-one reads the null wrong because it under-resolves the wide-patch open-end / step
-fringing. An independent conformal method was needed to referee.
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~1.4% split in
+the "first S21 null" (defined there as argmin|S21| over 5-15 GHz, raw bin): rfx
+7.874 GHz, openEMS 7.983 GHz (post-regeneration, PR #468/#516; the earlier
+num_periods=20/default-offset leg read rfx 7.218 GHz, a ~9.6% split). Both are
+staircased FDTD; the committed narrative asked whether one reads the null wrong
+because it under-resolves the wide-patch open-end / step fringing. An independent
+conformal method was needed to referee.
 
 Palace (frequency-domain FEM on a conformal tetrahedral mesh, no staircase) was run
 on the SAME matched geometry (the exact domain frame of 07_sheen_lpf.py) at two
@@ -19,13 +21,17 @@ re-derived by ``build_referee`` and locked in the ``referee`` block:
   * Palace resolves both zeros (coarse & mid meshes agree -> converged).
   * openEMS resolves the SAME double-zero structure in close agreement with the
     conformal referee (both zeros within <~1%).
-  * rfx's coarser mesh + frequency sampling distorts the doublet (a spurious
-    extra dip + a shifted/merged central feature), so it does not cleanly
-    resolve the two-zero structure.
+  * The regenerated rfx leg (num_periods=60, n_probe_offset=30; PR #468/#516)
+    ALSO resolves both zeros (structure_distance_pct 1.52% vs Palace, vs
+    openEMS's 0.66%). The earlier num_periods=20, default-offset leg did not —
+    its coarser-mesh, contaminated-probe leg distorted the doublet (a spurious
+    extra dip + a shifted/merged central feature); that is the leg the ~9.6%
+    "split" figure above describes.
   * The committed argmin "first null" compares DIFFERENT members of the doublet
-    in each solver (rfx's deepest ~7.22, openEMS's deepest ~7.98, Palace's
-    deepest ~7.0), so the ~10% "split" is largely a comparator artifact of a
-    double-null, NOT a physical single-null disagreement.
+    in each solver (rfx's deepest 7.87, openEMS's deepest 7.98, Palace's
+    deepest ~7.0), so even on the regenerated leg the argmin-vs-argmin
+    "split" is a comparator artifact of a double-null, NOT a physical
+    single-null disagreement -- read the structure_distance_pct field instead.
 
 ``sides_with`` therefore names the FDTD solver whose full stopband STRUCTURE (both
 zeros) the conformal referee matches best — the structure-faithful metric — with

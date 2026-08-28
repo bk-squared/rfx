@@ -6,7 +6,10 @@
     tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json) showed the stopband
     is a DOUBLE transmission-zero (~7.0 AND ~8.0 GHz), not a single null. openEMS
     resolves BOTH zeros and matches Palace to ~0.7%; rfx's coarse 200um mesh
-    DISTORTS the doublet (spurious ~6.6 GHz dip, no clean 8 GHz zero). So the
+    DISTORTS the doublet. [EDITORIAL FIX, #722] the committed leg has exactly
+    two local minima in 5-10 GHz, 6.891 and 7.874 GHz, both doublet members —
+    there is no ~6.6 GHz dip; that sentence was stale (the two UPDATE blocks
+    below already superseded it). So the
     single-argmin "first null" comparison here (rfx 7.218 vs openEMS 7.983 = 9.6%)
     is largely a COMPARATOR ARTIFACT — the argmin picks different doublet members
     per solver and flips with mesh (Palace 7.02->8.05 GHz coarse->mid). The honest
@@ -34,6 +37,71 @@
     worst raw excess is 0.0145 and NO bin exceeds 0.05. Passband mean |S21|
     now agrees with openEMS to 0.0014 (was 0.0156). The argmin null is
     bit-identical (7.8739 GHz), so the doublet characterization stands.
+
+    GEOMETRY CONVENTION (#722) — documentation/reporting only; no geometry,
+    mesh, port or gate constant changes with this note. Every number below
+    was measured on this checkout from the committed dx=200um build via
+    Simulation.fidelity_report() (captured verbatim in run_rfx(), below,
+    and stored additively as this leg's "fidelity_report" JSON field) plus
+    hammerstad_jensen_z0_eps_eff() re-evaluated at the declared and
+    realized port dimensions. The Sheen / Elsherbeni-Demir coordinates at :293-306
+    are the PUBLISHED board and are never re-declared here. A uniform cubic
+    rfx cell cannot realize all four load-bearing dimensions exactly —
+    gcd(2540, 794, 2413, 20320) = 1 um and Simulation(dx=) is a single
+    scalar (rfx/api/__init__.py:391) — so at the committed dx=200um rfx
+    SOLVES a REALIZED board that differs from the DECLARED one:
+      wide section   2540 -> 2600 um prop  (+2.36%), 20320 -> 20400 um trv (+0.39%)
+      substrate h    794  -> 800  um       (+0.76%)
+      each 50-ohm feed  2413 -> 2400 um width          (-0.54%)
+      feed-to-patch-centre transverse offset  -3303.5 -> -3200 um  (-3.13%)
+    Both external comparator legs are built on the DECLARED board, not the
+    realized one: openEMS pins mesh lines exactly on the declared patch
+    faces (07_sheen_lpf.py:645-646, :651, :654-655) and lays the metal there
+    (:675-676); the Palace referee meshes the declared rectangles conformally
+    (scripts/diagnostics/palace_sheen_referee/mesh_sheen.py:69 PATCH_X0/X1,
+    :72 IN_Y_LO/IN_Y_HI, :74 PATCH_Y_LO/HI, :132-136 addRectangle). So
+    structure_distance_pct in
+    tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json is a SOLVER +
+    GEOMETRY composite, not an rfx solver-accuracy figure on its own. One
+    nuance survives on W_FEED alone: openEMS's own thirds-rule mesh lines
+    (:643 tm = [+33.08, -16.54] um at res=198.5um; :648-650) deliberately
+    straddle each feed edge rather than sit on it, covering only 2379.92 um
+    (-1.371%) — closer to declared than to 2400 um, but still not exact —
+    so on this one dimension the committed rfx build (-0.54%) is nearer the
+    declared value than the openEMS reference leg is.
+
+    A SECOND, in-rfx instance of the same declared-vs-realized mixing:
+    07_sheen_lpf.py:393-400 hands the DECLARED width=W_FEED (2413um) and
+    height=H_SUB (794um) to add_msl_port, and the extractor's own reference
+    impedance/beta are computed from those declared values, not the
+    realized 2400x800um trace (rfx/api/_sparams.py:3029-3031
+    hammerstad_jensen_z0_eps_eff(pe.width, pe.height, eps_r_ref)). Measured
+    here: declared (2413um,794um) -> Z0=50.74857 ohm, eps_eff=1.869718;
+    realized (2400um,800um) -> Z0=51.19030 ohm, eps_eff=1.868328; +0.870%
+    on Z0. NOT fixed by this note — it needs the same leg regeneration +
+    fixture regeneration the mesh change would, so it is batched into a
+    follow-up rather than changed silently here.
+
+    PRECISION: this script pins no JAX_ENABLE_X64 anywhere (unlike cv01/03
+    at "1" or cv11 at "0" — validation/crossval/11_waveguide_port_wr90.py),
+    so every number above and below is at the JAX default precision for
+    this environment (confirmed here: jax.config.jax_enable_x64 == False).
+    Because rasterization is float32-sensitive at cell edges
+    (rfx/geometry/csg.py), the realized board this note quotes can in
+    principle shift by a cell under a different default-precision
+    environment; pinning JAX_ENABLE_X64 explicitly for this leg is filed as
+    a follow-up, not done here.
+
+    KNOWN STALE, PRE-EXISTING, OUT OF SCOPE FOR THIS EDIT: validation/
+    README.md:41, docs/public/guide/benchmarks.mdx:57 and
+    scripts/diagnostics/palace_sheen_referee/README.md:10,38-39 all quote
+    cv07 numbers (e.g. "1.91%", "84/120 bins", "~67 ohm") that disagree
+    with the committed _07_sheen_results/rfx.json and the committed referee
+    fixture (which reads structure_distance_pct.rfx=1.5195, 0/120
+    passivity_correction bins > 0.05, passband median Re(Z0)=50.30 ohm).
+    That drift predates and is independent of #722 (it is a docs sweep
+    across files outside this edit's scope) and is filed as its own
+    follow-up rather than fixed inline here.
 
 Reproduces the classic FDTD-microwave benchmark of
   D. M. Sheen, S. M. Ali, M. D. Abouzahra, J. A. Kong,
@@ -339,6 +407,21 @@ def run_rfx(dx, num_periods, n_freqs):
     print(preflight_txt if preflight_txt.strip() else "(no preflight output)")
     print("--- end preflight ---\n")
 
+    # Input-fidelity audit (#722): declared-vs-realized geometry, BEFORE any
+    # time stepping. Purely additive — see the GEOMETRY CONVENTION docstring
+    # block above. No gate reads this field (tests/test_sheen_lpf_palace_
+    # referee_gates.py reads only freqs_hz/s21_mag and the referee/meta
+    # blocks of the committed fixtures; it never opens rfx.json's own keys
+    # other than through this producer), so the committed rfx.json — which
+    # predates this field — stays valid and no gate moves.
+    print("\n--- rfx input fidelity (verbatim; #722) ---")
+    fid_buf = io.StringIO()
+    with contextlib.redirect_stdout(fid_buf):
+        sim.fidelity_report()
+    fidelity_txt = fid_buf.getvalue()
+    print(fidelity_txt if fidelity_txt.strip() else "(no fidelity_report output)")
+    print("--- end input fidelity ---\n")
+
     freqs = np.linspace(F_LO, F_MAX, n_freqs)
     import jax.numpy as jnp
     print(f"running compute_msl_s_matrix (num_periods={num_periods}, "
@@ -363,6 +446,7 @@ def run_rfx(dx, num_periods, n_freqs):
         re_z0=np.real(z0).tolist(),
         energy_sum=esum.tolist(),
         preflight=preflight_txt,
+        fidelity_report=fidelity_txt,
     )
     # Evidence chain (witness + passivity enforcement, PR #468). Absent on a
     # pre-#468 rfx: the gates then fail closed via D0 rather than reading a
