@@ -342,7 +342,7 @@ def _surface_currents(fields, axis, sign):
 
 
 def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                    dy=None, z_edges=None):
+                    dy=None, z_edges=None, x_edges=None, y_edges=None):
     """Build (n1, n2, 3) position array for a face.
 
     Parameters
@@ -365,25 +365,34 @@ def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z
             return z_edges[k]
         return (k - cpml_lo_z) * dx
 
+    def _x_pos(i):
+        if x_edges is not None:
+            return x_edges[i]
+        return (i - cpml_lo_x) * dx
+
+    def _y_pos(j):
+        if y_edges is not None:
+            return y_edges[j]
+        return (j - cpml_lo_y) * dy
+
     if axis == 0:
         j_range, k_range = other_ranges
-        x_fixed = (idx - cpml_lo_x) * dx
-        y = (np.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
+        x_fixed = _x_pos(idx)
+        y = np.array([_y_pos(j) for j in range(j_range[0], j_range[1])])
         z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         Y, Z = np.meshgrid(y, z, indexing="ij")
         X = np.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
-        # axis=1 uses dy (not dx) because idx is a y-index.
-        x_fixed = (idx - cpml_lo_y) * dy
-        x = (np.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
+        y_fixed = _y_pos(idx)
+        x = np.array([_x_pos(i) for i in range(i_range[0], i_range[1])])
         z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
         X, Z = np.meshgrid(x, z, indexing="ij")
-        Y = np.full_like(X, x_fixed)
+        Y = np.full_like(X, y_fixed)
     else:
         i_range, j_range = other_ranges
-        x = (np.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
-        y = (np.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
+        x = np.array([_x_pos(i) for i in range(i_range[0], i_range[1])])
+        y = np.array([_y_pos(j) for j in range(j_range[0], j_range[1])])
         X, Y = np.meshgrid(x, y, indexing="ij")
         Z = np.full_like(X, _z_pos(idx))
 
@@ -433,6 +442,14 @@ def compute_far_field(
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)  # (nz,) for NonUniformGrid, None for Grid
+    # In-plane grading was previously ignored here: dx/dy above are the
+    # BOUNDARY cell sizes on a NonUniformGrid, so a mesh graded in x or y had
+    # its surface elements and face coordinates computed with the wrong
+    # spacing — silently, with a pattern returned (issue #743). The z axis
+    # already carried per-cell spacing; x and y now do too. When neither is
+    # graded, every path below is the scalar one, bit-for-bit.
+    dx_arr = getattr(grid, 'dx_arr', None)
+    dy_arr = getattr(grid, 'dy_arr', None)
     # Per-face CPML origins come from the box when populated via
     # NTFFBox.from_grid; direct-construction callers (fields=0) fall back
     # to scalar grid.cpml_layers so the symmetric case stays bit-identical.
@@ -444,15 +461,39 @@ def compute_far_field(
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
 
-    # Build z edge positions for non-uniform grids
-    if dz_arr is not None:
-        dz_np = np.asarray(dz_arr, dtype=np.float64)
-        z_edges = np.concatenate([[0.0], np.cumsum(dz_np)])
-        z_edges = z_edges - z_edges[cpml_lo_z]  # physical domain starts at 0
-    else:
-        z_edges = None
+    # Build edge positions for graded axes (physical origin at the inner edge
+    # of the lo-face CPML, matching the uniform formula (idx - cpml_lo) * d).
+    def _edges(d_arr, cpml_lo):
+        if d_arr is None:
+            return None
+        e = np.concatenate([[0.0], np.cumsum(np.asarray(d_arr, dtype=np.float64))])
+        return e - e[cpml_lo]
 
-    # Per-face dS: x/y faces have k-dependent area for non-uniform z
+    z_edges = _edges(dz_arr, cpml_lo_z)
+    x_edges = _edges(dx_arr, cpml_lo_x)
+    y_edges = _edges(dy_arr, cpml_lo_y)
+    inplane_graded = x_edges is not None or y_edges is not None
+
+    def _cells(d_arr, scalar, lo, hi):
+        if d_arr is None:
+            return np.full(hi - lo, float(scalar))
+        return np.asarray(d_arr, dtype=np.float64)[lo:hi]
+
+    # Per-face dS. Returns a scalar when nothing is graded (bit-identical to
+    # the pre-#743 code), a (n1, n2) area array otherwise.
+    def _face_dS_full(axis, other_ranges):
+        (a0, a1), (b0, b1) = other_ranges
+        if axis == 0:      # x face: spanned by y and z
+            d1 = _cells(dy_arr, dy, a0, a1)
+            d2 = _cells(dz_arr, dx, b0, b1)
+        elif axis == 1:    # y face: spanned by x and z
+            d1 = _cells(dx_arr, dx, a0, a1)
+            d2 = _cells(dz_arr, dx, b0, b1)
+        else:              # z face: spanned by x and y
+            d1 = _cells(dx_arr, dx, a0, a1)
+            d2 = _cells(dy_arr, dy, b0, b1)
+        return d1[:, None] * d2[None, :]
+
     def _face_dS(axis, k_lo, k_hi):
         if dz_arr is not None and axis in (0, 1):
             dz_face = np.asarray(dz_arr[k_lo:k_hi], dtype=np.float64)
@@ -495,23 +536,27 @@ def compute_far_field(
 
         pos = _face_positions(axis, face_idx, other_ranges, dx,
                               cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                              dy=dy, z_edges=z_edges)
+                              dy=dy, z_edges=z_edges,
+                              x_edges=x_edges, y_edges=y_edges)
         pos_flat = pos.reshape(-1, 3)     # (nc, 3)
         fields_flat = face_np.reshape(nf, -1, 4)  # (nf, nc, 4)
 
         J, M = _surface_currents(fields_flat, axis, sign)  # (nf, nc, 3)
 
         # Per-cell dS for non-uniform z on x/y faces
-        k_range = other_ranges[1] if axis in (0, 1) else None
-        if k_range is not None:
-            dS_k = _face_dS(axis, k_range[0], k_range[1])
-            if np.ndim(dS_k) > 0:
-                # Tile along the non-k dimension to match flattened cell count
-                dS_flat = np.tile(dS_k, n1)  # (n1*nk,) = (nc,)
-            else:
-                dS_flat = dS_k
+        if inplane_graded:
+            dS_flat = _face_dS_full(axis, other_ranges).reshape(-1)
         else:
-            dS_flat = _face_dS(axis, 0, 0)
+            k_range = other_ranges[1] if axis in (0, 1) else None
+            if k_range is not None:
+                dS_k = _face_dS(axis, k_range[0], k_range[1])
+                if np.ndim(dS_k) > 0:
+                    # Tile along the non-k dimension to match the cell count
+                    dS_flat = np.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+                else:
+                    dS_flat = dS_k
+            else:
+                dS_flat = _face_dS(axis, 0, 0)
 
         dot = r_flat @ pos_flat.T  # (n_dir, nc)
 
@@ -574,7 +619,7 @@ def _surface_currents_jax(fields, axis, sign):
 
 
 def _face_positions_jax(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                        dy=None, z_edges=None):
+                        dy=None, z_edges=None, x_edges=None, y_edges=None):
     """JAX version of _face_positions with non-uniform z support.
 
     ``cpml_lo_*`` are per-axis low-face CPML thicknesses (see the numpy
@@ -589,31 +634,39 @@ def _face_positions_jax(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_
             return z_edges[k]
         return (k - cpml_lo_z) * dx
 
+    def _x_pos(i):
+        if x_edges is not None:
+            return x_edges[i]
+        return (i - cpml_lo_x) * dx
+
+    def _y_pos(j):
+        if y_edges is not None:
+            return y_edges[j]
+        return (j - cpml_lo_y) * dy
+
+    def _axis_pos(lo, hi, edges, cpml_lo, d):
+        if edges is not None:
+            return edges[lo:hi]
+        return (jnp.arange(lo, hi) - cpml_lo) * d
+
     if axis == 0:
         j_range, k_range = other_ranges
-        x_fixed = (idx - cpml_lo_x) * dx
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
-        if z_edges is not None:
-            z = z_edges[k_range[0]:k_range[1]]
-        else:
-            z = (jnp.arange(k_range[0], k_range[1]) - cpml_lo_z) * dx
+        x_fixed = _x_pos(idx)
+        y = _axis_pos(j_range[0], j_range[1], y_edges, cpml_lo_y, dy)
+        z = _axis_pos(k_range[0], k_range[1], z_edges, cpml_lo_z, dx)
         Y, Z = jnp.meshgrid(y, z, indexing="ij")
         X = jnp.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
-        # axis=1 uses dy (not dx) because idx is a y-index.
-        x_fixed = (idx - cpml_lo_y) * dy
-        x = (jnp.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
-        if z_edges is not None:
-            z = z_edges[k_range[0]:k_range[1]]
-        else:
-            z = (jnp.arange(k_range[0], k_range[1]) - cpml_lo_z) * dx
+        y_fixed = _y_pos(idx)
+        x = _axis_pos(i_range[0], i_range[1], x_edges, cpml_lo_x, dx)
+        z = _axis_pos(k_range[0], k_range[1], z_edges, cpml_lo_z, dx)
         X, Z = jnp.meshgrid(x, z, indexing="ij")
-        Y = jnp.full_like(X, x_fixed)
+        Y = jnp.full_like(X, y_fixed)
     else:
         i_range, j_range = other_ranges
-        x = (jnp.arange(i_range[0], i_range[1]) - cpml_lo_x) * dx
-        y = (jnp.arange(j_range[0], j_range[1]) - cpml_lo_y) * dy
+        x = _axis_pos(i_range[0], i_range[1], x_edges, cpml_lo_x, dx)
+        y = _axis_pos(j_range[0], j_range[1], y_edges, cpml_lo_y, dy)
         X, Y = jnp.meshgrid(x, y, indexing="ij")
         Z = jnp.full_like(X, _z_pos(idx))
     return jnp.stack([X, Y, Z], axis=-1)
@@ -694,6 +747,8 @@ JAX-differentiable far-field computation for use inside jax.grad.
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)
+    dx_arr = getattr(grid, 'dx_arr', None)   # in-plane grading (#743)
+    dy_arr = getattr(grid, 'dy_arr', None)
     # Per-face CPML origins come from the box (populated by
     # NTFFBox.from_grid). Legacy callers get grid.cpml_layers as fallback.
     _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
@@ -704,13 +759,36 @@ JAX-differentiable far-field computation for use inside jax.grad.
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
 
-    # Build z edge positions for non-uniform grids
-    if dz_arr is not None:
-        dz_jnp = jnp.asarray(dz_arr, dtype=jnp.float32)
-        z_edges = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dz_jnp)])
-        z_edges = z_edges - z_edges[cpml_lo_z]
-    else:
-        z_edges = None
+    # Edge positions for graded axes (#743: x and y were previously read as
+    # the boundary scalar, so a graded in-plane mesh was integrated with the
+    # wrong dS and face coordinates, silently).
+    def _edges_j(d_arr, cpml_lo):
+        if d_arr is None:
+            return None
+        dj = jnp.asarray(d_arr, dtype=jnp.float32)
+        e = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dj)])
+        return e - e[cpml_lo]
+
+    dz_jnp = jnp.asarray(dz_arr, dtype=jnp.float32) if dz_arr is not None else None
+    z_edges = _edges_j(dz_arr, cpml_lo_z)
+    x_edges = _edges_j(dx_arr, cpml_lo_x)
+    y_edges = _edges_j(dy_arr, cpml_lo_y)
+    inplane_graded = x_edges is not None or y_edges is not None
+
+    def _cells_j(d_arr, scalar, lo, hi):
+        if d_arr is None:
+            return jnp.full((hi - lo,), float(scalar))
+        return jnp.asarray(d_arr, dtype=jnp.float32)[lo:hi]
+
+    def _face_dS_full_j(axis, other_ranges):
+        (a0, a1), (b0, b1) = other_ranges
+        if axis == 0:
+            d1, d2 = _cells_j(dy_arr, dy, a0, a1), _cells_j(dz_arr, dx, b0, b1)
+        elif axis == 1:
+            d1, d2 = _cells_j(dx_arr, dx, a0, a1), _cells_j(dz_arr, dx, b0, b1)
+        else:
+            d1, d2 = _cells_j(dx_arr, dx, a0, a1), _cells_j(dy_arr, dy, b0, b1)
+        return d1[:, None] * d2[None, :]
 
     # Per-face dS helper
     def _face_dS_jax(axis, k_lo, k_hi):
@@ -752,22 +830,26 @@ JAX-differentiable far-field computation for use inside jax.grad.
 
         pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
                                   cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                                  dy=dy, z_edges=z_edges)
+                                  dy=dy, z_edges=z_edges,
+                                  x_edges=x_edges, y_edges=y_edges)
         pos_flat = pos.reshape(-1, 3)
         fields_flat = face.reshape(nf, -1, 4)
 
         J, M = _surface_currents_jax(fields_flat, axis, sign)
 
-        # Per-cell dS for non-uniform z on x/y faces
-        k_range = other_ranges[1] if axis in (0, 1) else None
-        if k_range is not None:
-            dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]))
-            if dS_k.ndim > 0:
-                dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
-            else:
-                dS_flat = dS_k
+        if inplane_graded:
+            dS_flat = _face_dS_full_j(axis, other_ranges).reshape(-1)
         else:
-            dS_flat = _face_dS_jax(axis, 0, 0)
+            # Per-cell dS for non-uniform z on x/y faces
+            k_range = other_ranges[1] if axis in (0, 1) else None
+            if k_range is not None:
+                dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]))
+                if dS_k.ndim > 0:
+                    dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+                else:
+                    dS_flat = dS_k
+            else:
+                dS_flat = _face_dS_jax(axis, 0, 0)
 
         dot = r_flat @ pos_flat.T  # (n_dir, nc)
 

@@ -4,13 +4,18 @@ Locks the independent-method arbitration committed under
 ``tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json``. Palace is a
 frequency-domain FEM solver on a conformal tetrahedral mesh (no staircase), run on
 the matched cv07 geometry to referee the committed rfx-vs-openEMS "first null"
-split (rfx argmin 7.218 GHz, openEMS argmin 7.983 GHz).
+split (rfx argmin 7.874 GHz, openEMS argmin 7.983 GHz, raw argmin bins,
+post-regeneration -- PR #468/#516; the earlier num_periods=20/default-offset leg
+read rfx 7.218 GHz, a ~9.6% split).
 
 WHAT THE REFEREE FOUND: the Sheen stopband is a DOUBLE transmission-zero
-(~7.0 AND ~8.0 GHz), not a single null. openEMS resolves this doublet in close
-agreement with the conformal referee; rfx's coarser mesh + frequency sampling
-distorts it. The committed argmin "first null" compares different members of the
-doublet in each solver, so its ~10% "split" is largely a comparator artifact. The
+(~7.0 AND ~8.0 GHz), not a single null. Both openEMS and the regenerated rfx leg
+resolve this doublet in close agreement with the conformal referee
+(structure_distance_pct: openEMS 0.66%, rfx 1.52%); the earlier num_periods=20,
+default-offset rfx leg did not. The committed argmin "first null" compares
+different members of the doublet in each solver, so even on the regenerated leg
+its argmin-vs-argmin "split" (~1.4%) is largely a comparator artifact -- read
+structure_distance_pct instead. The
 frozen ``sides_with`` therefore names the FDTD solver whose full stopband STRUCTURE
 (both zeros) the referee matches best; the fragile argmin metric is locked
 separately and labelled as such. No analytic reference (the stepped-impedance

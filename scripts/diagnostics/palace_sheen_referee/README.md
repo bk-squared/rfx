@@ -6,8 +6,10 @@ cv07 rfx-vs-openEMS first-null split on the classic Sheen 1990 low-pass filter.
 ## What / why
 
 cv07's committed cross-check
-(`validation/crossval/_07_sheen_results/{rfx,openems}.json`) locks a ~9-10% first-S21-null
-split: **rfx 7.218 GHz, openEMS 7.983 GHz** (both FDTD, dx~200 um / 4-5 substrate
+(`validation/crossval/_07_sheen_results/{rfx,openems}.json`) locks a ~1.4% first-S21-null
+split: **rfx 7.874 GHz, openEMS 7.983 GHz** (raw argmin bins, post-regeneration —
+PR #468/#516; the pre-regeneration num_periods=20/default-offset leg read
+rfx 7.218 GHz, a ~9.6% split) (both FDTD, dx~200 um / 4-5 substrate
 cells). Both refs STAIRCASE the wide low-Z patch edges, so neither resolves the
 open-end / step fringing exactly. Open-end fringing lengthens the resonator
 electrically and pulls the transmission zero DOWN in frequency; which of the two
@@ -36,14 +38,26 @@ single null. Palace (conformal FEM) puts the two zeros at **7.032 & 8.048 GHz**
 |---------------------|-----------|-----------|---------------------|---------------------|
 | Palace (FEM, mid)   | 7.032     | 8.048     | 8.048 (fragile)     | —                   |
 | openEMS (FDTD)      | 7.031     | 7.995     | 7.983               | **0.66 %**          |
-| rfx (FDTD, 200 µm)  | ~7.28     | (unresolved) | 7.218            | 4.64 %              |
+| rfx (FDTD, 200 µm)  | 6.944     | 7.926     | 7.874               | **1.52 %**          |
 
-openEMS resolves the SAME double-zero structure as the conformal referee (<~1 %);
-rfx's coarser mesh + frequency sampling does NOT cleanly resolve the doublet (a
-spurious extra dip + a shifted/merged central feature). The committed argmin
+(The "argmin 'first null'" column mixes conventions across rows: the openEMS and
+rfx entries are the RAW argmin bin over 5-15 GHz from each solver's committed leg
+[`fdtd_doublet_ghz.{openems,rfx}.argmin_first_null_ghz` is a different,
+parabolic-interpolated quantity — 7.995 / 7.926 — not shown here], while the
+Palace entry (8.048) IS the parabolic value. "doublet Δ vs Palace" is
+`structure_distance_pct`, the max of the two per-zero % errors against the
+Palace mid doublet — not the argmin-vs-argmin distance.)
+
+Both openEMS and the regenerated rfx leg (num_periods=60, n_probe_offset=30;
+PR #468/#516) resolve the SAME double-zero structure as the conformal referee
+(openEMS 0.66%, rfx 1.52% structure distance). The EARLIER num_periods=20,
+default-offset rfx leg did not cleanly resolve the doublet (a spurious extra dip
++ a shifted/merged central feature) — that is the leg the historical ~9.6% split
+and 7.218 GHz figure above describe. The committed argmin
 "first null" is **mesh-dependent** — it picks the marginally deeper member of the
 near-equal-depth doublet, which flips from 7.0 GHz (Palace coarse) to 8.05 GHz
-(Palace mid). So the ~10 % rfx-vs-openEMS "split" is largely a **comparator
+(Palace mid). The regenerated rfx-vs-openEMS argmin split is now ~1.4% (7.874 vs
+7.983 GHz); the earlier ~9.6% split was largely a **comparator
 artifact of a double-null**, not a physical single-null disagreement. `sides_with`
 therefore names the structure-faithful match (**openEMS**); the argmin metric is
 locked separately and labelled fragile. See the `referee` block of

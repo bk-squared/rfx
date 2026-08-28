@@ -37,6 +37,7 @@ from types import ModuleType
 from typing import Final
 
 import numpy as np
+import pytest
 
 REFEREE_DIR: Final = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -454,33 +455,113 @@ def test_zl_a_analytic_matches_coaxm_formula():
     assert module.REPRODUCE_GATE_RECORD["expected_zl_a_ohm"] == float(module.ZL_A_ANALYTIC_OHM)
 
 
-def test_geometry_constants_match_the_rasterized_rfx_fixture():
-    """Pins the numbers this script's header claims were read off the live
-    rfx grid-construction path -- including the RASTERIZED cell-count fix
-    (B3 review fix: the nominal domain= argument, not the rasterized
-    interior, was the pre-review bug)."""
+def _rebuild_referee_grid():
+    """Rebuild the EXACT rfx grid the referee's Stage B docstring (lines
+    ~122-134) claims its ``B_*`` constants were read off of -- not the
+    literals themselves. This is the comparator-first check the #737
+    audit found missing repo-wide: ``rfx`` is locally importable (only
+    openEMS is VESSL-only), so there is no excuse for a test asserting
+    committed geometry constants against themselves instead of against a
+    freshly built ``Grid``.
+
+    Cheap: ``sim._build_grid()`` does no time stepping (measured
+    2026-08-27, PYTHONPATH=/root/rfx-sub/rfx: first call 0.0001s, repeats
+    0.0000s -- the only real cost in this test file is importing ``rfx``
+    itself, ~1s, paid once per process). Calling this from more than one
+    test is free; no fixture/caching needed.
+    """
+    from rfx.api import Simulation
+    from rfx.sources.sources import GaussianPulse
+
+    sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9, boundary="cpml")
+    sim.add_coaxial_port(
+        (0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
+        waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2),
+    )
+    return sim._build_grid()
+
+
+def test_referee_fixture_rebuilds_and_matches_the_declared_discretization():
+    """Rebuilds the rfx fixture the header docstring cites provenance from
+    and checks the DISCRETIZATION-LEVEL facts (shape, dx, cpml pad depth)
+    match what ``B_DX_MM``/``B_CPML_CELLS`` claim -- the part of the B3
+    review fix that was never wrong.
+
+    This does NOT check the transverse/axial CLEAR-SPAN constants
+    (``B_INTERIOR_*_CELLS``, ``B_CLEAR_*_MM``) -- see
+    ``test_referee_interior_span_constants_match_rebuilt_grid_fencepost``,
+    which is the one that catches the #739 fencepost bug and is left
+    ``xfail`` because correcting the constants moves the openEMS mesh
+    lines (lead's cross-solver lane, not this test's)."""
     module = _load_referee_module()
+    grid = _rebuild_referee_grid()
+
+    assert grid.shape == (55, 55, 194)
+    assert abs(grid.dx - module.B_DX_MM * 1e-3) < 1e-12
+    assert (grid.pad_x_lo, grid.pad_x_hi) == (module.B_CPML_CELLS, module.B_CPML_CELLS)
+    assert (grid.pad_y_lo, grid.pad_y_hi) == (module.B_CPML_CELLS, module.B_CPML_CELLS)
+    assert (grid.pad_z_lo, grid.pad_z_hi) == (module.B_CPML_CELLS, module.B_CPML_CELLS)
+
+    # Non-geometric literals this constant block also carries -- these are
+    # NOT touched by the #739 fencepost fix (they don't come off grid.shape)
+    # and stay asserted here so the rewrite does not silently drop them.
     assert module.B_A_MM == 0.635
     assert module.B_B_MM == 2.055
     assert module.B_PTFE_EPS_R == 2.1
-    assert abs(module.B_DX_MM - 3.7474057249999997e-4 * 1e3) < 1e-9
-    assert module.B_CPML_CELLS == 16
     assert abs(module.B_L12_MM - 58.4595293) < 1e-4
-
-    # B3 fix: rasterized interior cell counts, NOT the nominal domain= arg
-    # (23 transverse / 162 axial cells at dz=0.37474mm).
-    assert module.B_INTERIOR_X_CELLS == 23
-    assert module.B_INTERIOR_Z_CELLS == 162
-    assert abs(module.B_CLEAR_X_MM - 23 * module.B_DX_MM) < 1e-9
-    assert abs(module.B_CLEAR_Z_MM - 162 * module.B_DX_MM) < 1e-9
-    # the rasterized value must NOT equal the nominal domain= argument --
-    # if it did, the B3 fix would have silently regressed back to the bug.
-    assert abs(module.B_CLEAR_X_MM - 8.0) > 0.1
-    assert abs(module.B_CLEAR_Z_MM - 60.0) > 0.1
-
     # Z0 = sqrt(L'/C') closed form must land close to the standard SMA/PTFE
     # value (~48.6 ohm) this repo's other coax lanes all cite.
     assert 48.0 < module.B_Z0_OHM < 49.0
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "#739: B_INTERIOR_X/Y_CELLS (23) and B_INTERIOR_Z_CELLS (162), and "
+        "the B_CLEAR_*_MM spans derived from them, name a NODE count "
+        "(grid.shape minus pad) a CELL count and multiply it by dx. rfx's "
+        "own grid.py (Grid.__init__, the '+1 fence-post correction: N "
+        "cells need N+1 nodes' comment) and this repo's other two "
+        "shape-derived crossval referees already get this right against a "
+        "live sim._build_grid() -- 18_wr90_iris_modematch.py:317-318 "
+        "('ny = grid.shape[1]; assert ny == cells + 1, (ny, cells)  # node "
+        "convention: a=(ny-1)dx exact') and "
+        "19_wr90_iris_filter_aghanim.py:509 ('cells = grid.shape[1] - 1'). "
+        "The rebuilt grid's interior spans 23/23/162 NODES = 22/22/161 "
+        "CELLS, so the true clear spans are 8.244292595mm (x/y, not "
+        "8.6190331675) and 60.3332321725mm (z, not 60.707972745) -- a "
+        "+4.5455%/+0.6211% overstatement. This xfail(strict=True) is the "
+        "regression lock: correcting B_INTERIOR_*_CELLS/B_CLEAR_*_MM "
+        "relocates 12 of the 18 openEMS mesh seeds this script's Stage B "
+        "builds (lines ~1798-1813), which needs a real cross-solver run "
+        "with its own before/after -- the lead's lane, not this test's. "
+        "If a future edit corrects the constants this XPASSes and strict "
+        "flips it to a failure, so the correction cannot land silently "
+        "without also landing the mesh-line re-verification."
+    ),
+)
+def test_referee_interior_span_constants_match_rebuilt_grid_fencepost():
+    """The #739 defect, isolated: pins ``B_INTERIOR_*_CELLS``/
+    ``B_CLEAR_*_MM`` against the REBUILT grid's own interior span instead
+    of against each other. The committed constants read grid.shape minus
+    pad (a NODE count) and call it a cell count, then multiply by dx --
+    double-counting one fencepost cell per axis. This is the tautology the
+    old ``test_geometry_constants_match_the_rasterized_rfx_fixture`` could
+    not catch: its own anti-regression guard, ``abs(B_CLEAR_X_MM - 8.0) >
+    0.1``, passes for BOTH the committed 8.619mm and the correct 8.244mm,
+    so it cannot distinguish them by construction."""
+    module = _load_referee_module()
+    grid = _rebuild_referee_grid()
+
+    interior_x_nodes = grid.shape[0] - grid.pad_x_lo - grid.pad_x_hi
+    interior_z_nodes = grid.shape[2] - grid.pad_z_lo - grid.pad_z_hi
+    interior_x_cells = interior_x_nodes - 1
+    interior_z_cells = interior_z_nodes - 1
+
+    assert module.B_INTERIOR_X_CELLS == interior_x_cells
+    assert module.B_INTERIOR_Z_CELLS == interior_z_cells
+    assert abs(module.B_CLEAR_X_MM - interior_x_cells * grid.dx * 1e3) < 1e-9
+    assert abs(module.B_CLEAR_Z_MM - interior_z_cells * grid.dx * 1e3) < 1e-9
 
 
 def test_stage_b_layout_is_self_consistent_and_openems_free():

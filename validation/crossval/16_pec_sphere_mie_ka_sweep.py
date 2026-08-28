@@ -58,14 +58,104 @@ REPORTED, NOT GATED (documented-unconverged at this operating point):
     same reason as ka=3.0. Gating it was exactly the tuned-tolerance
     theater this script fences against; the committed clearance_scan
     witness now exists so the aliasing cannot recur silently.
+
+GEOMETRY-FIDELITY CONVENTION (issue #725, applied 2026-08-27; PR #721
+review group C — supersedes the offline "FALSIFIED" reading of the
+effective-radius probe below): a sphere is a CURVED body, so no cell size
+realizes it exactly, and the -6.9% bounding-box extent shrinkage reported
+against issue #722 at ka=0.5 is NOT load-bearing here — trace the
+reference chain in ``run_point``: the radius enters ONLY through ``ka``
+(the Mie series argument) and ``pi_a2 = pi * a**2`` (the RCS
+normalization), never through extent. The adopted fix is issue #725
+option 1: evaluate the Mie series at the REALIZED effective radius
+``a_eff`` derived from the occupied-cell count ``N`` of the rasterized
+sphere (uniform cubic cells), ``a_eff = (3*N*dx**3/(4*pi))**(1/3)``,
+instead of the declared radius. This ONE ``pi_a2`` (now a_eff-based)
+feeds BOTH ``mie_dbsm`` and ``rfx_sigma_over_pi_a2`` in ``run_point`` —
+the gate tests decide pass/fail from ``rfx_sigma_over_pi_a2``, not the
+recorded ``delta_db``, so normalizing the two legs differently would
+silently reintroduce the #722 defect class into the gate itself (PR #721
+review, required change 1).
+  * Measured a_eff/a at every gated point (coarse cpr=6.4 / fine
+    cpr=12.8): ka=0.50 a_eff/a=0.988032 (N=1082, -1.197%), ka=0.75
+    a_eff/a=0.988032 (N=1082, -1.197%), ka=1.00 a_eff/a=0.989330
+    (N=1127, -1.067%), ka=1.25 a_eff/a=0.995401 (N=1169, -0.460%), fine
+    ka=2.00 a_eff/a=0.998319 (N=9264, -0.168%) — NOT systematic across
+    the sweep (issue #725 asserted -6.9% at every gated point; that
+    number is the bounding-box extent, which the reference never
+    consumes).
+  * Reference-side shift, Mie(ka_eff, a_eff) - Mie(ka, a), at each gated
+    point: ka=0.50 -0.3045 dB, ka=0.75 -0.2563 dB, ka=1.00 -0.1121 dB,
+    ka=1.25 +0.0178 dB, fine ka=2.00 -0.0798 dB.
+  * Envelope consequence, recomputed ARITHMETICALLY from the already-
+    committed fixture rows (no FDTD re-run — only the reference leg
+    moves, ``rfx_monostatic_dbsm`` is untouched): coarse envelope
+    2.178 -> 2.195 dB, gate stays round-up(env x 1.5) = 3.3 dB; fine
+    envelope 2.651 -> 2.731 dB, gate MOVES round-up(env x 1.5) 4.0 ->
+    4.1 dB. That is a gate LOOSENING, so it is NOT applied: GATE_FINE_DB
+    stays 4.0. RESOLVED (follow-up, 2026-08-27) — this is the decision,
+    not a deferral, and the two checks that read the gate behave
+    differently, so both are recorded:
+      - this script's OWN runtime check (below, ``env_fine`` from the
+        live scan) asks ``GATE_FINE_DB >= env_fine`` and
+        ``GATE_FINE_DB <= gate_from_envelope(env_fine) + 0.05``. At the
+        new envelope that is 4.0 >= 2.731 and 4.0 <= 4.15 — both hold, so
+        keeping 4.0 passes the script's own self-check and no run is
+        needed to justify it.
+      - ``tests/test_rcs_mie_ka_sweep_gates.py`` asserts EXACT equality
+        against the fixture-derived ``gate_from_envelope(env_fine)``, next
+        to a deliberately redundant hard literal ``== 4.0``. Today both
+        hold, because the committed fixture still carries the pre-a_eff
+        deltas. If the fixture is ever regenerated with
+        ``--write-fixture``, env_fine becomes 2.731 and the DERIVED assert
+        would demand 4.1 while the literal demands 4.0. Keeping 4.0 then
+        requires editing that derived assert, which that test's own
+        comment says needs a written root cause — by design.
+    So: keep 4.0. It is TIGHTER than the formula and the measurement
+    passes it (2.731 < 4.0), which is the whole reason not to apply 4.1.
+    GATE_COARSE_DB does NOT diverge: round-up(2.195 x 1.5) = 3.3, the
+    committed value.
+  * Per-row geometric gate (PR #721 review, required change 8, NEW):
+    ``A_EFF_TOL_COARSE``/``A_EFF_TOL_FINE`` below assert
+    ``|a_eff/a - 1| <= 1.5%`` at cpr=6.4 and ``<= 0.5%`` at cpr=12.8
+    (measured worst case 1.197% / 0.168% above) — this checks the
+    geometry claim SEPARATELY from the dB tolerance so a_eff can never
+    silently absorb a real rasterization regression along with the
+    unavoidable curved-body staircase error.
+  * Centre offset: the sphere's occupied-cell bounding-box midpoint
+    coincides with the realized grid's own symmetry index EXACTLY (0 nm
+    residual) at every gated point — the sphere sits dead centre of the
+    box actually solved, so NO origin/placement fix is warranted. The
+    apparent 0.5-cell-ish offset against the DECLARED (pre-quantization)
+    centre reported in issue #725 decomposes, per point, into a
+    node-vs-cell readout convention (``Sphere.mask`` samples node
+    coordinates, not cell centres — rfx/geometry/csg.py) plus a genuine
+    sub-cell placement of the declared centre on the realized lattice
+    that is NOT uniform across ka: 0.054 cell (ka 0.50/0.75), 0.475 cell
+    (ka 1.00), 0.435 cell (ka 1.25), 0.449 cell (fine ka=2.00).
+  * Falsifier (PR #721 review, required change 7 — run before this
+    convention change landed, not committed as fixture data): three
+    solves of the ka=0.5 coarse point on the SAME mesh with the sphere
+    centre shifted 0.00/0.25/0.40 cell (a_eff/a = 0.98803/1.00065/
+    1.00036) show ``rfx_monostatic_dbsm`` moving +0.396/+0.400 dB
+    against a Rayleigh a**6 prediction of +0.331/+0.323 dB (agreement to
+    ~0.07 dB) — the FDTD response genuinely tracks the REALIZED radius,
+    confirming option 1 is an electromagnetic statement, not merely a
+    geometric relabeling.
+
 Attribution record (five hypotheses tested; truncation + domain + clearance
 scans are committed fixture DATA, the remaining three are recorded as
 provenance of the 2026-07-27 offline probes — see F3 note in provenance):
   * record truncation: FALSIFIED on the gated bins (fixture data: 2x steps
     moves every gated-bin delta <= 0.07 dB);
-  * volume/effective-radius: FALSIFIED (rasterized-volume ka_eff matches
-    nominal to < 1%, and comparing against Mie(ka_eff) leaves deltas
-    unchanged) — offline probe, recorded in provenance;
+  * volume/effective-radius: adopted as the GATED reference convention
+    (issue #725, applied 2026-08-27) — see "GEOMETRY-FIDELITY CONVENTION"
+    above. The original offline probe (provenance below, scoped to ka
+    {1.75, 2, 3, 4}) found ka_eff within 1% of nominal with deltas
+    unchanged vs Mie(ka_eff) at THOSE reported-only points and is still
+    recorded verbatim in provenance; it does not generalize to the
+    coarse fence (ka<=1.25), where the effect is measured (not offline)
+    and is now load-bearing — see the numbers above;
   * TFSF incident leakage (#280 class): EXCLUDED at the monostatic bin by
     rcs.py's documented backscatter leakage null (~90 dB). CORRECTION
     (PR #476 review, F1): the first revision quoted a sub-vs-unsub
@@ -155,11 +245,33 @@ CLEARANCE_SCAN = [15, 20, 25, 30, 35, 40, 45]
 # fixture, re-derive the envelope from the committed clearance_scan, and
 # write a root-cause before ever touching these).
 GATE_COARSE_DB = 3.3   # = round-up(measured clearance-scan envelope x 1.5)
-GATE_FINE_DB = 4.0     # = round-up(measured clearance-scan envelope x 1.5), ka=2.0 only
+GATE_FINE_DB = 4.0     # ka=2.0 only. WAS round-up(envelope x 1.5); since #725
+                       # moved the fine envelope to 2.731 dB the formula would
+                       # give 4.1, i.e. a LOOSENING. 4.0 is kept deliberately —
+                       # tighter than the formula, and the measurement passes it.
+                       # Do NOT "fix" this up to 4.1. See the docstring.
+
+# Per-row geometric gate on the reference convention itself (issue #725
+# required change 8): asserted SEPARATELY from GATE_COARSE_DB/GATE_FINE_DB
+# so a_eff can never silently absorb a real rasterization regression along
+# with the unavoidable curved-body staircase error. Measured worst case at
+# this operating point is 1.197% (coarse) / 0.168% (fine) — see the
+# GEOMETRY-FIDELITY CONVENTION note above.
+A_EFF_TOL_COARSE = 0.015   # 1.5% of declared radius, cpr=6.4
+A_EFF_TOL_FINE = 0.005     # 0.5% of declared radius, cpr=12.8
 
 
 def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
-    """One monostatic point at the derived operating point. Returns a record."""
+    """One monostatic point at the derived operating point. Returns a record.
+
+    Reference convention (issue #725, applied 2026-08-27 — see the module
+    docstring's GEOMETRY-FIDELITY CONVENTION note): the Mie series below is
+    evaluated at the REALIZED effective radius ``a_eff``, derived from the
+    occupied-cell count of the rasterized sphere, not the declared
+    ``radius``. ``pi_a2`` is the ONE variable both ``mie_dbsm`` and
+    ``rfx_sigma_over_pi_a2`` consume, so the two normalizations move
+    together by construction.
+    """
     radius = ka * LAM / (2 * np.pi)
     res = max(15, int(np.ceil(2 * np.pi * cpr / ka)))
     dx = LAM / res
@@ -169,6 +281,9 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
     n_steps = int(max(700, np.ceil(2.2 * domain / C0 / grid.dt)) * steps_mult)
     center = (domain / 2,) * 3
     eps_r, sigma = rasterize(grid, [(Sphere(center=center, radius=radius), 1.0, PEC_SIGMA)])
+    n_occupied = int(np.sum(np.asarray(sigma) > 0))
+    a_eff = (3 * n_occupied * dx ** 3 / (4 * np.pi)) ** (1.0 / 3.0)
+    ka_eff = 2 * np.pi * a_eff / LAM
     mats = MaterialArrays(eps_r=eps_r, sigma=sigma,
                           mu_r=jnp.ones(grid.shape, dtype=jnp.float32))
     t0 = time.time()
@@ -180,14 +295,17 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
         boundary="cpml", cpml_layers=CPML_LAYERS,
     )
     wall = time.time() - t0
-    pi_a2 = np.pi * radius ** 2
+    pi_a2 = np.pi * a_eff ** 2   # REALIZED effective radius (issue #725 option 1)
     mono = float(result.monostatic_rcs[0])
-    mie_over = float(backscatter_rcs_over_pi_a2(ka, n_max=40))
+    mie_over = float(backscatter_rcs_over_pi_a2(ka_eff, n_max=40))
     mie_dbsm = float(10 * np.log10(mie_over * pi_a2))
     return {
         "ka": ka, "cells_per_radius": cpr, "clear_cells": clear_cells,
         "resolution": res, "grid": list(grid.shape), "n_steps": n_steps,
         "a_over_dx": round(radius / dx, 2),
+        "n_occupied": n_occupied,
+        "a_eff_over_a": round(a_eff / radius, 6),
+        "ka_eff": round(ka_eff, 4),
         "rfx_monostatic_dbsm": round(mono, 4),
         "mie_dbsm": round(mie_dbsm, 4),
         "rfx_sigma_over_pi_a2": round(10 ** (mono / 10.0) / pi_a2, 6),
@@ -202,7 +320,7 @@ def _fmt(r):
             f"clear={r['clear_cells']:2d} grid={tuple(r['grid'])} "
             f"steps={r['n_steps']:5d}  rfx {r['rfx_monostatic_dbsm']:8.2f} dBsm "
             f"vs Mie {r['mie_dbsm']:8.2f}  delta {r['delta_db']:+6.2f} dB "
-            f"({r['wall_s']:.0f}s)")
+            f"a_eff/a={r['a_eff_over_a']:.4f} ({r['wall_s']:.0f}s)")
 
 
 def main(argv):
@@ -224,8 +342,10 @@ def main(argv):
         r = run_point(ka, COARSE_CPR, CLEAR_CELLS_DEFAULT)
         gated.append(r)
         passed = abs(r["delta_db"]) <= GATE_COARSE_DB
-        ok &= passed
-        print(_fmt(r) + ("  PASS" if passed else "  FAIL"))
+        aeff_ok = abs(r["a_eff_over_a"] - 1.0) <= A_EFF_TOL_COARSE
+        ok &= passed and aeff_ok
+        print(_fmt(r) + ("  PASS" if passed else "  FAIL")
+              + ("" if aeff_ok else f"  A_EFF_OVER_A FAIL ({r['a_eff_over_a']:.4f})"))
 
     # --- Gated fine rung ------------------------------------------------------
     print(f"\n== GATED fine rung ka {KA_FINE_GATED} "
@@ -235,8 +355,10 @@ def main(argv):
         r = run_point(ka, FINE_CPR, CLEAR_CELLS_DEFAULT)
         fine.append(r)
         passed = abs(r["delta_db"]) <= GATE_FINE_DB
-        ok &= passed
-        print(_fmt(r) + ("  PASS" if passed else "  FAIL"))
+        aeff_ok = abs(r["a_eff_over_a"] - 1.0) <= A_EFF_TOL_FINE
+        ok &= passed and aeff_ok
+        print(_fmt(r) + ("  PASS" if passed else "  FAIL")
+              + ("" if aeff_ok else f"  A_EFF_OVER_A FAIL ({r['a_eff_over_a']:.4f})"))
 
     diagnostic = []
     domains = {}

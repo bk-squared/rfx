@@ -3,11 +3,13 @@
 
 Frequency-domain FEM (Palace) model of the classic Sheen low-pass filter, built
 to REFEREE the two FDTD references (rfx + openEMS) whose cv07 cross-check
-(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~9-10% first-null
-split: rfx 7.218 GHz, openEMS 7.983 GHz. Both refs are staircased FDTD, so
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~1.4% first-null
+split: rfx 7.874 GHz, openEMS 7.983 GHz (raw argmin bins, post-regeneration —
+PR #468/#516; the earlier num_periods=20/default-offset leg read rfx 7.218 GHz,
+a ~9.6% split). Both refs are staircased FDTD, so
 neither resolves the wide-patch open-end fringing exactly. Palace on a conformal
 tetrahedral mesh (no staircase) captures the fringing exactly, so it is the right
-independent arbiter of whether rfx's LOWER null is the expected staircase-fringing
+independent arbiter of whether rfx's null is the expected staircase-fringing
 under-resolution.
 
 Geometry (mm) — locked to the EXACT domain frame of validation/crossval/07_sheen_lpf.py

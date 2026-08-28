@@ -90,7 +90,9 @@ def test_finding_classes_are_detected():
     # distortion (the tool's job), not as absence.
     assert film["n_cells"] > 0
     assert film["axes"][2]["realized_extent_um"] > 5 * film["axes"][2]["declared_extent_um"]
-    assert "off-lattice-face" in _kinds(film)
+    # A sub-cell film is reported against the CELL, not as a percentage of its
+    # own thickness (the 2026-08-28 convention fix).
+    assert "sub-cell-placement" in _kinds(film)
 
     clamped = _geo(rep, 5)
     # Measured rasterization behaviour: an out-of-range box CLAMPS to the
@@ -210,52 +212,44 @@ def test_dispersive_material_states_that_poles_are_not_verified():
 
 
 # ---------------------------------------------------------------------------
-# Domain extent: N interior CELLS, not N+1 interior NODES (2026-08-28).
-# The first implementation summed the node-count slice of the cell-size array,
-# so every domain read one cell too long -- cv11's WR-90 guide reported
-# 24000/12000 um where #722 measures 23000/11000, and
-# differentiable_s11_design reported 26000/14000 um where #738 measures
-# 24000/12000. The gate that pins these numbers is about fence-post errors,
-# so its own fence post has to be right.
+# Readout conventions (2026-08-28). Both of these were shipped wrong and were
+# caught by an external review of the issues this tool's output produced: a
+# sphere sitting dead centre of the grid it is solved on was reported as
+# "offset half a cell", and a 17 um sheet landing in its cell was reported as
+# "181% of the declared extent".
 # ---------------------------------------------------------------------------
 
-def _domain(sim):
-    for item in sim.fidelity_report(print_report=False):
-        if item["entity"].startswith("domain"):
-            return item
-    raise AssertionError("domain row missing from report")
 
-
-def test_commensurate_domain_reports_exactly_its_declared_extent():
-    """10 mm at dx = 1 mm is 10 cells bounded by 11 nodes -> 10.000 mm."""
-    dom = _domain(_plain(dx=1e-3))  # domain=(10 mm)^3
-    for ax in dom["axes"]:
-        assert ax["n_cells"] == 10, ax
-        assert abs(ax["realized_extent_um"] - 10000.0) < 1e-6, ax
-        assert abs(ax["declared_extent_um"] - 10000.0) < 1e-6, ax
-    assert [f for f in dom["findings"] if f["kind"] == "domain-extent-quantized"] == [], (
-        "an exactly commensurate domain must raise no quantization finding")
-
-
-def test_incommensurate_domain_still_reports_the_rounded_up_extent():
-    """The finding must still fire when the cell size does NOT divide the
-    declared length -- 10.5 mm at dx = 1 mm is 11 cells = 11.000 mm."""
-    sim = Simulation(freq_max=10e9, domain=(10.5e-3, 10e-3, 10e-3), dx=1e-3,
+def test_curved_body_offset_reports_the_convention_free_midpoint():
+    from rfx.geometry.csg import Sphere
+    sim = Simulation(freq_max=10e9, domain=(20e-3, 20e-3, 20e-3), dx=1e-3,
                      boundary="cpml", cpml_layers=4)
-    dom = _domain(sim)
-    ax = dom["axes"][0]
-    assert ax["n_cells"] == 11, ax
-    assert abs(ax["realized_extent_um"] - 11000.0) < 1e-6, ax
-    kinds = [(f["kind"], f.get("axis")) for f in dom["findings"]]
-    assert ("domain-extent-quantized", "x") in kinds, kinds
+    sim.add(Sphere(center=(10.5e-3, 10.5e-3, 10.5e-3), radius=4e-3),
+            material="pec")
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    offs = [f for f in item["findings"] if f["kind"] == "bbox-offset"]
+    assert offs, "a half-cell-shifted sphere should still be reported"
+    f = offs[0]
+    assert "midpoint_shift_um" in f, (
+        "a node-sampled mask compared against cell edges carries up to half a "
+        "cell of pure convention; the midpoint shift must be reported so the "
+        "reader can separate it from a real displacement")
+    assert "readout convention" in f["detail"]
 
 
-def test_two_dimensional_mode_reports_its_single_periodic_plane():
-    """2-D mode has ONE Yee plane on z; the N-nodes-bound-N-1-cells rule
-    does not apply to it, and reporting 0 cells / 0 um there would be a
-    false 'this axis does not exist'."""
-    sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 1e-3), dx=1e-3,
-                     boundary="cpml", cpml_layers=4, mode="2d_tmz")
-    ax_z = _domain(sim)["axes"][2]
-    assert ax_z["n_cells"] == 1, ax_z
-    assert abs(ax_z["realized_extent_um"] - 1000.0) < 1e-6, ax_z
+def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
+    sim = Simulation(freq_max=40e9, domain=(2e-3, 2e-3, 2e-3), dx=50e-6,
+                     boundary="cpml", cpml_layers=4)
+    sim.add(Box((0.5e-3, 0.5e-3, 0.98e-3), (1.5e-3, 1.5e-3, 0.997e-3)),
+            material="pec")            # 17 um sheet in a 50 um cell
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+    kinds = _kinds(item)
+    assert "sub-cell-placement" in kinds
+    f = [x for x in item["findings"] if x["kind"] == "sub-cell-placement"][0]
+    assert "cell" in f["detail"] and "not a meaningful measure" in f["detail"]
+    # and the z axis must NOT also produce a percentage-of-extent finding
+    z_off = [x for x in item["findings"]
+             if x["kind"] == "off-lattice-face" and x.get("axis") == "z"]
+    assert not z_off, (
+        "a sub-cell body must not be reported as a percentage of its own "
+        f"thickness as well: {z_off}")

@@ -262,15 +262,39 @@ def _advisories(sim) -> list[str]:
 
 
 def test_budget_advisory_fires_exactly_above_the_axis_extent():
-    """Advisory boundary derived from the grid, not from the report."""
+    """Advisory boundary derived from the grid, not from the report.
+
+    Issue #737/#742: re-pinned onto a TRUE positive. This test's original
+    form swept ``_cube_sim(budget)`` (x=pec, y=pec, z=Boundary(hi='cpml'),
+    no explicit hi_thickness) and asserted ``expected = budget >
+    min(grid.shape)``. Measured: every hit in that sweep landed on the
+    x/y axes (pad_lo=pad_hi=0, both PEC) — the exact false positive #742
+    reports, since a PEC-closed axis has no absorber for cpml_layers to
+    exceed. The z axis, whose hi face absorbs the FULL budget, never fired
+    (its own padding grows with the budget, so it can never exceed itself).
+    So this test's entire prior signal was the false positive, and the
+    allocation>0 guard added for #742 makes it fail permanently as
+    written (0 hits at every budget) — not a loosened gate, but a test
+    whose fixture never exercised a real absorber.
+    An explicit small ``hi_thickness=2`` gives z a genuine, budget
+    -independent allocation, so once ``cpml_layers`` exceeds z's own cell
+    count the advisory is a true positive; x/y stay PEC-closed and must
+    never fire, both before and after the fix.
+    """
     for budget in (2, 4, 8, 9, 16, 40):
-        sim = _cube_sim(budget)
+        sim = _cube_sim(budget, hi_thickness=2)
         grid = sim._build_grid()
-        expected = budget > min(grid.shape)
+        expected = budget > grid.shape[2]
         hits = [m for m in _advisories(sim) if "exceeds the" in m]
         assert bool(hits) == expected, (
             f"cpml_layers={budget} on grid {grid.shape}: expected "
             f"advisory={expected}, got {hits}"
+        )
+        if expected:
+            assert all("z-axis" in m for m in hits), hits
+        assert not any("x-axis" in m or "y-axis" in m for m in hits), (
+            "x/y are PEC-closed on both faces (#742): they allocate no "
+            f"absorber, so cpml_layers has nothing to exceed there: {hits}"
         )
 
 
@@ -284,6 +308,48 @@ def test_scalar_cpml_boundary_never_trips_the_budget_advisory():
                      boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), "ez", amplitude_kind="field")
     assert [m for m in _advisories(sim) if "exceeds the" in m] == []
+
+
+def test_absorber_budget_advisory_silent_on_a_pec_closed_axis():
+    """Issue #742: the false positive, at the pinned repro shape.
+
+    One axis (x) genuinely absorbs, so ``cpml_layers`` is a real budget;
+    y and z are PEC on both faces (pad_lo=pad_hi=0 — no absorber to
+    budget there at all). Measured on the UNFIXED code: this exact shape
+    (one absorbing axis + two PEC-closed axes, budget >
+    min(y,z grid extent)) fires on both y and z — the class reported 6x
+    on cv11's three legs and 2x on cv18.
+    """
+    sim = Simulation(
+        freq_max=_FREQ, domain=_CUBE, cpml_layers=40,
+        boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                              y="pec", z="pec"),
+    )
+    sim.add_source((0.01, 0.01, 0.01), "ez", amplitude_kind="field")
+    grid = sim._build_grid()
+    # Confirm we are in the would-be-false-positive regime for y/z.
+    assert sim._cpml_layers > grid.shape[1]
+    assert sim._cpml_layers > grid.shape[2]
+    hits = [m for m in _advisories(sim) if "exceeds the" in m]
+    assert hits == [], hits
+
+
+def test_absorber_budget_advisory_silent_on_a_periodic_closed_axis():
+    """Sibling: a periodic-closed axis (the cv18/cv19 idiom) is the other
+    #742 false-positive shape — also pad_lo=pad_hi=0 on both faces, also
+    must stay silent regardless of how far the budget exceeds it.
+    """
+    sim = Simulation(
+        freq_max=_FREQ, domain=_CUBE, cpml_layers=40,
+        boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                              y=Boundary(lo="periodic", hi="periodic"),
+                              z="pec"),
+    )
+    sim.add_source((0.01, 0.01, 0.01), "ez", amplitude_kind="field")
+    grid = sim._build_grid()
+    assert sim._cpml_layers > grid.shape[1]
+    hits = [m for m in _advisories(sim) if "exceeds the" in m]
+    assert hits == [], hits
 
 
 def test_preflight_thickness_follows_the_allocated_per_face_layers():
