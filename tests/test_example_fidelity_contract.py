@@ -68,6 +68,8 @@ from pathlib import Path
 from typing import Any
 
 import jax
+import re
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -230,7 +232,17 @@ def test_example_matches_snapshot(
     assert key in snapshot, (
         f"{key} is missing from the snapshot -- regenerate with "
         "scripts/capture_example_fidelity_snapshot.py")
-    module = lib.load_module(relpath)
+    try:
+        module = lib.load_module(relpath)
+    except lib.MissingOptionalDependency as exc:
+        # Visible SKIP, never green: this repo's exit-code convention
+        # (development_methodology.md 2.7) says a missing reference is a
+        # SKIP that shows, not a pass. The variant stays enumerated in
+        # _FLAT_VARIANTS and pinned in the snapshot, so coverage is
+        # reported as skipped rather than silently lost, and an
+        # UNDECLARED missing module is still a hard error (see
+        # lib.OPTIONAL_DEPENDENCIES).
+        pytest.skip(str(exc))
     fn = getattr(module, builder.fn)
     kwargs = variant.kwargs(module)
     result = fn(**kwargs)
@@ -242,3 +254,31 @@ def test_example_matches_snapshot(
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]
     assert actual == expected, _diff_message(key, expected, actual)
+
+
+def test_optional_dependency_declarations_are_grounded() -> None:
+    """The optional-dependency exemptions cannot rot in either direction.
+
+    Forward: every declared key is an audited script, so the table cannot
+    grant an exemption to something this gate does not even cover.
+    Backward: every declared module is actually imported by that script, so
+    a dependency that is dropped from a script cannot leave a standing
+    excuse behind that would swallow a future, genuine import failure of
+    the same name.
+    """
+    audited = {
+        rel for rel, entry in lib.CLASSIFICATION.items()
+        if entry.kind == "audited"
+    }
+    for relpath, modules in sorted(lib.OPTIONAL_DEPENDENCIES.items()):
+        assert relpath in audited, (
+            f"OPTIONAL_DEPENDENCIES declares {relpath}, which is not an "
+            "'audited' script -- the exemption covers nothing")
+        src = (lib.REPO_ROOT / relpath).read_text()
+        for module in sorted(modules):
+            assert re.search(
+                rf"^\s*(?:import\s+{re.escape(module)}\b"
+                rf"|from\s+{re.escape(module)}\b)", src, re.M), (
+                f"OPTIONAL_DEPENDENCIES lists {module!r} for {relpath}, but "
+                f"that script no longer imports it -- drop the stale "
+                f"exemption before it swallows an unrelated ImportError")

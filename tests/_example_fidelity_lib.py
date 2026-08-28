@@ -159,6 +159,41 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
 # loading them. Pattern matches tests/test_crossval_example_imports.py.
 # --------------------------------------------------------------------------
 
+class MissingOptionalDependency(ImportError):
+    """A script could not be loaded because a DECLARED optional dep is absent.
+
+    Distinct from any other ``ModuleNotFoundError``, which stays a hard
+    error: a script that fails to import for an UNDECLARED reason is a
+    broken example, not an environment difference, and must not be able to
+    quietly leave this gate's coverage.
+    """
+
+    def __init__(self, relpath: str, module: str) -> None:
+        super().__init__(
+            f"{relpath} needs optional dependency {module!r}, which is not "
+            f"installed here (declared in OPTIONAL_DEPENDENCIES)")
+        self.relpath = relpath
+        self.module = module
+
+
+# Optional third-party imports an audited script may legitimately lack in a
+# given environment. Keyed by script, so the exemption is per-script and
+# narrow: an undeclared ModuleNotFoundError is still a hard failure.
+#
+# Why this table exists rather than a blanket try/except on import: CI
+# installs `.[dev]`, which does NOT carry optax, while a developer pod often
+# does. Without the declaration a contributor adding `import optax` to any
+# example would silently remove it from this gate in CI and nobody would
+# see it -- the exact "visible SKIP, never green" line in
+# development_methodology.md 2.7's exit-code convention.
+# test_optional_dependency_declarations_are_grounded keeps the table honest
+# in both directions.
+OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
+    "validation/tmtt_paper/beam_steering_superstrate.py": frozenset({"optax"}),
+    "validation/tmtt_paper/waveguide_dielectric_taper.py": frozenset({"optax"}),
+}
+
+
 def load_module(relpath: str) -> ModuleType:
     path = REPO_ROOT / relpath
     name = f"_example_fidelity_{path.stem}_{abs(hash(relpath))}"
@@ -168,6 +203,11 @@ def load_module(relpath: str) -> ModuleType:
     sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        declared = OPTIONAL_DEPENDENCIES.get(relpath, frozenset())
+        if exc.name in declared:
+            raise MissingOptionalDependency(relpath, exc.name) from exc
+        raise
     finally:
         sys.modules.pop(name, None)
     return module
