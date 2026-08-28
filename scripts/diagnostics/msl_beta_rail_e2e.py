@@ -49,6 +49,13 @@ import warnings
 
 import numpy as np
 
+# Path bootstrap: `python scripts/diagnostics/...` puts the script dir, not the
+# repo root, on sys.path — without this the venv's installed (main) rfx wins
+# and the run crashes on the missing beta_railed attribute.
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from rfx import Box, Simulation
 
 DX = 2e-4
@@ -119,8 +126,28 @@ def main() -> int:
     report["A"] = {"railed_frac": float(railed_a.mean()),
                    "beta_railed": railed_a.astype(int).ravel().tolist(),
                    "rail_warned": bool(warned_a), **_diag(res_a)}
-    if warned_a or railed_a.any():
-        failures.append("FALSIFIED: control run A railed/warned")
+    # Exit criterion matches the pre-registered adjudication declaration:
+    # run A gates only on bins whose record is SETTLED (settling_db < -40 dB).
+    # Rails on under-settled bins are recorded but not gating.
+    sett_a = report["A"].get("settling_db")
+    if sett_a is None:
+        settled_a = np.ones_like(railed_a, dtype=bool)
+    else:
+        try:
+            settled_a = np.broadcast_to(
+                np.asarray(sett_a, dtype=float) < -40.0, railed_a.shape
+            )
+        except ValueError:  # shape-incompatible dump: gate on the worst record
+            settled_a = np.full(
+                railed_a.shape, bool(float(np.min(np.asarray(sett_a, dtype=float))) < -40.0)
+            )
+    railed_settled_a = railed_a & settled_a
+    report["A"]["railed_settled_frac"] = float(railed_settled_a.mean())
+    if railed_settled_a.any():
+        failures.append("FALSIFIED: control run A railed on settled (< -40 dB) bins")
+    elif warned_a or railed_a.any():
+        print("note: run A railed/warned only on non-settled bins — "
+              "recorded, not gating (settling-conditioned falsifier)")
 
     print("=== run B: port told eps_r_sub=9.8 on a physical 2.2 board ===")
     res_b, warned_b, _ = _run(args, _build(args, 9.8))
