@@ -49,6 +49,53 @@ forever instead of removing it once.
   gets a note: a dx sweep that clones a PMC-faced `domain` unchanged moves
   the realized mirror plane by dx/2 per refinement step.
 
+### Fixed — cv15 patch cavity was one vacuum cell taller than its declared substrate (issue #740)
+
+`validation/crossval/15_patch_antenna_rt5880.py`'s mandatory geometry self-check
+(the `#325 AVOIDANCE` z-rasterization assert) covered the substrate's z EXTENT
+only, not which node plane the bounding PEC walls actually land on. The
+one-cell one-plane ground `Box` (the `add()` default, #677-validated) realizes
+its electric wall on its LOWER node plane only — one cell BELOW the declared
+substrate floor `z_sub_lo`, leaving a live vacuum cell in the cavity (measured
+against the mask-derived realized planes: +55.0% electrical thickness versus
+the declared 4-cell gap; this is the #693 "vacuum ground cell" trap, closed on
+the canonical patch lane by PRs #716/#718). The patch wall was NOT displaced —
+its default one-plane wall already sits on its lower face, exactly at
+`z_sub_hi`.
+
+Fixed with `two_plane=True` (issue #706) on the GROUND `Box` only (0.0%
+electrical-thickness error measured after the fix); NOT on the patch, which
+would add an unreferenced wall one cell above `z_sub_hi` that the openEMS
+zero-thickness-patch reference has no counterpart for. A new mandatory
+self-check, `assert_realized_stack()`, asserts the REALIZED wall planes across
+the whole patch footprint (ground at `z_sub_lo`, patch at `z_sub_hi`), not the
+declared Box extents, and `compare()`'s new `stack geometry fidelity` gate
+re-verifies a leg's recorded `stack_check` against this module's own constants
+— a missing `stack_check` (a leg from before this fix) is a FAIL, not a skip.
+
+The pre-fix one-plane-ground result leg is preserved as
+`validation/crossval/_15_patch_results/rfx_one_plane_ground_b29f9de7.json`
+(committed at b29f9de7, `--num-periods 45 --gain`, 208 s CPU): `f_primary`
+2.4719 GHz (Harminv Q 17.04), analytic anchor 2.4156 GHz, openEMS S11 dip
+2.330 GHz (+6.09% rfx-vs-openEMS on the pre-fix realization), settle -59.7 dB,
+gain 7.357 dBi vs openEMS 7.335 dBi.
+
+Post-fix leg MEASURED and committed as `rfx.json` (same command, CPU, 206.5 s,
+`JAX_ENABLE_X64=0`): `f_primary` 2.3139 GHz (Harminv Q 18.9) vs openEMS
+2.330 GHz — rfx-vs-openEMS **0.69%** (was +6.09%), rfx-vs-analytic 4.21%
+(openEMS-vs-analytic is 3.54%, so the two solvers now sit on the same side of
+the closed form by a similar margin); settle −54.0 dB; max|S11| 0.787. The
+vacuum ground cell was the dominant term in cv15's cross-solver gap. Every
+compare() gate PASSES including the new stack gate (ground wall 7.9375 mm,
+patch wall 11.1125 mm, 4 cells of eps 2.2, provenance `two_plane`). `#715`
+(cv15's patch-length accuracy, `L_PATCH`/`W_PATCH`, the `--f0-env-pct` gate)
+is untouched by this fix; the f0 envelope did not need to move.
+
+Known checker gap, filed as #767: preflight's #703 sheet-cavity check does not
+model `two_plane` walls and still prints the pre-fix +55% on this geometry —
+the realized `conductor_mask` (walls at k = 17, 18, 22) is the record, not
+that advisory.
+
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 
 `add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre
