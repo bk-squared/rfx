@@ -119,7 +119,7 @@ parameter choice covers it: the CFS-corner alpha rule (`1.2*2*pi*f_top*eps0`,
 12 layers) stabilizes the Lorentz cells but the Drude cell still diverges
 (+5.2e-4/step at 60k steps). Pole extension therefore stays out, with no flag.
 The composed ADE+CPML update itself is proved stable per-cell, in 1D, and in
-2D by exact eigenvalue analysis — the instability needs the 3D interface.
+2D by long-horizon power iteration (rho_est ~ 0.99998, an estimate within its noise band of 1; the 1D and per-cell results are exact) — the instability needs the 3D interface.
 
 The stale 8,000-step physics lock (its separation criterion silently stopped
 distinguishing the variants when #655 moved the onset past 8,000 steps) is
