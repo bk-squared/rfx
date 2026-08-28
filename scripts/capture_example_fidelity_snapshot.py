@@ -3,13 +3,12 @@
 
 SNAPSHOT, not a zero-advisory bar: this pins what every audited example's
 ``preflight()``/``fidelity_report()`` say TODAY, so drift fails CI. It is
-NOT an endorsement that today's advisories are correct or complete -- #742
-is open (~45% of advisory codes never fire in this corpus; the
-``absorber_budget_exceeds_axis`` check false-fires on PEC-closed axes, e.g.
-``validation/tmtt_paper/waveguide_dielectric_taper.py``, which declares
-z=Boundary(lo='pec', hi='pec') and still gets an absorber-budget warning).
-Tighten the bar to zero-advisory only when #742 lands; until then this
-gate's job is drift detection, not correctness certification.
+NOT an endorsement that today's advisories are correct or complete. This
+gate's job is drift detection, not correctness certification -- and one
+pinned quantity is known wrong: every ``domain`` row's realized extent and
+n_cells is one cell too large (``rfx/fidelity.py`` sums the NODE-count
+slice; #729 site 1, fixed by the open PR #734, not here). When #734 lands
+this snapshot will drift, and re-capturing it belongs to that PR.
 
 Regenerate after a DELIBERATE change to a committed example's declared
 geometry, materials, or preflight-relevant config -- never to silence a
@@ -20,7 +19,7 @@ fix the script (or investigate why realized != declared), do not re-pin.
 No solves: every number below comes from ``sim.preflight()`` and
 ``sim.fidelity_report()``, neither of which time-steps. Wall clock for all
 33 (script, builder, variant) triples across the 23 auditable scripts:
-``wrote tests/data/example_fidelity_snapshot.json: 33 variants in 51.2s``
+``wrote tests/data/example_fidelity_snapshot.json: 33 variants in 52.2s``
 (measured 2026-08-28; CPU-only, no GPU/JAX warmup dominates).
 
 Every optional dependency in ``_example_fidelity_lib.OPTIONAL_DEPENDENCIES``
@@ -29,12 +28,10 @@ STOPS on the import rather than writing a snapshot with those variants
 missing -- a partial snapshot would fail the gate on every machine that does
 have them.
 
-Domain extents are INTERIOR CELL sums: an axis with N interior nodes bounds
-N-1 cells, and the realized length is the cell sum, which is what the
-PEC/PMC walls of the solved box are actually spaced by. Reading it as the
-node count made every domain one cell too long (fixed 2026-08-28 in
-rfx/fidelity.py; it had put 24000/12000 um on cv11's WR-90 guide where #722
-measures 23000/11000).
+Domain extents in this file are NODE-count sums, i.e. one cell too long:
+cv11's WR-90 guide is pinned at 24000/12000 um where #722 measures
+23000/11000. See the note above -- the fix is PR #734's, and this file
+follows it rather than forking it.
 
 Run from the repo root::
 
@@ -71,8 +68,9 @@ def main() -> int:
             "scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of "
             "today's advisories, not a zero-advisory endorsement (see this "
             "script's module docstring and test_example_fidelity_contract.py). "
-            "Domain realized_extent_um is the INTERIOR CELL sum (N nodes "
-            "bound N-1 cells), i.e. the wall-to-wall length the solve has."
+            "KNOWN WRONG: domain realized_extent_um/n_cells are NODE "
+            "counts, one cell too long (#729 site 1; fix in flight as PR "
+            "#734). Do not quote a domain extent from this file."
         ),
         variants=snapshot,
     )

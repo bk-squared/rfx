@@ -6,19 +6,39 @@ solving, WITHOUT solving, and compares its ``preflight()`` +
 (``tests/data/example_fidelity_snapshot.json``, regenerable with
 ``scripts/capture_example_fidelity_snapshot.py``). It is cheap precisely
 because neither call time-steps: measured 2026-08-28 on this repo's CPU
-lane, ``85 passed ... in 52.52s`` for all 33 script/builder/variant triples
-(``84 passed, 1 skipped in 52.69s`` without optax installed, which is CI's
+lane, ``85 passed ... in 53.66s`` for all 33 script/builder/variant triples
+(``84 passed, 1 skipped in 50.26s`` without optax installed, which is CI's
 configuration -- see OPTIONAL_DEPENDENCIES).
 
-SNAPSHOT, not a zero-advisory bar. This does NOT require every example to
-emit zero advisories today: #742 is open (~45% of advisory codes never fire
-in this corpus, and ``absorber_budget_exceeds_axis`` false-fires on
-PEC-closed axes -- see ``validation/tmtt_paper/waveguide_dielectric_taper.py``,
-which declares z=Boundary(lo='pec', hi='pec') and still gets an absorber-
-budget warning). What ships here PINS what each example emits TODAY, so any
-DRIFT from that baseline fails CI. Tighten to a zero-advisory bar once #742
-lands; until then, do not read a green run here as "this example is clean" --
-read it as "this example did not change since the snapshot was taken."
+SNAPSHOT, not a zero-advisory bar. What ships here PINS what each example
+emits TODAY, so any DRIFT from that baseline fails CI. It is NOT a claim
+that today's advisories are correct or that the examples are clean: read a
+green run as "this example did not change since the snapshot was taken."
+
+Measured on the snapshot as committed (2026-08-28, 33 variants): 37
+preflight rows over 11 variants, all severity="warning", codes
+mesh_resolution 7, msl_port_geometry 6, off_lattice_design_edges 5,
+pec_faces_finite_pec 4, port_evanescent 4, lossless_q 3, no_sources 2, and
+one each of adi_3d_accuracy, floating_port, ntff_near_field,
+ntff_small_ground_plane, sheet_cavity_electrical_thickness,
+geometry_in_absorber. #742 (the false positives and the never-emitted
+advisories that made a zero-advisory bar unworkable) is CLOSED: #744 took
+``absorber_budget_exceeds_axis`` off axes with no absorber and 9 rows left
+this snapshot with it. The 37 that remain are statements about the
+examples' own meshes and ports, so getting to zero means changing those
+examples -- separate work from this gate, which pins whatever they say.
+
+KNOWN WRONG AND PINNED ANYWAY: every ``domain`` row's
+``realized_extent_um`` / ``n_cells`` is one cell too large, because
+``rfx/fidelity.py`` sums the NODE-count slice of the cell-size array (N
+interior nodes bound N-1 cells). 95 ``domain-extent-quantized`` findings in
+this snapshot are that artefact -- cv14's 50 mm cavity at dx = 1 mm reads
+51 cells / 51000.0 um and is flagged as not dividing evenly. That is #729
+site 1, fixed by the open PR #734, NOT by this one: two PRs editing the
+same block with different 2-D semantics is worse than one honest header.
+When #734 lands, this gate will flag the drift -- that is the gate working,
+and the re-capture belongs to #734. Do not quote a domain extent from this
+file as a measurement until then.
 
 COVERAGE (measured 2026-08-27, re-derive with test_discovery_matches_
 classification_table and the Counter in this module's own analysis): of the
