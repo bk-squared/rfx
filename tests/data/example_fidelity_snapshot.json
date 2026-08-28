@@ -28,6 +28,7 @@
                 0.0,
                 330.0
               ],
+              "mesh_extent_um": 100330.0,
               "n_cells": 79,
               "realized_extent_um": 100330.0,
               "realized_um": [
@@ -45,6 +46,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 22860.0,
               "n_cells": 18,
               "realized_extent_um": 22860.0,
               "realized_um": [
@@ -62,6 +64,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 10160.0,
               "n_cells": 8,
               "realized_extent_um": 10160.0,
               "realized_um": [
@@ -92,6 +95,7 @@
                 0.0,
                 1.11022302463e-10
               ],
+              "mesh_extent_um": 150000.0,
               "n_cells": 60,
               "realized_extent_um": 150000.0,
               "realized_um": [
@@ -109,6 +113,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 15000.0,
               "n_cells": 6,
               "realized_extent_um": 15000.0,
               "realized_um": [
@@ -126,6 +131,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 15000.0,
               "n_cells": 6,
               "realized_extent_um": 15000.0,
               "realized_um": [
@@ -169,6 +175,7 @@
                 0.0,
                 18.5568735636
               ],
+              "mesh_extent_um": 77500.0,
               "n_cells": 155,
               "realized_extent_um": 77500.0,
               "realized_um": [
@@ -186,6 +193,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 500.0,
               "n_cells": 1,
               "realized_extent_um": 500.0,
               "realized_um": [
@@ -203,6 +211,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 500.0,
               "n_cells": 1,
               "realized_extent_um": 500.0,
               "realized_um": [
@@ -246,6 +255,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 48,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -263,6 +273,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 48,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -280,6 +291,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 48,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -323,6 +335,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 24,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -340,6 +353,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 24,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -357,6 +371,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 24,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -400,6 +415,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 16,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -417,6 +433,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 12000.0,
               "n_cells": 8,
               "realized_extent_um": 12000.0,
               "realized_um": [
@@ -434,6 +451,7 @@
                 0.0,
                 1.38777878078e-11
               ],
+              "mesh_extent_um": 36000.0,
               "n_cells": 24,
               "realized_extent_um": 36000.0,
               "realized_um": [
@@ -477,6 +495,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 16,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -494,6 +513,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 12000.0,
               "n_cells": 8,
               "realized_extent_um": 12000.0,
               "realized_um": [
@@ -511,6 +531,7 @@
                 0.0,
                 1.38777878078e-11
               ],
+              "mesh_extent_um": 36000.0,
               "n_cells": 24,
               "realized_extent_um": 36000.0,
               "realized_um": [
@@ -562,6 +583,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 16,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -579,6 +601,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 12000.0,
               "n_cells": 8,
               "realized_extent_um": 12000.0,
               "realized_um": [
@@ -596,6 +619,7 @@
                 0.0,
                 1.38777878078e-11
               ],
+              "mesh_extent_um": 36000.0,
               "n_cells": 24,
               "realized_extent_um": 36000.0,
               "realized_um": [
@@ -639,6 +663,7 @@
                 0.0,
                 3.46944695195e-11
               ],
+              "mesh_extent_um": 60000.0,
               "n_cells": 40,
               "realized_extent_um": 60000.0,
               "realized_um": [
@@ -656,6 +681,7 @@
                 0.0,
                 3.46944695195e-11
               ],
+              "mesh_extent_um": 60000.0,
               "n_cells": 40,
               "realized_extent_um": 60000.0,
               "realized_um": [
@@ -673,6 +699,7 @@
                 0.0,
                 3.46944695195e-11
               ],
+              "mesh_extent_um": 60000.0,
               "n_cells": 40,
               "realized_extent_um": 60000.0,
               "realized_um": [
@@ -716,6 +743,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 12000.0,
               "n_cells": 12,
               "realized_extent_um": 12000.0,
               "realized_um": [
@@ -733,6 +761,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 10,
               "realized_extent_um": 10000.0,
               "realized_um": [
@@ -750,6 +779,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 4000.0,
               "n_cells": 4,
               "realized_extent_um": 4000.0,
               "realized_um": [
@@ -864,6 +894,7 @@
                 0.0,
                 1.04083408559e-11
               ],
+              "mesh_extent_um": 16000.0,
               "n_cells": 16,
               "realized_extent_um": 16000.0,
               "realized_um": [
@@ -881,6 +912,7 @@
                 0.0,
                 1.04083408559e-11
               ],
+              "mesh_extent_um": 16000.0,
               "n_cells": 16,
               "realized_extent_um": 16000.0,
               "realized_um": [
@@ -898,6 +930,7 @@
                 0.0,
                 1.04083408559e-11
               ],
+              "mesh_extent_um": 16000.0,
               "n_cells": 16,
               "realized_extent_um": 16000.0,
               "realized_um": [
@@ -949,6 +982,7 @@
                 0.0,
                 0.0109244137902
               ],
+              "mesh_extent_um": 230000.010924,
               "n_cells": 115,
               "realized_extent_um": 230000.010924,
               "realized_um": [
@@ -966,6 +1000,7 @@
                 0.0,
                 0.0109244137902
               ],
+              "mesh_extent_um": 230000.010924,
               "n_cells": 115,
               "realized_extent_um": 230000.010924,
               "realized_um": [
@@ -983,6 +1018,7 @@
                 0.0,
                 0.00534939278984
               ],
+              "mesh_extent_um": 127889.558935,
               "n_cells": 75,
               "realized_extent_um": 127889.558935,
               "realized_um": [
@@ -1317,6 +1353,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 50,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1334,6 +1371,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 50,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1351,6 +1389,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 50,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1402,6 +1441,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1419,6 +1459,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1436,6 +1477,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1479,6 +1521,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1496,6 +1539,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1513,6 +1557,7 @@
                 0.0,
                 3.46944695195e-12
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 15,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1556,6 +1601,7 @@
                 0.0,
                 1.38777878078e-11
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 80,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1573,6 +1619,7 @@
                 0.0,
                 6.93889390391e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 40,
               "realized_extent_um": 10000.0,
               "realized_um": [
@@ -1590,6 +1637,7 @@
                 0.0,
                 2.60208521397e-12
               ],
+              "mesh_extent_um": 4000.0,
               "n_cells": 16,
               "realized_extent_um": 4000.0,
               "realized_um": [
@@ -1830,6 +1878,7 @@
                 0.0,
                 4.16333634234e-11
               ],
+              "mesh_extent_um": 50000.0,
               "n_cells": 50,
               "realized_extent_um": 50000.0,
               "realized_um": [
@@ -1847,6 +1896,7 @@
                 0.0,
                 1.04083408559e-11
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 20,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -1864,6 +1914,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 10,
               "realized_extent_um": 10000.0,
               "realized_um": [
@@ -1894,6 +1945,7 @@
                 0.0,
                 2429.08981667
               ],
+              "mesh_extent_um": 102429.089817,
               "n_cells": 41,
               "realized_extent_um": 102429.089817,
               "realized_um": [
@@ -1911,6 +1963,7 @@
                 0.0,
                 2429.08981667
               ],
+              "mesh_extent_um": 102429.089817,
               "n_cells": 41,
               "realized_extent_um": 102429.089817,
               "realized_um": [
@@ -1928,6 +1981,7 @@
                 0.0,
                 2429.08981667
               ],
+              "mesh_extent_um": 102429.089817,
               "n_cells": 41,
               "realized_extent_um": 102429.089817,
               "realized_um": [
@@ -2076,6 +2130,7 @@
                 0.0,
                 1.04083408559e-11
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 32,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -2093,6 +2148,7 @@
                 0.0,
                 1.73472347598e-12
               ],
+              "mesh_extent_um": 12000.0,
               "n_cells": 16,
               "realized_extent_um": 12000.0,
               "realized_um": [
@@ -2110,6 +2166,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 36000.0,
               "n_cells": 48,
               "realized_extent_um": 36000.0,
               "realized_um": [
@@ -2153,6 +2210,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 32,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -2170,6 +2228,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 32,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -2187,6 +2246,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 32,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -2217,6 +2277,7 @@
                 0.0,
                 1.38777878078e-10
               ],
+              "mesh_extent_um": 200000.0,
               "n_cells": 200,
               "realized_extent_um": 200000.0,
               "realized_um": [
@@ -2234,6 +2295,7 @@
                 0.0,
                 6.93889390391e-12
               ],
+              "mesh_extent_um": 8000.0,
               "n_cells": 8,
               "realized_extent_um": 8000.0,
               "realized_um": [
@@ -2251,6 +2313,7 @@
                 0.0,
                 1000.0
               ],
+              "mesh_extent_um": 0.0,
               "n_cells": 0,
               "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
@@ -2282,6 +2345,7 @@
                 0.0,
                 1.38777878078e-10
               ],
+              "mesh_extent_um": 200000.0,
               "n_cells": 200,
               "realized_extent_um": 200000.0,
               "realized_um": [
@@ -2299,6 +2363,7 @@
                 0.0,
                 6.93889390391e-12
               ],
+              "mesh_extent_um": 8000.0,
               "n_cells": 8,
               "realized_extent_um": 8000.0,
               "realized_um": [
@@ -2316,6 +2381,7 @@
                 0.0,
                 1000.0
               ],
+              "mesh_extent_um": 0.0,
               "n_cells": 0,
               "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
@@ -2490,6 +2556,7 @@
                 0.0,
                 36.0000000002
               ],
+              "mesh_extent_um": 34036.0,
               "n_cells": 536,
               "realized_extent_um": 34036.0,
               "realized_um": [
@@ -2507,6 +2574,7 @@
                 0.0,
                 36.5
               ],
+              "mesh_extent_um": 16700.5,
               "n_cells": 263,
               "realized_extent_um": 16700.5,
               "realized_um": [
@@ -2524,6 +2592,7 @@
                 0.0,
                 24.0
               ],
+              "mesh_extent_um": 1778.0,
               "n_cells": 28,
               "realized_extent_um": 1778.0,
               "realized_um": [
@@ -2846,6 +2915,7 @@
                 0.0,
                 1.38777878078e-10
               ],
+              "mesh_extent_um": 200000.0,
               "n_cells": 200,
               "realized_extent_um": 200000.0,
               "realized_um": [
@@ -2863,6 +2933,7 @@
                 0.0,
                 140.0
               ],
+              "mesh_extent_um": 23000.0,
               "n_cells": 23,
               "realized_extent_um": 23000.0,
               "realized_um": [
@@ -2880,6 +2951,7 @@
                 0.0,
                 840.0
               ],
+              "mesh_extent_um": 11000.0,
               "n_cells": 11,
               "realized_extent_um": 11000.0,
               "realized_um": [
@@ -2951,6 +3023,7 @@
                 0.0,
                 1.38777878078e-10
               ],
+              "mesh_extent_um": 200000.0,
               "n_cells": 200,
               "realized_extent_um": 200000.0,
               "realized_um": [
@@ -2968,6 +3041,7 @@
                 0.0,
                 140.0
               ],
+              "mesh_extent_um": 23000.0,
               "n_cells": 23,
               "realized_extent_um": 23000.0,
               "realized_um": [
@@ -2985,6 +3059,7 @@
                 0.0,
                 840.0
               ],
+              "mesh_extent_um": 11000.0,
               "n_cells": 11,
               "realized_extent_um": 11000.0,
               "realized_um": [
@@ -3153,6 +3228,7 @@
                 0.0,
                 3.46944695195e-11
               ],
+              "mesh_extent_um": 50000.0,
               "n_cells": 100,
               "realized_extent_um": 50000.0,
               "realized_um": [
@@ -3170,6 +3246,7 @@
                 0.0,
                 2.42861286637e-11
               ],
+              "mesh_extent_um": 30000.0,
               "n_cells": 60,
               "realized_extent_um": 30000.0,
               "realized_um": [
@@ -3187,6 +3264,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 40000.0,
               "n_cells": 80,
               "realized_extent_um": 40000.0,
               "realized_um": [
@@ -3230,6 +3308,7 @@
                 0.0,
                 3.46944695195e-11
               ],
+              "mesh_extent_um": 50000.0,
               "n_cells": 50,
               "realized_extent_um": 50000.0,
               "realized_um": [
@@ -3247,6 +3326,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 30000.0,
               "n_cells": 30,
               "realized_extent_um": 30000.0,
               "realized_um": [
@@ -3264,6 +3344,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 40000.0,
               "n_cells": 40,
               "realized_extent_um": 40000.0,
               "realized_um": [
@@ -3307,6 +3388,7 @@
                 0.0,
                 6.24500451352e-10
               ],
+              "mesh_extent_um": 90678.0,
               "n_cells": 357,
               "realized_extent_um": 90678.0,
               "realized_um": [
@@ -3324,6 +3406,7 @@
                 0.0,
                 4.16333634234e-11
               ],
+              "mesh_extent_um": 22860.0,
               "n_cells": 90,
               "realized_extent_um": 22860.0,
               "realized_um": [
@@ -3341,6 +3424,7 @@
                 0.0,
                 0.0
               ],
+              "mesh_extent_um": 1016.0,
               "n_cells": 4,
               "realized_extent_um": 1016.0,
               "realized_um": [
@@ -4349,6 +4433,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 40000.0,
               "n_cells": 20,
               "realized_extent_um": 40000.0,
               "realized_um": [
@@ -4366,6 +4451,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 40000.0,
               "n_cells": 20,
               "realized_extent_um": 40000.0,
               "realized_um": [
@@ -4383,6 +4469,7 @@
                 0.0,
                 6.93889390391e-12
               ],
+              "mesh_extent_um": 24000.0,
               "n_cells": 12,
               "realized_extent_um": 24000.0,
               "realized_um": [
@@ -4426,6 +4513,7 @@
                 0.0,
                 6.10622663544e-10
               ],
+              "mesh_extent_um": 374740.5725,
               "n_cells": 45,
               "realized_extent_um": 374740.5725,
               "realized_um": [
@@ -4443,6 +4531,7 @@
                 0.0,
                 6.10622663544e-10
               ],
+              "mesh_extent_um": 374740.5725,
               "n_cells": 45,
               "realized_extent_um": 374740.5725,
               "realized_um": [
@@ -4460,6 +4549,7 @@
                 0.0,
                 6.66133814775e-10
               ],
+              "mesh_extent_um": 391395.709056,
               "n_cells": 47,
               "realized_extent_um": 391395.709056,
               "realized_um": [
@@ -4503,6 +4593,7 @@
                 0.0,
                 4.16333634234e-11
               ],
+              "mesh_extent_um": 60000.0,
               "n_cells": 40,
               "realized_extent_um": 60000.0,
               "realized_um": [
@@ -4520,6 +4611,7 @@
                 0.0,
                 2.08166817117e-11
               ],
+              "mesh_extent_um": 30000.0,
               "n_cells": 20,
               "realized_extent_um": 30000.0,
               "realized_um": [
@@ -4537,6 +4629,7 @@
                 0.0,
                 1000.0
               ],
+              "mesh_extent_um": 21000.0,
               "n_cells": 14,
               "realized_extent_um": 21000.0,
               "realized_um": [
@@ -4587,6 +4680,7 @@
                 0.0,
                 73.9999999999
               ],
+              "mesh_extent_um": 33274.0,
               "n_cells": 262,
               "realized_extent_um": 33274.0,
               "realized_um": [
@@ -4604,6 +4698,7 @@
                 0.0,
                 4.99999999997
               ],
+              "mesh_extent_um": 20701.0,
               "n_cells": 163,
               "realized_extent_um": 20701.0,
               "realized_um": [
@@ -4621,6 +4716,7 @@
                 0.0,
                 16.0
               ],
+              "mesh_extent_um": 1270.0,
               "n_cells": 10,
               "realized_extent_um": 1270.0,
               "realized_um": [
@@ -4866,6 +4962,7 @@
                 0.0,
                 8.32667268469e-11
               ],
+              "mesh_extent_um": 90000.0,
               "n_cells": 90,
               "realized_extent_um": 90000.0,
               "realized_um": [
@@ -4883,6 +4980,7 @@
                 0.0,
                 140.0
               ],
+              "mesh_extent_um": 23000.0,
               "n_cells": 23,
               "realized_extent_um": 23000.0,
               "realized_um": [
@@ -4900,6 +4998,7 @@
                 0.0,
                 840.0
               ],
+              "mesh_extent_um": 11000.0,
               "n_cells": 11,
               "realized_extent_um": 11000.0,
               "realized_um": [

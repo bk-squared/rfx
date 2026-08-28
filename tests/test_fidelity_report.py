@@ -313,9 +313,17 @@ def test_incommensurate_domain_reports_the_ceil_realized_length():
 
 def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
     """Enumerate-and-classify: for every (boundary, pad symmetry, mesh
-    resolution, uniformity, dimensionality) the realized extent must be
+    resolution, uniformity, dimensionality) the MESH extent must be
     ceil(L/dx)*dx, never grid.shape[a]*dx (the node-count bug's
-    signature)."""
+    signature). This checks ``mesh_extent_um`` (the node-to-node span),
+    not ``realized_extent_um`` -- the "asymmetric pads" case below puts
+    PMC on y_hi, and since the Q2 PMC-plane-convention change (#722 ninth
+    surface) ``realized_extent_um`` on a PMC-faced axis is dx/2 SMALLER
+    than the mesh span by design (rfx/fidelity.py; see
+    test_pmc_face_reports_the_half_cell_realized_wall below for that
+    convention's own test). Checking the mesh span here keeps this test's
+    original purpose -- cell-vs-node counting, issue #729 -- decoupled
+    from the PMC convention it would otherwise be conflated with."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
     L = (20e-3, 10e-3, 10e-3)
@@ -346,11 +354,73 @@ def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
                 continue
             want_cells = int(np.ceil(L[a] / dxv))
             got_cells = dom["axes"][a]["n_cells"]
-            got_um = dom["axes"][a]["realized_extent_um"]
+            got_um = dom["axes"][a]["mesh_extent_um"]
             if (got_cells != want_cells
                     or abs(got_um - want_cells * dxv * 1e6) > 1e-2):
                 bad.append((tag, "xyz"[a], got_cells, want_cells, got_um))
     assert not bad, f"domain row counted NODES as cells: {bad}"
+
+
+def test_pmc_face_reports_the_half_cell_realized_wall():
+    """Q2 (#722 ninth surface, decided 2026-08-28): apply_pmc_faces zeros
+    H_tan a half-cell INSIDE the declared wall on every PMC face
+    (rfx/boundaries/pmc.py, pinned by tests/test_boundary_pmc_hi_faces.py
+    -- untouched here). The domain row must report that realized H_tan
+    wall, not the raw mesh line, with a finding naming the convention so a
+    PMC-mirror script cannot ship the offset silently."""
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    dx = 1e-3
+    sim = Simulation(
+        freq_max=10e9, domain=(20e-3, 10e-3, 10e-3), dx=dx,
+        boundary=BoundarySpec(
+            x=Boundary(lo="pec", hi="pmc"),
+            y=Boundary(lo="pmc", hi="pec"),
+            z="pec",
+        ),
+        cpml_layers=0,
+    )
+    dom = _dom(sim.fidelity_report(print_report=False))
+    x, y, z = dom["axes"]
+
+    # x_hi is pmc: the realized hi wall sits dx/2 (500 um) inside the
+    # 20000.0 um mesh line; x_lo (pec) is untouched.
+    assert x["realized_um"][0] == 0.0
+    assert abs(x["realized_um"][1] - (20000.0 - 500.0)) < 1e-6
+    assert abs(x["mesh_extent_um"] - 20000.0) < 1e-6
+    assert abs(x["face_residual_um"][1] - 500.0) < 1e-6
+
+    # y_lo is pmc: the realized lo wall sits dx/2 inside 0.0, i.e. at
+    # +500 um; y_hi (pec) is untouched.
+    assert abs(y["realized_um"][0] - 500.0) < 1e-6
+    assert abs(y["realized_um"][1] - 10000.0) < 1e-6
+    assert abs(y["face_residual_um"][0] - 500.0) < 1e-6
+
+    # z has no pmc face: unaffected, no finding.
+    assert abs(z["realized_um"][0] - 0.0) < 1e-6
+    assert abs(z["realized_um"][1] - 10000.0) < 1e-6
+
+    kinds_by_axis = {f["axis"]: f["kind"] for f in dom["findings"]}
+    assert kinds_by_axis.get("x") == "pmc-wall-half-cell-inside"
+    assert kinds_by_axis.get("y") == "pmc-wall-half-cell-inside"
+    assert "z" not in kinds_by_axis
+    for f in dom["findings"]:
+        assert "CONVENTION" in f["detail"]
+
+
+def test_pmc_face_finding_skips_the_axis_not_solved_2d_z():
+    """The PMC convention finding must not fire on an axis the solve does
+    not have (2D z) -- guarded the same way domain-extent-quantized is."""
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    sim = Simulation(
+        freq_max=10e9, domain=(20e-3, 10e-3, 10e-3), dx=1e-3,
+        boundary=BoundarySpec(x="pec", y="pec",
+                              z=Boundary(lo="pmc", hi="pmc")),
+        mode="2d_tmz", cpml_layers=0,
+    )
+    dom = _dom(sim.fidelity_report(print_report=False))
+    assert not any(f["axis"] == "z" for f in dom["findings"])
 
 
 def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):

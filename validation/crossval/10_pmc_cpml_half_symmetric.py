@@ -43,6 +43,21 @@ boundary on that path. This crossval locks both fixes.
     exactly on a reflector plane (this script intentionally uses
     y=DX, so no warning is expected)
 
+PMC-plane convention: REALIZE-DECLARED, decided on issue #722's ninth
+surface (2026-08-28, see validation/crossval/09_half_symmetric_waveguide.py
+for the full argument). apply_pmc_faces zeros H_tan a half-cell 0.5*dx
+INSIDE the declared y_lo wall (rfx/boundaries/pmc.py, index 0 on a `_lo`
+face; pinned by tests/test_boundary_pmc_hi_faces.py), so this script's
+y=20 mm half-domain has its H_tan mirror plane at y=DX/2=0.5 mm, not
+y=0. UNLIKE cv09, this offset biases NO comparator here: this crossval
+is a self-consistency / regression lock against v1.7.5's own commits
+(no closed form — benchmarks.mdx describes it as "a regression check
+with no external solver", manifest role diagnostic-reporter), so the
+half-cell shift changes no pass/fail gate. It is recorded here only so
+the convention is stated at every PMC-mirror site, not because this
+script needs the a/2+dx/2 declaration cv09 needed (there is no gate-3
+class comparison against a mirrored full geometry to protect).
+
 Pass criteria:
   1. (peak_max − peak_min) / peak_max  <  0.02   per path
   2. no NaN, no Inf in either time series at any cpml value

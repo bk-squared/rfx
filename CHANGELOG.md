@@ -6,6 +6,49 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — PMC-plane convention decided: REALIZE-DECLARED (issue #722 ninth surface)
+
+`apply_pmc_faces` zeros H_tan a half-cell (0.5*dx) INSIDE the declared wall
+on every PMC face (`rfx/boundaries/pmc.py`, measured 2026-04, pinned by
+`tests/test_boundary_pmc_hi_faces.py` — untouched here). A PMC-mirrored
+model's declared mirror plane and its REALIZED H_tan wall have therefore
+always differed by half a cell; this closes the campaign-standing question
+of which side owns that gap.
+
+**Decision: REALIZE-DECLARED (odd-cell).** A PMC mirror plane must be
+declared at `plane + dx/2`, not `plane`, so the H_tan zero lands ON the
+intended plane instead of a half-cell short of it. This requires an ODD
+cell count on the mirrored axis (so `plane` itself is an H-node); the
+alternative, quote-realized (declare `plane`, always compare against
+`a_eff = a - dx`), was rejected because it carries the half-cell bias
+forever instead of removing it once.
+
+- `rfx.fidelity.fidelity_report`'s domain row is now self-diagnosing on a
+  PMC-faced axis (#729 spirit): `realized_um` / `realized_extent_um` /
+  `face_residual_um` report the REALIZED H_tan wall (shrinks by half the
+  boundary cell per PMC face), not the raw mesh line. The node-to-node mesh
+  span is preserved separately as the new `mesh_extent_um` key (unaffected
+  by any PMC face; the pre-existing `domain-extent-quantized` finding stays
+  keyed on it). A new finding kind, `pmc-wall-half-cell-inside`, names the
+  convention explicitly wherever it applies, so a PMC-mirror script cannot
+  ship the offset silently.
+- `validation/crossval/09_half_symmetric_waveguide.py` applies the
+  convention: mesh `dx` 0.635 -> 0.508 mm (0.025 in -> 0.020 in; WR-90's
+  broad wall is then 45 cells, ODD, so a/2 is an exact H-node plane), half
+  domain declared `a/2` -> `a/2 + dx/2`. Measured: full 8.1958 GHz (Q
+  5.11e4), half 8.1959 GHz (Q 6.47e4), gates 0.007% / 0.007% / 0.001% (was
+  0.009% / 1.825% / 1.835% pre-change) — gate 3, the PMC-mirror
+  self-invariant, drops from a fixed ~1.8% geometry bias to a genuine
+  mesh-only residual.
+- `validation/crossval/10_pmc_cpml_half_symmetric.py` (a regression lock
+  with no closed-form reference, so the offset biases no gate here) and
+  `rfx/interop/emitters/openems.py` (D17: the emitter maps `pmc` straight
+  to openEMS's `'PMC'` on the mesh line, so an rfx-vs-openEMS comparison on
+  a PMC-faced structure needs the rfx side declared this way) now state the
+  convention in their own docstrings. `rfx/convergence.py`'s `sim_factory`
+  gets a note: a dx sweep that clones a PMC-faced `domain` unchanged moves
+  the realized mirror plane by dx/2 per refinement step.
+
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 
 `add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre

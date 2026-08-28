@@ -117,6 +117,20 @@ docs/design_notes/geometry_setup_interop.md):
         numpy is 2.x and ``openEMS.ports.MSLPort`` itself uses ``np.int``.
 ``D16`` Metal thickness is taken verbatim from the rfx shape; the emitter does
         not choose between a sheet and a one-cell box.
+``D17`` PMC-face wall position (issue #722 ninth surface, decided
+        2026-08-28). rfx realizes a PMC face's H_tan wall a half-cell
+        (0.5*dx) INSIDE the declared mesh line (``rfx/boundaries/pmc.py``,
+        pinned by ``tests/test_boundary_pmc_hi_faces.py``), while this
+        emitter maps a ``pmc`` face straight to openEMS's ``'PMC'`` string
+        (``pad=0``) sitting ON the emitted mesh line — see the ``token ==
+        "pmc"`` branch above. An rfx-vs-openEMS comparison on a PMC-faced
+        structure therefore compares rfx's realized wall (declared - dx/2
+        per PMC face) against openEMS's wall at the declared mesh line
+        unless the rfx side is declared REALIZE-DECLARED (plane + dx/2 per
+        PMC face, the convention decided in
+        ``validation/crossval/09_half_symmetric_waveguide.py``). Not
+        translated here: this is a projection-fidelity NOTE about a
+        difference the emitter faithfully carries over, not a refusal.
 
 Status: **provisional**.
 """
