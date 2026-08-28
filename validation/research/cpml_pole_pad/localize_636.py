@@ -34,6 +34,30 @@ def main():
     fa.LAYERS = 8
     fa.STEPS = 20000
 
+    # Harness fix (8-layer pads): the battery's probe depths (2, 6, 10)
+    # assume 12-layer pads; depth 10 does not exist at 8 layers. Use
+    # depths 2, 5, 7 and corner depth (5, 5) — same observable.
+    DX, NA, NB = fa.DX, fa.NA, fa.NB
+
+    def pad_probe_positions_8():
+        z = 5.0 * DX
+        probes = []
+        for d in (2, 5, 7):
+            probes.append((f"xlo_d{d}", "face", (-d * DX, (NB // 2) * DX, z), "ez"))
+            probes.append((f"xhi_d{d}", "face", ((NA - 1 + d) * DX, (NB // 2) * DX, z), "ez"))
+            probes.append((f"ylo_d{d}", "face", ((NA // 2) * DX, -d * DX, z), "ez"))
+            probes.append((f"yhi_d{d}", "face", ((NA // 2) * DX, (NB - 1 + d) * DX, z), "ez"))
+        corners = [("c_ll", (-5 * DX, -5 * DX)),
+                   ("c_hl", ((NA - 1 + 5) * DX, -5 * DX)),
+                   ("c_lh", (-5 * DX, (NB - 1 + 5) * DX)),
+                   ("c_hh", ((NA - 1 + 5) * DX, (NB - 1 + 5) * DX))]
+        for name, (x, y) in corners:
+            for comp in ("ez", "ex", "ey"):
+                probes.append((f"{name}_{comp}", "corner", (x, y, z), comp))
+        return probes
+
+    fa.pad_probe_positions = pad_probe_positions_8
+
     cls = fa.make_pole_extended_class()
     sim, probes = fa.build_sim(cls, "C1")
     grid = sim._build_grid()
