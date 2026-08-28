@@ -194,6 +194,33 @@ not reachable below 3D (or not by these reduced models); the root-cause
 statement then rests on M2's empirical operator measurement (growth rate +
 final-state localization) alone, reported as such.
 
+## M1b / M1c outcomes (recorded 2026-08-29, before M2 finished)
+
+**F1b FIRED**: finite 1D operator (grading + interfaces + PEC wall
+included) has rho = 1 to machine precision for BOTH variants.
+**F1c FIRED**: finite 2D TM x-y corner operator (power iteration, 40k
+steps; solver substituted for ARPACK as recorded in the script docstring,
+thresholds unchanged) measures rho_est = 0.99998 for both variants —
+stable. The linear instability is not reachable per-cell, in 1D, or in
+the 2D TM cross-section: it requires the 3D structure (the z-confined
+pole slab extended along x/y inside the pad — consistent with the
+original #636 observation that a thin-in-z fixture does not reproduce).
+
+## M3 — growing-mode localization addendum (declared BEFORE running)
+
+M2's C1-ON cell (rule alpha, 12 layers) turned out STABLE, so the
+declared "C1-ON final state" cannot witness the growing mode. M3 is a
+non-gating, characterization-only diagnostic of the KNOWN-unstable
+configuration (no verdict, no fix decision, no tuning depends on it):
+the scout/premise configuration — 8 layers, SHIPPED alpha (0.05), poles
+extended, C1 material/geometry, 20,000 steps — re-run once recording
+(a) final-state |E| mass split interior / x-y face pads / corner pads
+and argmax, (b) FFT of the late-time pad probe.
+Prediction (informational): the growing mode concentrates in the x/y
+pads at slab z-levels and its spectrum peaks near the polariton band
+edge of eps(omega) = 0 (3.97 GHz for this material; the stable C1-ON
+residual already peaked at 3.88 GHz).
+
 ## Runtime budget
 
 M1: seconds. M2: ~10 runs x ~2-5 min (156k cells x 60k steps, CPU JAX)
