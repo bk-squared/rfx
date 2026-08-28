@@ -2969,6 +2969,9 @@ class _PreflightMixin:
         self._validate_cfg_conformal_fine_dx(dx)
         self._validate_cfg_adi_3d_accuracy(_w)
         self._validate_cfg_lossless_resonator_in_absorber(_w)
+        self._validate_cfg_dispersive_pole_at_absorber_face(
+            _w, dx, cpml_thick_lo, cpml_thick_hi
+        )
         self._validate_cfg_waveguide_reference_plane(
             _w, cpml_thick_lo, cpml_thick_hi
         )
@@ -3382,6 +3385,138 @@ class _PreflightMixin:
                 ),
                 stacklevel=2,
             )
+
+    def _validate_cfg_dispersive_pole_at_absorber_face(
+        self, _w, dx: float,
+        cpml_thick_lo: list[float], cpml_thick_hi: list[float],
+    ) -> None:
+        """Issue #636 advisory: a resonance-risk dispersive material
+        touching a CPML/UPML face.
+
+        The pad extension replicates only the STATIC eps_r/sigma/mu_r into
+        the absorber (#627a) — dispersion-pole masks are deliberately not
+        replicated (#627b, reverted) — so a dispersive structure that
+        touches an absorbing face sees a pad matched at eps_inf only:
+        band-limited impedance mismatch (in-band reflections) near the
+        pole resonance. That is a fidelity limitation, not an
+        instability; the shipped configuration is stable.
+
+        Do NOT fix it by extending the pole masks into the pad. The #636
+        one-attempt factorial (2026-08-29, b29f9de; predeclaration and
+        results in docs/design_notes/i636_cpml_pole_pad_predeclaration.md,
+        scripts in validation/research/cpml_pole_pad/) measured: naive
+        extension diverges on a high-Q edge-touching Lorentz slab
+        (last/mid-decile 5.03 at 20k steps vs 0.21 shipped, growing mode
+        at 3.83 GHz inside the pole's eps<0 polariton gap with ~58% of
+        |E| in the pads, peaked at the slab's z-interface), and a Drude
+        (eps_inf=1) slab diverges even under the CFS-corner alpha rule
+        with 12 layers (+5.2e-4/step at 60k steps, 2.64 GHz, inside its
+        eps<0 band). The growing modes are interface (surface-polariton)
+        waves of the eps(omega)<0 band living on the extended structure's
+        boundaries inside the pad — a regime where stretched-coordinate
+        PMLs violate the geometric stability condition — so no CPML
+        parameter choice covered the factorial. Guarded by
+        tests/test_cpml_pad_material_extension.py.
+
+        Trigger filter (kept narrow to stay quiet on routine setups):
+        only Lorentz poles that are BOTH high-Q (omega_0/(2*delta) >= 10)
+        AND in-band (omega_0 <= 1.5 * 2*pi*freq_max), or Drude-type poles
+        (omega_0 == 0 — metal-like, eps < 0 across (0, omega_p), always
+        mismatch-relevant). Debye relaxations are excluded: Q ~ 0.5, the
+        eps_inf mismatch is broadband-mild, and warning on every lossy
+        PCB substrate that touches a face would be noise. One aggregated
+        advisory per simulation.
+        """
+        if self._boundary not in ("cpml", "upml"):
+            return
+        if not any(t > 0 for t in list(cpml_thick_lo) + list(cpml_thick_hi)):
+            return
+
+        w_band = 1.5 * 2.0 * np.pi * self._freq_max
+
+        def _risky_poles(mat):
+            found = []
+            for pole in (getattr(mat, "lorentz_poles", None) or ()):
+                w0 = float(pole.omega_0)
+                delta = float(pole.delta)
+                if w0 == 0.0:
+                    found.append(("drude", w0, delta))
+                elif delta > 0 and w0 / (2.0 * delta) >= 10.0 and w0 <= w_band:
+                    found.append(("lorentz", w0, delta))
+                elif delta == 0.0 and w0 <= w_band:
+                    found.append(("lorentz", w0, delta))
+            return found
+
+        hits: list[tuple[int, str, str, str]] = []
+        for idx, entry in enumerate(self._geometry):
+            try:
+                mat = self._resolve_material(entry.material_name)
+            except Exception:
+                continue
+            poles = _risky_poles(mat)
+            if not poles:
+                continue
+            if not hasattr(entry.shape, "bounding_box"):
+                continue
+            try:
+                c1, c2 = entry.shape.bounding_box()
+            except (NotImplementedError, TypeError):
+                continue
+            faces = []
+            for ax in range(min(3, len(self._domain))):
+                d = self._domain[ax]
+                if cpml_thick_lo[ax] > 0 and c1[ax] <= 0.5 * dx:
+                    faces.append(f"{'xyz'[ax]}-lo")
+                if cpml_thick_hi[ax] > 0 and c2[ax] >= d - 0.5 * dx:
+                    faces.append(f"{'xyz'[ax]}-hi")
+            if not faces:
+                continue
+            kind = ("Drude" if all(p[0] == "drude" for p in poles)
+                    else "high-Q")
+            q_txt = ", ".join(
+                "Drude" if k == "drude" else
+                (f"Q={w0 / (2 * delta):.0f}" if delta > 0 else "Q=inf")
+                for k, w0, delta in poles)
+            hits.append((idx, entry.material_name, "+".join(faces),
+                         f"{kind} ({q_txt})"))
+
+        if not hits:
+            return
+        worst = hits[0]
+        msg = (
+            f"Dispersive material '{worst[1]}' (geometry entry #{worst[0]}, "
+            f"{worst[3]}) touches absorbing face(s) {worst[2]}. The CPML pad "
+            f"replicates only the STATIC eps/sigma/mu (#627a) — dispersion "
+            f"poles are not extended — so the absorber is impedance-matched "
+            f"at eps_inf only and reflects in-band near the pole resonance. "
+        )
+        if len(hits) > 1:
+            msg += (
+                f"{len(hits)} geometry entries are affected (first shown; "
+                f"all in this finding's loc). "
+            )
+        msg += (
+            "This is a band-limited fidelity limitation, not an "
+            "instability. Do NOT extend pole masks into the pad to fix it: "
+            "measured divergent (issue #636 factorial, "
+            "docs/design_notes/i636_cpml_pole_pad_predeclaration.md — "
+            "surface-polariton modes of the eps(omega)<0 band inside the "
+            "absorber grow without bound; the Drude cell diverges even "
+            "under the CFS alpha rule). Mitigations: leave >= 1 cell of "
+            "background material between the dispersive structure and the "
+            "domain face, add pole damping (lower Q), or move the "
+            "resonance out of band."
+        )
+        _w.warn(
+            PreflightWarning(
+                msg,
+                code="dispersive_pole_at_absorber_face",
+                loc="geometry[" + ",".join(
+                    f"#{h[0]} {h[2]} {h[3]}" for h in hits) + "]",
+                source="_validate_cfg_dispersive_pole_at_absorber_face",
+            ),
+            stacklevel=2,
+        )
 
     def _validate_cfg_compute_cpml_thickness(
         self, cpml_thickness: float

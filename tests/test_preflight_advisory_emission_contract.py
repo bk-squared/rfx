@@ -146,8 +146,16 @@ def _enumerate_emission_sites():
 # is the same check family speaking about the same port, so
 # _FROZEN_LITERAL_CODE_COUNT is unchanged at 55. A conscious contract
 # edit, recorded here rather than absorbed silently.
-_FROZEN_TOTAL_SITES = 84
-_FROZEN_LITERAL_CODE_COUNT = 55
+#
+# 84 -> 85 sites / 55 -> 56 literal codes, issue #636 (stacked on the
+# #752 edit above, so the site count sums): new advisory
+# dispersive_pole_at_absorber_face (one site, one code) — a
+# resonance-risk dispersive material touching an absorbing face lives
+# with a statics-only (eps_inf-matched) pad; the measured reason pole
+# masks are NOT extended into the pad is documented at the check site
+# and in docs/design_notes/i636_cpml_pole_pad_predeclaration.md.
+_FROZEN_TOTAL_SITES = 85
+_FROZEN_LITERAL_CODE_COUNT = 56
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
