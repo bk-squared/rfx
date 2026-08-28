@@ -266,6 +266,45 @@ def _warn_msl_wave_split_unreliable(
     )
 
 
+def _warn_msl_beta_scan_railed(
+    beta_railed: np.ndarray, freqs: object, port_names: tuple
+) -> None:
+    """Emit one aggregate warning for β-scan rail-pinned bins (issue #681).
+
+    ``beta_railed`` is (n_ports, n_freqs) bool, True where a port's
+    own-drive N-probe β scan failed to bracket its optimum — the fitted
+    ``beta``/``Z0`` at that bin are the ±35% scan-window limit, not a
+    measurement.  Mirrors ``_warn_msl_wave_split_unreliable``: silent
+    while tracing (caller concretizes), one warning per extraction.
+    """
+    railed = np.asarray(beta_railed, dtype=bool)
+    affected_freqs = np.flatnonzero(np.any(railed, axis=0))
+    if not affected_freqs.size:
+        return
+
+    import warnings
+
+    freqs_arr = np.asarray(freqs)
+    f1 = freqs_arr[int(affected_freqs[0])] / 1e9
+    f2 = freqs_arr[int(affected_freqs[-1])] / 1e9
+    ports = ", ".join(
+        repr(port_names[p]) for p in np.flatnonzero(np.any(railed, axis=1))
+    )
+    warnings.warn(
+        "N-probe beta scan pinned at its own window limit: "
+        f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz at "
+        f"port(s) {ports} minimized the fit residual at the edge of the "
+        "±35% scan around the analytic Hammerstad-Jensen guess — the "
+        "reported Z0/beta at those bins are the scan limit, NOT a "
+        "measurement (issue #681). S11/S21 are unaffected (they use the "
+        "analytic Z0 anchor). Common cause: the real eps_eff is far from "
+        "the HJ estimate (wrong eps_r_sub / substrate not detected under "
+        "the port). Check the result's beta_railed mask before quoting "
+        "Z0 or beta.",
+        stacklevel=2,
+    )
+
+
 _SETTLING_WITNESS_DB = -40.0
 
 
@@ -3097,6 +3136,10 @@ class _SparamMixin:
             raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            # β-scan rail flags per (driven, port) fit (issue #681).
+            raw_beta_railed = jnp.zeros(
+                (n_ports, n_ports, n_freqs_used), dtype=bool
+            )
             # Wave amplitudes per (driven, port) for the multi-drive solve
             # (issue #507). Python lists of jnp arrays, not a stacked array,
             # so eps_override tracers stay on the AD tape.
@@ -3396,6 +3439,9 @@ class _SparamMixin:
                     z0_fit = jnp.asarray(res_p["z0"], dtype=_complex_dtype) * dir_sign
                     raw_z0 = raw_z0.at[driven, p_idx, :].set(z0_fit)
                     raw_q = raw_q.at[driven, p_idx, :].set(jnp.asarray(res_p["q"], dtype=_complex_dtype))
+                    raw_beta_railed = raw_beta_railed.at[driven, p_idx, :].set(
+                        jnp.asarray(res_p["beta_railed"], dtype=bool)
+                    )
                     if p_idx == driven:
                         # V·I single-plane wave split at probe 0 (issue #80
                         # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
@@ -3570,6 +3616,32 @@ class _SparamMixin:
                 # Diagnostics cannot materialize phasors while tracing.  The
                 # eager forward result still carries the reliability mask.
                 pass
+
+            # β-scan rail flags for the SHIPPED fit numbers (issue #681):
+            # Z0[i, :] comes from port i's OWN-drive run and beta from run 0
+            # / port 0, so the own-drive diagonal of raw_beta_railed is
+            # exactly the provenance of every fitted number the result
+            # carries. A railed bin's Z0/beta are the ±35% scan-window
+            # limit, not a measurement — used to be returned silently
+            # pinned (repro: eps_eff 6.30 line reported as 4.60 at
+            # 0.974·rail with zero warnings). S11/S21 never ride on the
+            # fitted β (analytic HJ anchor), so S is NOT condemned.
+            beta_railed = None
+            try:
+                beta_railed = np.stack([
+                    np.asarray(
+                        jax.lax.stop_gradient(raw_beta_railed[p, p, :])
+                    )
+                    for p in range(n_ports)
+                ]).astype(bool)
+                _warn_msl_beta_scan_railed(
+                    beta_railed, freqs_arr,
+                    tuple(pe.name for pe in entries),
+                )
+            except (jax.errors.ConcretizationTypeError, TypeError):
+                # Cannot materialize while tracing; the eager forward
+                # result still carries the mask.
+                beta_railed = None
 
             # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
             # S11/S21 come from the OpenEMS-style V·I wave amplitudes, now
@@ -3763,6 +3835,7 @@ class _SparamMixin:
                 passivity_correction=passivity_correction,
                 assembly=msl_assembly,
                 cond_a=msl_cond_a,
+                beta_railed=beta_railed,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,
@@ -4543,6 +4616,7 @@ class _SparamMixin:
             # magnitude is reported without a sign claim.
             from rfx.probes.msl_wave_decomp import extract_msl_nprobe
             z0_msl_fit = np.full((n_msl, n_freqs_used), np.nan)
+            beta_railed_msl = np.zeros((n_msl, n_freqs_used), dtype=bool)
             for d in range(n_msl):
                 run_d = n_lw + d
                 n_p = len(probe_xs[d])
@@ -4556,6 +4630,9 @@ class _SparamMixin:
                 z0_msl_fit[d, :] = np.abs(np.asarray(
                     jax.lax.stop_gradient(res_fit["z0"])
                 ).astype(np.complex128))
+                beta_railed_msl[d, :] = np.asarray(
+                    jax.lax.stop_gradient(res_fit["beta_railed"])
+                ).astype(bool)
                 _dev = float(np.max(
                     np.abs(z0_msl_fit[d, :] - z0_hj_per_port[d])
                     / z0_hj_per_port[d]
@@ -4574,6 +4651,14 @@ class _SparamMixin:
                         "differs (Yee staircase on coarse meshes).",
                         stacklevel=2,
                     )
+            # β-scan rail flags for the diagnostic N-probe fit (issue
+            # #681): a railed bin's |Zc|/β above are the ±35% scan-window
+            # limit, not a measurement. S is unaffected (the MSL diagonal
+            # uses the analytic HJ anchor).
+            _warn_msl_beta_scan_railed(
+                beta_railed_msl, freqs_arr,
+                tuple(pe.name for pe in entries),
+            )
             s_wave_full = None
 
             if magnitude_channel == "flux":
@@ -4667,6 +4752,7 @@ class _SparamMixin:
                 passivity_correction=passivity_correction,
                 S_wave=s_wave_full,
                 magnitude_channel=magnitude_channel,
+                beta_railed=beta_railed_msl,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs, port_names, num_periods=num_periods,
