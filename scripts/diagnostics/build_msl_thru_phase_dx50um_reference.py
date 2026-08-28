@@ -40,16 +40,23 @@ is NOT centred on the realized substrate: realized trace y
 [949.999..., 1549.999...] um, centre 1250.0um, vs realized substrate y
 [0, 2450.000...] um, centre 1225.0um -- a 25um (half-cell) offset,
 because this script draws the trace symmetric about the DECLARED
-LY/2 while the substrate box realizes asymmetrically. This script now
-writes those REALIZED values into ``meta`` (``h_sub_realized_m``,
-``w_trace_realized_m``, ``trace_y_lo_realized_m``,
-``trace_y_hi_realized_m``, ``n_z_sub_realized``) alongside the existing
-DECLARED ``h_sub_m``/``w_trace_m`` (kept for ``_assert_matches_rfx_
-fixture``'s declared-vs-declared drift guard). ``validation/crossval/
-20_msl_phase_referee.py``'s Stage B build reads the REALIZED fields --
-including the off-centre trace placement, deliberately reproduced rather
-than re-symmetrized -- so both solvers land on the SAME 300um board
-(see that script's own "Mesh convention" docstring section). Regenerating
+LY/2 while the substrate box realizes asymmetrically. NOTE what that
+does and does not change downstream: the trace centre 1250.0um IS
+``ly_clear/2``, which is what ``20_msl_phase_referee.py``'s Stage B
+already used, so sourcing the trace bounds from these fields moves the
+Stage B trace by 1.5e-18 m -- a no-op at this fixture. The substantive
+field is ``h_sub_realized_m`` (300um vs the declared 254um). This
+script now writes the REALIZED values into ``meta``
+(``h_sub_realized_m``, ``w_trace_realized_m``,
+``trace_y_lo_realized_m``, ``trace_y_hi_realized_m``,
+``n_z_sub_realized``) alongside the existing DECLARED
+``h_sub_m``/``w_trace_m`` (kept for ``_assert_matches_rfx_fixture``'s
+declared-vs-declared drift guard). ``validation/crossval/
+20_msl_phase_referee.py``'s Stage B build reads the REALIZED fields, so
+both solvers land on the SAME 300um board, and the trace bounds are
+carried as an invariant against a future fixture whose trace does NOT
+sit on ``ly_clear/2`` (see that script's own "Mesh convention"
+docstring section). Regenerating
 this fixture (a fresh ``compute_msl_s_matrix`` solve) is NOT required
 just to add these fields -- see ``_realized_board_geometry`` below, which
 reads them from ``sim.fidelity_report()`` (grid + material assembly

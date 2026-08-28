@@ -93,9 +93,17 @@ regression lock, not an accuracy claim.
 ### `06b_msl_notch_filter_uniform`
 
 The script applies loose analytic tolerances to the uniform-mesh
-`add_msl_port` result. The committed dx=50 µm rfx/OpenEMS comparison is checked
-separately by `tests/test_msl_notch_e4_comparison_gates.py`. It covers that
-geometry and resolution only, not arbitrary MSL structures or meshes.
+`add_msl_port` result. It runs at dx = 63.5 µm = h_sub/4, chosen so the
+254 µm substrate rasterizes exactly; the analytic quarter-wave reference is
+evaluated on the realized 635 µm trace width read from the run's own
+`fidelity_report()`, not on the declared 600 µm.
+
+The committed dx=50 µm rfx/OpenEMS comparison is checked separately by
+`tests/test_msl_notch_e4_comparison_gates.py`. It covers that geometry and
+resolution only, not arbitrary MSL structures or meshes — and it is **not the
+same board**: its rfx leg is generated at dx = 50 µm, where the same 254 µm
+substrate rasterizes to 300 µm. Until that generator is regenerated, read the
+two as characterizing different boards.
 
 ### `10_pmc_cpml_half_symmetric`
 
@@ -144,8 +152,9 @@ The runner exits `0` only when no script ends in `FAIL` or `TIMEOUT`.
 
 The CPU runner does not attempt these cases:
 
-- `06b_msl_notch_filter_uniform`: more than about 10 minutes on CPU because of
-  the fine uniform mesh and distributed MSL-port de-embedding.
+- `06b_msl_notch_filter_uniform`: GPU only. Measured, not projected: a CPU run
+  of the shipped dx = 63.5 µm mesh was abandoned unfinished at 2 h 52 m, while
+  a single RTX 4090 solves it in 329 s. Do not budget a CPU slot for it.
 
 Cases `01` through `04` require a Meep build compatible with the host NumPy ABI.
 If Meep cannot be imported, the runner reports `ENV-SKIP` instead of `FAIL`;

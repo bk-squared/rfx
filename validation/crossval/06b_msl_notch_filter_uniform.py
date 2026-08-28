@@ -32,18 +32,25 @@ External cross-check (openEMS, 2026-07-05):
   working interpretation (open-end fringing as the driver of the split) is
   revised: the FEM value indicates the fringing correction is ~1-2%. The
   "err<15% vs analytic" gate below is rfx-vs-ANALYTIC and is NOT an
-  OpenEMS-class number. HISTORICAL: this paragraph describes the dx=80µm
-  mesh this script shipped at through 2026-08 — see "Mesh convention"
-  below for the dx=63.5µm mesh it ships at now. CAVEAT this fix does NOT
-  resolve: the E4 fixture (``tests/fixtures/msl_notch_e4/``) was produced
-  by ``scripts/diagnostics/build_msl_notch_rfx_dx50.py`` at DX=50µm, where
+  OpenEMS-class number.
+
+  The paragraph above was written when this script ran at dx=80µm, where
+  its own preflight called the mesh UNDER-RESOLVED (h_sub/dx=3.175, a
+  mixed-cell substrate) and no external comparison at that mesh was
+  valid. It now ships at dx=63.5µm — see "Mesh convention" below.
+
+  CAVEAT this fix does NOT resolve: the E4 fixture
+  (``tests/fixtures/msl_notch_e4/``) was produced by
+  ``scripts/diagnostics/build_msl_notch_rfx_dx50.py`` at DX=50µm, where
   h_sub/dx=5.08 is itself off-lattice and realizes h_sub=300µm (not
   254µm) — that producer carries the SAME #722/#723 defect this script
   just fixed and is EXPLICITLY DEFERRED (see its own docstring), not
   fixed here. So as of this change the E4/Palace comparison above and
-  this script solve DIFFERENT boards (300µm vs 254µm) — treat the
-  "rfx 3.63 GHz" and "Re(Z0) 57.9 Ω" figures above as belonging to the
-  300µm board, not to this script's own output.
+  this script solve DIFFERENT boards: every figure in this paragraph
+  ("rfx 3.63 GHz", "openEMS 3.43 GHz", the Palace 3.631 GHz referee)
+  belongs to a 300µm board, while this script now solves 254µm. Do not
+  read them as a cross-check on this script's own output until that
+  producer is fixed.
 
 Mesh convention (issue #723, 2026-08-27):
   DX = H_SUB / 4 = 63.5µm (was 80µm, h_sub/dx=3.175 — the "IMPORTANT"
@@ -81,28 +88,46 @@ Mesh convention (issue #723, 2026-08-27):
   ε_eff_HJ 2.869 -> 2.882 and the analytic notch 3.6872 -> 3.6790 GHz
   (-0.22%) — small next to the current 15% gate.
 
-  Z0 anchor: ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` runs this
-  SAME W=600/h=254 RO4350B fixture through a predeclared dx grid that
-  includes this exact mesh — committed row (``msl_z0_bias_floor_sweep/
+  Z0 anchor: ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` runs the
+  SAME board cross-section (W=600/h=254 RO4350B) on a DIFFERENT line — a
+  10mm thru with no stub — through a predeclared dx grid that includes
+  this exact mesh, which is what makes it an independent cross-check
+  rather than a re-run. Committed row (``msl_z0_bias_floor_sweep/
   msl_z0_bias_floor_sweep.json``, label "aligned h_sub/4"): dx_um=63.5,
   z0_measured_ohm=46.098, z0_hj_ohm=47.895 (HJ on the DECLARED 600/254
   board). ``rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff``:
   HJ(635µm, 254µm, 3.66) = 46.18 Ω, 0.18% from the measured 46.10 Ω, vs
-  HJ(600µm, 254µm, 3.66) = 47.90 Ω, 3.9% away — comparator-first evidence
-  that the realized width, not the declared one, is the right analytic
-  anchor on this mesh. Predicted post-fix median Re(Z0) ≈ 46.1 Ω, 15.2%
-  above the (40, 65) Ω gate floor below (window unchanged; NOT re-pinned
-  by this change — that needs a fresh solve, see "Runtime" below).
+  HJ(600µm, 254µm, 3.66) = 47.90 Ω, 3.9% away — the realized width, not
+  the declared one, is the analytic anchor that matches what this mesh
+  measures. READ THAT NARROWLY: it says the extractor tracks HJ on the
+  board it actually solves. It does NOT say this mesh extracts Z0 better
+  than the old one — the same recheck run on all six sweep points puts
+  every one of them within 0.38% of HJ on ITS realized board, dx=80µm
+  included (filed as #752). Predicted post-fix median Re(Z0) ≈ 46.1 Ω,
+  15.2% above the (40, 65) Ω gate floor below (window unchanged; NOT
+  re-pinned by this change — that needs a fresh solve, see "Runtime"
+  below).
 
   Runtime and the re-pinned envelope: measured grid shape
   (``sim._build_grid().shape``) dx=80µm -> (442, 232, 31) = 3,178,864
   cells; dx=63.5µm -> (553, 280, 37) = 5,729,080 cells (1.802x). Combined
-  with the ~1.260x more timesteps (dt ∝ dx), wall clock scales ~2.271x.
+  with the ~1.260x more timesteps (dt ∝ dx), the cell x timestep product
+  scales 2.271x. TREAT THAT AS A LOWER BOUND, NOT A FORECAST: the
+  dx=63.5µm CPU attempt was abandoned unfinished at 2h52m on a 32-core
+  pod, i.e. past 2.271x ANY of the dx=80µm CPU baselines measured here
+  (2599.6s on 2026-08-09; 1621.2s on 2026-08-28, different machines), so
+  the linear model underpredicts on this lane. Use the GPU.
 
-  MEASURED (2026-08-27, VESSL 369367256574, remilab-c0 single RTX4090,
-  log ``_06b_notch_uniform_logs/20260827T131217Z_run.log``, solve 329.2s,
-  exit 0). Pre-fix column is the committed dx=80µm baseline,
-  ``_06b_notch_uniform_logs/20260809T_run.log``:
+  MEASURED. Post-fix column: 2026-08-27, VESSL 369367256574, remilab-c0
+  single RTX4090, log ``_06b_notch_uniform_logs/20260827T131217Z_run.log``,
+  solve 329.2s, exit 0. Pre-fix column: RE-MEASURED 2026-08-28 on
+  origin/main (cdc38bc8) rather than quoted from the committed 2026-08-09
+  log, because that log predates #682, #698 and #699 — all three touch the
+  MSL port or its extractor — so using it would have compared two code
+  versions as well as two meshes. CPU, solve 1621.2s, exit 0, log
+  ``_06b_notch_uniform_logs/20260828T054132Z_dx80_origin_main_cdc38bc8_
+  run.log``. It reproduces the 2026-08-09 numbers to the printed digits,
+  so the three MSL merges did not move this case:
 
                               dx=80µm      dx=63.5µm    gate
     Notch frequency (rfx)     3.627 GHz    3.627 GHz    --
@@ -111,16 +136,37 @@ Mesh convention (issue #723, 2026-08-27):
     Notch depth |S21|         -34.2 dB     -43.3 dB     < -10 dB
     Re(Z0) median             57.9 Ω       46.5 Ω       (40, 65) Ω
 
-  THE Z0 COLUMN IS THE RESULT, not the notch column. Against
-  Hammerstad-Jensen on the board each mesh actually solves, Re(Z0) goes
-  from +20.9% (57.9 Ω vs HJ(600,254) = 47.90 Ω) to +0.7% (46.5 Ω vs
-  HJ(635,254) = 46.18 Ω) — a 30x reduction in the port-impedance bias.
-  That is exactly what this script's OWN preflight predicted before the
-  change ("+20.2% vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells";
-  ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``), and it lands
-  within 0.9% of that sweep's committed "aligned h_sub/4" row
-  (z0_measured_ohm = 46.098). The notch depth also deepens 9 dB, the
-  resonance being better resolved on an aligned substrate.
+  WHAT THE Z0 ROW MEANS. The mesh now realizes the board that was
+  declared, so the reported Re(Z0) can be read against the DESIGN for the
+  first time: 46.5 Ω vs HJ(600µm, 254µm) = 47.90 Ω, -2.9%. At dx=80µm no
+  such reading existed — that mesh solved a 560µm/320µm board whose own
+  HJ impedance is 57.46 Ω, i.e. the BOARD was 20% off the design, and
+  57.9 Ω was a faithful measurement of the wrong board. The post-fix
+  value also lands within 0.9% of ``msl_z0_bias_floor_sweep``'s committed
+  "aligned h_sub/4" row (z0_measured_ohm = 46.098) — a different line
+  (10mm thru, no stub), so that is an independent cross-check.
+
+  RETRACTED (2026-08-28, #723 review BLOCKING 1). An earlier version of
+  this block said: "Against Hammerstad-Jensen on the board each mesh
+  actually solves, Re(Z0) goes from +20.9% (57.9 Ω vs HJ(600,254) =
+  47.90 Ω) to +0.7% (46.5 Ω vs HJ(635,254) = 46.18 Ω) — a 30x reduction
+  in the port-impedance bias." That applied its own stated rule to the
+  post-fix column only: HJ(600,254) is NOT the board dx=80µm solves.
+  Measured (``sim.fidelity_report()`` on this script's own ``_build_sim``,
+  metadata only): dx=80µm realizes substrate 320.0µm and trace 560.0µm,
+  and HJ(560µm, 320µm, 3.66) = 57.46 Ω — so the pre-fix measurement is
+  +0.77%, against +0.69% post-fix. On the rule as written the two meshes
+  are the same, and THERE IS NO PORT-ACCURACY IMPROVEMENT TO CLAIM here.
+  The improvement is in BOARD FIDELITY, which is what #723 is about.
+  The same recheck across all six committed ``msl_z0_bias_floor_sweep``
+  points reads -0.38 / -0.18 / -0.24 / -0.13 / +0.20 / +0.13 % against HJ
+  on each point's own realized board — filed as #752, not claimed here.
+  Also retracted with it: the sentence crediting this script's own
+  preflight prediction ("+20.2% vs -7.9% at ~3 cells ..."), which is the
+  same declared-board comparison and cannot vindicate anything.
+  ``tests/test_msl_notch_public_carriers.py::
+  test_z0_anchor_is_the_design_board_not_a_realized_one`` pins the
+  retraction so the 30x framing cannot return silently.
 
   THE NOTCH-FREQUENCY ROW IS BIN-LIMITED and must not be read as
   "unchanged". ``compute_msl_s_matrix(n_freqs=100)`` over the 7 GHz band
@@ -130,6 +176,10 @@ Mesh convention (issue #723, 2026-08-27):
   ANALYTIC reference moving (3.6872 -> 3.6790 GHz as u goes 2.362 ->
   2.500), not a measured shift in rfx's notch. Any future claim about
   this script's notch-frequency accuracy needs a finer sweep first.
+
+  THE NOTCH DEPTH deepens ~9 dB (-34.2 -> -43.3). Board and mesh both
+  changed in one step and no falsifier separates them, so that is
+  recorded, not attributed.
 
   KNOWN LIMITATION, filed as #729 (NOT folded into #723): at every
   ALIGNED dx, ``add_msl_port``'s own cross-section audit
@@ -160,6 +210,38 @@ Mesh convention (issue #723, 2026-08-27):
   extent 600µm, worst face residual 28.5µm (4.75% of the extent)" — the
   expected price of quoting the realized width instead of re-declaring
   W_TRACE on a lattice multiple.
+
+  R5 DISCLOSURE — the rest of the 2026-08-27 run's own warnings, which
+  qualify every number in the table above and are quoted verbatim rather
+  than summarized (``_06b_notch_uniform_logs/20260827T131217Z_run.log``):
+
+    "standing-wave null at the port plane: 9 bins in [3.6273, 7.0000]
+    GHz have |V|,|I| below 10% of band median — wave-split S-parameters
+    are unreliable there"
+
+  That band STARTS at the reported notch (3.627 GHz), so the -43.3 dB
+  depth is read at the edge of the flagged region. A deep notch IS a
+  standing-wave null at the port plane, so this is expected rather than
+  anomalous — but it means the depth is a demonstration that the notch
+  resolves, not a calibrated magnitude.
+
+    "compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 61.02 ohm
+    deviates 34.2% from analytic Hammerstad-Jensen 47.89 ohm at f =
+    3.8818 GHz" / "... 'msl_1' = 39.90 ohm deviates 17.4% ..."
+
+  Those are the argmax-over-bins deviations (+32% / -14% against
+  HJ(635,254) = 46.18 Ω), not the median the gate reads. The gate reads
+  ``np.median(res.Z0[0, :].real)`` — PORT 0 ONLY, median over all 100
+  bins — so the 46.5 Ω headline neither covers port 1 nor bounds the
+  per-bin spread.
+
+    "S-matrix projected onto the passive set (singular values clipped to
+    1): 63 of 100 frequency bins were non-passive as extracted, worst
+    sigma_max = 1.006 at 3.627 GHz"
+
+  The worst bin is the notch bin. 1.006 is inside the documented
+  single-run Yee envelope, and the projection is recorded rather than
+  silent, but the |S| values in the table are post-projection.
 
 Scope:
   - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=

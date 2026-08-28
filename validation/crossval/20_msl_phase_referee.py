@@ -118,24 +118,43 @@ GATED, run-1 -> run-2:
   openEMS self-consistency       0.642   -> 0.8241 deg (3 deg gate)
   rfx self-consistency           0.121   -> 0.1207 deg (3 deg gate)
 
-THE COMPARATOR GOT MORE PHYSICAL, which is the result #723 predicts and
-the reason to prefer the matched board even though one reported metric
-moved the other way (below). openEMS's own |S21| over-unity bias --
-run-1's MEASURED PRECISION field calls it out as "29 of 30 bins read
-|S21|>1.0 (range 1.00076-1.00135 within the gated 3.0-4.5GHz band)" --
-is GONE in the gated band on the matched board: run-2 reads 0.99946 -
-1.00015 in-band (straddling unity instead of sitting entirely above it)
-and 16 of 30 bins over unity band-wide. The 500 MHz outlier survives
-essentially unchanged (1.00872 -> 1.00824), consistent with its own
-documented cause (ill-conditioned three-point extraction at ~0.03 guide
-wavelengths), not with the board.
+WHAT MOVED IN THE COMPARATOR -- MEASURED, WITH THE CONFOUND NAMED.
+openEMS's own |S21| over-unity bias -- run-1's MEASURED PRECISION field
+calls it out as "29 of 30 bins read |S21|>1.0 (range 1.00076-1.00135
+within the gated 3.0-4.5GHz band)" -- is absent from the gated band in
+run-2: 0.99946-1.00015 in-band (2 of the 9 in-band bins over unity,
+against 9 of 9 in run-1), 16 of 30 band-wide, passivity max balance
+1.0237 -> 1.0191. The 500 MHz outlier survives essentially unchanged
+(1.00872 -> 1.00824), consistent with its own documented cause
+(ill-conditioned three-point extraction at ~0.03 guide wavelengths).
+(Recomputed from the two committed artifacts,
+``_20_msl_phase_referee_logs/20260804T055009Z_result.json`` and
+``20260827T102342Z_result.json``, not copied from the run logs.)
+
+ATTRIBUTION IS NOT ESTABLISHED, AND IS NOT CLAIMED. It would be easy to
+write "the boards match, so the comparator got more physical", but this
+edit changed TWO things in Stage B at once and one run-pair cannot
+separate them:
+  1. the board -- h_sub 254um -> 300um;
+  2. the substrate z-MESH, inseparably: ``_stage_b_substrate_z_mesh``
+     lays ``round(h_sub/dx)`` uniform cells over [0, h_sub], so run-1
+     meshed the substrate as 5 x 50.8um against a 50.0um air mesh (a
+     1.6% cell-size step at the substrate/air interface) and run-2
+     meshes it as 6 x 50.0um, matching the air mesh exactly.
+A cell-size step at a material interface is itself a source of small
+magnitude error, so the |S21| change above may belong to (1), to (2), or
+to both. The falsifier that separates them is ONE more Stage B run with
+the board held at h_sub=300um and the step reintroduced (5 x 60.0um).
+It is not run here (openEMS lane, ~78 min of VESSL wall clock), so no
+causal claim is made -- the numbers above are an observation, not a
+mechanism.
 
 REPORTED (not gated) cross-solver comparison, run-1 -> run-2:
   bins with |raw_phase_diff| <= 1 deg      22/30 -> 21/30
   max |raw_phase_diff| in the gated band   0.304 -> 0.342 deg
   bins over 3 deg                          1 (500 MHz, 4.13) -> 2
                                            (500 MHz 5.73, 655 MHz 4.07)
-  beta_ratio_rfx_over_openems (in band)    ~1.003-1.008 -> 1.0085-1.0118
+  beta_ratio_rfx_over_openems (in band)    1.0047-1.0072 -> 1.0085-1.0118
 
 Read honestly: cross-solver phase agreement did NOT improve, and inside
 the claimed 3.0-4.5 GHz band it degraded slightly (0.304 -> 0.342 deg,
@@ -143,13 +162,14 @@ both roughly an order under any gate). Both bins that now exceed 3 deg
 sit at 500 and 655 MHz, inside the sub-1 GHz region this script's own
 claim_scope ALREADY excludes as ill-conditioned -- so the change did not
 move anything the script claims. The beta ratio moving away from 1 is
-the expected direction and is the mechanical evidence that the fix
-landed: only the openEMS side's board changed, a thicker substrate holds
-less field in the dielectric, so eps_eff and beta_openems both drop and
-the rfx/openEMS ratio rises. Run-1's better-looking phase number came
-from two different boards whose errors partly cancelled; that agreement
-was not evidence of anything. No gate is loosened here and none is
-moved -- run-2 is recorded alongside run-1, not in place of it.
+the expected DIRECTION and is a consistency check, not a proof: only the
+openEMS side's board changed, a thicker substrate holds less field in
+the dielectric, so eps_eff and beta_openems drop and the rfx/openEMS
+ratio rises. What run-1's smaller phase difference is NOT is evidence
+about either solver's phase: it was measured between two different
+boards, so its size carried no information about agreement. No gate is
+loosened here and none is moved -- run-2 is recorded alongside run-1,
+not in place of it.
 
 ============================================================================
 DO-NOT-REPEAT (R1/R2 class -- read before choosing a mesh size)
@@ -209,17 +229,21 @@ Consequence, sourced from the fixture's ``meta`` (populated by
     dx=50um exactly, 12 cells) -- the width itself is not what moves
     here; the placement is (next bullet).
   - ``trace_y_lo``/``trace_y_hi`` = ``meta['trace_y_lo_realized_m']`` /
-    ``meta['trace_y_hi_realized_m']`` -- rfx's ACTUAL realized trace
-    bounds, NOT re-derived as ``ly_clear/2 +/- w_trace/2``. Measured:
-    rfx's realized trace centre is 1250.0um, but rfx's realized
-    substrate centre is 1225.0um (both this fixture) -- a 25um
-    (half-cell) offset, because the trace is drawn symmetric about the
-    DECLARED domain centre while the substrate box realizes
-    asymmetrically. Re-deriving Stage B's trace as
-    "substrate-centre +/- width/2" would land Stage B's trace at 1225um
-    -- 25um from where rfx's own trace actually sits. This fix
-    DELIBERATELY copies rfx's off-centre placement onto Stage B instead,
-    so both solvers describe the identical board, asymmetry included.
+    ``meta['trace_y_hi_realized_m']`` instead of the old
+    ``ly_clear/2 +/- B_W_TRACE_M/2``. ON THIS FIXTURE THIS IS A
+    NUMERICAL NO-OP and must not be read as a placement correction
+    (issue #723 review finding): the old expression gives
+    [0.0009500000000000001, 0.00155] m and the fixture's realized bounds
+    are [0.0009499999999999995, 0.0015499999999999984] m -- worst
+    difference 1.5e-18 m (1.5e-15 mm in the unit Stage B builds in),
+    i.e. double round-off. W_TRACE=600um divides dx=50um exactly (12
+    cells) and rfx's realized trace does land on ly_clear/2 here, so
+    nothing moves. It is sourced from the fixture anyway so that a
+    future fixture whose trace does NOT sit on ly_clear/2 cannot diverge
+    in silence -- an invariant carried forward, not a fix applied.
+    THE ONLY SUBSTANTIVE STAGE B GEOMETRY CHANGE IN THIS EDIT IS
+    h_sub 254um -> 300um, and the 6-vs-5 substrate cell count that
+    follows from it.
   - The ``#325``-class drift guard right before ``mesh.AddLine("z",
     z_lines_sub)`` now asserts Stage B's own rasterized substrate cell
     count against ``meta['n_z_sub_realized']`` (rfx's OWN realized cell
@@ -234,10 +258,14 @@ substrate at dx=50um is ALSO what
 fixture's rfx-side producer, a DIFFERENT script/fixture from this one)
 realizes -- that producer carries the identical #723 defect and is
 EXPLICITLY DEFERRED, not fixed, in this change; see its own docstring.
-rfx's realized trace not being centred on rfx's own realized board
-(above) is a rasterization-convention artifact of THIS producer's
-``_build_sim``, not a Stage B bug -- filed for awareness, not action,
-alongside this note.
+Also not fixed and not claimed: rfx's realized trace sits 25um
+(half a cell) off the centre of rfx's OWN realized substrate
+(trace centre 1250.0um, substrate centre 1225.0um -- see
+``build_msl_thru_phase_dx50um_reference.py``'s docstring). That is a
+rasterization-convention artifact of that producer's ``_build_sim``,
+not a Stage B bug, and Stage B's own trace was already at 1250.0um via
+``ly_clear/2``, so nothing about it changed here -- recorded for
+awareness, not action.
 
 Regenerating the committed fixture (a fresh FDTD solve) is NOT required
 just to add the realized-geometry fields above: see
@@ -260,6 +288,16 @@ declared 600um, so the two scripts' closed forms describe two DIFFERENT
 boards even though the test stays numerically green (nothing here
 imports cv06b's ``u``). See that test's own docstring for the correction
 and ``manifest.json``'s matching ``references[0].name`` wording.
+
+The same sweep missed the SUPPORT CONTRACT on its first pass (#723
+review finding) -- these tracked carriers quoted cv06b's dx=80um run as
+current MSL evidence and are corrected in this change too:
+``validation/README.md`` (cv06b row), ``docs/guides/sparameter_support_
+matrix.md`` + ``.json`` (MSL section's analytic-notch bullet /
+``numeric_metrics``), and ``docs/agent/port-selection.mdx`` (MSL row).
+``tests/test_msl_notch_public_carriers.py`` now couples all four to
+cv06b's own ``DX`` constant and its committed run log, so the next mesh
+change reds a test instead of silently rotting the contract.
 
 ============================================================================
 PRECEDENT TICK-LIST (2026-08-03 addendum to ``external_solver_
@@ -1444,12 +1482,14 @@ def _stage_b_layout(fixture: dict) -> dict:
         "ref_plane_shift_port1_m": ref_plane_shift_port1_m,
         "l12_m": l12_m,
         # REALIZED (rasterized) board geometry, issue #723 -- see the
-        # Stage B geometry constants block above. trace_y_lo/hi are
-        # sourced VERBATIM from rfx's own realized bounds (not
-        # re-symmetrized about ly_clear/2), deliberately reproducing
-        # rfx's off-centre trace (realized trace centre 1250.0um vs
-        # realized substrate centre 1225.0um at this fixture) so Stage B
-        # solves the SAME board rfx did, asymmetry included.
+        # Stage B geometry constants block above. h_sub_realized_m is
+        # the substantive one (300um, not the declared 254um).
+        # trace_y_lo/hi are sourced from rfx's own realized bounds
+        # rather than re-derived as ly_clear/2 +/- w/2; at THIS fixture
+        # the two agree to 1.5e-18 m (a numerical no-op -- see the
+        # "Mesh convention" docstring section), so this is an invariant
+        # against a future off-centre fixture, not a correction applied
+        # here.
         "h_sub_realized_m": meta["h_sub_realized_m"],
         "w_trace_realized_m": meta["w_trace_realized_m"],
         "trace_y_lo_realized_m": meta["trace_y_lo_realized_m"],
@@ -1744,11 +1784,13 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     z1 = lz_clear + pml_z_hi  # z=0 is the PEC ground plane (z_lo, no padding)
 
     # REALIZED geometry (issue #723) -- NOT B_H_SUB_M/B_W_TRACE_M (those
-    # are declared-nominal, see the Stage B constants block above) and
-    # NOT re-symmetrized about ly_clear/2.0: trace_y_lo/hi come straight
-    # from rfx's own realized bounds (which already bake in the realized
-    # width) so this board matches rfx's exactly, off-centre trace
-    # included (see "Mesh convention" docstring section).
+    # are declared-nominal, see the Stage B constants block above).
+    # h_sub is what actually changes here: 300um realized, not the
+    # declared 254um. trace_y_lo/hi come from rfx's own realized bounds
+    # instead of ly_clear/2.0 +/- w/2; on THIS fixture that is a
+    # numerical no-op (agrees to 1.5e-18 m) and is kept only so a future
+    # fixture with an off-centre trace cannot diverge in silence (see
+    # the "Mesh convention" docstring section).
     h_sub = layout["h_sub_realized_m"] / unit
     trace_y_lo = layout["trace_y_lo_realized_m"] / unit
     trace_y_hi = layout["trace_y_hi_realized_m"] / unit
