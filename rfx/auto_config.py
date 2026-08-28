@@ -626,6 +626,12 @@ def _make_dz_profile(
     cells = []
     boundary_indices = []  # cell indices at material interfaces
     z_cursor = 0.0
+    # #763: realized feature bounds in cumulative-cell coordinates. The
+    # thirds rule preserves the cell sum on each side of every boundary it
+    # splits, so these coordinates remain cell edges after
+    # ``apply_thirds_rule`` and can be mapped back to index ranges there.
+    feature_bounds = []
+    running = 0.0
 
     for z_lo, z_hi, eps_r in features:
         # Air gap before this feature
@@ -633,6 +639,7 @@ def _make_dz_profile(
         if gap > dx * 0.5:
             n_gap = max(1, int(round(gap / dx)))
             cells.extend([gap / n_gap] * n_gap)
+            running += gap
 
         # Mark the air-to-dielectric boundary
         boundary_indices.append(len(cells))
@@ -645,6 +652,8 @@ def _make_dz_profile(
 
         # Mark the dielectric-to-air boundary
         boundary_indices.append(len(cells))
+        feature_bounds.append((running, running + thickness))
+        running += thickness
         z_cursor = z_hi
 
     # Air above features
@@ -655,8 +664,121 @@ def _make_dz_profile(
     # P3: Apply thirds rule at material interfaces
     cells = apply_thirds_rule(cells, boundary_indices)
 
-    # P2: Enforce smooth grading between regions
-    return smooth_grading(cells, max_ratio=1.3)
+    # P2 + #763: smooth the transitions while (a) preserving every feature
+    # block's cells bit-identically and (b) renormalizing each free (air)
+    # run back to its declared physical length, so the realized profile
+    # keeps every declared interface on a cell edge and the total column
+    # equal to the declared column. Passing the whole array to
+    # ``smooth_grading`` without ``preserve_regions`` inflated the column
+    # (demo fixture: declared 1.754 mm realized as 2.380 mm, substrate-top
+    # interface mid-cell at fraction 0.346) — issue #763.
+    return _smooth_preserving_blocks(cells, feature_bounds, max_ratio=1.3)
+
+
+def _smooth_preserving_blocks(
+    cells: np.ndarray,
+    block_bounds: list[tuple[float, float]],
+    max_ratio: float = 1.3,
+) -> np.ndarray:
+    """Smooth-grade ``cells`` while keeping protected blocks exact (#763).
+
+    ``block_bounds`` are (lo, hi) cumulative-coordinate pairs that MUST lie
+    on cell edges of ``cells``. Each protected block passes through
+    bit-identically. Each free run between blocks is smoothed against the
+    adjacent block edge cells (identical transitions to
+    ``smooth_grading(..., preserve_regions=...)`` on the full array) and
+    then renormalized back to its pre-smoothing length: duplicated
+    plateau (coarse) cells are removed while the run stays at or above its
+    declared length, and the remaining cells are uniformly rescaled by
+    ``f = L_declared / L_run`` (``f <= 1`` since smoothing only inserts).
+    Renormalization touches only free-run cells, so every declared
+    interface coordinate and the total column length are realized exactly
+    (to float64 accumulation, << 1e-12 m).
+    """
+    cells = np.asarray(cells, dtype=float)
+    edges = np.concatenate([[0.0], np.cumsum(cells)])
+
+    # Map block coordinate bounds to index ranges on the post-thirds array.
+    ranges = []
+    for lo, hi in block_bounds:
+        i = int(np.argmin(np.abs(edges - lo)))
+        j = int(np.argmin(np.abs(edges - hi)))
+        if abs(edges[i] - lo) > 1e-12 or abs(edges[j] - hi) > 1e-12:
+            raise AssertionError(
+                f"feature bound ({lo}, {hi}) not on a cell edge "
+                f"(nearest {edges[i]}, {edges[j]}) — thirds rule no longer "
+                "preserves interface edges?"
+            )
+        ranges.append((i, j))
+
+    # Alternating protected / free segments, in order.
+    seg_list: list[tuple[np.ndarray, bool]] = []
+    prev_end = 0
+    for i, j in ranges:
+        if i > prev_end:
+            seg_list.append((cells[prev_end:i], False))
+        seg_list.append((cells[i:j], True))
+        prev_end = j
+    if prev_end < len(cells):
+        seg_list.append((cells[prev_end:], False))
+
+    out: list[np.ndarray] = []
+    for k, (seg, protected) in enumerate(seg_list):
+        if protected or len(seg) == 0:
+            out.append(np.asarray(seg, dtype=float))
+            continue
+
+        length = float(np.sum(seg))
+
+        # Sentinel cells from the neighbouring protected blocks so the
+        # transitions match a full-array smooth_grading with
+        # preserve_regions (the loop there smooths against the block's
+        # edge cell; blocks pass through verbatim, so the edge cell is
+        # exactly the input edge cell).
+        arr = [float(c) for c in seg]
+        lo_off = 0
+        if k > 0 and len(seg_list[k - 1][0]) > 0:
+            arr = [float(seg_list[k - 1][0][-1])] + arr
+            lo_off = 1
+        hi_off = 0
+        if k + 1 < len(seg_list) and len(seg_list[k + 1][0]) > 0:
+            arr = arr + [float(seg_list[k + 1][0][0])]
+            hi_off = 1
+
+        sm = smooth_grading(arr, max_ratio=max_ratio)
+        run = [float(c) for c in
+               (sm[lo_off:len(sm) - hi_off] if hi_off else sm[lo_off:])]
+
+        # Renormalize the free run back to its declared length. First
+        # drop duplicated plateau cells (a cell equal to the run maximum
+        # with an identical neighbour — removing one keeps the grading
+        # smooth) while the run remains at or above the declared length.
+        run_sum = float(np.sum(run))
+        while run_sum > length:
+            v = max(run)
+            if run_sum - v < length:
+                break
+            idx = None
+            for t in range(len(run) - 1):
+                if run[t] == v and run[t + 1] == v:
+                    idx = t
+                    break
+            if idx is None:
+                break
+            del run[idx]
+            run_sum = float(np.sum(run))
+
+        # Uniform rescale (f <= 1). Internal adjacent-cell ratios are
+        # unchanged; only the seam ratio against a protected block edge
+        # moves (the first-contact step, exempt by the preserve_regions
+        # convention). f == 1.0 when smoothing inserted nothing.
+        if run_sum != length and run_sum > 0.0:
+            f = length / run_sum
+            run = [c * f for c in run]
+
+        out.append(np.asarray(run, dtype=float))
+
+    return np.concatenate([o for o in out if len(o)]) if out else cells
 
 
 def apply_thirds_rule(

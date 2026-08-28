@@ -262,7 +262,18 @@ def test_thirds_rule_preserves_total_length():
 
 
 def test_make_dz_profile_applies_thirds_rule():
-    """_make_dz_profile should produce smoothly graded cells at interfaces."""
+    """_make_dz_profile grades smoothly OUTSIDE the protected feature block.
+
+    Re-pinned for issue #763: the pre-fix global max-ratio <= 1.3 held only
+    because smooth_grading smoothed INSIDE the substrate block, which
+    destroyed the declared interface coordinate (issue #763's measured
+    defect). The thirds rule intentionally builds 2/3 -> 1/3 splits (local
+    ratio up to 2.0) inside the block and the preserve_regions convention
+    (tests/test_smooth_grading_preserve.py) exempts in-block and
+    first-contact steps. Ratio discipline is asserted on the free (air)
+    run; the block is asserted to keep the declared interface on a cell
+    edge instead.
+    """
     from rfx.auto_config import _make_dz_profile
     import numpy as np
 
@@ -270,10 +281,20 @@ def test_make_dz_profile_applies_thirds_rule():
     z_features = [(0, 1.6e-3, 4.4)]
     profile = _make_dz_profile(z_features, domain_z=10e-3, dx=2e-3)
 
-    # Check grading: all adjacent ratios should be <= 1.3
-    ratios = profile[1:] / profile[:-1]
+    # #763: the declared interface z=1.6mm lies on a realized cell edge and
+    # the realized column equals the declared column.
+    edges = np.concatenate([[0.0], np.cumsum(profile)])
+    assert np.min(np.abs(edges - 1.6e-3)) <= 1e-12
+    assert abs(float(np.sum(profile)) - 10e-3) <= 1e-12
+
+    # Grading discipline in the free (air) run above the block: <= 1.3.
+    # The first air cell after the block edge is the first-contact step
+    # (exempt), so check ratios strictly inside the air run.
+    blk_end = int(np.argmin(np.abs(edges - 1.6e-3)))
+    air = profile[blk_end:]
+    ratios = air[1:] / air[:-1]
     max_r = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-    assert max_r <= 1.3 + 0.01, f"Max ratio {max_r:.3f} exceeds 1.3"
+    assert max_r <= 1.3 + 0.01, f"Max air-run ratio {max_r:.3f} exceeds 1.3"
 
     # Profile should have more cells than uniform (thirds + grading)
     n_uniform = max(1, int(round(10e-3 / 2e-3)))
