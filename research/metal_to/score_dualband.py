@@ -196,7 +196,10 @@ def _seg_mean_excess(f_mhz, y_db, segments, allowance):
             continue
         x = f_mhz[m].astype(float)
         e = np.maximum(0.0, y_db[m] - allowance)
-        num += float(np.trapezoid(e, x))
+        # numpy>=2.0 renamed trapz -> trapezoid; the deployment container
+        # (nvcr jax:24.10) still ships numpy<2. Same function, same result.
+        _trap = getattr(np, "trapezoid", None) or np.trapz
+        num += float(_trap(e, x))
         den += float(x[-1] - x[0])
     return num / den if den > 0 else 0.0
 
