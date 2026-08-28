@@ -37,6 +37,23 @@ scripts/vessl_msl_beta_rail_e2e_adjudication.yaml (clean-clearance
 geometry + settling/residual dump); it is a NEW experiment, not a
 rerun of this one.
 
+ADJUDICATION RESULT (2026-08-29, VESSL run 369367256766, RTX 4090,
+clean-clearance geometry, settling -46.2 dB, all bins reliable,
+settling-conditioned exit criterion): FALSIFIED again — run A railed at
+2/8 SETTLED bins (8 and 10 GHz), run B railed loudly at 6/8, A-vs-A'
+max d|S11| = 0.0000. Adjudicated reading: these are TRUE detections,
+not detector false positives — run A's fitted |Z0| is 16-34 Ohm across
+ALL bins (railed or not) against the ~47 Ohm physical line, i.e. the
+N-probe fitted Z0/beta lane is the known DIAGNOSTIC-ONLY quantity
+(ledger 2026-08-20: "MSL extractor reports non-physical Z0/eps_eff on
+a real board ... does NOT reach S11"), and the rail flag marks the
+bins where that already-unreliable fit additionally failed to bracket.
+The "correctly-declared run must not rail at all" expectation was the
+wrong half of the falsifier — withdrawn on this evidence; the flag's
+shipped semantics ("scan failed to bracket; do not quote Z0/beta at
+flagged bins") stand. Committed evidence:
+docs/design_notes/issue681_rail_adjudication_report.json.
+
 Run:  python scripts/diagnostics/msl_beta_rail_e2e.py [--out out.json]
 Exit code 0 = all assertions hold.
 """
