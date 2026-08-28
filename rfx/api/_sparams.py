@@ -297,10 +297,11 @@ def _warn_msl_beta_scan_railed(
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
         "reported Z0/beta at those bins are the scan limit, NOT a "
         "measurement (issue #681). S11/S21 are unaffected (they use the "
-        "analytic Z0 anchor). Common cause: the real eps_eff is far from "
+        "analytic Z0 anchor). Common causes: the real eps_eff is far from "
         "the HJ estimate (wrong eps_r_sub / substrate not detected under "
-        "the port). Check the result's beta_railed mask before quoting "
-        "Z0 or beta.",
+        "the port), or a contaminated/under-settled record at those bins "
+        "(check settling_db and the reliable mask). Check the result's "
+        "beta_railed mask before quoting Z0 or beta.",
         stacklevel=2,
     )
 
