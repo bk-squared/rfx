@@ -129,28 +129,19 @@ def _enumerate_emission_sites():
 # change.
 _FROZEN_TOTAL_SITES = 81
 _FROZEN_LITERAL_CODE_COUNT = 53
-_FROZEN_DYNAMIC_SITES = frozenset({
-    # (lineno, enclosing function) -- PreflightIssue(code=getattr(exc,
-    # "code", "uncoded")): the code comes from whatever the caught
-    # ValueError/PreflightConfigError happened to carry, not a literal
-    # at this call site.
-    #
-    # RE-PINNED 2026-08-28 (+30 lines each), NOT a contract change. This
-    # test shipped in cdc38bc8 (#744) already red on main's own tip: the
-    # frozen numbers were measured before #749's in-plane guards added
-    # ~30 lines above these sites in rfx/api/_preflight.py. Verified
-    # main-side, not caused by any branch -- the test fails identically
-    # on an unmodified origin/main checkout. Nothing about the SURFACE
-    # moved: _FROZEN_TOTAL_SITES (81) and _FROZEN_LITERAL_CODE_COUNT (53)
-    # both still pass, and these are the same three sites (two in
-    # preflight, one in preflight_sparameters) at new line numbers.
-    # Pinning ``lineno`` means any edit ABOVE a site reds this test, so
-    # this will recur; keyed differently (slug/enclosing/order) it would
-    # not. Filed separately rather than redesigned here.
-    (1845, "preflight"),
-    (1874, "preflight"),
-    (2024, "preflight_sparameters"),
-})
+# Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
+# number. What this test exists to catch is a new bare ``except`` path
+# emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
+# whose advisory code comes from whatever the caught exception carried
+# rather than a literal slug. That property does not depend on where in
+# the file the site sits, and freezing coordinates made an unrelated
+# insertion above them red the suite: #744 added no emission site at all
+# (total 81 and literal codes 53 both unchanged) yet shifted all three
+# dynamic sites by exactly 30 lines and broke main.
+_FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
+    "preflight": 2,
+    "preflight_sparameters": 1,
+}
 
 
 def test_preflight_emission_site_surface_is_frozen():
@@ -170,14 +161,20 @@ def test_preflight_emission_site_surface_is_frozen():
         "_FROZEN_LITERAL_CODE_COUNT in this file (issue #737/#742) -- a new "
         "code is a new advisory kind that (b)'s classification is about."
     )
-    dynamic = {(lineno, enclosing) for (lineno, _, _, dyn, enclosing) in sites
-               if dyn}
-    assert dynamic == _FROZEN_DYNAMIC_SITES, (
-        f"the dynamic-code (uncoded-at-source) sites are now {sorted(dynamic)}, "
-        f"not the frozen {sorted(_FROZEN_DYNAMIC_SITES)}. Update "
-        "_FROZEN_DYNAMIC_SITES in this file -- a new dynamic-code site "
-        "means preflight()/preflight_sparameters() grew a new bare "
-        "``except`` path with no check-site slug (issue #737/#742)."
+    dynamic_by_fn = {}
+    for (_lineno, _cls, _code, dyn, enclosing) in sites:
+        if dyn:
+            dynamic_by_fn[enclosing] = dynamic_by_fn.get(enclosing, 0) + 1
+    assert dynamic_by_fn == _FROZEN_DYNAMIC_SITES_BY_FUNCTION, (
+        f"the dynamic-code (uncoded-at-source) sites are now "
+        f"{dict(sorted(dynamic_by_fn.items()))}, not the frozen "
+        f"{dict(sorted(_FROZEN_DYNAMIC_SITES_BY_FUNCTION.items()))}. "
+        "Update _FROZEN_DYNAMIC_SITES_BY_FUNCTION in this file -- a new "
+        "dynamic-code site means preflight()/preflight_sparameters() grew "
+        "a new bare ``except`` path with no check-site slug (issue "
+        "#737/#742). Line numbers are deliberately NOT part of this "
+        "freeze: they drift on any insertion above and say nothing about "
+        "the surface."
     )
 
 
