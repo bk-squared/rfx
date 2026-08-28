@@ -21,15 +21,27 @@ At a driven wire port whose gap is connected, through PEC conductors, to a
 known external resistance `R_L`, the *terminal* phasors must satisfy the
 quasi-static circuit law
 
-    r(f) := -V_mid(f) / I_mid(f) = (R_L + jωL_loop) / n_live        (QS)
+    ρ(f) := +V_mid(f) / I_mid(f) = (R_L + jωL_loop) / n_live        (QS)
 
-where `V_mid = -E_c·d` and `I_mid` (Ampère loop) are the sampled per-cell
-quantities at the port's mid cell, `n_live` is the number of live wire
-cells (the per-cell V is 1/n_live of the whole-column V by symmetry of
-identical cells), and `L_loop` is the small loop inductance (est. < 10 nH,
-i.e. |ωL| < ~3 Ω at 0.1 GHz). Hence at the lowest bins:
+where `V_mid = -E_c·d` and `I_mid` (Ampère loop, right-handed about the
+component axis — the repo convention under which a PASSIVE port cell reads
+`-V/I = +Z`) are the sampled per-cell quantities at the port's mid cell,
+`n_live` is the number of live wire cells (the per-cell V is 1/n_live of
+the whole-column V by symmetry of identical cells), and `L_loop` is the
+small loop inductance (est. < 10 nH, i.e. |ωL| < ~3 Ω at 0.1 GHz). Hence
+at the lowest bins:
 
-    Re r(f_low) · n_live = R_L,   independent of the driven port's own Z0.
+    Re ρ(f_low) · n_live = R_L,   independent of the driven port's own Z0.
+
+Sign note (amended pre-measurement, before the harness existed; the first
+draft wrote `-V/I` here by analogy with the passive-port convention, which
+is WRONG for this loop): both columns are sampled with the same +z
+orientation, while the loop current runs UP one column and DOWN the other,
+so `I_drv = -I_load`; KVL around the PEC loop gives per-cell
+`V_drv = V_load`, and the passive load column obeys the repo-verified
+oracle `V_load = -(R_L/n_live)·I_load`. Substituting:
+`V_drv = +(R_L/n_live)·I_drv`, i.e. the decision quantity is
+`ρ = +V/I` with POSITIVE slope `1/n_live` in `R_L`.
 
 Derivation: KCL at the port face makes the Ampère-loop `I` the series loop
 current; KVL around the PEC loop (PEC edges contribute no EMF, quasi-static
@@ -134,8 +146,9 @@ decide.
 
 ## 6. Pre-declared decision falsifiers
 
-For each arm, least-squares fit `Re r(f1)` against `R_L` over the six sweep
-points, `r = -v_dft/i_dft` at the driven mid cell: slope `a`, intercept `b`.
+For each arm, least-squares fit `Re ρ(f1)` against `R_L` over the six sweep
+points, `ρ = +v_dft/i_dft` at the driven mid cell (§2 sign note): slope
+`a`, intercept `b`.
 
 - An arm **PASSES the circuit law** iff `n_live·a ∈ [0.90, 1.10]` AND
   `n_live·|b| ≤ 10 Ω`.
@@ -162,7 +175,12 @@ update `E^{n+1} = Ca·E^n + Cb·(curlH)^{n+1/2} + W^n`, all three sampled
 quantities stamped `t = n·dt` by the accumulators, zero initial field,
 decayed tail):
 
-    (1 − Ca·e^{+jω dt})·Ê(f) − Cb·Î(f)/A_dual − Ŵ(f) ≈ 0,  Ê = −V̂/d
+    (1 − Ca·e^{−jω dt})·Ê(f) − Cb·Î(f)/A_dual − Ŵ(f) ≈ 0,  Ê = −V̂/d
+
+(the shift factor is `e^{−jω dt}`: the accumulators stamp `E^{n+1}` with
+phase `e^{−jω n dt}`, so `Σ E^n e^{−jωn dt} = e^{−jω dt}·Σ E^{n+1}
+e^{−jω n dt}` for a zero-initial, fully decayed signal; corrected
+pre-measurement together with the §2 sign note)
 
 with Ca, Cb built from the mid-cell ε and σ (port σ included). Report the
 relative residual `|LHS| / |Cb·Î/A_dual|` for both arms at f1, f2. Expected:

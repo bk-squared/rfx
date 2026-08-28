@@ -1985,6 +1985,12 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
 
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)
+        # Raw per-port (v_dft, i_dft, v_inc_dft) accumulators, surfaced for
+        # the issue #683 decision harness (mirrors what the uniform lane
+        # already exposes via forward(port_s11_freqs=...)). PURE ADD: no
+        # existing key changes, and the sampling ORDER above is untouched —
+        # #683 stays open until its decision experiment lands.
+        result["wire_sparams_raw"] = tuple(final["wire_sparams"])
 
     return result
 
