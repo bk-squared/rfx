@@ -211,7 +211,8 @@ What the change buys, and what it costs:
     are dominated by the reference-plane convention offset — 13 of 21
     S11 bins are masked nulls and the gate is 60 deg for exactly that
     reason — so the cutoff correction barely reaches them, while the
-    aperture trim's change to the mode normalization does.
+    aperture trim does. Which term inside the trim moves them is not
+    instrumented; see the passivity note.
   An earlier revision of this docstring said "the phase residuals
   collapse". Measured against a live main run that is true of the
   pec-short round-trip leg only.
