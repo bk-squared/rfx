@@ -134,9 +134,26 @@ _FROZEN_DYNAMIC_SITES = frozenset({
     # "code", "uncoded")): the code comes from whatever the caught
     # ValueError/PreflightConfigError happened to carry, not a literal
     # at this call site.
-    (1815, "preflight"),
-    (1844, "preflight"),
-    (1994, "preflight_sparameters"),
+    #
+    # Re-frozen 2026-08-28 (was 1815/1844/1994). These are LINE numbers, so
+    # they move when anything above them grows -- and that is what happened:
+    # #749 (4c0a4326, in-plane preflight guards) added 30 lines above the
+    # first site, and this constant was computed on a tree that predated it,
+    # so the values landed on main already stale and every PR went red on
+    # this assert. Measured with the AST walk above over three revisions of
+    # rfx/api/_preflight.py:
+    #
+    #   4c0a4326~1 (pre-#749) : total 81, dynamic 1815 / 1844 / 1994
+    #   1d4a241d   (post-#749): total 81, dynamic 1845 / 1874 / 2024
+    #   cdc38bc8   (main)     : total 81, dynamic 1845 / 1874 / 2024
+    #
+    # total stays 81 and _FROZEN_LITERAL_CODE_COUNT still passes across all
+    # three, so the emission SURFACE never changed -- only its position did.
+    # This is a positional re-freeze, not a widening: same three sites, same
+    # two enclosing functions, nothing gained an untracked except path.
+    (1845, "preflight"),
+    (1874, "preflight"),
+    (2024, "preflight_sparameters"),
 })
 
 
