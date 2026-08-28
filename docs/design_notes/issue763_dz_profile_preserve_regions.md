@@ -93,3 +93,49 @@ measured +6.58%; uniform-z control 1.14%). One attempt, no re-rolls.
 This validates the FIX only. The efficiency demo's F5/F6 verdicts
 (z-savings 1.54x < 2.0, z-cost 1.78x >= 1.0, thirds-rule dt penalty) are
 UNAFFECTED by this fix and that demo stays STOPPED.
+
+---
+
+## Results (appended AFTER the measurements; no threshold above was changed)
+
+Profile-level falsifiers, measured post-fix (tests/test_auto_dz_profile_preserve.py):
+
+- (a) HELD: demo-fixture substrate-top edge distance = 0.0 m (<= 1e-12 m).
+- (b) HELD: post-thirds block [63.5, 63.5, 63.5, 42.333, 21.167] um passes
+  through bit-identically (np.array_equal); dz_min unchanged at 21.167 um,
+  so the demo dt is unchanged.
+- (c) HELD: sum(dz) = 1.754 mm, |err| = 4.3e-19 m (<= 1e-12 m); nz 24 -> 19.
+- Generic two-layer fixture: all four interfaces within 2.2e-19 m of the
+  declaration, total exact.
+- Revert-proof: with the fix stashed, the falsifier tests fail on the
+  pre-fix builder (fraction 0.3462 / 2.3800 mm reproduced).
+
+Impact sweep: NU battery (nonuniform/auto_config/mesh_planner, not
+gpu/slow) 253 passed; auto-profile consumers + preflight NU tests 328
+passed; MSL battery subset 100 passed + 1 pre-existing xfail. Exactly ONE
+locked value moved: test_make_dz_profile_applies_thirds_rule's global
+max-ratio <= 1.3, re-pinned to free-run-only with provenance (commit
+6973459) — the in-block 2/3 -> 1/3 thirds splits are the declaration's
+own construction and smoothing them away was the defect.
+
+FDTD A/B (one attempt, run after this note's threshold was committed;
+docs/design_notes/issue763_fix_ab_results.json, script byte-identical to
+agent/graded-z-lowz-demo @ 11c65c0):
+
+- Graded arm B (production profile, fixed): median |Z0 err| = 3.33 %
+  < 5 % envelope -> the pre-declared A/B falsifier HELD (pre-fix measured
+  +6.58 %, F3 fired). Uniform control arm A: 1.27 %. F1/F2/F4 held on
+  both arms; settling precondition OK.
+- Realized graded column 1.754 mm (= declared), nz_B = 19,
+  dz_min = 21.167 um (unchanged, so arm-B dt is unchanged).
+- As pre-declared: F5 (z-cell ratio 1.47 < 2.0) and F6 (z-cost ratio
+  1.86 >= 1.0) STILL FIRE — the fix does not rescue the efficiency
+  claim; the graded-z efficiency demo stays STOPPED.
+
+Observed side finding (NOT addressed here, same declared-vs-realized
+family as #745, preflight edition): the MSL-port preflight substrate-cell
+and mixed-cell-danger-zone checks evaluate h_sub against the UNIFORM dx
+(190.5 um -> "1 substrate cell", "h_sub/dx = 1.333") on both arms, even
+though arm A's realized z-mesh is exactly aligned (dz = h_sub/4) and arm
+B's realized interface is now on a cell edge. The realized-profile-aware
+version of these checks is follow-up material.
