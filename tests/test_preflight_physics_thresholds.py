@@ -225,14 +225,24 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
 
 def test_wg_port_evanescent_no_warning_below_threshold():
     """freqs up to 6.5 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
-    threshold=0.90×7.5=6.75 GHz → 6.5 < 6.75, no evanescent warning."""
+    threshold=0.90×7.5=6.75 GHz → 6.5 < 6.75, no evanescent warning.
+
+    dx=0.002 (not the original 0.003): issue #738 made the 0.90×fc_next
+    margin heuristic read the RASTERIZED guide, and at dx=0.003 this
+    fixture's declared 40×20 mm guide rasterizes to 42×21 mm (dx=0.003
+    does not divide either), moving fc_TE20 to 7.138 GHz and the
+    threshold to 6.424 GHz — which 6.5 GHz then exceeds. This is a
+    fixture repair, not a gate move: at dx=0.002 the guide rasterizes to
+    exactly 40×20 mm (declared == aperture == guide), so the checker
+    reproduces the docstring's original 7.5/6.75 GHz verdict unchanged.
+    """
     import jax.numpy as jnp
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        dx=0.003,
+        dx=0.002,
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -245,21 +255,24 @@ def test_wg_port_evanescent_no_warning_below_threshold():
         freqs=jnp.linspace(5e9, 6.5e9, 4), f0=6e9, bandwidth=0.5,
     )
     issues = _issues(sim)
-    assert not _has(issues, "evanescent"), (
+    assert not any(getattr(i, "code", None) == "port_evanescent" for i in issues), (
         f"6.5 GHz < 0.90×fc_TE20=6.75 GHz should not warn; issues: {issues!r}"
     )
 
 
 def test_wg_port_evanescent_warns_above_threshold():
     """freqs up to 7.0 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
-    threshold=0.90×7.5=6.75 GHz → 7.0 > 6.75, evanescent warning must fire."""
+    threshold=0.90×7.5=6.75 GHz → 7.0 > 6.75, evanescent warning must fire.
+
+    dx=0.002, see the sibling test above for why (issue #738 fixture
+    repair, not a gate move)."""
     import jax.numpy as jnp
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        dx=0.003,
+        dx=0.002,
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -272,7 +285,12 @@ def test_wg_port_evanescent_warns_above_threshold():
         freqs=jnp.linspace(5e9, 7.0e9, 4), f0=6e9, bandwidth=0.5,
     )
     issues = _issues(sim)
-    assert _has(issues, "contamination"), (
-        f"7.0 GHz > 0.90×fc_next must trigger evanescent contamination warning; "
+    # Issue #738 review: `_has(issues, "contamination")` (a prose
+    # substring match) is the same fragile-substring failure mode this
+    # issue exists to catch — `_has(issues, "evanescent")` silently could
+    # not match "Evanescent {label} contamination" (case-sensitive E vs
+    # e). Assert on the structured code instead.
+    assert any(getattr(i, "code", None) == "port_evanescent" for i in issues), (
+        f"7.0 GHz > 0.90×fc_next must trigger a port_evanescent finding; "
         f"issues: {issues!r}"
     )

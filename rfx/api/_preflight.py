@@ -1643,16 +1643,159 @@ class _PreflightMixin:
                         stacklevel=4,
                     )
 
-    def _check_waveguide_port_evanescent(self) -> None:
-        """Warn when measurement frequencies exceed 0.90 × fc_next for any port.
+    def _port_transverse_spans(
+        self, entry, grid,
+    ) -> dict[str, tuple[float, float | None, float, str | None]]:
+        """Per transverse axis: (declared, aperture, guide, error) for one port.
 
-        At f/fc_next > 0.90 the evanescent decay constant is short enough
-        that the next higher mode leaks into the single-mode extractor.
-        Empirically (40 mm × 20 mm guide, 74 mm port-short spacing):
-          f/fc_next = 0.87 → 0.3 % contamination — acceptable for |S11| gate 0.99
-          f/fc_next = 0.93 → 1.5 % contamination — registers as |S11| < 1
+        Issue #738 (family #737): three related but distinct numbers.
+        Lead-measured on ``examples/inverse_design/differentiable_s11_design.py``
+        (dx=2 mm, declared WR-90 a=22.860 mm): declared 22.860 / aperture
+        22.000 / guide 24.000 mm, and the checks below used to read only
+        the first.
 
-        Uses port.freqs (measurement freqs) when set; falls back to freq_max.
+        - ``declared``: what the config states — ``entry.{axis}_range``
+          width, or the full axis domain when the range is left unset.
+        - ``aperture``: what :meth:`_range_to_slice` resolves on THIS
+          grid — the identical call :meth:`_build_waveguide_port_config`
+          makes to build ``WaveguidePort.a``/``.b``, i.e. exactly the
+          mode-template / cutoff dimension the solve uses. ``None`` when
+          the range does not resolve to a valid slice at all
+          (:meth:`_range_to_slice` raises — the run would fail to
+          compile).
+        - ``guide``: the rasterized extent of the full transverse axis,
+          ``(n_interior - 1) * dx`` — which higher-order modes the guide
+          the port sits in can physically support, independent of the
+          port's own aperture. This is what the 0.90 x fc_next margin
+          heuristic in :meth:`_check_waveguide_port_evanescent` must be
+          evaluated against.
+
+        ``aperture`` and ``guide`` can each land on either side of
+        ``declared`` — :meth:`_range_to_slice`'s explicit branch rounds
+        range endpoints to the nearest cell, so an aperture can snap
+        above OR below the declared width depending on which side of a
+        half-cell the endpoints fall (see the round-up case in
+        ``tests/test_port_aperture_rasterization.py``); ``guide`` is
+        ``ceil``-sized so it never falls below the domain it rasterizes.
+
+        On a conformal (Dey-Mittra) axis the wall sits at the exact
+        declared coordinate via a fractional-cell eps_correction
+        (``tests/test_subpixel_pec.py``, "Stage 1 step 3"), not the
+        ``(n-1)*dx`` staircase — disclosed, unmeasured non-regression:
+        ``guide`` there stays the declared domain extent, matching
+        today's behavior.
+        """
+        normal = entry.direction[1]
+        out: dict[str, tuple[float, float | None, float, str | None]] = {}
+        conformal = (self._boundary_spec.conformal_faces()
+                     if self._boundary_spec is not None else set())
+        for axis_name in "xyz":
+            if axis_name == normal:
+                continue
+            axis_idx = "xyz".index(axis_name)
+            value_range = getattr(entry, f"{axis_name}_range")
+            n_axis = (grid.nx, grid.ny, grid.nz)[axis_idx]
+            pad_lo = grid.face_pads[2 * axis_idx]
+            pad_hi = grid.face_pads[2 * axis_idx + 1]
+            if f"{axis_name}_lo" in conformal and f"{axis_name}_hi" in conformal:
+                guide = float(self._domain[axis_idx])
+            else:
+                guide = float((n_axis - pad_lo - pad_hi - 1) * grid.dx)
+            declared = (float(value_range[1] - value_range[0])
+                        if value_range is not None
+                        else float(self._domain[axis_idx]))
+            try:
+                _, aperture = self._range_to_slice(
+                    value_range, self._domain[axis_idx], grid.dx, n_axis,
+                    grid.axis_pads[axis_idx],
+                )
+            except ValueError as exc:
+                # _range_to_slice raises at COMPILE time on an
+                # unrasterizable range; preflight(strict=False) is
+                # contracted to COLLECT findings, never crash, so this
+                # records the failure instead of propagating it.
+                out[axis_name] = (declared, None, guide, str(exc))
+                continue
+            out[axis_name] = (declared, float(aperture), guide, None)
+        return out
+
+    def _check_waveguide_port_aperture_snap(self) -> None:
+        """Warn when the DECLARED port aperture is not what the grid rasterizes.
+
+        Issue #738 (family #737): see :meth:`_port_transverse_spans` for
+        the (declared, aperture, guide) triple this classifies. Fires
+        whenever any two of the three disagree for a waveguide port.
+
+        ``aperture == declared`` but ``guide != declared`` is issue #729
+        site 2: :meth:`_range_to_slice`'s ``value_range is None`` branch
+        returns ``domain_max`` (the declared value) rather than the
+        rasterized ``(n-1)*dx`` its own explicit branch uses — a
+        pre-existing, still-open gap deliberately NOT fixed here (blast
+        radius: 122 callers). The message names it explicitly so this
+        reads as a known, disclosed issue rather than a new one.
+        """
+        import warnings as _w
+
+        if not self._waveguide_ports:
+            return
+        grid = self._build_grid()
+        for entry in self._waveguide_ports:
+            spans = self._port_transverse_spans(entry, grid)
+            for axis_name, (declared, aperture, guide, err) in sorted(spans.items()):
+                if aperture is None:
+                    _w.warn(
+                        PreflightWarning(
+                            f"Waveguide port '{entry.name}': declared "
+                            f"{axis_name}-width {declared * 1e3:.4f} mm does "
+                            f"not rasterize to a valid aperture on this grid "
+                            f"(dx={grid.dx * 1e3:.4f} mm): {err}. This range "
+                            f"is rejected by the compiler — the run would "
+                            f"fail before stepping.",
+                            code="port_aperture_unrasterizable",
+                            source="_check_waveguide_port_aperture_snap",
+                            severity="error",
+                        ),
+                        stacklevel=4,
+                    )
+                    continue
+                if abs(declared - aperture) <= 1e-12 and abs(declared - guide) <= 1e-12:
+                    continue
+                is_guide_snap = abs(declared - aperture) <= 1e-12
+                note = (
+                    " This axis has no explicit range: this is issue #729 "
+                    "site 2 (the None-range branch of _range_to_slice "
+                    "returns the declared domain rather than the rasterized "
+                    "guide), left open by design in this fix — not a new "
+                    "defect."
+                    if is_guide_snap else ""
+                )
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': declared "
+                        f"{axis_name}-width {declared * 1e3:.4f} mm is not "
+                        f"what this grid rasterizes "
+                        f"(dx={grid.dx * 1e3:.4f} mm). The solve uses "
+                        f"aperture {aperture * 1e3:.4f} mm for the mode "
+                        f"template and cutoff, inside a rasterized guide of "
+                        f"{guide * 1e3:.4f} mm. Cutoffs, |S| references, and "
+                        f"any analytic comparison computed from "
+                        f"{declared * 1e3:.4f} mm describe a structure this "
+                        f"run does not solve.{note} Choose dx so it divides "
+                        f"the declared width, or declare the width the grid "
+                        f"can represent.",
+                        code="port_aperture_snap",
+                        source="_check_waveguide_port_aperture_snap",
+                    ),
+                    stacklevel=4,
+                )
+
+    def _check_waveguide_port_evanescent_declared_geometry(self) -> None:
+        """Pre-#738 behavior: cutoffs from the DECLARED geometry only.
+
+        Kept as the non-uniform-mesh fallback (see
+        :meth:`_check_waveguide_port_evanescent`) — disclosed, unmeasured
+        non-regression, not this issue's fix surface. Identical to the
+        pre-fix ``_check_waveguide_port_evanescent`` body.
         """
         import warnings as _w
 
@@ -1685,12 +1828,6 @@ class _PreflightMixin:
 
             fc_excited = _fc(m0, n0)
 
-            # --- LOWER bound (issue #150): source center / measurement bins
-            # at or below the excited mode's own cutoff. Below fc the launch
-            # is evanescent and near-cutoff content crawls at vanishing group
-            # velocity: the extracted S is junk that GROWS with n_steps (the
-            # in-band incident reference sits in the source spectral tail),
-            # and below-cutoff DFT bins additionally NaN the gradient.
             if entry.freqs is not None:
                 f_arr = np.asarray(entry.freqs, dtype=float)
                 f_min = float(f_arr.min())
@@ -1766,6 +1903,187 @@ class _PreflightMixin:
                         f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
                         f"{threshold / 1e9:.3f} GHz "
                         f"(fc_{entry.mode_type}{m0}{n0}={fc_excited / 1e9:.3f} GHz, "
+                        f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
+                        f"Evanescent {next_label} contamination may exceed 1 % and "
+                        f"registers as |S11| < 1 in a lossless structure. "
+                        f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
+                        f"or increase port-to-obstacle distance.",
+                        code="port_evanescent",
+                        source="_check_waveguide_port_evanescent",
+                    ),
+                    stacklevel=4,
+                )
+
+    def _check_waveguide_port_evanescent(self) -> None:
+        """Warn when measurement frequencies cross a cutoff on the
+        RASTERIZED grid, not the declared geometry.
+
+        Issue #738 (family #737): this used to derive its ``a``/``b``
+        from ``entry.*_range`` / ``self._domain`` — both DECLARED
+        numbers — never consulting the grid the solve actually builds.
+        Lead-measured on
+        ``examples/inverse_design/differentiable_s11_design.py`` (dx=2mm,
+        declared WR-90 a=22.860 mm): declared 22.860 / aperture 22.000 /
+        guide 24.000 mm coexist, and this check saw only the first —
+        11.5 GHz clears 0.90*fc_next on the declared 22.860 mm guide
+        (11.803 GHz) and violates it on the rasterized 24.000 mm one
+        (11.242 GHz).
+
+        Now uses :meth:`_port_transverse_spans` for both:
+        - the #150 lower-bound checks (source / measurement at-or-below
+          cutoff) are evaluated on the APERTURE, since that is the
+          literal dimension ``WaveguidePort.a``/``.b`` feed
+          ``_compute_beta`` and the mode template — this aligns the gate
+          with what is actually solved rather than loosening it; the
+          aperture can snap to either side of the declared width (see
+          the round-up case in
+          ``tests/test_port_aperture_rasterization.py``), so this is not
+          a one-directional relaxation.
+        - the 0.90 x fc_next margin heuristic is evaluated on the
+          rasterized GUIDE, since that determines which higher-order
+          modes physically exist in the structure being solved. This is
+          a violation of the heuristic on the REALIZED guide, not a
+          claim that a higher mode is actually propagating — see
+          :meth:`_port_transverse_spans`.
+
+        At f/fc_next > 0.90 the evanescent decay constant is short enough
+        that the next higher mode leaks into the single-mode extractor.
+        Empirically (40 mm × 20 mm guide, 74 mm port-short spacing):
+          f/fc_next = 0.87 → 0.3 % contamination — acceptable for |S11| gate 0.99
+          f/fc_next = 0.93 → 1.5 % contamination — registers as |S11| < 1
+
+        Uses port.freqs (measurement freqs) when set; falls back to freq_max.
+
+        Non-uniform mesh (``_dx_profile``/``_dy_profile``/``_dz_profile``
+        set): disclosed, unmeasured non-regression — falls back to
+        :meth:`_check_waveguide_port_evanescent_declared_geometry` (the
+        pre-#738 declared-geometry behavior) rather than rasterizing a
+        non-uniform profile here; #738 does not extend to NU.
+        """
+        import warnings as _w
+
+        if not self._waveguide_ports:
+            return
+
+        if (self._dx_profile is not None or self._dy_profile is not None
+                or self._dz_profile is not None):
+            self._check_waveguide_port_evanescent_declared_geometry()
+            return
+
+        self._check_waveguide_port_aperture_snap()
+        grid = self._build_grid()
+
+        for entry in self._waveguide_ports:
+            spans = self._port_transverse_spans(entry, grid)
+            axes = sorted(spans)
+            # UNRASTERIZABLE (aperture=None) must not silence the cutoff
+            # checks below: fall back to the guide, which is always
+            # defined. Measured regression: without this fallback, the
+            # committed fixture
+            # tests/test_interop_design_document.py::
+            # _waveguide_with_dispersive_slab LOST its port_evanescent /
+            # port_source_below_cutoff findings entirely.
+            ap = [spans[ax][1] if spans[ax][1] is not None else spans[ax][2]
+                  for ax in axes]
+            gd = [spans[ax][2] for ax in axes]
+            a_ap, b_ap = max(ap), min(ap)
+            a_gd, b_gd = max(gd), min(gd)
+            if a_ap <= 0 or b_ap <= 0 or a_gd <= 0 or b_gd <= 0:
+                continue
+
+            m0, n0 = entry.mode
+
+            def _fc_ap(m, n, _a=a_ap, _b=b_ap):
+                return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
+
+            def _fc_gd(m, n, _a=a_gd, _b=b_gd):
+                return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
+
+            fc_excited = _fc_ap(m0, n0)
+
+            # --- LOWER bound (issue #150): source center / measurement bins
+            # at or below the excited mode's own cutoff. Below fc the launch
+            # is evanescent and near-cutoff content crawls at vanishing group
+            # velocity: the extracted S is junk that GROWS with n_steps (the
+            # in-band incident reference sits in the source spectral tail),
+            # and below-cutoff DFT bins additionally NaN the gradient.
+            if entry.freqs is not None:
+                f_arr = np.asarray(entry.freqs, dtype=float)
+                f_min = float(f_arr.min())
+                band_center = float((f_arr.min() + f_arr.max()) / 2.0)
+            else:
+                f_min = None
+                band_center = self._freq_max / 2.0
+            f0_resolved = entry.f0 if entry.f0 is not None else band_center
+            if f0_resolved <= fc_excited:
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': source center "
+                        f"f0={f0_resolved / 1e9:.3f} GHz is at or below the "
+                        f"{entry.mode_type}{m0}{n0} cutoff "
+                        f"fc={fc_excited / 1e9:.3f} GHz"
+                        f"{' (defaulted from the measurement band)' if entry.f0 is None else ''}. "
+                        f"The launch is evanescent — extracted S-parameters are "
+                        f"physically meaningless and grow with n_steps. Set "
+                        f"f0 well above fc (e.g. the center of the measurement "
+                        f"band).",
+                        code="port_source_below_cutoff",
+                        source="_check_waveguide_port_evanescent",
+                    ),
+                    stacklevel=4,
+                )
+            if f_min is not None and f_min <= fc_excited:
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': minimum measurement "
+                        f"frequency {f_min / 1e9:.3f} GHz is at or below the "
+                        f"{entry.mode_type}{m0}{n0} cutoff "
+                        f"fc={fc_excited / 1e9:.3f} GHz. Below-cutoff bins "
+                        f"produce junk S-parameters and NaN gradients under "
+                        f"jax.grad. Restrict freqs to f > fc.",
+                        code="port_freqs_below_cutoff",
+                        source="_check_waveguide_port_evanescent",
+                    ),
+                    stacklevel=4,
+                )
+
+            fc_excited_gd = _fc_gd(m0, n0)
+            fc_next = min(
+                (
+                    _fc_gd(m, n)
+                    for m in range(0, 4)
+                    for n in range(0, 4)
+                    if not (m == 0 and n == 0)
+                    and not (m == m0 and n == n0)
+                    and _fc_gd(m, n) > fc_excited_gd * (1 + 1e-6)
+                ),
+                default=None,
+            )
+            if fc_next is None:
+                continue
+
+            if entry.freqs is not None:
+                f_check = float(np.max(np.asarray(entry.freqs)))
+            else:
+                f_check = self._freq_max
+
+            threshold = 0.90 * fc_next
+            if f_check > threshold:
+                mn_next = min(
+                    ((m, n) for m in range(0, 4) for n in range(0, 4)
+                     if not (m == 0 and n == 0) and not (m == m0 and n == n0)
+                     and abs(_fc_gd(m, n) - fc_next) < 1.0),
+                    default=(None, None),
+                )
+                next_label = (f"TE{mn_next[0]}{mn_next[1]}"
+                              if mn_next[0] is not None else "next")
+                _w.warn(
+                    PreflightWarning(
+                        f"Waveguide port '{entry.name}': max measurement frequency "
+                        f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
+                        f"{threshold / 1e9:.3f} GHz on the RASTERIZED guide "
+                        f"({a_gd * 1e3:.4f} × {b_gd * 1e3:.4f} mm) "
+                        f"(fc_{entry.mode_type}{m0}{n0}={fc_excited_gd / 1e9:.3f} GHz, "
                         f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
                         f"Evanescent {next_label} contamination may exceed 1 % and "
                         f"registers as |S11| < 1 in a lossless structure. "
