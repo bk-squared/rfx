@@ -134,9 +134,22 @@ _FROZEN_DYNAMIC_SITES = frozenset({
     # "code", "uncoded")): the code comes from whatever the caught
     # ValueError/PreflightConfigError happened to carry, not a literal
     # at this call site.
-    (1815, "preflight"),
-    (1844, "preflight"),
-    (1994, "preflight_sparameters"),
+    #
+    # RE-PINNED 2026-08-28 (+30 lines each), NOT a contract change. This
+    # test shipped in cdc38bc8 (#744) already red on main's own tip: the
+    # frozen numbers were measured before #749's in-plane guards added
+    # ~30 lines above these sites in rfx/api/_preflight.py. Verified
+    # main-side, not caused by any branch -- the test fails identically
+    # on an unmodified origin/main checkout. Nothing about the SURFACE
+    # moved: _FROZEN_TOTAL_SITES (81) and _FROZEN_LITERAL_CODE_COUNT (53)
+    # both still pass, and these are the same three sites (two in
+    # preflight, one in preflight_sparameters) at new line numbers.
+    # Pinning ``lineno`` means any edit ABOVE a site reds this test, so
+    # this will recur; keyed differently (slug/enclosing/order) it would
+    # not. Filed separately rather than redesigned here.
+    (1845, "preflight"),
+    (1874, "preflight"),
+    (2024, "preflight_sparameters"),
 })
 
 
