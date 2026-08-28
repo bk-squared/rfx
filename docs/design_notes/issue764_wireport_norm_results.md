@@ -164,10 +164,35 @@ uniform-flip attempt:
   fallback) is byte-frozen; the #313 refplane decomposer diagonals are
   byte-frozen; the vinc channel and `extract_s11_normalised` are
   untouched.
-- Uniform-lane driven-diagonal value locks re-pinned in this branch
-  (the slow_physics THRU battery diagonals, if moved) are regression
-  locks on the PRE-ordered interim values, not validated physics, until
-  the #683 flip lands — each carries that label in-file.
+- Uniform-lane driven-diagonal gates keyed to the #683 flip, measured
+  and re-pinned in this branch (each carries the keyed label in-file;
+  every one must be restored to its physical form when the flip lands):
+    1. `tests/test_run_forward_s11_contract.py::test_run_s11_is_passive_both_boundaries`
+       — xfail(strict) keyed; interim measured max|S11| 1.348 (cpml) /
+       4.034 (pec).
+    2. `tests/test_wire_sparam.py::test_wire_port_jit_scan_s11_passivity`
+       — xfail(strict) keyed; interim measured max|S11| 5.769.
+    3. `tests/test_lumped_wire_sparam_cpml_dielectric.py::test_wire_port_sparam_cpml_dielectric_finite_passive`
+       — passivity bound suspended, interim envelope 6.1968*1.10; the
+       #203 finiteness guard stays live.
+    4. `tests/test_lumped_twoport_vi_validation_battery.py::test_thru_s11_floor`
+       (slow_physics) — physical floor 0.12 suspended; interim envelope
+       2.8068 +/- 5% (per-bin |S11| 2.62-2.81); alive floor kept.
+    5. `tests/test_lumped_twoport_vi_validation_battery.py::test_thru_passivity_singular_values`
+       (slow_physics) — physical bound 0.85 suspended; interim envelope
+       3.2061 +/- 5%.
+  WHY these red pre-flip: the whole-port driven V on PRE samples is
+  contaminated at order 1; the legacy formula stayed "passive" on these
+  fixtures only because it is the passive-branch sense applied to a
+  driven port (reciprocal class), not because it measured the load.
+  The slow_physics THRU OFF-DIAGONAL locks (|S21| band, |S21-S12|
+  reciprocity, S21 phase sign, DC anchor) stay green un-edited — the
+  decomposer's #308 receive path is untouched, confirming the
+  adversarial review's scoping (the 2026-08-29 evidence: flipping
+  ordering broke them; changing only the diagonal does not).
+- Mechanical unpack widens (values byte-identical, NOT lock moves):
+  `tests/test_nu_wire_port_lane_parity.py` raw-ratio test,
+  `tests/test_wire_port_sparams_forward.py`.
 
 ## 6. Open items forwarded
 

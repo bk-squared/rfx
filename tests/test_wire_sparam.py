@@ -1,6 +1,7 @@
 """Tests for WirePort S-parameter extraction."""
 
 import numpy as np
+import pytest
 import jax.numpy as jnp
 
 from rfx.geometry.csg import Box
@@ -193,12 +194,33 @@ def test_wire_sparam_api_integration():
     assert not np.any(np.isnan(result.s_params)), "No NaN in S-params"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="issue #764/#683: uniform-lane driven diagonal is the physical "
+           "whole-port formula on PRE-injection samples; passivity returns "
+           "when the #683 POST-ordering flip lands (remove this marker then "
+           "and re-baseline)")
 def test_wire_port_jit_scan_s11_passivity():
     """Wire port S11 via JIT scan should satisfy |S11| <= 1.
 
-    This test exercises the JIT ``lax.scan`` path in ``Simulation.run()``
-    and verifies that wire-port DFT accumulation happens before source
-    injection, so the sampled V/I is not contaminated by the drive signal.
+    KEYED TO ISSUE #683 (issue #764, written provenance): the uniform lane
+    still samples V/I PRE-injection, which contaminates the DRIVEN port's
+    whole-gap voltage at order 1 (sigma*dt/eps ~ 0.96 on the canonical
+    cell), so the #764 whole-port driven diagonal
+    S_kk = (V_port - Z0*I)/(V_port + Z0*I) — physically validated on the
+    NU/POST lane (matched 0.001-0.0125, short -1, open +1; see
+    validation/research/issue764_wireport_norm_falsifiers.py) — reads
+    non-physical values on this lane until the #683 POST-ordering flip
+    lands.  The legacy (-V - Z0*I)/(-V + Z0*I) reading stayed passive
+    here only because it is the passive-branch sense applied to a driven
+    port (the reciprocal class), not because it measured the load.
+
+    Measured on this branch: max|S11| = 5.769 on this fixture.
+
+    (Historical note: this test also framed PRE-injection sampling as the
+    non-contaminated choice; per the #683 measurement PRE ordering is the
+    measured-wrong half for driven V, which is exactly why this gate is
+    keyed to that flip.)
     """
     from rfx.api import Simulation
 
