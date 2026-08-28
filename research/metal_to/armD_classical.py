@@ -70,6 +70,34 @@ def _grid_hz():
     return np.asarray(g, dtype=float) * 1e6
 
 
+def _realized(mask):
+    """What the lattice actually made, not what was requested.
+
+    A requested width can straddle cell boundaries and realize one column more
+    (w=1 cell -> 2 columns here), so the f(L, W) fit must be keyed on the
+    realized geometry or the calibration inherits a half-cell bias.
+    """
+    out = {}
+    for side in ("lo", "hi"):
+        m = np.asarray(mask[side])
+        if not m.any():
+            out[f"{side}_cells"] = 0
+            continue
+        cols = np.where(m.any(axis=1))[0]
+        rows = np.where(m.any(axis=0))[0]
+        out[f"{side}_cells"] = int(m.sum())
+        out[f"{side}_cols"] = int(len(cols))
+        out[f"{side}_rows"] = int(len(rows))
+        out[f"{side}_col_range"] = [int(cols.min()), int(cols.max())]
+        out[f"{side}_row_range"] = [int(rows.min()), int(rows.max())]
+    return out
+
+
+def x_c_default(box):
+    pad_x = box.hi.pads[0]
+    return (0.5 * (box.hi.ix_lo + box.hi.ix_hi) - pad_x) * box.dx
+
+
 def _stub_pair(box, sep_m, l_lo, l_hi, w_lo, w_hi, two_sided: bool):
     """Textbook pair: one stub per band. ``two_sided`` puts them on opposite
     sides of the trace, which the box now allows and the Stage-0 fixture did not."""
@@ -92,7 +120,7 @@ def _record(tag, scored, extra):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=("window", "sweep"), required=True)
+    ap.add_argument("--mode", choices=("window", "d1", "d2", "sweep"), required=True)
     ap.add_argument("--periods", type=float, nargs="+", default=[45.0])
     ap.add_argument("--sep_mm", type=float, default=8.0)
     ap.add_argument("--two_sided", action="store_true",
@@ -131,9 +159,37 @@ def main() -> int:
             results.append(r)
             print(f"[armD] periods={periods:.0f} -> "
                   f"{time.time()-t0:.0f}s  (record written)")
+    elif args.mode == "d1":
+        # Calibrate the single-stub law f(L, W) on THIS lattice. The analytic
+        # quarter wave is ~5 % off (open-end + T-junction fringing + the stub's
+        # own eps_eff), and the whole point of arm D is that the classical
+        # design gets to remove that offset before being judged.
+        periods = args.periods[0]
+        widths = [1, 2, 3, 5, 8, 12]          # cells; Z_s ~ 103 -> 27 ohm
+        lengths = [40, 48, 56, 63, 70]        # cells; 5.08 - 8.89 mm
+        dx = box.dx
+        for wc in widths:
+            for lc in lengths:
+                t0 = time.time()
+                tag = f"d1_w{wc}_l{lc}"
+                if (OUT / f"{tag}.json").exists():
+                    print(f"[armD] {tag} cached, skipping"); continue
+                mask = fx.mask_from_stubs(
+                    [("hi", x_c_default(box), wc * dx, lc * dx)], box)
+                sc = cal.score_design(mask, freqs_hz=freqs, num_periods=periods,
+                                      label=tag, cache_dir=CACHE, verbose=False)
+                r = _record(tag, sc, dict(mode="d1", periods=periods,
+                                          w_cells=wc, l_cells=lc,
+                                          w_mm=wc * dx * 1e3, l_mm=lc * dx * 1e3,
+                                          **_realized(mask),
+                                          wall_s=round(time.time() - t0, 1)))
+                res = r.get("result", {})
+                print(f"[armD] {tag}: notch f_L={res.get('f_notch_L_MHz')} "
+                      f"f_U={res.get('f_notch_U_MHz')} R_L={res.get('R_L')} "
+                      f"({time.time()-t0:.0f}s)")
+                results.append(r)
     else:
-        raise SystemExit("sweep mode is wired after the window table is "
-                         "re-measured on this fixture")
+        raise SystemExit("sweep mode is wired after d1 fixes the f(L,W) law")
 
     print(f"[armD] wrote {len(results)} record(s) to {OUT}")
     return 0
