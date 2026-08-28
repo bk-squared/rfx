@@ -4812,14 +4812,14 @@
         {
           "code": "msl_port_geometry",
           "loc": null,
-          "message": "MSL port 'msl_0': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.",
+          "message": "MSL port 'msl_0': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
           "severity": "warning",
           "source": "_check_msl_port_geometry"
         },
         {
           "code": "msl_port_geometry",
           "loc": null,
-          "message": "MSL port 'msl_1': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.",
+          "message": "MSL port 'msl_1': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
           "severity": "warning",
           "source": "_check_msl_port_geometry"
         },

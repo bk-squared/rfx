@@ -5380,14 +5380,37 @@ class _PreflightMixin:
            ε; <4 cells gives Z0 staircase error >5%. Re-verified post-
            #511/#507 by ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``
            (2026-08-02, committed artifact under that directory): aligned
-           dx=h_sub/{3,4,5,6} measured Z0 bias -7.9%/-3.8%/-1.2%/+0.7%
-           vs the analytic Hammerstad-Jensen anchor — the "<5% at 4+
-           cells" promise holds, but ONLY when aligned. A misaligned mesh
-           (h_sub/dx fractional part in [0.10, 0.40], check 2b) measured
-           +20.2%/+11.0% at comparable ~3/~4 cells respectively —
-           2.56-2.94x worse in magnitude than the aligned case at the
-           comparable cell count, so refining cell count alone does not
-           fix it (see 2b).
+           dx=h_sub/{3,4,5,6} measured Z0 deviation -7.9%/-3.8%/-1.2%/+0.7%
+           FROM THE DECLARED-board Hammerstad-Jensen anchor (S is
+           normalized to that anchor — issue #723 — so this deviation is
+           real and user-facing) — the "<5% at 4+ cells" promise holds
+           when aligned.
+
+           ISSUE #752 CORRECTION (2026-08-27): this docstring, and check
+           2b below, used to also report that a misaligned mesh (h_sub/dx
+           fractional part in [0.10, 0.40]) measured "+20.2%/+11.0% Z0
+           bias, 2.56-2.94x worse than the aligned case" at dx=80/60µm —
+           implying the misalignment class itself, independent of board
+           identity, degrades extraction. That framing compared the
+           misaligned run's DECLARED-board deviation against the aligned
+           run's DECLARED-board deviation, but the misaligned mesh's
+           half-open rasterizer rule (``rfx/geometry/csg.py``) ALSO
+           thickens the realized substrate to 320µm/300µm at dx=80/60µm
+           (+26%/+18% vs the declared 254µm; ``sim.fidelity_report()``
+           confirms this) — a genuinely different physical board, not a
+           worse extraction of the same one. Scored against the board
+           each mesh point actually solves (Hammerstad-Jensen on the
+           REALIZED h/W from ``fidelity_report()``; see the sibling
+           ``msl_z0_bias_floor_sweep_realized_anchor.json`` artifact next
+           to the pre-declared sweep JSON), the extractor tracks
+           Hammerstad-Jensen to within 0.4% at EVERY point in the sweep,
+           aligned or misaligned alike. The "2.56-2.94x worse" ratio and
+           the "+20.2%/+11.0% Z0 bias" framing are RETRACTED as
+           extractor-bias claims (the pre-declared sweep JSON and its
+           as-run verdict block are left untouched — they remain the
+           auditable record of what was measured; only this prose
+           reading of them is corrected). See check 2b for what
+           alignment advice survives on other grounds.
 
            The same sweep also asked whether alignment class shifts the
            |S11| floor itself, not just Z0 (issue #487). |S11|_floor
@@ -5534,21 +5557,45 @@ class _PreflightMixin:
             # ---- 2. Substrate cells ----
             n_z_sub = max(1, int(round(h_sub / dx)))
             if n_z_sub < 4:
+                # Issue #752: this mesh may ALSO itself be misaligned
+                # (h_sub/dx not integer) — the half-open rasterizer rule
+                # (rfx/geometry/csg.py) then rounds UP, so the solve
+                # realizes MORE substrate than the round()-based n_z_sub
+                # above suggests. Naming that discrepancy here (rather
+                # than only in check 2b) keeps this message from stating
+                # "3 substrate cells" while 2b, on the same geometry,
+                # states "320µm = 4 cells realized".
+                _frac_here = (h_sub / dx) - int(h_sub / dx)
+                _extra = ""
+                if _frac_here > 1e-9:
+                    _n_ceil = int(h_sub / dx) + 1
+                    _h_real_um = _n_ceil * dx * 1e6
+                    _pct_thick = (
+                        (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                    )
+                    _extra = (
+                        f" This mesh is itself misaligned (h_sub/dx="
+                        f"{h_sub/dx:.3f}): the half-open rasterizer rule "
+                        f"rounds UP, so the solve actually realizes "
+                        f"{_n_ceil} substrate cell(s) = {_h_real_um:.0f}µm "
+                        f"({_pct_thick:+.0f}% vs the declared "
+                        f"{h_sub*1e6:.0f}µm) — a substrate-thickening "
+                        f"effect, separate from staircase resolution; "
+                        f"confirm with sim.fidelity_report() and see the "
+                        f"mixed-cell-danger-zone check below."
+                    )
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
                         f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
                         f"Yee staircase at dielectric interface is O(dx) — "
                         f"Z0 staircase error >5% expected. Refine to dx ≤ "
-                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) AND keep "
+                        f"{h_sub*1e6/4:.1f}µm (4+ substrate cells) AND keep "
                         f"h_sub/dx an integer (aligned) for <5% Z0 bias — "
                         f"measured post-#511/#507 at -3.8%/-1.2%/+0.7% for "
-                        f"h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py). Refining WITHOUT "
-                        f"alignment does not reach that: a mixed-cell mesh "
-                        f"at a similar cell count measured +11% (h_sub/dx="
-                        f"4.233) — see the mixed-cell-danger-zone check "
-                        f"below.",
+                        f"h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board "
+                        f"Hammerstad-Jensen anchor (scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py).{_extra}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -5561,22 +5608,49 @@ class _PreflightMixin:
             # interface lands in the lower portion of a Yee cell that
             # ALSO contains the trace at z=h_sub..h_sub+dx; the cell is
             # mixed substrate + PEC.  Hard-PEC ``Box(material="pec")``
-            # handles this via subpixel material assembly, but the
-            # AD-traceable ``pec_occupancy_override`` path zeros the
-            # whole cell and produces unphysical |S21| (verified
-            # 2026-05-08, runs #563/#567: |S21|² > 1 across all stub
-            # lengths at dx ∈ [75, 82]µm with h_sub=254µm).  Snap dx
-            # so h_sub/dx is integer or its fractional part is > 0.6 to
+            # avoids the specific bug below because it occupies WHOLE
+            # cells (this build has no anisotropic/subpixel eps assembly
+            # — rfx/api/__init__.py's Simulation docstring — so there is
+            # no subpixel path for a hard PEC box to use; it simply never
+            # enters ``pec_occupancy_override``). The AD-traceable
+            # ``pec_occupancy_override`` path zeros the whole cell and
+            # produces unphysical |S21| (cited, not remeasured on this
+            # checkout: 2026-05-08, runs #563/#567: |S21|² > 1 across all
+            # stub lengths at dx ∈ [75, 82]µm with h_sub=254µm; no
+            # committed artifact, no regression test). Snap dx so
+            # h_sub/dx is integer or its fractional part is > 0.6 to
             # stay in a safe alignment window.
             #
-            # Hard PEC is unaffected by that |S21|² bug, but NOT by Z0
-            # bias itself (issue #487, scripts/diagnostics/
-            # msl_z0_bias_floor_sweep.py, 2026-08-02): on the SAME
-            # committed thru fixture, a mixed-cell mesh measured +20.2%/
-            # +11.0% Z0 bias vs the analytic Hammerstad-Jensen anchor at
-            # ~3/~4 substrate cells, against -7.9%/-3.8% aligned at the
-            # comparable cell counts — 2.56-2.94x worse in magnitude, so
-            # cell count alone (check 2) does not predict this.
+            # ISSUE #752 CORRECTION (2026-08-27): this check used to also
+            # say Hard PEC is "NOT" exempt from Z0 bias, quoting "+20.2%
+            # vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells ...
+            # 2.56-2.94x worse". Those four percentages are all measured
+            # against the DECLARED 600/254µm board's Hammerstad-Jensen
+            # anchor, but the +20.2%/+11.0% (misaligned, dx=80/60µm) rows
+            # and the -7.9%/-3.8% (aligned, dx≈84.7/63.5µm) rows are NOT
+            # the same physical board: the half-open rasterizer rule
+            # thickens the misaligned meshes' realized substrate to
+            # 320µm/300µm (+26%/+18% vs declared) while the aligned
+            # meshes realize h_sub exactly. Comparing declared-board
+            # deviations across different realized boards measures board
+            # rasterization, not extractor bias. Scored against the board
+            # each point actually solves (Hammerstad-Jensen on the
+            # REALIZED h/W; see the sibling
+            # ``msl_z0_bias_floor_sweep_realized_anchor.json`` next to
+            # the pre-declared sweep JSON), the extractor tracks
+            # Hammerstad-Jensen to within 0.4% at every one of the six
+            # sweep points, aligned or misaligned. The "2.56-2.94x worse"
+            # / "+20.2%/+11.0%" framing is RETRACTED as an extractor-bias
+            # claim (the pre-declared JSON and its as-run verdict are
+            # left untouched as the auditable record; only this reading
+            # of them is corrected). What survives, on separate grounds:
+            # (i) the |S21|² > 1 override risk above (cited, not
+            # remeasured here), and (ii) the substrate-thickening effect
+            # itself is real and measured (+26%/+18% at dx=80/60µm) — it
+            # is a genuine board-fidelity change from what was declared,
+            # even though it is not the "worse Z0 extraction" the old
+            # text claimed. The alignment advice below is kept on those
+            # two grounds, downgraded from a Z0-bias-magnitude claim.
             frac = (h_sub / dx) - int(h_sub / dx)
             if 0.10 <= frac <= 0.40:
                 # Snap suggestions: nearest integer above and below.
@@ -5584,6 +5658,8 @@ class _PreflightMixin:
                 n_above = n_below + 1
                 dx_low = h_sub / n_above   # frac=0
                 dx_high = h_sub / n_below  # frac=0
+                h_real_um = n_above * dx * 1e6
+                pct_thick = (h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}': h_sub/dx = "
@@ -5592,17 +5668,30 @@ class _PreflightMixin:
                         f"substrate-air interface bisects the same Yee cell "
                         f"that holds the trace; AD-traceable "
                         f"``pec_occupancy_override`` zeros the whole cell "
-                        f"and produces unphysical |S21|² > 1 in this regime. "
+                        f"and produces unphysical |S21|² > 1 in this regime "
+                        f"(cited, not remeasured on this checkout: runs "
+                        f"#563/#567, 2026-05-08, dx∈[75,82]µm h_sub=254µm). "
                         f"Hard ``Box(material='pec')`` avoids that specific "
-                        f"bug, but Z0 bias itself is still 2.56-2.94x worse "
-                        f"than an aligned mesh at a comparable cell count "
-                        f"(measured +20.2% vs -7.9% at ~3 cells, +11.0% vs "
-                        f"-3.8% at ~4 cells; scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py) — refining cell count "
-                        f"alone will not reach the aligned-mesh bias. To "
-                        f"snap onto a safe alignment regardless, set dx = "
-                        f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
-                        f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
+                        f"bug (this build has no subpixel eps assembly, so "
+                        f"a hard PEC box never enters that path). "
+                        f"Separately: the half-open rasterizer rule rounds "
+                        f"h_sub/dx UP here, so this mesh actually realizes "
+                        f"{n_above} cell(s) of substrate = {h_real_um:.0f}µm "
+                        f"({pct_thick:+.0f}% THICKER than the declared "
+                        f"{h_sub*1e6:.0f}µm — confirm with "
+                        f"sim.fidelity_report()). That board-thickening, "
+                        f"not extractor bias, is most of what a naive "
+                        f"declared-board Z0 comparison used to attribute "
+                        f"to 'misalignment' (retracted: see "
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json — "
+                        f"the extractor tracks Hammerstad-Jensen on the "
+                        f"board it actually solves to within 0.4% at every "
+                        f"point in scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
+                        f"not). To snap onto a mesh matching the DECLARED "
+                        f"board instead, set dx = {dx_low*1e6:.1f}µm "
+                        f"(= h_sub/{n_above}) or {dx_high*1e6:.1f}µm "
+                        f"(= h_sub/{n_below}).",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

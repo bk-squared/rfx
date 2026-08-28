@@ -129,7 +129,18 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # ---------------------------------------------------------------------------
 def test_substrate_resolution_warning_names_alignment_requirement():
     """Check 2's fix must fire only for an ALIGNED refinement target, and
-    must cite the sweep-measured bias numbers, not just the bare '<5%'."""
+    must cite the sweep-measured ALIGNED-class deviations (declared-board
+    anchor), not just the bare '<5%'.
+
+    Issue #752 (2026-08-27) retired the "+11% (h_sub/dx=4.233)" comparison
+    this message used to add: that number was the misaligned dx=60um
+    point's declared-board deviation, cited here to claim refining
+    without alignment "does not reach" the aligned-class figure -- but
+    the misaligned point realizes a DIFFERENT, thicker board (300um vs
+    the declared 254um), so the comparison conflated board rasterization
+    with extraction quality. This test pins the fix target (:.1f, not
+    :.0f -- 63.5um is h_sub/4, not 64um) and the correction text, and
+    positively asserts the retired figures no longer appear."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
     sub = [m for m in msgs if "substrate cell" in m]
@@ -138,9 +149,19 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     assert "-3.8%" in sub[0], sub[0]
     assert "-1.2%" in sub[0], sub[0]
     assert "+0.7%" in sub[0], sub[0]
-    assert "+11%" in sub[0], sub[0]
-    assert "4.233" in sub[0], sub[0]
+    assert "63.5µm" in sub[0], sub[0]  # h_sub/4 = 63.5, not the old "64µm"
+    assert "vs the DECLARED-board" in sub[0], sub[0]
     assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
+    # This mesh (dx=80) is itself misaligned (h_sub/dx=3.175): the
+    # realized-board disclosure must be present and must state the
+    # ceil()-rasterized cell count/height, not just the round()-based
+    # "3 substrate cell(s)" figure above.
+    assert "itself misaligned (h_sub/dx=3.175)" in sub[0], sub[0]
+    assert "realizes 4 substrate cell(s) = 320µm" in sub[0], sub[0]
+    assert "+26%" in sub[0], sub[0]
+    # Retired: the old "+11% (h_sub/dx=4.233)" board-mismatched comparison.
+    assert "+11%" not in sub[0], sub[0]
+    assert "4.233" not in sub[0], sub[0]
 
 
 def test_substrate_resolution_warning_silent_wording_at_6_cells():
@@ -156,18 +177,35 @@ def test_substrate_resolution_warning_silent_wording_at_6_cells():
 
 
 def test_mixed_cell_warning_names_z0_bias_magnitude():
-    """Check 2b must state that Hard PEC is exempt from the |S21|² bug but
-    NOT from the larger Z0 bias -- the 2026-08-02 sweep found +20.2%/+11.0%
-    misaligned vs -7.9%/-3.8% aligned at comparable cell counts."""
+    """Issue #752 (2026-08-27) CORRECTION: check 2b used to claim Hard PEC
+    is exempt from the |S21|² bug but NOT from a larger Z0 bias -- quoting
+    "+20.2%/+11.0% misaligned vs -7.9%/-3.8% aligned ... 2.56-2.94x worse".
+    Those four percentages are declared-board deviations measured on
+    DIFFERENT realized boards (the misaligned points rasterize a 320um/
+    300um substrate, not the declared 254um), so the "2.56-2.94x worse"
+    framing conflated board mismatch with extractor bias. This test pins
+    the retraction (those figures must NOT appear) and the replacement
+    board-thickening figures (which ARE real and measured), enumerating
+    both sides so a partial revert cannot silently pass."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
     msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "mixed-cell danger zone" in m]
     assert len(mixed) >= 1, f"expected mixed-cell warning at dx=80, got: {msgs}"
-    assert "2.56-2.94x worse" in mixed[0], mixed[0]
-    assert "+20.2%" in mixed[0], mixed[0]
-    assert "-7.9%" in mixed[0], mixed[0]
-    assert "+11.0%" in mixed[0], mixed[0]
-    assert "-3.8%" in mixed[0], mixed[0]
+    # Retired extractor-bias framing -- must not reappear.
+    assert "2.56-2.94x worse" not in mixed[0], mixed[0]
+    assert "+20.2%" not in mixed[0], mixed[0]
+    assert "-7.9%" not in mixed[0], mixed[0]
+    assert "+11.0%" not in mixed[0], mixed[0]
+    assert "-3.8%" not in mixed[0], mixed[0]
+    # What survives: the (cited, not remeasured) |S21|^2 > 1 override risk,
+    # the measured board-thickening figure, and a pointer to the sibling
+    # realized-board artifact and its <=0.4% agreement.
+    assert "pec_occupancy_override" in mixed[0], mixed[0]
+    assert "no subpixel eps assembly" in mixed[0], mixed[0]
+    assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
+    assert "+26%" in mixed[0], mixed[0]
+    assert "msl_z0_bias_floor_sweep_realized_anchor.json" in mixed[0], mixed[0]
+    assert "within 0.4%" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
 
 

@@ -3635,9 +3635,13 @@ class _SparamMixin:
                         f"{z0_dev_max * 100:.1f}% from analytic Hammerstad-"
                         f"Jensen {z0_hj:.2f} ohm at "
                         f"f = {freqs_arr[k_z] / 1e9:.4f} GHz. Z0 rides on the "
-                        "retained N-probe fit (S1 transitional); on coarse "
-                        "meshes this includes Yee-staircase bias. The V·I-"
-                        "split S11/S21 are unaffected.",
+                        "retained N-probe fit (S1 transitional); this can "
+                        "reflect Yee-staircase bias, or that the rasterized "
+                        "board (h_sub/W snapped to the lattice; see "
+                        "sim.fidelity_report()) genuinely differs from the "
+                        "declared one — not necessarily an extraction "
+                        "fault (issue #752). The V·I-split S11/S21 are "
+                        "unaffected.",
                         stacklevel=2,
                     )
 

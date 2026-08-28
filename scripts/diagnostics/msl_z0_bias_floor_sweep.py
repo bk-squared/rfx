@@ -107,6 +107,29 @@ declared and run):
   mean_s11_raw=0.06566 > aligned h_sub/4 mean_s11_raw=0.02228, in
   addition to the Gamma comparison already in the artifact). Recorded
   here as prose only.
+
+POST-RUN REVIEW NOTE (2026-08-27, appended after the fact; issue #752 --
+same rule as the note above: the committed rows and verdict block above
+are NOT touched)
+--------------------------------------------------------------------------
+Adversarial review found that ``z0_hj_ohm`` above (and the "-7.9%/-3.8%/
+-1.2%/+0.7%" vs "+20.2%/+11.0%" comparison it enables) is Hammerstad-
+Jensen on the DECLARED 600/254um board at every dx, but the two
+misaligned points (80um, 60um) rasterize a substrate 320um/300um thick
+(+26%/+18% vs declared -- the half-open rasterizer rule rounds h_sub/dx
+UP), while the four aligned points realize h_sub exactly. Comparing
+declared-board deviations across those different realized boards reads
+as "misalignment makes Z0 extraction worse", but is largely board
+rasterization, not extractor bias. A NEW SIBLING script,
+``msl_z0_bias_floor_sweep_realized_anchor.py``, reads z0_measured_ohm
+back out of this file's own JSON (never re-solved) and scores it against
+Hammerstad-Jensen on each point's REALIZED h/W instead
+(``sim.fidelity_report()``, no solve): the extractor tracks that
+realized-board anchor to within 0.4% at all six points, aligned or not
+(sibling artifact: ``msl_z0_bias_floor_sweep_realized_anchor.json``,
+same directory). See ``rfx/api/_preflight.py``'s
+``_check_msl_port_geometry`` class docstring and checks 2/2b for the
+corrected advisory text this drives.
 """
 
 from __future__ import annotations
