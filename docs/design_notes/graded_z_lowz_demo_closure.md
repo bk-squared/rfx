@@ -17,7 +17,7 @@ attempt. This note records the outcome.
 - Validity preconditions ALL met: settling_db −103.5/−112.9 dB (arm A)
   and −98.4/−105.2 dB (arm B), far below the −40 dB rule;
   `multi_drive_solve` assembly both arms; 8 of 9 gate-band bins pass the
-  `np.all(reliable)` screen (one 4.48 GHz bin flagged by the documented
+  `np.all(reliable)` screen (one 4.379 GHz bin flagged by the documented
   standing-wave-null screen, excluded as pre-declared).
 - Boundedness protocol: no |S11| > 1 anywhere in band; min Re(V0/I0) over
   the gate band = +22.1 Ω (arm A) / +21.6 Ω (arm B) — both positive, so
