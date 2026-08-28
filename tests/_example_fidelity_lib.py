@@ -350,6 +350,11 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/subgrid/13_subgrid_material_validation.py": Entry(
         "builder_fused_with_solve",
         "`run_example()` builds and calls .run(...) in the same function"),
+    "validation/research/issue764_wireport_norm_falsifiers.py": Entry(
+        "builder_fused_with_solve",
+        "issue #764 falsifier battery: `run_nu()` wraps sim.run(...) and "
+        "the fixture builders feed it directly in `main()` -- no separable "
+        "build-only path (the pre-declared gates live in the same file)"),
 
     # ---- audited (23): builder is separable from solve ----
     "examples/inverse_design/differentiable_s11_design.py": Entry(
