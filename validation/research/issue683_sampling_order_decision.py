@@ -11,7 +11,12 @@ Decision quantity: rho(f) = +v_dft/i_dft at the driven wire port's mid cell,
 fitted against a known external load R_L. Gates G0-G2 and falsifiers F1/F2
 are pre-declared in the protocol; this script only evaluates them.
 
-Run:  JAX_PLATFORMS=cpu .venv/bin/python validation/research/issue683_sampling_order_decision.py
+Run (from THIS worktree — PYTHONPATH is required, or python resolves the
+venv's installed main-repo rfx and the POST arm fails its
+wire_sparams_raw assertion):
+
+  PYTHONPATH=$PWD JAX_PLATFORMS=cpu .venv/bin/python \
+      validation/research/issue683_sampling_order_decision.py
 """
 from __future__ import annotations
 
