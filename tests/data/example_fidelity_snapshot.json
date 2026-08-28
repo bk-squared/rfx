@@ -1,5 +1,5 @@
 {
-  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py).",
+  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Domain realized_extent_um is the INTERIOR CELL sum (N nodes bound N-1 cells), i.e. the wall-to-wall length the solve has.",
   "variants": {
     "examples/inverse_design/differentiable_s11_design.py::_build_sim::default": {
       "fidelity": {
@@ -26,13 +26,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0000000000018
+                0.0
               ],
-              "n_cells": 51,
-              "realized_extent_um": 102000.00000000001,
+              "n_cells": 50,
+              "realized_extent_um": 100000.0,
               "realized_um": [
                 0.0,
-                102000.00000000001
+                100000.0
               ]
             },
             "y": {
@@ -43,13 +43,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                3140.000000000011
+                1140.0
               ],
-              "n_cells": 13,
-              "realized_extent_um": 26000.00000000001,
+              "n_cells": 12,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.00000000001
+                24000.0
               ]
             },
             "z": {
@@ -60,32 +60,26 @@
               ],
               "face_residual_um": [
                 0.0,
-                3839.9999999999995
+                1840.0
               ],
-              "n_cells": 7,
-              "realized_extent_um": 14000.0,
+              "n_cells": 6,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                14000.0
+                12000.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 100000.0 um realized 102000.0 um over 51 cells (+2000.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "y",
-              "detail": "declared 22860.0 um realized 26000.0 um over 13 cells (+3140.0 um, +13.74%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 22860.0 um realized 24000.0 um over 12 cells (+1140.0 um, +4.99%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "z",
-              "detail": "declared 10160.0 um realized 14000.0 um over 7 cells (+3840.0 um, +37.80%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 10160.0 um realized 12000.0 um over 6 cells (+1840.0 um, +18.11%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -109,13 +103,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2500.00000000003
+                2.77555756156e-11
               ],
-              "n_cells": 61,
-              "realized_extent_um": 152500.00000000003,
+              "n_cells": 60,
+              "realized_extent_um": 150000.0,
               "realized_um": [
                 0.0,
-                152500.00000000003
+                150000.0
               ]
             },
             "y": {
@@ -126,13 +120,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2500.0000000000023
+                1.73472347598e-12
               ],
-              "n_cells": 7,
-              "realized_extent_um": 17500.0,
+              "n_cells": 6,
+              "realized_extent_um": 15000.0,
               "realized_um": [
                 0.0,
-                17500.0
+                15000.0
               ]
             },
             "z": {
@@ -143,36 +137,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2500.0000000000023
+                1.73472347598e-12
               ],
-              "n_cells": 7,
-              "realized_extent_um": 17500.0,
+              "n_cells": 6,
+              "realized_extent_um": 15000.0,
               "realized_um": [
                 0.0,
-                17500.0
+                15000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 150000.0 um realized 152500.0 um over 61 cells (+2500.0 um, +1.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 15000.0 um realized 17500.0 um over 7 cells (+2500.0 um, +16.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 15000.0 um realized 17500.0 um over 7 cells (+2500.0 um, +16.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -198,20 +173,20 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 77481.4431264365,
+              "declared_extent_um": 77481.4431264,
               "declared_um": [
                 0.0,
-                77481.4431264365
+                77481.4431264
               ],
               "face_residual_um": [
                 0.0,
-                518.5568735635165
+                18.5568735635
               ],
-              "n_cells": 156,
-              "realized_extent_um": 78000.00000000001,
+              "n_cells": 155,
+              "realized_extent_um": 77500.0,
               "realized_um": [
                 0.0,
-                78000.00000000001
+                77500.0
               ]
             },
             "y": {
@@ -222,13 +197,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.0
+                0.0
               ],
-              "n_cells": 2,
-              "realized_extent_um": 1000.0,
+              "n_cells": 1,
+              "realized_extent_um": 500.0,
               "realized_um": [
                 0.0,
-                1000.0
+                500.0
               ]
             },
             "z": {
@@ -239,36 +214,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.0
+                0.0
               ],
-              "n_cells": 2,
-              "realized_extent_um": 1000.0,
+              "n_cells": 1,
+              "realized_extent_um": 500.0,
               "realized_um": [
                 0.0,
-                1000.0
+                500.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 77481.4 um realized 78000.0 um over 156 cells (+518.6 um, +0.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 500.0 um realized 1000.0 um over 2 cells (+500.0 um, +100.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 500.0 um realized 1000.0 um over 2 cells (+500.0 um, +100.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -316,13 +272,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.00000000000045
+                0.0
               ],
-              "n_cells": 49,
-              "realized_extent_um": 24500.0,
+              "n_cells": 48,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                24500.0
+                24000.0
               ]
             },
             "y": {
@@ -333,13 +289,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.00000000000045
+                0.0
               ],
-              "n_cells": 49,
-              "realized_extent_um": 24500.0,
+              "n_cells": 48,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                24500.0
+                24000.0
               ]
             },
             "z": {
@@ -350,36 +306,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.00000000000045
+                0.0
               ],
-              "n_cells": 49,
-              "realized_extent_um": 24500.0,
+              "n_cells": 48,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                24500.0
+                24000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 24500.0 um over 49 cells (+500.0 um, +2.08%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 24000.0 um realized 24500.0 um over 49 cells (+500.0 um, +2.08%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 24000.0 um realized 24500.0 um over 49 cells (+500.0 um, +2.08%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -412,13 +349,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 25,
-              "realized_extent_um": 25000.0,
+              "n_cells": 24,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25000.0
+                24000.0
               ]
             },
             "y": {
@@ -429,13 +366,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 25,
-              "realized_extent_um": 25000.0,
+              "n_cells": 24,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25000.0
+                24000.0
               ]
             },
             "z": {
@@ -446,36 +383,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 25,
-              "realized_extent_um": 25000.0,
+              "n_cells": 24,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25000.0
+                24000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 25000.0 um over 25 cells (+1000.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 24000.0 um realized 25000.0 um over 25 cells (+1000.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 24000.0 um realized 25000.0 um over 25 cells (+1000.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -508,13 +426,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 25500.000000000004,
+              "n_cells": 16,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25500.000000000004
+                24000.0
               ]
             },
             "y": {
@@ -525,13 +443,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1499.9999999999995
+                0.0
               ],
-              "n_cells": 9,
-              "realized_extent_um": 13500.0,
+              "n_cells": 8,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                13500.0
+                12000.0
               ]
             },
             "z": {
@@ -542,36 +460,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000082
+                6.93889390391e-12
               ],
-              "n_cells": 25,
-              "realized_extent_um": 37500.00000000001,
+              "n_cells": 24,
+              "realized_extent_um": 36000.0,
               "realized_um": [
                 0.0,
-                37500.00000000001
+                36000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 25500.0 um over 17 cells (+1500.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 12000.0 um realized 13500.0 um over 9 cells (+1500.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 36000.0 um realized 37500.0 um over 25 cells (+1500.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -604,13 +503,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 25500.000000000004,
+              "n_cells": 16,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25500.000000000004
+                24000.0
               ]
             },
             "y": {
@@ -621,13 +520,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1499.9999999999995
+                0.0
               ],
-              "n_cells": 9,
-              "realized_extent_um": 13500.0,
+              "n_cells": 8,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                13500.0
+                12000.0
               ]
             },
             "z": {
@@ -638,36 +537,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000082
+                6.93889390391e-12
               ],
-              "n_cells": 25,
-              "realized_extent_um": 37500.00000000001,
+              "n_cells": 24,
+              "realized_extent_um": 36000.0,
               "realized_um": [
                 0.0,
-                37500.00000000001
+                36000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 25500.0 um over 17 cells (+1500.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 12000.0 um realized 13500.0 um over 9 cells (+1500.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 36000.0 um realized 37500.0 um over 25 cells (+1500.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -708,13 +588,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 25500.000000000004,
+              "n_cells": 16,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                25500.000000000004
+                24000.0
               ]
             },
             "y": {
@@ -725,13 +605,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1499.9999999999995
+                0.0
               ],
-              "n_cells": 9,
-              "realized_extent_um": 13500.0,
+              "n_cells": 8,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                13500.0
+                12000.0
               ]
             },
             "z": {
@@ -742,36 +622,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000082
+                6.93889390391e-12
               ],
-              "n_cells": 25,
-              "realized_extent_um": 37500.00000000001,
+              "n_cells": 24,
+              "realized_extent_um": 36000.0,
               "realized_um": [
                 0.0,
-                37500.00000000001
+                36000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 25500.0 um over 17 cells (+1500.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 12000.0 um realized 13500.0 um over 9 cells (+1500.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 36000.0 um realized 37500.0 um over 25 cells (+1500.0 um, +4.17%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -804,13 +665,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 61500.0,
+              "n_cells": 40,
+              "realized_extent_um": 60000.0,
               "realized_um": [
                 0.0,
-                61500.0
+                60000.0
               ]
             },
             "y": {
@@ -821,13 +682,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 61500.0,
+              "n_cells": 40,
+              "realized_extent_um": 60000.0,
               "realized_um": [
                 0.0,
-                61500.0
+                60000.0
               ]
             },
             "z": {
@@ -838,36 +699,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 61500.0,
+              "n_cells": 40,
+              "realized_extent_um": 60000.0,
               "realized_um": [
                 0.0,
-                61500.0
+                60000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 60000.0 um realized 61500.0 um over 41 cells (+1500.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 60000.0 um realized 61500.0 um over 41 cells (+1500.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 60000.0 um realized 61500.0 um over 41 cells (+1500.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -900,13 +742,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000043
+                3.46944695195e-12
               ],
-              "n_cells": 13,
-              "realized_extent_um": 13000.000000000005,
+              "n_cells": 12,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                13000.000000000005
+                12000.0
               ]
             },
             "y": {
@@ -917,13 +759,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000026
+                1.73472347598e-12
               ],
-              "n_cells": 11,
-              "realized_extent_um": 11000.000000000004,
+              "n_cells": 10,
+              "realized_extent_um": 10000.0,
               "realized_um": [
                 0.0,
-                11000.000000000004
+                10000.0
               ]
             },
             "z": {
@@ -934,36 +776,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0
+                0.0
               ],
-              "n_cells": 5,
-              "realized_extent_um": 5000.0,
+              "n_cells": 4,
+              "realized_extent_um": 4000.0,
               "realized_um": [
                 0.0,
-                5000.0
+                4000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 12000.0 um realized 13000.0 um over 13 cells (+1000.0 um, +8.33%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 10000.0 um realized 11000.0 um over 11 cells (+1000.0 um, +10.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 4000.0 um realized 5000.0 um over 5 cells (+1000.0 um, +25.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1061,13 +884,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 17000.0,
+              "n_cells": 16,
+              "realized_extent_um": 16000.0,
               "realized_um": [
                 0.0,
-                17000.0
+                16000.0
               ]
             },
             "y": {
@@ -1078,13 +901,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 17000.0,
+              "n_cells": 16,
+              "realized_extent_um": 16000.0,
               "realized_um": [
                 0.0,
-                17000.0
+                16000.0
               ]
             },
             "z": {
@@ -1095,36 +918,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 17000.0,
+              "n_cells": 16,
+              "realized_extent_um": 16000.0,
               "realized_um": [
                 0.0,
-                17000.0
+                16000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 16000.0 um realized 17000.0 um over 17 cells (+1000.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 16000.0 um realized 17000.0 um over 17 cells (+1000.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 16000.0 um realized 17000.0 um over 17 cells (+1000.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1165,13 +969,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0110194086928
+                0.0109244137902
               ],
-              "n_cells": 116,
-              "realized_extent_um": 232000.0110194087,
+              "n_cells": 115,
+              "realized_extent_um": 230000.010924,
               "realized_um": [
                 0.0,
-                232000.0110194087
+                230000.010924
               ]
             },
             "y": {
@@ -1182,53 +986,34 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0110194086928
+                0.0109244137902
               ],
-              "n_cells": 116,
-              "realized_extent_um": 232000.0110194087,
+              "n_cells": 115,
+              "realized_extent_um": 230000.010924,
               "realized_um": [
                 0.0,
-                232000.0110194087
+                230000.010924
               ]
             },
             "z": {
-              "declared_extent_um": 127889.55358544666,
+              "declared_extent_um": 127889.553585,
               "declared_um": [
                 0.0,
-                127889.55358544666
+                127889.553585
               ],
               "face_residual_um": [
                 0.0,
-                2000.0054443876925
+                0.00534939278984
               ],
-              "n_cells": 76,
-              "realized_extent_um": 129889.55902983434,
+              "n_cells": 75,
+              "realized_extent_um": 127889.558935,
               "realized_um": [
                 0.0,
-                129889.55902983434
+                127889.558935
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 230000.0 um realized 232000.0 um over 116 cells (+2000.0 um, +0.87%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 230000.0 um realized 232000.0 um over 116 cells (+2000.0 um, +0.87%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 127889.6 um realized 129889.6 um over 76 cells (+2000.0 um, +1.56%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1236,51 +1021,51 @@
         "geometry|pec|85000.000,85000.000,35285.492um->145000.000,145000.000,35666.492um": {
           "axes": {
             "x": {
-              "declared_extent_um": 60000.000000000015,
+              "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
-                145000.00000000003
+                145000.0
               ],
               "face_residual_um": [
-                1000.0040847808061,
-                1000.0069346278729
+                1000.00408478,
+                1000.00693463
               ],
-              "realized_extent_um": 60000.00284984708,
+              "realized_extent_um": 60000.0028498,
               "realized_um": [
-                86000.00408478081,
-                146000.0069346279
+                86000.0040848,
+                146000.006935
               ]
             },
             "y": {
-              "declared_extent_um": 60000.000000000015,
+              "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
-                145000.00000000003
+                145000.0
               ],
               "face_residual_um": [
-                1000.0040847808061,
-                1000.0069346278729
+                1000.00408478,
+                1000.00693463
               ],
-              "realized_extent_um": 60000.00284984708,
+              "realized_extent_um": 60000.0028498,
               "realized_um": [
-                86000.00408478081,
-                146000.0069346279
+                86000.0040848,
+                146000.006935
               ]
             },
             "z": {
-              "declared_extent_um": 380.9999999999994,
+              "declared_extent_um": 381.0,
               "declared_um": [
-                35285.491926446666,
-                35666.491926446666
+                35285.4919264,
+                35666.4919264
               ],
               "face_residual_um": [
-                0.0014034191933576246,
-                0.0013941581222809418
+                0.00140341919336,
+                0.00139415812228
               ],
-              "realized_extent_um": 380.9999907389283,
+              "realized_extent_um": 380.999990739,
               "realized_um": [
-                35285.49332986586,
-                35666.493320604786
+                35285.4933299,
+                35666.4933206
               ]
             }
           },
@@ -1319,45 +1104,45 @@
                 131000.0
               ],
               "face_residual_um": [
-                1000.0047497451259,
-                1000.006269663567
+                1000.00474975,
+                1000.00626966
               ],
-              "realized_extent_um": 32000.00151991844,
+              "realized_extent_um": 32000.0015199,
               "realized_um": [
-                100000.00474974513,
-                132000.00626966357
+                100000.00475,
+                132000.00627
               ]
             },
             "y": {
-              "declared_extent_um": 40000.00000000001,
+              "declared_extent_um": 40000.0,
               "declared_um": [
                 95000.0,
                 135000.0
               ],
               "face_residual_um": [
-                1000.0045597553242,
-                1000.0064596533687
+                1000.00455976,
+                1000.00645965
               ],
-              "realized_extent_um": 40000.00189989805,
+              "realized_extent_um": 40000.0018999,
               "realized_um": [
-                96000.00455975533,
-                136000.00645965338
+                96000.0045598,
+                136000.00646
               ]
             },
             "z": {
-              "declared_extent_um": 380.9999999999994,
+              "declared_extent_um": 381.0,
               "declared_um": [
-                37190.49192644666,
-                37571.49192644666
+                37190.4919264,
+                37571.4919264
               ],
               "face_residual_um": [
-                0.001357113837974211,
-                0.0013478527668975282
+                0.00135711383797,
+                0.0013478527669
               ],
-              "realized_extent_um": 380.9999907389283,
+              "realized_extent_um": 380.999990739,
               "realized_um": [
-                37190.4932835605,
-                37571.49327429943
+                37190.4932836,
+                37571.4932743
               ]
             }
           },
@@ -1390,51 +1175,51 @@
         "geometry|sub|85000.000,85000.000,35666.492um->145000.000,145000.000,37190.492um": {
           "axes": {
             "x": {
-              "declared_extent_um": 60000.000000000015,
+              "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
-                145000.00000000003
+                145000.0
               ],
               "face_residual_um": [
-                1000.0040847808061,
-                1000.0069346278729
+                1000.00408478,
+                1000.00693463
               ],
-              "realized_extent_um": 60000.00284984708,
+              "realized_extent_um": 60000.0028498,
               "realized_um": [
-                86000.00408478081,
-                146000.0069346279
+                86000.0040848,
+                146000.006935
               ]
             },
             "y": {
-              "declared_extent_um": 60000.000000000015,
+              "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
-                145000.00000000003
+                145000.0
               ],
               "face_residual_um": [
-                1000.0040847808061,
-                1000.0069346278729
+                1000.00408478,
+                1000.00693463
               ],
-              "realized_extent_um": 60000.00284984708,
+              "realized_extent_um": 60000.0028498,
               "realized_um": [
-                86000.00408478081,
-                146000.0069346279
+                86000.0040848,
+                146000.006935
               ]
             },
             "z": {
-              "declared_extent_um": 1523.9999999999975,
+              "declared_extent_um": 1524.0,
               "declared_um": [
-                35666.491926446666,
-                37190.49192644666
+                35666.4919264,
+                37190.4919264
               ],
               "face_residual_um": [
-                0.0013941581222809418,
-                0.001357113837974211
+                0.00139415812228,
+                0.00135711383797
               ],
-              "realized_extent_um": 1523.9999629557133,
+              "realized_extent_um": 1523.99996296,
               "realized_um": [
-                35666.493320604786,
-                37190.4932835605
+                35666.4933206,
+                37190.4932836
               ]
             }
           },
@@ -1458,7 +1243,7 @@
             "n_debye": 0,
             "n_lorentz": 0,
             "name": "sub",
-            "sigma": 0.00046069275479219317
+            "sigma": 0.000460692754792
           },
           "n_cells": 3600,
           "realization": null
@@ -1534,13 +1319,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                400.0000000000045
+                3.46944695195e-12
               ],
-              "n_cells": 51,
-              "realized_extent_um": 20400.000000000004,
+              "n_cells": 50,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                20400.000000000004
+                20000.0
               ]
             },
             "y": {
@@ -1551,13 +1336,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                400.0000000000045
+                3.46944695195e-12
               ],
-              "n_cells": 51,
-              "realized_extent_um": 20400.000000000004,
+              "n_cells": 50,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                20400.000000000004
+                20000.0
               ]
             },
             "z": {
@@ -1568,36 +1353,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                400.0000000000045
+                3.46944695195e-12
               ],
-              "n_cells": 51,
-              "realized_extent_um": 20400.000000000004,
+              "n_cells": 50,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                20400.000000000004
+                20000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 20000.0 um realized 20400.0 um over 51 cells (+400.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 20000.0 um realized 20400.0 um over 51 cells (+400.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 20000.0 um realized 20400.0 um over 51 cells (+400.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1638,13 +1404,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             },
             "y": {
@@ -1655,13 +1421,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             },
             "z": {
@@ -1672,36 +1438,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1734,13 +1481,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             },
             "y": {
@@ -1751,13 +1498,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             },
             "z": {
@@ -1768,36 +1515,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1333.3333333333321
+                3.46944695195e-12
               ],
-              "n_cells": 16,
-              "realized_extent_um": 21333.333333333332,
+              "n_cells": 15,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21333.333333333332
+                20000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 20000.0 um realized 21333.3 um over 16 cells (+1333.3 um, +6.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1830,13 +1558,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                250.0000000000037
+                3.46944695195e-12
               ],
-              "n_cells": 81,
-              "realized_extent_um": 20250.000000000004,
+              "n_cells": 80,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                20250.000000000004
+                20000.0
               ]
             },
             "y": {
@@ -1847,13 +1575,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                250.00000000000023
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 10250.0,
+              "n_cells": 40,
+              "realized_extent_um": 10000.0,
               "realized_um": [
                 0.0,
-                10250.0
+                10000.0
               ]
             },
             "z": {
@@ -1864,36 +1592,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                250.00000000000023
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 4250.0,
+              "n_cells": 16,
+              "realized_extent_um": 4000.0,
               "realized_um": [
                 0.0,
-                4250.0
+                4000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 20000.0 um realized 20250.0 um over 81 cells (+250.0 um, +1.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 10000.0 um realized 10250.0 um over 41 cells (+250.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 4000.0 um realized 4250.0 um over 17 cells (+250.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -1908,12 +1617,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                1.3877787807814457e-11
+                1.38777878078e-11
               ],
-              "realized_extent_um": 18500.000000000015,
+              "realized_extent_um": 18500.0,
               "realized_um": [
                 750.0,
-                19250.000000000015
+                19250.0
               ]
             },
             "y": {
@@ -1923,13 +1632,13 @@
                 5500.0
               ],
               "face_residual_um": [
-                3.469446951953614e-12,
-                4.336808689942018e-12
+                3.46944695195e-12,
+                4.33680868994e-12
               ],
-              "realized_extent_um": 1000.0000000000009,
+              "realized_extent_um": 1000.0,
               "realized_um": [
-                4500.000000000003,
-                5500.000000000004
+                4500.0,
+                5500.0
               ]
             },
             "z": {
@@ -1939,13 +1648,13 @@
                 2750.0
               ],
               "face_residual_um": [
-                1.3010426069826053e-12,
-                1.734723475976807e-12
+                1.30104260698e-12,
+                1.73472347598e-12
               ],
-              "realized_extent_um": 500.00000000000045,
+              "realized_extent_um": 500.0,
               "realized_um": [
-                2250.000000000001,
-                2750.0000000000014
+                2250.0,
+                2750.0
               ]
             }
           },
@@ -1966,28 +1675,28 @@
               ],
               "face_residual_um": [
                 0.0,
-                1.3877787807814457e-11
+                1.38777878078e-11
               ],
-              "realized_extent_um": 18500.000000000015,
+              "realized_extent_um": 18500.0,
               "realized_um": [
                 750.0,
-                19250.000000000015
+                19250.0
               ]
             },
             "y": {
-              "declared_extent_um": 8499.999999999998,
+              "declared_extent_um": 8500.0,
               "declared_um": [
                 750.0,
                 9250.0
               ],
               "face_residual_um": [
                 0.0,
-                6.938893903907228e-12
+                6.93889390391e-12
               ],
-              "realized_extent_um": 8500.000000000005,
+              "realized_extent_um": 8500.0,
               "realized_um": [
                 750.0,
-                9250.000000000007
+                9250.0
               ]
             },
             "z": {
@@ -2024,44 +1733,44 @@
               ],
               "face_residual_um": [
                 0.0,
-                1.3877787807814457e-11
+                1.38777878078e-11
               ],
-              "realized_extent_um": 18500.000000000015,
+              "realized_extent_um": 18500.0,
               "realized_um": [
                 750.0,
-                19250.000000000015
+                19250.0
               ]
             },
             "y": {
-              "declared_extent_um": 8499.999999999998,
+              "declared_extent_um": 8500.0,
               "declared_um": [
                 750.0,
                 9250.0
               ],
               "face_residual_um": [
                 0.0,
-                6.938893903907228e-12
+                6.93889390391e-12
               ],
-              "realized_extent_um": 8500.000000000005,
+              "realized_extent_um": 8500.0,
               "realized_um": [
                 750.0,
-                9250.000000000007
+                9250.0
               ]
             },
             "z": {
-              "declared_extent_um": 999.9999999999998,
+              "declared_extent_um": 1000.0,
               "declared_um": [
                 1250.0,
                 2250.0
               ],
               "face_residual_um": [
                 0.0,
-                1.3010426069826053e-12
+                1.30104260698e-12
               ],
-              "realized_extent_um": 1000.0000000000011,
+              "realized_extent_um": 1000.0,
               "realized_um": [
                 1250.0,
-                2250.000000000001
+                2250.0
               ]
             }
           },
@@ -2105,13 +1814,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 51,
-              "realized_extent_um": 51000.00000000001,
+              "n_cells": 50,
+              "realized_extent_um": 50000.0,
               "realized_um": [
                 0.0,
-                51000.00000000001
+                50000.0
               ]
             },
             "y": {
@@ -2122,13 +1831,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000043
+                3.46944695195e-12
               ],
-              "n_cells": 21,
-              "realized_extent_um": 21000.000000000004,
+              "n_cells": 20,
+              "realized_extent_um": 20000.0,
               "realized_um": [
                 0.0,
-                21000.000000000004
+                20000.0
               ]
             },
             "z": {
@@ -2139,36 +1848,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000026
+                1.73472347598e-12
               ],
-              "n_cells": 11,
-              "realized_extent_um": 11000.000000000004,
+              "n_cells": 10,
+              "realized_extent_um": 10000.0,
               "realized_um": [
                 0.0,
-                11000.000000000004
+                10000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 50000.0 um realized 51000.0 um over 51 cells (+1000.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 20000.0 um realized 21000.0 um over 21 cells (+1000.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 10000.0 um realized 11000.0 um over 11 cells (+1000.0 um, +10.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2188,13 +1878,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                4927.3602999999885
+                2429.08981667
               ],
-              "n_cells": 42,
-              "realized_extent_um": 104927.3603,
+              "n_cells": 41,
+              "realized_extent_um": 102429.089817,
               "realized_um": [
                 0.0,
-                104927.3603
+                102429.089817
               ]
             },
             "y": {
@@ -2205,13 +1895,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                4927.3602999999885
+                2429.08981667
               ],
-              "n_cells": 42,
-              "realized_extent_um": 104927.3603,
+              "n_cells": 41,
+              "realized_extent_um": 102429.089817,
               "realized_um": [
                 0.0,
-                104927.3603
+                102429.089817
               ]
             },
             "z": {
@@ -2222,32 +1912,32 @@
               ],
               "face_residual_um": [
                 0.0,
-                4927.3602999999885
+                2429.08981667
               ],
-              "n_cells": 42,
-              "realized_extent_um": 104927.3603,
+              "n_cells": 41,
+              "realized_extent_um": 102429.089817,
               "realized_um": [
                 0.0,
-                104927.3603
+                102429.089817
               ]
             }
           },
           "findings": [
             {
               "axis": "x",
-              "detail": "declared 100000.0 um realized 104927.4 um over 42 cells (+4927.4 um, +4.93%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "y",
-              "detail": "declared 100000.0 um realized 104927.4 um over 42 cells (+4927.4 um, +4.93%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "z",
-              "detail": "declared 100000.0 um realized 104927.4 um over 42 cells (+4927.4 um, +4.93%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -2259,51 +1949,51 @@
         "geometry|pec|34100.000,34100.000,34100.000um->65900.000,65900.000,65900.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 31799.999999999996,
+              "declared_extent_um": 31800.0,
               "declared_um": [
-                34100.00000000001,
+                34100.0,
                 65900.0
               ],
               "face_residual_um": [
-                875.786766666678,
-                1553.3030499999684
+                875.786766667,
+                1553.30305
               ],
-              "realized_extent_um": 32477.516283333287,
+              "realized_extent_um": 32477.5162833,
               "realized_um": [
-                34975.786766666686,
-                67453.30304999997
+                34975.7867667,
+                67453.30305
               ]
             },
             "y": {
-              "declared_extent_um": 31799.999999999996,
+              "declared_extent_um": 31800.0,
               "declared_um": [
-                34100.00000000001,
+                34100.0,
                 65900.0
               ],
               "face_residual_um": [
-                875.786766666678,
-                1553.3030499999684
+                875.786766667,
+                1553.30305
               ],
-              "realized_extent_um": 32477.516283333287,
+              "realized_extent_um": 32477.5162833,
               "realized_um": [
-                34975.786766666686,
-                67453.30304999997
+                34975.7867667,
+                67453.30305
               ]
             },
             "z": {
-              "declared_extent_um": 31799.999999999996,
+              "declared_extent_um": 31800.0,
               "declared_um": [
-                34100.00000000001,
+                34100.0,
                 65900.0
               ],
               "face_residual_um": [
-                875.786766666678,
-                1553.3030499999684
+                875.786766667,
+                1553.30305
               ],
-              "realized_extent_um": 32477.516283333287,
+              "realized_extent_um": 32477.5162833,
               "realized_um": [
-                34975.786766666686,
-                67453.30304999997
+                34975.7867667,
+                67453.30305
               ]
             }
           },
@@ -2361,13 +2051,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                750.0000000000007
+                0.0
               ],
-              "n_cells": 33,
-              "realized_extent_um": 24750.0,
+              "n_cells": 32,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                24750.0
+                24000.0
               ]
             },
             "y": {
@@ -2378,13 +2068,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                750.0000000000007
+                0.0
               ],
-              "n_cells": 17,
-              "realized_extent_um": 12750.000000000002,
+              "n_cells": 16,
+              "realized_extent_um": 12000.0,
               "realized_um": [
                 0.0,
-                12750.000000000002
+                12000.0
               ]
             },
             "z": {
@@ -2395,36 +2085,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                750.0000000000007
+                0.0
               ],
-              "n_cells": 49,
-              "realized_extent_um": 36750.0,
+              "n_cells": 48,
+              "realized_extent_um": 36000.0,
               "realized_um": [
                 0.0,
-                36750.0
+                36000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 24000.0 um realized 24750.0 um over 33 cells (+750.0 um, +3.13%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 12000.0 um realized 12750.0 um over 17 cells (+750.0 um, +6.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 36000.0 um realized 36750.0 um over 49 cells (+750.0 um, +2.08%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2457,13 +2128,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 33,
-              "realized_extent_um": 33000.0,
+              "n_cells": 32,
+              "realized_extent_um": 32000.0,
               "realized_um": [
                 0.0,
-                33000.0
+                32000.0
               ]
             },
             "y": {
@@ -2474,13 +2145,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 33,
-              "realized_extent_um": 33000.0,
+              "n_cells": 32,
+              "realized_extent_um": 32000.0,
               "realized_um": [
                 0.0,
-                33000.0
+                32000.0
               ]
             },
             "z": {
@@ -2491,36 +2162,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 33,
-              "realized_extent_um": 33000.0,
+              "n_cells": 32,
+              "realized_extent_um": 32000.0,
               "realized_um": [
                 0.0,
-                33000.0
+                32000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 32000.0 um realized 33000.0 um over 33 cells (+1000.0 um, +3.13%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 32000.0 um realized 33000.0 um over 33 cells (+1000.0 um, +3.13%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 32000.0 um realized 33000.0 um over 33 cells (+1000.0 um, +3.13%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2540,13 +2192,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000564
+                5.55111512313e-11
               ],
-              "n_cells": 201,
-              "realized_extent_um": 201000.00000000006,
+              "n_cells": 200,
+              "realized_extent_um": 200000.0,
               "realized_um": [
                 0.0,
-                201000.00000000006
+                200000.0
               ]
             },
             "y": {
@@ -2557,13 +2209,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 9,
-              "realized_extent_um": 9000.000000000002,
+              "n_cells": 8,
+              "realized_extent_um": 8000.0,
               "realized_um": [
                 0.0,
-                9000.000000000002
+                8000.0
               ]
             },
             "z": {
@@ -2584,20 +2236,7 @@
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 200000.0 um realized 201000.0 um over 201 cells (+1000.0 um, +0.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 8000.0 um realized 9000.0 um over 9 cells (+1000.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2617,13 +2256,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000564
+                5.55111512313e-11
               ],
-              "n_cells": 201,
-              "realized_extent_um": 201000.00000000006,
+              "n_cells": 200,
+              "realized_extent_um": 200000.0,
               "realized_um": [
                 0.0,
-                201000.00000000006
+                200000.0
               ]
             },
             "y": {
@@ -2634,13 +2273,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 9,
-              "realized_extent_um": 9000.000000000002,
+              "n_cells": 8,
+              "realized_extent_um": 8000.0,
               "realized_um": [
                 0.0,
-                9000.000000000002
+                8000.0
               ]
             },
             "z": {
@@ -2661,20 +2300,7 @@
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 200000.0 um realized 201000.0 um over 201 cells (+1000.0 um, +0.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 8000.0 um realized 9000.0 um over 9 cells (+1000.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2682,19 +2308,19 @@
         "geometry|slab|95000.000,-1000000.000,-1000000.000um->104500.000,1000000.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 9500.00000000001,
+              "declared_extent_um": 9500.0,
               "declared_um": [
                 95000.0,
-                104500.00000000001
+                104500.0
               ],
               "face_residual_um": [
-                8.326672684688674e-11,
-                500.00000000008373
+                8.32667268469e-11,
+                500.0
               ],
-              "realized_extent_um": 10000.00000000001,
+              "realized_extent_um": 10000.0,
               "realized_um": [
-                95000.00000000009,
-                105000.00000000009
+                95000.0,
+                105000.0
               ]
             },
             "y": {
@@ -2704,13 +2330,13 @@
                 8000.0
               ],
               "face_residual_um": [
-                10000.000000000002,
-                11000.000000000016
+                10000.0,
+                11000.0
               ],
-              "realized_extent_um": 29000.00000000002,
+              "realized_extent_um": 29000.0,
               "realized_um": [
-                -10000.000000000002,
-                19000.00000000002
+                -10000.0,
+                19000.0
               ]
             },
             "z": {
@@ -2831,13 +2457,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                80.00000000000368
+                0.0
               ],
-              "n_cells": 426,
-              "realized_extent_um": 34080.00000000001,
+              "n_cells": 425,
+              "realized_extent_um": 34000.0,
               "realized_um": [
                 0.0,
-                34080.00000000001
+                34000.0
               ]
             },
             "y": {
@@ -2848,13 +2474,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                88.00000000000475
+                8.0
               ],
-              "n_cells": 216,
-              "realized_extent_um": 17280.000000000004,
+              "n_cells": 215,
+              "realized_extent_um": 17200.0,
               "realized_um": [
                 0.0,
-                17280.000000000004
+                17200.0
               ]
             },
             "z": {
@@ -2865,30 +2491,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                86.00000000000014
+                6.0
               ],
-              "n_cells": 23,
-              "realized_extent_um": 1840.0,
+              "n_cells": 22,
+              "realized_extent_um": 1760.0,
               "realized_um": [
                 0.0,
-                1840.0
+                1760.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "y",
-              "detail": "declared 17192.0 um realized 17280.0 um over 216 cells (+88.0 um, +0.51%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 1754.0 um realized 1840.0 um over 23 cells (+86.0 um, +4.90%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -2903,28 +2516,28 @@
               ],
               "face_residual_um": [
                 0.0,
-                79.99999999992735
+                79.9999999999
               ],
-              "realized_extent_um": 34079.99999999993,
+              "realized_extent_um": 34080.0,
               "realized_um": [
                 0.0,
-                34079.99999999993
+                34080.0
               ]
             },
             "y": {
-              "declared_extent_um": 599.9999999999999,
+              "declared_extent_um": 600.0,
               "declared_um": [
-                1148.0000000000002,
+                1148.0,
                 1748.0
               ],
               "face_residual_um": [
-                51.999999999999964,
-                12.000000000001158
+                52.0,
+                12.0
               ],
-              "realized_extent_um": 560.000000000001,
+              "realized_extent_um": 560.0,
               "realized_um": [
                 1200.0,
-                1760.0000000000011
+                1760.0
               ]
             },
             "z": {
@@ -2934,8 +2547,8 @@
                 334.0
               ],
               "face_residual_um": [
-                66.00000000000003,
-                66.00000000000003
+                66.0,
+                66.0
               ],
               "realized_extent_um": 80.0,
               "realized_um": [
@@ -2979,19 +2592,19 @@
         "geometry|pec|16700.000,1748.000,254.000um->17300.000,13748.000,334.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 600.0000000000033,
+              "declared_extent_um": 600.0,
               "declared_um": [
                 16700.0,
-                17300.000000000004
+                17300.0
               ],
               "face_residual_um": [
-                20.00000000003735,
-                60.00000000003572
+                20.0,
+                60.0
               ],
-              "realized_extent_um": 640.0000000000017,
+              "realized_extent_um": 640.0,
               "realized_um": [
-                16720.000000000036,
-                17360.00000000004
+                16720.0,
+                17360.0
               ]
             },
             "y": {
@@ -3001,13 +2614,13 @@
                 13748.0
               ],
               "face_residual_um": [
-                12.000000000001158,
-                12.000000000032818
+                12.0,
+                12.0
               ],
-              "realized_extent_um": 12000.000000000031,
+              "realized_extent_um": 12000.0,
               "realized_um": [
-                1760.0000000000011,
-                13760.000000000033
+                1760.0,
+                13760.0
               ]
             },
             "z": {
@@ -3017,8 +2630,8 @@
                 334.0
               ],
               "face_residual_um": [
-                66.00000000000003,
-                66.00000000000003
+                66.0,
+                66.0
               ],
               "realized_extent_um": 80.0,
               "realized_um": [
@@ -3063,12 +2676,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                79.99999999992735
+                79.9999999999
               ],
-              "realized_extent_um": 34079.99999999993,
+              "realized_extent_um": 34080.0,
               "realized_um": [
                 0.0,
-                34079.99999999993
+                34080.0
               ]
             },
             "y": {
@@ -3079,12 +2692,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                8.000000000039226
+                8.00000000004
               ],
-              "realized_extent_um": 17200.000000000036,
+              "realized_extent_um": 17200.0,
               "realized_um": [
                 0.0,
-                17200.000000000036
+                17200.0
               ]
             },
             "z": {
@@ -3095,7 +2708,7 @@
               ],
               "face_residual_um": [
                 0.0,
-                66.00000000000003
+                66.0
               ],
               "realized_extent_um": 320.0,
               "realized_um": [
@@ -3221,13 +2834,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000564
+                5.55111512313e-11
               ],
-              "n_cells": 201,
-              "realized_extent_um": 201000.00000000006,
+              "n_cells": 200,
+              "realized_extent_um": 200000.0,
               "realized_um": [
                 0.0,
-                201000.00000000006
+                200000.0
               ]
             },
             "y": {
@@ -3238,13 +2851,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1140.000000000002
+                140.0
               ],
-              "n_cells": 24,
-              "realized_extent_um": 24000.0,
+              "n_cells": 23,
+              "realized_extent_um": 23000.0,
               "realized_um": [
                 0.0,
-                24000.0
+                23000.0
               ]
             },
             "z": {
@@ -3255,32 +2868,26 @@
               ],
               "face_residual_um": [
                 0.0,
-                1840.0000000000032
+                840.0
               ],
-              "n_cells": 12,
-              "realized_extent_um": 12000.000000000004,
+              "n_cells": 11,
+              "realized_extent_um": 11000.0,
               "realized_um": [
                 0.0,
-                12000.000000000004
+                11000.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 200000.0 um realized 201000.0 um over 201 cells (+1000.0 um, +0.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "y",
-              "detail": "declared 22860.0 um realized 24000.0 um over 24 cells (+1140.0 um, +4.99%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 22860.0 um realized 23000.0 um over 23 cells (+140.0 um, +0.61%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "z",
-              "detail": "declared 10160.0 um realized 12000.0 um over 12 cells (+1840.0 um, +18.11%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 10160.0 um realized 11000.0 um over 11 cells (+840.0 um, +8.27%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -3346,13 +2953,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000564
+                5.55111512313e-11
               ],
-              "n_cells": 201,
-              "realized_extent_um": 201000.00000000006,
+              "n_cells": 200,
+              "realized_extent_um": 200000.0,
               "realized_um": [
                 0.0,
-                201000.00000000006
+                200000.0
               ]
             },
             "y": {
@@ -3363,13 +2970,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1140.000000000002
+                140.0
               ],
-              "n_cells": 24,
-              "realized_extent_um": 24000.0,
+              "n_cells": 23,
+              "realized_extent_um": 23000.0,
               "realized_um": [
                 0.0,
-                24000.0
+                23000.0
               ]
             },
             "z": {
@@ -3380,32 +2987,26 @@
               ],
               "face_residual_um": [
                 0.0,
-                1840.0000000000032
+                840.0
               ],
-              "n_cells": 12,
-              "realized_extent_um": 12000.000000000004,
+              "n_cells": 11,
+              "realized_extent_um": 11000.0,
               "realized_um": [
                 0.0,
-                12000.000000000004
+                11000.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 200000.0 um realized 201000.0 um over 201 cells (+1000.0 um, +0.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "y",
-              "detail": "declared 22860.0 um realized 24000.0 um over 24 cells (+1140.0 um, +4.99%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 22860.0 um realized 23000.0 um over 23 cells (+140.0 um, +0.61%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "z",
-              "detail": "declared 10160.0 um realized 12000.0 um over 12 cells (+1840.0 um, +18.11%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 10160.0 um realized 11000.0 um over 11 cells (+840.0 um, +8.27%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -3417,19 +3018,19 @@
         "geometry|pec|145000.000,0.000,0.000um->147000.000,22860.000,10160.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2000.0000000000018,
+              "declared_extent_um": 2000.0,
               "declared_um": [
                 145000.0,
                 147000.0
               ],
               "face_residual_um": [
-                1.1102230246251565e-10,
-                1.1102230246251565e-10
+                1.11022302463e-10,
+                1.11022302463e-10
               ],
-              "realized_extent_um": 2000.0000000000018,
+              "realized_extent_um": 2000.0,
               "realized_um": [
-                145000.0000000001,
-                147000.00000000012
+                145000.0,
+                147000.0
               ]
             },
             "y": {
@@ -3440,12 +3041,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                140.00000000001512
+                140.0
               ],
-              "realized_extent_um": 23000.000000000015,
+              "realized_extent_um": 23000.0,
               "realized_um": [
                 0.0,
-                23000.000000000015
+                23000.0
               ]
             },
             "z": {
@@ -3456,12 +3057,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                840.0000000000022
+                840.0
               ],
-              "realized_extent_um": 11000.000000000004,
+              "realized_extent_um": 11000.0,
               "realized_um": [
                 0.0,
-                11000.000000000004
+                11000.0
               ]
             }
           },
@@ -3562,13 +3163,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.0000000000143
+                1.38777878078e-11
               ],
-              "n_cells": 101,
-              "realized_extent_um": 50500.000000000015,
+              "n_cells": 100,
+              "realized_extent_um": 50000.0,
               "realized_um": [
                 0.0,
-                50500.000000000015
+                50000.0
               ]
             },
             "y": {
@@ -3579,13 +3180,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.0000000000039
+                3.46944695195e-12
               ],
-              "n_cells": 61,
-              "realized_extent_um": 30500.000000000004,
+              "n_cells": 60,
+              "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
-                30500.000000000004
+                30000.0
               ]
             },
             "z": {
@@ -3596,36 +3197,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                500.0000000000074
+                6.93889390391e-12
               ],
-              "n_cells": 81,
-              "realized_extent_um": 40500.00000000001,
+              "n_cells": 80,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                40500.00000000001
+                40000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 50000.0 um realized 50500.0 um over 101 cells (+500.0 um, +1.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 30000.0 um realized 30500.0 um over 61 cells (+500.0 um, +1.67%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 40000.0 um realized 40500.0 um over 81 cells (+500.0 um, +1.25%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -3658,13 +3240,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 51,
-              "realized_extent_um": 51000.00000000001,
+              "n_cells": 50,
+              "realized_extent_um": 50000.0,
               "realized_um": [
                 0.0,
-                51000.00000000001
+                50000.0
               ]
             },
             "y": {
@@ -3675,13 +3257,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000078
+                6.93889390391e-12
               ],
-              "n_cells": 31,
-              "realized_extent_um": 31000.000000000007,
+              "n_cells": 30,
+              "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
-                31000.000000000007
+                30000.0
               ]
             },
             "z": {
@@ -3692,36 +3274,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000009
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 41000.0,
+              "n_cells": 40,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                41000.0
+                40000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 50000.0 um realized 51000.0 um over 51 cells (+1000.0 um, +2.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 30000.0 um realized 31000.0 um over 31 cells (+1000.0 um, +3.33%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 40000.0 um realized 41000.0 um over 41 cells (+1000.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -3754,13 +3317,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.99999999999034
+                1.38777878078e-11
               ],
-              "n_cells": 358,
-              "realized_extent_um": 90931.99999999999,
+              "n_cells": 357,
+              "realized_extent_um": 90678.0,
               "realized_um": [
                 0.0,
-                90931.99999999999
+                90678.0
               ]
             },
             "y": {
@@ -3771,13 +3334,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.99999999999727
+                3.46944695195e-12
               ],
-              "n_cells": 91,
-              "realized_extent_um": 23113.999999999996,
+              "n_cells": 90,
+              "realized_extent_um": 22860.0,
               "realized_um": [
                 0.0,
-                23113.999999999996
+                22860.0
               ]
             },
             "z": {
@@ -3788,30 +3351,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                0.0
               ],
-              "n_cells": 5,
-              "realized_extent_um": 1269.9999999999998,
+              "n_cells": 4,
+              "realized_extent_um": 1016.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1016.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "y",
-              "detail": "declared 22860.0 um realized 23114.0 um over 91 cells (+254.0 um, +1.11%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 1016.0 um realized 1270.0 um over 5 cells (+254.0 um, +25.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -3825,13 +3375,13 @@
                 12319.0
               ],
               "face_residual_um": [
-                126.99999999993966,
-                126.99999999991537
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2285.9999999999754,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                10159.99999999994,
-                12445.999999999916
+                10160.0,
+                12446.0
               ]
             },
             "y": {
@@ -3842,12 +3392,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                126.99999999999777
+                127.0
               ],
-              "realized_extent_um": 6603.999999999998,
+              "realized_extent_um": 6604.0,
               "realized_um": [
                 0.0,
-                6603.999999999998
+                6604.0
               ]
             },
             "z": {
@@ -3858,12 +3408,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -3914,29 +3464,29 @@
                 12319.0
               ],
               "face_residual_um": [
-                126.99999999993966,
-                126.99999999991537
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2285.9999999999754,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                10159.99999999994,
-                12445.999999999916
+                10160.0,
+                12446.0
               ]
             },
             "y": {
               "declared_extent_um": 6477.0,
               "declared_um": [
-                16382.999999999998,
+                16383.0,
                 22860.0
               ],
               "face_residual_um": [
-                127.00000000002292,
-                254.00000000004238
+                127.0,
+                254.0
               ],
-              "realized_extent_um": 6604.00000000002,
+              "realized_extent_um": 6604.0,
               "realized_um": [
-                16510.000000000022,
-                23114.00000000004
+                16510.0,
+                23114.0
               ]
             },
             "z": {
@@ -3947,12 +3497,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4003,13 +3553,13 @@
                 28575.0
               ],
               "face_residual_um": [
-                126.99999999976619,
-                126.9999999997419
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2285.9999999999754,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                26415.999999999767,
-                28701.99999999974
+                26416.0,
+                28702.0
               ]
             },
             "y": {
@@ -4020,12 +3570,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                126.99999999999864
+                127.0
               ],
-              "realized_extent_um": 8381.999999999998,
+              "realized_extent_um": 8382.0,
               "realized_um": [
                 0.0,
-                8381.999999999998
+                8382.0
               ]
             },
             "z": {
@@ -4036,12 +3586,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4092,29 +3642,29 @@
                 28575.0
               ],
               "face_residual_um": [
-                126.99999999976619,
-                126.9999999997419
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2285.9999999999754,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                26415.999999999767,
-                28701.99999999974
+                26416.0,
+                28702.0
               ]
             },
             "y": {
               "declared_extent_um": 8255.0,
               "declared_um": [
-                14604.999999999998,
+                14605.0,
                 22860.0
               ],
               "face_residual_um": [
-                127.00000000001945,
-                254.00000000004238
+                127.0,
+                254.0
               ],
-              "realized_extent_um": 8382.000000000024,
+              "realized_extent_um": 8382.0,
               "realized_um": [
-                14732.000000000018,
-                23114.00000000004
+                14732.0,
+                23114.0
               ]
             },
             "z": {
@@ -4125,12 +3675,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4175,19 +3725,19 @@
         "geometry|pec|44069.000,-1000000.000,-1000000.000um->46355.000,8509.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2286.000000000003,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 44069.0,
                 46355.0
               ],
               "face_residual_um": [
-                126.99999999984252,
-                126.99999999987722
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000038,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                44195.99999999984,
-                46481.999999999876
+                44196.0,
+                46482.0
               ]
             },
             "y": {
@@ -4198,7 +3748,7 @@
               ],
               "face_residual_um": [
                 0.0,
-                127.00000000000037
+                127.0
               ],
               "realized_extent_um": 8636.0,
               "realized_um": [
@@ -4214,12 +3764,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4264,19 +3814,19 @@
         "geometry|pec|44069.000,14351.000,-1000000.000um->46355.000,1000000.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2286.000000000003,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 44069.0,
                 46355.0
               ],
               "face_residual_um": [
-                126.99999999984252,
-                126.99999999987722
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000038,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                44195.99999999984,
-                46481.999999999876
+                44196.0,
+                46482.0
               ]
             },
             "y": {
@@ -4286,13 +3836,13 @@
                 22860.0
               ],
               "face_residual_um": [
-                127.00000000001772,
-                254.00000000004238
+                127.0,
+                254.0
               ],
-              "realized_extent_um": 8636.000000000024,
+              "realized_extent_um": 8636.0,
               "realized_um": [
-                14478.000000000016,
-                23114.00000000004
+                14478.0,
+                23114.0
               ]
             },
             "z": {
@@ -4303,12 +3853,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4353,19 +3903,19 @@
         "geometry|pec|61849.000,-1000000.000,-1000000.000um->64135.000,8255.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2285.9999999999964,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 61849.0,
                 64135.0
               ],
               "face_residual_um": [
-                127.00000000013395,
-                127.00000000018252
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000045,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                61976.00000000014,
-                64262.00000000018
+                61976.0,
+                64262.0
               ]
             },
             "y": {
@@ -4376,12 +3926,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                126.99999999999864
+                127.0
               ],
-              "realized_extent_um": 8381.999999999998,
+              "realized_extent_um": 8382.0,
               "realized_um": [
                 0.0,
-                8381.999999999998
+                8382.0
               ]
             },
             "z": {
@@ -4392,12 +3942,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4442,35 +3992,35 @@
         "geometry|pec|61849.000,14605.000,-1000000.000um->64135.000,1000000.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2285.9999999999964,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 61849.0,
                 64135.0
               ],
               "face_residual_um": [
-                127.00000000013395,
-                127.00000000018252
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000045,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                61976.00000000014,
-                64262.00000000018
+                61976.0,
+                64262.0
               ]
             },
             "y": {
               "declared_extent_um": 8255.0,
               "declared_um": [
-                14604.999999999998,
+                14605.0,
                 22860.0
               ],
               "face_residual_um": [
-                127.00000000001945,
-                254.00000000004238
+                127.0,
+                254.0
               ],
-              "realized_extent_um": 8382.000000000024,
+              "realized_extent_um": 8382.0,
               "realized_um": [
-                14732.000000000018,
-                23114.00000000004
+                14732.0,
+                23114.0
               ]
             },
             "z": {
@@ -4481,12 +4031,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4531,19 +4081,19 @@
         "geometry|pec|78105.000,-1000000.000,-1000000.000um->80391.000,6477.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2286.0000000000105,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 78105.0,
                 80391.0
               ],
               "face_residual_um": [
-                127.00000000041844,
-                127.0000000004462
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000038,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                78232.00000000041,
-                80518.00000000045
+                78232.0,
+                80518.0
               ]
             },
             "y": {
@@ -4554,12 +4104,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                126.99999999999777
+                127.0
               ],
-              "realized_extent_um": 6603.999999999998,
+              "realized_extent_um": 6604.0,
               "realized_um": [
                 0.0,
-                6603.999999999998
+                6604.0
               ]
             },
             "z": {
@@ -4570,12 +4120,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4620,35 +4170,35 @@
         "geometry|pec|78105.000,16383.000,-1000000.000um->80391.000,1000000.000,1000000.000um": {
           "axes": {
             "x": {
-              "declared_extent_um": 2286.0000000000105,
+              "declared_extent_um": 2286.0,
               "declared_um": [
                 78105.0,
                 80391.0
               ],
               "face_residual_um": [
-                127.00000000041844,
-                127.0000000004462
+                127.0,
+                127.0
               ],
-              "realized_extent_um": 2286.000000000038,
+              "realized_extent_um": 2286.0,
               "realized_um": [
-                78232.00000000041,
-                80518.00000000045
+                78232.0,
+                80518.0
               ]
             },
             "y": {
               "declared_extent_um": 6477.0,
               "declared_um": [
-                16382.999999999998,
+                16383.0,
                 22860.0
               ],
               "face_residual_um": [
-                127.00000000002292,
-                254.00000000004238
+                127.0,
+                254.0
               ],
-              "realized_extent_um": 6604.00000000002,
+              "realized_extent_um": 6604.0,
               "realized_um": [
-                16510.000000000022,
-                23114.00000000004
+                16510.0,
+                23114.0
               ]
             },
             "z": {
@@ -4659,12 +4209,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                253.9999999999999
+                254.0
               ],
-              "realized_extent_um": 1269.9999999999998,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1269.9999999999998
+                1270.0
               ]
             }
           },
@@ -4763,13 +4313,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0000000000086
+                6.93889390391e-12
               ],
-              "n_cells": 21,
-              "realized_extent_um": 42000.00000000001,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.00000000001
+                40000.0
               ]
             },
             "y": {
@@ -4780,13 +4330,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0000000000086
+                6.93889390391e-12
               ],
-              "n_cells": 21,
-              "realized_extent_um": 42000.00000000001,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.00000000001
+                40000.0
               ]
             },
             "z": {
@@ -4797,36 +4347,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0000000000086
+                6.93889390391e-12
               ],
-              "n_cells": 13,
-              "realized_extent_um": 26000.00000000001,
+              "n_cells": 12,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.00000000001
+                24000.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 40000.0 um realized 42000.0 um over 21 cells (+2000.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 40000.0 um realized 42000.0 um over 21 cells (+2000.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 24000.0 um realized 26000.0 um over 13 cells (+2000.0 um, +8.33%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -4859,13 +4390,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                8327.568277777642
+                1.11022302463e-10
               ],
-              "n_cells": 46,
-              "realized_extent_um": 383068.1407777777,
+              "n_cells": 45,
+              "realized_extent_um": 374740.5725,
               "realized_um": [
                 0.0,
-                383068.1407777777
+                374740.5725
               ]
             },
             "y": {
@@ -4876,53 +4407,34 @@
               ],
               "face_residual_um": [
                 0.0,
-                8327.568277777642
+                1.11022302463e-10
               ],
-              "n_cells": 46,
-              "realized_extent_um": 383068.1407777777,
+              "n_cells": 45,
+              "realized_extent_um": 374740.5725,
               "realized_um": [
                 0.0,
-                383068.1407777777
+                374740.5725
               ]
             },
             "z": {
-              "declared_extent_um": 391395.7090555556,
+              "declared_extent_um": 391395.709056,
               "declared_um": [
                 0.0,
-                391395.7090555556
+                391395.709056
               ],
               "face_residual_um": [
                 0.0,
-                8327.568277777807
+                1.66533453694e-10
               ],
-              "n_cells": 48,
-              "realized_extent_um": 399723.2773333334,
+              "n_cells": 47,
+              "realized_extent_um": 391395.709056,
               "realized_um": [
                 0.0,
-                399723.2773333334
+                391395.709056
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "declared 374740.6 um realized 383068.1 um over 46 cells (+8327.6 um, +2.22%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 374740.6 um realized 383068.1 um over 46 cells (+8327.6 um, +2.22%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 391395.7 um realized 399723.3 um over 48 cells (+8327.6 um, +2.13%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
@@ -4955,13 +4467,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000014
+                0.0
               ],
-              "n_cells": 41,
-              "realized_extent_um": 61500.0,
+              "n_cells": 40,
+              "realized_extent_um": 60000.0,
               "realized_um": [
                 0.0,
-                61500.0
+                60000.0
               ]
             },
             "y": {
@@ -4972,13 +4484,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1500.0000000000082
+                6.93889390391e-12
               ],
-              "n_cells": 21,
-              "realized_extent_um": 31500.000000000007,
+              "n_cells": 20,
+              "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
-                31500.000000000007
+                30000.0
               ]
             },
             "z": {
@@ -4989,32 +4501,20 @@
               ],
               "face_residual_um": [
                 0.0,
-                2500.000000000006
+                1000.0
               ],
-              "n_cells": 15,
-              "realized_extent_um": 22500.000000000007,
+              "n_cells": 14,
+              "realized_extent_um": 21000.0,
               "realized_um": [
                 0.0,
-                22500.000000000007
+                21000.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 60000.0 um realized 61500.0 um over 41 cells (+1500.0 um, +2.50%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 30000.0 um realized 31500.0 um over 21 cells (+1500.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "z",
-              "detail": "declared 20000.0 um realized 22500.0 um over 15 cells (+2500.0 um, +12.50%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 20000.0 um realized 21000.0 um over 14 cells (+1000.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -5051,13 +4551,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                200.9999999999998
+                74.0
               ],
-              "n_cells": 263,
-              "realized_extent_um": 33401.0,
+              "n_cells": 262,
+              "realized_extent_um": 33274.0,
               "realized_um": [
                 0.0,
-                33401.0
+                33274.0
               ]
             },
             "y": {
@@ -5068,13 +4568,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                131.9999999999967
+                5.0
               ],
-              "n_cells": 164,
-              "realized_extent_um": 20827.999999999996,
+              "n_cells": 163,
+              "realized_extent_um": 20701.0,
               "realized_um": [
                 0.0,
-                20827.999999999996
+                20701.0
               ]
             },
             "z": {
@@ -5085,32 +4585,20 @@
               ],
               "face_residual_um": [
                 0.0,
-                142.9999999999999
+                16.0
               ],
-              "n_cells": 11,
-              "realized_extent_um": 1396.9999999999998,
+              "n_cells": 10,
+              "realized_extent_um": 1270.0,
               "realized_um": [
                 0.0,
-                1396.9999999999998
+                1270.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 33200.0 um realized 33401.0 um over 263 cells (+201.0 um, +0.61%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "y",
-              "detail": "declared 20696.0 um realized 20828.0 um over 164 cells (+132.0 um, +0.64%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "z",
-              "detail": "declared 1254.0 um realized 1397.0 um over 11 cells (+143.0 um, +11.40%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 1254.0 um realized 1270.0 um over 10 cells (+16.0 um, +1.28%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }
@@ -5129,12 +4617,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                73.99999999991441
+                73.9999999999
               ],
-              "realized_extent_um": 33273.99999999991,
+              "realized_extent_um": 33274.0,
               "realized_um": [
                 0.0,
-                33273.99999999991
+                33274.0
               ]
             },
             "y": {
@@ -5144,13 +4632,13 @@
                 2124.0
               ],
               "face_residual_um": [
-                4.3368086899420177e-13,
-                34.99999999999944
+                4.33680868994e-13,
+                35.0
               ],
-              "realized_extent_um": 634.9999999999999,
+              "realized_extent_um": 635.0,
               "realized_um": [
-                1523.9999999999995,
-                2158.9999999999995
+                1524.0,
+                2159.0
               ]
             },
             "z": {
@@ -5206,12 +4694,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                73.99999999991441
+                73.9999999999
               ],
-              "realized_extent_um": 33273.99999999991,
+              "realized_extent_um": 33274.0,
               "realized_um": [
                 0.0,
-                33273.99999999991
+                33274.0
               ]
             },
             "y": {
@@ -5222,12 +4710,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                4.999999999970306
+                4.99999999997
               ],
-              "realized_extent_um": 20700.99999999997,
+              "realized_extent_um": 20701.0,
               "realized_um": [
                 0.0,
-                20700.99999999997
+                20701.0
               ]
             },
             "z": {
@@ -5330,13 +4818,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1000.0000000000286
+                2.77555756156e-11
               ],
-              "n_cells": 91,
-              "realized_extent_um": 91000.00000000003,
+              "n_cells": 90,
+              "realized_extent_um": 90000.0,
               "realized_um": [
                 0.0,
-                91000.00000000003
+                90000.0
               ]
             },
             "y": {
@@ -5347,13 +4835,13 @@
               ],
               "face_residual_um": [
                 0.0,
-                1140.000000000002
+                140.0
               ],
-              "n_cells": 24,
-              "realized_extent_um": 24000.0,
+              "n_cells": 23,
+              "realized_extent_um": 23000.0,
               "realized_um": [
                 0.0,
-                24000.0
+                23000.0
               ]
             },
             "z": {
@@ -5364,32 +4852,26 @@
               ],
               "face_residual_um": [
                 0.0,
-                1840.0000000000032
+                840.0
               ],
-              "n_cells": 12,
-              "realized_extent_um": 12000.000000000004,
+              "n_cells": 11,
+              "realized_extent_um": 11000.0,
               "realized_um": [
                 0.0,
-                12000.000000000004
+                11000.0
               ]
             }
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "declared 90000.0 um realized 91000.0 um over 91 cells (+1000.0 um, +1.11%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
               "axis": "y",
-              "detail": "declared 22860.0 um realized 24000.0 um over 24 cells (+1140.0 um, +4.99%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 22860.0 um realized 23000.0 um over 23 cells (+140.0 um, +0.61%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             },
             {
               "axis": "z",
-              "detail": "declared 10160.0 um realized 12000.0 um over 12 cells (+1840.0 um, +18.11%) \u2014 the cell size does not divide the declared length",
+              "detail": "declared 10160.0 um realized 11000.0 um over 11 cells (+840.0 um, +8.27%) \u2014 the cell size does not divide the declared length",
               "kind": "domain-extent-quantized",
               "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
             }

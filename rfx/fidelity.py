@@ -133,11 +133,25 @@ def fidelity_report(sim, print_report: bool = True):
     # findings" for them — a clean bill of health for an unaudited structure
     # (found by the crossval sweep: cv09/cv14/cv21, 2026-08-27).
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
+    from rfx.nonuniform import interior_cells
     for a in range(3):
-        n_int = len(sizes[a]) - int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))            - int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
-        realized = float(np.sum(sizes[a][
-            int(getattr(grid, f"pad_{_axis_names()[a]}_lo")):
-            len(sizes[a]) - int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))]))
+        pad_lo = int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))
+        pad_hi = int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
+        # FENCE-POST: the cell-size arrays are indexed like the field arrays,
+        # so an axis with N interior NODES bounds N-1 interior CELLS (the last
+        # entry is the bounding-node duplicate, #562). Summing the node-count
+        # slice reported every domain as one cell LONGER than the solve has —
+        # e.g. cv11 read 24000/12000 um for a WR-90 guide whose walls are
+        # 22860/10160 um declared and 23000/11000 um realized (#722), which is
+        # exactly the fence-post class this report exists to catch. Shared
+        # slice rule with the NU path so the two cannot drift.
+        cells = interior_cells(sizes[a], pad_lo, pad_hi)
+        if len(sizes[a]) - pad_lo - pad_hi <= 1:
+            # 2-D mode: z is ONE periodic Yee plane, not a node fence, so the
+            # N-nodes-bound-N-1-cells rule does not apply to it.
+            cells = sizes[a][pad_lo:pad_lo + 1]
+        n_int = len(cells)
+        realized = float(np.sum(cells))
         declared = float(domain[a]) if a < len(domain) else 0.0
         ax = dict(axis=_axis_names()[a], n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),

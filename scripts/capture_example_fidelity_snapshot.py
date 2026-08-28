@@ -18,9 +18,23 @@ fails and the diff is NOT an intentional change, that is the gate working:
 fix the script (or investigate why realized != declared), do not re-pin.
 
 No solves: every number below comes from ``sim.preflight()`` and
-``sim.fidelity_report()``, neither of which time-steps. Wall clock ~30s for
-all 33 (script, builder, variant) triples across the 23 auditable scripts
-(measured 2026-08-27; CPU-only, no GPU/JAX warmup dominates).
+``sim.fidelity_report()``, neither of which time-steps. Wall clock for all
+33 (script, builder, variant) triples across the 23 auditable scripts:
+``wrote tests/data/example_fidelity_snapshot.json: 33 variants in 51.2s``
+(measured 2026-08-28; CPU-only, no GPU/JAX warmup dominates).
+
+Every optional dependency in ``_example_fidelity_lib.OPTIONAL_DEPENDENCIES``
+(today: optax) must be installed to regenerate. Without them this script
+STOPS on the import rather than writing a snapshot with those variants
+missing -- a partial snapshot would fail the gate on every machine that does
+have them.
+
+Domain extents are INTERIOR CELL sums: an axis with N interior nodes bounds
+N-1 cells, and the realized length is the cell sum, which is what the
+PEC/PMC walls of the solved box are actually spaced by. Reading it as the
+node count made every domain one cell too long (fixed 2026-08-28 in
+rfx/fidelity.py; it had put 24000/12000 um on cv11's WR-90 guide where #722
+measures 23000/11000).
 
 Run from the repo root::
 
@@ -56,7 +70,9 @@ def main() -> int:
             "Regenerate with: JAX_ENABLE_X64=0 python "
             "scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of "
             "today's advisories, not a zero-advisory endorsement (see this "
-            "script's module docstring and test_example_fidelity_contract.py)."
+            "script's module docstring and test_example_fidelity_contract.py). "
+            "Domain realized_extent_um is the INTERIOR CELL sum (N nodes "
+            "bound N-1 cells), i.e. the wall-to-wall length the solve has."
         ),
         variants=snapshot,
     )

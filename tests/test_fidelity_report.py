@@ -207,3 +207,55 @@ def test_dispersive_material_states_that_poles_are_not_verified():
     sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 8e-3, 8e-3)), material="debye")
     kinds = [f["kind"] for f in _geo(sim.fidelity_report(print_report=False), 0)["findings"]]
     assert "dispersion-not-audited" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Domain extent: N interior CELLS, not N+1 interior NODES (2026-08-28).
+# The first implementation summed the node-count slice of the cell-size array,
+# so every domain read one cell too long -- cv11's WR-90 guide reported
+# 24000/12000 um where #722 measures 23000/11000, and
+# differentiable_s11_design reported 26000/14000 um where #738 measures
+# 24000/12000. The gate that pins these numbers is about fence-post errors,
+# so its own fence post has to be right.
+# ---------------------------------------------------------------------------
+
+def _domain(sim):
+    for item in sim.fidelity_report(print_report=False):
+        if item["entity"].startswith("domain"):
+            return item
+    raise AssertionError("domain row missing from report")
+
+
+def test_commensurate_domain_reports_exactly_its_declared_extent():
+    """10 mm at dx = 1 mm is 10 cells bounded by 11 nodes -> 10.000 mm."""
+    dom = _domain(_plain(dx=1e-3))  # domain=(10 mm)^3
+    for ax in dom["axes"]:
+        assert ax["n_cells"] == 10, ax
+        assert abs(ax["realized_extent_um"] - 10000.0) < 1e-6, ax
+        assert abs(ax["declared_extent_um"] - 10000.0) < 1e-6, ax
+    assert [f for f in dom["findings"] if f["kind"] == "domain-extent-quantized"] == [], (
+        "an exactly commensurate domain must raise no quantization finding")
+
+
+def test_incommensurate_domain_still_reports_the_rounded_up_extent():
+    """The finding must still fire when the cell size does NOT divide the
+    declared length -- 10.5 mm at dx = 1 mm is 11 cells = 11.000 mm."""
+    sim = Simulation(freq_max=10e9, domain=(10.5e-3, 10e-3, 10e-3), dx=1e-3,
+                     boundary="cpml", cpml_layers=4)
+    dom = _domain(sim)
+    ax = dom["axes"][0]
+    assert ax["n_cells"] == 11, ax
+    assert abs(ax["realized_extent_um"] - 11000.0) < 1e-6, ax
+    kinds = [(f["kind"], f.get("axis")) for f in dom["findings"]]
+    assert ("domain-extent-quantized", "x") in kinds, kinds
+
+
+def test_two_dimensional_mode_reports_its_single_periodic_plane():
+    """2-D mode has ONE Yee plane on z; the N-nodes-bound-N-1-cells rule
+    does not apply to it, and reporting 0 cells / 0 um there would be a
+    false 'this axis does not exist'."""
+    sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 1e-3), dx=1e-3,
+                     boundary="cpml", cpml_layers=4, mode="2d_tmz")
+    ax_z = _domain(sim)["axes"][2]
+    assert ax_z["n_cells"] == 1, ax_z
+    assert abs(ax_z["realized_extent_um"] - 1000.0) < 1e-6, ax_z

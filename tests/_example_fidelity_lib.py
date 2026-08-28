@@ -104,27 +104,39 @@ def real_simulation_call_count(relpath: str) -> int:
     return sum(1 for n in ast.walk(_parse(relpath)) if _is_simulation_call(n))
 
 
+def _is_main_guard(node: ast.AST) -> bool:
+    if not isinstance(node, ast.If):
+        return False
+    t = node.test
+    return (isinstance(t, ast.Compare) and isinstance(t.left, ast.Name)
+            and t.left.id == "__name__" and len(t.ops) == 1
+            and isinstance(t.ops[0], ast.Eq)
+            and isinstance(t.comparators[0], ast.Constant)
+            and t.comparators[0].value == "__main__")
+
+
 def has_main_guard(relpath: str) -> bool:
     """A module-scope ``if __name__ == "__main__":`` guard exists."""
-    tree = _parse(relpath)
-    for node in tree.body:
-        if isinstance(node, ast.If):
-            t = node.test
-            if (isinstance(t, ast.Compare) and isinstance(t.left, ast.Name)
-                    and t.left.id == "__name__" and len(t.ops) == 1
-                    and isinstance(t.ops[0], ast.Eq)
-                    and isinstance(t.comparators[0], ast.Constant)
-                    and t.comparators[0].value == "__main__"):
-                return True
-    return False
+    return any(_is_main_guard(node) for node in _parse(relpath).body)
 
 
-def has_top_level_solve_call(relpath: str) -> bool:
+def has_top_level_solve_call(relpath: str, *,
+                            skip_main_guard: bool = False) -> bool:
     """A solve entrypoint is called from module scope (outside any
-    function/class def) -- i.e. importing the module would solve."""
+    function/class def).
+
+    ``skip_main_guard=True`` additionally ignores the body of
+    ``if __name__ == "__main__":`` -- that block does NOT run on import, so
+    it is the right predicate for "would importing this module solve?".
+    Without the flag the answer is "is there a solve call anywhere outside a
+    def", which is what the ``module_level_solve`` bucket (no main guard at
+    all) is classified on.
+    """
     tree = _parse(relpath)
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if skip_main_guard and _is_main_guard(node):
             continue
         for n in ast.walk(node):
             if _is_solve_call(n):
@@ -154,9 +166,10 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
 # --------------------------------------------------------------------------
 # Module loading -- exec the script's top level (imports, defs, constants),
 # never main(). Safe for every "audited" and "builder_fused_with_solve"
-# entry: all 23 audited scripts carry a main guard (verified below at import
-# time via CLASSIFICATION's own machine checks), so nothing solves merely by
-# loading them. Pattern matches tests/test_crossval_example_imports.py.
+# entry: all 23 audited scripts carry a main guard AND no module-scope solve
+# call, both asserted per script by the "audited" branch of
+# test_not_auditable_classifications_are_machine_checked, so nothing solves
+# merely by loading them. Pattern matches tests/test_crossval_example_imports.py.
 # --------------------------------------------------------------------------
 
 class MissingOptionalDependency(ImportError):
@@ -491,10 +504,16 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
         hi_s = ",".join(f"{v * 1e6:.3f}" for v in hi)
         key = f"{kind}|{tag}|{lo_s}um->{hi_s}um"
     else:
-        # No analytic bounding box (rare): falls back to the report's own
-        # name, which DOES embed a list index -- only stable when nothing is
-        # inserted/removed around it. No script in this repo hits this path
-        # today (see test_discovery_and_classification_are_consistent).
+        # No analytic bounding box: falls back to the report's own name. The
+        # ONE row that lands here in this corpus is fidelity_report's own
+        # out-of-scope notice, ``"NOT AUDITED by this report"`` (28 of the 33
+        # variants have ports/sources, so 28 of the snapshot's entity rows
+        # are this key) -- a fixed string with no list index in it, so it is
+        # position-independent for the same reason the keys above are. A real
+        # entity with no ``bounding_box()`` would fall here too and WOULD
+        # carry its index (``geometry[7] 'copper'``); nothing in this repo
+        # does today, and ``test_snapshot_keys_survive_entity_insertion``
+        # pins the position-independence that matters.
         key = name
     n = seen.get(key, 0)
     seen[key] = n + 1
@@ -519,9 +538,56 @@ def digest_fidelity(report: list[dict]) -> dict:
 
 
 def digest_preflight(report) -> list[dict]:
+    """Preflight rows this gate pins -- rfx's OWN findings, nothing else.
+
+    ``Simulation.preflight`` runs its validators inside
+    ``warnings.catch_warnings(record=True)`` + ``simplefilter("always")``
+    (rfx/api/_preflight.py) and turns EVERY warning raised in that window
+    into an issue row, including warnings from third-party libraries that
+    happen to warn on first use inside it. rfx's own findings always carry a
+    ``code`` (they are ``PreflightWarning`` instances, or a ``ValueError``
+    escalated to a coded/uncoded ERROR row); a warning-severity row with
+    ``code == "uncoded"`` is therefore foreign, and pinning it makes the
+    snapshot a function of the installed dependency versions rather than of
+    the example.
+
+    Measured: on jax 0.10.2 ``examples/tutorials/patch_antenna_demo.py``
+    gained a 7th row, ``uncoded None: jax.experimental.shard_map is
+    deprecated in v0.8.0``, and the gate failed
+    (``1 failed, 81 passed, 1 skipped in 54.33s``) -- while CI stayed green
+    because it resolves jax 0.6.2. It is also ORDER dependent: importing a
+    module that pulls ``jax.experimental.shard_map`` earlier in the same
+    process consumes the once-per-location warning and the row disappears.
+    Uncoded ERROR rows are kept: those come from an rfx validator raising.
+    """
     rows = [issue.to_dict() for issue in report]
+    rows = [d for d in rows
+            if not (d["code"] == "uncoded" and d["severity"] != "error")]
     rows.sort(key=lambda d: (d["code"], str(d["loc"]), d["message"]))
     return rows
+
+
+def _round_floats(obj):
+    """Round every float in the digest to 12 significant digits.
+
+    The digest carries sums over cell-size arrays (``np.sum`` of 200+ float
+    entries), whose last one or two decimal digits depend on summation order
+    and therefore on the BLAS/CPU the run lands on -- the snapshot holds
+    values like ``102000.00000000001`` and ``3140.000000000011``. Comparing
+    those with ``==`` makes the gate fail for a reason that has nothing to do
+    with the example (this repo has been bitten by cross-machine float drift
+    before -- PR #119's slow-suite lane). Twelve significant digits is ~3
+    orders below float64's ~15-16 and ~6 orders above any physically
+    meaningful difference here (1e-12 relative on a 100 mm domain is 1e-13 m),
+    so it removes the noise without hiding a real geometry change.
+    """
+    if isinstance(obj, float):
+        return float(f"{obj:.12g}")
+    if isinstance(obj, dict):
+        return {k: _round_floats(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_round_floats(v) for v in obj]
+    return obj
 
 
 def digest_variant(sim) -> dict:
@@ -530,7 +596,7 @@ def digest_variant(sim) -> dict:
     with contextlib.redirect_stdout(io.StringIO()):
         preflight = sim.preflight()
     fidelity = sim.fidelity_report(print_report=False)
-    return dict(
+    return _round_floats(dict(
         preflight=digest_preflight(preflight),
         fidelity=digest_fidelity(fidelity),
-    )
+    ))

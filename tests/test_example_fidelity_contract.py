@@ -4,9 +4,11 @@ Builds every committed example/validation script that CAN be built without
 solving, WITHOUT solving, and compares its ``preflight()`` +
 ``fidelity_report()`` output against a committed snapshot
 (``tests/data/example_fidelity_snapshot.json``, regenerable with
-``scripts/capture_example_fidelity_snapshot.py``). It is cheap (~30s wall
-for all 33 script/builder/variant triples, 2026-08-27 measurement) precisely
-because neither call time-steps.
+``scripts/capture_example_fidelity_snapshot.py``). It is cheap precisely
+because neither call time-steps: measured 2026-08-28 on this repo's CPU
+lane, ``85 passed ... in 52.52s`` for all 33 script/builder/variant triples
+(``84 passed, 1 skipped in 52.69s`` without optax installed, which is CI's
+configuration -- see OPTIONAL_DEPENDENCIES).
 
 SNAPSHOT, not a zero-advisory bar. This does NOT require every example to
 emit zero advisories today: #742 is open (~45% of advisory codes never fire
@@ -132,6 +134,19 @@ def test_not_auditable_classifications_are_machine_checked(
             f"top-level function both builds and solves (found: {fns}) -- "
             "it may now have a separable builder, reclassify as 'audited'")
     elif entry.kind == "audited":
+        # This test IMPORTS these scripts (load_module execs their top
+        # level), so the "nothing solves at import" precondition is asserted
+        # here per script rather than asserted once in prose: a main guard
+        # and no module-scope solve call.
+        assert lib.has_main_guard(relpath), (
+            f"{relpath} is classified audited but has no "
+            "`if __name__ == \"__main__\":` guard -- this gate imports it, "
+            "so its module scope must not be a script body")
+        assert not lib.has_top_level_solve_call(
+                relpath, skip_main_guard=True), (
+            f"{relpath} is classified audited but calls a solve entrypoint "
+            "at module scope OUTSIDE its main guard -- importing it would "
+            "SOLVE; move that call inside main() before auditing it")
         fns = lib.functions_building_simulation(relpath)
         for builder in entry.builders:
             assert builder.fn in fns, (
@@ -282,3 +297,86 @@ def test_optional_dependency_declarations_are_grounded() -> None:
                 f"OPTIONAL_DEPENDENCIES lists {module!r} for {relpath}, but "
                 f"that script no longer imports it -- drop the stale "
                 f"exemption before it swallows an unrelated ImportError")
+
+
+def test_snapshot_keys_survive_entity_insertion() -> None:
+    """Digest keys are entity IDENTITY, not list position.
+
+    Inserting one Box at the FRONT of a model's geometry must leave every
+    other entity's key untouched; keying on ``fidelity_report``'s own
+    ``geometry[i] 'name'`` label instead would relabel all of them and turn a
+    one-entity change into a whole-model diff (2026-08-27 review, required
+    change #2 -- this is the test that docstring cites).
+    """
+    from rfx import Simulation
+    from rfx.geometry import Box
+
+    def _sim(with_extra: bool):
+        sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3),
+                         dx=1e-3, boundary="cpml", cpml_layers=4)
+        sim.add_material("sub", eps_r=4.0, sigma=0.0)
+        if with_extra:
+            sim.add(Box((1e-3, 1e-3, 1e-3), (3e-3, 3e-3, 3e-3)),
+                    material="pec")
+        sim.add(Box((4e-3, 4e-3, 4e-3), (8e-3, 8e-3, 6e-3)), material="sub")
+        sim.add(Box((4e-3, 4e-3, 6e-3), (8e-3, 8e-3, 7e-3)), material="pec")
+        return sim
+
+    base = lib.digest_fidelity(_sim(False).fidelity_report(print_report=False))
+    grown = lib.digest_fidelity(_sim(True).fidelity_report(print_report=False))
+    assert set(base) - set(grown) == set(), (
+        "inserting one entity at the front relabelled existing keys:\n"
+        f"  before: {sorted(base)}\n  after:  {sorted(grown)}")
+    assert len(set(grown) - set(base)) == 1, (
+        "one inserted entity must add exactly one key, got "
+        f"{sorted(set(grown) - set(base))}")
+    for key in base:
+        assert grown[key] == base[key], (
+            f"{key} changed when an unrelated entity was inserted")
+
+
+def test_foreign_warnings_are_not_pinned_by_the_digest() -> None:
+    """A third-party warning raised inside preflight must not enter the pin.
+
+    ``Simulation.preflight`` records EVERY warning raised while its
+    validators run and turns each into an issue row, so on jax 0.10.2 the
+    snapshot for ``examples/tutorials/patch_antenna_demo.py`` picked up
+    ``uncoded None: jax.experimental.shard_map is deprecated in v0.8.0`` and
+    the gate went red (measured: ``1 failed, 81 passed, 1 skipped in
+    54.33s``) -- for the installed jax version, not for anything about the
+    example. ``digest_preflight`` drops uncoded WARNING rows for that reason;
+    this test pins both halves of the filter (foreign row dropped, rfx's own
+    coded rows kept).
+    """
+    import warnings
+
+    from rfx import Simulation
+
+    sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3), dx=1e-3,
+                     boundary="cpml", cpml_layers=4)
+    clean = lib.digest_variant(sim)["preflight"]
+    assert clean, (
+        "fixture must emit at least one rfx preflight row, otherwise this "
+        "test cannot tell 'filtered correctly' from 'filtered everything'")
+
+    cls = type(sim)
+    original = cls._validate_simulation_config
+
+    def _noisy(self, *a, **kw):
+        warnings.warn("jax.experimental.shard_map is deprecated in v0.8.0")
+        return original(self, *a, **kw)
+
+    cls._validate_simulation_config = _noisy
+    try:
+        raw = [str(i) for i in sim.preflight()]
+        polluted = lib.digest_variant(sim)["preflight"]
+    finally:
+        cls._validate_simulation_config = original
+
+    assert any("shard_map is deprecated" in r for r in raw), (
+        "preflight() no longer folds foreign warnings into its report -- if "
+        "that is now fixed upstream, digest_preflight's uncoded-warning "
+        "filter can go, but do not delete this test silently")
+    assert polluted == clean, (
+        "a foreign warning changed the pinned digest:\n"
+        f"  without: {clean}\n  with:    {polluted}")
