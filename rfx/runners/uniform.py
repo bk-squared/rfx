@@ -349,6 +349,12 @@ def run_uniform(
     # Port sources — fold impedances into materials first
     lumped_ports = []
     wire_ports = []
+    # Issue #764: per-wire-port static LIVE-cell runs and excite flags,
+    # parallel to ``wire_ports`` — captured inside the loop where the
+    # assembled-geometry pec_mask (the #318 "live" definition, read BEFORE
+    # this port's own clearing) is in hand.  Feed the S-param specs below.
+    wire_port_live_cells = []
+    wire_port_excites = []
     for pe in sim._ports:
         if pe.impedance == 0.0:
             # Auto-select source type based on boundary conditions:
@@ -380,6 +386,16 @@ def run_uniform(
                 impedance=pe.impedance, excitation=pe.waveform,
             )
             wire_ports.append(wp)
+            wire_port_excites.append(bool(pe.excite))
+            # Issue #764: capture the static LIVE run for this port's
+            # whole-port gap-voltage accumulator while the mask still holds
+            # the assembled-geometry state (pre-clearing).
+            from rfx.sources.sources import _wire_port_live_cells
+            _wp_cells_764, _wp_live_764, _ = _wire_port_live_cells(
+                grid, wp, pec_mask)
+            wire_port_live_cells.append(tuple(
+                (int(c[0]), int(c[1]), int(c[2]))
+                for c, l in zip(_wp_cells_764, _wp_live_764) if l))
             # Live-cell-aware fold + injection (issue #318): dead extent
             # cells inside PEC carry no port sigma and no source. The mask
             # here is the assembled-geometry state BEFORE this port's own
@@ -423,17 +439,24 @@ def run_uniform(
     wire_sparam_specs = []
     if wire_ports and (compute_s_params is None or compute_s_params):
         from rfx.simulation import WirePortSParamSpec
-        from rfx.sources.sources import _wire_port_cells
         sp_freqs = s_param_freqs if s_param_freqs is not None else jnp.linspace(
             sim._freq_max / 10, sim._freq_max, 50)
-        for wp in wire_ports:
-            cells = _wire_port_cells(grid, wp)
-            mid = cells[len(cells) // 2]
+        # Issue #764: the V/I reference cell is the midpoint of the LIVE
+        # run (a dead extent cell reads a quenched Ampere loop —
+        # |I_dead|/|I_mid| = 0.003-0.03 measured on the #313 thru), and the
+        # spec carries the static live run for the whole-port gap-voltage
+        # accumulator.  With no dead cells this midpoint is bit-identical
+        # to the historical all-extent midpoint.
+        for wp, live_cells, wp_excite in zip(
+                wire_ports, wire_port_live_cells, wire_port_excites):
+            mid = live_cells[len(live_cells) // 2]
             wire_sparam_specs.append(WirePortSParamSpec(
                 mid_i=mid[0], mid_j=mid[1], mid_k=mid[2],
                 component=wp.component,
                 freqs=jnp.asarray(sp_freqs, dtype=jnp.float32),
                 impedance=wp.impedance,
+                live_cells=live_cells,
+                excite=wp_excite,
             ))
 
     # MSL ports — full cross-section distributed feed
@@ -807,13 +830,36 @@ def run_uniform(
         n_freqs = len(freqs_out)
         S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
-            v_dft, i_dft, _ = accs
+            v_dft, i_dft, _, v_port_dft = accs
             z0 = wp_meta.impedance
-            # Wave decomposition with FDTD sign convention (V = -E·dx).
-            a_j = (-v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
-            safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-            b_j = (-v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
-            S[j, j, :] = np.array(b_j / safe_a)
+            if wp_meta.excite:
+                # Issue #764: whole-port driven reflection.  V_port (the
+                # whole-gap line integral, the only KVL-constrained V on
+                # the staggered grid) against the whole-port Z0 that #318
+                # physically realizes as the series termination.  The
+                # driven sense is +V_port/I (the #683 circuit law
+                # |I| = |V_src|/(Z0+Z_L)); the historical
+                # (-v - Z0*i)/(-v + Z0*i) here was the PASSIVE port-branch
+                # convention applied to a driven port (the reciprocal
+                # class — max|S11| 4.648 on the 2-port MSL stub) with the
+                # per-cell V against the whole-port Z0 on top (matched
+                # load +0.35426, PEC short +0.26780).  NOTE: this lane
+                # samples V/I PRE-injection (issue #72 contract); per the
+                # #683 measurement the physical-value validation of this
+                # diagonal is keyed to the pending #683 POST-ordering
+                # flip — the FORMULA lands here so both lanes share it.
+                denom = v_port_dft + z0 * i_dft
+                safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
+                                       jnp.ones_like(denom))
+                S[j, j, :] = np.array((v_port_dft - z0 * i_dft) / safe_denom)
+            else:
+                # Passive port: legacy per-cell diagnostic diagonal,
+                # byte-frozen (issue #764 scope: no physical falsifier can
+                # gate a load-independent reading).
+                a_j = (-v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
+                safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
+                b_j = (-v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
+                S[j, j, :] = np.array(b_j / safe_a)
         s_params = S
     elif compute_s_params and (lumped_ports or wire_ports):
         if s_param_freqs is None:

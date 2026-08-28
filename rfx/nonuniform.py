@@ -717,6 +717,79 @@ def _bwd_neighbor(h, idx, axis):
     return h[tuple(back)]
 
 
+def _build_wp_meta(wire_ports, grid):
+    """Static per-port metadata for the wire-port DFT scan body.
+
+    Pre-computes the port cell's metrics OUTSIDE the scan (repo engineering
+    principle 4). Two metric families, and they are not interchangeable
+    (issue #672):
+      PRIMAL  d[idx]                 -> V = -E_a * d_parallel, the length of
+                                        the E_a edge itself.
+      DUAL    (d[idx-1]+d[idx])/2    -> the Ampere-loop legs, each weighted
+                                        by the dual spacing on that H
+                                        component's own axis.
+    x/y stay float() as before (np.asarray already refuses a traced xy
+    profile here); the z metrics are indexed without np.asarray so a traced
+    dz_profile keeps its gradient through the extractor. `excite` and
+    `direction` are carried for the post-processing; `direction` no longer
+    enters the wave split (issue #673).
+
+    Slot order (guarded by
+    tests/test_nonuniform_source_port_dual_spacing.py):
+      0..2  mid_i, mid_j, mid_k     (midpoint of the LIVE run, issue #764)
+      3     component
+      4     impedance (whole-port Z0)
+      5, 6  primal dx[mid_i], dy[mid_j]
+      7     excite
+      8     direction
+      9,10  dual x/y spacings at mid
+      11    primal dz[mid_k]        (traced-safe)
+      12    dual z spacing at mid
+      13    live_cells              (static tuple of (i, j, k), issue #764)
+      14    d_par per live cell     (primal width on the component's own
+                                     axis at each live cell, same order as
+                                     slot 13; z entries traced-safe)
+    Slots 13/14 feed the whole-port gap voltage
+    V_port = sum_live(-E_c * d_par,c) — the #672 PRIMAL family, per cell.
+    """
+    _dx_arr_np = np.asarray(grid.dx_arr, dtype=np.float64)
+    _dy_arr_np = np.asarray(grid.dy_arr, dtype=np.float64)
+
+    def _d_par(cell, comp):
+        ci, cj, ck = cell
+        if comp == "ex":
+            return float(_dx_arr_np[ci])
+        if comp == "ey":
+            return float(_dy_arr_np[cj])
+        # ez: index grid.dz WITHOUT np.asarray so a traced dz_profile
+        # keeps its gradient through the extractor.
+        return grid.dz[ck]
+
+    meta = []
+    for wp in wire_ports:
+        live_cells = tuple(
+            tuple(int(x) for x in c)
+            for c in wp.get('live_cells',
+                            ((wp['mid_i'], wp['mid_j'], wp['mid_k']),))
+        )
+        comp = wp['component']
+        meta.append((
+            wp['mid_i'], wp['mid_j'], wp['mid_k'],
+            comp, wp['impedance'],
+            float(_dx_arr_np[wp['mid_i']]),
+            float(_dy_arr_np[wp['mid_j']]),
+            bool(wp.get('excite', True)),
+            str(wp.get('direction', '-x')),
+            float(e_node_dual_spacing_at(_dx_arr_np, wp['mid_i'])),
+            float(e_node_dual_spacing_at(_dy_arr_np, wp['mid_j'])),
+            grid.dz[wp['mid_k']],
+            e_node_dual_spacing_at(grid.dz, wp['mid_k']),
+            live_cells,
+            tuple(_d_par(c, comp) for c in live_cells),
+        ))
+    return meta
+
+
 def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
                       dual_x, dual_y, dual_z):
     """Enclosed current from the discrete Ampere loop at a wire-port cell.
@@ -1143,36 +1216,11 @@ def _build_nu_scan(
         carry_init["wire_sparams"] = tuple(
             (jnp.zeros(nf, dtype=jnp.complex64),  # v_dft
              jnp.zeros(nf, dtype=jnp.complex64),  # i_dft
-             jnp.zeros(nf, dtype=jnp.complex64))   # v_inc_dft
+             jnp.zeros(nf, dtype=jnp.complex64),  # v_inc_dft
+             jnp.zeros(nf, dtype=jnp.complex64))  # v_port_dft (issue #764)
             for _ in wire_ports
         )
-        # Pre-compute the port cell's metrics OUTSIDE the scan (repo
-        # engineering principle 4). Two families, and they are not
-        # interchangeable (issue #672):
-        #   PRIMAL  d[idx]                 -> V = -E_a * d_parallel, the
-        #                                     length of the E_a edge itself.
-        #   DUAL    (d[idx-1]+d[idx])/2    -> the Ampere-loop legs, each
-        #                                     weighted by the dual spacing on
-        #                                     that H component's own axis.
-        # x/y stay float() as before (np.asarray already refuses a traced xy
-        # profile here); the z metrics are indexed without np.asarray so a
-        # traced dz_profile keeps its gradient through the extractor.
-        # `excite` and `direction` are carried for the post-processing;
-        # `direction` no longer enters the wave split (issue #673).
-        _dx_arr_np = np.asarray(grid.dx_arr, dtype=np.float64)
-        _dy_arr_np = np.asarray(grid.dy_arr, dtype=np.float64)
-        wp_meta = [(
-            wp['mid_i'], wp['mid_j'], wp['mid_k'],
-            wp['component'], wp['impedance'],
-            float(_dx_arr_np[wp['mid_i']]),
-            float(_dy_arr_np[wp['mid_j']]),
-            bool(wp.get('excite', True)),
-            str(wp.get('direction', '-x')),
-            float(e_node_dual_spacing_at(_dx_arr_np, wp['mid_i'])),
-            float(e_node_dual_spacing_at(_dy_arr_np, wp['mid_j'])),
-            grid.dz[wp['mid_k']],
-            e_node_dual_spacing_at(grid.dz, wp['mid_k']),
-        ) for wp in wire_ports]
+        wp_meta = _build_wp_meta(wire_ports, grid)
     else:
         use_wire_ports = False
 
@@ -1435,17 +1483,27 @@ def _build_nu_scan(
         new_wire_sp = None
         if use_wire_ports:
             new_wire_sp = []
-            for (v_dft, i_dft, vinc_dft), (mi, mj, mk, comp, z0, dxi, dyj,
-                                           _excite, _dir, dual_xi, dual_yj,
-                                           dz_local, dual_zk) in \
+            for (v_dft, i_dft, vinc_dft, v_port_dft), \
+                (mi, mj, mk, comp, z0, dxi, dyj,
+                 _excite, _dir, dual_xi, dual_yj,
+                 dz_local, dual_zk, live_cells, d_par_cells) in \
                     zip(carry.get("wire_sparams", ()), wp_meta):
                 # V = -E_comp * (PRIMAL width on the component's own axis):
                 # the E edge's own length. I = the Ampere loop on the DUAL
                 # face (issue #672); both metric families are precomputed in
                 # wp_meta above.
-                v = -getattr(st, comp)[mi, mj, mk] * (
+                field_c = getattr(st, comp)
+                v = -field_c[mi, mj, mk] * (
                     dz_local if comp == "ez" else
                     dxi if comp == "ex" else dyj)
+                # Whole-port gap voltage (issue #764): the discrete line
+                # integral of E across the LIVE run,
+                # V_port = sum_live(-E_c * d_par,c), same PRIMAL metric
+                # family per cell. Static unroll — live_cells is a static
+                # tuple, so this resolves at trace time.
+                v_port = -sum(
+                    field_c[ci, cj, ck] * dp
+                    for (ci, cj, ck), dp in zip(live_cells, d_par_cells))
                 i_val = wire_port_current(
                     st.hx, st.hy, st.hz, comp, mi, mj, mk,
                     dual_xi, dual_yj, dual_zk)
@@ -1455,6 +1513,7 @@ def _build_nu_scan(
                     v_dft + v * phase,
                     i_dft + i_val * phase,
                     vinc_dft,
+                    v_port_dft + v_port * phase,
                 ))
 
         # DFT plane probe accumulation (identical math to uniform path)
@@ -1910,25 +1969,48 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     # UNDRIVEN port, and it is a property of the port CELL rather than of the
     # structure across the gap (vacuum, PEC plates shorting the gap and an
     # eps_r=10 slab filling it all read S11 = -0.600000 at n_live = 4).
+    # That is exactly why the all-passive fallback below is INTENTIONALLY
+    # frozen on this per-cell convention: no physical falsifier can gate a
+    # load-independent reading, so it is a diagnostic/self-consistency
+    # channel, not S_jj (S_jj requires driving port j) — and the
+    # excite=False locks (lane-parity closed forms, sigma ORACLE 1/2) keep
+    # their n_live sensitivity as witnesses. Do not "unify" it with the
+    # driven diagonal below.
     #
-    # At an EXCITED port this convention does not merely lose the |S| <= 1
-    # bound — the diagonal stops tracking the load at all. On the UNIFORM
-    # (validated) lane, one geometry with only `excite` flipped reads
-    # S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j driven,
-    # though the quasi-static input impedance is the same in both cases; the
-    # 2-port MSL stub in tests/test_twoport_wire_port.py reaches
-    # max|S11| = 4.648. That is the known-wrong #313/#318 per-cell
-    # normalization (V and I sampled at ONE cell, so the measured Z is the
-    # per-cell Z0/n_live while the reflection formula references the whole-
-    # port Z0). It is shared with the uniform lane, not specific to this one,
-    # and #673 does not fix it — do not read a DRIVEN diagonal from this
-    # extractor as physics.
-    # Canonical references (validated, both direction-free):
-    #   rfx/runners/uniform.py  (uniform single-wire fast path)
-    #   rfx/probes/probes.py    decompose_wire_s_matrix (Z_in = -V/I)
-    # Quasi-static check: with Y_ext -> 0 and w*C*Z0/n_live << 1 this
-    # gives S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on
-    # both lanes (tests/test_nu_wire_port_lane_parity.py).
+    # DRIVEN diagonal (issue #764). At a genuinely excited port the per-cell
+    # convention above stops tracking the load entirely — PROVENANCE, all
+    # measured before the #764 fix: one geometry with only `excite` flipped
+    # read S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j
+    # driven though the quasi-static input impedance is identical; the
+    # 2-port MSL stub in tests/test_twoport_wire_port.py reached
+    # max|S11| = 4.648 (the reciprocal class that (-V - Z0*I)/(-V + Z0*I)
+    # applied to a driven port yields); a matched 50 ohm load read
+    # S11 = +0.35426 and a PEC short +0.26780. Root cause was the #313/#318
+    # frame mismatch: V and I sampled at ONE cell measure the per-cell
+    # Z0/n_live while the reflection formula references the whole-port Z0.
+    # The fix is frame-consistent terminal quantities:
+    #
+    #   V_port = sum_live(-E_c * d_par,c)   (whole-gap line integral,
+    #                                        PRIMAL metric per cell, #672)
+    #   I      = Ampere loop at the LIVE-run midpoint cell (DUAL metrics)
+    #   S_kk   = (V_port - Z0*I) / (V_port + Z0*I)
+    #
+    # where Z0 is the whole-port port.impedance — the impedance #318
+    # physically realizes as the series termination (n_live cells of
+    # sigma-folded Z0/n_live in series). Sense: from the pinned per-cell law
+    # with equal per-cell injection I0, V_port + Z0*I = Z0*I0 is a
+    # drive-only constant (the incident wave), and closing the loop through
+    # the external DUT gives V_port = +Z_L*I and I = Z0*I0/(Z0+Z_L) — the
+    # measured #683 circuit law. The opposite branch sign (V_port = -Z_L*I)
+    # would put I = Z0*I0/(Z0-Z_L), divergent at a matched load — refuted.
+    # Only the SUM is KVL/Faraday-constrained on the staggered grid; a
+    # single cell is not (a PEC short forces sum V_c = 0 while V_mid stays
+    # finite — why the short used to read +0.268: a structural error, not a
+    # scale factor).
+    # Quasi-static check on the PASSIVE path: with Y_ext -> 0 and
+    # w*C*Z0/n_live << 1 the per-cell convention gives
+    # S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on both
+    # lanes (tests/test_nu_wire_port_lane_parity.py).
     #
     # `direction` is still carried on the port spec — the reference-plane
     # path (add_port(reference_plane_cells=...)) needs it for the outboard
@@ -1956,7 +2038,12 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
         # Pick the first excited port as the "k" column. If no port is
         # excited (all passive), fall back to the legacy diagonal-only
         # extraction (no meaningful S-matrix in that case).
-        excited_idx = [idx for idx, meta in enumerate(wp_meta) if meta[7]]
+        # ``genuinely_excited`` (issue #764) keys the whole-port driven
+        # diagonal to meta[7] ONLY — the all-passive fallback stays on the
+        # frozen per-cell convention (see the scope note above).
+        genuinely_excited = [
+            idx for idx, meta in enumerate(wp_meta) if meta[7]]
+        excited_idx = genuinely_excited
         if not excited_idx:
             excited_idx = list(range(n_wp))   # legacy: treat all as self-excited
 
@@ -1971,7 +2058,8 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
             return (-v_dft + zi) / 2.0, (-v_dft - zi) / 2.0
 
         ab_per_port = []
-        for (v_dft, i_dft, _), meta in zip(final["wire_sparams"], wp_meta):
+        for (v_dft, i_dft, _, _vp), meta in zip(final["wire_sparams"],
+                                                wp_meta):
             z0 = meta[4]
             a, b = _ab(v_dft, i_dft, z0)
             ab_per_port.append((a, b))
@@ -1983,8 +2071,26 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
                 b_j = ab_per_port[j][1]
                 S = S.at[j, k, :].set(b_j / safe_a_k)
 
+        # Issue #764: override the diagonal of every GENUINELY excited
+        # column with the whole-port driven reflection (see the derivation
+        # in the comment block above). Off-diagonals and the all-passive
+        # fallback keep the per-cell convention byte-for-byte.
+        for k in genuinely_excited:
+            v_port_k = final["wire_sparams"][k][3]
+            i_k = final["wire_sparams"][k][1]
+            z0_k = wp_meta[k][4]
+            denom = v_port_k + z0_k * i_k
+            safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
+                                   jnp.ones_like(denom))
+            S = S.at[k, k, :].set((v_port_k - z0_k * i_k) / safe_denom)
+
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)
+        # Raw per-port DFT accumulators (v_dft, i_dft, v_inc_dft,
+        # v_port_dft), surfaced for diagnostics/validation harnesses
+        # (issue #764; mirrors the uniform lane's raw-acc access via
+        # forward()'s wire_port_sparams).
+        result["wire_sparams_raw"] = final["wire_sparams"]
 
     return result
 

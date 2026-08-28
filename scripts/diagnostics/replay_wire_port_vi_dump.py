@@ -36,6 +36,15 @@ def _load_dump(path: Path) -> dict[str, Any]:
             "metadata": metadata,
             "freqs": np.asarray(data["freqs_hz"], dtype=np.float64),
             "raw_v": np.asarray(data["raw_voltages_fdt"], dtype=np.complex128),
+            # Whole-port gap-voltage channel (issue #764).  Absent in a
+            # pre-#764 dump, whose recorded production S-matrix used the
+            # legacy per-cell diagonal — the replay then falls back to
+            # that convention.
+            "raw_vp": (
+                np.asarray(data["raw_port_voltages_fdt"],
+                           dtype=np.complex128)
+                if "raw_port_voltages_fdt" in data else None
+            ),
             "raw_i": np.asarray(data["raw_currents"], dtype=np.complex128),
             "z0": np.asarray(data["port_impedances_ohm"], dtype=np.float64),
             "cell_counts": np.asarray(data["port_cell_counts"], dtype=np.int64),
@@ -49,6 +58,7 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
     dump = _load_dump(path)
     freqs = dump["freqs"]
     raw_v = dump["raw_v"]
+    raw_vp = dump["raw_vp"]
     raw_i = dump["raw_i"]
     z0 = dump["z0"]
     cell_counts = dump["cell_counts"]
@@ -81,12 +91,26 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
     if len(driven) != n_driven:
         raise ValueError(f"driven_port_indices length {len(driven)} != n_driven {n_driven}")
 
+    if raw_vp is not None and raw_vp.shape != raw_v.shape:
+        raise ValueError(
+            "raw_port_voltages_fdt shape "
+            f"{raw_vp.shape} != raw_voltages_fdt shape {raw_v.shape}"
+        )
+
     replay_s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_row, driven_port in enumerate(driven):
         v_drive = raw_v[drive_row, driven_port, :]
         i_drive = raw_i[drive_row, driven_port, :]
         safe_i = np.where(np.abs(i_drive) > 0.0, i_drive, 1e-30 + 0j)
-        z_in = -v_drive / safe_i
+        if raw_vp is not None:
+            # Issue #764 driven diagonal: whole-port gap voltage in the
+            # SOURCE sense (+V_port/I — the #683 circuit law), against the
+            # whole-port Z0 that #318 physically realizes as the series
+            # termination.
+            z_in = raw_vp[drive_row, driven_port, :] / safe_i
+        else:
+            # Pre-#764 dump: legacy per-cell passive-branch convention.
+            z_in = -v_drive / safe_i
 
         for receiver in range(n_ports):
             if receiver == driven_port:

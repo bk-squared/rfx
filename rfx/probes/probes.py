@@ -281,6 +281,10 @@ class SParamProbe(NamedTuple):
     total_steps: int
     window: str
     window_alpha: float
+    # Whole-port gap-voltage DFT (wire ports only, issue #764):
+    # V_port = sum over LIVE wire cells of -E_c*dx. None for lumped ports
+    # (single-cell V_port == v_dft there).
+    v_port_dft: object = None
 
 
 class PortVIReplayBundle(NamedTuple):
@@ -320,6 +324,11 @@ class WirePortVIReplayBundle(NamedTuple):
     port_cell_counts: object
     port_names: tuple[str, ...]
     driven_port_indices: tuple[int, ...]
+    # Whole-port gap-voltage phasors (issue #764): required to replay the
+    # physical driven diagonal.  ``None`` marks a pre-#764 dump, whose
+    # recorded production S-matrix used the legacy per-cell diagonal — the
+    # replay diagnostic falls back to that convention for such dumps.
+    raw_port_voltages_fdt: object = None
 
 
 def init_sparam_probe(
@@ -785,38 +794,80 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
 # Wire port voltage / current extraction
 # ---------------------------------------------------------------------------
 
-def wire_port_voltage(state, grid, port) -> jnp.ndarray:
-    """Voltage at the WirePort midpoint cell.
+def _wire_port_live_mid(grid, port, pec_mask=None):
+    """Midpoint cell of the LIVE wire run (issue #764).
 
-    Uses a single-cell measurement at the wire midpoint (same location
-    as wire_port_current) for balanced V/I wave decomposition.
+    A dead extent cell (inside PEC, issue #318) carries essentially no port
+    current (measured |I_dead|/|I_mid| = 0.003-0.03 on the #313 thru), so an
+    all-extent midpoint landing on a dead cell read a quenched Ampere loop
+    as the port current. With ``pec_mask=None`` — or no dead cells — this is
+    bit-identical to the historical all-extent midpoint.
+    """
+    from rfx.sources.sources import _wire_port_live_cells
+
+    cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_mask)
+    live = [c for c, l in zip(cells, live_flags) if l]
+    return live[len(live) // 2]
+
+
+def wire_port_voltage(state, grid, port, pec_mask=None) -> jnp.ndarray:
+    """Voltage at the WirePort LIVE-run midpoint cell.
+
+    Uses a single-cell measurement at the live-run midpoint (same location
+    as wire_port_current) for balanced V/I wave decomposition. The midpoint
+    is that of the LIVE run (issue #764; ``pec_mask=None`` or no dead cells
+    is bit-identical to the historical all-extent midpoint).
 
     Parameters
     ----------
     state : FDTDState
     grid : Grid
     port : WirePort
+    pec_mask : optional assembled-geometry PEC mask (issue #318 live split)
 
     Returns
     -------
     float scalar
     """
-    from rfx.sources.sources import _wire_port_cells
-
-    cells = _wire_port_cells(grid, port)
-    mid = cells[len(cells) // 2]
+    mid = _wire_port_live_mid(grid, port, pec_mask)
     field = getattr(state, port.component)
     return -field[mid[0], mid[1], mid[2]] * grid.dx
 
 
-def wire_port_current(state, grid, port,
-                      periodic=(False, False, False)) -> jnp.ndarray:
-    """Current through a WirePort via Ampere's law at the midpoint cell.
+def wire_port_gap_voltage(state, grid, port, pec_mask=None) -> jnp.ndarray:
+    """Whole-port gap voltage: V_port = sum over LIVE cells of -E_c*dx.
 
-    Uses the H-field loop integral at the center cell of the wire, the same
-    :func:`_ampere_loop` :func:`port_current` uses. Out-of-domain H is ZERO
-    (#692) — see :func:`_bwd_h` for the rule and for the two axis kinds that
-    keep the wrap.
+    The discrete line integral of E across the whole gap (issue #764). Only
+    this SUM is KVL/Faraday-constrained on the staggered grid; a single cell
+    is not (a PEC short forces sum V_c = 0 while the midpoint V stays
+    finite). Dead extent cells (inside PEC, issue #318) are excluded.
+
+    This is the driven-diagonal V of the whole-port reflection
+    ``S_kk = (V_port - Z0*I)/(V_port + Z0*I)`` against the whole-port Z0
+    that #318 physically realizes as the series termination.
+    """
+    from rfx.sources.sources import _wire_port_live_cells
+
+    cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_mask)
+    field = getattr(state, port.component)
+    v_port = 0.0
+    for cell, live in zip(cells, live_flags):
+        if not live:
+            continue
+        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.dx
+    return v_port
+
+
+def wire_port_current(state, grid, port,
+                      periodic=(False, False, False),
+                      pec_mask=None) -> jnp.ndarray:
+    """Current through a WirePort via Ampere's law at the LIVE-run midpoint.
+
+    Uses the H-field loop integral at the center cell of the LIVE wire run
+    (issue #764; with no dead cells this is the historical all-extent
+    midpoint), the same :func:`_ampere_loop` :func:`port_current` uses.
+    Out-of-domain H is ZERO (#692) — see :func:`_bwd_h` for the rule and
+    for the two axis kinds that keep the wrap.
 
     Parameters
     ----------
@@ -825,15 +876,13 @@ def wire_port_current(state, grid, port,
     port : WirePort
     periodic : (bool, bool, bool)
         Per-axis periodic flags for the run; default non-periodic.
+    pec_mask : optional assembled-geometry PEC mask (issue #318 live split)
 
     Returns
     -------
     float scalar
     """
-    from rfx.sources.sources import _wire_port_cells
-
-    cells = _wire_port_cells(grid, port)
-    mid = cells[len(cells) // 2]
+    mid = _wire_port_live_mid(grid, port, pec_mask)
     dx = grid.dx
 
     return _ampere_loop(state, tuple(mid), port.component, dx, periodic)
@@ -850,15 +899,14 @@ def init_wire_sparam_probe(
     dft_total_steps: int = 0,
     dft_window: str = "rect",
     dft_window_alpha: float = 0.25,
+    pec_mask=None,
 ) -> SParamProbe:
     """Create a zeroed SParamProbe for a WirePort.
 
-    The port_index is set to the midpoint cell of the wire.
+    The port_index is set to the midpoint cell of the LIVE wire run
+    (issue #764; identical to the all-extent midpoint with no dead cells).
     """
-    from rfx.sources.sources import _wire_port_cells
-
-    cells = _wire_port_cells(grid, port)
-    mid_idx = tuple(cells[len(cells) // 2])
+    mid_idx = tuple(_wire_port_live_mid(grid, port, pec_mask))
     n = len(freqs)
     zeros = jnp.zeros(n, dtype=jnp.complex64)
     return SParamProbe(
@@ -871,6 +919,7 @@ def init_wire_sparam_probe(
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
+        v_port_dft=zeros,
     )
 
 
@@ -881,13 +930,15 @@ def update_wire_sparam_probe(
     port,
     dt: float,
     n_live: int | None = None,
+    pec_mask=None,
 ) -> SParamProbe:
-    """Accumulate one timestep of V, I, and V_inc for a WirePort.
+    """Accumulate one timestep of V, I, V_inc, and V_port for a WirePort.
 
     Call this every timestep after update_e() / apply_pec() but
     **before** apply_wire_port() so that the sampled voltage reflects
-    only the load/cavity response.  V and I are measured at the midpoint
-    cell.  V_inc uses the per-cell source voltage (V_src / n_live,
+    only the load/cavity response.  V and I are measured at the LIVE-run
+    midpoint cell; V_port is the whole-gap sum over live cells
+    (issue #764).  V_inc uses the per-cell source voltage (V_src / n_live,
     matching ``apply_wire_port``'s live-cell injection — issue #318;
     ``n_live=None`` falls back to the all-cells count, the historical
     behaviour and the degenerate no-dead-cells case).
@@ -898,8 +949,9 @@ def update_wire_sparam_probe(
     if n_live is None:
         n_live = max(len(_wire_port_cells(grid, port)), 1)
 
-    v = wire_port_voltage(state, grid, port)
-    i_val = wire_port_current(state, grid, port)
+    v = wire_port_voltage(state, grid, port, pec_mask=pec_mask)
+    i_val = wire_port_current(state, grid, port, pec_mask=pec_mask)
+    v_port = wire_port_gap_voltage(state, grid, port, pec_mask=pec_mask)
     v_inc = port.excitation(t) / n_live
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
@@ -907,8 +959,11 @@ def update_wire_sparam_probe(
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i_val * phase * dt * weight
     new_vinc = probe.v_inc_dft + v_inc * phase * dt * weight
+    old_vp = probe.v_port_dft if probe.v_port_dft is not None else 0.0
+    new_vport = old_vp + v_port * phase * dt * weight
 
-    return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc)
+    return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc,
+                          v_port_dft=new_vport)
 
 
 # ---------------------------------------------------------------------------
@@ -1005,14 +1060,57 @@ def decompose_lumped_s_matrix(v, i, z0):
     return S
 
 
-def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
+def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
     """Wire-port N-port S-matrix from accumulated midpoint V/I DFTs.
 
-    Diagonal entries use the measured input impedance reflection
-    (``Z_in = -V/I``; ``S_ii = (Z_in − Z0_i)/(Z_in + Z0_i)``) — byte-frozen,
-    issue #308 changes receive ports only.  Off-diagonal entries use a
-    *per-cell-normalized* impedance ``Z0/n_cells`` for the wave
-    decomposition, role-selected per port (issue #308):
+    Diagonal entries (every one of which is a DRIVEN reading here — column
+    *j* comes from the drive run of port *j*) use the whole-port driven
+    reflection (issue #764) when the whole-port gap-voltage channel
+    ``v_port`` is provided:
+
+        Z_driven = +V_port[j,j] / I[j,j]
+        S_jj = (Z_driven − Z0_j) / (Z_driven + Z0_j)
+             = (V_port − Z0_j·I) / (V_port + Z0_j·I)
+
+    with ``V_port = sum over LIVE wire cells of -E_c*dx`` (the whole-gap
+    line integral — the only KVL-constrained V on the staggered grid) and
+    Z0 the whole-port impedance #318 physically realizes as the series
+    termination.  PROVENANCE for the re-pin of the previously "byte-frozen"
+    diagonal: the old ``Z_in = -V_mid/I`` measured the per-cell Z0/n_live
+    against the whole-port Z0 (the #313/#318 frame mismatch) and did not
+    track the load at all — a matched 50 ohm load read S11 = +0.35426 and a
+    PEC short +0.26780 (ledger 2026-06-21 port review).  The ``-V/I`` sense
+    itself is the PASSIVE port-branch convention; at a driven port the
+    passive-sign current direction flips between the port branch and the
+    external branch, so the driven relation is ``V_port = +Z_L*I`` (#683
+    circuit law ``|I| = |V_src|/(Z0+Z_L)``).
+
+    ``v_port=None`` keeps the legacy per-cell diagonal byte-for-byte — used
+    ONLY by (a) the #313 reference-plane decomposer, whose diagonals are
+    documented byte-frozen legacy, and (b) replay of pre-#764 dumps whose
+    recorded production S-matrix used the legacy diagonal.
+
+    SAMPLING-ORDER CONTRACT (issue #683 / the 2026-08-29 adversarial
+    review of the uniform-lane flip attempt): every quantity fed to this
+    decomposer — V, I, and V_port alike — must be sampled at the SAME
+    point in the timestep, and on the uniform lane that point is
+    PRE-injection (the issue-#72 probe contract; the off-diagonal #308
+    receive-wave sign and Z0c normalization were calibrated 2026-07-10/11
+    against PRE-injection drive samples, and composing them with POST
+    samples breaks the two-port THRU locks catastrophically —
+    |S21 - S12| max 76.79 vs gate 0.015).  The NU lane samples
+    POST-injection (measured correct, #683) and does NOT route through
+    this function — its extraction lives in rfx/nonuniform.py.  Because
+    the uniform lane's PRE-injection sample contaminates the driven-port
+    V at order 1 (sigma*dt/eps ~ 0.96 on the canonical cell), the
+    PHYSICAL-value validation of the driven diagonal computed here is
+    keyed to the pending #683 POST-ordering flip; until it lands the
+    driven diagonal below is the frame-consistent FORMULA on
+    PRE-injection samples, not a validated physical reading.
+
+    Off-diagonal entries are UNCHANGED: a *per-cell-normalized* impedance
+    ``Z0/n_cells`` for the wave decomposition, role-selected per port
+    (issue #308):
 
         a_j = (-V[j,j] + Z0c_j·I[j,j]) / (2·√Z0c_j)    # incident at driven port j
         b_i = (V[j,i] - Z0c_i·I[j,i]) / (2·√Z0c_i)     # arriving at PASSIVE port i≠j
@@ -1057,6 +1155,11 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
         Per-port total reference impedance.
     port_cell_counts : (n_ports,) int
         Number of wire cells per port (for per-cell impedance normalization).
+    v_port : (n_ports, n_ports, n_freqs) complex or None
+        Whole-port gap-voltage DFT phasors (``v_port[j, i]`` at receive
+        port *i* when driving port *j*); only the driven diagonal
+        ``v_port[j, j]`` is consumed.  None selects the legacy per-cell
+        diagonal (see above).
 
     Returns
     -------
@@ -1066,6 +1169,8 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
     v = jnp.asarray(v)
     i = jnp.asarray(i)
     z0 = jnp.asarray(z0)
+    if v_port is not None:
+        v_port = jnp.asarray(v_port)
     n_ports = v.shape[0]
     n_freqs = v.shape[-1]
     S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
@@ -1076,7 +1181,10 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts):
             i[j, j],
             jnp.ones_like(i[j, j]) * 1e-30,
         )
-        z_in_j = -v[j, j] / safe_i  # measured input impedance
+        if v_port is None:
+            z_in_j = -v[j, j] / safe_i  # legacy per-cell input impedance
+        else:
+            z_in_j = v_port[j, j] / safe_i  # driven whole-port Z (issue #764)
         for ri in range(n_ports):
             z0_i = z0[ri]
             if ri == j:
@@ -1506,9 +1614,11 @@ def extract_s_matrix_wire(
         lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
 
     # FDTD-sign midpoint V/I phasors per (drive j, receive i) for the
-    # shared wire decomposer (``decompose_wire_s_matrix``).
+    # shared wire decomposer (``decompose_wire_s_matrix``), plus the
+    # whole-port gap-voltage channel for the driven diagonal (issue #764).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    vp_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     raw_v = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1530,7 +1640,8 @@ def extract_s_matrix_wire(
     for j in range(n_ports):
         state = init_state(grid.shape)
         sprobes = [
-            init_wire_sparam_probe(grid, p, freqs, dft_total_steps=n_steps)
+            init_wire_sparam_probe(grid, p, freqs, dft_total_steps=n_steps,
+                                   pec_mask=pec_mask)
             for p in ports
         ]
         cpml_state = cpml_state_init if use_cpml else None
@@ -1575,7 +1686,7 @@ def extract_s_matrix_wire(
             for i in range(n_ports):
                 sprobes[i] = update_wire_sparam_probe(
                     sprobes[i], state, grid, ports[i], dt,
-                    n_live=port_n_live[i])
+                    n_live=port_n_live[i], pec_mask=pec_mask)
 
             # Excite only port j (live cells only, issue #318)
             state = apply_wire_port(state, grid, ports[j], t, mats,
@@ -1588,13 +1699,18 @@ def extract_s_matrix_wire(
         for i in range(n_ports):
             v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+            vp_all[j, i, :] = np.asarray(sprobes[i].v_port_dft,
+                                         dtype=np.complex128)
             if return_vi_dump:
                 raw_v[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 
     z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
+    # Issue #764: the whole-port gap-voltage channel feeds the driven
+    # diagonal; off-diagonals keep the per-cell #308 decomposition.
     S = np.asarray(
-        decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts),
+        decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts,
+                                v_port=vp_all),
         dtype=np.complex64)
 
     if return_vi_dump:
@@ -1607,6 +1723,7 @@ def extract_s_matrix_wire(
             port_cell_counts=port_cell_counts,
             port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
             driven_port_indices=tuple(range(n_ports)),
+            raw_port_voltages_fdt=vp_all,
         )
 
     return S

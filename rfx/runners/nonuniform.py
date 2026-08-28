@@ -868,9 +868,18 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # Create per-cell sources — only when the port is excited.
             # Passive (excite=False) ports contribute just the σ
             # resistive termination above, acting as a matched load.
-            mid_k = wire_cells[len(wire_cells) // 2]
-            mid_cell = list(idx)
-            mid_cell[axis] = mid_k
+            #
+            # Issue #764: the V/I reference cell is the midpoint of the
+            # LIVE run, not of the raw extent. A dead extent cell (inside
+            # PEC, #318) carries essentially no port current
+            # (|I_dead|/|I_mid| = 0.003-0.03 measured on the #313 thru),
+            # so an all-extent midpoint landing on a dead cell read a
+            # quenched Ampere loop as the port current. With no dead
+            # cells the live midpoint is bit-identical to the historical
+            # all-extent midpoint.
+            _live_cells = tuple(
+                c for c, live in zip(_cells_ijk, live_flags) if live)
+            mid_cell = list(_live_cells[len(_live_cells) // 2])
 
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
@@ -896,6 +905,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 'impedance': pe.impedance,
                 'excite': bool(pe.excite),
                 'direction': port_direction,
+                # Issue #764: static live-cell run for the whole-port gap
+                # voltage V_port = sum_live(-E_c * d_par,c) and its count.
+                'live_cells': _live_cells,
+                'n_live': int(n_live),
             })
         else:
             # Single-cell lumped port
