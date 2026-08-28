@@ -53,8 +53,8 @@ External cross-check (openEMS, 2026-07-05):
   producer is fixed.
 
 Mesh convention (issue #723, 2026-08-27):
-  DX = H_SUB / 4 = 63.5µm (was 80µm, h_sub/dx=3.175 — the "IMPORTANT"
-  paragraph above already called that mesh UNDER-RESOLVED for
+  DX = H_SUB / 4 = 63.5µm (was 80µm, h_sub/dx=3.175 — the "External
+  cross-check" section above already called that mesh UNDER-RESOLVED for
   external-class work). gcd(254, 600) = 2µm, so no single cubic cell size
   makes both H_SUB and W_TRACE land exactly on the lattice at any sane
   cost (63.5µm: 600/63.5=9.449 cells). This script resolves that by
