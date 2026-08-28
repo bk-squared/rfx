@@ -201,3 +201,79 @@ Production sampling order is NOT changed in this session regardless of
 verdict; the xfail witness `test_excited_port_lane_ordering_disagreement_
 is_open_683` stays as-is. The verdict and artifacts feed the follow-up
 change under #683 review.
+
+---
+
+## 9. RESULTS (appended after the single run of 2026-08-29; protocol above unchanged)
+
+Executed once: `JAX_PLATFORMS=cpu .venv/bin/python
+validation/research/issue683_sampling_order_decision.py`, rfx at worktree
+branch `agent/issue-683-vi-sampling-order` (base b29f9de), boundary `pec`
+(no fallback needed), dt = 1.906575e-12 s on both lanes.
+
+Gates:
+
+- G0: no preflight errors. Advisories recorded: the #556 "end lands one
+  cell short of a conductor" advisory fired on every port end abutting the
+  bars, and "Port/source inside PEC geometry" fired for the port position
+  node touching the bar box face. Both are contradicted empirically by G1
+  below (the loop conducts galvanically: measured current follows
+  1/(Z0+R_L) to 0.2%), so they are false positives for this
+  node-attached-column fixture. POST-lane run() also warned
+  "S11 non-passive (max 1.3-195)" — the known-wrong driven diagonal
+  (#313/#318), not used by this experiment.
+- G1 (coupling): PASS both arms. |I(f1)| strictly decreasing in R_L,
+  ratio 7.19 (predicted (50+400)/(50+12.5) = 7.2, gate >= 2);
+  |V_load| max/min = 4.45 (predicted 4.4, gate >= 1.5).
+- G2 (separability): PASS. G_PRE - G_POST = 9.999914e-4 - 2.8e-7j m at
+  0.05 GHz (target 1e-3, rel err 0.000) and 9.999644e-4 - 5.6e-7j at
+  0.1 GHz (rel err 0.001). The two lanes differ by EXACTLY the same-step
+  injection increment at the sampled cell — lane-vs-lane is a clean
+  pre/post toggle on this fixture, closing the confound.
+
+Decision fits, Re rho(f)·n_live vs R_L (n_live = 2):
+
+    arm   f       n*a       n*b        per-point Re(rho)*n at R_L=12.5..400
+    PRE   0.05GHz -0.6225   -81.198 Ω  -88.95 -96.74 -112.32 -143.47 -205.76 -330.15  FAIL
+    PRE   0.10GHz -0.6205   -81.326 Ω  (same shape)                                   FAIL
+    POST  0.05GHz +0.9987   +0.080 Ω   +12.50 +25.00 +50.01 +100.01 +199.97 +399.50   PASS
+    POST  0.10GHz +0.9950   +0.319 Ω   (same to ~0.1%)                                PASS
+
+F1 verdict (f1 and f2 agree; robustness clause satisfied):
+**POST-injection sampling — the NU lane's status quo — is the
+terminal-consistent, physically correct wire-port V/I sampling order.
+PRE-injection sampling (the uniform lane's #72 wire-port slot) is refuted
+at an EXCITED port**: its Re rho does not track the known load (wrong sign,
+slope -0.62, intercept -81 Ω). Note the earlier non-load-bearing prediction
+in §6 guessed the contaminated arm would show a large POSITIVE slope; the
+measured contamination is negative. The falsifier did not depend on that
+guess.
+
+Corroboration (§7, the previously UNEXAMINED Ampère-identity claim — now
+examined): relative residual of
+(1 - Ca e^{-jω dt})·Ê - Cb·Î/A_dual - Ŵ at R_L = 50:
+
+    POST: 2.3e-7 (0.05 GHz), 3.9e-6 (0.1 GHz)   — machine-precision exact
+    PRE : 3.25 (both bins)                       — order unity
+
+i.e. the post-injection E is the true field level E^{n+1} of the discrete
+update; the pre-injection sample is not any field time level.
+
+PEC-short anchor (diagnostic): POST rho(f1) = 0.0002 + 0.892j Ω
+(pure loop reactance, L_loop ≈ 5.7 nH — consistent with the §2 estimate);
+PRE reads -40.6 - 0.58j Ω on the same short.
+
+Scope of the verdict: it binds the WIRE-PORT V/I pair used for wave
+decomposition at an excited port. It does NOT by itself resolve what the
+uniform lane's full #72 extraction (with its v_inc channel) should do —
+flipping the uniform lane is a production change deliberately NOT made in
+this session (evidence first; and the xfail witness
+test_excited_port_lane_ordering_disagreement_is_open_683 is left in place
+so the disagreement stays visible until the fix lands under review).
+
+Conclusion for #683: decided at CPU scale — no GPU/VESSL run needed. The
+follow-up production change is: move the UNIFORM lane's wire-port (and
+likely lumped-port) S-param DFT accumulation to AFTER soft-source
+injection, or equivalently add the same-step injection increment to the
+sampled V; then flip the xfail to a numeric parity lock, and update the
+NU-lane comment block that currently marks #683 open.
