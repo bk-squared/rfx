@@ -414,6 +414,37 @@ CLASSIFICATION: dict[str, Entry] = {
         (Builder("build_fix_t", None, (
             _v("uniform-both", nu=False, drive=None),
             _v("nu-drive0", nu=True, drive=0))),)),
+    "validation/research/thru_feedpost_deembed.py": Entry(
+        "audited",
+        "thru-deembed attempt-1 harness: `build_thru(pulse)` returns the "
+        "battery-verbatim THRU Simulation with no solve call (the solve "
+        "lives in `run_thru`). Classification added in the attempt-3 "
+        "branch (agent/thru-deembed-r3); the attempt-1/2 branches omitted "
+        "their harnesses from this table (the same base-branch omission "
+        "class the #770 lane recorded for the #683 harnesses).",
+        (Builder("build_thru", None, (
+            _v_from("band-pulse",
+                    lambda m: dict(pulse=m.GaussianPulse(**m.BAND_PULSE))),
+            _v_from("insitu-refplane",
+                    lambda m: dict(pulse=m.GaussianPulse(**m.EXTRACT_PULSE),
+                                   reference_plane_cells=10)))),)),
+    "validation/research/thru_feedpost_joint_extraction.py": Entry(
+        "no_simulation",
+        "thru-deembed attempt-2 harness: constructs no Simulation of its "
+        "own -- it imports `run_thru`/`build_thru` from "
+        "thru_feedpost_deembed (whose builder IS audited above). "
+        "Classification added in the attempt-3 branch."),
+    "validation/research/thru_feedpost_twoseg_extraction.py": Entry(
+        "audited",
+        "thru-deembed attempt-3 harness: `build_singlepost(pulse, "
+        "reference_plane_cells)` returns the single-post 1-port fixture "
+        "Simulation with no solve call; the measurement arms drive it "
+        "separately (pre-declared falsifiers in "
+        "docs/design_notes/thru_feedpost_twoseg_predeclaration.md).",
+        (Builder("build_singlepost", None, (
+            _v_from("refplane-n10",
+                    lambda m: dict(pulse=m.GaussianPulse(**m.EXTRACT_PULSE),
+                                   reference_plane_cells=10)),)),)),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
