@@ -812,3 +812,56 @@ def test_issue510_feed_crossing_names_lumped_port_cleanly():
     assert "')'s" not in hit and ")'s" not in hit, (
         f"expected no possessive glued onto the parenthetical; got: {hit}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #752 / PR #766 pre-merge review, blockers B1 and B2.
+#
+# B1: check 2b's snap suggestions were derived from ``int(h_sub / dx)`` on
+#     the SCALAR dx while its ``frac`` came from the run grid. Any run whose
+#     base dx exceeds h_sub made that zero and ``h_sub / n_below`` raised
+#     ZeroDivisionError out of preflight -- i.e. out of run() and
+#     compute_msl_s_matrix(), aborting the user's solve. The non-uniform
+#     half was introduced by #766; the uniform half predates it.
+#
+# B2: check 2 gates on the realized CELL COUNT and 2b on the interface's
+#     position WITHIN its cell. Neither proxy covers h_sub/dx in
+#     (3.00, 3.10) or (3.40, 3.50), where the substrate realizes 4 cells
+#     (2 silent) with frac outside [0.10, 0.40] (2b silent) on a board
+#     14-33% thicker than declared. Check 2c gates on the physical quantity
+#     -- realized-vs-declared thickness -- and closes it.
+# ---------------------------------------------------------------------------
+def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
+    """B1, the NEW half: dz_profile of 80µm cells (so the realized
+    substrate is 4 cells = 320µm and frac = 0.175, inside the danger zone)
+    under a base dx of 300µm > h_sub = 254µm. ``int(h_sub/dx)`` is 0 there,
+    so the pre-fix snap arithmetic divided by zero and preflight RAISED.
+    The merge base returned four MSL advisories on this same simulation.
+
+    The fix takes the snap counts from the same realized grid ``frac``
+    comes from, so the mesh-profile remedy is quoted (not a dx snap)."""
+    sim = _build_sim(dx=300e-6, ly=W_TRACE + 8 * H_SUB,
+                     dz_profile=np.full(22, 80e-6))
+    msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
+    mixed = [m for m in msgs if "danger zone" in m]
+    assert len(mixed) == 1, msgs
+    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
+    assert "place a mesh node exactly at h_sub=254.0µm" in mixed[0], mixed[0]
+    assert "set dx =" not in mixed[0], mixed[0]
+
+
+def test_mixed_cell_snap_degrades_when_the_substrate_is_one_cell_uniform():
+    """B1, the PRE-EXISTING half (red at the merge base too): a uniform
+    dx = 1mm > h_sub = 254µm puts frac = 0.254 in the danger zone with
+    ``int(h_sub/dx) == 0``. Same ZeroDivisionError, same abort. There is no
+    coarser aligned mesh than one cell, so the advisory must degrade to a
+    correct message that says so rather than raise."""
+    sim = _build_sim(dx=1e-3, ly=W_TRACE + 8 * H_SUB)
+    msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
+    mixed = [m for m in msgs if "danger zone" in m]
+    assert len(mixed) == 1, msgs
+    assert "set dx = 254.0µm (= h_sub/1)" in mixed[0], mixed[0]
+    assert "no coarser aligned option" in mixed[0], mixed[0]
+    assert "h_sub/0" not in mixed[0], mixed[0]
+
+

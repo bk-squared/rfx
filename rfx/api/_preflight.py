@@ -5795,13 +5795,27 @@ class _PreflightMixin:
                 frac = (h_sub / dx) - int(h_sub / dx)
                 _nu_here = False
             if 0.10 <= frac <= 0.40:
-                # Snap suggestions: nearest integer above and below.
-                n_below = int(h_sub / dx)
-                n_above = n_below + 1
-                dx_low = h_sub / n_above   # frac=0
-                dx_high = h_sub / n_below  # frac=0
+                # Snap suggestions come from the SAME grid ``frac`` came
+                # from (#766 review B1). They used to be derived from
+                # ``int(h_sub / dx)`` on the SCALAR dx while ``frac`` came
+                # from the run grid: on a mesh profile that scalar is not
+                # a cell count at all, and on ANY mesh whose base dx
+                # exceeds h_sub it is exactly 0 -- ``h_sub / n_below``
+                # then raised ZeroDivisionError out of preflight, i.e.
+                # out of run()/compute_msl_s_matrix(), aborting the solve
+                # (the uniform-dx half of that crash predates this PR).
+                # ``_msl_realized_substrate`` already returns the realized
+                # count, so use it and treat "one cell below" as the only
+                # coarser aligned option, which does not exist once the
+                # substrate is down to a single cell.
                 if _real is not None:
-                    n_above = int(_real["n"])
+                    n_above = max(1, int(_real["n"]))
+                else:
+                    n_above = max(1, int(h_sub / dx) + 1)
+                n_below = n_above - 1
+                dx_low = h_sub / n_above                        # frac=0
+                dx_high = h_sub / n_below if n_below >= 1 else None
+                if _real is not None:
                     h_real_um = _real["h_real"] * 1e6
                     _iface_txt = (
                         f"the declared substrate top sits {frac:.3f} of a "
@@ -5822,8 +5836,16 @@ class _PreflightMixin:
                     if _nu_here else
                     f"To snap onto a mesh matching the DECLARED board "
                     f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
-                    f"{int(round(h_sub/dx_low))}) or {dx_high*1e6:.1f}µm "
-                    f"(= h_sub/{int(round(h_sub/dx_high))})."
+                    f"{n_above}) or {dx_high*1e6:.1f}µm "
+                    f"(= h_sub/{n_below})."
+                    if dx_high is not None else
+                    f"To snap onto a mesh matching the DECLARED board "
+                    f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
+                    f"{n_above}); there is no coarser aligned option — "
+                    f"the substrate already realizes a single cell, and "
+                    f"h_sub/dx cannot drop below 1. Check 2 above asks "
+                    f"for dx ≤ {h_sub*1e6/4:.1f}µm (4+ substrate cells) "
+                    f"anyway."
                 )
                 _w.warn(
                     PreflightWarning(
