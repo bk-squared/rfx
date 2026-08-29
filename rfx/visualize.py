@@ -7,6 +7,8 @@ customization or saving.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 try:
@@ -181,21 +183,45 @@ def _slice_coords(sim, grid):
             np.asarray(c.z, dtype=float)]
 
 
-def _edges_from_nodes(nodes):
-    """Cell edges as node midpoints, ends extrapolated by the end spacing.
+def _declared_entries(sim):
+    """Every declared body, from BOTH registries.
 
-    pcolormesh needs N+1 edges for N cells. Deriving them from the node
-    coordinates keeps a GRADED axis to scale; ``imshow`` with a single
-    ``extent`` silently redraws a graded mesh as a uniform one.
+    ``Simulation.add()`` appends to ``sim._geometry``; ``add_thin_conductor()``
+    appends to ``sim._thin_conductors``. A viewer that walks only the first
+    silently omits every trace on a PCB.
+    """
+    out = list(getattr(sim, "_geometry", []) or [])
+    out += list(getattr(sim, "_thin_conductors", []) or [])
+    return out
+
+
+def _axis_edges(grid, axis, nodes):
+    """Cell edges along *axis* in metres.
+
+    CONVENTION, verified against the grid's own spacing arrays: an E-node
+    coordinate is the LOWER EDGE of its cell, i.e. ``node[k+1] - node[k] ==
+    dz[k]``. Cell k therefore spans ``[node[k], node[k] + d[k])`` and the N+1
+    edges pcolormesh needs are the N nodes plus one closing edge.
+
+    Treating the nodes as cell CENTRES (edges at their midpoints) shifts
+    every drawn cell by half a cell and, on a graded axis, distorts the
+    widths as well. That is the same node-vs-cell confusion that makes
+    ``position=`` land one plane above a one-cell sheet, so it is pinned by
+    a test rather than left to a comment.
     """
     n = np.asarray(nodes, dtype=float)
-    if n.size < 2:
-        d = 1.0 if n.size == 0 else max(abs(float(n[0])), 1.0)
-        base = 0.0 if n.size == 0 else float(n[0])
-        return np.array([base - 0.5 * d, base + 0.5 * d])
-    mid = 0.5 * (n[:-1] + n[1:])
-    return np.concatenate([[n[0] - (mid[0] - n[0])], mid,
-                           [n[-1] + (n[-1] - mid[-1])]])
+    names = ("dx_arr", "dy_arr", "dz")
+    d = getattr(grid, names[axis], None)
+    if d is None:
+        step = float(getattr(grid, "dx"))
+        d = np.full(n.size, step, dtype=float)
+    else:
+        d = np.asarray(d, dtype=float)
+        if d.size < n.size:            # scalar-ish or short: pad with the last
+            d = np.concatenate([d, np.full(n.size - d.size, d[-1])])
+    if n.size == 0:
+        return np.array([0.0, 1.0])
+    return np.concatenate([n, [n[-1] + d[n.size - 1]]])
 
 
 def plot_rasterized_slice(
@@ -235,12 +261,16 @@ def plot_rasterized_slice(
     axis : int
         Slice normal (0=x, 1=y, 2=z).
     position : float or None
-        Physical coordinate (metres) along *axis* to slice at. The plane
-        chosen is the one that **holds conductor cells**, searched over the
-        nearest node and its two neighbours: a one-cell sheet's mask sits on
-        the LOWER node plane of its cell, so asking for the sheet's centre
-        lands one plane high and shows whatever else is there. Mutually
-        exclusive with ``index``.
+        Physical coordinate (metres) along *axis* to slice at. A one-cell
+        body is rasterized onto the node NEAREST ITS MIDPOINT
+        (``rfx/geometry/csg.py`` ``_axis_mask``), and on a float32 tie that
+        can round either way — so the plane holding a sheet is not reliably
+        the one nearest the coordinate you asked for. The search therefore
+        looks at the nearest node and its two neighbours and takes whichever
+        holds conductor cells; when it moves, the title says so, because
+        silently answering about a different plane turns "is this plane clear
+        of metal?" into a picture of the ground plane. Raises if *position*
+        is outside the axis. Mutually exclusive with ``index``.
     index : int or None
         Grid index along *axis*. Overrides ``position``. If both are None,
         the plane with the most conductor cells is used.
@@ -283,15 +313,36 @@ def plot_rasterized_slice(
         eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
 
+    names_of = lambda a: "xyz"[a]
+    moved_note = ""
     n_along = cond.shape[axis]
     per_plane = np.moveaxis(cond, axis, 0).reshape(n_along, -1).sum(axis=1)
     if index is None:
         if position is None:
             index = int(np.argmax(per_plane)) if per_plane.max() else n_along // 2
         else:
-            k = int(np.argmin(np.abs(coords[axis] - float(position))))
+            pos = float(position)
+            lo_c, hi_c = float(coords[axis].min()), float(coords[axis].max())
+            if not (lo_c - 1e-9 <= pos <= hi_c + 1e-9):
+                raise ValueError(
+                    f"position={pos:g} m is outside axis {names_of(axis)} "
+                    f"[{lo_c:g}, {hi_c:g}] m. Clamping it would have drawn a "
+                    "plausible empty CPML plane, which is how a metre/mm slip "
+                    "reads as a clean result.")
+            k = int(np.argmin(np.abs(coords[axis] - pos)))
             cand = [c for c in (k, k + 1, k - 1) if 0 <= c < n_along]
             index = max(cand, key=lambda c: int(per_plane[c]))
+            if index != k:
+                # The search is a convenience for finding a sheet; silently
+                # answering about a DIFFERENT plane turns "is z=0.1 mm clear
+                # of metal?" into a picture of the ground plane.
+                moved_note = (
+                    f"  [asked for {names_of(axis)} = {pos * 1e3:.4f} mm "
+                    f"(plane {k}, {int(per_plane[k])} conductor cells); showing "
+                    f"the neighbouring plane {index} instead because it holds "
+                    f"{int(per_plane[index])}. Pass index= to override.]")
+            else:
+                moved_note = ""
     if not 0 <= index < n_along:
         raise IndexError(f"index {index} outside axis {axis} of length {n_along}")
 
@@ -299,15 +350,25 @@ def plot_rasterized_slice(
     take = [slice(None)] * 3
     take[axis] = index
     eps2, cond2 = eps[tuple(take)], cond[tuple(take)]
-    xe = _edges_from_nodes(coords[keep[0]]) * 1e3
-    ye = _edges_from_nodes(coords[keep[1]]) * 1e3
+    xe = _axis_edges(grid, keep[0], coords[keep[0]]) * 1e3
+    ye = _axis_edges(grid, keep[1], coords[keep[1]]) * 1e3
 
     fig = ax.figure if ax is not None else None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
+    # A uniform slice has a degenerate range, and matplotlib's `nonsingular`
+    # then invents one: an all-vacuum slice drew a colorbar running 0.900 to
+    # 1.100, i.e. eps_r < 1 on an air plane. Say the single value instead.
+    lo_e, hi_e = float(eps2.min()), float(eps2.max())
+    uniform = (hi_e - lo_e) <= 1e-9 * max(abs(hi_e), 1.0)
     mesh = ax.pcolormesh(xe, ye, eps2.T, cmap="Blues", shading="flat",
-                         vmin=float(eps2.min()), vmax=float(eps2.max()))
-    fig.colorbar(mesh, ax=ax, label="relative permittivity \u03b5\u1d63")
+                         vmin=lo_e - 0.5 if uniform else lo_e,
+                         vmax=lo_e + 0.5 if uniform else hi_e)
+    cbar = fig.colorbar(mesh, ax=ax,
+                        label="relative permittivity \u03b5\u1d63")
+    if uniform:
+        cbar.set_ticks([lo_e])
+        cbar.set_ticklabels([f"{lo_e:.4g} (uniform)"])
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0)
 
@@ -315,7 +376,12 @@ def plot_rasterized_slice(
     n_skipped = 0
     if show_declared:
         drawn = 0
-        for entry in getattr(sim, "_geometry", []):
+        # BOTH registries. add_thin_conductor() bodies live in
+        # sim._thin_conductors, not sim._geometry, so iterating only the
+        # latter drew a board of red cells with no outline AND no skip note —
+        # the honesty mechanism firing for Cylinder/Sphere and never for the
+        # one class a PCB is actually made of.
+        for entry in _declared_entries(sim):
             shape = getattr(entry, "shape", entry)
             lo = getattr(shape, "corner_lo", None)
             hi = getattr(shape, "corner_hi", None)
@@ -327,7 +393,12 @@ def plot_rasterized_slice(
                 continue
             lo = [float(v) for v in lo]
             hi = [float(v) for v in hi]
-            if not (lo[axis] - 1e-12 <= float(coords[axis][index]) <= hi[axis] + 1e-12):
+            # Tolerance scaled to the CELL, not an absolute 1e-12 m: node
+            # coordinates are float32 (quantum ~9e-10 m at 9 mm), so an
+            # absolute 1e-12 m dropped a body's outline whenever the slice
+            # sat exactly on its declared face.
+            tol = 0.05 * float(np.median(np.diff(coords[axis]))) if coords[axis].size > 1 else 1e-9
+            if not (lo[axis] - tol <= float(coords[axis][index]) <= hi[axis] + tol):
                 continue
             ax.add_patch(plt.Rectangle(
                 (lo[keep[0]] * 1e3, lo[keep[1]] * 1e3),
@@ -348,7 +419,8 @@ def plot_rasterized_slice(
     ax.set_title(title or (
         f"Rasterized {names[axis]}-slice at index {index} "
         f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
-        f"{int(cond2.sum())} conductor cells{skip_note}"), fontsize=10)
+        f"{int(cond2.sum())} conductor cells{skip_note}{moved_note}"),
+        fontsize=10)
     fig.tight_layout()
     return fig
 
@@ -408,10 +480,33 @@ def plot_stack_profile(
         eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
     keep = [a for a in (0, 1, 2) if a != axis]
+    names_of = lambda a: "xyz"[a]
+    auto_note = ""
 
     if at is None:
         counts = np.moveaxis(cond, axis, -1).sum(axis=-1)
-        i0, i1 = np.unravel_index(int(np.argmax(counts)), counts.shape)
+        if int(counts.max()) > 0:
+            i0, i1 = np.unravel_index(int(np.argmax(counts)), counts.shape)
+        else:
+            # No conductor anywhere — a dielectric resonator, a lens, a radome.
+            # argmax on an all-zero array returns 0, i.e. the CPML CORNER, and
+            # the figure comes back blank with no hint that the column was
+            # chosen badly. Fall back to the column with the most permittivity
+            # structure, and say so in the title.
+            var = np.moveaxis(eps, axis, -1)
+            # np.ptp(...), not ndarray.ptp(...) — the method was removed in
+            # numpy 2.0 and this repo runs numpy>=2.
+            var = np.ptp(var.reshape(var.shape[0], var.shape[1], -1), axis=-1)
+            if float(var.max()) <= 0:
+                raise ValueError(
+                    "no conductor and no permittivity structure along "
+                    f"{names_of(axis)} — there is no column worth reading, and "
+                    "picking one would return a blank two-column figure that "
+                    "looks like a build failure. Pass at=(u, v) if you want a "
+                    "specific column anyway.")
+            i0, i1 = np.unravel_index(int(np.argmax(var)), var.shape)
+            auto_note = (" (no conductor in this model; column chosen by "
+                         "\u03b5 structure)")
     else:
         i0 = int(np.argmin(np.abs(coords[keep[0]] - float(at[0]))))
         i1 = int(np.argmin(np.abs(coords[keep[1]] - float(at[1]))))
@@ -419,7 +514,7 @@ def plot_stack_profile(
     take[keep[0]], take[keep[1]], take[axis] = i0, i1, slice(None)
     eps_col = eps[tuple(take)]
     cond_col = cond[tuple(take)]
-    edges = _edges_from_nodes(coords[axis]) * 1e3
+    edges = _axis_edges(grid, axis, coords[axis]) * 1e3
 
     fig = ax.figure if ax is not None else None
     if ax is None:
@@ -427,9 +522,15 @@ def plot_stack_profile(
 
     # realized cells, true sizes
     lo_e, hi_e = edges[:-1], edges[1:]
-    span = float(np.ptp(eps_col)) or 1.0
+    # ABSOLUTE shading, not per-column normalisation. Renormalising made a
+    # column of solid eps_r 9 pixel-identical to a column of vacuum, and the
+    # docstring promises the tint carries permittivity. Anchor 1.0 to white
+    # and cap at 12 so two columns (and two calls) are comparable; the tick
+    # labels carry the exact values regardless.
+    eps_hi = 12.0
     for k in range(eps_col.size):
-        shade = 0.92 - 0.42 * (float(eps_col[k]) - float(eps_col.min())) / span
+        shade = 0.97 - 0.55 * min(max(float(eps_col[k]) - 1.0, 0.0),
+                                  eps_hi - 1.0) / (eps_hi - 1.0)
         ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                    facecolor=str(max(shade, 0.0)),
                                    edgecolor="0.55", lw=0.4))
@@ -442,7 +543,7 @@ def plot_stack_profile(
     x_at = float(coords[keep[0]][i0])
     y_at = float(coords[keep[1]][i1])
     drawn = 0
-    for entry in getattr(sim, "_geometry", []):
+    for entry in _declared_entries(sim):
         shape = getattr(entry, "shape", entry)
         lo = getattr(shape, "corner_lo", None)
         hi = getattr(shape, "corner_hi", None)
@@ -450,10 +551,13 @@ def plot_stack_profile(
             continue
         lo = [float(v) for v in lo]
         hi = [float(v) for v in hi]
-        if not (lo[keep[0]] - 1e-12 <= x_at <= hi[keep[0]] + 1e-12
-                and lo[keep[1]] - 1e-12 <= y_at <= hi[keep[1]] + 1e-12):
+        tolx = 0.05 * float(np.median(np.diff(coords[keep[0]]))) if coords[keep[0]].size > 1 else 1e-9
+        toly = 0.05 * float(np.median(np.diff(coords[keep[1]]))) if coords[keep[1]].size > 1 else 1e-9
+        if not (lo[keep[0]] - tolx <= x_at <= hi[keep[0]] + tolx
+                and lo[keep[1]] - toly <= y_at <= hi[keep[1]] + toly):
             continue
-        mat = getattr(entry, "material", None)
+        mat = (getattr(entry, "material_name", None)
+               or getattr(entry, "material", None))
         ax.add_patch(plt.Rectangle((0.0, lo[axis] * 1e3), 1.0,
                                    (hi[axis] - lo[axis]) * 1e3,
                                    facecolor="#0072b2", alpha=0.30,
@@ -471,7 +575,8 @@ def plot_stack_profile(
     ax.set_title(title or (
         f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
         f"{names[keep[1]]}={y_at * 1e3:.3f} mm — {drawn} declared bod(y/ies), "
-        f"{int(cond_col.sum())} conductor cell(s) (red)"), fontsize=10)
+        f"{int(cond_col.sum())} conductor cell(s) (red){auto_note}"),
+        fontsize=10)
     fig.tight_layout()
     return fig
 
