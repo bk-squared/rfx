@@ -582,3 +582,89 @@ rule, or validity rule moves; s = 3.0's error magnitude has never been
 measured (it cannot have been chosen to steer the fit). The in-flight
 first ladder execution was stopped before any of its output was read;
 the full ladder re-runs fresh with the extended scale set.
+
+## W4R outcome (2026-08-29) — F-S4 again INCONCLUSIVE per the frozen rules; root cause now fully diagnosed
+
+Ladder result (`results/w4r_supraconvergence.json`; reference s = 0.25
+uniform, f_ref = 5.520821 GHz, dominance ∞ everywhere):
+
+- Both s = 3.0 anchors failed the pre-declared 5 % match guard
+  (5.009 / 4.988 GHz, 9.3–9.6 % off — the 2-cell-wide-trace regime
+  detunes the resonator; the C7 gamble adjudicated itself invalid by
+  the declared rule).
+- The uniform control's absolute errors are NON-monotonic and flat at
+  fine scales: 22.7 / 21.6 / 12.2 / 18.7 / 116.3 MHz at
+  s = 0.5/0.6/0.75/1.0/1.5 — the sequence of f values (5.4045 → 5.5021
+  → 5.5331 → 5.5436 → 5.5376 → 5.5208 GHz down to the reference) is not
+  Cauchy: the observable carries a mesh-scale-STRUCTURAL error floor of
+  roughly ±20 MHz (≈4e-3) that does not shrink between s = 1.0 and
+  s = 0.25. The fit cut (max(3·u_ref, 18 MHz) = 22.7 MHz) left 2
+  points per arm → **INCONCLUSIVE (n_fit < 3)**, F-S4 not fired, no
+  order claim, promotion still blocked by W4.
+
+What the three W4 attempts now establish (diagnostics, not claims):
+
+1. The phase-1 wander was the f32 knife-edge rasterization lottery
+   (W4R.1-2, verified by direct mask measurement, repaired).
+2. With that repaired and subpixel on, a residual ±20 MHz-class
+   structural error remains in the ABSOLUTE resonance frequency of the
+   rasterized dielectric-loaded fixture — present identically in
+   uniform-mesh arms, i.e. an rfx geometry-realization/材料-sampling
+   effect, NOT a grading effect (issue-worthy: a converged-in-h
+   staircase/interface convention residue; candidate follow-up issue).
+3. The multiband-vs-uniform CONTRAST at matched scale is clean, smooth
+   and small: f_mb − f_uc = −4.9 / −5.8 / −7.2 / −9.4 / −13.3 MHz at
+   s = 0.5/0.6/0.75/1.0/1.5 (≤ 2.5e-3 relative), decreasing
+   monotonically with refinement with apparent slope ~0.9 in h. The
+   common structural floor cancels in this difference. NOTE HONESTLY:
+   a ~h^1 contrast is also what a genuine first-order grading error
+   component would look like — this cannot be adjudicated on a fixture
+   whose absolute observable is floored, and it is exactly the question
+   W4R2 below is built to answer. No window is derived from this
+   number.
+4. The P-C fixture class VIOLATES the smoothness hypotheses of the
+   Monk–Süli/Li–Shields theorem F-S4 tests (PEC trace edge singularity)
+   — phase-1 §4 said as much. Two instrument-limited INCONCLUSIVEs on
+   that class are evidence about the fixture class, not about multiband
+   grading.
+
+## W4R2 — supraconvergence vs an ANALYTIC target (pre-declaration, committed BEFORE the multiband arms run)
+
+Rationale: remove every instrument layer at once by testing F-S4 where
+the theorem actually lives — a smooth-field eigenmode of an EMPTY PEC
+box on a multiband tensor product grid, judged against the exact
+continuum eigenfrequency. No geometry rasterization (no Box at all —
+the W1 harness), no dielectrics, no subpixel, no reference ladder (no
+Richardson, no contamination), sparse spectrum.
+
+Frozen fixture and instrument (`w4r2_analytic_cavity.py`):
+- PEC box 27 × 18 mm × L_z = 64 mm; z profile fine(12 mm) |
+  coarse(14 mm) | fine(12) | coarse(14) | fine(12), ABRUPT r = 1.4
+  (the envelope cap, worst case); dzf = s mm, coarse 1.4·s mm,
+  dx = dy = 1.5·s mm; uniform control dzf everywhere. Scales
+  s ∈ {0.25, 0.5, 1, 2} — every band and transverse extent an exact
+  multiple at every scale; nz uniform = 64/s exact.
+- Target: TE101 = 6.0255352 GHz analytic; neighbours ≥ 1.24 GHz away
+  (TE102 7.264, TE011 8.651). Observable: harminv line nearest the
+  target in [5.4, 6.6] GHz, guard 3 %. Ey source (~L/4) + Ey probe;
+  T = 15 ns; e(s) = |f_meas − f_TE101|.
+- Fit: LS slope of log e vs log dzf over valid points with
+  e ≥ 0.3 MHz (extraction + f32 field-noise class ×3); ≥ 3 points
+  required per arm.
+- Judge: EXACTLY the frozen W4R.3 structure — fixture gate
+  p_uc ∈ [1.7, 2.6]; **F-S4 fires** iff fixture valid AND
+  (p_mb < 1.5 OR p_mb < p_uc − 0.4); anomaly A4 iff
+  p_mb > p_uc + 0.4 (blocks promotion, filed, not a fault claim).
+
+Bring-up (recorded, pre-commit, harness validation only — multiband
+arms have NEVER been run on this fixture): uniform control at
+s = 2/1/0.5 measured e = 18.079 / 4.544 / 1.167 MHz — successive
+ratios 3.98 / 3.89, the clean 2nd-order class against the analytic
+value, confirming realized cavity extents are exact and the instrument
+has no structural floor down to the ~1 MHz scale. The multiband arms
+and the verdict run only after this section is committed.
+
+Relation to the P-C fixtures: W4R2 carries the F-S4 order VERDICT
+(theorem hypotheses satisfied); the P-C ladders stand as recorded
+diagnostics of geometry-realization limits and of the small matched-
+scale grading contrast (≤ 2.5e-3 at the cap, shrinking with h).
