@@ -460,3 +460,44 @@ layered dielectric**, not about rfx's Yee core.
 3. **D6's model class.** Nine rungs over a 6× span with a turning point inside do
    not identify two exponents. A lane that wants the exponent needs either a much
    wider h range (a GPU arm) or a fixture whose turn-over is outside the range.
+
+---
+
+## §9 The harness (rerunnable; how a future lane extends it)
+
+`validation/research/convergence_floor/`. Nothing under `rfx/` is touched by this
+lane; the only file outside the package is
+`tests/_example_fidelity_lib.py` + its snapshot, where the #737
+enumerate-and-classify gate requires an entry for every new script (three new
+audited variants; the regeneration was pure addition, 878 lines, zero deletions,
+so no existing example drifted).
+
+```
+PYTHONPATH=<worktree> .venv/bin/python -m validation.research.convergence_floor.<mod>
+
+predeclare              windows, frozen (run first; every harness reads them)
+predeclare_addendum     the D1b/D1c/D2-band addendum
+fixture                 the W4R P-C fixture (library; `-m` prints the ladder table)
+d0_reproduce            the ladder + reference; stores every raw record  (~13 min)
+   ... --rejudge        re-score an existing run against PR #785 (no FDTD)
+d1_geometry             realized-vs-declared, no time stepping           (~2 min)
+d2_edge                 trace-free control ladder                        (~2 min)
+d3_port                 coupling / probe sweep                           (~4 min)
+d4_reference --part a   exact-reference empty-box twin                   (~4 min)
+             --part b   Richardson reference from d0 (no FDTD)
+             --part c   independent estimators on the stored records (no FDTD)
+d5_predeclare_and_run   the three skipped lattice-valid scales           (~9 min)
+   ... --with-0.3       one more descending rung (3/s = 10)
+d6_two_term_model       model comparison + exponent grid (no FDTD)
+verdict                 applies the frozen windows, apportions, envelope
+ladder_guard            the precondition, with a self-check on the W4R ladder
+```
+
+Every window lives in `results/predeclared_windows_786*.json` and every harness
+reads it from there, so a window cannot be widened by editing a script. `d5` and
+`d6` refuse to run if the on-disk window file disagrees with their code.
+
+To extend: add rungs by dropping lattice-valid scales (3/s and 6/s both integer)
+into `d5`'s scale list — it caches, so previously-measured rungs are not re-run —
+and re-run `d6` and `verdict`. §8's D7 is the next discriminator, with its window
+already derived.

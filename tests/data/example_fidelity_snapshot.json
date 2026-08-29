@@ -4406,6 +4406,884 @@
         }
       ]
     },
+    "validation/research/convergence_floor/fixture.py::build_sim::multiband_s1.0": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "mesh_extent_um": 27000.0002347,
+              "n_cells": 36,
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ]
+            },
+            "y": {
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "mesh_extent_um": 22500.0001956,
+              "n_cells": 30,
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ]
+            },
+            "z": {
+              "declared_extent_um": 13500.0,
+              "declared_um": [
+                0.0,
+                13500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                5.91389853755e-05
+              ],
+              "mesh_extent_um": 13500.0000591,
+              "n_cells": 34,
+              "realized_extent_um": 13500.0000591,
+              "realized_um": [
+                0.0,
+                13500.0000591
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|6375.000,8625.000,1375.000um->20625.000,13875.000,3125.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 14250.0,
+              "declared_um": [
+                6375.0,
+                20625.0
+              ],
+              "face_residual_um": [
+                375.000058673,
+                375.000182539
+              ],
+              "realized_extent_um": 14250.0001239,
+              "realized_um": [
+                6750.00005867,
+                21000.0001825
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 5250.0,
+              "declared_um": [
+                8625.0,
+                13875.0
+              ],
+              "face_residual_um": [
+                375.000078231,
+                375.000123866
+              ],
+              "realized_extent_um": 5250.00004563,
+              "realized_um": [
+                9000.00007823,
+                14250.0001239
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 264.285722681,
+              "declared_extent_um": 1750.0,
+              "declared_um": [
+                1375.0,
+                3125.0
+              ],
+              "face_residual_um": [
+                125.000071246,
+                225.000130013
+              ],
+              "realized_extent_um": 1850.00005877,
+              "realized_um": [
+                1500.00007125,
+                3350.00013001
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 375.0 um (2.63% of the declared 14250.0 um extent); SIZE 14250.0 um (+0.0 um, +0.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 375.0 um (7.14% of the declared 5250.0 um extent); SIZE 5250.0 um (+0.0 um, +0.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "z",
+              "detail": "PLACEMENT off by 225.0 um (12.86% of the declared 1750.0 um extent); SIZE 1850.0 um (+100.0 um, +5.71%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 931,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                0.0,
+                1500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                7.12461769269e-05
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                0.0,
+                1500.00007125
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 4.3,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "sub",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        },
+        "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                7500.0,
+                9000.0
+              ],
+              "face_residual_um": [
+                6.51925805006e-05,
+                0.000136438757861
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                7500.00006519,
+                9000.00013644
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 2.2,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "upper",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "off_lattice_design_edges",
+          "loc": null,
+          "message": "3 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 3 listed): geometry[2] 'pec' y: extent 5.25mm, worst face residual 375\u00b5m (7.14% of the extent, df/f ~ 7.14%); geometry[2] 'pec' z: extent 1.75mm, worst face residual 125\u00b5m (7.14% of the extent, df/f ~ 7.14%); geometry[2] 'pec' x: extent 14.25mm, worst face residual 375\u00b5m (2.63% of the extent, df/f ~ 2.63%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box entr(y/ies) on the nonuniform lane; 0 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        }
+      ]
+    },
+    "validation/research/convergence_floor/fixture.py::build_sim::no_trace_s1.0": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "mesh_extent_um": 27000.0002347,
+              "n_cells": 36,
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ]
+            },
+            "y": {
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "mesh_extent_um": 22500.0001956,
+              "n_cells": 30,
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ]
+            },
+            "z": {
+              "declared_extent_um": 13500.0,
+              "declared_um": [
+                0.0,
+                13500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.00064121559451
+              ],
+              "mesh_extent_um": 13500.0006412,
+              "n_cells": 54,
+              "realized_extent_um": 13500.0006412,
+              "realized_um": [
+                0.0,
+                13500.0006412
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                0.0,
+                1500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                7.12461769269e-05
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                0.0,
+                1500.00007125
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 4.3,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "sub",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        },
+        "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                7500.0,
+                9000.0
+              ],
+              "face_residual_um": [
+                0.000356230885068,
+                0.000427477062429
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                7500.00035623,
+                9000.00042748
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 2.2,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "upper",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/research/convergence_floor/fixture.py::build_sim::uniform_s1.0": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "mesh_extent_um": 27000.0002347,
+              "n_cells": 36,
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ]
+            },
+            "y": {
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "mesh_extent_um": 22500.0001956,
+              "n_cells": 30,
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ]
+            },
+            "z": {
+              "declared_extent_um": 13500.0,
+              "declared_um": [
+                0.0,
+                13500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.00064121559451
+              ],
+              "mesh_extent_um": 13500.0006412,
+              "n_cells": 54,
+              "realized_extent_um": 13500.0006412,
+              "realized_um": [
+                0.0,
+                13500.0006412
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|6375.000,8625.000,1375.000um->20625.000,13875.000,3125.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 14250.0,
+              "declared_um": [
+                6375.0,
+                20625.0
+              ],
+              "face_residual_um": [
+                375.000058673,
+                375.000182539
+              ],
+              "realized_extent_um": 14250.0001239,
+              "realized_um": [
+                6750.00005867,
+                21000.0001825
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 5250.0,
+              "declared_um": [
+                8625.0,
+                13875.0
+              ],
+              "face_residual_um": [
+                375.000078231,
+                375.000123866
+              ],
+              "realized_extent_um": 5250.00004563,
+              "realized_um": [
+                9000.00007823,
+                14250.0001239
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1750.0,
+              "declared_um": [
+                1375.0,
+                3125.0
+              ],
+              "face_residual_um": [
+                125.000071246,
+                125.000154367
+              ],
+              "realized_extent_um": 1750.00008312,
+              "realized_um": [
+                1500.00007125,
+                3250.00015437
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 375.0 um (2.63% of the declared 14250.0 um extent); SIZE 14250.0 um (+0.0 um, +0.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 375.0 um (7.14% of the declared 5250.0 um extent); SIZE 5250.0 um (+0.0 um, +0.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "z",
+              "detail": "PLACEMENT off by 125.0 um (7.14% of the declared 1750.0 um extent); SIZE 1750.0 um (+0.0 um, +0.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 931,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                0.0,
+                1500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                7.12461769269e-05
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                0.0,
+                1500.00007125
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 4.3,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "sub",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        },
+        "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 27000.0,
+              "declared_um": [
+                0.0,
+                27000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000234693289108
+              ],
+              "realized_extent_um": 27000.0002347,
+              "realized_um": [
+                0.0,
+                27000.0002347
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 750.000006519,
+              "declared_extent_um": 22500.0,
+              "declared_um": [
+                0.0,
+                22500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000195577741502
+              ],
+              "realized_extent_um": 22500.0001956,
+              "realized_um": [
+                0.0,
+                22500.0001956
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.000011874,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                7500.0,
+                9000.0
+              ],
+              "face_residual_um": [
+                0.000356230885068,
+                0.000427477062429
+              ],
+              "realized_extent_um": 1500.00007125,
+              "realized_um": [
+                7500.00035623,
+                9000.00042748
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            }
+          ],
+          "material": {
+            "eps_r": 2.2,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "upper",
+            "sigma": 0.0
+          },
+          "n_cells": 6480,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "off_lattice_design_edges",
+          "loc": null,
+          "message": "3 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 3 listed): geometry[2] 'pec' y: extent 5.25mm, worst face residual 375\u00b5m (7.14% of the extent, df/f ~ 7.14%); geometry[2] 'pec' z: extent 1.75mm, worst face residual 125\u00b5m (7.14% of the extent, df/f ~ 7.14%); geometry[2] 'pec' x: extent 14.25mm, worst face residual 375\u00b5m (2.63% of the extent, df/f ~ 2.63%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box entr(y/ies) on the nonuniform lane; 0 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        }
+      ]
+    },
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py::_build_disjoint_simulation::default": {
       "fidelity": {
         "NOT AUDITED by this report": {

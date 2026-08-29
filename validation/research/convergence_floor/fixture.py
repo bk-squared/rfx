@@ -214,3 +214,23 @@ def measure(scale: float, multiband: bool = False, subpixel: bool | None = None,
     if keep_series:
         row["_series"] = np.asarray(result.time_series).ravel().astype(np.float64)
     return row
+
+
+def _describe():
+    """Print the fixture's realized cell counts per ladder scale.
+
+    This module is a library (the lane's harnesses import it); the guard
+    exists because the #737 example-fidelity gate imports every 'audited'
+    script and requires module scope not to be a script body.
+    """
+    for s in list(SCALES) + [REF_SCALE]:
+        dx, dzf = PC_DX0 * s, PC_DZF0 * s
+        prof = pc_uniform_profile(s)
+        print("s=%-6s dx=%.5f mm dz=%.5f mm  nz=%3d  cells=%9d  n_steps=%6d"
+              % (s, dx * 1e3, dzf * 1e3, len(prof),
+                 int(round(PC_A / dx)) * int(round(PC_B / dx)) * len(prof),
+                 n_steps_for(s, dzf)))
+
+
+if __name__ == "__main__":
+    _describe()

@@ -465,6 +465,54 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
+    # ---- issue #786 attribution lane (validation/research/convergence_floor)
+    "validation/research/convergence_floor/fixture.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile, ...)` returns the W4R P-C "
+        "Simulation with no solve call; `measure()` is what runs it",
+        (Builder("build_sim", None, (
+            _v_from("uniform_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_uniform_profile(1.0))),
+            _v_from("multiband_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_dz_profile_sym(1.0))),
+            _v_from("no_trace_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_uniform_profile(1.0),
+                with_trace=False)),
+        )),)),
+    "validation/research/convergence_floor/d4_reference.py": Entry(
+        "builder_fused_with_solve",
+        "`twin_rung()` builds the exact-reference empty-box twin and calls "
+        "sim.run() in the same function -- there is no build-only path",),
+    "validation/research/convergence_floor/__init__.py": Entry(
+        "no_simulation", "package marker"),
+    "validation/research/convergence_floor/d0_reproduce.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d1_geometry.py": Entry(
+        "no_simulation",
+        "assembles materials/masks through fixture.build_sim(); constructs "
+        "no Simulation of its own"),
+    "validation/research/convergence_floor/d2_edge.py": Entry(
+        "no_simulation",
+        "drives fixture.build_sim(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d3_port.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d5_predeclare_and_run.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d6_two_term_model.py": Entry(
+        "no_simulation", "pure model fitting on committed JSON"),
+    "validation/research/convergence_floor/estimators.py": Entry(
+        "no_simulation", "signal-processing estimators; no rfx Simulation"),
+    "validation/research/convergence_floor/ladder_guard.py": Entry(
+        "no_simulation", "ladder-reading preconditions; no rfx Simulation"),
+    "validation/research/convergence_floor/predeclare.py": Entry(
+        "no_simulation", "writes the frozen window file; no Simulation"),
+    "validation/research/convergence_floor/predeclare_addendum.py": Entry(
+        "no_simulation", "writes the addendum window file; no Simulation"),
+    "validation/research/convergence_floor/verdict.py": Entry(
+        "no_simulation", "reads committed JSON only; no Simulation"),
 }
 
 
