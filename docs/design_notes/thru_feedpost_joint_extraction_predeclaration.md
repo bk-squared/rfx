@@ -352,3 +352,79 @@ next-scale remedy in that case remains the single-post fixture.
 noise scale 0.002 the F-J5 windows must hold (sigma_L/L <= 0.10),
 demonstrating the gate is passable by clean-enough data and fires
 otherwise.
+
+## 9. RESULTS — extraction arm (appended 2026-08-29; sections 1-8 unchanged)
+
+Run: `validation/research/thru_feedpost_joint_extraction.py --extract`,
+branch `agent/thru-deembed-r2` (harness commit 88ff392),
+JAX_PLATFORMS=cpu, battery-verbatim fixture, preflight code set pinned
+and matched (`pec_faces_finite_pec` + 2x `wire_port_dead_extent_cells`).
+
+Measured, bins [1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6] GHz:
+
+- F-X5 CLEAN both ports (Re(Z_in) 50.24-51.84 ohm, all > 0) before any
+  interpretation.
+- Joint fit (56 real obs, 3 params, 27/27 starts in one basin, resid
+  max 0.01073 / rms 0.00379):
+  L* = 0.3819 +- 0.0326 nH, Zc* = 47.328 +- 0.377 ohm,
+  l_eff* = 18.2108 +- 0.1971 mm (tau* = 64.086 ps).
+
+Verdicts (windows verbatim from sections 4/8.1):
+
+- F-J1 PASS (0.01073 <= 0.025; 0.00379 <= 0.012).
+- F-J2 L* PASS (0.3819 in [0.20, 0.50] nH — near the 0.40 nH
+  quasi-static thin-wire estimate).
+- F-J2 Zc* PASS (47.33 in [44, 53] — 0.9 ohm below the #313 mid-line
+  3-7 GHz class, the attempt-1 named conditioning scale).
+- **F-J2 l_eff*: FIRED** — 18.211 mm vs [15.0, 18.0] mm.
+- F-J3 PASS decisively: per-bin L with FITTED constants is FLAT at
+  1.05% (port 1: 0.3817..0.3867 nH) vs the 20% window. **Attempt-1's
+  F-L1 firing mechanism is hereby CONFIRMED experimentally as
+  constants-conditioning**: the same raw data that gave a 31% monotone
+  L decline under assumed constants gives a 1% flat L under measured
+  constants.
+- F-J4 PASS (1.11% port asymmetry).
+- F-J5 PASS on all four clauses (sigma_L/L = 0.0853; the measured
+  residual class 0.0038 cleared the section-8.1 Fisher bar).
+
+**Disposition (frozen section 4/7): any extraction falsifier firing =
+STOP before the band arm.** The band arm was NOT run; no in-band
+de-embedded measurement exists in this lane; `test_thru_s11_floor`
+stays byte-untouched as the held strict xfail; no lock anywhere moves.
+
+**Named mechanism of the F-J2 l_eff firing (recorded, not excused)**:
+the fitted excess electrical length over the 16 mm trace is
+2.21 +- 0.20 mm ~ 7.8 ps — quantitatively the transit of the TWO 1 mm
+vertical feed posts (2 x ~1.1 mm at the fixture's beta class). The
+frozen window's derivation bounded l_eff by TRACE geometry (16 mm +
+overhang + fringing) and omitted the posts' own electrical height from
+the terminal-to-terminal path (1 mm up + 16 mm across + 1 mm down =
+18 mm). The measurement therefore indicates the physical posts are
+short line segments (delay + inductance), not point series elements;
+the 3-parameter model absorbed their delay into l_eff, landing 1 sigma
+outside the mis-derived window. Under the frozen method a mis-derived
+physicality window and a genuine model violation are treated the same
+way: the falsifier fired, the STOP stands. Re-deriving the window now
+that the (deterministic) data has been seen would be post-hoc tuning;
+this lane does not do it.
+
+### What a follow-up lane must do (requires its OWN fresh pre-declaration)
+
+1. The l_eff physicality window must be derived from the FULL
+   terminal-to-terminal current path (trace + both post heights) — a
+   geometry fact this note's section 4 got wrong and records here.
+2. Because the battery fixture's data is deterministic, a clean
+   attempt cannot simply re-declare and re-fit the SAME data: it needs
+   independent information. The named instruments (attempt-1 follow-up
+   options, unchanged): a dedicated single-post 1-port fixture
+   (separates the post's L and electrical height from the line), an
+   in-situ #313 two-plane Zc(f)/beta(f) measurement at the extraction
+   bins (removes l_eff from the fit entirely), and a fine-dx sweep to
+   split post rasterization effects. These exceed the ~20 min CPU
+   class at the fine-dx scale; the corrected cluster job is
+   `validation/research/thru_feedpost_singlepost_vessl.yaml`
+   (proposal-gated: DO NOT run before its pre-declaration exists).
+3. Carry-forward numbers a follow-up may use as DESIGN inputs (not
+   tuned targets): L* class ~0.38 nH, Zc(low-f) class ~47.3 ohm,
+   post transit ~3.9 ps each; B(0.3819 nH) = 0.0936 (formula frozen in
+   section 5, reusable).
