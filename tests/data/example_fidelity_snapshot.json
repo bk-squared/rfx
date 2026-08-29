@@ -4764,6 +4764,247 @@
         }
       ]
     },
+    "validation/research/issue683_sampling_order_decision.py::build::nu-matched": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 16000.0,
+              "declared_um": [
+                0.0,
+                16000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000759959220553
+              ],
+              "n_cells": 16,
+              "realized_extent_um": 16000.00076,
+              "realized_um": [
+                0.0,
+                16000.00076
+              ]
+            },
+            "y": {
+              "declared_extent_um": 12000.0,
+              "declared_um": [
+                0.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000569969415415
+              ],
+              "n_cells": 12,
+              "realized_extent_um": 12000.00057,
+              "realized_um": [
+                0.0,
+                12000.00057
+              ]
+            },
+            "z": {
+              "declared_extent_um": 12000.0,
+              "declared_um": [
+                0.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000569969415415
+              ],
+              "n_cells": 12,
+              "realized_extent_um": 12000.00057,
+              "realized_um": [
+                0.0,
+                12000.00057
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|4000.000,5000.000,3000.000um->12000.000,7000.000,5000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 8000.0,
+              "declared_um": [
+                4000.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.000189989805138,
+                0.000569969415415
+              ],
+              "realized_extent_um": 8000.00037998,
+              "realized_um": [
+                4000.00018999,
+                12000.00057
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                5000.0,
+                7000.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000332482158992
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                5000.00023749,
+                7000.00033248
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                3000.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.000142492353854,
+                0.000237487256423
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                3000.00014249,
+                5000.00023749
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 32,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|pec|4000.000,5000.000,7000.000um->12000.000,7000.000,9000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 8000.0,
+              "declared_um": [
+                4000.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.000189989805138,
+                0.000569969415415
+              ],
+              "realized_extent_um": 8000.00037998,
+              "realized_um": [
+                4000.00018999,
+                12000.00057
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                5000.0,
+                7000.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000332482158992
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                5000.00023749,
+                7000.00033248
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                7000.0,
+                9000.0
+              ],
+              "face_residual_um": [
+                0.000332482158992,
+                0.000427477062429
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                7000.00033248,
+                9000.00042748
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 32,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 2mm = 2.0 cells along z \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "port_in_pec",
+          "loc": null,
+          "message": "Port/source at (0.005, 0.006, 0.005) is inside PEC geometry 'pec'. Field will be zero. Move source outside PEC.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "port_in_pec",
+          "loc": null,
+          "message": "Port/source at (0.011, 0.006, 0.005) is inside PEC geometry 'pec'. Field will be zero. Move source outside PEC.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.005, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.011, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
     "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short": {
       "fidelity": {
         "NOT AUDITED by this report": {
@@ -5357,6 +5598,346 @@
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
           "message": "Wire port at (0.005, 0.005, 0.0035) (extent 0.0005): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
+    "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 32000.0,
+              "declared_um": [
+                0.0,
+                32000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.00151991844111
+              ],
+              "n_cells": 64,
+              "realized_extent_um": 32000.0015199,
+              "realized_um": [
+                0.0,
+                32000.0015199
+              ]
+            },
+            "y": {
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                0.0,
+                20000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000949949025691
+              ],
+              "n_cells": 40,
+              "realized_extent_um": 20000.0009499,
+              "realized_um": [
+                0.0,
+                20000.0009499
+              ]
+            },
+            "z": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000474974512846
+              ],
+              "n_cells": 20,
+              "realized_extent_um": 10000.000475,
+              "realized_um": [
+                0.0,
+                10000.000475
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 17000.0,
+              "declared_um": [
+                7500.0,
+                24500.0
+              ],
+              "face_residual_um": [
+                0.000356230885068,
+                0.00116368755604
+              ],
+              "realized_extent_um": 17000.0008075,
+              "realized_um": [
+                7500.00035623,
+                24500.0011637
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                7500.0,
+                12500.0
+              ],
+              "face_residual_um": [
+                0.000356230885068,
+                0.000593718140623
+              ],
+              "realized_extent_um": 5000.00023749,
+              "realized_um": [
+                7500.00035623,
+                12500.0005937
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                1000.0,
+                1500.0
+              ],
+              "face_residual_um": [
+                4.74974512846e-05,
+                7.12461769269e-05
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                1000.0000475,
+                1500.00007125
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [
+            {
+              "axis": "z",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 340,
+          "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY"
+        }
+      },
+      "preflight": [
+        {
+          "code": "pec_faces_finite_pec",
+          "loc": null,
+          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.",
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.024, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
+    "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 32000.0,
+              "declared_um": [
+                0.0,
+                32000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2.77555756156e-11
+              ],
+              "n_cells": 64,
+              "realized_extent_um": 32000.0,
+              "realized_um": [
+                0.0,
+                32000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                0.0,
+                20000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1.73472347598e-11
+              ],
+              "n_cells": 40,
+              "realized_extent_um": 20000.0,
+              "realized_um": [
+                0.0,
+                20000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                5.20417042793e-12
+              ],
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.0,
+              "declared_extent_um": 17000.0,
+              "declared_um": [
+                7500.0,
+                24500.0
+              ],
+              "face_residual_um": [
+                6.93889390391e-12,
+                2.08166817117e-11
+              ],
+              "realized_extent_um": 17000.0,
+              "realized_um": [
+                7500.0,
+                24500.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 500.0,
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                7500.0,
+                12500.0
+              ],
+              "face_residual_um": [
+                6.93889390391e-12,
+                1.04083408559e-11
+              ],
+              "realized_extent_um": 5000.0,
+              "realized_um": [
+                7500.0,
+                12500.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 500.0,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                1000.0,
+                1500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 500.0,
+              "realized_um": [
+                1000.0,
+                1500.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "z",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 340,
+          "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY"
+        }
+      },
+      "preflight": [
+        {
+          "code": "pec_faces_finite_pec",
+          "loc": null,
+          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.",
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "wire_port_dead_extent_cells",
+          "loc": null,
+          "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001) rasterizes to n=3 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_extent_cells",
+          "loc": null,
+          "message": "Wire port at (0.024, 0.01, 0.0) (extent 0.001) rasterizes to n=3 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }

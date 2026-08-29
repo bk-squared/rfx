@@ -390,6 +390,30 @@ CLASSIFICATION: dict[str, Entry] = {
         "check rejected the earlier builder_fused_with_solve label for "
         "exactly this separability",
         (Builder("build_fix_a", None, (_v("short", load="short"),)),)),
+    "validation/research/issue683_flip_acceptance.py": Entry(
+        "no_simulation",
+        "issue #683 flip acceptance harness: constructs no Simulation of "
+        "its own -- it imports `build` from "
+        "issue683_sampling_order_decision (whose builder IS audited "
+        "below).  Classification added in the #770 branch; the base #683 "
+        "branch omitted its own harnesses from this table."),
+
+    "validation/research/issue683_sampling_order_decision.py": Entry(
+        "audited",
+        "`build(nu, r_load)` returns a Simulation with no solve call; the "
+        "protocol arms feed it to the spied sim.run(...) separately. "
+        "Classification added in the #770 branch (snapshot keys added "
+        "surgically; every pre-existing snapshot entry byte-untouched).",
+        (Builder("build", None, (
+            _v("nu-matched", nu=True, r_load=50.0),)),)),
+    "validation/research/issue770_offdiag_adjudication.py": Entry(
+        "audited",
+        "`build_fix_t(nu, drive)` returns the canonical-THRU Simulation "
+        "with no solve call; the adjudication arms run it separately "
+        "(pre-declared falsifiers live in the same file).",
+        (Builder("build_fix_t", None, (
+            _v("uniform-both", nu=False, drive=None),
+            _v("nu-drive0", nu=True, drive=0))),)),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
