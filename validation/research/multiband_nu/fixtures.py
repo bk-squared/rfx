@@ -228,7 +228,25 @@ def pc_uniform_profile(scale: float) -> np.ndarray:
 def w5_profile() -> np.ndarray:
     """Small fine-coarse-fine multiband dz vector (distinct per-cell
     perturbations added so jnp.min(dz) has no ties — the ledger's
-    min-tie subgradient caveat)."""
+    min-tie subgradient caveat).
+
+    DELIBERATELY OUTSIDE THE 1.4 CAP, and deliberately unchanged
+    (review 2026-08-29). The nominal band ratio is 0.42/0.30 = 1.4 —
+    exactly the cap — and the 1 % anti-tie jitter carries the realized
+    max adjacent ratio to 1.419, so the lane's own
+    ``nu_grading_ratio_beyond_validated_cap`` advisory (added by WP6,
+    after this profile was frozen) now flags it.
+
+    Why it stays: this is the F-S5 witness, and F-S5 tests the AD path
+    (``jax.grad`` of an observable w.r.t. the profile vector vs central
+    FD), not an accuracy class — the cap is a statement about
+    per-transition reflection and grading dispersion, neither of which
+    enters a gradient-consistency check. Its verdict is frozen phase-1
+    evidence (``results/w5_ad.json``); re-cutting the profile would
+    re-take a settled falsifier for a cosmetic reason. The advisory
+    firing on it is the advisory working: a profile 1.4 % over the cap
+    gets a line of advisory noise and runs.
+    """
     base = [0.30e-3] * 5 + [0.42e-3] * 4 + [0.30e-3] * 5
     rng = np.random.default_rng(20260829)
     jitter = 1.0 + 0.01 * rng.standard_normal(len(base))

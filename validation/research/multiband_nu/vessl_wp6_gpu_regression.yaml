@@ -12,7 +12,9 @@ env:
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
-  set -eu
+  set -euo pipefail   # pipefail: pytest is piped to tee below, so without
+                      # it a FAILING regression would exit 0 and VESSL would
+                      # report success (review 2026-08-29).
   SRC=/root/workspace/claude-workspace/rfx/checkouts/multiband-nu-envelope
   OUT=/root/workspace/claude-workspace/rfx/runs/spec01-wp6-gpu-regression
   mkdir -p "$OUT"

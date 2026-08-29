@@ -293,14 +293,19 @@ CLASSIFICATION: dict[str, Entry] = {
 
     # SPEC-01 multiband-NU witness package (#780). These are a witness
     # LIBRARY plus per-witness measurement drivers, not demo examples; the
-    # eleven below never construct a `Simulation` (AST-verified). Nine of
+    # thirteen below never construct a `Simulation` (AST-verified). Ten of
     # them drive the non-uniform kernels through
     # `rfx.nonuniform.make_nonuniform_grid` / `run_nonuniform` directly
     # (the design note requires explicit profile vectors, bypassing the
     # `auto_config` builders so a solver property is never confounded with
-    # a builder defect), and two are pure numpy/analysis.
+    # a builder defect), and three are pure numpy/analysis.
     "validation/research/multiband_nu/__init__.py": Entry(
         "no_simulation", "package marker -- empty file"),
+    "validation/research/multiband_nu/analytic_dispersion.py": Entry(
+        "no_simulation",
+        "exact discrete leapfrog eigenfrequency of an empty PEC box on the "
+        "rfx 1-D operators, solved in plain numpy (the W4R3 design and "
+        "fixture-validity model) -- no rfx import at all"),
     "validation/research/multiband_nu/chain_model.py": Entry(
         "no_simulation",
         "exact discrete 1-D scattering chain solved in plain numpy (the "
@@ -339,6 +344,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "F-S4 analytic-cavity ladder (empty PEC box, no geometry to "
         "rasterize) driven through the functional grid/kernel path "
         "-- no Simulation"),
+    "validation/research/multiband_nu/w4r3_zdominant_cavity.py": Entry(
+        "no_simulation",
+        "F-S4 z-dominant analytic-cavity ladder and its grading-side "
+        "revert-proof (empty PEC box, no geometry to rasterize) driven "
+        "through the functional grid/kernel path -- no Simulation"),
     "validation/research/multiband_nu/w5_ad_consistency.py": Entry(
         "no_simulation",
         "F-S5 jax.grad-vs-FD check over an explicit profile vector on "

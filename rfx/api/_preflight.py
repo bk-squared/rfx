@@ -4777,7 +4777,7 @@ class _PreflightMixin:
                 _w.warn(
                     PreflightWarning(
                         f"d{ax_name}_profile max adjacent cell ratio "
-                        f"{max_ratio:.2f} exceeds the validated multi-band "
+                        f"{max_ratio:.3f} exceeds the validated multi-band "
                         f"grading cap "
                         f"{self._MULTIBAND_RATIO_CAP:g} "
                         f"(docs/guides/support_matrix.md, 'Multi-band graded "
@@ -4801,9 +4801,16 @@ class _PreflightMixin:
                 face_layers = self._preflight_face_layers()
             for side in ("lo", "hi"):
                 layers = face_layers.get(f"{ax_name}_{side}", 0)
-                if layers <= 0 or len(p) <= layers:
+                if layers < 2 or len(p) < layers:
+                    # layers < 2: "one uniform cell" is vacuous (no adjacent
+                    # ratio exists inside a single-cell runway).
                     continue
-                runway = p[:layers + 1] if side == "lo" else p[-(layers + 1):]
+                # The REMEDY asks for `layers` uniform interior cells
+                # against the face, i.e. `layers - 1` adjacent ratios among
+                # p[0..layers-1]; taking layers+1 cells here demanded one
+                # uniform cell MORE than the remedy and fired on an exactly
+                # compliant profile (review 2026-08-29).
+                runway = p[:layers] if side == "lo" else p[-layers:]
                 r_run = runway[1:] / runway[:-1]
                 dev = float(np.max(np.abs(r_run - 1.0)))
                 if dev > 1e-6:
