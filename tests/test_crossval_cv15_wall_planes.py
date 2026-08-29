@@ -9,24 +9,18 @@ wall one full cell BELOW the declared substrate floor (the #693 "vacuum
 ground cell" trap, closed on the canonical patch lane by PRs #716/#718) --
 a live vacuum cell inside the modelled cavity, undetected.
 
-cv15's ``run_rfx()`` is classified ``builder_fused_with_solve`` in
-``tests/_example_fidelity_lib.py`` (build and FDTD-solve share one function,
-machine-checked by ``tests/test_example_fidelity_contract.py`` via
-``functions_building_simulation`` -- a top-level function whose OWN body
-constructs a ``Simulation`` AND calls a solve entrypoint). Introducing a
-separate top-level "builder" function would flip that classification (and
-this repo's #740 review explicitly warns against silent gate/classification
-drift), so this test does NOT call into a extracted builder. Instead, and
-following ``tests/test_crossval_gate_logic.py``'s own precedent for cv04
-("cv04 runs its FDTD and gate computation entirely at MODULE level ... its
-ceiling/tail logic and constants are replicated inline instead"), the
-geometry here is rebuilt directly from cv15's PUBLIC module constants
-(``EPS_R``, ``H_SUB``, ``L_PATCH``, ... -- all imported, none re-derived) to
-mirror exactly what ``run_rfx()`` constructs, cited by FUNCTION NAME rather
-than line number (this campaign's own lesson: "freezing by line number
-breaks on unrelated edits" -- #753/#754). ``assert_realized_stack`` and
-``_stack_check_ok`` -- the actual #740 fix -- are imported and called
-UNMODIFIED from the script itself, never copied.
+The geometry under test is built through cv15's OWN production builder,
+``build_rfx_sim(*, do_gain, two_plane)`` -- separated from ``run_rfx()`` for
+the #740 review (cv15 is classified ``audited`` in
+``tests/_example_fidelity_lib.py`` on that builder). The positive tests pass
+NO ``two_plane`` argument, so the script's default is what is under test:
+flip that default and ``test_cv15_committed_geometry_realizes_declared_walls``
+goes red (verified: 1 failed / 6 passed). The first version of this file
+mirrored the geometry in a test-local copy that hardcoded ``two_plane=True``,
+and deleting the fix from the script left it green -- the reviewer's
+finding, and why the builder exists. ``assert_realized_stack`` and
+``_stack_check_ok`` -- the actual #740 fix -- are called UNMODIFIED from the
+script itself, never copied.
 
 cv15 is guarded by ``if __name__ == "__main__":`` (see its final lines), so
 importing it (to reach its module constants and the two functions above)
@@ -35,15 +29,12 @@ executes no simulation.
 
 from __future__ import annotations
 
-import dataclasses
 import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
 
-from rfx import Simulation, Box, GaussianPulse
-from rfx.boundaries.spec import BoundarySpec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CV15_PATH = REPO_ROOT / "validation" / "crossval" / "15_patch_antenna_rt5880.py"
@@ -105,11 +96,11 @@ def test_cv15_committed_geometry_realizes_declared_walls(capsys):
 
 
 def test_cv15_negative_control_one_plane_ground_raises(capsys):
-    """NEGATIVE CONTROL (issue #740 review, required change 5): force the
-    ground geometry entry back to the pre-fix one-plane realization (via
-    ``dataclasses.replace`` on the frozen ``_GeometryEntry`` built above)
-    and confirm the script's OWN ``assert_realized_stack`` -- not a
-    test-local copy -- raises, naming z_sub_lo.
+    """NEGATIVE CONTROL (issue #740 review, required change 5): build the
+    pre-fix one-plane ground through the PRODUCTION builder
+    (``build_rfx_sim(two_plane=False)``) and confirm the script's OWN
+    ``assert_realized_stack`` -- not a test-local copy -- raises, naming
+    z_sub_lo.
 
     This is the fail-before-fix witness for THIS PR: on the pre-#740-fix
     source (ground ``Box`` built with no ``two_plane=True``, and no
