@@ -44,17 +44,21 @@ import numpy as np
 C0 = 299792458.0
 
 
-def s11_for_ratio(sim2d, r: int, island=(440, 460, 10, 30)):
-    nx, ny = 700, 40
-    dx = dy = 1e-3
-    i0, i1, j0, j1 = island
+def s11_for_ratio(sim2d, r: int, island=(440, 460, 10, 30), scale: int = 1):
+    """scale = integer refinement of the WHOLE coarse mesh at fixed physical
+    geometry (dx-scaling diagnostic; scale=2 is the Delta=0.5mm arm recorded
+    in the phase-1 results note).  All indices scale with it; the physical
+    fixture, gates, and windows are unchanged."""
+    nx, ny = 700 * scale, 40 * scale
+    dx = dy = 1e-3 / scale
+    i0, i1, j0, j1 = (v * scale for v in island)
     spec = sim2d.TwoRegionSpec(
         nx=nx, ny=ny, dx=dx, dy=dy, i0=i0, i1=i1, j0=j0, j1=j1, r=r,
-        dt=np.nan, probe_ij=(360, 20),
+        dt=np.nan, probe_ij=(360 * scale, 20 * scale),
     )
     spec.dt = 0.99 * sim2d.fine_cfl_dt(spec)
     src = np.zeros((nx, ny))
-    src[300, :] = 1.0
+    src[300 * scale, :] = 1.0
     spec.src_mask = src
 
     t_total = 1.40e-9
@@ -88,15 +92,18 @@ def main() -> int:
                     help="i0,i1,j0,j1 in coarse cells (diagnostic arms only; "
                          "the pre-declared F-M1b fixture is the default)")
     ap.add_argument("--out", type=str, default="")
+    ap.add_argument("--scale", type=int, default=1,
+                    help="integer refinement of the whole coarse mesh at fixed "
+                         "physical geometry (dx-scaling diagnostic; reviewer nb)")
     args = ap.parse_args()
 
     from validation.research.portgrid import sim2d
 
     island = tuple(int(t) for t in args.island.split(","))
-    results = {"island_coarse_cells": list(island)}
+    results = {"island_coarse_cells": list(island), "mesh_scale": args.scale}
     fired = False
     for r in [int(t) for t in args.ratios.split(",")]:
-        f, s11, dt, n_steps, dmax = s11_for_ratio(sim2d, r, island)
+        f, s11, dt, n_steps, dmax = s11_for_ratio(sim2d, r, island, args.scale)
         band20 = (f >= 2e9) & (f <= 20e9)
         band30 = (f >= 2e9) & (f <= 30e9)
         db = 20.0 * np.log10(np.maximum(s11, 1e-300))
