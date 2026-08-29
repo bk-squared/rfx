@@ -823,3 +823,36 @@ can widen one. `rfx/` remains untouched by this lane
 `validation/research/convergence_floor/` is `tests/_example_fidelity_lib.py`, where the
 #737 gate requires a classification entry per script (both new modules are
 `no_simulation`).
+
+## 11. Second-review corrections (2026-08-30, append-only)
+
+Two BLOCKING findings from the review of §10, both about the precision of
+stated numbers rather than about any measurement. Nothing was re-measured;
+no window moved; no result JSON was edited.
+
+**11.1 — the exoneration margin was arithmetic error.** §10 and the verdict
+headline said the three exonerations hold "at 3-5 orders of margin". Against
+the comparators quoted in the same sentence they are **1.2-2.5 orders**:
+D1b 1e-3 cells / 6.83963e-6 cells = 146x = 2.16 orders; D3 1e6 Hz / 3540 Hz
+= 282x = 2.45 orders; D4c 1e6 Hz / 69001.33 Hz = **14.5x = 1.16 orders**,
+the weakest of the three and the one the old phrasing most flattered. The
+exonerations themselves stand — each still clears its own pre-declared
+window — but the margin is now stated correctly everywhere it appears.
+
+**11.2 — `verdicts.D0`'s monotonicity clause is scoped, not silently kept.**
+`d0_reproduction.json`'s verbatim verdict reads "the |f - f_ref| sequence is
+NON-monotone while f(s) itself is monotone". The second clause was evaluated
+on the five FIT rungs and is FALSE on the ladder this lane ended up with:
+`d5_turnover.json` has `sign_changes = 1`, `d2_edge_retake.json` has
+`f_monotone = false`, and f(s) is not monotone even across D0's own uniform
+arm including the s = 0.25 reference (5.404546 / 5.502115 / 5.533066 /
+5.542444 / 5.543558 / 5.520821 GHz). This is the same "verdict evaluated on
+five rungs, reported flatly" pattern §10 ruled on in BL3, three fields away.
+`verdict.json` now carries a `D0_scope` field (the pattern `D2_scope`
+established) stating that what D0 establishes, and all it establishes, is
+bit-identical reproduction at 0.0000 Hz over all eleven rungs. The source
+JSON is deliberately left unedited so its provenance stands.
+
+Also corrected: the instrument-honesty ratio now reads "9.7x to 25.7x across
+the fixture records, 25.7x at the reference rung" in both deliverables
+instead of a bare "9-26x" in one and "25.5x" in the other.

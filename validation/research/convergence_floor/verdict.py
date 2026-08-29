@@ -63,6 +63,21 @@ def main():
 
     out = {"issue": 786, "verdicts": {}}
     out["verdicts"]["D0"] = d0["verdict"] if d0 else "NOT RUN"
+    if d0:
+        out["verdicts"]["D0_scope"] = (
+            "SCOPE CORRECTION (2026-08-30, second review). The string above "
+            "is d0_reproduction.json's verbatim verdict and its "
+            "'f(s) itself is monotone' clause was evaluated on the five FIT "
+            "rungs only. It is FALSE on the ladder this lane ended up with: "
+            "d5_turnover.json records sign_changes = 1 and "
+            "d2_edge_retake.json records f_monotone = false, and f(s) is "
+            "not monotone even across D0's own uniform arm including the "
+            "s = 0.25 reference (5.404546 / 5.502115 / 5.533066 / 5.542444 "
+            "/ 5.543558 / 5.520821 GHz). What D0 establishes, and all it "
+            "establishes, is BIT-IDENTICAL REPRODUCTION (0.0000 Hz over "
+            "all eleven rungs). The source JSON is left unedited so its "
+            "provenance stands; read this field with it."
+        )
     out["verdicts"]["D1"] = d1["verdict"] if d1 else "NOT RUN"
     d2r = load("d2_edge_retake.json")
     if d2r:
@@ -311,7 +326,7 @@ def main():
                      "own 215.5 kHz (reference rung), 81.5-215.5 kHz "
                      "(uniform arm) or 72-230 kHz (all records with a "
                      "consensus) wherever the fixture's uncertainty is "
-                     "meant -- 9-26x larger than the twin's number"),
+                     "meant -- 9.7x to 25.7x larger than the twin's number across the fixture records, 25.7x at the reference rung"),
         }
 
     # --- the ledger cross-check: REFUTED by this lane's own data -------
@@ -465,11 +480,15 @@ def main():
         "maximum at dz_fine = 0.125 mm, four descending rungs -- so PR "
         "#785's |f(s) - f(0.25)| was never an error sequence and the "
         "22.7 MHz 'floor' figure is not an error.",
-        "Three candidates are cleanly exonerated at 3-5 orders of margin: "
-        "geometry quantization (6.8e-6 cells vs a 1e-3 cell window), port "
-        "loading (3.5 kHz vs a 1 MHz window against a predicted exact "
-        "zero), and the extraction instrument on the reference record "
-        "(0.069 MHz vs a 1 MHz window).",
+        "Three candidates are cleanly exonerated, each against its own "
+        "pre-declared window, at 1.2-2.5 orders of margin: geometry "
+        "quantization 6.8e-6 cells vs a 1e-3 cell window (146x = 2.2 "
+        "orders), port loading 3.5 kHz vs a 1 MHz window against a "
+        "predicted exact zero (282x = 2.5 orders), and the extraction "
+        "instrument on the reference record 0.069 MHz vs a 1 MHz window "
+        "(14.5x = 1.2 orders, the weakest of the three). An earlier "
+        "draft said '3-5 orders'; that was arithmetic error, corrected "
+        "here against the same comparators.",
         "The smooth-field control converges at p = 2.0001 on an "
         "exact-reference vacuum twin with the same dt, band and record "
         "length -- so the Yee core, the port and the extraction are not "
