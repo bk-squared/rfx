@@ -672,11 +672,12 @@ CONSENSUS-UNAVAILABLE.)
 
 **Rule adopted for this lane's prose:** quote 8.4 kHz only for the twin; **wherever the
 fixture's own extraction uncertainty is meant, quote 215.5 kHz at the reference rung and
-72–230 kHz across records** — a factor 9–26 larger. This does not change any verdict:
-the D4c window judges `|E1 − consensus|` (0.069 MHz at the reference rung), not the
-spread, and the consensus gate (spread ≤ 1 MHz) passes with 4.6× margin. It does change
-what may be claimed about the fixture's own precision, which is ~2e-4 relative, not
-~1.5e-6.
+72–230 kHz across records** — **25.5× the twin's number** at the reference rung, 8.6–27×
+across records. This does not change any verdict: the D4c window judges
+`|E1 − consensus|` (0.069 MHz at the reference rung), not the spread, and the consensus
+gate (spread ≤ 1 MHz) passes with 4.6× margin. It does change what may be claimed about
+the fixture's own extraction precision: **3.9e-5 relative**, not the 1.5e-6 the twin's
+8.4 kHz would suggest.
 
 ### §10.6 Candidate (1): the prose now matches the machine verdict
 
