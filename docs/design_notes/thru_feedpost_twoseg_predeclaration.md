@@ -503,3 +503,98 @@ by the same model function the fit uses, so an end-to-end normalization
 error of the MEASURED chain was invisible to synthetics) is recorded.
 The extraction arm is re-evaluated with the corrected observable on the
 same deterministic fixtures.
+
+## 13. RESULTS — extraction arm (appended 2026-08-29; sections 1-12 unchanged)
+
+Run: `validation/research/thru_feedpost_twoseg_extraction.py --extract`,
+branch `agent/thru-deembed-r3` (final apparatus tree = section-12
+correction commit), JAX_PLATFORMS=cpu, all preflight code sets pinned
+and matched (thru: `pec_faces_finite_pec` + 2x
+`wire_port_dead_extent_cells`; repaired single-post additionally
+`refplane_partial_optin` — the deliberate driven-port-only opt-in).
+Apparatus verification V0-V5 ALL PASS before any FDTD (harness commit
+message + `--verify` log). F-X5 CLEAN on every driven sweep (thru
+in-situ drives, single-post, thru physical: Re(Z_in) 48.37..51.84 ohm,
+all > 0) before any interpretation.
+
+Measured, bins [1.4..2.6] GHz (7):
+
+- **I1 (thru in-situ)**: Zc(f) port1 48.662..48.737 ohm
+  (|Im/Re| <= 0.22%), port2 48.598..48.726 ohm (<= 0.13%);
+  beta/(omega/c) 1.0572..1.0592 / 1.0573..1.0590. Port symmetry
+  0.064 ohm / 1.7e-4 (windows 1.2 ohm / 0.02).
+- **I2 (repaired single-post, corrected T)**: Zc_sp 48.596..48.651 ohm,
+  beta_sp/(omega/c) 1.0524..1.0535; measured load |Gamma_top| =
+  0.030..0.053 (the section-11 expected class; validity precondition
+  passed); |T| = 0.9976..0.9995, arg T = -0.0637..-0.1199 rad.
+  Cross-fixture line consistency 0.080 ohm / 5.3e-3 (windows 1.2/0.02).
+- **I3 thru fit** (constants fixed at I1): L* = 0.4976 +- 0.0033 nH,
+  tau* = 7.3302 +- 0.0399 ps (Zp* = 67.89 ohm, C_p* = 107.97 fF);
+  resid max/rms 0.01310/0.00469 (windows 0.025/0.012); corr(L, tau) =
+  0.169, cond(value-scaled J) = 1.31, sigma_L/L = 0.67%,
+  sigma_tau/tau = 0.54%, 9/9 starts one basin.
+- **I2 single-post fit**: L = 0.5089 +- 0.0066 nH,
+  tau = 6.7028 +- 0.1077 ps; resid max/rms 0.00859/0.00429 (windows
+  0.06/0.03); corr = 0.401, cond = 1.61, 9/9 one basin.
+- **F-C consistency**: |dL| = 0.0112 nH (window 0.11),
+  |dtau| = 0.627 ps (window 2.6) — the two independent fixtures agree.
+
+Verdicts (windows verbatim from section 4): every F-I, F-A, F-V, F-C
+and F-X5 clause PASSED — 25 of 26 —
+
+**THE ATTEMPT-3 CORE CLAIM IS DEMONSTRATED: the identifiability valley
+is broken.** corr(L, tau) = 0.169/0.401 and condition 1.31/1.61 on the
+two fits, vs attempt-2's measured corr -0.991/-0.996 and condition
+~170 on the same class of data. Measured line constants + the
+independent single-post fixture remove the soft valley entirely.
+
+**F-P L_p (I2): FIRED** — 0.5089 nH vs the frozen [0.20, 0.50] nH
+(1.3 sigma above the edge; the I3 value 0.4976 +- 0.0033 sits 0.7 sigma
+INSIDE). Both independent fixtures land the effective segment
+inductance at ~0.50 nH, at/over the window's upper edge.
+
+**Disposition (frozen sections 4/10): STOP before the band arm.** The
+band arm was NOT run; no in-band de-embedded measurement exists in this
+lane; `test_thru_s11_floor` stays byte-untouched as the held strict
+xfail; no lock anywhere moves.
+
+**Named mechanism (recorded, not excused).** The window's upper edge
+(quasi-static thin-wire 0.40 nH + 25%) was derived in attempts 1/2 for
+a POINT series element — the bare post's self-inductance. The
+section-2 segment parameter L_p = Zp*tau_p is a DIFFERENT physical
+quantity: the effective series inductance of the whole
+terminal-to-line junction (post + the 0.5 mm trace-overhang stub + the
+junction fringe), and section 2 itself says the overhang is "absorbed
+into the identified post parameters" — without re-deriving the L
+window for that larger quantity. Quasi-static orientation (recorded
+for the follow-up's fresh derivation, not applied here): the overhang
+alone carries the line's series inductance per length,
+Zc*beta/omega ~ 171 nH/m -> ~0.086 nH for 0.5 mm; 0.40 + 0.086 ~ 0.49
+nH — where both fixtures measured. Consistently, C_p* ~ 108 fF far
+exceeds the 12-20 fF bare-junction class (the 0.5 mm open overhang
+alone is a ~36 fF class): the identified segment is the full junction,
+not the bare wire. A mis-derived window and a genuine model violation
+are treated identically under the frozen method: the falsifier fired,
+the STOP stands; re-deriving the edge now that the (deterministic)
+data is seen would be post-hoc tuning, and this lane does not do it.
+
+### What a follow-up lane must do (requires its OWN fresh pre-declaration)
+
+1. Re-derive the PARAMETER-PHYSICALITY windows for the SEGMENT
+   parameterization from the full junction geometry: thin-wire post L
+   class + overhang line-parameter contributions (from geometry and
+   the #313/in-situ MEASURED per-length line constants classes, which
+   are prior-provenance instruments, not this lane's fitted numbers) +
+   fringe classes; same for C_p/tau_p. This is an analytic, CPU-scale
+   derivation — no cluster arm is required, and the fine-dx sweep
+   remains CORROBORATIVE (section 8 unchanged), so no VESSL launch is
+   emitted for this STOP.
+2. Everything else in this lane is verified, reusable apparatus: the
+   fixtures (battery thru + repaired single-post), the in-situ
+   two-plane instrument at the extraction bins, the corrected
+   (S11_wp, T, Gamma_top) observable set, both 2-parameter fits, the
+   valley-break demonstration, and the frozen band-budget formula.
+3. Attempt-3 measured numbers now BURNED for window-setting in that
+   lane: L class ~0.50 nH, tau class ~7 ps, Zp class ~68-76 ohm,
+   C_p class ~90-108 fF, Zc(1.4-2.6 GHz) class 48.60-48.74 ohm,
+   beta-factor class 1.052-1.059 — design inputs only.
