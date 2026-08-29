@@ -42,6 +42,10 @@ def _metadata_json(*, grid: Grid, ports: list[WirePort], n_steps: int, freqs: np
 
     metadata = {
         "schema": "rfx.wire_port_vi_dump",
+        # Issue #770: dumps written by the current extractor record the
+        # whole-port off-diagonal frame; absence of the tag marks a
+        # pre-#770 dump (per-cell #308 frame replay).
+        "offdiag_frame": "wholeport",
         "schema_version": 1,
         "commit_hash": _git_commit(),
         "geometry": {

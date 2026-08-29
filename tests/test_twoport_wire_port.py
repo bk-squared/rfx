@@ -137,12 +137,14 @@ def test_two_port_s_matrix_has_nonzero_s21():
 
 
 def test_two_port_s_envelope_on_matched_line():
-    """Envelope lock on a KNOWN-WRONG S column. NOT a passivity gate, and
-    NOT a statement that these values are expected behaviour.
+    """Passivity ceiling + alive floor on the driven column (issue #770).
 
-    This test used to assert ``max(|S11|^2 + |S21|^2) < 1.5`` and call it
-    "relaxed passivity". That framing was wrong twice over, and so was the
-    first replacement for it. What is actually true:
+    HISTORY: this test has been, in turn, a "relaxed passivity" gate
+    (wrong — see item 1), an envelope lock on the known-wrong 28.511
+    per-cell column (#764 era), and an envelope lock on the known-wrong
+    4.84444 mixed-split column (#770 era pre-fix). With the #770
+    whole-port frame the column is measured PASSIVE, so the pin is now
+    the physical ceiling. The history:
 
     1. **The old gate passed because S11 was reported as its RECIPROCAL.**
        The NU wave split branched on the port's ``direction``, and the "-x"
@@ -150,8 +152,8 @@ def test_two_port_s_envelope_on_matched_line():
        of the correct one. Reciprocating a >1 number lands under 1, which is
        what kept the gate green. Fixed in #673.
 
-    2. **The DIAGONAL was fixed by issue #764; the off-diagonal remains
-       known-wrong.** HISTORICAL PROVENANCE for the old envelope (28.511,
+    2. **The DIAGONAL was fixed by issue #764 (the off-diagonal followed
+       in #770, item 3).** HISTORICAL PROVENANCE for the old envelope (28.511,
        |S11| up to 4.648): the driven diagonal did not track the load at
        all — a matched ``R_L = Z0 = 50`` (``Gamma = 0``) read
        ``S11 = +0.35426`` and a PEC short (``Gamma = -1``) read
@@ -171,34 +173,41 @@ def test_two_port_s_envelope_on_matched_line():
        calibrated oracle, so the diagonal stays inside the envelope lock
        below rather than getting its own physics gate here.
 
-    3. **The NU off-diagonal is wrong in its own right.** It uses the
-       receive channel issue #308 removed and the full Z0 instead of the
-       per-cell ``Z0/n_live`` (#318). Measured against the validated uniform
-       multi-port extractor on an IDENTICAL grid, ``S21_NU/S21_uniform`` is
-       -1.000+0.006j at ``n_live = 2`` and 0.62 at ``n_live = 4`` — an
-       n_live-dependent normalization error, not a sign. Fixing it needs
-       n_live threaded into the NU wire-port spec.
+    3. **The NU off-diagonal was fixed by issue #770 (whole-port frame).**
+       HISTORICAL PROVENANCE for the old 4.84444 envelope: the NU receive
+       channel used the mixed split — the per-cell midpoint v against the
+       whole-port Z0 (the defect #764 section 6 recorded as open;
+       ``S21_NU/S21_uniform`` was -1.000+0.006j at ``n_live = 2`` and
+       0.62 at ``n_live = 4``, an n_live-dependent normalization error),
+       reading |S21| up to 2.17686 (over-unity) on this fixture.  The
+       #770 adjudication (docs/design_notes/
+       issue770_offdiag_adjudication_predeclaration.md + results note;
+       pre-declared external-physics falsifiers on the canonical thru)
+       replaced every genuinely excited column with the whole-port wave
+       pair ``b_j/a_k = (V_port,j - Z0*I_j)/(V_port,k + Z0*I_k)`` on
+       both lanes (lane parity measured 3.97e-6).
 
     What #673 DID fix is that ``direction`` no longer changes the answer.
     The PASSIVE diagonal is lane-identical and hits its closed form; that is
-    pinned in ``tests/test_nu_wire_port_lane_parity.py``. Nothing about the
-    DRIVEN column below is validated.
+    pinned in ``tests/test_nu_wire_port_lane_parity.py``.
 
-    So: this asserts finiteness and freezes the measured envelope, purely so
-    the numbers cannot drift unnoticed. RE-PINNED 2026-08-29 for issue #764
-    (the old 28.511 envelope was a pin on the known-wrong per-cell driven
-    diagonal; see the provenance in item 2 above). Measured on this branch
+    RE-PINNED 2026-08-29 for issue #770, per this docstring's own prior
+    instruction ("any correct fix to the NU off-diagonal will red this
+    test; re-derive and re-document").  Measured on the #770 branch
     (4000 steps, 2-6 GHz, 51 bins):
 
-        max(|S11|^2 + |S21|^2) = 4.84444
-        |S11| in [0.11471, 0.72794],  |S21| in [0.33882, 2.17686]
+        max(|S11|^2 + |S21|^2) = 0.98453   (min 0.94379)
+        |S11| in [0.11471, 0.72794]  (unchanged from #764 — diagonal
+                                      untouched by #770)
+        |S21| in [0.64631, 0.98558]
 
-    The |S21| class is unchanged (the #308/#318 off-diagonal defect is
-    untouched by #764). The value still depends on the V/I sampling
-    ordering, which is OPEN as issue #683. Any correct fix to the NU
-    off-diagonal (#313 / #318) or to #683 will red this test; that is the
-    point. Re-derive and re-document when it happens — do not "restore"
-    the number.
+    The previously over-unity column is now PASSIVE per bin with a
+    1.5-5.6% closure deficit (lossless substrate; radiation/CPML loss +
+    extraction noise) — measured behaviour consistent with the #770
+    canonical-thru closure class, on a different fixture, a graded NU
+    mesh, and n_live = 4.  The stub-line fixture is still not a
+    calibrated oracle, so the gate is the physical PASSIVITY ceiling
+    plus an alive floor, not a physics band.
     """
     sim = _build_line()
     freqs = jnp.linspace(2e9, 6e9, 51)
@@ -211,13 +220,15 @@ def test_two_port_s_envelope_on_matched_line():
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
     assert np.all(np.isfinite(S)), "non-finite entry in the S matrix"
     p_total = np.abs(S11) ** 2 + np.abs(S21) ** 2
-    measured = 4.84444
-    assert abs(float(np.max(p_total)) / measured - 1.0) < 0.05, (
-        f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} moved "
-        f"off the recorded {measured} envelope. This is an envelope lock on "
-        f"a KNOWN-WRONG column (#313/#318, and #683 for the sampling "
-        f"ordering), not a physics gate — read the docstring before "
-        f"re-pinning it."
+    assert float(np.max(p_total)) < 1.0 + 1e-2, (
+        f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} above the "
+        f"passivity ceiling (measured 0.98453 on the #770 whole-port "
+        f"frame; the pre-#770 mixed NU split read 4.84444). An over-unity "
+        f"column means the receive/incident frame regressed."
+    )
+    assert float(np.max(p_total)) > 0.5, (
+        f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} collapsed "
+        f"(measured 0.94379-0.98453) — dead channel class."
     )
 
 

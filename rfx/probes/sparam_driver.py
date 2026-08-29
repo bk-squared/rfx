@@ -270,8 +270,10 @@ def compute_lumped_wire_s_matrix_via_scan(
         return np.asarray(out, dtype=np.complex64), freqs
 
     if wire_mode:
-        # Issue #764: the whole-port gap-voltage channel feeds the driven
-        # diagonal; off-diagonals keep the per-cell #308 decomposition.
+        # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
+        # gap-voltage channel feeds BOTH (frame-consistent whole-port
+        # wave pair; the per-cell #308 frame is refuted physics kept only
+        # on the legacy v_port=None path).
         S = np.asarray(
             decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                     v_port=vp_all, v_ref=vref_all),

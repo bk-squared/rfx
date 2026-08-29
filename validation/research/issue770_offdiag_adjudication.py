@@ -336,8 +336,54 @@ def dc_arm():
     print(f"failures: {FAILS if FAILS else 'none'}")
 
 
+# ------------------------------------------------- battery provenance ----
+def battery_provenance():
+    """Post-implementation measurement of every battery-gated quantity on
+    the SHIPPED uniform driver path (outcome-(b) re-pin provenance; runs
+    the canonical THRU + DC-anchor fixtures through
+    compute_lumped_wire_s_matrix_via_scan with the new decomposer)."""
+    print(f"rfx from {rfx.__file__}")
+    assert "issue-770-offdiag" in rfx.__file__, "wrong rfx on sys.path"
+    sim = build_fix_t(nu=False, drive=None)
+    preflight_verbatim(sim, "FIX-T uniform provenance")
+    S, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=N_STEPS)
+    S = np.asarray(S, dtype=np.complex128)
+    s11, s22 = S[0, 0], S[1, 1]
+    s21, s12 = S[1, 0], S[0, 1]
+    print(f"freqs (GHz): {FREQS/1e9}")
+    print(f"|S11| = {fmt(np.abs(s11))}")
+    print(f"|S22| = {fmt(np.abs(s22))}")
+    print(f"|S21| = {fmt(np.abs(s21))}")
+    print(f"|S12| = {fmt(np.abs(s12))}")
+    expected = np.exp(-1j * 2 * np.pi * FREQS * L / C0)
+    dev21 = np.angle(s21 / expected)
+    print(f"S21 phase dev vs line delay (rad) = {fmt(dev21)}")
+    r = np.abs(s21 - s12)
+    print(f"reciprocity |S21-S12| = {fmt(r)}  max {np.max(r):.4e} "
+          f"rel {np.max(r / np.abs(s21)):.4e}")
+    svs = [np.linalg.svd(S[:, :, k], compute_uv=False) for k in
+           range(S.shape[-1])]
+    sv_max = float(np.max(svs))
+    print(f"per-bin sv_max = {fmt([float(np.max(s)) for s in svs])}; "
+          f"max {sv_max:.6f}")
+    cp = np.abs(s11) ** 2 + np.abs(s21) ** 2
+    print(f"column-0 power = {fmt(cp)}")
+
+    sim_dc = build_fix_t(nu=False, drive=None,
+                         pulse=GaussianPulse(f0=2.5e9, bandwidth=1.0))
+    S_dc, _ = compute_lumped_wire_s_matrix_via_scan(
+        sim_dc, DC_FREQS, n_steps=DC_N_STEPS)
+    s21_dc = np.asarray(S_dc, dtype=np.complex128)[1, 0]
+    exp_dc = np.exp(-1j * 2 * np.pi * DC_FREQS * L / C0)
+    print(f"DC anchor |S21| = {fmt(np.abs(s21_dc))} "
+          f"dev = {fmt(np.angle(s21_dc / exp_dc))} rad "
+          f"(flipped dev = {fmt(np.angle(-s21_dc / exp_dc))})")
+
+
 if __name__ == "__main__":
     if "--dc" in sys.argv:
         dc_arm()
+    elif "--battery-provenance" in sys.argv:
+        battery_provenance()
     else:
         main()

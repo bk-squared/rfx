@@ -22,6 +22,19 @@ prescribed (fail LOUDLY on the convention change, re-measure in the same
 PR). The S11 floor/alive gates, the run<->forward cross-check, and the
 algebraic-identity test are byte-untouched by the re-baseline.
 
+RE-BASELINE 2026-08-29 (issue #770, whole-port off-diagonal frame): the
+off-diagonal S21/S12 lane was re-pinned to the measured-PHYSICAL class —
+|S21| = 0.9341..0.9954, reciprocity 2.6678e-4, sv_max 1.003227, phase dev
+-0.3516..-0.8125 rad, DC anchor -0.0575/-0.1152 rad with |S21(DC)| ->
+0.9999 (provenance: validation/research/issue770_offdiag_adjudication.py,
+pre-declared falsifiers in docs/design_notes/
+issue770_offdiag_adjudication_predeclaration.md; adjudicated against the
+flux referee 0.971-0.997 and the openEMS envelope 0.973-1.034). The
+per-cell #308/#313 narrative below is kept VERBATIM as history of the
+legacy frame (still live on the v_port=None decomposer path); its |S21|
+0.52-0.67 class is refuted as thru physics, exactly as its own honesty
+labels always said.
+
 Measured baseline (R5 measure-before-gate; the DIAGONAL |S11|/|S22| lane
 was RE-BASELINED 2026-07-11 for the issue #318 live-cell termination fix —
 fresh fixture reruns on this CPU box, x64 OFF, complex64 accumulators, the
@@ -235,60 +248,72 @@ _THRU_S11_FLOOR_MAX = 0.12
 # explicit while clearing the measured 4.5 GHz null with margin.
 _THRU_S11_ALIVE_MIN = 0.02
 
-# Measured |S21| = 0.54606..0.60974 across 3-7 GHz (post-#318 fresh rerun,
-# 2026-07-11; the live-cell fix moved the composed channel slightly from
-# the post-#308 0.5236..0.6678 but kept it the same O(0.55-0.61) class).
-# Band [0.35, 0.85] KEPT UNCHANGED (issue #313 kappa regression lock — the
-# |S21| deflation is the SEPARATE #313 drive-side common-mode scale bias,
-# NOT part of the #318 ledger): REGRESSION LOCK on the recovered channel,
-# NOT physics. The flux-vs-port transmitted-power delta is OPEN (flux
-# referee measured per-bin (flux fraction)/|S21|^2 = 2.237..3.541; implied
-# flux-true |S21| = 0.971-0.997 — module docstring; see the PR body /
-# follow-up issue). Lower edge catches a collapse back toward the pre-#308
-# near-null 0.0025-0.0046; upper edge strictly < 1 (an over-unity
-# extraction artefact also fails). Still never weaker than the committed
-# max|S21| > 1e-3 floor of test_twoport_wire_port.py.
-_THRU_S21_BAND = (0.35, 0.85)
+# RE-PINNED 2026-08-29 for issue #770 (whole-port off-diagonal frame;
+# measured provenance validation/research/issue770_offdiag_adjudication.py
+# --battery-provenance, this exact fixture, shipped driver path):
+# |S21| = 0.9341..0.9954 across 3-7 GHz — the frame the pre-declared
+# adjudication validated against EXTERNAL physics (flux referee implied
+# |S21| 0.971-0.997 on this geometry, openEMS envelope 0.973-1.034;
+# per-bin power closure |S11|^2+|S21|^2 = 0.956-0.991 vs the measured
+# 0.2-4.0% flux closure gap; the historical per-cell 0.546-0.610 class
+# measured a net-through fraction 0.31-0.37 and was REFUTED as physics —
+# it was always labeled a regression lock, per the #313 ledger entry).
+# Band edges are PHYSICS-derived, not envelope-tuned: lower 0.90 from the
+# external-anchor closure window (net-through fraction >= 0.90 with the
+# measured diagonal — the F-A2 window of the #770 pre-declaration);
+# upper 1.0 + 1e-3 (physical passivity bound + float headroom; measured
+# max 0.9954). A collapse back to the per-cell 0.55-0.61 class or to the
+# pre-#308 near-null fails the lower edge loudly.
+_THRU_S21_BAND = (0.90, 1.0 + 1e-3)
 
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
-# wrapped: -0.6268..-0.3482 rad (post-#318 fresh rerun, 2026-07-11;
-# post-#308 it was -0.7549..-0.3353 — the live-cell fix shifted the
-# small feed-post group-delay excess slightly, same sign, same class).
-# Band [-1.1, -0.1] rad KEPT UNCHANGED (margins ~0.47/0.25 rad; both
+# wrapped: -0.8125..-0.3516 rad (issue #770 whole-port off-diagonal
+# re-measure 2026-08-29, --battery-provenance; post-#318 per-cell it was
+# -0.6268..-0.3482, post-#308 -0.7549..-0.3353 — the frame change kept
+# the same sign and the same smooth delay-like class, band edges now at
+# 3 GHz / 7 GHz monotonically).
+# Band [-1.1, -0.1] rad KEPT UNCHANGED (margins ~0.29/0.25 rad; both
 # edges well inside (-pi, pi) so wrapped values stay comparable).
-# HONESTY LABEL — REGRESSION LOCK on the deviation VALUES (flux-vs-port
-# magnitude delta OPEN, kappa — separate #313, module docstring), but
-# the overall SIGN is physics-anchored by the DC witness: the low-f
-# falsifier measured S21(DC) -> +1 under this sign (dev -0.049 rad at
-# 0.5 GHz, tracking the analytic delay); the first-cut sign measured -1
-# and was amended in the #308 PR. The deviation is a smooth feed-post
-# group-delay excess, physical, not a convention artefact. Signed on
-# purpose: conjugation moves 8/9 measured bins out of band (verified
-# live in the test; conj dev is NOT -dev, the analytic reference phase
-# differs per bin — measured conj devs +2.360..-0.962 with only the
-# 7 GHz bin inside), and a sign flip back moves all 9 bins (by pi).
+# HONESTY LABEL: the deviation VALUES are a regression lock, but the
+# overall SIGN is physics-anchored by the DC witness: the low-f
+# falsifier measured S21(DC) -> +1 under this sign (#770 whole-port
+# re-measure: dev -0.058 rad at 0.5 GHz, tracking the analytic delay;
+# the #308-era per-cell channel measured -0.049); the first-cut sign
+# measured -1 and was amended in the #308 PR, and the #770 whole-port
+# receive sign was re-pinned by the same witness class (flipped channel
+# at +3.08/+3.03 rad). The deviation is a smooth feed-post group-delay
+# excess, physical, not a convention artefact. Signed on purpose:
+# conjugation and a sign flip both move bins out of band (verified live
+# in the test; conj dev is NOT -dev, the analytic reference phase
+# differs per bin).
 _THRU_PHASE_DEV_BAND_RAD = (-1.1, -0.1)
 
-# Measured reciprocity max|S21 - S12| = 7.53e-3 (rel 0.013581) on the
-# recovered O(0.55-0.61) magnitudes (post-#318 fresh rerun, 2026-07-11 —
-# IMPROVED from the post-#308 1.043e-2 / rel 0.016254 as the live-cell
-# fix made the two ports' V/I bookkeeping more symmetric). Abs gate
-# re-baselined to 1.5e-2 (~2x measured); rel gate kept at 0.10 (scale-
-# free, ~7.4x measured). A break catches an asymmetric edit to the
-# shared decomposers or per-port Z0/n_cells bookkeeping.
+# Measured reciprocity max|S21 - S12| = 2.6678e-4 (rel 2.78e-4) on the
+# whole-port frame (issue #770 re-measure 2026-08-29 — IMPROVED 28x
+# from the per-cell 7.53e-3 / rel 0.013581, itself improved from the
+# post-#308 1.043e-2: the physical incident wave is a drive-only
+# constant, so per-column normalization asymmetry collapses). Abs gate
+# KEPT at 1.5e-2 and rel at 0.10 (scale-free) — both now carry ~56x /
+# ~360x margin; a break catches an asymmetric edit to the shared
+# decomposers or per-port Z0 bookkeeping.
 _THRU_RECIP_ABS_MAX = 1.5e-2
 _THRU_RECIP_REL_MAX = 0.10
 
 # Measured passivity: max singular value over the 9 per-freq 2x2 slices
-# = 0.632587 (post-#318 fresh rerun, 2026-07-11; IMPROVED from the
-# post-#308 0.687410 as the smaller diagonal reflection lowers the
-# mixed-matrix norm). Gate 0.85 (~1.34x measured, margin 0.22) —
-# strictly below the physical bound 1.0, and BELOW the Frobenius
-# dominance bound sqrt(2*0.12^2 + 2*0.85^2) ~= 1.214 implied by the
-# S11/S21 gates, so this gate is independently bindable. Energy-sanity
-# lock; NOT transmission validation (kappa open item — separate #313,
-# module docstring).
-_THRU_MAX_SINGULAR_VALUE = 0.85
+# = 1.003227 (issue #770 whole-port re-measure 2026-08-29; per-bin
+# 1.0032..0.9874, largest at 3 GHz where |S21| = 0.9954). The matrix is
+# now NEAR-UNITARY — the physical singular value is ~1 and the 0.32%
+# excess is extraction float noise (complex64 accumulators + finite DFT
+# window) on top of it, the same noise class the repo's 1.02
+# column-power ceilings allow. Gate 1.01: ~2x the measured excess over
+# the physical bound, strictly below the 1.02 passivity-tolerance
+# class. The historical 0.85 gate was bindable only because the
+# per-cell frame DEFLATED |S21| to 0.63 (post-#318 sv 0.632587,
+# post-#683-flip 0.6934); a strictly-below-1 gate cannot bind a
+# physically ~unity singular value. Energy-sanity lock; the
+# transmission MAGNITUDE is now separately gated by _THRU_S21_BAND
+# against the external-anchor closure window.
+_THRU_MAX_SINGULAR_VALUE = 1.01
 
 # ===========================================================================
 # run<->forward cross-check constants
@@ -583,41 +608,37 @@ def test_thru_s11_floor(thru_smatrix):
 
 @pytest.mark.slow_physics
 def test_thru_s21_band_locks_shipped_decomposer_envelope(thru_smatrix):
-    """|S21| stays in [0.35, 0.85] — REGRESSION LOCK, NOT validated physics.
+    """|S21| stays in [0.90, 1.001] — the #770 measured-PHYSICAL class.
 
-    Measured 0.54606..0.60974 post-#318 (post-#308 0.523601..0.667776 —
-    the #318 live-cell fix left the transmission class unchanged; the #308
-    receive-wave fix earlier recovered this channel from the pre-fix
-    structural near-null 0.0025-0.0046, mechanism history in the module
-    docstring). Band [0.35, 0.85] KEPT UNCHANGED — the |S21| kappa
-    deflation is the SEPARATE issue #313, not part of the #318 ledger.
-    HONESTY LABEL: regression lock only; the flux-vs-port transmitted-
-    power delta is OPEN — the extractor-independent flux referee measured
-    per-bin (flux fraction)/|S21|^2 = 2.237..3.541 (raw flux transmitted
-    fraction 0.959-0.998 vs |S21|^2 = 0.274-0.446; implied flux-true
-    |S21| = 0.971-0.997), a confirmed frequency-dependent drive-side
-    scale bias kappa(f) = 1.49..1.86 (issue #313). Do
-    not cite this band as thru-transmission physics; when the kappa item
+    RE-BASELINED 2026-08-29 in the issue #770 whole-port off-diagonal PR,
+    exactly as the previous docstring prescribed ("when the kappa item
     lands, |S21| moves toward 0.97-1.0 and this fails LOUDLY —
-    re-baseline in the same PR, do not widen the band to keep both
-    behaviors green. The lower edge also catches a collapse back to the
-    pre-#308 near-null (dead channel class); the upper edge stays
-    strictly < 1 (over-unity extraction artefact class).
+    re-baseline in the same PR"): measured 0.9341..0.9954 on this exact
+    fixture (--battery-provenance arm of
+    validation/research/issue770_offdiag_adjudication.py), inside the
+    flux-referee implied 0.971-0.997 / openEMS 0.973-1.034 class after
+    the un-de-embedded feed-post reflection (|S11| up to 0.29 at 7 GHz)
+    is accounted — per-bin closure |S11|^2+|S21|^2 = 0.956-0.991 vs the
+    measured 0.2-4.0% flux closure gap. The #313 kappa deflation was a
+    property of the per-cell frame (historical: 0.546-0.610 post-#318,
+    0.5236-0.6678 post-#308, structural near-null 0.0025-0.0046
+    pre-#308); it now lives only on the legacy v_port=None decomposer
+    path. The lower edge catches any collapse back to those classes; the
+    upper edge is the passivity bound + float headroom (over-unity
+    extraction artefact class).
     """
     s21 = np.abs(thru_smatrix[1, 0])
     lo, hi = _THRU_S21_BAND
     # Per-bin lower edge (review finding): max() would let 8/9 dead bins
-    # slip through. Measured per-bin min 0.5461 (~1.6x this floor).
+    # slip through. Measured per-bin min 0.9341 (7 GHz).
     assert s21.min() > lo, (
-        f"|S21| collapsed below the envelope: per-bin min "
-        f"{s21.min():.4f} <= {lo} (measured min 0.5461) — the recovered "
-        f"channel died in at least one bin (dead probe / dead thru / "
-        f"receive-sign regression class)")
+        f"|S21| collapsed below the physical band: per-bin min "
+        f"{s21.min():.4f} <= {lo} (measured min 0.9341) — dead probe / "
+        f"dead thru / receive-sign regression, or a revert to the "
+        f"per-cell 0.55-0.61 frame")
     assert s21.max() < hi, (
-        f"|S21| = {s21.max():.4f} left the measured envelope (max 0.6097, "
-        f"band hi {hi}). If this is the drive-side kappa scale-bias fix "
-        f"landing (flux-true |S21| = 0.971-0.997), re-baseline this "
-        f"battery in the same PR")
+        f"|S21| = {s21.max():.4f} above the passivity bound {hi} "
+        f"(measured max 0.9954) — over-unity extraction artefact")
 
 
 @pytest.mark.slow_physics
@@ -626,21 +647,19 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
 
     dev(f) = wrap(arg S21 - (-2*pi*f*L/c)) with the analytic ideal-thru
     delay for the 16 mm air line (DFT kernel exp(-j*2*pi*f*t) => e^{+jwt}
-    phasors, outgoing wave e^{-j*beta*x}). Measured dev (post-#318,
-    amended receive sign) = -0.6268..-0.3482 rad (post-#308
-    -0.754891..-0.335259); band [-1.1, -0.1] rad KEPT UNCHANGED — a smooth
-    feed-post group-delay excess over the 53.4 ps line delay, no pi
-    offset. HONESTY LABEL — REGRESSION LOCK on the deviation values
-    (flux-vs-port magnitude delta OPEN, kappa — SEPARATE #313, module
-    docstring); the overall SIGN is physics-anchored by the DC witness:
-    the low-f falsifier measured S21(DC) -> +1 under the amended sign
-    (V - Z0*I) (dev -0.049 rad at 0.5 GHz); the first-cut sign measured
-    -1 and was amended in the #308 PR. Sign AND magnitude are gated
-    (per-bin, signed) — verified NOT conjugation-invariant: the test also
-    asserts conj(S21) violates the band (on the measured data 8/9 bins
-    leave it; conj dev = +2.360..-0.962 rad, only the 7 GHz bin stays
-    inside), so the W3.4-class conjugation bug cannot pass; a flip back to
-    the first-cut receive sign shifts every bin by pi and fails too.
+    phasors, outgoing wave e^{-j*beta*x}). Measured dev (issue #770
+    whole-port frame, 2026-08-29) = -0.3516..-0.8125 rad monotone across
+    3-7 GHz (per-cell historical: post-#318 -0.6268..-0.3482, post-#308
+    -0.754891..-0.335259); band [-1.1, -0.1] rad KEPT UNCHANGED — a
+    smooth feed-post group-delay excess over the 53.4 ps line delay, no
+    pi offset. The overall SIGN is physics-anchored by the DC witness:
+    S21(DC) -> +1 (#770 re-measure dev -0.058 rad at 0.5 GHz; #308-era
+    -0.049); the first-cut #308 sign measured -1 and was amended, and
+    the #770 whole-port receive sign was pinned by the same witness
+    class. Sign AND magnitude are gated (per-bin, signed) — the test
+    also asserts conj(S21) violates the band, so the W3.4-class
+    conjugation bug cannot pass; a receive-sign flip shifts every bin
+    by pi and fails too.
     """
     s21 = thru_smatrix[1, 0]
     expected = np.exp(-1j * 2 * np.pi * _THRU_FREQS_HZ * _THRU_L_M / C0_M_PER_S)
@@ -649,10 +668,10 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
     print(f"\n[thru battery] signed phase dev (rad): {np.round(dev, 3)}")
     assert np.all((dev > lo) & (dev < hi)), (
         f"S21 signed phase deviation left [{lo}, {hi}] rad "
-        f"(measured -0.627..-0.348 under the amended receive sign): "
-        f"dev = {np.round(dev, 3)}. A receive-sign regression back to "
-        f"the first-cut convention shifts this by pi; any deliberate "
-        f"sign decision MUST re-baseline this battery in the same PR")
+        f"(measured -0.352..-0.813 under the #770 whole-port frame): "
+        f"dev = {np.round(dev, 3)}. A receive-sign regression shifts "
+        f"this by pi; any deliberate sign decision MUST re-baseline "
+        f"this battery in the same PR")
 
     # Live sign-discrimination witness: a conjugated S21 must FAIL the
     # same band, otherwise this gate has degraded into a |dev| check.
@@ -666,14 +685,14 @@ def test_thru_s21_phase_band_is_sign_sensitive(thru_smatrix):
 def test_thru_reciprocity(thru_smatrix):
     """Decomposer-symmetry lock: max|S21 - S12| small on the live channel.
 
-    Measured post-#318: 7.53e-3 absolute (rel 0.013581) on the recovered
-    O(0.55-0.61) magnitudes; gates 1.5e-2 / 0.10. IMPROVED from the
-    post-#308 1.043e-2 / rel 0.016254 (the live-cell fix made the two
-    ports' V/I bookkeeping more symmetric); the abs gate is re-baselined
-    tighter (~2x measured), the scale-free REL gate stays at 0.10. A break
-    catches an asymmetric edit to the shared decomposers or per-port
-    Z0/n_cells bookkeeping. NOT transmission validation while the kappa
-    magnitude item is open (SEPARATE #313, module docstring).
+    Measured on the #770 whole-port frame (2026-08-29): 2.6678e-4
+    absolute (rel 2.78e-4) — IMPROVED 28x from the per-cell 7.53e-3 /
+    rel 0.013581 (itself improved from the post-#308 1.043e-2): the
+    physical incident wave is a drive-only constant, so the per-column
+    normalization asymmetry the per-cell PRE-referenced a_j carried
+    collapses. Gates KEPT at 1.5e-2 / 0.10 (~56x / ~360x margin). A
+    break catches an asymmetric edit to the shared decomposers or
+    per-port Z0 bookkeeping.
     """
     s21 = thru_smatrix[1, 0]
     s12 = thru_smatrix[0, 1]
@@ -681,54 +700,52 @@ def test_thru_reciprocity(thru_smatrix):
     rel_dev = abs_dev / np.maximum(np.abs(s21), np.abs(s12))
     assert abs_dev.max() < _THRU_RECIP_ABS_MAX, (
         f"reciprocity |S21-S12| = {abs_dev.max():.2e} "
-        f"(measured 7.53e-3, gate {_THRU_RECIP_ABS_MAX})")
+        f"(measured 2.67e-4, gate {_THRU_RECIP_ABS_MAX})")
     assert rel_dev.max() < _THRU_RECIP_REL_MAX, (
         f"reciprocity rel dev = {rel_dev.max():.4f} "
-        f"(measured 0.013581, gate {_THRU_RECIP_REL_MAX})")
+        f"(measured 2.78e-4, gate {_THRU_RECIP_REL_MAX})")
 
 
 @pytest.mark.slow_physics
 def test_thru_passivity_singular_values(thru_smatrix):
-    """Energy sanity: max singular value of every per-freq 2x2 slice < 0.85.
+    """Energy sanity: max per-freq singular value <= 1 + extraction noise.
 
-    Measured post-#318: 0.632587 (margin 0.37 to the physical bound 1.0,
-    ~1.34x measured headroom to the gate; IMPROVED from the post-#308
-    0.687410 as the smaller diagonal reflection lowers the mixed-matrix
-    norm). A strict-passivity regression lock that catches an over-unity
-    extraction artefact on either channel — and, per the kappa open item
-    (SEPARATE #313, module docstring), a drive-side scale-bias fix moving
-    |S21| to the flux-implied 0.971-0.997 would push the singular value
-    past 0.85 and fail LOUDLY here too, forcing a re-baseline in the same
-    PR. Do not cite this as transmission evidence while the port-based
-    magnitude is unvalidated.
+    RE-BASELINED 2026-08-29 for issue #770 (whole-port off-diagonal
+    frame, measured provenance --battery-provenance): the matrix is now
+    NEAR-UNITARY — measured per-bin sv 0.9874..1.0032 (max 1.003227 at
+    3 GHz where |S21| = 0.9954); the 0.32% excess over the physical
+    bound is extraction float noise (complex64 accumulators + finite
+    DFT window), the same class the repo's 1.02 column-power ceilings
+    allow. Gate 1.01 (~2x the measured excess, strictly below 1.02).
+    History: the 0.85 gate was bindable only while the per-cell frame
+    deflated |S21| (sv 0.632587 post-#318, 0.6934 post-#683-flip,
+    interim 3.2061 in the keyed-envelope era; 0.687410 post-#308) — a
+    strictly-below-1 gate cannot bind a physically ~unity singular
+    value. Catches over-unity extraction artefacts; the transmission
+    magnitude itself is gated by the S21 band lock.
     """
     sv_max = max(
         np.linalg.svd(thru_smatrix[:, :, k], compute_uv=False)[0]
         for k in range(thru_smatrix.shape[2])
     )
-    # RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
-    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
-    # diagonal entering this norm is now the physical POST-ordered
-    # whole-port reading, so the strict-passivity bound 0.85 is live
-    # again.  Measured on the flipped lane: sv_max = 0.6934 (the
-    # predicted 0.63 class; on the PRE-injection interim it read 3.2061
-    # — keyed-envelope era, history in the git log).
-    assert sv_max < 0.85, (
-        f"thru singular value above the physical passivity bound: "
-        f"{sv_max:.4f} (measured 0.6934 on the flipped lane; physical "
-        f"gate restored by the #683 flip)")
+    assert sv_max < _THRU_MAX_SINGULAR_VALUE, (
+        f"thru singular value above the passivity bound + noise "
+        f"allowance: {sv_max:.4f} (measured 1.003227 on the #770 "
+        f"whole-port frame, gate {_THRU_MAX_SINGULAR_VALUE})")
 
 
 # ===========================================================================
 # DC-limit sign anchor (slow_physics) — the committed form of the low-f
 # falsifier that pinned the receive sign (issue #308 amendment round)
 # ===========================================================================
-# Measured (post-#318 rerun 2026-07-11, amended sign b=(V - Z0*I)):
-# wrapped dev arg(S21) - (-2*pi*f*L/c) = -0.0494 rad @ 0.5 GHz, -0.1015
-# rad @ 1.0 GHz (post-#308 -0.0236/-0.0536). Band (-0.25, +0.10) — still
-# generous vs measurement but decisively pi-DISCRIMINATING: the first-cut
-# receive sign (-V + Z0*I) measured S21(DC) -> -1, i.e. dev ~ +3.04..3.09
-# rad at these bins (measured flipped), far outside.
+# Measured (issue #770 whole-port frame re-measure 2026-08-29,
+# --battery-provenance): wrapped dev arg(S21) - (-2*pi*f*L/c) = -0.0575
+# rad @ 0.5 GHz, -0.1152 rad @ 1.0 GHz with |S21| = 0.9999/0.9997 — the
+# DC thru limit S21 -> +1 now holds in MAGNITUDE too (per-cell
+# historical: -0.0494/-0.1015 post-#318, -0.0236/-0.0536 post-#308).
+# Band (-0.25, +0.10) KEPT — still decisively pi-DISCRIMINATING: the
+# flipped receive sign measured dev +3.0841/+3.0264 rad at these bins,
+# far outside.
 _DCA_FREQS_HZ = np.array([0.5e9, 1.0e9])
 _DCA_N_STEPS = 12000            # 0.5 GHz bins need the long settle window
 _DCA_DEV_BAND_RAD = (-0.25, +0.10)
@@ -768,9 +785,11 @@ def test_dc_limit_pins_receive_sign(dc_anchor_smatrix):
     required the offline falsifier lane (re-review finding, both lenses).
     This anchors it in-repo: at 0.5-1 GHz the thru's wrapped phase
     deviation vs the analytic line delay must sit near 0 (measured
-    -0.049/-0.102 rad post-#318), NOT near +-pi (the first-cut sign's -1
-    DC limit). Physics-anchored: this is the DC witness itself, not an
-    envelope.
+    -0.0575/-0.1152 rad on the #770 whole-port frame with |S21| =
+    0.9999/0.9997 — the DC magnitude limit holds too; per-cell
+    historical -0.049/-0.102 post-#318), NOT near +-pi (the first-cut
+    sign's -1 DC limit). Physics-anchored: this is the DC witness
+    itself, not an envelope.
     """
     s21 = dc_anchor_smatrix[1, 0]
     expected = np.exp(-1j * 2 * np.pi * _DCA_FREQS_HZ * _THRU_L_M / C0_M_PER_S)
@@ -780,8 +799,8 @@ def test_dc_limit_pins_receive_sign(dc_anchor_smatrix):
           f"dev(rad)={np.round(dev, 4)}")
     assert np.all((dev > lo) & (dev < hi)), (
         f"DC-limit sign anchor failed: dev = {np.round(dev, 4)} rad outside "
-        f"[{lo}, {hi}] (measured -0.049/-0.102). A pi-scale dev means the "
-        f"receive-wave sign regressed to the first-cut convention")
+        f"[{lo}, {hi}] (measured -0.0575/-0.1152). A pi-scale dev means "
+        f"the receive-wave sign regressed to the first-cut convention")
     # pi-discrimination witness: the sign-flipped S21 must leave the band.
     dev_flipped = np.angle(-s21 / expected)
     assert not np.all((dev_flipped > lo) & (dev_flipped < hi)), (
