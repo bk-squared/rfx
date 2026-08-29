@@ -905,3 +905,204 @@ measurement through the committed test wrapper and the committed
 `evaluate_fs1` judge. It adds no claim and moves no window: a pass
 confirms the CI packaging on its target hardware, a failure is a
 packaging defect to report.
+
+## WP6R — adversarial-review repair pre-declaration (2026-08-29; committed BEFORE any W4R3 measurement)
+
+The independent adversarial review of the WP6 promotion returned
+`merge_ready = false` with two BLOCKING findings. Both are honesty
+findings: every committed measurement is reproducible, but the promotion
+text claims more than the witnesses can carry. This section records the
+repair plan and freezes everything that a measurement will later be
+judged against. No window, rule or verdict from phases 1–2 is moved:
+F-S1 (1-D + 3-D), F-S2, F-S3 and F-S5 stand exactly as recorded, and the
+W4R.3 F-S4 pass/fail RULE is carried over unchanged.
+
+### WP6R.1 — BL1: the axis overclaim (documentation repair, no measurement)
+
+The finding is correct and is not disputed. Every witness in this lane
+grades **z only**: `harness.build_pec_fixture(dz_profile, domain_xy, dxy)`
+takes a SCALAR transverse cell size and all of W1 (1-D and 3-D), W2, W3,
+W5 and every W4 fixture pass it (`w1_energy_drift.py` passes `fx.DXY`).
+There is no in-plane-graded witness anywhere in the lane, so:
+
+- the support-matrix row's "N fine bands **per axis**" and its
+  "`dx_profile` / `dy_profile` / `dz_profile` … are covered by the witness
+  battery below" are withdrawn and replaced by z-axis-only wording;
+- the exclusion bullet "Grading in-plane and in z simultaneously was
+  exercised only in the 3-D energy witness" is FALSE as written — the 3-D
+  energy witness (P-B) is transverse-UNIFORM at 1.5 mm and grades z alone.
+  It is replaced by: in-plane grading (`dx_profile` / `dy_profile`) and
+  simultaneous in-plane + z grading are **UNCOVERED** — no witness in this
+  lane exercises either.
+
+Option (b) of the review (run in-plane witnesses and claim what they show)
+is declined for this repair: an in-plane battery is a second full lane
+(W1/W2/W3/W4 all re-run on an x- or y-graded fixture, each with its own
+pre-declaration), not a cheap addition, and narrowing is the honest
+alternative available now. Recorded explicitly so the next lane knows what
+is missing: `make_nonuniform_grid` does accept `dx_profile`/`dy_profile`,
+so the work is well-defined; what does not exist is the evidence. The
+solver's axis code is *structurally* symmetric, which is an argument, not a
+witness, and it is not offered as one anywhere in the row.
+
+### WP6R.2 — BL2: F-S4's fixture was ~99 % blind to the graded axis
+
+The review derived the observable from first principles and reproduced
+every committed W4R2 `f_meas`; that derivation is now committed as
+`validation/research/multiband_nu/analytic_dispersion.py` and independently
+re-run here. For the empty PEC box the TE_{m,0,p} family reduces the rfx
+update equations to one 1-D operator per axis,
+
+    (A E)[k] = -inv_e[k] ( inv_h[k](E[k+1]-E[k]) - inv_h[k-1](E[k]-E[k-1]) )
+    inv_e[k] = 2/(d[k-1]+d[k]),  inv_h[k] = 1/d[k],  Dirichlet ends,
+
+on the padded profile (with the #562 bounding-node duplicate), and leapfrog
+gives the exact discrete eigenfrequency
+
+    sin(omega dt / 2) = (c0 dt / 2) sqrt(mu_x + mu_z).
+
+Certification against the committed W4R2 evidence (prior data, not data
+this section judges): the model reproduces all eight committed `f_meas` to
+**<= 0.041 MHz** (6.8e-6 relative) out of errors of 0.3–18.1 MHz. The
+nested decomposition e_total = e_z + e_x + e_t (graded-axis, transverse and
+time dispersion) then gives, at all four W4R2 scales,
+
+    |e_z| / (|e_z| + |e_x| + |e_t|)  =  0.0106 (uniform) / 0.0114 (multiband)
+
+confirming the finding: ~99 % of the W4R2 error budget is transverse + time
+dispersion, which is bit-identical between the multiband arm and its
+matched uniform control (same dx, same dt). The W4R2 order gate could not
+have fired for a grading reason. **The W4R2 F-S4 PASS is therefore
+demoted**: it stays in the record as a valid measurement of a fixture whose
+graded axis carries 1 % of the error, and it is no longer cited as the
+order evidence for the envelope. The order claim rests on W4R3 below, or it
+is withdrawn.
+
+### WP6R.3 — W4R3 frozen fixture, instrument and gates
+
+Fixture (`w4r3_zdominant_cavity.py`, committed with this section): empty
+PEC box **60 x 3 x 64 mm**, vacuum, `cpml_layers = 0`, no geometry object,
+no dielectric, no subpixel — the W1 harness, exactly the W4R2 class. z
+profile fine(12 mm) | coarse(14 mm) | fine(12) | coarse(14) | fine(12),
+ABRUPT r = 1.4 (the envelope cap, worst case), dzf = s mm, coarse = 1.4 s
+mm; transverse uniform dx = dy = 0.5 s mm; uniform control dzf everywhere.
+Scales s in {0.25, 0.5, 1, 2}; every band length, L_z, both transverse
+extents and both source/probe planes are exact multiples/nodes at every
+scale.
+
+Two design changes carry the error budget onto the graded axis, both by the
+k^4 d^2 scaling of an axis's dispersion error:
+
+1. the target is **TE_{1,0,4}** (k_z = 3.75 k_x) instead of TE_{1,0,1};
+2. **dx = dy = dzf/2** instead of 1.5 dzf, which also lowers the CFL step
+   and with it the time-dispersion term.
+
+Instrument: Ey source pair at x = a/3 and x = 2a/3 (equal sign, both at
+z = 8 mm) and Ey probe at x = a/3, z = 40 mm. Those planes are exact nodes
+of the m = 3 discrete eigenvector and an exactly mirror-symmetric pair
+about x = a/2, so the m = 2, 3, 4 families are neither driven nor observed;
+only the (1,0,p) family survives in band, nearest neighbours 7.456 and
+11.973 GHz. Gaussian-modulated sine at the target, sigma_t = 200 ps,
+T = 15 ns, harminv over [6.5, 13.5] GHz, line nearest the target within
+[8.8, 10.6] GHz, per-arm validity guard 3 %.
+Analytic target: TE_{1,0,4} = (c/2) sqrt((1/a)^2 + (4/L)^2) =
+**9.6958969 GHz** — exact, so there is no reference ladder, no Richardson
+divisor and no reference contamination.
+
+**Derived budget, computed by the frozen model before any arm was run**
+(these are derivations, not measurements; no number below is fitted):
+
+| | s = 2 | s = 1 | s = 0.5 | s = 0.25 |
+|---|---|---|---|---|
+| e_total uniform (MHz) | -50.96 | -12.74 | -3.19 | -0.796 |
+| e_total multiband (MHz) | -79.37 | -19.83 | -4.96 | -1.239 |
+| z_fraction uniform | 0.8877 | 0.8879 | 0.8879 | 0.8879 |
+| z_fraction multiband | 0.9217 | 0.9218 | 0.9218 | 0.9218 |
+| grading share (G2) | 0.358 | 0.357 | 0.357 | 0.357 |
+| contrast f_mb - f_uc (MHz) | -28.41 | -7.09 | -1.77 | -0.443 |
+
+Predicted fitted orders from the model: p_uc = 2.000, p_mb = 2.000. The
+matched-scale contrast — the quantity actually under test — is above the
+0.3 MHz fit floor at every scale, so the grading effect is resolved by the
+instrument rather than buried in it.
+
+**Fit floor**: 0.3 MHz, the same absolute floor W4R2 declared (extraction +
+f32 field-noise class, x3); at the higher target frequency it is a
+strictly more conservative relative floor. >= 3 surviving points per arm
+required, else INCONCLUSIVE. The smallest predicted error is 0.796 MHz =
+2.65x the floor, so a clean ladder keeps all four points and can lose one
+and still fit.
+
+**Fixture-validity gates (re-derived for this fixture; failing any of them
+is FIXTURE-INVALID / INCONCLUSIVE — no envelope support, not a multiband
+fault, and promotion stays blocked):**
+
+- **G1** `z_fraction = |e_z| / (|e_z|+|e_x|+|e_t|) >= 0.80` for every arm at
+  every scale. Derivation of the target: the graded axis must carry at
+  least four fifths of the modelled error budget, so that the residual
+  arm-common terms cannot mask an order loss on the graded axis; 0.80 sits
+  below the derived 0.888 with margin and is a >40x inversion of the
+  W4R2 fixture's 0.011.
+- **G2** grading-SPECIFIC share `|e_z(mb) - e_z(uc)| / |e_total(mb)| >= 0.20`
+  at every scale (derived 0.357; W4R2: 0.0017). G1 alone would be satisfied
+  by a fixture whose z error is large but identical in both arms; G2 is the
+  gate that makes the multiband-vs-uniform contrast a leading term.
+- **G3** `|f_model - f_meas| <= 0.15 MHz` for every arm — the model that G1
+  and G2 are computed from must actually explain the measurement.
+  Prior-provenance derivation: the same model reproduces the eight
+  committed W4R2 arms to <= 0.041 MHz (6.8e-6 relative); scaled to
+  9.696 GHz that class is 0.066 MHz, and the gate takes x2.2 of it.
+
+**F-S4 judge — the frozen W4R.3 rule, carried over WITHOUT change**:
+fixture gate p_uc in [1.7, 2.6]; **F-S4 fires iff the fixture is valid AND
+(p_mb < 1.5 OR p_mb < p_uc - 0.4)**; anomaly A4 iff p_mb > p_uc + 0.4
+(blocks promotion, filed, not a fault claim). The p-bands, the one-sided
+structure and the 0.4 allowance are exactly as frozen in W4R.3 and were
+never applied to W4R3 data.
+
+**If F-S4 fires on this fixture, the order claim is WITHDRAWN from the
+promotion** — the support-matrix row loses its convergence line and the
+envelope keeps only what the stability/reflection/AD witnesses carry. That
+outcome is pre-accepted here, before the measurement.
+
+### WP6R.4 — the grading-side revert-proof (pre-declared)
+
+The review is right that the existing revert-proof
+(`results/revert_proof.json`) guards the W1 energy witness, not the F-S4
+order witness. Pre-declared here: after the clean ladder, the multiband
+arms re-run with a deliberate **grading-side** defect — the CORE-C2 class
+metric error, E-update dual `2/(d[k-1]+d[k])` replaced by the primal
+`1/d[k]`, at **one** node: the coarse->fine transition at z = 38 mm
+(`DEFECT_TRANSITION = 2`). On a uniform mesh the two expressions are
+identical, so the defect is exactly null off the graded axis: it is a
+grading-side defect by construction, and the uniform control arms are
+reused unchanged.
+
+Frozen prediction from the same analytic model: per-scale frequency shift
+-47.3 / -24.0 / -12.0 / -6.0 MHz at s = 2 / 1 / 0.5 / 0.25 (an O(h) error
+riding on the O(h^2) baseline, 11–20x the 0.3 MHz fit floor at every
+scale), giving p_mb = 1.374 — which fires BOTH clauses of the frozen rule
+(< 1.5, and < p_uc - 0.4 = 1.6). **Declared pass condition for the
+revert-proof: the committed judge must return `fs4_fired = True` on the
+defect ladder.** If it does not, the F-S4 witness is too weak to support an
+order claim and that is what will be reported.
+
+### WP6R.5 — bring-up disclosure and run order
+
+Bring-up before this commit, harness validation only, DISCARDED from
+judgment (same discipline as the W4R2 bring-up): the UNIFORM control arm
+was run at s = 2 and s = 1 while the mode-selection scheme was fixed —
+first with a single centred source (which left the m = 3 family in band at
+9.05 GHz and a model residual of -0.131 MHz), then with the committed
+a/3 + 2a/3 pair, which leaves three lines in the whole 6.5–13.5 GHz window
+(7.43 / 9.64 / 11.88 GHz at s = 2) and model residuals of +0.006 MHz
+(s = 2) and +0.001 MHz (s = 1). No multiband arm has ever been run on this
+fixture, and the ladder below re-runs every arm fresh. Those two bring-up
+numbers set no window: G3 comes from the W4R2 prior-provenance class, G1
+and G2 from the frozen model, the fit floor and the p-bands from W4R2 /
+W4R.3.
+
+Run order from here: (1) this section + `analytic_dispersion.py` +
+`w4r3_zdominant_cavity.py` commit; (2) the clean ladder; (3) the verdict,
+taken as it falls; (4) the revert-proof ladder; (5) the documentation
+rewrite that BL1 and BL2 require, plus the review's non-blocking items.
