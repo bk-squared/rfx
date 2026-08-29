@@ -505,6 +505,10 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/convergence_floor/d5_predeclare_and_run.py": Entry(
         "no_simulation",
         "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d5_instrument_check.py": Entry(
+        "no_simulation",
+        "drives fixture.measure() and re-estimates the stored records; "
+        "constructs no Simulation of its own"),
     "validation/research/convergence_floor/d6_two_term_model.py": Entry(
         "no_simulation", "pure model fitting on committed JSON"),
     "validation/research/convergence_floor/estimators.py": Entry(
