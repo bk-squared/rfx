@@ -345,3 +345,88 @@ def deembed_series_inductance(
     omega = 2.0 * np.pi * freqs
     series_z = 1j * omega[None, :] * inductances[:, None]
     return deembed_series_impedance(s_matrix, freqs, series_z, z0=z0)
+
+
+def deembed_line_segment(
+    s_matrix: np.ndarray,
+    freqs: np.ndarray,
+    segments: "list[tuple[float, float]] | np.ndarray",
+    z0: float = 50.0,
+) -> np.ndarray:
+    """Remove a short lossless line segment at each port of a 2-port network.
+
+    De-embeds a uniform transmission-line segment (characteristic
+    impedance ``zc_seg``, one-way delay ``tau_seg``) sitting between each
+    port's reference plane and the DUT, via the exact wave-cascade inverse
+
+        ``T_dut = T_seg(zc_1, tau_1)^-1 . T_meas . T_seg(zc_2, tau_2)^-1``
+
+    where ``T_seg`` is the wave-transfer matrix (reference ``z0``) of the
+    segment with ABCD ``[[cos th, j*zc*sin th], [j*sin(th)/zc, cos th]]``,
+    ``th = 2*pi*f*tau``.  This is the two-segment FEED-POST model of
+    ``docs/design_notes/thru_feedpost_twoseg_predeclaration.md``: each
+    post is a short line segment (series L = zc*tau AND shunt
+    C = tau/zc, i.e. a delay), which a point series element
+    (:func:`deembed_series_inductance`) under-describes — attempt 2 of
+    that lane measured the omitted per-post transit being absorbed into
+    the fitted line length.
+
+    In the ``tau -> 0`` limit with ``zc*tau = L`` held fixed this
+    reduces exactly to :func:`deembed_series_inductance`.
+
+    Post-processing only: no simulation or extraction path calls this.
+
+    Parameters
+    ----------
+    s_matrix : ndarray, shape (2, 2, n_freqs)
+        Measured 2-port S-parameters (reference impedance ``z0``).
+    freqs : ndarray, shape (n_freqs,)
+        Frequency points in Hz.
+    segments : sequence of 2 (zc_seg, tau_seg) pairs
+        Segment characteristic impedance (ohm) and one-way delay
+        (seconds) to remove at each port.
+    z0 : float
+        Port reference impedance (ohm).
+
+    Returns
+    -------
+    ndarray, shape (2, 2, n_freqs)
+        De-embedded S-parameters, same reference impedance.
+    """
+    s_matrix = np.asarray(s_matrix, dtype=np.complex128)
+    freqs = np.asarray(freqs, dtype=np.float64)
+    segs = np.asarray(segments, dtype=np.float64)
+
+    if s_matrix.shape[:2] != (2, 2):
+        raise ValueError("s_matrix must be a 2-port S-matrix (2, 2, n_freqs)")
+    n_freqs = s_matrix.shape[2]
+    if freqs.shape != (n_freqs,):
+        raise ValueError(
+            f"freqs has shape {freqs.shape}, expected ({n_freqs},)")
+    if segs.shape != (2, 2):
+        raise ValueError(
+            f"segments has shape {segs.shape}, expected (2, 2) — two "
+            "(zc_seg, tau_seg) pairs")
+    if np.any(segs[:, 0] <= 0.0):
+        raise ValueError("segment characteristic impedances must be > 0")
+
+    s_dut = np.empty_like(s_matrix)
+    omega = 2.0 * np.pi * freqs
+    for fi in range(n_freqs):
+        t_meas = _s_to_t(s_matrix[:, :, fi])
+        inv_segs = []
+        for p in range(2):
+            zc_seg, tau_seg = segs[p]
+            th = omega[fi] * tau_seg
+            a = np.cos(th)
+            b = 1j * zc_seg * np.sin(th)
+            c = 1j * np.sin(th) / zc_seg
+            delta = a + b / z0 + c * z0 + a
+            s_seg = np.array(
+                [[(a + b / z0 - c * z0 - a) / delta, 2.0 / delta],
+                 [2.0 / delta, (-a + b / z0 - c * z0 + a) / delta]],
+                dtype=np.complex128)
+            inv_segs.append(np.linalg.inv(_s_to_t(s_seg)))
+        t_dut = inv_segs[0] @ t_meas @ inv_segs[1]
+        s_dut[:, :, fi] = _t_to_s(t_dut)
+    return s_dut

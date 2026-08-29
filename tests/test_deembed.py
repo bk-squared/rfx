@@ -394,3 +394,104 @@ class TestDeembedSeriesImpedance:
             deembed_series_impedance(s, freqs, np.zeros((2, 4)))
         with pytest.raises(ValueError):
             deembed_series_inductance(s, freqs, [0.1e-9])
+
+
+class TestDeembedLineSegment:
+    """Two-segment feed-post removal — the thru-deembed attempt-3 lane
+    (docs/design_notes/thru_feedpost_twoseg_predeclaration.md).
+
+    The embed side is written with INDEPENDENT ABCD arithmetic (not the
+    module's own T helpers) so the round-trip is not a tautology.
+    """
+
+    C0 = 299792458.0
+
+    @staticmethod
+    def _abcd_line(zc, theta):
+        return np.array([
+            [np.cos(theta), 1j * zc * np.sin(theta)],
+            [1j * np.sin(theta) / zc, np.cos(theta)],
+        ], dtype=np.complex128)
+
+    @staticmethod
+    def _abcd_to_s(m, z0):
+        a, b, c, d = m[0, 0], m[0, 1], m[1, 0], m[1, 1]
+        delta = a + b / z0 + c * z0 + d
+        return np.array([
+            [(a + b / z0 - c * z0 - d) / delta,
+             2.0 * (a * d - b * c) / delta],
+            [2.0 / delta,
+             (-a + b / z0 - c * z0 + d) / delta],
+        ], dtype=np.complex128)
+
+    def _embedded_fixture(self, freqs, seg1, seg2, zc=48.0, z0=50.0,
+                          length_m=0.016, beta_factor=1.055):
+        """seg(zc1, tau1) . line . seg(zc2, tau2), via ABCD."""
+        n = len(freqs)
+        s_meas = np.empty((2, 2, n), dtype=np.complex128)
+        s_line = np.empty((2, 2, n), dtype=np.complex128)
+        for fi, f in enumerate(freqs):
+            omega = 2.0 * np.pi * f
+            beta_l = beta_factor * omega / self.C0 * length_m
+            m_line = self._abcd_line(zc, beta_l)
+            s_line[:, :, fi] = self._abcd_to_s(m_line, z0)
+            m_tot = (self._abcd_line(seg1[0], omega * seg1[1])
+                     @ m_line
+                     @ self._abcd_line(seg2[0], omega * seg2[1]))
+            s_meas[:, :, fi] = self._abcd_to_s(m_tot, z0)
+        return s_meas, s_line
+
+    def test_roundtrip_recovers_bare_line_symmetric_segments(self):
+        from rfx.deembed import deembed_line_segment
+        freqs = np.linspace(3e9, 7e9, 9)
+        seg = (95.0, 4.0e-12)
+        s_meas, s_line = self._embedded_fixture(freqs, seg, seg)
+        s_dut = deembed_line_segment(s_meas, freqs, [seg, seg], z0=50.0)
+        np.testing.assert_allclose(s_dut, s_line, atol=1e-12)
+
+    def test_roundtrip_asymmetric_segments(self):
+        from rfx.deembed import deembed_line_segment
+        freqs = np.linspace(1e9, 9e9, 7)
+        seg1, seg2 = (70.0, 3.0e-12), (120.0, 5.5e-12)
+        s_meas, s_line = self._embedded_fixture(freqs, seg1, seg2)
+        s_dut = deembed_line_segment(s_meas, freqs, [seg1, seg2], z0=50.0)
+        np.testing.assert_allclose(s_dut, s_line, atol=1e-12)
+
+    def test_zero_length_is_identity(self):
+        from rfx.deembed import deembed_line_segment
+        freqs = np.linspace(3e9, 7e9, 5)
+        rng = np.random.default_rng(11)
+        s = rng.standard_normal((2, 2, 5)) + 1j * rng.standard_normal(
+            (2, 2, 5))
+        s[1, 0] += 1.0  # keep S21 invertible
+        s_dut = deembed_line_segment(s, freqs, [(80.0, 0.0), (80.0, 0.0)])
+        np.testing.assert_allclose(s_dut, s, atol=1e-12)
+
+    def test_reduces_to_series_inductance_in_short_limit(self):
+        """tau -> 0 with zc*tau = L fixed reduces to the series-L removal
+        (the attempt-1 instrument) to O((omega*tau)^2)."""
+        from rfx.deembed import deembed_line_segment, deembed_series_inductance
+        freqs = np.linspace(3e9, 7e9, 9)
+        L = 0.35e-9
+        tau = 1.0e-15                       # electrically negligible
+        seg = (L / tau, tau)
+        s_meas, _ = self._embedded_fixture(freqs, seg, seg)
+        d_seg = deembed_line_segment(s_meas, freqs, [seg, seg])
+        d_ind = deembed_series_inductance(s_meas, freqs, [L, L])
+        np.testing.assert_allclose(d_seg, d_ind, atol=1e-6)
+
+    def test_input_validation(self):
+        from rfx.deembed import deembed_line_segment
+        freqs = np.linspace(3e9, 7e9, 5)
+        s = np.zeros((2, 2, 5), dtype=np.complex128)
+        s[1, 0] = s[0, 1] = 1.0
+        with pytest.raises(ValueError):
+            deembed_line_segment(np.zeros((3, 3, 5), dtype=complex),
+                                 freqs, [(95.0, 4e-12)] * 2)
+        with pytest.raises(ValueError):
+            deembed_line_segment(s, freqs[:4], [(95.0, 4e-12)] * 2)
+        with pytest.raises(ValueError):
+            deembed_line_segment(s, freqs, [(95.0, 4e-12)])
+        with pytest.raises(ValueError):
+            deembed_line_segment(s, freqs, [(-95.0, 4e-12),
+                                            (95.0, 4e-12)])
