@@ -3,7 +3,7 @@
 Provides post-processing routines to shift reference planes and remove
 unwanted fixture or feed-line effects from measured or simulated S-parameters.
 
-Two methods are implemented:
+Three methods are implemented:
 
 1. **Port extension de-embedding** — removes the phase delay introduced by
    known lengths of transmission line at each port.  This is the simplest

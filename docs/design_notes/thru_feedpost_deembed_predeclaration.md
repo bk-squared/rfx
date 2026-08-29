@@ -349,3 +349,13 @@ running; the B(L*) budget formula of section 5 remains valid for that
 future lane. A cluster-scale arm (fine-dx single-post study) is
 sketched in `validation/research/thru_feedpost_singlepost_vessl.yaml`
 (proposal only; DO NOT run before its pre-declaration exists).
+
+
+## Post-review correction (2026-08-29, appended — adversarial review finding)
+
+Section 2's parenthetical "(exact for the symmetric series element)" on the
+per-side off-diagonal factor (x+2Z0)/(2Z0) is numerically refuted: the true
+S21_dut/S21_meas ratio is DUT-dependent (measured 1.0223 vs the claimed
+1.0128 on the battery THRU). The cascade removal itself (T-matrix form) is
+unaffected — only that parenthetical's exactness claim is withdrawn. The
+S21 treatment stays report-only as declared; raw gates stay raw.
