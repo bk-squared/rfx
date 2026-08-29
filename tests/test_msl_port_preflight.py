@@ -314,14 +314,21 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     # realized-board artifact and its <=0.4% agreement.
     assert "pec_occupancy_override" in mixed[0], mixed[0]
     # #766 review B3: this used to pin "no subpixel eps assembly", which is
-    # false -- rfx assembles subpixel/anisotropic eps on subpixel_smoothing=
-    # True/'kottke_pec' and on the Stage-1 conformal PEC lane
-    # (rfx/runners/uniform.py). What is true, and what must be pinned, is
-    # the DEFAULT-path qualification plus the explicit non-exemption.
+    # false -- 'kottke_pec' builds the inv-eps tensor over PEC shapes and the
+    # Stage-1 conformal lane replaces pec_mask with fractional weights
+    # (rfx/runners/uniform.py). The FIRST repair over-corrected the other way
+    # (it named plain subpixel_smoothing=True as a fractional-occupancy lane
+    # too); that is also false, because MATERIAL_LIBRARY['pec'] carries
+    # eps_r=1.0, so a PEC box enters compute_smoothed_eps as vacuum and stays
+    # whole-cell through pec_mask on that branch. What must be pinned is the
+    # default-path qualification, the non-exemption, and the exact two lanes.
     assert "ON THE DEFAULT RUN PATH" in mixed[0], mixed[0]
     assert "subpixel_smoothing=False and no conformal PEC face" in mixed[0], mixed[0]
     assert "NOT a blanket exemption" in mixed[0], mixed[0]
+    assert "two opt-in lanes" in mixed[0], mixed[0]
     assert "kottke_pec" in mixed[0], mixed[0]
+    assert "Plain subpixel_smoothing=True does NOT" in mixed[0], mixed[0]
+    assert "eps_r=1.0" in mixed[0], mixed[0]
     assert "rfx/runners/uniform.py" in mixed[0], mixed[0]
     assert "no subpixel eps assembly" not in mixed[0], mixed[0]
     assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
