@@ -78,8 +78,33 @@ def test_realized_anchor_matches_fidelity_report_directly():
     (no FDTD solve -- fast) for each of the six pre-declared dx points
     and check they agree with the committed sibling artifact. This is
     the "sweep's realized-board column agrees with fidelity_report to a
-    stated tolerance" regression test."""
+    stated tolerance" regression test.
+
+    #766 review N3: the committed artifact declares its own precision --
+    ``"jax_enable_x64=False, inferred from Z0 agreement with the
+    realized-board Hammerstad-Jensen anchor (max |dev| = 0.377% over all
+    six points, vs 8.6/5.6/4.4% at the alternative (x64) rasterization of
+    the aligned class's trace width)"``. Under JAX_ENABLE_X64=1 the aligned
+    points' trace width rasterizes differently (h_sub/3 reads W = 592.667µm
+    where the artifact has 677.333µm), so this comparison does not apply.
+    That mode is documented and supported ("the supported way to reproduce
+    #646 is to run the suite under JAX_ENABLE_X64=1" -- conftest.py), so
+    skip rather than fail, exactly as tests/test_example_fidelity_contract.py
+    ::test_precision_is_pinned does for the same reason: the guard's purpose
+    (never silently bless a wrong-precision artifact as correct) is kept
+    without breaking a supported configuration.
+    """
     import importlib.util
+
+    import jax
+
+    if jax.config.jax_enable_x64:
+        pytest.skip(
+            "msl_z0_bias_floor_sweep_realized_anchor.json is pinned at "
+            "JAX_ENABLE_X64=0 (see its own 'precision' field); this run has "
+            "jax_enable_x64=True (the supported #646 reproduction mode), "
+            "which rasterizes the aligned class's trace width differently "
+            "-- rerun under the default precision to exercise this gate")
 
     spec = importlib.util.spec_from_file_location(
         "msl_z0_bias_floor_sweep_realized_anchor",

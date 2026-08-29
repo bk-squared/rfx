@@ -214,14 +214,27 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # ---------------------------------------------------------------------------
 # Issue #487: the "<5% Z0 bias at 4+ cells" promise (check 2) and the
 # mixed-cell danger zone (check 2b) both got a sweep-grounded correction —
-# the promise holds only on an ALIGNED mesh; misalignment is 2.56-2.94x
-# worse in Z0-bias magnitude than refinement alone predicts. Numbers come
-# from the committed scripts/diagnostics/msl_z0_bias_floor_sweep.py
-# artifact, NOT a derived per-mesh formula (leg-1 expectation (a) broke at
-# the finest aligned point, so no continuous dB advisory was added — see
-# that script's docstring and _check_msl_port_geometry's class docstring).
+# the promise holds only on an ALIGNED mesh. Numbers come from the committed
+# scripts/diagnostics/msl_z0_bias_floor_sweep.py artifact, NOT a derived
+# per-mesh formula (leg-1 expectation (a) broke at the finest aligned point,
+# so no continuous dB advisory was added — see that script's docstring and
+# _check_msl_port_geometry's class docstring).
 #
-# Every numeric constant quoted in both messages gets its own assertion
+# Issue #752 (#766 review N2): this header used to read "misalignment is
+# 2.56-2.94x worse in Z0-bias magnitude than refinement alone predicts",
+# quoting the same "+20.2% / +11.0%" framing that
+# test_mixed_cell_warning_names_z0_bias_magnitude below RETRACTS by name.
+# It is retracted here too, for the same reason: those percentages compare
+# DECLARED-board deviations across points that rasterize DIFFERENT boards
+# (the misaligned dx=80/60µm points realize a 320µm/300µm substrate, not
+# the declared 254µm), so they measure board rasterization, not extractor
+# bias. Scored against the board each point actually solves, the extractor
+# tracks Hammerstad-Jensen to within 0.4% everywhere in the sweep
+# (msl_z0_bias_floor_sweep_realized_anchor.json). What survives is the
+# board-thickening effect itself, which is real, measured, and now gated on
+# its own axis by check 2c (realized-vs-declared substrate thickness).
+#
+# Every numeric constant quoted in these messages gets its own assertion
 # below (adversarial-review finding: an unbound constant can drift silently
 # — the #494->#502 coverage-hole class).
 # ---------------------------------------------------------------------------
