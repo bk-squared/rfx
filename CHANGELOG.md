@@ -6,6 +6,45 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — MSL plane-primitive V/I now call the production extractor (issue #514)
+
+`rfx/probes/msl_wave_decomp.py`'s `register_msl_plane_probes` /
+`_v_from_plane` / `_i_from_plane` — the plane-DFT geometry primitive
+`validation/tmtt_paper/msl_stub_notch_tuning.py` drives its inverse-design
+cost through — duplicated `compute_msl_s_matrix`'s V/I integration instead
+of calling it, and had drifted in three places: an inclusive `k_lo..k_hi`
+Ez span (~12% low V, the same defect issue #511/PR #516 fixed in
+production), a single pre-issue-#80 Hy-slab current (~1.5x undercount vs.
+the closed Ampere loop), and no leapfrog E/H half-step phase correction
+(issue #240). `_v_from_plane` / `_i_from_plane` now call
+`rfx.api._sparams.msl_modal_voltage` / `rfx.sources.msl_port.msl_loop_current`
+directly, with the trace-conductor span found by the SAME PEC-mask walk
+`compute_msl_s_matrix` uses (not the `round(h_sub/dx)` proxy), so this path
+cannot re-drift from production.
+
+`register_msl_plane_probes` now registers an Hz plane alongside the
+existing 3 Ez + 1 Hy planes (needed for the closed loop) and raises
+`NotImplementedError` on a non-uniform mesh (`sim._dx_profile` /
+`_dy_profile` / `_dz_profile` set) — `sim._build_grid()` never threads
+those profiles into the `Grid` it returns, so this path had no way to
+build the same `NonUniformGrid` production's non-uniform branch uses for
+its trace-PEC search; anchoring on the uniform-only lookup would have
+silently mis-anchored V on a graded mesh.
+
+No production code changed (`rfx/api/_sparams.py`, `rfx/sources/msl_port.py`
+untouched). The `validation/tmtt_paper/msl_stub_notch_tuning.py` -46.1 dB
+single-variable-descent objective is produced by this lane and is pending
+re-derivation after this fix — see the footnote in
+`validation/tmtt_paper/README.md`; the -55.7 dB validated optimized null
+comes from the (unchanged) production S-matrix path. The
+`dx = 254 µm` (1-substrate-cell) MSL case in
+`scripts/diagnostics/optimizer_bakeoff/` is not measured post-#514.
+
+Follow-up (not this change): `scripts/diagnostics/patch_edgefed_stage6_voltage_deembed.py`
+has its own hand-rolled inclusive `dz[k_lo:k_hi + 1]` voltage span
+(`_V_from_plane`) — the same drift class as #514, outside this module;
+needs its own issue.
+
 ### Changed — PMC-plane convention decided: REALIZE-DECLARED (issue #722 ninth surface)
 
 `apply_pmc_faces` zeros H_tan a half-cell (0.5*dx) INSIDE the declared wall

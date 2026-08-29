@@ -6,12 +6,16 @@ least-squares wave decomposition (issue #80 Fix C) that removes the
 
 Plane-probe registration helpers:
 
-  * :func:`register_msl_plane_probes` — adds 4 plane DFT probes per
-    port (Ez planes at x=x₁/x₂/x₃ for V-proxy, Hy plane at x=x₁ for
-    I-proxy) via :meth:`Simulation.add_dft_plane_probe` and returns
-    the static integration metadata (j_centre, k_lo/k_hi, k_h,
-    j_lo_ext/j_hi_ext, dy_arr / dz_arr slices) needed to mirror
-    ``compute_msl_s_matrix``'s plane integrals.
+  * :func:`register_msl_plane_probes` — adds 5 plane DFT probes per
+    port (Ez planes at x=x₁/x₂/x₃ for V, Hy + Hz planes at x=x₁ for
+    the closed-loop I) via :meth:`Simulation.add_dft_plane_probe` and
+    returns the static integration metadata (trace-PEC-search-derived
+    j/k spans, per-cell dz/dy profiles, the leapfrog half-step phase)
+    that :func:`_v_from_plane` / :func:`_i_from_plane` feed straight
+    into the PRODUCTION primitives (:func:`rfx.api._sparams.
+    msl_modal_voltage`, :func:`rfx.sources.msl_port.msl_loop_current`)
+    -- issue #514: this path used to duplicate those integrals and
+    drifted; it now calls them, so it cannot drift again.
 
 Point-probe registration helper:
 
@@ -157,27 +161,30 @@ def _solve_q_jvp(primals, tangents):
 class MSLPlaneProbeSet:
     """Plane DFT probe names + static integration metadata for one MSL port.
 
-    The integration indices and per-axis cell-size slices are computed
-    once at registration time from the grid + ``MSLPort`` cross-section
-    and held as Python / JAX-traceable static metadata.  At extraction
-    time, V is the line-integral of Ez over the substrate column at the
-    trace centerline; I is the area-integral of Hy over a fringing-y-
-    extended slab placed in the substrate just below the trace surface.
+    Every index/array here is computed once at registration time by the
+    SAME calls ``compute_msl_s_matrix`` makes (:func:`rfx.sources.
+    msl_port.msl_cross_section_span` for the geometry, the PEC-mask walk
+    for the rasterized trace node) so :func:`_v_from_plane` /
+    :func:`_i_from_plane` can hand them straight to the production
+    primitives instead of re-deriving V/I locally (issue #514).
     """
     ez1_name: str
     ez2_name: str
     ez3_name: str
     hy_name: str
-    j_centre: int
-    k_lo: int
-    k_hi: int           # inclusive substrate column for Ez integration
-    k_h: int            # z index for Hy integration (k_top - 1)
+    hz_name: str
+    j_centre: int        # V integration: trace-width index (msl_modal_voltage)
+    k_lo: int             # V integration: ground-level normal index (inclusive)
+    k_hi: int             # V integration: rasterized trace's bottom node (EXCLUSIVE)
     j_lo: int
-    j_hi: int           # inclusive y-extended slab for Hy integration
-    dz_slice: jnp.ndarray   # (k_hi - k_lo + 1,) dz weights for V
-    dy_slice: jnp.ndarray   # (j_hi - j_lo + 1,) dy weights for I
-    direction_sign: float   # -1 for "+x" (flips raw Hy integral), +1 for "-x"
-    delta: float            # adjacent-probe spacing (for diagnostics)
+    j_hi: int              # I integration: trace-conductor width span (inclusive)
+    k_trace_lo: int
+    k_trace_hi: int         # I integration: trace-conductor normal span (inclusive)
+    dz_arr: jnp.ndarray      # full substrate-normal per-cell profile (V + I)
+    dy_arr: jnp.ndarray      # full trace-width per-cell profile (I)
+    direction: str            # port propagation direction ("+x" / "-x")
+    hs_phase: jnp.ndarray      # (n_freqs,) leapfrog E/H half-step phase (#240)
+    delta: float                # adjacent-probe spacing (for diagnostics)
 
 
 def register_msl_plane_probes(
@@ -187,19 +194,25 @@ def register_msl_plane_probes(
     freqs: jnp.ndarray,
     name_prefix: str | None = None,
 ) -> MSLPlaneProbeSet:
-    """Register 4 plane DFT probes for a registered MSL port + return metadata.
+    """Register 5 plane DFT probes for a registered MSL port + return metadata.
 
-    Mirrors the imperative path inside ``compute_msl_s_matrix``
-    (``rfx/api.py:2955-3020``):
+    Computes the SAME geometry ``compute_msl_s_matrix`` computes
+    (``rfx/api/_sparams.py:2953-3072``) so :func:`_v_from_plane` /
+    :func:`_i_from_plane` can hand it straight to the production
+    primitives:
 
       * V at probe k=1,2,3: plane DFT of Ez on a yz plane at
-        x = msl_probe_x_coords()[k-1].  Integrated as
-        ``V_f = Σ_{k=k_lo..k_hi} ez_plane[:, j_centre, k] * dz_arr[k]``.
-      * I at probe 1: plane DFT of Hy on the same yz plane.  Integrated
-        as ``I_f = sign · Σ_{j=j_lo..j_hi} hy_plane[:, j, k_h] * dy_arr[j]``
-        where ``k_h = k_top - 1`` is one cell below the trace surface
-        and the y-window extends 2·h_sub past the trace edges to
-        capture fringing return current.
+        x = msl_probe_x_coords()[k-1], integrated ground (``k_lo``) to
+        the rasterized trace's bottom node (``k_hi``, EXCLUSIVE) by
+        :func:`rfx.api._sparams.msl_modal_voltage`.  ``k_hi`` comes from
+        walking the PEC mask up from the substrate top, exactly as
+        ``compute_msl_s_matrix``'s ``trace_k_per_port`` does — NOT the
+        ``round(h_sub/dx)`` proxy, which is one substrate edge short for
+        ``frac(h_sub/dx) in (0, 0.5)`` (issue #511 / PR #516 finding F2;
+        see ``msl_modal_voltage``'s docstring).
+      * I at probe 1: the closed Ampere loop ``∮H·dl`` around the trace
+        conductor from the Hy + Hz planes at the same yz plane, via
+        :func:`rfx.sources.msl_port.msl_loop_current`.
 
     Parameters
     ----------
@@ -211,7 +224,7 @@ def register_msl_plane_probes(
     freqs : (n_freqs,) jnp.ndarray
         Target frequencies — same convention as ``add_dft_plane_probe``.
     name_prefix : str, optional
-        Prefix for the four registered DFT-plane names.  Default
+        Prefix for the five registered DFT-plane names.  Default
         ``f"msl_p{port_index}"``.
 
     Returns
@@ -220,7 +233,7 @@ def register_msl_plane_probes(
     """
     import numpy as np
     from rfx.sources.msl_port import (
-        _msl_yz_cells, msl_port_from_entry, msl_probe_x_coords,
+        msl_cross_section_span, msl_port_from_entry, msl_probe_x_coords,
     )
 
     if name_prefix is None:
@@ -231,7 +244,7 @@ def register_msl_plane_probes(
     # Issue #661: this helper is the retained 3-probe geometry primitive
     # (diagnostic only — the production S-matrix path is
     # compute_msl_s_matrix). Its cross-section bookkeeping below reads
-    # ``c[1]``/``c[2]`` as (y, z) and registers x-normal plane probes with
+    # (y, z) as (width, normal) and registers x-normal plane probes with
     # a fixed (ez, hy, hz) component set, all of which are x-frame. Rather
     # than generalise an off-production path without its own evidence, a
     # non-x port is refused here — the alternative would be returning an
@@ -245,6 +258,30 @@ def register_msl_plane_probes(
             f"handles every supported direction."
         )
 
+    # Issue #514 required-change 1: sim._build_grid() ALWAYS returns the
+    # uniform Grid — it never threads sim._dx_profile/_dy_profile/
+    # _dz_profile into Grid(...) — so on a non-uniform mesh this path has
+    # no way to build the SAME NonUniformGrid compute_msl_s_matrix's
+    # non-uniform branch uses (build_nonuniform_grid(...) +
+    # _assemble_materials_nu(grid)). Silently running the uniform-only PEC
+    # search below on such a sim would anchor V on the wrong node without
+    # any warning. Refuse loudly instead.
+    _is_nonuniform = (
+        getattr(sim, "_dx_profile", None) is not None
+        or getattr(sim, "_dy_profile", None) is not None
+        or getattr(sim, "_dz_profile", None) is not None
+    )
+    if _is_nonuniform:
+        raise NotImplementedError(
+            "register_msl_plane_probes does not support a non-uniform mesh "
+            "(sim._dx_profile / _dy_profile / _dz_profile set). "
+            "sim._build_grid() always returns the uniform Grid regardless "
+            "of these profiles, so this diagnostic path cannot build the "
+            "NonUniformGrid compute_msl_s_matrix's non-uniform branch uses "
+            "for its trace-PEC search. Use Simulation.compute_msl_s_matrix(), "
+            "which builds that grid via build_nonuniform_grid(...)."
+        )
+
     grid = sim._build_grid()
     mp = msl_port_from_entry(pe)
 
@@ -256,17 +293,14 @@ def register_msl_plane_probes(
             if pe.n_probe_spacing is not None else 3,
     )
 
-    # Cross-section index metadata, identical to compute_msl_s_matrix.
-    cells = _msl_yz_cells(grid, mp)
-    j_set = sorted({c[1] for c in cells})
-    k_set = sorted({c[2] for c in cells})
-    j_lo_inner, j_hi_inner = j_set[0], j_set[-1]
-    k_lo, k_hi = k_set[0], k_set[-1]
-    j_centre = (j_lo_inner + j_hi_inner) // 2
-    k_top = k_hi
-    k_h = max(k_lo, k_top - 1)
+    # Cross-section index metadata, identical to compute_msl_s_matrix's
+    # per-port meta (rfx/api/_sparams.py:2961-2980).
+    span = msl_cross_section_span(grid, mp)
+    j_centre = span["w_centre"]
+    j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
+    k_lo, k_top = span["n_lo"], span["n_hi"]     # ground .. substrate-top proxy
 
-    # Per-axis cell-size arrays (uniform OR non-uniform mesh).
+    # Per-axis cell-size arrays (uniform mesh only — see the NU refusal above).
     def _profile(axis: str, n: int) -> np.ndarray:
         attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
         prof = getattr(grid, attr, None)
@@ -277,21 +311,49 @@ def register_msl_plane_probes(
     dy_arr = _profile("y", grid.ny)
     dz_arr = _profile("z", grid.nz)
 
-    # y-extended slab for I — 2·h_sub fringing margin on each side.
-    height = mp.z_hi - mp.z_lo
-    dy_local = float(dy_arr[j_centre])
-    n_y_margin = max(2, int(round(2 * height / dy_local)))
-    j_lo_ext = max(0, j_lo_inner - n_y_margin)
-    j_hi_ext = min(int(grid.ny) - 1, j_hi_inner + n_y_margin)
+    # Trace-PEC search — IDENTICAL to compute_msl_s_matrix's
+    # trace_k_per_port (rfx/api/_sparams.py:3008-3072): walk UP the
+    # substrate-normal axis from the substrate top, at the feed column and
+    # trace centre, and find the PEC run. This is what anchors k_hi on the
+    # rasterized trace node instead of the round(h_sub/dx) proxy.
+    _msl_assembled = sim._assemble_materials(grid)
+    _pec_mask = (
+        None if _msl_assembled[3] is None else np.asarray(_msl_assembled[3])
+    )
+    _sel = [0, 0, 0]
+    _sel[span["prop_idx"]] = span["i_feed"]
+    _sel[span["width_idx"]] = j_centre
+    _sel[span["normal_idx"]] = slice(k_top, None)
+    col = None if _pec_mask is None else _pec_mask[tuple(_sel)]
+    k_pec = np.array([], dtype=int) if col is None else np.where(col)[0]
+    if k_pec.size == 0:
+        raise RuntimeError(
+            "register_msl_plane_probes: no PEC trace conductor found above "
+            f"the substrate top for MSL port {port_index} ({pe.name!r}); "
+            "the closed Ampere-loop current needs the trace PEC. Add the "
+            "microstrip trace as a Box(material='pec')."
+        )
+    k_trace_lo = int(k_top + int(k_pec.min()))
+    k_trace_hi = int(k_top + int(k_pec.max()))
 
-    direction_sign = -1.0 if mp.direction == "+x" else 1.0
     delta = float(abs(pxs[1] - pxs[0]))
 
-    # Register the 4 plane DFT probes.  The accumulators are filled
-    # inside the JIT scan body and surfaced through
-    # ``ForwardResult.dft_planes[name]``.
+    # Leapfrog E/H half-step phase (issue #240; compute_msl_s_matrix
+    # rfx/api/_sparams.py:3311-3328). H is timestamped half a step behind
+    # E, so the recorded Hy/Hz DFT is missing exp(+jω·dt/2). Included for
+    # parity even though it is <=0.4 deg at typical dt — not dropped as
+    # "small enough".
+    hs_phase = jnp.exp(
+        1j * 2.0 * jnp.pi * jnp.asarray(freqs, dtype=jnp.float32)
+        * (float(grid.dt) * 0.5)
+    ).astype(jnp.complex64)
+
+    # Register the 5 plane DFT probes (3 Ez + Hy + Hz for the closed
+    # Ampere loop).  The accumulators are filled inside the JIT scan body
+    # and surfaced through ``ForwardResult.dft_planes[name]``.
     ez_names = [f"{name_prefix}_ez{q+1}" for q in range(3)]
     hy_name = f"{name_prefix}_hy"
+    hz_name = f"{name_prefix}_hz"
     for q in range(3):
         sim.add_dft_plane_probe(
             axis="x", coordinate=float(pxs[q]),
@@ -301,63 +363,70 @@ def register_msl_plane_probes(
         axis="x", coordinate=float(pxs[0]),
         component="hy", freqs=freqs, name=hy_name,
     )
+    sim.add_dft_plane_probe(
+        axis="x", coordinate=float(pxs[0]),
+        component="hz", freqs=freqs, name=hz_name,
+    )
 
     return MSLPlaneProbeSet(
         ez1_name=ez_names[0], ez2_name=ez_names[1], ez3_name=ez_names[2],
-        hy_name=hy_name,
+        hy_name=hy_name, hz_name=hz_name,
         j_centre=int(j_centre),
-        k_lo=int(k_lo), k_hi=int(k_hi),
-        k_h=int(k_h),
-        j_lo=int(j_lo_ext), j_hi=int(j_hi_ext),
-        dz_slice=jnp.asarray(dz_arr[k_lo:k_hi + 1], dtype=jnp.float32),
-        dy_slice=jnp.asarray(dy_arr[j_lo_ext:j_hi_ext + 1], dtype=jnp.float32),
-        direction_sign=direction_sign,
+        k_lo=int(k_lo), k_hi=k_trace_lo,
+        j_lo=int(j_lo), j_hi=int(j_hi),
+        k_trace_lo=k_trace_lo, k_trace_hi=k_trace_hi,
+        dz_arr=jnp.asarray(dz_arr, dtype=jnp.float32),
+        dy_arr=jnp.asarray(dy_arr, dtype=jnp.float32),
+        direction=mp.direction,
+        hs_phase=hs_phase,
         delta=delta,
     )
 
 
 def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
-    """V_f = ∫ Ez dz along substrate column at j=j_centre on this plane.
+    """V_f = production ``msl_modal_voltage`` on this plane's Ez accumulator.
 
-    .. warning::
-
-       DIVERGED from the production extractor, and deliberately NOT
-       half-fixed. Two defects are present here and they partially cancel:
-
-       * this slice spans ``k_lo .. k_hi`` = ``n+1`` Ez edges over an
-         ``n``-cell substrate, so V reads about 12% LOW (issue #511, fixed in
-         ``rfx.api._sparams.msl_modal_voltage``); and
-       * :func:`_i_from_plane` integrates a single Hy slab rather than the
-         closed Ampère loop, the pre-issue-#80 definition that
-         :func:`rfx.sources.msl_port.msl_loop_current` records as
-         undercounting ``I`` by about 1.5x.
-
-       Since ``Z0 = V/I``, fixing only the voltage would unbalance a
-       partially-cancelling pair and move this path further from the truth,
-       not closer. Repairing it properly needs the closed loop, which needs
-       Hz plane probes this module never registers. Tracked separately; the
-       production S-matrix path does its own integration and does not call
-       this.
-
-       Callers today: ``tests/test_msl_plane_primitives_smoke.py`` and
-       ``validation/tmtt_paper/msl_stub_notch_tuning.py`` (whose full-res
-       headline numbers are projected targets, not committed validation).
+    Issue #514: this used to re-implement the ground-to-trace Ez
+    integral locally and drifted (an inclusive ``k_lo..k_hi`` span, ~12%
+    low — issue #511). It now calls
+    :func:`rfx.api._sparams.msl_modal_voltage` directly with the SAME
+    ``j_centre`` / ``k_lo`` / ``k_hi`` (EXCLUSIVE, the rasterized trace's
+    bottom node) / ``dz_arr`` that ``compute_msl_s_matrix`` computes, so
+    it cannot re-drift from production.
     """
+    from rfx.api._sparams import msl_modal_voltage
     plane = fr.dft_planes[plane_name].accumulator     # (n_freqs, ny, nz)
-    column = jax.lax.dynamic_slice_in_dim(
-        plane[:, p.j_centre, :], p.k_lo, p.k_hi - p.k_lo + 1, axis=-1,
+    return msl_modal_voltage(
+        plane, j_centre=p.j_centre, k_lo=p.k_lo, k_hi=p.k_hi,
+        dz_arr=p.dz_arr, dtype=plane.dtype,
     )
-    return jnp.sum(column * p.dz_slice[None, :], axis=-1)
 
 
 def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
-    """I_f = sign · ∫ Hy dy on the trace-bottom slab at k=k_h."""
-    plane = fr.dft_planes[plane_name].accumulator     # (n_freqs, ny, nz)
-    slab = jax.lax.dynamic_slice_in_dim(
-        plane[:, :, p.k_h], p.j_lo, p.j_hi - p.j_lo + 1, axis=-1,
+    """I_f = production ``msl_loop_current`` closed Ampere loop.
+
+    ``plane_name`` names the Hy plane; the Hz plane comes from
+    ``p.hz_name`` (both registered together by
+    :func:`register_msl_plane_probes`). Issue #514: this used to
+    integrate a single pre-#80 Hy slab (~1.5x undercount vs. the closed
+    loop). It now applies the leapfrog E/H half-step phase (#240) and
+    calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
+    SAME trace span ``compute_msl_s_matrix`` uses, so the #140 sign
+    convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —
+    no extra direction multiply here (that would double-apply the sign).
+    """
+    from rfx.sources.msl_port import msl_loop_current
+    hy_plane = jnp.asarray(fr.dft_planes[plane_name].accumulator)
+    hz_plane = jnp.asarray(fr.dft_planes[p.hz_name].accumulator)
+    hy_plane = hy_plane * p.hs_phase[:, None, None].astype(hy_plane.dtype)
+    hz_plane = hz_plane * p.hs_phase[:, None, None].astype(hz_plane.dtype)
+    return msl_loop_current(
+        hy_plane, hz_plane,
+        j_lo=p.j_lo, j_hi=p.j_hi,
+        k_trace_lo=p.k_trace_lo, k_trace_hi=p.k_trace_hi,
+        dy_arr=p.dy_arr, dz_arr=p.dz_arr,
+        direction=p.direction,
     )
-    raw = jnp.sum(slab * p.dy_slice[None, :], axis=-1)
-    return p.direction_sign * raw
 
 
 

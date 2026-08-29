@@ -8,6 +8,12 @@ are still consumed by `validation/tmtt_paper/msl_stub_notch_tuning.py`.
 This file restores minimal regression coverage for those primitives so a
 silent break surfaces here rather than only when the example is run.
 
+Issue #514: these primitives now call the PRODUCTION extractors
+(`msl_modal_voltage` / `msl_loop_current`) directly instead of
+re-implementing them, so `_i_from_plane`'s closed-loop I reads BOTH an Hy
+plane (`plane_name`) and an Hz plane (`p.hz_name`, registered alongside
+it) — not "the Hy plane" alone as this file used to say.
+
 Scope: register the 4 plane DFT probes on a real cv06b-class MSL thru-line,
 run a short forward, and assert the line-integrated V and closed-loop I
 phasors come back finite, correctly-shaped, and non-zero. NOT an accuracy
@@ -71,7 +77,7 @@ def test_plane_primitives_register_and_produce_signal():
     p1 = register_msl_plane_probes(sim, port_index=1, freqs=freqs, name_prefix="p")
     fr = sim.forward(num_periods=15.0, skip_preflight=True)
 
-    # V from the 3 Ez planes + closed-loop I from the Hy plane on the driven port.
+    # V from the 3 Ez planes + closed-loop I from the Hy+Hz planes on the driven port.
     v = jnp.stack([_v_from_plane(fr, p0.ez1_name, p0),
                    _v_from_plane(fr, p0.ez2_name, p0),
                    _v_from_plane(fr, p0.ez3_name, p0)], axis=-1)
