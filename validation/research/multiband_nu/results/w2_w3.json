@@ -1,0 +1,261 @@
+{
+ "w2": [
+  {
+   "r": 1.1,
+   "variant": "abrupt",
+   "R_meas": 0.00044225278004573376,
+   "R_meas_db": -67.08658856781184,
+   "R_model": 0.0004357544501765256,
+   "window": 0.0013072633505295769,
+   "fs2_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 1.95973984205689,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 1.2,
+   "variant": "abrupt",
+   "R_meas": 0.0009275040847594685,
+   "R_meas_db": -60.653683381221335,
+   "R_model": 0.0009138822225874718,
+   "window": 0.002741646667762415,
+   "fs2_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 2.076837818492085,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 1.4,
+   "variant": "abrupt",
+   "R_meas": 0.002028044242505641,
+   "R_meas_db": -53.85845149893892,
+   "R_model": 0.0019982475271387787,
+   "window": 0.005994742581416336,
+   "fs2_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 2.312119293053602,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 1.4,
+   "variant": "smooth",
+   "R_meas": 0.0019814810825535567,
+   "R_meas_db": -54.060201391469114,
+   "R_model": 0.001953553215001836,
+   "window": 0.005860659645005508,
+   "fs2_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 2.3212798478006276,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 1.5,
+   "variant": "abrupt",
+   "R_meas": 0.00264394168489356,
+   "R_meas_db": -51.554962558676756,
+   "R_model": 0.0026050370509176977,
+   "window": 0.007815111152753093,
+   "fs2_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 2.430365831246094,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 1.5,
+   "variant": "smooth",
+   "R_meas": 0.0025795702076996762,
+   "R_meas_db": -51.769052950295944,
+   "R_model": 0.0025434285499602647,
+   "window": 0.007630285649880794,
+   "fs2_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 2.4398594205432476,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 2.0,
+   "variant": "abrupt",
+   "R_meas": 0.006392266606473407,
+   "R_meas_db": -43.88690239820661,
+   "R_model": 0.006298234160689015,
+   "window": 0.018894702482067045,
+   "fs2_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 3.028967680473705,
+    "gate_end": 1.0857343091517488
+   }
+  },
+  {
+   "r": 2.0,
+   "variant": "smooth",
+   "R_meas": 0.005858060344145662,
+   "R_meas_db": -44.644923178883914,
+   "R_model": 0.005783898212385061,
+   "window": 0.017351694637155184,
+   "fs2_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_r": 0.6862821108279854,
+    "t_s": 1.3417343091517488,
+    "t_f": 3.051202281807598,
+    "gate_end": 1.0857343091517488
+   }
+  }
+ ],
+ "w3": [
+  {
+   "r": 1.0,
+   "variant": "null-control",
+   "T_meas": 1.000002365837709,
+   "T_model": 1.0,
+   "deviation": 2.3658377090729488e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_pass": 1.1104620550658908,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.1,
+   "variant": "abrupt",
+   "T_meas": 1.000001818140315,
+   "T_model": 0.9999995359036266,
+   "deviation": 2.28223668841121e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_pass": 1.1310643643335165,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.2,
+   "variant": "abrupt",
+   "T_meas": 0.9999979871871298,
+   "T_model": 0.9999904501857869,
+   "deviation": 7.537001342927674e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_pass": 1.15174020470878,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.4,
+   "variant": "abrupt",
+   "T_meas": 0.9999921315571663,
+   "T_model": 0.9999978782879322,
+   "deviation": 5.7467307659209155e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_pass": 1.1933413538599258,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.4,
+   "variant": "smooth",
+   "T_meas": 0.9999957249467477,
+   "T_model": 0.9999995708960603,
+   "deviation": 3.845949312575314e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": false,
+   "in_envelope_claim": true,
+   "gates_ns": {
+    "t_pass": 1.209427341822601,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.5,
+   "variant": "abrupt",
+   "T_meas": 0.9999878657523993,
+   "T_model": 0.9999999140505982,
+   "deviation": 1.2048298198896745e-05,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_pass": 1.21428145357415,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 1.5,
+   "variant": "smooth",
+   "T_meas": 0.9999896535835635,
+   "T_model": 0.9999994921013051,
+   "deviation": 9.838517741611597e-06,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_pass": 1.2309410461125305,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 2.0,
+   "variant": "abrupt",
+   "T_meas": 0.9998813066449463,
+   "T_model": 0.9999995504781785,
+   "deviation": 0.0001182438332321123,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_pass": 1.320688331924847,
+    "sigma_w_ps": 200.0
+   }
+  },
+  {
+   "r": 2.0,
+   "variant": "smooth",
+   "T_meas": 0.9999262895743289,
+   "T_model": 0.9999536366587991,
+   "deviation": 2.7347084470163985e-05,
+   "window_halfwidth": 0.0003,
+   "fs3_fired": null,
+   "in_envelope_claim": false,
+   "gates_ns": {
+    "t_pass": 1.3595473791354278,
+    "sigma_w_ps": 200.0
+   }
+  }
+ ],
+ "wallclock_s": 14.733392000198364
+}

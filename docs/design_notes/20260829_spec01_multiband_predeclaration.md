@@ -252,3 +252,43 @@ must break the f64 conservation gate; recorded with the results.
 Existing-gate battery: `pytest -o addopts="" -m "not gpu"` over the
 `test_nonuniform*`/`test_msl_nu*`/NU-related modules (no `rfx/` sources are
 modified in WP1–WP5, so movement is not expected).
+
+## C1/C2 — Corrections (2026-08-29, after first W3 execution; windows UNTOUCHED)
+
+**What happened.** On first execution F-S3 fired on every arm (dev 0.8–6e-2)
+— including, decisively, on an added r=1.0 NULL-CONTROL arm (uniform profile,
+|T| = 1 exactly), proving witness invalidity rather than physics: a falsifier
+that fires on its known-truth control is measuring the instrument.
+
+**C1 — gate omitted the source wall echo.** The declared method requires
+gates that close before any non-transmitted arrival; the implementation's W3
+gate (t_pass + 0.72 ns) admitted the source's z-lo wall echo (lag 2·z_src/vg
+= 0.65 ns, verified full-amplitude at the predicted 2.19 ns on the B trace).
+Repair: runways/probe/source re-sized (lead 240, k_src 200, tail guard) and a
+Gaussian analysis window (sigma_w = 200 ps) centred on the group-delay
+arrival replaced the rectangular gate. The W2 incident gate got the analogous
+tightening (echo tail was ~9 % envelope at the old gate edge; W2 verdicts
+unchanged — differencing had cancelled the echo there).
+
+**C2 — waveguide GVD bias.** After C1 the null control still fired at
++3.5e-3, tracking the A/B propagation-distance mismatch: at fc/f0 = 0.5
+(b = 30 mm) waveguide dispersion is ~0.13 ps/mm/GHz and the windowed
+amplitude is distance-sensitive at the 1e-3 level (a rectangular full-record
+gate is far worse — 9 % — the near-cutoff straggler continuum leaks into f0).
+Repair: W3 transverse instrument moved to b = 90 mm (fc = 1.67 GHz, ~9×
+less GVD), source sigma_t 64→100 ps, B reference group-delay-matched
+(624 cells, out at 424). W1/W2 fixtures unchanged.
+
+**Discipline statement.** The F-S3 window (max(3e-4, 0.5·|1−T_model|)) was
+never moved. Validity is adjudicated by the null control: after C1+C2 it
+measures |T−1| = 2.4e-6 (125× below the floor). The transitions under test,
+f0, the model, and every declared window are exactly as pre-declared.
+First-execution firing + control-diagnosis + instrument repair are recorded
+here in full per the append-only rule.
+
+**W3 re-measurement (final).** All arms pass: in-envelope deviations
+≤ 7.5e-6 (r=1.1/1.2/1.4 abrupt+smooth); out-of-envelope references r=1.5:
+≤1.2e-5, r=2.0: ≤1.2e-4 — all far under the 3e-4 floor and consistent with
+the chain model. The Christ round-trip asymmetry is additionally bounded by
+W1: <3e-6 total energy drift over ~3200 cavity traversals of 4 transitions
+bounds any net per-traversal amplitude drift to the 1e-9 class.

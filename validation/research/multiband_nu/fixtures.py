@@ -74,8 +74,11 @@ def pa_profile(r: float, variant: str = "abrupt",
 
 N_FINE_RUNWAY = 140       # fine cells before the transition
 N_COARSE_RUNWAY = 150     # coarse cells after it
-K_SRC = 40                # source plane (fine region, cells from z-lo wall)
-K_PRB = 80                # probe plane  (fine region)
+# Gate-margin geometry (see pre-declaration note §3.1): the wall-echo
+# secondary lags the direct transition reflection by 2*z_src/vg, which
+# must exceed 8 sigma_t of the pulse -> z_src >= 67 mm at sigma=64 ps.
+K_SRC = 85                # source plane (fine region, cells from z-lo wall)
+K_PRB = 100               # probe plane  (fine region)
 
 
 def single_transition_profile(r: float, variant: str = "abrupt",
