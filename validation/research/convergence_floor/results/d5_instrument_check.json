@@ -1,0 +1,85 @@
+{
+ "issue": 786,
+ "discriminator": "D4c applied to the D5 rungs (3/s = 7, 8, 9)",
+ "window_source": "results/predeclared_windows_786.json :: D4_reference_quality.D4c_independent_estimators (frozen, unchanged)",
+ "window": {
+  "spread_hz": 1000000.0,
+  "exonerate_hz": 1000000.0,
+  "attribute_hz": 10000000.0
+ },
+ "rows": [
+  {
+   "arm": "UC",
+   "scale": 0.42857142857142855,
+   "three_over_s": 7,
+   "n_samples": 62492,
+   "dt": 3.2003879547084817e-13,
+   "E1_hz": 5541259719.921784,
+   "E1_minus_committed_d5_hz": 0.0,
+   "values_hz": {
+    "E2": 5541330276.154022,
+    "E3": 5541291249.944745,
+    "E4": 5541421088.713838
+   },
+   "spread_hz": 129838.76909255981,
+   "mean_hz": 5541347538.270867,
+   "E1_minus_consensus_hz": -87818.34908294678,
+   "estimators_agree": true,
+   "verdict": "EXONERATE-4a",
+   "wallclock_s": 66.43126177787781
+  },
+  {
+   "arm": "UC",
+   "scale": 0.375,
+   "three_over_s": 8,
+   "n_samples": 71420,
+   "dt": 2.800339460369922e-13,
+   "E1_hz": 5537578782.117428,
+   "E1_minus_committed_d5_hz": 0.0,
+   "values_hz": {
+    "E2": 5537628698.338904,
+    "E3": 5537576655.021608,
+    "E4": 5537630525.198722
+   },
+   "spread_hz": 53870.17711353302,
+   "mean_hz": 5537611959.519745,
+   "E1_minus_consensus_hz": -33177.40231704712,
+   "estimators_agree": true,
+   "verdict": "EXONERATE-4a",
+   "wallclock_s": 110.91687989234924
+  },
+  {
+   "arm": "UC",
+   "scale": 0.3333333333333333,
+   "three_over_s": 9,
+   "n_samples": 80347,
+   "dt": 2.48919063143993e-13,
+   "E1_hz": 5533355390.015878,
+   "E1_minus_committed_d5_hz": 0.0,
+   "values_hz": {
+    "E2": 5533404797.556106,
+    "E3": 5533343964.255188,
+    "E4": 5533292715.927409
+   },
+   "spread_hz": 112081.62869644165,
+   "mean_hz": 5533347159.246235,
+   "E1_minus_consensus_hz": 8230.769642829895,
+   "estimators_agree": true,
+   "verdict": "EXONERATE-4a",
+   "wallclock_s": 175.0217649936676
+  }
+ ],
+ "reproduces_d5_bit_identically": true,
+ "max_abs_E1_minus_committed_d5_hz": 0.0,
+ "estimator_spread_range_khz": [
+  53.87017711353302,
+  129.8387690925598
+ ],
+ "max_abs_E1_minus_consensus_hz": 87818.34908294678,
+ "verdicts": {
+  "3/s=7": "EXONERATE-4a",
+  "3/s=8": "EXONERATE-4a",
+  "3/s=9": "EXONERATE-4a"
+ },
+ "scope": "bounds the EXTRACTION's disagreement on the identical record at these three rungs; says nothing about the discretization error there, and is not a claim about the continuum limit"
+}

@@ -17,6 +17,17 @@ Two smooth-field controls, both in the same machinery as the W4R ladder:
 p_trace comes from D4b (the with-trace ladder judged against its own
 independent Richardson reference), so run D4b first.
 
+SUPERSEDED VERDICT (post-review, 2026-08-30). This module evaluates the
+frozen D2 rule on the FIVE scales that existed when it first ran
+(s = 1.5, 1.0, 0.75, 0.6, 0.5). D5 later added 3/s = 7, 8, 9, and on the
+resulting nine-rung ladder both clauses of the exonerate branch fail
+(f is non-monotone; the error against the D4b reference rises over the
+four finest rungs) and p_trace falls to 0.95, which is the rule's own
+INCONCLUSIVE clause. The lane's D2 verdict is therefore the RE-TAKEN one
+in ``d2_retake.py`` / ``results/d2_edge_retake.json``; the verdict string
+this module writes into ``d2_edge.json`` is kept unedited as the
+five-rung record it is. Run d2_retake AFTER d5.
+
 Run:  PYTHONPATH=. python -m validation.research.convergence_floor.d2_edge
 """
 

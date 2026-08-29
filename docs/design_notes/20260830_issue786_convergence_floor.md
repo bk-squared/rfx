@@ -501,3 +501,324 @@ To extend: add rungs by dropping lattice-valid scales (3/s and 6/s both integer)
 into `d5`'s scale list — it caches, so previously-measured rungs are not re-run —
 and re-run `d6` and `verdict`. §8's D7 is the next discriminator, with its window
 already derived.
+
+---
+
+## §10 CORRECTION — narrowing the claims to what was measured (appended 2026-08-30, after independent adversarial review)
+
+This section is a **correction**, appended per the append-only rule; §§1–9 are left
+exactly as they were written. Where a sentence below contradicts an earlier one, this
+section governs.
+
+**What the review found.** The review reproduced this lane's measurements rather than
+disputing them: it re-ran the three decisive D5 rungs in its own harness and matched them
+to 0.0000 Hz, matched D0 against PR #785's committed JSON, re-fitted D6 to every digit,
+verified the exact-realization arithmetic in exact rational arithmetic with no rfx code
+involved, and confirmed `ladder_guard` fires on PR #785's ladder. **The measurements
+stand. The conclusions drawn from them were wider than the evidence**, and that is what
+this section fixes. Nothing below widens a window; every change narrows a claim.
+
+### §10.1 WITHDRAWN: "there is no floor"
+
+Commit `d5edc34`'s subject line ("the floor is not a floor") and the summary wording it
+carried are **withdrawn**.
+
+*Why.* This lane never measured a floor's **absence**. It has no external reference —
+§8.2 of this note already concedes that "no independent solver or measurement pins f∞" —
+and a consistency floor is fully compatible with every number here: **f(h) can turn over
+and still converge to some f_floor ≠ f_physical**. A turn-over is a statement about the
+shape of f(h) over the sampled range; it is not a statement about the limit.
+
+*Worse, the authoritative ledger records a MEASURED floor for this very fixture class.*
+`rfx-known-issues.md` (issue-#80 resolution research, 2026-05-30): **DIELECTRIC-interface
+staircasing, ~49 % of the error, ε_r-coupled**, which "drops FDTD from 2nd→1st order
+(Farjadpour/Johnson SPIE 6322, 2006), giving a **non-vanishing FLOOR for thin high-ε_r
+layers** (Boriskin arXiv:1001.1733)". The W4R fixture is exactly that: a 1.5 mm ε_r = 4.3
+substrate and a 1.5 mm ε_r = 2.2 upper layer, rasterized. **That entry is the standing
+evidence that a real floor may exist here**, and nothing this lane measured contradicts
+it.
+
+*What replaces it — the narrower claim the data do support:*
+
+> PR #785's `|f(s) − f(0.25)|` was **not an error sequence**, because the anchor sits four
+> rungs past a turn-over in f(h) (D5: exactly one sign change, maximum at
+> dz_fine = 0.125 mm, four descending rungs, s = 0.25 on-curve). **The 22.7 MHz figure is
+> therefore not an error**, and the "~4e-3 floor" as the issue states it is not
+> established.
+>
+> **Whether f(h) converges to the physical answer is NOT determined by this lane.**
+
+That is still a real result — it invalidates the reading that produced the issue — but it
+is a claim about a *ladder*, not about a *limit*.
+
+*Scope note on the two surviving "no floor" phrases in §5.* "p = 2 sequence with no
+floor" (§5, D4a) and "no floor" (§5, D2-B) are about the **empty vacuum twin**, which
+carries an **exact** discrete eigenfrequency at every rung, so its error is measured
+against a reference and its convergence to zero is observed, not inferred. Those two
+statements are in scope as written. They say nothing about the P-C fixture.
+
+### §10.2 WITHDRAWN: the ledger cross-check in §7's "WHAT IT BOUNDS" — and the discrepancy, as its own finding
+
+§7's closing sentence used the ledger's staircase law to corroborate the envelope
+("−1.4 % to −5.6 % over this lane's dx range … is the same order, so the two agree that
+this fixture class sits in the 10⁻² band"). **That cross-check is withdrawn**: this lane's
+own data refute it.
+
+| | |
+|---|---|
+| ledger law (rfx-known-issues.md, 2026-07-12 patch-resonance envelope) | f_res bias ≈ −dx/L_eff |
+| applied here, L_eff = 13.5 mm, dx = 0.75 → 0.1875 mm | bias −5.56 % → −1.39 % |
+| ⇒ predicted **change** across this lane's dx range | **4.17 % = 230.0 MHz** |
+| this lane's **measured** refinement variation over that same range | **41.44 MHz** |
+| **over-prediction factor** | **5.55×** |
+
+A law that over-predicts the measured variation by 5.6× does not corroborate the
+envelope; it **disagrees with it**. The correct handling is to state the disagreement as
+a finding in its own right and to stop using it to round the deliverable outward:
+
+> **FINDING (new, unattributed).** A committed ledger law — the measured
+> patch-resonance staircase envelope f_res bias ≈ −dx/L_eff — over-predicts this
+> fixture's measured refinement variation by **~5.6×** (230 MHz predicted change vs
+> 41.44 MHz measured, over dx = 0.75 → 0.1875 mm on a 13.5 mm resonant length).
+> Candidate explanations, none tested here: the law was measured on an **open** patch
+> radiator and this fixture is an **enclosed** 3-layer line; L_eff for a half-wave line
+> under a 4.5 mm air gap and an ε_r = 2.2 superstrate is not the patch's L_eff; the
+> ladder is pre-asymptotic so the measured variation is not the asymptotic bias. This
+> deserves its own issue.
+
+The envelope's numbers themselves are unchanged — they were always measured, never
+derived from the ledger — and the band is **not** widened on the strength of a refuted
+cross-check.
+
+### §10.3 RE-TAKEN: D2's letter verdict on the nine-rung ladder is INCONCLUSIVE
+
+§5's D2 paragraph and the §6 verdict table record D2 as "EXONERATED as the FLOOR
+mechanism". That verdict was evaluated on the **five pre-D5 scales** only. On the
+nine-rung ladder the lane ended up with, the frozen rule's exonerate branch fails in
+both of its clauses. The rule is **not rewritten**; it is re-applied
+(`d2_retake.py` → `results/d2_edge_retake.json`, no new FDTD; `d2_edge.json` is left
+unedited as the five-rung record it is).
+
+Frozen rule (`predeclared_windows_786.json` :: `D2_edge_singularity`): *EXONERATE as the
+floor mechanism iff f(s) of the with-trace ladder is MONOTONE in s **and** its error
+against the D4b reference DECREASES at every rung **and** p_trace ≥ 1.0.*
+
+| 3/s | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12 |
+|---|---|---|---|---|---|---|---|---|---|
+| error vs D4b f∞ (MHz) | 148.85 | 51.28 | 20.33 | 10.95 | **9.83** | 12.13 | 15.81 | 20.04 | 32.57 |
+
+| clause | five rungs | **nine rungs** |
+|---|---|---|
+| f(s) monotone | true | **false** (D5: one sign change) |
+| error decreasing at every rung | true | **false** (rises at 3/s = 7, 8, 9, 12) |
+| p_trace (log-log vs f∞) | 2.615 | **0.9495** |
+
+`p_trace < 1.0` is the frozen rule's **own** INCONCLUSIVE clause. Neither branch is
+satisfied:
+
+> **D2 (re-taken, nine-rung ladder, same frozen rule): INCONCLUSIVE.** Candidate (2) is
+> neither exonerated nor attributed by this lane.
+
+*What survives, correctly labelled.* The wedge reasoning is an **ARGUMENT from theory,
+not a measured exoneration**: the 1.5 mm-thick PEC trace presents 3π/2 conductor wedges,
+Meixner exponent ν = 2/3, leading frequency-error term O(h^{4/3}) — a **reduced order**,
+which by itself cannot produce a non-vanishing floor. That argument is derived in the
+pre-declaration and is unaffected by any measurement here; it is also **not** a
+measurement, and it does not rule out the *other* mechanism the ledger names (ε_r-coupled
+dielectric-interface staircasing, which the ledger reports **does** produce a floor).
+The smooth-field control stays **as measured**: p = 2.0001 analytic / 1.9707 measured on
+the exact-reference vacuum twin. D6 independently declined to confirm the Meixner
+exponent (RMS 4.36 MHz against a 1 MHz window; a = 0.5 fits better at 2.64 MHz).
+
+### §10.4 The instrument check the D5 rungs shipped without
+
+D4c ran on D0's eleven records only. The three rungs D5 **added** — 3/s = 7, 8, 9 — carry
+**three of the four descending steps** the turn-over verdict rests on, and had no
+instrument check at all. `d5_instrument_check.py` (committed before it ran) applies the
+**unchanged** frozen D4c pair to them; the three rungs were re-solved to obtain records,
+which also re-checks determinism.
+
+| 3/s | s | E1 (GHz) | E2 | E3 | E4 | spread | E1 − consensus | E1 − committed D5 | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 7 | 0.428571 | 5.541260 | 5.541330 | 5.541291 | 5.541421 | 129.8 kHz | −0.088 MHz | **0.0 Hz** | EXONERATE-4a |
+| 8 | 0.375000 | 5.537579 | 5.537629 | 5.537577 | 5.537631 | 53.9 kHz | −0.033 MHz | **0.0 Hz** | EXONERATE-4a |
+| 9 | 0.333333 | 5.533355 | 5.533405 | 5.533344 | 5.533293 | 112.1 kHz | +0.008 MHz | **0.0 Hz** | EXONERATE-4a |
+
+**EXONERATE-4a at all three**, with `max |E1 − consensus| = 87.8 kHz` against the frozen
+1 MHz exoneration window (11× margin) and all three estimator spreads inside the frozen
+1 MHz consensus gate (7.7× margin at the worst rung). The re-solve reproduced
+`d5_turnover.json`'s `f_target` **bit-identically (0.0 Hz)** at all three rungs, so the
+turn-over verdict rests on rungs whose extraction has now been checked by three
+estimators that share no code with the incumbent.
+
+*Scope.* This bounds the **extraction's** disagreement on the identical record at those
+rungs. It says nothing about the discretization error there, and it is not a claim about
+the continuum limit. Artifacts: `results/d5_instrument_check.json`, `results/d5_records.npz`.
+
+### §10.5 Instrument honesty: which number belongs to which object
+
+The headline "ε_instr = **8.4 kHz**" is the **empty-vacuum-box twin's** extraction error
+against an exact discrete eigenfrequency. It is a statement about the extraction
+machinery on a clean single-line record, **not** about the W4R fixture. On the fixture's
+**own** records the three independent estimators spread by:
+
+| | reference rung (s = 0.25) | uniform arm | all D0 records with a consensus | D5 rungs (3/s = 7,8,9) |
+|---|---|---|---|---|
+| E2/E3/E4 spread | **215.5 kHz** | 81.5–215.5 kHz | 72.5–229.7 kHz | 53.9–129.8 kHz |
+
+(The one record with no consensus, MB s = 0.6, spreads 8.5 MHz because E4's NLS locks
+onto a different line; it is excluded from the ranges above and was already reported as
+CONSENSUS-UNAVAILABLE.)
+
+**Rule adopted for this lane's prose:** quote 8.4 kHz only for the twin; **wherever the
+fixture's own extraction uncertainty is meant, quote 215.5 kHz at the reference rung and
+72–230 kHz across records** — a factor 9–26 larger. This does not change any verdict:
+the D4c window judges `|E1 − consensus|` (0.069 MHz at the reference rung), not the
+spread, and the consensus gate (spread ≤ 1 MHz) passes with 4.6× margin. It does change
+what may be claimed about the fixture's own precision, which is ~2e-4 relative, not
+~1.5e-6.
+
+### §10.6 Candidate (1): the prose now matches the machine verdict
+
+§5's heading and §6's table read "(1) geometry quantization — **EXONERATED**", flatly,
+while `verdict.json` records `D1b=EXONERATED D1c=ATTRIBUTED-CANDIDATE` and the **base**
+window's letter verdict is **INCONCLUSIVE**. The body of §5 disclosed all three; the
+headline did not. Corrected statement:
+
+> **(1) geometry quantization — EXONERATED by the D1b addendum window** (worst
+> realized-vs-declared 6.8e-6 cells over six rungs, window 1e-3 cells; realized PEC
+> extents are exact integer cell counts 12/18/24/30/36/72 × 4/6/8/10/12/24).
+> The **base** window (Δ < 1e-12 m) sits below the float32 mesh-storage floor
+> (ε₃₂·27 mm = 1.6e-9 m); its letter verdict is **INCONCLUSIVE** and is reported
+> unchanged rather than widened — the disclosed specification error. **D1c fired by the
+> letter** and is recorded as **ATTRIBUTED-CANDIDATE**, with the post-hoc diagnosis (the
+> only differing entries are at s = 1.5, at an offset that reaches the neighbouring
+> interface) left standing as a diagnosis, not as a re-judgement.
+
+### §10.7 The D4a window's stated derivation does not produce its declared number
+
+`predeclare.py:44–53` computes **CRB = 0.0878 Hz**; the rationale string frozen into the
+window file says "CRB is ~1.5 Hz", and claims the 1 MHz band comes from "inflating by
+1e3". Both are wrong as arithmetic:
+
+| quantity | value |
+|---|---|
+| CRB (√6/(π·T)·ε₃₂/√N, T = 20 ns, N = 700) | **0.0878 Hz** |
+| 1e3 × CRB | 87.8 Hz |
+| 1e3 × √(n_steps) × CRB, n_steps ~ 1e5 | **27.8 kHz** |
+| declared SOUND band | **1 MHz = 1.1e7 × CRB** |
+
+So the 1 MHz / 10 MHz pair is **not** a CRB-derived number: it is a declared instrument
+band far above any noise-floor bound, and the CRB establishes only that float32 record
+noise is not what limits the extraction. The frozen window file is **not edited** (it is
+frozen, and `predeclare.py` still reproduces it byte for byte; the correction is a
+comment in that file plus this section).
+
+The declared band is **generous**, which is the direction that could flatter a verdict —
+so the honest check is whether D4a survives the *tighter* derivable band. It does:
+ε_instr = 6.0 / 7.9 / 8.3 / 8.4 / 12.7 / 16.5 kHz at s = 0.6 / 0.5 / 0.75 / 0.25 / 1.5 /
+1.0, **every rung below 27.8 kHz**, by 1.7–4.6×. D4a's "SOUND at every rung" stands under
+either band.
+
+### §10.8 The continuum-limit envelope, made internally consistent
+
+§7's second envelope block listed six admissible extrapolations and then said the finest
+rung is "between **11 MHz above** and **17 MHz below**" the limit. Those two statements
+are inconsistent: the range excludes four of the six models it just listed, including the
+**best-fitting** one. Corrected, over the admissible nine-rung set (the free-exponent fit
+stays excluded, and named as excluded, because its exponents collapse onto each other —
+a = 0.872, b = 0.895, amplitudes +4.9/−5.7 cancelling; the five-rung fit stays excluded
+because it was fitted on the ascending branch alone):
+
+| admissible model (9 rungs) | f∞ (GHz) | RMS (MHz) | finest rung − f∞ (MHz) |
+|---|---|---|---|
+| f∞ − C h^p (p = 3.83 fitted) | 5.537648 | 7.69 | **−16.83** |
+| f∞ + A h^{4/3} − B h² | 5.509492 | 4.36 | +11.33 |
+| f∞ + A h¹ − B h² | 5.495723 | 3.71 | +25.10 |
+| f∞ + A h^{2/3} − B h² | 5.468147 | 3.01 | +52.67 |
+| **f∞ + A h^{1/2} − B h² (best RMS)** | 5.440581 | **2.64** | **+80.24** |
+
+> **ENVELOPE (continuum limit, model-dependent) — corrected.** The limit is **not
+> determined** by this ladder. Over the admissible nine-rung model set f∞ spans
+> **97.07 MHz = 1.76e-2** (112.8 MHz = 2.04e-2 if the five-rung ascending-branch fit is
+> included for comparison), and the finest rung this lane could afford lies between
+> **16.8 MHz below** and **80.2 MHz above** the extrapolated limit — its own absolute
+> accuracy is **2.1e-3 at best and 1.5e-2 at worst**. The best-fitting admissible model
+> (h^{1/2} + h², RMS 2.64 MHz) is the one that puts the finest rung 80 MHz **above** the
+> limit. The earlier "11 MHz above / 17 MHz below" range is **withdrawn**.
+
+The **measured, model-free** envelope in §7 is unchanged and remains the number to quote:
+5.502115 … 5.543558 GHz = **41.44 MHz = 7.49e-3** over dz_fine = 0.25 → 0.0625 mm.
+
+### §10.9 The apportionment percentages do not partition — and why
+
+`verdict.json` reported instr 0.2118 % and phys 100.2118 %, which sum to 100.42 %. That
+is not a rounding error: the two terms are **magnitudes**, and the instrument step points
+*against* the total. f∞ = 5553.3927, E1(0.25) = 5520.8208, consensus(0.25) = 5520.7518
+MHz, so the consensus sits 0.069 MHz **further** from f∞ than E1 does. The signed
+decomposition is exact:
+
+    Δ_total = (f∞ − consensus) + (consensus − E1)
+            = +32.6409 MHz    + (−0.0690 MHz)   = 32.5719 MHz
+            = +100.2118 %     + (−0.2118 %)     = 100.0000 %
+
+Both forms are now emitted (`apportionment.signed_decomposition`). The magnitude of the
+(4a) share is 0.21 % either way, and the remedy-licence branch ("(4a) dominates iff
+Δ_instr ≥ 0.5·Δ_total") is unaffected: `remedy_licensed_4a = false`.
+
+### §10.10 What this lane established, stated once, at the width the evidence supports
+
+1. **The symptom reproduces bit-identically** — 0.0000 Hz over all eleven rungs against
+   PR #785's committed JSON. It is a property of the code, not of a run. (D0)
+2. **f(h) turns over inside the ladder** — exactly one sign change, maximum at
+   dz_fine = 0.125 mm, four descending rungs, s = 0.25 on-curve. PR #785's
+   `|f(s) − f(0.25)|` was therefore never an error sequence, and **the 22.7 MHz "floor"
+   figure is not an error**. (D5, and independently reproduced by the reviewer.)
+3. **Three exonerations at 3–5 orders of margin.** Geometry quantization: 6.8e-6 cells
+   against a 1e-3-cell window (D1b). Port/probe loading: 3.5 kHz and 0.6 kHz against a
+   first-principles predicted **exact zero** and a 1 MHz window (D3). The extraction on
+   the reference record: |E1 − consensus| = 0.069 MHz against a 1 MHz window, three
+   estimators sharing no code with the incumbent (D4c) — now also checked on the three
+   decisive D5 rungs (§10.4).
+4. **A smooth-field control at p = 2.0001.** On an exact-reference vacuum twin with the
+   same dt, band, record length and extraction, the error falls at exactly second order
+   to 45 kHz at the reference scale. The Yee core, the additive port and the extraction
+   are **not** what limits this fixture. (D4a / D2-B)
+5. **A ladder-reading precondition that catches the original misreading.**
+   `ladder_guard.py` fires on PR #785's own five-rung ladder via P5 — the anchor sits a
+   factor 2.0 below the finest fit point with no rung between, while the ladder's largest
+   internal step is 1.5, so the whole turn hid in an interval never sampled. No rfx code
+   is touched by this lane.
+
+And, equally, what it did **not** establish:
+
+6. **Whether this fixture has a convergence floor is undetermined.** No external
+   reference exists in this lane; every f∞ here is a fitted extrapolation and they span
+   97 MHz. The ledger's measured ε_r-coupled dielectric-interface staircasing floor for
+   this fixture class remains fully compatible with everything measured here, and D2 —
+   re-taken on the nine-rung ladder — is **INCONCLUSIVE**, not an exoneration. Deciding
+   it needs an external reference (§8.2) or the D7 edge-length discriminator (§8.1).
+
+*Falsifier for §10.10's own claims, pre-declared here:* if a fixture in this class with
+an **independent** reference (analytic, external solver, or measurement) shows
+|f(h) − f_physical| bounded away from zero as h → 0 over a range that includes
+dz_fine ≤ 0.0625 mm, then item 6 resolves to "there IS a floor" and the ledger entry is
+confirmed on this fixture; if instead it shows |f(h) − f_physical| → 0 at any positive
+order, item 6 resolves the other way. **Neither outcome is decided by anything in this
+lane**, and no sentence in this note may be read as deciding it.
+
+### §10.11 Harness addendum (extends §9; nothing in §9 is removed)
+
+```
+d2_retake            re-applies the FROZEN D2 rule to the nine-rung ladder   (no FDTD)
+d5_instrument_check  the frozen D4c pair on the D5 rungs 3/s = 7, 8, 9       (~7 min)
+```
+
+Run order after `d5`: `d2_retake` → `d5_instrument_check` → `d6_two_term_model` →
+`verdict`. Both new modules read their rule out of
+`results/predeclared_windows_786.json`; neither defines a window of its own, and neither
+can widen one. `rfx/` remains untouched by this lane
+(`git diff main --name-only | grep '^rfx/'` is empty). The only file outside
+`validation/research/convergence_floor/` is `tests/_example_fidelity_lib.py`, where the
+#737 gate requires a classification entry per script (both new modules are
+`no_simulation`).

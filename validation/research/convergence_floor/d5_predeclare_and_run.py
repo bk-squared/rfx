@@ -48,6 +48,16 @@ of consecutive differences.
 
 Optional extension under the SAME window: s = 0.3 (3/s = 10, 6/s = 20).
 
+WHAT A TURN-OVER VERDICT DOES AND DOES NOT ESTABLISH (post-review,
+2026-08-30). Confirming the turn-over establishes that the s=0.25 anchor
+is on-curve and past the maximum, hence that |f(s) - f(0.25)| is not an
+error sequence and the "~4e-3 floor" figure is not an error. It does NOT
+establish that f(h) converges to the physical resonance: this lane has no
+external reference, and a consistency floor (f_floor != f_physical) is
+fully compatible with a turn-over. The ledger's measured
+DIELECTRIC-interface staircasing floor for this fixture class stands as
+evidence that a real floor may exist here.
+
 Run:  PYTHONPATH=. python -m validation.research.convergence_floor.d5_predeclare_and_run [--with-0.3]
 """
 

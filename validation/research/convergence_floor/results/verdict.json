@@ -3,7 +3,9 @@
  "verdicts": {
   "D0": "REPRODUCED: the |f - f_ref| sequence is NON-monotone while f(s) itself is monotone",
   "D1": "D1b=EXONERATED D1c=ATTRIBUTED-CANDIDATE",
-  "D2": "EXONERATED as the FLOOR mechanism: with-trace f(s) is monotone and its error against the independent reference decreases at every rung (p_trace=2.61). A wedge exponent can only reduce the ORDER; it cannot produce a non-vanishing floor.",
+  "D2": "INCONCLUSIVE (p_trace=0.95 < 1.0)",
+  "D2_scope": "RE-TAKEN on the nine-rung ladder under the UNCHANGED frozen rule (results/d2_edge_retake.json). Neither the exonerate branch nor the attribute branch is satisfied.",
+  "D2_superseded_five_rung": "EXONERATED as the FLOOR mechanism: with-trace f(s) is monotone and its error against the independent reference decreases at every rung (p_trace=2.61). A wedge exponent can only reduce the ORDER; it cannot produce a non-vanishing floor.",
   "D3": "EXONERATED at every scale",
   "D4a": "SOUND at every rung",
   "D4b": {
@@ -24,7 +26,12 @@
    "MB_0.5": "EXONERATE-4a"
   },
   "D5": "TURN-OVER CONFIRMED: one sign change, descending branch holds 4 rungs (peak at s=0.5000). The s=0.25 rung is ON-CURVE and the 5-rung ladder is PRE-ASYMPTOTIC.",
-  "D6": "INCONCLUSIVE (RMS_M1 = 4.361 MHz, RMS_M0 = 7.687 MHz)"
+  "D6": "INCONCLUSIVE (RMS_M1 = 4.361 MHz, RMS_M0 = 7.687 MHz)",
+  "D4c_on_D5_rungs": {
+   "3/s=7": "EXONERATE-4a",
+   "3/s=8": "EXONERATE-4a",
+   "3/s=9": "EXONERATE-4a"
+  }
  },
  "apportionment": {
   "f_inf_hz": 5553392711.753053,
@@ -36,7 +43,19 @@
   "Delta_phys_hz": 32640905.765565872,
   "instr_pct": 0.21184309635555923,
   "phys_pct": 100.21184309635557,
-  "remedy_licensed_4a": false
+  "remedy_licensed_4a": false,
+  "signed_decomposition": {
+   "identity": "Delta_total = u*(f_inf - E1) = u*(f_inf - consensus) + u*(consensus - E1), u = sign(f_inf - E1)",
+   "u": 1.0,
+   "Delta_phys_signed_hz": 32640905.765565872,
+   "Delta_instr_signed_hz": -69001.33089637756,
+   "sum_hz": 32571904.434669495,
+   "closes_to_hz": 0.0,
+   "phys_pct": 100.21184309635557,
+   "signed_instr_pct": -0.21184309635555923,
+   "sum_pct": 100.0,
+   "why_the_magnitudes_do_not_partition": "the consensus lies 0.069 MHz FURTHER from f_inf than E1 does, so the instrument step points against the total and the two MAGNITUDES sum to 100.42 %, not 100 %. Only the signed form partitions: +100.21 % (physics) - 0.21 % (instrument) = 100 %. Either way (4a) carries 0.21 % of Delta_total in magnitude and the remedy-licence branch (4a dominates iff >= 50 %) is unaffected."
+  }
  },
  "accuracy_envelope": {
   "resolved_scales": [
@@ -78,7 +97,63 @@
   "free_f_inf_hz": 5376804948.843971,
   "free_finest_minus_f_inf_hz": 144015858.47441196,
   "free_finest_rel_error": 0.026784653682736956,
-  "free_rms_hz": 231310.93695698172
+  "free_rms_hz": 231310.93695698172,
+  "continuum_limit": {
+   "determined": false,
+   "admissible_models_nine_rung": {
+    "M0 single power law, 9 rungs": {
+     "f_inf_hz": 5537647561.823974,
+     "rms_hz": 7686567.541564733
+    },
+    "h^0.5000 + h^2 (bulk order 2 = D4a measured)": {
+     "f_inf_hz": 5440581378.701761,
+     "rms_hz": 2642336.497616439
+    },
+    "h^0.6667 + h^2 (bulk order 2 = D4a measured)": {
+     "f_inf_hz": 5468147486.80082,
+     "rms_hz": 3005567.7040271848
+    },
+    "h^1.0000 + h^2 (bulk order 2 = D4a measured)": {
+     "f_inf_hz": 5495722843.31854,
+     "rms_hz": 3706401.998199601
+    },
+    "h^1.3333 + h^2 (bulk order 2 = D4a measured)": {
+     "f_inf_hz": 5509492471.352733,
+     "rms_hz": 4361197.06421979
+    }
+   },
+   "excluded": {
+    "free-exponent f_inf + A h^a - B h^b": {
+     "f_inf_hz": 5376804948.843971,
+     "rms_hz": 231310.93695698172,
+     "why_excluded": "degenerate: a = 0.872, b = 0.895 collapse onto each other with amplitudes +4.9/-5.7 that cancel -- a numerical derivative, not two physical terms"
+    },
+    "five-rung single power law (D4b)": {
+     "f_inf_hz": 5553392711.753053,
+     "why_excluded": "fitted on the ascending branch ONLY; reported for comparison, not admissible as a limit for the full ladder"
+    }
+   },
+   "f_inf_spread_hz": 97066183.12221241,
+   "f_inf_spread_relative": 0.01758183909782795,
+   "finest_rung_minus_f_inf_hz": {
+    "M0 single power law, 9 rungs": -16826754.50559044,
+    "h^0.5000 + h^2 (bulk order 2 = D4a measured)": 80239428.61662197,
+    "h^0.6667 + h^2 (bulk order 2 = D4a measured)": 52673320.517562866,
+    "h^1.0000 + h^2 (bulk order 2 = D4a measured)": 25097963.999843597,
+    "h^1.3333 + h^2 (bulk order 2 = D4a measured)": 11328335.965650558
+   },
+   "finest_rung_offset_range_hz": [
+    -16826754.50559044,
+    80239428.61662197
+   ],
+   "finest_rung_abs_rel_error_range": [
+    0.0020519296606464296,
+    0.014533967215573602
+   ],
+   "best_fitting_admissible_model": "h^0.5000 + h^2 (bulk order 2 = D4a measured)",
+   "best_fitting_finest_minus_f_inf_hz": 80239428.61662197,
+   "statement": "Over the ADMISSIBLE nine-rung model set the finest rung lies between 16.8 MHz below and 80.2 MHz above the extrapolated limit, i.e. its own absolute accuracy is 2.1e-03 at best and 1.5e-02 at worst. The best-fitting admissible model (h^0.5000 + h^2 (bulk order 2 = D4a measured), RMS 2.64 MHz) is the one that puts it 80.2 MHz ABOVE the limit -- the earlier '11 MHz above / 17 MHz below' range excluded it and is withdrawn."
+  }
  },
  "ladder_against_independent_reference": {
   "scales": [
@@ -109,5 +184,119 @@
    "p_loglog": 2.511076822698191,
    "p_nls": 2.5886939733863326
   }
- }
+ },
+ "d5_rung_instrument_check": {
+  "window_source": "results/predeclared_windows_786.json :: D4_reference_quality.D4c_independent_estimators (frozen, unchanged)",
+  "estimator_spread_range_khz": [
+   53.87017711353302,
+   129.8387690925598
+  ],
+  "max_abs_E1_minus_consensus_hz": 87818.34908294678,
+  "reproduces_d5_bit_identically": true,
+  "scope": "bounds the EXTRACTION's disagreement on the identical record at these three rungs; says nothing about the discretization error there, and is not a claim about the continuum limit"
+ },
+ "instrument_uncertainty": {
+  "twin_eps_instr_hz": {
+   "what": "|f_extract - f_disc| on the EMPTY VACUUM BOX twin, which has an exact discrete eigenfrequency; this is the extraction machinery's error on a smooth single-line record, NOT the fixture's",
+   "per_rung_hz": {
+    "1.5": 12665.943580627441,
+    "1.0": 16470.78789615631,
+    "0.75": 8335.304203033447,
+    "0.6": 6042.184229850769,
+    "0.5": 7941.889981269836,
+    "0.25": 8436.720934867859
+   },
+   "at_reference_rung_hz": 8436.720934867859
+  },
+  "fixture_estimator_spread_hz": {
+   "what": "max pairwise spread of the three INDEPENDENT estimators E2/E3/E4 on the fixture's OWN stored records -- the number to quote when the fixture's extraction uncertainty is meant",
+   "uniform_arm_range_hz": [
+    81456.48480701447,
+    215466.3555803299
+   ],
+   "all_arms_range_hz": [
+    72459.91112041473,
+    229749.6561422348
+   ],
+   "at_reference_rung_hz": 215466.3555803299,
+   "d5_rungs_range_hz": [
+    53870.17711353302,
+    129838.7690925598
+   ]
+  },
+  "rule": "quote 8.4 kHz ONLY for the twin; quote the fixture's own 215.5 kHz (reference rung), 81.5-215.5 kHz (uniform arm) or 72-230 kHz (all records with a consensus) wherever the fixture's uncertainty is meant -- 9-26x larger than the twin's number"
+ },
+ "ledger_cross_check": {
+  "status": "REFUTED -- reported as a FINDING, not as support",
+  "ledger_entry": "rfx-known-issues.md, 'patch-resonance discretization error envelope (measured, tutorial patch)': f_res bias ~ -dx/L_eff",
+  "applied_to_this_fixture": {
+   "L_eff_mm": 13.5,
+   "dx_range_mm": [
+    0.1875,
+    0.75
+   ],
+   "predicted_bias_range_pct": [
+    -5.555555555555556,
+    -1.388888888888889
+   ],
+   "predicted_CHANGE_over_the_dx_range_pct": 4.166666666666667,
+   "predicted_CHANGE_hz": 230034200.30493265
+  },
+  "measured_change_hz": 41443767.24494076,
+  "over_prediction_factor": 5.550513758688625,
+  "finding": "The ledger law predicts the bias CHANGES by 4.17 % = 230 MHz across this lane's dx range (0.75 -> 0.1875 mm on a 13.5 mm resonant length). This lane MEASURED 41.44 MHz of refinement variation over that same range. The law over-predicts this fixture's measured variation by 5.6x, so the two do NOT corroborate each other; the earlier 'same order, both agree on the 1e-2 band' cross-check is WITHDRAWN and must not be used to widen the envelope. Whether the discrepancy is the fixture (an enclosed 3-layer stripline-class line, not an open patch), the law's L_eff, or a limit of the law itself is a separate question and deserves its own issue."
+ },
+ "claims_withdrawn": {
+  "there_is_no_floor": {
+   "where_it_appeared": [
+    "commit d5edc34 subject line ('the floor is not a floor')",
+    "design note wording carried into the verdict summary"
+   ],
+   "why_withdrawn": "This lane never measured a floor's ABSENCE. It has no external reference -- design note 8.2 concedes 'no independent solver or measurement pins f_inf' -- and a consistency floor is fully compatible with every number here: f(h) can turn over and still converge to some f_floor != f_physical. The authoritative ledger records a MEASURED non-vanishing floor for this fixture class (DIELECTRIC-interface staircasing, ~49 %, eps_r-coupled, 2nd -> 1st order for thin high-eps_r layers), which is standing evidence that a real floor may exist here.",
+   "replaced_by": "PR #785's |f(s) - f(0.25)| was not an ERROR sequence, because the anchor sits four rungs past a turn-over in f(h) (D5: exactly one sign change, maximum at dz_fine = 0.125 mm, descending branch of four rungs). The 22.7 MHz figure is therefore not an error, and the '~4e-3 floor' as stated in the issue is not established. WHETHER f(h) CONVERGES TO THE PHYSICAL ANSWER IS NOT DETERMINED BY THIS LANE."
+  },
+  "D2_measured_exoneration": {
+   "why_withdrawn": "the frozen rule's exonerate branch was evaluated on five pre-D5 scales; on the nine-rung ladder both its clauses fail and p_trace = 0.95 < 1.0 triggers the rule's own INCONCLUSIVE clause",
+   "replaced_by": "D2 INCONCLUSIVE on the nine-rung ladder. The Meixner wedge reasoning survives as an ARGUMENT from theory (an order reduction cannot by itself make a non-vanishing floor), not as a measured exoneration."
+  },
+  "ledger_cross_check_as_support": {
+   "why_withdrawn": "refuted by this lane's own data (5.6x over-prediction); see ledger_cross_check",
+   "replaced_by": "the discrepancy, reported as a finding"
+  },
+  "finest_rung_11_above_to_17_below": {
+   "why_withdrawn": "the stated range excluded the best-fitting admissible model (h^1/2 + h^2, RMS 2.64 MHz), which puts the finest rung 80 MHz ABOVE the limit",
+   "replaced_by": "accuracy_envelope.continuum_limit.statement"
+  }
+ },
+ "candidate_verdicts": {
+  "(1) geometry quantization": {
+   "letter": "EXONERATED by the D1b addendum window",
+   "machine": "D1b=EXONERATED D1c=ATTRIBUTED-CANDIDATE",
+   "caveat": "the BASE window (delta < 1e-12 m) is below the float32 mesh-storage floor and its letter verdict is INCONCLUSIVE, reported unchanged, not widened; D1c fired by the letter and is recorded as ATTRIBUTED-CANDIDATE with a post-hoc diagnosis (s = 1.5 halo only). The exoneration rests on the addendum window: 6.8e-6 cells worst over six rungs, and realized PEC extents that are exact integer cell counts."
+  },
+  "(2) edge singularity": {
+   "letter": "INCONCLUSIVE on the nine-rung ladder (re-taken)",
+   "argument_not_measurement": "a Meixner wedge reduces the convergence ORDER and cannot by itself produce a non-vanishing floor -- theory, from the pre-declared 3*pi/2 wedge, not a measurement",
+   "smooth_field_control_as_measured": "p = 2.0001 analytic / 1.9707 measured on the exact-reference vacuum twin",
+   "D6": "the Meixner exponent 4/3 is NOT confirmed (RMS 4.36 MHz against a 1 MHz window; a = 0.5 fits better at 2.64 MHz)"
+  },
+  "(3) port / probe loading": {
+   "letter": "EXONERATED",
+   "number": "span 3.540 kHz (s = 0.75) and 0.623 kHz (s = 0.5) over drive x0.01...x100, moved ports, moved probe, against a first-principles predicted exact zero"
+  },
+  "(4) reference quality": {
+   "letter": "ATTRIBUTED -- but NOT as instrument noise",
+   "what_is_established": "the s = 0.25 record really does contain 5.520821 GHz (three independent estimators agree with the incumbent to 0.069 MHz on that record) and the anchor is invalid because it lies past the MAXIMUM of a non-monotone f(h). That makes PR #785's error column arithmetic, not error.",
+   "what_is_NOT_established": "that the ladder converges to the physical resonance. No external reference exists in this lane; every f_inf here is a fitted extrapolation and they span 97 MHz."
+  }
+ },
+ "headline": [
+  "D0: the symptom REPRODUCES bit-identically (0.0000 Hz over all eleven rungs) -- it is a property of the code, not of a run.",
+  "D5: f(h) TURNS OVER inside the ladder -- exactly one sign change, maximum at dz_fine = 0.125 mm, four descending rungs -- so PR #785's |f(s) - f(0.25)| was never an error sequence and the 22.7 MHz 'floor' figure is not an error.",
+  "Three candidates are cleanly exonerated at 3-5 orders of margin: geometry quantization (6.8e-6 cells vs a 1e-3 cell window), port loading (3.5 kHz vs a 1 MHz window against a predicted exact zero), and the extraction instrument on the reference record (0.069 MHz vs a 1 MHz window).",
+  "The smooth-field control converges at p = 2.0001 on an exact-reference vacuum twin with the same dt, band and record length -- so the Yee core, the port and the extraction are not what limits this fixture.",
+  "D2 is INCONCLUSIVE on the nine-rung ladder under its own frozen rule; the wedge argument stands as theory, not as measurement.",
+  "WHETHER f(h) CONVERGES TO THE PHYSICAL ANSWER IS NOT DETERMINED BY THIS LANE: there is no external reference, the admissible extrapolations span 97 MHz = 1.8e-2, and the ledger's measured DIELECTRIC-interface staircasing floor for this fixture class remains fully compatible with everything measured here.",
+  "ladder_guard.py states the precondition that catches the original misreading, and fires on PR #785's own ladder."
+ ]
 }

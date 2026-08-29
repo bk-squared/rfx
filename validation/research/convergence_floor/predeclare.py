@@ -51,6 +51,26 @@ CRB_HZ = float(np.sqrt(6.0) / (np.pi * CRB_T) * EPS32 / np.sqrt(CRB_N))
 # of declared-inconclusive between them:
 INSTR_SOUND_HZ = 1.0e6      # ~ 1e3 * (sqrt(n_steps) * CRB)
 INSTR_LIMITED_HZ = 10.0e6   # 1 decade above
+#
+# CORRECTION (2026-08-30, post-review; the emitted JSON is NOT edited --
+# the window file is frozen and this file must keep reproducing it byte
+# for byte). The `rationale` string emitted below says "CRB is ~1.5 Hz".
+# That is WRONG: the expression above computes
+#     CRB_HZ = sqrt(6)/(pi*T) * eps32/sqrt(N) = 0.0878 Hz.
+# The stated chain does not produce the declared number either:
+#     1e3 * CRB                       =    87.8 Hz
+#     1e3 * sqrt(1e5) * CRB           =    27.8 kHz
+#     declared SOUND band             =  1000   kHz  = 1.1e7 * CRB.
+# So the 1 MHz / 10 MHz pair is NOT a CRB-derived number; it is a
+# declared instrument band far above any noise-floor bound, and the CRB
+# establishes only that photon-shot-style noise is not the limit. The
+# declared band is therefore GENEROUS (it makes "SOUND" easier to reach),
+# which is the direction that could flatter a verdict -- so the honest
+# check is whether the verdicts survive the TIGHTER derivable band:
+#     D4a eps_instr = 6.0 / 7.9 / 8.3 / 8.4 / 12.7 / 16.5 kHz, all below
+#     the 27.8 kHz that 1e3*sqrt(n_steps)*CRB actually gives.
+# They do, by 1.7-4.6x. No window is moved; see design note 10.
+
 
 # --- D2 wedge exponent (Meixner) --------------------------------------
 # The W4R trace is a 1.5 mm THICK PEC block: its edges are 90 deg
@@ -317,6 +337,12 @@ def main():
     d4 = out["D4_reference_quality"]["instrument_resolution_derivation"]
     print("D4 CRB = %.3g Hz -> sound <= %.3g Hz, limited >= %.3g Hz"
           % (d4["cramer_rao_hz"], d4["sound_hz"], d4["limited_hz"]))
+    print("    NOTE (post-review correction, design note 10): the frozen "
+          "rationale string says 'CRB is ~1.5 Hz'; the computed value is "
+          "%.4f Hz, and the declared 1 MHz band is 1.1e7 x CRB, not the "
+          "1e3 the rationale claims. The window is NOT moved; the D4a "
+          "verdicts survive the tighter 1e3*sqrt(n_steps)*CRB = 27.8 kHz "
+          "band as well." % d4["cramer_rao_hz"])
     print("D2 wedge nu = %.4f -> predicted order %.4f"
           % (WEDGE_NU, WEDGE_ORDER))
 

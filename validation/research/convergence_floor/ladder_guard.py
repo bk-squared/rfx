@@ -20,7 +20,19 @@ D5 measured the P-C fixture's f(h) rising to a maximum at
 h = dz_fine = 0.125 mm and then descending over four further rungs. The
 PR #785 ladder fitted the ascending branch and anchored on a rung four
 rungs down the DESCENDING branch, so |f - f_ref| was never an error
-sequence at all -- which is the whole of the "~4e-3 floor".
+sequence at all -- which is why the "~4e-3 floor" figure is not an error.
+
+SCOPE -- what this does NOT say (post-review, 2026-08-30). It does NOT
+say there is no floor. This lane has no external reference: nothing in it
+pins f_inf independently of a fitted model, and a consistency floor
+remains fully compatible with everything measured -- f(h) can turn over
+and still converge to some f_floor != f_physical. The authoritative
+ledger records a MEASURED non-vanishing floor for this fixture class
+(rfx-known-issues.md: DIELECTRIC-interface staircasing, ~49 %,
+eps_r-coupled, 2nd -> 1st order for thin high-eps_r layers). What this
+precondition catches is a LADDER-READING error, not the presence or
+absence of a floor: it says an order fitted from those rungs against that
+anchor is not evidence of anything, in either direction.
 
 Run the self-check:
     PYTHONPATH=. python -m validation.research.convergence_floor.ladder_guard
