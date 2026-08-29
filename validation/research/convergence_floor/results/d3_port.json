@@ -1,0 +1,109 @@
+{
+ "issue": 786,
+ "discriminator": "D3",
+ "scales": [
+  0.75,
+  0.5
+ ],
+ "rows": [
+  {
+   "scale": 0.75,
+   "variant": "a_baseline",
+   "f_target": 5533066155.959281,
+   "dominance": Infinity,
+   "wallclock_s": 15.462172746658325
+  },
+  {
+   "scale": 0.75,
+   "variant": "b_amp_0.01",
+   "f_target": 5533066157.072538,
+   "dominance": Infinity,
+   "wallclock_s": 9.114802122116089
+  },
+  {
+   "scale": 0.75,
+   "variant": "c_amp_100",
+   "f_target": 5533066156.902767,
+   "dominance": Infinity,
+   "wallclock_s": 10.264311790466309
+  },
+  {
+   "scale": 0.75,
+   "variant": "d_ports_inward",
+   "f_target": 5533066510.112086,
+   "dominance": Infinity,
+   "wallclock_s": 11.353951930999756
+  },
+  {
+   "scale": 0.75,
+   "variant": "e_probe_moved",
+   "f_target": 5533062970.133251,
+   "dominance": Infinity,
+   "wallclock_s": 11.579920053482056
+  },
+  {
+   "scale": 0.5,
+   "variant": "a_baseline",
+   "f_target": 5543558293.505646,
+   "dominance": Infinity,
+   "wallclock_s": 52.73926091194153
+  },
+  {
+   "scale": 0.5,
+   "variant": "b_amp_0.01",
+   "f_target": 5543558293.490221,
+   "dominance": Infinity,
+   "wallclock_s": 40.279953956604004
+  },
+  {
+   "scale": 0.5,
+   "variant": "c_amp_100",
+   "f_target": 5543558293.886242,
+   "dominance": Infinity,
+   "wallclock_s": 42.82839226722717
+  },
+  {
+   "scale": 0.5,
+   "variant": "d_ports_inward",
+   "f_target": 5543558471.616074,
+   "dominance": Infinity,
+   "wallclock_s": 36.365883111953735
+  },
+  {
+   "scale": 0.5,
+   "variant": "e_probe_moved",
+   "f_target": 5543557848.21058,
+   "dominance": Infinity,
+   "wallclock_s": 36.69649887084961
+  }
+ ],
+ "per_scale": {
+  "0.75": {
+   "f_by_variant_hz": {
+    "a_baseline": 5533066155.959281,
+    "b_amp_0.01": 5533066157.072538,
+    "c_amp_100": 5533066156.902767,
+    "d_ports_inward": 5533066510.112086,
+    "e_probe_moved": 5533062970.133251
+   },
+   "max_pairwise_span_hz": 3539.978835105896,
+   "coupling_arm_span_hz": 354.15280532836914,
+   "coupling_monotone": false,
+   "verdict": "EXONERATED (span 3.540 kHz <= 1 MHz)"
+  },
+  "0.5": {
+   "f_by_variant_hz": {
+    "a_baseline": 5543558293.505646,
+    "b_amp_0.01": 5543558293.490221,
+    "c_amp_100": 5543558293.886242,
+    "d_ports_inward": 5543558471.616074,
+    "e_probe_moved": 5543557848.21058
+   },
+   "max_pairwise_span_hz": 623.4054937362671,
+   "coupling_arm_span_hz": 178.12585258483887,
+   "coupling_monotone": true,
+   "verdict": "EXONERATED (span 0.623 kHz <= 1 MHz)"
+  }
+ },
+ "verdict": "EXONERATED at every scale"
+}

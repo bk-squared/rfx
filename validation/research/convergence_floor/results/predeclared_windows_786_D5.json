@@ -1,0 +1,17 @@
+{
+ "issue": 786,
+ "discriminator": "D5",
+ "predeclared_utc": "2026-08-30",
+ "question": "is the s=0.25 rung ISOLATED (rung-local solver anomaly) or is the ladder TURNING OVER (two error terms of opposite sign, ladder pre-asymptotic)?",
+ "scales_added": [
+  0.42857142857142855,
+  0.375,
+  0.3333333333333333
+ ],
+ "optional_scale": 0.3,
+ "lattice_validity": "3/s and 6/s integer -- the same arithmetic D1 verified; 7/14, 8/16, 9/18 (and 10/20)",
+ "derivation": "structural (a shape test; no magnitude window)",
+ "turn_over_confirmed": "exactly ONE sign change in the consecutive differences of f over the full ladder ordered by decreasing s, AND the descending branch holds >= 2 rungs",
+ "isolated_anomaly": "TWO OR MORE sign changes, OR the descending branch holds exactly one rung",
+ "inconclusive": "otherwise"
+}
