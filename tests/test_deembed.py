@@ -289,3 +289,108 @@ class TestSTConversion:
             t = _s_to_t(s)
             s_back = _t_to_s(t)
             np.testing.assert_allclose(s_back, s, atol=1e-12)
+
+
+class TestDeembedSeriesImpedance:
+    """Series-element (feed-post) removal — the thru-deembed lane
+    (docs/design_notes/thru_feedpost_deembed_predeclaration.md).
+
+    The embed side below is written with INDEPENDENT ABCD arithmetic
+    (not the module's own T helpers) so the round-trip is not a
+    tautology.
+    """
+
+    @staticmethod
+    def _abcd_line(zc, beta_l):
+        return np.array([
+            [np.cos(beta_l), 1j * zc * np.sin(beta_l)],
+            [1j * np.sin(beta_l) / zc, np.cos(beta_l)],
+        ], dtype=np.complex128)
+
+    @staticmethod
+    def _abcd_series(z):
+        return np.array([[1.0, z], [0.0, 1.0]], dtype=np.complex128)
+
+    @staticmethod
+    def _abcd_to_s(m, z0):
+        a, b, c, d = m[0, 0], m[0, 1], m[1, 0], m[1, 1]
+        delta = a + b / z0 + c * z0 + d
+        return np.array([
+            [(a + b / z0 - c * z0 - d) / delta,
+             2.0 * (a * d - b * c) / delta],
+            [2.0 / delta,
+             (-a + b / z0 - c * z0 + d) / delta],
+        ], dtype=np.complex128)
+
+    def _embedded_fixture(self, freqs, l1, l2, zc=48.0, z0=50.0,
+                          length_m=0.016, beta_factor=1.055):
+        """post(L1) . line(zc, beta*l) . post(L2), via ABCD; returns
+        (s_meas, s_line) each of shape (2, 2, n_freqs)."""
+        n = len(freqs)
+        s_meas = np.empty((2, 2, n), dtype=np.complex128)
+        s_line = np.empty((2, 2, n), dtype=np.complex128)
+        for fi, f in enumerate(freqs):
+            omega = 2.0 * np.pi * f
+            beta_l = beta_factor * omega / 299792458.0 * length_m
+            m_line = self._abcd_line(zc, beta_l)
+            s_line[:, :, fi] = self._abcd_to_s(m_line, z0)
+            m_tot = (self._abcd_series(1j * omega * l1)
+                     @ m_line
+                     @ self._abcd_series(1j * omega * l2))
+            s_meas[:, :, fi] = self._abcd_to_s(m_tot, z0)
+        return s_meas, s_line
+
+    def test_roundtrip_recovers_bare_line_symmetric_posts(self):
+        from rfx.deembed import deembed_series_inductance
+        freqs = np.linspace(3e9, 7e9, 9)
+        L = 0.35e-9
+        s_meas, s_line = self._embedded_fixture(freqs, L, L)
+        s_dut = deembed_series_inductance(s_meas, freqs, [L, L], z0=50.0)
+        np.testing.assert_allclose(s_dut, s_line, atol=1e-12)
+
+    def test_roundtrip_asymmetric_series_impedances(self):
+        from rfx.deembed import deembed_series_impedance
+        freqs = np.linspace(1e9, 9e9, 7)
+        l1, l2 = 0.22e-9, 0.41e-9
+        s_meas, s_line = self._embedded_fixture(freqs, l1, l2)
+        omega = 2.0 * np.pi * freqs
+        series_z = np.stack([1j * omega * l1, 1j * omega * l2])
+        s_dut = deembed_series_impedance(s_meas, freqs, series_z, z0=50.0)
+        np.testing.assert_allclose(s_dut, s_line, atol=1e-12)
+
+    def test_zero_inductance_is_identity(self):
+        from rfx.deembed import deembed_series_inductance
+        freqs = np.linspace(3e9, 7e9, 5)
+        s_meas, _ = self._embedded_fixture(freqs, 0.3e-9, 0.3e-9)
+        s_same = deembed_series_inductance(s_meas, freqs, [0.0, 0.0])
+        np.testing.assert_allclose(s_same, s_meas, atol=1e-13)
+
+    def test_preserves_reciprocity_exactly_for_equal_posts(self):
+        from rfx.deembed import deembed_series_inductance
+        freqs = np.linspace(3e9, 7e9, 9)
+        L = 0.35e-9
+        s_meas, _ = self._embedded_fixture(freqs, L, L)
+        # Perturb into a slightly non-reciprocal "measurement";
+        # the symmetric cascade must scale S21/S12 identically
+        # (predeclaration section 2: S21d/S12d == S21/S12).
+        s_meas[0, 1, :] *= (1.0 + 1e-4)
+        s_dut = deembed_series_inductance(s_meas, freqs, [L, L])
+        ratio_meas = s_meas[1, 0] / s_meas[0, 1]
+        ratio_dut = s_dut[1, 0] / s_dut[0, 1]
+        np.testing.assert_allclose(ratio_dut, ratio_meas, atol=1e-12)
+
+    def test_input_validation(self):
+        from rfx.deembed import (deembed_series_impedance,
+                                 deembed_series_inductance)
+        freqs = np.linspace(3e9, 7e9, 5)
+        s = np.zeros((2, 2, 5), dtype=np.complex128)
+        s[1, 0] = s[0, 1] = 1.0  # invertible thru
+        with pytest.raises(ValueError):
+            deembed_series_impedance(np.zeros((3, 3, 5), dtype=complex),
+                                     freqs, np.zeros((2, 5)))
+        with pytest.raises(ValueError):
+            deembed_series_impedance(s, freqs[:4], np.zeros((2, 5)))
+        with pytest.raises(ValueError):
+            deembed_series_impedance(s, freqs, np.zeros((2, 4)))
+        with pytest.raises(ValueError):
+            deembed_series_inductance(s, freqs, [0.1e-9])
