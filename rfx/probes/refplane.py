@@ -486,6 +486,7 @@ def decompose_wire_s_matrix_with_reference_planes(
     dt,
     dx,
     return_line_diagnostics: bool = False,
+    v_ref=None,
 ):
     """Shared plane-aware wire S-matrix decomposition (driver + eager entry).
 
@@ -530,8 +531,14 @@ def decompose_wire_s_matrix_with_reference_planes(
 
     # np.array (copy): the jnp output buffer is read-only and the plane
     # path overwrites the opted off-diagonals in place below.
+    # Issue #683 x #764: ``v_ref`` is the PRE-injection drive-sample
+    # reference (v_all now holds the physical POST samples); it keeps the
+    # byte-frozen legacy diagonals and the non-opted #308 off-diagonals
+    # frozen through the sampling flip.  None = pre-#683 caller (v_all IS
+    # the reference).
     S = np.array(
-        decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts),
+        decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
+                                v_ref=v_ref),
         dtype=np.complex64,
     )
     n_ports = S.shape[0]

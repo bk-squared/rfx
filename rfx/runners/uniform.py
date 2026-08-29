@@ -831,7 +831,8 @@ def run_uniform(
         n_freqs = len(freqs_out)
         S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
-            v_dft, i_dft, _, v_port_dft = accs
+            v_dft, i_dft = accs[0], accs[1]
+            v_port_dft = accs[3]
             z0 = wp_meta.impedance
             if wp_meta.excite:
                 # Issue #764: whole-port driven reflection.  V_port (the
@@ -844,11 +845,12 @@ def run_uniform(
                 # convention applied to a driven port (the reciprocal
                 # class — max|S11| 4.648 on the 2-port MSL stub) with the
                 # per-cell V against the whole-port Z0 on top (matched
-                # load +0.35426, PEC short +0.26780).  NOTE: this lane
-                # samples V/I PRE-injection (issue #72 contract); per the
-                # #683 measurement the physical-value validation of this
-                # diagonal is keyed to the pending #683 POST-ordering
-                # flip — the FORMULA lands here so both lanes share it.
+                # load +0.35426, PEC short +0.26780).  This lane now
+                # samples the physical V/I/V_port POST-injection (issue
+                # #683, decided by measurement 2026-08-29), so this
+                # diagonal is the validated terminal pair — Gamma_L-exact
+                # class, physical passivity restored (the six formerly
+                # keyed uniform gates are physical locks again).
                 denom = v_port_dft + z0 * i_dft
                 safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
                                        jnp.ones_like(denom))

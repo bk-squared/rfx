@@ -45,6 +45,14 @@ def _load_dump(path: Path) -> dict[str, Any]:
                            dtype=np.complex128)
                 if "raw_port_voltages_fdt" in data else None
             ),
+            # PRE-injection drive-sample reference channel (issue #683 x
+            # #764).  Absent in a pre-#683 dump, whose raw voltages ARE
+            # the pre-injection reference — the replay then uses them.
+            "raw_vref": (
+                np.asarray(data["raw_drive_ref_voltages_fdt"],
+                           dtype=np.complex128)
+                if "raw_drive_ref_voltages_fdt" in data else None
+            ),
             "raw_i": np.asarray(data["raw_currents"], dtype=np.complex128),
             "z0": np.asarray(data["port_impedances_ohm"], dtype=np.float64),
             "cell_counts": np.asarray(data["port_cell_counts"], dtype=np.int64),
@@ -59,6 +67,7 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
     freqs = dump["freqs"]
     raw_v = dump["raw_v"]
     raw_vp = dump["raw_vp"]
+    raw_vref = dump["raw_vref"]
     raw_i = dump["raw_i"]
     z0 = dump["z0"]
     cell_counts = dump["cell_counts"]
@@ -96,10 +105,21 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
             "raw_port_voltages_fdt shape "
             f"{raw_vp.shape} != raw_voltages_fdt shape {raw_v.shape}"
         )
+    if raw_vref is not None and raw_vref.shape != raw_v.shape:
+        raise ValueError(
+            "raw_drive_ref_voltages_fdt shape "
+            f"{raw_vref.shape} != raw_voltages_fdt shape {raw_v.shape}"
+        )
 
     replay_s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_row, driven_port in enumerate(driven):
         v_drive = raw_v[drive_row, driven_port, :]
+        # Issue #683 x #764: the #308-calibrated off-diagonal incident
+        # wave and the legacy diagonal reference the PRE-injection drive
+        # sample.  Post-#683 dumps carry it as its own channel (raw_v is
+        # the physical POST sample there); pre-#683 dumps' raw_v IS it.
+        v_drive_ref = (raw_vref[drive_row, driven_port, :]
+                       if raw_vref is not None else v_drive)
         i_drive = raw_i[drive_row, driven_port, :]
         safe_i = np.where(np.abs(i_drive) > 0.0, i_drive, 1e-30 + 0j)
         if raw_vp is not None:
@@ -110,7 +130,7 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
             z_in = raw_vp[drive_row, driven_port, :] / safe_i
         else:
             # Pre-#764 dump: legacy per-cell passive-branch convention.
-            z_in = -v_drive / safe_i
+            z_in = -v_drive_ref / safe_i
 
         for receiver in range(n_ports):
             if receiver == driven_port:
@@ -127,7 +147,7 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
                 - z_cell_receiver * raw_i[drive_row, receiver, :]
             ) / (2.0 * np.sqrt(z_cell_receiver))
             a_driven = (
-                -v_drive + z_cell_driven * i_drive
+                -v_drive_ref + z_cell_driven * i_drive
             ) / (2.0 * np.sqrt(z_cell_driven))
             safe_a = np.where(np.abs(a_driven) > 0.0, a_driven, 1.0 + 0j)
             replay_s[receiver, driven_port, :] = b_receiver / safe_a

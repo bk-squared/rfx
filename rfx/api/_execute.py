@@ -1737,7 +1737,8 @@ class _ExecuteMixin:
             from rfx.probes.probes import extract_lumped_s11
             w_list = []
             for spec, accs in result.wire_port_sparams:
-                v_dft, i_dft, _v_inc_dft, v_port_dft = accs
+                v_dft, i_dft = accs[0], accs[1]
+                v_port_dft = accs[3]
                 if spec.excite:
                     denom = v_port_dft + spec.impedance * i_dft
                     safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
