@@ -52,6 +52,10 @@ cross-checked three ways (joint-fit parity; a fit-free windowed-DFT nodal check;
 single-dimension perturbations — TM001 tracks W, TM010 does not) and against Balanis for
 BOTH modes on each arm's own realized raster. ``argmax(|a|)`` appears once, to pick a
 PHASE REFERENCE among the ten probes of ONE already-labelled mode; it never picks a mode.
+That reference choice was CHECKED, not assumed: sweeping all ten probes as the reference
+leaves every gate-bearing TM010 (main unfed 8.7664, main fed 8.1611, pre unfed 10.0239)
+with the same label, while 3 of 13 weak or mixed poles in the same records DO flip. The
+invariance is a measured property of the modes this gate reads, not of the labeller.
 
 This is not decoration. The physical patch band holds MORE than one mode on the fed
 board — measured on main: TM010 at 8.16 GHz and TM011 at 10.49 GHz, the second one only
@@ -67,8 +71,9 @@ That rule is architecturally unavailable here: the feed enters from the domain b
 and the ground plane spans the whole x-y extent into the CPML, so no closed 6-face
 Huygens box can enclose the radiators without crossing PEC — ``sim.preflight()`` collects
 exactly that as an error-severity advisory, and a box placed anyway integrates reactive
-near-field (measured beam peaks at theta = 140-180 deg, i.e. below an infinite ground
-plane). A far-field verdict from that box would be a corrupted-observable pass (rule R5).
+near-field. A far-field verdict from that box would be a corrupted-observable pass
+(rule R5). (An earlier draft of this docstring quoted a beam-peak angle here; no artifact
+for it survives anywhere in the work trees, so it is dropped rather than cited.)
 
 RING-DOWN SETTLING WITNESS (repo mandatory rule; issue #402)
 -----------------------------------------------------------
@@ -200,8 +205,13 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor
 #   inside this window. The feed owns 0.100 pp of the 13.48 pp regression and Leg A owns
 #   the rest. Leg B locks the FEED MODEL — port placement, reference plane, feed-trace
 #   rasterization — which nothing else in the suite pins on this board.
-LEG_B_CENTRE_PCT = -6.10
-LEG_B_HALF_PCT = 0.99           # = 0.805 configuration + 0.190 extractor
+LEG_B_CENTRE_PCT = -6.109       # midpoint of the 5 measured pairs, NOT rounded toward
+#                                 zero: rounding the centre in would contradict the Leg A
+#                                 block's claim that rounding UP is the only slack here.
+LEG_B_HALF_PCT = 0.986          # = 0.796 configuration + 0.190 extractor
+#   configuration half-range (-6.904872 .. -5.313385) = 0.79574 -> 0.796;
+#   single-probe extractor spread measured on this fixture's own record 0.1881 -> 0.190.
+#   Both terms round UP, as in Leg A. Window [-7.095, -5.123] %.
 
 # --------------------------------------------------------------- Leg C ------
 PATCH_BAND_GHZ = (8.0, 10.5)   # physical patch radiating band (holds >1 mode: see above)
@@ -371,13 +381,33 @@ def _settling_db(ts):
     )
 
 
+TM010_NOISE_FLOOR = 0.01   # of the loudest in-band mode - DETECTION, not rank
+
+
 def _tm010(arm) -> dict:
-    """Lowest-frequency mode carrying TM010 PARITY. Frequency order, never amplitude."""
-    cands = [r for r in arm["census"] if r["label"] == "TM010"]
+    """Lowest-frequency mode carrying TM010 PARITY, above a noise floor.
+
+    Frequency order, never amplitude RANK.  The floor is a detection threshold, not
+    a selector: the pre-#702 record already carries a TM010-parity pole at 10.1107
+    GHz at 0.10 % of the loudest in-band mode (measured), while the real TM010s in
+    this fixture's records sit at 19.5 % (pre) and 31.3 % (main) - 20x headroom
+    either way.  That one happens to sit ABOVE the physical mode, so min-frequency
+    survives it; a noise pole landing BELOW it but inside PATCH_BAND_GHZ would be
+    handed straight to Legs A and B with nothing red, and Leg C reads the same
+    selector so nothing else would catch it.  Poles rejected by the floor are named
+    in the assertion message, so a REAL mode dropped by it is visible rather than
+    silent.
+    """
+    census = arm["census"]
+    loudest = max((r["amp"] for r in census), default=0.0)
+    parity = [r for r in census if r["label"] == "TM010"]
+    cands = [r for r in parity if r["amp"] >= TM010_NOISE_FLOOR * loudest]
     assert cands, (
         f"[{arm['tag']}] no mode with TM010 parity (one sign change along x, none along "
-        f"y) in the ring-down census: "
-        f"{[(round(r['f_ghz'], 4), r['label']) for r in arm['census']]}"
+        f"y) above {TM010_NOISE_FLOOR:.0%} of the loudest in-band mode in the ring-down "
+        f"census: {[(round(r['f_ghz'], 4), r['label']) for r in census]}; "
+        f"TM010-parity poles rejected by the floor: "
+        f"{[(round(r['f_ghz'], 4), round(r['amp'] / loudest, 5)) for r in parity if r not in cands]}"
     )
     return min(cands, key=lambda r: r["f_ghz"])
 
