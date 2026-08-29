@@ -368,3 +368,16 @@ forward_grad/convergence/cavity_accuracy/api/grid_extent_contract/
 uniform_end_to_end_reduction/source_port_dual_spacing:
 **87 passed, 0 failed** (124.8 s). No rfx/ sources are modified by this
 lane (WP1–WP5 add only validation/research/multiband_nu/ and this note).
+
+## F-S1 3D verdict (2026-08-29, appended — GPU arm result)
+
+VESSL run 369367256892 (remilab-c0, rtx4090, staged commit 6892741, log
+archived at vessl-run-logs/369367256892_spec01-w1-3d-audit.log): P-B full
+1e6-step arms — r=1.4 drift_end +4.739e-09, max 7.703e-08; r=2.0
+drift_end +1.321e-07, max 1.957e-07. The committed evaluate_fs1 judge
+(injection-tested in review) reports FIRED=False on both arms: bounded
+random-walk within the pre-declared float-accumulation envelope, no
+growth trend. **F-S1 (3D) PASS.** Evidence:
+validation/research/multiband_nu/results/w1_pb_full_gpu.json.
+With F-S1(1D+3D)/F-S2/F-S3/F-S5 all PASS, WP6 promotion now waits only
+on the W4 fixture redesign (F-S4 currently INCONCLUSIVE).
