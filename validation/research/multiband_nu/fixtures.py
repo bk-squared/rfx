@@ -169,16 +169,19 @@ def _sym_air_band(length: float, dzf: float, cap: float = RATIO_CAP) -> list[flo
     residual = rem - n_plateau * plateau_d
     cells = up + [plateau_d] * n_plateau + up[::-1]
     if residual > 1e-12:
-        # distribute residual evenly over the plateau+ramp cells,
-        # keeping every neighbour ratio within the cap: scale the
-        # plateau cells up uniformly (ratio change < cap slack).
-        n_scale = max(1, n_plateau)
-        add = residual / n_scale
+        # absorb the residual while keeping every neighbour ratio
+        # within the cap slack (asserted below):
         if n_plateau:
-            cells = up + [plateau_d + add] * n_plateau + up[::-1]
+            # spread it uniformly over the plateau cells
+            cells = (up + [plateau_d + residual / n_plateau] * n_plateau
+                     + up[::-1])
+        elif up:
+            # no plateau: split it over the two topmost ramp cells
+            top = up[-1] + residual / 2
+            cells = up[:-1] + [top, top] + up[::-1][1:]
         else:
-            # no plateau: scale the top ramp cell pair
-            cells = up[:-1] + [up[-1] + residual / 2] * 1 + [up[-1] + residual / 2] + up[::-1][1:] if up else [length]
+            # no ramp and no plateau: the band is a single cell
+            cells = [length]
     s = sum(cells)
     # final exactness nudge on the middle cell (float dust only)
     mid = len(cells) // 2

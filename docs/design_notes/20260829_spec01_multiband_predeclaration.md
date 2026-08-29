@@ -381,3 +381,52 @@ growth trend. **F-S1 (3D) PASS.** Evidence:
 validation/research/multiband_nu/results/w1_pb_full_gpu.json.
 With F-S1(1D+3D)/F-S2/F-S3/F-S5 all PASS, WP6 promotion now waits only
 on the W4 fixture redesign (F-S4 currently INCONCLUSIVE).
+
+## C6 — Phase-1 review responses, nonblocking items (2026-08-29; windows and verdicts UNTOUCHED)
+
+**C6a — §3.4 prose slip (numbers only; the frozen JSON was always
+authoritative).** §3.4 says "Chain-model |T| for the W3 profiles:
+1−|T| ≤ 2.1e-5 for all r ≤ 1.5 (2.05e-4 at r = 2.0)". That sentence
+understates the frozen values in
+`results/predeclared_windows.json` (committed in the same
+pre-declaration commit, `3fb162d`): the in-envelope maximum is
+1−|T_model| = 2.64e-5 (r = 1.4 smooth) and r = 1.5 reaches 4.54e-5
+(abrupt); the 2.05e-4 figure is the r = 2.0 smooth value (abrupt
+2.03e-4). The prose number was a draft-profile leftover. No
+consequence: the F-S3 window is max(3e-4, 0.5·|1−T_model|) and the
+3e-4 floor dominates every arm under either set of numbers; the JSON —
+not the prose — is what the measurement script and the verdicts used.
+
+**C6b — F-S3 T_model under the C2 instrument (review-requested
+instrument note).** The C2 repair changed the W3 *instrument* (b: 30 →
+90 mm, runways 120 → 240 fine cells, source σ_t 100 ps, group-delay-
+matched B reference), so the W3 profiles at measurement time are not
+the profiles the §3.3/§3.4 tables were computed for. The T_model each
+arm was judged against is therefore recomputed at measurement time by
+the SAME frozen first-principles chain model (`chain_model.py`,
+unchanged since `3fb162d`) evaluated on the corrected instrument's
+explicit profiles — model class and window RULE exactly as
+pre-declared, only the instrument geometry fed to the model moved
+(recorded values in `results/w2_w3.json`, e.g. r = 2.0 abrupt
+T_model = 0.9999996 on the C2 instrument vs 0.9997967 pre-C2). Under
+both instruments the 3e-4 floor dominates the half-width for every
+arm, so no arm's window width depended on the instrument change.
+
+**C6c — W4-final diagnostic phrasing ("≤ 0.5 MHz (≤ 1.1e-4
+relative)").** The recorded per-scale multiband-vs-uniform deltas in
+`results/w4_supraconvergence.json` are 0.228 / 0.345 / 0.298 /
+0.530 MHz at s = 0.5 / 0.75 / 1.0 / 1.5 (relative 4.3e-5 / 6.5e-5 /
+5.8e-5 / 1.01e-4 of the matched line). The prose pairing rounded the
+MHz bound down (0.53 → 0.5) while padding the relative bound up
+(1.01e-4 → 1.1e-4); corrected statement: **≤ 0.53 MHz, ≤ 1.02e-4
+relative**. Diagnostic prose only — the figure carries no claim and
+entered no window.
+
+**C6d — `fixtures.py` `_sym_air_band` residual-fallback tidy-up.** The
+no-plateau residual branch was a single hard-to-read ternary
+(`... if up else [length]`) whose precedence swallowed the whole
+expression. Rewritten as explicit `if/elif/else` branches with the
+same semantics. Evidence of behaviour preservation: `pc_dz_profile_sym`
+output verified bit-identical (`np.array_equal`) for every scale this
+lane uses (s ∈ {0.25, 0.375, 0.5, 0.75, 1.0, 1.5}); the unsupported
+short-band edge case trips the same pre-existing cap assert as before.
