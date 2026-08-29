@@ -1,7 +1,7 @@
 """Issue #683 follow-up: acceptance run for the UNIFORM-lane sampling flip.
 
 Pre-declaration (binding, committed BEFORE the flip and before this is run):
-    docs/design_notes/issue683_uniform_flip_predeclaration.md  (gate A1)
+    docs/design_notes/issue683_decomposer_flip_predeclaration.md  (gate P3)
 Protocol whose rule this re-applies unchanged:
     docs/design_notes/issue683_sampling_order_decision_protocol.md  (sec. 5-6)
 

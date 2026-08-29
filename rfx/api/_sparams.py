@@ -4647,9 +4647,11 @@ class _SparamMixin:
                         # byte-frozen #488 wave algebra frozen through the
                         # wire sampling flip (only the drive port's own
                         # sample moved; passive samples are slot-invariant).
-                        # A shorter tuple marks a lane that did NOT flip
-                        # (e.g. the bisecting-mesh path's accumulators):
-                        # there vi[0] still IS the pre-injection sample.
+                        # A shorter tuple marks a lane without a separate
+                        # v_ref channel (the NU lane): it has ALWAYS sampled
+                        # POST-injection and its decomposer was calibrated in
+                        # that frame, so vi[0] is that lane's correct drive
+                        # reference — not a pre-injection sample.
                         vref_lw[run_idx, i_port, :] = np.asarray(
                             vi[4] if len(vi) > 4 else vi[0])
 
