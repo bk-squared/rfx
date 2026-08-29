@@ -865,3 +865,105 @@ def test_mixed_cell_snap_degrades_when_the_substrate_is_one_cell_uniform():
     assert "h_sub/0" not in mixed[0], mixed[0]
 
 
+@pytest.mark.parametrize(
+    "dx_um, h_real_um, pct",
+    [
+        # window (3.00, 3.10): 4 realized cells, frac 0.00-0.10
+        (83.28, 333.1, 31.1),
+        # window (3.40, 3.50): 4 realized cells, frac 0.40-0.50
+        (74.27, 297.1, 17.0),
+        (73.62, 294.5, 15.9),
+        (72.78, 291.1, 14.6),
+    ],
+)
+def test_realized_thickness_advisory_closes_the_cell_count_coverage_hole(
+    dx_um, h_real_um, pct
+):
+    """B2: at these dx the substrate realizes FOUR cells (so check 2, which
+    gates on the realized count < 4, is silent) and the declared top face
+    lands outside [0.10, 0.40] of its cell (so check 2b is silent) -- yet
+    the solved board is 14.6-31.1% thicker than declared. Pre-fix this was
+    ZERO substrate advisories; the merge base printed one (it counted
+    round(h_sub/dx) = 3 cells). Check 2c fires on the physical quantity."""
+    dx = dx_um * 1e-6
+    sim = _build_sim(dx=dx, ly=W_TRACE + 8 * H_SUB)
+    msgs = _msl_warnings(sim)
+    # The two proxy checks really are both silent on this geometry --
+    # asserted positively so the test cannot pass for the wrong reason.
+    assert [m for m in msgs if "substrate cell(s) in z" in m] == [], msgs
+    assert [m for m in msgs if "danger zone" in m] == [], msgs
+    board = [m for m in msgs if "not the board you declared" in m]
+    assert len(board) == 1, msgs
+    assert f"realizes {h_real_um:.1f}µm" in board[0], board[0]
+    assert f"declared h_sub=254.0µm ({pct:+.1f}%" in board[0], board[0]
+    assert "read off the run grid's assembled permittivity" in board[0], board[0]
+
+
+def test_realized_thickness_advisory_threshold_is_derived_not_invented():
+    """The 8.3% gate is 5%/0.601: check 2's own published <5% Z0-bias
+    budget divided by the substrate-thickness sensitivity MEASURED in this
+    repo's realized-board artifact (misaligned-60µm row -- the one row
+    whose realized W equals the declared 600.0µm, so h is the only
+    variable: 254.0->300.0µm, +18.11%, moves Z0_HJ 47.895->53.106 ohm,
+    +10.88%). Re-derived here from the artifact and from Hammerstad-Jensen
+    itself so neither the constant nor its justification can drift."""
+    import json
+    from pathlib import Path
+
+    from rfx.api._preflight import (
+        _MSL_REALIZED_THICKNESS_TOL as TOL,
+        _MSL_REALIZED_THICKNESS_Z0_BUDGET as BUDGET,
+        _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY as SENS,
+    )
+    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff as hj
+
+    anchor = json.loads(
+        (Path(__file__).resolve().parents[1] / "scripts" / "diagnostics"
+         / "msl_z0_bias_floor_sweep"
+         / "msl_z0_bias_floor_sweep_realized_anchor.json").read_text("utf-8")
+    )
+    row = next(r for r in anchor["rows"] if r["label"] == "misaligned 60um")
+    # h is the only variable in this row -- the property the derivation rests on.
+    assert row["w_trace_realized_um"] == row["w_trace_declared_um"]
+    dh = (row["h_sub_realized_um"] / row["h_sub_declared_um"]) - 1.0
+    dz0 = (row["z0_hj_realized_board_ohm"]
+           / row["z0_hj_declared_board_ohm"]) - 1.0
+    assert dz0 / dh == pytest.approx(SENS, abs=5e-4)
+    assert TOL == pytest.approx(BUDGET / SENS, abs=5e-4)
+    assert BUDGET == 0.05, "the budget is check 2's own published <5% promise"
+    # And the threshold really does sit on the 5% Z0 contour for this board.
+    z0_dec, _ = hj(W_TRACE, H_SUB, EPS_R)
+    z0_tol, _ = hj(W_TRACE, H_SUB * (1.0 + TOL), EPS_R)
+    assert 0.045 <= (z0_tol - z0_dec) / z0_dec <= 0.055
+
+
+def test_realized_thickness_advisory_is_silent_on_an_exact_board():
+    """No third advisory when the run grid realizes the declared board:
+    dx = h_sub/6 (uniform) and a dz_profile that resolves 254µm exactly."""
+    for sim in (
+        _build_sim(dx=H_SUB / 6, ly=W_TRACE + 8 * H_SUB),
+        _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB,
+                   dz_profile=np.concatenate(
+                       [np.full(4, H_SUB / 4), np.full(12, 80e-6)])),
+    ):
+        msgs = _msl_warnings(sim)
+        board = [m for m in msgs if "not the board you declared" in m]
+        assert board == [], f"exact realized board must be silent: {board}"
+
+
+def test_realized_thickness_advisory_does_not_double_report():
+    """Checks 2, 2b and 2c must give ONE account of one geometry -- 2c
+    stays quiet wherever 2 or 2b already disclosed the thickening. dx=100µm
+    (3 realized cells, +18%) is check 2's case; dx=80µm (frac 0.175, +26%)
+    is check 2b's."""
+    for dx in (100e-6, 80e-6):
+        msgs = _msl_warnings(_build_sim(dx=dx, ly=W_TRACE + 8 * H_SUB))
+        disclosed = [
+            m for m in msgs
+            if "actually realizes" in m or "cell(s) of substrate =" in m
+            or "not the board you declared" in m
+        ]
+        assert len(disclosed) == 1, (
+            f"dx={dx*1e6:.0f}µm: exactly one check may report the realized "
+            f"board, got {len(disclosed)}: {disclosed}"
+        )

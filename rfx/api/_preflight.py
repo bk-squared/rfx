@@ -219,6 +219,39 @@ _CAMPAIGN_MAX_OFFENDERS = 5
 # rfx.geometry.rasterize_grid._subcell_box_axis_window.
 _CAMPAIGN_SUBCELL_FACTOR = 1.01
 
+# ---------------------------------------------------------------------------
+# MSL check 2c (#752 / #766 review B2): how far the REALIZED substrate may
+# drift from the DECLARED one before the run is solving a different board
+# than the user asked for and preflight must say so.
+#
+# DERIVATION (physical, not a round number):
+#   * The quantity that matters to an MSL user is Z0, and Z0 depends on the
+#     substrate thickness the solver actually rasterized. This PR's own
+#     realized-board artifact measures that sensitivity:
+#     ``scripts/diagnostics/msl_z0_bias_floor_sweep/
+#     msl_z0_bias_floor_sweep_realized_anchor.json``, row "misaligned 60um"
+#     — the ONE row whose realized trace width equals the declared 600.0 µm,
+#     so substrate thickness is the only variable in it. There h goes
+#     254.0 -> 300.0 µm (+18.11%) and the Hammerstad-Jensen Z0 of the board
+#     goes 47.895 -> 53.106 ohm (+10.88%). Chord sensitivity
+#         S = (dZ0/Z0) / (dh/h) = 10.88 / 18.11 = 0.601
+#     (re-evaluating ``rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff``
+#     across h/h_declared = 1.05 .. 1.33 keeps S in 0.57 .. 0.63, so the
+#     constant is not an artifact of one step size).
+#   * The error budget is check 2's OWN published contract, quoted in its
+#     message: "<5% Z0 bias". Board-thickening alone must not be allowed to
+#     eat that whole budget in silence.
+#   * Threshold = budget / sensitivity = 0.05 / 0.601 = 0.0832 -> 8.3%.
+#     Direct check: Hammerstad-Jensen at h = 1.083*254 µm, W = 600 µm,
+#     eps_r 3.66 gives +5.14% Z0, i.e. the threshold sits right on the 5%
+#     contour, as intended.
+# This is a NEW advisory. It widens no existing gate: checks 2 (<4 realized
+# cells) and 2b (interface in the [0.10, 0.40] mixed-cell zone) keep their
+# exact gates, and 2c only speaks about geometry neither of them reported.
+_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601   # (dZ0/Z0) per (dh/h)
+_MSL_REALIZED_THICKNESS_Z0_BUDGET = 0.05         # check 2's own <5% promise
+_MSL_REALIZED_THICKNESS_TOL = 0.083              # = budget / sensitivity
+
 
 def _sorted_box_corners(shape):
     """``(lo, hi)`` float64 arrays for a Box-like shape, else ``(None, None)``."""
@@ -5672,6 +5705,24 @@ class _PreflightMixin:
                 n_z_sub = max(1, int(_real["n"]))
             else:
                 n_z_sub = max(1, int(round(h_sub / dx)))
+            # Realized-vs-declared substrate thickness, derived ONCE and
+            # shared by checks 2, 2b and 2c so the three can never disagree
+            # about the same geometry (#766 review B2). ``_thick_disclosed``
+            # records whether 2 or 2b already told the user about it; 2c
+            # covers exactly the geometries neither of them reaches.
+            if _real is not None:
+                _h_real_m = float(_real["h_real"])
+                _n_real = int(_real["n"])
+                _thick_is_estimate = False
+            else:
+                # Run grid unavailable: fall back to the same half-open
+                # rasterizer arithmetic the other two branches use, and say
+                # it is an estimate.
+                _n_real = max(1, int(np.ceil(h_sub / dx - 1e-9)))
+                _h_real_m = _n_real * float(dx)
+                _thick_is_estimate = True
+            _rel_thick = (_h_real_m - h_sub) / h_sub if h_sub > 0 else 0.0
+            _thick_disclosed = False
             if n_z_sub < 4:
                 _extra = ""
                 if _real is not None:
@@ -5694,6 +5745,7 @@ class _PreflightMixin:
                             f"reports the same number, and see the "
                             f"mixed-cell-danger-zone check below."
                         )
+                        _thick_disclosed = True
                     _dx_note = (
                         f"base dx={dx*1e6:.0f}µm, mesh profile in force"
                         if _real["nonuniform"] else f"dx={dx*1e6:.0f}µm"
@@ -5716,6 +5768,7 @@ class _PreflightMixin:
                             f"{h_sub*1e6:.0f}µm) on a uniform mesh; "
                             f"confirm with sim.fidelity_report()."
                         )
+                        _thick_disclosed = True
                     _dx_note = f"dx={dx*1e6:.0f}µm, scalar estimate"
                 _w.warn(
                     PreflightWarning(
@@ -5876,6 +5929,91 @@ class _PreflightMixin:
                         f"point in scripts/diagnostics/"
                         f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
                         f"not). {_snap_txt}",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
+                _thick_disclosed = True
+
+            # ---- 2c. Realized-vs-declared substrate THICKNESS ----
+            # Issue #752 / #766 review B2. Checks 2 and 2b are both proxies
+            # for the thing the user actually cares about: is the board the
+            # solver rasterized the board they declared? Check 2 gates on
+            # the realized CELL COUNT (< 4) and 2b on where the declared top
+            # face lands INSIDE its cell (frac in [0.10, 0.40]) -- and those
+            # two proxies do not cover each other. For h_sub/dx in
+            # (3.00, 3.10) or (3.40, 3.50) the substrate realizes 4 cells
+            # (check 2 silent) while frac sits at 0.00-0.10 / 0.40-0.50
+            # (check 2b silent), so a board realized 14-33% thicker than
+            # declared drew ZERO substrate advisories -- measured at
+            # dx = 83.28 / 74.27 / 73.62 / 72.78 um on the 600/254um
+            # RO4350B fixture (fidelity_report: 333.1 / 297.1 / 294.5 /
+            # 291.1 um realized against 254.0 declared). That is exactly
+            # the declared-vs-realized silence #752 was filed against.
+            #
+            # So gate on the PHYSICAL quantity instead of either proxy: the
+            # realized substrate thickness itself, against the threshold
+            # derived at _MSL_REALIZED_THICKNESS_TOL (5% Z0 budget divided
+            # by the artifact-measured 0.601 dZ0/dh sensitivity = 8.3%).
+            # It speaks only when neither 2 nor 2b already disclosed the
+            # thickening (``_thick_disclosed``), so the three checks give
+            # one consistent account of one geometry and cannot disagree --
+            # all three read the SAME _msl_realized_substrate result.
+            if not _thick_disclosed and abs(_rel_thick) > _MSL_REALIZED_THICKNESS_TOL:
+                _pct_r = _rel_thick * 100.0
+                _z0_pct = abs(_rel_thick) * _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY * 100.0
+                _prov = (
+                    f"read off the run grid's assembled permittivity under "
+                    f"the port ({_n_real} cell(s)); sim.fidelity_report() "
+                    f"reports the same number"
+                    if not _thick_is_estimate else
+                    f"SCALAR-dx ESTIMATE ({_n_real} cell(s) of dx="
+                    f"{dx*1e6:.1f}µm) — the run grid could not be assembled "
+                    f"for this check; confirm with sim.fidelity_report()"
+                )
+                _fix = (
+                    f"Place a mesh node exactly at h_sub={h_sub*1e6:.1f}µm "
+                    f"so the profile stops grading through the substrate top"
+                    if (_real is not None and _real["nonuniform"]) else
+                    f"Choose dx so h_sub/dx is an integer (e.g. dx = "
+                    f"{h_sub*1e6/max(4, _n_real):.1f}µm = h_sub/"
+                    f"{max(4, _n_real)}), or place a mesh node at "
+                    f"h_sub={h_sub*1e6:.1f}µm on a non-uniform profile"
+                )
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}': the board this run solves is "
+                        f"not the board you declared — the substrate under "
+                        f"the port realizes {_h_real_m*1e6:.1f}µm against a "
+                        f"declared h_sub={h_sub*1e6:.1f}µm ({_pct_r:+.1f}%; "
+                        f"{_prov}). The half-open rasterizer rule "
+                        f"(rfx/geometry/csg.py) rounds a substrate face that "
+                        f"is not on a mesh node UP to the next cell. This is "
+                        f"a DIFFERENT PHYSICAL BOARD, not an extraction "
+                        f"error: Hammerstad-Jensen Z0 moves about "
+                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.2f}% per "
+                        f"1% of substrate thickness (measured on this repo's "
+                        f"own scripts/diagnostics/msl_z0_bias_floor_sweep/"
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json, row "
+                        f"'misaligned 60um' — the one row whose realized "
+                        f"trace width equals the declared 600.0µm, so h is "
+                        f"the only variable: h 254.0→300.0µm, +18.1%, moves "
+                        f"Z0_HJ 47.895→53.106Ω, +10.9%), so this board is "
+                        f"worth roughly {_z0_pct:.0f}% in Z0 versus the one "
+                        f"you specified. This advisory's "
+                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}% threshold is "
+                        f"that sensitivity carried back from check 2's own "
+                        f"<5% Z0-bias contract: "
+                        f"{_MSL_REALIZED_THICKNESS_Z0_BUDGET*100:.0f}%/"
+                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.3f} = "
+                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}%; it is NOT "
+                        f"a claim about extractor bias (scored against the "
+                        f"board it actually solves, the extractor tracks "
+                        f"Hammerstad-Jensen to within 0.4%). {_fix}; or "
+                        f"accept the realized board and quote its "
+                        f"{_h_real_m*1e6:.1f}µm thickness rather than the "
+                        f"declared one.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
