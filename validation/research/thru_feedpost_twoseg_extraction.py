@@ -576,8 +576,10 @@ def arm_extract() -> None:
     assert g_max <= 0.5, (
         f"single-post fixture invalid: max|Gamma_top| = {g_max:.4f} > 0.5 "
         "— the line termination is again not measurable-load class")
-    t_sp = (ch_sp["out_top"] / np.sqrt(ch_sp["zc"].real)) / (a_sp
-                                                             / np.sqrt(Z0))
+    # Section-12 corrected observable: a is ALREADY power-normalized —
+    # T = (out_top/sqrt(Re Zc)) / a (the declared /sqrt(Z0) double-divide
+    # is the recorded apparatus algebra bug).
+    t_sp = (ch_sp["out_top"] / np.sqrt(ch_sp["zc"].real)) / a_sp
     with np.printoptions(precision=4):
         print(f"  Z_in = {z_in_sp}")
         print(f"  Zc_sp(f) = {ch_sp['zc']}")
