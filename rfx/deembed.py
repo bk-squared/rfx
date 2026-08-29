@@ -12,6 +12,11 @@ Two methods are implemented:
 2. **Thru-line de-embedding** — uses a measured thru standard to remove
    symmetric fixture effects from a DUT measurement (TRL-lite / thru-only
    calibration).
+
+3. **Series-element de-embedding** — removes a known lumped series
+   impedance (e.g. a feed-post inductance) at each port of a 2-port
+   network via the exact wave-cascade inverse
+   (``docs/design_notes/thru_feedpost_deembed_predeclaration.md``).
 """
 
 from __future__ import annotations
