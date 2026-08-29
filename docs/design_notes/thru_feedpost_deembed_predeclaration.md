@@ -257,3 +257,95 @@ with the single adopted L* at both ports):
 - No window above is widened after any measurement, under any
   rationale. Movers beyond the xfail replacement: NONE planned; any
   unexpected mover is a STOP-and-report, not a re-pin.
+
+## 7. RESULTS — extraction arm (appended 2026-08-29; sections 1-6 unchanged)
+
+Run: `validation/research/thru_feedpost_deembed.py --extract`, branch
+`agent/thru-deembed` (harness commit 7282e08), JAX_PLATFORMS=cpu,
+battery-verbatim fixture, preflight code set pinned and matched
+(`pec_faces_finite_pec` + 2x `wire_port_dead_extent_cells`, quoted
+verbatim in the log).
+
+Measured, bins [1.4, 1.8, 2.2, 2.6] GHz:
+
+- F-X5 CLEAN both ports: Re(Z_in) = 51.499/51.838/51.647/50.734 (port 1)
+  and 51.227/51.448/51.174/50.242 (port 2), all > 0.
+- Port 1 Z_in = 51.499+2.189j, 51.838+1.862j, 51.647+1.178j,
+  50.734+0.421j ohm.
+- Port 1 per-bin L = [0.2821, 0.2636, 0.2358, 0.1939] nH,
+  median L* = 0.2497 nH; port 2 = [0.2828, 0.2645, 0.2372, 0.1968] nH,
+  median 0.2508 nH. Report-only Re(x): port 1 +0.05..+0.18 ohm,
+  port 2 -0.07..-0.82 ohm.
+- Corner medians (Zc x beta corners): [0.2741, 0.2785, 0.2218,
+  0.2250] nH.
+
+Verdicts (windows verbatim from section 4):
+
+- **F-L1 flatness: FIRED** — max|L_bin - L*|/L* = 0.2233 vs <= 0.20.
+  The per-bin L is a smooth MONOTONE decline (0.282 -> 0.194 nH,
+  ~31% across 1.4-2.6 GHz), reproduced to < 1% between the two
+  independently driven ports — systematic, not noise.
+- F-L2 PASS: L* = 0.2497 nH inside [0.20, 0.50] nH (and squarely the
+  #318 ledger witness class ~0.26 nH).
+- F-L3 PASS: port symmetry 0.47% vs <= 10%.
+- F-L5 PASS: corner deviation 11.5% vs <= 15%.
+
+**Disposition (per the frozen section 6): STOP before the band arm.**
+The band arm was NOT run; no de-embedded in-band measurement exists in
+this lane. `test_thru_s11_floor` stays byte-untouched as the held
+strict xfail. No lock anywhere is moved. The additive
+`rfx.deembed.deembed_series_impedance/_inductance` code and its
+synthetic unit tests are kept (no shipped path calls them; they are the
+verified instrument for a follow-up lane).
+
+### Apparatus verification (comparator-bug discipline, 12/12 ledger class)
+
+Before accepting the firing, the inversion was verified on synthetics
+(no FDTD; same harness functions):
+
+1. Exact constants, flat L_true = 0.25 nH -> recovered
+   [0.25, 0.25, 0.25, 0.25] nH exactly. The quadratic inversion is
+   bug-free; the firing is a property of the measurement, not the
+   instrument.
+2. Mechanism witnesses (flat L_true = 0.25 nH, one constant biased):
+   - Zc_true = 46.0 vs assumed 48.25: recovered [0.100, 0.089, 0.071,
+     0.044] nH — a steep monotone DECLINE, the measured signature.
+   - Zc_true = 50.5: [0.394, 0.407, 0.429, 0.465] nH — trend sign
+     REVERSES. Sensitivity dL/dZc ~ 0.065 nH per ohm at these bins:
+     the low-f Im(Z_in) signal (0.4-2.4 ohm) is comparable to the
+     line-transformer term t*(Zc - Z0^2/Zc), so a ~1 ohm effective-Zc
+     error swings the extraction by ~25%.
+   - l_eff = 17 mm vs assumed 16 mm: [0.239, 0.235, 0.230, 0.221] nH —
+     mild decline (the trace overhangs each port column by 1 cell, so
+     the effective electrical length is genuinely uncertain at the
+     +-1 mm scale).
+   - beta corners (1.048/1.062 vs 1.055): < 1.3% per-bin — negligible.
+   - post shunt C = 10 fF: ~2% decline — weak.
+
+**Named mechanism**: the out-of-band low-frequency arm is
+ILL-CONDITIONED in the frozen line constants — chiefly the effective
+Zc (the #313 measured 47.9-48.6 ohm class was measured at mid-line
+planes over 3-7 GHz and does not transfer to this model at the
++-0.35 ohm fidelity the inversion needs) and secondarily the effective
+electrical length (1-cell trace overhangs). A ~1 ohm Zc deficit plus
+the overhang length reproduces the measured decline with a flat true L
+in the 0.30-0.35 nH range — but selecting those constants AFTER seeing
+the trend would be exactly the post-hoc fitting the falsifier exists to
+prevent. Under the frozen method, constant-conditioning bias and true
+post-reactance dispersion are indistinguishable, so the
+single-frequency-flat-series-L extraction is REFUTED as pre-declared
+and the STOP stands.
+
+### Follow-up (requires a FRESH pre-declaration; nothing here executes it)
+
+A conditioning-robust L extraction needs constants measured, not
+assumed: (a) a dedicated 1-port single-post fixture (post + matched
+line into CPML, no far post) whose Im(Z_in) is post-dominated, or
+(b) joint (L, Zc, l_eff) inversion using the full complex 2-port
+out-of-band data (S21 phase pins beta*l_eff independently), or (c) the
+#313 refplane two-plane machinery run AT the extraction bins to measure
+Zc(f) in-situ. Any of these must commit its own falsifiers before
+running; the B(L*) budget formula of section 5 remains valid for that
+future lane. A cluster-scale arm (fine-dx single-post study) is
+sketched in `validation/research/thru_feedpost_singlepost_vessl.yaml`
+(proposal only; DO NOT run before its pre-declaration exists).
