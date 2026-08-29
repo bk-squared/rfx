@@ -1210,3 +1210,85 @@ which is why the per-scale shift is recorded next to the slope.
 - **W4 / W4R** (P-C microstrip class): unchanged — two instrument-limited
   INCONCLUSIVEs, retained as recorded diagnostics of geometry-realization
   limits.
+
+## WP6R.7 — statements superseded by this repair (append-only bookkeeping, 2026-08-29)
+
+The note is append-only, so the sentences the adversarial review found are
+listed here with what replaces them. No measurement, window, judge or
+verdict is changed by any item below; every one is a claim-scope or prose
+correction.
+
+**Superseded by WP6R.1 (BL1, axis overclaim).**
+
+1. WP6a: "the covered configuration (N fine bands per axis, any order,
+   every adjacent ratio <= 1.4, abrupt or ramped)" — **read: N fine bands
+   along z**. No witness in this lane grades an in-plane axis.
+2. WP6a exclusion 4: "Simultaneous in-plane + z grading is exercised only
+   by the 3-D energy witness; no observable-accuracy statement covers it."
+   — **read: in-plane grading and simultaneous in-plane + z grading are
+   UNCOVERED**. The 3-D energy witness (P-B) is transverse-UNIFORM at
+   1.5 mm and grades z alone; the sentence asserted a run that never
+   happened.
+3. Section 1's P-B description "(+선택: x/y 동시 grading)" was an option in
+   the SPEC-01 work package that was never exercised; no P-B arm ever used
+   a `dx_profile` or `dy_profile`.
+
+**Superseded by WP6R.2/W4R3 (BL2, F-S4 fixture).**
+
+4. The W4R2 verdict section's "With F-S1 (1D+3D), F-S2, F-S3, F-S5 (phase
+   1) and F-S4 (W4R2) all PASS, the WP6 promotion gate is open." — **read:
+   the F-S4 half of that sentence is now carried by W4R3.** W4R2's PASS
+   stands as a measurement; it is not order evidence for the envelope
+   because its graded axis carries ~1 % of its error budget.
+5. C8a's matched-scale contrast figures for W4R2 (33 kHz / 5.4 kHz /
+   1.8 kHz / 0.95 kHz) are **below that fixture's own declared extraction
+   floor** (E_FLOOR_HZ = 0.3 MHz) at the three finer scales — they are
+   below-instrument and must not be quoted as measured grading costs. The
+   measured, above-floor matched-scale contrast is the W4R3 one
+   (28.4 / 7.06 / 1.77 / 0.44 MHz).
+
+**Non-blocking review items landed with this repair.**
+
+6. F-S1 "no growth trend" (support row, and the F-S1 3-D verdict section's
+   "no growth trend"): **read: bounded inside the pre-declared envelope at
+   every sample; the growth-trend clause did not evaluate.** `evaluate_fs1`
+   gates the trend fit at `FS1_TREND_FLOOR = 50u = 2.980e-6` and reports
+   `trend_evaluated = False` on all eight 1-D arms (max drift 2.931e-6) and
+   on both 3-D arms (max 7.7e-8 / 2.0e-7). Boundedness is established; the
+   absence of a trend is not.
+7. Revert-proof scope (support row): `remis_energy.energy_weights` builds
+   the witness norm from the same `grid.inv_*` arrays the solver steps
+   with, so a defect in those arrays themselves would corrupt witness and
+   solver identically and stay invisible. The check guards the update path
+   against a correct metric, not the metric. Stated in the row.
+8. F-S2 "-53.9 dB per transition" is resolution-specific. The committed
+   chain model gives, for r = 1.4, -41.7 / -46.8 / -54.0 / -66.1 /
+   -78.2 dB at 15 / 20 / 30 / 60 / 120 fine cells per free-space
+   wavelength — a (dz/lambda)^2 law, -12.0 dB per doubling, asymptotic
+   above ~30 cells/wavelength. The support row now carries the law.
+9. Preflight `nu_grading_reaches_absorber` read `p[:layers + 1]`, i.e. it
+   demanded one uniform cell MORE than its own REMEDY asks for and fired on
+   an exactly compliant profile; fixed to `p[:layers]` / `p[-layers:]` with
+   a `layers < 2` skip, and locked by
+   `test_preflight_absorber_runway_exactly_compliant`.
+10. `{max_ratio:.2f}` rendered 1.401 as "1.40 exceeds ... cap 1.4" in both
+    the preflight advisory and the constructor warning; both now `:.3f`.
+11. Both VESSL yamls used `set -eu` with the run piped to `tee`, so a
+    FAILING run exited 0 and VESSL reported success; both now
+    `set -euo pipefail`. The already-harvested W1 3-D run
+    (369367256892) is unaffected — its verdict was read from the committed
+    JSON, not from the exit code.
+12. `fixtures.w5_profile`'s max adjacent ratio is 1.419 (nominal 1.4 plus
+    the 1 % anti-tie jitter), so the lane's own beyond-cap advisory now
+    flags the F-S5 witness. It is left as it is, deliberately, and the
+    reason is documented at the function: F-S5 tests the AD path, the cap
+    is an accuracy statement that does not enter a gradient-consistency
+    check, and re-cutting the profile would re-take a settled falsifier for
+    a cosmetic reason.
+
+**Judge refactor (behaviour-preserving).** `w4r3_zdominant_cavity.judge`
+gained a `scales` argument so the packaged fast-lane regression can judge a
+reduced three-scale ladder through the SAME committed judge. Verified after
+the fact: re-running the judge over the stored arms of both committed
+result files reproduces their `p_uc`, `p_mb`, `fixture_gates`, `fs4_fired`
+and `verdict` exactly.

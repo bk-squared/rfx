@@ -5,22 +5,31 @@ Packages the multiband witness battery
 ``docs/design_notes/20260829_spec01_multiband_predeclaration.md``) as
 regression gates:
 
-* FAST lane (default addopts): reduced witness arms — exact-conservation
+* FAST lane (default addopts, ~2 min): reduced witness arms — exact-conservation
   lock of the Remis dual-cell energy (f64), a reduced-step F-S1 envelope
   arm (f32), one W2 single-transition reflection arm at the cap ratio,
-  the W5 multiband AD check, and the WP6 preflight advisory contract.
+  the W5 multiband AD check, the W4R3 F-S4 z-dominance gates (analytic)
+  and reduced ladder, the W4R3 grading-side revert-proof (which must
+  FIRE), and the WP6 preflight advisory contract.
 * SLOW/GPU lane: the full pre-declared arms — 1e6-step 1D energy audits
-  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), and the W4R
-  supraconvergence ladder (``slow_physics``).
+  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), and the full
+  four-scale W4R3 supraconvergence ladder (``slow_physics``).
 
 Every threshold below is either the pre-declared falsifier window
 (F-S1/F-S2 from the design note, frozen before measurement) or the
-witness-validity gate the note declares (1e-12 f64 conservation) — no
-threshold is tuned to the measured phase-1/W4R numbers.
+witness-validity gate the note declares (1e-12 f64 conservation; the
+W4R3 fixture gates G1/G2/G3) — no threshold is tuned to a measured
+number.
+
+F-S4 is gated on the W4R3 z-dominant analytic cavity, NOT on the earlier
+W4R2 fixture: the adversarial review found that W4R2 carries ~1 % of its
+error on the graded axis, so its order gate could not have failed for a
+grading reason (design-note sections WP6R.2 / WP6R.3).
 """
 
 from __future__ import annotations
 
+import functools
 import warnings
 
 import numpy as np
@@ -113,6 +122,67 @@ def test_w5_multiband_ad_consistency():
     assert not res["fs5_fired"], res
 
 
+@functools.lru_cache(maxsize=None)
+def _w4r3_arm(scale, multiband, defect=False):
+    """One W4R3 arm, cached so the fast lane runs each arm exactly once."""
+    from validation.research.multiband_nu.w4r3_zdominant_cavity import measure
+    return measure(scale, multiband, defect=defect)
+
+
+def _w4r3_rows(scales, defect=False):
+    return {(mb, s): _w4r3_arm(s, mb, defect and mb)
+            for s in scales for mb in (False, True)}
+
+
+def test_fs4_fixture_is_z_dominant():
+    """BL2 gate (note WP6R.3): the F-S4 fixture's error budget must be
+    carried by the GRADED axis, or its order gate cannot fail for a
+    grading reason. Pure analytic decomposition, no FDTD — G1 (the z
+    share of the modelled error budget) >= 0.80 in both arms at every
+    scale, and G2 (the grading-SPECIFIC share) >= 0.20 at every scale."""
+    from validation.research.multiband_nu import w4r3_zdominant_cavity as W
+    from validation.research.multiband_nu.analytic_dispersion import decompose
+    W.assert_planes_realizable()
+    for s in W.SCALES:
+        d = {}
+        for mb in (False, True):
+            prof = W.mb_profile(s) if mb else W.uc_profile(s)
+            grid, _m = build_pec_fixture(prof, (W.A_X, W.B_Y), W.DXY0 * s)
+            d[mb] = decompose(prof, W.DXY0 * s, W.A_X, float(grid.dt),
+                              W.M_X, W.P_Z, W.L_Z)
+            assert d[mb]["z_fraction"] >= W.G1_Z_FRACTION_MIN, (s, mb, d[mb])
+        share = abs(d[True]["e_z"] - d[False]["e_z"]) / abs(d[True]["e_total"])
+        assert share >= W.G2_GRADING_SHARE_MIN, (s, share)
+
+
+def test_fs4_supraconvergence_reduced():
+    """F-S4 fast gate: the W4R3 ladder on the three coarse scales, judged
+    by the committed judge — the frozen W4R.3 rule (fixture gate
+    p_uc in [1.7, 2.6]; fires iff p_mb < 1.5 or p_mb < p_uc - 0.4;
+    anomaly iff p_mb > p_uc + 0.4) plus the W4R3 fixture-validity
+    gates."""
+    from validation.research.multiband_nu.w4r3_zdominant_cavity import judge
+    scales = (0.5, 1.0, 2.0)
+    out = judge(_w4r3_rows(scales), scales=scales)
+    for g in ("g1_pass", "g2_pass", "g3_pass"):
+        assert out["fixture_gates"][g], out["fixture_gates"]
+    assert out["fs4_fired"] is False, out["verdict"]
+    assert not out["anomaly_a4"], out["verdict"]
+
+
+def test_fs4_grading_defect_fires():
+    """Revert-proof for the ORDER witness (note WP6R.4): with the
+    CORE-C2-class metric defect on ONE multiband transition node — an
+    error that is identically null on a uniform mesh, i.e. purely
+    grading-side — the committed judge must FIRE. A witness that cannot
+    detect a corrupted transition coefficient cannot carry an order
+    claim."""
+    from validation.research.multiband_nu.w4r3_zdominant_cavity import judge
+    scales = (0.5, 1.0, 2.0)
+    out = judge(_w4r3_rows(scales, defect=True), defect=True, scales=scales)
+    assert out["fs4_fired"] is True, out["verdict"]
+
+
 def _grading_advisories(dz, cpml=0, boundary="pec"):
     from rfx import Simulation
     with warnings.catch_warnings():
@@ -164,6 +234,20 @@ def test_preflight_grading_reaches_absorber_advisory():
     assert codes == [], codes
 
 
+def test_preflight_absorber_runway_exactly_compliant():
+    """The absorber-runway advisory must match its own REMEDY ("keep at
+    least `layers` uniform interior cells against that face"): a profile
+    with EXACTLY that many uniform cells is compliant and must be clean;
+    one cell short must fire. Locks the off-by-one found in review
+    (the check read p[:layers+1], i.e. layers+1 uniform cells)."""
+    mm = 1e-3
+    exact = np.array([1, 1, 1, 1, 1.4, 1.4, 1.4, 1.4, 1, 1, 1, 1]) * mm
+    assert _grading_advisories(exact, cpml=4, boundary="cpml") == []
+    one_short = np.array([1, 1, 1, 1.4, 1.4, 1.4, 1.4, 1.4, 1, 1, 1, 1]) * mm
+    assert "nu_grading_reaches_absorber" in _grading_advisories(
+        one_short, cpml=4, boundary="cpml")
+
+
 # ---------------------------------------------------------------------------
 # slow / gpu lane — the full pre-declared arms
 # ---------------------------------------------------------------------------
@@ -190,46 +274,14 @@ def test_fs1_full_1e6_3d_pb(r):
     assert not res["fs1_fired"], res
 
 
-def _w4r2_fit(scales):
-    """Run W4R2 arms at the given scales and apply the frozen F-S4
-    judge (note sections W4R.3 / W4R2)."""
-    from validation.research.multiband_nu.w4r2_analytic_cavity import (
-        E_FLOOR_HZ, measure)
-    orders = {}
-    for mb in (False, True):
-        pts = []
-        for s in scales:
-            e = measure(s, mb)
-            assert e["valid"], e
-            if e["err_hz"] >= E_FLOOR_HZ:
-                pts.append((s, e["err_hz"]))
-        assert len(pts) >= 3, pts
-        h = np.log10([p[0] for p in pts])
-        er = np.log10([p[1] for p in pts])
-        orders[mb] = float(np.polyfit(h, er, 1)[0])
-    return orders[False], orders[True]
-
-
-def test_fs4_supraconvergence_reduced():
-    """F-S4 fast gate: the W4R2 analytic-cavity ladder on the three
-    coarse scales (~10 s). Frozen judge: p_uc in [1.7, 2.6];
-    fires iff p_mb < 1.5 or p_mb < p_uc - 0.4; anomaly iff
-    p_mb > p_uc + 0.4 (evidence run: p_uc = p_mb = 1.95,
-    results/w4r2_analytic_cavity.json)."""
-    p_uc, p_mb = _w4r2_fit((0.5, 1.0, 2.0))
-    assert 1.7 <= p_uc <= 2.6, (p_uc, p_mb)
-    assert not (p_mb < 1.5 or p_mb < p_uc - 0.4), (p_uc, p_mb)
-    assert not p_mb > p_uc + 0.4, (p_uc, p_mb)
-
-
 @pytest.mark.slow_physics
 def test_fs4_supraconvergence_full():
-    """The full pre-declared W4R2 ladder including s = 0.25 (~1 min).
+    """The full pre-declared W4R3 ladder, all four scales.
 
     Runs the committed script's own ``main`` (which applies the frozen
-    W4R.3 judge) in a scratch cwd, so the committed evidence file
-    ``results/w4r2_analytic_cavity.json`` is never rewritten by a test
-    run."""
+    W4R.3 judge and the W4R3 fixture gates) in a scratch cwd, so the
+    committed evidence file ``results/w4r3_zdominant_cavity.json`` is
+    never rewritten by a test run."""
     import json
     import os
     import subprocess
@@ -243,10 +295,12 @@ def test_fs4_supraconvergence_full():
             parents=True)
         subprocess.run(
             [sys.executable, "-m",
-             "validation.research.multiband_nu.w4r2_analytic_cavity"],
+             "validation.research.multiband_nu.w4r3_zdominant_cavity"],
             cwd=td, env=env, check=True)
         out = json.loads(
             (Path(td) / "validation/research/multiband_nu/results/"
-             "w4r2_analytic_cavity.json").read_text())
+             "w4r3_zdominant_cavity.json").read_text())
+    for g in ("g1_pass", "g2_pass", "g3_pass"):
+        assert out["fixture_gates"][g], out["fixture_gates"]
     assert out["fs4_fired"] is False, out["verdict"]
     assert not out.get("anomaly_a4"), out["verdict"]

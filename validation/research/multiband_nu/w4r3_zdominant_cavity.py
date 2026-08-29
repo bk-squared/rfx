@@ -248,19 +248,26 @@ def fit_order(rows: dict, multiband: bool, scales=SCALES):
     return float(np.polyfit(h, e, 1)[0]), pts
 
 
-def judge(rows: dict, defect: bool = False) -> dict:
-    """The frozen W4R.3 pass/fail rule + the W4R3 fixture-validity gates."""
+def judge(rows: dict, defect: bool = False, scales=SCALES) -> dict:
+    """The frozen W4R.3 pass/fail rule + the W4R3 fixture-validity gates.
+
+    ``scales`` exists so the packaged fast-lane regression can judge a
+    reduced ladder through this same committed judge; the default is the
+    pre-declared four-scale ladder and the evidence JSONs were produced
+    with it.
+    """
     out = {}
-    p_uc, pts_uc = fit_order(rows, False)
-    p_mb, pts_mb = fit_order(rows, True)
+    p_uc, pts_uc = fit_order(rows, False, scales)
+    p_mb, pts_mb = fit_order(rows, True, scales)
     out["p_uc"], out["p_mb"] = p_uc, p_mb
     out["n_fit_points"] = {"uc": len(pts_uc), "mb": len(pts_mb)}
 
     # --- fixture-validity gates (note W4R3) ---
-    z_fracs = [r["z_fraction"] for r in rows.values()]
+    z_fracs = [rows[(mb, s)]["z_fraction"] for s in scales
+               for mb in (False, True)]
     g1 = float(min(z_fracs))
     shares, resids = [], []
-    for s in SCALES:
+    for s in scales:
         mb, uc = rows[(True, s)], rows[(False, s)]
         shares.append(abs(mb["e_z"] - uc["e_z"]) / abs(mb["e_total_model"]))
         for r in (mb, uc):
