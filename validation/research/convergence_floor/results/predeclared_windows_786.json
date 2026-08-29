@@ -1,0 +1,254 @@
+{
+ "issue": 786,
+ "predeclared_utc": "2026-08-30",
+ "note": "Windows frozen BEFORE any discriminator measurement. Widening any of them invalidates this lane.",
+ "symptom_is_not_a_target": {
+  "burned": [
+   "w4r_supraconvergence.json err_hz column",
+   "u_ref_hz = 7.58e6",
+   "the ~4.1e-3 relative floor"
+  ],
+  "rule": "no window below may be a function of these; each window carries its own `derivation` key"
+ },
+ "D0_reproduction": {
+  "what": "re-run the PR #785 uniform + multiband ladders and the s=0.25 reference with the copied fixture",
+  "pass": "every rung matches the PR #785 f_target to <= 1e3 Hz",
+  "derivation": "determinism (identical code, identical CPU JAX)",
+  "on_fail": "STOP: the copy is not faithful; report the irreproducibility as the finding",
+  "tol_hz": 1000.0
+ },
+ "D1_geometry_quantization": {
+  "what": "read the realized PEC node span (x,y,z) and the realized dielectric interface planes out of the assembled arrays at every rung; delta = |realized - declared|",
+  "derivation": "arithmetic",
+  "arithmetic_prediction": {
+   "exact_at_every_rung": true,
+   "max_residual_over_all_rungs_m": 3.469446951953614e-18,
+   "per_scale": {
+    "0.5": {
+     "dx_m": 0.000375,
+     "dz_m": 0.000125,
+     "max_residual_m": 3.469446951953614e-18,
+     "residuals_m": {
+      "trace_x_lo": 0.0,
+      "trace_x_hi": 0.0,
+      "trace_y_lo": 1.734723475976807e-18,
+      "trace_y_hi": 0.0,
+      "domain_a": 0.0,
+      "domain_b": 0.0,
+      "src_p_x": 0.0,
+      "src_m_x": 0.0,
+      "src_y": 0.0,
+      "probe_x": 3.469446951953614e-18,
+      "sub_top": 0.0,
+      "trace_top": 0.0,
+      "upper_lo": 0.0,
+      "upper_hi": 1.734723475976807e-18,
+      "total_h": 1.734723475976807e-18,
+      "src_z": 0.0
+     }
+    },
+    "0.6": {
+     "dx_m": 0.00045,
+     "dz_m": 0.00015,
+     "max_residual_m": 4.336808689942018e-19,
+     "residuals_m": {
+      "trace_x_lo": 0.0,
+      "trace_x_hi": 0.0,
+      "trace_y_lo": 0.0,
+      "trace_y_hi": 0.0,
+      "domain_a": 0.0,
+      "domain_b": 0.0,
+      "src_p_x": 0.0,
+      "src_m_x": 0.0,
+      "src_y": 0.0,
+      "probe_x": 0.0,
+      "sub_top": 2.168404344971009e-19,
+      "trace_top": 4.336808689942018e-19,
+      "upper_lo": 0.0,
+      "upper_hi": 0.0,
+      "total_h": 0.0,
+      "src_z": 1.0842021724855044e-19
+     }
+    },
+    "0.75": {
+     "dx_m": 0.0005625000000000001,
+     "dz_m": 0.0001875,
+     "max_residual_m": 3.469446951953614e-18,
+     "residuals_m": {
+      "trace_x_lo": 8.673617379884035e-19,
+      "trace_x_hi": 3.469446951953614e-18,
+      "trace_y_lo": 1.734723475976807e-18,
+      "trace_y_hi": 1.734723475976807e-18,
+      "domain_a": 3.469446951953614e-18,
+      "domain_b": 3.469446951953614e-18,
+      "src_p_x": 8.673617379884035e-19,
+      "src_m_x": 3.469446951953614e-18,
+      "src_y": 1.734723475976807e-18,
+      "probe_x": 3.469446951953614e-18,
+      "sub_top": 0.0,
+      "trace_top": 0.0,
+      "upper_lo": 0.0,
+      "upper_hi": 1.734723475976807e-18,
+      "total_h": 1.734723475976807e-18,
+      "src_z": 0.0
+     }
+    },
+    "1.0": {
+     "dx_m": 0.00075,
+     "dz_m": 0.00025,
+     "max_residual_m": 3.469446951953614e-18,
+     "residuals_m": {
+      "trace_x_lo": 0.0,
+      "trace_x_hi": 0.0,
+      "trace_y_lo": 1.734723475976807e-18,
+      "trace_y_hi": 0.0,
+      "domain_a": 0.0,
+      "domain_b": 0.0,
+      "src_p_x": 0.0,
+      "src_m_x": 0.0,
+      "src_y": 0.0,
+      "probe_x": 3.469446951953614e-18,
+      "sub_top": 0.0,
+      "trace_top": 0.0,
+      "upper_lo": 0.0,
+      "upper_hi": 1.734723475976807e-18,
+      "total_h": 1.734723475976807e-18,
+      "src_z": 0.0
+     }
+    },
+    "1.5": {
+     "dx_m": 0.0011250000000000001,
+     "dz_m": 0.000375,
+     "max_residual_m": 3.469446951953614e-18,
+     "residuals_m": {
+      "trace_x_lo": 8.673617379884035e-19,
+      "trace_x_hi": 3.469446951953614e-18,
+      "trace_y_lo": 1.734723475976807e-18,
+      "trace_y_hi": 1.734723475976807e-18,
+      "domain_a": 3.469446951953614e-18,
+      "domain_b": 3.469446951953614e-18,
+      "src_p_x": 8.673617379884035e-19,
+      "src_m_x": 3.469446951953614e-18,
+      "src_y": 1.734723475976807e-18,
+      "probe_x": 3.469446951953614e-18,
+      "sub_top": 0.0,
+      "trace_top": 0.0,
+      "upper_lo": 0.0,
+      "upper_hi": 1.734723475976807e-18,
+      "total_h": 1.734723475976807e-18,
+      "src_z": 0.0
+     }
+    },
+    "0.25": {
+     "dx_m": 0.0001875,
+     "dz_m": 6.25e-05,
+     "max_residual_m": 3.469446951953614e-18,
+     "residuals_m": {
+      "trace_x_lo": 0.0,
+      "trace_x_hi": 0.0,
+      "trace_y_lo": 1.734723475976807e-18,
+      "trace_y_hi": 0.0,
+      "domain_a": 0.0,
+      "domain_b": 0.0,
+      "src_p_x": 0.0,
+      "src_m_x": 0.0,
+      "src_y": 0.0,
+      "probe_x": 3.469446951953614e-18,
+      "sub_top": 0.0,
+      "trace_top": 0.0,
+      "upper_lo": 0.0,
+      "upper_hi": 1.734723475976807e-18,
+      "total_h": 1.734723475976807e-18,
+      "src_z": 0.0
+     }
+    }
+   }
+  },
+  "exonerate": "delta_max(s) < 1e-12 m at EVERY rung including s=0.25 -> every rung solves the identical continuum structure; quantization cannot be the mechanism",
+  "attribute": "delta_max(s) >= 0.25*dx(s) at one or more rungs AND |Pearson rho| >= 0.8 between the per-rung residual and the realized-vs-declared electrical-length delta",
+  "inconclusive": "0 < delta_max < 0.25*dx(s), or |rho| < 0.8",
+  "attribute_delta_frac_of_dx": 0.25,
+  "attribute_rho_min": 0.8
+ },
+ "D2_edge_singularity": {
+  "what": "identical box / stack / port pair / probe / T / scales, PEC trace DELETED (with_trace=False). The surviving in-band line is a dielectric-loaded box mode with no metal edge in the interior.",
+  "derivation": "wedge_theory",
+  "wedge": {
+   "conductor_corner_deg": 90,
+   "field_wedge_angle_rad": 4.71238898038469,
+   "nu": 0.6666666666666666,
+   "predicted_frequency_error_order": 1.3333333333333333
+  },
+  "attribute_partial": "p_trace in [1.0, 1.6] (consistent with 2*nu = 4/3) AND p_smooth >= 1.8: removing the edge restores the smooth-field order",
+  "exonerate_as_floor": "f(s) of the with-trace ladder is MONOTONE in s and its error against the D4b reference DECREASES at every rung with fitted p_trace >= 1.0 -- a wedge exponent produces a reduced ORDER, never a non-vanishing floor",
+  "inconclusive": "p_trace < 1.0, or the no-trace ladder is itself non-monotone",
+  "p_trace_lo": 1.0,
+  "p_trace_hi": 1.6,
+  "p_smooth_min": 1.8
+ },
+ "D3_port_loading": {
+  "what": "at s = 0.75 (and s = 0.5): (a) src_amp 1.0, (b) 0.01, (c) 100.0, (d) source pair moved to (9.0,11.25,0.75)/(18.0,11.25,0.75) mm -- same symmetry class, different physical coupling, (e) probe moved to (15.75,11.25,0.75) mm",
+  "derivation": "first_principles",
+  "theorem": "rfx soft sources are ADDITIVE: E += Cb*w(t) (rfx/simulation.py::make_soft_source). An additive forcing term in a linear time-invariant system leaves the system operator, hence every eigenfrequency, EXACTLY unchanged. Predicted coupling-induced df = 0.",
+  "exonerate": "max pairwise |df| over (a)-(e) <= 1.0 MHz",
+  "attribute": "monotone dependence of f on coupling strength with span >= 10 MHz over (a)-(d)",
+  "inconclusive": "1 MHz < span < 10 MHz",
+  "exonerate_hz": 1000000.0,
+  "attribute_hz": 10000000.0
+ },
+ "D4_reference_quality": {
+  "instrument_resolution_derivation": {
+   "derivation": "first_principles",
+   "float32_eps": 5.960464477539063e-08,
+   "T_s": 2e-08,
+   "N_samples": 700,
+   "cramer_rao_hz": 0.08782675581731396,
+   "sound_hz": 1000000.0,
+   "limited_hz": 10000000.0,
+   "rationale": "CRB is ~1.5 Hz; inflating by 1e3 for accumulated round-off over ~1e5 steps and estimator inefficiency gives ~1 MHz. A decade above that (10 MHz = 1.8e-3 of 5.5 GHz) is declared instrument-limited. Context only (NOT the window's source): the ledger's measured staircase-edge envelope for patch resonance is -dx/L_eff, i.e. 2.9e-2 at dx=1mm on a 32mm patch -- an instrument error at 1.8e-3 would already be ~6 % of the physics envelope this fixture class is used to bound."
+  },
+  "D4a_exact_reference_twin": {
+   "what": "empty vacuum PEC box, Lx = Ly = 38.25 mm, Lz = 1.5 mm, dx = 0.75*s mm, dz = 0.25*s mm -> dt, n_steps, analysis band and record length IDENTICAL to the W4R uniform rung at the same s. Mode TM110 (Ez, no z variation), f_exact = 5.5421 GHz, inside the same BAND. The EXACT discrete leapfrog eigenfrequency f_disc(s) = arcsin((c0 dt/2) sqrt(mu_x+mu_y))/(pi dt) is computed from the same difference operator rfx builds (analytic_dispersion.operator_eigenvalues).",
+   "observable": "eps_instr(s) = |f_extract(s) - f_disc(s)|",
+   "sound": "eps_instr(s) <= 1.0 MHz -> extraction SOUND at that rung",
+   "attribute": "eps_instr(s) >= 10.0 MHz -> extraction INSTRUMENT-LIMITED at that rung; (4) attributed there",
+   "inconclusive": "1 MHz < eps_instr < 10 MHz",
+   "validity_gate": "the twin is only admissible if its in-band line is single and its dominance is >= 10 at every rung"
+  },
+  "D4b_independent_reference": {
+   "model": "f(h) = f_inf - C * h**p, h = dz_fine(s) = 0.25*s mm",
+   "fit": "nonlinear least squares on the 5 ladder rungs s in {1.5,1.0,0.75,0.6,0.5} (5 points, 3 parameters); the s=0.25 rung is NOT in the fit",
+   "outlier_verdict": "the s=0.25 reference rung is an OUTLIER (mechanism 4 attributed) iff |f(0.25) - f_pred(0.25)| >= 5 * RMS residual of the 5-point fit AND sign(f(0.25)-f(0.5)) = -sign(f(0.5)-f(0.6)) (it breaks the monotone trend)",
+   "vindicated": "|f(0.25) - f_pred(0.25)| <= 3 * RMS residual",
+   "inconclusive": "between 3x and 5x RMS residual",
+   "outlier_k": 5.0,
+   "vindicated_k": 3.0
+  },
+  "D4c_independent_estimators": {
+   "what": "re-extract f from the SAME stored probe record of every rung with estimators that do not share find_resonances's un-antialiased [::step] subsampling",
+   "E1": "Result.find_resonances (incumbent)",
+   "E2": "FFT bandpass over BAND of the ring-down + Hilbert analytic-signal phase-slope linear fit",
+   "E3": "rfx.harminv.harminv on the full ring-down with anti-aliased decimation (decimate='auto')",
+   "E4": "4-parameter damped-sinusoid nonlinear least squares on the bandpassed ring-down",
+   "consensus_rule": "E2/E3/E4 agree iff max pairwise spread <= 1.0 MHz; their mean is then the trustworthy value at that rung",
+   "attribute": "|E1 - consensus| >= 10.0 MHz at a rung",
+   "exonerate": "|E1 - consensus| <= 1.0 MHz at a rung",
+   "spread_hz": 1000000.0,
+   "attribute_hz": 10000000.0,
+   "exonerate_hz": 1000000.0
+  }
+ },
+ "apportionment": {
+  "rule": "Delta_total = |f_E1(0.25) - f_inf| (the reference rung's departure from the D4b independent reference). Delta_instr = |f_E1(0.25) - f_consensus(0.25)| is charged to (4a). Delta_phys = |f_consensus(0.25) - f_inf| is the remaining solver/physics part, apportioned between (1), (2) and (3) by their own verdicts. Report both as percentages of Delta_total; a mechanism whose own discriminator EXONERATES it may not be charged any part."
+ },
+ "remedy_licence": {
+  "4a_dominates": "Delta_instr >= 0.5*Delta_total -> the remedy is in the extraction instrument: fix the record handling in find_resonances and re-run the ladder; the floor must vanish (demonstrated, not asserted)",
+  "1_dominates": "scale-consistent geometry realization / ladder design rule",
+  "3_dominates": "fix the observable",
+  "2_dominates_and_irreducible": "NO code fix. Produce the exact envelope statement (number + scope + what it bounds) and state that #715's baseline must be quoted against it."
+ },
+ "stop_conditions": [
+  "D0 fails -> STOP and report irreproducibility",
+  "every discriminator returns INCONCLUSIVE -> STOP, report inconclusive, implement no remedy"
+ ]
+}
