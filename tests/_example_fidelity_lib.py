@@ -498,6 +498,10 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/convergence_floor/d3_port.py": Entry(
         "no_simulation",
         "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d2_retake.py": Entry(
+        "no_simulation",
+        "re-applies the frozen D2 rule to the nine-rung ladder from "
+        "committed JSON; no Simulation"),
     "validation/research/convergence_floor/d5_predeclare_and_run.py": Entry(
         "no_simulation",
         "drives fixture.measure(); constructs no Simulation of its own"),
