@@ -1106,3 +1106,38 @@ Run order from here: (1) this section + `analytic_dispersion.py` +
 `w4r3_zdominant_cavity.py` commit; (2) the clean ladder; (3) the verdict,
 taken as it falls; (4) the revert-proof ladder; (5) the documentation
 rewrite that BL1 and BL2 require, plus the review's non-blocking items.
+
+### WP6R.6 — correction, committed BEFORE any judged W4R3 arm (probe plane; no window, rule or gate moved)
+
+The first execution of the W4R3 ladder stopped inside the multiband arms on
+the script's own node-exactness assertion. Cause: the pre-declared probe
+plane z = 40 mm is an exact node of the UNIFORM profile at every scale but
+not of the MULTIBAND one — the band layout is fine(0–12) | coarse(12–26) |
+fine(26–38) | coarse(38–52) | fine(52–64), so z = 40 mm sits 2 mm inside a
+coarse band whose cells are 1.4·dzf (2/0.35 = 5.714 cells at s = 0.25).
+The pre-declaration's own alignment requirement ("both source/probe planes
+land on exact nodes at every scale") was therefore not satisfiable as
+written.
+
+Repair: probe plane moved to **z = 28 mm** — 2 mm into the second FINE band,
+an exact node of both profiles at every scale (verified by
+`assert_planes_realizable()`, now run before every ladder), and |sin| =
+0.924 of the target mode (z = 32 mm would have been a mode NODE, z = 40 mm
+was chosen as an antinode). The source plane z = 8 mm is unchanged.
+
+What this cannot touch: the probe plane does not enter the eigenfrequency —
+it selects which modes are observed, and both z = 40 and z = 28 observe the
+target mode and are on the x = a/3 plane that suppresses m = 2, 3, 4. No
+window, no validity gate, no p-band, no fixture dimension and no judge line
+changes; G1/G2 are unchanged because they are computed from the profiles and
+dt, which are untouched.
+
+Discarded data: the four UNIFORM arms of the stopped execution (probe at
+z = 40 mm) measured f = 9.644940 / 9.683155 / 9.692743 / 9.695128 GHz at
+s = 2 / 1 / 0.5 / 0.25, model residuals +0.006 / +0.001 / +0.032 /
++0.028 MHz. They are DISCARDED from judgment and the full ladder re-runs
+every arm fresh with the corrected probe. They are recorded here because
+the append-only rule requires it, and because they are the first
+independent confirmation that the frozen model's G3 tolerance (0.15 MHz) is
+not tight: the largest residual over four arms spanning a 64x error range
+is 0.032 MHz. No multiband arm has been run on this fixture at any point.

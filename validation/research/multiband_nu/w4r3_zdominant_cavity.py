@@ -48,8 +48,12 @@ Ey probe at x = a/3. Those planes are exact nodes of the m = 3 discrete
 eigenvector and an exactly mirror-symmetric pair about x = a/2, so the
 m = 2, 3, 4 families are neither driven nor observed and only the (1,0,p)
 family survives in band: nearest neighbours 7.456 and 11.973 GHz.
-Source at z = 8 mm and probe at z = 40 mm are both antinodes of the target
-mode. T = 15 ns.
+Source at z = 8 mm (an antinode, |sin| = 1) and probe at z = 28 mm
+(|sin| = 0.924), both exact nodes of BOTH profiles at every scale - see
+correction WP6R.6 in the note: the pre-declaration's z = 40 mm probe is an
+exact node of the uniform profile but lands 2 mm into a 1.4-dzf coarse
+band on the multiband profile, where it is not a node at any scale.
+T = 15 ns.
 
 Judge - the frozen W4R.3 pass/fail structure, UNCHANGED:
     fit floor 0.3 MHz, >= 3 surviving points per arm;
@@ -115,7 +119,7 @@ BAND = (8.8e9, 10.6e9)
 HARMINV_BAND = (6.5e9, 13.5e9)
 SIGMA_T = 200e-12
 Z_SRC = 8e-3
-Z_PRB = 40e-3
+Z_PRB = 28e-3
 # fixture-validity gates (note W4R3)
 G1_Z_FRACTION_MIN = 0.80
 G2_GRADING_SHARE_MIN = 0.20
@@ -142,6 +146,16 @@ def uc_profile(s: float) -> np.ndarray:
     n = int(round(L_Z / dzf))
     assert abs(n * dzf - L_Z) < 1e-12
     return np.full(n, dzf, np.float64)
+
+
+def assert_planes_realizable() -> None:
+    """Both source and probe planes must be exact E nodes of BOTH profiles
+    at EVERY scale (WP6R.6). Cheap, so it runs before the ladder."""
+    for s in SCALES:
+        for prof in (mb_profile(s), uc_profile(s)):
+            zn = np.concatenate([[0.0], np.cumsum(prof)])
+            for z in (Z_SRC, Z_PRB):
+                assert np.min(np.abs(zn - z)) < 1e-12, (s, z, len(prof))
 
 
 def transition_nodes(s: float) -> list[int]:
@@ -308,6 +322,7 @@ def main():
                     help="uniform-control instrument check only, writes nothing")
     args = ap.parse_args()
 
+    assert_planes_realizable()
     if args.bringup:
         for s in (2.0, 1.0):
             _print_row(measure(s, False))
