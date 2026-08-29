@@ -111,3 +111,38 @@ fresh data per SPEC-00; that decision belongs to the adversarial reviewer / PI, 
   No sign tuning was needed at any face — unlike SBP-SAT penalty terms.
 - No boundary-derivative staggering-scale ambiguity arises: the half-cell factors come
   mechanically from eqs. (50)/(52).
+
+## Correction 2 (2026-08-29, append-only — adversarial-review blocking finding)
+
+The F-M1b cause analysis above is WITHDRAWN. It rested on a misreading of
+arXiv:1606.08761 Fig. 9 (bottom panel): the claim "axis-clipped at -40 dB;
+true 26-30 GHz values are not readable" is factually wrong. Vector-data
+extraction of the figure PDF (review, independently performed) shows the
+y-axis spans -110..-30 dB (frame top -30.0 dB; -40 dB is merely the topmost
+tick LABEL) and every curve is fully readable: the curves end at
+-34.28 dB (r=6), -34.62 dB (r=4), -36.5 dB (r=2) at 30 GHz, and the worst
+curve's maximum over [2, 20] GHz is -51.23 dB.
+
+Consequences, recorded for the next lane's design (the FROZEN verdict here
+is untouched — F-M1b FIRED as declared and stays FIRED; no window moves):
+
+1. The pre-declaration's own "-35 dB [2,30]" window violated its own
+   ">= 5 dB above the worst Fig.-9 curve" rule (it sits 0.7 dB BELOW the
+   paper's worst curve). The window was mis-derived at declaration time.
+2. Under a correctly derived paper-class window (worst curve + 5 dB:
+   [2,30] GHz ~ -29.3 dB; [2,20] GHz ~ -46.2 dB), the measured band-edge
+   values (-32.6..-33.4 dB) would PASS, but the measured [2,20] GHz values
+   (-43.7..-45.9 dB) would still FIRE for every r.
+3. Therefore the real paper-class discrepancy is NOT a band-edge
+   calibration defect, and the previously proposed remedy (restrict to
+   >= 11.5 cells/lambda) is withdrawn. The discrepancy is a ~6-7 dB-higher
+   MID-BAND reflection plateau vs the paper, most plausibly a
+   fixture-class difference: this lane measured a 20x20 mm island at
+   normal incidence in a PEC/time-gated box with the probe 80 mm from the
+   face, vs the paper's four-rod scatterer enclosed by the subgrid with
+   PML termination.
+4. The next attempt's fresh pre-declaration must adjudicate
+   scheme-vs-fixture with a paper-faithful fixture (rod-class scatterer
+   enclosed by the subgrid; absorbing termination or a derivation of the
+   PEC/time-gating equivalence) and windows derived from the CORRECT
+   figure reading via the >= 5 dB rule.
