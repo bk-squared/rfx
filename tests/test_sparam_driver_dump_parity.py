@@ -204,10 +204,18 @@ def test_driver_wire_dump_matches_eager_and_replays():
     # the per-cell-V/whole-port-Z0 frame mismatch: matched load read
     # +0.35426, PEC short +0.26780).  ``None`` in the field marks a
     # pre-#764 dump (legacy-diagonal replay fallback).
+    # Schema re-pin (issue #683 x #764, written provenance —
+    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
+    # bundle also grows the pre-injection drive-sample reference channel
+    # ``raw_drive_ref_voltages_fdt`` — ``raw_voltages_fdt`` now holds the
+    # physical POST-injection samples, and the #308-calibrated
+    # off-diagonals cannot be replayed without the reference.  ``None``
+    # marks a pre-#683 dump (its raw voltages ARE the reference).
     assert drv._fields == eager._fields == (
         "s_params", "freqs", "raw_voltages_fdt", "raw_currents",
         "port_impedances", "port_cell_counts", "port_names",
         "driven_port_indices", "raw_port_voltages_fdt",
+        "raw_drive_ref_voltages_fdt",
     )
 
     # --- shapes identical, (n_driven, n_ports, n_freqs) ---
@@ -261,6 +269,12 @@ def test_driver_wire_dump_matches_eager_and_replays():
             port_names=np.asarray(drv.port_names, dtype=object),
             driven_port_indices=np.asarray(drv.driven_port_indices),
             raw_port_voltages_fdt=np.asarray(drv.raw_port_voltages_fdt),
+            # Issue #683 x #764: the pre-injection drive-sample reference
+            # channel — without it a post-#683 dump cannot replay the
+            # #308-calibrated off-diagonals (raw_voltages_fdt now holds
+            # the physical POST samples).
+            raw_drive_ref_voltages_fdt=np.asarray(
+                drv.raw_drive_ref_voltages_fdt),
         )
         payload = replay_wire.replay_wire_port_vi_dump(tmp)
         print(f"[wire] replay status={payload['status']} "

@@ -4647,7 +4647,11 @@ class _SparamMixin:
                         # byte-frozen #488 wave algebra frozen through the
                         # wire sampling flip (only the drive port's own
                         # sample moved; passive samples are slot-invariant).
-                        vref_lw[run_idx, i_port, :] = np.asarray(vi[4])
+                        # A shorter tuple marks a lane that did NOT flip
+                        # (e.g. the bisecting-mesh path's accumulators):
+                        # there vi[0] still IS the pre-injection sample.
+                        vref_lw[run_idx, i_port, :] = np.asarray(
+                            vi[4] if len(vi) > 4 else vi[0])
 
                 planes = raw.get("dft_planes")
                 if not planes:

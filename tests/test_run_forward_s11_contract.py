@@ -87,27 +87,19 @@ def test_run_forward_s11_agree_on_well_conditioned_cpml():
                                err_msg="run vs forward S11 diverged on a well-conditioned CPML port")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="issue #764/#683: uniform-lane driven diagonal is the physical "
-           "whole-port formula on PRE-injection samples (measured max "
-           "1.348 cpml / 4.034 pec here); passivity returns when the #683 "
-           "POST-ordering flip lands (remove this marker then and "
-           "re-baseline)")
 def test_run_s11_is_passive_both_boundaries():
     """run() is the trustworthy estimator: |S11| <= 1 for a passive 1-port.
 
-    KEYED TO ISSUE #683 (issue #764, written provenance): the uniform lane
-    still samples V/I PRE-injection, which contaminates the DRIVEN port's
-    whole-gap voltage at order 1 (sigma*dt/eps ~ 0.96 on the canonical
-    cell), so the #764 whole-port driven diagonal
-    S_kk = (V_port - Z0*I)/(V_port + Z0*I) — physically validated on the
-    NU/POST lane (matched 0.001-0.0125, short -1, open +1; see
-    validation/research/issue764_wireport_norm_falsifiers.py) — reads
-    non-physical values on this lane until the #683 POST-ordering flip
-    lands.  The legacy (-V - Z0*I)/(-V + Z0*I) reading stayed passive
-    here only because it is the passive-branch sense applied to a driven
-    port (the reciprocal class), not because it measured the load.
+    RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
+    docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
+    uniform lane now samples the physical V/I/V_port POST-injection, so
+    the #764 whole-port driven diagonal
+    S_kk = (V_port - Z0*I)/(V_port + Z0*I) is the validated terminal pair
+    on this lane too (flip-acceptance harness: n*a = +0.9990/+0.9960,
+    n*|b| = 0.066/0.265 Ohm on the six-point known-load sweep) and its
+    physical passivity gate is live again.  On the PRE-injection interim
+    it read max 1.348 cpml / 4.034 pec here (the keyed-envelope era);
+    history in the git log of this test.
     """
     for boundary in ("cpml", "pec"):
         s11 = _run_s11(boundary)

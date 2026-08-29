@@ -175,3 +175,74 @@ the ledger's #673/#672 entry warns about).  MSL/waveguide untouched.
 Interim CPU budget: every local battery ≤ ~20 min (the THRU fixture is
 ~70 s/run, module-scoped).  No GPU/VESSL run is required by this plan; if
 one becomes decisive it is emitted as YAML, not run.
+
+---
+
+## 6. RESULTS (appended after the measurements of 2026-08-29; sections 1-5 unchanged)
+
+All runs on branch `agent/issue-683-decomposer-flip` (implementation commit
+bf78bf9), JAX_PLATFORMS=cpu, marker override active so slow_physics ran.
+
+- **P3 — physics acceptance: PASS.**
+  `validation/research/issue683_flip_acceptance.py`, one run: G1 pass
+  (monotone, ratio_I 7.19, ratio_Vload 4.45); fits n·a = +0.9990 /
+  n·b = +0.066 Ω at f1 and n·a = +0.9960 / n·b = +0.265 Ω at f2.
+  Corroborating lane difference at R_L = 50 collapsed from exactly the
+  injection increment to max|dV| = 5.6e-6 (float noise).  The same
+  known-false-positive preflight advisories as the §9 decision run fired
+  (node-attached-column fixture), contradicted by G1 as before.
+
+- **P2 — off-diagonal preservation: PASS, exact.**  THRU battery fixture
+  S captured on the base (bc88f1c, scratch worktree, measurement only)
+  and on the flipped tip: max over off-diagonal entries and bins
+  |S_flipped − S_base| = 0.0 (bit-identical; gate ≤ 1e-5).  Reciprocity
+  max|S21 − S12| = 7.5277e-3 on both — the measured 7.53e-3 class,
+  unchanged to the last digit.  Base run also reproduced the keyed
+  interim diagonal 2.8068 exactly (fixture identity check).
+
+- **P4 — lane parity at the excited port: PASS.**  Witness converted to
+  a locked parity test; measured max|S_NU − S_uniform| = 6.839e-8
+  (vacuum) / 1.767e-7 (pec_plates) vs gate 1e-4 (pre-flip: 4.975e-2 /
+  1.051e-1).
+
+- **P1 — keyed-gate restoration: 5 of 6 PASS; gate 5 FIRED.**
+  1. run_s11 passivity both boundaries — RESTORED, green.
+  2. jit-scan s11 passivity — RESTORED (xfail removed), green.
+  3. cpml-dielectric max|S11| ≤ 1 + 1e-3 — RESTORED, green.
+  4. forward PEC cavity mag < 1.20 — RESTORED, green.
+  5. **thru diagonal physical floor < 0.12 — FIRED.**  Measured physical
+     diagonal on the THRU battery fixture: |S11| 0.0093-0.2896,
+     |S22| 0.0176-0.2910 over the 3-7 GHz bins, worst 0.2910 at 7 GHz.
+     Diagnosis (measurement, not tuning): driven whole-port
+     Z_in(3 GHz) = 49.1 − j0.05 Ω (matched, S11 = 0.009) rising to
+     42.9 + j27.1 Ω at 7 GHz; on the symmetric fixture the far port's
+     identical +j27 Ω feed-post series reactance alone predicts
+     |Γ| ≈ 27/104 = 0.26 — quantitatively the measured 0.27-0.29.  The
+     reading is the fixture's true un-de-embedded feed-post reflection;
+     the "0.09 feed-post class" expectation was an extrapolation from the
+     LEGACY per-cell artifact reading (which measured the frame mismatch,
+     not the load) and is REFUTED by the physical channel.  Per the STOP
+     discipline the gate was NOT widened: the physical floor assert is
+     restored verbatim and held under strict xfail whose reason documents
+     the firing (`test_thru_s11_floor`).  Disposition belongs to review.
+  6. thru sv_max < 0.85 — RESTORED, green; measured 0.6934 (the
+     predicted 0.63 class).
+
+- **P5 — passive movers: none observed.**  Passive parity/closed-form
+  locks in test_nu_wire_port_lane_parity.py all green (13 passed
+  besides the converted witness); NU lane untouched.
+
+- **Schema follow-through** (declared in §3's implementation paragraph):
+  the wire dump/replay round-trip stays green with the new
+  `raw_drive_ref_voltages_fdt` channel (test_sparam_driver_dump_parity:
+  2 passed; the in-test schema pin re-pinned with written provenance).
+
+- **P6 — locked-value sweep**: recorded in the final commit after the
+  full `-k "wire or lumped or sparam or twoport"` battery with the
+  slow_physics override.
+
+Standing after these results: the flip + recalibration is validated by
+P2/P3/P4/P5 and restores five of the six keyed gates; the sixth
+(thru-floor < 0.12 class) is a pre-declared falsifier that FIRED against
+a physically-explained measurement and is held, visibly, for review —
+a justified STOP outcome for that gate, not a silent re-pin.
