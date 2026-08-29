@@ -261,7 +261,11 @@ def raw_drive(sim, freqs, n_steps, drive_idx, expected_codes):
 
 THRU_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
               "wire_port_dead_extent_cells"]
-SINGLEPOST_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
+# refplane_partial_optin is the DELIBERATE design: only the driven port
+# opts into the plane instrument (the passive far termination stays on
+# the default path; the harness consumes raw plane accumulators only).
+SINGLEPOST_CODES = ["pec_faces_finite_pec", "refplane_partial_optin",
+                    "wire_port_dead_extent_cells",
                     "wire_port_dead_extent_cells"]
 
 
