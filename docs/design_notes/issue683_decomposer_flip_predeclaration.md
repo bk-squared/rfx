@@ -246,3 +246,39 @@ P2/P3/P4/P5 and restores five of the six keyed gates; the sixth
 (thru-floor < 0.12 class) is a pre-declared falsifier that FIRED against
 a physically-explained measurement and is held, visibly, for review —
 a justified STOP outcome for that gate, not a silent re-pin.
+
+## 7. P6 addendum (appended after the full sweep of 2026-08-29; all prior sections unchanged)
+
+Full battery, `-k "wire or lumped or sparam or twoport"`,
+`-m "not gpu and (slow_physics or not slow_physics)"` (marker override
+active — the slow_physics THRU battery ran, not skipped):
+**326 passed, 7 failed, 4 skipped, 1 xfailed** (14:43 CPU).
+
+- The 7 failures are ALL PRE-EXISTING on the unflipped base bc88f1c
+  (each re-run there individually, in a measurement-only scratch
+  checkout): six `test_example_matches_snapshot` grid-realization
+  snapshot drifts (ports_and_sparams_101 x5, lumped_port_gradient_check)
+  plus `test_not_auditable_classifications_are_machine_checked
+  [issue764_wireport_norm_falsifiers.py]`.  Untouched by this change.
+- The 1 xfailed is `test_thru_s11_floor` — the documented FIRED P1
+  gate 5 (section 6).
+- Two movers surfaced by the sweep were code-following schema
+  consequences of the new reference channel, fixed and re-run green,
+  not lock moves: (a) the wire dump/replay savez mirrors in
+  tests/test_port_dump_replay.py and
+  scripts/diagnostics/report_wire_replay_sweep.py gained
+  `raw_drive_ref_voltages_fdt` (without it a post-#683 dump replays the
+  POST samples as the calibration reference — exactly the raw-flip
+  catastrophe in miniature, caught by the replay gate as designed);
+  (b) the mixed-lane fill in rfx/api/_sparams.py guards accumulator
+  tuples shorter than 5 (the bisecting-mesh path's lane did not flip;
+  its vi[0] still IS the pre-injection reference).
+- tests/test_refplane_port_waves.py (not matched by the -k selection)
+  run explicitly: 32 passed — the #313 reference-plane path's
+  byte-frozen diagonals and non-opted off-diagonals held through the
+  flip via the same v_ref reference.
+
+Final standing: unchanged from section 6 — the flip + decomposer
+recalibration is validated end to end; the single fired falsifier
+(thru-floor < 0.12 restore class vs measured physical 0.2910) is held
+visibly as a strict xfail for review disposition.
