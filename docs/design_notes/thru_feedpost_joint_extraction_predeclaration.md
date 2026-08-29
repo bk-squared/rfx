@@ -280,3 +280,75 @@ windows, and re-run all V-checks before any FDTD.
 - Movers beyond the one xfail replacement: NONE planned; any unexpected
   mover is STOP-and-report, not re-pin. No window above is widened
   after any measurement, under any rationale.
+
+## 8. PRE-MEASUREMENT apparatus finding (appended 2026-08-29, BEFORE any FDTD run; sections 1-7 unchanged)
+
+V-check results on the frozen synthetics (harness `--verify`):
+
+- V1 PASS exact (max rel err 2.2e-16); generator cross-check vs the
+  `rfx.deembed` inverse at 5.6e-16.
+- V2a PASS: the attempt-1 fixed-constant method on the biased truth
+  (Zc=46, l_eff=17, flat 0.25 nH) reproduces the declining-L signature
+  (flatness 0.80, monotone).
+- V2b PASS exact: the joint fit recovers the biased truth to 2.2e-16
+  and F-J3 flatness with fitted constants is ~3e-15.
+- **V3 as frozen FAILED — recorded, not hidden.** The 30% linear
+  dispersive truth is absorbed by the joint fit into
+  (L, Zc, l_eff) = (0.289 nH, 46.81 ohm, 15.40 mm) — inside all F-J2
+  windows — at resid_max 0.0044 (below the honest F-J1 noise budget)
+  and F-J3 flatness 0.022. This is a MATHEMATICAL property of the
+  design discovered before any measurement: over 1.4-2.6 GHz a smooth
+  linear L(f) is near-degenerate with a flat L plus shifted constants.
+  No out-of-band falsifier on this data can detect it without gating
+  below the physical noise class, which would be dishonest.
+
+Consequence, derived and verified numerically (no window of sections
+4-5 is touched; this appendix only relocates where the smooth-dispersion
+teeth are VERIFIED to live):
+
+- The smooth-dispersion falsification is carried by the HELD-OUT band
+  arm's F-D1 with the frozen B(L*). End-to-end synthetic check: the
+  same 30%-dispersion law extended over 3-7 GHz, de-embedded with the
+  out-of-band fitted flat L*, leaves a worst in-band diagonal 0.1293
+  vs B = 0.0854 -> **F-D1 FIRES**. A 10%-dispersion law leaves 0.0406
+  vs B = 0.0832 -> inside the budget, i.e. within the locked claim's
+  own stated resolution (the lock asserts the de-embedded floor under
+  the FROZEN flat-L* post model is < B; dispersion whose in-band
+  consequence is below B is inside that claim's tolerance by
+  construction).
+- **V3' (supersedes V3, frozen now, still pre-measurement)**: the
+  30%-dispersion synthetic must (a) be absorbed out-of-band (recording
+  the degeneracy) and (b) fire F-D1 on the synthetic band arm with the
+  fitted flat L*. V3' passing = the teeth exist where the held-out
+  structure puts them.
+- F-J1/F-J3 retain their verified teeth against the attempt-1
+  constant-bias class (V2) and against model-breaking residual
+  structure; they are no longer claimed to detect smooth dispersion.
+
+No FDTD measurement had been run in this lane when this section was
+committed; the amendment is append-only design correction, not
+post-measurement tuning.
+
+### 8.1 V4 finding (appended 2026-08-29, still BEFORE any FDTD run)
+
+V4 as frozen: pulls PASS (0.15-0.21 sigma — the covariance machinery is
+correct), but the clause "F-J5's windows hold at the 0.005 noise class"
+is REFUTED numerically: at iid complex noise of scale 0.005 per entry
+the fit returns sigma_L/L = 0.20 (sigma_Zc = 0.74 ohm and
+sigma_leff/leff = 0.019 pass). The L column of the Jacobian is the
+weakest — consistent with the section-8 degeneracy finding.
+
+Consequence (no window touched; F-J5 stands exactly as frozen):
+sigma scales linearly with the residual class, so **F-J5's
+sigma_L/L <= 0.10 gate passes only if the measured joint-fit residual
+class is <= ~0.0025** (complex rms per entry). That is the quantitative
+bar the FDTD data must clear; if the real fixture's residual class is
+larger, F-J5 FIRES and the lane STOPs — which is precisely the gate
+doing its job ("identifiability achieved, not just argued"). The
+next-scale remedy in that case remains the single-post fixture.
+
+**V4' (supersedes V4, frozen now, pre-measurement)**: (a) pulls within
+3 sigma at the 0.005 noise class; (b) linear sigma scaling verified: at
+noise scale 0.002 the F-J5 windows must hold (sigma_L/L <= 0.10),
+demonstrating the gate is passable by clean-enough data and fires
+otherwise.
