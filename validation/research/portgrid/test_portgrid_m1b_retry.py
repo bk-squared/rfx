@@ -270,3 +270,52 @@ def test_disk_sigma_maps_geometry():
     xs = 39e-3 + (np.arange(nfx) + 0.5) * d
     outside = (xs < 40e-3 - 1e-12) | (xs > 46e-3 + 1e-12)
     assert np.all(sx[outside, :] == 0.0)
+
+
+def test_pml_floor_class_gate():
+    """Battery-level gate on the PML termination's reflection FLOOR.
+
+    ``test_pml_actually_absorbs`` only demands 60 dB of energy decay, which a
+    badly mismatched PML still satisfies: the reviewer's mutation (halving the
+    matched magnetic conductivity sigma* wired at sim2d.py pml_profiles)
+    degrades the measured floor from -94 dB to -15.8 dB while leaving that test
+    green.  This gate locks the CLASS instead -- the same echo/direct ratio the
+    F-M1b-abc floor arm measures, at dt(r=2), against a deliberately loose
+    -40 dB window.  It is not the frozen -50 dB falsifier (that verdict lives in
+    m1b_retry.py --arm floor + its committed JSON); it exists so a termination
+    regression cannot reach M2 unnoticed.
+
+    Gates are the Correction R1 rays; per Correction R2 the direct gate
+    truncates the direct pulse near its peak, which biases the measured floor
+    UPWARD (pessimistic) -- harmless for a class gate.
+    """
+    with enable_x64():
+        import jax
+
+        from validation.research.portgrid import m1b_retry, sim2d
+
+        dt, _ = m1b_retry._dt_for(sim2d, 2)
+        nx, ny, src, prb = 400, 40, 100, 150
+        n_steps = int(np.ceil(2.2e-9 / dt))
+        wf = sim2d.gaussian_modulated(n_steps, dt, m1b_retry.F0, m1b_retry.HWHM)
+        step, init, _ = sim2d.make_uniform_pml(
+            nx, ny, m1b_retry.DX, m1b_retry.DY, dt,
+            src_col=src, probe_col=prb, npml=m1b_retry.NPML)
+        p = np.asarray(jax.jit(
+            lambda s, w: jax.lax.scan(step, s, w))(init(), wf)[1])
+
+        t = np.arange(n_steps) * dt
+        direct = np.where(t <= 0.30e-9, p, 0.0)
+        echo = np.where((t >= 0.55e-9) & (t <= 1.15e-9), p, 0.0)
+        assert np.max(np.abs(direct)) > 0.0, "direct gate captured nothing"
+
+        nfft = 1 << int(np.ceil(np.log2(4 * n_steps)))
+        f = np.fft.rfftfreq(nfft, dt)
+        rr = np.abs(np.fft.rfft(echo, nfft)) / np.maximum(
+            np.abs(np.fft.rfft(direct, nfft)), 1e-300)
+        floor_db = m1b_retry._band_max_db(f, rr, 2e9, 30e9)
+        assert floor_db <= -40.0, (
+            f"PML reflection floor {floor_db:.1f} dB exceeds the -40 dB class "
+            "gate -- the termination regressed (check the matched sigma* "
+            "wiring in sim2d.pml_profiles)"
+        )

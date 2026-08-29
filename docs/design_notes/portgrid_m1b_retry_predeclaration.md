@@ -207,3 +207,42 @@ Correct ray arrivals (pulse half-support 0.113 ns): direct [0.05, 0.28] ns; left
 begins 1.62 ns. Corrected gates: direct [0, 0.30] ns, echo [0.55, 1.15] ns — echo fully
 inside, right-PML echo fully outside. The floor WINDOW is unchanged:
 measured |R_PML(f)| <= -50 dB for all f in [2,30] GHz, at dt(r=2) and dt(r=6).
+
+## Correction R2 (2026-08-29, post-measurement, append-only) — R1's ray arithmetic omitted the source group delay
+
+Adversarial-review finding, independently re-measured here. Correction R1 timed the
+rays from EMISSION at t = 0, omitting the modulated-Gaussian source's own group delay
+t_c. Measured on the committed instrument (dt(r=2), same 400x40 guide): the source
+waveform peaks at t_c = 0.1249 ns, so the direct pulse arrives at the probe at
+0.2919 ns — i.e. the R1 direct gate [0, 0.30] ns cuts the direct pulse essentially AT
+its peak rather than after it.
+
+Effect on the verdict: NONE, and the error is in the pessimistic direction. The
+truncated direct spectrum is SMALLER than the true one, so the echo/direct ratio it
+produces is an UPPER bound on the floor. Re-measured both ways:
+
+| direct gate | max\|R_PML\| over [2, 30] GHz |
+|---|---|
+| [0, 0.30] ns (committed, R1) | **-94.02 dB** |
+| [0, 0.55] ns (full direct)   | -94.86 dB |
+
+The frozen F-M1b-abc window (<= -50 dB) is untouched and is cleared by 44 dB either
+way, so no number in the record changes and no gate moves. The echo gate
+[0.55, 1.15] ns is unaffected: with t_c included the left-PML echo arrives at
+0.734 + 0.125 = 0.859 ns, still fully inside, and the right-PML echo at
+1.62 + 0.125 = 1.745 ns, still fully outside.
+
+Recorded so a future lane re-deriving these gates starts from emission + group delay,
+not emission alone.
+
+## Battery-level floor gate added (2026-08-29, append-only) — review finding
+
+`test_pml_actually_absorbs` demands only 60 dB of energy decay, which a badly
+mismatched termination still satisfies: halving the matched magnetic conductivity
+(sigma* wired at `sim2d.pml_profiles` / the steppers' `xh`) degrades the measured
+floor from -94.0 dB to **-15.77 dB** while that test stays green. The frozen -50 dB
+falsifier lived only in the rerunnable `m1b_retry.py --arm floor` script plus its
+committed JSON, so a termination regression could have reached M2 unnoticed.
+`test_portgrid_m1b_retry.py::test_pml_floor_class_gate` now locks the CLASS at a
+deliberately loose -40 dB (not the frozen falsifier, which keeps its own provenance),
+and was verified to fire at -15.77 dB under exactly that mutation.
