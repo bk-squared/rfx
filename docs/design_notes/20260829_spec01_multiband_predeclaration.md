@@ -1292,3 +1292,31 @@ reduced three-scale ladder through the SAME committed judge. Verified after
 the fact: re-running the judge over the stored arms of both committed
 result files reproduces their `p_uc`, `p_mb`, `fixture_gates`, `fs4_fired`
 and `verdict` exactly.
+
+## WP6R.8 — BL1 in code: the in-plane half of the 1.3 -> 1.4 lock move is reverted (2026-08-30)
+
+BL1 was filed against the documentation, but the same overclaim was in the
+code. WP6b moved the abrupt-grading threshold from 1.3 to 1.4 on **all
+three axes** (`rfx/api/__init__.py` constructor warning) and set the new
+preflight advisory's cap at 1.4 on all three
+(`_MULTIBAND_RATIO_CAP`). The provenance recorded for that move is the
+multi-band witness battery — which grades z and holds the transverse mesh
+uniform in every arm. SPEC-00 §0.2-4 requires physical provenance for a
+lock move, and there is none for an in-plane axis.
+
+Repair (no measurement involved):
+
+- constructor: cap stays 1.4 for `dz_profile`; `dx_profile` / `dy_profile`
+  go back to the pre-WP6 threshold of 1.3, and the message for those axes
+  says why ("the validated 1.4 multi-band cap is a z-axis envelope and no
+  witness grades an in-plane axis").
+- preflight: `_INPLANE_RATIO_CAP = 1.3` alongside `_MULTIBAND_RATIO_CAP =
+  1.4`, chosen per axis, with the same scope sentence in the advisory and
+  the F-S2 resolution scaling named.
+
+This tightens two thresholds and loosens none. Movement check: the
+preflight-advisory emission contract, the example-fidelity contract and the
+fidelity report all pass unchanged (123 passed) — no committed example has
+an in-plane profile with a max adjacent ratio in (1.3, 1.4], so the
+re-tightened in-plane threshold fires nowhere in the repo's own example
+set, exactly as the WP6d check found for the loosening.

@@ -482,36 +482,50 @@ class Simulation(
         # they carry, not in whether an abrupt ratio reflects.
         # Tracer profiles skip the warning — adjacent ratios can't be
         # computed host-side during tracing.
-        # Threshold 1.3 -> 1.4 (SPEC-01 WP6, #780). PROVENANCE for the
-        # move: 1.3 was `smooth_grading`'s own per-step default with no
-        # measurement behind it, so ratios in (1.3, 1.4] warned without
-        # evidence that they cost anything. The multi-band witness battery
-        # (validation/research/multiband_nu/, pre-declaration note
+        # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
+        # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
+        # default with no measurement behind it, so ratios in (1.3, 1.4]
+        # warned without evidence that they cost anything. The multi-band
+        # witness battery (validation/research/multiband_nu/,
+        # pre-declaration note
         # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
         # measures the r = 1.4 transition directly: reflection inside the
         # exact discrete chain-model window (-54 dB class at 30
-        # cells/wavelength), round-trip amplitude asymmetry under the 3e-4
-        # floor, 1e6-step energy bounded at the float-accumulation class,
-        # and 2nd-order supraconvergence preserved. So <= 1.4 is now a
-        # documented envelope (docs/guides/support_matrix.md 'Multi-band
-        # graded mesh') and must construct clean. Beyond the cap this
-        # warning still fires, and preflight adds the richer advisory
-        # nu_grading_ratio_beyond_validated_cap with the accuracy class
-        # on both sides.
-        for _axis_name, _profile in (("dz_profile", dz_profile),
-                                     ("dx_profile", dx_profile),
-                                     ("dy_profile", dy_profile)):
+        # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
+        # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
+        # at the float-accumulation class, and 2nd-order supraconvergence
+        # preserved on a fixture whose graded axis carries ~90 % of the
+        # error budget.
+        # dx/dy STAY AT 1.3: every witness in that battery grades z and
+        # holds the transverse mesh uniform (the harness takes a scalar
+        # transverse cell), so there is no in-plane provenance for moving
+        # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
+        # review found this axis overclaim in the docs; it lived here too.
+        # Beyond the cap this warning still fires, and preflight adds the
+        # richer advisory nu_grading_ratio_beyond_validated_cap with the
+        # accuracy class on both sides.
+        for _axis_name, _profile, _cap, _scope in (
+                ("dz_profile", dz_profile, 1.4,
+                 "the validated multi-band grading cap"),
+                ("dx_profile", dx_profile, 1.3,
+                 "the in-plane grading threshold — the validated 1.4 "
+                 "multi-band cap is a z-axis envelope and no witness "
+                 "grades an in-plane axis"),
+                ("dy_profile", dy_profile, 1.3,
+                 "the in-plane grading threshold — the validated 1.4 "
+                 "multi-band cap is a z-axis envelope and no witness "
+                 "grades an in-plane axis")):
             if (_profile is not None and not is_tracer(_profile)
                     and len(_profile) > 1):
                 import warnings as _w
                 _p = np.asarray(_profile, dtype=float)
                 ratios = _p[1:] / _p[:-1]
                 max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-                if max_ratio > 1.4 + 1e-6:
+                if max_ratio > _cap + 1e-6:
                     _w.warn(
                         f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.3f} (> 1.4, the validated multi-band "
-                        "grading cap — docs/guides/support_matrix.md, "
+                        f"{max_ratio:.3f} (> {_cap:g}, {_scope} — "
+                        "docs/guides/support_matrix.md, "
                         "'Multi-band graded mesh'). This may cause "
                         "numerical reflections. Use "
                         f"rfx.smooth_grading({_axis_name}) to fix.",

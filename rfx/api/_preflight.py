@@ -4720,7 +4720,13 @@ class _PreflightMixin:
     # cpml_layers = 0, so this envelope says NOTHING about grading that
     # interacts with an absorber. That exclusion is what the second check
     # reports.
+    # z: the witnessed multi-band envelope cap. x/y: the pre-existing
+    # in-plane threshold, deliberately NOT moved to 1.4 — every witness in
+    # the multi-band battery grades z with a uniform transverse mesh, so
+    # there is no in-plane provenance for moving an in-plane lock
+    # (SPEC-00 0.2-4; adversarial review 2026-08-29, finding BL1).
     _MULTIBAND_RATIO_CAP = 1.4
+    _INPLANE_RATIO_CAP = 1.3
 
     def _validate_cfg_multiband_grading(self, _w) -> None:
         """P2: multi-band graded-mesh envelope advisories (SPEC-01 WP6).
@@ -4773,19 +4779,26 @@ class _PreflightMixin:
             p = np.asarray(profile, dtype=float)
             ratios = p[1:] / p[:-1]
             max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-            if max_ratio > self._MULTIBAND_RATIO_CAP + 1e-6:
+            cap = (self._MULTIBAND_RATIO_CAP if ax_name == "z"
+                   else self._INPLANE_RATIO_CAP)
+            scope = ("validated multi-band grading cap"
+                     if ax_name == "z" else
+                     "in-plane grading threshold (the validated 1.4 "
+                     "multi-band cap is a z-axis envelope: no witness in "
+                     "it grades an in-plane axis)")
+            if max_ratio > cap + 1e-6:
                 _w.warn(
                     PreflightWarning(
                         f"d{ax_name}_profile max adjacent cell ratio "
-                        f"{max_ratio:.3f} exceeds the validated multi-band "
-                        f"grading cap "
-                        f"{self._MULTIBAND_RATIO_CAP:g} "
+                        f"{max_ratio:.3f} exceeds the {scope} "
+                        f"{cap:g} "
                         f"(docs/guides/support_matrix.md, 'Multi-band graded "
                         f"mesh'). WHY: stability is unaffected (dt is the "
                         f"global min-cell CFL, sufficient on any tensor "
                         f"grid), but per-transition accuracy is witnessed "
-                        f"only up to ratio 1.4 — the -54 dB reflection class "
-                        f"at 30 cells/wavelength, against -44 dB measured at "
+                        f"only along z and only up to ratio 1.4 — the -54 dB "
+                        f"reflection class at 30 cells/wavelength (it scales "
+                        f"as (dz/lambda)^2), against -44 dB measured at "
                         f"ratio 2.0. COST: an unquantified reflection and "
                         f"grading-dispersion error at that transition. "
                         f"REMEDY: split it into ratio<=1.4 steps (e.g. "
