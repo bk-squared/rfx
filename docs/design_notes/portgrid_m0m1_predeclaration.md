@@ -187,3 +187,17 @@ Failure → FIRE (backprop is not the transpose of the same dissipative intercon
 Single global dt = 0.99×fine CFL (no local time stepping); no SBP operator derivation;
 no Huygens/filter stabilization; unmodified Yee everywhere except the paper's interface
 update (61); research-first directory, no rfx/ body entry before M3.
+
+## 9. Correction 1 (pre-measurement, 2026-08-29) — F-M1b fixture geometry
+
+Recorded BEFORE the F-M1b measurement ran. The §6 F-M1b fixture (domain 400 mm,
+source x=60 mm, probe x=120 mm, island front x=200 mm) fails its own gating
+requirement: the source's backward wave reflects off the left PEC wall, re-hits
+the island, and its scattered front reaches the probe at ~1.02-1.13 ns — inside
+the reflection gate needed to capture the island back-face tail (~1.10 ns).
+Corrected geometry (ray-arrival re-derivation in `m1_reflection.py` docstring):
+domain 700 mm x 40 mm, source line x=300 mm, probe (360 mm, 20 mm), island
+coarse cells [440,460) x [10,30); incident gate [0, 0.45] ns, reflection gate
+[0.50, 1.35] ns; second incidence arrives 2.74 ns, right-end transit 2.47 ns —
+both far outside the gate. The falsifier windows are UNCHANGED:
+max|S11| over [2,20] GHz <= -45 dB AND over [2,30] GHz <= -35 dB, r in {2,3,4,5,6}.
