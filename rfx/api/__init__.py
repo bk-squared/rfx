@@ -482,6 +482,22 @@ class Simulation(
         # they carry, not in whether an abrupt ratio reflects.
         # Tracer profiles skip the warning — adjacent ratios can't be
         # computed host-side during tracing.
+        # Threshold 1.3 -> 1.4 (SPEC-01 WP6, #780). PROVENANCE for the
+        # move: 1.3 was `smooth_grading`'s own per-step default with no
+        # measurement behind it, so ratios in (1.3, 1.4] warned without
+        # evidence that they cost anything. The multi-band witness battery
+        # (validation/research/multiband_nu/, pre-declaration note
+        # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
+        # measures the r = 1.4 transition directly: reflection inside the
+        # exact discrete chain-model window (-54 dB class at 30
+        # cells/wavelength), round-trip amplitude asymmetry under the 3e-4
+        # floor, 1e6-step energy bounded at the float-accumulation class,
+        # and 2nd-order supraconvergence preserved. So <= 1.4 is now a
+        # documented envelope (docs/guides/support_matrix.md 'Multi-band
+        # graded mesh') and must construct clean. Beyond the cap this
+        # warning still fires, and preflight adds the richer advisory
+        # nu_grading_ratio_beyond_validated_cap with the accuracy class
+        # on both sides.
         for _axis_name, _profile in (("dz_profile", dz_profile),
                                      ("dx_profile", dx_profile),
                                      ("dy_profile", dy_profile)):
@@ -491,12 +507,14 @@ class Simulation(
                 _p = np.asarray(_profile, dtype=float)
                 ratios = _p[1:] / _p[:-1]
                 max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-                if max_ratio > 1.3 + 1e-6:
+                if max_ratio > 1.4 + 1e-6:
                     _w.warn(
                         f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.2f} (> 1.3). This may cause numerical "
-                        f"reflections. Use rfx.smooth_grading({_axis_name}) "
-                        "to fix.",
+                        f"{max_ratio:.2f} (> 1.4, the validated multi-band "
+                        "grading cap — docs/guides/support_matrix.md, "
+                        "'Multi-band graded mesh'). This may cause "
+                        "numerical reflections. Use "
+                        f"rfx.smooth_grading({_axis_name}) to fix.",
                         stacklevel=2,
                     )
 

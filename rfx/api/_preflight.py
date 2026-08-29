@@ -2931,6 +2931,7 @@ class _PreflightMixin:
         self._validate_cfg_source_on_graded_node(_w)
         self._validate_cfg_wire_port_on_graded_node(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
+        self._validate_cfg_multiband_grading(_w)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
         self._validate_cfg_conformal_fine_dx(dx)
@@ -4686,6 +4687,144 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    # Validated multi-band grading envelope (SPEC-01 WP6, #780; witness
+    # battery validation/research/multiband_nu/, pre-declaration note
+    # docs/design_notes/20260829_spec01_multiband_predeclaration.md,
+    # support row docs/guides/support_matrix.md "Multi-band graded mesh").
+    #
+    # What the witnesses establish for N fine bands per axis (small-large-
+    # small-large included) with EVERY adjacent-cell ratio <= 1.4:
+    #   F-S1  Remis-class dual-cell discrete energy is bounded at the
+    #         float-accumulation class over 1e6 steps, 1D and 3D.
+    #   F-S2  per-transition reflection at r <= 1.4 sits inside the window
+    #         computed from the exact discrete scattering chain (-54 dB
+    #         class at 30 cells/wavelength; -44 dB measured at r = 2.0).
+    #   F-S3  symmetric round-trip amplitude asymmetry stays under the
+    #         3e-4 differencing floor.
+    #   F-S4  global 2nd-order supraconvergence is preserved on the
+    #         multi-band grid (p_mb = p_uc = 1.95 against the analytic
+    #         TE101 of a PEC cavity) — Monk & Suli 1994 / Li & Shields
+    #         2016 as realized by this solver.
+    #   F-S5  the mesh-gradient AD path is unchanged by multi-band.
+    #
+    # 1.4 is a CAP, not a threshold fitted to data: it is the value the
+    # spec claims and the witnesses were run at, and it matches the
+    # commercial default (Tidy3D max_scale = 1.4). Beyond it the run is
+    # still stable (Remis JCP 218:594, 2006 — min-cell CFL is sufficient
+    # on ANY tensor grid), so both checks below are ADVISORY, never
+    # blocking; what is lost beyond the cap is the validated accuracy
+    # class, not stability.
+    #
+    # EXCLUSION the witnesses force: every one of them ran PEC-closed with
+    # cpml_layers = 0, so this envelope says NOTHING about grading that
+    # interacts with an absorber. That exclusion is what the second check
+    # reports.
+    _MULTIBAND_RATIO_CAP = 1.4
+
+    def _validate_cfg_multiband_grading(self, _w) -> None:
+        """P2: multi-band graded-mesh envelope advisories (SPEC-01 WP6).
+
+        Two advisory-tier checks on every explicit per-axis profile. A
+        profile whose adjacent ratios are all <= 1.4 draws NEITHER — that
+        is the "allow" half of WP6: a small-large-small-large profile is
+        now a documented, witnessed configuration and must construct and
+        preflight clean.
+
+        1. ``nu_grading_ratio_beyond_validated_cap`` — some adjacent-cell
+           ratio exceeds the 1.4 cap. Quotes the measured accuracy class
+           on both sides of the cap so the reader can price the choice.
+        2. ``nu_grading_reaches_absorber`` — an axis has an active
+           absorber face and its adjacent interior runway is not uniform.
+
+        Why check 2 exists, and where its DEPTH comes from. The absorber
+        pad replicates the outermost interior cell
+        (``rfx/nonuniform._pad_profile``), so the absorber itself is
+        always uniformly meshed; what a boundary-adjacent transition does
+        is change the discrete medium in the boundary-NORMAL direction
+        right where the absorber begins. Normal-direction inhomogeneity
+        is the documented breakdown class for PML generally (Meep's PML
+        documentation: PML tolerates media varying only in the
+        boundary-PARALLEL directions), and it leaves the transition's own
+        reflection no interior runway in which to separate from the
+        absorber's. The depth used is the FACE'S OWN allocated layer
+        count — the only length the absorber itself defines, and the span
+        over which its conductivity ramp acts. No measurement sets this
+        depth and none could: the multi-band witnesses are absorber-free,
+        which is precisely why the combination is flagged rather than
+        scored. Tolerance 1e-6 on the adjacent ratio, i.e. a runway is
+        "uniform" up to 1 ppm of cell size — far below any grading a user
+        can mean, and above float round-tripping in a computed profile.
+        """
+        face_layers = None
+        for ax_name, profile in (("x", self._dx_profile),
+                                 ("y", self._dy_profile),
+                                 ("z", self._dz_profile)):
+            if profile is None or is_tracer(profile) or len(profile) < 2:
+                continue
+            p = np.asarray(profile, dtype=float)
+            ratios = p[1:] / p[:-1]
+            max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
+            if max_ratio > self._MULTIBAND_RATIO_CAP + 1e-6:
+                _w.warn(
+                    PreflightWarning(
+                        f"d{ax_name}_profile max adjacent cell ratio "
+                        f"{max_ratio:.2f} exceeds the validated multi-band "
+                        f"grading cap "
+                        f"{self._MULTIBAND_RATIO_CAP:g} "
+                        f"(docs/guides/support_matrix.md, 'Multi-band graded "
+                        f"mesh'). WHY: stability is unaffected (dt is the "
+                        f"global min-cell CFL, sufficient on any tensor "
+                        f"grid), but per-transition accuracy is witnessed "
+                        f"only up to ratio 1.4 — the -54 dB reflection class "
+                        f"at 30 cells/wavelength, against -44 dB measured at "
+                        f"ratio 2.0. COST: an unquantified reflection and "
+                        f"grading-dispersion error at that transition. "
+                        f"REMEDY: split it into ratio<=1.4 steps (e.g. "
+                        f"rfx.smooth_grading) to stay inside the envelope, "
+                        f"or accept it and say so in the report. STALE-IF: "
+                        f"the support-matrix row raises the cap.",
+                        code="nu_grading_ratio_beyond_validated_cap",
+                        source="_validate_cfg_multiband_grading",
+                    ),
+                    stacklevel=3,
+                )
+            if face_layers is None:
+                face_layers = self._preflight_face_layers()
+            for side in ("lo", "hi"):
+                layers = face_layers.get(f"{ax_name}_{side}", 0)
+                if layers <= 0 or len(p) <= layers:
+                    continue
+                runway = p[:layers + 1] if side == "lo" else p[-(layers + 1):]
+                r_run = runway[1:] / runway[:-1]
+                dev = float(np.max(np.abs(r_run - 1.0)))
+                if dev > 1e-6:
+                    _w.warn(
+                        PreflightWarning(
+                            f"d{ax_name}_profile is not uniform within the "
+                            f"{layers} interior cells adjacent to the "
+                            f"{ax_name}_{side} absorber face (max adjacent "
+                            f"cell-ratio deviation {dev:.3g}). WHY: the "
+                            f"absorber pad replicates the outermost interior "
+                            f"cell, so a transition in that runway changes "
+                            f"the discrete medium in the boundary-NORMAL "
+                            f"direction exactly where the absorber starts — "
+                            f"the documented PML breakdown class — and gives "
+                            f"the transition's own reflection no runway to "
+                            f"separate from the absorber's. COST: the "
+                            f"validated multi-band envelope does not cover "
+                            f"it at all; every one of its witnesses ran "
+                            f"PEC-closed with no absorber "
+                            f"(docs/guides/support_matrix.md, 'Multi-band "
+                            f"graded mesh'). REMEDY: keep at least "
+                            f"{layers} uniform interior cells against that "
+                            f"face, or close it with PEC/PMC. STALE-IF: an "
+                            f"absorber-bearing witness is added to that row.",
+                            code="nu_grading_reaches_absorber",
+                            source="_validate_cfg_multiband_grading",
+                        ),
+                        stacklevel=3,
+                    )
 
     def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         """Advisory: a LOSSY thin conductor landing on a grading transition.

@@ -291,6 +291,59 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "drives the external grcwa library directly -- no rfx import at all"),
 
+    # SPEC-01 multiband-NU witness package (#780). These are a witness
+    # LIBRARY plus per-witness measurement drivers, not demo examples; the
+    # eleven below never construct a `Simulation` (AST-verified). Nine of
+    # them drive the non-uniform kernels through
+    # `rfx.nonuniform.make_nonuniform_grid` / `run_nonuniform` directly
+    # (the design note requires explicit profile vectors, bypassing the
+    # `auto_config` builders so a solver property is never confounded with
+    # a builder defect), and two are pure numpy/analysis.
+    "validation/research/multiband_nu/__init__.py": Entry(
+        "no_simulation", "package marker -- empty file"),
+    "validation/research/multiband_nu/chain_model.py": Entry(
+        "no_simulation",
+        "exact discrete 1-D scattering chain solved in plain numpy (the "
+        "F-S2/F-S3 window model) -- no rfx import at all"),
+    "validation/research/multiband_nu/fixtures.py": Entry(
+        "no_simulation",
+        "explicit dz/dx profile-vector builders (numpy) plus the P-C "
+        "geometry constants -- constructs no Simulation"),
+    "validation/research/multiband_nu/harness.py": Entry(
+        "no_simulation",
+        "builds NonUniformGrid/MaterialArrays through "
+        "rfx.nonuniform.make_nonuniform_grid and steps the kernels "
+        "directly -- no Simulation object exists"),
+    "validation/research/multiband_nu/predeclare_windows.py": Entry(
+        "no_simulation",
+        "freezes the F-S2/F-S3 windows from chain_model into "
+        "results/predeclared_windows.json -- functional grid path only"),
+    "validation/research/multiband_nu/remis_energy.py": Entry(
+        "no_simulation",
+        "the Remis-class dual-cell energy functional and its SBP "
+        "adjointness check, over a NonUniformGrid -- no Simulation"),
+    "validation/research/multiband_nu/revert_proof.py": Entry(
+        "no_simulation",
+        "gate-2 defect-injection proof on the functional grid/kernel "
+        "path -- no Simulation"),
+    "validation/research/multiband_nu/w1_energy_drift.py": Entry(
+        "no_simulation",
+        "F-S1 energy-audit driver on the functional grid/kernel path "
+        "-- no Simulation"),
+    "validation/research/multiband_nu/w2_w3_reflection.py": Entry(
+        "no_simulation",
+        "F-S2/F-S3 two-run-differencing driver on the functional "
+        "grid/kernel path -- no Simulation"),
+    "validation/research/multiband_nu/w4r2_analytic_cavity.py": Entry(
+        "no_simulation",
+        "F-S4 analytic-cavity ladder (empty PEC box, no geometry to "
+        "rasterize) driven through the functional grid/kernel path "
+        "-- no Simulation"),
+    "validation/research/multiband_nu/w5_ad_consistency.py": Entry(
+        "no_simulation",
+        "F-S5 jax.grad-vs-FD check over an explicit profile vector on "
+        "the functional grid/kernel path -- no Simulation"),
+
     # ---- module_level_solve (6): solves at import time, no main guard ----
     "validation/crossval/01_waveguide_bend.py": Entry(
         "module_level_solve",
@@ -465,6 +518,34 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
+
+    # SPEC-01 multiband-NU W4 fixtures (#780) -- the only two scripts in
+    # that package that construct a `Simulation` (P-C, the microstrip-class
+    # multi-band resonator; preflight is deliberately ON there). Both
+    # expose `build_sim(scale, dz_profile)` with no solve call, so the gate
+    # pins exactly what this lane most needs pinned: declared-vs-realized
+    # geometry on a multi-band graded mesh. Audited at the COARSEST declared
+    # ladder scale of each script (cheapest build, same declared geometry at
+    # every scale by construction -- the alignment invariant in the design
+    # note's section 1), multiband profile, which is the arm under test.
+    "validation/research/multiband_nu/w4_supraconvergence.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile)` returns Simulation with no solve "
+        "call (phase-1 W4 fixture; its ladder verdict was INCONCLUSIVE and "
+        "the script is kept as the recorded diagnostic)",
+        (Builder("build_sim", None, (
+            _v_from("s1.5_multiband", lambda m: dict(
+                scale=1.5, dz_profile=m.fx.pc_dz_profile_sym(1.5))),
+        )),)),
+    "validation/research/multiband_nu/w4r_port_supraconvergence.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile, antisym=True)` returns Simulation "
+        "with no solve call (W4R redesign: mode-selective anti-symmetric "
+        "port pair, knife-edge-free PEC drawing)",
+        (Builder("build_sim", None, (
+            _v_from("s1.5_multiband", lambda m: dict(
+                scale=1.5, dz_profile=m.fx.pc_dz_profile_sym(1.5))),
+        )),)),
 }
 
 

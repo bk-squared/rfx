@@ -20,7 +20,14 @@ import numpy as np
 
 from rfx import Simulation, Box, GaussianPulse
 
-from . import fixtures as fx
+# Absolute (not relative) import: this module is one of the two in
+# this package that construct a `Simulation`, so the #737 example-
+# fidelity gate classifies it 'audited' and LOADS it by file path
+# (`tests/_example_fidelity_lib.load_module`), where a relative
+# import has no parent package. Absolute import keeps both entry
+# points working: `python -m validation.research.multiband_nu.<mod>`
+# from the repo root, and the gate's by-path load.
+from validation.research.multiband_nu import fixtures as fx
 
 FREQ_RANGE = (3e9, 9e9)
 T_TOTAL = 20e-9           # equal physical ring-down window for every arm

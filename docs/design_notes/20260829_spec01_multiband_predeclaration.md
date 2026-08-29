@@ -699,3 +699,140 @@ down to the kHz class.
 
 With F-S1 (1D+3D), F-S2, F-S3, F-S5 (phase 1) and F-S4 (W4R2) all
 PASS, the WP6 promotion gate is open.
+
+## WP6 — envelope promotion (2026-08-29; landed AFTER F-S4 PASS, no window or verdict touched)
+
+Gate state at promotion: F-S1 (1D + 3D), F-S2, F-S3, F-S5 PASS from
+phase 1; F-S4 PASS from W4R2 (`p_uc = p_mb = 1.95` against the analytic
+TE101). Acceptance gate 1 of the spec is met, so WP6 lands. Nothing in
+this section changes a window, a verdict, or a measured number; it is
+documentation, preflight and regression packaging only.
+
+### WP6a — `docs/guides/support_matrix.md`
+
+New row in the nonuniform-mesh classification table, **limited**, plus a
+`### Multi-band graded mesh` subsection carrying: the covered
+configuration (N fine bands per axis, any order, every adjacent ratio
+<= 1.4, abrupt or ramped); the ratio cap and what is advisory above it;
+a per-witness evidence table with the raw-result path for each
+(`w1_pa_1d.json`, `w1_pb_full_gpu.json`, `w2_w3.json`,
+`w4r2_analytic_cavity.json`, `w5_ad.json`, `revert_proof.json`) and the
+measured value; the exclusions; and an explicit honest-scope paragraph.
+
+The exclusions as landed, in the row's own words:
+
+1. **Grading must not reach the absorber** — every witness ran PEC-closed
+   at `cpml_layers = 0`, so the row says nothing about the combination.
+2. **`dt` remains the global min-cell CFL** (0.99 of it) — stated in the
+   row, with the SPEC-00 §0.4-2 reason that recovering it is not pursued.
+3. Ratios above 1.4 are advisory-flagged, not validated (r=1.5 -51.6 dB,
+   r=2.0 -43.9 dB per transition, recorded as out-of-envelope references).
+4. Simultaneous in-plane + z grading is exercised only by the 3-D energy
+   witness; no observable-accuracy statement covers it.
+
+The honest-scope paragraph states in the document itself that these are
+statements about the mesh and the solver on it, NOT about any
+S-parameter/flux/far-field/port result computed on such a mesh, and that
+the F-S4 order result comes from an empty PEC cavity precisely because
+the theorem assumes smooth fields — with the P-C ladders' ~20 MHz
+geometry-realization floor named as a fixture-class limit, not a grading
+effect.
+
+### WP6b — preflight
+
+New `_validate_cfg_multiband_grading` (P2 tier, called from the same
+`_validate_cfg_*` chain as the other nonuniform checks), two advisory
+sites:
+
+- `nu_grading_ratio_beyond_validated_cap` — max adjacent ratio > 1.4.
+- `nu_grading_reaches_absorber` — an axis whose interior runway is not
+  uniform (to 1 ppm) within the ALLOCATED LAYER COUNT of an absorbing
+  face on that side, read from the existing `_preflight_face_layers()`.
+
+The "allow" half is the absence of both on an in-cap multi-band profile;
+`tests/test_multiband_nu_envelope.py::test_preflight_multiband_within_cap_is_clean`
+locks it.
+
+**Depth provenance for the absorber check.** The pad replicates the
+outermost interior cell (`rfx/nonuniform._pad_profile`), so the absorber
+is always uniformly meshed; what a boundary-adjacent transition does is
+make the discrete medium inhomogeneous in the boundary-NORMAL direction
+right where the absorber starts, which is the documented PML breakdown
+class (Meep's PML documentation: PML tolerates media varying only in the
+boundary-PARALLEL directions). The depth used is the face's own allocated
+layer count — the only length the absorber itself defines and the span
+over which its conductivity ramp acts. **No measurement sets this depth
+and none could**: the multi-band witnesses are absorber-free, which is
+exactly why the combination is flagged rather than scored. Recorded here
+so the number is not later mistaken for a measured one.
+
+**Moved lock: the constructor's abrupt-grading warning, 1.3 -> 1.4**
+(`rfx/api/__init__.py`). Physical provenance, as SPEC-00 §0.2-4 requires:
+1.3 was `smooth_grading`'s own per-step default with no measurement behind
+it, so ratios in (1.3, 1.4] warned without evidence they cost anything.
+F-S2 measures the r = 1.4 transition directly at -53.9 dB against a
+-54.0 dB first-principles chain model, F-S3 bounds its round-trip
+asymmetry at 5.8e-6 under a 3e-4 floor, F-S1 bounds 10^6-step energy
+drift at 2.5e-6, and F-S4 shows the order is still 2 at that ratio. That
+is the evidence the old threshold lacked. Above the cap the warning still
+fires and now names the support-matrix row.
+
+**Emission-contract update** (`tests/test_preflight_advisory_emission_contract.py`,
+the procedure #738 and #755 established): `_FROZEN_TOTAL_SITES` 83 -> 85,
+`_FROZEN_LITERAL_CODE_COUNT` 55 -> 57, with the reason recorded inline at
+the constants. The dynamic-site freeze (by enclosing function) is
+untouched — both new sites are literal-code sites.
+
+### WP6c — regression packaging
+
+`tests/test_multiband_nu_envelope.py`:
+
+- FAST lane (~30 s total, default markers): the f64 witness-validity gate
+  plus the committed revert-proof run in an x64 subprocess; a reduced
+  2e4-step F-S1 arm judged by the SAME committed `evaluate_fs1`; one W2
+  arm at the cap ratio judged by the frozen chain-model window; the W5 AD
+  check; the reduced W4R2 F-S4 ladder (three coarse scales) under the
+  frozen W4R.3 judge; and the four WP6 preflight contract tests.
+- `slow_physics`: the full 10^6-step 1-D F-S1 arms and the full four-scale
+  W4R2 ladder.
+- `gpu`: the full 10^6-step 3-D P-B arms (the committed evidence for those
+  is the VESSL run, `results/w1_pb_full_gpu.json`).
+
+Every threshold in the file is either a pre-declared falsifier window or a
+declared witness-validity gate; none is fitted to a measured value. The
+slow F-S4 arm runs the committed script in a scratch cwd so a test run can
+never rewrite `results/w4r2_analytic_cavity.json`.
+
+### WP6d — movers found by the acceptance-gate batteries, with provenance
+
+1. **`tests/test_example_fidelity_contract.py::test_discovery_matches_classification_table` FAILED** —
+   the #737 enumerate-and-classify gate correctly refused the 13 new files
+   under `validation/research/multiband_nu/` with no classification entry.
+   This gate was never run in phase 1 (the phase-1 battery covered the NU
+   tests only), so the failure dates from the phase-1 commits, not from
+   WP6. Resolved by classifying all 13 against their own AST:
+   - 11 `no_simulation` — they drive `rfx.nonuniform.make_nonuniform_grid`
+     and the kernels directly (the design note's explicit-profile rule
+     deliberately bypasses the `auto_config` builders), or are pure
+     numpy/analysis; AST-verified zero `Simulation(...)` calls.
+   - 2 `audited` — `w4_supraconvergence.py` and
+     `w4r_port_supraconvergence.py`, the only two that build a P-C
+     `Simulation`, each via a `build_sim` separable from its solve. Pinned
+     at the coarsest declared ladder scale, multiband profile.
+   To be loadable by the gate (which imports by file path, where a
+   relative import has no parent package) those two now use an absolute
+   `from validation.research.multiband_nu import fixtures as fx`. Import
+   mechanics only; no numeric path touched, and
+   `python -m validation.research.multiband_nu.<mod>` still works.
+2. **`tests/data/example_fidelity_snapshot.json` re-captured** — 33 -> 35
+   variants. Verified key-by-key: exactly two keys ADDED, zero removed,
+   zero changed. No existing example gained or lost an advisory, so
+   neither new preflight site fires on any committed example.
+   Unplanned bonus evidence: the snapshot now pins the W4R.1-2 root cause
+   side by side. At s = 1.5 the phase-1 (knife-edge) fixture realizes its
+   PEC trace over x nodes [7875, 20250] um — the declared 6750 um lo edge
+   DROPPED — while the W4R repaired drawing realizes [6750, 20250] um as
+   declared. That is the rasterization lottery, now frozen in a committed
+   gate rather than only described in prose.
+
+No other gate moved; see the battery record below.
