@@ -195,3 +195,110 @@ D2 ≈ 2 min; D3 ≈ 1 min; D4a ≈ 3.5 min (the twin's s = 0.25 rung costs ~1/4
 W4R one because the twin needs only 24 z-cells to carry a z-invariant mode while
 keeping `dz` — hence `dt` and `n_steps` — identical); D4c is free (it re-reads
 records D0 already stored). No GPU arm is required.
+
+---
+
+## §5 Results, part 1 — D0–D4 (appended 2026-08-30, after the runs)
+
+Artifacts: `validation/research/convergence_floor/results/{d0_reproduction.json,
+d0_records.npz, d1_geometry.json, d2_edge.json, d3_port.json,
+d4_reference_a.json, d4_reference_b.json, d4_reference_c.json}`.
+
+### D0 — REPRODUCED, bit-identically
+All eleven rungs match PR #785's `f_target` to **0.0000 Hz**. The symptom is a
+property of the code, not of a run.
+
+| s | 1.5 | 1.0 | 0.75 | 0.6 | 0.5 | **0.25 (ref)** |
+|---|---|---|---|---|---|---|
+| f (GHz), uniform | 5.404546 | 5.502115 | 5.533066 | 5.542444 | 5.543558 | **5.520821** |
+| \|f − f_ref\| (MHz) | 116.3 | 18.7 | 12.2 | 21.6 | 22.7 | — |
+
+The error column is the issue's table. The **frequency** column, which the issue
+does not quote, is monotone increasing as the cell shrinks, and the reference sits
+**below both of the two finest rungs**. Both statements are facts; which of the two
+is wrong is what D2–D5 decide.
+
+### D1 — geometry quantization EXONERATED
+Realized PEC extents are exactly the declared 13.5 × 4.5 × 1.5 mm at every rung:
+**12/18/24/30/36/72** cells in x and **4/6/8/10/12/24** in y and z. Worst
+realized-vs-declared deviation over all PEC faces and all three dielectric
+interfaces, over all six rungs: **4.3e-10 … 8.7e-10 m = 7.8e-7 … 6.8e-6 CELLS**
+(window: < 1e-3 cells).
+
+*Base-window letter verdict: INCONCLUSIVE, reported unchanged.* The base window
+was written as `< 1e-12 m` in absolute metres, which is below the float32
+mesh-storage floor (node coordinates are a cumsum of a float32 mesh:
+ε₃₂·27 mm = 1.6e-9 m) — a specification error, disclosed in the addendum rather
+than widened. The measured 1e-9 m **is** that floor.
+
+*D1c (smoothed material) fired by the letter* — max relative spread 0.247 at
+`comp2/upper_lo` offset +3 — and the post-hoc diagnosis (letter verdict left
+standing) is that every differing entry is at s = 1.5 alone, at an offset that
+reaches the **neighbouring** interface: h_sub = h_upper = 1.5 mm = 4 cells at
+dz = 0.375 mm, so ±3 from one interface is the other's halo. Restricted to
+offsets within ±2 cells the spread is 7.0e-6; restricted to rungs s ≤ 1.0 at all
+offsets it is 7.0e-6. The smoothed offset→eps maps
+(2.65 / 4.236475 / 1.063525 / 1.023100 / 1.600000 / 2.176900) are otherwise
+bit-identical at every rung: the realized material is **self-similar under
+refinement**.
+
+### D3 — port / probe loading EXONERATED
+Predicted coupling-induced Δf = **exactly 0** (additive source). Measured span
+over drive amplitude ×0.01 … ×100, a moved port pair and a moved probe:
+**3.540 kHz** at s = 0.75 and **0.623 kHz** at s = 0.5 — 3e-4 of the 1 MHz window.
+
+### D4a — the ladder machinery is SOUND at every rung, reference included
+Exact-reference twin (empty vacuum PEC box, TM₁₁₀ at 5.5421 GHz; dx, dz, dt,
+n_steps, band and record length identical to the W4R uniform rung at the same s):
+
+| s | 1.5 | 1.0 | 0.75 | 0.6 | 0.5 | 0.25 |
+|---|---|---|---|---|---|---|
+| ε_instr (kHz) | 12.7 | 16.5 | 8.3 | 6.0 | 7.9 | **8.4** |
+| e_disc (MHz) | −1.6203 | −0.7201 | −0.4051 | −0.2592 | −0.1800 | −0.0450 |
+
+ε_instr — the extraction's own error with the discretization removed
+**analytically** — is 6–17 kHz everywhere, 60–120× inside the 1 MHz window, and
+does **not** grow at the reference scale. e_disc falls at exactly second order
+(1.6203/0.7201 = 2.2500 = 1.5² to five figures); fitted p = **2.0001** analytic,
+1.9707 measured. So the grid, the solver, the time stepping, the additive port,
+the probe and Harminv together deliver a clean p = 2 sequence with **no floor** and
+a 45 kHz total error at s = 0.25.
+
+### D4c — the incumbent extraction is right, on the reference record itself
+Three estimators sharing no code with `find_resonances` (Hilbert phase slope;
+anti-aliased `harminv` on the full ring-down; damped-sinusoid NLS), run on the
+**identical stored record**:
+
+| rung | E1 | E2 | E3 | E4 | spread | E1 − consensus |
+|---|---|---|---|---|---|---|
+| UC s=0.25 | 5.520821 | 5.520824 | 5.520824 | 5.520608 | 215 kHz | **+0.069 MHz** |
+
+EXONERATE-4a at ten of eleven rungs (the exception is MB s = 0.6, where E4's NLS
+locks onto a different line, spread 8.5 MHz, so no consensus is available; the
+uniform arm and the reference rung are unaffected). **The s = 0.25 record really
+does contain 5.520821 GHz.** Mechanism (4a) — a noisy or broken extraction — is
+dead.
+
+### D4b — judged as a single power law, the reference rung is a 17.6σ outlier
+`f(h) = f∞ − C·h^p` fitted to the five ladder rungs with s = 0.25 held out:
+f∞ = **5.553393 GHz**, p = 2.716, RMS residual 1.782 MHz; the reference deviates
+**31.423 MHz = 17.6 × RMS** and breaks the trend → OUTLIER by the frozen 5× rule
+(multiband arm: 27.699 MHz = 16.5 × RMS, same verdict).
+
+That verdict is correct **under its declared model**. Whether the model is the
+right one is exactly what D5 was pre-declared to decide.
+
+### D2 — the edge cannot make a floor; the smooth controls converge cleanly
+D2-B (primary control = the D4a twin): p_smooth = **2.00** analytic / 1.97
+measured, no floor. D2-A (same box/stack/ports, PEC trace deleted; the 4–6.5 GHz
+band is empty without it, so the control tracks the 11.79 GHz line in the
+pre-declared 10–13 GHz control band): f = 11.790357 / 11.772714 / 11.761799 /
+11.754559 / 11.749481 GHz — monotone and smooth, approaching its limit from
+**above**. Its own 3-parameter fit converged poorly (p = 4.26, RMS 14.6 MHz) on
+five points of a decreasing sequence, so no order is claimed from D2-A; reported
+and not judged, its successive-triple ratios put its order near 0.4–0.5, i.e. the
+trace-free dielectric stack at 11.8 GHz is itself low-order. Letter verdict:
+**EXONERATED as the FLOOR mechanism** (p_trace = 2.61, f monotone, error
+decreasing at every rung). The theory behind that window stands on its own: a
+Meixner wedge exponent reduces the **order**; it cannot produce a non-vanishing
+floor.
