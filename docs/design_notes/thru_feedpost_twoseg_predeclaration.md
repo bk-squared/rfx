@@ -422,3 +422,54 @@ never the windows, and re-run all V-checks before any FDTD.
   fidelity-table repair (F-X4): NONE planned; any unexpected mover is
   STOP-and-report, not re-pin. No window above is widened after any
   measurement, under any rationale.
+
+## 11. PRE-RESULT apparatus finding — the I2 fixture as declared is UNREALIZABLE; repaired realization (appended 2026-08-29, BEFORE the repaired fixture is measured; sections 1-10 unchanged)
+
+The first `--extract` run (harness commit a1ec264's tree; full log kept)
+realized I1 and I3 exactly as declared — their measurements stand and
+are quoted in the results section below — but the I2 single-post
+fixture as BUILT did not realize the section-3 design. Measured
+witness: |Gamma_top| = 0.989..0.997 across the identification bins and
+port Re(Z_in) = 0.34 ohm — the line is terminated nearly TOTALLY
+reflectively, not matched. Mechanism (verified in source, not
+conjectured): `extend_cpml_pad_materials` extends only
+eps_r/sigma/mu_r into the CPML padding; the PEC mask is never extended
+(`rfx/api/_compile.py` pad-extension block; `pec_mask` comes solely
+from interior rasterization). A PEC trace drawn to the domain edge
+therefore ENDS at the pad interface as an open circuit — "a PEC trace
+continuing through the CPML" does not exist in this codebase. With
+|Gamma_top| ~ 1 the fixture is resonant: the trans-post channel's
+1/(1 - s22*Gamma_top) denominator amplifies every systematic, the
+measured |T| reached 7.2, and the I2 fit hit its bounds with residual
+6.1 — an apparatus-invalid reading of a fixture that was not the
+declared one. Per the frozen V-check discipline this is an apparatus
+bug: FIX THE APPARATUS, NEVER THE WINDOWS. The F-A2/F-V2/F-C
+evaluations from that run are void as instrument readings (recorded,
+not interpreted); every I1/I3 number is from declared fixtures and
+stands.
+
+Repaired realization (committed BEFORE the repaired fixture is run):
+
+- The single-post fixture's line is terminated in the VALIDATED
+  matched-termination class this stack actually has: a passive
+  (excite=False) 50-ohm wire port — the battery thru's own far
+  termination, validated through #683/#764 — placed at x = 28 mm on a
+  20 mm line (trace X1 - dx .. 28.5 mm; a genuinely distinct fixture
+  from the 16 mm thru). The port-side geometry (port, post, overhang,
+  cross-section) is byte-identical to the declared builder.
+- NOTHING else changes: the observables (S11_wp, T with measured
+  Gamma_top, Zc_sp, beta_sp), the model, the identification bins, and
+  every window of sections 4-5 are untouched. The declared design
+  already handles an arbitrary DOWNSTREAM network exactly — Gamma_top
+  is measured at the post-top plane, between the near post and
+  everything else — so the far termination's own post sits inside the
+  measured load and never enters the model: the near-post separation is
+  achieved by wave-splitting construction, as section 3 declared.
+  Expected |Gamma_top| class ~0.03..0.08 (far-post mismatch + Z0-vs-Zc
+  mismatch at 1.4-2.6 GHz), i.e. the conditioning regime of the V1
+  synthetic.
+- New apparatus VALIDITY PRECONDITION (an assert, not a falsifier — it
+  can only stop the harness, never pass anything): the realized
+  single-post fixture must measure max_bin |Gamma_top| <= 0.5, else the
+  fixture again failed to provide a measurable load and the harness
+  stops loudly instead of feeding a resonant channel to the fit.
