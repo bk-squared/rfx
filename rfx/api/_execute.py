@@ -1730,10 +1730,11 @@ class _ExecuteMixin:
             # +0.35426, PEC short +0.26780 — ledger 2026-06-21).  A
             # passive port keeps the legacy per-cell diagnostic diagonal
             # byte-for-byte (no physical falsifier can gate that
-            # load-independent reading).  This lane samples PRE-injection
-            # (issue #72 contract): physical-value validation of the
-            # driven diagonal here is keyed to the pending #683
-            # POST-ordering flip.
+            # load-independent reading).  This lane samples the physical
+            # V/I/V_port POST-injection (issue #683, decided by
+            # measurement 2026-08-29 and landed with the decomposer
+            # recalibration), so the driven diagonal here is the
+            # validated terminal reading (Gamma_L-exact class).
             from rfx.probes.probes import extract_lumped_s11
             w_list = []
             for spec, accs in result.wire_port_sparams:

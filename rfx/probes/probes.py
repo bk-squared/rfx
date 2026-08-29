@@ -316,11 +316,14 @@ class PortVIReplayBundle(NamedTuple):
 class WirePortVIReplayBundle(NamedTuple):
     """Raw wire-port V/I phasors captured with a production S-matrix.
 
-    Wire ports currently use a legacy midpoint-cell calibration convention:
-    diagonal S11 is referenced to the total port impedance, while off-diagonal
-    wave decomposition uses per-cell impedance.  The raw fields are therefore
-    stored in the FDTD-sign convention consumed by the independent wire replay
-    diagnostic, not the generic ``rfx.port_vi_dump`` convention.
+    Since issue #770 the production wire S-matrix is the whole-port wave
+    frame on every genuinely driven column (diagonal AND off-diagonal —
+    the per-cell off-diagonal frame survives only on the legacy
+    ``v_port=None`` decomposer path).  The raw fields are stored in the
+    FDTD-sign convention consumed by the independent wire replay
+    diagnostic, not the generic ``rfx.port_vi_dump`` convention; the dump
+    metadata's ``offdiag_frame`` tag tells the replay which off-diagonal
+    frame the recorded production S used (absent = pre-#770 per-cell).
     """
 
     s_params: jnp.ndarray
