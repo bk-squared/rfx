@@ -1,33 +1,37 @@
-# thru-deembed follow-up PROPOSAL (attempt-3 scale) — DO NOT RUN until a
-# fresh pre-declaration (falsifiers committed first) exists for it.
+# thru-deembed fine-dx convergence sweep — PROPOSAL ONLY, launch-gated.
+# DO NOT RUN until a fresh pre-declaration (falsifiers committed first)
+# exists for a lane that names it as DECISIVE.
 #
-# Standing after attempt 2 (branch agent/thru-deembed-r2, design note
-# docs/design_notes/thru_feedpost_joint_extraction_predeclaration.md
-# sections 8-9):
-#   - attempt 1 STOPped on F-L1 (per-bin L decline under ASSUMED line
-#     constants); attempt 2's joint (L, Zc, l_eff) inversion CONFIRMED
-#     that mechanism experimentally (measured constants flatten L to 1%:
-#     L* = 0.3819 +- 0.0326 nH, Zc* = 47.33 +- 0.38 ohm) but STOPped on
-#     F-J2: fitted l_eff = 18.211 +- 0.197 mm vs the frozen [15, 18] mm
-#     window — the excess (~7.8 ps) is quantitatively the two 1 mm
-#     posts' own transit, which the window's trace-only derivation
-#     omitted. Deterministic fixture data cannot be honestly re-fit
-#     under a re-derived window, so the follow-up needs INDEPENDENT
-#     information:
-#   (a) dedicated single-post 1-port fixture (post + matched line into
-#       CPML, no far post): separates the post's L and electrical
-#       height from the line; dx sweep {0.5, 0.25, 0.125} mm splits
-#       rasterization from physics (0.125 mm is GPU-scale).
-#   (b) in-situ #313 two-plane Zc(f)/beta(f) measurement AT the
-#       extraction bins: removes l_eff from the joint fit entirely.
-# Gates for both arms MUST be pre-declared in a fresh design note
-# BEFORE this job is launched; the B(L*) budget formula of the
-# attempt-2 note section 5 remains valid for that lane.
-name: thru-feedpost-singlepost-extraction
+# Standing after attempt 3 (branch agent/thru-deembed-r3, design note
+# docs/design_notes/thru_feedpost_twoseg_predeclaration.md sections
+# 11-13):
+#   - The two-segment post model is identified on TWO independent
+#     fixtures with the identifiability valley BROKEN (corr 0.169/0.401,
+#     condition 1.31/1.61 vs attempt-2's ~170): thru fit
+#     L* = 0.4976 +- 0.0033 nH, tau* = 7.330 +- 0.040 ps with in-situ
+#     measured Zc(f)/beta(f); single-post fit 0.5089 +- 0.0066 nH /
+#     6.703 +- 0.108 ps; cross-fixture agreement 0.011 nH / 0.63 ps.
+#   - The extraction arm STOPped on F-P: the effective segment L_p
+#     (~0.50 nH on both fixtures) sits at/over the frozen [0.20, 0.50]
+#     nH window whose upper edge was derived for a POINT series element
+#     (bare-post thin-wire 0.40 nH + 25%), not for the full junction
+#     the segment parameterization absorbs (post + 0.5 mm overhang stub
+#     + fringe; quasi-static orientation lands ~0.49 nH).
+#   - The named follow-up remedy is an ANALYTIC re-derivation of the
+#     segment-parameter windows (CPU-scale, no cluster arm). Per the
+#     attempt-3 pre-declaration section 8 the fine-dx sweep below is
+#     CORROBORATIVE only (the band de-embed must use the battery-dx
+#     post model by construction), so no launch is requested for the
+#     attempt-3 STOP. This yaml is kept current as the ready-to-go
+#     cluster job IF a future lane's fresh pre-declaration promotes the
+#     rasterization-scale question (how L_p/tau_p converge in dx) to
+#     decisive.
+name: thru-feedpost-singlepost-finedx
 description: >
-  rfx thru-deembed attempt-3: single-post 1-port L/height extraction
-  (fine-dx sweep) + in-situ two-plane Zc/beta at the out-of-band bins;
-  gates to be pre-declared in a fresh design note BEFORE launch.
+  rfx thru-deembed fine-dx corroboration: single-post fixture +
+  two-segment (L_p, tau_p) identification at dx = {0.5, 0.25, 0.125} mm
+  (0.125 mm is GPU-scale); gates to be pre-declared in a fresh design
+  note BEFORE launch.
 resources:
   cluster: remilab-c0
   preset: gpu-rtx4090
@@ -35,13 +39,14 @@ image: nvcr.io/nvidia/jax:24.10-py3
 import:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run:
-  - workdir: /root/workspace/byungkwan-workspace/research/rfx/worktrees/thru-deembed-r2
+  - workdir: /root/workspace/byungkwan-workspace/research/rfx/worktrees/thru-deembed-r3
     command: |
       pip install -e . --no-deps
-      # Attempt-3 harness to be written together with its fresh
-      # pre-declaration; planned arms (names reserved, not yet
-      # implemented): --singlepost-dx-sweep and --insitu-zc on
-      # validation/research/thru_feedpost_singlepost.py.
-      # Apparatus regression first (attempt-2 instrument, exists today):
-      PYTHONPATH=$PWD python validation/research/thru_feedpost_joint_extraction.py --verify \
-        2>&1 | tee /root/workspace/byungkwan-workspace/research/rfx/logs/thru_feedpost_singlepost.log
+      # Apparatus regression first (attempt-3 instrument, exists today;
+      # verifies plane math, both fits, absorption resolution, held-out
+      # teeth, Fisher bars, and the F-C derivation on synthetics):
+      PYTHONPATH=$PWD python validation/research/thru_feedpost_twoseg_extraction.py --verify \
+        2>&1 | tee /root/workspace/byungkwan-workspace/research/rfx/logs/thru_feedpost_twoseg_verify.log
+      # Fine-dx arms to be added by the lane that pre-declares them
+      # (names reserved, not yet implemented): --singlepost-dx-sweep on
+      # validation/research/thru_feedpost_twoseg_extraction.py.
