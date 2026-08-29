@@ -963,23 +963,27 @@ def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
     """Regression test for the studio-packaging CI failure on PR #555's
     original head (f3a3db7): a broad ``except Exception`` in the new
     dead-cell classification code caught
-    ``rfx.experiments.worker.RunTimedOut`` (a ``TimeoutError`` subclass a
-    SIGALRM handler raises asynchronously while ``_assemble_materials``
-    was in flight), silently converting the timeout into a
-    "classification unavailable" advisory instead of letting it
-    propagate -- so a 500,000-step experiment with a 1-second timeout
-    kept simulating instead of dying, hanging
+    ``rfx.experiments.worker.RunTimedOut`` (at the time, a
+    ``TimeoutError`` subclass) a SIGALRM handler raises asynchronously
+    while ``_assemble_materials`` was in flight, silently converting the
+    timeout into a "classification unavailable" advisory instead of
+    letting it propagate -- so a 500,000-step experiment with a
+    1-second timeout kept simulating instead of dying, hanging
     ``tests/test_durable_worker_lifecycle.py::
     test_worker_timeout_is_durable_failed_outcome``'s subprocess wait
     (60s) with NO worker-side sign of the timeout ever having fired.
+    Issue #482 later made ``RunTimedOut``/``RunCancelled`` derive from
+    ``BaseException`` instead of ``TimeoutError``/``RuntimeError``, so
+    this class of swallow is now impossible by construction; this test
+    still guards the narrow-tuple advisory itself using plain builtins
+    (below), independent of the worker's real exception hierarchy.
 
     Reproduces the class directly (no subprocess/signal needed): monkeypatch
-    ``_assemble_materials`` to raise ``TimeoutError`` -- the same family
-    the worker's SIGALRM handler uses (``RunTimedOut(TimeoutError)``) --
-    and assert ``preflight()`` does NOT catch it: it must propagate all
-    the way out uncaught, exactly as it would have before this advisory
-    existed. A ``RuntimeError`` (the family ``RunCancelled`` -- the
-    worker's SIGTERM/SIGINT handler -- uses) must propagate too.
+    ``_assemble_materials`` to raise plain ``TimeoutError``/``RuntimeError``
+    -- the advisory's ``except`` tuple must reject these regardless of
+    what the worker's own exception classes derive from -- and assert
+    ``preflight()`` does NOT catch it: it must propagate all the way out
+    uncaught, exactly as it would have before this advisory existed.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c, x=2e-3)
