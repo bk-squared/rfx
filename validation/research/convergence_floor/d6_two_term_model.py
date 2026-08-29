@@ -129,6 +129,24 @@ def main():
                  bounds=([0, -np.inf, -np.inf, 0.2, 0.2],
                          [np.inf, np.inf, np.inf, 6.0, 6.0]))
 
+    # REPORTED, JUDGED BY NOTHING: (i) a grid over exponent pairs with the
+    # amplitudes solved linearly at each pair, and (ii) fixed-b=2 fits at
+    # several candidate low-order exponents. Both exist to say whether the
+    # exponent is IDENTIFIABLE from this ladder at all.
+    grid = []
+    for a in np.arange(0.30, 2.001, 0.02):
+        for b in np.arange(a + 0.15, 4.001, 0.02):
+            M = np.column_stack([np.ones_like(h), h ** a, h ** b])
+            x, *_ = np.linalg.lstsq(M, f, rcond=None)
+            grid.append((rms(f - M @ x), float(a), float(b), x.tolist()))
+    grid.sort()
+    fixed_b2 = {}
+    for a in (0.5, 2.0 / 3.0, 1.0, EDGE_ORDER):
+        M = np.column_stack([np.ones_like(h), h ** a, h ** BULK_ORDER])
+        x, *_ = np.linalg.lstsq(M, f, rcond=None)
+        fixed_b2["a=%.4f" % a] = {"rms_hz": rms(f - M @ x),
+                                  "f_inf_hz": float(x[0] * 1e9)}
+
     rms0, rms1 = rms(r0.fun), rms(r1.fun)
     if rms1 <= ATTRIBUTE_RMS_HZ and rms1 <= rms0 / RATIO:
         verdict = ("ATTRIBUTED to the EDGE: the theory-fixed h^4/3 + h^2 "
@@ -154,6 +172,20 @@ def main():
         "free": {"f_inf_hz": float(rfree.x[0] * 1e9), "A": float(rfree.x[1]),
                  "B": float(rfree.x[2]), "a": float(rfree.x[3]),
                  "b": float(rfree.x[4]), "rms_hz": rms(rfree.fun)},
+        "diagnostics_reported_not_judged": {
+            "exponent_grid_best": [
+                {"rms_hz": g[0], "a": g[1], "b": g[2],
+                 "f_inf_hz": g[3][0] * 1e9, "A": g[3][1], "B": g[3][2]}
+                for g in grid[:6]],
+            "degenerate": bool(abs(grid[0][2] - grid[0][1]) < 0.35),
+            "fixed_bulk_order_2_fits": fixed_b2,
+            "f_inf_spread_over_admissible_models_hz": float(
+                max([r0.x[0], r1.x[0]] + [v["f_inf_hz"] / 1e9
+                                          for v in fixed_b2.values()])
+                - min([r0.x[0], r1.x[0]] + [v["f_inf_hz"] / 1e9
+                                            for v in fixed_b2.values()])
+            ) * 1e9,
+        },
         "verdict": verdict,
     }
     with open(OUT, "w") as fh:

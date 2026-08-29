@@ -302,3 +302,161 @@ trace-free dielectric stack at 11.8 GHz is itself low-order. Letter verdict:
 decreasing at every rung). The theory behind that window stands on its own: a
 Meixner wedge exponent reduces the **order**; it cannot produce a non-vanishing
 floor.
+
+---
+
+## §6 Results, part 2 — D5, D6, and the verdict (appended 2026-08-30)
+
+Artifacts: `results/{d5_turnover.json, d6_two_term.json, verdict.json}`.
+
+### D5 — TURN-OVER CONFIRMED: the ladder is pre-asymptotic
+Three lattice-valid scales the ladder had skipped (3/s = 7, 8, 9 — the same
+exact-realization arithmetic D1 verified), inserted between s = 0.5 and s = 0.25:
+
+| 3/s | 2 | 3 | 4 | 5 | 6 | **7** | **8** | **9** | 12 |
+|---|---|---|---|---|---|---|---|---|---|
+| s | 1.5 | 1.0 | 0.75 | 0.6 | 0.5 | 0.428571 | 0.375 | 0.333333 | 0.25 |
+| f (GHz) | 5.404546 | 5.502115 | 5.533066 | 5.542444 | **5.543558** | 5.541260 | 5.537579 | 5.533355 | 5.520821 |
+| Δf (MHz) | | +97.57 | +30.95 | +9.38 | +1.11 | −2.30 | −3.68 | −4.22 | −12.53 |
+
+**Exactly one sign change; the descending branch holds four rungs; the maximum is
+at s = 0.5 (dz_fine = 0.125 mm).** Under the frozen structural window this is
+TURN-OVER CONFIRMED: the s = 0.25 reference is **on-curve**, and the five-rung
+ladder PR #785 fitted lay entirely on the ascending branch of a curve with an
+interior maximum.
+
+That settles the question D0 left open. f(h) is not converging monotonically and
+then hitting a floor; it rises, peaks, and descends. `|f(s) − f(0.25)|` is
+therefore not an error sequence at all — the "floor" is the arithmetic of
+subtracting an anchor that lies four rungs down the far branch.
+
+### D6 — the low-order term is real but its exponent is NOT identifiable
+| model | f∞ (GHz) | RMS residual |
+|---|---|---|
+| M0 `f∞ − C h^p` (p = 3.83 fitted, 9 rungs) | 5.537648 | 7.687 MHz |
+| M1 `f∞ + A h^{4/3} − B h²` (exponents fixed by theory) | 5.509492 | 4.361 MHz |
+| free `f∞ + A h^a − B h^b` | 5.376805 | 0.231 MHz, **degenerate** (a = 0.872, b = 0.895) |
+
+Letter verdict: **INCONCLUSIVE** — RMS_M1 = 4.36 MHz misses the 1 MHz window and is
+only 1.76× better than M0 (3× required). The free fit reaches 0.23 MHz only by
+collapsing its two exponents onto each other (a ≈ b, amplitudes +4.9/−5.7 that
+cancel), which is a numerical derivative, not two physical terms; its f∞ is an
+extrapolation artefact.
+
+Reported and judged by nothing, with the bulk exponent held at 2 (the value D4a
+*measured*, 2.0001):
+
+| low-order exponent a | 0.5 | 2/3 | 1.0 | **4/3 (Meixner)** |
+|---|---|---|---|---|
+| RMS (MHz) | 2.642 | 3.006 | 3.706 | 4.361 |
+| f∞ (GHz) | 5.440581 | 5.468147 | 5.495723 | 5.509492 |
+
+The data mildly prefer a *lower* exponent than Meixner's 4/3, and no member of the
+family reaches the instrument's accuracy class. **The Meixner edge exponent is not
+confirmed**, and which feature supplies the low-order term — the trace's 3π/2
+conductor wedges, the rasterized dielectric stack, or the subpixel-smoothing error
+at the interfaces — is left open (see §8).
+
+### Verdict on the four candidates
+| candidate | verdict | discriminating number |
+|---|---|---|
+| **(1) geometry quantization** | **EXONERATED** | realized-vs-declared = **6.8e-6 cells** worst over 6 rungs, window 1e-3 cells; realized PEC extents are exact integer cell counts 12/18/24/30/36/72 × 4/6/8/10/12/24 |
+| **(2) edge singularity** | **EXONERATED as the floor mechanism**; not confirmed as the low-order term | smooth controls give p = **2.0001** (exact-reference twin) with a 45 kHz error at s = 0.25; the theory-fixed 4/3 model fits at 4.36 MHz RMS, worse than a = 0.5 (2.64 MHz) |
+| **(3) port / probe loading** | **EXONERATED** | span over ×0.01…×100 drive, moved ports, moved probe = **3.540 kHz** (s = 0.75) and **0.623 kHz** (s = 0.5), against a predicted exactly-zero |
+| **(4) reference quality** | **ATTRIBUTED — and it is the whole effect**, but for a different reason than the issue supposed | the extraction is sound (ε_instr = **8.4 kHz** at s = 0.25; three independent estimators agree with it to **0.069 MHz** on the same record). The anchor is invalid because it lies **past the maximum** of a non-monotone error curve — D5 |
+
+**Apportionment** (rule frozen before measurement; Δ_total measured against D4b's
+independent reference f∞ = 5.553393 GHz):
+Δ_total = 32.572 MHz; Δ_instr = **0.069 MHz = 0.21 %** charged to (4a);
+Δ_phys = 32.641 MHz = **99.79 %**, of which (1) and (3) may be charged **nothing**
+(their own discriminators exonerate them at 6.8e-6 cells and 3.5 kHz), leaving all
+of it to the fixture's own two-term discretization error. `remedy_licensed_4a`
+= **false**.
+
+### Remedy — NONE licensed, and none implemented
+Against the frozen licence table: (4a) does not dominate (0.21 %); (1) and (3) are
+exonerated; (2) is exonerated as the floor mechanism. **No branch of the table
+licenses a code change, and this lane makes none — `rfx/` is untouched.**
+
+The observable-side remedy the table would have licensed for (4) — replace the
+self-referential anchor with a model-based reference and re-run — *was attempted*
+(D4b, D6) and **does not restore a convergence claim**: the fixture's error curve
+turns over inside the ladder, so no single order exists to demonstrate. Saying so
+is the finding.
+
+What is left behind instead: the rerunnable harness (§7) and
+`ladder_guard.py`, which states the precondition in code. It is **not** a fix for
+any mechanism and touches no rfx code; it is the design rule D5 licenses. Its
+self-check fires on PR #785's own ladder via P5 — *the anchor sits a factor 2.0
+below the finest fit point with no rung in between, while the ladder's own largest
+internal step is 1.5, so the entire turn hid in an interval the ladder never
+sampled* — and on the extended ladder via P1/P2.
+
+## §7 The accuracy envelope for this fixture class (the #715 deliverable)
+
+**Scope.** A 13.5 × 4.5 × 1.5 mm PEC block on a 1.5 mm ε_r = 4.3 substrate with a
+1.5 mm ε_r = 2.2 upper layer, inside a 27 × 22.5 × 13.5 mm PEC box; **uniform**
+mesh, `subpixel_smoothing=True`, an additive mirror-selective Ez port pair and a
+Harminv ring-down observable; the x-odd / y-even half-wave line near 5.5 GHz.
+Resolved range: dz_fine = 0.25 → 0.0625 mm, dx = 0.75 → 0.1875 mm, i.e. **18 → 72
+cells across the 13.5 mm trace**, 58,320 → 3,732,480 cells.
+
+> **ENVELOPE (measured, model-free).** Over that range the extracted absolute
+> resonance is **non-monotone**, with a maximum at dz_fine = 0.125 mm, and spans
+> **5.502115 … 5.543558 GHz = 41.44 MHz = 7.49e-3 relative**. Refinement-induced
+> variation alone therefore bounds any absolute-frequency claim on this fixture
+> class at **≥ 7.5e-3** over the resolved range. (Over the narrower
+> s ∈ [0.5, 0.25] window the issue quotes, it is 22.74 MHz = 4.1e-3 — the issue's
+> number, which is a *lower* bound because it samples only part of the curve.)
+
+> **ENVELOPE (continuum limit, model-dependent).** The limit is **not determined**
+> by this ladder. Admissible extrapolations give f∞ = 5.5534 (single power law on
+> the ascending branch), 5.5376 (single power law on all nine rungs), 5.5095
+> (h^{4/3} + h²), 5.4957 (h¹ + h²), 5.4681 (h^{2/3} + h²), 5.4406 (h^{1/2} + h²) —
+> a spread of **97.1 MHz = 1.8e-2** over the nine-rung model set (112.8 MHz =
+> 2.0e-2 including the five-rung fit). The finest rung this lane could afford
+> (3.7 M cells, 710 s CPU) is somewhere between **11 MHz above** and **17 MHz
+> below** the limit depending on the model, i.e. its own absolute accuracy is
+> **2e-3 … 3e-3 at best and 2e-2 at worst**.
+
+> **WHAT IT BOUNDS.** #715's patch cross-validation baseline, and every absolute
+> resonance quoted on a rasterized microstrip-class fixture in this class, must be
+> stated against **≥ 7.5e-3** (measured refinement variation), not against the
+> finest rung, and must not claim a continuum limit better than **~2e-2** without
+> an external reference. The ledger's independently measured staircase envelope
+> for the tutorial patch — f_res bias ≈ −dx/L_eff, which is −1.4 % to −5.6 % over
+> this lane's dx range on a 13.5 mm resonant length — is the same order, so the
+> two agree that this fixture class sits in the 10⁻²  accuracy band and not the
+> 10⁻³ one.
+
+**What is NOT bounded by this.** The solver machinery: on a smooth fixture in the
+same box, with the same dt, record length, band, port and extraction, the error is
+45 kHz at the reference resolution and falls at exactly p = 2.0001 (D4a). This
+envelope is a statement about **rasterized geometry with a conductor edge and a
+layered dielectric**, not about rfx's Yee core.
+
+## §8 Left open (named, with a design a future lane can pick up)
+
+1. **Which feature supplies the low-order term?** Three candidates remain: the
+   trace's 3π/2 conductor wedges, the rasterized dielectric stack, the
+   subpixel-smoothing error at the ε interfaces. The evidence so far: the empty
+   box (no dielectric, no edge) is exactly p = 2; the trace-free P-C box
+   (dielectric stack, no edge) has successive-triple ratios near order 0.4–0.5 at
+   11.79 GHz; the with-trace fixture prefers a ≈ 0.5 over a = 4/3.
+   **Pre-declarable discriminator (D7)** for that lane: keep the box, stack,
+   ports, probe, T and scales, and draw the trace **full-width in y**
+   (0 → 22.5 mm, touching both side walls). That removes the two 13.5 mm free
+   edges and keeps the two 4.5 mm ones — 75 % of the singular edge length — while
+   keeping the same stack and the same half-wave-in-x class. Window derived from
+   the edge-length ratio: fit `f∞ + A h^a − B h²` to both ladders and compare the
+   edge-term amplitude at a fixed h; **attribute to the edge iff
+   |A_full-width| / |A_W4R| ≤ 0.5**, **exonerate the edge iff ≥ 0.9**. This lane
+   did not run it: it needs its own bring-up (the full-width trace shorts to the
+   side walls and moves the line), and the four candidates the issue asked about
+   were already decided without it.
+2. **A fixture in this class with an external reference.** Everything above is
+   still self-referential in the weak sense that no independent solver or
+   measurement pins f∞. Until one does, the 1.8e-2 model spread stands.
+3. **D6's model class.** Nine rungs over a 6× span with a turning point inside do
+   not identify two exponents. A lane that wants the exponent needs either a much
+   wider h range (a GPU arm) or a fixture whose turn-over is outside the range.

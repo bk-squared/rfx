@@ -1,0 +1,113 @@
+{
+ "issue": 786,
+ "verdicts": {
+  "D0": "REPRODUCED: the |f - f_ref| sequence is NON-monotone while f(s) itself is monotone",
+  "D1": "D1b=EXONERATED D1c=ATTRIBUTED-CANDIDATE",
+  "D2": "EXONERATED as the FLOOR mechanism: with-trace f(s) is monotone and its error against the independent reference decreases at every rung (p_trace=2.61). A wedge exponent can only reduce the ORDER; it cannot produce a non-vanishing floor.",
+  "D3": "EXONERATED at every scale",
+  "D4a": "SOUND at every rung",
+  "D4b": {
+   "uniform": "OUTLIER (mechanism 4 attributed)",
+   "multiband": "OUTLIER (mechanism 4 attributed)"
+  },
+  "D4c": {
+   "UC_0.25": "EXONERATE-4a",
+   "UC_1.5": "EXONERATE-4a",
+   "UC_1.0": "EXONERATE-4a",
+   "UC_0.75": "EXONERATE-4a",
+   "UC_0.6": "EXONERATE-4a",
+   "UC_0.5": "EXONERATE-4a",
+   "MB_1.5": "EXONERATE-4a",
+   "MB_1.0": "EXONERATE-4a",
+   "MB_0.75": "EXONERATE-4a",
+   "MB_0.6": "CONSENSUS-UNAVAILABLE",
+   "MB_0.5": "EXONERATE-4a"
+  },
+  "D5": "TURN-OVER CONFIRMED: one sign change, descending branch holds 4 rungs (peak at s=0.5000). The s=0.25 rung is ON-CURVE and the 5-rung ladder is PRE-ASYMPTOTIC.",
+  "D6": "INCONCLUSIVE (RMS_M1 = 4.361 MHz, RMS_M0 = 7.687 MHz)"
+ },
+ "apportionment": {
+  "f_inf_hz": 5553392711.753053,
+  "f_E1_at_ref_hz": 5520820807.318383,
+  "f_consensus_at_ref_hz": 5520751805.987487,
+  "consensus_spread_hz": 215466.3555803299,
+  "Delta_total_hz": 32571904.434669495,
+  "Delta_instr_hz": 69001.33089637756,
+  "Delta_phys_hz": 32640905.765565872,
+  "instr_pct": 0.21184309635555923,
+  "phys_pct": 100.21184309635557,
+  "remedy_licensed_4a": false
+ },
+ "accuracy_envelope": {
+  "resolved_scales": [
+   1.0,
+   0.75,
+   0.6,
+   0.5,
+   0.42857142857142855,
+   0.375,
+   0.3333333333333333,
+   0.25
+  ],
+  "dz_fine_mm": [
+   0.25,
+   0.1875,
+   0.15,
+   0.125,
+   0.10714285714285714,
+   0.09375,
+   0.08333333333333333,
+   0.0625
+  ],
+  "f_min_hz": 5502114526.260705,
+  "f_max_hz": 5543558293.505646,
+  "spread_hz": 41443767.24494076,
+  "spread_relative": 0.007491947704382656,
+  "peak_scale": 0.5,
+  "monotone": false,
+  "finest_scale": 0.25,
+  "finest_f_hz": 5520820807.318383,
+  "M0_f_inf_hz": 5537647561.823974,
+  "M0_finest_minus_f_inf_hz": -16826754.50559044,
+  "M0_finest_rel_error": 0.0030386105864866728,
+  "M0_rms_hz": 7686567.541564733,
+  "M1_f_inf_hz": 5509492481.296503,
+  "M1_finest_minus_f_inf_hz": 11328326.02188015,
+  "M1_finest_rel_error": 0.002056146924664529,
+  "M1_rms_hz": 4361197.064220962,
+  "free_f_inf_hz": 5376804948.843971,
+  "free_finest_minus_f_inf_hz": 144015858.47441196,
+  "free_finest_rel_error": 0.026784653682736956,
+  "free_rms_hz": 231310.93695698172
+ },
+ "ladder_against_independent_reference": {
+  "scales": [
+   1.5,
+   1.0,
+   0.75,
+   0.6,
+   0.5
+  ],
+  "err_mhz": {
+   "1.5": 148.846542546381,
+   "1.0": 51.27818549234772,
+   "0.75": 20.326555793771742,
+   "0.6": 10.948274180452346,
+   "0.5": 9.83441824740696
+  },
+  "monotone_decreasing": true,
+  "p_loglog": 2.6149420755757204,
+  "p_nls": 2.7155655176317746,
+  "multiband": {
+   "err_mhz": {
+    "1.5": 158.81092093830205,
+    "1.0": 57.326290413474084,
+    "0.75": 24.22968709291935,
+    "0.6": 13.46070878177166,
+    "0.5": 11.385855247786521
+   },
+   "p_loglog": 2.511076822698191,
+   "p_nls": 2.5886939733863326
+  }
+ }
+}

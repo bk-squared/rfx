@@ -34,6 +34,8 @@ def main():
     d4a = load("d4_reference_a.json")
     d4b = load("d4_reference_b.json")
     d4c = load("d4_reference_c.json")
+    d5 = load("d5_turnover.json")
+    d6 = load("d6_two_term.json")
 
     out = {"issue": 786, "verdicts": {}}
     out["verdicts"]["D0"] = d0["verdict"] if d0 else "NOT RUN"
@@ -74,7 +76,39 @@ def main():
                 "remedy_licensed_4a": bool(d_total and
                                            d_instr >= 0.5 * d_total),
             }
+    out["verdicts"]["D5"] = d5["verdict"] if d5 else "NOT RUN"
+    out["verdicts"]["D6"] = d6["verdict"] if d6 else "NOT RUN"
     out["apportionment"] = app
+
+    # --- accuracy envelope for this fixture class ---------------------
+    if d5:
+        ss = d5["ladder_scales"]
+        fv = np.array(d5["ladder_f_hz"])
+        # Resolved range = every rung the ladder actually paid for,
+        # excluding the coarsest (s=1.5), whose trace is 12 cells wide.
+        keep = [i for i, s_ in enumerate(ss) if s_ <= 1.0]
+        fk = fv[keep]
+        sk = [ss[i] for i in keep]
+        env = {
+            "resolved_scales": sk,
+            "dz_fine_mm": [fx.PC_DZF0 * s_ * 1e3 for s_ in sk],
+            "f_min_hz": float(fk.min()), "f_max_hz": float(fk.max()),
+            "spread_hz": float(fk.max() - fk.min()),
+            "spread_relative": float((fk.max() - fk.min()) / fk.mean()),
+            "peak_scale": d5["peak_scale"],
+            "monotone": bool(d5["sign_changes"] == 0),
+            "finest_scale": min(sk),
+            "finest_f_hz": float(fk[-1]),
+        }
+        if d6:
+            for name in ("M0", "M1", "free"):
+                f_inf = d6[name]["f_inf_hz"]
+                env["%s_f_inf_hz" % name] = f_inf
+                env["%s_finest_minus_f_inf_hz" % name] = float(fk[-1] - f_inf)
+                env["%s_finest_rel_error" % name] = float(
+                    abs(fk[-1] - f_inf) / f_inf)
+                env["%s_rms_hz" % name] = d6[name]["rms_hz"]
+        out["accuracy_envelope"] = env
 
     # --- the ladder, re-judged against the independent reference ------
     if d4b:
