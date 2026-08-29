@@ -153,12 +153,15 @@ def _masks(spec: TwoRegionSpec):
     )
 
 
-def _interface_coeffs(spec: TwoRegionSpec, eps_fx, eps_fy):
+def _interface_coeffs(spec: TwoRegionSpec, eps_fx, eps_fy,
+                      sigma_fx=None, sigma_fy=None,
+                      eps_cx=None, eps_cy=None, sigma_cx=None, sigma_cy=None):
     """Per-edge (ca, cb) for the four interface updates, eq. (61).
 
     For an interface tangential-E edge with coarse half-cell material
     (eps_c, sigma_c) and fine-side averaged material (eps_hat, sigma_hat)
-    (eq. (58)), the update is
+    (eq. (58) segment means of the fine boundary-row per-edge values), the
+    update is
 
       E^{n+1} = ca * E^n + cb * (H_plus - H_minus)
 
@@ -170,41 +173,78 @@ def _interface_coeffs(spec: TwoRegionSpec, eps_fx, eps_fy):
       ca = Dm / Dp ,  cb = (2 / delta_n) / Dp
 
     where delta_n is the coarse cell size normal to the interface.
-    Lossless here (sigma = 0 in all M1 fixtures); eps maps may vary.
+    Defaults (sigma = 0, vacuum coarse host) reproduce the lossless
+    coefficients exactly (Dm = Dp => ca = 1.0).
     """
     r, dt = spec.r, spec.dt
     i0, i1, j0, j1 = spec.i0, spec.i1, spec.j0, spec.j1
     mi = i1 - i0
     mj = j1 - j0
 
-    def coeffs(eps_c, eps_hat, delta_n):
-        dp = (eps_c + eps_hat / r) / dt
-        ca = ((eps_c + eps_hat / r) / dt) / dp  # = 1 lossless; kept for structure
+    if sigma_fx is None:
+        sigma_fx = jnp.zeros_like(eps_fx)
+    if sigma_fy is None:
+        sigma_fy = jnp.zeros_like(eps_fy)
+
+    def coeffs(eps_c, sig_c, eps_hat, sig_hat, delta_n):
+        dp = (eps_c + eps_hat / r) / dt + (sig_c + sig_hat / r) / 2.0
+        dm = (eps_c + eps_hat / r) / dt - (sig_c + sig_hat / r) / 2.0
+        ca = dm / dp
         cb = (2.0 / delta_n) / dp
         return jnp.asarray(ca), jnp.asarray(cb)
 
-    # eps_hat per coarse interface edge = mean of the r fine-edge values on
-    # the boundary row/col (eq. (58)).
-    eps_hat_s = eps_fx[:, 0].reshape(mi, r).mean(axis=1)
-    eps_hat_n = eps_fx[:, -1].reshape(mi, r).mean(axis=1)
-    eps_hat_w = eps_fy[0, :].reshape(mj, r).mean(axis=1)
-    eps_hat_e = eps_fy[-1, :].reshape(mj, r).mean(axis=1)
+    def seg(v):  # eq. (58): r-segment mean along the boundary row/col
+        return v.reshape(-1, r).mean(axis=1)
 
-    eps_c = EPS0  # coarse host is vacuum in all M1 fixtures
-    ca_s, cb_s = coeffs(eps_c, eps_hat_s, spec.dy)
-    ca_n, cb_n = coeffs(eps_c, eps_hat_n, spec.dy)
-    ca_w, cb_w = coeffs(eps_c, eps_hat_w, spec.dx)
-    ca_e, cb_e = coeffs(eps_c, eps_hat_e, spec.dx)
+    # coarse host material AT the interface edges (vacuum lossless default)
+    def cvals(arr, default, sl):
+        if arr is None:
+            n = mi if sl[0] == "x" else mj
+            return jnp.full((n,), default)
+        if sl[0] == "x":
+            return jnp.asarray(arr)[i0:i1, sl[1]]
+        return jnp.asarray(arr)[sl[1], j0:j1]
+
+    ec_s = cvals(eps_cx, EPS0, ("x", j0));  sc_s = cvals(sigma_cx, 0.0, ("x", j0))
+    ec_n = cvals(eps_cx, EPS0, ("x", j1));  sc_n = cvals(sigma_cx, 0.0, ("x", j1))
+    ec_w = cvals(eps_cy, EPS0, ("y", i0));  sc_w = cvals(sigma_cy, 0.0, ("y", i0))
+    ec_e = cvals(eps_cy, EPS0, ("y", i1));  sc_e = cvals(sigma_cy, 0.0, ("y", i1))
+
+    ca_s, cb_s = coeffs(ec_s, sc_s, seg(eps_fx[:, 0]), seg(sigma_fx[:, 0]), spec.dy)
+    ca_n, cb_n = coeffs(ec_n, sc_n, seg(eps_fx[:, -1]), seg(sigma_fx[:, -1]), spec.dy)
+    ca_w, cb_w = coeffs(ec_w, sc_w, seg(eps_fy[0, :]), seg(sigma_fy[0, :]), spec.dx)
+    ca_e, cb_e = coeffs(ec_e, sc_e, seg(eps_fy[-1, :]), seg(sigma_fy[-1, :]), spec.dx)
     return dict(s=(ca_s, cb_s), n=(ca_n, cb_n), w=(ca_w, cb_w), e=(ca_e, cb_e))
 
 
-def make_stepper(spec: TwoRegionSpec, eps_fx=None, eps_fy=None):
+def _lossy_e_coeffs(eps, sigma, dt):
+    """Standard lossy-Yee E coefficients: ca = (eps/dt - sig/2)/(eps/dt + sig/2),
+    cb = (dt/eps)/(1 + sig*dt/(2*eps)).  sigma = 0 gives ca = 1.0 and
+    cb = dt/eps exactly (float division by 1.0 is exact)."""
+    x = sigma * dt / (2.0 * eps)
+    ca = (1.0 - x) / (1.0 + x)
+    cb = (dt / eps) / (1.0 + x)
+    return ca, cb
+
+
+def make_stepper(spec: TwoRegionSpec, eps_fx=None, eps_fy=None, *,
+                 sigma_fx=None, sigma_fy=None,
+                 eps_cx=None, eps_cy=None, sigma_cx=None, sigma_cy=None):
     """Return (step_fn, init_state, aux) for the two-region fixture.
 
     step_fn(state, src_val) -> (state, energy) advances one leapfrog step:
     H update (+ magnetic-current source on one coarse cell), energy sample
     (staggered storage (25) at time n), then E update (interior + interface
     (61) + replication (55)).
+
+    Optional per-edge material maps (all default to the vacuum/lossless
+    values, reproducing the original coefficients exactly):
+      sigma_fx (nfx, nfy+1), sigma_fy (nfx+1, nfy)   fine conductivity
+      eps_cx (nx, ny+1), eps_cy (nx+1, ny)           coarse host permittivity
+      sigma_cx (nx, ny+1), sigma_cy (nx+1, ny)       coarse host conductivity
+    The interface update takes the eq. (58) segment means of the fine
+    boundary-row eps/sigma and the coarse host values at the interface edges
+    (full eq. (61) coefficients).
     """
     nx, ny, r = spec.nx, spec.ny, spec.r
     i0, i1, j0, j1 = spec.i0, spec.i1, spec.j0, spec.j1
@@ -218,12 +258,32 @@ def make_stepper(spec: TwoRegionSpec, eps_fx=None, eps_fy=None):
         eps_fy = np.full((nfx + 1, nfy), EPS0)
     eps_fx = jnp.asarray(eps_fx, dtype=jnp.float64)
     eps_fy = jnp.asarray(eps_fy, dtype=jnp.float64)
+    if sigma_fx is not None:
+        sigma_fx = jnp.asarray(sigma_fx, dtype=jnp.float64)
+    if sigma_fy is not None:
+        sigma_fy = jnp.asarray(sigma_fy, dtype=jnp.float64)
 
     m = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in _masks(spec).items()}
-    ifc = _interface_coeffs(spec, eps_fx, eps_fy)
+    ifc = _interface_coeffs(spec, eps_fx, eps_fy, sigma_fx, sigma_fy,
+                            eps_cx, eps_cy, sigma_cx, sigma_cy)
 
     ch = dt / MU0                       # H update factor (vacuum mu)
     ce_c = dt / EPS0                    # coarse E factor (vacuum host)
+    # generalized coarse/fine E coefficients (identical to the scalars above
+    # when every optional map is None)
+    have_mats = any(v is not None for v in
+                    (sigma_fx, sigma_fy, eps_cx, eps_cy, sigma_cx, sigma_cy))
+    if have_mats:
+        _ecx = jnp.full((nx, ny + 1), EPS0) if eps_cx is None else jnp.asarray(eps_cx, dtype=jnp.float64)
+        _ecy = jnp.full((nx + 1, ny), EPS0) if eps_cy is None else jnp.asarray(eps_cy, dtype=jnp.float64)
+        _scx = jnp.zeros((nx, ny + 1)) if sigma_cx is None else jnp.asarray(sigma_cx, dtype=jnp.float64)
+        _scy = jnp.zeros((nx + 1, ny)) if sigma_cy is None else jnp.asarray(sigma_cy, dtype=jnp.float64)
+        _sfx = jnp.zeros((nfx, nfy + 1)) if sigma_fx is None else sigma_fx
+        _sfy = jnp.zeros((nfx + 1, nfy)) if sigma_fy is None else sigma_fy
+        ca_cx, cb_cx = _lossy_e_coeffs(_ecx, _scx, dt)
+        ca_cy, cb_cy = _lossy_e_coeffs(_ecy, _scy, dt)
+        ca_fx, cb_fx = _lossy_e_coeffs(eps_fx, _sfx, dt)
+        ca_fy, cb_fy = _lossy_e_coeffs(eps_fy, _sfy, dt)
     pi, pj = spec.probe_ij
     if spec.src_mask is not None:
         src_mask = jnp.asarray(spec.src_mask, dtype=jnp.float64)
@@ -249,9 +309,11 @@ def make_stepper(spec: TwoRegionSpec, eps_fx=None, eps_fy=None):
         fhz_new = fhz + ch * fcurl_e
 
         # ---- energy at time n (staggered storage, eq. (25)) ----
+        e_wx = _ecx if have_mats else EPS0
+        e_wy = _ecy if have_mats else EPS0
         energy = (
-            0.5 * EPS0 * jnp.sum(m["w_ex"] * ex * ex)
-            + 0.5 * EPS0 * jnp.sum(m["w_ey"] * ey * ey)
+            0.5 * jnp.sum(e_wx * m["w_ex"] * ex * ex)
+            + 0.5 * jnp.sum(e_wy * m["w_ey"] * ey * ey)
             + 0.5 * MU0 * jnp.sum(m["w_hz"] * hz * hz_new)
             + 0.5 * jnp.sum(m["w_fex"] * eps_fx * fex * fex)
             + 0.5 * jnp.sum(m["w_fey"] * eps_fy * fey * fey)
@@ -261,19 +323,31 @@ def make_stepper(spec: TwoRegionSpec, eps_fx=None, eps_fy=None):
         # ---- E update: n -> n+1 ----
         # coarse standard interior (padded difference; masks zero the rest)
         dhz_y = jnp.pad(hz_new, ((0, 0), (1, 1)))  # Hz[i, j-1/2] above/below Ex[i, j]
-        ex_new = ex + ce_c * m["ex_std"] * (dhz_y[:, 1:] - dhz_y[:, :-1]) / dy
         dhz_x = jnp.pad(hz_new, ((1, 1), (0, 0)))
-        ey_new = ey + ce_c * m["ey_std"] * (dhz_x[:-1, :] - dhz_x[1:, :]) / dx
+        if have_mats:
+            ex_new = ex + m["ex_std"] * (
+                (ca_cx - 1.0) * ex + cb_cx * (dhz_y[:, 1:] - dhz_y[:, :-1]) / dy)
+            ey_new = ey + m["ey_std"] * (
+                (ca_cy - 1.0) * ey + cb_cy * (dhz_x[:-1, :] - dhz_x[1:, :]) / dx)
+            fex_new = fex.at[:, 1:-1].set(
+                ca_fx[:, 1:-1] * fex[:, 1:-1]
+                + cb_fx[:, 1:-1] * (fhz_new[:, 1:] - fhz_new[:, :-1]) / dyf)
+            fey_new = fey.at[1:-1, :].set(
+                ca_fy[1:-1, :] * fey[1:-1, :]
+                + cb_fy[1:-1, :] * (fhz_new[:-1, :] - fhz_new[1:, :]) / dxf)
+        else:
+            ex_new = ex + ce_c * m["ex_std"] * (dhz_y[:, 1:] - dhz_y[:, :-1]) / dy
+            ey_new = ey + ce_c * m["ey_std"] * (dhz_x[:-1, :] - dhz_x[1:, :]) / dx
 
-        # fine standard interior
-        fex_new = fex.at[:, 1:-1].set(
-            fex[:, 1:-1]
-            + (dt / eps_fx[:, 1:-1]) * (fhz_new[:, 1:] - fhz_new[:, :-1]) / dyf
-        )
-        fey_new = fey.at[1:-1, :].set(
-            fey[1:-1, :]
-            + (dt / eps_fy[1:-1, :]) * (fhz_new[:-1, :] - fhz_new[1:, :]) / dxf
-        )
+            # fine standard interior
+            fex_new = fex.at[:, 1:-1].set(
+                fex[:, 1:-1]
+                + (dt / eps_fx[:, 1:-1]) * (fhz_new[:, 1:] - fhz_new[:, :-1]) / dyf
+            )
+            fey_new = fey.at[1:-1, :].set(
+                fey[1:-1, :]
+                + (dt / eps_fy[1:-1, :]) * (fhz_new[:-1, :] - fhz_new[1:, :]) / dxf
+            )
 
         # ---- interface updates, eq. (61):  E' = ca E + cb (H_plus - H_minus)
         # south (island south face): H_plus = fine mean above, H_minus = coarse below
@@ -347,6 +421,217 @@ def make_uniform_stepper(nx: int, ny: int, dx: float, dy: float, dt: float,
         return dict(ex=z((nx, ny + 1)), ey=z((nx + 1, ny)), hz=z((nx, ny)))
 
     return step, init_state
+
+
+# ---------------------------------------------------------------------------
+# Terminated (PML) steppers for the F-M1b retry fixture (paper Fig. 8 class).
+# Separate builders on purpose: the M1a-verified PEC steppers above are not
+# touched.  Split-field Berenger PML graded along x only (PEC walls in y),
+# outer wall PEC; Hz = Hzx + Hzy inside these steppers only.
+# ---------------------------------------------------------------------------
+
+def pml_profiles(nx: int, dx: float, npml: int, m_pml: float = 3.0,
+                 r0: float = 1e-5):
+    """x-graded PML conductivity profiles (SI) for a grid with nx cells.
+
+    Returns (sig_e, sig_h): sig_e on the Ey planes x = i*dx (shape nx+1),
+    sig_h on the Hz planes x = (i+1/2)*dx (shape nx).  Polynomial grading of
+    order m_pml over npml cells at both ends, design reflection r0:
+    sigma_max = -(m+1) * eps0 * c * ln(r0) / (2 * d),  d = npml*dx.
+    The matched magnetic conductivity is sigma* = sig_h * mu0/eps0 (applied
+    inside the steppers via x = sig*dt/(2*eps0) for both species).
+    """
+    d = npml * dx
+    smax = -(m_pml + 1.0) * EPS0 * C0 * np.log(r0) / (2.0 * d)
+
+    def depth(pos):  # pos in cells from the left domain edge
+        dl = np.maximum(0.0, npml - pos) / npml
+        dr = np.maximum(0.0, pos - (nx - npml)) / npml
+        return np.maximum(dl, dr)
+
+    sig_e = smax * depth(np.arange(nx + 1, dtype=float)) ** m_pml
+    sig_h = smax * depth(np.arange(nx, dtype=float) + 0.5) ** m_pml
+    return sig_e, sig_h
+
+
+def disk_sigma_maps(nx: int, ny: int, dx: float, dy: float,
+                    origin: tuple[float, float],
+                    centers: list[tuple[float, float]], radius: float,
+                    sigma: float):
+    """Per-edge conductivity maps for circular rods (SI absolute coords).
+
+    Edge centers: Ex[i,j] at (origin_x+(i+1/2)dx, origin_y+j*dy);
+    Ey[i,j] at (origin_x+i*dx, origin_y+(j+1/2)dy).  An edge whose center
+    lies inside any disk gets `sigma`.
+    Returns (sig_x (nx,ny+1), sig_y (nx+1,ny)).
+    """
+    ox, oy = origin
+    xs_x = ox + (np.arange(nx) + 0.5) * dx
+    ys_x = oy + np.arange(ny + 1) * dy
+    xs_y = ox + np.arange(nx + 1) * dx
+    ys_y = oy + (np.arange(ny) + 0.5) * dy
+    sig_x = np.zeros((nx, ny + 1))
+    sig_y = np.zeros((nx + 1, ny))
+    for cx, cy in centers:
+        sig_x[(xs_x[:, None] - cx) ** 2 + (ys_x[None, :] - cy) ** 2 <= radius**2] = sigma
+        sig_y[(xs_y[:, None] - cx) ** 2 + (ys_y[None, :] - cy) ** 2 <= radius**2] = sigma
+    return sig_x, sig_y
+
+
+def make_stepper_pml(spec: TwoRegionSpec, *, src_col: int, probe_col: int,
+                     npml: int = 15, m_pml: float = 3.0, r0: float = 1e-5,
+                     eps_fx=None, eps_fy=None, sigma_fx=None, sigma_fy=None):
+    """Two-region stepper with x-PML termination, Jy column source, and a
+    column-mean Ey probe (the retry fixture).  Coarse host is vacuum outside
+    the PML strips.  step(state, src_val) -> (state, probe_val)."""
+    nx, ny, r = spec.nx, spec.ny, spec.r
+    i0, i1, j0, j1 = spec.i0, spec.i1, spec.j0, spec.j1
+    nfx, nfy = spec.nfx, spec.nfy
+    dx, dy, dt = spec.dx, spec.dy, spec.dt
+    dxf, dyf = dx / r, dy / r
+    if not (npml < i0 and i1 < nx - npml):
+        raise ValueError("fine island must not overlap the PML strips")
+    if not (npml < src_col < nx - npml and npml < probe_col < nx - npml):
+        raise ValueError("source/probe columns must be outside the PML strips")
+
+    if eps_fx is None:
+        eps_fx = np.full((nfx, nfy + 1), EPS0)
+    if eps_fy is None:
+        eps_fy = np.full((nfx + 1, nfy), EPS0)
+    eps_fx = jnp.asarray(eps_fx, dtype=jnp.float64)
+    eps_fy = jnp.asarray(eps_fy, dtype=jnp.float64)
+    sfx = jnp.zeros((nfx, nfy + 1)) if sigma_fx is None else jnp.asarray(sigma_fx, dtype=jnp.float64)
+    sfy = jnp.zeros((nfx + 1, nfy)) if sigma_fy is None else jnp.asarray(sigma_fy, dtype=jnp.float64)
+
+    m = {k: jnp.asarray(v, dtype=jnp.float64) for k, v in _masks(spec).items()}
+    ifc = _interface_coeffs(spec, eps_fx, eps_fy, sfx, sfy)
+
+    sig_e, sig_h = pml_profiles(nx, dx, npml, m_pml, r0)
+    xh = jnp.asarray(sig_h) * dt / (2.0 * EPS0)          # matched sigma*
+    da_h = ((1.0 - xh) / (1.0 + xh))[:, None]
+    db_h = ((dt / MU0) / (1.0 + xh))[:, None]
+    xe = jnp.asarray(sig_e) * dt / (2.0 * EPS0)
+    ca_ey = ((1.0 - xe) / (1.0 + xe))[:, None]
+    cb_ey = ((dt / EPS0) / (1.0 + xe))[:, None]
+    ce_c = dt / EPS0
+    ch = dt / MU0
+    ca_fx, cb_fx = _lossy_e_coeffs(eps_fx, sfx, dt)
+    ca_fy, cb_fy = _lossy_e_coeffs(eps_fy, sfy, dt)
+
+    def seg_mean(v):
+        return v.reshape(-1, r).mean(axis=1)
+
+    def step(state, src_val):
+        ex, ey, hzx, hzy = state["ex"], state["ey"], state["hzx"], state["hzy"]
+        fex, fey, fhz = state["fex"], state["fey"], state["fhz"]
+
+        # ---- H update (split field; island hole masked) ----
+        hzx_new = da_h * hzx - m["hz_mask"] * db_h * (ey[1:, :] - ey[:-1, :]) / dx
+        hzy_new = hzy + m["hz_mask"] * ch * (ex[:, 1:] - ex[:, :-1]) / dy
+        hz_new = hzx_new + hzy_new
+        fcurl_e = (fex[:, 1:] - fex[:, :-1]) / dyf - (fey[1:, :] - fey[:-1, :]) / dxf
+        fhz_new = fhz + ch * fcurl_e
+
+        # ---- E update ----
+        dhz_y = jnp.pad(hz_new, ((0, 0), (1, 1)))
+        dhz_x = jnp.pad(hz_new, ((1, 1), (0, 0)))
+        ex_new = jnp.where(
+            m["ex_std"] > 0,
+            ex + ce_c * (dhz_y[:, 1:] - dhz_y[:, :-1]) / dy, ex)
+        ey_new = jnp.where(
+            m["ey_std"] > 0,
+            ca_ey * ey + cb_ey * (dhz_x[:-1, :] - dhz_x[1:, :]) / dx, ey)
+        ey_new = ey_new.at[src_col, :].add(src_val)   # Jy line source
+
+        fex_new = fex.at[:, 1:-1].set(
+            ca_fx[:, 1:-1] * fex[:, 1:-1]
+            + cb_fx[:, 1:-1] * (fhz_new[:, 1:] - fhz_new[:, :-1]) / dyf)
+        fey_new = fey.at[1:-1, :].set(
+            ca_fy[1:-1, :] * fey[1:-1, :]
+            + cb_fy[1:-1, :] * (fhz_new[:-1, :] - fhz_new[1:, :]) / dxf)
+
+        # ---- interface updates, eq. (61) ----
+        ca, cb = ifc["s"]
+        e_s = ca * ex[i0:i1, j0] + cb * (seg_mean(fhz_new[:, 0]) - hz_new[i0:i1, j0 - 1])
+        ex_new = ex_new.at[i0:i1, j0].set(e_s)
+        ca, cb = ifc["n"]
+        e_n = ca * ex[i0:i1, j1] + cb * (hz_new[i0:i1, j1] - seg_mean(fhz_new[:, -1]))
+        ex_new = ex_new.at[i0:i1, j1].set(e_n)
+        ca, cb = ifc["w"]
+        e_w = ca * ey[i0, j0:j1] + cb * (hz_new[i0 - 1, j0:j1] - seg_mean(fhz_new[0, :]))
+        ey_new = ey_new.at[i0, j0:j1].set(e_w)
+        ca, cb = ifc["e"]
+        e_e = ca * ey[i1, j0:j1] + cb * (seg_mean(fhz_new[-1, :]) - hz_new[i1, j0:j1])
+        ey_new = ey_new.at[i1, j0:j1].set(e_e)
+
+        # ---- replication (55) ----
+        fex_new = fex_new.at[:, 0].set(jnp.repeat(e_s, r))
+        fex_new = fex_new.at[:, -1].set(jnp.repeat(e_n, r))
+        fey_new = fey_new.at[0, :].set(jnp.repeat(e_w, r))
+        fey_new = fey_new.at[-1, :].set(jnp.repeat(e_e, r))
+
+        new_state = dict(ex=ex_new, ey=ey_new, hzx=hzx_new, hzy=hzy_new,
+                         fex=fex_new, fey=fey_new, fhz=fhz_new)
+        return new_state, jnp.mean(ey_new[probe_col, :])
+
+    def init_state():
+        z = partial(jnp.zeros, dtype=jnp.float64)
+        return dict(
+            ex=z((nx, ny + 1)), ey=z((nx + 1, ny)),
+            hzx=z((nx, ny)), hzy=z((nx, ny)),
+            fex=z((nfx, nfy + 1)), fey=z((nfx + 1, nfy)), fhz=z((nfx, nfy)),
+        )
+
+    return step, init_state, dict(masks=m, ifc=ifc, sig_e=sig_e, sig_h=sig_h)
+
+
+def make_uniform_pml(nx: int, ny: int, dx: float, dy: float, dt: float, *,
+                     src_col: int, probe_col: int, npml: int = 15,
+                     m_pml: float = 3.0, r0: float = 1e-5,
+                     eps_x=None, eps_y=None, sigma_x=None, sigma_y=None):
+    """Uniform-grid stepper with x-PML, Jy column source, column-mean Ey
+    probe, optional per-edge materials (rods).  PEC at y walls and behind
+    the PML.  step(state, src_val) -> (state, probe_val)."""
+    if eps_x is None:
+        eps_x = np.full((nx, ny + 1), EPS0)
+    if eps_y is None:
+        eps_y = np.full((nx + 1, ny), EPS0)
+    eps_x = jnp.asarray(eps_x, dtype=jnp.float64)
+    eps_y = jnp.asarray(eps_y, dtype=jnp.float64)
+    sx = jnp.zeros((nx, ny + 1)) if sigma_x is None else jnp.asarray(sigma_x, dtype=jnp.float64)
+    sy = jnp.zeros((nx + 1, ny)) if sigma_y is None else jnp.asarray(sigma_y, dtype=jnp.float64)
+
+    sig_e, sig_h = pml_profiles(nx, dx, npml, m_pml, r0)
+    xh = jnp.asarray(sig_h) * dt / (2.0 * EPS0)
+    da_h = ((1.0 - xh) / (1.0 + xh))[:, None]
+    db_h = ((dt / MU0) / (1.0 + xh))[:, None]
+    # Ey: PML sigma_x adds to any material sigma on the same edges
+    sy_tot = sy + jnp.asarray(sig_e)[:, None]
+    ca_x, cb_x = _lossy_e_coeffs(eps_x, sx, dt)
+    ca_y, cb_y = _lossy_e_coeffs(eps_y, sy_tot, dt)
+    ch = dt / MU0
+
+    def step(state, src_val):
+        ex, ey, hzx, hzy = state["ex"], state["ey"], state["hzx"], state["hzy"]
+        hzx_new = da_h * hzx - db_h * (ey[1:, :] - ey[:-1, :]) / dx
+        hzy_new = hzy + ch * (ex[:, 1:] - ex[:, :-1]) / dy
+        hz_new = hzx_new + hzy_new
+        ex_new = ex.at[:, 1:-1].set(
+            ca_x[:, 1:-1] * ex[:, 1:-1]
+            + cb_x[:, 1:-1] * (hz_new[:, 1:] - hz_new[:, :-1]) / dy)
+        ey_new = ey.at[1:-1, :].set(
+            ca_y[1:-1, :] * ey[1:-1, :]
+            + cb_y[1:-1, :] * (hz_new[:-1, :] - hz_new[1:, :]) / dx)
+        ey_new = ey_new.at[src_col, :].add(src_val)
+        return (dict(ex=ex_new, ey=ey_new, hzx=hzx_new, hzy=hzy_new),
+                jnp.mean(ey_new[probe_col, :]))
+
+    def init_state():
+        z = partial(jnp.zeros, dtype=jnp.float64)
+        return dict(ex=z((nx, ny + 1)), ey=z((nx + 1, ny)),
+                    hzx=z((nx, ny)), hzy=z((nx, ny)))
+
+    return step, init_state, dict(sig_e=sig_e, sig_h=sig_h)
 
 
 def gaussian_modulated(n_steps: int, dt: float, f0: float, hwhm_bw: float,

@@ -196,3 +196,14 @@ for the M2 implementation (arXiv:1705.02274 numbering unless tagged [Corr]):
 Single global dt = 0.99×fine CFL; no SBP derivation; no Huygens/filter stabilization;
 unmodified Yee inside regions; the PML is measurement-fixture termination (as in the
 paper), not a stabilization device, and its floor is measured before use (§3).
+
+## Correction R1 (2026-08-29, pre-measurement, append-only) — F-M1b-abc gate timing
+
+Recorded BEFORE the floor arm runs. The §3 gates ([0, 0.32] ns direct, [0.35, 0.70] ns
+echo) were mis-derived: the left-PML reflection happens at the PML inner face x = 15 mm,
+so the echo path is source(100) -> 15 -> probe(150) = 220 mm = 0.734 ns, not "+100 mm".
+Correct ray arrivals (pulse half-support 0.113 ns): direct [0.05, 0.28] ns; left-PML echo
+[0.62, 0.85] ns (+ distributed-strip smear <= 2x15 mm/c = 0.1 ns); right-PML echo
+begins 1.62 ns. Corrected gates: direct [0, 0.30] ns, echo [0.55, 1.15] ns — echo fully
+inside, right-PML echo fully outside. The floor WINDOW is unchanged:
+measured |R_PML(f)| <= -50 dB for all f in [2,30] GHz, at dt(r=2) and dt(r=6).
