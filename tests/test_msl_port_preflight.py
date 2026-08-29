@@ -141,6 +141,41 @@ def test_substrate_checks_report_realized_thickness_on_a_dz_profile():
     assert "set dx =" not in mixed[0], mixed[0]
 
 
+def test_substrate_walk_starts_at_the_ports_own_ground_plane():
+    """#766 review BLOCKING: the realized-substrate walk started at the
+    domain floor, not at the port's own ground plane. With the ground at
+    z = 10*dx = 800um over an UNRELATED eps_r 9 filler, it reported the
+    filler as "the substrate" (n=10, 800um) and never saw the real 254um /
+    eps_r 3.66 substrate above it. Now the walk begins at pe.position's
+    substrate-normal coordinate: dx=80um realizes the 254um substrate as 4
+    cells = 320um above the 800um ground, and the mixed-cell message must
+    say exactly that -- not 10 cells and not 800um."""
+    dx = 80e-6
+    z_gnd = 10 * dx                       # 800um: ground plane above the floor
+    ly = W_TRACE + 8 * H_SUB
+    sim = Simulation(
+        freq_max=5e9, domain=(LX, ly, z_gnd + H_SUB + 1.5e-3), dx=dx,
+        cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("filler", eps_r=9.0)
+    sim.add_material("ro4350b", eps_r=EPS_R)
+    sim.add(Box((0, 0, 0), (LX, ly, z_gnd)), material="filler")
+    sim.add(Box((0, 0, z_gnd), (LX, ly, z_gnd + H_SUB)), material="ro4350b")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - W_TRACE / 2, z_gnd + H_SUB),
+                (LX, y_c + W_TRACE / 2, z_gnd + H_SUB + dx)), material="pec")
+    sim.add_msl_port(position=(2e-3, y_c, z_gnd), width=W_TRACE, height=H_SUB,
+                     direction="+x", impedance=50.0)
+    msgs = _msl_warnings(sim)
+    mixed = [m for m in msgs if "danger zone" in m]
+    assert len(mixed) == 1, msgs
+    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
+    assert "10 cell(s)" not in mixed[0] and "800µm" not in mixed[0], mixed[0]
+    sub = [m for m in msgs if "substrate cell(s) in z" in m]
+    assert sub == [], f"4 realized cells must not trip check 2: {sub}"
+
+
 def test_substrate_resolution_silent_at_6_cells():
     sim = _build_sim(dx=40e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)

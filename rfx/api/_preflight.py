@@ -5319,7 +5319,30 @@ class _PreflightMixin:
                             )
                             break
 
-    def _msl_realized_substrate(self, pe, inr):
+    def _msl_assemble_once(self):
+        """Grid + materials + per-axis cell sizes on the grid the RUN uses,
+        built ONCE per MSL preflight pass and shared by every port's
+        :meth:`_msl_realized_substrate` call. None if the build raises."""
+        try:
+            nonuniform = any(getattr(self, a, None) is not None
+                             for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
+            if nonuniform:
+                grid = self._build_nonuniform_grid()
+                from rfx.runners.nonuniform import assemble_materials_nu
+                mats = assemble_materials_nu(self, grid)[0]
+                sizes = (np.asarray(grid.dx_arr, dtype=float),
+                         np.asarray(grid.dy_arr, dtype=float),
+                         np.asarray(grid.dz, dtype=float))
+            else:
+                grid = self._build_grid()
+                mats = self._assemble_materials(grid)[0]
+                d = float(grid.dx)
+                sizes = tuple(np.full(int(n), d) for n in grid.shape)
+            return grid, mats, sizes, bool(nonuniform)
+        except Exception:
+            return None
+
+    def _msl_realized_substrate(self, pe, inr, assembled=None):
         """Substrate under an MSL port as the RUN GRID realizes it, or None.
 
         Issue #752 review (#766 BLOCK): the substrate checks below used to
@@ -5347,29 +5370,35 @@ class _PreflightMixin:
         or None when it cannot be derived (no substrate permittivity at the
         ground plane, or the build raised) -- callers then use the scalar
         estimate and SAY so in the message.
+
+        ``assembled`` is the per-check cache from :meth:`_msl_assemble_once`
+        (grid, materials, per-axis cell sizes, nonuniform flag) so N MSL
+        ports cost one rasterization, not N (#766 review, non-blocking).
+
+        The walk starts at the PORT'S OWN ground plane -- ``pe.position``'s
+        substrate-normal coordinate -- not at the domain floor. The first
+        version started at ``pad_lo`` (domain z = 0), which is only right
+        when the ground plane sits on the floor; on a stripline-like or
+        multi-layer stack it walked whatever dielectric lies BELOW the
+        ground and reported that as "the substrate" (#766 review: a
+        ground plane at 800 um over an eps_r 9 filler read back n=10,
+        h_real=800 um, never seeing the 254 um / eps_r 3.66 substrate above
+        it). The #752 class, reintroduced in a new form -- fixed here.
         """
         try:
-            nonuniform = any(getattr(self, a, None) is not None
-                             for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
+            if assembled is None:
+                assembled = self._msl_assemble_once()
+            if assembled is None:
+                return None
+            grid, mats, sizes, nonuniform = assembled
             pos = tuple(float(v) for v in pe.position)
             if nonuniform:
-                grid = self._build_nonuniform_grid()
-                from rfx.runners.nonuniform import assemble_materials_nu
                 from rfx.nonuniform import position_to_index as _nu_p2i
-                mats = assemble_materials_nu(self, grid)[0]
-                sizes = (np.asarray(grid.dx_arr, dtype=float),
-                         np.asarray(grid.dy_arr, dtype=float),
-                         np.asarray(grid.dz, dtype=float))
                 idx = list(_nu_p2i(grid, pos))
             else:
-                grid = self._build_grid()
-                mats = self._assemble_materials(grid)[0]
-                d = float(grid.dx)
-                sizes = tuple(np.full(int(n), d) for n in grid.shape)
                 idx = list(grid.position_to_index(pos))
             eps = np.asarray(mats.eps_r, dtype=float)
-            pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
-            k0 = pads[inr]
+            k0 = int(idx[inr])  # the port's own ground plane, NOT pads[inr]
             sl = [int(idx[0]), int(idx[1]), int(idx[2])]
             sl[inr] = slice(k0, None)
             col = np.asarray(eps[tuple(sl)], dtype=float).ravel()
@@ -5571,6 +5600,9 @@ class _PreflightMixin:
         except Exception:
             _msl_grid = None
 
+        # Issue #752 / #766 review: one rasterization for all ports.
+        _msl_assembled = self._msl_assemble_once()
+
         for pe in self._msl_ports:
             # Issue #661: every check below runs on the port's OWN axes.
             # ``prop`` is the propagation axis (checks 3/4/4a fire along
@@ -5635,7 +5667,7 @@ class _PreflightMixin:
             # (uniform or profiled), never from n * scalar dx -- see
             # _msl_realized_substrate. The scalar estimate is used only
             # when that cannot be derived, and the message says so.
-            _real = self._msl_realized_substrate(pe, _inr)
+            _real = self._msl_realized_substrate(pe, _inr, assembled=_msl_assembled)
             if _real is not None:
                 n_z_sub = max(1, int(_real["n"]))
             else:
