@@ -409,3 +409,134 @@ F-P4 rows (already present and already evaluated in the same run:
 I3 0.4976/7.3302, I2 0.5089/6.7028 — ALL PASS) are the binding ones.
 No window, model, fixture, bin, or gate value changes; the fixtures are
 deterministic and the re-run is a reproduction.
+
+## 10. RESULTS — extraction + band arms (appended 2026-08-29; sections 1-9 unchanged)
+
+Run: `validation/research/thru_feedpost_junction_windows.py --extract
+--band`, branch `agent/thru-deembed-r4` (section-9 repair tree),
+JAX_PLATFORMS=cpu. F-X5 CLEAN on every driven sweep before any
+interpretation (thru in-situ drives Re(Z_in) 50.2..51.8; band raw
+37.3..49.1 ohm, all > 0).
+
+**Reproduction (deterministic fixtures, sec.-5 data-reuse gates):** all
+7 gates PASS at the 1e-5 class (|dL| <= 5e-5 nH, |dtau| <= 2e-5 ps,
+Zc ranges to 4e-4 ohm) — the attempt-3 measurements are reproduced
+exactly; the windows are what changed.
+
+**Attempt-4 extraction verdicts: ALL PASS (33/33 incl. reproduction).**
+- I3 thru: L* = 0.4976 +- 0.0033 nH, tau* = 7.3302 +- 0.0399 ps
+  (Zp* = 67.89 ohm, C_p* = 107.97 fF); resid max/rms 0.01310/0.00469 vs
+  the TIGHTENED F-A1 0.017/0.008; corr 0.169, cond 1.31; 9/9 one basin.
+- I2 single-post: L = 0.5089 +- 0.0066 nH, tau = 6.7028 +- 0.1077 ps
+  (C_p = 88.29 fF); resid 0.00859/0.00429 vs tightened F-A2
+  0.052/0.026; corr 0.401, cond 1.61; 9/9 one basin.
+- **F-P4: PASS on both fixtures** — L 0.4976/0.5089 in [0.20, 0.58] nH
+  (10.8 sigma inside the analytic edge for I2); tau 7.3302/6.7028 in
+  [2.5, 9.9] ps; report-only C_p 107.97/88.29 fF inside the [71, 128]
+  orientation class. THE ATTEMPT-3 STOP MECHANISM IS CONFIRMED
+  RESOLVED: the forward-derived full-junction windows contain both
+  independent fixtures' parameters with wide margin, with no term
+  informed by the burned numbers.
+- F-I1..4, F-V1/2, F-C all PASS (F-C 0.0112 nH / 0.6274 ps).
+
+**Adoption + frozen budget (before the band run):**
+(L*, tau*) = (0.4976 nH, 7.3302 ps) from I3 per the frozen rule;
+delta_L = 0.0562 nH (11.3%), delta_tau = 1.4871 ps (20.3% — carries
+the measured 0.627 ps cross-fixture systematic at full value),
+delta_C = 56.0 fF; B_formula = 0.2326 -> **B_eff = min(B, 0.13) =
+0.1300** (the carried ceiling binds, as the pre-declaration expected).
+
+**Band arm (battery-verbatim, 9 bins 3-7 GHz):**
+
+    raw   |S11| 0.0093..0.2896, |S22| 0.0176..0.2910 (worst 0.2910 —
+                                          the held-gate provenance value)
+    deemb |S11| 0.0391..0.1237 (peak at 6.5 GHz), |S22| 0.0429..0.1273
+    deemb |S21| 0.9708..0.9952 ; sv_max 0.9861..1.00349
+    [report-only] deemb S21 phase dev vs c-line delay -0.060..-0.128 rad
+
+- F-D1 floor: worst = 0.1273 < B_eff = 0.1300 -> **PASS** (2.1% margin)
+- F-D2 reduction: 0.1273 < 0.1455 -> PASS (2.29x reduction of the raw)
+- F-X1 passivity: 1.00349 <= 1.01 -> PASS (read after F-X5)
+- F-X2 reciprocity: 2.71e-4 <= 1e-3 -> PASS
+- F-X3 |S21d|: [0.9708, 0.9952] in [0.93, 1.005] -> PASS
+- F-X4: `git diff agent/thru-deembed-r3 -- rfx/` EMPTY; battery suite
+  8 passed + 1 xfailed (the held floor xfail, byte-untouched);
+  wire-port suites 25 passed; deembed + refplane + dump/replay 65
+  passed; example-fidelity: 83 passed + the 33 PRE-EXISTING base
+  snapshot failures, count unchanged (34 -> 33 with the one additive
+  attempt-4 entry, which repairs exactly the discovery row for the new
+  harness). All with `-o addopts="" -m "not gpu"`.
+
+**Disposition (frozen section 7): STOP — the pin is NOT placeable.**
+The candidate lock gate = 1.25 * 0.1273 rounded up = 0.160 > B_eff =
+0.130. Per the frozen rule ("budget too tight for an honest pin = not
+a pass") the lane STOPs: `test_thru_s11_floor` stays byte-untouched as
+the held strict xfail; NO lock anywhere moves.
+
+**Named mechanism (recorded, not excused).** The de-embedded floor
+0.1273 at 6.5 GHz is ~3x the 0.0430 bare-line-mismatch class: its
+dominant content is residual post-model error — the flat (L*, tau*)
+segment vs the junction's true in-band dispersion, exactly the
+smooth-dispersion class the V3 synthetic showed lives in the held-out
+band. The honest error budget for that class (whose delta_tau carries
+the measured cross-fixture systematic at full value, per the
+section-4/5 honesty rule) is the same size as the measurement, so a
+>= 25%-headroom pin cannot fit inside it. Both pressures are honest and
+they collide: shrinking the systematic class to make the pin fit is
+precisely what the frozen rule forbids. A 2%-headroom pin at 0.13 would
+be a flaky cross-machine gate enshrining model error as physics; the
+STOP is the physically accurate outcome.
+
+## 11. CLOSING SUMMARY — the four-attempt chain and the final physical answer
+
+What each attempt eliminated:
+
+1. **Attempt 1 (F-L1 STOP)** — point series-L inversion under ASSUMED
+   line constants: refuted the assumed-constants frame (31% apparent L
+   decline = dL/dZc ~ 0.065 nH/ohm conditioning). Left settled: the
+   exact wave-cascade de-embed algebra, the budget structure B(...),
+   the Re(V/I)-before-|S| discipline, the raw envelope provenance
+   0.2910.
+2. **Attempt 2 (F-J2 STOP)** — joint (L, Zc, l_eff) fit: CONFIRMED the
+   attempt-1 mechanism (measured constants flatten L to 1%) and refuted
+   the point-element model (l_eff* = 18.211 mm absorbed the posts' own
+   transit; measured identifiability valley corr -0.991/-0.996, cond
+   ~170). Left settled: the thru-only fit cannot identify the junction.
+3. **Attempt 3 (F-P STOP)** — two-segment post model + independent
+   fixtures (in-situ two-plane line constants; single-post 1-port with
+   measured load): BROKE the valley (corr 0.169/0.401, cond 1.31/1.61)
+   and measured the junction TWICE independently, agreeing to 0.011 nH
+   / 0.63 ps — then fired a window that had been derived for the bare
+   post, not the full junction it measured. Left settled: the
+   apparatus, the parameters, and the diagnosis.
+4. **Attempt 4 (this lane, STOP at the pin)** — analytic forward
+   re-derivation of the junction windows (Goldfarb-Pucel post 0.3975 nH
+   + overhang <= 0.0861 + fringe/discretization classes; C_p [71, 128]
+   fF from overhang + Hammerstad open-end + junction class; tau =
+   sqrt(LC) + honest systematic): the windows CONTAIN both fixtures'
+   parameters with margin — attempt 3's numbers were physics, its edge
+   was the error. The adopted model de-embeds the battery diagonal
+   0.2910 -> 0.1273 (2.29x) and passes every band falsifier including
+   the floor-vs-budget gate; the >= 25%-headroom lock does not fit
+   inside the honest budget, so the gate is not moved.
+
+**The final physical answer.** The thru's raw in-band diagonal (max
+0.2910 at 7 GHz) is quantitatively the fixture's own two feed-post
+JUNCTIONS — each the full terminal-to-line transition (1 mm post +
+0.5 mm overhang stub + fringe), a short line segment with
+Zp ~ 68-76 ohm, tau_p ~ 6.7-7.3 ps, i.e. L_p ~ 0.50 nH and
+C_p ~ 88-108 fF — identified by two independent fixtures that agree to
+0.011 nH / 0.63 ps, and accounted analytically term-by-term from
+geometry and prior classes with no tuned quantity. Cascade-removing the
+identified junctions leaves a de-embedded floor of 0.127 (6.5 GHz),
+2.9x above the bare line-mismatch class 0.043; that remainder is
+bounded by — and comparable to — the honest flat-segment model-error
+budget, so it cannot be pinned as fixture physics at better than the
+0.13 class. The truthful gate state therefore remains the held strict
+xfail with the raw 0.2910 provenance; the de-embedded floor lives here
+as a MEASUREMENT with its full model provenance, not as a lock. A
+future lane that wants the pin needs a dispersive junction
+identification (frequency-dependent segment parameters, or the
+corroborative fine-dx sweep of attempt-3 section 8) to shrink the
+delta_tau/delta_C classes below the ceiling — an apparatus improvement,
+not a re-derivation of any window in this chain.
