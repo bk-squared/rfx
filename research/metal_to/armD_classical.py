@@ -120,7 +120,7 @@ def _record(tag, scored, extra):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=("window", "d1", "d2", "sweep"), required=True)
+    ap.add_argument("--mode", choices=("window", "d1", "d3"), required=True)
     ap.add_argument("--periods", type=float, nargs="+", default=[45.0])
     ap.add_argument("--sep_mm", type=float, default=8.0)
     ap.add_argument("--two_sided", action="store_true",
@@ -188,8 +188,46 @@ def main() -> int:
                       f"f_U={res.get('f_notch_U_MHz')} R_L={res.get('R_L')} "
                       f"({time.time()-t0:.0f}s)")
                 results.append(r)
-    else:
-        raise SystemExit("sweep mode is wired after d1 fixes the f(L,W) law")
+    else:  # d3 — the calibrated two-stub sweep
+        # Lengths come from the D-1 law f = K/(L+dL), fitted per width to 0.1%:
+        #   5.25  GHz -> 63.3-63.8 cells      5.775 GHz -> 57.5-58.1 cells
+        # Both land between cells, so the lattice bounds notch placement to
+        # +-42 MHz (one cell = 127 um = ~83 MHz here). Width is the vernier:
+        # at fixed length it trims ~22 MHz across the realizable width range.
+        periods = args.periods[0]
+        dx = box.dx
+        L_LO = [62, 63, 64]
+        L_HI = [57, 58, 59]
+        COLS = [2, 4]          # narrow = high-Z = sharper skirts = better gap
+        SEPS = [24, 40, 63]    # cells; 63 = lambda_g/4 at 5.5 GHz
+        for two_sided in (False, True):
+            for sep_c in SEPS:
+                for wc in COLS:
+                    for llo in L_LO:
+                        for lhi in L_HI:
+                            tag = (f"d3_{'2s' if two_sided else '1s'}_sep{sep_c}"
+                                   f"_w{wc}_llo{llo}_lhi{lhi}")
+                            if (OUT / f"{tag}.json").exists():
+                                continue
+                            t0 = time.time()
+                            mask = _stub_pair(box, sep_c * dx, llo * dx,
+                                              lhi * dx, wc * dx, wc * dx,
+                                              two_sided)
+                            sc = cal.score_design(
+                                mask, freqs_hz=freqs, num_periods=periods,
+                                label=tag, cache_dir=CACHE, verbose=False)
+                            r = _record(tag, sc, dict(
+                                mode="d3", periods=periods, two_sided=two_sided,
+                                sep_cells=sep_c, w_cells=wc,
+                                l_lo_cells=llo, l_hi_cells=lhi,
+                                **_realized(mask),
+                                wall_s=round(time.time() - t0, 1)))
+                            res = r.get("result", {})
+                            print(f"[armD] {tag}: M={res.get('M'):.2f} "
+                                  f"S=({res.get('S_L'):.1f},{res.get('S_U'):.1f},"
+                                  f"{res.get('S_G'):.1f},{res.get('S_P'):.1f}) "
+                                  f"({time.time()-t0:.0f}s)", flush=True)
+                            results.append(r)
 
     print(f"[armD] wrote {len(results)} record(s) to {OUT}")
     return 0
