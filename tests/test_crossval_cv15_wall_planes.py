@@ -58,37 +58,23 @@ def _load_cv15():
     return module
 
 
-def _build_test_sim(cv15):
-    """Rebuild the SAME geometry ``run_rfx()`` constructs (mirrored, not
-    imported -- that function is fused with the FDTD solve, see module
-    docstring), from cv15's own public module constants only. Returns
+def _build_test_sim(cv15, *, two_plane=None):
+    """Build cv15's geometry through the PRODUCTION builder,
+    ``cv15.build_rfx_sim`` -- not a test-local mirror (#740 review, item 1:
+    the mirrored copy hardcoded ``two_plane=True``, so deleting the fix from
+    the script left every test green).
+
+    ``two_plane=None`` (the default, used by every positive test) passes NO
+    toggle, so the script's own default is what is under test: flip that
+    default -- or drop ``two_plane`` from the ground Box -- and the positive
+    tests go red (verified: default forced to False -> the positive
+    wall-plane test fails, 1 failed / 6 passed; the gate tests use synthetic
+    dicts by design and the negative control passes False itself). Only the
+    negative control passes ``two_plane=False`` explicitly. Returns
     ``(sim, grid, patch_shape)`` so the caller can run the script's OWN
     ``assert_realized_stack`` against it, cheaply (no solve)."""
-    cx, cy = cv15.DOM_X / 2, cv15.DOM_Y / 2
-    z_sub_lo = cv15.AIR_BELOW
-    z_sub_hi = z_sub_lo + cv15.H_SUB
-    z_patch_lo, z_patch_hi = z_sub_hi, z_sub_hi + cv15.DX
-    sim = Simulation(
-        freq_max=4e9, domain=(cv15.DOM_X, cv15.DOM_Y, cv15.DOM_Z), dx=cv15.DX,
-        boundary=BoundarySpec.uniform("cpml"), cpml_layers=cv15.N_CPML,
-    )
-    sim.add_material("sub", eps_r=cv15.EPS_R, sigma=cv15.SIGMA_SUB)
-    sim.add(Box((cx - cv15.GP_X / 2, cy - cv15.GP_Y / 2, z_sub_lo - cv15.DX),
-                (cx + cv15.GP_X / 2, cy + cv15.GP_Y / 2, z_sub_lo)),
-            material="pec", two_plane=True)
-    sim.add(Box((cx - cv15.GP_X / 2, cy - cv15.GP_Y / 2, z_sub_lo),
-                (cx + cv15.GP_X / 2, cy + cv15.GP_Y / 2, z_sub_hi)),
-            material="sub")
-    patch_shape = Box(
-        (cx - cv15.L_PATCH / 2, cy - cv15.W_PATCH / 2, z_patch_lo),
-        (cx + cv15.L_PATCH / 2, cy + cv15.W_PATCH / 2, z_patch_hi))
-    sim.add(patch_shape, material="pec")
-    feed_x = cx + cv15.FEED_OFFSET_X
-    port_z0 = z_sub_lo + 1.0 * cv15.DX
-    port_extent = 2.0 * cv15.DX
-    sim.add_port(position=(feed_x, cy, port_z0), component="ez",
-                 impedance=50.0, extent=port_extent,
-                 waveform=GaussianPulse(f0=cv15.F_DESIGN, bandwidth=1.0))
+    kw = {} if two_plane is None else dict(two_plane=two_plane)
+    sim, patch_shape, _geom = cv15.build_rfx_sim(do_gain=False, **kw)
     grid = sim._build_grid()
     return sim, grid, patch_shape
 
@@ -137,12 +123,13 @@ def test_cv15_negative_control_one_plane_ground_raises(capsys):
     check catches it.
     """
     cv15 = _load_cv15()
-    sim, grid, patch_shape = _build_test_sim(cv15)
-
-    ground_entry = sim._geometry[0]
-    assert ground_entry.material_name == "pec"
-    assert ground_entry.two_plane is True  # the #740 fix, before we undo it
-    sim._geometry[0] = dataclasses.replace(ground_entry, two_plane=False)
+    # Through the PRODUCTION path: build_rfx_sim(two_plane=False) is the
+    # pre-fix one-plane ground. If someone deletes the two_plane default
+    # from the script, the positive tests above fail; this one proves the
+    # check would have caught the original geometry.
+    sim, grid, patch_shape = _build_test_sim(cv15, two_plane=False)
+    assert sim._geometry[0].material_name == "pec"
+    assert sim._geometry[0].two_plane is False
 
     with pytest.raises(RuntimeError, match="z_sub_lo"):
         cv15.assert_realized_stack(sim, grid, patch_shape)

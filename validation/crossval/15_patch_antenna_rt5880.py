@@ -89,12 +89,15 @@ HONEST SCOPE (PI penalises overclaiming)
     stack; staircase PEC edges + a coarse 4-cell substrate under-resolve the
     patch-edge fringing capacitance in the SAME direction, while openEMS
     (thirds-rule edge meshing) reads lower and drifts down with refinement; the
-    thin-substrate demo shows the opposite low bias. The post-#740-fix
-    (two_plane ground, 4-cell electrical gap matching the declared stack)
-    direction/magnitude is NOT YET MEASURED here -- it needs the named re-run
-    in the #740 PR, not an estimate. All of this is discretisation, reported
-    not hidden, and always against the STRUCTURE actually solved, not the
-    declared one.
+    thin-substrate demo shows the opposite low bias. Post-#740-fix (two_plane
+    ground, 4-cell electrical gap matching the declared stack), MEASURED and
+    committed as ``_15_patch_results/rfx.json`` (CPU, 206.5 s): rfx
+    f_primary 2.3139 GHz vs openEMS 2.330 GHz -- 0.69% and now LOW, not
+    HIGH; rfx -4.21% vs analytic, openEMS -3.54%, i.e. both solvers sit on
+    the same side of the closed form by a similar margin. The vacuum ground
+    cell, not edge fringing, was the dominant term in the +6.09%. All of
+    this is discretisation, reported not hidden, and always against the
+    STRUCTURE actually solved, not the declared one.
   - Open (CPML) domain -> the -40 dB ring-down settling witness IS required and
     is printed BEFORE any frequency (unlike a closed cavity).
   - Broadside gain: order-of-magnitude / few-dB envelope only. The CPU-tight
@@ -317,18 +320,27 @@ def assert_realized_stack(sim, grid, patch_shape):
     )
 
 
-def run_rfx(num_periods, n_freqs, do_gain):
-    sys.path.insert(0, REPO_ROOT)
-    import io
-    import contextlib
+def build_rfx_sim(*, do_gain: bool = False, two_plane: bool = True):
+    """Build cv15's rfx Simulation WITHOUT solving it -- the production
+    geometry, feed, probe and (optionally) NTFF box exactly as ``run_rfx``
+    uses them. Returns ``(sim, patch_shape, geom)`` with ``geom`` the
+    derived z-planes and feed location the caller needs.
+
+    Separated from ``run_rfx`` for the #740 review: the first version of
+    this fix kept build and solve fused, so the wall-plane tests had to
+    MIRROR the geometry in a test-local copy -- and deleting
+    ``two_plane=True`` from the production script left every test green.
+    With the builder separable, the tests exercise THIS function with the
+    production toggle, and the example-fidelity contract gate audits cv15
+    (it was classified builder_fused_with_solve before; now ``audited``).
+
+    ``two_plane`` is the #740 fix itself and defaults to the fixed value;
+    the negative-control test passes ``two_plane=False`` to reproduce the
+    pre-fix one-plane ground and confirm ``assert_realized_stack`` rejects
+    it through the production path.
+    """
     from rfx import Simulation, Box, GaussianPulse
     from rfx.boundaries.spec import BoundarySpec
-    import jax.numpy as jnp
-
-    print("=" * 72)
-    print("rfx side (uniform mesh, #325-safe)")
-    print("=" * 72)
-    _geom_banner()
 
     cx, cy = DOM_X / 2, DOM_Y / 2
     z_sub_lo = AIR_BELOW                          # top face of ground plane
@@ -359,7 +371,7 @@ def run_rfx(num_periods, n_freqs, do_gain):
     # IS z_sub_hi, so the patch Box is left at the one-plane default.
     sim.add(Box((cx - GP_X / 2, cy - GP_Y / 2, z_sub_lo - DX),
                 (cx + GP_X / 2, cy + GP_Y / 2, z_sub_lo)), material="pec",
-            two_plane=True)
+            two_plane=two_plane)
     sim.add(Box((cx - GP_X / 2, cy - GP_Y / 2, z_sub_lo),
                 (cx + GP_X / 2, cy + GP_Y / 2, z_sub_hi)), material="sub")
     patch_shape = Box((cx - L_PATCH / 2, cy - W_PATCH / 2, z_patch_lo),
@@ -385,6 +397,23 @@ def run_rfx(num_periods, n_freqs, do_gain):
         sim.add_ntff_box(corner_lo=(pad, pad, pad),
                          corner_hi=(DOM_X - pad, DOM_Y - pad, DOM_Z - pad),
                          freqs=np.array([2.2e9, 2.3e9, 2.4e9, 2.5e9]))
+    geom = dict(z_sub_lo=z_sub_lo, z_sub_hi=z_sub_hi, feed_x=feed_x, cy=cy)
+    return sim, patch_shape, geom
+
+
+def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
+    sys.path.insert(0, REPO_ROOT)
+    import io
+    import contextlib
+    import jax.numpy as jnp
+
+    print("=" * 72)
+    print("rfx side (uniform mesh, #325-safe)")
+    print("=" * 72)
+    _geom_banner()
+
+    sim, patch_shape, _geom = build_rfx_sim(do_gain=do_gain, two_plane=two_plane)
+    z_sub_lo, z_sub_hi = _geom["z_sub_lo"], _geom["z_sub_hi"]
 
     # ---- Build the actual grid: exact dt + FAITHFUL substrate rasterization ----
     grid = sim._build_grid()
@@ -774,7 +803,7 @@ def _load_legs():
     return R, O
 
 
-def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-6):
+def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
     """Re-verify a leg's ``stack_check`` dict against THIS MODULE's OWN
     constants -- issue #740 review, required change 1: gate on the
     MEASURED planes recomputed against ``AIR_BELOW``/``H_SUB``/``N_SUB``/

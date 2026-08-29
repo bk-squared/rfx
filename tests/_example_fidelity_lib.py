@@ -336,9 +336,12 @@ CLASSIFICATION: dict[str, Entry] = {
         "`run_uniform()`/`run_nonuniform()` each build and call .run(...) "
         "in the same function"),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
-        "builder_fused_with_solve",
-        "`run_rfx()` builds `sim` and calls sim.run(...) at line 268 in the "
-        "same function -- no separable build-only path"),
+        "audited",
+        "`build_rfx_sim(do_gain=, two_plane=)` returns (sim, patch_shape, "
+        "geom) with no solve call (separated from run_rfx() for the #740 "
+        "review so the wall-plane tests exercise the production toggle); "
+        "run_rfx() consumes it and solves",
+        (Builder("build_rfx_sim", 0, (_v("default", do_gain=False),)),)),
     "validation/crossval/18_wr90_iris_modematch.py": Entry(
         "builder_fused_with_solve",
         "`run_point()` builds and calls sim.compute_waveguide_s_matrix(...) "
