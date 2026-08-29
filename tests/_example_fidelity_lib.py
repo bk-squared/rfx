@@ -550,6 +550,14 @@ CLASSIFICATION: dict[str, Entry] = {
             _v_from("refplane-n10",
                     lambda m: dict(pulse=m.GaussianPulse(**m.EXTRACT_PULSE),
                                    reference_plane_cells=10)),)),)),
+    "validation/research/thru_feedpost_junction_windows.py": Entry(
+        "no_simulation",
+        "thru-deembed attempt-4 harness (closing lane): constructs no "
+        "Simulation of its own -- it imports `build_thru`/"
+        "`build_singlepost`/`run_thru` from the audited attempt-1/3 "
+        "harnesses and changes only the pre-declared window constants "
+        "(docs/design_notes/"
+        "thru_feedpost_junction_windows_predeclaration.md)."),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
