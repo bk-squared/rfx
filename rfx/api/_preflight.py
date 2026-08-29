@@ -5319,6 +5319,81 @@ class _PreflightMixin:
                             )
                             break
 
+    def _msl_realized_substrate(self, pe, inr):
+        """Substrate under an MSL port as the RUN GRID realizes it, or None.
+
+        Issue #752 review (#766 BLOCK): the substrate checks below used to
+        derive "realized" thickness as ``n_cells * dx`` with the UNIFORM
+        grid's scalar ``dx``. On a ``dz_profile`` simulation that is not a
+        thickness at all -- it asserted "3 substrate cells = 300 um (+18%)"
+        on a board ``fidelity_report()`` measured at 254.00 um on the same
+        simulation. Two surfaces of one codebase disagreeing about what the
+        solver built is exactly the class #752 was filed against.
+
+        So this reads the substrate the way ``rfx.fidelity`` does: build
+        the grid the run will use (non-uniform when any profile is set),
+        assemble materials on it, walk the permittivity column under the
+        port along the substrate-normal axis from the ground plane, and
+        sum the ACTUAL cell sizes of the cells that carry the substrate's
+        permittivity. Returns a dict with
+
+          n          realized substrate cell count under the port,
+          h_real     their summed thickness (m),
+          frac       where the DECLARED top face sits inside the cell that
+                     contains it, as a fraction of that cell (0 = on a node),
+          d_iface    that cell's size (m),
+          nonuniform whether a mesh profile was in force,
+
+        or None when it cannot be derived (no substrate permittivity at the
+        ground plane, or the build raised) -- callers then use the scalar
+        estimate and SAY so in the message.
+        """
+        try:
+            nonuniform = any(getattr(self, a, None) is not None
+                             for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
+            pos = tuple(float(v) for v in pe.position)
+            if nonuniform:
+                grid = self._build_nonuniform_grid()
+                from rfx.runners.nonuniform import assemble_materials_nu
+                from rfx.nonuniform import position_to_index as _nu_p2i
+                mats = assemble_materials_nu(self, grid)[0]
+                sizes = (np.asarray(grid.dx_arr, dtype=float),
+                         np.asarray(grid.dy_arr, dtype=float),
+                         np.asarray(grid.dz, dtype=float))
+                idx = list(_nu_p2i(grid, pos))
+            else:
+                grid = self._build_grid()
+                mats = self._assemble_materials(grid)[0]
+                d = float(grid.dx)
+                sizes = tuple(np.full(int(n), d) for n in grid.shape)
+                idx = list(grid.position_to_index(pos))
+            eps = np.asarray(mats.eps_r, dtype=float)
+            pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
+            k0 = pads[inr]
+            sl = [int(idx[0]), int(idx[1]), int(idx[2])]
+            sl[inr] = slice(k0, None)
+            col = np.asarray(eps[tuple(sl)], dtype=float).ravel()
+            if col.size == 0 or col[0] <= 1.0 + 1e-6:
+                return None
+            eps_sub = float(col[0])
+            n = 0
+            while n < col.size and abs(col[n] - eps_sub) <= 1e-3 * eps_sub:
+                n += 1
+            ax_sizes = sizes[inr][k0:]
+            h_real = float(np.sum(ax_sizes[:n]))
+            nodes = np.concatenate([[0.0], np.cumsum(ax_sizes)])
+            h_sub = float(pe.height)
+            k = int(np.searchsorted(nodes, h_sub, side="right") - 1)
+            k = min(max(k, 0), len(ax_sizes) - 1)
+            d_iface = float(ax_sizes[k])
+            frac = (h_sub - float(nodes[k])) / d_iface if d_iface > 0 else 0.0
+            if frac > 1.0 - 1e-9:  # numerical dust just below the next node
+                frac = 0.0
+            return dict(n=int(n), h_real=h_real, frac=float(frac),
+                        d_iface=d_iface, nonuniform=bool(nonuniform))
+        except Exception:
+            return None
+
     def _check_msl_port_geometry(
         self,
         dx: float,
@@ -5555,39 +5630,65 @@ class _PreflightMixin:
                     )
 
             # ---- 2. Substrate cells ----
-            n_z_sub = max(1, int(round(h_sub / dx)))
+            # Issue #752 (#766 review): the cell count and any "realized"
+            # thickness come from the RUN grid's assembled permittivity
+            # (uniform or profiled), never from n * scalar dx -- see
+            # _msl_realized_substrate. The scalar estimate is used only
+            # when that cannot be derived, and the message says so.
+            _real = self._msl_realized_substrate(pe, _inr)
+            if _real is not None:
+                n_z_sub = max(1, int(_real["n"]))
+            else:
+                n_z_sub = max(1, int(round(h_sub / dx)))
             if n_z_sub < 4:
-                # Issue #752: this mesh may ALSO itself be misaligned
-                # (h_sub/dx not integer) — the half-open rasterizer rule
-                # (rfx/geometry/csg.py) then rounds UP, so the solve
-                # realizes MORE substrate than the round()-based n_z_sub
-                # above suggests. Naming that discrepancy here (rather
-                # than only in check 2b) keeps this message from stating
-                # "3 substrate cells" while 2b, on the same geometry,
-                # states "320µm = 4 cells realized".
-                _frac_here = (h_sub / dx) - int(h_sub / dx)
                 _extra = ""
-                if _frac_here > 1e-9:
-                    _n_ceil = int(h_sub / dx) + 1
-                    _h_real_um = _n_ceil * dx * 1e6
-                    _pct_thick = (
-                        (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                if _real is not None:
+                    _h_real_um = _real["h_real"] * 1e6
+                    if abs(_real["h_real"] - h_sub) > 0.005 * h_sub:
+                        _pct_thick = (
+                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                        )
+                        _extra = (
+                            f" On the grid this run uses the substrate "
+                            f"actually realizes {_real['n']} cell(s) = "
+                            f"{_h_real_um:.0f}µm ({_pct_thick:+.0f}% vs the "
+                            f"declared {h_sub*1e6:.0f}µm) — read off the "
+                            f"assembled permittivity under the port, not "
+                            f"n*dx; the half-open rasterizer rule "
+                            f"(rfx/geometry/csg.py) rounds a face that is "
+                            f"not on a node UP to the next cell. A "
+                            f"substrate-thickening effect, separate from "
+                            f"staircase resolution; sim.fidelity_report() "
+                            f"reports the same number, and see the "
+                            f"mixed-cell-danger-zone check below."
+                        )
+                    _dx_note = (
+                        f"base dx={dx*1e6:.0f}µm, mesh profile in force"
+                        if _real["nonuniform"] else f"dx={dx*1e6:.0f}µm"
                     )
-                    _extra = (
-                        f" This mesh is itself misaligned (h_sub/dx="
-                        f"{h_sub/dx:.3f}): the half-open rasterizer rule "
-                        f"rounds UP, so the solve actually realizes "
-                        f"{_n_ceil} substrate cell(s) = {_h_real_um:.0f}µm "
-                        f"({_pct_thick:+.0f}% vs the declared "
-                        f"{h_sub*1e6:.0f}µm) — a substrate-thickening "
-                        f"effect, separate from staircase resolution; "
-                        f"confirm with sim.fidelity_report() and see the "
-                        f"mixed-cell-danger-zone check below."
-                    )
+                else:
+                    _frac_here = (h_sub / dx) - int(h_sub / dx)
+                    if _frac_here > 1e-9:
+                        _n_ceil = int(h_sub / dx) + 1
+                        _h_real_um = _n_ceil * dx * 1e6
+                        _pct_thick = (
+                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                        )
+                        _extra = (
+                            f" SCALAR-dx ESTIMATE (the run grid could not "
+                            f"be assembled for this check): h_sub/dx="
+                            f"{h_sub/dx:.3f} is not an integer, so the "
+                            f"half-open rasterizer rule would realize "
+                            f"{_n_ceil} substrate cell(s) = {_h_real_um:.0f}µm "
+                            f"({_pct_thick:+.0f}% vs the declared "
+                            f"{h_sub*1e6:.0f}µm) on a uniform mesh; "
+                            f"confirm with sim.fidelity_report()."
+                        )
+                    _dx_note = f"dx={dx*1e6:.0f}µm, scalar estimate"
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
-                        f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
+                        f"in z (h_sub={h_sub*1e6:.0f}µm, {_dx_note}). "
                         f"Yee staircase at dielectric interface is O(dx) — "
                         f"Z0 staircase error >5% expected. Refine to dx ≤ "
                         f"{h_sub*1e6/4:.1f}µm (4+ substrate cells) AND keep "
@@ -5651,19 +5752,50 @@ class _PreflightMixin:
             # even though it is not the "worse Z0 extraction" the old
             # text claimed. The alignment advice below is kept on those
             # two grounds, downgraded from a Z0-bias-magnitude claim.
-            frac = (h_sub / dx) - int(h_sub / dx)
+            # Issue #752 (#766 review): the interface position and the
+            # realized thickness come from the run grid (see
+            # _msl_realized_substrate); on a uniform grid frac reduces to
+            # the old (h_sub/dx) fractional part exactly.
+            if _real is not None:
+                frac = _real["frac"]
+                _nu_here = _real["nonuniform"]
+            else:
+                frac = (h_sub / dx) - int(h_sub / dx)
+                _nu_here = False
             if 0.10 <= frac <= 0.40:
                 # Snap suggestions: nearest integer above and below.
                 n_below = int(h_sub / dx)
                 n_above = n_below + 1
                 dx_low = h_sub / n_above   # frac=0
                 dx_high = h_sub / n_below  # frac=0
-                h_real_um = n_above * dx * 1e6
+                if _real is not None:
+                    n_above = int(_real["n"])
+                    h_real_um = _real["h_real"] * 1e6
+                    _iface_txt = (
+                        f"the declared substrate top sits {frac:.3f} of a "
+                        f"cell above the nearest mesh node (that cell is "
+                        f"{_real['d_iface']*1e6:.1f}µm)"
+                    )
+                else:
+                    h_real_um = n_above * dx * 1e6
+                    _iface_txt = (
+                        f"h_sub/dx = {h_sub/dx:.3f} (fractional part "
+                        f"{frac:.3f}; scalar estimate, run grid unavailable)"
+                    )
                 pct_thick = (h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                _snap_txt = (
+                    f"On a non-uniform profile, place a mesh node exactly "
+                    f"at h_sub={h_sub*1e6:.1f}µm (the substrate top) instead "
+                    f"of grading through it."
+                    if _nu_here else
+                    f"To snap onto a mesh matching the DECLARED board "
+                    f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
+                    f"{int(round(h_sub/dx_low))}) or {dx_high*1e6:.1f}µm "
+                    f"(= h_sub/{int(round(h_sub/dx_high))})."
+                )
                 _w.warn(
                     PreflightWarning(
-                        f"MSL port '{pe.name}': h_sub/dx = "
-                        f"{h_sub/dx:.3f} (fractional part {frac:.3f}) lands "
+                        f"MSL port '{pe.name}': {_iface_txt} — this lands "
                         f"in the [0.10, 0.40] mixed-cell danger zone. The "
                         f"substrate-air interface bisects the same Yee cell "
                         f"that holds the trace; AD-traceable "
@@ -5675,11 +5807,12 @@ class _PreflightMixin:
                         f"bug (this build has no subpixel eps assembly, so "
                         f"a hard PEC box never enters that path). "
                         f"Separately: the half-open rasterizer rule rounds "
-                        f"h_sub/dx UP here, so this mesh actually realizes "
+                        f"that face UP, so this mesh actually realizes "
                         f"{n_above} cell(s) of substrate = {h_real_um:.0f}µm "
                         f"({pct_thick:+.0f}% THICKER than the declared "
-                        f"{h_sub*1e6:.0f}µm — confirm with "
-                        f"sim.fidelity_report()). That board-thickening, "
+                        f"{h_sub*1e6:.0f}µm — read off the run grid's "
+                        f"assembled permittivity; sim.fidelity_report() "
+                        f"reports the same number). That board-thickening, "
                         f"not extractor bias, is most of what a naive "
                         f"declared-board Z0 comparison used to attribute "
                         f"to 'misalignment' (retracted: see "
@@ -5688,10 +5821,7 @@ class _PreflightMixin:
                         f"board it actually solves to within 0.4% at every "
                         f"point in scripts/diagnostics/"
                         f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
-                        f"not). To snap onto a mesh matching the DECLARED "
-                        f"board instead, set dx = {dx_low*1e6:.1f}µm "
-                        f"(= h_sub/{n_above}) or {dx_high*1e6:.1f}µm "
-                        f"(= h_sub/{n_below}).",
+                        f"not). {_snap_txt}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

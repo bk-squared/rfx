@@ -12,6 +12,7 @@ rfx/api.py:_check_msl_port_geometry.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from rfx.api import Simulation
@@ -26,13 +27,20 @@ W_TRACE = 600e-6
 LX = 14e-3
 
 
-def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3) -> Simulation:
+def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
+               dz_profile=None) -> Simulation:
+    """``dz_profile`` (issue #752 / #766 review): when given, the domain's
+    z extent is the profile's sum and the run grid is non-uniform -- the
+    substrate checks must then read the substrate off THAT grid."""
+    lz = H_SUB + 1.5e-3 if dz_profile is None else float(np.sum(dz_profile))
+    kw = {} if dz_profile is None else dict(dz_profile=np.asarray(dz_profile))
     sim = Simulation(
-        freq_max=5e9, domain=(LX, ly, H_SUB + 1.5e-3), dx=dx,
+        freq_max=5e9, domain=(LX, ly, lz), dx=dx,
         cpml_layers=8,
         boundary=BoundarySpec(
             x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"),
         ),
+        **kw,
     )
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, ly, H_SUB)), material="ro4350b")
@@ -71,11 +79,66 @@ def test_clearance_silent_on_wide_ly():
 
 
 def test_substrate_resolution_warning_at_3_cells():
-    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
+    """dx=100um REALIZES 3 substrate cells (254um rounds up to 300um).
+
+    This used to build at dx=80um and expect "only 3 substrate cell(s)" --
+    but at dx=80 the solve has FOUR cells of substrate (320um); "3" was the
+    declared-board round(h_sub/dx), the exact confusion #752 is about
+    (#766 review). Check 2 now counts the cells the run grid has, so the
+    genuine 3-cell case is dx=100um, and the dx=80 case is covered by
+    test_substrate_checks_count_realized_cells_at_dx_80 below."""
+    sim = _build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
     sub = [m for m in msgs if "substrate cell" in m]
     assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
+    assert "only 3 substrate cell(s)" in sub[0], sub[0]
     assert "Refine to dx" in sub[0]
+
+
+def test_substrate_checks_count_realized_cells_at_dx_80():
+    """At dx=80um the substrate REALIZES 4 cells = 320um (fidelity_report
+    says the same), so check 2 ("< 4 cells") must be silent and only the
+    mixed-cell check may speak -- carrying the realized 320um, read off the
+    assembled permittivity rather than n*dx (issue #752 / #766 review)."""
+    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
+    msgs = _msl_warnings(sim)
+    sub = [m for m in msgs if "substrate cell(s) in z" in m]
+    assert sub == [], f"check 2 must not call a 4-cell board '3 cells': {sub}"
+    mixed = [m for m in msgs if "danger zone" in m]
+    assert len(mixed) == 1, msgs
+    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
+    assert "+26% THICKER" in mixed[0], mixed[0]
+
+
+def test_substrate_checks_read_the_run_grid_on_a_dz_profile():
+    """The #766 BLOCK, as a regression lock: a dz_profile that resolves the
+    254um substrate with four 63.5um cells realizes it EXACTLY
+    (fidelity_report: 254.0 -> 254.0um). Scoring the substrate with the
+    uniform grid's scalar dx=80um used to assert "only 3 substrate cells"
+    and a mixed-cell danger zone at "h_sub/dx = 3.175" on this very
+    simulation -- two surfaces of one codebase disagreeing about what the
+    solver built. Both checks must be silent here."""
+    dz = np.concatenate([np.full(4, H_SUB / 4), np.full(12, 80e-6)])
+    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, dz_profile=dz)
+    msgs = _msl_warnings(sim)
+    noisy = [m for m in msgs if "substrate cell" in m or "danger zone" in m]
+    assert noisy == [], f"exact NU substrate must not trip either check: {noisy}"
+
+
+def test_substrate_checks_report_realized_thickness_on_a_dz_profile():
+    """A dz_profile of uniform 80um cells puts the declared top 0.175 of a
+    cell above a node: the mixed-cell check must fire, and its realized
+    thickness (320um, 4 cells) must come from the run grid's permittivity,
+    with the non-uniform remedy (place a node at h_sub), not a dx snap."""
+    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB,
+                     dz_profile=np.full(15, 80e-6))
+    msgs = _msl_warnings(sim)
+    mixed = [m for m in msgs if "danger zone" in m]
+    assert len(mixed) == 1, msgs
+    assert "sits 0.175 of a cell above the nearest mesh node" in mixed[0], mixed[0]
+    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
+    assert "place a mesh node exactly at h_sub=254.0µm" in mixed[0], mixed[0]
+    assert "set dx =" not in mixed[0], mixed[0]
 
 
 def test_substrate_resolution_silent_at_6_cells():
@@ -141,7 +204,7 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     with extraction quality. This test pins the fix target (:.1f, not
     :.0f -- 63.5um is h_sub/4, not 64um) and the correction text, and
     positively asserts the retired figures no longer appear."""
-    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
+    sim = _build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
     sub = [m for m in msgs if "substrate cell" in m]
     assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
@@ -152,13 +215,14 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     assert "63.5µm" in sub[0], sub[0]  # h_sub/4 = 63.5, not the old "64µm"
     assert "vs the DECLARED-board" in sub[0], sub[0]
     assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
-    # This mesh (dx=80) is itself misaligned (h_sub/dx=3.175): the
-    # realized-board disclosure must be present and must state the
-    # ceil()-rasterized cell count/height, not just the round()-based
-    # "3 substrate cell(s)" figure above.
-    assert "itself misaligned (h_sub/dx=3.175)" in sub[0], sub[0]
-    assert "realizes 4 substrate cell(s) = 320µm" in sub[0], sub[0]
-    assert "+26%" in sub[0], sub[0]
+    # This mesh (dx=100) is misaligned (h_sub/dx=2.54): the realized-board
+    # disclosure must be present and must state the cell count/height READ
+    # OFF THE RUN GRID (3 cells = 300um, +18%), which here coincides with
+    # the "only 3 substrate cell(s)" figure above because both now count
+    # realized cells (#766 review).
+    assert "actually realizes 3 cell(s) = 300µm" in sub[0], sub[0]
+    assert "+18%" in sub[0], sub[0]
+    assert "read off the assembled permittivity" in sub[0], sub[0]
     # Retired: the old "+11% (h_sub/dx=4.233)" board-mismatched comparison.
     assert "+11%" not in sub[0], sub[0]
     assert "4.233" not in sub[0], sub[0]
