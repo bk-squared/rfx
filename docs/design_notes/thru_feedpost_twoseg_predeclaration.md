@@ -473,3 +473,33 @@ Repaired realization (committed BEFORE the repaired fixture is run):
   single-post fixture must measure max_bin |Gamma_top| <= 0.5, else the
   fixture again failed to provide a measurable load and the harness
   stops loudly instead of feeding a resonant channel to the fit.
+
+## 12. Apparatus algebra correction — the declared T normalization double-divides by sqrt(Z0) (appended 2026-08-29; sections 1-11 unchanged)
+
+The repaired-fixture run measured |Gamma_top| = 0.030..0.053 (the
+section-11 expected class; precondition passed) and the I2/I3 parameter
+CONSISTENCY held (F-C: |dL| = 0.003 nH, |dtau| = 0.52 ps), but the I2
+residual read 6.07 — and its structure is an exact constant:
+|T_measured| = 7.054..7.068 ~= sqrt(Z0) = 7.0711 times the model class
+|T| ~= 1, while arg T = -0.0637..-0.1199 rad matches -omega*tau at the
+I3-fitted tau* = 7.33 ps to ~1% at every bin. Diagnosis (algebra, not
+measurement): section 3 defines a = (V_port + Z0*I)/(2*sqrt(Z0)) —
+already the power-normalized incident wave — and then writes
+T = (out_top/sqrt(Re Zc_sp)) / (a/sqrt(Z0)), dividing by sqrt(Z0) a
+SECOND time. The dimensionally correct observable the design intends
+(both waves power-normalized) is
+
+    T = (out_top / sqrt(Re Zc_sp)) / a .
+
+The harness implemented the declared formula verbatim and the
+measurement itself exposed the slip as an exact sqrt(Z0) scale
+(measured |T|*sqrt(Z0)^-1 = 0.9975..0.9995 — the model class). This is
+an instrument-algebra bug in the same class as attempt-1's post-review
+withdrawal of the "(exact for the symmetric series element)"
+parenthetical: the OBSERVABLE definition is corrected append-only; no
+window, model, bin, or fixture changes; the V-check gap that let it
+through (V0 verified the plane math but the synthetic T was generated
+by the same model function the fit uses, so an end-to-end normalization
+error of the MEASURED chain was invisible to synthetics) is recorded.
+The extraction arm is re-evaluated with the corrected observable on the
+same deterministic fixtures.
