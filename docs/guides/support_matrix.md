@@ -186,11 +186,21 @@ the order gate capable of failing for a grading reason — the earlier
 `w4r2_analytic_cavity` fixture put only ~1 % of its error on that axis and
 is retained in the design note as a recorded diagnostic, not as evidence
 for this row. On a rasterized dielectric-loaded microstrip-class fixture
-the same ladder was inconclusive, floored at a ~20 MHz (~4e-3) absolute
-error present identically in uniform-mesh arms — a geometry-realization
-limit of that fixture class, recorded in the design note, not a grading
-effect. Convergence on your own geometry still has to be demonstrated on
-your own geometry.
+the same ladder was inconclusive. The ~20 MHz (~4e-3) spread it showed was
+present identically in uniform-mesh arms, so it is not a grading effect —
+but the reading of it in an earlier draft of this row (a "floor", and a
+"geometry-realization limit") is WITHDRAWN: issue #786 measured three
+lattice-valid rungs that ladder had skipped and found `f(h)` is
+**non-monotone** on that fixture, turning over at `dz_fine = 0.125 mm`, so
+the quantity being fitted was never an error sequence — its anchor sat past
+the turn. That lane also exonerated geometry quantization (realized-vs-
+declared 6.8e-6 cells; exact integer cell counts; bit-identical material
+maps) and port loading (<= 3.5 kHz over a 10^4 drive span) by 3-5 orders of
+margin. Whether that fixture's `f(h)` converges to the physical answer is
+NOT settled by either lane — see #786 and the ledger's dielectric-interface
+staircasing entry. Convergence on your own geometry still has to be
+demonstrated on your own geometry, and #786's `ladder_guard` precondition
+is there to catch a ladder read across a turn.
 
 ## Interpreting output and warnings
 

@@ -1388,3 +1388,29 @@ a window, or a verdict.
    the remedy would fire again. The REMEDY now quotes the axis's own cap and
    names the in-plane case as a pre-existing threshold rather than a validated
    envelope (`rfx/api/_preflight.py`).
+
+## WP6R.12 (2026-08-30, append-only) — the W4R "floor" reading is WITHDRAWN (issue #786)
+
+The W4R port-fixture ladder's inconclusive result was described in this note
+and in the support-matrix row as a "~20 MHz floor" and "a geometry-realization
+limit of that fixture class". Issue #786 attributed it, and both halves of that
+description are withdrawn:
+
+- **Not a floor read from an error sequence.** #786 measured three lattice-valid
+  rungs the W4R ladder skipped (3/s = 7, 8, 9). The full nine-rung uniform
+  sequence is 5.404546 / 5.502115 / 5.533066 / 5.542444 / 5.543558 / 5.541260 /
+  5.537579 / 5.533355 / 5.520821 GHz — exactly one sign change, maximum at
+  dz_fine = 0.125 mm, four rungs on the descending branch. Our ladder fitted the
+  ascending branch and anchored at s = 0.25, four rungs down the far side, so
+  |f(s) - f(0.25)| was never an error sequence at all.
+- **Not geometry realization.** #786's D1 measured realized-vs-declared at
+  6.8e-6 cells worst over six rungs (window 1e-3), exact integer cell counts for
+  every PEC extent, and a bit-identical subpixel-smoothed material map at every
+  rung. Port loading is exonerated too (<= 3.5 kHz over a 10^4 drive span).
+
+What survives from our side is only what we measured: the spread is identical in
+uniform-mesh arms, so it is not a grading effect, and it is why F-S4's verdict
+was taken on a smooth analytic cavity. Whether that fixture's f(h) converges to
+the physical answer is not determined by either lane — #786 has no external
+reference, and the ledger's dielectric-interface staircasing entry stands as
+evidence that a real consistency floor may exist for this fixture class.
