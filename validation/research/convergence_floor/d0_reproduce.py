@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -30,21 +31,50 @@ WINDOWS = os.path.join(RES, "predeclared_windows_786.json")
 # checked out; D0's whole job is to reproduce them.
 PR785 = {
     ("UC", 0.25): 5520820807.318383,
-    ("UC", 0.5): 5543558222.0,
-    ("UC", 0.6): 5542444496.0,
-    ("UC", 0.75): 5533065679.0,
-    ("UC", 1.0): 5502115033.0,
-    ("UC", 1.5): 5404546169.0,
-    ("MB", 0.5): 5538672712.0,
-    ("MB", 0.6): 5536597571.0,
-    ("MB", 0.75): 5525828869.0,
-    ("MB", 1.0): 5492732494.0,
-    ("MB", 1.5): 5391247887.0,
+    ("UC", 0.5): 5543558293.505646,
+    ("UC", 0.6): 5542444437.5726,
+    ("UC", 0.75): 5533066155.959281,
+    ("UC", 1.0): 5502114526.260705,
+    ("UC", 1.5): 5404546169.206672,
+    ("MB", 0.5): 5538672695.290948,
+    ("MB", 0.6): 5536597841.756963,
+    ("MB", 0.75): 5525828863.445815,
+    ("MB", 1.0): 5492732260.12526,
+    ("MB", 1.5): 5391247629.600432,
 }
+
+
+def rejudge():
+    """Recompute the deltas in an existing d0_reproduction.json against the
+    full-precision PR #785 table (no FDTD re-run). Used once, because the
+    first pass transcribed all but the reference rung rounded to 1 Hz."""
+    with open(WINDOWS) as fh:
+        tol = float(json.load(fh)["D0_reproduction"]["tol_hz"])
+    out = json.load(open(OUT))
+    for r in out["rows"]:
+        key = ("MB" if r["multiband"] else "UC", r["scale"])
+        ref = PR785.get(key)
+        r["pr785_f_target"] = ref
+        r["delta_vs_pr785_hz"] = (abs(r["f_target"] - ref)
+                                  if ref is not None else None)
+        r["reproduced"] = (r["delta_vs_pr785_hz"] is not None
+                           and r["delta_vs_pr785_hz"] <= tol)
+        print("%s s=%-5s f=%.9f GHz  d(PR785)=%.4f Hz  %s"
+              % (key[0], r["scale"], r["f_target"] / 1e9,
+                 r["delta_vs_pr785_hz"], r["reproduced"]))
+    out["reproduced_all"] = all(r["reproduced"] for r in out["rows"])
+    out["max_delta_vs_pr785_hz"] = max(r["delta_vs_pr785_hz"]
+                                       for r in out["rows"])
+    with open(OUT, "w") as fh:
+        json.dump(out, fh, indent=1)
+    print("reproduced_all =", out["reproduced_all"],
+          " max delta = %.4f Hz" % out["max_delta_vs_pr785_hz"])
 
 
 def main():
     warnings.filterwarnings("ignore")
+    if "--rejudge" in sys.argv:
+        return rejudge()
     with open(WINDOWS) as fh:
         win = json.load(fh)
     tol = float(win["D0_reproduction"]["tol_hz"])
