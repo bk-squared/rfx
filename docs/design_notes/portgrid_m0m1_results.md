@@ -156,3 +156,81 @@ two states of the branch. At the commit whose measurements this note reports
 commit (`638a3a5`), as part of the boundary-touching-island guard recorded under
 "Limitations". Verified by re-collecting at both commits (57 / 58). The 58-test
 battery is the correct post-guard state; no measured number changes.
+
+## F-M1b RETRY results (2026-08-29, append-only) — paper-faithful fixture
+
+Pre-declaration: `portgrid_m1b_retry_predeclaration.md` (windows frozen at `3415e37`;
+Correction R1 — floor-arm gate ray derivation, window unchanged — at `1da7745`, before
+the floor arm ran). Implementation at `f4e7aaf`. All runs CPU JAX f64,
+`m1b_retry.py`; raw JSON: `portgrid_m1b_retry_{floor,null,interface,rods}.json`.
+
+### Verdict summary
+
+| Falsifier | Window (frozen) | Measured (worst case) | Verdict |
+|---|---|---|---|
+| F-M1b-abc (PML floor) | ≤ −50 dB on [2,30] GHz, dt(r=2) and dt(r=6) | −94.0 dB (both) | PASS |
+| chain null r=1 (full retry chain) | ≤ −200 dB | −306.9 dB (time-domain max diff 1.3e-16) | PASS |
+| **F-M1b-r2 (primary, interface-only)** | [2,20] ≤ −46.24 dB AND [2,30] ≤ −29.29 dB, every r ∈ {2,3,4,5,6} | worst r=6: −56.44 / −40.44 dB | **PASS (all r)** |
+| F-M1b-rod (secondary, r=6 vs all-fine) | linear mismatch ≤ 0.0941 over [2,30] GHz | 0.0299 | PASS |
+
+Per-r interface-only detail (windows −46.24 / −29.29 dB):
+
+| r | max dB [2,20] GHz | max dB [2,30] GHz |
+|---|---|---|
+| 2 | −58.67 | −42.64 |
+| 3 | −57.21 | −41.20 |
+| 4 | −56.75 | −40.75 |
+| 5 | −56.55 | −40.55 |
+| 6 | −56.44 | −40.44 |
+
+Rod-arm context (non-falsifier, linear mismatch vs our all-fine r=6, same dt):
+r=2: 0.0663, r=4: 0.0285, r=6: 0.0299, all-coarse: 0.0437; max linear |S11_allfine| =
+0.207 (−13.7 dB). Paper-extracted classes for comparison: r=2/4/6: 0.062/0.063/0.053,
+all-coarse 0.156. Our all-coarse mismatch is smaller than the paper's class — note the
+paper ran all-coarse at the COARSE grid's own CFL while ours shares dt(r=6), and its rod
+staircasing at 1 mm is not specified in the paper; recorded as context only.
+
+### Interpretation (verdict under frozen windows; no re-judgment of phase 1)
+
+- **F-M1b retry PASSES for every r with ≥ 10 dB margin** — on the paper-faithful fixture
+  the measured interface-only reflections (−56.4..−58.7 dB over [2,20] GHz;
+  −40.4..−42.6 dB band max) sit BELOW the paper's own extracted curves (−51.2..−53.5 and
+  −34.3..−36.5 dB). The scheme, as implemented from eqs. (55)/(56)/(58)/(61), meets the
+  paper's reported interface-reflection class outright.
+- Correction 2's fixture-class hypothesis is thereby CONFIRMED with the fixture excuse
+  removed in the other direction: the phase-1 FIRE (which stands, as declared) was a
+  property of the phase-1 fixture (single-point Hz probe recording non-TEM scattered
+  modes — the parallel-plate n=2 mode propagates above 7.5 GHz — plus PEC/time-gated box
+  and a 20×20 mm island at broadside), not of the scheme. The retry's TEM-projection
+  probe (y-averaged Ey column, the paper's probe-line reading) and PML termination
+  reproduce the paper's class.
+- r-dependence is again nearly flat (2.2 dB spread over r=2..6), matching the paper's
+  near-overlapping curves; the odd ratios r=3,5 interpolate the even ones smoothly.
+- **M1 is recorded COMPLETE**: F-M1a (energy, roundoff), F-M1b (retry, paper-faithful
+  fixture, PASS), F-M1-grad / F-M1-vjp (AD contract) all hold; the phase-1 F-M1b FIRE
+  remains on the record as an honest fixture-sensitivity finding with its diagnostics.
+
+### Regressions after the material/PML additions (`f4e7aaf`)
+
+- Battery: 65 passed (58 prior + 7 new wiring falsifiers), `-o addopts="" -q`.
+- F-M1a 10⁶-step arms re-run post-change: see `portgrid_m1a_energy_audit_regression.json`
+  (r=4 and r=5 must stay ≤ +1e-8; values recorded below).
+- dx-scaling diagnostic now COMMITTED as `m1_reflection.py --scale N` (reviewer nb);
+  `--scale 2 --ratios 3` reproduces the phase-1 Δ=0.5 mm arm: band max [2,30] GHz
+  −45.31 dB (phase-1 ad-hoc run recorded −45.3), [2,20] GHz max −56.38 dB
+  (`portgrid_m1b_diag_scale2.json`).
+- Material-path falsifiers (pre-declared §4): vacuum-maps-vs-default exact (≤1e-14);
+  r=1 lossy island ≡ uniform lossy Yee (≤1e-12); Sec. V-B-class lossy traverse across
+  the interface: energy monotone non-increasing within +1e-13·E_ref after source-off
+  (σ̂ terms of (61) active), with real dissipation observed.
+
+### F-M1a regression numbers (post-`f4e7aaf` re-run, 10⁶ steps each)
+
+| arm | max rel growth after source-off | max |drift| | wall | verdict (win +1e-8) |
+|---|---|---|---|---|
+| r=4 | +1.457e-15 | 4.16e-15 | 56.5 s | PASS |
+| r=5 | +3.864e-15 | 3.86e-15 | 80.3 s | PASS |
+
+Identical roundoff class as the phase-1 values (+1.67e-15 / +3.86e-15): the material/PML
+additions did not perturb the verified lossless path (its default code path is unchanged;
+only the energy-sum association differs at the 1-ulp level).

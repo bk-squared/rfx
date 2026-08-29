@@ -1,0 +1,8 @@
+{
+  "chain_null_r1": {
+    "max_s11_db_2_30GHz": -306.9315799246356,
+    "window_db": -200.0,
+    "max_abs_time_diff": 1.2953304285445591e-16,
+    "fired": false
+  }
+}
