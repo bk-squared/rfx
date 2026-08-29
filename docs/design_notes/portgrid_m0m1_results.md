@@ -146,3 +146,13 @@ is untouched — F-M1b FIRED as declared and stays FIRED; no window moves):
    enclosed by the subgrid; absorbing termination or a derivation of the
    PEC/time-gating equivalence) and windows derived from the CORRECT
    figure reading via the >= 5 dB rule.
+
+## Correction 3 (2026-08-29, append-only — test-count prose slip, reviewer nb)
+
+The line "Test battery: `validation/research/portgrid/` — 58 passed" above conflates
+two states of the branch. At the commit whose measurements this note reports
+(`e000020`, where F-M1a and F-M1b ran) the battery collected **57** tests; the 58th
+(`test_island_must_be_strictly_interior`) landed only WITH this results note's own
+commit (`638a3a5`), as part of the boundary-touching-island guard recorded under
+"Limitations". Verified by re-collecting at both commits (57 / 58). The 58-test
+battery is the correct post-guard state; no measured number changes.
