@@ -70,8 +70,15 @@ F_X2_RECIP = 1e-3
 F_X3_S21_BAND = (0.93, 1.0 + 5e-3)
 
 
-def build_thru(pulse: GaussianPulse) -> Simulation:
-    """Battery-verbatim THRU (docstring constants above)."""
+def build_thru(pulse: GaussianPulse,
+               reference_plane_cells: int | None = None) -> Simulation:
+    """Battery-verbatim THRU (docstring constants above).
+
+    ``reference_plane_cells`` (attempt 3, additive; default None keeps the
+    build byte-identical) opts both ports into the #313 two-plane
+    instrument for the in-situ Zc(f)/beta(f) measurement
+    (docs/design_notes/thru_feedpost_twoseg_predeclaration.md, I1).
+    """
     sim = Simulation(
         freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -82,10 +89,12 @@ def build_thru(pulse: GaussianPulse) -> Simulation:
         Box((X1 - DX, Y_MID - W / 2, H), (X2 + DX, Y_MID + W / 2, H + DX)),
         material="pec",
     )
+    kw = ({} if reference_plane_cells is None
+          else {"reference_plane_cells": reference_plane_cells})
     sim.add_port(position=(X1, Y_MID, 0.0), component="ez", impedance=Z0,
-                 extent=H, waveform=pulse, direction="-x")
+                 extent=H, waveform=pulse, direction="-x", **kw)
     sim.add_port(position=(X2, Y_MID, 0.0), component="ez", impedance=Z0,
-                 extent=H, waveform=pulse, direction="+x")
+                 extent=H, waveform=pulse, direction="+x", **kw)
     return sim
 
 
