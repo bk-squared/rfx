@@ -292,3 +292,45 @@ here in full per the append-only rule.
 the chain model. The Christ round-trip asymmetry is additionally bounded by
 W1: <3e-6 total energy drift over ~3200 cavity traversals of 4 transitions
 bounds any net per-traversal amplitude drift to the 1e-9 class.
+
+## C3–C5 — W4 fixture corrections (2026-08-29; p-bands and F-S4 rule UNTOUCHED)
+
+**C3 — reference scale violated the alignment invariant.** The declared
+s=2/3 reference has dx=0.5 mm, which does not divide the 2.25 mm common
+grid (trace edge at 6.75 mm lands mid-cell); the repo's own #703-class
+preflight advisory caught it on the first build. Reference moved to
+s=3/4 (dx=0.5625: 2.25/0.5625=4, dz_fine=0.1875: 1.5/0.1875=8, both
+exact); the Richardson divisor follows the same declared principle with
+the corrected ratio 4/3 ((4/3)²−1 = 7/9).
+
+**C4 — two fixture-implementation defects found by the first (discarded,
+INCONCLUSIVE) executions.** (i) The trace was one FINE CELL thick, so its
+physical thickness scaled with s — the ladder was solving different
+resonators. Fixed: trace fills the 1.5 mm trace band (exact multiple of
+every dz_fine including the reference). (ii) T_total = 4.5 ns gave
+~0.2 GHz line resolution over a dense spectrum; the fitted line wandered
+0.6 GHz. Fixed: T_total = 20 ns + a 5 % mode-match guard.
+
+**C5 — ladder moved into the resolved regime.** With C3+C4 the tracked
+line still wandered non-monotonically at s ∈ {2, 3}: the 4.5 mm trace is
+only 2–3 cells wide there and the mode identity is not stable —
+convergence-order fitting outside the asymptotic regime is meaningless.
+Ladder: s ∈ {0.5, 0.75, 1, 1.5} (trace 12/8/6/4 cells), reference
+s = 0.375 (16 cells), all alignment-exact. Diagnostic worth recording:
+at every matched scale the multiband and uniform-control arms agreed to
+< 1 MHz (≤ 6e-5 relative) even in the discarded runs — the
+multiband-vs-uniform delta (the quantity under test) is far smaller than
+the shared extraction noise that invalidated those ladders.
+
+The F-S4 acceptance bands (p_mb ∈ [1.5, 2.6], p_mb ≥ p_uc − 0.4, fixture
+gate p_uc ≥ 1.7) are exactly as pre-declared; no measured order entered
+any of these corrections.
+
+## Revert-proof (gate-2 evidence, `revert_proof.py`)
+
+f64, P-A(r=1.4 reduced), 1000 steps: baseline drift 2.05e-16;
+(a) one transition-node dual weight replaced by the primal width in the
+WITNESS → drift 5.8e-3 (witness metric is load-bearing);
+(b) CORE-C2-class SOLVER corruption (E-update inv_dz[k_tr] → 1/d[k]) with
+the correct witness → drift 7.9e-3 (witness fires on the guarded defect
+family). Both ≫ the 1e-12 validity threshold.

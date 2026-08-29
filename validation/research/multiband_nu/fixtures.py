@@ -136,7 +136,12 @@ PC_EPS_SUB = 4.3
 PC_EPS_UPPER = 2.2
 PC_DX0 = 0.75e-3          # base transverse cell (s=1)
 PC_DZF0 = 0.25e-3         # base fine z cell (s=1)
-PC_SCALES = (1.0, 1.5, 2.0, 3.0)
+# C5 (2026-08-29): ladder moved into the resolved regime — at s in {2,3}
+# the 4.5 mm trace is only 2-3 cells wide and the resonant-mode identity
+# is unstable (measured: the tracked line wandered 4.7-5.3 GHz
+# non-monotonically). Widths: 12/8/6/4 cells; reference s=0.375 -> 16.
+PC_SCALES = (0.5, 0.75, 1.0, 1.5)
+PC_REF_SCALE = 0.375
 RATIO_CAP = 1.4
 
 

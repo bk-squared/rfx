@@ -1,0 +1,7 @@
+{
+ "baseline_drift": 2.054001757669122e-16,
+ "corrupted_witness_drift": 0.005815605602039428,
+ "corrupted_solver_metric_drift": 0.007881922270419978,
+ "threshold": 1e-12,
+ "pass": true
+}
