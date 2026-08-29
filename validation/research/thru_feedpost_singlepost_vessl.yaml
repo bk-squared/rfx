@@ -1,0 +1,32 @@
+# thru-deembed follow-up PROPOSAL — DO NOT RUN until a fresh
+# pre-declaration (falsifiers committed first) exists for it.  The
+# 2026-08-29 extraction arm STOPped on F-L1 (per-bin L not
+# frequency-flat at the 20% class); the named mechanism is
+# ill-conditioning in the assumed line constants (dL/dZc ~ 0.065 nH/ohm
+# at the low-f bins; 1-cell trace-overhang length uncertainty), see
+# docs/design_notes/thru_feedpost_deembed_predeclaration.md section 7.
+# This job is the conditioning-robust follow-up: a dedicated single-post
+# 1-port fixture (post + matched line into CPML, no far post) whose
+# Im(Z_in) is post-dominated, swept at dx in {0.5, 0.25, 0.125} mm to
+# separate the post's effective L from grid rasterization, PLUS an
+# in-situ #313 two-plane Zc(f)/beta(f) measurement at the extraction
+# bins so no constant is assumed.
+name: thru-feedpost-singlepost-extraction
+description: >
+  rfx thru-deembed follow-up: single-post 1-port L extraction (fine-dx
+  sweep) + in-situ two-plane Zc/beta at the out-of-band bins; gates to
+  be pre-declared in a fresh design note BEFORE this job is launched.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+import:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run:
+  - workdir: /root/workspace/byungkwan-workspace/research/rfx/worktrees/thru-deembed
+    command: |
+      pip install -e . --no-deps
+      # Harness to be written together with the fresh pre-declaration;
+      # planned arms: --singlepost-dx-sweep and --insitu-zc.
+      PYTHONPATH=$PWD python validation/research/thru_feedpost_deembed.py --extract \
+        2>&1 | tee /root/workspace/byungkwan-workspace/research/rfx/logs/thru_feedpost_singlepost.log
