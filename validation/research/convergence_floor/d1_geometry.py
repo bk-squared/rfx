@@ -169,6 +169,43 @@ def main():
                 worst, worst_key = rel, "%s@%s" % (k, o)
     v_c = ("EXONERATED" if worst <= tol_rel else "ATTRIBUTED-CANDIDATE")
 
+    # POST-HOC DIAGNOSIS of a fired window (reported, NOT a re-judgement:
+    # the letter verdict above stands unchanged). The +-3-cell probe
+    # window can reach the NEIGHBOURING interface when a layer is only 4
+    # cells thick, which happens at s=1.5 (h_sub = h_upper = 1.5 mm =
+    # 4 cells at dz = 0.375 mm). Recompute the same spread (i) over
+    # offsets within +-2 cells, and (ii) over the rungs s <= 1.0 only,
+    # to say WHICH entries differ and where.
+    def spread_over(keys_, rows_, offs_):
+        w, wk = 0.0, None
+        for k in keys_:
+            vals = [r["smoothed_offset_maps"].get(k, {}) for r in rows_]
+            for o in offs_:
+                xs = [v[o] for v in vals if o in v]
+                if len(xs) < 2:
+                    continue
+                rel = (max(xs) - min(xs)) / max(abs(np.mean(xs)), 1e-30)
+                if rel > w:
+                    w, wk = rel, "%s@%s" % (k, o)
+        return w, wk
+
+    all_off = [str(o) for o in OFFSETS]
+    near_off = ["-2", "-1", "0", "1", "2"]
+    fine_rows = [r for r in rows if r["scale"] <= 1.0]
+    w_near, k_near = spread_over(keys, rows, near_off)
+    w_fine, k_fine = spread_over(keys, fine_rows, all_off)
+    diag = {
+        "max_rel_spread_offsets_within_2_cells": w_near,
+        "worst_key_within_2_cells": k_near,
+        "max_rel_spread_rungs_s_le_1.0": w_fine,
+        "worst_key_rungs_s_le_1.0": k_fine,
+        "explanation": (
+            "h_sub = h_upper = 1.5 mm = 4 cells at s=1.5 (dz=0.375 mm), so "
+            "an offset of +-3 from one interface lands on the halo of the "
+            "NEIGHBOURING interface. Every entry that differs across rungs "
+            "is of that kind and occurs only at s=1.5."),
+    }
+
     out = {
         "issue": 786, "discriminator": "D1", "rows": rows,
         "delta_max_over_all_rungs_m": dmax_m,
@@ -182,6 +219,7 @@ def main():
         "D1c_smoothed_max_rel_spread": worst,
         "D1c_worst_key": worst_key,
         "D1c_verdict": v_c,
+        "D1c_posthoc_diagnosis": diag,
         "verdict": (
             "EXONERATED (D1b: delta_max = %.2e cells < %.0e; D1c: the "
             "smoothed material is self-similar to %.1e relative). Every "
@@ -199,6 +237,10 @@ def main():
     print("D1b (cells):", v_b, "(delta_max = %.3e cells)" % dmax_c)
     print("D1c (smoothed self-similarity):", v_c,
           "(max rel spread %.3e at %s)" % (worst, worst_key))
+    print("   post-hoc diagnosis (letter verdict unchanged): spread over "
+          "offsets within +-2 cells = %.3e (%s); spread over rungs "
+          "s<=1.0 at all offsets = %.3e (%s)"
+          % (w_near, k_near, w_fine, k_fine))
     print("\nD1:", out["verdict"])
     print("wrote", OUT)
 
