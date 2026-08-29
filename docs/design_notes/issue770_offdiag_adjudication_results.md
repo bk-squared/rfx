@@ -138,11 +138,59 @@ per-bin sv 0.9874–1.003227, column power 0.9563–0.9908, DC anchor
    (module re-run green — the legacy path is byte-frozen through this
    change), the all-passive NU locks, lumped ports, MSL/waveguide.
 
-## 5. Battery results
+## 5. Battery results (module-level, post-implementation)
 
-Recorded after the full wire/lumped/sparam/twoport sweep with the
-slow_physics marker override — see section 6.
+- THRU battery + twoport module (`-m "not gpu and (slow_physics or not
+  slow_physics)"` — the slow_physics THRU locks RAN): 11 passed,
+  1 xfailed (the #683 thru-floor gate 5, still FIRED-and-held; the #770
+  frame change does not touch the diagonal it fired on).
+- Dump-parity + port-dump-replay + refplane modules: 44 passed (the
+  refplane byte-frozen legacy pins held through the frame change; the
+  wholeport-tagged dumps replay faithfully; untagged synthetic dumps
+  replay the per-cell frame).
+- `test_extract_lumped_s11_is_the_decompose_diagonal` +
+  `test_sparam_driver_matches_eager` (driver-vs-eager, wire included):
+  6 passed — the eager and driver paths moved together through the
+  shared decomposer, atol 2e-3 held.
+- Example-fidelity contract (discovery + machine-check + snapshot keys
+  for the three newly classified research harnesses): 56 passed; the
+  single failure is the PRE-EXISTING
+  `test_not_auditable_classifications_are_machine_checked[issue764...]`
+  recorded in the #683 P6 addendum (base-branch item, untouched here).
 
-## 6. Full-sweep record (appended after the sweep; sections 1–5 unchanged)
+## 6. Full-sweep record (appended after the sweep of 2026-08-30;
+## sections 1–5 unchanged)
 
-Pending at time of writing; the final commit updates this section.
+Full battery, `-k "wire or lumped or sparam or twoport"`,
+`-m "not gpu and (slow_physics or not slow_physics)"` (marker override
+active — the slow_physics THRU battery ran, not skipped):
+**326 passed, 7 failed, 4 skipped, 1 xfailed** (13:43 CPU) — the same
+counts and the SAME seven failures as the #683 P6 baseline on the
+unchanged base (six `test_example_matches_snapshot` grid-realization
+snapshot drifts: ports_and_sparams_101 x5 + lumped_port_gradient_check;
+plus `test_not_auditable_classifications_are_machine_checked
+[issue764_wireport_norm_falsifiers.py]`).  Zero new movers.  The
+1 xfailed is the held #683 thru-floor gate.
+
+Recorded deviation: three doc-only commits (fidelity-table
+classification + surgical snapshot keys, CHANGELOG entry, stale-comment
+retirements) landed while the sweep was running; none changes runtime
+behaviour, and the affected fidelity tests were additionally run
+standalone on the final tree (the 56-passed line in section 5).
+
+The example-fidelity classification additions surfaced a base-branch
+omission: the two #683 research harnesses had no classification entry,
+so `test_discovery_matches_classification_table` (outside the sweep's
+`-k` selection) was failing on the base.  Fixed here by classifying
+them (`issue683_sampling_order_decision` audited with its separable
+`build()`; `issue683_flip_acceptance` no_simulation — it imports that
+builder) and extending the snapshot additively (581 lines; every
+pre-existing key byte-untouched).  The pre-existing #764 harness
+misclassification failure is left exactly as the #683 P6 addendum
+recorded it.
+
+Final standing: the whole-port receive channel is validated end to end
+by the pre-declared external falsifiers and locked at its measured
+physical values; the per-cell frame survives only as the byte-frozen
+legacy/replay path; no VESSL run was required (every decisive
+measurement fit the local budget).
