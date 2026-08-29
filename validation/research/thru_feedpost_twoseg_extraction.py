@@ -208,12 +208,19 @@ def fit_singlepost(s11_meas, t_meas, zc_sp, gamma_top, freqs):
 
 
 # ------------------------------------------------- fixtures + raw drives --
+X_FAR_SP = 0.028                   # single-post far termination column
+
+
 def build_singlepost(pulse: GaussianPulse,
                      reference_plane_cells: int | None = None) -> Simulation:
-    """Single-post 1-port fixture (predeclaration I2): battery-verbatim
-    port + post + trace cross-section and port-side overhang, but the
-    trace CONTINUES through the +x CPML (matched termination) and there
-    is NO far post. Returns the Simulation (no solve call)."""
+    """Single-post fixture (predeclaration I2 + section-11 repaired
+    realization): battery-verbatim port + post + trace cross-section and
+    port-side overhang on a 20 mm line, terminated at x = 28 mm in the
+    VALIDATED passive matched wire-port class (a PEC trace cannot
+    continue into the CPML pad — pec_mask is never pad-extended; the
+    section-11 apparatus finding). The far termination's own post sits
+    inside the MEASURED Gamma_top load and never enters the model.
+    Returns the Simulation (no solve call)."""
     sim = Simulation(
         freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -221,13 +228,16 @@ def build_singlepost(pulse: GaussianPulse,
         cpml_layers=CPML_LAYERS,
     )
     sim.add(
-        Box((X1 - DX, Y_MID - W / 2, H), (DOMAIN[0], Y_MID + W / 2, H + DX)),
+        Box((X1 - DX, Y_MID - W / 2, H),
+            (X_FAR_SP + DX, Y_MID + W / 2, H + DX)),
         material="pec",
     )
     kw = ({} if reference_plane_cells is None
           else {"reference_plane_cells": reference_plane_cells})
     sim.add_port(position=(X1, Y_MID, 0.0), component="ez", impedance=Z0,
                  extent=H, waveform=pulse, direction="-x", **kw)
+    sim.add_port(position=(X_FAR_SP, Y_MID, 0.0), component="ez",
+                 impedance=Z0, extent=H, excite=False, direction="+x")
     return sim
 
 
@@ -251,7 +261,8 @@ def raw_drive(sim, freqs, n_steps, drive_idx, expected_codes):
 
 THRU_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
               "wire_port_dead_extent_cells"]
-SINGLEPOST_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells"]
+SINGLEPOST_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
+                    "wire_port_dead_extent_cells"]
 
 
 def wholeport_channels(raw, port_idx):
@@ -554,6 +565,13 @@ def arm_extract() -> None:
     z_in_sp, s11_sp, a_sp = wholeport_channels(raw_sp, 0)
     check_re_positive(z_in_sp, "single-post port1")               # F-X5
     ch_sp = plane_channels(raw_sp, dt_sp, f, 0)
+    # Section-11 apparatus validity PRECONDITION (assert, not a
+    # falsifier): the realized fixture must present a measurable,
+    # non-resonant load or the harness stops loudly.
+    g_max = float(np.max(np.abs(ch_sp["gamma_top"])))
+    assert g_max <= 0.5, (
+        f"single-post fixture invalid: max|Gamma_top| = {g_max:.4f} > 0.5 "
+        "— the line termination is again not measurable-load class")
     t_sp = (ch_sp["out_top"] / np.sqrt(ch_sp["zc"].real)) / (a_sp
                                                              / np.sqrt(Z0))
     with np.printoptions(precision=4):

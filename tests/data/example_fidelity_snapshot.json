@@ -8000,7 +8000,7 @@
           "axes": {},
           "findings": [
             {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
               "kind": "out-of-scope",
               "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
             }
@@ -8068,23 +8068,23 @@
           "n_cells": null,
           "realization": null
         },
-        "geometry|pec|7500.000,7500.000,1000.000um->32000.000,12500.000,1500.000um": {
+        "geometry|pec|7500.000,7500.000,1000.000um->28500.000,12500.000,1500.000um": {
           "axes": {
             "x": {
               "cell_um": 500.0,
-              "declared_extent_um": 24500.0,
+              "declared_extent_um": 21000.0,
               "declared_um": [
                 7500.0,
-                32000.0
+                28500.0
               ],
               "face_residual_um": [
                 6.93889390391e-12,
-                2.77555756156e-11
+                2.08166817117e-11
               ],
-              "realized_extent_um": 24500.0,
+              "realized_extent_um": 21000.0,
               "realized_um": [
                 7500.0,
-                32000.0
+                28500.0
               ],
               "sub_cell": false
             },
@@ -8136,7 +8136,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 490,
+          "n_cells": 420,
           "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY"
         }
       },
@@ -8149,9 +8149,23 @@
           "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
+          "code": "refplane_partial_optin",
+          "loc": null,
+          "message": "1 of 2 impedance-carrying wire ports opt into reference_plane_cells \u2014 off-diagonal S entries involving a non-opted port SILENTLY stay on the legacy port-cell path (only pairs where BOTH ports opt in use the plane waves). Opt in every wire port of the S-matrix, or none.",
+          "severity": "warning",
+          "source": "_validate_cfg_refplane_placement"
+        },
+        {
           "code": "wire_port_dead_extent_cells",
           "loc": null,
           "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001) rasterizes to n=3 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_extent_cells",
+          "loc": null,
+          "message": "Wire port at (0.028, 0.01, 0.0) (extent 0.001) rasterizes to n=3 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }
