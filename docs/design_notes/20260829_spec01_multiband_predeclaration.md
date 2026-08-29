@@ -553,3 +553,32 @@ mb/uc pair at s = 0.75 (5.5258/5.5331 GHz — the 7.2 MHz matched-scale
 delta is the genuine grading cost the phase-1 staircase lottery had
 buried). No number from these enters any window above; the windows come
 from the theory + the two derived allowances + the 3× floor rule.
+
+## C7 — W4R ladder coarse anchor (2026-08-29; appended BEFORE any W4R ladder output was read; windows and rules UNTOUCHED)
+
+Projection from the DISCARDED bring-up probes (W4R.1-4/5): the uniform
+arm's error vs a ~5.54 GHz-class limit is only ~4–10 MHz at
+s ∈ {0.5, 0.6, 0.75} — likely BELOW the declared 18 MHz fit floor — so
+the frozen 5-scale ladder risks leaving fewer than 3 surviving fit
+points (a foreseeable INCONCLUSIVE, the same way the C3 ladder's
+ratio-4/3 reference made its own exclusion rule nearly unsatisfiable).
+An additional x64 probe at s ∈ {0.5, 0.375} reproduced the two
+frequencies bit-identically, so the fine-scale non-monotone wobble is
+deterministic pre-asymptotic structure, not float noise: the fine
+points cannot be rescued by precision, and the floor stays.
+
+Correction: the ladder gains the ONLY remaining lattice-valid coarse
+point, s = 3.0 (dx = 2.25 mm divides every patterned dimension;
+dzf = 0.75 mm divides every band). SCALES =
+{0.5, 0.6, 0.75, 1.0, 1.5, 3.0}. At s = 3 the trace is only 2 cells
+wide in y — the C5-era caution — but the C5 instability's root cause is
+now known to be the rasterization lottery (W4R.1-2), which the repaired
+drawing eliminates; whether s = 3 is usable is adjudicated by the SAME
+pre-declared per-arm validity rules (dominance ≥ 10, 5 % match guard)
+and, at the fit level, by the frozen fixture gate p_uc ∈ [1.7, 2.6] —
+if 2-cell-wide pre-asymptotics bend the shared order out of band, the
+verdict is FIXTURE-INVALID, not a rescue. No p-band, floor, exclusion
+rule, or validity rule moves; s = 3.0's error magnitude has never been
+measured (it cannot have been chosen to steer the fit). The in-flight
+first ladder execution was stopped before any of its output was read;
+the full ladder re-runs fresh with the extended scale set.

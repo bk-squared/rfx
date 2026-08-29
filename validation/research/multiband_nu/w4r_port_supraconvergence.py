@@ -71,7 +71,7 @@ PRB = (18.0e-3, 11.25e-3, 0.75e-3)
 WAVEFORM = dict(f0=6e9, bandwidth=0.9)
 
 # --- W4R ladder (frozen in the note's W4R section) ---------------------
-SCALES = (0.5, 0.6, 0.75, 1.0, 1.5)   # all on the alignment lattice
+SCALES = (0.5, 0.6, 0.75, 1.0, 1.5, 3.0)  # lattice-valid; see note C7
 REF_SCALE = 0.25          # ratio 2 below s_min -> Richardson divisor 3
 E_FLOOR_HZ = 18e6         # 3x the measured bring-up wobble class (6 MHz)
 
