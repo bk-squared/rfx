@@ -1141,3 +1141,72 @@ the append-only rule requires it, and because they are the first
 independent confirmation that the frozen model's G3 tolerance (0.15 MHz) is
 not tight: the largest residual over four arms spanning a 64x error range
 is 0.032 MHz. No multiband arm has been run on this fixture at any point.
+
+## W4R3 verdict (2026-08-29) — **F-S4 PASS on the z-dominant fixture**, and the order witness now fires on a grading defect
+
+`results/w4r3_zdominant_cavity.json`, run immediately after the WP6R
+pre-declaration commits (`fcb3b9e`, `d9147cb`); all 8 arms valid, all four
+fit points above the 0.3 MHz floor in both arms, 703 s of CPU.
+
+| s | e_uc (MHz) | e_mb (MHz) | f_mb − f_uc (MHz) | z_fraction uc / mb |
+|---|---|---|---|---|
+| 2.0 | 50.959 | 79.386 | −28.428 | 0.8877 / 0.9217 |
+| 1.0 | 12.741 | 19.802 | −7.061 | 0.8879 / 0.9218 |
+| 0.5 | 3.155 | 4.924 | −1.769 | 0.8879 / 0.9218 |
+| 0.25 | 0.767 | 1.209 | −0.442 | 0.8879 / 0.9218 |
+
+**p_uc = 2.02, p_mb = 2.01** — fixture gate satisfied (p_uc in [1.7, 2.6]),
+F-S4 does NOT fire, no A4 anomaly. Fixture-validity gates: G1 = 0.8877
+(>= 0.80), G2 = 0.3573 (>= 0.20), G3 = 0.033 MHz (<= 0.15 MHz). The frozen
+analytic model predicted 0.796 / 3.186 / 12.742 / 50.963 (uniform) and
+1.239 / 4.957 / 19.830 / 79.372 MHz (multiband) before the run; the largest
+measured deviation from it over all eight arms is 0.033 MHz.
+
+What this establishes that W4R2 could not: on a fixture where the graded
+axis carries **89 % (uniform) to 92 % (multiband)** of the modelled error
+budget and the grading-SPECIFIC part is **36 %** of the multiband total,
+global 2nd-order supraconvergence is preserved at the cap ratio r = 1.4
+(Monk–Süli 1994; Li & Shields 2016). The multiband arm's extra error at
+matched scale is now itself a measured quantity above the instrument floor
+at every scale: **28.4 MHz (2.9e-3 relative) at the coarsest scale, falling
+to 0.44 MHz (4.6e-5) at the finest**, i.e. the multiband mesh costs about
+1.56x the uniform-fine mesh's error amplitude at equal fine cell size,
+with the same ORDER. That factor is a new, honest number the promotion did
+not previously carry; it is the price of the coarse bands, and it shrinks
+with h at the same rate as the baseline.
+
+### Revert-proof for the ORDER witness (`results/w4r3_revert_proof.json`)
+
+Pre-declared defect, applied to the multiband arms only: the CORE-C2-class
+metric error (E-update dual `2/(d[k-1]+d[k])` -> primal `1/d[k]`) at ONE
+node, the coarse->fine transition at z = 38 mm. It is identically null on a
+uniform mesh, so it is a purely grading-side defect and the uniform control
+arms are the same runs as above.
+
+Measured frequency shift: **−47.26 / −23.99 / −12.03 / −6.02 MHz** at
+s = 2 / 1 / 0.5 / 0.25 (predicted −47.3 / −24.0 / −12.0 / −6.0), i.e. 20x
+to 160x the 0.3 MHz fit floor — one corrupted transition coefficient out of
+224 z cells is resolved by this observable at every scale. Fitted order
+**p_mb = 1.38** (predicted 1.374) against p_uc = 2.02, and the committed
+judge returns **fs4_fired = True**: the defect fires BOTH clauses of the
+frozen rule (< 1.5, and < p_uc − 0.4). The F-S4 witness is therefore
+revert-proof in the sense the review asked for — an order claim made with
+it can fail for a grading reason.
+
+Recorded honestly: the defect's signature is O(h) riding on the O(h^2)
+baseline, so the fitted slope moves from 2.01 to 1.38 rather than to 1.00;
+the margin against the < 1.5 clause is 0.12 and against the p_uc − 0.4
+clause 0.24. A defect an order of magnitude smaller than one full
+dual-vs-primal coefficient swap would move the fitted slope proportionally
+less and could pass the order gate while still shifting the frequency —
+which is why the per-scale shift is recorded next to the slope.
+
+### Status of the earlier F-S4 fixtures
+
+- **W4R2** (`results/w4r2_analytic_cavity.json`, p_uc = p_mb = 1.95): a
+  valid measurement whose graded axis carries ~1 % of the error budget. It
+  is retained as a recorded diagnostic and is NO LONGER cited as order
+  evidence anywhere in the support matrix.
+- **W4 / W4R** (P-C microstrip class): unchanged — two instrument-limited
+  INCONCLUSIVEs, retained as recorded diagnostics of geometry-realization
+  limits.

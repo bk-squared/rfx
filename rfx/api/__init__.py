@@ -510,7 +510,7 @@ class Simulation(
                 if max_ratio > 1.4 + 1e-6:
                     _w.warn(
                         f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.2f} (> 1.4, the validated multi-band "
+                        f"{max_ratio:.3f} (> 1.4, the validated multi-band "
                         "grading cap — docs/guides/support_matrix.md, "
                         "'Multi-band graded mesh'). This may cause "
                         "numerical reflections. Use "
