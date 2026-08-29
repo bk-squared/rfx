@@ -4801,8 +4801,9 @@ class _PreflightMixin:
                         f"as (dz/lambda)^2), against -44 dB measured at "
                         f"ratio 2.0. COST: an unquantified reflection and "
                         f"grading-dispersion error at that transition. "
-                        f"REMEDY: split it into ratio<=1.4 steps (e.g. "
-                        f"rfx.smooth_grading) to stay inside the envelope, "
+                        f"REMEDY: split it into ratio<={cap:g} steps (e.g. "
+                        f"rfx.smooth_grading) to stay inside the "
+                        f"{'validated envelope' if ax_name == 'z' else 'pre-existing in-plane threshold (no in-plane envelope is validated)'}, "
                         f"or accept it and say so in the report. STALE-IF: "
                         f"the support-matrix row raises the cap.",
                         code="nu_grading_ratio_beyond_validated_cap",

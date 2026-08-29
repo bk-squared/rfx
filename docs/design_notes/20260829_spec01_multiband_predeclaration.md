@@ -1361,3 +1361,30 @@ exactly two such modules exist, and the profiles they build are uniform
 both) — none in the (1.3, 1.4] window where the two thresholds differ. That
 argument is not a substitute for running the battery; it is what is known
 without it.
+
+## WP6R.11 (2026-08-30, append-only) — pre-merge closure of the review's open items
+
+Three items from the WP6-repair review are closed here; none moves a number,
+a window, or a verdict.
+
+1. **NU battery tail (WP6R.10 open item) is CLOSED.** The repair session could
+   not finish the ~349-test tail because this host was at load average 127 from
+   concurrent worktrees. The reviewer ran the battery to completion
+   independently and reported no mover; the item is therefore closed on the
+   reviewer's run rather than on a rerun of my own.
+
+2. **Band-count claim narrowed to the witnessed profile.** The support-matrix
+   row and scope paragraph said "any number of fine bands"; the battery
+   exercises at most **3 fine bands / 4 transitions** (`fixtures.py`). Both now
+   say so, and the expectation that more bands behave identically (each
+   transition is local; the per-transition reflection is what was measured) is
+   labelled as an argument, not evidence. Same class as BL1 — a claim wider
+   than its witness — caught by the same audit.
+
+3. **In-plane advisory REMEDY no longer contradicts its own gate.** The
+   beyond-cap advisory fires at 1.3 on x/y (the pre-existing lock, since no
+   witness grades an in-plane axis) but its REMEDY still said "split it into
+   ratio<=1.4 steps ... to stay inside the envelope", so a `dx_profile` obeying
+   the remedy would fire again. The REMEDY now quotes the axis's own cap and
+   names the in-plane case as a pre-existing threshold rather than a validated
+   envelope (`rfx/api/_preflight.py`).

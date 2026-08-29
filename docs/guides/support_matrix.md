@@ -94,15 +94,20 @@ result is accurate.
 | MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` and `mode="uniform"` have internal settled-S11 regression coverage only. There is no external nonuniform comparison. `mode="eigenmode"` raises. |
 | Coaxial port + nonuniform mesh | **unsupported** | The request must fail. |
 | Lumped RLC update + nonuniform mesh | **limited** | R/L/C ADE elements participate in the field update. Nonuniform S-parameters and component-value AD are not documented. |
-| Multi-band graded mesh (N fine bands along **z**, ratio <= 1.4) | **limited** | The MESH ITSELF is documented — not any observable computed on it — and only for grading along **z**. Explicit `dz_profile` vectors with any number of fine bands (small-large-small-large included) and every adjacent cell ratio <= 1.4 are covered by the witness battery below. Read the scope statement in "Multi-band graded mesh" before quoting this row: in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL). |
+| Multi-band graded mesh (N fine bands along **z**, ratio <= 1.4) | **limited** | The MESH ITSELF is documented — not any observable computed on it — and only for grading along **z**. Explicit `dz_profile` vectors with **up to 3 fine bands / 4 transitions** (small-large-small-large included) and every adjacent cell ratio <= 1.4 are covered by the witness battery below — that is the widest profile any witness actually exercises. Read the scope statement in "Multi-band graded mesh" before quoting this row: in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL). |
 | Volumetric PEC scatterer + nonuniform waveguide | **experimental** | The device/reference handling is regression-tested, but no RF validation is documented for arbitrary iris, post, septum, branch, or T-junction geometries. |
 
 ### Multi-band graded mesh
 
-**What this row covers.** An explicit **`dz_profile`** vector holding N
+**What this row covers.** An explicit **`dz_profile`** vector holding
 fine bands along z, in any order — fine-coarse-fine-coarse-fine and other
 small-large-small-large patterns included — with **every adjacent cell
 ratio <= 1.4**, abrupt (a single step at the cap) or smoothly ramped.
+**Band count is witnessed only up to 3 fine bands / 4 transitions**, the
+widest profile in the battery (`fixtures.py`); more bands are expected to
+behave the same way — each transition is local and the per-transition
+reflection is what was measured — but they are not witnessed, and the
+expectation is an argument, not evidence.
 Before this row, only a single fine band was documented.
 
 **The z axis is the whole of it.** Every witness below grades z and holds
