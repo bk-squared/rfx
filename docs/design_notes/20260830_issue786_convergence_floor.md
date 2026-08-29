@@ -775,7 +775,7 @@ Both forms are now emitted (`apportionment.signed_decomposition`). The magnitude
    dz_fine = 0.125 mm, four descending rungs, s = 0.25 on-curve. PR #785's
    `|f(s) − f(0.25)|` was therefore never an error sequence, and **the 22.7 MHz "floor"
    figure is not an error**. (D5, and independently reproduced by the reviewer.)
-3. **Three exonerations at 3–5 orders of margin.** Geometry quantization: 6.8e-6 cells
+3. **Three exonerations at 1.2–2.5 orders of margin** (146x / 282x / 14.5x against their own windows; see §11.1 — an earlier draft said 3–5, which was arithmetic error)**.** Geometry quantization: 6.8e-6 cells
    against a 1e-3-cell window (D1b). Port/probe loading: 3.5 kHz and 0.6 kHz against a
    first-principles predicted **exact zero** and a 1 MHz window (D3). The extraction on
    the reference record: |E1 − consensus| = 0.069 MHz against a 1 MHz window, three
