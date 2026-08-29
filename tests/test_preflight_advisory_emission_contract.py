@@ -134,7 +134,19 @@ def _enumerate_emission_sites():
 # cutoff findings moved into one shared emitter that both the uniform and
 # the non-uniform lane call. A conscious contract edit, which is what the
 # freeze exists to force.
-_FROZEN_TOTAL_SITES = 83
+#
+# 83 -> 84 sites, issue #752 (PR #766 review, blocker B2):
+# ``_check_msl_port_geometry`` gained check 2c, a realized-vs-declared
+# substrate-thickness advisory. It closes a measured coverage hole between
+# check 2 (gates on realized CELL COUNT < 4) and check 2b (gates on where
+# the declared top face sits INSIDE its cell, [0.10, 0.40]) -- for
+# h_sub/dx in (3.00, 3.10) or (3.40, 3.50) both were silent on a board
+# realized 15-31% thicker than declared. One new SITE, no new literal
+# ``code=``: 2c reuses the existing ``msl_port_geometry`` slug because it
+# is the same check family speaking about the same port, so
+# _FROZEN_LITERAL_CODE_COUNT is unchanged at 55. A conscious contract
+# edit, recorded here rather than absorbed silently.
+_FROZEN_TOTAL_SITES = 84
 _FROZEN_LITERAL_CODE_COUNT = 55
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
