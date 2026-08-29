@@ -334,3 +334,37 @@ WITNESS → drift 5.8e-3 (witness metric is load-bearing);
 (b) CORE-C2-class SOLVER corruption (E-update inv_dz[k_tr] → 1/d[k]) with
 the correct witness → drift 7.9e-3 (witness fires on the guarded defect
 family). Both ≫ the 1e-12 validity threshold.
+
+## W4 final outcome (2026-08-29) — F-S4: INCONCLUSIVE per the pre-declared rule
+
+With the C5 ladder (s ∈ {0.5, 0.75, 1, 1.5}, ref 0.375) the pre-declared
+matching rule again produced fewer than 3 valid fit points (s=1 rejected by
+the 5 % guard; the surviving errors 112.7 / 45.4 / 144.5 MHz are
+non-monotonic in h). Root cause, now measured twice at two different
+ladders: the fixture has near-degenerate resonances (~5.25 / ~5.35 GHz)
+whose dominance flips with mesh scale, so the single-line observable is not
+mode-stable across the ladder. Per the declared procedure this is
+**INCONCLUSIVE — no order claim, and no envelope-promotion support from
+W4**; a redesigned fixture (sparser spectrum or a symmetry-selective
+source/probe pair that pins one mode) is follow-up work.
+
+Recorded diagnostics (not claims):
+- At every matched scale, in every run of every ladder, the multiband arm
+  reproduced the uniform-fine-at-same-scale arm to ≤ 0.5 MHz (≤ 1.1e-4
+  relative) — including at scales where the mode identity flips (both arms
+  flip together). The instability is an extraction artifact common to both
+  arms, not a grading effect.
+- Cost actuals (s=0.5 arm): multiband 259,200 cells / 23 s vs uniform-fine
+  466,560 cells / 41 s — 44 % cell and ~44 % wallclock savings at equal
+  fine resolution, same dt (min-cell CFL both).
+
+The measured-order windows (p bands) were never applied to data and remain
+as declared for the redesigned fixture.
+
+## Existing-gate battery (acceptance gate 3)
+
+`pytest -o addopts="" -m "not gpu"` over test_nonuniform_gradient/
+forward_grad/convergence/cavity_accuracy/api/grid_extent_contract/
+uniform_end_to_end_reduction/source_port_dual_spacing:
+**87 passed, 0 failed** (124.8 s). No rfx/ sources are modified by this
+lane (WP1–WP5 add only validation/research/multiband_nu/ and this note).
