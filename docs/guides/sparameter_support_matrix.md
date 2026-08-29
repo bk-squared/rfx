@@ -138,12 +138,30 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 - The uniform thru-line check uses `|S21|` in `(0.90, 1.05)` and
   `Re(Z0)` in `(40, 65) ohm` for the cited `dx=80 um` setup.
 - The analytic quarter-wave-notch case
-  (`validation/crossval/06b_msl_notch_filter_uniform.py`) was rerun after the
-  #511/#507 extractor fixes. Its committed 2026-08-09 run log
-  (`validation/crossval/_06b_notch_uniform_logs/20260809T_run.log`) reports
-  `1.63%` frequency error, `-34.2 dB` notch depth, and median
-  `Re(Z0)=57.9 ohm`; it passes the listed gates of frequency error `<15%`,
-  notch depth `<-10 dB`, and median `Re(Z0)` in `(40, 65) ohm`.
+  (`validation/crossval/06b_msl_notch_filter_uniform.py`) ships at
+  `dx = 63.5 um = h_sub/4` (issue #723). It ran at `dx = 80 um` through
+  2026-08, where the declared `254 um` substrate rasterized to `320 um` and
+  the `600 um` trace to `560 um`, so the analytic references were computed on
+  a board that mesh did not solve; that run is history, not current evidence.
+  The committed 2026-08-27 GPU run log
+  (`validation/crossval/_06b_notch_uniform_logs/20260827T131217Z_run.log`)
+  reports `1.40%` frequency error against the analytic notch evaluated on the
+  realized `635.0 um` trace width, `-43.3 dB` notch depth, and median
+  `Re(Z0)=46.5 ohm` (port 0, median over the 100 bins); it passes the listed
+  gates of frequency error `<15%`, notch depth `<-10 dB`, and median
+  `Re(Z0)` in `(40, 65) ohm`. That `Re(Z0)` sits `-2.9%` from
+  Hammerstad-Jensen on the DESIGN board (`600/254 um`, `47.90 ohm`) and
+  reproduces the independent `msl_z0_bias_floor_sweep` "aligned h_sub/4"
+  point (`46.098 ohm`) to `0.87%`. Read it with that run's own warnings, not
+  without them: a standing-wave null flags 9 bins in `[3.6273, 7.0000] GHz`
+  as unreliable for the wave split -- which starts at the reported notch --
+  `63 of 100` bins were non-passive as extracted (worst `sigma_max = 1.006`),
+  and the per-port argmax `Z0` deviations against Hammerstad-Jensen are
+  `61.02 ohm` (`msl_0`) and `39.90 ohm` (`msl_1`).
+- The `dx = 50 um` OpenEMS notch comparison below is NOT the same board:
+  its rfx leg (`scripts/diagnostics/build_msl_notch_rfx_dx50.py`) still
+  realizes `h_sub = 300 um` at its own `dx = 50 um` and is deferred, not
+  fixed, by #723.
 - The committed matched-geometry OpenEMS comparison at `dx=50 um` reports a
   `5.8%` notch-frequency difference, linear `|S21|` mean difference `0.1147`,
   and maximum difference `0.2078` over 2.5--6 GHz. This is a characterized

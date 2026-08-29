@@ -28,6 +28,42 @@ openems_msl_phase_referee.py``) reads for its own Stage B comparison --
 keeping that script openEMS-only (no rfx import), matching the
 coax/floquet referee precedent.
 
+REALIZED GEOMETRY (issue #723, 2026-08-27): H_SUB=254um at DX=50um is
+254/50=5.08 substrate cells -- off-lattice, same defect class as cv06b's
+#723. ``sim.fidelity_report()`` on this exact build (verified in-session,
+not estimated): "geometry[0] 'ro4350b' ... z: declared [0.0, 254.0] um ->
+realized [0.0, 300.0] um" (+18.11%) -- the rasterizer solves a 300um
+board, not 254um. W_TRACE=600um DOES divide DX=50um exactly (12 cells,
+"geometry[1] 'pec' ... y: ... extent 599.9999999999999 ->
+599.9999999999989" -- realized width unchanged), but the realized trace
+is NOT centred on the realized substrate: realized trace y
+[949.999..., 1549.999...] um, centre 1250.0um, vs realized substrate y
+[0, 2450.000...] um, centre 1225.0um -- a 25um (half-cell) offset,
+because this script draws the trace symmetric about the DECLARED
+LY/2 while the substrate box realizes asymmetrically. NOTE what that
+does and does not change downstream: the trace centre 1250.0um IS
+``ly_clear/2``, which is what ``20_msl_phase_referee.py``'s Stage B
+already used, so sourcing the trace bounds from these fields moves the
+Stage B trace by 1.5e-18 m -- a no-op at this fixture. The substantive
+field is ``h_sub_realized_m`` (300um vs the declared 254um). This
+script now writes the REALIZED values into ``meta``
+(``h_sub_realized_m``, ``w_trace_realized_m``,
+``trace_y_lo_realized_m``, ``trace_y_hi_realized_m``,
+``n_z_sub_realized``) alongside the existing DECLARED
+``h_sub_m``/``w_trace_m`` (kept for ``_assert_matches_rfx_fixture``'s
+declared-vs-declared drift guard). ``validation/crossval/
+20_msl_phase_referee.py``'s Stage B build reads the REALIZED fields, so
+both solvers land on the SAME 300um board, and the trace bounds are
+carried as an invariant against a future fixture whose trace does NOT
+sit on ``ly_clear/2`` (see that script's own "Mesh convention"
+docstring section). Regenerating
+this fixture (a fresh ``compute_msl_s_matrix`` solve) is NOT required
+just to add these fields -- see ``_realized_board_geometry`` below, which
+reads them from ``sim.fidelity_report()`` (grid + material assembly
+only, no time stepping); the S11/S21/Z0/beta arrays are untouched by
+this change and, per #723 REQUIRED 11, a metadata-only patch of the
+committed fixture is the preferred re-pin path over a full re-run.
+
 Usage::
 
     python scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py \\
@@ -150,12 +186,62 @@ def _reference_plane_geometry(sim: Simulation) -> dict:
     return out
 
 
+def _realized_board_geometry(sim: Simulation) -> dict:
+    """Realized (rasterized) substrate thickness and trace span, read live
+    from ``sim.fidelity_report()`` -- not the DECLARED H_SUB/W_TRACE
+    constants (issue #723: H_SUB/DX=254/50=5.08 is off-lattice; the
+    rasterizer realizes h_sub=300um, not 254um). Cheap: grid + material
+    assembly only, no time stepping -- see ``rfx/fidelity.py`` module
+    docstring.
+    """
+    report = sim.fidelity_report(print_report=False)
+    sub = next(item for item in report if item["entity"] == "geometry[0] 'ro4350b'")
+    trace = next(item for item in report if item["entity"] == "geometry[1] 'pec'")
+    h_ax = next(ax for ax in sub["axes"] if ax["axis"] == "z")
+    w_ax = next(ax for ax in trace["axes"] if ax["axis"] == "y")
+    h_sub_realized_m = float(h_ax["realized_extent_um"]) * 1e-6
+    return {
+        "h_sub_realized_m": h_sub_realized_m,
+        "w_trace_realized_m": float(w_ax["realized_extent_um"]) * 1e-6,
+        "trace_y_lo_realized_m": float(w_ax["realized_um"][0]) * 1e-6,
+        "trace_y_hi_realized_m": float(w_ax["realized_um"][1]) * 1e-6,
+        "n_z_sub_realized": int(round(h_sub_realized_m / DX)),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", default="tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json")
+    p.add_argument(
+        "--patch-realized-only", action="store_true",
+        help="issue #723 REQUIRED 11: patch ONLY the realized-geometry "
+             "meta fields into the EXISTING committed fixture at "
+             "--output, without re-running compute_msl_s_matrix. Fails "
+             "loudly if --output does not already exist -- this is a "
+             "patch, not a from-scratch write. freqs/S11/S21/Z0/beta stay "
+             "byte-identical; only meta['h_sub_realized_m'] etc are added "
+             "(overwritten if already present).",
+    )
     args = p.parse_args(argv)
 
     sim = _build_sim()
+    realized_geom = _realized_board_geometry(sim)
+
+    if args.patch_realized_only:
+        out_path = Path(args.output)
+        if not out_path.exists():
+            raise FileNotFoundError(
+                f"--patch-realized-only requires an EXISTING fixture at "
+                f"{out_path} to patch (nothing to patch onto). Run "
+                f"without this flag first to write the full fixture, or "
+                f"point --output at an existing one."
+            )
+        existing = json.loads(out_path.read_text())
+        existing["meta"].update(realized_geom)
+        out_path.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
+        print(f"patched realized-geometry fields into {out_path}: {realized_geom}")
+        return 0
+
     ref_geom = _reference_plane_geometry(sim)
 
     t0 = time.time()
@@ -177,6 +263,11 @@ def main(argv: list[str] | None = None) -> int:
             "l_line_m": L_LINE, "port_margin_m": PORT_MARGIN, "dx_m": DX,
             "f_max_hz": F_MAX, "n_freqs": N_FREQS, "num_periods": NUM_PERIODS,
             "elapsed_s": round(elapsed, 1),
+            # REALIZED (rasterized) geometry, issue #723 -- h_sub_m/w_trace_m
+            # above are the DECLARED-nominal values (kept for
+            # _assert_matches_rfx_fixture's declared-vs-declared drift
+            # guard only); Stage B's own geometry build must use these.
+            **realized_geom,
         },
         "reference_plane_geometry": ref_geom,
         "freqs_hz": freqs.tolist(),

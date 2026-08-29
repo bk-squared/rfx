@@ -127,8 +127,15 @@ def _enumerate_emission_sites():
 # ANY of these numbers means the check-site surface moved and must be a
 # conscious edit to this file, not a silent side effect of an unrelated
 # change.
-_FROZEN_TOTAL_SITES = 81
-_FROZEN_LITERAL_CODE_COUNT = 53
+#
+# 81 -> 83 sites / 53 -> 55 literal codes, issue #738 (PR #745): the
+# waveguide-port check gained port_aperture_snap and
+# port_aperture_unrasterizable (2 new sites, 2 new codes) and its three
+# cutoff findings moved into one shared emitter that both the uniform and
+# the non-uniform lane call. A conscious contract edit, which is what the
+# freeze exists to force.
+_FROZEN_TOTAL_SITES = 83
+_FROZEN_LITERAL_CODE_COUNT = 55
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

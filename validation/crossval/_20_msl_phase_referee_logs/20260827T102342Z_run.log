@@ -1,0 +1,24 @@
+==============================================================================
+openEMS external referee -- rfx issue #490 lane 2 (MSL phase)
+COMPARATOR LEG ONLY. Stage A = faithful MSL_NotchFilter.py port.
+See module docstring for the full scope fence, delta list, convention note.
+==============================================================================
+
+Declared question:
+  Is rfx's MSL de-embedded phase (compute_msl_s_matrix's angle(S21)) 'not gated' (docs/guides/sparameter_support_matrix.md, Wire port section: 'Phase is not gated because the reference conventions differ') because of an unresolved e^{+-j*omega*t} time-convention mismatch, or an unresolved reference-plane mismatch? Verified directly against both tools' own DFT-kernel source (module docstring CONVENTION NOTE): the kernels are identical, so it is a reference-plane question, resolved here by placing openEMS's own MeasPlaneShift measurement stencil directly at rfx's own probe-0 plane (issue #478/#469). NEW-1 CAVEAT (review 2026-08-04): on this fixture the effective CalcPort(ref_plane_shift=...) shift is 0.0 by construction (MeasPlaneShift's own target already lands exactly on an existing mesh line, measured in port_info -- see CONVENTION NOTE part (c)'s own 'NEW-1 FINDING'), so the referral ROTATION itself is exercised but not independently validated by this run; it is held in reserve for a future fixture whose target plane falls off-grid.
+
+--- Stage A: reproduce-gate (MSL_NotchFilter.py, faithful port) ---
+  f_notch: measured=3.6711 GHz expected=3.6872 GHz dev=0.44%
+  Stage A passed: True
+
+--- Stage B: rfx-matched thru-line (ref_plane_shift referral) ---
+  |S21| band: 0.9961 - 1.0082
+  openEMS self-consistency passed: True
+  rfx self-consistency (reported): True
+  sanity_passed: True
+
+=== Written to /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/msl-phase-referee/openems_msl_phase_referee.json ===
+
+==============================================================================
+overall_passed=True (self-checks only -- NOT a verdict on rfx vs openEMS phase agreement)
+==============================================================================

@@ -56,8 +56,8 @@ physical S11 design objective through `forward()` on every PR.
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
-is accurate (AD↔FD relative error ~4.5e-4;
-`examples/inverse_design/differentiable_s11_design.py`, gated by
+is accurate (AD↔FD relative error 9.21e-5 on the last run of
+`examples/inverse_design/differentiable_s11_design.py`, whose gate is
 `tests/test_sparam_ad_end_to_end.py`). The objective callables from
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.

@@ -1,6 +1,8 @@
 # validation/crossval/11_waveguide_port_wr90.py on branch fix/724-wr90-realized-guide
-# 2026-08-28, CPU (JAX_PLATFORMS=cpu), dx = 1 mm, NUM_PERIODS_LONG = 200, run alone.
-# Provenance record only -- no test reads this file.
+# 2026-08-28, same pod, CPU, dx = 1 mm, NUM_PERIODS_LONG = 400 (doubled).
+# The first line below is the grep that confirms the doubling took effect.
+# Every gate line matches cv11_wr90_fresh_stdout.txt to the last digit.
+290:NUM_PERIODS_LONG = 400     # uniform scan length, all geometries
 validation/crossval/11_waveguide_port_wr90.py:462: UserWarning: compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate — see the normalize parameter docstring.
   result = sim.compute_waveguide_s_matrix(
 [selftest 1.5-spike (must FAIL)] per-freq band [0.930, 1.070]: min=1.0000 max=1.5000 violations=1/21 -> FAIL
@@ -69,8 +71,8 @@ validation/crossval/11_waveguide_port_wr90.py:462: UserWarning: compute_waveguid
   11.56 | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@-126.44d |       +0.0000        |   +126.44
   11.77 | 1.0000@  -0.00d | 1.0000@  +0.00d | 1.0000@  +0.00d | 1.0000@+172.58d |       +0.0000        |   -172.58
   11.98 | 1.0000@  +0.00d | 1.0000@  -0.00d | 1.0000@  +0.00d | 1.0000@+112.09d |       -0.0000        |   -112.09
-  12.19 | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@ +52.05d |       +0.0000        |    -52.05
-  12.40 | 1.0000@  +0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@  -7.57d |       +0.0000        |     +7.57
+  12.19 | 1.0000@  +0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@ +52.05d |       +0.0000        |    -52.05
+  12.40 | 1.0000@  +0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@  -7.57d |       -0.0000        |     +7.57
 [summary empty S21 vs Palace_r_h2] |S|_diff: max=0.0000 mean=0.0000 | phase: max|d|=175.26d mean|d|=90.45d
 
 [pec-short |S11|] |S|: max_diff=0.0020 mean_diff=0.0010 (gate 0.050)
@@ -123,7 +125,7 @@ validation/crossval/11_waveguide_port_wr90.py:462: UserWarning: compute_waveguid
 
 [4way slab S11] f_GHz |    rfx     |   MEEP_r4  | OpenEMS_r4 | Palace_r_h2 | |S|_diff(rfx-Palace) | phase_diff_deg(rfx-Palace)
 -------------------------------------------------------------------------------------------------------------------------------
-   8.20 | 0.5243@ -14.35d | 0.5359@  +6.46d | 0.5418@ -13.15d | 0.5437@+115.94d |       -0.0193        |   -130.29
+   8.20 | 0.5244@ -14.35d | 0.5359@  +6.46d | 0.5418@ -13.15d | 0.5437@+115.94d |       -0.0193        |   -130.29
    8.41 | 0.4969@ -52.13d | 0.5023@ +48.27d | 0.5063@ -54.33d | 0.5088@ +33.70d |       -0.0119        |    -85.83
    8.62 | 0.4836@ -91.96d | 0.4687@ +88.53d | 0.4728@ -93.79d | 0.4747@ -45.61d |       +0.0089        |    -46.35
    8.83 | 0.4445@-132.32d | 0.4359@+127.47d | 0.4409@-132.08d | 0.4410@-122.48d |       +0.0035        |     -9.83
@@ -139,7 +141,7 @@ validation/crossval/11_waveguide_port_wr90.py:462: UserWarning: compute_waveguid
   10.93 | 0.0919@-118.79d | 0.1139@+118.63d | 0.0999@-123.68d | 0.1002@ -91.93d |       -0.0083        |    -26.86
   11.14 | 0.0565@-146.50d | 0.0812@+151.23d | 0.0643@-156.90d | 0.0667@-155.86d |       -0.0101        |     +9.36
   11.35 | 0.0282@-171.38d | 0.0488@-176.47d | 0.0309@+171.54d | 0.0336@+140.83d |       -0.0054        |    +47.79
-  11.56 | 0.0018@ -60.92d | 0.0166@-144.31d | 0.0011@-104.98d | 0.0014@ +78.33d |       +0.0004        |   -139.26
+  11.56 | 0.0018@ -60.93d | 0.0166@-144.31d | 0.0011@-104.98d | 0.0014@ +78.33d |       +0.0004        |   -139.27
   11.77 | 0.0358@ -58.81d | 0.0153@ +66.93d | 0.0307@ -74.54d | 0.0300@-164.15d |       +0.0057        |   +105.35
   11.98 | 0.0705@ -92.98d | 0.0468@ +98.62d | 0.0603@-104.44d | 0.0604@+134.15d |       +0.0100        |   +132.88
   12.19 | 0.1007@-126.38d | 0.0778@+129.93d | 0.0891@-134.69d | 0.0897@ +72.91d |       +0.0110        |   +160.70
@@ -171,12 +173,16 @@ validation/crossval/11_waveguide_port_wr90.py:462: UserWarning: compute_waveguid
   12.40 | 0.9920@ -70.98d | 0.9948@ +68.58d | 0.9781@ -31.10d | 0.9930@ -77.90d |       -0.0010        |     +6.92
 [summary slab S21 vs Palace_r_h2] |S|_diff: max=0.0044 mean=0.0010 | phase: max|d|=175.23d mean|d|=90.43d
 
-[pec-short S11 (rfx vs conj(MEEP), time-convention corrected)] |S|: max_diff=0.1992 mean_diff=0.0565 (gate 0.050)
+[pec-short S11 (rfx vs conj(MEEP), time-convention corrected)] |S|: max_diff=0.1991 mean_diff=0.0565 (gate 0.050)
 [pec-short S11 (rfx vs conj(MEEP), time-convention corrected)] ∠S: max_diff=21.68° mean_diff=17.55° (gate 10.0°)
 
 ============================================================
 CROSSVAL-11 PASS — all geometries within accept gate.
 
-real	2m6.814s
-user	6m57.860s
-sys	0m21.762s
+real	4m6.649s
+user	12m30.517s
+sys	0m41.475s
+
+real	4m6.649s
+user	12m30.517s
+sys	0m41.475s

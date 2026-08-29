@@ -42,6 +42,27 @@ is a byte-equality lock between them).
 Runtime: two ~1.6M-cell FDTD drives (the committed evidence commit recorded
 ~65 min on CPU).
 
+ISSUE #723 STATUS: DEFERRED, NOT FIXED HERE. This script's own DX=50um
+against H_SUB=254um is 254/50=5.08 substrate cells -- off-lattice, the
+SAME defect class fixed in ``06b_msl_notch_filter_uniform.py``.
+``sim.fidelity_report()`` on this exact build (verified in-session,
+2026-08-27, not estimated): "geometry[0] 'ro4350b' ... z: declared
+[0.0, 254.0] um -> realized [0.0, 300.0] um" (+18.11%); "geometry[2]
+'pec' ... x: declared [3200.0, 3800.0] um -> realized [3200.0, 3850.0]
+um | ... extent 600.0 -> 650.0 um" (stub, +8.33%); "geometry[1] 'pec'
+... y: ... PLACEMENT off by 42.0 um" (7.00% of the 600um trace width,
+size preserved). This producer feeds
+``tests/fixtures/msl_notch_e4/`` / ``tests/test_msl_notch_e4_comparison_
+gates.py`` -- fixing it in place would move that committed E4 gate
+envelope, which is out of scope for a mesh-only #723 pass and is
+EXPLICITLY DEFERRED to a follow-up issue rather than folded in silently.
+Consequence readers of ``06b_msl_notch_filter_uniform.py`` must know:
+after that script's own #723 fix it solves h_sub=254um exactly, while
+THIS script (and the E4/OpenEMS comparison it feeds) still solves
+h_sub=300um -- the two are NOT the same board post-fix. See
+``06b_msl_notch_filter_uniform.py``'s "External cross-check" docstring
+paragraph for the reader-facing statement of that mismatch.
+
 Usage::
 
     python scripts/diagnostics/build_msl_notch_rfx_dx50.py \
