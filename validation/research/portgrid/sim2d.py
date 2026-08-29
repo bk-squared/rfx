@@ -84,6 +84,13 @@ def fine_cfl_dt(spec: TwoRegionSpec) -> float:
 def _masks(spec: TwoRegionSpec):
     """Precompute update masks and energy area-weights (NumPy, static)."""
     nx, ny, i0, i1, j0, j1, r = spec.nx, spec.ny, spec.i0, spec.i1, spec.j0, spec.j1, spec.r
+    if not (1 <= i0 < i1 <= nx - 1 and 1 <= j0 < j1 <= ny - 1):
+        # A fine island touching the domain boundary would alias the interface
+        # update onto PEC rows/columns (measured: a full-height island acts as
+        # a near-total barrier).  Strictly interior islands only.
+        raise ValueError(
+            f"fine island [{i0},{i1})x[{j0},{j1}) must be strictly interior to "
+            f"the {nx}x{ny} coarse grid (>=1 cell of coarse host on every side)")
     dx, dy = spec.dx, spec.dy
     dxf, dyf = dx / r, dy / r
 

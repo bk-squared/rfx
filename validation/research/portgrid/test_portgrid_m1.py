@@ -187,3 +187,17 @@ def test_vjp_p_adjoint_structure_of_step():
             # interface update is cb * (1/r).
             want = float(cb_s[k // r]) / r
             assert abs(got - want) <= 1e-12 * abs(want), (k, got, want)
+
+
+def test_island_must_be_strictly_interior():
+    """Boundary-touching islands are out of scope (measured: near-total
+    barrier); the builder must refuse them loudly."""
+    with enable_x64():
+        from validation.research.portgrid import sim2d
+
+        spec = sim2d.TwoRegionSpec(
+            nx=10, ny=8, dx=1e-3, dy=1e-3, i0=2, i1=6, j0=0, j1=8, r=3,
+            dt=1e-13,
+        )
+        with pytest.raises(ValueError, match="strictly interior"):
+            sim2d.make_stepper(spec)

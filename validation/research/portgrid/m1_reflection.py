@@ -44,10 +44,10 @@ import numpy as np
 C0 = 299792458.0
 
 
-def s11_for_ratio(sim2d, r: int):
+def s11_for_ratio(sim2d, r: int, island=(440, 460, 10, 30)):
     nx, ny = 700, 40
     dx = dy = 1e-3
-    i0, i1, j0, j1 = 440, 460, 10, 30
+    i0, i1, j0, j1 = island
     spec = sim2d.TwoRegionSpec(
         nx=nx, ny=ny, dx=dx, dy=dy, i0=i0, i1=i1, j0=j0, j1=j1, r=r,
         dt=np.nan, probe_ij=(360, 20),
@@ -84,15 +84,19 @@ def s11_for_ratio(sim2d, r: int):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ratios", type=str, default="2,3,4,5,6")
+    ap.add_argument("--island", type=str, default="440,460,10,30",
+                    help="i0,i1,j0,j1 in coarse cells (diagnostic arms only; "
+                         "the pre-declared F-M1b fixture is the default)")
     ap.add_argument("--out", type=str, default="")
     args = ap.parse_args()
 
     from validation.research.portgrid import sim2d
 
-    results = {}
+    island = tuple(int(t) for t in args.island.split(","))
+    results = {"island_coarse_cells": list(island)}
     fired = False
     for r in [int(t) for t in args.ratios.split(",")]:
-        f, s11, dt, n_steps, dmax = s11_for_ratio(sim2d, r)
+        f, s11, dt, n_steps, dmax = s11_for_ratio(sim2d, r, island)
         band20 = (f >= 2e9) & (f <= 20e9)
         band30 = (f >= 2e9) & (f <= 30e9)
         db = 20.0 * np.log10(np.maximum(s11, 1e-300))
