@@ -158,7 +158,7 @@ per-bin sv 0.9874–1.003227, column power 0.9563–0.9908, DC anchor
   `test_not_auditable_classifications_are_machine_checked[issue764...]`
   recorded in the #683 P6 addendum (base-branch item, untouched here).
 
-## 6. Full-sweep record (appended after the sweep of 2026-08-30;
+## 6. Full-sweep record (appended after the sweep of 2026-08-29 (KST);
 ## sections 1–5 unchanged)
 
 Full battery, `-k "wire or lumped or sparam or twoport"`,
