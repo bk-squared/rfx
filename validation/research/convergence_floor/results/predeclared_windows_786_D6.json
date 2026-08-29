@@ -1,0 +1,21 @@
+{
+ "issue": 786,
+ "discriminator": "D6",
+ "predeclared_utc": "2026-08-30",
+ "M0": "f(h) = f_inf - C h^p (3 free parameters)",
+ "M1": "f(h) = f_inf + A h^(1.3333) - B h^2.0 (3 free parameters; exponents fixed by theory)",
+ "edge_exponent": 1.3333333333333333,
+ "edge_exponent_derivation": "Meixner: nu = pi/(2*pi - theta) with theta = pi/2 (a 90 deg conductor corner) -> nu = 2/3, frequency error order 2*nu = 4/3",
+ "bulk_exponent": 2.0,
+ "bulk_exponent_provenance": "D4a measured 2.0001 on the exact-reference empty-box twin",
+ "attribute_to_edge": "RMS_M1 <= 1.0 MHz AND RMS_M1 <= RMS_M0 / 3",
+ "reject_meixner": "RMS_M1 > 10.0 MHz OR RMS_M1 > 3 * RMS_M0",
+ "inconclusive": "otherwise",
+ "attribute_rms_hz": 1000000.0,
+ "reject_rms_hz": 10000000.0,
+ "ratio": 3.0,
+ "reported_not_judged": [
+  "free-exponent fit f_inf + A h^a - B h^b",
+  "each model's extrapolated f_inf"
+ ]
+}
