@@ -430,3 +430,126 @@ same semantics. Evidence of behaviour preservation: `pc_dz_profile_sym`
 output verified bit-identical (`np.array_equal`) for every scale this
 lane uses (s ∈ {0.25, 0.375, 0.5, 0.75, 1.0, 1.5}); the unsupported
 short-band edge case trips the same pre-existing cap assert as before.
+
+## W4R — W4 redesign pre-declaration (2026-08-29; committed BEFORE any W4R ladder measurement)
+
+Phase-1 F-S4 was INCONCLUSIVE per the declared rule. This section
+pre-declares the redesigned fixture, its instrument, and the freshly
+derived F-S4 rules. The phase-1 p-band numbers were never applied to
+data; where the fresh derivation lands on the same values that is
+convergent derivation, not reuse of burned data. Everything below is
+fixed before the ladder runs; the bring-up measurements quoted are
+instrument-design data, all DISCARDED from judgment (the ladder re-runs
+every arm fresh).
+
+### W4R.1 Bring-up findings (root-cause correction of the phase-1 reading)
+
+1. **Mode-selective port** (the reviewer's recommendation): an
+   anti-symmetric Ez pair under the two trace ends,
+   (6.75, 11.25, 0.75) mm at +1 A and (20.25, 11.25, 0.75) mm at −1 A
+   (`amplitude_kind='current'`, GaussianPulse f0 = 6 GHz bw 0.9),
+   probe Ez at (18.0, 11.25, 0.75) mm. The fixture has exact discrete
+   mirror symmetry about x = 13.5 and y = 11.25 mm, so this excites only
+   the x-odd/y-even class — the trace half-wave mode's class. Bring-up:
+   the driven spectrum shows a SINGLE line in band at every scale tried
+   (dominance = ∞), 20 ns vs 60 ns extraction agrees to ≤ 15 kHz.
+2. **The corrected root cause of the phase-1 wander.** With the port
+   isolating one line, the line STILL wandered non-monotonically
+   (5.10–5.39 GHz). Direct inspection of the realized `pec_mask` per
+   scale found it: phase-1 drew every box corner exactly ON node planes
+   — the documented worst case of the half-open f32 Box rasterization
+   (`rfx/geometry/csg.py` docstring; #703-class advisory family). The
+   realized trace x-span flipped erratically between 13.5−dx and
+   13.5−2dx (lo-node included at s ∈ {0.25, 0.5, 1.0}, excluded at
+   s ∈ {0.375, 0.75, 1.5}); the y-span flipped between 4.5 and 4.5−dx.
+   An O(dx) sign-erratic electrical-length lottery, IDENTICAL in both
+   arms at each scale — which is exactly why the phase-1 arms agreed to
+   ≤ 1e-4 while both wandered. The phase-1 "near-degenerate mode flip"
+   reading was the symptom, not the cause.
+3. **Repair, PEC**: the trace is drawn with half-cell margins
+   ([6.75−dx/2, 20.25+dx/2] × [9−dx/2, 13.5+dx/2] ×
+   [1.5−dzf/2, 3.0+dzf/2] mm), placing every node strictly inside.
+   Verified: the realized zeroed-node set spans exactly
+   [6.75, 20.25] × [9.0, 13.5] × [1.5, 3.0] mm at every scale
+   s ∈ {0.25, 0.375, 0.5, 0.6, 0.75, 1.0, 1.5}, both arms. The
+   #703-class preflight advisory now FIRES on the drawn half-cell
+   offsets — by design: the quantity it protects (realized extent
+   drift) is verified invariant by direct mask measurement. Preflight
+   stays ON, nothing suppressed.
+4. **Repair, dielectrics**: without subpixel smoothing the dielectric
+   staircase (node-based half-open fill) leaves an O(h)
+   consistent-sign interface bias — bring-up uniform arms drifted
+   0.63 GHz across the ladder with mixed apparent order ~1. The ladder
+   therefore runs with `subpixel_smoothing=True` (NU path validated,
+   `tests/test_subpixel_nonuniform.py`; the known subpixel caveat #582
+   is open-boundary only, this fixture is PEC-closed). With it the
+   uniform arm converges monotonically at the 2nd-order class
+   (5.4045 → 5.5021 → 5.5331 → 5.5436 GHz at s = 1.5/1.0/0.75/0.5).
+5. **Instrument noise floor**: at the finest bring-up step the uniform
+   arm reversed by 6.0 MHz (s = 0.5 → 0.375: 5.5436 → 5.5376 GHz),
+   extraction-stable to 15 kHz — a mesh-real non-monotone wobble class
+   (subpixel fraction rounding / edge-singularity residue). Fit floor
+   declared at 3× this class: E_FLOOR = 18 MHz.
+
+### W4R.2 Frozen instrument and ladder
+
+- Fixture: P-C physical geometry unchanged; knife-edge-free drawing
+  (W4R.1-3), subpixel smoothing ON, preflight ON.
+- Observable: frequency of the largest-|amplitude| Q > 30 harminv line
+  in B = [4.0, 6.5] GHz of the port-selected ring-down; T_total = 20 ns
+  for every arm; validity per arm requires dominance ≥ 10 over any
+  other in-band line and |f − f_ref| ≤ 5 % · f_ref.
+- Ladder: s ∈ {0.5, 0.6, 0.75, 1.0, 1.5} (all on the 2.25 mm alignment
+  lattice: dx = 0.75s, dzf = 0.25s divide every patterned dimension),
+  multiband (`pc_dz_profile_sym`) and uniform-fine control at each s.
+- Reference: uniform-fine s = 0.25 (ratio 2 below s_min — the phase-1
+  ratio-4/3 reference made the 3·u_ref exclusion nearly unsatisfiable:
+  under clean p = 2 only 3 of 4 points could ever survive, with
+  equality at the margin; ratio 2 gives 3·u_ref = e(s_min) exactly, so
+  all points survive under clean p = 2).
+- u_ref = e_uc(s_min)/((s_min/s_ref)² − 1) = e_uc(0.5)/3 (Richardson,
+  p = 2, as phase-1); fit excludes points with
+  e < max(3·u_ref, E_FLOOR); order = LS slope of log e vs log dzf over
+  the surviving points; ≥ 3 surviving points required per arm, else
+  INCONCLUSIVE.
+
+### W4R.3 F-S4 rules (fresh derivation)
+
+Expected order: 2 for BOTH arms (Monk & Süli 1994; Li & Shields 2016 —
+supraconvergence on arbitrary tensor grids, of which the multiband
+profile is one). Derived allowances: reference contamination
+(e_meas = C(h² − h_ref²), h_ref = h_min/2) biases the LS slope by
+≤ +0.25 (computed exactly for this ladder under clean p = 2: fitted
+slope 2.13–2.25); the 18 MHz floor admits residual noise ≤ 6/18 of a
+surviving point, worth ≤ ±0.4 of slope over the ladder's log-span.
+Hence:
+
+- **Fixture-validity gate**: p_uc ∈ [1.7, 2.6]
+  (2 − 0.3 fit allowance; 2 + 0.25 contamination + 0.35 noise).
+  p_uc < 1.7: singularity/reference-limited for both arms;
+  p_uc > 2.6: pre-asymptotic ladder. Either ⇒ FIXTURE-INVALID /
+  INCONCLUSIVE — no envelope support, not a multiband fault.
+- **F-S4 fires** iff the fixture is valid AND
+  (p_mb < 1.5 OR p_mb < p_uc − 0.4). Physical rationale: the failure
+  mode of supraconvergence is order LOSS (toward 1). One-sided by
+  construction — an absolute upper clause on p_mb alone (phase-1 had
+  p_mb > 2.6 as a firing clause) would misattribute fixture-level
+  pre-asymptotics, which both arms share, to grading; that structural
+  refinement is made now, before any data, on the reviewer-visible
+  ground that grading cannot RAISE the order above the shared fixture
+  order.
+- **Anomaly A4** (blocks WP6 promotion, filed for investigation, not
+  claimed as a grading fault): fixture valid AND p_mb > p_uc + 0.4.
+- Fire ⇒ the multiband envelope claim STOPS at WP4 exactly as the
+  spec's F-S4 prescribes; INCONCLUSIVE ⇒ promotion stays blocked.
+
+Cost actuals recorded as documentation (no claims), as phase-1.
+
+Bring-up data inventory (all discarded from judgment): parity-scan
+spectra (`results/w4r_diagnostic_bringup.json`, pre-repair drawing),
+per-scale realized-mask measurements, uniform-arm convergence probes
+with/without subpixel at s ∈ {1.5, 1.0, 0.75, 0.5, 0.375}, one
+mb/uc pair at s = 0.75 (5.5258/5.5331 GHz — the 7.2 MHz matched-scale
+delta is the genuine grading cost the phase-1 staircase lottery had
+buried). No number from these enters any window above; the windows come
+from the theory + the two derived allowances + the 3× floor rule.
