@@ -300,7 +300,17 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     # the measured board-thickening figure, and a pointer to the sibling
     # realized-board artifact and its <=0.4% agreement.
     assert "pec_occupancy_override" in mixed[0], mixed[0]
-    assert "no subpixel eps assembly" in mixed[0], mixed[0]
+    # #766 review B3: this used to pin "no subpixel eps assembly", which is
+    # false -- rfx assembles subpixel/anisotropic eps on subpixel_smoothing=
+    # True/'kottke_pec' and on the Stage-1 conformal PEC lane
+    # (rfx/runners/uniform.py). What is true, and what must be pinned, is
+    # the DEFAULT-path qualification plus the explicit non-exemption.
+    assert "ON THE DEFAULT RUN PATH" in mixed[0], mixed[0]
+    assert "subpixel_smoothing=False and no conformal PEC face" in mixed[0], mixed[0]
+    assert "NOT a blanket exemption" in mixed[0], mixed[0]
+    assert "kottke_pec" in mixed[0], mixed[0]
+    assert "rfx/runners/uniform.py" in mixed[0], mixed[0]
+    assert "no subpixel eps assembly" not in mixed[0], mixed[0]
     assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
     assert "+26%" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep_realized_anchor.json" in mixed[0], mixed[0]

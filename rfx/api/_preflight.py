@@ -5794,11 +5794,32 @@ class _PreflightMixin:
             # interface lands in the lower portion of a Yee cell that
             # ALSO contains the trace at z=h_sub..h_sub+dx; the cell is
             # mixed substrate + PEC.  Hard-PEC ``Box(material="pec")``
-            # avoids the specific bug below because it occupies WHOLE
-            # cells (this build has no anisotropic/subpixel eps assembly
-            # — rfx/api/__init__.py's Simulation docstring — so there is
-            # no subpixel path for a hard PEC box to use; it simply never
-            # enters ``pec_occupancy_override``). The AD-traceable
+            # avoids the specific bug below ON THE DEFAULT RUN PATH,
+            # because there it occupies WHOLE cells and never enters
+            # ``pec_occupancy_override``.
+            #
+            # #766 review B3: this used to say "this build has no
+            # anisotropic/subpixel eps assembly — rfx/api/__init__.py's
+            # Simulation docstring". Both halves were wrong. rfx DOES have
+            # subpixel eps assembly: ``subpixel_smoothing`` (bool | str,
+            # default False) reaches ``rfx/runners/uniform.py``, where
+            # ``"kottke_pec"`` builds an inverse-permittivity tensor over
+            # the dielectric AND PEC shapes (uniform.py:241-269) and a
+            # plain truthy value calls ``compute_smoothed_eps``
+            # (uniform.py:271-278); the Stage-1 conformal PEC lane
+            # (``conformal_pec``, uniform.py:281-300) likewise gives PEC
+            # shapes fractional cell weights. And the cited docstring line
+            # is inside ``stencil_order``'s parameter description — it
+            # says stencil_order=4 is unsupported WITH subpixel/conformal
+            # eps, which presupposes those lanes exist rather than denying
+            # them. What is actually true, and all that is claimed here
+            # and in the message: on the shipped defaults
+            # (``subpixel_smoothing=False``; ``conformal_pec=None`` ->
+            # ``bool(self._boundary_spec.conformal_faces())`` = False
+            # absent an explicit ``Boundary(conformal=True)`` —
+            # rfx/api/_execute.py:2971-2972, 3128-3134) a hard PEC box is
+            # whole-cell. On the opt-in lanes it is not, and the alignment
+            # advice applies there too. The AD-traceable
             # ``pec_occupancy_override`` path zeros the whole cell and
             # produces unphysical |S21| (cited, not remeasured on this
             # checkout: 2026-05-08, runs #563/#567: |S21|² > 1 across all
@@ -5911,8 +5932,17 @@ class _PreflightMixin:
                         f"(cited, not remeasured on this checkout: runs "
                         f"#563/#567, 2026-05-08, dx∈[75,82]µm h_sub=254µm). "
                         f"Hard ``Box(material='pec')`` avoids that specific "
-                        f"bug (this build has no subpixel eps assembly, so "
-                        f"a hard PEC box never enters that path). "
+                        f"bug ON THE DEFAULT RUN PATH "
+                        f"(subpixel_smoothing=False and no conformal PEC "
+                        f"face — the shipped defaults): there the PEC box "
+                        f"occupies whole cells and never enters "
+                        f"``pec_occupancy_override``. That is NOT a blanket "
+                        f"exemption — rfx does assemble subpixel/anisotropic "
+                        f"eps on the opt-in lanes (subpixel_smoothing=True "
+                        f"or 'kottke_pec', and the Stage-1 conformal PEC "
+                        f"lane; rfx/runners/uniform.py), and those give a "
+                        f"hard PEC box fractional cell occupancy, so the "
+                        f"alignment advice below still applies there. "
                         f"Separately: the half-open rasterizer rule rounds "
                         f"that face UP, so this mesh actually realizes "
                         f"{n_above} cell(s) of substrate = {h_real_um:.0f}µm "
