@@ -4755,6 +4755,14 @@ class _PreflightMixin:
         scored. Tolerance 1e-6 on the adjacent ratio, i.e. a runway is
         "uniform" up to 1 ppm of cell size — far below any grading a user
         can mean, and above float round-tripping in a computed profile.
+
+        Inherited caveat: ``_preflight_face_layers`` over-reports the
+        absorber on the non-port axes of a waveguide-port simulation (the
+        grid drops those axes from ``cpml_axes``, the helper does not).
+        This check inherits that, as every other consumer of the helper
+        does; the effect is a possible advisory on an axis whose absorber
+        the grid will not actually allocate. Advisory tier, so it costs a
+        line of noise, never a run.
         """
         face_layers = None
         for ax_name, profile in (("x", self._dx_profile),

@@ -1,0 +1,32 @@
+name: rfx-spec01-wp6-gpu-regression
+description: "SPEC-01 WP6 GPU-lane verification: run the gpu-marked arms of tests/test_multiband_nu_envelope.py (F-S1 3D P-B, 1e6 steps, r in {1.4, 2.0}) as PACKAGED REGRESSION TESTS rather than as a bare script, so the committed CI packaging is exercised on the hardware it targets. The F-S1 3D VERDICT is already recorded from run 369367256892 (evidence validation/research/multiband_nu/results/w1_pb_full_gpu.json); this run re-executes the same measurement through the committed test wrapper and its committed evaluate_fs1 judge. It therefore adds no new claim and moves no window: a pass confirms the packaging, a failure is a packaging defect to report, not a re-litigation of F-S1. Launch: vessl run create -f validation/research/multiband_nu/vessl_wp6_gpu_regression.yaml (from OUTSIDE any git worktree). Code staged by rsync to claude-workspace/rfx/checkouts/multiband-nu-envelope. Harvest per SPEC-00: ~/Documents/vessl-run-logs/harvest.sh RUN_ID rfx-spec01-wp6-gpu-regression"
+tags: [rfx, spec01, multiband-nu, wp6, regression, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  SRC=/root/workspace/claude-workspace/rfx/checkouts/multiband-nu-envelope
+  OUT=/root/workspace/claude-workspace/rfx/runs/spec01-wp6-gpu-regression
+  mkdir -p "$OUT"
+  cd "$SRC"
+  echo "=== SPEC-01 WP6 GPU regression (gpu-marked multiband envelope arms) ==="
+  date
+  python -m pip install -q "scipy>=1.11" pytest
+  export PYTHONPATH="$SRC:${PYTHONPATH:-}"
+  echo "staged commit: $(cat "$SRC/.staged-commit" 2>/dev/null || echo unknown)"
+  python -c "import jax, rfx; print('backend', jax.default_backend(), jax.devices(), '| rfx', rfx.__file__)"
+  # Marker override per SPEC-00 0.2-6: the default addopts exclude gpu and
+  # slow_physics, so both lanes are selected explicitly here.
+  python -m pytest tests/test_multiband_nu_envelope.py \
+      -o addopts="" -m "gpu or slow_physics" -v \
+      2>&1 | tee "$OUT/wp6_gpu_regression.log"
+  echo "=== DONE ==="
+  date

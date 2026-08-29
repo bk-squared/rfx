@@ -836,3 +836,72 @@ never rewrite `results/w4r2_analytic_cavity.json`.
    gate rather than only described in prose.
 
 No other gate moved; see the battery record below.
+
+## C8 — corrections found while writing the WP6 support row (2026-08-29; no window, rule or verdict touched)
+
+Writing the support-matrix evidence table required quoting each witness's
+measured value, which surfaced three prose figures that round the wrong
+way against the committed JSON. In every case the JSON is and always was
+authoritative; no verdict, window or judge used the prose number.
+
+**C8a — the W4R2 verdict's matched-scale contrast.** The W4R2 verdict
+section says "the multiband arm's additional error at matched scale is
+≤ 1e-6 relative (kHz class)". Recomputed from
+`results/w4r2_analytic_cavity.json`, |f_mb − f_uc| / f_TE101 is
+5.44e-6 (s = 2.0, 32.8 kHz) / 9.03e-7 (s = 1.0, 5.4 kHz) / 3.05e-7
+(s = 0.5, 1.8 kHz) / 1.58e-7 (s = 0.25, 0.95 kHz). "kHz class" is right;
+"≤ 1e-6 relative" holds only from s = 1.0 down and understates the
+coarsest scale by 5.4×. Corrected statement, and the one the support row
+carries: **the multi-band arm's extra error at matched scale is 33 kHz
+(5.4e-6 relative) at the coarsest scale, falling to 0.95 kHz (1.6e-7) at
+the finest.** The F-S4 verdict is unaffected: it is a statement about the
+fitted ORDERS (p_uc = p_mb = 1.95, both against the analytic target),
+and the contrast figure entered no window and no judge.
+
+**C8b — F-S1 1-D drift bound.** The maximum |E_n−E_0|/E_0 over the eight
+committed 1-D arms is 2.931e-6 (r = 1.4 abrupt), so a "≤ 2.9e-6" phrasing
+is false by rounding. The support row states ≤ 2.94e-6. The pre-declared
+envelope it is judged against (1.19e-3 at 10^6 steps) is untouched, and
+`evaluate_fs1` reported FIRED=False on every arm either way.
+
+**C8c — F-S3 in-envelope deviation bound.** The maximum in-envelope
+|T_meas − T_model| is 7.54e-6 (r = 1.2 abrupt), not ≤ 7.5e-6. The support
+row states ≤ 7.6e-6. The window (max(3e-4, 0.5·|1−T_model|)) is untouched
+and the 3e-4 floor dominates every arm regardless.
+
+## WP6 acceptance batteries (2026-08-29; marker override `-o addopts="" -m "not gpu"` throughout)
+
+| Battery | Selection | Result |
+|---|---|---|
+| NU battery | every `tests/test_*` matching nonuniform / `_nu_` / `nu_` / graded / grading / subpixel / smooth_grading (53 modules) | **438 passed, 3 xfailed, 8 deselected** (715 s) |
+| Preflight battery | the 17 `test_*preflight*` modules | included in the row below |
+| Preflight + example-fidelity + tutorials | the 17 preflight modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **304 passed** (228 s) |
+| Multiband envelope, fast lane | `tests/test_multiband_nu_envelope.py` under default markers | **8 passed** (~30 s) |
+| Multiband envelope, slow lane | same file, `-m "slow_physics and not gpu"` | **5 passed** (160 s) — the four full 10^6-step 1-D F-S1 arms and the full four-scale W4R2 F-S4 ladder |
+| Multiband envelope, gpu lane | same file, `-m gpu` | not runnable on this CPU host; yaml emitted (below). The F-S1 3-D verdict itself is already committed evidence (VESSL 369367256892). |
+| Re-verification after the final doc/docstring edits | emission contract + example fidelity + multiband envelope + in-plane grading guards | **114 passed** (64 s) |
+
+**Movers: two, both explained, both in WP6d above.** (1) the #737
+enumerate-and-classify gate on the 13 phase-1 files, and (2) the
+consequent snapshot re-capture (exactly 2 keys added, 0 removed, 0
+changed). **No unexplained mover.** In particular no committed example
+gained or lost a preflight row, so neither new advisory site fires
+anywhere in the repo's own example set — the 1.3 -> 1.4 constructor
+threshold likewise moved nothing (`test_inplane_grading_guards` drives
+ratio-2 and ratio-4 jumps, both still above the cap).
+
+The slow F-S4 arm runs the committed script in a scratch cwd, verified:
+`git status` shows no modification to any `results/*.json` after the
+slow-lane run.
+
+**GPU yaml emitted** (launch is the orchestrator's, per SPEC-00 §0.6):
+`validation/research/multiband_nu/vessl_wp6_gpu_regression.yaml` —
+cluster `remilab-c0`, preset `gpu-rtx4090`, image
+`nvcr.io/nvidia/jax:24.10-py3`, mount
+`/root/workspace/: volume://remilab-fs/personal-workspaces/`. It runs the
+`gpu`/`slow_physics` arms of `tests/test_multiband_nu_envelope.py` with
+the marker override, i.e. it re-executes the already-recorded F-S1 3-D
+measurement through the committed test wrapper and the committed
+`evaluate_fs1` judge. It adds no claim and moves no window: a pass
+confirms the CI packaging on its target hardware, a failure is a
+packaging defect to report.
