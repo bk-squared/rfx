@@ -255,10 +255,17 @@ def arm_extract():
     v.append(("F-I4 |Zc_thru - Zc_sp| [ohm]", round(dzc4, 4), 1.2,
               dzc4 <= 1.2))
     v.append(("F-I4 |beta ratio - 1|", round(dbt4, 5), 0.02, dbt4 <= 0.02))
-    v += fit_verdicts(fitT, "I3 thru", F_V1_CORR, F_V1_COND, F_V1_SIG_L,
-                      F_V1_SIG_TAU, F_A1_MAX4, F_A1_RMS4)
-    v += fit_verdicts(fitS, "I2 single-post", F_V2_CORR, F_V2_COND,
-                      F_V2_SIG_L, F_V2_SIG_TAU, F_A2_MAX4, F_A2_RMS4)
+    # NOTE (pre-declaration section 9): the imported attempt-3 helper
+    # hardcodes the SUPERSEDED attempt-3 F-P windows into its rows; those
+    # are not attempt-4 falsifiers (the attempt-4 F-P4 rows below are the
+    # binding ones) and are filtered here.
+    v += [row for row in fit_verdicts(
+        fitT, "I3 thru", F_V1_CORR, F_V1_COND, F_V1_SIG_L,
+        F_V1_SIG_TAU, F_A1_MAX4, F_A1_RMS4) if not row[0].startswith("F-P ")]
+    v += [row for row in fit_verdicts(
+        fitS, "I2 single-post", F_V2_CORR, F_V2_COND,
+        F_V2_SIG_L, F_V2_SIG_TAU, F_A2_MAX4, F_A2_RMS4)
+        if not row[0].startswith("F-P ")]
     for tag, fit in (("I3", fitT), ("I2", fitS)):
         v.append((f"F-P4 L_p ({tag}) [nH]", round(fit["l_nh"], 4),
                   F_P4_L_NH,

@@ -383,3 +383,29 @@ measured inputs are the #313/#318 ledger classes and the attempt-3
 DESIGN-PHASE injection table, all committed before any attempt-3/4
 measurement existed. No term uses the burned extraction numbers of
 section 1.
+
+## 9. PRE-VERDICT apparatus finding — stale attempt-3 F-P rows leaked into the attempt-4 verdict table (appended 2026-08-29, before the corrected table is adopted; sections 1-8 unchanged)
+
+The first `--extract` run of the attempt-4 harness reproduced every
+attempt-3 deterministic number to the 1e-5 class (all 7 reproduction
+gates PASS) and every falsifier IN THE FROZEN SECTION-5 LIST passed —
+but the printed verdict table also contained two rows per fit labeled
+"F-P L*/tau*" carrying the SUPERSEDED attempt-3 windows
+([0.20, 0.50] nH / [1.67, 8.34] ps), one of which read FIRED on the I2
+L (0.5089 — the very number whose window this lane re-derived).
+Mechanism (verified in source, not conjectured): the imported attempt-3
+helper `fit_verdicts` hardcodes its module-level `F_P_L_NH`/`F_P_TAU_PS`
+constants into its output rows; the attempt-4 harness passed its own
+F-A windows as parameters but could not parameterize F-P, so the
+attempt-3 rows rode along. The attempt-3 F-P window is NOT an attempt-4
+falsifier (section 5 froze the attempt-4 F-P as the sections-3/4
+windows; re-deriving that window is this lane's entire mandate, per the
+attempt-3 STOP's named remedy) — the stale rows contradict the
+committed pre-declaration. Per the frozen V-check discipline this is an
+apparatus bug: FIX THE APPARATUS, NEVER THE WINDOWS. Repair (committed
+before the corrected table is adopted): the harness filters the two
+hardcoded "F-P " rows out of the imported helper's output; its own
+F-P4 rows (already present and already evaluated in the same run:
+I3 0.4976/7.3302, I2 0.5089/6.7028 — ALL PASS) are the binding ones.
+No window, model, fixture, bin, or gate value changes; the fixtures are
+deterministic and the re-run is a reproduction.
