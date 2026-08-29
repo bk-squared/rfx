@@ -668,3 +668,34 @@ Relation to the P-C fixtures: W4R2 carries the F-S4 order VERDICT
 (theorem hypotheses satisfied); the P-C ladders stand as recorded
 diagnostics of geometry-realization limits and of the small matched-
 scale grading contrast (≤ 2.5e-3 at the cap, shrinking with h).
+
+## W4R2 verdict (2026-08-29) — **F-S4 PASS**
+
+`results/w4r2_analytic_cavity.json`, run immediately after the W4R2
+pre-declaration commit (`e1eabf0`), all 8 arms valid, every fit point
+above the 0.3 MHz floor (4 points per arm):
+
+| s | e_uc (MHz) | e_mb (MHz) | f_mb − f_uc |
+|---|---|---|---|
+| 2.0 | 18.079 | 18.111 | −33 kHz |
+| 1.0 | 4.544 | 4.549 | −5.4 kHz |
+| 0.5 | 1.167 | 1.169 | −1.9 kHz |
+| 0.25 | 0.315 | 0.316 | −0.8 kHz |
+
+**p_uc = 1.95, p_mb = 1.95** — fixture gate satisfied, F-S4 does NOT
+fire, no A4 anomaly. Global 2nd-order supraconvergence is preserved on
+the multiband grid at the cap ratio r = 1.4, exactly as Monk–Süli /
+Li–Shields predict; the multiband arm's additional error at matched
+scale is ≤ 1e-6 relative (kHz class) on the smooth-field observable.
+
+Retro-reading of the P-C contrast (W4R outcome item 3): the ~1e-3
+matched-scale contrast there is 3 orders larger than the clean-fixture
+grading contrast measured here — it is dominated by the two arms'
+different z-node placement interacting with the fixture's
+geometry-realization floor, not by grading dispersion. The candidate
+"first-order grading component" reading is thereby answered: on a
+fixture satisfying the theorem's hypotheses, no such component exists
+down to the kHz class.
+
+With F-S1 (1D+3D), F-S2, F-S3, F-S5 (phase 1) and F-S4 (W4R2) all
+PASS, the WP6 promotion gate is open.
