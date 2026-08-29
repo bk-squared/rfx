@@ -1320,3 +1320,44 @@ fidelity report all pass unchanged (123 passed) — no committed example has
 an in-plane profile with a max adjacent ratio in (1.3, 1.4], so the
 re-tightened in-plane threshold fires nowhere in the repo's own example
 set, exactly as the WP6d check found for the loosening.
+
+### WP6R.9 — arithmetic slip in the WP6R.4 parenthetical (2026-08-30)
+
+WP6R.4 and the W4R3 script docstring described the predicted revert-proof
+shifts (-47.3 / -24.0 / -12.0 / -6.0 MHz) as "11–20x the 0.3 MHz fit
+floor". The ratios are **20x to 158x** (6.02/0.3 = 20; 47.3/0.3 = 158); the
+"11–20x" was an arithmetic slip in a descriptive parenthetical. It entered
+no window, gate, prediction or judge — the pre-declared revert-proof pass
+condition was and is `fs4_fired = True` on the defect ladder. The script
+docstring is corrected to "20-160x"; this note records the slip rather than
+editing WP6R.4, per the append-only rule.
+
+## WP6R.10 — repair acceptance batteries (2026-08-30, marker override `-o addopts="" -m "not gpu"` throughout)
+
+| Battery | Selection | Result |
+|---|---|---|
+| Preflight + example-fidelity + tutorials | the 17 `test_*preflight*` modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **306 passed** (352 s CPU). WP6 recorded 304 for the same selection; the +2 are the enumerate-and-classify gate's per-file cases for the two new lane files. No other mover. |
+| Emission contract + example fidelity + fidelity report (re-run after the in-plane lock revert) | `test_preflight_advisory_emission_contract`, `test_example_fidelity_contract`, `test_fidelity_report` | **123 passed** |
+| Multi-band envelope, fast lane | `tests/test_multiband_nu_envelope.py`, default markers | **11 passed** (128 s) — including the new analytic z-dominance gate, the reduced W4R3 ladder through the committed judge, and the grading-defect test that must FIRE |
+| NU battery, first 89 tests | the 50-module NU selection, in file order: all five `test_distributed_nu_*`, both farfield modules, `test_inplane_grading_guards`, `test_msl_nu_abscissa`, and all 16 tests of `test_multiband_nu_envelope` **including its `slow_physics` arms** (the four full 1e6-step 1-D F-S1 arms and the full four-scale W4R3 F-S4 ladder) | **89 passed, 0 failed** before the run was stopped |
+| NU battery, remaining ~349 tests | `test_nonuniform_*`, `test_nu_*`, `test_subpixel*`, `test_waveguide_nu_*`, `test_smooth_grading_preserve`, `test_optimize_nonuniform`, `test_preflight_graded_rasterization`, `test_thin_conductor_nu_dual_spacing`, ... | **NOT COMPLETED in this session.** Another agent's concurrent pytest runs in other worktrees on this machine drove the 1-minute load average to 127 (5 heavyweight JAX processes plus forked children); the run advanced at roughly one test per five minutes and was left running. **This battery must be re-run on a quiet machine before merge.** |
+
+**What stands behind the unfinished battery, and what does not.** No `rfx/`
+solver, kernel, grid or runner code is modified by this repair. The only
+shared-code changes are two advisory sites — the preflight multi-band check
+(runway off-by-one, `:.3f` formatting, per-axis cap) and the constructor's
+abrupt-grading warning (per-axis cap, `:.3f`) — neither of which can change
+a numeric result. The battery that covers advisory emission
+(preflight + example fidelity + tutorials, 306 passed) ran to completion,
+as did every module that constructs an in-plane profile *and* asserts a
+warning outcome (`test_inplane_grading_guards`, inside the 89).
+
+For the in-plane threshold revert specifically, the blast radius was also
+checked statically over the whole suite: 51 test modules pass a
+`dx_profile`/`dy_profile`; the project sets no `-W error` filter, so an
+extra `UserWarning` can only break a test that asserts a warning is ABSENT;
+exactly two such modules exist, and the profiles they build are uniform
+(ratio 1.0), or graded at ratio 1.25 (below both thresholds) or 1.5 (above
+both) — none in the (1.3, 1.4] window where the two thresholds differ. That
+argument is not a substitute for running the battery; it is what is known
+without it.

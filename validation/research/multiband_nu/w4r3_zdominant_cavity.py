@@ -76,7 +76,7 @@ Revert-proof (``--revert-proof``): the CORE-C2-class metric defect
 transition node, the coarse->fine transition at z = 38 mm. The defect is
 identically null on a uniform mesh - it is a purely grading-side defect.
 Predicted by the same frozen model: per-scale shift -47.3 / -24.0 / -12.0 /
--6.0 MHz (11-20x the fit floor at every scale) and p_mb -> 1.374, which
+-6.0 MHz (20-160x the 0.3 MHz fit floor) and p_mb -> 1.374, which
 fires BOTH clauses of the frozen rule.
 
 Usage:
