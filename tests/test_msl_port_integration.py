@@ -90,6 +90,16 @@ LZ = H_SUB + 1.5e-3      # substrate + 1.5 mm air above
 GATE_F_LO = 3.0e9
 GATE_F_HI = 4.5e9
 
+# Issue #610 (single-source, no second copy of the gate): hoisted out of
+# test_msl_thru_line_z0_length_invariance_and_positive_sign to module scope so
+# tests/test_msl_z0_platform_datums.py can import and re-derive the SAME gate
+# instead of restating 0.007 as a fresh literal in a second file. Values and
+# derivation are UNCHANGED — see that test's docstring for the arithmetic and
+# tests/fixtures/msl_z0_length_invariance/platform_datums.json for the
+# cross-platform datum ledger.
+MEASURED_SPREAD_ENVELOPE = 0.004607   # {8,10,12} mm legs, 2026-08-09
+LEG_S11_BOUND = 0.15                  # per-leg mean|S11| bound, any leg length
+
 
 @pytest.mark.slow
 def test_msl_thru_line_passive_gate():
@@ -443,6 +453,48 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     on a fixed platform, but any change that moves |S11| at the ~1% level will
     surface there first; triage that as the longer line's larger accumulated
     mismatch, not as a spread-lock problem.
+
+    PLATFORM ENVELOPE (issue #610): both bounds above were derived/checked on
+    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). At a
+    FIXED commit, three platforms now agree to the printed digit: the
+    2026-08-09 derivation (commit 69a6956a, lead machine — CPU/OS/jax/numpy/
+    BLAS NOT RECORDED; PR #611 carries no platform identity, so do not infer
+    one), the GitHub ubuntu-24.04 runner (jax 0.6.2, three separate weekly
+    CI runs), and an AMD EPYC 9654 pod (jax 0.6.2, x64=False, complex64). See
+    tests/fixtures/msl_z0_length_invariance/platform_datums.json for the full
+    per-datum ledger (each record carries a `precision` tag; CI/derivation
+    rows are hand- or print-captured at 2-5 dp, only the pod row is full
+    float32) and tests/test_msl_z0_platform_datums.py for the fast structural
+    check that keeps it internally consistent with THIS test's own gate.
+
+    The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
+    at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
+    0.004607 (0.4607%) — entering somewhere in the CI commit window
+    90c79d1d..7f68f9fb (2026-08-11/12), unattributed to a single commit.
+    gate_from_envelope(0.004676) would derive 0.008 — a ONE-QUANTUM WIDENING.
+    Per issue #610's no-silent-loosening rule the gate STAYS 0.007: this is
+    recorded as CODE drift to diagnose later (lead's lane — bisect requires a
+    full-precision pod run of 69a6956a first, ~53 min/leg-set), NOT re-derived
+    as routine gate maintenance. Full-precision per-leg mean|Z0[+x]| moved:
+    57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
+    at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES
+    below the 0.01 Ω print quantum that makes the CI logs' "57.34 → 57.33"
+    look like a bigger move than it is; do not bisect off 2-dp prints. A
+    same-commit second-platform run that failed to reproduce spread to
+    <0.01 pp would falsify the "platform, not code" attribution above — it
+    did not fail (see the ledger). CLASSIFICATION POLICY (this threshold is
+    POLICY, not itself measured): a same-commit cross-platform disagreement
+    ≥ 0.05 pp is treated as platform variance; a shift entering between two
+    same-platform CI runs across a commit window is code drift. The measured
+    fact is narrower than the policy: cross-platform agreement at a fixed
+    commit is demonstrated to the 0.01 pp / 0.01 Ω print quantum (three
+    platforms, 2026-08-10/17/24 CI + this pod); agreement finer than that
+    print quantum is NOT MEASURED. Both bounds still hold here (spread
+    headroom 0.2324 pp; L=12mm |S11| headroom 0.0013026; settling −98 to
+    −104 dB, well past the −40 dB ring-down witness bar). If either bound
+    reds elsewhere: record a new datum in platform_datums.json (a
+    RE-MEASURE, per platform) before touching this lock — a red on another
+    platform/BLAS is diagnosed against the ledger, never fixed by loosening.
     @slow: three full FDTD thru-line runs.
     """
     # Legs {8, 10, 12} mm (L = 6 mm removed 2026-08-09, issue #518 — short-line
@@ -482,7 +534,9 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         )
         # (3) transmission + reflection envelope (consistent with the single-length gate).
         assert float(np.mean(s21)) > 0.90, f"|S21|={np.mean(s21):.3f} too low at L={l_line}"
-        assert float(np.mean(s11)) < 0.15, f"|S11|={np.mean(s11):.3f} too high at L={l_line}"
+        assert float(np.mean(s11)) < LEG_S11_BOUND, (
+            f"|S11|={np.mean(s11):.3f} too high at L={l_line}"
+        )
         # (4) |Z0| magnitude symmetry: the -x port differs from +x only in (now-fixed) sign.
         m0 = float(np.mean(np.abs(z0_p0)))
         m1 = float(np.mean(np.abs(z0_p1)))
@@ -498,8 +552,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     # (5) |Z0| length-invariance: per-unit-length property -> agree across lengths.
     # Bound derived from the fresh 2026-08-09 measured envelope through the
     # shared gate policy (see docstring for the per-leg numbers + arithmetic).
-    measured_spread_envelope = 0.004607   # {8,10,12} mm legs, 2026-08-09
-    spread_tol = gate_from_envelope(measured_spread_envelope, quantum=1000)
+    spread_tol = gate_from_envelope(MEASURED_SPREAD_ENVELOPE, quantum=1000)
     assert spread_tol == 0.007, (
         f"spread gate derives to {spread_tol}, not its committed 0.007 — the "
         f"envelope constant or tests/_gate_policy.py moved; re-measure before "
