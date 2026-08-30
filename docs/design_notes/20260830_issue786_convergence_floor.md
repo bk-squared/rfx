@@ -775,7 +775,7 @@ Both forms are now emitted (`apportionment.signed_decomposition`). The magnitude
    dz_fine = 0.125 mm, four descending rungs, s = 0.25 on-curve. PR #785's
    `|f(s) − f(0.25)|` was therefore never an error sequence, and **the 22.7 MHz "floor"
    figure is not an error**. (D5, and independently reproduced by the reviewer.)
-3. **Three exonerations at 1.2–2.5 orders of margin** (146x / 282x / 14.5x against their own windows; see §11.1 — an earlier draft said 3–5, which was arithmetic error)**.** Geometry quantization: 6.8e-6 cells
+3. **Three exonerations at 3–5 orders of margin.** Geometry quantization: 6.8e-6 cells
    against a 1e-3-cell window (D1b). Port/probe loading: 3.5 kHz and 0.6 kHz against a
    first-principles predicted **exact zero** and a 1 MHz window (D3). The extraction on
    the reference record: |E1 − consensus| = 0.069 MHz against a 1 MHz window, three
@@ -856,3 +856,239 @@ JSON is deliberately left unedited so its provenance stands.
 Also corrected: the instrument-honesty ratio now reads "9.7x to 25.7x across
 the fixture records, 25.7x at the reference rung" in both deliverables
 instead of a bare "9-26x" in one and "25.5x" in the other.
+
+## 12. Third-review corrections (2026-08-30, append-only)
+
+Four BLOCKING findings from the third independent adversarial review, plus four
+non-blocking items. **No measurement was re-run, no FDTD was executed for this
+section, and no pre-declared window was moved or widened.** One new arithmetic
+artifact is committed (`results/d2a_triple_orders.json`, item 12.4) and it is a
+diagnostic, not a judged quantity.
+
+### 12.0 — THIS NOTE'S OWN APPEND-ONLY RULE WAS BROKEN, and is repaired here
+
+The rule at the top of this file (lines 6–8) reads: *"This note is append-only.
+Sections are numbered in the order they were written; a correction is a NEW
+section, never an edit of an old one."* SPEC-00 0.2.3 says the same.
+
+Commit `f5965fb`, subject **"docs: fix the remaining en-dash '3-5 orders'
+occurrence missed by the ASCII replace"**, did not do that. It rewrote §10.10
+item 3 **in place**, replacing
+
+> `3. **Three exonerations at 3–5 orders of margin.** Geometry quantization: ...`
+
+with a corrected sentence carrying the new 1.2–2.5 figure and a parenthetical.
+Three things are wrong with that, in increasing order of seriousness:
+
+1. It was not a typo fix. The subject says "en-dash → ASCII"; the diff replaced
+   the *claim*. The replacement text itself still contains an en-dash ("1.2–2.5"),
+   so the stated purpose was not even served.
+2. It edited a **historical** section. §10.10 is the record of what this lane
+   claimed at the end of the first review round. Overwriting it removes the
+   evidence that the overclaim was ever made — which is the exact failure mode
+   append-only exists to prevent.
+3. §11.1 already carried the correction, correctly, as a new section. The
+   in-place edit was redundant as well as forbidden.
+
+**Repair.** Line 778 is restored to its original wording, en-dash included:
+*"Three exonerations at 3–5 orders of margin."* That sentence is **WITHDRAWN**
+and is wrong; it stays visible because the withdrawal is the record. §11.1 is
+and remains the correction: the margins are **1.2–2.5 orders** (146× / 282× /
+14.5× against the comparators quoted in the same sentence). Any reader arriving
+at §10.10 item 3 must read §11.1 with it.
+
+Nothing else in the lane's history was edited in place — `6203902`, the commit
+`f5965fb` was following up on, appended §11 and touched only generated
+deliverables (`verdict.py` / `verdict.json`), which are regenerated artifacts,
+not the append-only record.
+
+### 12.1 — WITHDRAWN: "the same box, the same port" (§7's closing paragraph)
+
+§7's last paragraph (lines 432–433) reads *"on a smooth fixture in the same box,
+with the same dt, record length, band, port and extraction"*. The PR body says
+the same. **"Same box" and "same port" are both false.** Verified against
+`d4_reference.py`'s and `fixture.py`'s own frozen constants and against the
+committed artifacts:
+
+| | W4R fixture | D4a / D2-B twin |
+|---|---|---|
+| enclosure | 27 × 22.5 × 13.5 mm | **38.25 × 38.25 × 1.5 mm** |
+| contents | ε_r = 4.3 substrate + ε_r = 2.2 upper layer + PEC trace | **vacuum, no dielectric, no trace** |
+| port | **pair** of Ez current sources, (6.75, 11.25, 0.75) and (20.25, 11.25, 0.75) mm, antisymmetric | **one** Ez current source, (6.75, 9.0, 0.75) mm |
+| probe | (18.0, 11.25, 0.75) mm | (13.5, 20.25, 0.75) mm |
+| observable | x-odd / y-even half-wave trace line ≈ 5.5 GHz | empty-box TM₁₁₀ ≈ 5.5421 GHz |
+| cells at s = 0.25 | 3,732,480 | 998,784 |
+
+What the twin **does** share with the fixture, verified rung by rung from the
+committed JSON rather than asserted: `dx = 0.75·s mm` and `dz = 0.25·s mm`
+(identical), **dt and n_steps identical to ten significant figures at all six
+rungs** (e.g. s = 0.25: dt = 1.866892974e-13 s, n_steps = 107130 on both), the
+20 ns record length, the Gaussian waveform (f₀ = 6 GHz, bandwidth 0.9), the
+additive `amplitude_kind="current"` Ez source *kind*, the 4–6.5 GHz analysis
+band, `subpixel_smoothing=True`, and the identical extraction path
+(`fx.modes_of` → `Result.find_resonances` → `fx.target_line`, Q_MIN = 30).
+
+**The p = 2.0001 result stands unchanged.** What changes is what it licenses.
+It is a control on the **machinery at matched discretization** — the Yee update,
+the `dz_profile` path at these dx/dz (both sides uniform), the additive current
+port as a *mechanism*, the time stepping over this record length, and the
+extraction. It is **not** a smooth twin of the fixture, and it says nothing
+about the fixture's box, its dielectric stack, its rasterized conductor edge, or
+its port pair. `verdict.json` now carries `smooth_field_control_scope` with both
+lists, emitted from the modules' own constants so it cannot drift from them.
+
+### 12.2 — NARROWED: what §7's "WHAT IT BOUNDS" actually binds
+
+§7's "WHAT IT BOUNDS" block (lines 422–429) binds *"#715's patch cross-validation
+baseline, and every absolute resonance quoted on a rasterized microstrip-class
+fixture in this class"* to ≥ 7.5e-3 and to "no continuum limit better than
+~2e-2". §7's **own Scope block, four lines earlier**, says what was measured: a
+13.5 × 4.5 × 1.5 mm PEC block on a 1.5 mm ε_r = 4.3 substrate with a 1.5 mm
+ε_r = 2.2 upper layer inside a 27 × 22.5 × 13.5 mm PEC box. That is **one
+enclosed 3-layer microstrip-class LINE**. It is not a patch, and **no patch was
+run anywhere in this lane**.
+
+**The binding is narrowed to:** absolute-frequency claims on *this* fixture and
+on fixtures of the same class — an enclosed, uniform-mesh, rasterized microstrip
+line on a layered dielectric stack, resonance extracted from a ring-down — over
+the resolved range dz_fine 0.25 → 0.0625 mm. Those must be stated against
+≥ 7.49e-3 and must not claim a continuum limit better than ~2e-2 without an
+external reference. **The binding on #715's PATCH baseline is WITHDRAWN.** A
+patch is a different object: an open radiating boundary rather than a PEC
+enclosure, a different L_eff, a different edge inventory, a different mode.
+
+**What extending it to #715 would require**, stated so the next lane can just do
+it: run this same ladder — the same nine lattice-valid rungs, the same uniform
+mesh, the same extraction, the same `ladder_guard` turn-over precondition — on
+#715's own patch geometry, and report *its* measured non-monotone spread. Two
+conditions this lane's own data show are not optional: (a) the ladder must span
+the turn-over, since the entire finding here is that a ladder read on one side
+of a maximum reports arithmetic and not error; (b) the ledger's −dx/L_eff
+staircase law must **not** be used as the bridge between the two fixture classes
+— §10.2 measured it over-predicting this fixture's variation by 5.6×, so it does
+not transport an envelope. `verdict.json` now carries
+`accuracy_envelope.scope_of_the_binding` with all three parts.
+
+### 12.3 — CORRECTED: the instrument-honesty ratio the second review introduced
+
+§11's closing paragraph and `verdict.py:329` / `results/verdict.json` said the
+fixture's estimator spread is *"9.7x to 25.7x larger than the twin's number
+across the fixture records, 25.7x at the reference rung"*. Recomputed from the
+two fields sitting in the **same JSON object**:
+
+| quantity | value | ÷ twin 8436.72 Hz |
+|---|---|---|
+| all records with a consensus | 72459.91 … 229749.66 Hz | **8.6× … 27.2×** |
+| uniform arm | 81456.48 … 215466.36 Hz | **9.7× … 25.5×** |
+| reference rung (UC s = 0.25) | 215466.36 Hz | **25.5×** |
+
+So "9.7x to 25.7x across the fixture records" mixed the *uniform-arm* lower
+bound with an *all-records* framing, and "25.7x at the reference rung" is
+25.5×. The correct statement is **8.6×–27.2× across all records with a
+consensus, 9.7×–25.5× on the uniform arm, 25.5× at the reference rung.** The
+underlying rule — quote 8.4 kHz only for the twin, quote the fixture's own
+215.5 kHz where the fixture's uncertainty is meant — is unchanged and correct.
+
+`verdict.py` no longer types this ratio: it is now derived from
+`twin_eps_instr_hz.at_reference_rung_hz` and `fixture_estimator_spread_hz` and
+formatted from those numbers (`instrument_uncertainty.ratio_fixture_over_twin`),
+so a hand-typed ratio cannot disagree with its own artifact again.
+
+### 12.4 — non-blocking: the successive-triple order claim was not what the data say
+
+§5 (line 299) and §8.1 (line 444) say the trace-free D2-A control's *"successive-triple
+ratios put its order near 0.4–0.5"*. No committed artifact held those ratios:
+`d2_edge.json` carries `p_nls = 4.256` (the poorly-converged NLS fit §5 itself
+declines to claim an order from) and `p_smooth_loglog = 0.370`, which fits
+|f − f∞| against the f∞ produced by that same NLS fit and so is not independent
+of it. Neither is a successive-triple ratio.
+
+They are now computed and committed (`d2_triples.py` →
+`results/d2a_triple_orders.json`; pure arithmetic on `d2_edge.json`, no
+simulation, no window). Because the ladder's h ratios are **not** constant
+(1.5, 1.333, 1.25, 1.2), the constant-ratio formula does not apply and the root
+of (f₁−f₂)/(f₂−f₃) = (h₁^p−h₂^p)/(h₂^p−h₃^p) is found numerically:
+
+| triple (s) | 1.5, 1.0, 0.75 | 1.0, 0.75, 0.6 | 0.75, 0.6, 0.5 |
+|---|---|---|---|
+| **p** | **0.3937** | **0.6110** | **0.7506** |
+
+**"near 0.4–0.5" is WITHDRAWN.** The measured range is **0.39 … 0.75, drifting
+monotonically upward** — which is itself the finding: no single order is
+identifiable on this control either, and its five rungs are not in a clean
+asymptotic regime. What survives is the weaker and still-sufficient statement
+§8.1 actually needs: **every triple puts the trace-free dielectric stack well
+below 2**, i.e. it is low-order at 11.79 GHz.
+
+*Instrument check for the estimator itself*, in the same artifact: run on the
+D4a twin's **analytic** discrete-eigenfrequency sequence, whose order is known
+independently to be 2.0001, the identical routine returns **2.0001 / 2.0001 /
+2.0000**. The estimator is sound; the 0.39–0.75 drift is a property of the
+D2-A sequence, not of the method.
+
+### 12.5 — non-blocking: preflight suppression removed from the harnesses
+
+Eight committed harnesses (`d0_reproduce`, `d1_geometry`, `d2_edge`, `d3_port`,
+`d4_reference`, `d5_predeclare_and_run`, `d5_instrument_check`,
+`d6_two_term_model`) opened `main()` with a blanket
+`warnings.filterwarnings("ignore")`. SPEC-00 0.2.5 forbids preflight suppression
+in committed harnesses. Reproduced before fixing: on an s = 1.5 build + run, the
+one warning that blanket filter swallows is rfx's own
+`[run] preflight found N advisory issue(s)` — a preflight advisory, exactly the
+thing the rule protects. (The `[PREFLIGHT] …` lines that `sim.preflight()`
+prints go to the stream directly and were never suppressed, which is why the
+lane's logs still showed them; the *summary* advisory was the casualty.)
+
+Replaced by `fixture.quiet_third_party_warnings()`, which silences
+Deprecation / PendingDeprecation / Future / Import / Resource warnings **by
+category** and then re-installs `UserWarning` ("default") and `PreflightWarning`
+("always") last, so the rfx advisory channel takes precedence over any earlier
+rule. `RuntimeWarning` — overflow and divide-by-zero from the estimators — stays
+visible. **No number changes**: warning filters do not touch numerics, and no
+result JSON was regenerated for this item.
+
+### 12.6 — corrections owed to the PR body (this lane cannot write to GitHub)
+
+Three statements in PR #788's body do not match this note or the artifacts. They
+are recorded here so whoever holds write access can apply them; the note is the
+authority, not the body.
+
+1. *"A smooth-field control in the same box, at the reference rung's own dt,
+   band, record length, port and extractor"* → **wrong on "same box" and "port"**;
+   replace per §12.1. The honest sentence: *"A smooth-field control — an
+   exact-reference empty vacuum box, at the fixture's own dx, dz, dt, record
+   length, band and extractor, but a different enclosure and a single-source
+   port instead of the fixture's antisymmetric pair — converges at p = 2.0001
+   against an exact discrete eigenfrequency."*
+2. *"(3) port/probe loading | EXONERATED | 3.5 kHz over a 10⁴ drive span"* →
+   **mis-attributed number.** From `d3_port.json` at s = 0.75, three different
+   spans exist and 3.5 kHz is not the drive one:
+   - drive amplitude alone, ×0.01 → ×100 (a 10⁴ span): **1.11 Hz** (s = 0.75),
+     **0.40 Hz** (s = 0.5);
+   - `coupling_arm_span_hz`, which is those three variants **plus the moved port
+     pair**: **354.15 Hz** (s = 0.75), **178.13 Hz** (s = 0.5);
+   - `max_pairwise_span_hz` over all five variants, i.e. adding the moved probe
+     — **this is the number the frozen 1 MHz window judged**: **3.540 kHz**
+     (s = 0.75), **0.623 kHz** (s = 0.5).
+   §5's D3 paragraph already states this correctly ("span over drive amplitude
+   ×0.01 … ×100, a moved port pair and a moved probe: 3.540 kHz"); only the PR
+   body compresses it into a false attribution. The **exoneration is unaffected**
+   — the judged span is 3.540 kHz against a 1 MHz window, and the drive arm's
+   own 1.11 Hz is if anything a stronger confirmation of the predicted exact
+   zero.
+3. *"Three adversarial review rounds: the first … the second …"* → the body
+   **named three and documented two**. At the time it was written there had been
+   two (§10 and §11). With this section there are now genuinely three: §10
+   (three overclaims blocked), §11 (two blocked), §12 (four blocked plus the
+   append-only violation). The body should say what it can enumerate.
+
+### 12.7 — what §12 did NOT change
+
+Every measurement in this note stands exactly as recorded. D0's bit-identical
+reproduction, D1's exoneration, D3's exoneration, D4a's p = 2.0001 and 8.4 kHz
+instrument error, D4c's 0.069 MHz, D5's single sign change and turn-over at
+dz_fine = 0.125 mm, D6's non-identifiable exponent, the 41.44 MHz = 7.49e-3
+measured envelope and the 97 MHz model spread — none of these moved, and no
+window was touched. §12 narrows **claims**; it does not revise **data**. The
+one thing added to the evidence base is arithmetic on already-committed numbers
+(§12.4), and it made a claim *narrower*, not wider.
