@@ -154,6 +154,17 @@
    "best_fitting_admissible_model": "h^0.5000 + h^2 (bulk order 2 = D4a measured)",
    "best_fitting_finest_minus_f_inf_hz": 80239428.61662197,
    "statement": "Over the ADMISSIBLE nine-rung model set the finest rung lies between 16.8 MHz below and 80.2 MHz above the extrapolated limit, i.e. its own absolute accuracy is 2.1e-03 at best and 1.5e-02 at worst. The best-fitting admissible model (h^0.5000 + h^2 (bulk order 2 = D4a measured), RMS 2.64 MHz) is the one that puts it 80.2 MHz ABOVE the limit -- the earlier '11 MHz above / 17 MHz below' range excluded it and is withdrawn."
+  },
+  "scope_of_the_binding": {
+   "measured_on": {
+    "count": 1,
+    "fixture": "a single enclosed 3-layer microstrip-class LINE: a 13.5 x 4.5 x 1.5 mm PEC trace on a 1.5 mm eps_r = 4.3 substrate under a 4.5 mm air gap, a 1.5 mm eps_r = 2.2 upper layer and a second 4.5 mm air gap, all inside a 27 x 22.5 x 13.5 mm PEC box",
+    "observable": "the x-odd / y-even half-wave line near 5.5 GHz, uniform mesh, subpixel_smoothing=True, Harminv ring-down",
+    "refinement_range": "dz_fine 0.25 -> 0.0625 mm, dx 0.75 -> 0.1875 mm"
+   },
+   "binds": "absolute-frequency claims on THIS fixture, and on fixtures of the same class -- an enclosed, uniform-mesh, rasterized microstrip line on a layered dielectric stack, extracted from a ring-down -- over this refinement range: state them against >= 7.49e-03 (measured refinement variation), not against the finest rung, and do not claim a continuum limit better than ~2e-02 without an external reference.",
+   "does_NOT_bind": "#715's PATCH cross-validation baseline. No patch was run in this lane. A patch is a different object: an open radiating boundary instead of a PEC enclosure, a different L_eff, a different edge inventory, and a different mode. Quoting this number against #715's baseline would be binding a patch to a number measured on one non-patch fixture.",
+   "what_would_extend_it_to_715": "run this same ladder -- same nine lattice-valid rungs, same uniform mesh, same extraction, same turn-over check via ladder_guard -- on #715's own patch geometry, and report ITS measured non-monotone spread. Two further conditions, both of which this lane's own data show matter: (a) the ladder must span the turn-over, since the whole finding here is that a ladder read on one side of a maximum reports arithmetic, not error; (b) the ledger's -dx/L_eff staircase law must not be used as the bridge -- this lane MEASURED it over-predicting this fixture's variation by 5.6x, so it does not transport an envelope between fixture classes."
   }
  },
  "ladder_against_independent_reference": {
@@ -225,7 +236,75 @@
     129838.7690925598
    ]
   },
-  "rule": "quote 8.4 kHz ONLY for the twin; quote the fixture's own 215.5 kHz (reference rung), 81.5-215.5 kHz (uniform arm) or 72-230 kHz (all records with a consensus) wherever the fixture's uncertainty is meant -- 9.7x to 25.7x larger than the twin's number across the fixture records, 25.7x at the reference rung"
+  "ratio_fixture_over_twin": {
+   "denominator_hz": 8436.720934867859,
+   "denominator_is": "the twin's extraction error at s = 0.25",
+   "all_records_with_a_consensus": [
+    8.588634337891566,
+    27.23210331548477
+   ],
+   "uniform_arm": [
+    9.65499338378795,
+    25.5391113732156
+   ],
+   "at_reference_rung": 25.5391113732156
+  },
+  "rule": "quote 8.4 kHz ONLY for the twin; quote the fixture's own 215.5 kHz (reference rung), 81.5-215.5 kHz (uniform arm) or 72-230 kHz (all records with a consensus) wherever the fixture's uncertainty is meant -- 8.6x to 27.2x the twin's number across all records with a consensus (9.7x to 25.5x on the uniform arm), and 25.5x at the reference rung"
+ },
+ "smooth_field_control_scope": {
+  "control": "D4a / D2-B exact-reference twin",
+  "result_it_carries": "p = 2.0001 analytic (1.9707 measured); 45 kHz total error at s = 0.25",
+  "shared_with_the_W4R_fixture": {
+   "dx_per_rung_m": "fx.PC_DX0 * scale (identical)",
+   "dz_per_rung_m": "fx.PC_DZF0 * scale, uniform (identical)",
+   "dt_and_n_steps": "identical at every rung -- both use fx.n_steps_for(scale, dz) and the same CFL",
+   "record_length_s": 2e-08,
+   "source_waveform": {
+    "f0": 6000000000.0,
+    "bandwidth": 0.9
+   },
+   "source_kind": "Ez, amplitude_kind='current' (additive)",
+   "analysis_band_hz": [
+    4000000000.0,
+    6500000000.0
+   ],
+   "extraction": "fx.modes_of + fx.target_line, i.e. the same Result.find_resonances path and the same Q_MIN = 30 dominance rule",
+   "subpixel_smoothing": true
+  },
+  "NOT_shared_with_the_W4R_fixture": {
+   "enclosure_m": {
+    "fixture": [
+     0.027,
+     0.0225,
+     0.013499999999999998
+    ],
+    "twin": [
+     0.03825,
+     0.03825,
+     0.0015
+    ],
+    "comment": "27 x 22.5 x 13.5 mm vs 38.25 x 38.25 x 1.5 mm -- a different box, not the same box"
+   },
+   "materials": {
+    "fixture": "eps_r = 4.3 substrate + eps_r = 2.2 upper layer + a PEC trace",
+    "twin": "vacuum throughout, no dielectric, no trace"
+   },
+   "port": {
+    "fixture": "an antisymmetric PAIR of Ez current sources at (0.00675, 0.01125, 0.00075) and (0.02025, 0.01125, 0.00075) m, probe at (0.018, 0.01125, 0.00075) m",
+    "twin": "a SINGLE Ez current source at (0.00675, 0.009, 0.00075) m, probe at (0.0135, 0.02025, 0.00075) m",
+    "comment": "a different port: different count, different symmetry selection, different coordinates"
+   },
+   "mode_observed": {
+    "fixture": "x-odd / y-even half-wave trace line near 5.5 GHz",
+    "twin": "the empty-box TM110 near 5.542 GHz"
+   },
+   "cells_at_the_reference_rung": {
+    "fixture": 3732480,
+    "twin": 998784
+   }
+  },
+  "what_it_therefore_licenses": "the Yee update, the dz_profile path at these dx/dz (both sides run UNIFORM profiles), the additive current port as a mechanism, the time stepping over this record length, and the find_resonances extraction are each second-order-clean at every rung of THIS ladder, reference rung included",
+  "what_it_does_NOT_license": "any statement about the fixture's box, its dielectric stack, its rasterized conductor edge, or its port pair. It is a control on the MACHINERY at matched discretization, not a smooth twin of the fixture."
  },
  "ledger_cross_check": {
   "status": "REFUTED -- reported as a FINDING, not as support",
@@ -278,7 +357,7 @@
   "(2) edge singularity": {
    "letter": "INCONCLUSIVE on the nine-rung ladder (re-taken)",
    "argument_not_measurement": "a Meixner wedge reduces the convergence ORDER and cannot by itself produce a non-vanishing floor -- theory, from the pre-declared 3*pi/2 wedge, not a measurement",
-   "smooth_field_control_as_measured": "p = 2.0001 analytic / 1.9707 measured on the exact-reference vacuum twin",
+   "smooth_field_control_as_measured": "p = 2.0001 analytic / 1.9707 measured on the exact-reference vacuum twin -- a DIFFERENT box and a DIFFERENT port at matched dx/dz/dt/record/band/extraction; see smooth_field_control_scope for exactly what it does and does not share with the fixture",
    "D6": "the Meixner exponent 4/3 is NOT confirmed (RMS 4.36 MHz against a 1 MHz window; a = 0.5 fits better at 2.64 MHz)"
   },
   "(3) port / probe loading": {
@@ -295,7 +374,7 @@
   "D0: the symptom REPRODUCES bit-identically (0.0000 Hz over all eleven rungs) -- it is a property of the code, not of a run.",
   "D5: f(h) TURNS OVER inside the ladder -- exactly one sign change, maximum at dz_fine = 0.125 mm, four descending rungs -- so PR #785's |f(s) - f(0.25)| was never an error sequence and the 22.7 MHz 'floor' figure is not an error.",
   "Three candidates are cleanly exonerated, each against its own pre-declared window, at 1.2-2.5 orders of margin: geometry quantization 6.8e-6 cells vs a 1e-3 cell window (146x = 2.2 orders), port loading 3.5 kHz vs a 1 MHz window against a predicted exact zero (282x = 2.5 orders), and the extraction instrument on the reference record 0.069 MHz vs a 1 MHz window (14.5x = 1.2 orders, the weakest of the three). An earlier draft said '3-5 orders'; that was arithmetic error, corrected here against the same comparators.",
-  "The smooth-field control converges at p = 2.0001 on an exact-reference vacuum twin with the same dt, band and record length -- so the Yee core, the port and the extraction are not what limits this fixture.",
+  "The smooth-field control converges at p = 2.0001 on an exact-reference vacuum twin at the same dx, dz, dt, band, record length and extraction -- but in a DIFFERENT box (38.25 x 38.25 x 1.5 mm vacuum, not the fixture's 27 x 22.5 x 13.5 mm stack) and with a DIFFERENT port (one Ez source, not the fixture's antisymmetric pair). It licenses the MACHINERY at matched discretization; it is not a smooth twin of the fixture, and the earlier 'same box / same port' framing is withdrawn (smooth_field_control_scope).",
   "D2 is INCONCLUSIVE on the nine-rung ladder under its own frozen rule; the wedge argument stands as theory, not as measurement.",
   "WHETHER f(h) CONVERGES TO THE PHYSICAL ANSWER IS NOT DETERMINED BY THIS LANE: there is no external reference, the admissible extrapolations span 97 MHz = 1.8e-2, and the ledger's measured DIELECTRIC-interface staircasing floor for this fixture class remains fully compatible with everything measured here.",
   "ladder_guard.py states the precondition that catches the original misreading, and fires on PR #785's own ladder."

@@ -26,6 +26,16 @@ damage. Three rules it now obeys:
    the fixture's own records give an independent-estimator spread of
    215.5 kHz at the reference rung and 72-230 kHz across records. Where
    the fixture's uncertainty is meant, the fixture's number is quoted.
+   The ratio between the two is DERIVED from those fields, not typed
+   (third review: a typed "9.7x to 25.7x ... 25.7x at the reference rung"
+   did not match the artifact it sat next to).
+4. Every control is quoted with what it shares with the fixture and what
+   it does not (``smooth_field_control_scope``), and the accuracy
+   envelope is quoted with the fixture class it was measured on and the
+   classes it does NOT bind (``accuracy_envelope.scope_of_the_binding``).
+   Both were added after the third review found the twin described as
+   "the same box ... the same port" (it is neither) and the envelope
+   binding #715's PATCH baseline (no patch was run in this lane).
 
 Run:  PYTHONPATH=. python -m validation.research.convergence_floor.verdict
 """
@@ -38,6 +48,7 @@ import os
 import numpy as np
 
 from validation.research.convergence_floor import fixture as fx
+from validation.research.convergence_floor import d4_reference as d4r
 
 HERE = os.path.dirname(__file__)
 RES = os.path.join(HERE, "results")
@@ -47,6 +58,21 @@ OUT = os.path.join(RES, "verdict.json")
 def load(name):
     p = os.path.join(RES, name)
     return json.load(open(p)) if os.path.exists(p) else None
+
+
+def _cells_fixture(scale: float) -> int:
+    """Realized cell count of the W4R fixture at one ladder rung."""
+    dx = fx.PC_DX0 * scale
+    return (int(round(fx.PC_A / dx)) * int(round(fx.PC_B / dx))
+            * len(fx.pc_uniform_profile(scale)))
+
+
+def _cells_twin(scale: float) -> int:
+    """Realized cell count of the D4a exact-reference twin at one rung."""
+    dx = fx.PC_DX0 * scale
+    dz = fx.PC_DZF0 * scale
+    return (int(round(d4r.TWIN_A / dx)) * int(round(d4r.TWIN_B / dx))
+            * int(round(d4r.TWIN_LZ / dz)))
 
 
 def main():
@@ -322,12 +348,114 @@ def main():
                                       d5i["estimator_spread_range_khz"]]
                 if d5i else None,
             },
-            "rule": ("quote 8.4 kHz ONLY for the twin; quote the fixture's "
-                     "own 215.5 kHz (reference rung), 81.5-215.5 kHz "
-                     "(uniform arm) or 72-230 kHz (all records with a "
-                     "consensus) wherever the fixture's uncertainty is "
-                     "meant -- 9.7x to 25.7x larger than the twin's number across the fixture records, 25.7x at the reference rung"),
         }
+        # BL3 (third review): the ratio is now DERIVED from the two fields
+        # in this same JSON object, not typed. The second review's
+        # "9.7x to 25.7x ... 25.7x at the reference rung" was not what the
+        # artifact supports: all_arms_range_hz / twin(0.25) = 8.6x-27.2x,
+        # uniform_arm_range_hz / twin(0.25) = 9.7x-25.5x, and the
+        # reference rung is 25.5x, not 25.7x.
+        twin_ref = out["instrument_uncertainty"]["twin_eps_instr_hz"][
+            "at_reference_rung_hz"]
+        spread = out["instrument_uncertainty"]["fixture_estimator_spread_hz"]
+        ratios = {
+            "denominator_hz": float(twin_ref),
+            "denominator_is": "the twin's extraction error at s = 0.25",
+            "all_records_with_a_consensus": [
+                float(spread["all_arms_range_hz"][0] / twin_ref),
+                float(spread["all_arms_range_hz"][1] / twin_ref)],
+            "uniform_arm": [
+                float(spread["uniform_arm_range_hz"][0] / twin_ref),
+                float(spread["uniform_arm_range_hz"][1] / twin_ref)],
+            "at_reference_rung": float(
+                spread["at_reference_rung_hz"] / twin_ref),
+        }
+        out["instrument_uncertainty"]["ratio_fixture_over_twin"] = ratios
+        out["instrument_uncertainty"]["rule"] = (
+            "quote %.1f kHz ONLY for the twin; quote the fixture's own "
+            "%.1f kHz (reference rung), %.1f-%.1f kHz (uniform arm) or "
+            "%.0f-%.0f kHz (all records with a consensus) wherever the "
+            "fixture's uncertainty is meant -- %.1fx to %.1fx the twin's "
+            "number across all records with a consensus (%.1fx to %.1fx on "
+            "the uniform arm), and %.1fx at the reference rung"
+            % (twin_ref / 1e3, spread["at_reference_rung_hz"] / 1e3,
+               spread["uniform_arm_range_hz"][0] / 1e3,
+               spread["uniform_arm_range_hz"][1] / 1e3,
+               spread["all_arms_range_hz"][0] / 1e3,
+               spread["all_arms_range_hz"][1] / 1e3,
+               ratios["all_records_with_a_consensus"][0],
+               ratios["all_records_with_a_consensus"][1],
+               ratios["uniform_arm"][0], ratios["uniform_arm"][1],
+               ratios["at_reference_rung"]))
+
+    # --- BL1 (third review): the smooth-field control's ACTUAL scope ---
+    # The design note's 7 and the PR body said the p = 2.0001 control ran
+    # "on a smooth fixture in the same box ... same port". It did not.
+    # The twin is a DIFFERENT enclosure and a DIFFERENT excitation; what it
+    # shares is the per-rung DISCRETIZATION and the INSTRUMENT. Emitted
+    # from the two modules' own frozen constants so it cannot drift.
+    out["smooth_field_control_scope"] = {
+        "control": "D4a / D2-B exact-reference twin",
+        "result_it_carries": "p = 2.0001 analytic (1.9707 measured); "
+                             "45 kHz total error at s = 0.25",
+        "shared_with_the_W4R_fixture": {
+            "dx_per_rung_m": "fx.PC_DX0 * scale (identical)",
+            "dz_per_rung_m": "fx.PC_DZF0 * scale, uniform (identical)",
+            "dt_and_n_steps": "identical at every rung -- both use "
+                              "fx.n_steps_for(scale, dz) and the same CFL",
+            "record_length_s": fx.T_TOTAL,
+            "source_waveform": dict(fx.WAVEFORM),
+            "source_kind": "Ez, amplitude_kind='current' (additive)",
+            "analysis_band_hz": list(d4r.TWIN_BAND),
+            "extraction": "fx.modes_of + fx.target_line, i.e. the same "
+                          "Result.find_resonances path and the same "
+                          "Q_MIN = %g dominance rule" % fx.Q_MIN,
+            "subpixel_smoothing": fx.SUBPIXEL,
+        },
+        "NOT_shared_with_the_W4R_fixture": {
+            "enclosure_m": {
+                "fixture": [fx.PC_A, fx.PC_B, fx.PC_TOTAL_H],
+                "twin": [d4r.TWIN_A, d4r.TWIN_B, d4r.TWIN_LZ],
+                "comment": "27 x 22.5 x 13.5 mm vs 38.25 x 38.25 x 1.5 mm "
+                           "-- a different box, not the same box",
+            },
+            "materials": {
+                "fixture": "eps_r = 4.3 substrate + eps_r = 2.2 upper "
+                           "layer + a PEC trace",
+                "twin": "vacuum throughout, no dielectric, no trace",
+            },
+            "port": {
+                "fixture": "an antisymmetric PAIR of Ez current sources at "
+                           "%s and %s m, probe at %s m"
+                           % (fx.SRC_P, fx.SRC_M, fx.PRB),
+                "twin": "a SINGLE Ez current source at %s m, probe at %s m"
+                        % (d4r.TWIN_SRC, d4r.TWIN_PRB),
+                "comment": "a different port: different count, different "
+                           "symmetry selection, different coordinates",
+            },
+            "mode_observed": {
+                "fixture": "x-odd / y-even half-wave trace line near "
+                           "5.5 GHz",
+                "twin": "the empty-box TM110 near 5.542 GHz",
+            },
+            "cells_at_the_reference_rung": {
+                "fixture": _cells_fixture(fx.REF_SCALE),
+                "twin": _cells_twin(fx.REF_SCALE),
+            },
+        },
+        "what_it_therefore_licenses": (
+            "the Yee update, the dz_profile path at these dx/dz (both "
+            "sides run UNIFORM profiles), the additive current port as "
+            "a mechanism, the time stepping over this record length, "
+            "and the find_resonances extraction are each "
+            "second-order-clean at every rung of THIS ladder, reference "
+            "rung included"),
+        "what_it_does_NOT_license": (
+            "any statement about the fixture's box, its dielectric stack, "
+            "its rasterized conductor edge, or its port pair. It is a "
+            "control on the MACHINERY at matched discretization, not a "
+            "smooth twin of the fixture."),
+    }
 
     # --- the ledger cross-check: REFUTED by this lane's own data -------
     if d5:
@@ -369,6 +497,80 @@ def main():
                 "question and deserves its own issue."
                 % ((pred_hi - pred_lo) * 100, pred_change_hz / 1e6,
                    meas / 1e6, pred_change_hz / meas)),
+        }
+
+    # BL2 is emitted here, after the ledger cross-check, because the
+    # extension condition quotes that cross-check's measured
+    # over-prediction factor.
+    if "accuracy_envelope" in out:
+        _env = out["accuracy_envelope"]
+        # --- BL2 (third review): WHAT THE ENVELOPE BINDS, narrowed to the
+        # fixture actually measured. The design note's 7 bound "#715's
+        # patch cross-validation baseline" to the >= 7.5e-3 number. This
+        # lane measured ONE enclosed 3-layer microstrip LINE, not a patch;
+        # a patch is a different radiator (open boundary, different
+        # L_eff, different edge inventory) and nothing here was run on
+        # one. The binding is therefore stated for the measured class
+        # only, with the extension condition named.
+        out["accuracy_envelope"]["scope_of_the_binding"] = {
+            "measured_on": {
+                "count": 1,
+                "fixture": ("a single enclosed 3-layer microstrip-class "
+                            "LINE: a %g x %g x %g mm PEC trace on a %g mm "
+                            "eps_r = %g substrate under a %g mm air gap, a "
+                            "%g mm eps_r = %g upper layer and a second "
+                            "%g mm air gap, all inside a %g x %g x %g mm "
+                            "PEC box"
+                            % ((fx.TRACE_X[1] - fx.TRACE_X[0]) * 1e3,
+                               (fx.TRACE_Y[1] - fx.TRACE_Y[0]) * 1e3,
+                               fx.PC_H_TRACE_BAND * 1e3,
+                               fx.PC_H_SUB * 1e3, fx.PC_EPS_SUB,
+                               fx.PC_AIR1 * 1e3,
+                               fx.PC_H_UPPER * 1e3, fx.PC_EPS_UPPER,
+                               fx.PC_AIR2 * 1e3,
+                               fx.PC_A * 1e3, fx.PC_B * 1e3,
+                               fx.PC_TOTAL_H * 1e3)),
+                "observable": ("the x-odd / y-even half-wave line near "
+                               "5.5 GHz, uniform mesh, "
+                               "subpixel_smoothing=True, Harminv ring-down"),
+                "refinement_range": ("dz_fine 0.25 -> 0.0625 mm, "
+                                     "dx 0.75 -> 0.1875 mm"),
+            },
+            "binds": ("absolute-frequency claims on THIS fixture, and on "
+                      "fixtures of the same class -- an enclosed, "
+                      "uniform-mesh, rasterized microstrip line on a "
+                      "layered dielectric stack, extracted from a "
+                      "ring-down -- over this refinement range: state them "
+                      "against >= %.2e (measured refinement variation), "
+                      "not against the finest rung, and do not claim a "
+                      "continuum limit better than ~%.0e without an "
+                      "external reference."
+                      % (_env["spread_relative"],
+                         _env["continuum_limit"]["f_inf_spread_relative"]
+                         if "continuum_limit" in _env else 2e-2)),
+            "does_NOT_bind": (
+                "#715's PATCH cross-validation baseline. No patch was run "
+                "in this lane. A patch is a different object: an open "
+                "radiating boundary instead of a PEC enclosure, a "
+                "different L_eff, a different edge inventory, and a "
+                "different mode. Quoting this number against #715's "
+                "baseline would be binding a patch to a number measured "
+                "on one non-patch fixture."),
+            "what_would_extend_it_to_715": (
+                "run this same ladder -- same nine lattice-valid rungs, "
+                "same uniform mesh, same extraction, same turn-over check "
+                "via ladder_guard -- on #715's own patch geometry, and "
+                "report ITS measured non-monotone spread. Two further "
+                "conditions, both of which this lane's own data show "
+                "matter: (a) the ladder must span the turn-over, since "
+                "the whole finding here is that a ladder read on one side "
+                "of a maximum reports arithmetic, not error; (b) the "
+                "ledger's -dx/L_eff staircase law must not be used as the "
+                "bridge -- this lane MEASURED it over-predicting this "
+                "fixture's variation by %.1fx, so it does not transport "
+                "an envelope between fixture classes."
+                % (out["ledger_cross_check"]["over_prediction_factor"]
+                   if "ledger_cross_check" in out else float("nan"))),
         }
 
     # --- the claims this lane withdraws, and what replaces them --------
@@ -448,7 +650,10 @@ def main():
                 "the pre-declared 3*pi/2 wedge, not a measurement"),
             "smooth_field_control_as_measured": (
                 "p = 2.0001 analytic / 1.9707 measured on the "
-                "exact-reference vacuum twin"),
+                "exact-reference vacuum twin -- a DIFFERENT box and a "
+                "DIFFERENT port at matched dx/dz/dt/record/band/extraction; "
+                "see smooth_field_control_scope for exactly what it does "
+                "and does not share with the fixture"),
             "D6": "the Meixner exponent 4/3 is NOT confirmed (RMS 4.36 MHz "
                   "against a 1 MHz window; a = 0.5 fits better at 2.64 MHz)",
         },
@@ -490,9 +695,14 @@ def main():
         "draft said '3-5 orders'; that was arithmetic error, corrected "
         "here against the same comparators.",
         "The smooth-field control converges at p = 2.0001 on an "
-        "exact-reference vacuum twin with the same dt, band and record "
-        "length -- so the Yee core, the port and the extraction are not "
-        "what limits this fixture.",
+        "exact-reference vacuum twin at the same dx, dz, dt, band, record "
+        "length and extraction -- but in a DIFFERENT box (38.25 x 38.25 x "
+        "1.5 mm vacuum, not the fixture's 27 x 22.5 x 13.5 mm stack) and "
+        "with a DIFFERENT port (one Ez source, not the fixture's "
+        "antisymmetric pair). It licenses the MACHINERY at matched "
+        "discretization; it is not a smooth twin of the fixture, and the "
+        "earlier 'same box / same port' framing is withdrawn "
+        "(smooth_field_control_scope).",
         "D2 is INCONCLUSIVE on the nine-rung ladder under its own frozen "
         "rule; the wedge argument stands as theory, not as measurement.",
         "WHETHER f(h) CONVERGES TO THE PHYSICAL ANSWER IS NOT DETERMINED "
