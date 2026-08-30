@@ -246,3 +246,94 @@ committed JSON, so a termination regression could have reached M2 unnoticed.
 `test_portgrid_m1b_retry.py::test_pml_floor_class_gate` now locks the CLASS at a
 deliberately loose -40 dB (not the frozen falsifier, which keeps its own provenance),
 and was verified to fire at -15.77 dB under exactly that mutation.
+
+## Correction R3 (2026-08-30, PRE-MEASUREMENT, append-only) — the retry probe is a TEM projection: cross-check arms declared, rod-window rescaling rule declared
+
+Adversarial-review blocking finding, accepted without re-litigation. Recorded BEFORE any of
+the measurements this section declares is run. **No frozen window is widened, narrowed, or
+moved by this section**: §5's F-M1b-r2 (−46.24 / −29.29 dB), F-M1b-rod (0.0941 linear) and
+F-M1b-abc (−50 dB) keep their values and their verdicts.
+
+### R3.1 The finding
+
+§2 declared the retry observable as "the y-AVERAGE of Ey on the x = 19 mm column", and
+`sim2d.py` implements exactly that (`jnp.mean(ey_new[probe_col, :])` in both PML steppers,
+lines 575 / 627). The declaration was honoured; the *reasoning attached to it* was not
+complete. §2 argued the y-average "projects out every cos(nπy/H) mode, n ≥ 1, leaving the
+TEM mode that the y-uniform source launches" — true of the INCIDENT field, false of the
+REFLECTED field. An interface or a scatterer converts TEM into higher-order content, and
+the y-average discards all of it. |S11| built from a y-averaged probe is therefore a
+TEM→TEM reflection coefficient, not the total reflection the paper's curves may report.
+
+### R3.2 The absolute calibration this lane already holds
+
+`portgrid_m1b_retry_rods.json` records `max_s11_fine_linear = 0.2073` (−13.67 dB) for the
+ALL-FINE r = 6 run of the paper's own Sec. V-C four-rod scatterer — a run containing **no
+subgridding at all**, i.e. plain uniform Yee on a 1/6 mm grid. The paper's Fig. 9 TOP panel
+is the same physical quantity for the same fixture. Pure-Yee against pure-Yee is a
+fixture-fidelity check with no scheme content: any gap is fixture, observable, or extraction
+— never the subgridding scheme. That check was available at the measurement commit and was
+not made; making it is the substance of this correction.
+
+### R3.3 Measurements declared here (windows fixed at this commit, before running)
+
+**(a) F-M1b-r2-pt — interface arm read through a POINT probe. RECORDING, non-falsifier.**
+Identical fixture, identical runs, identical S11 chain as §2/§5; the only change is the
+projection applied to the probe column: the single Ey cell at row index `ny // 4`
+(y = 10.5 mm, the cell nearest y = H/4), for r ∈ {2, 4, 6}. Physical reason for that row:
+source and island are symmetric about y = H/2, so the scattered field carries only even
+parallel-plate modes cos(nπy/H), n = 0, 2, 4 …; cos(2πy/H) vanishes at y = H/4, so this row
+reads TEM + n ≥ 4 and is the least n = 2-contaminated point available, while the y-average
+reads n = 0 alone and the centre line y = H/2 reads TEM + n = 2 at full weight. The
+centre-line value is recorded alongside as the opposite extreme.
+Compared against the ALREADY-FROZEN F-M1b-r2 windows (−46.24 / −29.29 dB) — no new window
+is created and none is widened. **Verdict authority: NONE.** The F-M1b-r2 verdict stays the
+one taken under the observable §2 declared. Purpose: bound how much of that verdict's margin
+is the projection.
+
+**(b) F-M1b-abs — all-fine vs paper, ABSOLUTE. NEW falsifier; BURNED for this lane.**
+Quantity: our all-fine (uniform r = 6, four rods, no subgrid anywhere) |S11| against the
+paper's own all-fine curve of Fig. 9 top panel, re-extracted by this lane's committed
+instrument with this lane's own tick calibration.
+Anchors: max over [2, 30] GHz, and the values at 10, 25 and 29 GHz.
+Window: the lane's pre-existing ±5 dB class rule (declared in phase 1, before any
+measurement existed, as the reading-uncertainty + curve-linewidth allowance) —
+|ours(anchor) − paper(anchor)| ≤ **5.0 dB** at every anchor.
+Evaluated under BOTH observables (y-average and the R3.1(a) point row); the observable is
+part of the falsifier, not a free parameter.
+**Burned-data disclosure: the review already reported this arm's outcome (a 5.5–6.1 dB
+excess under the y-average, agreement under the point probe) before this window was
+written.** It therefore carries NO verdict authority in this lane and cannot be cited as a
+passed or failed falsifier here. It is declared, implemented and committed so that M2 and
+any re-run inherit a fixture-fidelity gate that is not burned for them, and so that the
+check that would have caught R3.1 exists in the repository rather than in a review comment.
+
+**(c) Rod-window rescaling rule — declared BEFORE the rescaled number is computed.**
+§5's F-M1b-rod window was formed as `0.0529 × 10^(5/20) = 0.0941`, an ABSOLUTE linear
+difference lifted off the paper's curves. The "+5 dB rule" is a RELATIVE class rule (5 dB of
+allowance around a class value), so transplanting the absolute difference onto curves of a
+different amplitude changes the allowance it delivers. Rescaling rule, fixed now:
+
+    WIN_rod_rescaled = 0.0529 × 10^(5/20) × ( max|S11| of OUR all-fine curve
+                                            / max|S11| of the PAPER's all-fine curve )
+
+both maxima over [2, 30] GHz, both under the y-average observable the judged mismatch uses;
+`0.0529` is the paper-extracted r=6-vs-all-fine mismatch already committed in
+`portgrid_fig9_extraction.json`. The normaliser is the REFERENCE arm's own peak, not the
+judged difference — no part of the judged quantity enters its own window. Delivered
+looseness of the frozen window is recorded as
+`20 log10(paper all-fine peak / our all-fine peak)` dB.
+**The frozen 0.0941 keeps its verdict authority**; the rescaled value is recorded as a
+strictly tighter re-judgment of the same, unchanged measurement, and both are written into
+`m1b_retry.py` and the results note. Tightening is not window motion in the forbidden
+direction (SPEC-00 §0.2-2 forbids widening after measurement); the original verdict is not
+withdrawn, it is qualified.
+
+### R3.4 What this section does NOT do
+
+It does not re-open F-M1b-r2, F-M1b-rod or F-M1b-abc; it does not re-judge phase 1; it does
+not claim the paper's probe projection is known. What the all-fine arm can establish is only
+this: a pure-Yee run of the paper's own fixture, read with the projection this lane chose,
+does or does not land within the class of the paper's own pure-Yee curve. Any inference
+about the paper's own instrumentation beyond that is out of scope and must not be written
+into the results note.
