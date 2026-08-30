@@ -4791,6 +4791,7 @@
                 0.0,
                 0.000474974512846
               ],
+              "mesh_extent_um": 10000.000475,
               "n_cells": 20,
               "realized_extent_um": 10000.000475,
               "realized_um": [
@@ -4808,6 +4809,7 @@
                 0.0,
                 0.000474974512846
               ],
+              "mesh_extent_um": 10000.000475,
               "n_cells": 20,
               "realized_extent_um": 10000.000475,
               "realized_um": [
@@ -4825,6 +4827,7 @@
                 0.0,
                 0.000379979610277
               ],
+              "mesh_extent_um": 8000.00037998,
               "n_cells": 16,
               "realized_extent_um": 8000.00037998,
               "realized_um": [
