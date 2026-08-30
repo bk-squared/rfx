@@ -643,6 +643,12 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
             m = (m.replace("y-CPML", "@-CPML").replace("x-CPML", "@-CPML")
                   .replace("domain x-extent", "domain @-extent")
                   .replace("domain y-extent", "domain @-extent"))
+            # #705's off-lattice census names the in-plane axis of each
+            # conductor-Box edge ("'pec' y: extent 600µm ..."); under the
+            # x<->y rotation that letter legitimately swaps, so it is
+            # masked like the other axis spellings above. z is the
+            # substrate normal on both lanes and stays.
+            m = re.sub(r"(?<=\s)([xy])(?=: extent )", "@", m)
             out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
         return sorted(out)
 
