@@ -396,8 +396,15 @@ def main():
     # from the two modules' own frozen constants so it cannot drift.
     out["smooth_field_control_scope"] = {
         "control": "D4a / D2-B exact-reference twin",
-        "result_it_carries": "p = 2.0001 analytic (1.9707 measured); "
-                             "45 kHz total error at s = 0.25",
+        "result_it_carries": (
+            "p = 2.0001 against the exact DISCRETE eigenfrequency "
+            "(1.9707 against the continuum one). At s = 0.25 the "
+            "DISCRETIZATION error alone is e_disc = -45.006 kHz "
+            "(f_discrete_exact - f_exact_continuum, d4_reference_a.json), "
+            "which is NOT a total error: the extraction adds "
+            "eps_instr_E1 = 8.437 kHz on the same rung. An earlier draft "
+            "labelled the 45 kHz 'total'; corrected here to the quantity "
+            "the artifact actually holds."),
         "shared_with_the_W4R_fixture": {
             "dx_per_rung_m": "fx.PC_DX0 * scale (identical)",
             "dz_per_rung_m": "fx.PC_DZF0 * scale, uniform (identical)",

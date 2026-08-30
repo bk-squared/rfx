@@ -897,10 +897,22 @@ and remains the correction: the margins are **1.2–2.5 orders** (146× / 282× 
 14.5× against the comparators quoted in the same sentence). Any reader arriving
 at §10.10 item 3 must read §11.1 with it.
 
-Nothing else in the lane's history was edited in place — `6203902`, the commit
-`f5965fb` was following up on, appended §11 and touched only generated
-deliverables (`verdict.py` / `verdict.json`), which are regenerated artifacts,
-not the append-only record.
+One MORE in-place edit exists and this section originally denied it. `1cdc8b5`
+("docs(786): quote the fixture's own extraction precision correctly in 10.5")
+rewrote §10.5 IN PLACE: `git show 1cdc8b5 -- <this file>` deletes five content
+lines and replaces CLAIMS, not typography ("a factor 9-26 larger" → "25.5x the
+twin's number at the reference rung, 8.6-27x across records"; "~2e-4 relative"
+→ "3.9e-5 relative"). So the append-only rule was broken TWICE, not once, and
+the second time was inside a section written to record the first. Both are left
+in place rather than reverted a second time — reverting §10.5 now would itself
+be an in-place edit, and the corrected numbers are the ones the artifact
+supports — but the record must say plainly that §10.5 as it stands is a rewrite,
+not the original text, and that its original wording is recoverable only from
+`git show 1cdc8b5^:<this file>`.
+
+`6203902`, the commit `f5965fb` was following up on, appended §11 and touched
+only generated deliverables (`verdict.py` / `verdict.json`), which are
+regenerated artifacts, not the append-only record.
 
 ### 12.1 — WITHDRAWN: "the same box, the same port" (§7's closing paragraph)
 
