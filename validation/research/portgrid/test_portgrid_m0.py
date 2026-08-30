@@ -156,3 +156,54 @@ def test_certificate_r_indefinite_when_cfl_violated_lossy():
     dt_cert = dt_max_certificate(m0)
     bad = certify_region(_uniform_region(nx, ny, dx, dy, dt=1.05 * dt_cert, sigma=0.05))
     assert not bad["R_positive_definite"]
+
+
+# ------------------------------------------- F-M0-c, two-sided (review finding)
+@pytest.mark.parametrize("nx,ny,dx,dy", [(4, 3, 1e-3, 2e-3), (8, 6, 1e-3, 1e-3),
+                                         (5, 5, 2e-3, 5e-4)])
+def test_region_dual_cells_tile_the_area_exactly(nx, ny, dx, dy):
+    """Two-sided structural gate on the secondary (dual) edge lengths.
+
+    Every other F-M0-c assertion is ONE-SIDED — they all read
+    ``dt_cert >= <classical CFL>`` ("the certificate can only be looser"), so a
+    mutation that merely GROWS dt_cert leaves the whole M0 battery green.  The
+    reviewer's mutation is exactly of that kind: setting
+    ``certificate.py`` ``d_lpy[:, 0] = dy`` (dropping the half-length of the
+    boundary secondary edge, paper Sec. II-A) enlarges R's Ex diagonal, raises
+    dt_cert, and fires nothing.
+
+    The gate here is geometric, not numerical-comparison: the Yee dual cells
+    TILE the region exactly once, so for each E-field family the sum of
+    (primary edge length x its dual edge length) equals the region area
+    EXACTLY.  The boundary column of dual lengths must be dy/2 (resp. dx/2)
+    for that partition to close:
+        dy/2 + (ny - 1) dy + dy/2 = ny dy.
+    Any boundary factor other than 1/2 breaks the identity in one direction or
+    the other, so this fires for dy/2 -> dy AND for dy/2 -> dy/4.
+
+    R's diagonal exposes the products directly (eq. (17)):
+    Ex rows carry d_lx*d_lpy*eps/dt, Ey rows d_ly*d_lpx*eps/dt, Hz rows
+    d_a*mu/dt; the off-diagonal curl blocks do not touch the diagonal.
+    """
+    dt = 1e-12
+    m0 = _uniform_region(nx, ny, dx, dy, dt)
+    n_ex, n_ey = nx * (ny + 1), (nx + 1) * ny
+    d = np.diag(m0.R)
+    area = (nx * dx) * (ny * dy)
+    sums = {
+        "Ex primal-x x dual-y": float(d[:n_ex].sum()) * dt / EPS0,
+        "Ey primal-y x dual-x": float(d[n_ex:n_ex + n_ey].sum()) * dt / EPS0,
+        "Hz cell areas": float(d[n_ex + n_ey:].sum()) * dt / MU0,
+    }
+    for name, val in sums.items():
+        assert abs(val - area) <= 1e-12 * area, (name, val, area)
+
+    # Localised form of the same identity: the boundary dual edge is EXACTLY
+    # half the interior one (ratio 1/2, two-sided), read off R's diagonal.
+    ex = d[:n_ex].reshape((ny + 1, nx))      # index j*nx + i
+    ey = d[n_ex:n_ex + n_ey].reshape((ny, nx + 1))
+    assert ny >= 3 and nx >= 3
+    for edge, interior in ((ex[0], ex[1]), (ex[-1], ex[-2])):
+        assert np.allclose(edge, 0.5 * interior, rtol=1e-13, atol=0.0)
+    for edge, interior in ((ey[:, 0], ey[:, 1]), (ey[:, -1], ey[:, -2])):
+        assert np.allclose(edge, 0.5 * interior, rtol=1e-13, atol=0.0)
