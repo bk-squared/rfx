@@ -162,8 +162,21 @@ def _enumerate_emission_sites():
 # (docs/guides/support_matrix.md 'Multi-band graded mesh' row carries the
 # evidence). A conscious contract edit, same procedure as #738; stacked
 # on the #752/#636 edits above, so the site/code counts sum.
-_FROZEN_TOTAL_SITES = 87
-_FROZEN_LITERAL_CODE_COUNT = 58
+#
+# 87 -> 88 sites / 58 -> 59 literal codes, issue #589 (stacked on the
+# #752/#636/#780 edits above, so the site/code counts sum): new advisory
+# coaxial_port_junction_short (one site, one code) in ``_check_coaxial_port_junction_aperture``, called from
+# ``_validate_simulation_config`` after ``_check_msl_port_geometry``. It
+# reads the PRODUCTION assembly's pec_mask at each coaxial port's junction
+# plane and reports registered PEC in the first dielectric ring outside the
+# pin — the #589 short (a full-plane PEC ground with a dielectric "hole"
+# declared after it stays solid under the PEC-OR-only assembly; the settled
+# run measured S00 = -0.9928). Report-only, no gate. EMISSION_CLASSIFICATION
+# is unchanged: compute_coax_msl_transition stays DIAGNOSTIC_ONLY, so the
+# row surfaces via sim.preflight() (the settled-run driver's --preflight)
+# and via run()/forward() elsewhere, not through that method.
+_FROZEN_TOTAL_SITES = 88
+_FROZEN_LITERAL_CODE_COUNT = 59
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

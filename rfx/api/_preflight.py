@@ -1972,6 +1972,131 @@ class _PreflightMixin:
                     stacklevel=4,
                 )
 
+    def _check_coaxial_port_junction_aperture(self) -> None:
+        """Advise when a coaxial port's pin meets REGISTERED PEC at its
+        junction plane — a short by geometry, not by the port (issue #589).
+
+        Root cause this names: ``_assemble_materials`` is PEC-OR-only
+        (``pec_mask = pec_mask | mask``, rfx/api/_compile.py) and there is
+        no CSG subtraction shape, so a ground plane declared as a full PEC
+        sheet with a dielectric "clearance hole" declared AFTER it stays
+        solid. The committed coax-MSL junction fixture was built exactly
+        that way; its settled run measured S00 = (-0.9928, -0.0048) at
+        6 GHz — the pin was terminated in a short by the ground sheet, and
+        no check said so (the fixture's only structural test asserted
+        pin-column PEC continuity, trivially true through a solid sheet).
+
+        What is measured: on the PRODUCTION assembly's ``pec_mask``
+        (:meth:`_port_pec_mask`, sim.add geometry only — the coax stub the
+        compute_coaxial_* / compute_coax_msl_transition methods stamp
+        into eps/sigma is not registered geometry and is not read here),
+        at the port's junction plane ``k = position_to_index(position)
+        [axis]``, the count of PEC cells in the FIRST dielectric ring
+        outside the pin. The ring is defined ON THE LATTICE:
+        ``a + dx/2 < r <= min(a + 3dx/2, shell_inner)`` with ``r`` the
+        node distance from the port centre and ``shell_inner = b -
+        min(dx, (b - a)/2)`` the radius ``stamp_coaxial_line`` realizes
+        for the shell. Half-cell bounds are deliberate (design review of
+        #589, blocker 2): a bare ``r > a`` counted the pin's OWN
+        knife-edge footprint cells at r == a exactly (the registered pin
+        Cylinder realizes an asymmetric 11-of-13-cell disk at a = 2dx)
+        and fired 2/16 on the CORRECTLY built hole; with half-cell bounds
+        a lattice radius can never sit on the boundary and the fixed
+        geometry reads 0/16 while the shorted one reads 16/16.
+
+        Deliberately NOT the full ``a < r < shell_inner`` annulus: a
+        clearance hole narrower than the shell (the fixture's predeclared
+        0.4 mm hole under a 0.5 mm shell_inner leaves a one-cell ground
+        lip, 32/68 of that annulus PEC) is a valid launch and the wide
+        rule would flag the fix.
+
+        Report-only (severity "warning", no refusal): a calibration short
+        built from REGISTERED PEC would trip it and is the user's call.
+        The repo's own calibration short is stamped via
+        ``stamp_coaxial_short_plane`` (sigma), so no current lane does.
+        Not audited (silent by construction, disclosed here): the
+        non-uniform lane, 2-D mode, and a port whose position does not map
+        into the grid (the compiler rejects that separately). Measured on
+        the example snapshot (tests/test_example_fidelity_contract.py):
+        the one coaxial variant has 0 PEC cells in the ring, so no
+        snapshot row changes.
+        """
+        import warnings as _w
+
+        if not self._coaxial_ports:
+            return
+        if (self._dx_profile is not None or self._dy_profile is not None
+                or self._dz_profile is not None):
+            return
+        from rfx.sources.coaxial_port import _FACE_CONFIG
+
+        grid = self._build_grid()
+        if getattr(grid, "is_2d", False):
+            return
+        pec_np = self._port_pec_mask(grid)
+        if pec_np is None:
+            return
+        dx = float(grid.dx)
+        pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
+        axis_names = ("x", "y", "z")
+        for n, port in enumerate(self._coaxial_ports):
+            cfg = _FACE_CONFIG.get(str(port.face))
+            if cfg is None:
+                continue
+            axis = axis_names.index(cfg[0])
+            pos = tuple(float(v) for v in port.position)
+            try:
+                idx = grid.position_to_index(pos)
+            except ValueError:
+                continue
+            k = int(idx[axis])
+            t1, t2 = [a for a in range(3) if a != axis]
+            a = float(port.pin_radius)
+            b = float(port.outer_radius)
+            shell_inner = b - min(dx, 0.5 * (b - a))
+            c1 = (np.arange(grid.shape[t1]) - pads[t1]) * dx - pos[t1]
+            c2 = (np.arange(grid.shape[t2]) - pads[t2]) * dx - pos[t2]
+            r = np.hypot(c1[:, None], c2[None, :])
+            plane = np.take(pec_np, k, axis=axis)
+            r_lo = a + 0.5 * dx
+            r_hi = min(a + 1.5 * dx, shell_inner)
+            ring = (r > r_lo) & (r <= r_hi)
+            n_ring = int(np.count_nonzero(ring))
+            if n_ring == 0:
+                continue
+            n_pec = int(np.count_nonzero(plane & ring))
+            if n_pec == 0:
+                continue
+            outside = plane & (r > r_lo) & (r <= b)
+            r_first = float(r[outside].min()) if outside.any() else float("nan")
+            _w.warn(
+                PreflightWarning(
+                    f"Coaxial port {n} (face='{port.face}', pin r="
+                    f"{a * 1e6:.0f} um, outer r={b * 1e6:.0f} um): at its "
+                    f"junction plane ({axis_names[axis]}="
+                    f"{pos[axis] * 1e3:.3f} mm, node {k - pads[axis]}) "
+                    f"{n_pec}/{n_ring} cells of the FIRST dielectric ring "
+                    f"outside the pin ({r_lo * 1e6:.0f} < r <= "
+                    f"{r_hi * 1e6:.0f} um; lattice-based bounds, so the "
+                    f"pin's own footprint at r = {a * 1e6:.0f} um is "
+                    f"excluded) are REGISTERED PEC — the first registered "
+                    f"PEC outside the pin sits at r = {r_first * 1e6:.1f} "
+                    f"um. The pin is terminated in a short by registered "
+                    f"geometry at this plane. _assemble_materials is "
+                    f"PEC-OR-only: a ground sheet declared as a full plane "
+                    f"with a dielectric 'hole' declared AFTER it stays "
+                    f"solid (issue #589: S00 = -0.9928 at 6 GHz measured on "
+                    f"exactly that fixture). If a clearance aperture was "
+                    f"intended, build the conductor WITH the hole; if this "
+                    f"short is the intended calibration standard, no "
+                    f"action is needed (report-only).",
+                    code="coaxial_port_junction_short",
+                    source="_check_coaxial_port_junction_aperture",
+                    loc=f"coaxial_port[{n}] face={port.face}",
+                ),
+                stacklevel=4,
+            )
+
     def _emit_waveguide_port_cutoff_findings(
         self, entry, a_ap, b_ap, a_gd, b_gd, guide_label,
     ) -> None:
@@ -2991,6 +3116,7 @@ class _PreflightMixin:
 
         self._check_waveguide_port_evanescent()
         self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
+        self._check_coaxial_port_junction_aperture()
 
     def _validate_cfg_precision_x64(self, _w) -> None:
         """Warn when ``precision`` cannot actually take effect.
