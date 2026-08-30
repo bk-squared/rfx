@@ -234,3 +234,195 @@ staircasing at 1 mm is not specified in the paper; recorded as context only.
 Identical roundoff class as the phase-1 values (+1.67e-15 / +3.86e-15): the material/PML
 additions did not perturb the verified lossless path (its default code path is unchanged;
 only the energy-sum association differs at the 1-ulp level).
+
+## Correction 4 (2026-08-30, append-only) — the retry's observable is a TEM projection: interface claims narrowed to the witness, absolute cross-check recorded, remaining review items landed
+
+Adversarial-review BLOCKING finding, accepted without re-litigation. Pre-declaration of the
+measurements quoted here: `portgrid_m1b_retry_predeclaration.md` **Correction R3** (committed
+`5c50017`, before any of them ran). Raw JSON: `portgrid_m1b_retry_xcheck.json`; paper-side
+provenance `portgrid_fig9_allfine_absolute.json` (same instrument, same tick calibration as
+the frozen `portgrid_fig9_extraction.json`, which re-runs byte-identical).
+
+### 4.1 What stands, and what is withdrawn
+
+**Stands.** The F-M1b-r2 verdict (PASS at every r under the frozen −46.24 / −29.29 dB
+windows) is legitimate and is NOT reopened. The pre-declaration declared the observable —
+"the y-AVERAGE of Ey on the x = 19 mm column" — before measuring, the implementation honours
+it exactly (`sim2d.py` lines 575 / 627, `jnp.mean(ey_new[probe_col, :])`), and not one
+measured number changes. The rod, floor and null verdicts likewise stand.
+
+**Withdrawn.** Every claim that read that verdict as a statement about the paper, or about
+the scheme in general. The y-average is the TEM (n = 0) modal projection: with PEC plates at
+y = 0, H it annihilates every cos(nπy/H), n ≥ 1. That is exactly right for the INCIDENT
+field a y-uniform source launches, and wrong for the REFLECTED field, which an interface or a
+scatterer populates with higher-order content. |S11| built on it is a TEM→TEM reflection
+coefficient, and the pre-declaration's §2 reasoning ("projects out every cos(nπy/H) mode …
+leaving the TEM mode") silently applied the incident-field argument to the reflected field.
+
+### 4.2 Claim-by-claim replacement
+
+**(a) Line 197, WITHDRAWN:** "…sit BELOW the paper's own extracted curves (−51.2..−53.5 and
+−34.3..−36.5 dB). The scheme … meets the paper's reported interface-reflection class
+outright."
+
+Replacement: *Under this lane's declared TEM-projected observable the interface arm PASSES
+the frozen F-M1b-r2 windows at every r ∈ {2,3,4,5,6} (worst r = 6: −56.44 / −40.44 dB against
+−46.24 / −29.29 dB). Read on the SAME runs through a point probe the same arm gives:*
+
+| r | y-mean (declared observable) | point, guide centre line y = H/2 | point, y ≈ H/4 |
+|---|---|---|---|
+| 2 | −58.67 / −42.64 | −49.86 / −34.05 | −54.94 / −36.70 |
+| 4 | −56.75 / −40.75 | −47.93 / −32.15 | −53.00 / −34.79 |
+| 6 | −56.44 / −40.44 | −47.62 / −31.84 | −52.69 / −34.46 |
+
+(max dB over [2,20] GHz / over [2,30] GHz; frozen windows −46.24 / −29.29; paper's worst
+extracted curve −51.24 / −34.29.)
+
+*The centre-line readings are still INSIDE the frozen windows, but by 1.4 dB and 2.6 dB at
+r = 6 instead of ≈ 10 dB, and they are ABOVE the paper's worst extracted curve by 3.6 dB and
+2.5 dB. Choosing the projection moves this fixture's |S11| by up to 8.8 dB at fixed geometry.
+No claim that our interface reflection sits below the paper's is supported by this lane. What
+is supported: the arm passes its frozen windows under the observable it declared, and passes
+them under a centre-line point probe as well, with the margin reduced to 1.4 / 2.6 dB.*
+
+**(b) Lines 205–206, WITHDRAWN:** "The retry's TEM-projection probe (y-averaged Ey column,
+the paper's probe-line reading) and PML termination reproduce the paper's class."
+
+Two defects: it asserts the paper's projection ("the paper's probe-line reading"), which
+cannot be read off Fig. 8 — the figure shows a probe LINE, not what is done with it — and
+§4.3 below shows the y-average does NOT reproduce the paper's absolute class.
+
+Replacement: *The retry fixture differs from phase 1 in TWO classes at once — geometry
+(paper-faithful guide, island, PML termination) and observable (TEM projection vs phase 1's
+single-point Hz probe). This lane measured the pair jointly and did not decompose them. The
+observable contribution is now measured separately and is up to 8.8 dB at fixed geometry —
+several times the 1.3 / 2.4 dB by which phase 1 exceeded its own windows. Correction 2's
+fixture-class hypothesis therefore remains supported in DIRECTION, but this lane does not
+establish how much of the phase-1 FIRE was geometry; the phase-1 FIRE stands as recorded and
+is not converted into an exoneration.*
+
+**(c) PR body, WITHDRAWN:** "paper-class interface reflection" and "the scheme is
+exonerated". Replacement text for the PR body (this lane cannot write to GitHub; recorded
+here for the PI to paste):
+
+> F-M1b retry: the interface arm PASSES the frozen windows (−46.24 / −29.29 dB) at every
+> r ∈ {2,3,4,5,6} **under this lane's declared TEM-projected observable** (y-mean of the Ey
+> probe column). Read through a centre-line point probe on the identical runs it still
+> passes, by 1.4 / 2.6 dB at r = 6, and sits above the paper's worst extracted curve. An
+> absolute cross-check against the paper's own all-fine curve shows our y-averaged |S11| is
+> 5.5–6.1 dB below the paper's for a run containing no subgridding at all, so the paper's
+> reported |S11| is not a TEM projection and our numbers are not directly comparable to it.
+> No exoneration of the scheme is claimed: what is claimed is that the frozen falsifier did
+> not fire under the observable it was declared with.
+
+### 4.3 F-M1b-abs — all-fine vs paper, ABSOLUTE (the check that would have caught this)
+
+Our all-fine arm is a uniform r = 6 grid with the paper's four copper rods and **no
+subgridding anywhere** — plain Yee. The paper's Fig. 9 top-panel all-fine curve is the same
+quantity for the same fixture. Pure Yee against pure Yee carries no scheme content, so any
+gap is fixture, observable or extraction. Anchors (dB), band [2, 29.8] GHz as extracted:
+
+| curve | max | @10 GHz | @25 GHz | @29 GHz |
+|---|---|---|---|---|
+| paper all-fine (Fig. 9 top) | −8.03 | −18.42 | −10.94 | −8.78 |
+| ours, y-mean (declared) | −13.67 | −24.50 | −16.41 | −14.59 |
+| ours, point y ≈ H/4 | −7.86 | −24.51 | −10.78 | −9.19 |
+| ours, point y = H/2 | −4.22 | −19.30 | −8.48 | −6.67 |
+
+- Under the y-mean every anchor is **5.5–6.1 dB below the paper** (−5.64 / −6.08 / −5.47 /
+  −5.81), outside the lane's ±5 dB class rule, for a run with no subgridding in it.
+- The incident (reference) trace at the probe column is y-uniform to **1.0–1.3e-16**
+  relative, so the |S11| DENOMINATOR is identical under every projection. The entire gap is
+  reflected-field content the y-average discards.
+- **Supported conclusion: the paper's reported |S11| is not a TEM (y-averaged) projection.**
+- **Not supported, and not claimed: what the paper's projection is.** No single point row
+  matches all four anchors inside the class — the centre line is the only projection inside
+  at every anchor (worst |Δ| 3.81 dB), while y ≈ H/4 matches max/25/29 GHz to within 0.4 dB
+  and is 6.09 dB low at 10 GHz.
+- Physical self-consistency check of the modal reading, unplanned and worth recording: at
+  10 GHz only n = 0 and n = 2 propagate (cutoffs n·c/2H = n·3.75 GHz) and, by the fixture's
+  symmetry about y = H/2, only even n are excited; cos(2πy/H) has a NODE at y = H/4. The
+  y ≈ H/4 probe therefore degenerates to the TEM projection at 10 GHz — measured −24.51 vs
+  the y-mean's −24.50, agreeing to 0.01 dB. The n = 2 mode is exactly what the y-average
+  throws away.
+
+**Verdict authority of this arm: NONE in this lane.** Per Correction R3(b) it is BURNED — the
+review reported its outcome before its window was written. It is implemented, committed and
+re-runnable so that M2 and any re-run inherit an unburned fixture-fidelity gate, and so the
+check lives in the repository instead of in a review comment.
+
+### 4.4 F-M1b-rod window: the transplanted absolute number (Correction R3(c))
+
+`m1b_retry.py:62 WIN_ROD_LINEAR = 0.0941` was formed as `0.0529 × 10^(5/20)`, i.e. the
+paper's ABSOLUTE linear mismatch plus 5 dB. The "+5 dB rule" is a RELATIVE class allowance,
+and the paper's curves peak at 0.3968 while ours (y-mean) peak at 0.2073, so the frozen
+window delivers `20 log10(0.3968/0.2073)` = **5.64 dB more allowance than the rule intends**
+— a factor 1.91 looser. The rescaling rule was declared in Correction R3(c) before the
+rescaled value was computed:
+
+| quantity | value |
+|---|---|
+| frozen window (keeps verdict authority) | 0.0941 |
+| looseness vs the +5 dB rule | 5.64 dB (×1.91) |
+| rescaled window, R3(c) rule | 0.0491 |
+| measured r = 6 mismatch (UNCHANGED, read from `portgrid_m1b_retry_rods.json`) | 0.0299 |
+
+The measurement is untouched; only the window it is compared against is re-expressed, and it
+meets the tighter one too (by 4.3 dB). Both numbers are now written into `m1b_retry.py` with
+the caveat in the source, and `rescaled_rod_window()` computes the tighter one from committed
+provenance rather than a hardcoded constant.
+
+### 4.5 Open limitation carried to M2 (named, not repaired here)
+
+F-M1b-rod's verdict, like F-M1b-r2's, was taken under the y-mean observable, and this lane
+did NOT re-take it under a point probe — that measurement was not pre-declared in R3 and is
+not run here. Any M2 or re-run that quotes the rod arm must either re-declare and re-take it
+under an explicitly chosen projection, or repeat this qualification.
+
+### 4.6 Remaining review items
+
+- **F-M0-c was a one-sided gate.** Every prior F-M0-c assertion reads `dt_cert ≥ <classical
+  CFL>` ("the certificate can only be looser"), so a mutation that merely GROWS `dt_cert`
+  fires nothing: `certificate.py:77 d_lpy[:, 0] = dy/2 → dy` leaves the M0 battery **51
+  passed, 0 failed**. Repaired two-sided by
+  `test_portgrid_m0.py::test_region_dual_cells_tile_the_area_exactly`, a geometric identity
+  (Yee dual cells tile the region exactly once, so Σ primary·dual length per E-family = the
+  region area exactly, which forces the boundary dual edge to be exactly half the interior
+  one). Verified to fire on all three parametrizations for `dy/2 → dy` AND for `dy/2 → dy/4`;
+  clean tree 54 passed.
+- **"reverse block = P-adjoint replication" was over-stated.** The results line above
+  ("…its reverse counterpart is the cb/r replication — the P-adjoint of the averaging, as
+  predicted by T_c2f = P_f⁻¹T_f2cᵀP_c") is witnessed at that strength only for the STANDALONE
+  operator, by `test_portgrid_m0.py::test_jax_vjp_matches_p_adjoint`, which checks
+  `vjp(T_c2f·x) ≡ P_c·T_f2c·P_f⁻¹·w` on the matrix pair. What
+  `test_portgrid_m1.py::test_vjp_p_adjoint_structure_of_step` witnesses for the STEPPER is
+  narrower: `jacrev(step) ≡ jacfwd(step)` to ≤ 1e-12·scale, plus the FORWARD interface
+  coefficient d(coarse Ex)/d(fine boundary Hz) = cb/r. Narrowed claim: *the stepper's reverse
+  pass agrees with its forward pass to 1e-12 and the forward interface block carries the
+  analytic cb/r weight; the exact P-adjoint identity is witnessed on the standalone operator.*
+- **No CI workflow runs this battery.** `pyproject.toml:77 testpaths = ["tests"]`, and both
+  workflows that run pytest either pass an explicit `tests/…` file list
+  (`.github/workflows/pr-tests.yml`) or invoke bare `pytest` with the same testpaths
+  (`pr-tests.yml` fast-suite job, `.github/workflows/validation.yml`). `validation/research/`
+  is collected by nobody. Consequence, recorded plainly: the `-40 dB` battery-level PML floor
+  gate added at `8281c79`, and the new two-sided F-M0-c gate, guard nothing automatically —
+  they fire only when someone runs `pytest validation/research/portgrid -o addopts=""` by
+  hand. Wiring this directory into CI is out of this lane's scope (it changes a shared
+  workflow); it is named here so no one reads "gate added" as "gate enforced".
+- **The 2022 Corrections could not be verified from this host.** §6 of the retry
+  pre-declaration pre-seeds an M2 checklist from IEEE TAP 70(4):3132 (2022) Corrections. That
+  document was NOT re-obtained in this lane — the preprint URL refused connection from here,
+  and no PDF of it is in the worktree. The checklist items C1–C6 are therefore carried as
+  UNVERIFIED-FROM-SOURCE and bind M2 only; C6 in particular ("the 2-D pieces are not affected
+  by the Corrections") is an inference this lane could not check against the Corrections text
+  and must be re-derived by M2 from the document itself before any 2-D claim leans on it.
+  Nothing in M0/M1's measured record depends on it.
+
+### 4.7 Discipline record
+
+No frozen window was widened, narrowed or moved. The rod-window rescaling is a strictly
+tighter re-expression declared before evaluation, and the frozen window keeps verdict
+authority. Every new measurement in this correction was declared in `Correction R3` at
+commit `5c50017`, before the run. Design notes remain append-only: this section adds; it
+edits nothing above it. The interface arm was re-run after the `probe_full` addition and
+reproduces the committed JSON bit-identically.
