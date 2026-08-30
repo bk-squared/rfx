@@ -80,15 +80,10 @@ run: |-
   fi
 
   echo "===== settling / status per run (quoted from the JSONs) ====="
+  # POSIX sh (busybox ash): a heredoc terminator inside this indented block never
+  # reaches column 0, so the per-JSON summary is a -c one-liner instead.
   for f in "$out"/*.json; do
-    "$PY" - "$f" <<'PYEOF' || true
-  import json, sys
-  r = json.load(open(sys.argv[1]))
-  pr = r.get("production_result") or {}
-  print(f"{r['variant']:>4} status={r.get('status')} R_req={r.get('r_ohm_requested')} "
-        f"settling_db={pr.get('settling_db_per_drive')} assembly={pr.get('assembly')} "
-        f"wall={r.get('wallclock_s')} precision={r.get('precision_mode')} finding={r.get('finding')}")
-  PYEOF
+    "$PY" -c 'import json,sys; r=json.load(open(sys.argv[1])); pr=r.get("production_result") or {}; print("%4s status=%s R_req=%s settling_db=%s assembly=%s wall=%s precision=%s finding=%s" % (r.get("variant"), r.get("status"), r.get("r_ohm_requested"), pr.get("settling_db_per_drive"), pr.get("assembly"), r.get("wallclock_s"), r.get("precision_mode"), r.get("finding")))' "$f" || true
   done
 
   echo "===== summary (hypotheses / falsifier / implied k / item 2) ====="

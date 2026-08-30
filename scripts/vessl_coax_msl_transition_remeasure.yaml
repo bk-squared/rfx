@@ -64,14 +64,15 @@ run: |-
   python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| x64', jax.config.jax_enable_x64, '| rfx', rfx.__file__); assert rfx.__file__.startswith(os.environ['RFX_REPO_ROOT']), 'rfx import does not resolve to the run-clone'"
   echo "=== structural tests (build-only, no FDTD): wide fixture junction byte-identity + records + driver verdict logic ==="
   timeout 1200 python -u -m pytest -q tests/test_coax_msl_transition.py -k "settled_run_record or attempt2_wide or junction_geometry_is_byte_identical or test_589" -p no:cacheprovider
-  RFX_OUT="$RUN_CLONE/.omx/589-remeasure/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA:0:12}-${FIXTURE}-x64${X64}"
+  RFX_OUT="$RUN_CLONE/.omx/589-remeasure/$(date -u +%Y%m%dT%H%M%SZ)-$(printf %s "$ACTUAL_SHA" | cut -c1-12)-${FIXTURE}-x64${X64}"
   export RFX_OUT
   mkdir -p "$RFX_OUT"
   BASELINE="${BASELINE:-scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_result.json}"
   [ -f "$BASELINE" ] || { echo "FATAL: BASELINE '$BASELINE' not found in the run-clone (exit 3)"; exit 3; }
   echo "A0/f64 baseline: $BASELINE"
-  FREQS_ARGS=()
-  if [ -n "${FREQS}" ]; then FREQS_ARGS=(--freqs "$FREQS"); fi
+  # POSIX sh (the VESSL runner is busybox ash, not bash): no arrays, no ${x:0:n}.
+  FREQS_OPT=""
+  if [ -n "${FREQS}" ]; then FREQS_OPT="--freqs ${FREQS}"; fi
   echo "=== measurement: fixture=$FIXTURE n_steps=$N_STEPS x64=$X64 -> $RFX_OUT ==="
   set +e
   timeout 14400 python -u scripts/diagnostics/coax_msl_transition_settled_run.py \
@@ -79,7 +80,7 @@ run: |-
     --n-steps "$N_STEPS" \
     --preflight \
     --baseline "$BASELINE" \
-    ${FREQS_ARGS[@]+"${FREQS_ARGS[@]}"} \
+    $FREQS_OPT \
     --output "$RFX_OUT/remeasure_result.json" \
     > "$RFX_OUT/run.log" 2>&1
   rc=$?
