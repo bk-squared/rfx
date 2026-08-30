@@ -195,13 +195,38 @@ def _declared_entries(sim):
     return out
 
 
+def _warn_if_refined(sim):
+    """A prior commit's message claimed this warning already existed
+    ("add_refinement is warned about instead of being silently absent");
+    ``git log -p -- rfx/visualize.py`` shows the string "refinement" never
+    appeared in this file before now -- the claim was false. This is the
+    actual implementation.
+
+    ``sim.add_refinement(...)`` (SBP-SAT subgridding, issue #90,
+    EXPERIMENTAL) locally refines the z-mesh over a sub-range at solve
+    time via a SEPARATE runner (``rfx/subgridding/``); ``_build_grid()``
+    / ``_build_nonuniform_grid()`` -- what this module's viewers draw --
+    know nothing about it and always return the coarse base grid. Both
+    docstrings claim "the grid this simulation would RUN on"; that claim
+    is unconditionally false whenever a refinement region is set.
+    """
+    if getattr(sim, "_refinement", None) is not None:
+        z_lo, z_hi = sim._refinement["z_range"]
+        ratio = sim._refinement.get("ratio")
+        warnings.warn(
+            f"add_refinement(z_range=({z_lo * 1e3:.4f}, {z_hi * 1e3:.4f}) mm, "
+            f"ratio={ratio}) is set, but this viewer draws the COARSE base "
+            "grid only -- the fine subgrid region (a separate runner, "
+            "rfx/subgridding/) is not reflected in this picture at all.",
+            stacklevel=3)
+
+
 def _axis_edges(grid, axis, nodes):
-    """Cell edges along *axis* in metres.
+    """Cell EDGES along *axis* in metres -- N+1 of them for N REAL cells.
 
     CONVENTION, verified against the grid's own spacing arrays: an E-node
     coordinate is the LOWER EDGE of its cell, i.e. ``node[k+1] - node[k] ==
-    dz[k]``. Cell k therefore spans ``[node[k], node[k] + d[k])`` and the N+1
-    edges pcolormesh needs are the N nodes plus one closing edge.
+    dz[k]``. Cell k therefore spans ``[node[k], node[k] + d[k])``.
 
     Treating the nodes as cell CENTRES (edges at their midpoints) shifts
     every drawn cell by half a cell and, on a graded axis, distorts the
@@ -209,29 +234,44 @@ def _axis_edges(grid, axis, nodes):
     ``position=`` land one plane above a one-cell sheet, so it is pinned by
     a test rather than left to a comment.
 
-    CLOSING EDGE, uniform vs non-uniform lane: a uniform ``Grid`` has no
-    ``dx_arr``/``dy_arr``/``dz`` array, so every node really is a full
-    ``dx`` cell and the closing edge is ``node[-1] + dx``. A
-    ``NonUniformGrid``'s spacing array is different: ``rfx/nonuniform.py``
-    (``_append_bounding_node``, see its comment at :64-69) pads it with ONE
-    TRAILING DUPLICATE of the last real cell's width so N cells get the N+1
-    nodes pcolormesh needs -- that duplicate is a node-provider only, "not
-    physical extent" in that module's own words, because the stencil zeroes
-    its H term. Re-adding it here (``node[-1] + d[-1]``) drew the axis one
-    full duplicate cell past the grid's real extent (measured: a graded z
-    axis closed 150 um past its last real node). The correct closing edge
-    on the non-uniform lane is the last node itself -- the trailing "cell"
-    has no width to add.
+    BOTH lanes already carry N+1 NODES for N real cells -- there is no
+    separate "closing edge" to construct here, and appending one
+    (either lane) draws the axis one cell past the grid's real extent:
+
+    * uniform ``Grid``: ``rfx/grid.py`` :151 -- "+1 fence-post correction:
+      N cells need N+1 nodes so that PEC walls at index 0 and index N span
+      exactly N*dx" -- baked into ``nx``/``ny``/``nz`` themselves.
+    * ``NonUniformGrid``: ``rfx/nonuniform.py`` ``_append_bounding_node``
+      pads the spacing array with one trailing DUPLICATE of the last real
+      cell's width, explicitly "the node count the uniform Grid allocates
+      for N cells" -- same N+1 structure, different construction.
+
+    So the node array returned by ``coords_from_uniform_grid`` /
+    ``coords_from_nonuniform_grid`` IS the N+1-edge array pcolormesh wants;
+    callers must instead drop the corresponding LAST entry from the DATA
+    they draw on this axis (``eps2[:-1]`` etc, or more precisely
+    ``[:edges.size - 1]`` to also cover the size-1 branch below) --
+    stretching the edges past the last node to "make room" for that data
+    entry (this function's own previous behaviour) draws one full cell of
+    overshoot on the uniform lane (measured: 3 mm domain + 4 CPML at
+    dx=100 um drew -400..3500 um against true walls at -400..3400 um) and,
+    on the non-uniform lane, made the truly-last data column zero-width
+    and INVISIBLE (a Box filling the domain has real eps there; duplicating
+    the last node as its own closing edge draws it with no width at all).
+
+    The one exception: an axis with a SINGLE node (2D-mode's periodic z,
+    ``grid.nz == 1``, no fence-post — the mode forces ``pad_z_lo``/``hi``
+    to 0 and skips the ``+1``) really is one ``dx``-wide cell with no
+    fence-post partner to supply a second edge, so that case still
+    synthesizes one.
     """
     n = np.asarray(nodes, dtype=float)
     if n.size == 0:
         return np.array([0.0, 1.0])
-    names = ("dx_arr", "dy_arr", "dz")
-    d = getattr(grid, names[axis], None)
-    if d is None or np.asarray(d).size != n.size:
+    if n.size == 1:
         step = float(getattr(grid, "dx"))
-        return np.concatenate([n, [n[-1] + step]])
-    return np.concatenate([n, [n[-1]]])
+        return np.concatenate([n, [n[0] + step]])
+    return n
 
 
 def _axis_pad_layers(grid, axis):
@@ -277,6 +317,67 @@ def _absorber_rects(grid, keep, xe, ye):
     return rects
 
 
+def _two_plane_wall_mask(sim, grid, coords):
+    """Boolean array, ``grid.shape``: cells where a ``two_plane=True``
+    (#706) body's SECOND wall lives.
+
+    ``conductor_mask()`` cannot show this (it is a solve-time
+    tangential-E edge operator at the body's far node plane, not a cell
+    -- see the docstrings above), but the operator's own footprint IS
+    computable off-line, from the same production function the solve
+    itself uses (:func:`rfx.boundaries.pec.two_plane_extension_masks`),
+    so it can still be drawn as its own marker rather than only being
+    explained away. Returns ``None`` when no entry is flagged (the
+    common case).
+
+    The flagged-body mask is rasterized with the SAME call each lane's own
+    production code uses to build it -- NOT a single shared spelling,
+    because the two disagree for a body only one cell thick along an axis
+    (measured, a 0.4-0.5 mm box on a dx=100 um grid: the default
+    ``shape.mask(grid)`` and ``shape.mask_on_coords(...)`` landed the body
+    on DIFFERENT z-planes, 9 vs 8, one node apart -- the same
+    nearest-midpoint snap ambiguity ``rfx/geometry/csg.py``'s
+    ``_axis_mask`` documents for one-cell bodies generally). Using the
+    wrong one for a lane makes ``two_plane_mask & pec_mask`` land on
+    DIFFERENT cells than ``pec_mask`` itself, and the single-cell-run
+    condition (``~bwd & ~fwd``) then finds nothing at all -- not a
+    partial mismatch, a silent EMPTY result:
+
+    * uniform ``Grid``: the DEFAULT ``mask_fn`` (``shape.mask(grid)``),
+      matching ``rfx/api/_execute.py``'s own ``_two_plane_cell_mask(grid)``
+      call verbatim.
+    * ``NonUniformGrid``: ``shape.mask_on_coords`` on THIS grid's own node
+      coordinates, matching ``rfx/runners/nonuniform.py``'s own call.
+
+    Periodicity caveat: the extension is only correct for the
+    non-periodic (or 2D-mode z-periodic) default this grid was built
+    with. A ``run()``/``forward()`` call with an explicit ``periodic=``
+    override, Floquet ports, or oblique TFSF forces a DIFFERENT periodic
+    convention at solve time that this offline reconstruction has no way
+    to see (that convention is a `run()`-time keyword, not stored on the
+    grid) -- those two_plane bodies still get counted in the honesty
+    notes below, just without a placement-accurate wall marker.
+    """
+    from rfx.nonuniform import NonUniformGrid
+    if isinstance(grid, NonUniformGrid):
+        tp_mask = sim._two_plane_cell_mask(
+            mask_fn=lambda sh: sh.mask_on_coords(coords[0], coords[1], coords[2]))
+    else:
+        tp_mask = sim._two_plane_cell_mask(grid)
+    if tp_mask is None:
+        return None
+    if isinstance(grid, NonUniformGrid):
+        _, _, _, pec_mask_raw = sim._assemble_materials_nu(grid, sheet_specs=[])
+    else:
+        _, _, _, pec_mask_raw, *_ = sim._assemble_materials(grid, sheet_specs=[])
+    from rfx.boundaries.pec import two_plane_extension_masks
+    periodic = (False, False, bool(getattr(grid, "is_2d", False)))
+    ex, ey, ez = two_plane_extension_masks(
+        np.asarray(pec_mask_raw, dtype=bool), np.asarray(tp_mask, dtype=bool),
+        periodic=periodic)
+    return np.asarray(ex) | np.asarray(ey) | np.asarray(ez)
+
+
 def plot_rasterized_slice(
     sim,
     *,
@@ -306,7 +407,11 @@ def plot_rasterized_slice(
       ``extent``;
     * the grid is the one this simulation would RUN on — the non-uniform
       grid whenever any of ``dx_profile`` / ``dy_profile`` / ``dz_profile``
-      is set.
+      is set. EXCEPT for ``add_refinement()`` (SBP-SAT subgridding, #90,
+      EXPERIMENTAL): its fine z-region runs on a separate runner this
+      viewer's grid-builders know nothing about, so the picture is always
+      the COARSE grid there; a warning fires rather than the claim above
+      silently being false.
 
     The CPML absorber pad is hatched, not coloured solid, on both in-plane
     axes (``grid.pad_{x,y,z}_{lo,hi}``): the material assembly legitimately
@@ -371,6 +476,7 @@ def plot_rasterized_slice(
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     if index is not None and position is not None:
         raise ValueError("pass index or position, not both")
+    _warn_if_refined(sim)
 
     from rfx.nonuniform import NonUniformGrid
     is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
@@ -383,6 +489,7 @@ def plot_rasterized_slice(
     else:
         eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
+    wall_mask = _two_plane_wall_mask(sim, grid, coords)
 
     names_of = lambda a: "xyz"[a]
     moved_note = ""
@@ -428,10 +535,10 @@ def plot_rasterized_slice(
                 # answering about a DIFFERENT plane turns "is z=0.1 mm clear
                 # of metal?" into a picture of the ground plane.
                 moved_note = (
-                    f"  [asked for {names_of(axis)} = {pos * 1e3:.4f} mm "
-                    f"(plane {k}, {int(per_plane[k])} conductor cells); showing "
-                    f"the neighbouring plane {index} instead because it holds "
-                    f"{int(per_plane[index])}. Pass index= to override.]")
+                    f"asked for {names_of(axis)}={pos * 1e3:.4f} mm: plane "
+                    f"{k} ({int(per_plane[k])} cells) -> showing the "
+                    f"neighbouring plane {index} instead ({int(per_plane[index])} "
+                    "cells). Pass index= to override.")
             else:
                 moved_note = ""
     if not 0 <= index < n_along:
@@ -443,7 +550,25 @@ def plot_rasterized_slice(
     eps2, cond2 = eps[tuple(take)], cond[tuple(take)]
     xe = _axis_edges(grid, keep[0], coords[keep[0]]) * 1e3
     ye = _axis_edges(grid, keep[1], coords[keep[1]]) * 1e3
+    # `xe`/`ye` are N+1 EDGES for N real cells (see _axis_edges); the data
+    # arrays still carry the full grid dimension, one entry longer than
+    # that on each in-plane axis (the fence-post/duplicate node's own
+    # array slot). Trim to match, or pcolormesh either errors on a shape
+    # mismatch or (worse, on the axis this function does NOT slice) silently
+    # draws a nonexistent extra column.
+    nx_cells, ny_cells = xe.size - 1, ye.size - 1
+    eps2 = eps2[:nx_cells, :ny_cells]
+    cond2 = cond2[:nx_cells, :ny_cells]
+    wall2 = (wall_mask[tuple(take)][:nx_cells, :ny_cells]
+            if wall_mask is not None else None)
 
+    # Captured BEFORE `ax` is reassigned below -- the `if ax is None:
+    # fig.tight_layout()` guard near the end of this function used to test
+    # `ax` itself, which by then had already been overwritten by
+    # `fig, ax = plt.subplots(...)` a few lines down, so it was always
+    # False and tight_layout() never ran at all (not even for a figure
+    # this function created itself).
+    own_fig = ax is None
     fig = ax.figure if ax is not None else None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -466,6 +591,19 @@ def plot_rasterized_slice(
     # abuts it") defeats that reading on every conductor cell at once.
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
+
+    # #706 two_plane sealing wall: NOT a conductor cell (conductor_mask()
+    # cannot show it, see the docstring), but its own footprint is
+    # computable from the same production function the solve uses
+    # (two_plane_extension_masks) and drawn here as its own marker,
+    # distinct from both the conductor and absorber layers.
+    wall_note = ""
+    if wall2 is not None and wall2.any():
+        ax.pcolormesh(xe, ye, np.where(wall2, 1.0, np.nan).T, shading="flat",
+                      cmap=_two_plane_wall_cmap(), vmin=0.0, vmax=1.0,
+                      alpha=0.65, zorder=4.5)
+        wall_note = ("two-plane sealing wall (#706) on THIS plane -- a "
+                    "solve-time edge operator, not a conductor cell")
 
     absorber_rects = _absorber_rects(grid, keep, xe, ye)
     for rx, ry, rw, rh in absorber_rects:
@@ -520,12 +658,15 @@ def plot_rasterized_slice(
     # what red meant. `loc="best"` (vs. a hardcoded "upper right") picks the
     # corner overlapping the fewest already-plotted patches instead of
     # sitting on top of whichever board happens to fill that corner.
-    if int(cond2.sum()) or drawn or absorber_rects:
+    if int(cond2.sum()) or drawn or absorber_rects or wall_note:
         from matplotlib.patches import Patch
         handles = []
         if int(cond2.sum()):
             handles.append(Patch(facecolor="#b03000", alpha=0.55,
                                  label="conductor cell"))
+        if wall_note:
+            handles.append(Patch(facecolor="#5533cc", alpha=0.65,
+                                 label="two-plane wall (#706)"))
         if drawn:
             handles.append(Patch(fill=False, edgecolor="#d55e00", lw=1.4,
                                  ls="--", label="declared outline (analytic box)"))
@@ -549,22 +690,39 @@ def plot_rasterized_slice(
         ax.set_aspect("equal", adjustable="box")
     else:
         ax.set_aspect("auto")
-    skip_note = (f"; {n_skipped} patterned body/bodies have no analytic "
-                 "outline and are not outlined" if n_skipped else "")
-    tp_note = (f"; {n_two_plane} two-plane bod(y/ies) (#706) drawn as ONE "
-              "wall -- the second face is a solve-time edge operator, not "
-              "a conductor cell" if n_two_plane else "")
-    ax.set_title(title or (
+    skip_note = (f"{n_skipped} patterned bod(y/ies): no analytic outline, "
+                 "not outlined" if n_skipped else "")
+    # Plane-local: a two_plane body's OWN plane only ever shows its first
+    # (declared-shape) face; the SECOND face lives on a neighbouring plane
+    # and, when it does, `wall_note` above fires there instead. Wording it
+    # as "not shown on THIS plane" rather than "not shown at all" matches
+    # that the wall marker now exists.
+    tp_note = (f"{n_two_plane} two-plane bod(y/ies) (#706) here: 2nd wall "
+              "is on a neighbouring plane (see the wall marker there)"
+              if n_two_plane else "")
+    # Each honesty note on its OWN line, not concatenated onto the main
+    # title: at the default 10pt title font a single line carrying the
+    # main title PLUS the two-plane note alone measured ~1300 px wide,
+    # and main + two-plane + moved-plane together ~2340 px -- both well
+    # past the 800 px canvas of the default figsize, so exactly the
+    # notes this honesty mechanism exists to surface were the part that
+    # got clipped off-canvas. `get_title()` still returns the full
+    # (now multi-line) string, so substring checks on any one note are
+    # unaffected by where the line breaks fall.
+    main_line = (
         f"Rasterized {names[axis]}-slice at index {index} "
         f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
-        f"{int(cond2.sum())} conductor cells{skip_note}{tp_note}{moved_note}"),
-        fontsize=10)
+        f"{int(cond2.sum())} conductor cells")
+    note_lines = [n for n in (skip_note, tp_note, wall_note, moved_note) if n]
+    ax.set_title(title or "\n".join([main_line] + note_lines),
+                fontsize=10 if not note_lines else 8)
     # A caller-supplied `ax` belongs to a figure the caller is composing
     # (e.g. a 2-panel comparison); `fig.tight_layout()` reflows EVERY axes
     # in that figure, not just this one -- measured moving a sibling
     # subplot's bounds on every call. Only reflow a figure this function
-    # created itself.
-    if ax is None:
+    # created itself -- `own_fig`, captured before `ax` was reassigned
+    # above, not `ax is None` (always False by this point).
+    if own_fig:
         fig.tight_layout()
     return fig
 
@@ -622,6 +780,7 @@ def plot_stack_profile(
     _require_mpl()
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
+    _warn_if_refined(sim)
     from rfx.nonuniform import NonUniformGrid
 
     is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
@@ -634,6 +793,7 @@ def plot_stack_profile(
     else:
         eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
+    wall_mask = _two_plane_wall_mask(sim, grid, coords)
     keep = [a for a in (0, 1, 2) if a != axis]
     names_of = lambda a: "xyz"[a]
     auto_note = ""
@@ -670,7 +830,16 @@ def plot_stack_profile(
     eps_col = eps[tuple(take)]
     cond_col = cond[tuple(take)]
     edges = _axis_edges(grid, axis, coords[axis]) * 1e3
+    # See plot_rasterized_slice: edges are N+1 for N real cells; the data
+    # column still carries the full grid dimension along this axis.
+    n_cells_axis = edges.size - 1
+    eps_col = eps_col[:n_cells_axis]
+    cond_col = cond_col[:n_cells_axis]
+    wall_col = (wall_mask[tuple(take)][:n_cells_axis]
+               if wall_mask is not None else None)
 
+    # See plot_rasterized_slice: captured BEFORE `ax` is reassigned below.
+    own_fig = ax is None
     fig = ax.figure if ax is not None else None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -699,6 +868,12 @@ def plot_stack_profile(
                                        facecolor="#b03000", alpha=0.45,
                                        hatch="////",
                                        edgecolor="#701e00", lw=0.5))
+        if wall_col is not None and wall_col[k]:
+            # #706 two_plane sealing wall: its own marker, distinct from
+            # the conductor hatch -- see plot_rasterized_slice.
+            ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
+                                       facecolor="#5533cc", alpha=0.5,
+                                       edgecolor="#3a2488", lw=0.6))
 
     pad_lo, pad_hi = _axis_pad_layers(grid, axis)
     n_edges = edges.size - 1
@@ -744,12 +919,16 @@ def plot_stack_profile(
                 ha="center", va="center", fontsize=7)
         drawn += 1
 
-    if int(cond_col.sum()) or absorber_spans:
+    wall_present = wall_col is not None and bool(np.any(wall_col))
+    if int(cond_col.sum()) or absorber_spans or wall_present:
         from matplotlib.patches import Patch
         handles = []
         if int(cond_col.sum()):
             handles.append(Patch(facecolor="#b03000", alpha=0.45,
                                  hatch="////", label="conductor cell"))
+        if wall_present:
+            handles.append(Patch(facecolor="#5533cc", alpha=0.5,
+                                 label="two-plane wall (#706)"))
         if absorber_spans:
             handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
                                  label="CPML absorber"))
@@ -766,16 +945,24 @@ def plot_stack_profile(
     ax.set_xticks([0.5, 1.65])
     ax.set_xticklabels(["declared", "meshed"])
     ax.set_ylabel(f"{names[axis]} (mm)")
-    tp_note = (f"; {n_two_plane} two-plane bod(y/ies) (#706) drawn as ONE "
-              "wall" if n_two_plane else "")
-    ax.set_title(title or (
+    # Plane-local wording: see plot_rasterized_slice.
+    tp_note = (f"{n_two_plane} two-plane bod(y/ies) (#706): 2nd wall shown "
+              "as its own marker where it falls in this column"
+              if n_two_plane else "")
+    # See plot_rasterized_slice: notes on their own line(s), not
+    # concatenated onto the main title, so a long note is not the part
+    # that gets clipped off the default-figsize canvas.
+    main_line = (
         f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
         f"{names[keep[1]]}={y_at * 1e3:.3f} mm — {drawn} declared bod(y/ies), "
-        f"{int(cond_col.sum())} conductor cell(s) (red){tp_note}{auto_note}"),
-        fontsize=10)
+        f"{int(cond_col.sum())} conductor cell(s) (red)")
+    note_lines = [n.strip() for n in (tp_note, auto_note) if n.strip()]
+    ax.set_title(title or "\n".join([main_line] + note_lines),
+                fontsize=10 if not note_lines else 8)
     # See plot_rasterized_slice: only reflow a figure this function
-    # created itself, never a caller-supplied `ax`'s whole figure.
-    if ax is None:
+    # created itself (`own_fig`, captured before `ax` was reassigned
+    # above), never a caller-supplied `ax`'s whole figure.
+    if own_fig:
         fig.tight_layout()
     return fig
 
@@ -783,6 +970,11 @@ def plot_stack_profile(
 def _conductor_cmap():
     from matplotlib.colors import ListedColormap
     return ListedColormap(["#b03000"])
+
+
+def _two_plane_wall_cmap():
+    from matplotlib.colors import ListedColormap
+    return ListedColormap(["#5533cc"])
 
 
 def plot_s_params(
