@@ -1168,7 +1168,8 @@
         "freqs",
         "dft_total_steps",
         "dft_window",
-        "dft_window_alpha"
+        "dft_window_alpha",
+        "pec_mask"
       ]
     },
     "inject_floquet_source": {
@@ -2172,7 +2173,8 @@
         "grid",
         "port",
         "dt",
-        "n_live"
+        "n_live",
+        "pec_mask"
       ]
     },
     "validate_artifact_report": {
@@ -2232,7 +2234,8 @@
         "state",
         "grid",
         "port",
-        "periodic"
+        "periodic",
+        "pec_mask"
       ]
     },
     "wire_port_voltage": {
@@ -2240,7 +2243,8 @@
       "params": [
         "state",
         "grid",
-        "port"
+        "port",
+        "pec_mask"
       ]
     },
     "write_touchstone": {

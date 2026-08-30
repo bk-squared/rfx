@@ -1447,6 +1447,565 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
     assert sim1._materials["ptfe"].eps_r == sim2._materials["ptfe"].eps_r == EPS_COAX
 
 
+# ---------------------------------------------------------------------------
+# Issue #589 Step B -- attempt-2 WIDE fixture: a domain-clearance FALSIFIER
+# for the named candidate (c) "absorber-proximity artifact", NOT attempt 3.
+#
+# Reconciliation with rfx/api/_spec.py's CoaxMSLTransitionResult docstring
+# ("the next step is the settled VESSL run, not a third ladder/clearance
+# change") and with PREDECLARATION_ATTEMPT2["x_cpml_clearance"]: Step A of
+# the #589 plan IS that settled run re-taken with a fuller record dump
+# (scripts/diagnostics/coax_msl_transition_settled_run.py, same
+# _build_coax_msl_transition_sim_attempt2 fixture, same n_steps). Step B
+# below is a FALSIFIER VARIANT run alongside it, not a replacement fixture
+# and not a new attempt: the settled numbers stay pinned to attempt 2; the
+# wide fixture only asks whether those numbers MOVE when the junction is
+# taken away from the CPML (col_power / |S22| shift > 0.10 at 6 or 8 GHz
+# => the committed numbers are absorber-proximity-limited; invariant within
+# 0.05 (|S00| 0.02) => candidate (c) is falsified). Predeclared thresholds
+# live in the #589 design record; this file adds no gate on them.
+#
+# Geometry deltas vs attempt 2 (everything else byte-identical, asserted by
+# test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2):
+#   LY        3.4 -> 6.8 mm  (Y_C recentred: 1.7 -> 3.4 mm; substrate edge
+#                             to trace edge 1.4 -> 3.1 mm on each +/-y side)
+#   JUNCTION_X 1.0 -> 3.0 mm (junction to -x CPML inner edge: 10 -> 30 cells)
+#   LX        12.5 -> 14.5 mm and FEED_X 11.0 -> 13.0 mm -- both move WITH
+#             the junction, so the MSL ladder/feed geometry relative to the
+#             junction and the +x CPML clearance (1.5 mm) are unchanged
+#             (review item 8).
+#   dx, cpml_layers=8, z-stack, FREQ_MAX_2, ladder recipe: unchanged.
+# Cell count 163*85*56 padded (743,820 interior-equivalent per the design's
+# arithmetic) vs attempt 2's 142*51*56 -- ~1.9x, so the same n_steps costs
+# ~1.9x the GPU time; ring-down may be SLOWER (bigger substrate slab): a
+# settling_db > -40 dB at 135000 steps makes B's numbers truncated and
+# UNPINNABLE (report, do not pin; name a 2x-length rerun instead), and
+# _warn_if_ringdown_truncated (#662) will say so verbatim in the run log.
+#
+# KNIFE-EDGE NOTE (why the trace box below is placed by half-cells): attempt
+# 2 declares the trace as Box(y = Y_C -/+ W_TRACE/2) = 1.4/2.0 mm, both
+# exactly on node planes -- the rfx/geometry/csg.py Box docstring's
+# "knife edge". Measured on the committed fixture (_assemble_materials,
+# pure NumPy): the realized pec_mask trace occupies y nodes 14..20
+# INCLUSIVE at the trace z-layer (7 node rows; both edge nodes included by
+# float32 rounding) and x nodes >= 11 -- the junction node x=10 itself is
+# EXCLUDED from the trace box (it carries only the pin). The same declared
+# construction recentred at (3.0, 3.4) mm (y edges 3.1/3.7 mm) rounds the
+# OTHER way on all three edges: 5 node rows AND the junction x-column
+# included -- 59 pec_mask cells differ, i.e. the naive wide build is NOT
+# junction-identical (this is the fail-before-fix evidence for the
+# structural test below; a second iteration with only the y edges pinned
+# still differed at 3 cells, the junction x-column). The wide builder therefore places the trace box on cell
+# MIDPOINTS (the _half_cell_box_z recipe, applied to x and y) so that it
+# realizes EXACTLY attempt 2's own node set after the offset. The MSL
+# port's registered width stays W_TRACE (600 um) in both fixtures. That
+# attempt 2's declared 600 um trace realizes as 7 electric-wall node rows
+# is itself a declared-vs-realized fidelity observation on the COMMITTED
+# fixture (reported via --preflight's fidelity_report in the driver), not
+# something this variant changes.
+# ---------------------------------------------------------------------------
+LY_2W = 6.8e-3
+Y_C_2W = LY_2W / 2.0
+JUNCTION_X_2W = 3.0e-3
+FEED_X_2W = FEED_X_2 + (JUNCTION_X_2W - JUNCTION_X)   # 13.0 mm
+LX_2W = LX_2 + (JUNCTION_X_2W - JUNCTION_X)           # 14.5 mm
+# Node offsets of the wide fixture relative to attempt 2 (same dx on every
+# axis; z unchanged).
+WIDE_X_OFFSET_CELLS = int(round((JUNCTION_X_2W - JUNCTION_X) / DX))  # 20
+WIDE_Y_OFFSET_CELLS = int(round((Y_C_2W - Y_C) / DX))                # 17
+# Attempt 2's REALIZED trace node set (measured, see KNIFE-EDGE NOTE):
+# y nodes [Y_C_NODE - 3, Y_C_NODE + 3] inclusive, x nodes >= JUNCTION_X_NODE + 1.
+_TRACE_HALF_NODES = 3
+_TRACE_X_START_OFFSET_NODES = 1
+# Declared junction window for the byte-identity assertion, in attempt-2
+# DOMAIN node indices (CPML pad excluded), all z: 0..4.0 mm in x (1.0 mm
+# before the junction through 3.0 mm of trace/ladder start; covers the
+# clearance disk r=0.4 mm, the coax outer radius 0.6 mm and the first MSL
+# probe plane region) and the full attempt-2 y interior.
+JUNCTION_WINDOW_ATTEMPT2 = {"x": (0, 40), "y": (0, 34)}
+
+
+def _half_cell_box(n_lo, n_hi):
+    """Same recipe as _half_cell_box_z, for any axis with spacing DX."""
+    return (n_lo - 0.5) * DX, (n_hi + 0.5) * DX
+
+
+def _build_coax_msl_transition_sim_attempt2_wide():
+    """Step B (issue #589): attempt 2 with the junction moved away from the
+    CPML on three sides -- a falsifier for candidate (c) absorber
+    proximity, NOT a third attempt (see the block comment above; Step A,
+    the settled run re-taken, is the claims-bearing measurement and this
+    variant only tests whether its numbers are fixture-specific).
+
+    Everything at and around the junction is attempt 2's own cells after a
+    (+20, +17, 0) node offset; the trace box is placed by half-cells to
+    pin attempt 2's measured realization (KNIFE-EDGE NOTE above).
+    """
+    from rfx.api import Simulation
+    from rfx.boundaries.spec import BoundarySpec
+    from rfx.geometry.csg import Box, Cylinder
+
+    sim = Simulation(
+        freq_max=FREQ_MAX_2, domain=(LX_2W, LY_2W, LZ_2), dx=DX, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
+    )
+    sim.add_material("sub", eps_r=EPS_SUB)
+    sim.add_material("ptfe", eps_r=EPS_COAX)
+
+    gnd_lo, gnd_hi = _half_cell_box_z(N_GND, N_GND)
+    sim.add(Box((0.0, 0.0, gnd_lo), (LX_2W, LY_2W, gnd_hi)), material="pec")
+    clr_c, clr_h = _margin_cylinder_z(N_GND, N_SUB_LO)
+    sim.add(
+        Cylinder(center=(JUNCTION_X_2W, Y_C_2W, clr_c), radius=CLEAR_R, height=clr_h, axis="z"),
+        material="ptfe",
+    )
+    sub_lo, sub_hi = _half_cell_box_z(N_SUB_LO, N_SUB_HI)
+    sim.add(Box((0.0, 0.0, sub_lo), (LX_2W, LY_2W, sub_hi)), material="sub")
+    trc_lo, trc_hi = _half_cell_box_z(N_TRACE, N_TRACE)
+    # Trace: pin attempt 2's realized node set (x >= junction node + 1, y
+    # within +/- _TRACE_HALF_NODES of the centre node) via half-cell placement.
+    jx_node = int(round(JUNCTION_X_2W / DX))
+    yc_node = int(round(Y_C_2W / DX))
+    trc_x_lo, _ = _half_cell_box(jx_node + _TRACE_X_START_OFFSET_NODES, jx_node)
+    trc_y_lo, trc_y_hi = _half_cell_box(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES)
+    sim.add(
+        Box((trc_x_lo, trc_y_lo, trc_lo), (LX_2W, trc_y_hi, trc_hi)),
+        material="pec",
+    )
+    pin_c, pin_h = _margin_cylinder_z(N_GND, N_TRACE)
+    sim.add(
+        Cylinder(center=(JUNCTION_X_2W, Y_C_2W, pin_c), radius=PIN_R, height=pin_h, axis="z"),
+        material="pec",
+    )
+
+    sim.add_coaxial_port(
+        position=(JUNCTION_X_2W, Y_C_2W, N_GND * DX), face="bottom",
+        pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+    )
+    sim.add_msl_port(
+        position=(FEED_X_2W, Y_C_2W, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,
+        direction="-x", impedance=50.0, eps_r_sub=EPS_SUB,
+    )
+    return sim
+
+
+def _attempt2_wide_kwargs(n_steps):
+    """compute_coax_msl_transition kwargs for the wide fixture: attempt 2's
+    own kwargs with only junction_x moved (the ladder recipe is relative
+    to the feed, which moved with the junction)."""
+    kw = _attempt2_kwargs(n_steps)
+    kw["junction_x"] = JUNCTION_X_2W
+    return kw
+
+
+def _junction_window_slices(grid, x_offset_cells, y_offset_cells):
+    """Padded-array slices for JUNCTION_WINDOW_ATTEMPT2 on ``grid``, shifted
+    by the given domain-node offsets (0, 0 for attempt 2 itself)."""
+    x0, x1 = JUNCTION_WINDOW_ATTEMPT2["x"]
+    y0, y1 = JUNCTION_WINDOW_ATTEMPT2["y"]
+    px, py = int(grid.pad_x_lo), int(grid.pad_y_lo)
+    return (
+        slice(px + x_offset_cells + x0, px + x_offset_cells + x1),
+        slice(py + y_offset_cells + y0, py + y_offset_cells + y1),
+        slice(None),
+    )
+
+
+def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
+    """Structural (build-only, no FDTD, ~seconds): the Step-B wide fixture
+    assembles, and every material array (eps_r, sigma, mu_r) AND the PEC
+    mask inside JUNCTION_WINDOW_ATTEMPT2 are np.array_equal to attempt 2's
+    after the (+WIDE_X_OFFSET_CELLS, +WIDE_Y_OFFSET_CELLS) node offset.
+    Also stamps the method's own coax stub (stamp_coaxial_line +
+    stamp_coaxial_annular_resistor at compute_coax_msl_transition's own z
+    indices) on both assembled grids. THAT part is NOT byte-identical and
+    this test does not pretend it is: the stub's radial rasterization puts
+    PIN_R (= 2 dx) and OUTER_R (= 6 dx) exactly on node radii, and the
+    float rounding of (x - cx)^2 + (y - cy)^2 resolves differently at
+    (3.0, 3.4) mm than at (1.0, 1.7) mm -- measured 2026-08-30: 26 cells
+    differ, one PEC-shell node column at r = +6 dx (y) over the whole stub
+    height and one annular-resistor cell at r = -2 dx (x). The assertion
+    on the stub is therefore the structural statement that every
+    differing cell sits ON a knife-edge radius (PIN_R, OUTER_R or the
+    shell's inner radius) -- i.e. the difference is float rounding of an
+    exactly-on-node radius, not a geometry error -- and the count is
+    reported in the failure message. Whether a one-column shell asymmetry
+    in the coax stub is acceptable for Step B is a PI call recorded in the
+    #589 measurement report, not decided here; the method's stamping is
+    production code and is not touched.
+
+    Fail-before-fix evidence (recorded in the KNIFE-EDGE NOTE above): with
+    the naive Box(y = Y_C_2W -/+ W_TRACE/2, x from JUNCTION_X_2W) trace the
+    pec_mask differs at 59 cells in this window (trace edge rows and the
+    junction x-column), so this assertion discriminates.
+    """
+    from rfx.sources.coaxial_port import (
+        coaxial_tem_characteristic_impedance,
+        stamp_coaxial_annular_resistor,
+        stamp_coaxial_line,
+    )
+
+    sim2 = _build_coax_msl_transition_sim_attempt2()
+    simw = _build_coax_msl_transition_sim_attempt2_wide()
+
+    # Registered junction parameters: identical up to the declared offset.
+    p2, pw = sim2._coaxial_ports[0], simw._coaxial_ports[0]
+    assert p2.pin_radius == pw.pin_radius == PIN_R
+    assert p2.outer_radius == pw.outer_radius == OUTER_R
+    assert p2.face == pw.face == "bottom"
+    assert p2.position[2] == pw.position[2] == N_GND * DX
+    assert pw.position[0] == JUNCTION_X_2W and pw.position[1] == Y_C_2W
+    m2, mw = sim2._msl_ports[0], simw._msl_ports[0]
+    assert m2.width == mw.width == W_TRACE
+    assert m2.height == mw.height == H_SUB
+    assert m2.eps_r_sub == mw.eps_r_sub == EPS_SUB
+    assert m2.direction == mw.direction == "-x"
+    assert m2.position[2] == mw.position[2] == N_SUB_LO * DX
+    # Feed-to-junction offset unchanged (review item 8).
+    assert np.isclose(mw.position[0] - JUNCTION_X_2W, m2.position[0] - JUNCTION_X)
+    # +x CPML clearance unchanged: LX - FEED_X.
+    assert np.isclose(LX_2W - FEED_X_2W, LX_2 - FEED_X_2)
+
+    g2 = sim2._build_grid()
+    gw = simw._build_grid()
+    assert (g2.pad_x_lo, g2.pad_y_lo, g2.pad_z_lo) == (gw.pad_x_lo, gw.pad_y_lo, gw.pad_z_lo)
+    assert (g2.nx, g2.ny, g2.nz) == (142, 51, 56)
+    assert (gw.nx, gw.ny, gw.nz) == (142 + WIDE_X_OFFSET_CELLS, 51 + 2 * WIDE_Y_OFFSET_CELLS, 56)
+    assert WIDE_X_OFFSET_CELLS == 20 and WIDE_Y_OFFSET_CELLS == 17
+
+    out2 = sim2._assemble_materials(g2)
+    outw = simw._assemble_materials(gw)
+    mats2, pec2 = out2[0], out2[3]
+    matsw, pecw = outw[0], outw[3]
+    s2 = _junction_window_slices(g2, 0, 0)
+    sw = _junction_window_slices(gw, WIDE_X_OFFSET_CELLS, WIDE_Y_OFFSET_CELLS)
+
+    for name in ("eps_r", "sigma", "mu_r"):
+        a = np.asarray(getattr(mats2, name))[s2]
+        b = np.asarray(getattr(matsw, name))[sw]
+        assert a.dtype == b.dtype and a.shape == b.shape
+        assert np.array_equal(a, b), (
+            f"{name}: {int(np.sum(a != b))} junction-window cells differ "
+            "between attempt 2 and the wide fixture"
+        )
+    assert pec2 is not None and pecw is not None
+    a = np.asarray(pec2, dtype=bool)[s2]
+    b = np.asarray(pecw, dtype=bool)[sw]
+    assert np.array_equal(a, b), (
+        f"pec_mask: {int(np.sum(a != b))} junction-window cells differ; "
+        f"first at (x,y,z)={tuple(int(v) for v in np.argwhere(a != b)[0])}"
+    )
+    # The trace realization this variant pins (KNIFE-EDGE NOTE): attempt 2's
+    # own pec_mask at the trace z-layer, a column well past the junction.
+    pz = int(g2.pad_z_lo)
+    yc_node = int(round(Y_C / DX))
+    trace_rows = np.nonzero(a[30, :, pz + N_TRACE])[0]
+    assert trace_rows.tolist() == list(
+        range(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES + 1)
+    )
+    jx_node = int(round(JUNCTION_X / DX))
+    # Junction x-column at the trace layer carries only the pin (not the
+    # 7-row trace); the trace starts one node further along +x.
+    assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() != trace_rows.tolist()
+    assert np.nonzero(a[jx_node + _TRACE_X_START_OFFSET_NODES, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
+
+    # Method-side coax stub: same z indices compute_coax_msl_transition uses.
+    def _stub(sim, grid, mats):
+        port = sim._coaxial_ports[0]
+        z_j = int(grid.position_to_index(port.position)[2])
+        z_lo = int(grid.pad_z_lo) + 2
+        z_feed = z_lo + 1
+        z_hi = z_j - 1
+        cxy = (float(port.position[0]), float(port.position[1]))
+        stamped, shell_inner = stamp_coaxial_line(
+            grid, mats, center_xy=cxy, z_lo_index=z_lo, z_hi_index=z_hi,
+            pin_radius=PIN_R, outer_radius=OUTER_R,
+        )
+        stamped = stamp_coaxial_annular_resistor(
+            grid, stamped, center_xy=cxy, z_index=z_feed,
+            pin_radius=PIN_R, outer_radius=OUTER_R,
+            target_impedance=float(coaxial_tem_characteristic_impedance(PIN_R, OUTER_R)),
+            shell_inner_radius=shell_inner,
+        )
+        return stamped, float(shell_inner)
+
+    st2, shell_inner2 = _stub(sim2, g2, mats2)
+    stw, shell_innerw = _stub(simw, gw, matsw)
+    assert shell_inner2 == shell_innerw
+    knife_radii = np.array([PIN_R, OUTER_R, shell_inner2]) / DX
+    jx_node, yc_node = int(round(JUNCTION_X / DX)), int(round(Y_C / DX))
+    n_diff_total = 0
+    for name in ("eps_r", "sigma", "mu_r"):
+        a = np.asarray(getattr(st2, name))[s2]
+        b = np.asarray(getattr(stw, name))[sw]
+        diff = np.argwhere(a != b)
+        n_diff_total += len(diff)
+        for (ix, iy, _iz) in diff:
+            r_nodes = float(np.hypot(ix - jx_node, iy - yc_node))
+            assert np.min(np.abs(knife_radii - r_nodes)) < 1e-6, (
+                f"{name} after coax-stub stamping differs at window cell "
+                f"(x,y,z)=({ix},{iy},{_iz}), r={r_nodes:.4f} dx -- NOT a "
+                "knife-edge radius; the wide stub is geometrically different"
+            )
+    # n_diff_total is documented (26 knife-edge cells on 2026-08-30, see the
+    # docstring), deliberately NOT pinned: 0 would be an improvement, not a bug.
+    del n_diff_total
+
+
+def test_attempt2_wide_kwargs_differ_from_attempt2_only_in_junction_x():
+    k2 = _attempt2_kwargs(135000)
+    kw = _attempt2_wide_kwargs(135000)
+    assert set(k2) == set(kw)
+    for key in k2:
+        if key == "junction_x":
+            assert k2[key] == JUNCTION_X and kw[key] == JUNCTION_X_2W
+        elif key == "freqs":
+            assert np.array_equal(k2[key], kw[key])
+        else:
+            assert k2[key] == kw[key], key
+
+
+# ---------------------------------------------------------------------------
+# Issue #589 driver VERDICT LOGIC (pure functions of the report-only driver
+# scripts/diagnostics/coax_msl_transition_settled_run.py). The driver imports
+# this module for the fixture builders, so it is loaded lazily by path here.
+# These tests pin the driver's verdict strings to the predeclared falsifiers
+# (#589 design A3 / review required change 2 + 4); they add no gate on any
+# measured number.
+# ---------------------------------------------------------------------------
+def _load_settled_run_driver():
+    import importlib.util
+    from pathlib import Path
+
+    path = (Path(__file__).resolve().parents[1] / "scripts" / "diagnostics"
+            / "coax_msl_transition_settled_run.py")
+    spec = importlib.util.spec_from_file_location(
+        "_coax_msl_transition_settled_run_driver_under_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_589_a3_falsified_requires_both_drives_and_both_residuals():
+    """A3 predeclaration: '(b)-on-ladder FALSIFIED' only when the MSL-ladder
+    fit_residual AND recurrence_residual are <= 0.02 (and <= 10x own 10 GHz)
+    at ALL committed bins under BOTH drives; the MSL-drive residuals alone
+    can only SUPPORT (b) (EXTRACTOR), never falsify it."""
+    drv = _load_settled_run_driver()
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    committed = [0, 1, 2]
+    clean = np.full((2, 2, 3), 0.005)
+
+    v = drv._classify_a3(clean, clean, freqs, committed)
+    assert v.startswith("(b)-ON-LADDER FALSIFIED"), v
+    assert "BOTH drives" in v and "recurrence" in v, v
+
+    # Reviewer's 200-step smoke shape: msl/coax fit 0.593 while msl/msl is
+    # clean -- the plan's 'all bins/both drives' condition is NOT met.
+    fit = clean.copy()
+    fit[1, 0, :] = [0.593, 0.626, 0.784]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert "FALSIFIED" not in v.split(":")[0], v
+    assert v.startswith("NON-CLOSING"), v
+    assert "coax drive" in v and "NOT falsified" in v, v
+
+    # MSL-drive recurrence residual alone over 0.02 => EXTRACTOR, names it.
+    rec = clean.copy()
+    rec[1, 1, 0] = 0.05
+    v = drv._classify_a3(clean, rec, freqs, committed)
+    assert v.startswith("EXTRACTOR ((b)-on-ladder supported)"), v
+    assert "recurrence_residual" in v and "6 GHz" in v, v
+
+    # MSL-drive fit residual over the load-bearing 10x-own-10-GHz rule.
+    fit = clean.copy()
+    fit[1, 1, :] = [0.015, 0.004, 0.001]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("EXTRACTOR") and "10x own 10 GHz" in v, v
+
+    # Coax-drive MSL-ladder residual failing only the 10x rule: not falsified.
+    fit = clean.copy()
+    fit[1, 0, :] = [0.015, 0.004, 0.001]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("NON-CLOSING") and "10x" in v, v
+
+    # Coax LADDER residuals never enter the verdict (they are the comparator).
+    fit = clean.copy()
+    fit[0, :, :] = 0.9
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("(b)-ON-LADDER FALSIFIED"), v
+
+    # With --freqs the verdict uses the committed bins only.
+    fit = np.full((2, 2, 5), 0.005)
+    fit[1, 1, 0] = 0.9  # a non-committed dense-band bin
+    v = drv._classify_a3(fit, np.full((2, 2, 5), 0.005),
+                         np.array([5e9, 6e9, 8e9, 9e9, 10e9]), [1, 2, 4])
+    assert v.startswith("(b)-ON-LADDER FALSIFIED") and "committed bins" in v, v
+
+
+def _a0_baseline_dict(*, S, n_steps, fixture, x64, freqs_all, committed,
+                      with_ext=True):
+    """Build a baseline JSON dict in the driver's own output shape."""
+    S = np.asarray(S)
+    fc = np.asarray(freqs_all)[list(committed)]
+    Sc = S[:, :, list(committed)]
+    d = {
+        "n_steps": n_steps,
+        "freqs_hz": fc.tolist(),
+        "s22_abs": np.abs(Sc[1, 1, :]).tolist(),
+        "max_abs_s": float(np.max(np.abs(Sc))),
+        "col_msl_driven_power": (np.abs(Sc[0, 1, :]) ** 2 + np.abs(Sc[1, 1, :]) ** 2).tolist(),
+    }
+    if with_ext:
+        d["fixture"] = fixture
+        d["ext_589"] = {
+            "precision": {"jax_enable_x64": bool(x64)},
+            "freqs_hz_all": np.asarray(freqs_all).tolist(),
+            "committed_bin_indices": list(committed),
+            "s_complex": {"re": S.real.tolist(), "im": S.imag.tolist()},
+            "s_abs": {"S00": np.abs(S[0, 0, :]).tolist(), "S10": np.abs(S[1, 0, :]).tolist(),
+                      "S01": np.abs(S[0, 1, :]).tolist(), "S11": np.abs(S[1, 1, :]).tolist()},
+            "col_coax_driven_power": (np.abs(S[0, 0, :]) ** 2 + np.abs(S[1, 0, :]) ** 2).tolist(),
+        }
+    return d
+
+
+def _a0_legacy_for(S, committed):
+    Sc = np.asarray(S)[:, :, list(committed)]
+    return {
+        "s22_abs": np.abs(Sc[1, 1, :]).tolist(),
+        "max_abs_s": float(np.max(np.abs(Sc))),
+        "col_msl_driven_power": (np.abs(Sc[0, 1, :]) ** 2 + np.abs(Sc[1, 1, :]) ** 2).tolist(),
+        "settling_db": [-45.0, -44.0],
+        "reciprocity_worst_deviation": {"pair": [0, 1], "value": 0.9},
+        "gamma_ratio_coax_driven": [1.1, 0.9, 1.0],
+        "cond_a_equilibrated": [1.0, 1.0, 1.0],
+    }
+
+
+def _a0_reference_S():
+    rng = np.random.default_rng(589)
+    S = np.zeros((2, 2, 3), dtype=complex)
+    S[0, 0, :] = 0.99 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[1, 1, :] = 0.21 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[1, 0, :] = 3.0e-6 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[0, 1, :] = 6.0e-5 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    return S
+
+
+def test_589_a0_precision_mismatch_is_not_comparable_and_applies_f64_rule(tmp_path):
+    """Review required change 2: an f64 run compared against an f32 baseline
+    is NOT a reproduction test (no A0 tier), and the predeclared f64 rule
+    (|S10| or |S01| moving > 2x => FLOOR; |S22|/|S00|/col_power within the
+    A0 budget) is computed by the driver, not left as prose."""
+    import json
+
+    drv = _load_settled_run_driver()
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    committed = [0, 1, 2]
+    S_base = _a0_reference_S()
+    base_path = tmp_path / "f32_baseline.json"
+    base_path.write_text(json.dumps(_a0_baseline_dict(
+        S=S_base, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs, committed=committed)))
+
+    # f64 replicate: |S10| 3x at 6 GHz, |S01| 1.5x, magnitudes within 1e-4.
+    S_this = S_base.copy()
+    S_this[1, 0, 0] *= 3.0
+    S_this[0, 1, :] *= 1.5
+    S_this[1, 1, :] *= (1.0 + 1.0e-4)
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_this,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_this, committed),
+                         x64_enabled=True)
+    assert a0["status"] == "compared but NOT a reproduction test", a0["status"]
+    assert a0["tier"].startswith("NOT COMPARABLE"), a0["tier"]
+    assert "STOP" not in a0["tier"] and "reproduced" not in a0["tier"], a0["tier"]
+    assert any("precision" in n for n in a0["notes"]), a0["notes"]
+    assert a0["precision"]["this_run_jax_enable_x64"] is True
+    assert a0["precision"]["baseline_jax_enable_x64"] is False
+    f64 = a0["f64_replicate"]
+    assert f64["applicable"] is True and f64["same_fixture_and_steps"] is True
+    assert f64["verdict"].startswith("FLOOR"), f64["verdict"]
+    assert "6 GHz" in f64["verdict"] and "S10" in f64["verdict"], f64["verdict"]
+    assert np.isclose(f64["ratio_S10"][0], 3.0) and np.allclose(f64["ratio_S01"], 1.5)
+    assert f64["magnitude_max_delta"] <= 1.0e-3
+    assert "within the A0 reproduced tier" in f64["verdict"], f64["verdict"]
+
+    # Same shape but |S10|/|S01| stable and |S22| moving by 0.2 (the
+    # implementer's own f32/f64 smoke): NOT floor by the 2x rule, magnitude
+    # budget exceeded -- reported, no attribution string.
+    S_this = S_base.copy()
+    S_this[1, 1, :] = 0.41 * S_base[1, 1, :] / np.abs(S_base[1, 1, :])
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_this,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_this, committed),
+                         x64_enabled=True)
+    f64 = a0["f64_replicate"]
+    assert f64["verdict"].startswith("|S10|/|S01| within 2x"), f64["verdict"]
+    assert "do NOT reproduce within the A0 budget" in f64["verdict"], f64["verdict"]
+    assert f64["magnitude_max_delta"] > 1.0e-2
+    assert a0["tier"].startswith("NOT COMPARABLE"), a0["tier"]
+
+    # The tracked 369367252283-class record (no ext_589, no precision key) is
+    # documented f32: an f64 run against it is NOT COMPARABLE, the 2x rule is
+    # declared not computable, the |S22|/col_power budget check still runs.
+    tracked_like = tmp_path / "tracked_like.json"
+    tracked_like.write_text(json.dumps(_a0_baseline_dict(
+        S=S_base, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs, committed=committed, with_ext=False)))
+    a0 = drv._a0_compare(tracked_like, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=True)
+    assert a0["tier"].startswith("NOT COMPARABLE") and "precision" in a0["tier"], a0["tier"]
+    assert "documented" in a0["precision"]["baseline_source"], a0["precision"]
+    f64 = a0["f64_replicate"]
+    assert f64["applicable"] is True and f64["ratio_S10"] is None
+    assert "NOT computable" in f64["verdict"] and "s_abs" in f64["verdict"], f64["verdict"]
+    assert f64["magnitude_max_delta"] == 0.0
+    assert set(f64["magnitude_deltas"]) == {"S22", "col_msl_driven_power"}
+
+    # Same precision, same fixture/steps: the reproduction tier applies and
+    # no f64 rule is emitted.
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=False)
+    assert a0["status"] == "compared" and a0["tier"].startswith("reproduced"), a0
+    assert a0["f64_replicate"] is None
+
+    # n_steps mismatch at the same precision: labeled NOT COMPARABLE, no
+    # STOP/reproduced tier string (the deltas stay in the dump).
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=135000, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=False)
+    assert a0["tier"].startswith("NOT COMPARABLE") and "n_steps" in a0["tier"], a0["tier"]
+    assert "STOP" not in a0["tier"]
+    assert a0["tier_value"] == 0.0 and "max_abs_delta_S_complex" in a0["deltas"]
+
+
+def test_589_a0_indexes_dense_band_baseline_by_freqs_hz_all(tmp_path):
+    """A baseline written with --freqs carries committed-only legacy arrays
+    (freqs_hz) but all-bin ext_589 arrays (freqs_hz_all); the comparator must
+    index each by its own frequency axis."""
+    import json
+
+    drv = _load_settled_run_driver()
+    freqs_dense = np.array([5.0e9, 6.0e9, 7.0e9, 8.0e9, 10.0e9])
+    committed_dense = [1, 3, 4]
+    rng = np.random.default_rng(1)
+    S_dense = rng.normal(size=(2, 2, 5)) + 1j * rng.normal(size=(2, 2, 5))
+    base_path = tmp_path / "dense_f32.json"
+    base_path.write_text(json.dumps(_a0_baseline_dict(
+        S=S_dense, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs_dense, committed=committed_dense)))
+
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    S_this = S_dense[:, :, committed_dense]
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=[0, 1, 2], S=S_this,
+                         n_steps=300, fixture="attempt2",
+                         legacy=_a0_legacy_for(S_this, [0, 1, 2]), x64_enabled=False)
+    assert a0["status"] == "compared", a0
+    assert a0["deltas"]["max_abs_delta_S_complex"] == 0.0, a0["deltas"]
+    assert a0["tier"].startswith("reproduced"), a0["tier"]
+
+
 @pytest.mark.slow_physics
 def test_coax_msl_transition_attempt2_instrument_verification():
     """Attempt 2: INSTRUMENT test, not a claims test (issue #585 review

@@ -361,3 +361,112 @@ def test_traced_profile_is_reported_as_unevaluable(direction):
     assert len(skipped) == 1, msgs
     assert "traced" in skipped[0]
     assert f"the {direction[1]}-axis cell sizes are a traced" in skipped[0]
+
+
+# ---------------------------------------------------------------------------
+# Issue #681: auto probe-SPACING widening (span solve)
+# ---------------------------------------------------------------------------
+#
+# A ~0.1 lambda_g probe span leaves the N-probe beta fit noise-fragile
+# (measured, 500-trial Monte-Carlo at 1% probe noise, N=5: median beta
+# error 5.5% at a 0.10 lambda_g span vs 0.81% at 0.30 lambda_g). For
+# AUTO-spacing ports _resolve_msl_auto_offsets widens the spacing toward
+# lambda_g(f_max)/4 per probe step, capped by half the reflector interval
+# (the other half stays with the #469 midpoint rule) and by the absorber
+# clearance. Hand arithmetic for the open-thru geometry below (dx=200um,
+# eps_eff_HJ(w=2.413mm, h=0.794mm, eps_r=2.2) = 1.8697):
+#   lambda_g(20 GHz) = c/(20e9*sqrt(1.8697)) = 10.96 mm
+#   target spacing   = round(10.96/4/0.2) = 14 cells
+#   feed at 2.5 mm, '+x', domain 20 mm -> dist_edge = 17.5 mm
+#   clear = 1.676 mm (lambda_g/4 at f_max, eps-proxy 5), cpml = 8 cells
+#   span budget = int((17.5-1.676)/0.2) - 8 - 20 = 51 cells
+#   spacing = min(14, 51//4) = 12, span = 48 cells = 9.6 mm = 0.88 lambda_g
+#   (the Sheen REFLECTOR geometry stays byte-identical: budget
+#    21//2 = 10 cells -> spacing max(2, 10//4) = 2 = the registration
+#    default, offset midpoint 26 -- covered by the #469 tests above.)
+
+
+def _open_thru_sim():
+    sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=DX,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
+    sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
+                (0.019, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+    return sim
+
+
+def test_auto_spacing_widens_on_open_thru():
+    """No reflector, long feed: spacing widens 2 -> 12 cells (hand
+    arithmetic above); the deepest probe stays clear of the absorber."""
+    sim = _open_thru_sim()
+    sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
+                     height=H_SUB, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="p1")
+    (pe,) = sim._msl_ports
+    assert pe.n_probe_spacing == 2      # conservative registration default
+    assert sim._msl_auto_probe_spacing["p1"] == pytest.approx(1.8697, abs=1e-3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    assert r.n_probe_offset == 20       # no reflector: offset untouched
+    assert r.n_probe_spacing == 12
+    deepest = r.n_probe_offset + (r.n_probes - 1) * r.n_probe_spacing
+    n_cells = int(DOMAIN[0] / DX)
+    clear_cells = int(0.001676 / DX)
+    assert deepest <= n_cells - 8 - clear_cells
+    # span in guide wavelengths at f_max: >= 0.3 (the measured-adequate
+    # regime), <= 1.0 + rounding (the (N-1)/4 anti-alias ceiling)
+    lam_g = 2.998e8 / (20e9 * np.sqrt(1.8697))
+    span = (r.n_probes - 1) * r.n_probe_spacing * DX
+    assert 0.3 * lam_g <= span <= 1.05 * lam_g
+
+
+def test_auto_spacing_is_idempotent_including_on_resolved_entries():
+    sim = _open_thru_sim()
+    sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
+                     height=H_SUB, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="p1")
+    (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    (r2,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    (r3,) = _resolve_msl_auto_offsets(sim, [r], _grid())
+    assert (r.n_probe_offset, r.n_probe_spacing) \
+        == (r2.n_probe_offset, r2.n_probe_spacing) \
+        == (r3.n_probe_offset, r3.n_probe_spacing) == (20, 12)
+    # stored entry untouched
+    assert sim._msl_ports[0].n_probe_spacing == 2
+
+
+def test_explicit_spacing_is_never_widened():
+    sim = _open_thru_sim()
+    sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
+                     height=H_SUB, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="pexp", n_probe_spacing=3)
+    assert "pexp" not in sim._msl_auto_probe_spacing
+    (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    assert r.n_probe_spacing == 3
+
+
+def test_reflector_geometry_spacing_stays_byte_identical():
+    """The Sheen interval geometry has only 21 slack cells; half of it
+    (10) cannot fit even one widened probe step, so the resolved spacing
+    equals the registration default and the #469 midpoint is unchanged
+    (this is the pre-#681 byte-identity claim, asserted directly)."""
+    sim = _sim_with_feed_and_patch()
+    (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    assert r.n_probe_spacing == sim._msl_ports[0].n_probe_spacing == 2
+    assert r.n_probe_offset == 26
+
+
+def test_graded_propagation_axis_keeps_registration_spacing():
+    """Resolver-skip path: spacing must stay the conservative stored
+    default (a widened value could overrun a feed the solve cannot
+    measure)."""
+    sim = _nu_sim("+x", **_profiles("+x", prop_ratio=1.5))
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        (r,) = _resolve_msl_auto_offsets(
+            sim, list(sim._msl_ports),
+            sim._build_nonuniform_grid(),
+        )
+    assert r.n_probe_spacing == sim._msl_ports[0].n_probe_spacing

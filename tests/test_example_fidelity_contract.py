@@ -160,6 +160,18 @@ def test_not_auditable_classifications_are_machine_checked(
         assert lib.has_top_level_solve_call(relpath), (
             f"{relpath} is classified module_level_solve but no top-level "
             "solve call was found in its AST -- reclassify")
+    elif entry.kind == "no_solve":
+        # Builds a Simulation (so it is not ``no_simulation``) but never
+        # solves (so ``builder_fused_with_solve`` cannot describe it either):
+        # the #636 analysis scripts construct a Simulation only to read the
+        # lock-test grid's dt. Pinned both ways so the bucket cannot absorb a
+        # script that later gains a solve, or one that stops building at all.
+        assert lib.real_simulation_call_count(relpath) > 0, (
+            f"{relpath} is classified no_solve but its AST constructs no "
+            "Simulation -- reclassify as no_simulation")
+        assert not lib.has_any_solve_call(relpath), (
+            f"{relpath} is classified no_solve but now calls a solve "
+            "entrypoint -- reclassify (builder_fused_with_solve or audited)")
     elif entry.kind == "builder_fused_with_solve":
         fns = lib.functions_building_simulation(relpath)
         assert any(fns.values()), (

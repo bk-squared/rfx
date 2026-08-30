@@ -86,10 +86,21 @@ class WirePortSParamSpec(NamedTuple):
     Pre-computed metadata for inline V/I DFT accumulation inside
     jax.lax.scan, avoiding the separate Python-loop S-param extraction.
 
-    mid_i, mid_j, mid_k: midpoint cell for V and I measurement.
+    mid_i, mid_j, mid_k: midpoint cell for V and I measurement — the
+        midpoint of the LIVE wire run (issue #764; identical to the
+        historical all-extent midpoint when no extent cell is dead).
     component: 'ez', 'ex', or 'ey'.
     freqs: (n_freqs,) frequency array.
     impedance: port reference impedance (Z0).
+    live_cells: static tuple of (i, j, k) LIVE wire cells (issue #764) for
+        the whole-port gap-voltage accumulator
+        V_port = sum over live cells of -E_c*dx.  Empty tuple = degenerate
+        fallback to the single midpoint cell (pre-#764 constructors).
+    excite: whether this port is genuinely driven in THIS pass.  The
+        whole-port driven-diagonal formula
+        S_kk = (V_port - Z0*I)/(V_port + Z0*I) applies ONLY when True;
+        a passive port's diagonal keeps the legacy per-cell convention
+        (a load-independent port-cell diagnostic, not S_jj — issue #764).
     """
     mid_i: int
     mid_j: int
@@ -97,6 +108,8 @@ class WirePortSParamSpec(NamedTuple):
     component: str
     freqs: jnp.ndarray
     impedance: float
+    live_cells: tuple = ()
+    excite: bool = True
 
 
 class LumpedPortSParamSpec(NamedTuple):
@@ -908,6 +921,9 @@ def _build_step_setup(
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_dft
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # i_dft
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_inc_dft
+                # v_port_dft (issue #764): whole-port gap voltage
+                # V_port = sum over LIVE cells of -E_c*dx.
+                jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),
             )
             for wp in wire_port_sparams
         )
@@ -984,7 +1000,7 @@ def _build_step_setup(
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs)
+        (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
         for probe in dft_planes
     )
     waveguide_meta = tuple(waveguide_ports)
@@ -1457,9 +1473,21 @@ def make_core_step(ctx: _StepContext):
         if ctx.use_wire_sparams:
             new_wire_accs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
-                v_dft, i_dft, vinc_dft = accs
+                v_dft, i_dft, vinc_dft, v_port_dft = accs
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                field_c = getattr(st, wp_meta.component)
+                v = -field_c[mi, mj, mk] * dx
+                # Whole-port gap voltage (issue #764): the discrete line
+                # integral of E across the LIVE run,
+                # V_port = sum_live(-E_c*dx).  Only this SUM is
+                # KVL/Faraday-constrained on the staggered grid; a single
+                # cell is not (a PEC short forces sum V_c = 0 while V_mid
+                # stays finite).  ``live_cells`` is a static tuple, so the
+                # unroll resolves at trace time; an empty tuple (pre-#764
+                # spec constructor) degenerates to the single midpoint cell.
+                _lc = wp_meta.live_cells or ((mi, mj, mk),)
+                v_port = -sum(
+                    field_c[ci, cj, ck] for (ci, cj, ck) in _lc) * dx
                 # #692: the SHARED loop, not a fourth inline copy. This block
                 # used to spell the six branches verbatim with a raw
                 # `h[i-1]`, so a port at index 0 read H from the OPPOSITE
@@ -1481,6 +1509,7 @@ def make_core_step(ctx: _StepContext):
                     v_dft + v * phase,
                     i_dft + i_val * phase,
                     vinc_dft,
+                    v_port_dft + v_port * phase,
                 ))
 
         # Lumped port S-param DFT accumulation BEFORE source injection
@@ -1580,14 +1609,26 @@ def make_core_step(ctx: _StepContext):
         if ctx.use_dft_planes:
             t_plane = st.step * dt
             new_dft_planes = []
-            for acc, (component, axis, index, freqs) in zip(carry["dft_planes"], ctx.dft_meta):
+            for acc, (component, axis, index, freqs, region) in zip(
+                carry["dft_planes"], ctx.dft_meta
+            ):
                 field = getattr(st, component)
-                if axis == 0:
-                    plane = field[index, :, :]
-                elif axis == 1:
-                    plane = field[:, index, :]
+                if region is None:
+                    lo1 = lo2 = 0
+                    if axis == 0:
+                        hi1, hi2 = field.shape[1], field.shape[2]
+                    elif axis == 1:
+                        hi1, hi2 = field.shape[0], field.shape[2]
+                    else:
+                        hi1, hi2 = field.shape[0], field.shape[1]
                 else:
-                    plane = field[:, :, index]
+                    lo1, hi1, lo2, hi2 = region
+                if axis == 0:
+                    plane = field[index, lo1:hi1, lo2:hi2]
+                elif axis == 1:
+                    plane = field[lo1:hi1, index, lo2:hi2]
+                else:
+                    plane = field[lo1:hi1, lo2:hi2, index]
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
                 new_dft_planes.append(
                     acc + plane[None, :, :] * phase[:, None, None] * dt

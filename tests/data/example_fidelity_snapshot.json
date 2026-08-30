@@ -3361,6 +3361,364 @@
       },
       "preflight": []
     },
+    "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 72000.0,
+              "declared_um": [
+                0.0,
+                72000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                231.25
+              ],
+              "mesh_extent_um": 72231.25,
+              "n_cells": 91,
+              "realized_extent_um": 72231.25,
+              "realized_um": [
+                0.0,
+                72231.25
+              ]
+            },
+            "y": {
+              "declared_extent_um": 82000.0,
+              "declared_um": [
+                0.0,
+                82000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                550.0
+              ],
+              "mesh_extent_um": 82550.0,
+              "n_cells": 104,
+              "realized_extent_um": 82550.0,
+              "realized_um": [
+                0.0,
+                82550.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 26112.5,
+              "declared_um": [
+                0.0,
+                26112.5
+              ],
+              "face_residual_um": [
+                0.0,
+                81.25
+              ],
+              "mesh_extent_um": 26193.75,
+              "n_cells": 33,
+              "realized_extent_um": 26193.75,
+              "realized_um": [
+                0.0,
+                26193.75
+              ]
+            }
+          },
+          "findings": [
+            {
+              "axis": "y",
+              "detail": "declared 82000.0 um realized 82550.0 um over 104 cells (+550.0 um, +0.67%) \u2014 the cell size does not divide the declared length",
+              "kind": "domain-extent-quantized",
+              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|16000.000,16000.000,11112.500um->56000.000,66000.000,11906.250um": {
+          "axes": {
+            "x": {
+              "cell_um": 793.75,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                16000.0,
+                56000.0
+              ],
+              "face_residual_um": [
+                668.75,
+                356.25
+              ],
+              "realized_extent_um": 39687.5,
+              "realized_um": [
+                16668.75,
+                56356.25
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 793.75,
+              "declared_extent_um": 50000.0,
+              "declared_um": [
+                16000.0,
+                66000.0
+              ],
+              "face_residual_um": [
+                668.75,
+                675.0
+              ],
+              "realized_extent_um": 50006.25,
+              "realized_um": [
+                16668.75,
+                66675.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 793.75,
+              "declared_extent_um": 793.75,
+              "declared_um": [
+                11112.5,
+                11906.25
+              ],
+              "face_residual_um": [
+                1.04083408559e-11,
+                1.04083408559e-11
+              ],
+              "realized_extent_um": 793.75,
+              "realized_um": [
+                11112.5,
+                11906.25
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 668.7 um (1.67% of the declared 40000.0 um extent); SIZE 39687.5 um (-312.5 um, -0.78%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 675.0 um (1.35% of the declared 50000.0 um extent); SIZE 50006.3 um (+6.3 um, +0.01%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "z",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 3150,
+          "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY"
+        },
+        "geometry|pec|8000.000,8000.000,7143.750um->64000.000,74000.000,7937.500um": {
+          "axes": {
+            "x": {
+              "cell_um": 793.75,
+              "declared_extent_um": 56000.0,
+              "declared_um": [
+                8000.0,
+                64000.0
+              ],
+              "face_residual_um": [
+                731.25,
+                293.75
+              ],
+              "realized_extent_um": 55562.5,
+              "realized_um": [
+                8731.25,
+                64293.75
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 793.75,
+              "declared_extent_um": 66000.0,
+              "declared_um": [
+                8000.0,
+                74000.0
+              ],
+              "face_residual_um": [
+                731.25,
+                612.5
+              ],
+              "realized_extent_um": 65881.25,
+              "realized_um": [
+                8731.25,
+                74612.5
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 793.75,
+              "declared_extent_um": 793.75,
+              "declared_um": [
+                7143.75,
+                7937.5
+              ],
+              "face_residual_um": [
+                5.20417042793e-12,
+                6.93889390391e-12
+              ],
+              "realized_extent_um": 793.75,
+              "realized_um": [
+                7143.75,
+                7937.5
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 731.2 um (1.31% of the declared 56000.0 um extent); SIZE 55562.5 um (-437.5 um, -0.78%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65881.2 um (-118.8 um, -0.18%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 5810,
+          "realization": "two-plane sheet (normal z): electric walls on BOTH bounding node planes; interior enclosed"
+        },
+        "geometry|sub|8000.000,8000.000,7937.500um->64000.000,74000.000,11112.500um": {
+          "axes": {
+            "x": {
+              "cell_um": 793.75,
+              "declared_extent_um": 56000.0,
+              "declared_um": [
+                8000.0,
+                64000.0
+              ],
+              "face_residual_um": [
+                731.25,
+                293.75
+              ],
+              "realized_extent_um": 55562.5,
+              "realized_um": [
+                8731.25,
+                64293.75
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 793.75,
+              "declared_extent_um": 66000.0,
+              "declared_um": [
+                8000.0,
+                74000.0
+              ],
+              "face_residual_um": [
+                731.25,
+                612.5
+              ],
+              "realized_extent_um": 65881.25,
+              "realized_um": [
+                8731.25,
+                74612.5
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 793.75,
+              "declared_extent_um": 3175.0,
+              "declared_um": [
+                7937.5,
+                11112.5
+              ],
+              "face_residual_um": [
+                6.93889390391e-12,
+                1.04083408559e-11
+              ],
+              "realized_extent_um": 3175.0,
+              "realized_um": [
+                7937.5,
+                11112.5
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 731.2 um (1.31% of the declared 56000.0 um extent); SIZE 55562.5 um (-437.5 um, -0.78%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65881.2 um (-118.8 um, -0.18%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "eps_r": 2.2,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "sub",
+            "sigma": 0.000293739614638
+          },
+          "n_cells": 23240,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' z-extent 793.7\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "off_lattice_design_edges",
+          "loc": null,
+          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' x: extent 40mm, worst face residual 356.2\u00b5m (0.89% of the extent, df/f ~ 0.89%); geometry[0] 'pec' x: extent 56mm, worst face residual 293.7\u00b5m (0.52% of the extent, df/f ~ 0.52%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the uniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
+          "code": "sheet_cavity_electrical_thickness",
+          "loc": null,
+          "message": "1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=17)/geometry[2](k=22) at in-plane column (53,60): sum(d/eps) mesh 2.237mm vs physical 1.443mm (+55.0%); sum(d*sqrt(eps)) mesh 5.503mm vs physical 4.709mm (+16.9%); node-to-node 3.969mm vs face-to-face 3.175mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max); of the sum(d/eps) mesh total, 793.8\u00b5m is geometry[0]'s OWN cell (793.8\u00b5m at eps_r 1.000) \u2014 that sheet fills one cell, and rfx zeroes only TANGENTIAL E on a one-cell PEC sheet, so the cell's normal-E edge stays live and sits INSIDE the cavity. OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column \u2014 the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade \u2014 which face the plane sits on \u2014 not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there \u2014 extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only \u2014 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.",
+          "severity": "warning",
+          "source": "_validate_cfg_sheet_cavity_thickness"
+        },
+        {
+          "code": "wire_port_end_gap_to_conductor",
+          "loc": null,
+          "message": "Wire port at (0.027000000000000003, 0.041, 0.00873125) (extent 0.0015875, component ez): its +z-side end cell (42, 60, 21) is live (vacuum/dielectric), but the cell immediately beyond it ((42, 60, 22)) is PEC ['pec'] in the assembled geometry. The port terminates in vacuum/dielectric one cell (gap = 1 cell = 0.00079375 m) short of a rasterized conductor, so the feed never galvanically reaches it and coupling is capacitive only (measured signature: |S21| rising with frequency; issue #556, the #488-lane D5 finding). Remedy: extend the port extent by one cell so its end lands on the conductor's rasterized node, or refine dx so the conductor interface aligns with a grid node (e.g. dx = h/N for an interface at height h).",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
     "validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated": {
       "fidelity": {
         "NOT AUDITED by this report": {
@@ -5284,6 +5642,604 @@
         }
       ]
     },
+    "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000474974512846
+              ],
+              "mesh_extent_um": 10000.000475,
+              "n_cells": 20,
+              "realized_extent_um": 10000.000475,
+              "realized_um": [
+                0.0,
+                10000.000475
+              ]
+            },
+            "y": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000474974512846
+              ],
+              "mesh_extent_um": 10000.000475,
+              "n_cells": 20,
+              "realized_extent_um": 10000.000475,
+              "realized_um": [
+                0.0,
+                10000.000475
+              ]
+            },
+            "z": {
+              "declared_extent_um": 8000.0,
+              "declared_um": [
+                0.0,
+                8000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000379979610277
+              ],
+              "mesh_extent_um": 8000.00037998,
+              "n_cells": 16,
+              "realized_extent_um": 8000.00037998,
+              "realized_um": [
+                0.0,
+                8000.00037998
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|3500.000,3500.000,2500.000um->6500.000,6500.000,3500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 3000.0,
+              "declared_um": [
+                3500.0,
+                6500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000308733433783
+              ],
+              "realized_extent_um": 3000.00014249,
+              "realized_um": [
+                3500.00016624,
+                6500.00030873
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 3000.0,
+              "declared_um": [
+                3500.0,
+                6500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000308733433783
+              ],
+              "realized_extent_um": 3000.00014249,
+              "realized_um": [
+                3500.00016624,
+                6500.00030873
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                2500.0,
+                3500.0
+              ],
+              "face_residual_um": [
+                0.000118743628211,
+                0.000166241079496
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                2500.00011874,
+                3500.00016624
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 72,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|pec|3500.000,3500.000,4500.000um->6500.000,6500.000,5500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 3000.0,
+              "declared_um": [
+                3500.0,
+                6500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000308733433783
+              ],
+              "realized_extent_um": 3000.00014249,
+              "realized_um": [
+                3500.00016624,
+                6500.00030873
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 3000.0,
+              "declared_um": [
+                3500.0,
+                6500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000308733433783
+              ],
+              "realized_extent_um": 3000.00014249,
+              "realized_um": [
+                3500.00016624,
+                6500.00030873
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                4500.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.000213738531214,
+                0.000261235982499
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                4500.00021374,
+                5500.00026124
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 72,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|pec|4500.000,5000.000,3500.000um->5000.000,5500.000,4500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                4500.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.000213738531214,
+                0.00023748725729
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                4500.00021374,
+                5000.00023749
+              ],
+              "sub_cell": true
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5000.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000261235982499
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5000.00023749,
+                5500.00026124
+              ],
+              "sub_cell": true
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                3500.0,
+                4500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000213738531214
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                3500.00016624,
+                4500.00021374
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x+y",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 2,
+          "realization": "one-plane sheet (normal x+y): electric wall on the LOWER node plane ONLY"
+        },
+        "geometry|pec|5000.000,4500.000,3500.000um->5500.000,5000.000,4500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5000.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000261235982499
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5000.00023749,
+                5500.00026124
+              ],
+              "sub_cell": true
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                4500.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.000213738531214,
+                0.00023748725729
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                4500.00021374,
+                5000.00023749
+              ],
+              "sub_cell": true
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                3500.0,
+                4500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000213738531214
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                3500.00016624,
+                4500.00021374
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x+y",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 2,
+          "realization": "one-plane sheet (normal x+y): electric wall on the LOWER node plane ONLY"
+        },
+        "geometry|pec|5000.000,5500.000,3500.000um->5500.000,6000.000,4500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5000.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000261235982499
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5000.00023749,
+                5500.00026124
+              ],
+              "sub_cell": true
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5500.0,
+                6000.0
+              ],
+              "face_residual_um": [
+                0.000261235982499,
+                0.000284984707707
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5500.00026124,
+                6000.00028498
+              ],
+              "sub_cell": true
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                3500.0,
+                4500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000213738531214
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                3500.00016624,
+                4500.00021374
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x+y",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 2,
+          "realization": "one-plane sheet (normal x+y): electric wall on the LOWER node plane ONLY"
+        },
+        "geometry|pec|5500.000,5000.000,3500.000um->6000.000,5500.000,4500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5500.0,
+                6000.0
+              ],
+              "face_residual_um": [
+                0.000261235982499,
+                0.000284984707707
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5500.00026124,
+                6000.00028498
+              ],
+              "sub_cell": true
+            },
+            "y": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 500.0,
+              "declared_um": [
+                5000.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000261235982499
+              ],
+              "realized_extent_um": 500.000023749,
+              "realized_um": [
+                5000.00023749,
+                5500.00026124
+              ],
+              "sub_cell": true
+            },
+            "z": {
+              "cell_um": 500.000023749,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                3500.0,
+                4500.0
+              ],
+              "face_residual_um": [
+                0.000166241079496,
+                0.000213738531214
+              ],
+              "realized_extent_um": 1000.0000475,
+              "realized_um": [
+                3500.00016624,
+                4500.00021374
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x+y",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "kind": "sheet-own-cell-live",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 2,
+          "realization": "one-plane sheet (normal x+y): electric wall on the LOWER node plane ONLY"
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 1000\u00b5m = 2.0 cells along z \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 500\u00b5m = 1.0 cells along x \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 500\u00b5m = 1.0 cells along y \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along x \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along x \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along y \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along y \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "port_in_pec",
+          "loc": null,
+          "message": "Port/source at (0.005, 0.005, 0.0035) is inside PEC geometry 'pec'. Field will be zero. Move source outside PEC.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.005, 0.005, 0.0035) (extent 0.0005): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py::_build_disjoint_simulation::default": {
       "fidelity": {
         "NOT AUDITED by this report": {
@@ -5786,14 +6742,14 @@
         {
           "code": "msl_port_geometry",
           "loc": null,
-          "message": "MSL port 'msl_0': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.",
+          "message": "MSL port 'msl_0': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
           "severity": "warning",
           "source": "_check_msl_port_geometry"
         },
         {
           "code": "msl_port_geometry",
           "loc": null,
-          "message": "MSL port 'msl_1': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 64\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/msl_z0_bias_floor_sweep.py). Refining WITHOUT alignment does not reach that: a mixed-cell mesh at a similar cell count measured +11% (h_sub/dx=4.233) \u2014 see the mixed-cell-danger-zone check below.",
+          "message": "MSL port 'msl_1': only 2 substrate cell(s) in z (h_sub=254\u00b5m, dx=127\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
           "severity": "warning",
           "source": "_check_msl_port_geometry"
         },

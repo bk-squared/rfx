@@ -163,6 +163,9 @@ class _ExecuteMixin:
     ``Simulation`` instance (resolved via MRO).
     """
 
+    # Runtime-only; set by compute_msl_s_matrix for the duration of a run.
+    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
+
     def _resolve_field_dtype(self):
         """Map ``self._precision`` to the ``field_dtype`` the Yee core takes.
 
@@ -1183,11 +1186,17 @@ class _ExecuteMixin:
                 # Register a JIT-integrated S-param accumulator for this
                 # WirePort when forward(port_s11_freqs=...) was requested
                 # (issue #79 follow-up to PR #72). Mirrors the lumped
-                # registration below; uses the wire's midpoint cell as the
-                # V/I reference plane (consistent with wire_sparam_meta in
-                # the JIT scan body of rfx/simulation.py).
+                # registration below; uses the LIVE-run midpoint cell as
+                # the V/I reference plane (issue #764 — identical to the
+                # all-extent midpoint with no dead cells; consistent with
+                # wire_sparam_meta in the JIT scan body of
+                # rfx/simulation.py) and carries the static live run for
+                # the whole-port gap-voltage accumulator.
                 if _s11_freqs_arr is not None and wp_cells:
-                    mid_cell = wp_cells[len(wp_cells) // 2]
+                    _live_764 = tuple(
+                        (int(c[0]), int(c[1]), int(c[2]))
+                        for c, l in zip(wp_cells, wp_live_flags) if l)
+                    mid_cell = _live_764[len(_live_764) // 2]
                     wire_port_sparam_specs.append(WirePortSParamSpec(
                         mid_i=int(mid_cell[0]),
                         mid_j=int(mid_cell[1]),
@@ -1195,6 +1204,8 @@ class _ExecuteMixin:
                         component=pe.component,
                         freqs=_s11_freqs_arr,
                         impedance=float(pe.impedance),
+                        live_cells=_live_764,
+                        excite=bool(_drive_this_port),
                     ))
                 # Opt-in reference-plane V/I accumulators (issue #313).
                 # Registered ONLY on the production-scan S-matrix driver
@@ -1450,6 +1461,7 @@ class _ExecuteMixin:
                         freqs=freqs_arr,
                         grid_shape=grid.shape,
                         dft_total_steps=n_steps,
+                        region=getattr(self, "_dft_plane_regions", {}).get(pe.name),
                     )
                 )
 
@@ -1706,14 +1718,35 @@ class _ExecuteMixin:
             s_params_out = s_list[0] if len(s_list) == 1 else jnp.stack(s_list, axis=0)
             freqs_out = result.lumped_port_sparams[0][0].freqs
         elif result.wire_port_sparams:
-            # Wire-port wave decomposition uses the same FDTD sign
-            # convention as lumped (V = -E·dx). Reuse extract_lumped_s11
-            # which implements S11 = (V + Z0·I)/(V − Z0·I).
+            # Wire-port diagonal extraction (issue #764): a GENUINELY
+            # driven port uses the whole-port driven reflection
+            #   S_kk = (V_port - Z0*I)/(V_port + Z0*I)
+            # with V_port = sum over LIVE cells of -E_c*dx (the whole-gap
+            # line integral — the only KVL-constrained V on the staggered
+            # grid) and Z0 the whole-port impedance #318 physically
+            # realizes as the series termination.  The historical
+            # extract_lumped_s11 on the single-cell V measured the
+            # per-cell Z0/n_live against the whole-port Z0 (matched load
+            # +0.35426, PEC short +0.26780 — ledger 2026-06-21).  A
+            # passive port keeps the legacy per-cell diagnostic diagonal
+            # byte-for-byte (no physical falsifier can gate that
+            # load-independent reading).  This lane samples PRE-injection
+            # (issue #72 contract): physical-value validation of the
+            # driven diagonal here is keyed to the pending #683
+            # POST-ordering flip.
             from rfx.probes.probes import extract_lumped_s11
             w_list = []
             for spec, accs in result.wire_port_sparams:
-                v_dft, i_dft, _v_inc_dft = accs
-                w_list.append(extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
+                v_dft, i_dft, _v_inc_dft, v_port_dft = accs
+                if spec.excite:
+                    denom = v_port_dft + spec.impedance * i_dft
+                    safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
+                                           jnp.ones_like(denom))
+                    w_list.append(
+                        (v_port_dft - spec.impedance * i_dft) / safe_denom)
+                else:
+                    w_list.append(
+                        extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
             s_params_out = w_list[0] if len(w_list) == 1 else jnp.stack(w_list, axis=0)
             freqs_out = result.wire_port_sparams[0][0].freqs
 

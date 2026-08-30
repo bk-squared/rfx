@@ -1,0 +1,46 @@
+{
+ "C1-ON-f64": {
+  "face": {
+   "g_per_step": -0.000139615866204456,
+   "peak": 0.0013277990031688724,
+   "last_window": 5.508887016632028e-07,
+   "decayed_to_floor": false
+  },
+  "corner": {
+   "g_per_step": -0.00013008816410258397,
+   "peak": 0.0003704984678501891,
+   "last_window": 2.1160874582880467e-06,
+   "decayed_to_floor": false
+  },
+  "all": {
+   "g_per_step": -0.00013008816410258397,
+   "peak": 0.0013277990031688724,
+   "last_window": 2.1160874582880467e-06,
+   "decayed_to_floor": false
+  },
+  "finite": true,
+  "fft_peak_hz": 3881305747.945954,
+  "fft_probe": "c_ll_ez",
+  "pad_pole_cells": {
+   "x_lo": 3072,
+   "x_hi": 3072,
+   "y_lo": 3360,
+   "y_hi": 3360
+  },
+  "wall_s": 150.2,
+  "localization": {
+   "interior": 0.8625236923030289,
+   "face": 0.10906382335523514,
+   "corner": 0.02841248434173599,
+   "argmax_ij": [
+    27,
+    25
+   ],
+   "shape": [
+    70,
+    64,
+    37
+   ]
+  }
+ }
+}

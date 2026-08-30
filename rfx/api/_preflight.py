@@ -219,6 +219,39 @@ _CAMPAIGN_MAX_OFFENDERS = 5
 # rfx.geometry.rasterize_grid._subcell_box_axis_window.
 _CAMPAIGN_SUBCELL_FACTOR = 1.01
 
+# ---------------------------------------------------------------------------
+# MSL check 2c (#752 / #766 review B2): how far the REALIZED substrate may
+# drift from the DECLARED one before the run is solving a different board
+# than the user asked for and preflight must say so.
+#
+# DERIVATION (physical, not a round number):
+#   * The quantity that matters to an MSL user is Z0, and Z0 depends on the
+#     substrate thickness the solver actually rasterized. This PR's own
+#     realized-board artifact measures that sensitivity:
+#     ``scripts/diagnostics/msl_z0_bias_floor_sweep/
+#     msl_z0_bias_floor_sweep_realized_anchor.json``, row "misaligned 60um"
+#     — the ONE row whose realized trace width equals the declared 600.0 µm,
+#     so substrate thickness is the only variable in it. There h goes
+#     254.0 -> 300.0 µm (+18.11%) and the Hammerstad-Jensen Z0 of the board
+#     goes 47.895 -> 53.106 ohm (+10.88%). Chord sensitivity
+#         S = (dZ0/Z0) / (dh/h) = 10.88 / 18.11 = 0.601
+#     (re-evaluating ``rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff``
+#     across h/h_declared = 1.05 .. 1.33 keeps S in 0.57 .. 0.63, so the
+#     constant is not an artifact of one step size).
+#   * The error budget is check 2's OWN published contract, quoted in its
+#     message: "<5% Z0 bias". Board-thickening alone must not be allowed to
+#     eat that whole budget in silence.
+#   * Threshold = budget / sensitivity = 0.05 / 0.601 = 0.0832 -> 8.3%.
+#     Direct check: Hammerstad-Jensen at h = 1.083*254 µm, W = 600 µm,
+#     eps_r 3.66 gives +5.14% Z0, i.e. the threshold sits right on the 5%
+#     contour, as intended.
+# This is a NEW advisory. It widens no existing gate: checks 2 (<4 realized
+# cells) and 2b (interface in the [0.10, 0.40] mixed-cell zone) keep their
+# exact gates, and 2c only speaks about geometry neither of them reported.
+_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601   # (dZ0/Z0) per (dh/h)
+_MSL_REALIZED_THICKNESS_Z0_BUDGET = 0.05         # check 2's own <5% promise
+_MSL_REALIZED_THICKNESS_TOL = 0.083              # = budget / sensitivity
+
 
 def _sorted_box_corners(shape):
     """``(lo, hi)`` float64 arrays for a Box-like shape, else ``(None, None)``."""
@@ -1666,7 +1699,11 @@ class _PreflightMixin:
             # Deliberately NOT ``except Exception`` (PR #555): an async
             # worker timeout must propagate through this advisory. On a
             # narrow failure the caller falls back to the aperture,
-            # which is always defined.
+            # which is always defined. Issue #482 also made the timeout/
+            # cancel exceptions themselves ``BaseException``-derived, so
+            # this tuple is belt-and-suspenders, not the only guard --
+            # see the longer comment at the other ``_assemble_materials``
+            # call site in this file.
             return None
         if pec_mask is None:
             return None
@@ -2936,6 +2973,9 @@ class _PreflightMixin:
         self._validate_cfg_conformal_fine_dx(dx)
         self._validate_cfg_adi_3d_accuracy(_w)
         self._validate_cfg_lossless_resonator_in_absorber(_w)
+        self._validate_cfg_dispersive_pole_at_absorber_face(
+            _w, dx, cpml_thick_lo, cpml_thick_hi
+        )
         self._validate_cfg_waveguide_reference_plane(
             _w, cpml_thick_lo, cpml_thick_hi
         )
@@ -3349,6 +3389,138 @@ class _PreflightMixin:
                 ),
                 stacklevel=2,
             )
+
+    def _validate_cfg_dispersive_pole_at_absorber_face(
+        self, _w, dx: float,
+        cpml_thick_lo: list[float], cpml_thick_hi: list[float],
+    ) -> None:
+        """Issue #636 advisory: a resonance-risk dispersive material
+        touching a CPML/UPML face.
+
+        The pad extension replicates only the STATIC eps_r/sigma/mu_r into
+        the absorber (#627a) — dispersion-pole masks are deliberately not
+        replicated (#627b, reverted) — so a dispersive structure that
+        touches an absorbing face sees a pad matched at eps_inf only:
+        band-limited impedance mismatch (in-band reflections) near the
+        pole resonance. That is a fidelity limitation, not an
+        instability; the shipped configuration is stable.
+
+        Do NOT fix it by extending the pole masks into the pad. The #636
+        one-attempt factorial (2026-08-29, b29f9de; predeclaration and
+        results in docs/design_notes/i636_cpml_pole_pad_predeclaration.md,
+        scripts in validation/research/cpml_pole_pad/) measured: naive
+        extension diverges on a high-Q edge-touching Lorentz slab
+        (last/mid-decile 5.03 at 20k steps vs 0.21 shipped, growing mode
+        at 3.83 GHz inside the pole's eps<0 polariton gap with ~58% of
+        |E| in the pads, peaked at the slab's z-interface), and a Drude
+        (eps_inf=1) slab diverges even under the CFS-corner alpha rule
+        with 12 layers (+5.2e-4/step at 60k steps, 2.64 GHz, inside its
+        eps<0 band). The growing modes are interface (surface-polariton)
+        waves of the eps(omega)<0 band living on the extended structure's
+        boundaries inside the pad — a regime where stretched-coordinate
+        PMLs violate the geometric stability condition — so no CPML
+        parameter choice covered the factorial. Guarded by
+        tests/test_cpml_pad_material_extension.py.
+
+        Trigger filter (kept narrow to stay quiet on routine setups):
+        only Lorentz poles that are BOTH high-Q (omega_0/(2*delta) >= 10)
+        AND in-band (omega_0 <= 1.5 * 2*pi*freq_max), or Drude-type poles
+        (omega_0 == 0 — metal-like, eps < 0 across (0, omega_p), always
+        mismatch-relevant). Debye relaxations are excluded: Q ~ 0.5, the
+        eps_inf mismatch is broadband-mild, and warning on every lossy
+        PCB substrate that touches a face would be noise. One aggregated
+        advisory per simulation.
+        """
+        if self._boundary not in ("cpml", "upml"):
+            return
+        if not any(t > 0 for t in list(cpml_thick_lo) + list(cpml_thick_hi)):
+            return
+
+        w_band = 1.5 * 2.0 * np.pi * self._freq_max
+
+        def _risky_poles(mat):
+            found = []
+            for pole in (getattr(mat, "lorentz_poles", None) or ()):
+                w0 = float(pole.omega_0)
+                delta = float(pole.delta)
+                if w0 == 0.0:
+                    found.append(("drude", w0, delta))
+                elif delta > 0 and w0 / (2.0 * delta) >= 10.0 and w0 <= w_band:
+                    found.append(("lorentz", w0, delta))
+                elif delta == 0.0 and w0 <= w_band:
+                    found.append(("lorentz", w0, delta))
+            return found
+
+        hits: list[tuple[int, str, str, str]] = []
+        for idx, entry in enumerate(self._geometry):
+            try:
+                mat = self._resolve_material(entry.material_name)
+            except Exception:
+                continue
+            poles = _risky_poles(mat)
+            if not poles:
+                continue
+            if not hasattr(entry.shape, "bounding_box"):
+                continue
+            try:
+                c1, c2 = entry.shape.bounding_box()
+            except (NotImplementedError, TypeError):
+                continue
+            faces = []
+            for ax in range(min(3, len(self._domain))):
+                d = self._domain[ax]
+                if cpml_thick_lo[ax] > 0 and c1[ax] <= 0.5 * dx:
+                    faces.append(f"{'xyz'[ax]}-lo")
+                if cpml_thick_hi[ax] > 0 and c2[ax] >= d - 0.5 * dx:
+                    faces.append(f"{'xyz'[ax]}-hi")
+            if not faces:
+                continue
+            kind = ("Drude" if all(p[0] == "drude" for p in poles)
+                    else "high-Q")
+            q_txt = ", ".join(
+                "Drude" if k == "drude" else
+                (f"Q={w0 / (2 * delta):.0f}" if delta > 0 else "Q=inf")
+                for k, w0, delta in poles)
+            hits.append((idx, entry.material_name, "+".join(faces),
+                         f"{kind} ({q_txt})"))
+
+        if not hits:
+            return
+        worst = hits[0]
+        msg = (
+            f"Dispersive material '{worst[1]}' (geometry entry #{worst[0]}, "
+            f"{worst[3]}) touches absorbing face(s) {worst[2]}. The CPML pad "
+            f"replicates only the STATIC eps/sigma/mu (#627a) — dispersion "
+            f"poles are not extended — so the absorber is impedance-matched "
+            f"at eps_inf only and reflects in-band near the pole resonance. "
+        )
+        if len(hits) > 1:
+            msg += (
+                f"{len(hits)} geometry entries are affected (first shown; "
+                f"all in this finding's loc). "
+            )
+        msg += (
+            "This is a band-limited fidelity limitation, not an "
+            "instability. Do NOT extend pole masks into the pad to fix it: "
+            "measured divergent (issue #636 factorial, "
+            "docs/design_notes/i636_cpml_pole_pad_predeclaration.md — "
+            "surface-polariton modes of the eps(omega)<0 band inside the "
+            "absorber grow without bound; the Drude cell diverges even "
+            "under the CFS alpha rule). Mitigations: leave >= 1 cell of "
+            "background material between the dispersive structure and the "
+            "domain face, add pole damping (lower Q), or move the "
+            "resonance out of band."
+        )
+        _w.warn(
+            PreflightWarning(
+                msg,
+                code="dispersive_pole_at_absorber_face",
+                loc="geometry[" + ",".join(
+                    f"#{h[0]} {h[2]} {h[3]}" for h in hits) + "]",
+                source="_validate_cfg_dispersive_pole_at_absorber_face",
+            ),
+            stacklevel=2,
+        )
 
     def _validate_cfg_compute_cpml_thickness(
         self, cpml_thickness: float
@@ -4248,14 +4420,14 @@ class _PreflightMixin:
                         # DELIBERATELY NOT ``except Exception`` (CI
                         # incident on PR #555's own head: a broad
                         # ``except Exception`` here caught
-                        # ``rfx.experiments.worker.RunTimedOut``, a
-                        # ``TimeoutError`` subclass a SIGALRM handler
-                        # raises asynchronously while this exact call is
-                        # in flight -- ``execute_run`` arms the alarm
-                        # BEFORE calling ``compiled.preflight()``, so a
-                        # slow ``_assemble_materials`` here is squarely
-                        # inside the timeout window. Swallowing it here
-                        # meant the worker's top-level
+                        # ``rfx.experiments.worker.RunTimedOut`` (at the
+                        # time, a ``TimeoutError`` subclass) a SIGALRM
+                        # handler raises asynchronously while this exact
+                        # call is in flight -- ``execute_run`` arms the
+                        # alarm BEFORE calling ``compiled.preflight()``,
+                        # so a slow ``_assemble_materials`` here is
+                        # squarely inside the timeout window. Swallowing
+                        # it here meant the worker's top-level
                         # ``except RunTimedOut`` handler never ran, so a
                         # 1-second-timeout experiment kept simulating for
                         # its full 500k-step run instead of exiting —
@@ -4266,7 +4438,7 @@ class _PreflightMixin:
                         # 60s). ``rfx/api`` must not import
                         # ``rfx.experiments`` to name that exception type
                         # directly (wrong dependency direction), so the
-                        # general fix is this narrow, purpose-scoped
+                        # first fix here was this narrow, purpose-scoped
                         # tuple: only the errors ``_build_grid``/
                         # ``_assemble_materials`` are actually documented
                         # to raise for a malformed config (bad domain,
@@ -4275,9 +4447,20 @@ class _PreflightMixin:
                         # method). Any signal-driven exception
                         # (``TimeoutError``, ``RuntimeError``-based
                         # cancellation, ``KeyboardInterrupt``,
-                        # ``MemoryError``, ...) now propagates through
-                        # this advisory untouched, exactly like it did
-                        # before this advisory existed.
+                        # ``MemoryError``, ...) propagates through this
+                        # advisory untouched, exactly like it did before
+                        # this advisory existed. Issue #482 added a
+                        # second, general-purpose layer underneath this
+                        # tuple: ``RunTimedOut`` and
+                        # ``RunCancelled`` now derive from
+                        # ``BaseException``, not ``TimeoutError``/
+                        # ``RuntimeError``, so no ``except Exception``
+                        # anywhere in ``rfx/api`` (this narrow tuple
+                        # included) can catch them even if a future edit
+                        # here widens it back to ``Exception`` by
+                        # mistake. Keep this tuple narrow anyway -- it is
+                        # still the only thing distinguishing a genuine
+                        # malformed-config error from everything else.
                         grid = None
                         pec_mask = None
                         classification_unavailable_reason = str(exc)
@@ -5319,6 +5502,110 @@ class _PreflightMixin:
                             )
                             break
 
+    def _msl_assemble_once(self):
+        """Grid + materials + per-axis cell sizes on the grid the RUN uses,
+        built ONCE per MSL preflight pass and shared by every port's
+        :meth:`_msl_realized_substrate` call. None if the build raises."""
+        try:
+            nonuniform = any(getattr(self, a, None) is not None
+                             for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
+            if nonuniform:
+                grid = self._build_nonuniform_grid()
+                from rfx.runners.nonuniform import assemble_materials_nu
+                mats = assemble_materials_nu(self, grid)[0]
+                sizes = (np.asarray(grid.dx_arr, dtype=float),
+                         np.asarray(grid.dy_arr, dtype=float),
+                         np.asarray(grid.dz, dtype=float))
+            else:
+                grid = self._build_grid()
+                mats = self._assemble_materials(grid)[0]
+                d = float(grid.dx)
+                sizes = tuple(np.full(int(n), d) for n in grid.shape)
+            return grid, mats, sizes, bool(nonuniform)
+        except Exception:
+            return None
+
+    def _msl_realized_substrate(self, pe, inr, assembled=None):
+        """Substrate under an MSL port as the RUN GRID realizes it, or None.
+
+        Issue #752 review (#766 BLOCK): the substrate checks below used to
+        derive "realized" thickness as ``n_cells * dx`` with the UNIFORM
+        grid's scalar ``dx``. On a ``dz_profile`` simulation that is not a
+        thickness at all -- it asserted "3 substrate cells = 300 um (+18%)"
+        on a board ``fidelity_report()`` measured at 254.00 um on the same
+        simulation. Two surfaces of one codebase disagreeing about what the
+        solver built is exactly the class #752 was filed against.
+
+        So this reads the substrate the way ``rfx.fidelity`` does: build
+        the grid the run will use (non-uniform when any profile is set),
+        assemble materials on it, walk the permittivity column under the
+        port along the substrate-normal axis from the ground plane, and
+        sum the ACTUAL cell sizes of the cells that carry the substrate's
+        permittivity. Returns a dict with
+
+          n          realized substrate cell count under the port,
+          h_real     their summed thickness (m),
+          frac       where the DECLARED top face sits inside the cell that
+                     contains it, as a fraction of that cell (0 = on a node),
+          d_iface    that cell's size (m),
+          nonuniform whether a mesh profile was in force,
+
+        or None when it cannot be derived (no substrate permittivity at the
+        ground plane, or the build raised) -- callers then use the scalar
+        estimate and SAY so in the message.
+
+        ``assembled`` is the per-check cache from :meth:`_msl_assemble_once`
+        (grid, materials, per-axis cell sizes, nonuniform flag) so N MSL
+        ports cost one rasterization, not N (#766 review, non-blocking).
+
+        The walk starts at the PORT'S OWN ground plane -- ``pe.position``'s
+        substrate-normal coordinate -- not at the domain floor. The first
+        version started at ``pad_lo`` (domain z = 0), which is only right
+        when the ground plane sits on the floor; on a stripline-like or
+        multi-layer stack it walked whatever dielectric lies BELOW the
+        ground and reported that as "the substrate" (#766 review: a
+        ground plane at 800 um over an eps_r 9 filler read back n=10,
+        h_real=800 um, never seeing the 254 um / eps_r 3.66 substrate above
+        it). The #752 class, reintroduced in a new form -- fixed here.
+        """
+        try:
+            if assembled is None:
+                assembled = self._msl_assemble_once()
+            if assembled is None:
+                return None
+            grid, mats, sizes, nonuniform = assembled
+            pos = tuple(float(v) for v in pe.position)
+            if nonuniform:
+                from rfx.nonuniform import position_to_index as _nu_p2i
+                idx = list(_nu_p2i(grid, pos))
+            else:
+                idx = list(grid.position_to_index(pos))
+            eps = np.asarray(mats.eps_r, dtype=float)
+            k0 = int(idx[inr])  # the port's own ground plane, NOT pads[inr]
+            sl = [int(idx[0]), int(idx[1]), int(idx[2])]
+            sl[inr] = slice(k0, None)
+            col = np.asarray(eps[tuple(sl)], dtype=float).ravel()
+            if col.size == 0 or col[0] <= 1.0 + 1e-6:
+                return None
+            eps_sub = float(col[0])
+            n = 0
+            while n < col.size and abs(col[n] - eps_sub) <= 1e-3 * eps_sub:
+                n += 1
+            ax_sizes = sizes[inr][k0:]
+            h_real = float(np.sum(ax_sizes[:n]))
+            nodes = np.concatenate([[0.0], np.cumsum(ax_sizes)])
+            h_sub = float(pe.height)
+            k = int(np.searchsorted(nodes, h_sub, side="right") - 1)
+            k = min(max(k, 0), len(ax_sizes) - 1)
+            d_iface = float(ax_sizes[k])
+            frac = (h_sub - float(nodes[k])) / d_iface if d_iface > 0 else 0.0
+            if frac > 1.0 - 1e-9:  # numerical dust just below the next node
+                frac = 0.0
+            return dict(n=int(n), h_real=h_real, frac=float(frac),
+                        d_iface=d_iface, nonuniform=bool(nonuniform))
+        except Exception:
+            return None
+
     def _check_msl_port_geometry(
         self,
         dx: float,
@@ -5380,14 +5667,37 @@ class _PreflightMixin:
            ε; <4 cells gives Z0 staircase error >5%. Re-verified post-
            #511/#507 by ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``
            (2026-08-02, committed artifact under that directory): aligned
-           dx=h_sub/{3,4,5,6} measured Z0 bias -7.9%/-3.8%/-1.2%/+0.7%
-           vs the analytic Hammerstad-Jensen anchor — the "<5% at 4+
-           cells" promise holds, but ONLY when aligned. A misaligned mesh
-           (h_sub/dx fractional part in [0.10, 0.40], check 2b) measured
-           +20.2%/+11.0% at comparable ~3/~4 cells respectively —
-           2.56-2.94x worse in magnitude than the aligned case at the
-           comparable cell count, so refining cell count alone does not
-           fix it (see 2b).
+           dx=h_sub/{3,4,5,6} measured Z0 deviation -7.9%/-3.8%/-1.2%/+0.7%
+           FROM THE DECLARED-board Hammerstad-Jensen anchor (S is
+           normalized to that anchor — issue #723 — so this deviation is
+           real and user-facing) — the "<5% at 4+ cells" promise holds
+           when aligned.
+
+           ISSUE #752 CORRECTION (2026-08-27): this docstring, and check
+           2b below, used to also report that a misaligned mesh (h_sub/dx
+           fractional part in [0.10, 0.40]) measured "+20.2%/+11.0% Z0
+           bias, 2.56-2.94x worse than the aligned case" at dx=80/60µm —
+           implying the misalignment class itself, independent of board
+           identity, degrades extraction. That framing compared the
+           misaligned run's DECLARED-board deviation against the aligned
+           run's DECLARED-board deviation, but the misaligned mesh's
+           half-open rasterizer rule (``rfx/geometry/csg.py``) ALSO
+           thickens the realized substrate to 320µm/300µm at dx=80/60µm
+           (+26%/+18% vs the declared 254µm; ``sim.fidelity_report()``
+           confirms this) — a genuinely different physical board, not a
+           worse extraction of the same one. Scored against the board
+           each mesh point actually solves (Hammerstad-Jensen on the
+           REALIZED h/W from ``fidelity_report()``; see the sibling
+           ``msl_z0_bias_floor_sweep_realized_anchor.json`` artifact next
+           to the pre-declared sweep JSON), the extractor tracks
+           Hammerstad-Jensen to within 0.4% at EVERY point in the sweep,
+           aligned or misaligned alike. The "2.56-2.94x worse" ratio and
+           the "+20.2%/+11.0% Z0 bias" framing are RETRACTED as
+           extractor-bias claims (the pre-declared sweep JSON and its
+           as-run verdict block are left untouched — they remain the
+           auditable record of what was measured; only this prose
+           reading of them is corrected). See check 2b for what
+           alignment advice survives on other grounds.
 
            The same sweep also asked whether alignment class shifts the
            |S11| floor itself, not just Z0 (issue #487). |S11|_floor
@@ -5473,6 +5783,9 @@ class _PreflightMixin:
         except Exception:
             _msl_grid = None
 
+        # Issue #752 / #766 review: one rasterization for all ports.
+        _msl_assembled = self._msl_assemble_once()
+
         for pe in self._msl_ports:
             # Issue #661: every check below runs on the port's OWN axes.
             # ``prop`` is the propagation axis (checks 3/4/4a fire along
@@ -5532,23 +5845,93 @@ class _PreflightMixin:
                     )
 
             # ---- 2. Substrate cells ----
-            n_z_sub = max(1, int(round(h_sub / dx)))
+            # Issue #752 (#766 review): the cell count and any "realized"
+            # thickness come from the RUN grid's assembled permittivity
+            # (uniform or profiled), never from n * scalar dx -- see
+            # _msl_realized_substrate. The scalar estimate is used only
+            # when that cannot be derived, and the message says so.
+            _real = self._msl_realized_substrate(pe, _inr, assembled=_msl_assembled)
+            if _real is not None:
+                n_z_sub = max(1, int(_real["n"]))
+            else:
+                n_z_sub = max(1, int(round(h_sub / dx)))
+            # Realized-vs-declared substrate thickness, derived ONCE and
+            # shared by checks 2, 2b and 2c so the three can never disagree
+            # about the same geometry (#766 review B2). ``_thick_disclosed``
+            # records whether 2 or 2b already told the user about it; 2c
+            # covers exactly the geometries neither of them reaches.
+            if _real is not None:
+                _h_real_m = float(_real["h_real"])
+                _n_real = int(_real["n"])
+                _thick_is_estimate = False
+            else:
+                # Run grid unavailable: fall back to the same half-open
+                # rasterizer arithmetic the other two branches use, and say
+                # it is an estimate.
+                _n_real = max(1, int(np.ceil(h_sub / dx - 1e-9)))
+                _h_real_m = _n_real * float(dx)
+                _thick_is_estimate = True
+            _rel_thick = (_h_real_m - h_sub) / h_sub if h_sub > 0 else 0.0
+            _thick_disclosed = False
             if n_z_sub < 4:
+                _extra = ""
+                if _real is not None:
+                    _h_real_um = _real["h_real"] * 1e6
+                    if abs(_real["h_real"] - h_sub) > 0.005 * h_sub:
+                        _pct_thick = (
+                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                        )
+                        _extra = (
+                            f" On the grid this run uses the substrate "
+                            f"actually realizes {_real['n']} cell(s) = "
+                            f"{_h_real_um:.0f}µm ({_pct_thick:+.0f}% vs the "
+                            f"declared {h_sub*1e6:.0f}µm) — read off the "
+                            f"assembled permittivity under the port, not "
+                            f"n*dx; the half-open rasterizer rule "
+                            f"(rfx/geometry/csg.py) rounds a face that is "
+                            f"not on a node UP to the next cell. A "
+                            f"substrate-thickening effect, separate from "
+                            f"staircase resolution; sim.fidelity_report() "
+                            f"reports the same number, and see the "
+                            f"mixed-cell-danger-zone check below."
+                        )
+                        _thick_disclosed = True
+                    _dx_note = (
+                        f"base dx={dx*1e6:.0f}µm, mesh profile in force"
+                        if _real["nonuniform"] else f"dx={dx*1e6:.0f}µm"
+                    )
+                else:
+                    _frac_here = (h_sub / dx) - int(h_sub / dx)
+                    if _frac_here > 1e-9:
+                        _n_ceil = int(h_sub / dx) + 1
+                        _h_real_um = _n_ceil * dx * 1e6
+                        _pct_thick = (
+                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                        )
+                        _extra = (
+                            f" SCALAR-dx ESTIMATE (the run grid could not "
+                            f"be assembled for this check): h_sub/dx="
+                            f"{h_sub/dx:.3f} is not an integer, so the "
+                            f"half-open rasterizer rule would realize "
+                            f"{_n_ceil} substrate cell(s) = {_h_real_um:.0f}µm "
+                            f"({_pct_thick:+.0f}% vs the declared "
+                            f"{h_sub*1e6:.0f}µm) on a uniform mesh; "
+                            f"confirm with sim.fidelity_report()."
+                        )
+                        _thick_disclosed = True
+                    _dx_note = f"dx={dx*1e6:.0f}µm, scalar estimate"
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
-                        f"in z (h_sub={h_sub*1e6:.0f}µm, dx={dx*1e6:.0f}µm). "
+                        f"in z (h_sub={h_sub*1e6:.0f}µm, {_dx_note}). "
                         f"Yee staircase at dielectric interface is O(dx) — "
                         f"Z0 staircase error >5% expected. Refine to dx ≤ "
-                        f"{h_sub*1e6/4:.0f}µm (4+ substrate cells) AND keep "
+                        f"{h_sub*1e6/4:.1f}µm (4+ substrate cells) AND keep "
                         f"h_sub/dx an integer (aligned) for <5% Z0 bias — "
                         f"measured post-#511/#507 at -3.8%/-1.2%/+0.7% for "
-                        f"h_sub/4, h_sub/5, h_sub/6 (scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py). Refining WITHOUT "
-                        f"alignment does not reach that: a mixed-cell mesh "
-                        f"at a similar cell count measured +11% (h_sub/dx="
-                        f"4.233) — see the mixed-cell-danger-zone check "
-                        f"below.",
+                        f"h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board "
+                        f"Hammerstad-Jensen anchor (scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py).{_extra}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -5561,48 +5944,262 @@ class _PreflightMixin:
             # interface lands in the lower portion of a Yee cell that
             # ALSO contains the trace at z=h_sub..h_sub+dx; the cell is
             # mixed substrate + PEC.  Hard-PEC ``Box(material="pec")``
-            # handles this via subpixel material assembly, but the
-            # AD-traceable ``pec_occupancy_override`` path zeros the
-            # whole cell and produces unphysical |S21| (verified
-            # 2026-05-08, runs #563/#567: |S21|² > 1 across all stub
-            # lengths at dx ∈ [75, 82]µm with h_sub=254µm).  Snap dx
-            # so h_sub/dx is integer or its fractional part is > 0.6 to
+            # avoids the specific bug below ON THE DEFAULT RUN PATH,
+            # because there it occupies WHOLE cells and never enters
+            # ``pec_occupancy_override``.
+            #
+            # #766 review B3: this used to say "this build has no
+            # anisotropic/subpixel eps assembly — rfx/api/__init__.py's
+            # Simulation docstring". Both halves were wrong. rfx DOES have
+            # subpixel eps assembly: ``subpixel_smoothing`` (bool | str,
+            # default False) reaches ``rfx/runners/uniform.py``, where
+            # ``"kottke_pec"`` builds an inverse-permittivity tensor over
+            # the dielectric AND PEC shapes (uniform.py:241-269) and a
+            # plain truthy value calls ``compute_smoothed_eps``
+            # (uniform.py:271-278); the Stage-1 conformal PEC lane
+            # (``conformal_pec``, uniform.py:281-300) likewise gives PEC
+            # shapes fractional cell weights. And the cited docstring line
+            # is inside ``stencil_order``'s parameter description — it
+            # says stencil_order=4 is unsupported WITH subpixel/conformal
+            # eps, which presupposes those lanes exist rather than denying
+            # them. What is actually true, and all that is claimed here
+            # and in the message: on the shipped defaults
+            # (``subpixel_smoothing=False``; ``conformal_pec=None`` ->
+            # ``bool(self._boundary_spec.conformal_faces())`` = False
+            # absent an explicit ``Boundary(conformal=True)`` —
+            # rfx/api/_execute.py:2971-2972, 3128-3134) a hard PEC box is
+            # whole-cell. On the opt-in lanes it is not, and the alignment
+            # advice applies there too. The AD-traceable
+            # ``pec_occupancy_override`` path zeros the whole cell and
+            # produces unphysical |S21| (cited, not remeasured on this
+            # checkout: 2026-05-08, runs #563/#567: |S21|² > 1 across all
+            # stub lengths at dx ∈ [75, 82]µm with h_sub=254µm; no
+            # committed artifact, no regression test). Snap dx so
+            # h_sub/dx is integer or its fractional part is > 0.6 to
             # stay in a safe alignment window.
             #
-            # Hard PEC is unaffected by that |S21|² bug, but NOT by Z0
-            # bias itself (issue #487, scripts/diagnostics/
-            # msl_z0_bias_floor_sweep.py, 2026-08-02): on the SAME
-            # committed thru fixture, a mixed-cell mesh measured +20.2%/
-            # +11.0% Z0 bias vs the analytic Hammerstad-Jensen anchor at
-            # ~3/~4 substrate cells, against -7.9%/-3.8% aligned at the
-            # comparable cell counts — 2.56-2.94x worse in magnitude, so
-            # cell count alone (check 2) does not predict this.
-            frac = (h_sub / dx) - int(h_sub / dx)
+            # ISSUE #752 CORRECTION (2026-08-27): this check used to also
+            # say Hard PEC is "NOT" exempt from Z0 bias, quoting "+20.2%
+            # vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells ...
+            # 2.56-2.94x worse". Those four percentages are all measured
+            # against the DECLARED 600/254µm board's Hammerstad-Jensen
+            # anchor, but the +20.2%/+11.0% (misaligned, dx=80/60µm) rows
+            # and the -7.9%/-3.8% (aligned, dx≈84.7/63.5µm) rows are NOT
+            # the same physical board: the half-open rasterizer rule
+            # thickens the misaligned meshes' realized substrate to
+            # 320µm/300µm (+26%/+18% vs declared) while the aligned
+            # meshes realize h_sub exactly. Comparing declared-board
+            # deviations across different realized boards measures board
+            # rasterization, not extractor bias. Scored against the board
+            # each point actually solves (Hammerstad-Jensen on the
+            # REALIZED h/W; see the sibling
+            # ``msl_z0_bias_floor_sweep_realized_anchor.json`` next to
+            # the pre-declared sweep JSON), the extractor tracks
+            # Hammerstad-Jensen to within 0.4% at every one of the six
+            # sweep points, aligned or misaligned. The "2.56-2.94x worse"
+            # / "+20.2%/+11.0%" framing is RETRACTED as an extractor-bias
+            # claim (the pre-declared JSON and its as-run verdict are
+            # left untouched as the auditable record; only this reading
+            # of them is corrected). What survives, on separate grounds:
+            # (i) the |S21|² > 1 override risk above (cited, not
+            # remeasured here), and (ii) the substrate-thickening effect
+            # itself is real and measured (+26%/+18% at dx=80/60µm) — it
+            # is a genuine board-fidelity change from what was declared,
+            # even though it is not the "worse Z0 extraction" the old
+            # text claimed. The alignment advice below is kept on those
+            # two grounds, downgraded from a Z0-bias-magnitude claim.
+            # Issue #752 (#766 review): the interface position and the
+            # realized thickness come from the run grid (see
+            # _msl_realized_substrate); on a uniform grid frac reduces to
+            # the old (h_sub/dx) fractional part exactly.
+            if _real is not None:
+                frac = _real["frac"]
+                _nu_here = _real["nonuniform"]
+            else:
+                frac = (h_sub / dx) - int(h_sub / dx)
+                _nu_here = False
             if 0.10 <= frac <= 0.40:
-                # Snap suggestions: nearest integer above and below.
-                n_below = int(h_sub / dx)
-                n_above = n_below + 1
-                dx_low = h_sub / n_above   # frac=0
-                dx_high = h_sub / n_below  # frac=0
+                # Snap suggestions come from the SAME grid ``frac`` came
+                # from (#766 review B1). They used to be derived from
+                # ``int(h_sub / dx)`` on the SCALAR dx while ``frac`` came
+                # from the run grid: on a mesh profile that scalar is not
+                # a cell count at all, and on ANY mesh whose base dx
+                # exceeds h_sub it is exactly 0 -- ``h_sub / n_below``
+                # then raised ZeroDivisionError out of preflight, i.e.
+                # out of run()/compute_msl_s_matrix(), aborting the solve
+                # (the uniform-dx half of that crash predates this PR).
+                # ``_msl_realized_substrate`` already returns the realized
+                # count, so use it and treat "one cell below" as the only
+                # coarser aligned option, which does not exist once the
+                # substrate is down to a single cell.
+                if _real is not None:
+                    n_above = max(1, int(_real["n"]))
+                else:
+                    n_above = max(1, int(h_sub / dx) + 1)
+                n_below = n_above - 1
+                dx_low = h_sub / n_above                        # frac=0
+                dx_high = h_sub / n_below if n_below >= 1 else None
+                if _real is not None:
+                    h_real_um = _real["h_real"] * 1e6
+                    _iface_txt = (
+                        f"the declared substrate top sits {frac:.3f} of a "
+                        f"cell above the nearest mesh node (that cell is "
+                        f"{_real['d_iface']*1e6:.1f}µm)"
+                    )
+                else:
+                    h_real_um = n_above * dx * 1e6
+                    _iface_txt = (
+                        f"h_sub/dx = {h_sub/dx:.3f} (fractional part "
+                        f"{frac:.3f}; scalar estimate, run grid unavailable)"
+                    )
+                pct_thick = (h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                _snap_txt = (
+                    f"On a non-uniform profile, place a mesh node exactly "
+                    f"at h_sub={h_sub*1e6:.1f}µm (the substrate top) instead "
+                    f"of grading through it."
+                    if _nu_here else
+                    f"To snap onto a mesh matching the DECLARED board "
+                    f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
+                    f"{n_above}) or {dx_high*1e6:.1f}µm "
+                    f"(= h_sub/{n_below})."
+                    if dx_high is not None else
+                    f"To snap onto a mesh matching the DECLARED board "
+                    f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
+                    f"{n_above}); there is no coarser aligned option — "
+                    f"the substrate already realizes a single cell, and "
+                    f"h_sub/dx cannot drop below 1. Check 2 above asks "
+                    f"for dx ≤ {h_sub*1e6/4:.1f}µm (4+ substrate cells) "
+                    f"anyway."
+                )
                 _w.warn(
                     PreflightWarning(
-                        f"MSL port '{pe.name}': h_sub/dx = "
-                        f"{h_sub/dx:.3f} (fractional part {frac:.3f}) lands "
+                        f"MSL port '{pe.name}': {_iface_txt} — this lands "
                         f"in the [0.10, 0.40] mixed-cell danger zone. The "
                         f"substrate-air interface bisects the same Yee cell "
                         f"that holds the trace; AD-traceable "
                         f"``pec_occupancy_override`` zeros the whole cell "
-                        f"and produces unphysical |S21|² > 1 in this regime. "
+                        f"and produces unphysical |S21|² > 1 in this regime "
+                        f"(cited, not remeasured on this checkout: runs "
+                        f"#563/#567, 2026-05-08, dx∈[75,82]µm h_sub=254µm). "
                         f"Hard ``Box(material='pec')`` avoids that specific "
-                        f"bug, but Z0 bias itself is still 2.56-2.94x worse "
-                        f"than an aligned mesh at a comparable cell count "
-                        f"(measured +20.2% vs -7.9% at ~3 cells, +11.0% vs "
-                        f"-3.8% at ~4 cells; scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py) — refining cell count "
-                        f"alone will not reach the aligned-mesh bias. To "
-                        f"snap onto a safe alignment regardless, set dx = "
-                        f"{dx_low*1e6:.1f}µm (= h_sub/{n_above}) or "
-                        f"{dx_high*1e6:.1f}µm (= h_sub/{n_below}).",
+                        f"bug ON THE DEFAULT RUN PATH "
+                        f"(subpixel_smoothing=False and no conformal PEC "
+                        f"face — the shipped defaults): there the PEC box "
+                        f"occupies whole cells and never enters "
+                        f"``pec_occupancy_override``. That is NOT a blanket "
+                        f"exemption — two opt-in lanes DO give a hard PEC "
+                        f"box fractional cell occupancy: "
+                        f"subpixel_smoothing='kottke_pec' (the inv-eps "
+                        f"tensor is built over the PEC shapes) and the "
+                        f"Stage-1 conformal PEC lane (which replaces the "
+                        f"binary pec_mask with fractional weights); "
+                        f"rfx/runners/uniform.py. Plain "
+                        f"subpixel_smoothing=True does NOT: 'pec' carries "
+                        f"eps_r=1.0 in the material library, so a PEC box "
+                        f"enters the smoother as vacuum and stays "
+                        f"whole-cell through pec_mask. The alignment advice "
+                        f"below still applies on the two lanes that do. "
+                        f"Separately: the half-open rasterizer rule rounds "
+                        f"that face UP, so this mesh actually realizes "
+                        f"{n_above} cell(s) of substrate = {h_real_um:.0f}µm "
+                        f"({pct_thick:+.0f}% THICKER than the declared "
+                        f"{h_sub*1e6:.0f}µm — read off the run grid's "
+                        f"assembled permittivity; sim.fidelity_report() "
+                        f"reports the same number). That board-thickening, "
+                        f"not extractor bias, is most of what a naive "
+                        f"declared-board Z0 comparison used to attribute "
+                        f"to 'misalignment' (retracted: see "
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json — "
+                        f"the extractor tracks Hammerstad-Jensen on the "
+                        f"board it actually solves to within 0.4% at every "
+                        f"point in scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
+                        f"not). {_snap_txt}",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
+                _thick_disclosed = True
+
+            # ---- 2c. Realized-vs-declared substrate THICKNESS ----
+            # Issue #752 / #766 review B2. Checks 2 and 2b are both proxies
+            # for the thing the user actually cares about: is the board the
+            # solver rasterized the board they declared? Check 2 gates on
+            # the realized CELL COUNT (< 4) and 2b on where the declared top
+            # face lands INSIDE its cell (frac in [0.10, 0.40]) -- and those
+            # two proxies do not cover each other. For h_sub/dx in
+            # (3.00, 3.10) or (3.40, 3.50) the substrate realizes 4 cells
+            # (check 2 silent) while frac sits at 0.00-0.10 / 0.40-0.50
+            # (check 2b silent), so a board realized 14-33% thicker than
+            # declared drew ZERO substrate advisories -- measured at
+            # dx = 83.28 / 74.27 / 73.62 / 72.78 um on the 600/254um
+            # RO4350B fixture (fidelity_report: 333.1 / 297.1 / 294.5 /
+            # 291.1 um realized against 254.0 declared). That is exactly
+            # the declared-vs-realized silence #752 was filed against.
+            #
+            # So gate on the PHYSICAL quantity instead of either proxy: the
+            # realized substrate thickness itself, against the threshold
+            # derived at _MSL_REALIZED_THICKNESS_TOL (5% Z0 budget divided
+            # by the artifact-measured 0.601 dZ0/dh sensitivity = 8.3%).
+            # It speaks only when neither 2 nor 2b already disclosed the
+            # thickening (``_thick_disclosed``), so the three checks give
+            # one consistent account of one geometry and cannot disagree --
+            # all three read the SAME _msl_realized_substrate result.
+            if not _thick_disclosed and abs(_rel_thick) > _MSL_REALIZED_THICKNESS_TOL:
+                _pct_r = _rel_thick * 100.0
+                _z0_pct = abs(_rel_thick) * _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY * 100.0
+                _prov = (
+                    f"read off the run grid's assembled permittivity under "
+                    f"the port ({_n_real} cell(s)); sim.fidelity_report() "
+                    f"reports the same number"
+                    if not _thick_is_estimate else
+                    f"SCALAR-dx ESTIMATE ({_n_real} cell(s) of dx="
+                    f"{dx*1e6:.1f}µm) — the run grid could not be assembled "
+                    f"for this check; confirm with sim.fidelity_report()"
+                )
+                _fix = (
+                    f"Place a mesh node exactly at h_sub={h_sub*1e6:.1f}µm "
+                    f"so the profile stops grading through the substrate top"
+                    if (_real is not None and _real["nonuniform"]) else
+                    f"Choose dx so h_sub/dx is an integer (e.g. dx = "
+                    f"{h_sub*1e6/max(4, _n_real):.1f}µm = h_sub/"
+                    f"{max(4, _n_real)}), or place a mesh node at "
+                    f"h_sub={h_sub*1e6:.1f}µm on a non-uniform profile"
+                )
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}': the board this run solves is "
+                        f"not the board you declared — the substrate under "
+                        f"the port realizes {_h_real_m*1e6:.1f}µm against a "
+                        f"declared h_sub={h_sub*1e6:.1f}µm ({_pct_r:+.1f}%; "
+                        f"{_prov}). The half-open rasterizer rule "
+                        f"(rfx/geometry/csg.py) rounds a substrate face that "
+                        f"is not on a mesh node UP to the next cell. This is "
+                        f"a DIFFERENT PHYSICAL BOARD, not an extraction "
+                        f"error: Hammerstad-Jensen Z0 moves about "
+                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.2f}% per "
+                        f"1% of substrate thickness (measured on this repo's "
+                        f"own scripts/diagnostics/msl_z0_bias_floor_sweep/"
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json, row "
+                        f"'misaligned 60um' — the one row whose realized "
+                        f"trace width equals the declared 600.0µm, so h is "
+                        f"the only variable: h 254.0→300.0µm, +18.1%, moves "
+                        f"Z0_HJ 47.895→53.106Ω, +10.9%), so this board is "
+                        f"worth roughly {_z0_pct:.0f}% in Z0 versus the one "
+                        f"you specified. This advisory's "
+                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}% threshold is "
+                        f"that sensitivity carried back from check 2's own "
+                        f"<5% Z0-bias contract: "
+                        f"{_MSL_REALIZED_THICKNESS_Z0_BUDGET*100:.0f}%/"
+                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.3f} = "
+                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}%; it is NOT "
+                        f"a claim about extractor bias (scored against the "
+                        f"board it actually solves, the extractor tracks "
+                        f"Hammerstad-Jensen to within 0.4%). {_fix}; or "
+                        f"accept the realized board and quote its "
+                        f"{_h_real_m*1e6:.1f}µm thickness rather than the "
+                        f"declared one.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

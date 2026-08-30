@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -35,13 +38,58 @@ def _submitted(service: ExperimentService, document: dict | None = None):
     return experiment, revision, linked
 
 
+def _wait_terminal(service: ExperimentService, run_id: str, *, budget_s: float = 60):
+    """``service.wait`` with a diagnostic failure instead of a bare
+    ``subprocess.TimeoutExpired`` (issue #482: three unrelated PRs hit this
+    as a raw ``TimeoutExpired`` with no clue which phase the worker was in).
+
+    ``budget_s`` stays 60 -- generous, not scaled by a CI env factor. The
+    measured worker-phase distribution on this fixture is 5-20s wall (see
+    the issue's timing evidence), so 60s is not a tight edge here; a worker
+    that is genuinely hung still fails this call, just with the last
+    durable event, its timestamp, and a stderr tail instead of an opaque
+    traceback. Orphaned process groups are killed so a hung run does not
+    linger on a shared CI runner.
+
+    Reaches into ``ExperimentService._processes`` directly: there is no
+    public accessor for an already-started run's ``Popen`` handle.
+    """
+    process = service._processes.get(run_id)
+    try:
+        return service.wait(run_id, timeout=budget_s)
+    except subprocess.TimeoutExpired:
+        events = service.repository.list_events(run_id)
+        last = events[-1] if events else None
+        stderr_path = service.runs_root / run_id / "worker.stderr.log"
+        stderr_tail = (
+            stderr_path.read_text(encoding="utf-8", errors="replace")[-2000:]
+            if stderr_path.is_file()
+            else "<no worker.stderr.log>"
+        )
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+        service._processes.pop(run_id, None)
+        pytest.fail(
+            f"worker for run {run_id} did not reach a terminal state within "
+            f"{budget_s}s (a genuine hang still fails here, via this "
+            f"pytest.fail); last durable event="
+            f"{last.event_type if last else None!r} at "
+            f"{last.created_at if last else None!r}; "
+            f"worker.stderr.log tail:\n{stderr_tail}"
+        )
+
+
 def test_v2_revision_linked_worker_survives_service_restart(tmp_path):
     workspace = tmp_path / "workspace"
     service = ExperimentService(workspace)
     experiment, revision, linked = _submitted(service)
 
     service.start(linked.run.id)
-    final = service.wait(linked.run.id, timeout=60)
+    final = _wait_terminal(service, linked.run.id)
 
     assert final.state == "succeeded", final.error
     reopened = ExperimentService(workspace)
@@ -105,7 +153,7 @@ def test_browser_json_integer_frequency_round_trip_runs_on_jax_cpu(tmp_path):
     _, _, linked = _submitted(service, document)
 
     service.start(linked.run.id)
-    final = service.wait(linked.run.id, timeout=60)
+    final = _wait_terminal(service, linked.run.id)
 
     assert final.state == "succeeded", final.error
     assert any(
@@ -176,7 +224,7 @@ def test_worker_digest_crash_is_failed_once_with_traceback_artifact(tmp_path):
     spec_path.write_text(json.dumps(document), encoding="utf-8")
 
     service.start(linked.run.id)
-    final = service.wait(linked.run.id, timeout=60)
+    final = _wait_terminal(service, linked.run.id)
 
     assert final.state == "failed"
     events = service.repository.list_events(final.id)
@@ -200,7 +248,7 @@ def test_worker_timeout_is_durable_failed_outcome(tmp_path):
     _, _, linked = _submitted(service, document)
 
     service.start(linked.run.id)
-    final = service.wait(linked.run.id, timeout=60)
+    final = _wait_terminal(service, linked.run.id)
 
     assert final.state == "failed"
     assert "timeout" in final.error.lower()
@@ -212,6 +260,75 @@ def test_worker_timeout_is_durable_failed_outcome(tmp_path):
         artifact.kind == "traceback"
         for artifact in service.application_repository.list_artifacts(final.id)
     )
+
+
+def test_run_timed_out_and_run_cancelled_are_baseexception_not_swallowed(tmp_path):
+    """Regression test for issue #482's mechanism-level fix.
+
+    The worker's ``RunTimedOut``/``RunCancelled`` were originally
+    ``TimeoutError``/``RuntimeError`` subclasses (both ``Exception``
+    subclasses). PR #555's CI incident showed a broad ``except Exception``
+    deep in ``rfx.api._preflight`` -- reached from inside the worker's armed
+    SIGALRM window -- swallowing a real timeout into a "classification
+    unavailable" advisory instead of letting it propagate, so the worker
+    kept simulating for its full step count instead of dying (see
+    ``test_worker_timeout_is_durable_failed_outcome`` above, and
+    ``tests/test_mixed_port_sparam.py::
+    test_wire_port_advisory_does_not_swallow_a_timeout_signal`` for the
+    narrow-tuple advisory fix that landed first). Making both exceptions
+    derive from ``BaseException`` instead closes the whole class: no
+    ``except Exception`` anywhere -- not just the one PR #555 found -- can
+    catch them.
+
+    This asserts the class relationship directly, then proves it with a
+    real SIGALRM firing through a ``time.sleep`` guarded by a broad
+    ``except Exception`` -- the same shape as the swallow site. The
+    falsifier: on unfixed main (``RunTimedOut(TimeoutError)``), this test
+    FAILS both at the ``issubclass`` assertion and at the ``pytest.raises``
+    (the sleep loop's ``except Exception`` catches the alarm and
+    ``completed`` becomes ``True``). A genuine hang after the fix still
+    fails at the ``pytest.raises`` line (``DID NOT RAISE``), not at a
+    wall-clock bound -- there is no timing assertion here to flake on a
+    shared runner.
+    """
+    from rfx.experiments.worker import RunCancelled, RunTimedOut
+
+    assert not issubclass(RunTimedOut, Exception), (
+        "RunTimedOut must not derive from Exception (or TimeoutError, an "
+        "Exception subclass): a broad `except Exception` anywhere on the "
+        "signal-to-execute_run path could otherwise swallow a real timeout "
+        "(issue #482 / PR #555 incident)."
+    )
+    assert not issubclass(RunCancelled, Exception)
+    assert issubclass(RunTimedOut, BaseException)
+    assert issubclass(RunCancelled, BaseException)
+
+    if not hasattr(signal, "SIGALRM") or not hasattr(signal, "setitimer"):
+        pytest.skip("platform has no SIGALRM/setitimer")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _raise_timeout(_signum, _frame):
+        raise RunTimedOut("worker exceeded the experiment timeout")
+
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, 0.2)
+    try:
+        completed = False
+        with pytest.raises(RunTimedOut):
+            try:
+                import time
+
+                time.sleep(1.5)
+                completed = True
+            except Exception:
+                # The swallow surface under test: a broad `except Exception`
+                # guard (like the ones in rfx/api) must NOT catch this.
+                completed = True
+        assert not completed
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def test_stale_active_run_reconciliation_releases_cpu_lease(tmp_path):

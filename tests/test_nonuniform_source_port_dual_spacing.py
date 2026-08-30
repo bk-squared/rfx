@@ -588,3 +588,90 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
             f"{name}: production passed {got:.6g}, expected {want:.6g} at "
             f"cell ({mi}, {mj}, {mk}). The wp_meta slots are crossed — an "
             f"Ampere leg is weighted by another axis's spacing.")
+
+
+def test_wp_meta_live_cell_slots_carry_primal_widths(monkeypatch):
+    """Issue #764 wp_meta slot guard: slots 13/14 (live cells, per-cell d_par).
+
+    The whole-port gap voltage V_port = sum_live(-E_c * d_par,c) weights
+    each live cell's E by the PRIMAL width on the component's own axis at
+    THAT cell (#672 metric family) — never the dual spacing, and never the
+    midpoint cell's width broadcast over the run. The graded-z fixture
+    keeps primal and dual apart at every node and makes every interior
+    primal width unique, so either substitution reds this test.
+
+    Also pins the slot ORDER extension itself: slot 13 is the static
+    live-cell index tuple whose midpoint is slots 0..2, slot 14 the
+    matching per-cell primal widths (same order as slot 13).
+    """
+    import rfx.nonuniform as _nu
+    import rfx.runners.nonuniform as _run
+
+    grids = []
+    orig_grid = _run.make_nonuniform_grid
+
+    def grid_spy(*a, **kw):
+        g = orig_grid(*a, **kw)
+        grids.append(g)
+        return g
+
+    monkeypatch.setattr(_run, "make_nonuniform_grid", grid_spy)
+
+    metas = []
+    orig_build = _nu._build_wp_meta
+
+    def build_spy(wire_ports, grid):
+        m = orig_build(wire_ports, grid)
+        metas.append(m)
+        return m
+
+    monkeypatch.setattr(_nu, "_build_wp_meta", build_spy)
+
+    nx, ny, nz = _nodes(G_X), _nodes(G_Y), _nodes(G_Z)
+    sim = Simulation(freq_max=10e9,
+                     domain=(float(G_X.sum()), float(G_Y.sum()),
+                             float(G_Z.sum())),
+                     dx=D, dx_profile=G_X, dy_profile=G_Y, dz_profile=G_Z,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_port(position=(float(nx[9]), float(ny[9]), float(nz[9])),
+                 component="ez", impedance=50.0,
+                 extent=float(G_Z[9] + G_Z[10]),
+                 excite=True, waveform=GaussianPulse(f0=2e9, bandwidth=0.9))
+    sim.run(n_steps=8, compute_s_params=True,
+            s_param_freqs=jnp.array([2e9]), skip_preflight=True)
+
+    assert grids, "make_nonuniform_grid was never called"
+    assert metas, "_build_wp_meta was never called — the NU wire-port " \
+                  "S-param path stopped routing through it"
+    grid = grids[0]
+    meta = metas[0][0]
+    assert len(meta) == 15, (
+        f"wp_meta is a {len(meta)}-tuple, expected 15 (slots 13/14 added "
+        f"by issue #764)")
+
+    live_cells = meta[13]
+    d_par = meta[14]
+    assert isinstance(live_cells, tuple) and len(live_cells) >= 2, live_cells
+    assert len(d_par) == len(live_cells)
+
+    # Slots 0..2 are the midpoint of the LIVE run (issue #764).
+    assert tuple(meta[0:3]) == tuple(live_cells[len(live_cells) // 2]), (
+        f"mid slots {meta[0:3]} are not the live-run midpoint of {live_cells}")
+
+    pz = np.asarray(grid.dz, dtype=np.float64)
+    dual_z = _dual_np(pz)
+    for (ci, cj, ck), dp in zip(live_cells, d_par):
+        want = float(pz[ck])          # PRIMAL width at THIS cell
+        wrong_dual = float(dual_z[ck])
+        assert abs(float(dp) - want) <= 1e-9 * want, (
+            f"slot-14 d_par at cell ({ci},{cj},{ck}) is {float(dp):.6g}, "
+            f"expected the primal dz {want:.6g} (dual would be "
+            f"{wrong_dual:.6g}) — the V_port metric family moved off #672 "
+            f"PRIMAL")
+    # The fixture must discriminate: primal != dual and the two live-cell
+    # primal widths differ (strictly graded interior).
+    ks = [c[2] for c in live_cells]
+    assert len({round(float(pz[k]), 15) for k in ks}) == len(ks), (
+        "fixture no longer discriminates: equal primal dz across the live "
+        "run")
+    assert all(abs(float(pz[k]) - float(dual_z[k])) > 1e-12 for k in ks)

@@ -1,0 +1,546 @@
+{
+  "script": "scripts/diagnostics/msl_passive_port_reflection.py",
+  "issue": "#524 items 1-2 (orphaned #507 loose ends) re-measurement",
+  "report_only": true,
+  "variant": "ROTY",
+  "variant_what": "C0 rotated to +/-y (#661)",
+  "r_ohm_requested": 50.0,
+  "zc_source": null,
+  "precision_mode": "x32",
+  "jax_enable_x64_env": "0",
+  "jax_x64_enabled": false,
+  "jax_version": "0.6.2",
+  "numpy_version": "1.26.4",
+  "settings": {
+    "n_freqs": 30,
+    "num_periods": 12.0,
+    "enforce_passivity": false,
+    "band_hz": [
+      3000000000.0,
+      4500000000.0
+    ]
+  },
+  "design_settings": {
+    "n_freqs": 30,
+    "num_periods": 12.0
+  },
+  "measurement_settings_are_reduced": false,
+  "command": "scripts/diagnostics/msl_passive_port_reflection.py --variant ROTY --output .omx/524-remeasure/20260830T100437Z-582ebcc0/ROTY.json --dump-dir .omx/524-remeasure/20260830T100437Z-582ebcc0/dumps",
+  "utc": "2026-08-30T10:17:42Z",
+  "fixture": {
+    "variant": "ROTY",
+    "geometry": "rotated_y",
+    "r_ohm_requested": 50.0,
+    "lx_m": 0.014,
+    "lat_m": 0.0029707199999999996,
+    "lz_m": 0.001754,
+    "feeds_m": [
+      0.002,
+      0.012
+    ],
+    "trace_prop_extent_m": [
+      0.0,
+      0.014
+    ],
+    "directions": [
+      "+y",
+      "-y"
+    ]
+  },
+  "grid": {
+    "shape": [
+      53,
+      183,
+      30
+    ],
+    "n_cells": 290970,
+    "dx_m": 8.467e-05,
+    "dt_s": 1.6142969420319027e-13,
+    "ports": [
+      {
+        "name": "msl_0",
+        "direction": "+y",
+        "sign": 1.0,
+        "i_feed": 32,
+        "feed_coord_m": 0.00203208,
+        "cpml_inner_faces_m": [
+          0.0,
+          0.01413989
+        ],
+        "domain_prop_m": 0.014
+      },
+      {
+        "name": "msl_1",
+        "direction": "-y",
+        "sign": -1.0,
+        "i_feed": 150,
+        "feed_coord_m": 0.01202314,
+        "cpml_inner_faces_m": [
+          0.0,
+          0.01413989
+        ],
+        "domain_prop_m": 0.014
+      }
+    ]
+  },
+  "realized_termination_witness": [
+    {
+      "name": "msl_0",
+      "direction": "+y",
+      "mode": "laplace",
+      "eps_r_sub_used": 3.6600000858306885,
+      "r_requested_ohm": 50.0,
+      "n_loaded_cells": 56,
+      "sigma_sum_S_per_m": 5478.0460205078125,
+      "r_fold_ohm": 49.99999953487381,
+      "k_fold": 0.9999999906974761,
+      "r_fold_note": "1/sum(dsigma*ez_w^2*dual_prop*dual_width*prim_normal) over the cells the fold loaded, ez_w normalised to 1 V at the trace centre -- the setup_msl_port eigenmode integral evaluated on the ASSEMBLED sigma; shares the mode weights with the fold, so it is independent of the requested R only through what the assembly actually deposited",
+      "r_network_ohm": 34.49568286271188,
+      "r_network_note": "series-in-normal / parallel-in-width lumped reading of the deposited sigma; equals R only for a uniform-Ez column (no prediction attached)",
+      "prediction": "realized R = requested R, i.e. k_fold = 1 (predeclared)"
+    },
+    {
+      "name": "msl_1",
+      "direction": "-y",
+      "mode": "laplace",
+      "eps_r_sub_used": 3.6600000858306885,
+      "r_requested_ohm": 50.0,
+      "n_loaded_cells": 56,
+      "sigma_sum_S_per_m": 5478.0460205078125,
+      "r_fold_ohm": 49.99999953487381,
+      "k_fold": 0.9999999906974761,
+      "r_fold_note": "1/sum(dsigma*ez_w^2*dual_prop*dual_width*prim_normal) over the cells the fold loaded, ez_w normalised to 1 V at the trace centre -- the setup_msl_port eigenmode integral evaluated on the ASSEMBLED sigma; shares the mode weights with the fold, so it is independent of the requested R only through what the assembly actually deposited",
+      "r_network_ohm": 34.49568286271188,
+      "r_network_note": "series-in-normal / parallel-in-width lumped reading of the deposited sigma; equals R only for a uniform-Ez column (no prediction attached)",
+      "prediction": "realized R = requested R, i.e. k_fold = 1 (predeclared)"
+    }
+  ],
+  "wallclock_s": 182.4337572029326,
+  "preflight_warnings_verbatim": [
+    "[UserWarning] [run] preflight found 9 advisory issue(s) - pass skip_preflight=True to suppress:\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - 1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' x: extent 600\u00b5m, worst face residual 7.29\u00b5m (1.21% of the extent, df/f ~ 1.21%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box entr(y/ies) on the uniform lane; 0 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to \u2212x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to \u2212x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
+    "[UserWarning] [run] preflight found 9 advisory issue(s) - pass skip_preflight=True to suppress:\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - all dielectric(s) ['sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  - 1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' x: extent 600\u00b5m, worst face residual 7.29\u00b5m (1.21% of the extent, df/f ~ 1.21%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box entr(y/ies) on the uniform lane; 0 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to \u2212x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to \u2212x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_1' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +x absorbing boundary = 508\u00b5m (domain edge + 677.4\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain x-extent OR move port further from sidewall.\n  - MSL port 'msl_1': only 3 substrate cell(s) in z (h_sub=254\u00b5m, dx=85\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 63.5\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
+    "[UserWarning] standing-wave null at the port plane: 5 bins in [4.3793, 5.0000] GHz have |V|,|I| below 10% of band median \u2014 wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry",
+    "[UserWarning] compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 41.57 ohm deviates 13.2% from analytic Hammerstad-Jensen 47.89 ohm at f = 0.5000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one \u2014 not necessarily an extraction fault (issue #752). The V\u00b7I-split S11/S21 are unaffected.",
+    "[UserWarning] compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 41.63 ohm deviates 13.1% from analytic Hammerstad-Jensen 47.89 ohm at f = 0.8103 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one \u2014 not necessarily an extraction fault (issue #752). The V\u00b7I-split S11/S21 are unaffected."
+  ],
+  "production_result": {
+    "settling_db_per_drive": [
+      -101.95105344800933,
+      -101.5437568002544
+    ],
+    "settling_bar_db": -40.0,
+    "assembly": "multi_drive_solve",
+    "cond_a_max": 1.4968182999144328,
+    "beta_railed_any": false,
+    "S_dtype": "complex64"
+  },
+  "status": "OK",
+  "analysis": {
+    "dump_path": ".omx/524-remeasure/20260830T100437Z-582ebcc0/dumps/ROTY_R50_x32.npz",
+    "dump_schema": "rfx.msl_nprobe_dump",
+    "dump_schema_version": 3,
+    "production_smatrix_assembly": "multi_drive_solve",
+    "dump_dtype": "complex64",
+    "freqs_hz": [
+      500000000.0,
+      655172416.0,
+      810344832.0,
+      965517248.0,
+      1120689664.0,
+      1275862016.0,
+      1431034496.0,
+      1586206848.0,
+      1741379328.0,
+      1896551808.0,
+      2051724160.0,
+      2206896384.0,
+      2362068992.0,
+      2517241344.0,
+      2672413696.0,
+      2827586304.0,
+      2982758656.0,
+      3137931008.0,
+      3293103616.0,
+      3448275712.0,
+      3603448320.0,
+      3758620672.0,
+      3913793024.0,
+      4068965632.0,
+      4224137984.0,
+      4379310080.0,
+      4534482944.0,
+      4689655296.0,
+      4844827648.0,
+      5000000000.0
+    ],
+    "band_hz": [
+      3000000000.0,
+      4500000000.0
+    ],
+    "n_in_band": 9,
+    "ports": [
+      {
+        "index": 0,
+        "name": "msl_0",
+        "direction": "+y",
+        "sign": 1.0,
+        "n_probes": 5,
+        "n_probe_offset": 29,
+        "n_probe_spacing": 6,
+        "probe_coords_m": [
+          0.00448751,
+          0.00499553,
+          0.00550355,
+          0.00601157,
+          0.0065195900000000005
+        ],
+        "z0_hj_ohm": 47.89479996289313,
+        "eps_eff_hj": 2.8693862855796,
+        "eps_r_ref": 3.6600000858306885,
+        "impedance_ohm": 50.0
+      },
+      {
+        "index": 1,
+        "name": "msl_1",
+        "direction": "-y",
+        "sign": -1.0,
+        "n_probes": 5,
+        "n_probe_offset": 29,
+        "n_probe_spacing": 6,
+        "probe_coords_m": [
+          0.00956771,
+          0.00905969,
+          0.00855167,
+          0.00804365,
+          0.00753563
+        ],
+        "z0_hj_ohm": 47.89479996289313,
+        "eps_eff_hj": 2.8693862855796,
+        "eps_r_ref": 3.6600000858306885,
+        "impedance_ohm": 50.0
+      }
+    ],
+    "zc_meas_ohm_fitted_abs_z0_band_median_own_drive": 41.91823698576181,
+    "zc_meas_per_port_ohm": [
+      41.839903600358994,
+      41.99657037116463
+    ],
+    "production_z0_abs_band_median_ohm": [
+      41.87239074707031,
+      42.016971588134766
+    ],
+    "drives": [
+      {
+        "driven": 0,
+        "driven_name": "msl_0",
+        "drive_sign": 1.0,
+        "role_witness": {
+          "0": {
+            "dominant": "alpha",
+            "median_ratio_in_band": 5.519208558766854,
+            "min_ratio_in_band": 5.088626201434865,
+            "passed": true,
+            "min_ratio_required": 2.0
+          },
+          "1": {
+            "dominant": "alpha",
+            "median_ratio_in_band": 5.55731556057983,
+            "min_ratio_in_band": 5.11770927920855,
+            "passed": true,
+            "min_ratio_required": 2.0
+          }
+        },
+        "gamma_assigned": true,
+        "refusal": null,
+        "ports": {
+          "0": {
+            "port": 0,
+            "name": "msl_0",
+            "is_passive": false,
+            "beta_fit_over_beta0_in_band": [
+              1.018037806211789,
+              1.018101764986296,
+              1.0184373119074415,
+              1.018716991009962,
+              1.0194014935228506,
+              1.0192966695735057,
+              1.0193201092989737,
+              1.0192823756101932,
+              1.0195959092001543
+            ],
+            "beta_fit_over_beta0_band_median": 1.0192823756101932,
+            "beta_railed_any_in_band": false,
+            "fit_residual_rel_band_max": 9.355549020217947e-05,
+            "abs_z0_fit_float64_band_median_ohm": 41.839903600358994,
+            "abs_z0_production_raw_z0_band_median_ohm": 41.87239074707031,
+            "abs_alpha_over_gamma_in_band": [
+              5.957878105929094,
+              5.844790893935887,
+              5.734557340703149,
+              5.624514603831908,
+              5.519208558766854,
+              5.4076464466688945,
+              5.299672598465021,
+              5.1924965221959525,
+              5.088626201434865
+            ]
+          },
+          "1": {
+            "port": 1,
+            "name": "msl_1",
+            "is_passive": true,
+            "beta_fit_over_beta0_in_band": [
+              1.0227950994302428,
+              1.0230413863684549,
+              1.0233608988073295,
+              1.0228159717621443,
+              1.0227057480364177,
+              1.0224255728806626,
+              1.0224810132599365,
+              1.0225755561421113,
+              1.0228033125842022
+            ],
+            "beta_fit_over_beta0_band_median": 1.0227950994302428,
+            "beta_railed_any_in_band": false,
+            "fit_residual_rel_band_max": 0.00011697723472865299,
+            "abs_z0_fit_float64_band_median_ohm": 41.789337160948655,
+            "abs_z0_production_raw_z0_band_median_ohm": 41.8375244140625,
+            "abs_alpha_over_gamma_in_band": [
+              6.0243776112300615,
+              5.909862550147005,
+              5.7975099888897885,
+              5.672219022997298,
+              5.55731556057983,
+              5.440742591083289,
+              5.330760601795316,
+              5.22266861366302,
+              5.11770927920855
+            ],
+            "abs_a_passive_over_a_driven_z0hj_band_median": 0.24746530290413218,
+            "abs_a_passive_over_a_driven_z0hj_in_band": [
+              0.23353886761393808,
+              0.23683827955017944,
+              0.24027268973730176,
+              0.24381426067018175,
+              0.24746530290413218,
+              0.2512338681746076,
+              0.2551159125884042,
+              0.25909799158924834,
+              0.26319703260767474
+            ],
+            "abs_a_over_b_z0hj_band_median(production wave split at z0_hj)": 0.24503516549881074,
+            "gamma_passive_Q1_fit": {
+              "abs_band_median": 0.17994299389679855,
+              "abs_in_band": [
+                0.16599225090669897,
+                0.1692086730469096,
+                0.17248784424975142,
+                0.17629784674139445,
+                0.17994299389679855,
+                0.183798439874527,
+                0.18759049124494837,
+                0.19147299474140494,
+                0.19539992317708385
+              ],
+              "abs_band_max": 0.19539992317708385,
+              "abs_band_min": 0.16599225090669897,
+              "complex_at_band_centre": [
+                -0.1797605215629094,
+                0.008101601074730546
+              ],
+              "role": "gamma/alpha"
+            },
+            "gamma_passive_Q2_ab_split": {
+              "z_ref_ohm": 41.789337160948655,
+              "abs_band_median": 0.1800300279829055,
+              "abs_in_band": [
+                0.16658132103289605,
+                0.16977418224651739,
+                0.17309188544781276,
+                0.17650835155669586,
+                0.1800300279829055,
+                0.1836600668351989,
+                0.18740022282593782,
+                0.1912394757163587,
+                0.19518803930224804
+              ],
+              "abs_band_median_z0hj_reference": 0.24503516549881083
+            },
+            "comparator": {
+              "gate": "band-median |Gamma_Q1| vs |Gamma_Q2(Z_ref=fitted |z0|)| within 0.02",
+              "band_median_abs_difference": 8.703408610694074e-05,
+              "gate_value": 0.02,
+              "passed": true,
+              "per_frequency_max_abs_difference_REPORTED_NOT_GATED": 0.0006040411980613447
+            },
+            "reflector_plane": {
+              "d_from_probe0_m": 0.001040953195391583,
+              "phase_fit_rms_rad": 0.0021153921344047246,
+              "gamma_L_phase_rad": 3.3783462509560445,
+              "x_L_m": 0.010608663195391582,
+              "feed_plane_m": 0.012,
+              "distance_x_L_to_feed_m": 0.001391336804608418
+            },
+            "production_S_diagonal_abs_band_median": 0.0832708552479744
+          }
+        }
+      },
+      {
+        "driven": 1,
+        "driven_name": "msl_1",
+        "drive_sign": -1.0,
+        "role_witness": {
+          "0": {
+            "dominant": "gamma",
+            "median_ratio_in_band": 5.683823679846852,
+            "min_ratio_in_band": 5.241312663725454,
+            "passed": true,
+            "min_ratio_required": 2.0
+          },
+          "1": {
+            "dominant": "gamma",
+            "median_ratio_in_band": 5.64967717742397,
+            "min_ratio_in_band": 5.21541159589552,
+            "passed": true,
+            "min_ratio_required": 2.0
+          }
+        },
+        "gamma_assigned": true,
+        "refusal": null,
+        "ports": {
+          "0": {
+            "port": 0,
+            "name": "msl_0",
+            "is_passive": true,
+            "beta_fit_over_beta0_in_band": [
+              1.022769677824191,
+              1.0224211369056149,
+              1.0224004476794797,
+              1.0226565184518372,
+              1.0224476288568511,
+              1.0228633288009557,
+              1.0222214351544279,
+              1.0221726544701637,
+              1.0225239881701058
+            ],
+            "beta_fit_over_beta0_band_median": 1.0224476288568511,
+            "beta_railed_any_in_band": false,
+            "fit_residual_rel_band_max": 0.0001228457276435142,
+            "abs_z0_fit_float64_band_median_ohm": 41.80545957931746,
+            "abs_z0_production_raw_z0_band_median_ohm": 41.85442352294922,
+            "abs_alpha_over_gamma_in_band": [
+              0.16248938278246894,
+              0.1658055729220371,
+              0.16910010128422664,
+              0.17239153234207294,
+              0.17593789961249195,
+              0.17934117448366396,
+              0.18329571021107513,
+              0.18708084597181737,
+              0.19079189969354232
+            ],
+            "abs_a_passive_over_a_driven_z0hj_band_median": 0.2433376669025641,
+            "abs_a_passive_over_a_driven_z0hj_in_band": [
+              0.23019694753381384,
+              0.23331401297462265,
+              0.2365539924802102,
+              0.2398970633584716,
+              0.2433376669025641,
+              0.2468835300670642,
+              0.2505272060611587,
+              0.25425621485911687,
+              0.2580835575360094
+            ],
+            "abs_a_over_b_z0hj_band_median(production wave split at z0_hj)": 0.2406925018825273,
+            "gamma_passive_Q1_fit": {
+              "abs_band_median": 0.17593789961249195,
+              "abs_in_band": [
+                0.16248938278246894,
+                0.16580557292203707,
+                0.16910010128422664,
+                0.17239153234207294,
+                0.17593789961249195,
+                0.17934117448366393,
+                0.18329571021107513,
+                0.1870808459718174,
+                0.19079189969354232
+              ],
+              "abs_band_max": 0.19079189969354232,
+              "abs_band_min": 0.16248938278246894,
+              "complex_at_band_centre": [
+                -0.1755226010598052,
+                0.012081433576184892
+              ],
+              "role": "alpha/gamma"
+            },
+            "gamma_passive_Q2_ab_split": {
+              "z_ref_ohm": 41.80545957931746,
+              "abs_band_median": 0.17575113766107317,
+              "abs_in_band": [
+                0.1631584887989299,
+                0.1661494180024589,
+                0.16925431172442276,
+                0.17245609427666345,
+                0.17575113766107317,
+                0.17914392352246108,
+                0.1826322855467781,
+                0.18620682840634584,
+                0.1898766542710659
+              ],
+              "abs_band_median_z0hj_reference": 0.24069250188252736
+            },
+            "comparator": {
+              "gate": "band-median |Gamma_Q1| vs |Gamma_Q2(Z_ref=fitted |z0|)| within 0.02",
+              "band_median_abs_difference": 0.0001867619514187846,
+              "gate_value": 0.02,
+              "passed": true,
+              "per_frequency_max_abs_difference_REPORTED_NOT_GATED": 0.0009152454224764239
+            },
+            "reflector_plane": {
+              "d_from_probe0_m": 0.0010670877622499192,
+              "phase_fit_rms_rad": 0.0022152481170168888,
+              "gamma_L_phase_rad": 3.3615802276229902,
+              "x_L_m": 0.003420422237750081,
+              "feed_plane_m": 0.002,
+              "distance_x_L_to_feed_m": 0.001420422237750081
+            },
+            "production_S_diagonal_abs_band_median": 0.08323876559734344
+          },
+          "1": {
+            "port": 1,
+            "name": "msl_1",
+            "is_passive": false,
+            "beta_fit_over_beta0_in_band": [
+              1.01771662876361,
+              1.0179665644251465,
+              1.0181474868732907,
+              1.0190990194405272,
+              1.0193529052497945,
+              1.0192765795549346,
+              1.019236670417839,
+              1.0194742638694443,
+              1.0195340051814603
+            ],
+            "beta_fit_over_beta0_band_median": 1.019236670417839,
+            "beta_railed_any_in_band": false,
+            "fit_residual_rel_band_max": 7.602397028483743e-05,
+            "abs_z0_fit_float64_band_median_ohm": 41.99657037116463,
+            "abs_z0_production_raw_z0_band_median_ohm": 42.016971588134766,
+            "abs_alpha_over_gamma_in_band": [
+              0.16432161286265945,
+              0.16734260532327067,
+              0.17051876275013703,
+              0.17364549246099883,
+              0.17700126371750685,
+              0.1805718246370806,
+              0.18421971659955932,
+              0.18792921658527684,
+              0.1917394210625659
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "dtype_label": "all dump-derived numbers: complex64 inputs, float64 offline fit; precision_mode=x32"
+}

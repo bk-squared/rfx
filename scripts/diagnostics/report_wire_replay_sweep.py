@@ -187,6 +187,10 @@ def _run_case(case: WireSweepCase, output_dir: Path) -> dict:
         metadata_json=np.asarray(_metadata_json(case=case, grid=grid, ports=ports, n_steps=n_steps)),
         freqs_hz=np.asarray(extraction.freqs, dtype=np.float64),
         raw_voltages_fdt=np.asarray(extraction.raw_voltages_fdt, dtype=np.complex128),
+        # Whole-port gap-voltage channel (issue #764): required to replay
+        # the driven whole-port diagonal of a post-#764 production dump.
+        raw_port_voltages_fdt=np.asarray(
+            extraction.raw_port_voltages_fdt, dtype=np.complex128),
         raw_currents=np.asarray(extraction.raw_currents, dtype=np.complex128),
         port_impedances_ohm=np.asarray(extraction.port_impedances, dtype=np.float64),
         port_cell_counts=np.asarray(extraction.port_cell_counts, dtype=np.int64),
