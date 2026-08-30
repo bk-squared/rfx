@@ -150,27 +150,26 @@ def test_two_port_s_envelope_on_matched_line():
        of the correct one. Reciprocating a >1 number lands under 1, which is
        what kept the gate green. Fixed in #673.
 
-    2. **The whole S column here is known-WRONG — diagonal included.** An
-       earlier revision of this docstring framed the driven-port diagonal as
-       merely "not bounded by 1". It is worse than unbounded: it does not
-       track the load at all. Measured on the UNIFORM (validated) lane, same
-       geometry, only ``excite`` flipped, ``n_live = 4``:
-
-           passive  S11(0.2 GHz) = -0.600000   (== analytic (1-n)/(1+n))
-           driven   S11(0.2 GHz) = +0.999670 - 0.022145j
-
-       The quasi-static input impedance is identical in both cases, so a
-       consistent extractor must report the same number. Review measured the
-       same failure directly against known loads: a matched ``R_L = Z0 = 50``
-       (``Gamma = 0``) reads ``S11 = +0.35426`` and a PEC short
-       (``Gamma = -1``) reads ``+0.26780``.
-
-       Root cause is the #313 / #318 family: V and I are sampled at ONE cell,
-       so the measured Z is the per-cell ``Z0/n_live`` while the reflection
-       formula references the whole-port ``Z0``. #318 records the same class
-       ("physical termination Z0*(n_live/n)", not Z0). Compare the #313
-       do-not-repeat: "the port-cell |S21| envelope ... is a REGRESSION LOCK,
-       not physics" — this is that, for the whole column.
+    2. **The DIAGONAL was fixed by issue #764; the off-diagonal remains
+       known-wrong.** HISTORICAL PROVENANCE for the old envelope (28.511,
+       |S11| up to 4.648): the driven diagonal did not track the load at
+       all — a matched ``R_L = Z0 = 50`` (``Gamma = 0``) read
+       ``S11 = +0.35426`` and a PEC short (``Gamma = -1``) read
+       ``+0.26780``; one geometry with only ``excite`` flipped read
+       -0.600000 passive against +0.999670-0.022145j driven (n_live = 4).
+       Root cause was the #313 / #318 frame mismatch: V and I sampled at
+       ONE cell measure the per-cell ``Z0/n_live`` while the reflection
+       formula references the whole-port ``Z0``.  #764 replaced the driven
+       NU diagonal with the whole-port reflection
+       ``S_kk = (V_port - Z0*I)/(V_port + Z0*I)`` (whole-gap line-integral
+       V against the physically realized series Z0), validated on the
+       clean-gap falsifier battery
+       (validation/research/issue764_wireport_norm_falsifiers.py: matched
+       |S11| 0.001-0.0125, short -1, open +1, load-law slope 0.9996).  On
+       THIS fixture |S11| now reads in [0.115, 0.728] — bounded and
+       load-tracking — but the stub-line fixture itself is not a
+       calibrated oracle, so the diagonal stays inside the envelope lock
+       below rather than getting its own physics gate here.
 
     3. **The NU off-diagonal is wrong in its own right.** It uses the
        receive channel issue #308 removed and the full Z0 instead of the
@@ -186,17 +185,20 @@ def test_two_port_s_envelope_on_matched_line():
     DRIVEN column below is validated.
 
     So: this asserts finiteness and freezes the measured envelope, purely so
-    the numbers cannot drift unnoticed. Measured on this branch (4000 steps,
-    2-6 GHz, 51 bins):
+    the numbers cannot drift unnoticed. RE-PINNED 2026-08-29 for issue #764
+    (the old 28.511 envelope was a pin on the known-wrong per-cell driven
+    diagonal; see the provenance in item 2 above). Measured on this branch
+    (4000 steps, 2-6 GHz, 51 bins):
 
-        max(|S11|^2 + |S21|^2) = 28.511
-        |S11| in [1.18966, 4.64846],  |S21| in [0.35934, 2.62724]
+        max(|S11|^2 + |S21|^2) = 4.84444
+        |S11| in [0.11471, 0.72794],  |S21| in [0.33882, 2.17686]
 
-    The value also depends on the V/I sampling ordering, which is OPEN as
-    issue #683 (it read 11.003 with the pre-injection ordering that was
-    pulled from this branch). Any correct fix to #313 / #318 / #683 will red
-    this test; that is the point. Re-derive and re-document when it happens —
-    do not "restore" the number.
+    The |S21| class is unchanged (the #308/#318 off-diagonal defect is
+    untouched by #764). The value still depends on the V/I sampling
+    ordering, which is OPEN as issue #683. Any correct fix to the NU
+    off-diagonal (#313 / #318) or to #683 will red this test; that is the
+    point. Re-derive and re-document when it happens — do not "restore"
+    the number.
     """
     sim = _build_line()
     freqs = jnp.linspace(2e9, 6e9, 51)
@@ -209,7 +211,7 @@ def test_two_port_s_envelope_on_matched_line():
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
     assert np.all(np.isfinite(S)), "non-finite entry in the S matrix"
     p_total = np.abs(S11) ** 2 + np.abs(S21) ** 2
-    measured = 28.511
+    measured = 4.84444
     assert abs(float(np.max(p_total)) / measured - 1.0) < 0.05, (
         f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} moved "
         f"off the recorded {measured} envelope. This is an envelope lock on "

@@ -27,8 +27,11 @@ the (pre-existing) uniform path:
     in full (no flag, no partial path); tracked with the full factorial,
     mechanism hypothesis, and a separate pole-only-material coverage hole
     the attempted design also had, in issue #636.
-    ``test_pole_extension_stability_lock`` below is the physics-level
-    guard against silently reintroducing it.
+    ``test_pole_extension_divergence_repro_636`` below (slow lane; the
+    instability onset moved past 8,000 steps after #655 — see its
+    docstring for the 2026-08-29 re-baseline) is the physics-level guard
+    against silently reintroducing it; the mask-level tests red
+    instantly in the fast lane.
 
 The (a) fix is bounded to exactly one column inward on the hi-face
 fallback (the rasterizer's per-box shortfall there is deterministically
@@ -42,6 +45,7 @@ column") would have silently bridged it.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx import Simulation, GaussianPulse
 from rfx.geometry.csg import Box
@@ -209,38 +213,28 @@ def test_uniform_and_nu_assemblers_stay_byte_identical_after_the_fix():
 
 
 def test_pole_extension_stability_lock():
-    """Physics-level regression guard for issue #636 (see also the module
-    docstring's (b) entry): extending Debye/Lorentz pole masks into the
-    CPML pad turns a stable high-Q edge-touching Lorentz-slab simulation
-    into a divergent one.
+    """Fast-lane canary for issue #636's fixture: the SHIPPED (statics-only)
+    pad fill must decay on the high-Q edge-touching Lorentz slab.
 
-    Four-way factorial (review's controlled discriminator, one fixture,
-    one harness, only the pad-fill contents varied, pad contents printed
-    per variant to confirm each matched its label -- reproduced directly
-    by this author before committing, not taken on trust):
+    HISTORY / RE-BASELINE (2026-08-29, on b29f9de). The original #627b
+    review measured, at 20,000 steps, last/mid-decile 649 for the
+    pole-extended variant vs 0.1557 shipped, and at this test's 8,000
+    steps 2.546 vs 0.4281 — so ratio < 1 at 8,000 steps then separated
+    the variants and this test doubled as the physics-level guard against
+    naive re-addition of pole-mask extension. Since c9c1864 (#655
+    boundary-node fix) the instability ONSET HAS MOVED PAST 8,000 STEPS:
+    re-measured on b29f9de, the pole-extended variant reads 0.4499 at
+    8,000 steps (below 1 — this criterion no longer reds on naive
+    re-addition) and 5.032 at 20,000 steps (still divergent), vs 0.2145
+    shipped at 20,000 steps. The physics-level guard therefore lives in
+    ``test_pole_extension_divergence_repro_636`` below (slow lane,
+    20,000 steps, runs BOTH variants); the mask-level locks above red
+    instantly on any naive re-addition in the fast lane.
 
-      FULL   (statics hi-face-fixed AND poles extended), 20,000 steps:
-              last-decile/mid-decile = 649           DIVERGES
-      S-ONLY (statics hi-face-fixed, poles NOT extended -- what SHIPS),
-              20,000 steps: last/mid = 0.1557         decays
-      unpatched pre-#627 tree, 20,000 steps: last/mid ~ 0.12  decays
-
-    S-ONLY is exactly what ships (issue #627a shipped, #627b reverted in
-    full, no flag) -- this test runs that shipped code, unmodified, on
-    the SAME fixture. At the committed step count (8000, chosen for test
-    suite runtime) the two variants have NOT yet separated by the 20,000-
-    step run's dramatic margin -- this author independently measured
-    FULL's last/mid at 8000 steps as 2.546 (already above 1, i.e. already
-    growing, but not yet past the "diverging" classification the 20,000-
-    step comparison uses) against S-ONLY's 0.4281. The literal criterion
-    from review -- last decile below the mid-run decile, ratio < 1 -- DOES
-    separate them at 8000 steps; a laxer "diverging" threshold would not.
-    Do not loosen this threshold without re-measuring both variants at
-    whatever step count you choose; the margin at 8000 steps is real but
-    not enormous (0.43 vs 2.55), unlike at 20,000 steps (0.16 vs 649).
-
-    Designed to red the moment someone re-adds pole-mask extension
-    naively, without re-litigating the stability question tracked in #636.
+    What this 8,000-step test still guards, cheaply: the shipped pad fill
+    (statics extended, poles not) decaying on a resonant edge-touching
+    interior — a ratio >= 1 here means the static hi-face fallback
+    (#627a/#655) has become unsafe for a resonant interior material.
     """
     DX = 1e-3
     NA, NB, NZ = 45, 39, 12
@@ -307,9 +301,135 @@ def test_pole_extension_stability_lock():
         f"last-decile/mid-decile ratio {ratio:.4g} ({pad_witness}) -- the "
         f"shipped (statics-only) pad fill should have its last decile "
         f"below its mid-run decile on this high-Q edge-touching Lorentz "
-        f"fixture (measured S-ONLY 0.4281 at this step count, 0.1557 at "
-        f"20,000 steps, in the #636 discriminator). A ratio at or above 1 "
-        f"means either pole-mask extension was reintroduced or the static "
-        f"hi-face fallback (#627a) has somehow become unsafe for a "
-        f"resonant interior material -- see issue #636 before changing "
-        f"this gate. deciles={deciles}")
+        f"fixture (measured S-ONLY 0.4281 at this step count in the "
+        f"original #636 discriminator; 0.2145 at 20,000 steps re-measured "
+        f"2026-08-29 on b29f9de). A ratio at or above 1 means the static "
+        f"hi-face fallback (#627a/#655) has become unsafe for a resonant "
+        f"interior material -- see issue #636 and "
+        f"test_pole_extension_divergence_repro_636 before changing this "
+        f"gate. deciles={deciles}")
+
+
+class _PoleExtendedSim(Simulation):
+    """Test-local harness for the #636 repro: replicate Lorentz/Debye pole
+    masks into the CPML pads exactly the way the statics are replicated
+    (including the #627a hi-face fallback), by piggybacking on
+    ``extend_cpml_pad_materials`` with ``mask + 1`` as a fake eps array.
+    This is the naive re-addition #627b tried and reverted; the shipped
+    ``Simulation`` never does this. Mirrors
+    ``validation/research/cpml_pole_pad/factorial_636.py``.
+    """
+
+    def _assemble_materials(self, grid, **kw):
+        import jax.numpy as jnp
+        from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
+
+        out = super()._assemble_materials(grid, **kw)
+        materials, debye_spec, lorentz_spec, *rest = out
+
+        def ext_masks(spec):
+            if spec is None:
+                return None
+            poles, masks = spec
+            plx, phx = grid.pad_x_lo, grid.pad_x_hi
+            ply, phy = grid.pad_y_lo, grid.pad_y_hi
+            plz, phz = grid.pad_z_lo, grid.pad_z_hi
+            new_masks = []
+            for m in masks:
+                fake_eps = m.astype(jnp.float32) + 1.0
+                z = jnp.zeros_like(fake_eps)
+                o = jnp.ones_like(fake_eps)
+                e, _, _ = extend_cpml_pad_materials(
+                    fake_eps, z, o, plx, phx, ply, phy, plz, phz)
+                new_masks.append(e > 1.5)
+            return (poles, new_masks)
+
+        return (materials, ext_masks(debye_spec), ext_masks(lorentz_spec),
+                *rest)
+
+
+@pytest.mark.slow
+def test_pole_extension_divergence_repro_636():
+    """Minimal committed repro AND physics-level lock for issue #636:
+    extending dispersion-pole masks into the CPML pad turns a stable
+    high-Q edge-touching Lorentz-slab simulation into a divergent one,
+    while the shipped statics-only pad fill decays — same fixture, same
+    harness, only the pole-pad contents differ.
+
+    Re-baselined measurements (2026-08-29, b29f9de, this exact fixture,
+    20,000 steps, last/mid-decile of |ez|):
+
+      shipped (poles NOT extended)      : 0.2145   decays
+      poles extended into the pad       : 5.032    grows (finite, no NaN)
+
+    The original #627b-era margins (0.1557 vs 649 at 20,000 steps; 0.4281
+    vs 2.546 at 8,000) are historical: since c9c1864 (#655) the onset sits
+    past 8,000 steps, which is why this lock runs 20,000 steps in the slow
+    lane and why ``test_pole_extension_stability_lock`` (8,000 steps) no
+    longer separates the variants. Root-cause envelope and the measured
+    factorial live in docs/design_notes/i636_cpml_pole_pad_predeclaration.md
+    and validation/research/cpml_pole_pad/.
+
+    If the EXTENDED variant ever stops growing here, that is not noise:
+    either the CPML/ADE composition changed (re-measure the #636 factorial
+    before relying on it) or a deliberate fix landed — update this lock
+    with the new measured margins in the same change.
+    """
+    DX = 1e-3
+    NA, NB, NZ = 45, 39, 12
+    F0 = 3e9
+    w0 = 2 * np.pi * F0
+    STEPS = 20000
+
+    def build(cls):
+        from rfx.geometry.csg import Box as _Box
+        sim = cls(freq_max=2.5 * F0, domain=(NA * DX, NB * DX, NZ * DX),
+                  dx=DX, boundary="cpml", cpml_layers=8)
+        sim.add_material("slab", eps_r=4.0,
+                         lorentz_poles=[LorentzPole(omega_0=w0,
+                                                    delta=w0 / 120.0,
+                                                    kappa=3.0 * w0 ** 2)])
+        sim.add(_Box((0.0, 0.0, 3 * DX), (NA * DX, NB * DX, 7 * DX)),
+                material="slab")
+        sim.add_source((NA * DX / 3, NB * DX / 3, 5.0 * DX), "ez",
+                       waveform=GaussianPulse(f0=F0, bandwidth=0.8),
+                       amplitude_kind="field")
+        sim.add_probe(((NA - 3) * DX, NB * DX / 2, 5.0 * DX), "ez")
+        return sim
+
+    def run_ratio(cls, expect_pad_poles):
+        sim = build(cls)
+        grid = sim._build_grid()
+        _, _, lorentz_spec, *_ = sim._assemble_materials(grid)
+        _, masks = lorentz_spec
+        pole = np.asarray(masks[0])
+        phx, plx = grid.pad_x_hi, grid.pad_x_lo
+        n_pad = int(pole[:plx].sum() + pole[-phx:].sum())
+        if expect_pad_poles:
+            assert n_pad > 0, "harness failed to place poles in the pad"
+        else:
+            assert n_pad == 0, (
+                f"shipped code put {n_pad} pole cells in the x pads -- "
+                f"pole-mask extension appears to have been reintroduced")
+        result = sim.run(n_steps=STEPS, compute_s_params=False,
+                         skip_preflight=True, subpixel_smoothing=False)
+        ts = np.asarray(result.time_series, dtype=float).ravel()
+        assert np.isfinite(ts).all()
+        n = len(ts)
+        deciles = [float(np.abs(ts[i * n // 10:(i + 1) * n // 10]).max())
+                   for i in range(10)]
+        return deciles[-1] / max(deciles[3], 1e-300), deciles
+
+    ratio_shipped, dec_s = run_ratio(Simulation, expect_pad_poles=False)
+    ratio_extended, dec_e = run_ratio(_PoleExtendedSim, expect_pad_poles=True)
+
+    assert ratio_shipped < 1.0, (
+        f"shipped variant no longer decays at 20,000 steps: last/mid = "
+        f"{ratio_shipped:.4g} (measured 0.2145 on b29f9de); deciles={dec_s}")
+    assert ratio_extended > 1.0, (
+        f"pole-extended variant no longer grows at 20,000 steps: last/mid "
+        f"= {ratio_extended:.4g} (measured 5.032 on b29f9de). If a fix for "
+        f"#636 landed deliberately, update this lock with new margins; "
+        f"otherwise re-run the #636 factorial "
+        f"(validation/research/cpml_pole_pad/) before trusting this. "
+        f"deciles={dec_e}")

@@ -202,7 +202,10 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
     sim = _build(False, extent=extent, z0=z0)
     fr = sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS)
     _spec, accs = fr.wire_port_sparams[0]
-    v_dft, i_dft, _ = accs
+    # Issue #764: the accumulator tuple grew a 4th slot (whole-port
+    # v_port_dft). This test's channels — the single-cell v_dft/i_dft and
+    # every asserted value — are byte-identical; only the unpack widens.
+    v_dft, i_dft = accs[0], accs[1]
     r = np.asarray(v_dft) / np.asarray(i_dft)
     n = _n_live(extent)
     expected = -z0 / n
@@ -332,28 +335,30 @@ def test_excited_port_lane_ordering_disagreement_is_open_683(load):
     """An EXCITED port SHOULD read the same on both lanes. It does not.
 
     This is the visible marker for issue #683, and it is expected to fail
-    until #683 decides which sampling side is right. Measured on this branch
-    (max over the 3 bins of |S_NU - S_uniform|):
+    until #683 decides which sampling side is right (the uniform lane still
+    samples PRE-injection). RE-MEASURED 2026-08-29 for issue #764 (written
+    provenance: the old residuals 1.983e-01 / 6.109e-01 were pinned on the
+    known-wrong per-cell driven diagonal; #764's whole-port normalization
+    removed the normalization half of the disagreement, leaving only the
+    #683 ordering half).  Measured on this branch (max over the 3 bins of
+    |S_NU - S_uniform|):
 
-        vacuum      (n_live=4)  1.983e-01
-        pec_plates  (n_live=6)  6.109e-01
+        vacuum      (n_live=4)  4.975e-02
+        pec_plates  (n_live=6)  1.051e-01
 
-    At 0.2 GHz the two readings are near-conjugates — vacuum gives
-    NU +0.999869+0.017541j against uniform +0.999670-0.022145j — which is the
-    signature of the half-step the injection ordering moves, not of a
-    magnitude error.
+    At 0.2 GHz the two readings remain near-conjugates — vacuum gives
+    NU +0.999983-0.004385j against uniform +1.000004+0.005537j — which is
+    the signature of the half-step the injection ordering moves, not of a
+    magnitude error.  Both lanes now read the unloaded driven column as an
+    open (|S11| ~ 1), the physically expected reading.
 
     ``direction`` is NOT a confounder here: the fixture pins ``direction`` and
     D1 is fixed, so the split is direction-free on both lanes.
 
-    Note what this test does NOT assert. It used to also require
-    ``max|S11| <= 1`` at the driven port. That is not a valid bound for this
-    extractor: on the UNIFORM (validated) lane, the same geometry with only
-    ``excite`` flipped reads S11(0.2 GHz) = -0.600000 passive but
-    +0.999670-0.022145j driven, though the quasi-static input impedance is
-    identical in both cases. The driven diagonal is known-WRONG (#313 / #318
-    per-cell normalization), not merely unbounded, so asserting a passivity
-    envelope on it would be binding another artifact.
+    Note what this test does NOT assert: a passivity envelope on the
+    UNIFORM lane's driven diagonal — its PRE-injection sample contaminates
+    the driven V at order 1 (sigma*dt/eps ~ 0.96), so its physical
+    validation is keyed to the pending #683 flip.
     """
     extent = 3e-3 if load == "vacuum" else 5e-3
     s_uni = _s11(_build(False, extent=extent, excite=True, load=load))

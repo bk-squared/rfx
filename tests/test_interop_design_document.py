@@ -447,20 +447,31 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
     )
     mismatched = {}
-    # Issue #469 — deliberate representational asymmetry: the document
-    # records each AUTO port's RESOLVED n_probe_offset as an explicit,
-    # frozen value (reproducibility-first; see
-    # _msl_ports_with_resolved_offsets), so the rebuilt simulation does not
-    # reconstruct the auto bookkeeping. The BEHAVIORAL contract — rebuilt
+    # Issues #469/#681 — deliberate representational asymmetry: the
+    # document records each AUTO port's RESOLVED n_probe_offset (#469)
+    # and RESOLVED n_probe_spacing (#681) as explicit, frozen values
+    # (reproducibility-first; see _msl_ports_with_resolved_offsets), so
+    # the rebuilt simulation does not reconstruct the auto bookkeeping
+    # and its stored entries may differ from the original's STORED (but
+    # not from its RESOLVED) entries. The BEHAVIORAL contract — rebuilt
     # probe placement equals what the original would measure with — is
-    # pinned positively by
-    # test_auto_msl_offset_is_frozen_resolved_in_the_document.
-    skip_attrs = {"_msl_auto_offset_min"}
+    # compared directly below and pinned positively by
+    # test_auto_msl_offset_is_frozen_resolved_in_the_document /
+    # test_auto_msl_spacing_is_frozen_resolved_in_the_document.
+    skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
+                  "_msl_ports"}
     for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))
         if left != right:
             mismatched[name] = (left, right)
+    from rfx.interop._design import _msl_ports_with_resolved_offsets
+    left = _canonical(_msl_ports_with_resolved_offsets(original))
+    right = _canonical(list(rebuilt._msl_ports))
+    if left != right:
+        mismatched["_msl_ports (original RESOLVED vs rebuilt)"] = (
+            left, right,
+        )
     assert not mismatched, "design attributes differ after round trip: " + "; ".join(
         f"{name}: original={left!r} rebuilt={right!r}"
         for name, (left, right) in mismatched.items()
@@ -1717,6 +1728,38 @@ def test_auto_msl_offset_is_frozen_resolved_in_the_document():
     # re-export is stable (the frozen value is explicit, no re-solve)
     document2 = design_to_dict(rebuilt)
     assert document2["excitations"]["msl_ports"][0]["n_probe_offset"] == 26
+
+
+def test_auto_msl_spacing_is_frozen_resolved_in_the_document():
+    """Issue #681 sibling of the #469 contract above: the document records
+    an AUTO port's RESOLVED (span-widened) n_probe_spacing, not the
+    conservative registration default. Geometry = the open-thru case of
+    tests/test_msl_probe_offset_interval.py: registration default 2 cells,
+    driver-time span solve widens to 12 (hand arithmetic there)."""
+    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=2e-4,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")
+    sim.add(Box((0.001, 0.01316 - 0.0012065, 0.000794),
+                (0.019, 0.01316 + 0.0012065, 0.000994)), material="pec")
+    sim.add_msl_port(position=(0.0025, 0.01316, 0.0), width=0.002413,
+                     height=0.000794, direction="+x", impedance=50.0,
+                     eps_r_sub=2.2, name="p1")
+
+    assert sim._msl_ports[0].n_probe_spacing == 2      # stored default
+    document = design_to_dict(sim)
+    (port_doc,) = document["excitations"]["msl_ports"]
+    assert port_doc["n_probe_spacing"] == 12           # frozen RESOLVED value
+    # the original simulation is not mutated by the export
+    assert sim._msl_ports[0].n_probe_spacing == 2
+    assert set(sim._msl_auto_probe_spacing) == {"p1"}
+
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._msl_ports[0].n_probe_spacing == 12  # explicit, frozen
+    assert rebuilt._msl_auto_probe_spacing == {}
+    # re-export is stable (the frozen value is explicit, no re-solve)
+    document2 = design_to_dict(rebuilt)
+    assert document2["excitations"]["msl_ports"][0]["n_probe_spacing"] == 12
 
 
 def _nu_offset_fixture(**profiles):

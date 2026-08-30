@@ -1,0 +1,25 @@
+# Issue #764 — OPTIONAL broadband F5 load-sweep matrix (flagged to the
+# orchestrator per the adjudicated design; the PRE-DECLARED F5 gates are
+# quasi-static-only and were fully evaluated locally: slope 0.9996,
+# intercept -0.0000, per-load |I| law < 0.9%).  This job extends the same
+# harness fixtures to a dense in-band frequency grid x the full load
+# matrix on GPU.  Run it only if the orchestrator wants the broadband
+# extension; nothing in the #764 verdict depends on it.
+name: issue764-f5-broadband-load-sweep
+description: >
+  rfx issue #764 whole-port driven-diagonal: broadband load-sweep matrix
+  (Z_L in {12.5, 25, 50, 100, 200} ohm, dense in-band bins) on the NU
+  lane, FIX-A class fixtures, gates reported (not widened) against the
+  pre-declared F1/F5 envelopes.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+import:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run:
+  - workdir: /root/workspace/byungkwan-workspace/research/rfx/worktrees/issue-764-wireport-norm
+    command: |
+      pip install -e . --no-deps
+      PYTHONPATH=$PWD python validation/research/issue764_wireport_norm_falsifiers.py \
+        2>&1 | tee /root/workspace/byungkwan-workspace/research/rfx/logs/issue764_f5_broadband.log

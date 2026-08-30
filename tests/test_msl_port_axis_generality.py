@@ -413,9 +413,11 @@ def _msl_warnings(sim):
     return [m for m in sim.preflight() if "MSL port" in m]
 
 
-def _board(domain, direction, feed, lat_c, *, trace_len_axis):
-    """Thru-line board with one port; ``feed``/``lat_c`` are port-frame."""
-    sim = Simulation(freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
+def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
+    """Thru-line board with one port; ``feed``/``lat_c`` are port-frame.
+    ``dx`` defaults to the module DX (80 um); the substrate-cell test passes
+    100 um, where the run grid really has fewer than 4 substrate cells."""
+    sim = Simulation(freq_max=F_MAX, domain=domain, dx=dx, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("ro4350b", eps_r=EPS_R)
@@ -423,10 +425,10 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis):
             material="ro4350b")
     if trace_len_axis == "x":
         lo = (0.0, lat_c - W_TRACE / 2, H_SUB)
-        hi = (domain[0], lat_c + W_TRACE / 2, H_SUB + DX)
+        hi = (domain[0], lat_c + W_TRACE / 2, H_SUB + dx)
     else:
         lo = (lat_c - W_TRACE / 2, 0.0, H_SUB)
-        hi = (lat_c + W_TRACE / 2, domain[1], H_SUB + DX)
+        hi = (lat_c + W_TRACE / 2, domain[1], H_SUB + dx)
     sim.add(Box(lo, hi), material="pec")
     sim.add_msl_port(
         position=msl_physical_point(direction, feed, lat_c, 0.0),
@@ -489,24 +491,40 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     "generalised" them onto the propagation axis would be wrong, and would
     stop reporting the substrate resolution for a y port.
 
-    dx = 80 um with h_sub = 254 um gives h_sub/dx = 3.175: under 4 cells
-    (check 2) and fractional part 0.175, inside the [0.10, 0.40] mixed-cell
-    danger zone (check 2b).
+    Issue #752 / #766: the checks now count the substrate cells the RUN
+    GRID has, read off the assembled permittivity under the port. At
+    dx = 80 um the 254 um substrate REALIZES 4 cells (320 um), so check 2
+    ("< 4 cells") is correctly silent there and only check 2b fires (the
+    declared top sits 0.175 of a cell above a node). The genuine < 4-cell
+    case is dx = 100 um (3 cells, 300 um). Both are exercised, on every
+    direction, and the realized numbers must be identical across
+    directions -- h_sub does not depend on the propagation axis.
     """
     prop, width, _n, _s = msl_axis_roles(direction)
     domain = [0.0, 0.0, LZ]
     domain[{"x": 0, "y": 1}[prop]] = L_PROP
     domain[{"x": 0, "y": 1}[width]] = L_LAT
-    sim = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
-                 trace_len_axis=prop)
-    msgs = _msl_warnings(sim)
-    cells = [m for m in msgs if "substrate cell(s) in z" in m]
-    frac = [m for m in msgs if "mixed-cell danger zone" in m]
-    assert cells, f"substrate-resolution check silent for {direction}: {msgs}"
-    assert frac, f"mixed-cell check silent for {direction}: {msgs}"
-    # Same numbers on every axis — h_sub does not depend on direction.
-    assert "only 3 substrate cell(s) in z" in cells[0], cells[0]
-    assert "h_sub/dx = 3.175" in frac[0], frac[0]
+
+    # dx = 80 um: 2b fires, 2 must not (the run grid has 4 substrate cells).
+    sim80 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
+                   trace_len_axis=prop)
+    msgs80 = _msl_warnings(sim80)
+    cells80 = [m for m in msgs80 if "substrate cell(s) in z" in m]
+    frac80 = [m for m in msgs80 if "mixed-cell danger zone" in m]
+    assert cells80 == [], f"4 realized cells must not trip check 2 for {direction}: {cells80}"
+    assert frac80, f"mixed-cell check silent for {direction}: {msgs80}"
+    assert "sits 0.175 of a cell above the nearest mesh node" in frac80[0], frac80[0]
+    assert "4 cell(s) of substrate = 320µm" in frac80[0], frac80[0]
+
+    # dx = 100 um: the run grid has 3 substrate cells -> check 2 fires.
+    sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
+                    trace_len_axis=prop, dx=100e-6)
+    msgs100 = _msl_warnings(sim100)
+    cells100 = [m for m in msgs100 if "substrate cell(s) in z" in m]
+    assert cells100, f"substrate-resolution check silent for {direction}: {msgs100}"
+    # Same numbers on every axis -- h_sub does not depend on direction.
+    assert "only 3 substrate cell(s) in z" in cells100[0], cells100[0]
+    assert "actually realizes 3 cell(s) = 300µm" in cells100[0], cells100[0]
 
 
 def test_probe_span_absorber_check_fires_on_the_propagation_axis():

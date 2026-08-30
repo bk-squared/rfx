@@ -233,10 +233,12 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
                      width=W_TRACE, height=H_SUB,
                      direction="-x", impedance=50.0)
 
-    # Plane DFT probes — line-integrated V (Ez) + area-integrated I
-    # (Hy) per port.  Mirrors the imperative `compute_msl_s_matrix`
-    # plane integrals exactly, so the JAX-traceable N-probe extractor
-    # in `extract_msl_nprobe` carries no scalar-Ez bias.
+    # Plane DFT probes — line-integrated V (Ez) + closed-Ampere-loop I
+    # (Hy + Hz) per port.  register_msl_plane_probes / _v_from_plane /
+    # _i_from_plane call `compute_msl_s_matrix`'s own primitives
+    # (msl_modal_voltage / msl_loop_current) directly (issue #514), so
+    # the JAX-traceable N-probe extractor in `extract_msl_nprobe` reads
+    # the same V/I production reads.
     d_set = register_msl_plane_probes(sim, port_index=0, freqs=freqs,
                                       name_prefix="d")
     p_set = register_msl_plane_probes(sim, port_index=1, freqs=freqs,

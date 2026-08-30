@@ -6,6 +6,45 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — MSL plane-primitive V/I now call the production extractor (issue #514)
+
+`rfx/probes/msl_wave_decomp.py`'s `register_msl_plane_probes` /
+`_v_from_plane` / `_i_from_plane` — the plane-DFT geometry primitive
+`validation/tmtt_paper/msl_stub_notch_tuning.py` drives its inverse-design
+cost through — duplicated `compute_msl_s_matrix`'s V/I integration instead
+of calling it, and had drifted in three places: an inclusive `k_lo..k_hi`
+Ez span (~12% low V, the same defect issue #511/PR #516 fixed in
+production), a single pre-issue-#80 Hy-slab current (~1.5x undercount vs.
+the closed Ampere loop), and no leapfrog E/H half-step phase correction
+(issue #240). `_v_from_plane` / `_i_from_plane` now call
+`rfx.api._sparams.msl_modal_voltage` / `rfx.sources.msl_port.msl_loop_current`
+directly, with the trace-conductor span found by the SAME PEC-mask walk
+`compute_msl_s_matrix` uses (not the `round(h_sub/dx)` proxy), so this path
+cannot re-drift from production.
+
+`register_msl_plane_probes` now registers an Hz plane alongside the
+existing 3 Ez + 1 Hy planes (needed for the closed loop) and raises
+`NotImplementedError` on a non-uniform mesh (`sim._dx_profile` /
+`_dy_profile` / `_dz_profile` set) — `sim._build_grid()` never threads
+those profiles into the `Grid` it returns, so this path had no way to
+build the same `NonUniformGrid` production's non-uniform branch uses for
+its trace-PEC search; anchoring on the uniform-only lookup would have
+silently mis-anchored V on a graded mesh.
+
+No production code changed (`rfx/api/_sparams.py`, `rfx/sources/msl_port.py`
+untouched). The `validation/tmtt_paper/msl_stub_notch_tuning.py` -46.1 dB
+single-variable-descent objective is produced by this lane and is pending
+re-derivation after this fix — see the footnote in
+`validation/tmtt_paper/README.md`; the -55.7 dB validated optimized null
+comes from the (unchanged) production S-matrix path. The
+`dx = 254 µm` (1-substrate-cell) MSL case in
+`scripts/diagnostics/optimizer_bakeoff/` is not measured post-#514.
+
+Follow-up (not this change): `scripts/diagnostics/patch_edgefed_stage6_voltage_deembed.py`
+has its own hand-rolled inclusive `dz[k_lo:k_hi + 1]` voltage span
+(`_V_from_plane`) — the same drift class as #514, outside this module;
+needs its own issue.
+
 ### Changed — PMC-plane convention decided: REALIZE-DECLARED (issue #722 ninth surface)
 
 `apply_pmc_faces` zeros H_tan a half-cell (0.5*dx) INSIDE the declared wall
@@ -48,6 +87,84 @@ forever instead of removing it once.
   convention in their own docstrings. `rfx/convergence.py`'s `sim_factory`
   gets a note: a dx sweep that clones a PMC-faced `domain` unchanged moves
   the realized mirror plane by dx/2 per refinement step.
+
+### Fixed — cv15 patch cavity was one vacuum cell taller than its declared substrate (issue #740)
+
+`validation/crossval/15_patch_antenna_rt5880.py`'s mandatory geometry self-check
+(the `#325 AVOIDANCE` z-rasterization assert) covered the substrate's z EXTENT
+only, not which node plane the bounding PEC walls actually land on. The
+one-cell one-plane ground `Box` (the `add()` default, #677-validated) realizes
+its electric wall on its LOWER node plane only — one cell BELOW the declared
+substrate floor `z_sub_lo`, leaving a live vacuum cell in the cavity (measured
+against the mask-derived realized planes: +55.0% electrical thickness versus
+the declared 4-cell gap; this is the #693 "vacuum ground cell" trap, closed on
+the canonical patch lane by PRs #716/#718). The patch wall was NOT displaced —
+its default one-plane wall already sits on its lower face, exactly at
+`z_sub_hi`.
+
+Fixed with `two_plane=True` (issue #706) on the GROUND `Box` only (0.0%
+electrical-thickness error measured after the fix); NOT on the patch, which
+would add an unreferenced wall one cell above `z_sub_hi` that the openEMS
+zero-thickness-patch reference has no counterpart for. A new mandatory
+self-check, `assert_realized_stack()`, asserts the REALIZED wall planes across
+the whole patch footprint (ground at `z_sub_lo`, patch at `z_sub_hi`), not the
+declared Box extents, and `compare()`'s new `stack geometry fidelity` gate
+re-verifies a leg's recorded `stack_check` against this module's own constants
+— a missing `stack_check` (a leg from before this fix) is a FAIL, not a skip.
+
+The pre-fix one-plane-ground result leg is preserved as
+`validation/crossval/_15_patch_results/rfx_one_plane_ground_b29f9de7.json`
+(committed at b29f9de7, `--num-periods 45 --gain`, 208 s CPU): `f_primary`
+2.4719 GHz (Harminv Q 17.04), analytic anchor 2.4156 GHz, openEMS S11 dip
+2.330 GHz (+6.09% rfx-vs-openEMS on the pre-fix realization), settle -59.7 dB,
+gain 7.357 dBi vs openEMS 7.335 dBi.
+
+Post-fix leg MEASURED and committed as `rfx.json` (same command, CPU, 206.5 s,
+`JAX_ENABLE_X64=0`): `f_primary` 2.3139 GHz (Harminv Q 18.9) vs openEMS
+2.330 GHz — rfx-vs-openEMS **0.69%** (was +6.09%), rfx-vs-analytic 4.21%
+(openEMS-vs-analytic is 3.54%, so the two solvers now sit on the same side of
+the closed form by a similar margin); settle −54.0 dB; max|S11| 0.787. The
+vacuum ground cell was the dominant term in cv15's cross-solver gap. Every
+compare() gate PASSES including the new stack gate (ground wall 7.9375 mm,
+patch wall 11.1125 mm, 4 cells of eps 2.2, provenance `two_plane`). `#715`
+(cv15's patch-length accuracy, `L_PATCH`/`W_PATCH`, the `--f0-env-pct` gate)
+is untouched by this fix; the f0 envelope did not need to move.
+
+Known checker gap, filed as #767: preflight's #703 sheet-cavity check does not
+model `two_plane` walls and still prints the pre-fix +55% on this geometry —
+the realized `conductor_mask` (walls at k = 17, 18, 22) is the record, not
+that advisory.
+
+### Added — preflight advisory for dispersive material touching an absorbing face (issue #636)
+
+`preflight()` now emits a warning-severity `dispersive_pole_at_absorber_face`
+finding when a resonance-risk dispersive material — a high-Q, in-band Lorentz
+pole (`omega_0/(2*delta) >= 10`, `omega_0 <= 1.5*2*pi*freq_max`) or any
+Drude-type pole — touches a domain face that carries CPML/UPML. The pad
+extension replicates only the static `eps_r/sigma/mu_r` (#627a); pole masks are
+deliberately not replicated, so such a structure sees an absorber matched at
+`eps_inf` only: band-limited in-band reflection near the resonance. The
+advisory names the mitigations (an air gap before the face, more pole damping,
+moving the resonance out of band) and points at the measured evidence.
+
+That evidence closes the #636 question the #627b revert left open. A
+pre-declared one-attempt factorial (predeclaration, results, and root-cause
+analysis in `docs/design_notes/i636_cpml_pole_pad_predeclaration.md`; scripts
+under `validation/research/cpml_pole_pad/`) measured that extending pole masks
+into the pad excites surface-polariton interface modes of the material's
+`eps(omega) < 0` band inside the absorber — a regime where stretched-coordinate
+PMLs violate the geometric stability condition — and that no tested CPML
+parameter choice covers it: the CFS-corner alpha rule (`1.2*2*pi*f_top*eps0`,
+12 layers) stabilizes the Lorentz cells but the Drude cell still diverges
+(+5.2e-4/step at 60k steps). Pole extension therefore stays out, with no flag.
+The composed ADE+CPML update itself is proved stable per-cell, in 1D, and in
+2D by long-horizon power iteration (rho_est ~ 0.99998, an estimate within its noise band of 1; the 1D and per-cell results are exact) — the instability needs the 3D interface.
+
+The stale 8,000-step physics lock (its separation criterion silently stopped
+distinguishing the variants when #655 moved the onset past 8,000 steps) is
+re-baselined: a new slow-lane test runs BOTH variants at 20,000 steps
+(shipped 0.2145 decays / extended 5.032 grows, re-measured margins), and the
+8,000-step test remains as the fast-lane shipped-decay canary.
 
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 

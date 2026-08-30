@@ -791,6 +791,12 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     # design reproduces the original's probe placement exactly; the
     # bookkeeping itself is therefore not a document section.
     "_msl_auto_offset_min",
+    # Issue #681: auto-spacing bookkeeping (port name -> registration HJ
+    # eps_eff). Accounted for the same way as _msl_auto_offset_min: the
+    # dump resolves through _resolve_msl_auto_offsets, which freezes the
+    # widened concrete n_probe_spacing into the recorded entries, so a
+    # rebuilt design reproduces the original probe placement exactly.
+    "_msl_auto_probe_spacing",
     # Issue #470: indices of library-internal witness probes. Populated and
     # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
     # construction and at dump time, so it contributes nothing to the
@@ -809,6 +815,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 #: preflight/driver pass, which is exactly why they are not design state.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_ntff_min_steps_hint",
+    # crop rectangles for the internal MSL DFT planes; exists only while
+    # compute_msl_s_matrix runs and is removed on exit (never a design input)
+    "_dft_plane_regions",
 )
 
 
@@ -825,7 +834,9 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     solve is idempotent from the stored lower edge, so re-exporting a
     rebuilt design is stable.
     """
-    if not getattr(sim, "_msl_auto_offset_min", None):
+    if not getattr(sim, "_msl_auto_offset_min", None) and not getattr(
+        sim, "_msl_auto_probe_spacing", None
+    ):
         return list(sim._msl_ports)
     from rfx.api._sparams import _resolve_msl_auto_offsets
 

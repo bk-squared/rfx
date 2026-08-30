@@ -312,6 +312,12 @@ def test_wire_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
         metadata_json=np.asarray(json.dumps({"schema": "rfx.wire_port_vi_dump"})),
         freqs_hz=np.asarray(extraction.freqs),
         raw_voltages_fdt=np.asarray(extraction.raw_voltages_fdt),
+        # Issue #764 (schema re-pin, written provenance): the production
+        # diagonal is now the whole-port driven reflection, so the dump
+        # must carry the whole-port gap-voltage channel for the replay to
+        # reproduce it; a dump without the key replays the legacy
+        # per-cell diagonal (pre-#764 fallback).
+        raw_port_voltages_fdt=np.asarray(extraction.raw_port_voltages_fdt),
         raw_currents=np.asarray(extraction.raw_currents),
         port_impedances_ohm=np.asarray(extraction.port_impedances),
         port_cell_counts=np.asarray(extraction.port_cell_counts),

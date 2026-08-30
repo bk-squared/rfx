@@ -197,10 +197,17 @@ def test_driver_wire_dump_matches_eager_and_replays():
 
     # --- field names / order identical (mirror the eager NamedTuple) ---
     assert type(drv).__name__ == "WirePortVIReplayBundle"
+    # Schema re-pin (issue #764, written provenance): the bundle grows the
+    # whole-port gap-voltage channel ``raw_port_voltages_fdt`` — the
+    # physical driven diagonal S_jj = (V_port - Z0*I)/(V_port + Z0*I)
+    # cannot be replayed from the midpoint-cell V alone (the old pin was on
+    # the per-cell-V/whole-port-Z0 frame mismatch: matched load read
+    # +0.35426, PEC short +0.26780).  ``None`` in the field marks a
+    # pre-#764 dump (legacy-diagonal replay fallback).
     assert drv._fields == eager._fields == (
         "s_params", "freqs", "raw_voltages_fdt", "raw_currents",
         "port_impedances", "port_cell_counts", "port_names",
-        "driven_port_indices",
+        "driven_port_indices", "raw_port_voltages_fdt",
     )
 
     # --- shapes identical, (n_driven, n_ports, n_freqs) ---
@@ -209,6 +216,8 @@ def test_driver_wire_dump_matches_eager_and_replays():
         np.asarray(eager.raw_voltages_fdt).shape == (2, 2, n)
     assert np.asarray(drv.raw_currents).shape == \
         np.asarray(eager.raw_currents).shape == (2, 2, n)
+    assert np.asarray(drv.raw_port_voltages_fdt).shape == \
+        np.asarray(eager.raw_port_voltages_fdt).shape == (2, 2, n)
     assert np.asarray(drv.s_params).shape == np.asarray(eager.s_params).shape == (2, 2, n)
 
     # --- metadata fields equal exactly ---
@@ -225,10 +234,15 @@ def test_driver_wire_dump_matches_eager_and_replays():
     d_i = float(np.max(np.abs(
         np.asarray(drv.raw_currents) - np.asarray(eager.raw_currents))))
     d_s = float(np.max(np.abs(np.asarray(drv.s_params) - np.asarray(eager.s_params))))
+    d_vp = float(np.max(np.abs(
+        np.asarray(drv.raw_port_voltages_fdt)
+        - np.asarray(eager.raw_port_voltages_fdt))))
     print(f"[wire] driver-vs-eager max|dV|={d_v:.3e} max|dI|={d_i:.3e} "
-          f"max|dS|={d_s:.3e}")
+          f"max|dS|={d_s:.3e} max|dVp|={d_vp:.3e}")
     assert d_v < _GATE_ATOL, f"wire dump raw_voltages_fdt diverged: {d_v:.3e}"
     assert d_i < _GATE_ATOL, f"wire dump raw_currents diverged: {d_i:.3e}"
+    assert d_vp < _GATE_ATOL, (
+        f"wire dump raw_port_voltages_fdt diverged: {d_vp:.3e}")
     assert d_s < _GATE_ATOL, f"wire dump s_params diverged: {d_s:.3e}"
 
     # --- END-TO-END REPLAY of the DRIVER bundle through the wire diagnostic ---
@@ -246,6 +260,7 @@ def test_driver_wire_dump_matches_eager_and_replays():
             production_smatrix=np.asarray(drv.s_params),
             port_names=np.asarray(drv.port_names, dtype=object),
             driven_port_indices=np.asarray(drv.driven_port_indices),
+            raw_port_voltages_fdt=np.asarray(drv.raw_port_voltages_fdt),
         )
         payload = replay_wire.replay_wire_port_vi_dump(tmp)
         print(f"[wire] replay status={payload['status']} "

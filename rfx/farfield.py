@@ -681,7 +681,17 @@ def compute_far_field_jax(
     *,
     max_phase_bytes: float = 4e9,
 ):
-    """JAX-differentiable far-field computation for use inside jax.grad."""
+    """JAX-differentiable far-field computation for use inside jax.grad.
+
+    Same physics as ``compute_far_field`` but uses ``jnp`` throughout,
+    enabling end-to-end differentiation for far-field optimization.
+
+    ``max_phase_bytes`` bounds the (n_freqs, n_directions, n_cells) phase
+    array the transform materializes per face; the direction grid is
+    split to stay under it. Splitting theta is EXACT — the sum over
+    surface cells is independent per direction — and the chunked result
+    is bit-identical to the single-shot one. Pass ``float("inf")`` to
+    force a single pass.
     """
     # The transform below materializes a (n_freqs, n_directions, n_cells)
     # phase array per face. All three factors are unbounded, and a board
@@ -695,49 +705,44 @@ def compute_far_field_jax(
     theta = jnp.asarray(theta)
     n_th_total = int(theta.shape[0])
     if n_th_total > 1 and np.isfinite(max_phase_bytes):
+        # Size from the actual face arrays. The first version of this
+        # scanned for attributes starting with "J" — a name no NTFFData
+        # field has (they are x_lo/x_hi/y_lo/y_hi/z_lo/z_hi, each
+        # (n_freqs, n1, n2, 4)). n_cells stayed 0, the computed budget was
+        # never exceeded, and the default path never chunked: a board
+        # pattern run died on the same 214 GB allocation this function was
+        # changed to prevent, after an 8.5-hour solve. The unit test passed
+        # because it forced a tiny max_phase_bytes — exercising the
+        # mechanism but never the sizing.
         n_cells = 0
-        for _name in dir(ntff_data):
-            if _name.startswith("J") and not _name.startswith("_"):
-                _arr = getattr(ntff_data, _name, None)
-                _shape = getattr(_arr, "shape", None)
-                if _shape and len(_shape) >= 2:
-                    n_cells = max(n_cells, int(np.prod(_shape[:-1])))
-        n_freqs = int(np.asarray(ntff_data.freqs).shape[0])
-        n_ph = int(jnp.asarray(phi).shape[0])
-        per_theta = max(1.0, n_freqs * n_ph * max(n_cells, 1) * 16.0)
-        chunk = int(max_phase_bytes // per_theta)
-        if 1 <= chunk < n_th_total:
-            parts = [
-                compute_far_field_jax(
-                    ntff_data, box, grid, theta[i:i + chunk], phi,
-                    max_phase_bytes=float("inf"))
-                for i in range(0, n_th_total, chunk)
-            ]
-            return FarFieldResult(
-                E_theta=jnp.concatenate([p.E_theta for p in parts], axis=1),
-                E_phi=jnp.concatenate([p.E_phi for p in parts], axis=1),
-                theta=theta,
-                phi=parts[0].phi,
-                freqs=parts[0].freqs,
-            )
-JAX-differentiable far-field computation for use inside jax.grad.
-
-    Same physics as ``compute_far_field`` but uses ``jnp`` throughout,
-    enabling end-to-end differentiation for far-field optimization
-    objectives (e.g., beam steering, gain maximization).
-
-    Parameters
-    ----------
-    ntff_data : NTFFData (JAX arrays from lax.scan accumulation)
-    box : NTFFBox
-    grid : Grid
-    theta : array in radians
-    phi : array in radians
-
-    Returns
-    -------
-    FarFieldResult with JAX arrays
-    """
+        for _name in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"):
+            _arr = getattr(ntff_data, _name, None)
+            _shape = getattr(_arr, "shape", None)
+            if _shape is not None and len(_shape) >= 3:
+                n_cells = max(n_cells, int(_shape[1]) * int(_shape[2]))
+        if n_cells > 0:
+            n_freqs = int(np.asarray(box.freqs).shape[0])
+            n_ph = int(jnp.asarray(phi).shape[0])
+            per_theta = max(1.0, n_freqs * n_ph * n_cells * 16.0)
+            # At least one theta per pass: when a single direction already
+            # exceeds the budget, chunking to 1 is the smallest the split
+            # can do, and it is still the difference between running and
+            # dying.
+            chunk = max(1, int(max_phase_bytes // per_theta))
+            if chunk < n_th_total:
+                parts = [
+                    compute_far_field_jax(
+                        ntff_data, box, grid, theta[i:i + chunk], phi,
+                        max_phase_bytes=float("inf"))
+                    for i in range(0, n_th_total, chunk)
+                ]
+                return FarFieldResult(
+                    E_theta=jnp.concatenate([p.E_theta for p in parts], axis=1),
+                    E_phi=jnp.concatenate([p.E_phi for p in parts], axis=1),
+                    theta=theta,
+                    phi=parts[0].phi,
+                    freqs=parts[0].freqs,
+                )
     theta = jnp.asarray(theta, dtype=jnp.float32)
     phi = jnp.asarray(phi, dtype=jnp.float32)
     freqs = jnp.asarray(box.freqs, dtype=jnp.float32)

@@ -135,14 +135,35 @@ def _enumerate_emission_sites():
 # the non-uniform lane call. A conscious contract edit, which is what the
 # freeze exists to force.
 #
-# 83 -> 85 sites / 55 -> 57 literal codes, SPEC-01 WP6 (#780): the
+# 83 -> 84 sites, issue #752 (PR #766 review, blocker B2):
+# ``_check_msl_port_geometry`` gained check 2c, a realized-vs-declared
+# substrate-thickness advisory. It closes a measured coverage hole between
+# check 2 (gates on realized CELL COUNT < 4) and check 2b (gates on where
+# the declared top face sits INSIDE its cell, [0.10, 0.40]) -- for
+# h_sub/dx in (3.00, 3.10) or (3.40, 3.50) both were silent on a board
+# realized 15-31% thicker than declared. One new SITE, no new literal
+# ``code=``: 2c reuses the existing ``msl_port_geometry`` slug because it
+# is the same check family speaking about the same port, so
+# _FROZEN_LITERAL_CODE_COUNT is unchanged at 55. A conscious contract
+# edit, recorded here rather than absorbed silently.
+#
+# 84 -> 85 sites / 55 -> 56 literal codes, issue #636 (stacked on the
+# #752 edit above, so the site count sums): new advisory
+# dispersive_pole_at_absorber_face (one site, one code) — a
+# resonance-risk dispersive material touching an absorbing face lives
+# with a statics-only (eps_inf-matched) pad; the measured reason pole
+# masks are NOT extended into the pad is documented at the check site
+# and in docs/design_notes/i636_cpml_pole_pad_predeclaration.md.
+#
+# 85 -> 87 sites / 56 -> 58 literal codes, SPEC-01 WP6 (#780): the
 # multi-band graded-mesh envelope promotion added
 # _validate_cfg_multiband_grading with two advisory sites/codes,
 # nu_grading_ratio_beyond_validated_cap and nu_grading_reaches_absorber
 # (docs/guides/support_matrix.md 'Multi-band graded mesh' row carries the
-# evidence). A conscious contract edit, same procedure as #738.
-_FROZEN_TOTAL_SITES = 85
-_FROZEN_LITERAL_CODE_COUNT = 57
+# evidence). A conscious contract edit, same procedure as #738; stacked
+# on the #752/#636 edits above, so the site/code counts sum.
+_FROZEN_TOTAL_SITES = 87
+_FROZEN_LITERAL_CODE_COUNT = 58
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
