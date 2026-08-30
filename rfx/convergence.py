@@ -437,6 +437,19 @@ def quick_convergence(
             # faces. `_boundary_spec` is the legacy scalar's normalized form
             # too (`_build_spec_from_legacy`), so scalar-constructed
             # simulations clone exactly as before.
+            #
+            # NOTE (issue #722 ninth surface, 2026-08-28): on a PMC-faced
+            # `_boundary_spec`, apply_pmc_faces realizes the H_tan wall a
+            # half-cell (0.5*dx) inside the declared mesh line
+            # (rfx/boundaries/pmc.py). This factory clones `domain=
+            # sim._domain` UNCHANGED across the dx sweep, so as dx changes
+            # per refinement step the realized PMC mirror plane moves by
+            # dx/2 too -- a dx sweep over a PMC-mirrored model is not a
+            # fixed-structure sweep unless the caller re-declares `domain`
+            # per dx (REALIZE-DECLARED, plane + dx/2 per PMC face; see
+            # validation/crossval/09_half_symmetric_waveguide.py). Not
+            # fixed here -- this factory clones what `sim` declared, and
+            # that declaration is the caller's responsibility.
             boundary=sim._boundary_spec,
             cpml_layers=sim._cpml_layers,
             dx=dx,

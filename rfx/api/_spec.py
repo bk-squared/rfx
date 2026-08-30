@@ -1570,6 +1570,19 @@ class MSLSMatrixResult:
         (same contract as the coax lane's
         :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`).
         ``None`` while tracing.
+    beta_railed : (n_ports, n_freqs) bool, optional
+        Per-port β-scan rail mask for the FITTED numbers (issue #681).
+        ``beta_railed[p, k]`` is True when port *p*'s own-drive N-probe β
+        scan failed to bracket its residual optimum at bin *k* — the raw
+        argmin sat at an edge node of the ±35% window around the analytic
+        Hammerstad-Jensen guess, or the refined β landed within half a
+        grid step of a window limit.  ``Z0[p, k]`` (and ``beta[k]`` for
+        ``p = 0``) at such a bin is the scan-window limit, NOT a
+        measurement — do not quote it.  ``S`` is NOT condemned: S11/S21
+        ride on the analytic Z0 anchor, never on the fitted β.  The
+        own-drive diagonal is exactly the provenance of every fitted
+        number this result carries (``Z0[i, :]`` comes from port *i*'s
+        own driven run).  ``None`` while tracing.
     """
     S: np.ndarray
     freqs: np.ndarray
@@ -1582,6 +1595,7 @@ class MSLSMatrixResult:
     passivity_correction: np.ndarray | None = None
     assembly: str | None = None
     cond_a: np.ndarray | None = None
+    beta_railed: np.ndarray | None = None
 
 
 @dataclass
@@ -1627,6 +1641,13 @@ class MixedSMatrixResult:
     reliable : np.ndarray | None
         (n_msl, n_freqs) bool — MSL standing-wave-null reliability mask
         from each MSL port's own driven run (False = ill-conditioned bin).
+    beta_railed : np.ndarray | None
+        (n_msl, n_freqs) bool — β-scan rail mask from each MSL port's
+        own driven run, same criterion as
+        :attr:`MSLSMatrixResult.beta_railed` (issue #681).  In this lane
+        the N-probe fit is DIAGNOSTIC ONLY (the |Zc| deviation warning);
+        a True bin means that diagnostic's β/|Zc| are the scan-window
+        limit, not a measurement.  ``S`` is unaffected.
     S_raw / passivity_correction :
         As in :class:`MSLSMatrixResult` — set only when the passivity
         projection touched at least one bin.
@@ -1641,6 +1662,7 @@ class MixedSMatrixResult:
     reliable: np.ndarray | None = None
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
+    beta_railed: np.ndarray | None = None
     # Arch-A magnitude channel (issue #488): off-diagonal magnitudes come
     # from Poynting flux by default; ``S_wave`` keeps the raw power-wave
     # matrix for comparison (None when magnitude_channel="wave").

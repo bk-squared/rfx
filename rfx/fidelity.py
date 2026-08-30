@@ -157,10 +157,23 @@ def fidelity_report(sim, print_report: bool = True):
     # not solve. Pre-existing (the non-uniform builder ignores `mode`); the
     # fix belongs with the builder, not with this reporter.
     is_2d = getattr(grid, "is_2d", False)
+    # PMC-plane convention (#722 ninth surface, decided 2026-08-28):
+    # apply_pmc_faces zeros H_tan a HALF-CELL INSIDE the declared wall on
+    # every PMC face (rfx/boundaries/pmc.py: index 0 on a `_lo` face, index
+    # -2 on a `_hi` face -- both 0.5*dx inside the declared mesh line, pinned
+    # by tests/test_boundary_pmc_hi_faces.py -- that placement is solver
+    # physics, measured, and is NOT touched here). A PMC-mirrored model's
+    # H_tan wall therefore sits half a cell inside the mesh line this report
+    # would otherwise quote as "realized", so the domain row must read the
+    # face list off the SAME BoundarySpec the solve compiled, not re-derive
+    # it (sim._boundary_spec is set unconditionally in Simulation.__init__).
+    _bspec = getattr(sim, "_boundary_spec", None)
+    pmc_faces = _bspec.pmc_faces() if _bspec is not None else set()
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
     for a in range(3):
-        p_lo = int(getattr(grid, f"pad_{_axis_names()[a]}_lo"))
-        p_hi = int(getattr(grid, f"pad_{_axis_names()[a]}_hi"))
+        axis_name = _axis_names()[a]
+        p_lo = int(getattr(grid, f"pad_{axis_name}_lo"))
+        p_hi = int(getattr(grid, f"pad_{axis_name}_hi"))
         i_lo = p_lo
         # DEFENSIVE ONLY — unreachable on both grid classes as they are
         # built today, and NOT evidence that "the pads consumed the axis"
@@ -174,17 +187,33 @@ def fidelity_report(sim, print_report: bool = True):
         # input.
         i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
         n_int = max(i_hi - i_lo, 0)
-        realized = float(nodes[a][i_hi] - nodes[a][i_lo])
+        # mesh_extent is the NODE-to-NODE span (unchanged from before this
+        # change) -- the commensurability finding below stays keyed on it,
+        # since "does the cell size divide the declared length" is a mesh
+        # question, independent of any PMC face on this axis.
+        mesh_extent = float(nodes[a][i_hi] - nodes[a][i_lo])
         declared = float(domain[a]) if a < len(domain) else 0.0
         # z is not solved in 2D (grid.nz == 1, Lz is ignored — rfx/grid.py);
         # comparing it against the declared z would replace one meaningless
         # number (the old node/cell miscount) with another (a 0.0 um
         # "realized" length reported as a domain-extent-quantized finding).
         axis_not_solved = is_2d and _axis_names()[a] == "z"
-        ax = dict(axis=_axis_names()[a], n_cells=int(n_int),
+        lo_is_pmc = f"{axis_name}_lo" in pmc_faces
+        hi_is_pmc = f"{axis_name}_hi" in pmc_faces
+        half_lo = (float(sizes[a][i_lo]) / 2.0
+                   if (not axis_not_solved and n_int > 0 and lo_is_pmc)
+                   else 0.0)
+        half_hi = (float(sizes[a][max(i_hi - 1, i_lo)]) / 2.0
+                   if (not axis_not_solved and n_int > 0 and hi_is_pmc)
+                   else 0.0)
+        eff_lo = half_lo
+        eff_hi = mesh_extent - half_hi
+        realized = eff_hi - eff_lo
+        ax = dict(axis=axis_name, n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),
-                  realized_um=(0.0, realized * 1e6),
-                  face_residual_um=(0.0, abs(realized - declared) * 1e6),
+                  mesh_extent_um=mesh_extent * 1e6,
+                  realized_um=(eff_lo * 1e6, eff_hi * 1e6),
+                  face_residual_um=(eff_lo * 1e6, abs(eff_hi - declared) * 1e6),
                   declared_extent_um=declared * 1e6,
                   realized_extent_um=realized * 1e6)
         if axis_not_solved:
@@ -195,18 +224,41 @@ def fidelity_report(sim, print_report: bool = True):
                 "Read this row as 'not compared', not as a pass")
         dom_item["axes"].append(ax)
         if (not axis_not_solved and declared > 0
-                and abs(realized - declared) > 0.005 * declared):
+                and abs(mesh_extent - declared) > 0.005 * declared):
             dom_item["findings"].append(dict(
                 kind="domain-extent-quantized", axis=ax["axis"],
                 detail=f"declared {declared * 1e6:.1f} um realized "
-                       f"{realized * 1e6:.1f} um over {n_int} cells "
-                       f"({(realized - declared) * 1e6:+.1f} um, "
-                       f"{100 * (realized - declared) / declared:+.2f}%) — "
+                       f"{mesh_extent * 1e6:.1f} um over {n_int} cells "
+                       f"({(mesh_extent - declared) * 1e6:+.1f} um, "
+                       f"{100 * (mesh_extent - declared) / declared:+.2f}%) — "
                        "the cell size does not divide the declared length",
                 remedy="choose a cell size that divides this length, or "
                        "accept and quote the REALIZED length (for a "
                        "PEC/PMC-walled model the realized length is the "
                        "cavity/guide dimension the solve actually has)"))
+        if not axis_not_solved and (lo_is_pmc or hi_is_pmc) and n_int > 0:
+            pmc_face_labels = [f for f in (f"{axis_name}_lo", f"{axis_name}_hi")
+                               if f in pmc_faces]
+            dom_item["findings"].append(dict(
+                kind="pmc-wall-half-cell-inside", axis=axis_name,
+                detail=(
+                    f"{'/'.join(pmc_face_labels)} zero H_tan a half-cell "
+                    "INSIDE the declared mesh line (rfx/boundaries/pmc.py, "
+                    "pinned by tests/test_boundary_pmc_hi_faces.py): the "
+                    f"realized H_tan wall on this axis is "
+                    f"[{eff_lo * 1e6:.1f}, {eff_hi * 1e6:.1f}] um against "
+                    f"the declared mesh line at [0.0, {declared * 1e6:.1f}] "
+                    f"um (mesh extent {mesh_extent * 1e6:.1f} um) — a "
+                    "residual equal to HALF the boundary cell here is the "
+                    "PMC-plane CONVENTION (realize-declared: declare a "
+                    "mirror plane at plane + dx/2 so the H_tan zero lands "
+                    "ON the intended plane, issue #722 ninth surface), not "
+                    "a discrepancy to fix (#303 class: a displayed gap "
+                    "needs its explanation attached, not silence)"),
+                remedy="if this axis mirrors a symmetry plane, declare the "
+                       "half-domain extent at (plane + dx/2) so the "
+                       "realized H_tan wall above lands on the intended "
+                       "plane; otherwise no action is needed"))
     report.append(dom_item)
 
     for kind_src, i, entry in entries:

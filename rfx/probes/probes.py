@@ -470,6 +470,9 @@ class DFTPlaneProbe(NamedTuple):
         Normal axis (0=x, 1=y, 2=z).
     index : int
         Position along normal axis.
+    region : tuple[int, int, int, int] or None
+        Optional static crop ``(lo1, hi1, lo2, hi2)`` in the two
+        transverse plane axes. ``None`` retains the full plane.
     """
     accumulator: jnp.ndarray
     freqs: jnp.ndarray
@@ -479,6 +482,7 @@ class DFTPlaneProbe(NamedTuple):
     total_steps: int
     window: str
     window_alpha: float
+    region: tuple[int, int, int, int] | None = None
 
 
 def init_dft_plane_probe(
@@ -490,6 +494,7 @@ def init_dft_plane_probe(
     dft_total_steps: int = 0,
     dft_window: str = "rect",
     dft_window_alpha: float = 0.25,
+    region: tuple[int, int, int, int] | None = None,
 ) -> DFTPlaneProbe:
     """Create a DFT plane probe.
 
@@ -504,6 +509,8 @@ def init_dft_plane_probe(
     freqs : (n_freqs,) array
         Frequencies in Hz.
     grid_shape : (nx, ny, nz)
+    region : (lo1, hi1, lo2, hi2), optional
+        Static half-open crop in the transverse plane axes.
     """
     if axis == 0:
         plane_shape = (grid_shape[1], grid_shape[2])
@@ -511,6 +518,16 @@ def init_dft_plane_probe(
         plane_shape = (grid_shape[0], grid_shape[2])
     else:
         plane_shape = (grid_shape[0], grid_shape[1])
+
+    if region is not None:
+        lo1, hi1, lo2, hi2 = region
+        if not (0 <= lo1 < hi1 <= plane_shape[0]
+                and 0 <= lo2 < hi2 <= plane_shape[1]):
+            raise ValueError(
+                f"DFT plane region {region} is outside transverse shape "
+                f"{plane_shape}."
+            )
+        plane_shape = (hi1 - lo1, hi2 - lo2)
 
     nf = len(freqs)
     # dtype follows the x64 state — see create_dft_probe (issue #477 residual).
@@ -522,6 +539,7 @@ def init_dft_plane_probe(
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
+        region=region,
     )
 
 
@@ -532,12 +550,24 @@ def update_dft_plane_probe(
     t = state.step * dt
     field = getattr(state, probe.component)
 
-    if probe.axis == 0:
-        plane = field[probe.index, :, :]
-    elif probe.axis == 1:
-        plane = field[:, probe.index, :]
+    region = probe.region
+    if region is None:
+        lo1 = lo2 = 0
+        if probe.axis == 0:
+            hi1, hi2 = field.shape[1], field.shape[2]
+        elif probe.axis == 1:
+            hi1, hi2 = field.shape[0], field.shape[2]
+        else:
+            hi1, hi2 = field.shape[0], field.shape[1]
     else:
-        plane = field[:, :, probe.index]
+        lo1, hi1, lo2, hi2 = region
+
+    if probe.axis == 0:
+        plane = field[probe.index, lo1:hi1, lo2:hi2]
+    elif probe.axis == 1:
+        plane = field[lo1:hi1, probe.index, lo2:hi2]
+    else:
+        plane = field[lo1:hi1, lo2:hi2, probe.index]
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)

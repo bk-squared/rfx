@@ -163,6 +163,9 @@ class _ExecuteMixin:
     ``Simulation`` instance (resolved via MRO).
     """
 
+    # Runtime-only; set by compute_msl_s_matrix for the duration of a run.
+    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
+
     def _resolve_field_dtype(self):
         """Map ``self._precision`` to the ``field_dtype`` the Yee core takes.
 
@@ -1458,6 +1461,7 @@ class _ExecuteMixin:
                         freqs=freqs_arr,
                         grid_shape=grid.shape,
                         dft_total_steps=n_steps,
+                        region=getattr(self, "_dft_plane_regions", {}).get(pe.name),
                     )
                 )
 

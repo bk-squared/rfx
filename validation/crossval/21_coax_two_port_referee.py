@@ -134,12 +134,20 @@ counts, not the nominal ``domain=`` argument:
     grid = sim._build_grid()
     # -> grid.shape=(55,55,194), grid.dx=3.7474057249999997e-4,
     #    pad_x/y/z_lo=pad_x/y/z_hi=16 (cpml_layers=16)
-    # interior (rasterized) cells: x=y=55-32=23, z=194-32=162
-    # -> RASTERIZED clear transverse span = 23*dz = 8.6190331675 mm
+    # interior (rasterized) NODES: x=y=55-32=23, z=194-32=162 -- these are
+    # NODE counts (grid.shape minus pad), not cell counts. #739 fencepost
+    # fix: rfx's own fence-post rule (rfx/grid.py Grid.__init__, "+1
+    # fence-post correction: N cells need N+1 nodes") means N nodes span
+    # N-1 cells, so the interior CELL counts are x=y=23-1=22, z=162-1=161.
+    # -> RASTERIZED clear transverse span = 22*dx = 8.244292595 mm
     #    (NOT the nominal domain= argument, 8.0 mm -- #325 class: the
     #    nominal size and the rasterized cell count disagree once padding
-    #    and rounding are accounted for)
-    # -> RASTERIZED clear z span = 162*dz = 60.707972745 mm (NOT 60.0 mm)
+    #    and rounding are accounted for. BEFORE the #739 fix this line
+    #    read "23*dz = 8.6190331675 mm" -- a NODE count mistaken for a
+    #    CELL count, +4.5455% overstated.)
+    # -> RASTERIZED clear z span = 161*dx = 60.3332321725 mm (NOT 60.0 mm;
+    #    BEFORE the #739 fix: "162*dz = 60.707972745 mm", +0.6211%
+    #    overstated)
     # then the SAME z_hi_coax_top/z_feed_top/z_lo_coax_bot/z_feed_bot
     # arithmetic compute_coaxial_two_port() itself uses (rfx/api/_sparams.py)
 
@@ -672,24 +680,44 @@ B_CPML_CELLS = 16                     # rfx's own resolved cpml_layers at this c
 B_PML_DEPTH_MM = B_CPML_CELLS * B_DX_MM  # 5.99584916 mm
 
 # RASTERIZED interior cell counts (B3 fix -- NOT the nominal domain= arg):
-# grid.shape=(55,55,194), pad=16 all round -> interior x=y=23, z=162.
-B_INTERIOR_X_CELLS = 23
-B_INTERIOR_Y_CELLS = 23
-B_INTERIOR_Z_CELLS = 162
-B_CLEAR_X_MM = B_INTERIOR_X_CELLS * B_DX_MM   # 8.6190331675 mm (NOT 8.0)
+# grid.shape=(55,55,194), pad=16 all round -> interior NODES x=y=23, z=162.
+# #739 fencepost fix: 23/162 are NODE counts (grid.shape minus pad), and
+# rfx's own fence-post rule (rfx/grid.py Grid.__init__, "+1 fence-post
+# correction: N cells need N+1 nodes") means N nodes span N-1 cells --
+# so the interior CELL counts are 23-1=22 (x/y) and 162-1=161 (z). The
+# previous 23/23/162 named a node count a cell count and multiplied it
+# by dx, overstating the transverse span by +4.5455% (8.6190331675mm ->
+# 8.244292595mm) and the axial span by +0.6211% (60.707972745mm ->
+# 60.3332321725mm). Locked by
+# tests/test_coax_two_port_referee_header.py::
+# test_referee_interior_span_constants_match_rebuilt_grid_fencepost
+# against a freshly rebuilt grid, not against these literals.
+B_INTERIOR_X_CELLS = 22
+B_INTERIOR_Y_CELLS = 22
+B_INTERIOR_Z_CELLS = 161
+B_CLEAR_X_MM = B_INTERIOR_X_CELLS * B_DX_MM   # 8.244292595 mm (NOT 8.0; was 8.6190331675 pre-#739)
 B_CLEAR_Y_MM = B_INTERIOR_Y_CELLS * B_DX_MM
-B_CLEAR_Z_MM = B_INTERIOR_Z_CELLS * B_DX_MM   # 60.707972745 mm (NOT 60.0)
+B_CLEAR_Z_MM = B_INTERIOR_Z_CELLS * B_DX_MM   # 60.3332321725 mm (NOT 60.0; was 60.707972745 pre-#739)
 
 # rfx's own pad-relative z positions (from the live grid-construction code
 # path). z_lo_coax_bot/z_hi_coax_top are the extent rfx ITSELF stamps
-# (2 cells inside its own CPML, per its "PEC into CPML is numerically-
-# unstable" rule) -- kept here as DOCUMENTATION for how close rfx's own
-# feed planes sit to its own line edge; they no longer drive Stage B's
-# own port span directly (H2 fix: Stage B's ports run to the ACTUAL
-# domain edges, INTO the PML, not rfx's retracted extent -- see module
-# docstring "LINE TERMINATION TOPOLOGY"). z_feed_bot/z_feed_top ARE still
-# the exact rfx target reference planes ref_plane_shift referral lands
-# on.
+# (nominally "2 cells inside its own CPML", per its "PEC into CPML is
+# numerically-unstable" rule -- OBSERVATION, not a cv21 defect, not fixed
+# here: rfx's own index arithmetic (rfx/api/_sparams.py, z_hi_coax_top =
+# nz-pad_z_hi-2) counts from nz rather than nz-1, so the hi side actually
+# sits 1 cell inside the PML's inner edge (node 176 vs PML inner-edge
+# node 177) while the lo side sits the documented 2 cells (node 18 vs
+# 16) -- an asymmetry in rfx itself, out of scope here (comparator-first;
+# _sparams.py untouched)) -- kept here as DOCUMENTATION for how close
+# rfx's own feed planes sit to its own line edge; they no longer drive
+# Stage B's own port span directly (H2 fix: Stage B's ports run to the
+# ACTUAL domain edges, INTO the PML, not rfx's retracted extent -- see
+# module docstring "LINE TERMINATION TOPOLOGY"). z_feed_bot/z_feed_top
+# ARE still the exact rfx target reference planes ref_plane_shift
+# referral lands on. None of B_Z_LO_COAX_BOT_REL_MM/B_Z_HI_COAX_TOP_REL_MM/
+# B_Z_FEED_BOT_REL_MM/B_Z_FEED_TOP_REL_MM/B_L12_MM move with the #739
+# fencepost fix -- they are absolute pad-relative offsets, not derived
+# from B_INTERIOR_*_CELLS/B_CLEAR_*_MM.
 B_Z_LO_COAX_BOT_REL_MM = 0.749481145
 B_Z_HI_COAX_TOP_REL_MM = 59.958491599999995
 B_Z_FEED_BOT_REL_MM = 1.1242217174999998

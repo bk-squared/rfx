@@ -1,0 +1,89 @@
+{
+  "source_json": "scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep.json",
+  "source_json_sha256": "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362",
+  "note": "Sibling artifact (issue #752): adds Hammerstad-Jensen scored against the REALIZED h/W (sim.fidelity_report(), no solve) alongside the pre-declared declared-board anchor. z0_measured_ohm and z0_hj_declared_board_ohm are copied VERBATIM from source_json, never re-solved or retyped. The source JSON and its as-run verdict block are untouched.",
+  "precision": "jax_enable_x64=False, inferred from Z0 agreement with the realized-board Hammerstad-Jensen anchor (max |dev| = 0.377% over all six points, vs 8.6/5.6/4.4% at the alternative (x64) rasterization of the aligned class's trace width \u2014 not read from a log file. If a rasterizer or float-precision change alters these dx points' realized h/W, this artifact and its tolerance go stale (re-solve and re-derive); it is not evidence of a tolerance bug.",
+  "knife_edge": "At every ALIGNED dx in this grid, the trace's lower face (yc - W/2 = 2*h_sub + 8*dx, the sweep's fixed-clearance formula) lands EXACTLY on a lattice node because h_sub/dx is an integer there \u2014 a structural property of the geometry formula, not a coincidence of these six dx values.",
+  "rows": [
+    {
+      "label": "aligned h_sub/3",
+      "dx_um": 84.667,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 254.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 677.333,
+      "z0_measured_ohm": 44.108,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 44.275,
+      "dev_vs_declared_board_pct": -7.9069,
+      "dev_vs_realized_board_pct": -0.3772
+    },
+    {
+      "label": "aligned h_sub/4",
+      "dx_um": 63.5,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 254.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 635.0,
+      "z0_measured_ohm": 46.098,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 46.183,
+      "dev_vs_declared_board_pct": -3.752,
+      "dev_vs_realized_board_pct": -0.183
+    },
+    {
+      "label": "aligned h_sub/5",
+      "dx_um": 50.8,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 254.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 609.6,
+      "z0_measured_ohm": 47.3,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 47.412,
+      "dev_vs_declared_board_pct": -1.2423,
+      "dev_vs_realized_board_pct": -0.2363
+    },
+    {
+      "label": "aligned h_sub/6",
+      "dx_um": 42.333,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 254.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 592.667,
+      "z0_measured_ohm": 48.21,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 48.271,
+      "dev_vs_declared_board_pct": 0.6577,
+      "dev_vs_realized_board_pct": -0.1255
+    },
+    {
+      "label": "misaligned 80um",
+      "dx_um": 80.0,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 320.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 560.0,
+      "z0_measured_ohm": 57.576,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 57.463,
+      "dev_vs_declared_board_pct": 20.213,
+      "dev_vs_realized_board_pct": 0.1967
+    },
+    {
+      "label": "misaligned 60um",
+      "dx_um": 60.0,
+      "h_sub_declared_um": 254.0,
+      "h_sub_realized_um": 300.0,
+      "w_trace_declared_um": 600.0,
+      "w_trace_realized_um": 600.0,
+      "z0_measured_ohm": 53.177,
+      "z0_hj_declared_board_ohm": 47.895,
+      "z0_hj_realized_board_ohm": 53.106,
+      "dev_vs_declared_board_pct": 11.0283,
+      "dev_vs_realized_board_pct": 0.1341
+    }
+  ],
+  "max_abs_dev_vs_realized_board_pct_all_six": 0.3772,
+  "max_abs_dev_vs_realized_board_pct_misaligned_pair": 0.1967
+}

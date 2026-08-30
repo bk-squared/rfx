@@ -6,6 +6,96 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — PMC-plane convention decided: REALIZE-DECLARED (issue #722 ninth surface)
+
+`apply_pmc_faces` zeros H_tan a half-cell (0.5*dx) INSIDE the declared wall
+on every PMC face (`rfx/boundaries/pmc.py`, measured 2026-04, pinned by
+`tests/test_boundary_pmc_hi_faces.py` — untouched here). A PMC-mirrored
+model's declared mirror plane and its REALIZED H_tan wall have therefore
+always differed by half a cell; this closes the campaign-standing question
+of which side owns that gap.
+
+**Decision: REALIZE-DECLARED (odd-cell).** A PMC mirror plane must be
+declared at `plane + dx/2`, not `plane`, so the H_tan zero lands ON the
+intended plane instead of a half-cell short of it. This requires an ODD
+cell count on the mirrored axis (so `plane` itself is an H-node); the
+alternative, quote-realized (declare `plane`, always compare against
+`a_eff = a - dx`), was rejected because it carries the half-cell bias
+forever instead of removing it once.
+
+- `rfx.fidelity.fidelity_report`'s domain row is now self-diagnosing on a
+  PMC-faced axis (#729 spirit): `realized_um` / `realized_extent_um` /
+  `face_residual_um` report the REALIZED H_tan wall (shrinks by half the
+  boundary cell per PMC face), not the raw mesh line. The node-to-node mesh
+  span is preserved separately as the new `mesh_extent_um` key (unaffected
+  by any PMC face; the pre-existing `domain-extent-quantized` finding stays
+  keyed on it). A new finding kind, `pmc-wall-half-cell-inside`, names the
+  convention explicitly wherever it applies, so a PMC-mirror script cannot
+  ship the offset silently.
+- `validation/crossval/09_half_symmetric_waveguide.py` applies the
+  convention: mesh `dx` 0.635 -> 0.508 mm (0.025 in -> 0.020 in; WR-90's
+  broad wall is then 45 cells, ODD, so a/2 is an exact H-node plane), half
+  domain declared `a/2` -> `a/2 + dx/2`. Measured: full 8.1958 GHz (Q
+  5.11e4), half 8.1959 GHz (Q 6.47e4), gates 0.007% / 0.007% / 0.001% (was
+  0.009% / 1.825% / 1.835% pre-change) — gate 3, the PMC-mirror
+  self-invariant, drops from a fixed ~1.8% geometry bias to a genuine
+  mesh-only residual.
+- `validation/crossval/10_pmc_cpml_half_symmetric.py` (a regression lock
+  with no closed-form reference, so the offset biases no gate here) and
+  `rfx/interop/emitters/openems.py` (D17: the emitter maps `pmc` straight
+  to openEMS's `'PMC'` on the mesh line, so an rfx-vs-openEMS comparison on
+  a PMC-faced structure needs the rfx side declared this way) now state the
+  convention in their own docstrings. `rfx/convergence.py`'s `sim_factory`
+  gets a note: a dx sweep that clones a PMC-faced `domain` unchanged moves
+  the realized mirror plane by dx/2 per refinement step.
+
+### Fixed — cv15 patch cavity was one vacuum cell taller than its declared substrate (issue #740)
+
+`validation/crossval/15_patch_antenna_rt5880.py`'s mandatory geometry self-check
+(the `#325 AVOIDANCE` z-rasterization assert) covered the substrate's z EXTENT
+only, not which node plane the bounding PEC walls actually land on. The
+one-cell one-plane ground `Box` (the `add()` default, #677-validated) realizes
+its electric wall on its LOWER node plane only — one cell BELOW the declared
+substrate floor `z_sub_lo`, leaving a live vacuum cell in the cavity (measured
+against the mask-derived realized planes: +55.0% electrical thickness versus
+the declared 4-cell gap; this is the #693 "vacuum ground cell" trap, closed on
+the canonical patch lane by PRs #716/#718). The patch wall was NOT displaced —
+its default one-plane wall already sits on its lower face, exactly at
+`z_sub_hi`.
+
+Fixed with `two_plane=True` (issue #706) on the GROUND `Box` only (0.0%
+electrical-thickness error measured after the fix); NOT on the patch, which
+would add an unreferenced wall one cell above `z_sub_hi` that the openEMS
+zero-thickness-patch reference has no counterpart for. A new mandatory
+self-check, `assert_realized_stack()`, asserts the REALIZED wall planes across
+the whole patch footprint (ground at `z_sub_lo`, patch at `z_sub_hi`), not the
+declared Box extents, and `compare()`'s new `stack geometry fidelity` gate
+re-verifies a leg's recorded `stack_check` against this module's own constants
+— a missing `stack_check` (a leg from before this fix) is a FAIL, not a skip.
+
+The pre-fix one-plane-ground result leg is preserved as
+`validation/crossval/_15_patch_results/rfx_one_plane_ground_b29f9de7.json`
+(committed at b29f9de7, `--num-periods 45 --gain`, 208 s CPU): `f_primary`
+2.4719 GHz (Harminv Q 17.04), analytic anchor 2.4156 GHz, openEMS S11 dip
+2.330 GHz (+6.09% rfx-vs-openEMS on the pre-fix realization), settle -59.7 dB,
+gain 7.357 dBi vs openEMS 7.335 dBi.
+
+Post-fix leg MEASURED and committed as `rfx.json` (same command, CPU, 206.5 s,
+`JAX_ENABLE_X64=0`): `f_primary` 2.3139 GHz (Harminv Q 18.9) vs openEMS
+2.330 GHz — rfx-vs-openEMS **0.69%** (was +6.09%), rfx-vs-analytic 4.21%
+(openEMS-vs-analytic is 3.54%, so the two solvers now sit on the same side of
+the closed form by a similar margin); settle −54.0 dB; max|S11| 0.787. The
+vacuum ground cell was the dominant term in cv15's cross-solver gap. Every
+compare() gate PASSES including the new stack gate (ground wall 7.9375 mm,
+patch wall 11.1125 mm, 4 cells of eps 2.2, provenance `two_plane`). `#715`
+(cv15's patch-length accuracy, `L_PATCH`/`W_PATCH`, the `--f0-env-pct` gate)
+is untouched by this fix; the f0 envelope did not need to move.
+
+Known checker gap, filed as #767: preflight's #703 sheet-cavity check does not
+model `two_plane` walls and still prints the pre-fix +55% on this geometry —
+the realized `conductor_mask` (walls at k = 17, 18, 22) is the record, not
+that advisory.
+
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 
 `add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre

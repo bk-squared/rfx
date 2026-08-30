@@ -445,7 +445,7 @@ _BETA_SCAN_FRAC = 0.35
 
 def _estimate_beta(
     v: jnp.ndarray, x: jnp.ndarray, beta0: jnp.ndarray
-) -> jnp.ndarray:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Robust β estimate: residual scan around the analytic guess + refine.
 
     Stage (a) of the N-probe extractor.  ``beta0`` is the analytic
@@ -453,6 +453,21 @@ def _estimate_beta(
     ``±_BETA_SCAN_FRAC`` and the minimum-residual node is refined by a
     3-point parabolic interpolation.  Fully JAX-traceable: the grid size
     is a static Python int and all reductions use ``jnp``.
+
+    Returns
+    -------
+    beta : scalar complex
+        The refined β estimate.
+    railed : scalar bool
+        True when the scan FAILED TO BRACKET the optimum — the raw
+        argmin sits at either edge node of the ±``_BETA_SCAN_FRAC``
+        window, or the refined β lands within half a grid step of a
+        window limit.  A railed β (and the Z0 derived from it) is the
+        window limit, not a measurement: the true optimum lies at or
+        beyond the scan edge (issue #681 — a substrate-εr / HJ-ε_eff
+        mismatch large enough to push the true β outside ±35% used to
+        be returned silently pinned at ``0.974·rail``).  Pure edge
+        conditions — no tunable threshold.
     """
     beta0 = jnp.real(beta0)
     lo = beta0 * (1.0 - _BETA_SCAN_FRAC)
@@ -476,9 +491,9 @@ def _estimate_beta(
         return r
 
     resids = jax.vmap(_resid)(grid)
-    k = jnp.argmin(resids)
+    k_raw = jnp.argmin(resids)
     # Clamp so the 3-point parabolic stencil stays in range.
-    k = jnp.clip(k, 1, _BETA_SCAN_NODES - 2)
+    k = jnp.clip(k_raw, 1, _BETA_SCAN_NODES - 2)
     b_lo, b_mid, _ = grid[k - 1], grid[k], grid[k + 1]
     r_lo, r_mid, r_hi = resids[k - 1], resids[k], resids[k + 1]
     # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
@@ -497,7 +512,21 @@ def _estimate_beta(
     frac = jnp.where(ok, num / safe_denom, 0.0)
     frac = jnp.clip(frac, -1.0, 1.0)
     step = b_mid - b_lo
-    return (b_mid + frac * step).astype(jnp.complex64)
+    beta = (b_mid + frac * step).astype(jnp.complex64)
+    # Rail detection (issue #681).  The raw (pre-clip) argmin at an edge
+    # node means the residual keeps improving up to the window limit —
+    # the optimum was never bracketed.  The half-step clause catches the
+    # refine clipping onto the limit from the first/last interior node.
+    # NB: compare against the RAW argmin, not the [1, N-2]-clipped k.
+    half = 0.5 * (grid[1] - grid[0])
+    beta_r = jnp.real(beta)
+    railed = (
+        (k_raw <= 0)
+        | (k_raw >= _BETA_SCAN_NODES - 1)
+        | (beta_r <= grid[0] + half)
+        | (beta_r >= grid[-1] - half)
+    )
+    return beta, railed
 
 
 def extract_msl_nprobe(
@@ -543,6 +572,12 @@ def extract_msl_nprobe(
         ``q``     : (n_freqs,) complex — ``exp(-jβΔ)`` for the honesty
                      guard, Δ = x[1] − x[0].  ``|q| < 1`` when healthy.
         ``residual`` : (n_freqs,) real — per-frequency L2 fit residual.
+        ``beta_railed`` : (n_freqs,) bool — True where the β scan failed
+                     to bracket its optimum (raw argmin at a window-edge
+                     node, or refined β within half a grid step of a
+                     window limit).  The returned ``beta``/``z0`` at such
+                     a bin are the scan-window limit, NOT a measurement
+                     (issue #681); do not quote them.
         ``z0_hj`` : the passed-through analytic Z0 (or ``None``).
 
     Notes
@@ -565,11 +600,11 @@ def extract_msl_nprobe(
         beta0 = jnp.broadcast_to(beta0, (v.shape[0],))
 
     def _per_freq(v_row, b0):
-        beta = _estimate_beta(v_row, x, b0)
+        beta, railed = _estimate_beta(v_row, x, b0)
         alpha, gamma, residual = _lstsq_alpha_gamma(v_row, x, beta)
-        return alpha, gamma, beta, residual
+        return alpha, gamma, beta, residual, railed
 
-    alpha, gamma, beta, residual = jax.vmap(_per_freq)(v, beta0)
+    alpha, gamma, beta, residual, beta_railed = jax.vmap(_per_freq)(v, beta0)
 
     z0 = (alpha - gamma) / (i1 + eps)
     s11 = gamma / (alpha + eps)
@@ -584,5 +619,6 @@ def extract_msl_nprobe(
         beta=beta,
         q=q,
         residual=residual,
+        beta_railed=beta_railed,
         z0_hj=z0_hj,
     )

@@ -37,7 +37,6 @@ from types import ModuleType
 from typing import Final
 
 import numpy as np
-import pytest
 
 REFEREE_DIR: Final = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -490,9 +489,7 @@ def test_referee_fixture_rebuilds_and_matches_the_declared_discretization():
     This does NOT check the transverse/axial CLEAR-SPAN constants
     (``B_INTERIOR_*_CELLS``, ``B_CLEAR_*_MM``) -- see
     ``test_referee_interior_span_constants_match_rebuilt_grid_fencepost``,
-    which is the one that catches the #739 fencepost bug and is left
-    ``xfail`` because correcting the constants moves the openEMS mesh
-    lines (lead's cross-solver lane, not this test's)."""
+    which is the one that pins the #739 fencepost fix."""
     module = _load_referee_module()
     grid = _rebuild_referee_grid()
 
@@ -514,53 +511,41 @@ def test_referee_fixture_rebuilds_and_matches_the_declared_discretization():
     assert 48.0 < module.B_Z0_OHM < 49.0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "#739: B_INTERIOR_X/Y_CELLS (23) and B_INTERIOR_Z_CELLS (162), and "
-        "the B_CLEAR_*_MM spans derived from them, name a NODE count "
-        "(grid.shape minus pad) a CELL count and multiply it by dx. rfx's "
-        "own grid.py (Grid.__init__, the '+1 fence-post correction: N "
-        "cells need N+1 nodes' comment) and this repo's other two "
-        "shape-derived crossval referees already get this right against a "
-        "live sim._build_grid() -- 18_wr90_iris_modematch.py:317-318 "
-        "('ny = grid.shape[1]; assert ny == cells + 1, (ny, cells)  # node "
-        "convention: a=(ny-1)dx exact') and "
-        "19_wr90_iris_filter_aghanim.py:509 ('cells = grid.shape[1] - 1'). "
-        "The rebuilt grid's interior spans 23/23/162 NODES = 22/22/161 "
-        "CELLS, so the true clear spans are 8.244292595mm (x/y, not "
-        "8.6190331675) and 60.3332321725mm (z, not 60.707972745) -- a "
-        "+4.5455%/+0.6211% overstatement. This xfail(strict=True) is the "
-        "regression lock: correcting B_INTERIOR_*_CELLS/B_CLEAR_*_MM "
-        "relocates 12 of the 18 openEMS mesh seeds this script's Stage B "
-        "builds (lines ~1798-1813), which needs a real cross-solver run "
-        "with its own before/after -- the lead's lane, not this test's. "
-        "If a future edit corrects the constants this XPASSes and strict "
-        "flips it to a failure, so the correction cannot land silently "
-        "without also landing the mesh-line re-verification."
-    ),
-)
 def test_referee_interior_span_constants_match_rebuilt_grid_fencepost():
     """The #739 defect, isolated: pins ``B_INTERIOR_*_CELLS``/
     ``B_CLEAR_*_MM`` against the REBUILT grid's own interior span instead
-    of against each other. The committed constants read grid.shape minus
-    pad (a NODE count) and call it a cell count, then multiply by dx --
-    double-counting one fencepost cell per axis. This is the tautology the
-    old ``test_geometry_constants_match_the_rasterized_rfx_fixture`` could
+    of against each other. Before the #739 fix, the committed constants
+    read grid.shape minus pad (a NODE count) and called it a cell count,
+    then multiplied by dx -- double-counting one fencepost cell per axis
+    (rfx's own grid.py, Grid.__init__, "+1 fence-post correction: N cells
+    need N+1 nodes"; this repo's other two shape-derived crossval
+    referees already get this right against a live sim._build_grid() --
+    18_wr90_iris_modematch.py:317-318 and
+    19_wr90_iris_filter_aghanim.py:509). This is the tautology the old
+    ``test_geometry_constants_match_the_rasterized_rfx_fixture`` could
     not catch: its own anti-regression guard, ``abs(B_CLEAR_X_MM - 8.0) >
-    0.1``, passes for BOTH the committed 8.619mm and the correct 8.244mm,
-    so it cannot distinguish them by construction."""
+    0.1``, passes for BOTH the pre-#739 8.619mm and the corrected
+    8.244mm, so it cannot distinguish them by construction. Now a plain
+    passing assertion (not xfail): #746 landed this test strict-xfailing
+    against the old 23/23/162 constants specifically so a future fix to
+    those constants could not land silently; #739 items 2-3 IS that fix,
+    so the lock converts to a regression assertion on the now-correct
+    22/22/161."""
     module = _load_referee_module()
     grid = _rebuild_referee_grid()
 
     interior_x_nodes = grid.shape[0] - grid.pad_x_lo - grid.pad_x_hi
+    interior_y_nodes = grid.shape[1] - grid.pad_y_lo - grid.pad_y_hi
     interior_z_nodes = grid.shape[2] - grid.pad_z_lo - grid.pad_z_hi
     interior_x_cells = interior_x_nodes - 1
+    interior_y_cells = interior_y_nodes - 1
     interior_z_cells = interior_z_nodes - 1
 
     assert module.B_INTERIOR_X_CELLS == interior_x_cells
+    assert module.B_INTERIOR_Y_CELLS == interior_y_cells
     assert module.B_INTERIOR_Z_CELLS == interior_z_cells
     assert abs(module.B_CLEAR_X_MM - interior_x_cells * grid.dx * 1e3) < 1e-9
+    assert abs(module.B_CLEAR_Y_MM - interior_y_cells * grid.dx * 1e3) < 1e-9
     assert abs(module.B_CLEAR_Z_MM - interior_z_cells * grid.dx * 1e3) < 1e-9
 
 

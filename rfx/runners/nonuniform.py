@@ -984,6 +984,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     freqs=freqs_arr,
                     grid_shape=(grid.nx, grid.ny, grid.nz),
                     dft_total_steps=sizing_n,
+                    region=getattr(sim, "_dft_plane_regions", {}).get(pe.name),
                 )
             )
 
