@@ -426,3 +426,30 @@ authority. Every new measurement in this correction was declared in `Correction 
 commit `5c50017`, before the run. Design notes remain append-only: this section adds; it
 edits nothing above it. The interface arm was re-run after the `probe_full` addition and
 reproduces the committed JSON bit-identically.
+
+### 4.8 Addendum to Correction 4 (same session, pre-review) — regression run and one precision
+
+**Precision on §4.6's CI item.** "`validation/research/` is collected by nobody" is a
+statement about pytest COLLECTION only, and stands: `pyproject.toml:77
+testpaths = ["tests"]`, and no workflow passes a `validation/` path to pytest. CI does
+touch the directory in one way — `.github/workflows/lint.yml:36` runs
+`ruff check rfx/ tests/ validation/ --select E,F,W --ignore …` — so a syntax/flake-class
+regression here is caught, but no assertion in this directory is ever executed by CI.
+(The Correction 4 code passes that exact ruff invocation.)
+
+**Regression run after this correction's code changes** (`-o addopts="" -m "not gpu"`,
+CPU JAX f64):
+
+| suite | result |
+|---|---|
+| `validation/research/portgrid` (whole battery) | **69 passed** in 15.6 s (66 prior + 3 new F-M0-c parametrizations) |
+| `m1b_retry.py --arm interface` re-run vs committed JSON | bit-identical at every r (dt, both band maxima, verdict) |
+| `fig9_extract.py` re-run vs `portgrid_fig9_extraction.json` | every frozen key reproduces exactly |
+| F-M0-c mutation `d_lpy[:,0] = dy/2 → dy` | new gate fires 3/3; old battery 51 passed (the finding, reproduced) |
+| F-M0-c mutation `d_lpy[:,0] = dy/2 → dy/4` | new gate fires 3/3 (two-sided confirmed) |
+
+**Deliberately NOT re-run** (heavily loaded host; nothing outside
+`validation/research/portgrid/` and `docs/design_notes/` was modified, so none of it can be
+affected): the repo's `tests/` suite, and the 10⁶-step F-M1a energy arms — the default probe
+path is proven bit-identical above and `make_stepper` (the PEC stepper F-M1a uses) was not
+touched by this correction at all.
