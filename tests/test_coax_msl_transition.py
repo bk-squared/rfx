@@ -1447,6 +1447,324 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
     assert sim1._materials["ptfe"].eps_r == sim2._materials["ptfe"].eps_r == EPS_COAX
 
 
+# ---------------------------------------------------------------------------
+# Issue #589 Step B -- attempt-2 WIDE fixture: a domain-clearance FALSIFIER
+# for the named candidate (c) "absorber-proximity artifact", NOT attempt 3.
+#
+# Reconciliation with rfx/api/_spec.py's CoaxMSLTransitionResult docstring
+# ("the next step is the settled VESSL run, not a third ladder/clearance
+# change") and with PREDECLARATION_ATTEMPT2["x_cpml_clearance"]: Step A of
+# the #589 plan IS that settled run re-taken with a fuller record dump
+# (scripts/diagnostics/coax_msl_transition_settled_run.py, same
+# _build_coax_msl_transition_sim_attempt2 fixture, same n_steps). Step B
+# below is a FALSIFIER VARIANT run alongside it, not a replacement fixture
+# and not a new attempt: the settled numbers stay pinned to attempt 2; the
+# wide fixture only asks whether those numbers MOVE when the junction is
+# taken away from the CPML (col_power / |S22| shift > 0.10 at 6 or 8 GHz
+# => the committed numbers are absorber-proximity-limited; invariant within
+# 0.05 (|S00| 0.02) => candidate (c) is falsified). Predeclared thresholds
+# live in the #589 design record; this file adds no gate on them.
+#
+# Geometry deltas vs attempt 2 (everything else byte-identical, asserted by
+# test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2):
+#   LY        3.4 -> 6.8 mm  (Y_C recentred: 1.7 -> 3.4 mm; substrate edge
+#                             to trace edge 1.4 -> 3.1 mm on each +/-y side)
+#   JUNCTION_X 1.0 -> 3.0 mm (junction to -x CPML inner edge: 10 -> 30 cells)
+#   LX        12.5 -> 14.5 mm and FEED_X 11.0 -> 13.0 mm -- both move WITH
+#             the junction, so the MSL ladder/feed geometry relative to the
+#             junction and the +x CPML clearance (1.5 mm) are unchanged
+#             (review item 8).
+#   dx, cpml_layers=8, z-stack, FREQ_MAX_2, ladder recipe: unchanged.
+# Cell count 163*85*56 padded (743,820 interior-equivalent per the design's
+# arithmetic) vs attempt 2's 142*51*56 -- ~1.9x, so the same n_steps costs
+# ~1.9x the GPU time; ring-down may be SLOWER (bigger substrate slab): a
+# settling_db > -40 dB at 135000 steps makes B's numbers truncated and
+# UNPINNABLE (report, do not pin; name a 2x-length rerun instead), and
+# _warn_if_ringdown_truncated (#662) will say so verbatim in the run log.
+#
+# KNIFE-EDGE NOTE (why the trace box below is placed by half-cells): attempt
+# 2 declares the trace as Box(y = Y_C -/+ W_TRACE/2) = 1.4/2.0 mm, both
+# exactly on node planes -- the rfx/geometry/csg.py Box docstring's
+# "knife edge". Measured on the committed fixture (_assemble_materials,
+# pure NumPy): the realized pec_mask trace occupies y nodes 14..20
+# INCLUSIVE at the trace z-layer (7 node rows; both edge nodes included by
+# float32 rounding) and x nodes >= 11 -- the junction node x=10 itself is
+# EXCLUDED from the trace box (it carries only the pin). The same declared
+# construction recentred at (3.0, 3.4) mm (y edges 3.1/3.7 mm) rounds the
+# OTHER way on all three edges: 5 node rows AND the junction x-column
+# included -- 59 pec_mask cells differ, i.e. the naive wide build is NOT
+# junction-identical (this is the fail-before-fix evidence for the
+# structural test below; a second iteration with only the y edges pinned
+# still differed at 3 cells, the junction x-column). The wide builder therefore places the trace box on cell
+# MIDPOINTS (the _half_cell_box_z recipe, applied to x and y) so that it
+# realizes EXACTLY attempt 2's own node set after the offset. The MSL
+# port's registered width stays W_TRACE (600 um) in both fixtures. That
+# attempt 2's declared 600 um trace realizes as 7 electric-wall node rows
+# is itself a declared-vs-realized fidelity observation on the COMMITTED
+# fixture (reported via --preflight's fidelity_report in the driver), not
+# something this variant changes.
+# ---------------------------------------------------------------------------
+LY_2W = 6.8e-3
+Y_C_2W = LY_2W / 2.0
+JUNCTION_X_2W = 3.0e-3
+FEED_X_2W = FEED_X_2 + (JUNCTION_X_2W - JUNCTION_X)   # 13.0 mm
+LX_2W = LX_2 + (JUNCTION_X_2W - JUNCTION_X)           # 14.5 mm
+# Node offsets of the wide fixture relative to attempt 2 (same dx on every
+# axis; z unchanged).
+WIDE_X_OFFSET_CELLS = int(round((JUNCTION_X_2W - JUNCTION_X) / DX))  # 20
+WIDE_Y_OFFSET_CELLS = int(round((Y_C_2W - Y_C) / DX))                # 17
+# Attempt 2's REALIZED trace node set (measured, see KNIFE-EDGE NOTE):
+# y nodes [Y_C_NODE - 3, Y_C_NODE + 3] inclusive, x nodes >= JUNCTION_X_NODE + 1.
+_TRACE_HALF_NODES = 3
+_TRACE_X_START_OFFSET_NODES = 1
+# Declared junction window for the byte-identity assertion, in attempt-2
+# DOMAIN node indices (CPML pad excluded), all z: 0..4.0 mm in x (1.0 mm
+# before the junction through 3.0 mm of trace/ladder start; covers the
+# clearance disk r=0.4 mm, the coax outer radius 0.6 mm and the first MSL
+# probe plane region) and the full attempt-2 y interior.
+JUNCTION_WINDOW_ATTEMPT2 = {"x": (0, 40), "y": (0, 34)}
+
+
+def _half_cell_box(n_lo, n_hi):
+    """Same recipe as _half_cell_box_z, for any axis with spacing DX."""
+    return (n_lo - 0.5) * DX, (n_hi + 0.5) * DX
+
+
+def _build_coax_msl_transition_sim_attempt2_wide():
+    """Step B (issue #589): attempt 2 with the junction moved away from the
+    CPML on three sides -- a falsifier for candidate (c) absorber
+    proximity, NOT a third attempt (see the block comment above; Step A,
+    the settled run re-taken, is the claims-bearing measurement and this
+    variant only tests whether its numbers are fixture-specific).
+
+    Everything at and around the junction is attempt 2's own cells after a
+    (+20, +17, 0) node offset; the trace box is placed by half-cells to
+    pin attempt 2's measured realization (KNIFE-EDGE NOTE above).
+    """
+    from rfx.api import Simulation
+    from rfx.boundaries.spec import BoundarySpec
+    from rfx.geometry.csg import Box, Cylinder
+
+    sim = Simulation(
+        freq_max=FREQ_MAX_2, domain=(LX_2W, LY_2W, LZ_2), dx=DX, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
+    )
+    sim.add_material("sub", eps_r=EPS_SUB)
+    sim.add_material("ptfe", eps_r=EPS_COAX)
+
+    gnd_lo, gnd_hi = _half_cell_box_z(N_GND, N_GND)
+    sim.add(Box((0.0, 0.0, gnd_lo), (LX_2W, LY_2W, gnd_hi)), material="pec")
+    clr_c, clr_h = _margin_cylinder_z(N_GND, N_SUB_LO)
+    sim.add(
+        Cylinder(center=(JUNCTION_X_2W, Y_C_2W, clr_c), radius=CLEAR_R, height=clr_h, axis="z"),
+        material="ptfe",
+    )
+    sub_lo, sub_hi = _half_cell_box_z(N_SUB_LO, N_SUB_HI)
+    sim.add(Box((0.0, 0.0, sub_lo), (LX_2W, LY_2W, sub_hi)), material="sub")
+    trc_lo, trc_hi = _half_cell_box_z(N_TRACE, N_TRACE)
+    # Trace: pin attempt 2's realized node set (x >= junction node + 1, y
+    # within +/- _TRACE_HALF_NODES of the centre node) via half-cell placement.
+    jx_node = int(round(JUNCTION_X_2W / DX))
+    yc_node = int(round(Y_C_2W / DX))
+    trc_x_lo, _ = _half_cell_box(jx_node + _TRACE_X_START_OFFSET_NODES, jx_node)
+    trc_y_lo, trc_y_hi = _half_cell_box(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES)
+    sim.add(
+        Box((trc_x_lo, trc_y_lo, trc_lo), (LX_2W, trc_y_hi, trc_hi)),
+        material="pec",
+    )
+    pin_c, pin_h = _margin_cylinder_z(N_GND, N_TRACE)
+    sim.add(
+        Cylinder(center=(JUNCTION_X_2W, Y_C_2W, pin_c), radius=PIN_R, height=pin_h, axis="z"),
+        material="pec",
+    )
+
+    sim.add_coaxial_port(
+        position=(JUNCTION_X_2W, Y_C_2W, N_GND * DX), face="bottom",
+        pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+    )
+    sim.add_msl_port(
+        position=(FEED_X_2W, Y_C_2W, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,
+        direction="-x", impedance=50.0, eps_r_sub=EPS_SUB,
+    )
+    return sim
+
+
+def _attempt2_wide_kwargs(n_steps):
+    """compute_coax_msl_transition kwargs for the wide fixture: attempt 2's
+    own kwargs with only junction_x moved (the ladder recipe is relative
+    to the feed, which moved with the junction)."""
+    kw = _attempt2_kwargs(n_steps)
+    kw["junction_x"] = JUNCTION_X_2W
+    return kw
+
+
+def _junction_window_slices(grid, x_offset_cells, y_offset_cells):
+    """Padded-array slices for JUNCTION_WINDOW_ATTEMPT2 on ``grid``, shifted
+    by the given domain-node offsets (0, 0 for attempt 2 itself)."""
+    x0, x1 = JUNCTION_WINDOW_ATTEMPT2["x"]
+    y0, y1 = JUNCTION_WINDOW_ATTEMPT2["y"]
+    px, py = int(grid.pad_x_lo), int(grid.pad_y_lo)
+    return (
+        slice(px + x_offset_cells + x0, px + x_offset_cells + x1),
+        slice(py + y_offset_cells + y0, py + y_offset_cells + y1),
+        slice(None),
+    )
+
+
+def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
+    """Structural (build-only, no FDTD, ~seconds): the Step-B wide fixture
+    assembles, and every material array (eps_r, sigma, mu_r) AND the PEC
+    mask inside JUNCTION_WINDOW_ATTEMPT2 are np.array_equal to attempt 2's
+    after the (+WIDE_X_OFFSET_CELLS, +WIDE_Y_OFFSET_CELLS) node offset.
+    Also stamps the method's own coax stub (stamp_coaxial_line +
+    stamp_coaxial_annular_resistor at compute_coax_msl_transition's own z
+    indices) on both assembled grids. THAT part is NOT byte-identical and
+    this test does not pretend it is: the stub's radial rasterization puts
+    PIN_R (= 2 dx) and OUTER_R (= 6 dx) exactly on node radii, and the
+    float rounding of (x - cx)^2 + (y - cy)^2 resolves differently at
+    (3.0, 3.4) mm than at (1.0, 1.7) mm -- measured 2026-08-30: 26 cells
+    differ, one PEC-shell node column at r = +6 dx (y) over the whole stub
+    height and one annular-resistor cell at r = -2 dx (x). The assertion
+    on the stub is therefore the structural statement that every
+    differing cell sits ON a knife-edge radius (PIN_R, OUTER_R or the
+    shell's inner radius) -- i.e. the difference is float rounding of an
+    exactly-on-node radius, not a geometry error -- and the count is
+    reported in the failure message. Whether a one-column shell asymmetry
+    in the coax stub is acceptable for Step B is a PI call recorded in the
+    #589 measurement report, not decided here; the method's stamping is
+    production code and is not touched.
+
+    Fail-before-fix evidence (recorded in the KNIFE-EDGE NOTE above): with
+    the naive Box(y = Y_C_2W -/+ W_TRACE/2, x from JUNCTION_X_2W) trace the
+    pec_mask differs at 59 cells in this window (trace edge rows and the
+    junction x-column), so this assertion discriminates.
+    """
+    from rfx.sources.coaxial_port import (
+        coaxial_tem_characteristic_impedance,
+        stamp_coaxial_annular_resistor,
+        stamp_coaxial_line,
+    )
+
+    sim2 = _build_coax_msl_transition_sim_attempt2()
+    simw = _build_coax_msl_transition_sim_attempt2_wide()
+
+    # Registered junction parameters: identical up to the declared offset.
+    p2, pw = sim2._coaxial_ports[0], simw._coaxial_ports[0]
+    assert p2.pin_radius == pw.pin_radius == PIN_R
+    assert p2.outer_radius == pw.outer_radius == OUTER_R
+    assert p2.face == pw.face == "bottom"
+    assert p2.position[2] == pw.position[2] == N_GND * DX
+    assert pw.position[0] == JUNCTION_X_2W and pw.position[1] == Y_C_2W
+    m2, mw = sim2._msl_ports[0], simw._msl_ports[0]
+    assert m2.width == mw.width == W_TRACE
+    assert m2.height == mw.height == H_SUB
+    assert m2.eps_r_sub == mw.eps_r_sub == EPS_SUB
+    assert m2.direction == mw.direction == "-x"
+    assert m2.position[2] == mw.position[2] == N_SUB_LO * DX
+    # Feed-to-junction offset unchanged (review item 8).
+    assert np.isclose(mw.position[0] - JUNCTION_X_2W, m2.position[0] - JUNCTION_X)
+    # +x CPML clearance unchanged: LX - FEED_X.
+    assert np.isclose(LX_2W - FEED_X_2W, LX_2 - FEED_X_2)
+
+    g2 = sim2._build_grid()
+    gw = simw._build_grid()
+    assert (g2.pad_x_lo, g2.pad_y_lo, g2.pad_z_lo) == (gw.pad_x_lo, gw.pad_y_lo, gw.pad_z_lo)
+    assert (g2.nx, g2.ny, g2.nz) == (142, 51, 56)
+    assert (gw.nx, gw.ny, gw.nz) == (142 + WIDE_X_OFFSET_CELLS, 51 + 2 * WIDE_Y_OFFSET_CELLS, 56)
+    assert WIDE_X_OFFSET_CELLS == 20 and WIDE_Y_OFFSET_CELLS == 17
+
+    out2 = sim2._assemble_materials(g2)
+    outw = simw._assemble_materials(gw)
+    mats2, pec2 = out2[0], out2[3]
+    matsw, pecw = outw[0], outw[3]
+    s2 = _junction_window_slices(g2, 0, 0)
+    sw = _junction_window_slices(gw, WIDE_X_OFFSET_CELLS, WIDE_Y_OFFSET_CELLS)
+
+    for name in ("eps_r", "sigma", "mu_r"):
+        a = np.asarray(getattr(mats2, name))[s2]
+        b = np.asarray(getattr(matsw, name))[sw]
+        assert a.dtype == b.dtype and a.shape == b.shape
+        assert np.array_equal(a, b), (
+            f"{name}: {int(np.sum(a != b))} junction-window cells differ "
+            "between attempt 2 and the wide fixture"
+        )
+    assert pec2 is not None and pecw is not None
+    a = np.asarray(pec2, dtype=bool)[s2]
+    b = np.asarray(pecw, dtype=bool)[sw]
+    assert np.array_equal(a, b), (
+        f"pec_mask: {int(np.sum(a != b))} junction-window cells differ; "
+        f"first at (x,y,z)={tuple(int(v) for v in np.argwhere(a != b)[0])}"
+    )
+    # The trace realization this variant pins (KNIFE-EDGE NOTE): attempt 2's
+    # own pec_mask at the trace z-layer, a column well past the junction.
+    pz = int(g2.pad_z_lo)
+    yc_node = int(round(Y_C / DX))
+    trace_rows = np.nonzero(a[30, :, pz + N_TRACE])[0]
+    assert trace_rows.tolist() == list(
+        range(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES + 1)
+    )
+    jx_node = int(round(JUNCTION_X / DX))
+    # Junction x-column at the trace layer carries only the pin (not the
+    # 7-row trace); the trace starts one node further along +x.
+    assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() != trace_rows.tolist()
+    assert np.nonzero(a[jx_node + _TRACE_X_START_OFFSET_NODES, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
+
+    # Method-side coax stub: same z indices compute_coax_msl_transition uses.
+    def _stub(sim, grid, mats):
+        port = sim._coaxial_ports[0]
+        z_j = int(grid.position_to_index(port.position)[2])
+        z_lo = int(grid.pad_z_lo) + 2
+        z_feed = z_lo + 1
+        z_hi = z_j - 1
+        cxy = (float(port.position[0]), float(port.position[1]))
+        stamped, shell_inner = stamp_coaxial_line(
+            grid, mats, center_xy=cxy, z_lo_index=z_lo, z_hi_index=z_hi,
+            pin_radius=PIN_R, outer_radius=OUTER_R,
+        )
+        stamped = stamp_coaxial_annular_resistor(
+            grid, stamped, center_xy=cxy, z_index=z_feed,
+            pin_radius=PIN_R, outer_radius=OUTER_R,
+            target_impedance=float(coaxial_tem_characteristic_impedance(PIN_R, OUTER_R)),
+            shell_inner_radius=shell_inner,
+        )
+        return stamped, float(shell_inner)
+
+    st2, shell_inner2 = _stub(sim2, g2, mats2)
+    stw, shell_innerw = _stub(simw, gw, matsw)
+    assert shell_inner2 == shell_innerw
+    knife_radii = np.array([PIN_R, OUTER_R, shell_inner2]) / DX
+    jx_node, yc_node = int(round(JUNCTION_X / DX)), int(round(Y_C / DX))
+    n_diff_total = 0
+    for name in ("eps_r", "sigma", "mu_r"):
+        a = np.asarray(getattr(st2, name))[s2]
+        b = np.asarray(getattr(stw, name))[sw]
+        diff = np.argwhere(a != b)
+        n_diff_total += len(diff)
+        for (ix, iy, _iz) in diff:
+            r_nodes = float(np.hypot(ix - jx_node, iy - yc_node))
+            assert np.min(np.abs(knife_radii - r_nodes)) < 1e-6, (
+                f"{name} after coax-stub stamping differs at window cell "
+                f"(x,y,z)=({ix},{iy},{_iz}), r={r_nodes:.4f} dx -- NOT a "
+                "knife-edge radius; the wide stub is geometrically different"
+            )
+    # n_diff_total is documented (26 knife-edge cells on 2026-08-30, see the
+    # docstring), deliberately NOT pinned: 0 would be an improvement, not a bug.
+    del n_diff_total
+
+
+def test_attempt2_wide_kwargs_differ_from_attempt2_only_in_junction_x():
+    k2 = _attempt2_kwargs(135000)
+    kw = _attempt2_wide_kwargs(135000)
+    assert set(k2) == set(kw)
+    for key in k2:
+        if key == "junction_x":
+            assert k2[key] == JUNCTION_X and kw[key] == JUNCTION_X_2W
+        elif key == "freqs":
+            assert np.array_equal(k2[key], kw[key])
+        else:
+            assert k2[key] == kw[key], key
+
+
 @pytest.mark.slow_physics
 def test_coax_msl_transition_attempt2_instrument_verification():
     """Attempt 2: INSTRUMENT test, not a claims test (issue #585 review

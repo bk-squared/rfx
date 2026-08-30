@@ -1,0 +1,80 @@
+name: rfx-coax-msl-transition-remeasure
+description: "#589 (coax<->MSL transition, #489 leg 4) MEASUREMENT half of the predeclared Step A/B ladder: re-takes the settled attempt-2 run (VESSL 369367252283, n_steps=135000) with the ADDITIVELY extended driver scripts/diagnostics/coax_msl_transition_settled_run.py (complex S per bin, |S00|/|S10|/|S01|/|S11| dB, coax-driven column power, lambda_min(I - S^H S), raw cond_a next to equilibrated, MSL/coax ladder fit+recurrence residuals, A5 |a_inc/b_out| echo ratios, precision label, driver-side preflight + fidelity_report verbatim, A0 two-tier reproduction vs the tracked JSON). Env-parameterized: FIXTURE=attempt2 (Step A, the settled fixture) | attempt2_wide (Step B, domain-clearance FALSIFIER for candidate (c) absorber proximity -- NOT attempt 3); X64=0 (the record's own default-float32 precision, required for A0 to mean anything) | 1 (f64 replicate: the cheapest extractor-floor discriminator for the -55..-97 dB reciprocity signals; FP64 throughput on an RTX 4090 is far lower -- the 14400 s timeout is a bound to VERIFY, not a promise); N_STEPS (default 135000); FREQS (optional dense band, GHz, e.g. 5:11:13 -- the committed 6/8/10 GHz bins are always retained). Runs from the dedicated NFS run-clone (NOT the primary checkout) with an EXPECT=<sha> guard: git rev-parse HEAD must equal $EXPECT or the job exits 3 before measuring anything. Report-only: no record, gate or reference number is touched by this job; its JSON is hand-consumed by a later PR. The lane is under a PI HARD-STOP (2026-08-07); submitting this job is a reactivation and needs the PI's explicit go."
+tags: [rfx, issue-589, issue-489, coax-msl-transition, remeasure]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # Pin: the run-clone's HEAD must be exactly this commit (the commit that
+  # carries the extended driver + the attempt2_wide fixture). Fill before
+  # submitting; the placeholder is refused with exit 3.
+  EXPECT: "FILL_BEFORE_SUBMIT"
+  RUN_CLONE: "/root/workspace/byungkwan-workspace/research/rfx-fidelity-722"
+  FIXTURE: "attempt2"
+  X64: "0"
+  N_STEPS: "135000"
+  FREQS: ""
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  echo "=== rfx #589: coax<->MSL transition re-measurement (FIXTURE=$FIXTURE X64=$X64 N_STEPS=$N_STEPS FREQS='${FREQS}') ==="
+  case "$FIXTURE" in
+    attempt2|attempt2_wide) ;;
+    *) echo "FATAL: FIXTURE must be attempt2 or attempt2_wide (got '$FIXTURE')"; exit 3 ;;
+  esac
+  case "$X64" in
+    0|1) ;;
+    *) echo "FATAL: X64 must be 0 or 1 (got '$X64')"; exit 3 ;;
+  esac
+  if [ "$EXPECT" = "FILL_BEFORE_SUBMIT" ]; then
+    echo "FATAL: EXPECT still contains the FILL_BEFORE_SUBMIT placeholder -- pin the commit SHA the run-clone is checked out at before submitting"
+    exit 3
+  fi
+  cd "$RUN_CLONE"
+  git config --global --add safe.directory "$RUN_CLONE" || true
+  echo "=== provenance / SHA guard (run-clone, NOT the primary checkout) ==="
+  ACTUAL_SHA="$(git rev-parse HEAD)"
+  echo "expected SHA   : $EXPECT"
+  echo "checked-out SHA: $ACTUAL_SHA"
+  git status --short || true
+  if [ "$ACTUAL_SHA" != "$EXPECT" ]; then
+    echo "FATAL: run-clone HEAD $ACTUAL_SHA != EXPECT $EXPECT -- stale clone; refusing to measure the wrong tree (exit 3)"
+    exit 3
+  fi
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$RUN_CLONE"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  export JAX_ENABLE_X64="$X64"
+  python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| x64', jax.config.jax_enable_x64, '| rfx', rfx.__file__); assert rfx.__file__.startswith(os.environ['RFX_REPO_ROOT']), 'rfx import does not resolve to the run-clone'"
+  echo "=== structural tests (build-only, no FDTD): wide fixture junction byte-identity + records ==="
+  timeout 1200 python -u -m pytest -q tests/test_coax_msl_transition.py -k "settled_run_record or attempt2_wide or junction_geometry_is_byte_identical" -p no:cacheprovider
+  RFX_OUT="$RUN_CLONE/.omx/589-remeasure/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA:0:12}-${FIXTURE}-x64${X64}"
+  export RFX_OUT
+  mkdir -p "$RFX_OUT"
+  BASELINE="scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_result.json"
+  FREQS_ARGS=()
+  if [ -n "${FREQS}" ]; then FREQS_ARGS=(--freqs "$FREQS"); fi
+  echo "=== measurement: fixture=$FIXTURE n_steps=$N_STEPS x64=$X64 -> $RFX_OUT ==="
+  set +e
+  timeout 14400 python -u scripts/diagnostics/coax_msl_transition_settled_run.py \
+    --fixture "$FIXTURE" \
+    --n-steps "$N_STEPS" \
+    --preflight \
+    --baseline "$BASELINE" \
+    ${FREQS_ARGS[@]+"${FREQS_ARGS[@]}"} \
+    --output "$RFX_OUT/remeasure_result.json" \
+    > "$RFX_OUT/run.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 200 "$RFX_OUT/run.log"
+  echo "$rc" > "$RFX_OUT/run.rc"
+  echo "artifacts persisted to (mounted NFS, survives job teardown): $RFX_OUT"
+  echo "coax_msl_transition_remeasure_rc=$rc"
+  exit "$rc"
