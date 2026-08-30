@@ -1,0 +1,108 @@
+name: rfx-524-msl-passive-port-reflection
+description: "#524 items 1-2 (orphaned #507 loose ends) predeclared |Gamma_passive| re-measurement battery: scripts/diagnostics/msl_passive_port_reflection.py on the #507 fixture (thin_conductor_cell_thickness_probe.py run_one(n_cells=2) geometry verbatim, 290,970 cells, ~5 min per two-drive run on CPU per the committed same-dx sibling row) for variants C0 (shipped R=50), C1 (R=1e6 control), C3 (R=25), SYM (cell-aligned symmetric thru), ROTY (+/-y rotated thru), C4 (trace cut at port 2's feed), then C2/C5 (R = Zc_meas taken from C0's JSON), then --summarize. REPORT-ONLY: nothing in the solver, extractor, gates or references moves. Runs from the dedicated NFS run-clone (rfx-fidelity-722) behind an EXPECT SHA guard -- a clone that does not contain the pinned commit exits 3 instead of measuring the wrong tree. Precision is pinned explicitly: JAX_ENABLE_X64=0 (complex64 dump, the fixture as-is); every number in the JSONs is labelled with its dtype. remilab-c0 cpu lane, slim footprint (cpu 8 / 16Gi)."
+tags: [rfx, issue-524, issue-507, msl-passive-port, remeasure]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # Precision is part of the measurement contract (review item 5): the
+  # fixture pins no X64, so the dump is complex64. Never mix modes within one
+  # comparison; an --x64 rerun is a SEPARATE battery with JAX_ENABLE_X64=1.
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx #524: |Gamma_passive| re-measurement battery (report-only) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+
+  # RUN CLONE, not the primary checkout: this lane must not depend on what
+  # research/rfx has checked out.
+  ROOT=/root/workspace/byungkwan-workspace/research/rfx-fidelity-722
+  cd "$ROOT"
+  git config --global --add safe.directory "$ROOT" || true
+  echo "=== provenance ==="
+  git rev-parse HEAD
+  git status --short || true
+  # EXPECT = the commit that introduced the driver. The clone's HEAD must
+  # CONTAIN it (ancestor check, so a later fast-forward still passes) and the
+  # driver must be present; otherwise this is a stale clone -> exit 3.
+  EXPECT=f12660b9d68935273f6f55e324e4c786c996ead9
+  git merge-base --is-ancestor "$EXPECT" HEAD || { echo "STALE RUN CLONE: HEAD does not contain $EXPECT"; exit 3; }
+  test -f scripts/diagnostics/msl_passive_port_reflection.py || { echo "STALE RUN CLONE: driver missing"; exit 3; }
+
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$ROOT"
+  export PYTHONPATH="$ROOT"
+  "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, rfx.__version__, 'rfx from', os.path.dirname(rfx.__file__), 'x64', jax.config.x64_enabled)"
+
+  out=".omx/524-remeasure/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out/dumps"
+  echo "artifacts: $ROOT/$out"
+
+  DRV=scripts/diagnostics/msl_passive_port_reflection.py
+  fails=0
+  run_variant() {
+    v="$1"; shift
+    set +e
+    timeout 3600 "$PY" -u "$DRV" --variant "$v" --output "$out/$v.json" --dump-dir "$out/dumps" "$@" > "$out/$v.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$out/$v.rc"
+    echo "----- $v rc=$rc (log tail) -----"
+    tail -n 40 "$out/$v.log" || true
+    [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  }
+
+  # Design order: C0 first (it supplies Zc_meas), the shipped-geometry R
+  # points, the two item-2 variants, the end-terminated cut, then the two
+  # R = Zc_meas rows that need C0's JSON.
+  run_variant C0
+  run_variant C1
+  run_variant C3
+  run_variant SYM
+  run_variant ROTY
+  run_variant C4
+  if [ -f "$out/C0.json" ]; then
+    run_variant C2 --c0-json "$out/C0.json"
+    run_variant C5 --c0-json "$out/C0.json"
+  else
+    echo "C0.json missing: C2/C5 (R = Zc_meas) skipped"
+  fi
+
+  echo "===== settling / status per run (quoted from the JSONs) ====="
+  for f in "$out"/*.json; do
+    "$PY" - "$f" <<'PYEOF' || true
+  import json, sys
+  r = json.load(open(sys.argv[1]))
+  pr = r.get("production_result") or {}
+  print(f"{r['variant']:>4} status={r.get('status')} R_req={r.get('r_ohm_requested')} "
+        f"settling_db={pr.get('settling_db_per_drive')} assembly={pr.get('assembly')} "
+        f"wall={r.get('wallclock_s')} precision={r.get('precision_mode')} finding={r.get('finding')}")
+  PYEOF
+  done
+
+  echo "===== summary (hypotheses / falsifier / implied k / item 2) ====="
+  set +e
+  inputs=""
+  for v in C0 C1 C2 C3 C4 C5 SYM ROTY; do [ -f "$out/$v.json" ] && inputs="$inputs $out/$v.json"; done
+  # shellcheck disable=SC2086
+  "$PY" -u "$DRV" --summarize $inputs --output "$out/summary.json" > "$out/summary.log" 2>&1
+  src=$?
+  set -e
+  cat "$out/summary.log" || true
+  echo "summary_rc=$src"
+
+  ls -la "$out"
+  echo "artifacts persisted to (mounted, survives job teardown): $ROOT/$out"
+  echo "msl_passive_port_reflection_failed_runs=$fails"
+  [ "$fails" -eq 0 ]
