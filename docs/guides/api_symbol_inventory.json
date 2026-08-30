@@ -1575,20 +1575,6 @@
         "title"
       ]
     },
-    "plot_rasterized_slice": {
-      "kind": "function",
-      "params": [
-        "sim",
-        "axis",
-        "position",
-        "index",
-        "show_declared",
-        "sigma_threshold",
-        "figsize",
-        "title",
-        "ax"
-      ]
-    },
     "plot_rcs": {
       "kind": "function",
       "params": [
@@ -1618,18 +1604,6 @@
         "show_vswr",
         "markers",
         "title"
-      ]
-    },
-    "plot_stack_profile": {
-      "kind": "function",
-      "params": [
-        "sim",
-        "axis",
-        "at",
-        "sigma_threshold",
-        "figsize",
-        "title",
-        "ax"
       ]
     },
     "plot_sweep": {
