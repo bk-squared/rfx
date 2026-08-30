@@ -614,9 +614,11 @@ def main() -> int:
              "under .omx/, not committed)",
     )
     ap.add_argument(
-        "--fixture", choices=("attempt2", "attempt2_wide"), default="attempt2",
+        "--fixture", choices=("attempt2", "attempt2_wide", "attempt3"), default="attempt2",
         help="attempt2 = the settled fixture (Step A); attempt2_wide = Step B "
-             "domain-clearance falsifier for candidate (c) absorber proximity",
+             "domain-clearance falsifier for candidate (c) absorber proximity; "
+             "attempt3 = attempt 2 with the ground-plane clearance hole REALIZED "
+             "(#589 fix; NOT COMPARABLE to the attempt-2 baseline by design)",
     )
     ap.add_argument(
         "--preflight", action="store_true",
@@ -662,6 +664,16 @@ def main() -> int:
               f"wider x-CPML clearance), n_steps={n_steps} "
               f"(record target: {t.SETTLED_RUN_RECORD['target_n_steps']})")
         build = t._build_coax_msl_transition_sim_attempt2
+        kwargs = t._attempt2_kwargs(n_steps)
+        fixture_geom = {"LX_m": t.LX_2, "LY_m": t.LY, "LZ_m": t.LZ_2,
+                        "junction_x_m": t.JUNCTION_X, "feed_x_m": t.FEED_X_2, "y_c_m": t.Y_C}
+    elif args.fixture == "attempt3":
+        print(f"fixture    : attempt3 (#589 fix: attempt 2 with the 0.4 mm ground clearance "
+              f"hole REALIZED as {t.N_GROUND_BOXES_3} half-cell PEC boxes; pec_mask differs "
+              f"from attempt2 in {t.HOLE_XOR_CELLS_3} cells at the junction node only; "
+              f"kwargs = _attempt2_kwargs), n_steps={n_steps} "
+              f"(record target: {t.SETTLED_RUN_RECORD['target_n_steps']})")
+        build = t._build_coax_msl_transition_sim_attempt3
         kwargs = t._attempt2_kwargs(n_steps)
         fixture_geom = {"LX_m": t.LX_2, "LY_m": t.LY, "LZ_m": t.LZ_2,
                         "junction_x_m": t.JUNCTION_X, "feed_x_m": t.FEED_X_2, "y_c_m": t.Y_C}
