@@ -1765,6 +1765,247 @@ def test_attempt2_wide_kwargs_differ_from_attempt2_only_in_junction_x():
             assert k2[key] == kw[key], key
 
 
+# ---------------------------------------------------------------------------
+# Issue #589 driver VERDICT LOGIC (pure functions of the report-only driver
+# scripts/diagnostics/coax_msl_transition_settled_run.py). The driver imports
+# this module for the fixture builders, so it is loaded lazily by path here.
+# These tests pin the driver's verdict strings to the predeclared falsifiers
+# (#589 design A3 / review required change 2 + 4); they add no gate on any
+# measured number.
+# ---------------------------------------------------------------------------
+def _load_settled_run_driver():
+    import importlib.util
+    from pathlib import Path
+
+    path = (Path(__file__).resolve().parents[1] / "scripts" / "diagnostics"
+            / "coax_msl_transition_settled_run.py")
+    spec = importlib.util.spec_from_file_location(
+        "_coax_msl_transition_settled_run_driver_under_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_589_a3_falsified_requires_both_drives_and_both_residuals():
+    """A3 predeclaration: '(b)-on-ladder FALSIFIED' only when the MSL-ladder
+    fit_residual AND recurrence_residual are <= 0.02 (and <= 10x own 10 GHz)
+    at ALL committed bins under BOTH drives; the MSL-drive residuals alone
+    can only SUPPORT (b) (EXTRACTOR), never falsify it."""
+    drv = _load_settled_run_driver()
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    committed = [0, 1, 2]
+    clean = np.full((2, 2, 3), 0.005)
+
+    v = drv._classify_a3(clean, clean, freqs, committed)
+    assert v.startswith("(b)-ON-LADDER FALSIFIED"), v
+    assert "BOTH drives" in v and "recurrence" in v, v
+
+    # Reviewer's 200-step smoke shape: msl/coax fit 0.593 while msl/msl is
+    # clean -- the plan's 'all bins/both drives' condition is NOT met.
+    fit = clean.copy()
+    fit[1, 0, :] = [0.593, 0.626, 0.784]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert "FALSIFIED" not in v.split(":")[0], v
+    assert v.startswith("NON-CLOSING"), v
+    assert "coax drive" in v and "NOT falsified" in v, v
+
+    # MSL-drive recurrence residual alone over 0.02 => EXTRACTOR, names it.
+    rec = clean.copy()
+    rec[1, 1, 0] = 0.05
+    v = drv._classify_a3(clean, rec, freqs, committed)
+    assert v.startswith("EXTRACTOR ((b)-on-ladder supported)"), v
+    assert "recurrence_residual" in v and "6 GHz" in v, v
+
+    # MSL-drive fit residual over the load-bearing 10x-own-10-GHz rule.
+    fit = clean.copy()
+    fit[1, 1, :] = [0.015, 0.004, 0.001]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("EXTRACTOR") and "10x own 10 GHz" in v, v
+
+    # Coax-drive MSL-ladder residual failing only the 10x rule: not falsified.
+    fit = clean.copy()
+    fit[1, 0, :] = [0.015, 0.004, 0.001]
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("NON-CLOSING") and "10x" in v, v
+
+    # Coax LADDER residuals never enter the verdict (they are the comparator).
+    fit = clean.copy()
+    fit[0, :, :] = 0.9
+    v = drv._classify_a3(fit, clean, freqs, committed)
+    assert v.startswith("(b)-ON-LADDER FALSIFIED"), v
+
+    # With --freqs the verdict uses the committed bins only.
+    fit = np.full((2, 2, 5), 0.005)
+    fit[1, 1, 0] = 0.9  # a non-committed dense-band bin
+    v = drv._classify_a3(fit, np.full((2, 2, 5), 0.005),
+                         np.array([5e9, 6e9, 8e9, 9e9, 10e9]), [1, 2, 4])
+    assert v.startswith("(b)-ON-LADDER FALSIFIED") and "committed bins" in v, v
+
+
+def _a0_baseline_dict(*, S, n_steps, fixture, x64, freqs_all, committed,
+                      with_ext=True):
+    """Build a baseline JSON dict in the driver's own output shape."""
+    S = np.asarray(S)
+    fc = np.asarray(freqs_all)[list(committed)]
+    Sc = S[:, :, list(committed)]
+    d = {
+        "n_steps": n_steps,
+        "freqs_hz": fc.tolist(),
+        "s22_abs": np.abs(Sc[1, 1, :]).tolist(),
+        "max_abs_s": float(np.max(np.abs(Sc))),
+        "col_msl_driven_power": (np.abs(Sc[0, 1, :]) ** 2 + np.abs(Sc[1, 1, :]) ** 2).tolist(),
+    }
+    if with_ext:
+        d["fixture"] = fixture
+        d["ext_589"] = {
+            "precision": {"jax_enable_x64": bool(x64)},
+            "freqs_hz_all": np.asarray(freqs_all).tolist(),
+            "committed_bin_indices": list(committed),
+            "s_complex": {"re": S.real.tolist(), "im": S.imag.tolist()},
+            "s_abs": {"S00": np.abs(S[0, 0, :]).tolist(), "S10": np.abs(S[1, 0, :]).tolist(),
+                      "S01": np.abs(S[0, 1, :]).tolist(), "S11": np.abs(S[1, 1, :]).tolist()},
+            "col_coax_driven_power": (np.abs(S[0, 0, :]) ** 2 + np.abs(S[1, 0, :]) ** 2).tolist(),
+        }
+    return d
+
+
+def _a0_legacy_for(S, committed):
+    Sc = np.asarray(S)[:, :, list(committed)]
+    return {
+        "s22_abs": np.abs(Sc[1, 1, :]).tolist(),
+        "max_abs_s": float(np.max(np.abs(Sc))),
+        "col_msl_driven_power": (np.abs(Sc[0, 1, :]) ** 2 + np.abs(Sc[1, 1, :]) ** 2).tolist(),
+        "settling_db": [-45.0, -44.0],
+        "reciprocity_worst_deviation": {"pair": [0, 1], "value": 0.9},
+        "gamma_ratio_coax_driven": [1.1, 0.9, 1.0],
+        "cond_a_equilibrated": [1.0, 1.0, 1.0],
+    }
+
+
+def _a0_reference_S():
+    rng = np.random.default_rng(589)
+    S = np.zeros((2, 2, 3), dtype=complex)
+    S[0, 0, :] = 0.99 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[1, 1, :] = 0.21 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[1, 0, :] = 3.0e-6 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    S[0, 1, :] = 6.0e-5 * np.exp(1j * rng.uniform(0, 6.28, 3))
+    return S
+
+
+def test_589_a0_precision_mismatch_is_not_comparable_and_applies_f64_rule(tmp_path):
+    """Review required change 2: an f64 run compared against an f32 baseline
+    is NOT a reproduction test (no A0 tier), and the predeclared f64 rule
+    (|S10| or |S01| moving > 2x => FLOOR; |S22|/|S00|/col_power within the
+    A0 budget) is computed by the driver, not left as prose."""
+    import json
+
+    drv = _load_settled_run_driver()
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    committed = [0, 1, 2]
+    S_base = _a0_reference_S()
+    base_path = tmp_path / "f32_baseline.json"
+    base_path.write_text(json.dumps(_a0_baseline_dict(
+        S=S_base, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs, committed=committed)))
+
+    # f64 replicate: |S10| 3x at 6 GHz, |S01| 1.5x, magnitudes within 1e-4.
+    S_this = S_base.copy()
+    S_this[1, 0, 0] *= 3.0
+    S_this[0, 1, :] *= 1.5
+    S_this[1, 1, :] *= (1.0 + 1.0e-4)
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_this,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_this, committed),
+                         x64_enabled=True)
+    assert a0["status"] == "compared but NOT a reproduction test", a0["status"]
+    assert a0["tier"].startswith("NOT COMPARABLE"), a0["tier"]
+    assert "STOP" not in a0["tier"] and "reproduced" not in a0["tier"], a0["tier"]
+    assert any("precision" in n for n in a0["notes"]), a0["notes"]
+    assert a0["precision"]["this_run_jax_enable_x64"] is True
+    assert a0["precision"]["baseline_jax_enable_x64"] is False
+    f64 = a0["f64_replicate"]
+    assert f64["applicable"] is True and f64["same_fixture_and_steps"] is True
+    assert f64["verdict"].startswith("FLOOR"), f64["verdict"]
+    assert "6 GHz" in f64["verdict"] and "S10" in f64["verdict"], f64["verdict"]
+    assert np.isclose(f64["ratio_S10"][0], 3.0) and np.allclose(f64["ratio_S01"], 1.5)
+    assert f64["magnitude_max_delta"] <= 1.0e-3
+    assert "within the A0 reproduced tier" in f64["verdict"], f64["verdict"]
+
+    # Same shape but |S10|/|S01| stable and |S22| moving by 0.2 (the
+    # implementer's own f32/f64 smoke): NOT floor by the 2x rule, magnitude
+    # budget exceeded -- reported, no attribution string.
+    S_this = S_base.copy()
+    S_this[1, 1, :] = 0.41 * S_base[1, 1, :] / np.abs(S_base[1, 1, :])
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_this,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_this, committed),
+                         x64_enabled=True)
+    f64 = a0["f64_replicate"]
+    assert f64["verdict"].startswith("|S10|/|S01| within 2x"), f64["verdict"]
+    assert "do NOT reproduce within the A0 budget" in f64["verdict"], f64["verdict"]
+    assert f64["magnitude_max_delta"] > 1.0e-2
+    assert a0["tier"].startswith("NOT COMPARABLE"), a0["tier"]
+
+    # The tracked 369367252283-class record (no ext_589, no precision key) is
+    # documented f32: an f64 run against it is NOT COMPARABLE, the 2x rule is
+    # declared not computable, the |S22|/col_power budget check still runs.
+    tracked_like = tmp_path / "tracked_like.json"
+    tracked_like.write_text(json.dumps(_a0_baseline_dict(
+        S=S_base, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs, committed=committed, with_ext=False)))
+    a0 = drv._a0_compare(tracked_like, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=True)
+    assert a0["tier"].startswith("NOT COMPARABLE") and "precision" in a0["tier"], a0["tier"]
+    assert "documented" in a0["precision"]["baseline_source"], a0["precision"]
+    f64 = a0["f64_replicate"]
+    assert f64["applicable"] is True and f64["ratio_S10"] is None
+    assert "NOT computable" in f64["verdict"] and "s_abs" in f64["verdict"], f64["verdict"]
+    assert f64["magnitude_max_delta"] == 0.0
+    assert set(f64["magnitude_deltas"]) == {"S22", "col_msl_driven_power"}
+
+    # Same precision, same fixture/steps: the reproduction tier applies and
+    # no f64 rule is emitted.
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=300, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=False)
+    assert a0["status"] == "compared" and a0["tier"].startswith("reproduced"), a0
+    assert a0["f64_replicate"] is None
+
+    # n_steps mismatch at the same precision: labeled NOT COMPARABLE, no
+    # STOP/reproduced tier string (the deltas stay in the dump).
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=committed, S=S_base,
+                         n_steps=135000, fixture="attempt2", legacy=_a0_legacy_for(S_base, committed),
+                         x64_enabled=False)
+    assert a0["tier"].startswith("NOT COMPARABLE") and "n_steps" in a0["tier"], a0["tier"]
+    assert "STOP" not in a0["tier"]
+    assert a0["tier_value"] == 0.0 and "max_abs_delta_S_complex" in a0["deltas"]
+
+
+def test_589_a0_indexes_dense_band_baseline_by_freqs_hz_all(tmp_path):
+    """A baseline written with --freqs carries committed-only legacy arrays
+    (freqs_hz) but all-bin ext_589 arrays (freqs_hz_all); the comparator must
+    index each by its own frequency axis."""
+    import json
+
+    drv = _load_settled_run_driver()
+    freqs_dense = np.array([5.0e9, 6.0e9, 7.0e9, 8.0e9, 10.0e9])
+    committed_dense = [1, 3, 4]
+    rng = np.random.default_rng(1)
+    S_dense = rng.normal(size=(2, 2, 5)) + 1j * rng.normal(size=(2, 2, 5))
+    base_path = tmp_path / "dense_f32.json"
+    base_path.write_text(json.dumps(_a0_baseline_dict(
+        S=S_dense, n_steps=300, fixture="attempt2", x64=False,
+        freqs_all=freqs_dense, committed=committed_dense)))
+
+    freqs = np.array([6.0e9, 8.0e9, 10.0e9])
+    S_this = S_dense[:, :, committed_dense]
+    a0 = drv._a0_compare(base_path, freqs_all=freqs, committed=[0, 1, 2], S=S_this,
+                         n_steps=300, fixture="attempt2",
+                         legacy=_a0_legacy_for(S_this, [0, 1, 2]), x64_enabled=False)
+    assert a0["status"] == "compared", a0
+    assert a0["deltas"]["max_abs_delta_S_complex"] == 0.0, a0["deltas"]
+    assert a0["tier"].startswith("reproduced"), a0["tier"]
+
+
 @pytest.mark.slow_physics
 def test_coax_msl_transition_attempt2_instrument_verification():
     """Attempt 2: INSTRUMENT test, not a claims test (issue #585 review

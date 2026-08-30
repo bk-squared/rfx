@@ -100,7 +100,12 @@ ones touching this driver are applied here):
   residual at 6 or 8 GHz > 10x its own 10 GHz value => the two-exponential
   quasi-TEM model does not describe the ladder field at those bins
   ("EXTRACTOR", (b)-on-ladder supported). Both criteria are printed per
-  bin; the verdict string names which fired.
+  bin; the verdict string names which fired. The FALSIFIED branch is the
+  plan's own: "(b)-on-ladder FALSIFIED" is printed ONLY when the MSL-
+  ladder fit_residual AND recurrence_residual are <= 0.02 (and <= 10x own
+  10 GHz) at ALL committed bins under BOTH drives; MSL-drive residuals
+  clean while the coax-drive MSL-ladder residuals are not => NON-CLOSING
+  ((b)-on-ladder NOT falsified), no attribution.
 * A5 same-run floor witness for the sub -55 dB transmitted signals:
   |a_inc[0, 1, f] / b_out[0, 1, f]| (coax array, MSL drive -- the coax
   termination's own echo) and |a_inc[1, 0, f] / b_out[1, 0, f]| (MSL
@@ -156,8 +161,20 @@ A0 REPRODUCTION (review item 4) -- ``--baseline <json>``:
     between  "GPU reproduction spread" -- reported, never widened silently,
              and NO new record field may be pinned tighter than the
              measured spread.
-  A comparison across different n_steps or a different fixture is printed
-  but labeled NOT COMPARABLE (it is not a reproduction test).
+  A comparison across different n_steps, a different fixture OR a
+  different precision (this run's jax_enable_x64 vs the baseline's
+  ext_589.precision.jax_enable_x64; the tracked record has no precision
+  key and is documented f32) is printed but labeled NOT COMPARABLE: the
+  reproduction TIER is not applied and the deltas are informational.
+  Across a precision mismatch the driver instead COMPUTES the predeclared
+  f64-replicate rule (review item 2): |S10| or |S01| moving > 2x between
+  f32 and f64 at any committed bin => FLOOR (precision/extractor); |S22|,
+  |S00| and col_power must reproduce within the A0 budget (two-tier). The
+  2x part needs a baseline carrying ext_589.s_abs (a driver JSON, e.g. the
+  Step-A f32 remeasure); against the tracked record only |S22| and
+  col_msl_driven_power enter the budget check and the 2x part is declared
+  not computable. The predeclared submission order (attempt2/X64=0 first,
+  then attempt2/X64=1 against the Step-A f32 JSON) follows from this.
 
 ``--preflight`` (review item 1): ``compute_coax_msl_transition`` ACCEPTS
 ``skip_preflight`` (rfx/api/_sparams.py:6331, ``skip_preflight: bool =
@@ -256,25 +273,58 @@ def _classify_a2(lam_min):
     return "PASSIVE (lambda_min >= -0.02 at all bins; trace(Q) is the missing power)"
 
 
-def _classify_a3(fit_msl_msl_drive, freqs, committed):
-    """MSL-ladder fit_residual under the MSL drive, committed bins only."""
-    f = np.asarray(freqs)
-    r = np.asarray(fit_msl_msl_drive)
+def _a3_fires(r, f, committed, label):
+    """Per-bin A3 criteria for one residual vector r[f] (MSL ladder, one drive)."""
+    r = np.asarray(r)
     idx10 = [i for i in committed if np.isclose(f[i], 10.0e9)]
     fired = []
     for i in committed:
         if r[i] > A3_BORROWED_ABS:
-            fired.append(f"{f[i] / 1e9:.3g} GHz: fit_residual {r[i]:.4g} > 0.02 (borrowed)")
+            fired.append(f"{f[i] / 1e9:.3g} GHz: {label} {r[i]:.4g} > 0.02 (borrowed)")
         if idx10 and not np.isclose(f[i], 10.0e9) and r[i] > A3_RELATIVE_FACTOR * r[idx10[0]]:
             fired.append(
-                f"{f[i] / 1e9:.3g} GHz: fit_residual {r[i]:.4g} > 10x own 10 GHz "
+                f"{f[i] / 1e9:.3g} GHz: {label} {r[i]:.4g} > 10x own 10 GHz "
                 f"value {r[idx10[0]]:.4g} (load-bearing)"
             )
-    if fired:
-        return "EXTRACTOR ((b)-on-ladder supported): " + "; ".join(fired)
-    return ("(b)-ON-LADDER FALSIFIED: MSL-driven MSL-ladder fit_residual <= 0.02 and "
-            "<= 10x own 10 GHz value at all committed bins -- not worse than the "
-            "validated coax lane; single-mode NOT thereby proven")
+    return fired
+
+
+def _classify_a3(fit, rec, freqs, committed):
+    """A3 verdict from the MSL-ladder (array 1) residuals, committed bins only.
+
+    ``fit``/``rec`` are [port array, drive, f]. Predeclared (#589 design A3):
+
+    * MSL-DRIVEN MSL-ladder residual (fit OR recurrence) > 0.02 or > 10x its
+      own 10 GHz value at a committed bin => EXTRACTOR ((b)-on-ladder
+      supported).
+    * (b)-on-ladder is FALSIFIED only when fit AND recurrence residuals of
+      the MSL ladder are <= 0.02 (and <= 10x own 10 GHz) at ALL committed
+      bins under BOTH drives ("residuals <= 0.02 at all bins/both drives").
+    * Otherwise (MSL drive clean, coax drive not) => NON-CLOSING: (b)-on-
+      ladder NOT falsified, no attribution.
+
+    The coax-ladder residuals (array 0) are the comparator and never enter
+    the verdict.
+    """
+    f = np.asarray(freqs)
+    fit = np.asarray(fit)
+    rec = np.asarray(rec)
+    msl_drive = (_a3_fires(fit[1, 1, :], f, committed, "fit_residual")
+                 + _a3_fires(rec[1, 1, :], f, committed, "recurrence_residual"))
+    coax_drive = (_a3_fires(fit[1, 0, :], f, committed, "fit_residual")
+                  + _a3_fires(rec[1, 0, :], f, committed, "recurrence_residual"))
+    if msl_drive:
+        return ("EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: "
+                + "; ".join(msl_drive))
+    if coax_drive:
+        return ("NON-CLOSING ((b)-on-ladder NOT falsified): MSL ladder under the MSL drive "
+                "is <= 0.02 and <= 10x own 10 GHz at all committed bins, but under the coax "
+                "drive: " + "; ".join(coax_drive)
+                + " -- the predeclared falsifier requires residuals <= 0.02 at all bins/BOTH "
+                  "drives; no attribution")
+    return ("(b)-ON-LADDER FALSIFIED: MSL-ladder fit_residual AND recurrence_residual "
+            "<= 0.02 and <= 10x own 10 GHz value at all committed bins under BOTH drives "
+            "-- not worse than the validated coax lane; single-mode NOT thereby proven")
 
 
 def _classify_a5(ratio, committed):
@@ -287,25 +337,155 @@ def _classify_a5(ratio, committed):
         if abs(a - b) / denom > A5_SMOOTH_REL:
             erratic = True
     if np.max(r) > A5_FLOOR_MIN or erratic:
-        return (f"FLOOR (max ratio {np.max(r):.4g} > 0.3 or erratic bin-to-bin): the "
-                "non-driven port's signal is extractor floor")
+        return (f"FLOOR (max ratio {np.max(r):.4g} > 0.3 or erratic bin-to-bin, committed "
+                "bins): the non-driven port's signal is extractor floor")
     if np.max(r) <= A5_RESOLVED_MAX and not erratic:
-        return (f"RESOLVED (max ratio {np.max(r):.4g} <= 0.15, smooth): transmitted "
-                "signals are a genuine TEM pair with the expected termination echo")
-    return f"NON-CLOSING (max ratio {np.max(r):.4g} between 0.15 and 0.3)"
+        return (f"RESOLVED (max ratio {np.max(r):.4g} <= 0.15, smooth, committed bins): "
+                "transmitted signals are a genuine TEM pair with the expected termination echo")
+    return f"NON-CLOSING (max ratio {np.max(r):.4g} between 0.15 and 0.3, committed bins)"
+
+
+def _baseline_precision(base):
+    """(jax_enable_x64, source) of a baseline JSON. A record without the
+    ext_589.precision key is the tracked 369367252283-class record, which is
+    documented as a default-float32 GPU run (no x64 pin in driver or test)."""
+    prec = (base.get("ext_589") or {}).get("precision") or {}
+    if "jax_enable_x64" in prec:
+        return bool(prec["jax_enable_x64"]), "ext_589.precision.jax_enable_x64"
+    return False, ("no precision key: tracked 369367252283-class record, documented as a "
+                   "default-float32 GPU run (no x64 pin)")
+
+
+def _match_bins(f_this, f_axis):
+    """Index of each f_this[k] in f_axis (None when absent)."""
+    f_axis = np.asarray(f_axis, dtype=float)
+    out = []
+    for f in f_this:
+        j = np.where(np.isclose(f_axis, f))[0]
+        out.append(int(j[0]) if len(j) else None)
+    return out
+
+
+def _f64_replicate_rule(*, base, ext, S, freqs_all, committed, ii, jj_leg, jj_ext,
+                        x64_this, x64_base, same_fixture_and_steps):
+    """Review required change 2, computed: between an f32 and an f64 run of
+    the same fixture/steps, |S10| or |S01| moving by more than 2x at any
+    committed bin => FLOOR (precision/extractor); |S22|, |S00| and col_power
+    must reproduce within the A0 budget (two-tier). Ratios are max/min, so
+    the rule is symmetric in which side is f64."""
+    out = {
+        "rule": "|S10| or |S01| moving > 2x between f32 and f64 at any committed bin => "
+                "FLOOR (precision/extractor); |S22|, |S00|, col_power must reproduce within "
+                "the A0 budget (<= 1e-3 reproduced; <= 1e-2 GPU spread; > 1e-2 exceeds)",
+        "applicable": True,
+        "f64_side": "this run" if x64_this else "baseline",
+        "f32_side": "baseline" if x64_this else "this run",
+        "same_fixture_and_steps": bool(same_fixture_and_steps),
+        "freqs_hz": [float(freqs_all[i]) for i in ii],
+        "abs_S10_this": None, "abs_S10_baseline": None, "ratio_S10": None,
+        "abs_S01_this": None, "abs_S01_baseline": None, "ratio_S01": None,
+        "s10_s01_max_ratio": None,
+        "magnitude_deltas": {},
+        "magnitude_max_delta": None,
+        "not_computable": [],
+        "verdict": None,
+    }
+    tiny = np.finfo(float).tiny
+    S_this = np.asarray(S)
+    ratio_parts = []
+    s_abs = ext.get("s_abs") if isinstance(ext, dict) else None
+    if s_abs and jj_ext is not None and all(k in s_abs for k in ("S10", "S01", "S00")):
+        for name, (j, i) in (("S10", (1, 0)), ("S01", (0, 1))):
+            a = np.abs(S_this[j, i, ii])
+            b = np.asarray(s_abs[name], dtype=float)[jj_ext]
+            ratio = np.maximum(a, b) / np.maximum(np.minimum(a, b), tiny)
+            out[f"abs_{name}_this"] = a.tolist()
+            out[f"abs_{name}_baseline"] = b.tolist()
+            out[f"ratio_{name}"] = ratio.tolist()
+            for k, r in enumerate(ratio):
+                if not np.isfinite(r) or r > 2.0:
+                    ratio_parts.append(f"{freqs_all[ii[k]] / 1e9:.3g} GHz |{name}| ratio {r:.3g}")
+        out["s10_s01_max_ratio"] = float(np.max(np.concatenate(
+            [out["ratio_S10"], out["ratio_S01"]])))
+    else:
+        out["not_computable"].append(
+            "|S10|/|S01| 2x rule: baseline carries no ext_589.s_abs (tracked record); "
+            "compare against the Step-A f32 remeasure JSON instead")
+    # Magnitudes that must reproduce within the A0 budget.
+    mags = {}
+    if "s22_abs" in base:
+        mags["S22"] = np.abs(np.abs(S_this[1, 1, ii])
+                             - np.asarray(base["s22_abs"], dtype=float)[jj_leg])
+    else:
+        out["not_computable"].append("|S22| (baseline has no s22_abs)")
+    if s_abs and jj_ext is not None and "S00" in s_abs:
+        mags["S00"] = np.abs(np.abs(S_this[0, 0, ii])
+                             - np.asarray(s_abs["S00"], dtype=float)[jj_ext])
+    else:
+        out["not_computable"].append("|S00| (baseline has no ext_589.s_abs.S00)")
+    if "col_msl_driven_power" in base:
+        col_this = np.abs(S_this[0, 1, ii]) ** 2 + np.abs(S_this[1, 1, ii]) ** 2
+        mags["col_msl_driven_power"] = np.abs(
+            col_this - np.asarray(base["col_msl_driven_power"], dtype=float)[jj_leg])
+    else:
+        out["not_computable"].append("col_msl_driven_power (absent from baseline)")
+    if isinstance(ext, dict) and "col_coax_driven_power" in ext and jj_ext is not None:
+        col_this = np.abs(S_this[0, 0, ii]) ** 2 + np.abs(S_this[1, 0, ii]) ** 2
+        mags["col_coax_driven_power"] = np.abs(
+            col_this - np.asarray(ext["col_coax_driven_power"], dtype=float)[jj_ext])
+    else:
+        out["not_computable"].append("col_coax_driven_power (baseline has no ext_589)")
+    out["magnitude_deltas"] = {k: v.tolist() for k, v in mags.items()}
+    mag_max = float(max(float(np.max(v)) for v in mags.values())) if mags else None
+    out["magnitude_max_delta"] = mag_max
+
+    if not same_fixture_and_steps:
+        out["verdict"] = ("NOT COMPARABLE for the f64 rule (predeclared for the SAME fixture "
+                          "and n_steps); ratios/deltas above are informational only")
+        return out
+    if out["ratio_S10"] is None:
+        part1 = out["not_computable"][0]
+        part1 = part1.replace("|S10|/|S01| 2x rule:", "|S10|/|S01| 2x rule NOT computable:")
+    elif ratio_parts:
+        part1 = ("FLOOR (precision/extractor): |S10| or |S01| moved > 2x between f32 and f64 "
+                 "at " + ", ".join(ratio_parts)
+                 + f" (max ratio {out['s10_s01_max_ratio']:.3g})")
+    else:
+        part1 = (f"|S10|/|S01| within 2x between f32 and f64 at all committed bins (max ratio "
+                 f"{out['s10_s01_max_ratio']:.3g}): NOT floor by this rule")
+    names = "/".join(f"|{k}|" if k.startswith("S") else k for k in mags) or "<none>"
+    if mag_max is None:
+        part2 = "no magnitude (|S22|/|S00|/col_power) is comparable against this baseline"
+    elif mag_max <= A0_REPRODUCED_MAX:
+        part2 = f"{names} reproduce within the A0 reproduced tier (max delta {mag_max:.3g} <= 1e-3)"
+    elif mag_max <= A0_STOP_MIN:
+        part2 = (f"{names} reproduce within the A0 GPU-spread tier (max delta {mag_max:.3g}, "
+                 "1e-3 < delta <= 1e-2)")
+    else:
+        part2 = (f"{names} do NOT reproduce within the A0 budget (max delta {mag_max:.3g} > "
+                 "1e-2): the predeclared rule requires them to; report, do not pin, no "
+                 "attribution")
+    out["verdict"] = part1 + " ; " + part2
+    return out
 
 
 def _a0_compare(baseline_path, *, freqs_all, committed, S, n_steps, fixture,
-                legacy):
+                legacy, x64_enabled):
     """Two-tier reproduction comparison against a baseline JSON.
 
     Compares what the baseline carries: full complex S when it has
     ext_589.s_complex, otherwise the derived scalars of the tracked
-    369367252283 record. Returns a JSON-able dict (never raises on a
-    missing/odd baseline -- the comparison is reported, not enforced).
+    369367252283 record. The reproduction TIER is applied only when this run
+    and the baseline share n_steps, fixture AND precision (jax_enable_x64);
+    otherwise the comparison is labeled NOT COMPARABLE and the deltas are
+    informational. Across a precision mismatch the predeclared f64-replicate
+    rule (review required change 2) is computed instead. Returns a JSON-able
+    dict (never raises on a missing/odd baseline -- the comparison is
+    reported, not enforced).
     """
     out = {"baseline_path": str(baseline_path), "status": None, "tier": None,
-           "compared": {}, "not_comparable": [], "notes": []}
+           "compared": {}, "not_comparable": [], "notes": [], "precision": None,
+           "f64_replicate": None}
     try:
         base = json.loads(Path(baseline_path).read_text())
     except Exception as exc:
@@ -316,38 +496,47 @@ def _a0_compare(baseline_path, *, freqs_all, committed, S, n_steps, fixture,
     if len(f_base) == 0:
         out["status"] = "baseline has no freqs_hz"
         return out
-    # Match committed bins to baseline bins by frequency value.
-    match = []
-    for k, f in enumerate(f_this):
-        j = np.where(np.isclose(f_base, f))[0]
-        match.append((committed[k], int(j[0])) if len(j) else (committed[k], None))
-    unmatched = [float(freqs_all[i]) for i, j in match if j is None]
+    ext = base.get("ext_589") or {}
+    # Legacy keys are committed-only (freqs_hz); ext_589 arrays are all-bins
+    # (freqs_hz_all). Match each by its own axis.
+    match_leg = _match_bins(f_this, f_base)
+    f_ext = ext.get("freqs_hz_all") if isinstance(ext, dict) else None
+    match_ext = _match_bins(f_this, f_ext) if f_ext else list(match_leg)
+    unmatched = [float(f) for f, j in zip(f_this, match_leg) if j is None]
     if unmatched:
         out["notes"].append(f"committed bins absent from baseline: {unmatched}")
-    pairs = [(i, j) for i, j in match if j is not None]
+    pairs = [(committed[k], jl, match_ext[k]) for k, jl in enumerate(match_leg)
+             if jl is not None and match_ext[k] is not None]
     if not pairs:
         out["status"] = "no shared bins"
         return out
-    ii = [i for i, _ in pairs]
-    jj = [j for _, j in pairs]
+    ii = [i for i, _, _ in pairs]
+    jj = [j for _, j, _ in pairs]
+    jj_ext = [j for _, _, j in pairs]
 
-    comparable = base.get("n_steps") == n_steps and base.get("fixture", "attempt2") == fixture
+    x64_base, x64_source = _baseline_precision(base)
+    out["precision"] = {
+        "this_run_jax_enable_x64": bool(x64_enabled),
+        "baseline_jax_enable_x64": bool(x64_base),
+        "baseline_source": x64_source,
+    }
+    reasons = []
     if base.get("n_steps") != n_steps:
-        out["notes"].append(
-            f"NOT COMPARABLE as a reproduction test: n_steps this run {n_steps} vs "
-            f"baseline {base.get('n_steps')}"
-        )
+        reasons.append(f"n_steps this run {n_steps} vs baseline {base.get('n_steps')}")
     if base.get("fixture", "attempt2") != fixture:
-        out["notes"].append(
-            f"NOT COMPARABLE as a reproduction test: fixture this run {fixture} vs "
-            f"baseline {base.get('fixture', 'attempt2')}"
-        )
+        reasons.append(f"fixture this run {fixture} vs baseline {base.get('fixture', 'attempt2')}")
+    if bool(x64_enabled) != bool(x64_base):
+        reasons.append(f"precision this run jax_enable_x64={bool(x64_enabled)} vs baseline "
+                       f"jax_enable_x64={bool(x64_base)} ({x64_source}); the A0 tier is only "
+                       "meaningful at the record's own precision")
+    for r in reasons:
+        out["notes"].append("NOT COMPARABLE as a reproduction test: " + r)
+    comparable = not reasons
 
     deltas = {}
-    ext = base.get("ext_589") or {}
     if "s_complex" in ext:
         sb = np.asarray(ext["s_complex"]["re"]) + 1j * np.asarray(ext["s_complex"]["im"])
-        d = np.abs(S[:, :, ii] - sb[:, :, jj])
+        d = np.abs(S[:, :, ii] - sb[:, :, jj_ext])
         deltas["max_abs_delta_S_complex"] = float(np.max(d))
         out["compared"]["complex_S_per_bin_max_abs_delta"] = np.max(d, axis=(0, 1)).tolist()
         tier_value = float(np.max(d))
@@ -387,7 +576,10 @@ def _a0_compare(baseline_path, *, freqs_all, committed, S, n_steps, fixture,
         )
     out["deltas"] = deltas
     out["tier_value"] = tier_value
-    if tier_value is None:
+    if not comparable:
+        out["tier"] = ("NOT COMPARABLE (" + "; ".join(r.split(";")[0] for r in reasons)
+                       + "): reproduction tier NOT applied; tier_value/deltas are informational")
+    elif tier_value is None:
         out["tier"] = "UNDETERMINED (baseline carries none of |S22|/col_power/max|S|/complex S)"
     elif tier_value <= A0_REPRODUCED_MAX:
         out["tier"] = "reproduced (<= 1e-3)"
@@ -398,6 +590,15 @@ def _a0_compare(baseline_path, *, freqs_all, committed, S, n_steps, fixture,
                        "any new record field tighter than this spread")
     out["budget_status"] = "UNMEASURED before this run (no GPU repeat exists on any coax lane)"
     out["status"] = "compared" if comparable else "compared but NOT a reproduction test"
+
+    if bool(x64_enabled) != bool(x64_base):
+        same = (base.get("n_steps") == n_steps
+                and base.get("fixture", "attempt2") == fixture)
+        out["f64_replicate"] = _f64_replicate_rule(
+            base=base, ext=ext, S=S, freqs_all=freqs_all, committed=committed, ii=ii,
+            jj_leg=jj, jj_ext=jj_ext if ("s_abs" in ext or "col_coax_driven_power" in ext) else None,
+            x64_this=bool(x64_enabled), x64_base=bool(x64_base), same_fixture_and_steps=same,
+        )
     return out
 
 
@@ -632,7 +833,7 @@ def main() -> int:
     pair_all, worst_dev_all = _mixed_reciprocity_deviation(S_all)
 
     a2_verdict = _classify_a2(q_lambda_min[committed])
-    a3_verdict = _classify_a3(fit[1, 1, :], freqs_all, committed)
+    a3_verdict = _classify_a3(fit, rec, freqs_all, committed)
     a5_coax_verdict = _classify_a5(a5_coax_side, committed)
     a5_msl_verdict = _classify_a5(a5_msl_side, committed)
 
@@ -708,7 +909,12 @@ def main() -> int:
                                     "(tests/test_coax_two_port_fdtd.py, measured 0.0127); "
                                     "load-bearing criterion = MSL-driven residual at 6/8 GHz "
                                     "> 10x own 10 GHz value",
-            "verdict_msl_ladder_msl_drive": a3_verdict,
+            "falsifier": "MSL-DRIVEN MSL-ladder fit or recurrence residual > 0.02 or > 10x "
+                         "own 10 GHz at a committed bin => EXTRACTOR ((b)-on-ladder supported); "
+                         "(b)-on-ladder FALSIFIED only when fit AND recurrence residuals of the "
+                         "MSL ladder are <= 0.02 (and <= 10x own 10 GHz) at ALL committed bins "
+                         "under BOTH drives; else NON-CLOSING (not falsified)",
+            "verdict_msl_ladder_both_drives": a3_verdict,
         },
         "a_inc": {"abs": _pd(np.abs(a_inc)), "re": _pd(a_inc.real), "im": _pd(a_inc.imag)},
         "b_out": {"abs": _pd(np.abs(b_out)), "re": _pd(b_out.real), "im": _pd(b_out.imag)},
@@ -747,7 +953,7 @@ def main() -> int:
     if args.baseline:
         ext["a0_reproduction"] = _a0_compare(
             args.baseline, freqs_all=freqs_all, committed=committed, S=S_all,
-            n_steps=n_steps, fixture=args.fixture, legacy=out,
+            n_steps=n_steps, fixture=args.fixture, legacy=out, x64_enabled=x64_enabled,
         )
     out["fixture"] = args.fixture
     out["ext_589"] = ext
@@ -782,7 +988,7 @@ def main() -> int:
               f"coax/msl {fit[0, 1, k]:.4g} ({rec[0, 1, k]:.3g})  "
               f"msl/coax {fit[1, 0, k]:.4g} ({rec[1, 0, k]:.3g})  "
               f"msl/msl {fit[1, 1, k]:.4g} ({rec[1, 1, k]:.3g})")
-    print(f"  A3 verdict (MSL ladder, MSL drive): {a3_verdict}")
+    print(f"  A3 verdict (MSL ladder, BOTH drives, fit+recurrence, committed bins): {a3_verdict}")
     print("  |a_inc| / |b_out| per bin [coax array: coax drive, msl drive | msl array: coax drive, msl drive]:")
     for k in range(nf):
         mark = "*" if k in committed else " "
@@ -813,8 +1019,24 @@ def main() -> int:
             print(f"  compared : {a0['compared']}")
         if a0.get("not_comparable"):
             print(f"  cannot compare against this baseline: {a0['not_comparable']}")
+        if a0.get("precision"):
+            pr = a0["precision"]
+            print(f"  precision: this run jax_enable_x64={pr['this_run_jax_enable_x64']}  "
+                  f"baseline jax_enable_x64={pr['baseline_jax_enable_x64']}  "
+                  f"({pr['baseline_source']})")
         print(f"  tier value (max |delta| over comparable |S|-type quantities): {a0.get('tier_value')}")
         print(f"  TIER     : {a0.get('tier')}")
+        if a0.get("f64_replicate"):
+            f64 = a0["f64_replicate"]
+            print("  --- f64 replicate rule (review required change 2; predeclared, computed) ---")
+            print(f"  f64 side : {f64['f64_side']}   f32 side: {f64['f32_side']}   "
+                  f"same fixture/steps: {f64['same_fixture_and_steps']}")
+            print(f"  |S10| f32/f64 ratio per committed bin: {f64['ratio_S10']}")
+            print(f"  |S01| f32/f64 ratio per committed bin: {f64['ratio_S01']}")
+            print(f"  magnitude deltas (must be within A0 budget): {f64['magnitude_deltas']}")
+            if f64["not_computable"]:
+                print(f"  not computable against this baseline: {f64['not_computable']}")
+            print(f"  F64 RULE : {f64['verdict']}")
 
     out_path = Path(args.output) if args.output else (
         REPO / ".omx" / "coax-msl-transition-settled-run" /
@@ -856,7 +1078,8 @@ def main() -> int:
     print(f"  col_coax_driven_power: {[float(col_coax_all[k]) for k in committed]}")
     print(f"  lambda_min(I-S^HS)   : {[float(q_lambda_min[k]) for k in committed]}  -> {a2_verdict}")
     print(f"  cond_a raw / eq      : {[ext['cond_a_raw'][k] for k in committed]} / {cond_a_equilibrated}")
-    print(f"  A3 (msl/msl fit_res) : {[float(fit[1, 1, k]) for k in committed]}  -> {a3_verdict}")
+    print(f"  A3 (msl/msl fit_res) : {[float(fit[1, 1, k]) for k in committed]}  "
+          f"(msl/coax fit_res {[float(fit[1, 0, k]) for k in committed]})  -> {a3_verdict}")
     print(f"  A5 coax|MSL ratios   : {[float(a5_coax_side[k]) for k in committed]} | "
           f"{[float(a5_msl_side[k]) for k in committed]}")
     print(f"  A5 verdicts          : coax: {a5_coax_verdict} ; msl: {a5_msl_verdict}")
