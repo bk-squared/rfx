@@ -289,11 +289,11 @@ def test_pml_floor_class_gate():
     truncates the direct pulse near its peak, which biases the measured floor
     UPWARD (pessimistic) -- harmless for a class gate.
     """
+    import jax
+
+    from validation.research.portgrid import m1b_retry, sim2d
+
     with enable_x64():
-        import jax
-
-        from validation.research.portgrid import m1b_retry, sim2d
-
         dt, _ = m1b_retry._dt_for(sim2d, 2)
         nx, ny, src, prb = 400, 40, 100, 150
         n_steps = int(np.ceil(2.2e-9 / dt))

@@ -55,9 +55,6 @@ import json
 import time
 
 import jax
-
-jax.config.update("jax_enable_x64", True)  # script entrypoint
-
 import numpy as np
 
 C0 = 299792458.0
@@ -510,4 +507,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    jax.config.update("jax_enable_x64", True)  # script entrypoint
     raise SystemExit(main())
