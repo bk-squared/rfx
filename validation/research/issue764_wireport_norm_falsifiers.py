@@ -421,8 +421,8 @@ def main():
     for k_, v_ in verdicts.items():
         print(f"  {k_:7s}: {'PASS' if v_ else 'FAIL'}")
         n_fail += (not v_)
-    print(f"F7b: NOT-RUN (NU finite-region flux monitors unimplemented)")
-    print(f"F10/F11: run separately (see module docstring / test suite)")
+    print("F7b: NOT-RUN (NU finite-region flux monitors unimplemented)")
+    print("F10/F11: run separately (see module docstring / test suite)")
     if n_fail:
         print(f"\n{n_fail} falsifier(s) FIRED — stop and report; "
               "do not tune.")

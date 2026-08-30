@@ -53,7 +53,7 @@ def test_forward_wire_port_sparams_populated():
     spec, accs = result.wire_port_sparams[0]
     # Issue #764: the accumulator tuple grew a 4th slot (whole-port
     # v_port_dft); the asserted channels are unchanged.
-    v_dft, i_dft, v_inc_dft = accs[0], accs[1], accs[2]
+    v_dft, i_dft = accs[0], accs[1]  # accs[2] is v_inc_dft, unused here
     assert v_dft.shape == (7,), v_dft.shape
     assert i_dft.shape == (7,), i_dft.shape
     assert result.s_params is not None, (
