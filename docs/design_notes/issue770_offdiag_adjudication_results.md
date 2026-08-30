@@ -106,15 +106,25 @@ per-bin sv 0.9874–1.003227, column power 0.9563–0.9908, DC anchor
 
 1. THRU battery `_THRU_S21_BAND` (0.35, 0.85) → (0.90, 1.001): edges
    physics-derived (external-anchor closure window / passivity bound +
-   float headroom), measured 0.9341–0.9954.  The old band was the #313
-   regression lock whose own docstring prescribed exactly this
-   re-baseline ("when the kappa item lands ... re-baseline in the same
-   PR").
+   headroom for the systematic near-unity excess in item 2), measured
+   0.9341–0.9954.  The old band was the #313 regression lock whose own
+   docstring prescribed exactly this re-baseline ("when the kappa item
+   lands ... re-baseline in the same PR"). `_THRU_S21_BAND`'s 1.001
+   upper edge is the binding magnitude gate for that excess.
 2. `_THRU_MAX_SINGULAR_VALUE` 0.85 → 1.01: measured 1.003227 — the
    matrix is now near-unitary; the 0.32% excess over the physical bound
-   is complex64-extraction noise (the repo's 1.02 column-power ceiling
-   class).  A strictly-below-1 gate cannot bind a physically ~unity
-   singular value; 0.85 was bindable only against the deflated frame.
+   is SYSTEMATIC and monotone in frequency (1.0032 at 3 GHz → 0.9874 at
+   7 GHz), mechanism unidentified — NOT float noise. Re-measured on
+   this branch post-review: f64 fields give 1.0032250 vs f32 1.0032275
+   (same excess, not shrinking); 4000/8000/16000 steps are
+   bit-identical at 1.0032275433727436 (not a finite-window artefact);
+   complex128 algebra matches complex64 to 16 digits (not an
+   accumulator-precision artefact). The repo's 1.02 column-power
+   ceiling class is kept only as a plausibility anchor for the gate
+   value, not as a causal explanation. A strictly-below-1 gate cannot
+   bind a physically ~unity singular value; 0.85 was bindable only
+   against the deflated frame. Follow-up: the mechanism is unidentified
+   and tracked as a follow-up issue (drafted, not yet filed).
 3. Phase-dev band (−1.1, −0.1) KEPT (measured −0.3516..−0.8125, margins
    0.29/0.25); reciprocity gates 1.5e-2/0.10 KEPT (measured 2.67e-4);
    DC-anchor band (−0.25, +0.10) KEPT (measured −0.0575/−0.1152).

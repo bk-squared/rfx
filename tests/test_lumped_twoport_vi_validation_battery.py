@@ -261,9 +261,12 @@ _THRU_S11_ALIVE_MIN = 0.02
 # Band edges are PHYSICS-derived, not envelope-tuned: lower 0.90 from the
 # external-anchor closure window (net-through fraction >= 0.90 with the
 # measured diagonal — the F-A2 window of the #770 pre-declaration);
-# upper 1.0 + 1e-3 (physical passivity bound + float headroom; measured
-# max 0.9954). A collapse back to the per-cell 0.55-0.61 class or to the
-# pre-#308 near-null fails the lower edge loudly.
+# upper 1.0 + 1e-3 (physical passivity bound + headroom for the same
+# systematic, monotone-in-frequency excess gated below by
+# _THRU_MAX_SINGULAR_VALUE — 1.0032 at 3 GHz -> 0.9874 at 7 GHz,
+# mechanism unidentified, NOT float noise; measured max 0.9954). A
+# collapse back to the per-cell 0.55-0.61 class or to the pre-#308
+# near-null fails the lower edge loudly.
 _THRU_S21_BAND = (0.90, 1.0 + 1e-3)
 
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
@@ -303,16 +306,23 @@ _THRU_RECIP_REL_MAX = 0.10
 # = 1.003227 (issue #770 whole-port re-measure 2026-08-29; per-bin
 # 1.0032..0.9874, largest at 3 GHz where |S21| = 0.9954). The matrix is
 # now NEAR-UNITARY — the physical singular value is ~1 and the 0.32%
-# excess is extraction float noise (complex64 accumulators + finite DFT
-# window) on top of it, the same noise class the repo's 1.02
-# column-power ceilings allow. Gate 1.01: ~2x the measured excess over
-# the physical bound, strictly below the 1.02 passivity-tolerance
-# class. The historical 0.85 gate was bindable only because the
+# excess is SYSTEMATIC and monotone in frequency (1.0032 at 3 GHz ->
+# 0.9874 at 7 GHz); mechanism unidentified. It is NOT float noise: f64
+# fields give 1.0032250 vs f32 1.0032275, 4000/8000/16000 steps are
+# bit-identical at 1.0032275433727436, and complex128 algebra matches
+# complex64 to 16 digits — all three reproduce the excess rather than
+# shrinking it. Gate 1.01: ~2x the measured excess over the physical
+# bound, strictly below the repo's 1.02 column-power passivity-tolerance
+# class (kept as a plausibility anchor, not a causal explanation — the
+# binding magnitude gate for this excess is _THRU_S21_BAND's 1.001
+# edge). The historical 0.85 gate was bindable only because the
 # per-cell frame DEFLATED |S21| to 0.63 (post-#318 sv 0.632587,
 # post-#683-flip 0.6934); a strictly-below-1 gate cannot bind a
 # physically ~unity singular value. Energy-sanity lock; the
 # transmission MAGNITUDE is now separately gated by _THRU_S21_BAND
-# against the external-anchor closure window.
+# against the external-anchor closure window. Follow-up: root cause of
+# the monotone excess is not yet isolated (see the drafted follow-up
+# issue in the PR body).
 _THRU_MAX_SINGULAR_VALUE = 1.01
 
 # ===========================================================================
@@ -624,8 +634,10 @@ def test_thru_s21_band_locks_shipped_decomposer_envelope(thru_smatrix):
     0.5236-0.6678 post-#308, structural near-null 0.0025-0.0046
     pre-#308); it now lives only on the legacy v_port=None decomposer
     path. The lower edge catches any collapse back to those classes; the
-    upper edge is the passivity bound + float headroom (over-unity
-    extraction artefact class).
+    upper edge is the passivity bound plus headroom for the systematic,
+    frequency-monotone near-unity excess also gated below by
+    test_thru_passivity_singular_values (1.0032 at 3 GHz -> 0.9874 at
+    7 GHz; mechanism unidentified, NOT float noise).
     """
     s21 = np.abs(thru_smatrix[1, 0])
     lo, hi = _THRU_S21_BAND
@@ -714,15 +726,21 @@ def test_thru_passivity_singular_values(thru_smatrix):
     frame, measured provenance --battery-provenance): the matrix is now
     NEAR-UNITARY — measured per-bin sv 0.9874..1.0032 (max 1.003227 at
     3 GHz where |S21| = 0.9954); the 0.32% excess over the physical
-    bound is extraction float noise (complex64 accumulators + finite
-    DFT window), the same class the repo's 1.02 column-power ceilings
-    allow. Gate 1.01 (~2x the measured excess, strictly below 1.02).
-    History: the 0.85 gate was bindable only while the per-cell frame
-    deflated |S21| (sv 0.632587 post-#318, 0.6934 post-#683-flip,
-    interim 3.2061 in the keyed-envelope era; 0.687410 post-#308) — a
-    strictly-below-1 gate cannot bind a physically ~unity singular
-    value. Catches over-unity extraction artefacts; the transmission
-    magnitude itself is gated by the S21 band lock.
+    bound is SYSTEMATIC and monotone in frequency (1.0032 at 3 GHz ->
+    0.9874 at 7 GHz), mechanism unidentified. It is NOT float noise:
+    f64 fields give 1.0032250 vs f32 1.0032275, 4000/8000/16000 steps
+    are bit-identical at 1.0032275433727436, and complex128 algebra
+    matches complex64 to 16 digits — the repo's 1.02 column-power
+    ceilings are kept only as a plausibility anchor, not a causal
+    explanation. Gate 1.01 (~2x the measured excess, strictly below
+    1.02; the binding magnitude gate for this excess is the S21 band's
+    1.001 edge, see below). History: the 0.85 gate was bindable only
+    while the per-cell frame deflated |S21| (sv 0.632587 post-#318,
+    0.6934 post-#683-flip, interim 3.2061 in the keyed-envelope era;
+    0.687410 post-#308) — a strictly-below-1 gate cannot bind a
+    physically ~unity singular value. Catches over-unity extraction
+    artefacts; the transmission magnitude itself is gated by the S21
+    band lock.
     """
     sv_max = max(
         np.linalg.svd(thru_smatrix[:, :, k], compute_uv=False)[0]
