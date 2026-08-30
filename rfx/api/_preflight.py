@@ -4871,8 +4871,10 @@ class _PreflightMixin:
                             f"(docs/guides/support_matrix.md, 'Multi-band "
                             f"graded mesh'). REMEDY: keep at least "
                             f"{layers} uniform interior cells against that "
-                            f"face, or close it with PEC/PMC. STALE-IF: an "
-                            f"absorber-bearing witness is added to that row.",
+                            f"face, or close it with PEC/PMC. STALE-IF: a "
+                            f"witness that SCORES an accuracy observable "
+                            f"with an absorber present is added to that "
+                            f"row.",
                             code="nu_grading_reaches_absorber",
                             source="_validate_cfg_multiband_grading",
                         ),

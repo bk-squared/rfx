@@ -1561,3 +1561,10 @@ This section corrects WP6R.12's own attribution the same way: read every
    wording under the append-only rule and is read through C8. **The
    remaining wrong site is the PR #785 body, which this lane cannot edit
    (no GitHub writes): it must be updated to <= 7.6e-6 before merge.**
+
+**WP6R.13 addendum (same day).** The `nu_grading_reaches_absorber`
+advisory's STALE-IF read "an absorber-bearing witness is added to that
+row" — a condition already satisfied by F-S5, and therefore vacuous the
+moment BL1 was correct. Tightened to "a witness that SCORES an accuracy
+observable with an absorber present is added to that row", which is the
+condition that would actually retire the exclusion.
