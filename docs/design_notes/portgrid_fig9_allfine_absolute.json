@@ -1,0 +1,50 @@
+{
+  "pdf": "/private/tmp/claude-501/-Users-byungkwankim/4be4411d-c9fe-42f8-b93a-baa240e76fb5/scratchpad/1606.08761.pdf",
+  "page_index": 9,
+  "top_panel_absolute_anchors": {
+    "band_GHz": [
+      2.0,
+      29.8
+    ],
+    "all_fine6": {
+      "max_db": -8.03,
+      "max_linear": 0.3968,
+      "f_at_max_GHz": 29.43,
+      "db_at_10GHz": -18.42,
+      "db_at_25GHz": -10.94,
+      "db_at_29GHz": -8.78
+    },
+    "all_coarse": {
+      "max_db": -6.32,
+      "max_linear": 0.4831,
+      "f_at_max_GHz": 28.83,
+      "db_at_10GHz": -15.62,
+      "db_at_25GHz": -7.7,
+      "db_at_29GHz": -6.48
+    },
+    "r6": {
+      "max_db": -7.93,
+      "max_linear": 0.4015,
+      "f_at_max_GHz": 29.01,
+      "db_at_10GHz": -18.3,
+      "db_at_25GHz": -10.47,
+      "db_at_29GHz": -7.94
+    },
+    "r4": {
+      "max_db": -7.62,
+      "max_linear": 0.4157,
+      "f_at_max_GHz": 28.96,
+      "db_at_10GHz": -17.82,
+      "db_at_25GHz": -9.93,
+      "db_at_29GHz": -7.62
+    },
+    "r2": {
+      "max_db": -7.4,
+      "max_linear": 0.4267,
+      "f_at_max_GHz": 28.92,
+      "db_at_10GHz": -17.93,
+      "db_at_25GHz": -9.52,
+      "db_at_29GHz": -7.42
+    }
+  }
+}

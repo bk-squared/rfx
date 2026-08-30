@@ -63,6 +63,9 @@ def main() -> int:
     ap.add_argument("pdf", help="local path to the arXiv:1606.08761 PDF")
     ap.add_argument("--page", type=int, default=9, help="0-based page index of Fig. 9")
     ap.add_argument("--out", default="")
+    ap.add_argument("--abs-out", dest="abs_out", default="",
+                    help="write ONLY the top-panel absolute anchors here "
+                         "(Correction R3(b) / F-M1b-abs provenance)")
     args = ap.parse_args()
 
     pages = list(extract_pages(args.pdf))
@@ -144,10 +147,34 @@ def main() -> int:
     r6 = mism["r6"]["max_linear_diff_vs_allfine"]
     result["rod_arm_window_linear_r6_paper_plus_5dB"] = round(r6 * 10 ** (5.0 / 20.0), 4)
 
+    # ---- top panel: ABSOLUTE anchors (Correction R3(b), F-M1b-abs) ----
+    # The all-fine curve of the top panel is a pure-Yee run of the paper's own
+    # Sec. V-C fixture: no subgridding anywhere in it.  Comparing OUR all-fine
+    # run against it is a fixture/observable-fidelity check with no scheme
+    # content, which is why it is the check that catches a probe-projection
+    # error.  Anchors: max over the extracted band and the values at 10/25/29
+    # GHz.  Recorded for every top-panel curve; all_fine6 is the one F-M1b-abs
+    # judges against.
+    absolute = {"band_GHz": [float(f[0]), float(f[-1])]}
+    for name, db in interp.items():
+        row = {"max_db": round(float(np.max(db)), 2),
+               "max_linear": round(float(np.max(10 ** (db / 20.0))), 4),
+               "f_at_max_GHz": round(float(f[int(np.argmax(db))]), 2)}
+        for fq in (10.0, 25.0, 29.0):
+            row[f"db_at_{int(fq)}GHz"] = round(float(np.interp(fq, f, db)), 2)
+        absolute[name] = row
+    result["top_panel_absolute_anchors"] = absolute
+
     print(json.dumps(result, indent=2))
     if args.out:
         with open(args.out, "w") as fh:
             json.dump(result, fh, indent=2)
+    if args.abs_out:
+        # separate file so the frozen window-provenance JSON stays byte-identical
+        with open(args.abs_out, "w") as fh:
+            json.dump({"pdf": args.pdf, "page_index": args.page,
+                       "top_panel_absolute_anchors": result["top_panel_absolute_anchors"]},
+                      fh, indent=2)
     return 0
 
 
