@@ -104,7 +104,6 @@ def twin_rung(scale: float) -> dict:
 
 
 def part_a(win) -> dict:
-    w = win["D4_reference_quality"]["D4a_exact_reference_twin"]
     sound = float(win["D4_reference_quality"]
                   ["instrument_resolution_derivation"]["sound_hz"])
     limited = float(win["D4_reference_quality"]

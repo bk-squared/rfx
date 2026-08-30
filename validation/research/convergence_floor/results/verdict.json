@@ -167,7 +167,8 @@
    "what_would_extend_it_to_715": "run this same ladder -- same nine lattice-valid rungs, same uniform mesh, same extraction, same turn-over check via ladder_guard -- on #715's own patch geometry, and report ITS measured non-monotone spread. Two further conditions, both of which this lane's own data show matter: (a) the ladder must span the turn-over, since the whole finding here is that a ladder read on one side of a maximum reports arithmetic, not error; (b) the ledger's -dx/L_eff staircase law must not be used as the bridge -- this lane MEASURED it over-predicting this fixture's variation by 5.6x, so it does not transport an envelope between fixture classes."
   }
  },
- "ladder_against_independent_reference": {
+ "ladder_against_self_fitted_limit": {
+  "caveat": "NOT an independent reference: err_mhz is |f(s) - f_inf| with f_inf fitted by NLS to these same five with-trace rungs (D4b), so monotone_decreasing and p_loglog hold by construction on the points the fit was trained on -- the same self-referential pattern Sec 12.4 condemns for D2-A's p_smooth_loglog. deviation_over_rms (the held-out s=0.25 rung judged against this fit) is the independent quantity and is not affected by this caveat.",
   "scales": [
    1.5,
    1.0,

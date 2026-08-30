@@ -124,7 +124,6 @@ def main():
              if not r["multiband"]}
 
     rows = []
-    prev = None
     if os.path.exists(OUT):
         rows = json.load(open(OUT)).get("rows", [])
         for r in rows:

@@ -76,7 +76,6 @@ def _cells_twin(scale: float) -> int:
 
 
 def main():
-    win = load("predeclared_windows_786.json")
     d0 = load("d0_reproduction.json")
     d1 = load("d1_geometry.json")
     d2 = load("d2_edge.json")
@@ -286,11 +285,27 @@ def main():
             }
         out["accuracy_envelope"] = env
 
-    # --- the ladder, re-judged against the independent reference ------
+    # --- the ladder, re-judged against the D4b fit's own limit --------
+    # NOT an independent-reference check: f_inf here is fitted by NLS to
+    # these same five with-trace rungs (D4b/part_b), so monotone_decreasing
+    # and p_loglog hold by construction on the fitted points -- the same
+    # self-referential pattern Sec. 12.4 condemns for D2-A's p_smooth_loglog.
+    # deviation_over_rms (the held-out s=0.25 rung vs this fit) IS an
+    # independent check and is unaffected.
     if d4b:
         u = d4b["D4b"]["uniform"]
         errs = [u["err_vs_f_inf_mhz"][str(s)] for s in u["scales"]]
-        out["ladder_against_independent_reference"] = {
+        out["ladder_against_self_fitted_limit"] = {
+            "caveat": (
+                "NOT an independent reference: err_mhz is |f(s) - f_inf| "
+                "with f_inf fitted by NLS to these same five with-trace "
+                "rungs (D4b), so monotone_decreasing and p_loglog hold by "
+                "construction on the points the fit was trained on -- the "
+                "same self-referential pattern Sec 12.4 condemns for "
+                "D2-A's p_smooth_loglog. deviation_over_rms (the held-out "
+                "s=0.25 rung judged against this fit) is the independent "
+                "quantity and is not affected by this caveat."
+            ),
             "scales": u["scales"],
             "err_mhz": u["err_vs_f_inf_mhz"],
             "monotone_decreasing": bool(all(errs[i] > errs[i + 1]
@@ -300,7 +315,7 @@ def main():
         }
         if "multiband" in d4b["D4b"]:
             m = d4b["D4b"]["multiband"]
-            out["ladder_against_independent_reference"]["multiband"] = {
+            out["ladder_against_self_fitted_limit"]["multiband"] = {
                 "err_mhz": m["err_vs_f_inf_mhz"],
                 "p_loglog": m["p_from_loglog_vs_f_inf"], "p_nls": m["p"]}
 

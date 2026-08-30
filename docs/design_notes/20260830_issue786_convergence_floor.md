@@ -303,6 +303,18 @@ decreasing at every rung). The theory behind that window stands on its own: a
 Meixner wedge exponent reduces the **order**; it cannot produce a non-vanishing
 floor.
 
+**Caveat (PR #788 review round 4): this "error vs D4b f∞" check is not an
+independent reference.** f∞ here is fitted by NLS to the same five with-trace
+rungs that p_trace = 2.61 and the monotone/decreasing clauses are then measured
+against, so both hold by construction on the points the fit was trained on —
+the identical self-referential pattern §12.4 condemns for D2-A's
+`p_smooth_loglog`. `verdict.py` now names this block `ladder_against_self_fitted_limit`
+(was `ladder_against_independent_reference`) and carries this caveat in the JSON
+itself. `deviation_over_rms` (the held-out s = 0.25 rung judged against this same
+fit, §5's 17.6σ outlier figure above) is a genuinely independent check and is not
+affected. Independently of this caveat, §10.3 below re-takes this EXONERATE
+verdict on the nine-rung ladder and finds it INCONCLUSIVE.
+
 ---
 
 ## §6 Results, part 2 — D5, D6, and the verdict (appended 2026-08-30)
