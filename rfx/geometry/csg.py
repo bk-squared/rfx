@@ -59,13 +59,23 @@ class Shape(Protocol):
 
 
 def _grid_coords(grid: Grid):
-    """Extract 1D physical coordinate arrays from a uniform Grid."""
+    """Extract 1D physical coordinate arrays from a uniform Grid.
+
+    PROTOTYPE (#802): concrete float64 numpy node coordinates
+    ``(i - pad) * dx``, independent of ``jax_enable_x64``. Under the JAX
+    default dtype the float32 product ``i*dx`` lands ~1e-10 m off the exact
+    node value and the half-open ``[lo, hi)`` test in ``Box._axis_mask``
+    flips at node-aligned faces (hi face gained, lo face lost). The uniform
+    grid's nodes are never traced, so nothing downstream needs them as JAX
+    arrays; shapes evaluated on these coordinates keep their comparisons in
+    float64 (see ``Box.mask_on_coords``).
+    """
     nx, ny, nz = grid.shape
-    dx = grid.dx
+    dx = float(grid.dx)
     pad_x, pad_y, pad_z = grid.axis_pads
-    x = (jnp.arange(nx) - pad_x) * dx
-    y = (jnp.arange(ny) - pad_y) * dx
-    z = (jnp.arange(nz) - pad_z) * dx
+    x = (np.arange(nx, dtype=np.float64) - pad_x) * dx
+    y = (np.arange(ny, dtype=np.float64) - pad_y) * dx
+    z = (np.arange(nz, dtype=np.float64) - pad_z) * dx
     return x, y, z
 
 
@@ -256,7 +266,16 @@ class Box:
             # differentiable-mesh path. Both branches are computed and
             # selected with ``jnp.where``; the output is byte-identical
             # to the pre-refactor np-based path on concrete coordinates.
-            coords = jnp.asarray(coords)
+            # PROTOTYPE (#802): concrete numpy coordinates (the uniform
+            # grid from ``_grid_coords``) are compared in float64 with
+            # numpy so the realized cells do not depend on
+            # ``jax_enable_x64``; ``jnp.asarray`` would DOWNCAST them to
+            # float32 under the default config. Traced / JAX coordinates
+            # (differentiable mesh, NU lane) take the jnp path unchanged.
+            concrete = isinstance(coords, np.ndarray)
+            xp = np if concrete else jnp
+            if not concrete:
+                coords = jnp.asarray(coords)
             mid = (lo + hi) * 0.5
             extent = float(hi - lo)          # lo/hi are concrete Box corners
             if coords.size <= 1:             # static (shape, not values)
@@ -276,35 +295,41 @@ class Box:
                 # grid's per-cell width array threaded through mask_on_coords.
                 # On a uniform axis s_left==s_right==dx so this is bit-identical
                 # to the legacy centre-spacing.
-                k_mid = jnp.clip(
-                    jnp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
-                im1 = jnp.clip(k_mid - 1, 0, coords.size - 1)
-                ip1 = jnp.clip(k_mid + 1, 0, coords.size - 1)
+                k_mid = xp.clip(
+                    xp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
+                im1 = xp.clip(k_mid - 1, 0, coords.size - 1)
+                ip1 = xp.clip(k_mid + 1, 0, coords.size - 1)
                 s_left = coords[k_mid] - coords[im1]    # 0 at the lo end
                 s_right = coords[ip1] - coords[k_mid]   # 0 at the hi end
-                dc_local = jnp.where(
+                dc_local = xp.where(
                     (s_left > 0) & (s_right > 0),
-                    jnp.minimum(s_left, s_right),
-                    jnp.maximum(s_left, s_right))
+                    xp.minimum(s_left, s_right),
+                    xp.maximum(s_left, s_right))
             # Thin sheet: the single cell whose centre is nearest ``mid``.
             # (#371) On the collocated scheme, apply_pec_mask zeros tangential
             # Ex/Ey at this cell's CENTRE, so nearest-centre = minimum realized-
             # plane placement error. A matching-thickness (sub-cell) box takes
             # this same thin branch and agrees; only a >=1-cell VOLUME box
             # (different object) selects a different layer on a graded axis.
-            nearest_idx = jnp.argmin(jnp.abs(coords - mid))
-            thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
-                nearest_idx].set(True)
+            nearest_idx = xp.argmin(xp.abs(coords - mid))
+            if concrete:
+                thin_mask = np.zeros(coords.shape, dtype=bool)
+                thin_mask[nearest_idx] = True
+            else:
+                thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
+                    nearest_idx].set(True)
             # Volume: half-open [lo, hi).
             volume_mask = (coords >= lo) & (coords < hi)
             # Thin sheet when the extent is within one local cell.
             is_thin = extent <= dc_local * 1.01
-            return jnp.where(is_thin, thin_mask, volume_mask)
+            return xp.where(is_thin, thin_mask, volume_mask)
 
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])
         mz = _axis_mask(z, self.corner_lo[2], self.corner_hi[2])
-        return mx[:, None, None] & my[None, :, None] & mz[None, None, :]
+        # Boolean result is dtype-safe under any x64 setting; return a JAX
+        # array so callers see the same type as before the prototype.
+        return jnp.asarray(mx[:, None, None] & my[None, :, None] & mz[None, None, :])
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
@@ -350,7 +375,10 @@ class Cylinder:
             r2 = y3**2 + z3**2
             h = x3
 
-        return (r2 <= self.radius**2) & (jnp.abs(h) <= self.height / 2)
+        # PROTOTYPE (#802): ``abs`` dispatches to numpy on concrete float64
+        # coordinates and to jnp on tracers; ``jnp.abs`` would downcast the
+        # float64 nodes to float32 under the default config.
+        return jnp.asarray((r2 <= self.radius**2) & (abs(h) <= self.height / 2))
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
@@ -374,7 +402,7 @@ class Sphere:
         yc = y - self.center[1]
         zc = z - self.center[2]
         r2 = xc[:, None, None]**2 + yc[None, :, None]**2 + zc[None, None, :]**2
-        return r2 <= self.radius**2
+        return jnp.asarray(r2 <= self.radius**2)
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)

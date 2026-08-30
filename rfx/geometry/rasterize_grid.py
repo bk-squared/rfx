@@ -595,8 +595,16 @@ def resample_sheet_node_materials(
         if not is_tracer(m) and not bool(jnp.any(m)):
             continue
         shifted = list(base)
-        shifted[axis] = base[axis] + jnp.asarray(half_steps[axis],
-                                                 dtype=base[axis].dtype)
+        # PROTOTYPE (#802): keep concrete float64 node coordinates in
+        # numpy -- ``jnp.asarray(..., dtype=float64)`` downcasts to float32
+        # under the default config and the shifted rasterization would
+        # again depend on ``jax_enable_x64``.
+        if isinstance(base[axis], np.ndarray):
+            shifted[axis] = base[axis] + np.asarray(half_steps[axis],
+                                                    dtype=base[axis].dtype)
+        else:
+            shifted[axis] = base[axis] + jnp.asarray(half_steps[axis],
+                                                     dtype=base[axis].dtype)
         eps_s, sigma_s = _statics_on_coords(
             geometry_entries, material_resolver,
             tuple(shifted), tuple(base), axis, half_steps[axis],
