@@ -24,9 +24,11 @@ def _axis_names():
 
 def _node_arrays(sim, grid, nonuniform):
     if nonuniform:
-        dx = np.asarray(grid.dx_arr, dtype=float)
-        dy = np.asarray(grid.dy_arr, dtype=float)
-        dz = np.asarray(grid.dz, dtype=float)
+        # PROTOTYPE (#802b): the float64 declared spacings when present, so
+        # the reported node positions are the ones the rasterizer used.
+        dx = np.asarray(getattr(grid, "dx_arr64", None) if getattr(grid, "dx_arr64", None) is not None else grid.dx_arr, dtype=float)
+        dy = np.asarray(getattr(grid, "dy_arr64", None) if getattr(grid, "dy_arr64", None) is not None else grid.dy_arr, dtype=float)
+        dz = np.asarray(getattr(grid, "dz64", None) if getattr(grid, "dz64", None) is not None else grid.dz, dtype=float)
     else:
         n = grid.shape
         dx = np.full(n[0], float(grid.dx))
