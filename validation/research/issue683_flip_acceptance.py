@@ -23,8 +23,7 @@ witness test in tests/test_nu_wire_port_lane_parity.py (A2).
 
 Run from the worktree:
 
-  PYTHONPATH=$PWD JAX_PLATFORMS=cpu \
-      /Users/byungkwankim/Documents/rfx/.venv/bin/python \
+  PYTHONPATH=$PWD JAX_PLATFORMS=cpu .venv/bin/python \
       validation/research/issue683_flip_acceptance.py
 """
 from __future__ import annotations

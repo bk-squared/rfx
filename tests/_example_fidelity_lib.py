@@ -368,6 +368,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "issue #636 mode-localization analysis: reads committed field dumps "
         "and does linear algebra -- constructs no Simulation (AST-verified)"),
+    "validation/research/issue683_flip_acceptance.py": Entry(
+        "no_simulation",
+        "issue #683 flip-acceptance harness: imports `build`/`run_pre` from "
+        "issue683_sampling_order_decision.py and drives them -- the script's "
+        "own body constructs no Simulation (AST-verified)"),
     "validation/research/cpml_pole_pad/eigen_scan_636.py": Entry(
         "no_solve",
         "issue #636 frozen-coefficient von Neumann scan: builds a Simulation "
@@ -383,6 +388,13 @@ CLASSIFICATION: dict[str, Entry] = {
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited (23): builder is separable from solve ----
+    "validation/research/issue683_sampling_order_decision.py": Entry(
+        "audited",
+        "issue #683 sampling-order decision harness: `build(nu, r_load, "
+        "boundary)` returns Simulation with no solve call (the solve lives "
+        "in `run_pre()`/`run_post()`); the flip-acceptance script "
+        "(issue683_flip_acceptance.py) imports this same builder",
+        (Builder("build", None, (_v("nu-matched", nu=True, r_load=50.0),)),)),
     "validation/research/issue764_wireport_norm_falsifiers.py": Entry(
         "audited",
         "issue #764 falsifier battery: `build_fix_a()` returns Simulation "
