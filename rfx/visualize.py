@@ -208,20 +208,73 @@ def _axis_edges(grid, axis, nodes):
     widths as well. That is the same node-vs-cell confusion that makes
     ``position=`` land one plane above a one-cell sheet, so it is pinned by
     a test rather than left to a comment.
+
+    CLOSING EDGE, uniform vs non-uniform lane: a uniform ``Grid`` has no
+    ``dx_arr``/``dy_arr``/``dz`` array, so every node really is a full
+    ``dx`` cell and the closing edge is ``node[-1] + dx``. A
+    ``NonUniformGrid``'s spacing array is different: ``rfx/nonuniform.py``
+    (``_append_bounding_node``, see its comment at :64-69) pads it with ONE
+    TRAILING DUPLICATE of the last real cell's width so N cells get the N+1
+    nodes pcolormesh needs -- that duplicate is a node-provider only, "not
+    physical extent" in that module's own words, because the stencil zeroes
+    its H term. Re-adding it here (``node[-1] + d[-1]``) drew the axis one
+    full duplicate cell past the grid's real extent (measured: a graded z
+    axis closed 150 um past its last real node). The correct closing edge
+    on the non-uniform lane is the last node itself -- the trailing "cell"
+    has no width to add.
     """
     n = np.asarray(nodes, dtype=float)
-    names = ("dx_arr", "dy_arr", "dz")
-    d = getattr(grid, names[axis], None)
-    if d is None:
-        step = float(getattr(grid, "dx"))
-        d = np.full(n.size, step, dtype=float)
-    else:
-        d = np.asarray(d, dtype=float)
-        if d.size < n.size:            # scalar-ish or short: pad with the last
-            d = np.concatenate([d, np.full(n.size - d.size, d[-1])])
     if n.size == 0:
         return np.array([0.0, 1.0])
-    return np.concatenate([n, [n[-1] + d[n.size - 1]]])
+    names = ("dx_arr", "dy_arr", "dz")
+    d = getattr(grid, names[axis], None)
+    if d is None or np.asarray(d).size != n.size:
+        step = float(getattr(grid, "dx"))
+        return np.concatenate([n, [n[-1] + step]])
+    return np.concatenate([n, [n[-1]]])
+
+
+def _axis_pad_layers(grid, axis):
+    """(lo, hi) CPML absorber layer COUNT on each face of *axis*.
+
+    ``pad_{x,y,z}_{lo,hi}`` live on both the uniform ``Grid`` and
+    ``NonUniformGrid`` -- the NU side carries them specifically so
+    per-face CPML/PMC/PEC composition works (``rfx/nonuniform.py``) -- so
+    this one lookup covers both grid lanes without a duck-typing branch.
+    A face whose token is ``pec``/``pmc``/``periodic`` already reports 0
+    here, matching what actually got rasterized.
+    """
+    letter = "xyz"[axis]
+    return (int(getattr(grid, f"pad_{letter}_lo", 0) or 0),
+           int(getattr(grid, f"pad_{letter}_hi", 0) or 0))
+
+
+def _absorber_rects(grid, keep, xe, ye):
+    """(x, y, w, h) mm rectangles marking the CPML pad strips on a slice's
+    two IN-PLANE axes.
+
+    The material assembly legitimately extends into the pad -- CPML needs
+    a real material to absorb into, so a substrate slice reads copper-tint
+    laterally and vertically past the declared domain by design -- but
+    nothing marked where the declared domain ends and the pad begins, so
+    that legitimate overhang read as "the rasterizer grew my substrate."
+    """
+    rects = []
+    x0, x1 = float(xe[0]), float(xe[-1])
+    y0, y1 = float(ye[0]), float(ye[-1])
+    lo, hi = _axis_pad_layers(grid, keep[0])
+    if 0 < lo < xe.size:
+        rects.append((x0, y0, float(xe[lo]) - x0, y1 - y0))
+    if 0 < hi < xe.size:
+        edge = float(xe[xe.size - 1 - hi])
+        rects.append((edge, y0, x1 - edge, y1 - y0))
+    lo, hi = _axis_pad_layers(grid, keep[1])
+    if 0 < lo < ye.size:
+        rects.append((x0, y0, x1 - x0, float(ye[lo]) - y0))
+    if 0 < hi < ye.size:
+        edge = float(ye[ye.size - 1 - hi])
+        rects.append((x0, edge, x1 - x0, y1 - edge))
+    return rects
 
 
 def plot_rasterized_slice(
@@ -255,6 +308,20 @@ def plot_rasterized_slice(
       grid whenever any of ``dx_profile`` / ``dy_profile`` / ``dz_profile``
       is set.
 
+    The CPML absorber pad is hatched, not coloured solid, on both in-plane
+    axes (``grid.pad_{x,y,z}_{lo,hi}``): the material assembly legitimately
+    extends into it, so without a marker that overhang reads as "the
+    rasterizer grew my substrate."
+
+    ``two_plane=True`` (issue #706) bodies are drawn as ONE wall, same as
+    ``two_plane=False``: :meth:`Simulation.conductor_mask` returns the CELL
+    footprint, and the two-plane opt-in only zeroes an extra tangential-E
+    EDGE at the body's far node plane during the SOLVE — it adds no cell,
+    so there is nothing for this viewer's cell-based overlay to show.
+    Verified bit-identical: ``conductor_mask()`` is the same array whether
+    or not a body is flagged. Flagged bodies are still outlined normally;
+    the title counts how many are flagged so the gap is visible.
+
     Parameters
     ----------
     sim : Simulation
@@ -266,11 +333,15 @@ def plot_rasterized_slice(
         (``rfx/geometry/csg.py`` ``_axis_mask``), and on a float32 tie that
         can round either way — so the plane holding a sheet is not reliably
         the one nearest the coordinate you asked for. The search therefore
-        looks at the nearest node and its two neighbours and takes whichever
-        holds conductor cells; when it moves, the title says so, because
-        silently answering about a different plane turns "is this plane clear
-        of metal?" into a picture of the ground plane. Raises if *position*
-        is outside the axis. Mutually exclusive with ``index``.
+        looks at the nearest node and every other node within one LOCAL
+        cell width (the wider of the two cells touching the nearest node,
+        in METRES — not a fixed +/-1 index count, which reaches a
+        different physical distance on either side of a grading
+        transition) and takes whichever holds conductor cells; when it
+        moves, the title says so, because silently answering about a
+        different plane turns "is this plane clear of metal?" into a
+        picture of the ground plane. Raises if *position* is outside the
+        axis. Mutually exclusive with ``index``.
     index : int or None
         Grid index along *axis*. Overrides ``position``. If both are None,
         the plane with the most conductor cells is used.
@@ -330,7 +401,27 @@ def plot_rasterized_slice(
                     "plausible empty CPML plane, which is how a metre/mm slip "
                     "reads as a clean result.")
             k = int(np.argmin(np.abs(coords[axis] - pos)))
-            cand = [c for c in (k, k + 1, k - 1) if 0 <= c < n_along]
+            # Physical radius, not a fixed +/-1 INDEX: on a graded axis the
+            # cell touching k can be a fraction of its neighbour's size (a
+            # 100 um / 250 um grading transition measured 2.5x), so an
+            # index-count window reaches a different PHYSICAL distance
+            # depending on which side of a transition `pos` lands on -- the
+            # same sheet could be found approaching from one side and missed
+            # from the other at the identical distance. Use the WIDER of the
+            # two cells touching k as the search radius in metres so neither
+            # side is shortchanged.
+            if n_along > 1:
+                w_lo = (float(coords[axis][k] - coords[axis][k - 1])
+                        if k > 0 else None)
+                w_hi = (float(coords[axis][k + 1] - coords[axis][k])
+                        if k < n_along - 1 else None)
+                radius = max(w for w in (w_lo, w_hi) if w is not None)
+            else:
+                radius = 0.0
+            cand = [c for c in range(n_along)
+                   if abs(float(coords[axis][c]) - pos) <= radius + 1e-9]
+            if not cand:
+                cand = [k]
             index = max(cand, key=lambda c: int(per_plane[c]))
             if index != k:
                 # The search is a convenience for finding a sheet; silently
@@ -369,13 +460,26 @@ def plot_rasterized_slice(
     if uniform:
         cbar.set_ticks([lo_e])
         cbar.set_ticklabels([f"{lo_e:.4g} (uniform)"])
+    # alpha < 1: an OPAQUE overlay painted over the very cell whose
+    # permittivity plot_stack_profile's docstring promises is still
+    # readable ("a sheet's own cell keeps the permittivity of whatever
+    # abuts it") defeats that reading on every conductor cell at once.
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
-                  cmap=_conductor_cmap(), vmin=0.0, vmax=1.0)
+                  cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
+
+    absorber_rects = _absorber_rects(grid, keep, xe, ye)
+    for rx, ry, rw, rh in absorber_rects:
+        if rw <= 0 or rh <= 0:
+            continue
+        ax.add_patch(plt.Rectangle(
+            (rx, ry), rw, rh, fill=False, hatch="////", edgecolor="0.35",
+            lw=0.0, zorder=4))
 
     names = "xyz"
     n_skipped = 0
+    n_two_plane = 0
+    drawn = 0
     if show_declared:
-        drawn = 0
         # BOTH registries. add_thin_conductor() bodies live in
         # sim._thin_conductors, not sim._geometry, so iterating only the
         # latter drew a board of red cells with no outline AND no skip note —
@@ -400,28 +504,68 @@ def plot_rasterized_slice(
             tol = 0.05 * float(np.median(np.diff(coords[axis]))) if coords[axis].size > 1 else 1e-9
             if not (lo[axis] - tol <= float(coords[axis][index]) <= hi[axis] + tol):
                 continue
+            if getattr(entry, "two_plane", False):
+                n_two_plane += 1
             ax.add_patch(plt.Rectangle(
                 (lo[keep[0]] * 1e3, lo[keep[1]] * 1e3),
                 (hi[keep[0]] - lo[keep[0]]) * 1e3,
                 (hi[keep[1]] - lo[keep[1]]) * 1e3,
-                fill=False, edgecolor="#d55e00", lw=1.4, ls="--",
-                label=("declared outline (analytic box)"
-                       if drawn == 0 else None), zorder=5))
+                fill=False, edgecolor="#d55e00", lw=1.4, ls="--", zorder=5))
             drawn += 1
+
+    # Explicit legend PROXIES rather than relying on per-artist `label=` on
+    # the drawn patches: the conductor and absorber layers are pcolormesh
+    # QuadMesh objects (no per-cell label) and neither was explained in the
+    # figure before, so a reader had only the title's cell count to infer
+    # what red meant. `loc="best"` (vs. a hardcoded "upper right") picks the
+    # corner overlapping the fewest already-plotted patches instead of
+    # sitting on top of whichever board happens to fill that corner.
+    if int(cond2.sum()) or drawn or absorber_rects:
+        from matplotlib.patches import Patch
+        handles = []
+        if int(cond2.sum()):
+            handles.append(Patch(facecolor="#b03000", alpha=0.55,
+                                 label="conductor cell"))
         if drawn:
-            ax.legend(fontsize=8, loc="upper right", framealpha=0.9)
+            handles.append(Patch(fill=False, edgecolor="#d55e00", lw=1.4,
+                                 ls="--", label="declared outline (analytic box)"))
+        if absorber_rects:
+            handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
+                                 label="CPML absorber"))
+        ax.legend(handles=handles, fontsize=7, loc="best", framealpha=0.85)
 
     ax.set_xlabel(f"{names[keep[0]]} (mm)")
     ax.set_ylabel(f"{names[keep[1]]} (mm)")
-    ax.set_aspect("equal", adjustable="box")
+    # Equal aspect reads physically-faithful proportions on a near-square
+    # slice, but forcing it on an extreme one (a 30 x 0.8 mm board edge-on,
+    # or a 2D-mode slice whose synthetic axis is a couple of cells wide)
+    # shrinks the axes box to a sub-pixel sliver inside a fixed-shape
+    # canvas (measured: 0.48 inch tall in an 8x6 inch figure, legend
+    # covering a third of it). Only force it within a reasonable range.
+    x_span = float(xe[-1] - xe[0])
+    y_span = float(ye[-1] - ye[0])
+    data_ratio = (y_span / x_span) if x_span > 0 else 1.0
+    if 0.2 <= data_ratio <= 5.0:
+        ax.set_aspect("equal", adjustable="box")
+    else:
+        ax.set_aspect("auto")
     skip_note = (f"; {n_skipped} patterned body/bodies have no analytic "
                  "outline and are not outlined" if n_skipped else "")
+    tp_note = (f"; {n_two_plane} two-plane bod(y/ies) (#706) drawn as ONE "
+              "wall -- the second face is a solve-time edge operator, not "
+              "a conductor cell" if n_two_plane else "")
     ax.set_title(title or (
         f"Rasterized {names[axis]}-slice at index {index} "
         f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
-        f"{int(cond2.sum())} conductor cells{skip_note}{moved_note}"),
+        f"{int(cond2.sum())} conductor cells{skip_note}{tp_note}{moved_note}"),
         fontsize=10)
-    fig.tight_layout()
+    # A caller-supplied `ax` belongs to a figure the caller is composing
+    # (e.g. a 2-panel comparison); `fig.tight_layout()` reflows EVERY axes
+    # in that figure, not just this one -- measured moving a sibling
+    # subplot's bounds on every call. Only reflow a figure this function
+    # created itself.
+    if ax is None:
+        fig.tight_layout()
     return fig
 
 
@@ -447,6 +591,17 @@ def plot_stack_profile(
     DECLARED extent along *axis*, labelled by material.
     Right column — the cells the solve uses, each drawn at its true size, tinted
     by assembled permittivity, with conductor cells hatched.
+
+    The right column's top and bottom bands mark the CPML absorber pad
+    (``grid.pad_{axis}_lo/hi``) the same way :func:`plot_rasterized_slice`
+    does, so pad material at either end of the column is not read as
+    declared substrate.
+
+    ``two_plane=True`` (issue #706) bodies count and draw the same as
+    ``two_plane=False`` here: the opt-in's second wall is a solve-time
+    tangential-E edge operator, not a conductor CELL, so
+    :meth:`Simulation.conductor_mask` (and this reading of it) cannot show
+    it. The title counts flagged bodies covering this column.
 
     Parameters
     ----------
@@ -535,14 +690,35 @@ def plot_stack_profile(
                                    facecolor=str(max(shade, 0.0)),
                                    edgecolor="0.55", lw=0.4))
         if cond_col[k]:
+            # alpha < 1 + hatch, not an opaque fill: at alpha=0.85 solid
+            # red over near-white shading reads as opaque anyway, painting
+            # over the exact cell whose eps this docstring promises stays
+            # readable ("a sheet's own cell keeps the permittivity of
+            # whatever abuts it").
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
-                                       facecolor="#b03000", alpha=0.85,
+                                       facecolor="#b03000", alpha=0.45,
+                                       hatch="////",
                                        edgecolor="#701e00", lw=0.5))
+
+    pad_lo, pad_hi = _axis_pad_layers(grid, axis)
+    n_edges = edges.size - 1
+    absorber_spans = []
+    if 0 < pad_lo < edges.size:
+        absorber_spans.append((float(edges[0]), float(edges[pad_lo])))
+    if 0 < pad_hi < edges.size:
+        absorber_spans.append((float(edges[n_edges - pad_hi]), float(edges[n_edges])))
+    for lo_z, hi_z in absorber_spans:
+        if hi_z <= lo_z:
+            continue
+        ax.add_patch(plt.Rectangle((1.15, lo_z), 1.0, hi_z - lo_z,
+                                   fill=False, hatch="////",
+                                   edgecolor="0.35", lw=0.0, zorder=6))
 
     # declared spans of everything covering this column
     x_at = float(coords[keep[0]][i0])
     y_at = float(coords[keep[1]][i1])
     drawn = 0
+    n_two_plane = 0
     for entry in _declared_entries(sim):
         shape = getattr(entry, "shape", entry)
         lo = getattr(shape, "corner_lo", None)
@@ -556,6 +732,8 @@ def plot_stack_profile(
         if not (lo[keep[0]] - tolx <= x_at <= hi[keep[0]] + tolx
                 and lo[keep[1]] - toly <= y_at <= hi[keep[1]] + toly):
             continue
+        if getattr(entry, "two_plane", False):
+            n_two_plane += 1
         mat = (getattr(entry, "material_name", None)
                or getattr(entry, "material", None))
         ax.add_patch(plt.Rectangle((0.0, lo[axis] * 1e3), 1.0,
@@ -566,18 +744,39 @@ def plot_stack_profile(
                 ha="center", va="center", fontsize=7)
         drawn += 1
 
+    if int(cond_col.sum()) or absorber_spans:
+        from matplotlib.patches import Patch
+        handles = []
+        if int(cond_col.sum()):
+            handles.append(Patch(facecolor="#b03000", alpha=0.45,
+                                 hatch="////", label="conductor cell"))
+        if absorber_spans:
+            handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
+                                 label="CPML absorber"))
+        # Inside the axes, not bbox_to_anchor-outside: this function's
+        # figure is never reflowed for an outside-axes legend unless the
+        # caller happens to save with bbox_inches="tight", so an anchored
+        # legend was clipped at the canvas edge (measured). `loc="best"`
+        # fits it within the existing xlim/ylim instead.
+        ax.legend(handles=handles, fontsize=6.5, loc="best", framealpha=0.85)
+
     names = "xyz"
     ax.set_xlim(-0.1, 2.35)
     ax.set_ylim(edges.min(), edges.max())
     ax.set_xticks([0.5, 1.65])
     ax.set_xticklabels(["declared", "meshed"])
     ax.set_ylabel(f"{names[axis]} (mm)")
+    tp_note = (f"; {n_two_plane} two-plane bod(y/ies) (#706) drawn as ONE "
+              "wall" if n_two_plane else "")
     ax.set_title(title or (
         f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
         f"{names[keep[1]]}={y_at * 1e3:.3f} mm — {drawn} declared bod(y/ies), "
-        f"{int(cond_col.sum())} conductor cell(s) (red){auto_note}"),
+        f"{int(cond_col.sum())} conductor cell(s) (red){tp_note}{auto_note}"),
         fontsize=10)
-    fig.tight_layout()
+    # See plot_rasterized_slice: only reflow a figure this function
+    # created itself, never a caller-supplied `ax`'s whole figure.
+    if ax is None:
+        fig.tight_layout()
     return fig
 
 
