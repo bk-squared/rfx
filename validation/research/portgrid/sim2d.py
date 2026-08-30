@@ -480,10 +480,28 @@ def disk_sigma_maps(nx: int, ny: int, dx: float, dy: float,
 
 def make_stepper_pml(spec: TwoRegionSpec, *, src_col: int, probe_col: int,
                      npml: int = 15, m_pml: float = 3.0, r0: float = 1e-5,
-                     eps_fx=None, eps_fy=None, sigma_fx=None, sigma_fy=None):
-    """Two-region stepper with x-PML termination, Jy column source, and a
-    column-mean Ey probe (the retry fixture).  Coarse host is vacuum outside
-    the PML strips.  step(state, src_val) -> (state, probe_val)."""
+                     eps_fx=None, eps_fy=None, sigma_fx=None, sigma_fy=None,
+                     probe_full: bool = False):
+    """Two-region stepper with x-PML termination, Jy column source, and an Ey
+    probe on ``probe_col`` (the retry fixture).  Coarse host is vacuum outside
+    the PML strips.  step(state, src_val) -> (state, probe_val).
+
+    ``probe_full`` selects the PROJECTION applied to the probe column, and it
+    is a physics choice, not a convenience (retry pre-declaration Correction
+    R3):
+
+    * ``False`` (default, unchanged): the y-MEAN of Ey over the column.  With
+      PEC plates at y = 0, H this is the TEM (n = 0) modal amplitude alone --
+      the projection integral (1/H)∫Ey dy annihilates every cos(nπy/H), n >= 1.
+      A y-uniform source launches only TEM, but an interface or a scatterer
+      converts TEM into higher-order content, so an |S11| built on this probe
+      is a TEM->TEM reflection coefficient and is BLIND to mode-converted
+      reflected energy.
+    * ``True``: the whole Ey column, shape (ny,), so the caller can apply any
+      projection (y-mean, a point row, a modal overlap) to the SAME run.
+
+    The default keeps every previously committed measurement bit-identical.
+    """
     nx, ny, r = spec.nx, spec.ny, spec.r
     i0, i1, j0, j1 = spec.i0, spec.i1, spec.j0, spec.j1
     nfx, nfy = spec.nfx, spec.nfy
@@ -572,7 +590,9 @@ def make_stepper_pml(spec: TwoRegionSpec, *, src_col: int, probe_col: int,
 
         new_state = dict(ex=ex_new, ey=ey_new, hzx=hzx_new, hzy=hzy_new,
                          fex=fex_new, fey=fey_new, fhz=fhz_new)
-        return new_state, jnp.mean(ey_new[probe_col, :])
+        probe = (ey_new[probe_col, :] if probe_full
+                 else jnp.mean(ey_new[probe_col, :]))
+        return new_state, probe
 
     def init_state():
         z = partial(jnp.zeros, dtype=jnp.float64)
@@ -588,10 +608,16 @@ def make_stepper_pml(spec: TwoRegionSpec, *, src_col: int, probe_col: int,
 def make_uniform_pml(nx: int, ny: int, dx: float, dy: float, dt: float, *,
                      src_col: int, probe_col: int, npml: int = 15,
                      m_pml: float = 3.0, r0: float = 1e-5,
-                     eps_x=None, eps_y=None, sigma_x=None, sigma_y=None):
-    """Uniform-grid stepper with x-PML, Jy column source, column-mean Ey
-    probe, optional per-edge materials (rods).  PEC at y walls and behind
-    the PML.  step(state, src_val) -> (state, probe_val)."""
+                     eps_x=None, eps_y=None, sigma_x=None, sigma_y=None,
+                     probe_full: bool = False):
+    """Uniform-grid stepper with x-PML, Jy column source, an Ey probe on
+    ``probe_col``, optional per-edge materials (rods).  PEC at y walls and
+    behind the PML.  step(state, src_val) -> (state, probe_val).
+
+    ``probe_full`` has the same meaning as in :func:`make_stepper_pml`:
+    False (default) returns the y-MEAN of the column -- the TEM-only
+    projection -- and True returns the whole (ny,) column so the caller can
+    project it itself.  Default keeps prior measurements bit-identical."""
     if eps_x is None:
         eps_x = np.full((nx, ny + 1), EPS0)
     if eps_y is None:
@@ -623,8 +649,9 @@ def make_uniform_pml(nx: int, ny: int, dx: float, dy: float, dt: float, *,
             ca_y[1:-1, :] * ey[1:-1, :]
             + cb_y[1:-1, :] * (hz_new[:-1, :] - hz_new[1:, :]) / dx)
         ey_new = ey_new.at[src_col, :].add(src_val)
-        return (dict(ex=ex_new, ey=ey_new, hzx=hzx_new, hzy=hzy_new),
-                jnp.mean(ey_new[probe_col, :]))
+        probe = (ey_new[probe_col, :] if probe_full
+                 else jnp.mean(ey_new[probe_col, :]))
+        return (dict(ex=ex_new, ey=ey_new, hzx=hzx_new, hzy=hzy_new), probe)
 
     def init_state():
         z = partial(jnp.zeros, dtype=jnp.float64)

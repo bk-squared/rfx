@@ -22,6 +22,18 @@ Arms
              at dt(r=6) except subgrid r in {2,4} at their own dt.  Window
              (FROZEN, r=6 only): max linear | |S11_sub| - |S11_fine| | over
              [2,30] GHz <= 0.0941.  r in {2,4} and all-coarse recorded.
+  xcheck     RECORDING ONLY (cannot fire), pre-declaration Correction R3:
+             (a) the interface arm re-read through a point probe as well as the
+             y-mean, against the SAME frozen windows; (b) our ALL-FINE (no
+             subgridding anywhere) absolute |S11| against the paper's own
+             all-fine curve -- pure Yee vs pure Yee, so any gap is fixture or
+             observable, never the scheme; (c) the R3(c) rescaled rod window.
+
+NOTE on the probe (Correction R3): the y-mean of the Ey column is the TEM
+(n = 0) modal projection.  It is what the pre-declaration declared and what the
+frozen verdicts were taken under, but it is BLIND to reflected energy that the
+interface or the scatterer converts into higher-order modes.  Read the xcheck
+arm before quoting any |S11| from this script as "the" reflection.
 
 Run:
   PYTHONPATH=<worktree> .venv/bin/python \
@@ -59,9 +71,41 @@ SIGMA_CU = 5.8e7
 ROD_CENTERS = [(41e-3, 18e-3), (41e-3, 22e-3), (45e-3, 18e-3), (45e-3, 22e-3)]
 ROD_RADIUS = 1e-3
 WIN_20, WIN_30 = -46.24, -29.29
+# F-M1b-rod window as FROZEN in the pre-declaration (§5): the paper-extracted
+# r=6-vs-all-fine mismatch 0.0529 x 10^(5/20).  Keeps its verdict authority.
+#
+# CAVEAT (retry pre-declaration Correction R3(c), review finding): 0.0529 is an
+# ABSOLUTE linear difference measured on the paper's curves, whose all-fine peak
+# is 0.3968 (-8.03 dB); OUR all-fine curve under this fixture's declared
+# y-averaged (TEM-projection) observable peaks at 0.2073 (-13.67 dB).  The
+# "+5 dB rule" the window claims to implement is a RELATIVE class rule, so
+# transplanting the absolute difference delivers
+#   20 log10(0.3968 / 0.2073) = 5.64 dB
+# MORE allowance than +5 dB intends -- a factor 1.91 looser.  The rescaling rule
+# below was declared in Correction R3(c) BEFORE this number was computed; it is
+# recorded and reported as a strictly TIGHTER re-judgment of the same, unchanged
+# measurement.  The frozen window is not moved.
 WIN_ROD_LINEAR = 0.0941
+PAPER_ROD_MISMATCH_LINEAR = 0.0529     # portgrid_fig9_extraction.json
+PAPER_ALLFINE_PEAK_LINEAR = 0.3968     # portgrid_fig9_allfine_absolute.json
 WIN_FLOOR = -50.0
 WIN_NULL = -200.0
+WIN_ABS_DB = 5.0                       # F-M1b-abs, Correction R3(b)
+PAPER_ABS_JSON = "docs/design_notes/portgrid_fig9_allfine_absolute.json"
+
+
+def rescaled_rod_window(our_allfine_peak_linear: float) -> float:
+    """Correction R3(c) rule, declared before evaluation:
+
+        0.0529 x 10^(5/20) x (our all-fine peak / paper all-fine peak)
+
+    i.e. the +5 dB class allowance carried as a RELATIVE fraction of the
+    all-fine signal level and re-applied at this fixture's own level.  The
+    normaliser is the REFERENCE arm's peak; no part of the judged difference
+    enters its own window.
+    """
+    return (PAPER_ROD_MISMATCH_LINEAR * 10.0 ** (5.0 / 20.0)
+            * our_allfine_peak_linear / PAPER_ALLFINE_PEAK_LINEAR)
 
 
 def _dt_for(sim2d, r):
@@ -243,10 +287,201 @@ def arm_rods(sim2d, out):
     return not ok
 
 
+# --------------------------------------------------------------- xcheck arm
+# Correction R3: the declared observable (y-mean of the Ey probe column) is the
+# TEM (n = 0) projection.  These helpers run the SAME fixtures and return the
+# whole Ey column so several projections can be read off ONE run.
+
+PROBE_PROJECTIONS = ("y_mean", "point_quarter", "point_centre")
+
+
+def _project(cols):
+    """Projections of an (n_steps, ny) Ey-probe-column trace.
+
+    y_mean          the declared observable: TEM amplitude only.
+    point_quarter   Ey at the cell nearest y = H/4.  Source and island are
+                    symmetric about y = H/2, so the scattered field carries
+                    only even modes cos(n pi y/H), n = 0, 2, 4...; cos(2 pi y/H)
+                    has a NODE at y = H/4, so this row is the least
+                    n = 2-contaminated point available.
+    point_centre    Ey at y = H/2: TEM + n = 2 at full weight (opposite
+                    extreme, recorded as the bound in the other direction).
+    """
+    ny = cols.shape[1]
+    return {"y_mean": cols.mean(axis=1),
+            "point_quarter": cols[:, ny // 4],
+            "point_centre": cols[:, ny // 2]}
+
+
+def _subgrid_cols(sim2d, r, t_total, sigma_f=None):
+    dt, spec = _dt_for(sim2d, r)
+    spec.dt = dt
+    n_steps = int(np.ceil(t_total / dt))
+    wf = sim2d.gaussian_modulated(n_steps, dt, F0, HWHM)
+    kw = dict(sigma_fx=sigma_f[0], sigma_fy=sigma_f[1]) if sigma_f else {}
+    step, init, _ = sim2d.make_stepper_pml(
+        spec, src_col=SRC_COL, probe_col=PROBE_COL, npml=NPML,
+        probe_full=True, **kw)
+    run = np.asarray(jax.jit(lambda s, w: jax.lax.scan(step, s, w))(init(), wf)[1])
+    ustep, uinit, _ = sim2d.make_uniform_pml(
+        NX, NY, DX, DY, dt, src_col=SRC_COL, probe_col=PROBE_COL, npml=NPML,
+        probe_full=True)
+    ref = np.asarray(jax.jit(lambda s, w: jax.lax.scan(ustep, s, w))(uinit(), wf)[1])
+    return run, ref, dt
+
+
+def _uniform_cols(sim2d, nx, ny, d, dt, t_total, npml, src_col, probe_col,
+                  sigma_maps):
+    n_steps = int(np.ceil(t_total / dt))
+    wf = sim2d.gaussian_modulated(n_steps, dt, F0, HWHM)
+    step, init, _ = sim2d.make_uniform_pml(
+        nx, ny, d, d, dt, src_col=src_col, probe_col=probe_col, npml=npml,
+        sigma_x=sigma_maps[0], sigma_y=sigma_maps[1], probe_full=True)
+    run = np.asarray(jax.jit(lambda s, w: jax.lax.scan(step, s, w))(init(), wf)[1])
+    rstep, rinit, _ = sim2d.make_uniform_pml(
+        nx, ny, d, d, dt, src_col=src_col, probe_col=probe_col, npml=npml,
+        probe_full=True)
+    ref = np.asarray(jax.jit(lambda s, w: jax.lax.scan(rstep, s, w))(rinit(), wf)[1])
+    return run, ref
+
+
+def _committed_r6_mismatch(root):
+    """The rods arm's measured r=6 mismatch, read from its COMMITTED json.
+
+    Read rather than re-measured on purpose: Correction R3(c) re-expresses the
+    WINDOW only; the measurement it judges is unchanged and must stay the one
+    already on the record.
+    """
+    import pathlib
+
+    f = pathlib.Path(root) / "docs/design_notes/portgrid_m1b_retry_rods.json"
+    if not f.exists():
+        return None
+    d = json.loads(f.read_text())
+    return d.get("rods_mismatch_linear_vs_allfine_2_30GHz", {}).get("r6")
+
+
+def arm_xcheck(sim2d, out):
+    """Correction R3 cross-checks.  NEITHER part re-judges a frozen falsifier.
+
+    (a) F-M1b-r2-pt: the interface arm read through the R3(a) projections,
+        against the ALREADY-FROZEN F-M1b-r2 windows.  Recording only.
+    (b) F-M1b-abs: our ALL-FINE (uniform r=6, four rods, no subgrid anywhere)
+        absolute |S11| against the paper's own all-fine curve.  Pure Yee vs
+        pure Yee -- no scheme content, so any gap is fixture/observable.
+        Declared BURNED for this lane (the review reported its outcome before
+        the window was written); committed for M2 and for re-runs.
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[3]
+    paper = json.loads((root / PAPER_ABS_JSON).read_text())
+    pa = paper["top_panel_absolute_anchors"]
+    band = pa["band_GHz"]                       # [2.0, 29.8] as extracted
+    fine_paper = pa["all_fine6"]
+
+    # ---- (a) interface arm, three projections, frozen windows ----
+    inc_unif = {}
+    for r in (2, 4, 6):
+        run, ref, dt = _subgrid_cols(sim2d, r, 4.0e-9)
+        pr, pf = _project(run), _project(ref)
+        row = {"dt_s": dt}
+        for name in PROBE_PROJECTIONS:
+            f, s11 = _s11(pr[name], pf[name], dt)
+            row[name] = {
+                "max_s11_db_2_20GHz": _band_max_db(f, s11, 2e9, 20e9),
+                "max_s11_db_2_30GHz": _band_max_db(f, s11, 2e9, 30e9)}
+        # the |S11| DENOMINATOR is the incident trace: check it is y-uniform, so
+        # the projection cannot be moving the normalisation
+        m = np.abs(ref).max()
+        row["incident_y_nonuniformity_rel"] = float(
+            np.abs(ref - ref.mean(axis=1, keepdims=True)).max() / m)
+        out[f"xcheck_interface_r{r}"] = row
+        inc_unif[r] = row["incident_y_nonuniformity_rel"]
+        print(f"[xcheck interface r={r}] "
+              + "  ".join(f"{n}: {row[n]['max_s11_db_2_20GHz']:7.2f}/"
+                          f"{row[n]['max_s11_db_2_30GHz']:7.2f} dB"
+                          for n in PROBE_PROJECTIONS)
+              + f"  (incident y-nonuniformity {row['incident_y_nonuniformity_rel']:.1e})")
+
+    # ---- (b) all-fine absolute vs the paper's own all-fine ----
+    dt6, _ = _dt_for(sim2d, 6)
+    rf = 6
+    dfine = DX / rf
+    nxf, nyf = NX * rf, NY * rf
+    sigf = sim2d.disk_sigma_maps(nxf, nyf, dfine, dfine, (0.0, 0.0),
+                                 ROD_CENTERS, ROD_RADIUS, SIGMA_CU)
+    t0 = time.perf_counter()
+    run, ref = _uniform_cols(sim2d, nxf, nyf, dfine, dt6, 6.0e-9,
+                             NPML * rf, SRC_COL * rf, PROBE_COL * rf, sigf)
+    pr, pf = _project(run), _project(ref)
+    abs_rows = {}
+    fired_any = False
+    for name in PROBE_PROJECTIONS:
+        f, s11 = _s11(pr[name], pf[name], dt6)
+        fg = f / 1e9
+        sel = (fg >= band[0]) & (fg <= band[1])
+        db = 20.0 * np.log10(np.maximum(s11, 1e-300))
+        row = {"max_db": float(np.max(db[sel])),
+               "max_linear": float(np.max(s11[sel])),
+               "f_at_max_GHz": float(fg[sel][np.argmax(db[sel])])}
+        deltas = {"max_db": row["max_db"] - fine_paper["max_db"]}
+        for fq in (10, 25, 29):
+            v = float(np.interp(fq, fg, db))
+            row[f"db_at_{fq}GHz"] = v
+            deltas[f"db_at_{fq}GHz"] = v - fine_paper[f"db_at_{fq}GHz"]
+        row["delta_vs_paper_db"] = deltas
+        row["max_abs_delta_db"] = float(max(abs(v) for v in deltas.values()))
+        row["within_5dB_class"] = bool(row["max_abs_delta_db"] <= WIN_ABS_DB)
+        fired_any |= not row["within_5dB_class"]
+        abs_rows[name] = row
+        print(f"[xcheck all-fine {name:14s}] max {row['max_db']:7.2f} dB "
+              f"(paper {fine_paper['max_db']:.2f})  worst |delta| "
+              f"{row['max_abs_delta_db']:5.2f} dB -> "
+              f"{'INSIDE' if row['within_5dB_class'] else 'OUTSIDE'} the 5 dB class")
+
+    ymean_peak = abs_rows["y_mean"]["max_linear"]
+    out["xcheck_allfine_absolute_vs_paper"] = {
+        "band_GHz": band,
+        "paper_all_fine6": fine_paper,
+        "ours": abs_rows,
+        "window_db": WIN_ABS_DB,
+        "wall_s": round(time.perf_counter() - t0, 1),
+        "F_M1b_abs_outside_class_under_some_projection": bool(fired_any),
+        "verdict_authority": (
+            "NONE in this lane -- BURNED: the adversarial review reported this "
+            "arm's outcome before its window was written (pre-declaration "
+            "Correction R3(b)).  Committed so M2 and any re-run inherit an "
+            "unburned fixture-fidelity gate."),
+    }
+    out["xcheck_rod_window_rescaling"] = {
+        "rule": ("0.0529 x 10^(5/20) x (our all-fine peak / paper all-fine "
+                 "peak), y-mean observable, [2,30] GHz -- Correction R3(c), "
+                 "declared before evaluation"),
+        "frozen_window_linear": WIN_ROD_LINEAR,
+        "our_allfine_peak_linear_ymean": ymean_peak,
+        "paper_allfine_peak_linear": PAPER_ALLFINE_PEAK_LINEAR,
+        "rescaled_window_linear": rescaled_rod_window(ymean_peak),
+        "frozen_window_looseness_db": float(
+            20.0 * np.log10(PAPER_ALLFINE_PEAK_LINEAR / ymean_peak)),
+        "measured_r6_mismatch_linear": _committed_r6_mismatch(root),
+        "note": ("measured_r6_mismatch_linear is filled from the rods arm "
+                 "(portgrid_m1b_retry_rods.json) -- the measurement is "
+                 "unchanged; only the window it is compared against is "
+                 "re-expressed."),
+    }
+    print(f"[xcheck rod window] frozen {WIN_ROD_LINEAR:.4f} -> rescaled "
+          f"{rescaled_rod_window(ymean_peak):.4f} "
+          f"(frozen is {20.0 * np.log10(PAPER_ALLFINE_PEAK_LINEAR / ymean_peak):.2f} dB looser "
+          f"than the +5 dB rule intends)")
+    return False   # recording arm: never fires a verdict
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", default="all",
-                    choices=["all", "floor", "null", "interface", "rods"])
+                    choices=["all", "floor", "null", "interface", "rods",
+                             "xcheck"])
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
@@ -262,6 +497,8 @@ def main() -> int:
         fired |= arm_interface(sim2d, out)
     if args.arm in ("all", "rods"):
         fired |= arm_rods(sim2d, out)
+    if args.arm in ("all", "xcheck"):
+        arm_xcheck(sim2d, out)      # recording only, cannot fire (R3)
 
     if args.out:
         with open(args.out, "w") as fh:

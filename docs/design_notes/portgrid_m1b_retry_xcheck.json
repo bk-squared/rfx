@@ -1,0 +1,128 @@
+{
+  "xcheck_interface_r2": {
+    "dt_s": 1.1675338966910681e-12,
+    "y_mean": {
+      "max_s11_db_2_20GHz": -58.67425926847009,
+      "max_s11_db_2_30GHz": -42.637344749005464
+    },
+    "point_quarter": {
+      "max_s11_db_2_20GHz": -54.935886431462315,
+      "max_s11_db_2_30GHz": -36.70283882685348
+    },
+    "point_centre": {
+      "max_s11_db_2_20GHz": -49.85813156294078,
+      "max_s11_db_2_30GHz": -34.05204364789113
+    },
+    "incident_y_nonuniformity_rel": 9.975736842809727e-17
+  },
+  "xcheck_interface_r4": {
+    "dt_s": 5.837669483455341e-13,
+    "y_mean": {
+      "max_s11_db_2_20GHz": -56.74958458309242,
+      "max_s11_db_2_30GHz": -40.74954259470428
+    },
+    "point_quarter": {
+      "max_s11_db_2_20GHz": -53.002640433952514,
+      "max_s11_db_2_30GHz": -34.79303031476647
+    },
+    "point_centre": {
+      "max_s11_db_2_20GHz": -47.93296500045646,
+      "max_s11_db_2_30GHz": -32.15315256654578
+    },
+    "incident_y_nonuniformity_rel": 9.97773208261926e-17
+  },
+  "xcheck_interface_r6": {
+    "dt_s": 3.891779655636895e-13,
+    "y_mean": {
+      "max_s11_db_2_20GHz": -56.43616811105237,
+      "max_s11_db_2_30GHz": -40.440330651728225
+    },
+    "point_quarter": {
+      "max_s11_db_2_20GHz": -52.68732369624238,
+      "max_s11_db_2_30GHz": -34.46361217022045
+    },
+    "point_centre": {
+      "max_s11_db_2_20GHz": -47.616153795002774,
+      "max_s11_db_2_30GHz": -31.842703212779703
+    },
+    "incident_y_nonuniformity_rel": 1.3296571562313437e-16
+  },
+  "xcheck_allfine_absolute_vs_paper": {
+    "band_GHz": [
+      2.0,
+      29.8
+    ],
+    "paper_all_fine6": {
+      "max_db": -8.03,
+      "max_linear": 0.3968,
+      "f_at_max_GHz": 29.43,
+      "db_at_10GHz": -18.42,
+      "db_at_25GHz": -10.94,
+      "db_at_29GHz": -8.78
+    },
+    "ours": {
+      "y_mean": {
+        "max_db": -13.667749777126968,
+        "max_linear": 0.20730630511732895,
+        "f_at_max_GHz": 29.24897514209896,
+        "db_at_10GHz": -24.500417076108636,
+        "db_at_25GHz": -16.411265640576136,
+        "db_at_29GHz": -14.590793367969427,
+        "delta_vs_paper_db": {
+          "max_db": -5.6377497771269685,
+          "db_at_10GHz": -6.080417076108635,
+          "db_at_25GHz": -5.471265640576137,
+          "db_at_29GHz": -5.810793367969428
+        },
+        "max_abs_delta_db": 6.080417076108635,
+        "within_5dB_class": false
+      },
+      "point_quarter": {
+        "max_db": -7.8627678448137805,
+        "max_linear": 0.40444699011901925,
+        "f_at_max_GHz": 29.32739062505365,
+        "db_at_10GHz": -24.511687627348834,
+        "db_at_25GHz": -10.779651180701554,
+        "db_at_29GHz": -9.189640464562386,
+        "delta_vs_paper_db": {
+          "max_db": 0.1672321551862188,
+          "db_at_10GHz": -6.091687627348833,
+          "db_at_25GHz": 0.16034881929844502,
+          "db_at_29GHz": -0.40964046456238634
+        },
+        "max_abs_delta_db": 6.091687627348833,
+        "within_5dB_class": false
+      },
+      "point_centre": {
+        "max_db": -4.2236196905802075,
+        "max_linear": 0.6149205620601551,
+        "f_at_max_GHz": 29.288182883576305,
+        "db_at_10GHz": -19.302289557725196,
+        "db_at_25GHz": -8.482801299640103,
+        "db_at_29GHz": -6.668422876692553,
+        "delta_vs_paper_db": {
+          "max_db": 3.806380309419792,
+          "db_at_10GHz": -0.8822895577251941,
+          "db_at_25GHz": 2.4571987003598963,
+          "db_at_29GHz": 2.1115771233074465
+        },
+        "max_abs_delta_db": 3.806380309419792,
+        "within_5dB_class": true
+      }
+    },
+    "window_db": 5.0,
+    "wall_s": 7.5,
+    "F_M1b_abs_outside_class_under_some_projection": true,
+    "verdict_authority": "NONE in this lane -- BURNED: the adversarial review reported this arm's outcome before its window was written (pre-declaration Correction R3(b)).  Committed so M2 and any re-run inherit an unburned fixture-fidelity gate."
+  },
+  "xcheck_rod_window_rescaling": {
+    "rule": "0.0529 x 10^(5/20) x (our all-fine peak / paper all-fine peak), y-mean observable, [2,30] GHz -- Correction R3(c), declared before evaluation",
+    "frozen_window_linear": 0.0941,
+    "our_allfine_peak_linear_ymean": 0.20730630511732895,
+    "paper_allfine_peak_linear": 0.3968,
+    "rescaled_window_linear": 0.049146944169752196,
+    "frozen_window_looseness_db": 5.639183046769789,
+    "measured_r6_mismatch_linear": 0.0299142330047492,
+    "note": "measured_r6_mismatch_linear is filled from the rods arm (portgrid_m1b_retry_rods.json) -- the measurement is unchanged; only the window it is compared against is re-expressed."
+  }
+}
