@@ -259,7 +259,7 @@ def main():
                   f"n*a={N_LIVE*a:+.4f} (in [{SLOPE_LO},{SLOPE_HI}])  "
                   f"n*b={N_LIVE*b:+.3f} Ohm (|.|<={INTERCEPT_MAX_OHM})  "
                   f"-> {'PASS' if ok else 'FAIL'}")
-            print(f"       Re rho*n vs R_L: " + "  ".join(
+            print("       Re rho*n vs R_L: " + "  ".join(
                 f"{r:g}:{N_LIVE*(results[arm][r]['v'][fb]/results[arm][r]['i'][fb]).real:+.2f}"
                 for r in RL_SWEEP))
         verdicts[arm] = passes
