@@ -352,6 +352,13 @@ CLASSIFICATION: dict[str, Entry] = {
         "`run_example()` builds and calls .run(...) in the same function"),
 
     # ---- audited (23): builder is separable from solve ----
+    "validation/research/issue683_sampling_order_decision.py": Entry(
+        "audited",
+        "`build(nu, r_load)` returns a Simulation with no solve call; the "
+        "protocol arms feed it to run_pre/run_post separately, which is the "
+        "whole point of the #683 experiment (the sampling order is the "
+        "variable, so build and solve must be separable)",
+        (Builder("build", None, (_v("nu-matched", nu=True, r_load=50.0),)),)),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
