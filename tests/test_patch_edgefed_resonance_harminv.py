@@ -8,7 +8,12 @@ the Balanis cavity value computed on the raster the solver actually has, and tha
 is the quantity being pinned — not an error being driven to zero. The three legs:
 
   Leg A  isolated (unfed) patch:  f_TM010 / Balanis(realized raster) - 1
-         — the discretization bias of the rfx patch itself, sign included.
+         — the signed offset of the rfx patch from the Balanis cavity model on its own
+         realized raster. Measured 2026-08-30: most of it (~-4 %) is the cavity MODEL's
+         error at this thick-substrate geometry (a refinement ladder n = 3..16 plateaus
+         near -4.4 %; Kirschning-Jansen dispersion + open-end correction moves Balanis by
+         -3.4 %), and ~-2 pp is the h/4 mesh's O(dx) term (measured on sibling boards,
+         inferred for this 43 x 51 raster). It is NOT "the rfx discretization bias".
   Leg B  feed pull:               f_TM010(fed) / f_TM010(unfed) - 1
          — the edge-feed loading term, separated out and pinned on its own.
   Leg C  the ring-down is settled, the identified mode sits in the physical patch band,
@@ -58,7 +63,9 @@ with the same label, while 3 of 13 weak or mixed poles in the same records DO fl
 invariance is a measured property of the modes this gate reads, not of the labeller.
 
 This is not decoration. The physical patch band holds MORE than one mode on the fed
-board — measured on main: TM010 at 8.16 GHz and TM011 at 10.49 GHz, the second one only
+board — measured on main: TM010 at 8.16 GHz and a second branch at 10.49 GHz that carries
+TM010 parity on this probe cross (the earlier 4-point quad labelled it TM011; on the
+2026-08-30 feed-length sweep it tracks the stub's 3-lambda/4 branch), the second one only
 2.8x quieter — so a band-plus-``max(amplitude)`` selector is one amplitude ratio away
 from returning the wrong mode's frequency to Legs A and B.
 
@@ -68,7 +75,9 @@ WHY NOT THE e4 FAR-FIELD RULE
 -----------------------------
 ``test_patch_canonical_farfield_e4.py`` identifies its radiating mode from the far field.
 That rule is architecturally unavailable here: the feed enters from the domain boundary
-and the ground plane spans the whole x-y extent into the CPML, so no closed 6-face
+and the ground plane spans the whole x-y extent up to the absorber face (measured on the
+assembled pec_mask 2026-08-30: trace and ground stop at the absorber face, only the
+substrate permittivity continues into the CPML pads), so no closed 6-face
 Huygens box can enclose the radiators without crossing PEC — ``sim.preflight()`` collects
 exactly that as an error-severity advisory, and a box placed anyway integrates reactive
 near-field. A far-field verdict from that box would be a corrupted-observable pass
@@ -81,7 +90,10 @@ Both arms go through ``sim.run(num_periods=...)`` (``n_steps=None``) so the fram
 #332 truncation advisory fires, and both assert the WORST probe's end-of-run envelope
 clears the -40 dB bar before any frequency is read. Measured at NUM_PERIODS = 120:
 unfed -42.4 dB, fed -54.0 dB. The unfed arm carries the smaller margin and is the one to
-watch; if it ever closes, raise NUM_PERIODS, never the bar.
+watch; if it ever closes, raise NUM_PERIODS, never the bar — and RE-PIN Leg A/B when you
+do: the Harminv window start scales with NUM_PERIODS (a moving-window estimator), and the
+unfed TM010 read moves by about +-0.2 pp across N = 120/200/260/400 (measured 2026-08-30;
+the fed arms move < 0.01 %). The envelopes below are pinned at NUM_PERIODS = 120.
 
 REALIZED-RASTER READOUT
 -----------------------
@@ -203,8 +215,14 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor
 #
 #   THIS LEG DOES NOT DISCRIMINATE #702 and is not meant to: pre-#702 measures -7.005 %,
 #   inside this window. The feed owns 0.100 pp of the 13.48 pp regression and Leg A owns
-#   the rest. Leg B locks the FEED MODEL — port placement, reference plane, feed-trace
-#   rasterization — which nothing else in the suite pins on this board.
+#   the rest. Leg B locks the FEED MODEL, which on this fixture is (measured 2026-08-30)
+#   the reactive load of a 13.18 mm OPEN STUB: the feed trace ends at the absorber face,
+#   the MSL port sheet sits 5 mm inside that end, and the fed 8.16 GHz line is the
+#   stub-loaded TM010 (closed-form oracle 8.196 vs measured 8.177 GHz, +0.23 %). So
+#   FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node of
+#   stub length moves this leg by +0.85 pp, and the pull runs about -2.2 %/mm of stub.
+#   With the stub held fixed the pull SHRINKS with inset depth (-6.74 -> -3.63 % at
+#   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
 LEG_B_CENTRE_PCT = -6.109       # midpoint of the 5 measured pairs, NOT rounded toward
 #                                 zero: rounding the centre in would contradict the Leg A
 #                                 block's claim that rounding UP is the only slack here.
@@ -566,8 +584,9 @@ def test_patch_mode_is_in_the_patch_band_and_dominates_the_feed_band(arms):
 
 @pytest.mark.slow
 def test_leg_a_isolated_patch_discretization_bias(arms):
-    """Leg A — the SIGNED bias of the isolated (unfed) rfx patch against Balanis on its
-    own realized raster. This is the leg that discriminates #702: the pre-#702 tree
+    """Leg A — the SIGNED offset of the isolated (unfed) rfx patch from Balanis on its
+    own realized raster (mostly the cavity model's own error at this geometry, see the
+    module docstring). This is the leg that discriminates #702: the pre-#702 tree
     measures +7.430 % on identical inputs, 12.5 pp outside this window."""
     arm = arms["unfed"]
     f_ghz = _tm010(arm)["f_ghz"]
@@ -581,7 +600,8 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
         f"isolated-patch discretization bias {bias_pct:+.3f} % is outside the measured "
         f"signed envelope [{lo:+.3f}, {hi:+.3f}] % ({LEG_A_CENTRE_PCT} +- "
         f"{LEG_A_HALF_PCT} pp). This is a REGRESSION LOCK, not an accuracy claim: the "
-        "bias is EXPECTED to be negative and about 6 %, and a positive value near "
+        "offset is EXPECTED to be negative and about 6 % (mostly Balanis's own error here, "
+        "~-2 pp of it mesh), and a positive value near "
         "+7.4 % is the pre-#702 signature (the ground sheet's own cell assembled as "
         "vacuum, diluting the cavity permittivity). Do not widen this window to turn a "
         "red run green without a written root cause — its width is 0.935 pp of measured "
@@ -610,9 +630,11 @@ def test_leg_b_edge_feed_pull(arms):
         f"edge-feed pull {pull_pct:+.3f} % is outside the measured signed envelope "
         f"[{lo:+.3f}, {hi:+.3f}] % ({LEG_B_CENTRE_PCT} +- {LEG_B_HALF_PCT} pp, from "
         "measured fed/unfed pairs plus the measured extractor spread). The pull is "
-        "EXPECTED to be negative and about 6 %: the 50-ohm line butt-coupled to the "
-        "radiating edge loads the patch DOWN in frequency. A change here points at the "
-        "feed model — MSL port placement, reference plane, feed-trace rasterization — "
+        "EXPECTED to be negative and about 6 %: the fixture's feed trace is a 13.18 mm "
+        "open stub (it ends at the absorber face; the port sheet sits 5 mm inside) whose "
+        "reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, +0.85 pp per node. "
+        "A change here points at the feed model — FEED_LEN / PORT_MARGIN / DOM_X, the MSL "
+        "port placement, the feed-trace rasterization — "
         f"not at the sheet-cell assembly Leg A locks. fed {f_fed:.5f} GHz (settling "
         f"{arms['fed']['settling_db']:.2f} dB), unfed {f_unfed:.5f} GHz (settling "
         f"{arms['unfed']['settling_db']:.2f} dB)."
