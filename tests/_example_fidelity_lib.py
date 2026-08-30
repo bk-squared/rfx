@@ -259,7 +259,7 @@ def _v_from(label: str, fn: Callable[[ModuleType], dict]) -> Variant:
 
 
 CLASSIFICATION: dict[str, Entry] = {
-    # ---- no_simulation (8): zero real Simulation() calls, AST-verified ----
+    # ---- no_simulation (19): zero real Simulation() calls, AST-verified --
     "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
         "no_simulation",
         "drives the functional rfx.rcs.compute_rcs entry point directly on "
@@ -290,6 +290,52 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/rcwa_referee/rcwa_referee_step1.py": Entry(
         "no_simulation",
         "drives the external grcwa library directly -- no rfx import at all"),
+    "validation/research/portgrid/__init__.py": Entry(
+        "no_simulation",
+        "package docstring pointing at the SPEC-02 predeclaration -- no "
+        "code, no rfx import at all"),
+    "validation/research/portgrid/certificate.py": Entry(
+        "no_simulation",
+        "M0 dissipativity-certificate calculator over hand-assembled "
+        "descriptor-system matrices -- no rfx import at all"),
+    "validation/research/portgrid/fig9_extract.py": Entry(
+        "no_simulation",
+        "vector-data extraction of the arXiv:1606.08761 Fig. 9 curves from "
+        "the PDF's own path data -- no rfx import at all"),
+    "validation/research/portgrid/m1_energy_audit.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/m1_reflection.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/m1b_retry.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/operators.py": Entry(
+        "no_simulation",
+        "M0 interpolation/restriction operator library over plain arrays -- "
+        "no rfx import at all"),
+    "validation/research/portgrid/sim2d.py": Entry(
+        "no_simulation",
+        "hand-rolled two-region 2-D TEz subgridding prototype (its own "
+        "lax.scan stepper) -- no rfx Simulation is constructed by this "
+        "script; the whole point of this research lane is to NOT go "
+        "through rfx's own Yee update"),
+    "validation/research/portgrid/test_portgrid_m0.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.certificate/operators modules -- "
+        "no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/test_portgrid_m1.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.sim2d prototype -- no rfx "
+        "Simulation is constructed by this script"),
+    "validation/research/portgrid/test_portgrid_m1b_retry.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.m1b_retry prototype -- no rfx "
+        "Simulation is constructed by this script"),
 
     # ---- module_level_solve (6): solves at import time, no main guard ----
     "validation/crossval/01_waveguide_bend.py": Entry(
