@@ -1,0 +1,1324 @@
+{
+  "leg": "issue #489 leg 4, attempt 2 -- the settled-run follow-up",
+  "n_steps": 135000,
+  "git_sha": "582ebcc07de0b906016a62a4f4e79266c2e40cf0",
+  "elapsed_s": 161.31465180101804,
+  "freqs_hz": [
+    6000000000.0,
+    8000000000.0,
+    10000000000.0
+  ],
+  "settling_db": [
+    -46.189517337561256,
+    -41.314600726725104
+  ],
+  "settling_cleared_40db": true,
+  "cond_a_equilibrated": [
+    1.0005035437041676,
+    1.0006398351516435,
+    1.0012770200210994
+  ],
+  "gamma_ratio_coax_driven": [
+    1.0455909400513017,
+    0.8867755858599567,
+    0.8916408707402719
+  ],
+  "reciprocity_worst_deviation": {
+    "pair": [
+      0,
+      1
+    ],
+    "value": 0.7946996263998198
+  },
+  "s22_abs": [
+    0.08642006857093638,
+    0.1078797818113658,
+    0.8970488773585565
+  ],
+  "max_abs_s": 0.9998731497473629,
+  "col_msl_driven_power": [
+    0.0074684283355062235,
+    0.011638047433198176,
+    0.8046966895734843
+  ],
+  "passivity_guard_raised": false,
+  "passivity_guard_message": null,
+  "fixture": "attempt2_wide",
+  "ext_589": {
+    "fixture": "attempt2_wide",
+    "fixture_geometry": {
+      "LX_m": 0.0145,
+      "LY_m": 0.0068,
+      "LZ_m": 0.0039,
+      "junction_x_m": 0.003,
+      "feed_x_m": 0.013,
+      "y_c_m": 0.0034
+    },
+    "grid_shape_padded": [
+      162,
+      85,
+      56
+    ],
+    "port_order": [
+      "coax",
+      "msl"
+    ],
+    "index_convention": "S[j, i, f] = response at port j driving port i; a_inc/b_out/fit_residual/recurrence_residual/gamma are [port array, drive, f]",
+    "z0_ref_ohm": [
+      45.455402113498124,
+      53.10578561884265
+    ],
+    "reference_planes_m": [
+      0.0025,
+      0.003
+    ],
+    "freqs_hz_all": [
+      6000000000.0,
+      8000000000.0,
+      10000000000.0
+    ],
+    "committed_bin_indices": [
+      0,
+      1,
+      2
+    ],
+    "committed_freqs_hz": [
+      6000000000.0,
+      8000000000.0,
+      10000000000.0
+    ],
+    "precision": {
+      "jax_enable_x64": false,
+      "env_JAX_ENABLE_X64": "0",
+      "solve_complex_dtype_per_method_rule": "complex64",
+      "solve_dtype_note": "compute_coax_msl_transition sets _complex_dtype = complex128 if jax.config.x64_enabled else complex64 for the DFT-plane/modal-voltage path; the FDTD fields follow the same x64 switch. s_params/a_inc/gamma below are the NumPy ASSEMBLY dtype (always complex128), not the solve precision.",
+      "s_params_dtype": "complex128",
+      "a_inc_dtype": "complex128",
+      "gamma_dtype": "complex128",
+      "record_369367252283": "default float32 GPU run (no x64 pin in driver or test)",
+      "f64_replicate_falsifier": "|S10| or |S01| moving > 2x between f32 and f64 at any bin => FLOOR; |S22|, |S00|, col_power must reproduce within the A0 budget"
+    },
+    "s_complex": {
+      "re": [
+        [
+          [
+            -0.999872859398035,
+            -0.9997130415467808,
+            -0.9995610869992596
+          ],
+          [
+            -3.244575506528729e-06,
+            -3.5195487913299164e-06,
+            -3.303107925169439e-05
+          ]
+        ],
+        [
+          [
+            3.6234200886431736e-05,
+            4.9518129064627735e-05,
+            1.284921639079269e-05
+          ],
+          [
+            0.08572306647640503,
+            0.10609077187958708,
+            -0.31022232943784583
+          ]
+        ]
+      ],
+      "im": [
+        [
+          [
+            -0.000761987473306651,
+            -0.0009687303118379066,
+            -0.0011427999809229406
+          ],
+          [
+            -8.554157279535668e-06,
+            -9.856117879646076e-06,
+            -1.0591764255389558e-05
+          ]
+        ],
+        [
+          [
+            1.2620981503622649e-05,
+            -1.210976586198652e-05,
+            -7.500316497637323e-05
+          ],
+          [
+            -0.010953726566205236,
+            -0.019565158973576125,
+            -0.8416999433814899
+          ]
+        ]
+      ]
+    },
+    "s_abs_db": {
+      "S00_coax_refl": [
+        -0.001101877183144057,
+        -0.0024887692198585047,
+        -0.003807509946223155
+      ],
+      "S10_coax_drive_to_msl": [
+        -88.32031272670551,
+        -85.85245268198285,
+        -82.37278150121283
+      ],
+      "S01_msl_drive_to_coax": [
+        -100.77269991638286,
+        -99.60465788820483,
+        -89.19648581233018
+      ],
+      "S11_msl_refl": [
+        -21.267707868580136,
+        -19.34119881171991,
+        -0.9436778595462524
+      ]
+    },
+    "s_abs": {
+      "S00": [
+        0.9998731497473629,
+        0.9997135109005643,
+        0.9995617402816787
+      ],
+      "S10": [
+        3.836934307481789e-05,
+        5.097736296919706e-05,
+        7.609584166254078e-05
+      ],
+      "S01": [
+        9.148818337938469e-06,
+        1.0465671662728147e-05,
+        3.4687716364348106e-05
+      ],
+      "S11": [
+        0.08642006857093638,
+        0.1078797818113658,
+        0.8970488773585565
+      ]
+    },
+    "col_coax_driven_power": [
+      0.9997463170579187,
+      0.9994271064758241,
+      0.9991236784255152
+    ],
+    "col_msl_driven_power_all_bins": [
+      0.0074684283355062235,
+      0.011638047433198176,
+      0.8046966895734843
+    ],
+    "max_abs_s_all_bins": 0.9998731497473629,
+    "reciprocity_worst_deviation_all_bins": {
+      "pair": [
+        0,
+        1
+      ],
+      "value": 0.7946996263998198
+    },
+    "a2_passivity_psd": {
+      "lambda_min_I_minus_SHS": [
+        0.0002536828527107011,
+        0.0005728933372177603,
+        0.0008762750293282556
+      ],
+      "trace_I_minus_SHS": [
+        0.9927852546065751,
+        0.9889348460909778,
+        0.19617963200100075
+      ],
+      "falsifier": "lambda_min < -0.02 at any committed bin => EXTRACTOR",
+      "verdict": "PASSIVE (lambda_min >= -0.02 at all bins; trace(Q) is the missing power)"
+    },
+    "cond_a_raw": [
+      18633108.924037177,
+      19885072.992806476,
+      28485993.276760437
+    ],
+    "cond_a_equilibrated_all_bins": [
+      1.0005035437041676,
+      1.0006398351516435,
+      1.0012770200210994
+    ],
+    "cond_a_note": "raw cond_a is a per-drive SCALE disparity (run-log warning: 'nearly linearly dependent ... worst 2.91e+07'); equilibration removes it and S is exactly invariant to it -- not a reciprocity attribution",
+    "a3_residuals": {
+      "fit_residual": {
+        "coax_array": {
+          "coax_drive": [
+            0.00034556407443260664,
+            0.0002848937759711571,
+            0.00024812188807326024
+          ],
+          "msl_drive": [
+            0.0025629246996977193,
+            0.002393725378191929,
+            0.0037504724947304328
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            0.06730654817127556,
+            0.08379940398346382,
+            0.11292584911845985
+          ],
+          "msl_drive": [
+            0.2250405575733542,
+            0.2530564185899056,
+            0.18718138077981222
+          ]
+        }
+      },
+      "recurrence_residual": {
+        "coax_array": {
+          "coax_drive": [
+            0.00030741967365604893,
+            0.00023512591009981285,
+            0.00019168083584607465
+          ],
+          "msl_drive": [
+            0.0003720500453762729,
+            0.0003401703373458392,
+            0.00029819670782562697
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            0.022393111503316427,
+            0.0260377705485135,
+            0.030366670072493534
+          ],
+          "msl_drive": [
+            0.13522632187004147,
+            0.1743705813859418,
+            0.15240468326545284
+          ]
+        }
+      },
+      "threshold_provenance": "0.02 = coax lane's borrowed convenience number (tests/test_coax_two_port_fdtd.py, measured 0.0127); load-bearing criterion = MSL-driven residual at 6/8 GHz > 10x own 10 GHz value",
+      "falsifier": "MSL-DRIVEN MSL-ladder fit or recurrence residual > 0.02 or > 10x own 10 GHz at a committed bin => EXTRACTOR ((b)-on-ladder supported); (b)-on-ladder FALSIFIED only when fit AND recurrence residuals of the MSL ladder are <= 0.02 (and <= 10x own 10 GHz) at ALL committed bins under BOTH drives; else NON-CLOSING (not falsified)",
+      "verdict_msl_ladder_both_drives": "EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: 6 GHz: fit_residual 0.225 > 0.02 (borrowed); 8 GHz: fit_residual 0.2531 > 0.02 (borrowed); 10 GHz: fit_residual 0.1872 > 0.02 (borrowed); 6 GHz: recurrence_residual 0.1352 > 0.02 (borrowed); 8 GHz: recurrence_residual 0.1744 > 0.02 (borrowed); 10 GHz: recurrence_residual 0.1524 > 0.02 (borrowed)"
+    },
+    "a_inc": {
+      "abs": {
+        "coax_array": {
+          "coax_drive": [
+            9.464498826169069e-08,
+            6.41174804384558e-08,
+            3.378741417863984e-08
+          ],
+          "msl_drive": [
+            2.6896241677612275e-18,
+            2.1156446312807554e-18,
+            1.4891464747318728e-18
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            3.4868698654847657e-12,
+            2.3704810347312443e-12,
+            7.290746271188395e-13
+          ],
+          "msl_drive": [
+            5.079398582169475e-15,
+            3.2244025365081806e-15,
+            1.1861062643725323e-15
+          ]
+        }
+      },
+      "re": {
+        "coax_array": {
+          "coax_drive": [
+            3.137443356288639e-08,
+            -6.353249396172512e-08,
+            1.9125047547162508e-08
+          ],
+          "msl_drive": [
+            2.2507429822472366e-18,
+            4.456338481611455e-19,
+            -1.3732275065106064e-18
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            -3.15903578121782e-12,
+            2.221770223761258e-12,
+            -5.139189943005845e-13
+          ],
+          "msl_drive": [
+            -2.7110878200327212e-15,
+            3.1499135422415188e-15,
+            7.701396056809689e-16
+          ]
+        }
+      },
+      "im": {
+        "coax_array": {
+          "coax_drive": [
+            -8.929344164978522e-08,
+            8.641383499135112e-09,
+            2.7853579899139106e-08
+          ],
+          "msl_drive": [
+            1.4724925098859048e-18,
+            -2.0681785897838157e-18,
+            5.760238177098466e-19
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            1.476060429593337e-12,
+            8.263881707940653e-13,
+            -5.171431902341464e-13
+          ],
+          "msl_drive": [
+            4.295380400920912e-15,
+            6.890692228244391e-16,
+            -9.020715371550779e-16
+          ]
+        }
+      }
+    },
+    "b_out": {
+      "abs": {
+        "coax_array": {
+          "coax_drive": [
+            9.463298253438996e-08,
+            6.409911148286879e-08,
+            3.377260649093794e-08
+          ],
+          "msl_drive": [
+            2.6461768988039458e-18,
+            2.083264420220486e-18,
+            1.4478761368998557e-18
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            3.3481905068989048e-12,
+            3.053275557292292e-12,
+            2.115015852292379e-12
+          ],
+          "msl_drive": [
+            4.389620212959843e-16,
+            3.4784783557739034e-16,
+            1.063995230682705e-15
+          ]
+        }
+      },
+      "re": {
+        "coax_array": {
+          "coax_drive": [
+            -3.143848505962629e-08,
+            6.352263394598588e-08,
+            -1.9084822233079063e-08
+          ],
+          "msl_drive": [
+            -2.2037951119206955e-18,
+            -4.518042039645889e-19,
+            1.338289987699754e-18
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            2.009164531938663e-12,
+            -2.7894873709828428e-12,
+            2.058998276389492e-12
+          ],
+          "msl_drive": [
+            -1.8535227604093966e-16,
+            3.4765850496052174e-16,
+            -9.981880386574648e-16
+          ]
+        }
+      },
+      "im": {
+        "coax_array": {
+          "coax_drive": [
+            8.925818192473903e-08,
+            -8.577357953211686e-09,
+            -2.786321068225115e-08
+          ],
+          "msl_drive": [
+            -1.4647659486887721e-18,
+            2.033682277504655e-18,
+            -5.525624097119186e-19
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            -2.6783647164058223e-12,
+            1.2414716411927359e-12,
+            -4.835474674457094e-13
+          ],
+          "msl_drive": [
+            3.979097760883735e-16,
+            1.1475218712080421e-17,
+            -3.6838361852382403e-16
+          ]
+        }
+      }
+    },
+    "a5_echo_ratios": {
+      "coax_array_msl_drive_abs_a_over_b": [
+        1.0164188830221137,
+        1.0155430154453666,
+        1.0285040527847797
+      ],
+      "msl_array_coax_drive_abs_a_over_b": [
+        1.041419195920935,
+        0.7763731082409857,
+        0.3447135520656383
+      ],
+      "expected_coax_side": 0.0,
+      "expected_coax_side_basis": "coax annular termination sized to analytic z_tem 45.46 ohm (r_feed = z_tem when feed_impedance is None)",
+      "expected_msl_side": 0.030161962952186983,
+      "expected_msl_side_basis": "MSL feed sized to registered 50 ohm vs HJ 53.11 ohm => |Gamma_feed| = 3.11/103.11",
+      "verdict_coax_side": "FLOOR (max ratio 1.029 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor",
+      "verdict_msl_side": "FLOOR (max ratio 1.041 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor"
+    },
+    "gamma": {
+      "re": {
+        "coax_array": {
+          "coax_drive": [
+            10.470071195223769,
+            6.0062258456766155,
+            3.918099706278955
+          ],
+          "msl_drive": [
+            31.129074528111808,
+            27.533960930060548,
+            37.80278073655311
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            2.383002005165985,
+            7.678420939123645,
+            45.50024839598194
+          ],
+          "msl_drive": [
+            334.7529472314066,
+            284.64635812572135,
+            14.287356118031393
+          ]
+        }
+      },
+      "im": {
+        "coax_array": {
+          "coax_drive": [
+            211.07672211370928,
+            287.0739326615549,
+            362.2441892565465
+          ],
+          "msl_drive": [
+            426.7259965262902,
+            457.3800663529505,
+            520.4413912417015
+          ]
+        },
+        "msl_array": {
+          "coax_drive": [
+            221.29518407681246,
+            250.24339059157487,
+            314.5204353868326
+          ],
+          "msl_drive": [
+            9.507735366600642,
+            14.693363669565912,
+            175.6224423151178
+          ]
+        }
+      }
+    },
+    "gamma_ratio_coax_driven_all_bins": [
+      1.0455909400513017,
+      0.8867755858599567,
+      0.8916408707402719
+    ],
+    "settling_db": [
+      -46.189517337561256,
+      -41.314600726725104
+    ],
+    "settling_cleared_40db": true,
+    "solve_warnings": [
+      "/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:735: UserWarning: compute_coax_msl_transition(): the registered coax port impedance (50.00 ohm) diverges 10.0% from the analytic coax Z0 (45.46 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.",
+      "/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:735: UserWarning: compute_coax_msl_transition(): the registered msl port impedance (50.00 ohm) diverges 5.8% from the analytic msl Z0 (53.11 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.",
+      "/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/api/_sparams.py:1881: UserWarning: solve_two_port_from_wave_amplitudes: the two drives are nearly linearly dependent at 3/3 frequencies (cond > 1000; worst 2.85e+07) \u2014 usually both ports seeing essentially the same field, e.g. a symmetric structure driven identically, or one drive that failed to excite. S at those bins is degenerate. NOTE this threshold flags DEGENERACY only: cond below it is NOT a reliability certificate, because cond(A) also multiplies whatever noise is on the measured amplitudes (~1.3e-2 relative error in S from 1e-4 noise at cond=199, which never trips this warning)."
+    ],
+    "preflight": {
+      "requested": true,
+      "skip_preflight_inert_note": "compute_coax_msl_transition accepts skip_preflight (rfx/api/_sparams.py:6331, 'skip_preflight: bool = False,') but never references it in the method body; the method has NO preflight path. --preflight therefore runs sim.preflight() and sim.fidelity_report() from this driver, before the solve. Production unchanged.",
+      "report_lines": [
+        "preflight: PASS (9 issue(s))",
+        "- WARNING [mesh_resolution] 'pec' z-extent 100\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface \u2014 tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).",
+        "- WARNING [mesh_resolution] PEC 'pec' x-extent 400\u00b5m = 4.0 cells \u2014 volume under-resolved (PEC volume needs \u22655 cells; thin sheets <3 cells are fine).",
+        "- WARNING [mesh_resolution] PEC 'pec' y-extent 400\u00b5m = 4.0 cells \u2014 volume under-resolved (PEC volume needs \u22655 cells; thin sheets <3 cells are fine).",
+        "- WARNING [mesh_resolution] Gap between PEC structures: 300\u00b5m = 3.0 cells along z \u2014 coupling may be under-resolved.",
+        "- WARNING [lossless_q] all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "- WARNING [sheet_cavity_electrical_thickness] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=33)/geometry[3](k=37) at in-plane column (95,42): sum(d/eps) mesh 182\u00b5m vs physical 81.97\u00b5m (+122.0%); sum(d*sqrt(eps)) mesh 673.9\u00b5m vs physical 573.9\u00b5m (+17.4%); node-to-node 400\u00b5m vs face-to-face 300\u00b5m; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column \u2014 the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade \u2014 which face the plane sits on \u2014 not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there \u2014 extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only \u2014 1 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.",
+        "- WARNING [off_lattice_design_edges] 1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[3] 'pec' y: extent 700\u00b5m, worst face residual 50\u00b5m (7.14% of the extent, df/f ~ 7.14%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50\u00b5m only because every patterned dimension happened to be an exact multiple of 50\u00b5m. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the uniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 1 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.",
+        "- WARNING [msl_port_geometry] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=300\u00b5m, dx=100\u00b5m). Yee staircase at dielectric interface is O(dx) \u2014 Z0 staircase error >5% expected. Refine to dx \u2264 75.0\u00b5m (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias \u2014 measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).",
+        "- WARNING [msl_port_geometry] MSL port 'msl_0' (direction='-x'): deepest probe at x=10.30mm sits 0\u00b5m from a strong reflector (conductor 'pec' at x\u2208[3.05,14.50]mm y\u2208[3.05,3.75]mm); recommended \u2265 2095\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Standing-wave content at the probes will bias `compute_msl_s_matrix`'s Z\u2080 extraction and |S11|@notch \u2014 physical |S11|\u21921 at a quarter-wave open stub may read as -5 to -10 dB instead of 0 dB.  Mitigation: extend L_LINE so the line between port and reflector is \u2265 \u03bb_g/2, OR set n_probe_offset inside the no compliant n_probe_offset exists on this feed length (interval empty) (do NOT simply increase it \u2014 that moves the probes closer to the reflector)."
+      ],
+      "fidelity_report_lines": [
+        "=== INPUT-FIDELITY REPORT (declared vs solved; input units only) ===",
+        "  7 entities, 20 findings",
+        "",
+        "  domain (the solved box)",
+        "    x: declared [0.0, 14500.0] um -> realized [0.0, 14500.0] um | face residuals (0.0, 0.0) um | extent 14500.0 -> 14500.0 um",
+        "    y: declared [0.0, 6800.0] um -> realized [0.0, 6800.0] um | face residuals (0.0, 0.0) um | extent 6800.0 -> 6800.0 um",
+        "    z: declared [0.0, 3900.0] um -> realized [0.0, 3900.0] um | face residuals (0.0, 0.0) um | extent 3900.0 -> 3900.0 um",
+        "",
+        "  geometry[0] 'pec' \u2014 one-plane sheet (normal z): electric wall on the LOWER node plane ONLY",
+        "    cells: 10005",
+        "    x: declared [0.0, 14500.0] um -> realized [0.0, 14500.0] um | face residuals (0.0, 0.0) um | extent 14500.0 -> 14500.0 um",
+        "    y: declared [0.0, 6800.0] um -> realized [0.0, 6900.0] um | face residuals (0.0, 100.0) um | extent 6800.0 -> 6900.0 um",
+        "    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um",
+        "    ! [inside-absorber] y: the realized body extends beyond the declared domain on y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+        "      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty",
+        "    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (1.47% of the declared 6800.0 um extent); SIZE 6900.0 um (+100.0 um, +1.47%)",
+        "      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it",
+        "    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved",
+        "      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it",
+        "    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00..2.10 inside adjacent cavities",
+        "      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells",
+        "",
+        "  geometry[1] 'ptfe'",
+        "    cells: 141",
+        "    x: declared [2600.0, 3400.0] um -> realized [2700.0, 3500.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um",
+        "    y: declared [3000.0, 3800.0] um -> realized [3100.0, 3900.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um",
+        "    z: declared [2400.0, 2700.0] um -> realized [2500.0, 2800.0] um | face residuals (100.0, 100.0) um | extent 300.0 -> 300.0 um",
+        "    ! [claimed-by-conductor] 48.9% of this dielectric's cells are also PEC \u2014 the conductor wins, so that fraction of the declared material is not solved",
+        "      remedy: check the overlap against the intended stack; shrink whichever body is over-declared",
+        "    ! [bbox-offset] x: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "    ! [bbox-offset] y: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "    ! [bbox-offset] z: PLACEMENT off by 100.0 um (33.33% of the declared 300.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "    ! [materialization-overridden] only 33.3% of this entity's cells carry the declared eps_r 2.100 (assembled range 2.100..3.660)",
+        "      remedy: a later entity overwrites these cells (assembly is declaration-ordered) \u2014 check the overlap, or reorder if the overlap is unintended",
+        "",
+        "  geometry[2] 'sub'",
+        "    cells: 30015",
+        "    x: declared [0.0, 14500.0] um -> realized [0.0, 14500.0] um | face residuals (0.0, 0.0) um | extent 14500.0 -> 14500.0 um",
+        "    y: declared [0.0, 6800.0] um -> realized [0.0, 6900.0] um | face residuals (0.0, 100.0) um | extent 6800.0 -> 6900.0 um",
+        "    z: declared [2550.0, 2850.0] um -> realized [2600.0, 2900.0] um | face residuals (50.0, 50.0) um | extent 300.0 -> 300.0 um",
+        "    ! [claimed-by-conductor] 0.1% of this dielectric's cells are also PEC \u2014 the conductor wins, so that fraction of the declared material is not solved",
+        "      remedy: check the overlap against the intended stack; shrink whichever body is over-declared",
+        "    ! [inside-absorber] y: the realized body extends beyond the declared domain on y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+        "      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty",
+        "    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (1.47% of the declared 6800.0 um extent); SIZE 6900.0 um (+100.0 um, +1.47%)",
+        "      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it",
+        "    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (16.67% of the declared 300.0 um extent); SIZE preserved",
+        "      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it",
+        "",
+        "  geometry[3] 'pec' \u2014 one-plane sheet (normal z): electric wall on the LOWER node plane ONLY",
+        "    cells: 798",
+        "    x: declared [3050.0, 14500.0] um -> realized [3100.0, 14500.0] um | face residuals (50.0, 0.0) um | extent 11450.0 -> 11400.0 um",
+        "    y: declared [3050.0, 3750.0] um -> realized [3100.0, 3800.0] um | face residuals (50.0, 50.0) um | extent 700.0 -> 700.0 um",
+        "    z: declared [2850.0, 2950.0] um -> realized [2900.0, 3000.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um",
+        "    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (7.14% of the declared 700.0 um extent); SIZE preserved",
+        "      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it",
+        "    ! [sub-cell-placement] z: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice \u2014 a percentage of the declared extent is not a meaningful measure here",
+        "      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing",
+        "    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+        "      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells",
+        "",
+        "  geometry[4] 'pec' \u2014 volumetric PEC (>= 2 cells on every axis)",
+        "    cells: 66",
+        "    x: declared [2800.0, 3200.0] um -> realized [2900.0, 3300.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um",
+        "    y: declared [3200.0, 3600.0] um -> realized [3300.0, 3700.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um",
+        "    z: declared [2400.0, 3000.0] um -> realized [2500.0, 3100.0] um | face residuals (100.0, 100.0) um | extent 600.0 -> 600.0 um",
+        "    ! [bbox-offset] x: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "    ! [bbox-offset] y: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "    ! [bbox-offset] z: PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+        "      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison",
+        "",
+        "  NOT AUDITED by this report",
+        "    ! [out-of-scope] 1 MSL port(s); 1 coaxial port (pin/shield/caps)(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+        "      remedy: audit those with their own port preflight checks; do not read this report as covering them",
+        ""
+      ],
+      "fidelity_report_rows": [
+        {
+          "entity": "domain (the solved box)",
+          "findings": [],
+          "axes": [
+            {
+              "axis": "x",
+              "n_cells": 145,
+              "declared_um": [
+                0.0,
+                14500.0
+              ],
+              "mesh_extent_um": 14499.999999999962,
+              "realized_um": [
+                0.0,
+                14499.999999999962
+              ],
+              "face_residual_um": [
+                0.0,
+                3.8163916471489756e-11
+              ],
+              "declared_extent_um": 14500.0,
+              "realized_extent_um": 14499.999999999962
+            },
+            {
+              "axis": "y",
+              "n_cells": 68,
+              "declared_um": [
+                0.0,
+                6800.0
+              ],
+              "mesh_extent_um": 6800.000000000006,
+              "realized_um": [
+                0.0,
+                6800.000000000006
+              ],
+              "face_residual_um": [
+                0.0,
+                6.938893903907228e-12
+              ],
+              "declared_extent_um": 6800.0,
+              "realized_extent_um": 6800.000000000006
+            },
+            {
+              "axis": "z",
+              "n_cells": 39,
+              "declared_um": [
+                0.0,
+                3900.0
+              ],
+              "mesh_extent_um": 3899.999999999999,
+              "realized_um": [
+                0.0,
+                3899.999999999999
+              ],
+              "face_residual_um": [
+                0.0,
+                8.673617379884035e-13
+              ],
+              "declared_extent_um": 3900.0,
+              "realized_extent_um": 3899.999999999999
+            }
+          ]
+        },
+        {
+          "entity": "geometry[0] 'pec'",
+          "material": {
+            "kind": "pec"
+          },
+          "declared_lo": [
+            0.0,
+            0.0,
+            0.00245
+          ],
+          "declared_hi": [
+            0.0145,
+            0.0068,
+            0.00255
+          ],
+          "n_cells": 10005,
+          "findings": [
+            {
+              "kind": "inside-absorber",
+              "axis": "y",
+              "detail": "the realized body extends beyond the declared domain on y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            },
+            {
+              "kind": "off-lattice-face",
+              "axis": "y",
+              "detail": "PLACEMENT off by 100.0 um (1.47% of the declared 6800.0 um extent); SIZE 6900.0 um (+100.0 um, +1.47%)",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "kind": "off-lattice-face",
+              "axis": "z",
+              "detail": "PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "kind": "sheet-own-cell-live",
+              "axis": "z",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00..2.10 inside adjacent cavities",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "axes": [
+            {
+              "axis": "x",
+              "declared_um": [
+                0.0,
+                14500.0
+              ],
+              "realized_um": [
+                0.0,
+                14499.999999999962
+              ],
+              "face_residual_um": [
+                0.0,
+                3.8163916471489756e-11
+              ],
+              "declared_extent_um": 14500.0,
+              "realized_extent_um": 14499.999999999962,
+              "cell_um": 100.00000000000001,
+              "sub_cell": false
+            },
+            {
+              "axis": "y",
+              "declared_um": [
+                0.0,
+                6800.0
+              ],
+              "realized_um": [
+                0.0,
+                6900.000000000007
+              ],
+              "face_residual_um": [
+                0.0,
+                100.0000000000072
+              ],
+              "declared_extent_um": 6800.0,
+              "realized_extent_um": 6900.000000000007,
+              "cell_um": 100.00000000000003,
+              "sub_cell": false
+            },
+            {
+              "axis": "z",
+              "declared_um": [
+                2450.0,
+                2550.0
+              ],
+              "realized_um": [
+                2499.9999999999977,
+                2599.999999999998
+              ],
+              "face_residual_um": [
+                49.99999999999796,
+                49.99999999999796
+              ],
+              "declared_extent_um": 100.00000000000026,
+              "realized_extent_um": 100.00000000000026,
+              "cell_um": 100.0,
+              "sub_cell": false
+            }
+          ],
+          "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY",
+          "own_cell_eps_r": [
+            1.0,
+            2.0999999046325684
+          ]
+        },
+        {
+          "entity": "geometry[1] 'ptfe'",
+          "material": {
+            "kind": "dielectric",
+            "name": "ptfe",
+            "eps_r": 2.1,
+            "sigma": 0.0,
+            "n_debye": 0,
+            "n_lorentz": 0
+          },
+          "declared_lo": [
+            0.0026,
+            0.0029999999999999996,
+            0.0024000000000000002
+          ],
+          "declared_hi": [
+            0.0034000000000000002,
+            0.0038,
+            0.0027
+          ],
+          "n_cells": 141,
+          "findings": [
+            {
+              "kind": "claimed-by-conductor",
+              "detail": "48.9% of this dielectric's cells are also PEC \u2014 the conductor wins, so that fraction of the declared material is not solved",
+              "remedy": "check the overlap against the intended stack; shrink whichever body is over-declared"
+            },
+            {
+              "kind": "bbox-offset",
+              "axis": "x",
+              "midpoint_shift_um": 99.99999999999773,
+              "detail": "PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            },
+            {
+              "kind": "bbox-offset",
+              "axis": "y",
+              "midpoint_shift_um": 99.99999999999818,
+              "detail": "PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            },
+            {
+              "kind": "bbox-offset",
+              "axis": "z",
+              "midpoint_shift_um": 99.99999999999773,
+              "detail": "PLACEMENT off by 100.0 um (33.33% of the declared 300.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            },
+            {
+              "kind": "materialization-overridden",
+              "detail": "only 33.3% of this entity's cells carry the declared eps_r 2.100 (assembled range 2.100..3.660)",
+              "remedy": "a later entity overwrites these cells (assembly is declaration-ordered) \u2014 check the overlap, or reorder if the overlap is unintended"
+            }
+          ],
+          "axes": [
+            {
+              "axis": "x",
+              "declared_um": [
+                2600.0,
+                3400.0000000000005
+              ],
+              "realized_um": [
+                2699.9999999999977,
+                3499.9999999999977
+              ],
+              "face_residual_um": [
+                99.99999999999766,
+                99.99999999999766
+              ],
+              "declared_extent_um": 800.0000000000003,
+              "realized_extent_um": 800.0000000000003,
+              "cell_um": 100.0,
+              "sub_cell": false
+            },
+            {
+              "axis": "y",
+              "declared_um": [
+                2999.9999999999995,
+                3800.0
+              ],
+              "realized_um": [
+                3099.999999999997,
+                3899.999999999999
+              ],
+              "face_residual_um": [
+                99.99999999999723,
+                99.99999999999896
+              ],
+              "declared_extent_um": 800.0000000000003,
+              "realized_extent_um": 800.000000000002,
+              "cell_um": 100.0,
+              "sub_cell": false
+            },
+            {
+              "axis": "z",
+              "declared_um": [
+                2400.0,
+                2700.0
+              ],
+              "realized_um": [
+                2499.9999999999977,
+                2799.9999999999977
+              ],
+              "face_residual_um": [
+                99.99999999999766,
+                99.99999999999766
+              ],
+              "declared_extent_um": 299.99999999999994,
+              "realized_extent_um": 299.99999999999994,
+              "cell_um": 100.0,
+              "sub_cell": false
+            }
+          ],
+          "assembled_eps_r": [
+            2.0999999046325684,
+            3.6600000858306885
+          ],
+          "assembled_matches_declared_frac": 0.3333333333333333,
+          "assembled_sigma": [
+            0.0,
+            0.0
+          ],
+          "assembled_sigma_matches_declared_frac": 1.0
+        },
+        {
+          "entity": "geometry[2] 'sub'",
+          "material": {
+            "kind": "dielectric",
+            "name": "sub",
+            "eps_r": 3.66,
+            "sigma": 0.0,
+            "n_debye": 0,
+            "n_lorentz": 0
+          },
+          "declared_lo": [
+            0.0,
+            0.0,
+            0.00255
+          ],
+          "declared_hi": [
+            0.0145,
+            0.0068,
+            0.00285
+          ],
+          "n_cells": 30015,
+          "findings": [
+            {
+              "kind": "claimed-by-conductor",
+              "detail": "0.1% of this dielectric's cells are also PEC \u2014 the conductor wins, so that fraction of the declared material is not solved",
+              "remedy": "check the overlap against the intended stack; shrink whichever body is over-declared"
+            },
+            {
+              "kind": "inside-absorber",
+              "axis": "y",
+              "detail": "the realized body extends beyond the declared domain on y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            },
+            {
+              "kind": "off-lattice-face",
+              "axis": "y",
+              "detail": "PLACEMENT off by 100.0 um (1.47% of the declared 6800.0 um extent); SIZE 6900.0 um (+100.0 um, +1.47%)",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "kind": "off-lattice-face",
+              "axis": "z",
+              "detail": "PLACEMENT off by 50.0 um (16.67% of the declared 300.0 um extent); SIZE preserved",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "axes": [
+            {
+              "axis": "x",
+              "declared_um": [
+                0.0,
+                14500.0
+              ],
+              "realized_um": [
+                0.0,
+                14499.999999999962
+              ],
+              "face_residual_um": [
+                0.0,
+                3.8163916471489756e-11
+              ],
+              "declared_extent_um": 14500.0,
+              "realized_extent_um": 14499.999999999962,
+              "cell_um": 100.00000000000001,
+              "sub_cell": false
+            },
+            {
+              "axis": "y",
+              "declared_um": [
+                0.0,
+                6800.0
+              ],
+              "realized_um": [
+                0.0,
+                6900.000000000007
+              ],
+              "face_residual_um": [
+                0.0,
+                100.0000000000072
+              ],
+              "declared_extent_um": 6800.0,
+              "realized_extent_um": 6900.000000000007,
+              "cell_um": 100.00000000000003,
+              "sub_cell": false
+            },
+            {
+              "axis": "z",
+              "declared_um": [
+                2550.0,
+                2850.0
+              ],
+              "realized_um": [
+                2599.999999999998,
+                2899.9999999999973
+              ],
+              "face_residual_um": [
+                49.99999999999796,
+                49.999999999997094
+              ],
+              "declared_extent_um": 299.99999999999994,
+              "realized_extent_um": 299.99999999999903,
+              "cell_um": 100.0,
+              "sub_cell": false
+            }
+          ],
+          "assembled_eps_r": [
+            3.6600000858306885,
+            3.6600000858306885
+          ],
+          "assembled_matches_declared_frac": 1.0,
+          "assembled_sigma": [
+            0.0,
+            0.0
+          ],
+          "assembled_sigma_matches_declared_frac": 1.0
+        },
+        {
+          "entity": "geometry[3] 'pec'",
+          "material": {
+            "kind": "pec"
+          },
+          "declared_lo": [
+            0.00305,
+            0.00305,
+            0.00285
+          ],
+          "declared_hi": [
+            0.0145,
+            0.0037500000000000003,
+            0.00295
+          ],
+          "n_cells": 798,
+          "findings": [
+            {
+              "kind": "off-lattice-face",
+              "axis": "y",
+              "detail": "PLACEMENT off by 50.0 um (7.14% of the declared 700.0 um extent); SIZE preserved",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "kind": "sub-cell-placement",
+              "axis": "z",
+              "detail": "declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice \u2014 a percentage of the declared extent is not a meaningful measure here",
+              "remedy": "place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing"
+            },
+            {
+              "kind": "sheet-own-cell-live",
+              "axis": "z",
+              "detail": "the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities \u2014 VACUUM substituted for declared metal",
+              "remedy": "two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells"
+            }
+          ],
+          "axes": [
+            {
+              "axis": "x",
+              "declared_um": [
+                3050.0,
+                14500.0
+              ],
+              "realized_um": [
+                3099.999999999997,
+                14499.999999999962
+              ],
+              "face_residual_um": [
+                49.99999999999666,
+                3.8163916471489756e-11
+              ],
+              "declared_extent_um": 11450.0,
+              "realized_extent_um": 11399.999999999965,
+              "cell_um": 100.00000000000001,
+              "sub_cell": false
+            },
+            {
+              "axis": "y",
+              "declared_um": [
+                3050.0,
+                3750.0000000000005
+              ],
+              "realized_um": [
+                3099.999999999997,
+                3799.9999999999986
+              ],
+              "face_residual_um": [
+                49.99999999999666,
+                49.999999999998394
+              ],
+              "declared_extent_um": 700.0000000000001,
+              "realized_extent_um": 700.0000000000018,
+              "cell_um": 100.00000000000001,
+              "sub_cell": false
+            },
+            {
+              "axis": "z",
+              "declared_um": [
+                2850.0,
+                2950.0
+              ],
+              "realized_um": [
+                2899.9999999999973,
+                2999.9999999999973
+              ],
+              "face_residual_um": [
+                49.999999999997094,
+                49.99999999999753
+              ],
+              "declared_extent_um": 99.99999999999983,
+              "realized_extent_um": 100.00000000000026,
+              "cell_um": 100.0,
+              "sub_cell": true
+            }
+          ],
+          "realization": "one-plane sheet (normal z): electric wall on the LOWER node plane ONLY",
+          "own_cell_eps_r": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "entity": "geometry[4] 'pec'",
+          "material": {
+            "kind": "pec"
+          },
+          "declared_lo": [
+            0.0028,
+            0.0031999999999999997,
+            0.0024000000000000002
+          ],
+          "declared_hi": [
+            0.0032,
+            0.0036,
+            0.003
+          ],
+          "n_cells": 66,
+          "findings": [
+            {
+              "kind": "bbox-offset",
+              "axis": "x",
+              "midpoint_shift_um": 99.99999999999727,
+              "detail": "PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            },
+            {
+              "kind": "bbox-offset",
+              "axis": "y",
+              "midpoint_shift_um": 99.99999999999818,
+              "detail": "PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            },
+            {
+              "kind": "bbox-offset",
+              "axis": "z",
+              "midpoint_shift_um": 99.99999999999727,
+              "detail": "PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            }
+          ],
+          "axes": [
+            {
+              "axis": "x",
+              "declared_um": [
+                2800.0,
+                3200.0
+              ],
+              "realized_um": [
+                2899.9999999999973,
+                3299.9999999999973
+              ],
+              "face_residual_um": [
+                99.99999999999723,
+                99.99999999999723
+              ],
+              "declared_extent_um": 400.00000000000017,
+              "realized_extent_um": 400.00000000000017,
+              "cell_um": 100.0,
+              "sub_cell": false
+            },
+            {
+              "axis": "y",
+              "declared_um": [
+                3199.9999999999995,
+                3600.0
+              ],
+              "realized_um": [
+                3299.9999999999973,
+                3699.9999999999986
+              ],
+              "face_residual_um": [
+                99.99999999999766,
+                99.99999999999852
+              ],
+              "declared_extent_um": 400.00000000000017,
+              "realized_extent_um": 400.000000000001,
+              "cell_um": 100.0,
+              "sub_cell": false
+            },
+            {
+              "axis": "z",
+              "declared_um": [
+                2400.0,
+                3000.0
+              ],
+              "realized_um": [
+                2499.9999999999977,
+                3099.999999999997
+              ],
+              "face_residual_um": [
+                99.99999999999766,
+                99.99999999999679
+              ],
+              "declared_extent_um": 599.9999999999999,
+              "realized_extent_um": 599.999999999999,
+              "cell_um": 100.0,
+              "sub_cell": false
+            }
+          ],
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        {
+          "entity": "NOT AUDITED by this report",
+          "findings": [
+            {
+              "kind": "out-of-scope",
+              "detail": "1 MSL port(s); 1 coaxial port (pin/shield/caps)(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ]
+        }
+      ]
+    },
+    "a0_reproduction": {
+      "baseline_path": "scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_result.json",
+      "status": "compared but NOT a reproduction test",
+      "tier": "NOT COMPARABLE (fixture this run attempt2_wide vs baseline attempt2): reproduction tier NOT applied; tier_value/deltas are informational",
+      "compared": {},
+      "not_comparable": [
+        "complex S (re/im)",
+        "|S00|",
+        "|S10|",
+        "|S01| (only derivable as col_power - |S22|^2)",
+        "fit/recurrence residuals",
+        "a_inc/b_out ratios",
+        "raw cond_a",
+        "lambda_min(I - S^H S)",
+        "preflight output"
+      ],
+      "notes": [
+        "NOT COMPARABLE as a reproduction test: fixture this run attempt2_wide vs baseline attempt2"
+      ],
+      "precision": {
+        "this_run_jax_enable_x64": false,
+        "baseline_jax_enable_x64": false,
+        "baseline_source": "no precision key: tracked 369367252283-class record, documented as a default-float32 GPU run (no x64 pin)"
+      },
+      "f64_replicate": null,
+      "deltas": {
+        "s22_abs": [
+          0.005639836796303102,
+          0.003096616096525548,
+          0.003376023673601569
+        ],
+        "col_msl_driven_power": [
+          0.000942957566197688,
+          0.000658458992034228,
+          0.006045038604851727
+        ],
+        "max_abs_s": 0.006610048364016796,
+        "gamma_ratio_coax_driven_info": [
+          0.10288218067537769,
+          0.028118355513385707,
+          0.1594533467098478
+        ],
+        "cond_a_equilibrated_info": [
+          0.0016906074814300176,
+          0.001819440029562358,
+          0.0037364186085224738
+        ],
+        "settling_db_info": [
+          0.2497542654079581,
+          2.856641133081048
+        ],
+        "reciprocity_worst_deviation_info": 0.11922000134523714
+      },
+      "tier_value": 0.006610048364016796,
+      "budget_status": "UNMEASURED before this run (no GPU repeat exists on any coax lane)"
+    }
+  }
+}

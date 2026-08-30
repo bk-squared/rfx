@@ -1,0 +1,320 @@
+{
+  "report_only": true,
+  "runs": [
+    "C0",
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "ROTY",
+    "SYM"
+  ],
+  "precision_mode": "x32",
+  "reduced_settings_runs": [],
+  "zc_ohm_from_C0": 41.918424043893125,
+  "gamma_passive_abs_band_median_by_variant": {
+    "C0": {
+      "1": 0.17994516797607107,
+      "0": 0.17594771041884888
+    },
+    "C1": {},
+    "C2": {
+      "1": 0.2417945198987803,
+      "0": 0.2388948191102413
+    },
+    "C3": {
+      "1": 0.44869172137332675,
+      "0": 0.4470982323407061
+    },
+    "C4": {
+      "1": 0.12727600461405333,
+      "0": 0.17598519910753488
+    },
+    "C5": {
+      "1": 0.212264785749032,
+      "0": 0.23897741117398238
+    },
+    "SYM": {
+      "1": 0.17650829892090256,
+      "0": 0.17603138387106346
+    },
+    "ROTY": {
+      "1": 0.17994299389679855,
+      "0": 0.17593789961249195
+    }
+  },
+  "comparator_all_passed": true,
+  "realized_termination_witness": {
+    "C0": [
+      {
+        "name": "msl_0",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      }
+    ],
+    "C1": [
+      {
+        "name": "msl_0",
+        "r_requested": 1000000.0,
+        "k_fold": 1.0000000053210554,
+        "r_network": 689913.6673432447
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 1000000.0,
+        "k_fold": 1.0000000053210554,
+        "r_network": 689913.6673432447
+      }
+    ],
+    "C2": [
+      {
+        "name": "msl_0",
+        "r_requested": 41.918424043893125,
+        "k_fold": 1.0000000131016795,
+        "r_network": 28.920093886387924
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 41.918424043893125,
+        "k_fold": 1.0000000131016795,
+        "r_network": 28.920093886387924
+      }
+    ],
+    "C3": [
+      {
+        "name": "msl_0",
+        "r_requested": 25.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 17.24784143135594
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 25.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 17.24784143135594
+      }
+    ],
+    "C4": [
+      {
+        "name": "msl_0",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      }
+    ],
+    "C5": [
+      {
+        "name": "msl_0",
+        "r_requested": 41.918424043893125,
+        "k_fold": 1.0000000131016795,
+        "r_network": 28.920093886387924
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 41.918424043893125,
+        "k_fold": 1.0000000131016795,
+        "r_network": 28.920093886387924
+      }
+    ],
+    "SYM": [
+      {
+        "name": "msl_0",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      }
+    ],
+    "ROTY": [
+      {
+        "name": "msl_0",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      },
+      {
+        "name": "msl_1",
+        "r_requested": 50.0,
+        "k_fold": 0.9999999906974761,
+        "r_network": 34.49568286271188
+      }
+    ]
+  },
+  "r_sweep_points": [
+    {
+      "variant": "C0",
+      "port": 1,
+      "r_requested": 50.0,
+      "abs_gamma": 0.17994516797607107,
+      "H_shunt": 0.29536985297221463,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.08792117619692587,
+      "implied_k_H_shunt": 1.9103267164469684,
+      "implied_k_H_end_branches": [
+        1.2062959687144525,
+        0.5826610781751127
+      ],
+      "x_L_to_feed_m": 0.0013912835964427148
+    },
+    {
+      "variant": "C0",
+      "port": 0,
+      "r_requested": 50.0,
+      "abs_gamma": 0.17594771041884888,
+      "H_shunt": 0.29536985297221463,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.08792117619692587,
+      "implied_k_H_shunt": 1.9632522200358904,
+      "implied_k_H_end_branches": [
+        1.196377351341081,
+        0.5874916546535932
+      ],
+      "x_L_to_feed_m": 0.0014205904541719234
+    },
+    {
+      "variant": "C2",
+      "port": 1,
+      "r_requested": 41.918424043893125,
+      "abs_gamma": 0.2417945198987803,
+      "H_shunt": 0.3333333333333333,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.0,
+      "implied_k_H_shunt": 1.5678715142481694,
+      "implied_k_H_end_branches": [
+        1.6378073655350025,
+        0.610572415928379
+      ],
+      "x_L_to_feed_m": 0.0010918036494170294
+    },
+    {
+      "variant": "C2",
+      "port": 0,
+      "r_requested": 41.918424043893125,
+      "abs_gamma": 0.2388948191102413,
+      "H_shunt": 0.3333333333333333,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.0,
+      "implied_k_H_shunt": 1.5929712995126448,
+      "implied_k_H_end_branches": [
+        1.6277577005348065,
+        0.6143420483720925
+      ],
+      "x_L_to_feed_m": 0.0010873627400906638
+    },
+    {
+      "variant": "C3",
+      "port": 1,
+      "r_requested": 25.0,
+      "abs_gamma": 0.44869172137332675,
+      "H_shunt": 0.4560394119015371,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.2528216150577006,
+      "implied_k_H_shunt": 1.0301047735691733,
+      "implied_k_H_end_branches": [
+        4.406019371715382,
+        0.6380922555552105
+      ],
+      "x_L_to_feed_m": 0.0002902939143364855
+    },
+    {
+      "variant": "C3",
+      "port": 0,
+      "r_requested": 25.0,
+      "abs_gamma": 0.4470982323407061,
+      "H_shunt": 0.4560394119015371,
+      "H_shunt_with_C1_stub": null,
+      "H_end": 0.2528216150577006,
+      "implied_k_H_shunt": 1.0367641415186253,
+      "implied_k_H_end_branches": [
+        4.388488580402262,
+        0.640641256644244
+      ],
+      "x_L_to_feed_m": 0.00028140552587139307
+    }
+  ],
+  "hypotheses": {
+    "H_shunt": {
+      "fits_within_band": false,
+      "max_abs_dev": 0.11942214255336575,
+      "n_points": 6,
+      "band": 0.03
+    },
+    "H_shunt_with_C1_stub": {
+      "fits_within_band": false,
+      "max_abs_dev": null,
+      "n_points": 0,
+      "band": 0.03
+    },
+    "H_end": {
+      "fits_within_band": false,
+      "max_abs_dev": 0.2417945198987803,
+      "n_points": 6,
+      "band": 0.03
+    }
+  },
+  "verdict": "NO SINGLE-REFLECTOR MODEL fits all R points within 0.03 (predeclared falsifier) -- report and stop; no two-parameter fit",
+  "implied_k_H_shunt_per_point": [
+    1.9103267164469684,
+    1.9632522200358904,
+    1.5678715142481694,
+    1.5929712995126448,
+    1.0301047735691733,
+    1.0367641415186253
+  ],
+  "implied_k_finding": "H_shunt implied k per R point = ['1.910', '1.963', '1.568', '1.593', '1.030', '1.037'] (spread 0.933); no consistent k across R points -> shape does not follow 1/(2R+Zc)",
+  "item2_drive_asymmetry": {
+    "C0_abs_gamma_port1": 0.17594771041884888,
+    "C0_abs_gamma_port2": 0.17994516797607107,
+    "C0_difference": 0.003997457557222195,
+    "band": 0.02,
+    "asymmetric": false,
+    "SYM_abs_gamma": [
+      0.17603138387106346,
+      0.17650829892090256
+    ],
+    "SYM_difference": 0.0004769150498390995,
+    "ROTY_abs_gamma": [
+      0.17593789961249195,
+      0.17994299389679855
+    ],
+    "ROTY_difference": 0.004005094284306593,
+    "reading": "C0 ports agree within 0.02: item 2 collapses into item 1"
+  },
+  "C4": {
+    "status": "OK",
+    "finding": null,
+    "gamma_passive": {
+      "1": 0.12727600461405333,
+      "0": 0.17598519910753488
+    },
+    "reading": "drive 1 reads END-terminated port 2 (H_end predicts |R-Zc|/(R+Zc) = 0.088); drive 2 reads the CONTINUING port 1 (H_shunt predicts 0.295)"
+  },
+  "C5": {
+    "status": "OK",
+    "finding": null,
+    "gamma_passive": {
+      "1": 0.212264785749032,
+      "0": 0.23897741117398238
+    },
+    "reading": "drive 1 reads END-terminated port 2 (H_end predicts |R-Zc|/(R+Zc) = 0.000); drive 2 reads the CONTINUING port 1 (H_shunt predicts 0.333)"
+  }
+}
