@@ -147,3 +147,114 @@ def test_compute_msl_registers_sparse_regions():
     assert sum(sparse for _, sparse, _ in observed) < sum(
         full for full, _, _ in observed
     )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: the cropped extractor arithmetic must reproduce the full-plane
+# S-matrix bit for bit. The three tests above never reach it — the uniform
+# and nonuniform scans accumulate through their own hand-copies of the DFT
+# update (rfx/simulation.py, rfx/nonuniform.py), not update_dft_plane_probe,
+# and the registration test feeds the extractor full-plane fakes so it
+# takes the legacy fallback. This one runs the real thru on both lanes and
+# both port orientations (a_is_width True/False), once with the crop
+# engaged and once with the crop forced off, and compares complex S exactly.
+# Mutation twins: an off-by-one in the cropped j/k arithmetic, or a missing
+# -1/+1 contour margin, moves S here and nowhere else in the suite.
+# ---------------------------------------------------------------------------
+
+from tests.test_msl_port_axis_generality import (  # noqa: E402
+    DX as _AG_DX, EPS_R as _AG_EPS_R, F_MAX as _AG_F_MAX, H_SUB as _AG_H_SUB,
+    L_LAT as _AG_L_LAT, L_LINE as _AG_L_LINE, L_PROP as _AG_L_PROP,
+    LZ as _AG_LZ, PORT_MARGIN as _AG_PORT_MARGIN, W_TRACE as _AG_W_TRACE,
+)
+
+
+def _thru_sim(axis: str, lane: str):
+    from rfx.api import Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from rfx.geometry.csg import Box
+
+    kw = {}
+    lz = _AG_LZ
+    if lane == "nonuniform":
+        # graded z: a 1.25x step in the air above the substrate, boundary
+        # cells kept at dx (make_nonuniform_grid's constraint)
+        nz = int(round(_AG_LZ / _AG_DX))
+        dz = np.full(nz, _AG_DX)
+        dz[nz // 2:nz - 4] = 1.25 * _AG_DX
+        kw["dz_profile"] = dz
+        lz = float(dz.sum())
+    lat_c = _AG_L_LAT / 2.0
+    if axis == "x":
+        domain, sub = (_AG_L_PROP, _AG_L_LAT, lz), (_AG_L_PROP, _AG_L_LAT, _AG_H_SUB)
+        tlo = (0.0, lat_c - _AG_W_TRACE / 2, _AG_H_SUB)
+        thi = (_AG_L_PROP, lat_c + _AG_W_TRACE / 2, _AG_H_SUB + _AG_DX)
+        p0, p1, d0, d1 = ((_AG_PORT_MARGIN, lat_c, 0.0),
+                          (_AG_PORT_MARGIN + _AG_L_LINE, lat_c, 0.0), "+x", "-x")
+    else:
+        domain, sub = (_AG_L_LAT, _AG_L_PROP, lz), (_AG_L_LAT, _AG_L_PROP, _AG_H_SUB)
+        tlo = (lat_c - _AG_W_TRACE / 2, 0.0, _AG_H_SUB)
+        thi = (lat_c + _AG_W_TRACE / 2, _AG_L_PROP, _AG_H_SUB + _AG_DX)
+        p0, p1, d0, d1 = ((lat_c, _AG_PORT_MARGIN, 0.0),
+                          (lat_c, _AG_PORT_MARGIN + _AG_L_LINE, 0.0), "+y", "-y")
+    sim = Simulation(freq_max=_AG_F_MAX, domain=domain, dx=_AG_DX, cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y="cpml",
+                                           z=Boundary(lo="pec", hi="cpml")), **kw)
+    sim.add_material("ro4350b", eps_r=_AG_EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), sub), material="ro4350b")
+    sim.add(Box(tlo, thi), material="pec")
+    sim.add_msl_port(position=p0, width=_AG_W_TRACE, height=_AG_H_SUB,
+                     direction=d0, impedance=50.0)
+    sim.add_msl_port(position=p1, width=_AG_W_TRACE, height=_AG_H_SUB,
+                     direction=d1, impedance=50.0)
+    return sim
+
+
+def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
+    """One thru solve; ``crop=False`` forces every internal plane to the
+    full transverse rectangle so the extractor takes its legacy path."""
+    import warnings
+    import rfx.probes.probes as _pp
+    import rfx.runners.uniform as _ru
+
+    real = init_dft_plane_probe
+
+    def spy(*a, **k):
+        seen.append(k.get("region"))
+        if not crop:
+            k["region"] = None
+        return real(*a, **k)
+
+    # the uniform runner bound the name at import; the NU runner and the
+    # forward path import it inside the function
+    monkeypatch.setattr(_pp, "init_dft_plane_probe", spy)
+    monkeypatch.setattr(_ru, "init_dft_plane_probe", spy)
+    sim = _thru_sim(axis, lane)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = sim.compute_msl_s_matrix(n_freqs=3, num_periods=3)
+    assert "_dft_plane_regions" not in vars(sim), \
+        "the runtime crop dict must not survive compute_msl_s_matrix"
+    return np.asarray(res.S), np.asarray(res.Z0)
+
+
+@pytest.mark.parametrize("lane,axis", [("uniform", "x"), ("uniform", "y"),
+                                       ("nonuniform", "x")])
+def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane, axis):
+    seen_crop: list = []
+    s_crop, z_crop = _run_s(axis, lane, monkeypatch, crop=True, seen=seen_crop)
+    seen_full: list = []
+    s_full, z_full = _run_s(axis, lane, monkeypatch, crop=False, seen=seen_full)
+
+    # the crop really engaged in the first run: every internal MSL plane got
+    # a rectangle, and it is strictly smaller than the plane
+    regions = [r for r in seen_crop if r is not None]
+    assert regions and len(regions) == len(seen_crop), seen_crop
+    assert all(len(r) == 4 and r[1] > r[0] and r[3] > r[2] for r in regions)
+    assert all(r is not None for r in seen_full)  # the spy saw the same regions...
+    # ...and the second run reset every one of them (so it went full-plane)
+
+    assert s_crop.shape == s_full.shape == (2, 2, 3)
+    np.testing.assert_array_equal(s_crop, s_full)
+    np.testing.assert_array_equal(z_crop, z_full)
+    assert np.all(np.isfinite(s_crop))

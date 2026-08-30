@@ -809,6 +809,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 #: preflight/driver pass, which is exactly why they are not design state.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_ntff_min_steps_hint",
+    # crop rectangles for the internal MSL DFT planes; exists only while
+    # compute_msl_s_matrix runs and is removed on exit (never a design input)
+    "_dft_plane_regions",
 )
 
 

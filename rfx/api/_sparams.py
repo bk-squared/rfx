@@ -1779,9 +1779,10 @@ def _assemble_coax_msl_transition_from_voltages(
 
 
 class _SparamMixin:
-    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
-
     """S-parameter extraction methods mixed into :class:`Simulation`."""
+
+    # Runtime-only; set by compute_msl_s_matrix for the duration of a run.
+    _dft_plane_regions: dict[str, tuple[int, int, int, int]]
 
     def compute_waveguide_s_matrix(
         self,
@@ -3075,7 +3076,8 @@ class _SparamMixin:
 
         # Stash existing add_dft_plane_probe registrations and restore on exit.
         saved_dft = list(self._dft_planes)
-        saved_dft_regions = dict(self._dft_plane_regions)
+        _had_dft_regions = "_dft_plane_regions" in self.__dict__
+        saved_dft_regions = dict(getattr(self, "_dft_plane_regions", {}))
         saved_msl = list(self._msl_ports)
         saved_ports = list(self._ports)
         saved_probes = list(self._probes)
@@ -3857,7 +3859,12 @@ class _SparamMixin:
             return result
         finally:
             self._dft_planes = saved_dft
-            self._dft_plane_regions = saved_dft_regions
+            if _had_dft_regions:
+                self._dft_plane_regions = saved_dft_regions
+            else:
+                # keep the constructor-time attribute set clean (design-IR
+                # classification test) — the dict lives only during a run
+                self.__dict__.pop("_dft_plane_regions", None)
             self._msl_ports = saved_msl
             self._ports = saved_ports
             self._probes = saved_probes

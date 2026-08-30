@@ -593,12 +593,11 @@ class Simulation(
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
-        # Runtime-only crop metadata for internal DFT planes. Public
-        # add_dft_plane_probe registrations remain full-plane and the
-        # design-IR record stays unchanged.
-        self._dft_plane_regions: dict[
-            str, tuple[int, int, int, int]
-        ] = {}
+        # ``_dft_plane_regions`` (runtime-only crop metadata for the internal
+        # MSL DFT planes) is deliberately NOT set here: it exists only while
+        # ``compute_msl_s_matrix`` runs and is removed again on exit, so it
+        # never enters the design-IR ledger (rfx/interop/_design.py rule 4).
+        # Public add_dft_plane_probe registrations stay full-plane.
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []
