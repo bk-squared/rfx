@@ -67,6 +67,21 @@ quarter-wave length. Not duplicated here; see
 `validation/tmtt_paper/msl_stub_notch_tuning.py` (cross-validation companion:
 `validation/crossval/06b_msl_notch_filter_uniform.py`).
 
+> **-46.1 dB pending re-derivation (issue #514).** The descent objective
+> above is `|S21|²` from the plane-lane N-probe extractor
+> (`rfx.probes.msl_wave_decomp` via `register_msl_plane_probes` /
+> `_v_from_plane` / `_i_from_plane`), which was reproduced by the
+> **pre-#514** V/I definitions and is reproducible as-is at tag
+> `paper-tmtt-2026`. #514 pointed that lane's V/I integrals at
+> `compute_msl_s_matrix`'s own primitives instead of a drifted copy, so
+> a re-run after this change can move the -46.1 dB figure; it is pending
+> re-derivation and re-optimization (a PI decision + a lead-lane run, not
+> a pod task). Amendment threshold: any change beyond the quoted 0.1 dB
+> precision. The **-55.7 dB validated optimized-null** figure is the
+> unchanged reference — it comes from the production S-matrix path
+> (`compute_msl_s_matrix`, already flux-validated, #520/#549), which #514
+> does not touch.
+
 **Example 2 - Waveguide dielectric taper (30 sections).**
 `waveguide_dielectric_taper.py` matches a WR-90 guide to a high-permittivity
 load over the X-band by optimizing a graded N-section dielectric taper through

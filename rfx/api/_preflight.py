@@ -1699,7 +1699,11 @@ class _PreflightMixin:
             # Deliberately NOT ``except Exception`` (PR #555): an async
             # worker timeout must propagate through this advisory. On a
             # narrow failure the caller falls back to the aperture,
-            # which is always defined.
+            # which is always defined. Issue #482 also made the timeout/
+            # cancel exceptions themselves ``BaseException``-derived, so
+            # this tuple is belt-and-suspenders, not the only guard --
+            # see the longer comment at the other ``_assemble_materials``
+            # call site in this file.
             return None
         if pec_mask is None:
             return None
@@ -4416,14 +4420,14 @@ class _PreflightMixin:
                         # DELIBERATELY NOT ``except Exception`` (CI
                         # incident on PR #555's own head: a broad
                         # ``except Exception`` here caught
-                        # ``rfx.experiments.worker.RunTimedOut``, a
-                        # ``TimeoutError`` subclass a SIGALRM handler
-                        # raises asynchronously while this exact call is
-                        # in flight -- ``execute_run`` arms the alarm
-                        # BEFORE calling ``compiled.preflight()``, so a
-                        # slow ``_assemble_materials`` here is squarely
-                        # inside the timeout window. Swallowing it here
-                        # meant the worker's top-level
+                        # ``rfx.experiments.worker.RunTimedOut`` (at the
+                        # time, a ``TimeoutError`` subclass) a SIGALRM
+                        # handler raises asynchronously while this exact
+                        # call is in flight -- ``execute_run`` arms the
+                        # alarm BEFORE calling ``compiled.preflight()``,
+                        # so a slow ``_assemble_materials`` here is
+                        # squarely inside the timeout window. Swallowing
+                        # it here meant the worker's top-level
                         # ``except RunTimedOut`` handler never ran, so a
                         # 1-second-timeout experiment kept simulating for
                         # its full 500k-step run instead of exiting —
@@ -4434,7 +4438,7 @@ class _PreflightMixin:
                         # 60s). ``rfx/api`` must not import
                         # ``rfx.experiments`` to name that exception type
                         # directly (wrong dependency direction), so the
-                        # general fix is this narrow, purpose-scoped
+                        # first fix here was this narrow, purpose-scoped
                         # tuple: only the errors ``_build_grid``/
                         # ``_assemble_materials`` are actually documented
                         # to raise for a malformed config (bad domain,
@@ -4443,9 +4447,20 @@ class _PreflightMixin:
                         # method). Any signal-driven exception
                         # (``TimeoutError``, ``RuntimeError``-based
                         # cancellation, ``KeyboardInterrupt``,
-                        # ``MemoryError``, ...) now propagates through
-                        # this advisory untouched, exactly like it did
-                        # before this advisory existed.
+                        # ``MemoryError``, ...) propagates through this
+                        # advisory untouched, exactly like it did before
+                        # this advisory existed. Issue #482 added a
+                        # second, general-purpose layer underneath this
+                        # tuple: ``RunTimedOut`` and
+                        # ``RunCancelled`` now derive from
+                        # ``BaseException``, not ``TimeoutError``/
+                        # ``RuntimeError``, so no ``except Exception``
+                        # anywhere in ``rfx/api`` (this narrow tuple
+                        # included) can catch them even if a future edit
+                        # here widens it back to ``Exception`` by
+                        # mistake. Keep this tuple narrow anyway -- it is
+                        # still the only thing distinguishing a genuine
+                        # malformed-config error from everything else.
                         grid = None
                         pec_mask = None
                         classification_unavailable_reason = str(exc)

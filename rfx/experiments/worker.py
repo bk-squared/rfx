@@ -31,12 +31,39 @@ from .repository import (
 )
 
 
-class RunCancelled(RuntimeError):
-    pass
+class RunCancelled(BaseException):
+    """Raised from the worker's SIGTERM/SIGINT handler (``_cancel_signal``).
+
+    Deliberately a ``BaseException`` subclass, not ``RuntimeError`` (its
+    original base -- issue #482): no ``except Exception`` anywhere on the
+    signal-to-``execute_run`` path can swallow it. See ``RunTimedOut``
+    below for the incident that forced this.
+    """
 
 
-class RunTimedOut(TimeoutError):
-    pass
+class RunTimedOut(BaseException):
+    """Raised from the worker's SIGALRM handler (``_timeout_signal``) when
+    a run exceeds its configured ``timeout_seconds``.
+
+    Deliberately a ``BaseException`` subclass, not ``TimeoutError`` (its
+    original base -- issue #482, an ``Exception`` subclass): the CI
+    incident on PR #555's own head showed a narrow-looking
+    ``except Exception`` deep in ``rfx.api._preflight`` -- reached from
+    INSIDE the armed alarm window, during ``compiled.preflight()`` in
+    ``execute_run`` below -- catching this exception and silently
+    converting an expired 1-second timeout into a "classification
+    unavailable" advisory instead of propagating: the worker kept
+    simulating for its full step count instead of dying, hanging the
+    parent's ``subprocess.wait`` (issue #482,
+    ``tests/test_durable_worker_lifecycle.py::
+    test_worker_timeout_is_durable_failed_outcome``). ``rfx/api`` cannot
+    import ``rfx.experiments`` to name this exception directly (wrong
+    dependency direction), so PR #555 narrowed that one call site's
+    ``except`` tuple as a first layer; this ``BaseException`` base is the
+    general, mechanism-level fix -- no ``except Exception`` anywhere in
+    the codebase can swallow a signal-raised timeout or cancellation
+    again, by construction.
+    """
 
 
 _signal_number: int | None = None

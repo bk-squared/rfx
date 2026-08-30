@@ -1,0 +1,204 @@
+rfx        : /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/__init__.py
+git SHA    : 582ebcc07de0b906016a62a4f4e79266c2e40cf0
+jax        : 0.4.33.dev20241023+e3c6d6430   devices: [CudaDevice(id=0)]
+precision  : jax_enable_x64=False  JAX_ENABLE_X64=0  solve complex dtype (method rule)=complex64  (369367252283 record: default float32 GPU run, no x64 pin)
+fixture    : attempt2 (same junction as attempt 1, longer MSL ladder, wider x-CPML clearance), n_steps=135000 (record target: 135000)
+freqs      : 3 bins (6-10 GHz); committed bins at indices [0, 1, 2] = [6.0, 8.0, 10.0] GHz
+skip_preflight: compute_coax_msl_transition accepts skip_preflight (rfx/api/_sparams.py:6331, 'skip_preflight: bool = False,') but never references it in the method body; the method has NO preflight path. --preflight therefore runs sim.preflight() and sim.fidelity_report() from this driver, before the solve. Production unchanged.
+
+=== preflight (driver-side; the method's own flag is inert) ===
+  [PREFLIGHT] 'pec' z-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] PEC 'pec' x-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+  [PREFLIGHT] PEC 'pec' y-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+  [PREFLIGHT] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+  [PREFLIGHT] all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=33)/geometry[3](k=37) at in-plane column (76,25): sum(d/eps) mesh 182µm vs physical 81.97µm (+122.0%); sum(d*sqrt(eps)) mesh 673.9µm vs physical 573.9µm (+17.4%); node-to-node 400µm vs face-to-face 300µm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only — 1 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  [PREFLIGHT] MSL port 'msl_0' (trace W=600µm, h_sub=300µm): lateral clearance to +y absorbing boundary = 600µm (domain edge + 800µm calibrated CPML buffer) < recommended 600µm (= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.
+  [PREFLIGHT] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=300µm, dx=100µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 75.0µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).
+preflight: PASS (8 issue(s))
+- WARNING [mesh_resolution] 'pec' z-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] PEC 'pec' x-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+- WARNING [mesh_resolution] PEC 'pec' y-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+- WARNING [mesh_resolution] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+- WARNING [lossless_q] all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+- WARNING [sheet_cavity_electrical_thickness] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=33)/geometry[3](k=37) at in-plane column (76,25): sum(d/eps) mesh 182µm vs physical 81.97µm (+122.0%); sum(d*sqrt(eps)) mesh 673.9µm vs physical 573.9µm (+17.4%); node-to-node 400µm vs face-to-face 300µm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only — 1 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+- WARNING [msl_port_geometry] MSL port 'msl_0' (trace W=600µm, h_sub=300µm): lateral clearance to +y absorbing boundary = 600µm (domain edge + 800µm calibrated CPML buffer) < recommended 600µm (= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.
+- WARNING [msl_port_geometry] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=300µm, dx=100µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 75.0µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).
+
+=== fidelity_report (declared vs realized, pre-solve) ===
+=== INPUT-FIDELITY REPORT (declared vs solved; input units only) ===
+  7 entities, 24 findings
+
+  domain (the solved box)
+    x: declared [0.0, 12500.0] um -> realized [0.0, 12500.0] um | face residuals (0.0, 0.0) um | extent 12500.0 -> 12500.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3400.0] um | face residuals (0.0, 0.0) um | extent 3400.0 -> 3400.0 um
+    z: declared [0.0, 3900.0] um -> realized [0.0, 3900.0] um | face residuals (0.0, 0.0) um | extent 3900.0 -> 3900.0 um
+
+  geometry[0] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 4410
+    x: declared [0.0, 12500.0] um -> realized [0.0, 12600.0] um | face residuals (0.0, 100.0) um | extent 12500.0 -> 12600.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3500.0] um | face residuals (0.0, 100.0) um | extent 3400.0 -> 3500.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] x,y: the realized body extends beyond the declared domain on x,y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.80% of the declared 12500.0 um extent); SIZE 12600.0 um (+100.0 um, +0.80%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (2.94% of the declared 3400.0 um extent); SIZE 3500.0 um (+100.0 um, +2.94%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00..2.10 inside adjacent cavities
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[1] 'ptfe'
+    cells: 141
+    x: declared [600.0, 1400.0] um -> realized [700.0, 1500.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um
+    y: declared [1300.0, 2100.0] um -> realized [1400.0, 2200.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um
+    z: declared [2400.0, 2700.0] um -> realized [2500.0, 2800.0] um | face residuals (100.0, 100.0) um | extent 300.0 -> 300.0 um
+    ! [claimed-by-conductor] 48.9% of this dielectric's cells are also PEC — the conductor wins, so that fraction of the declared material is not solved
+      remedy: check the overlap against the intended stack; shrink whichever body is over-declared
+    ! [bbox-offset] x: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] y: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] z: PLACEMENT off by 100.0 um (33.33% of the declared 300.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [materialization-overridden] only 33.3% of this entity's cells carry the declared eps_r 2.100 (assembled range 2.100..3.660)
+      remedy: a later entity overwrites these cells (assembly is declaration-ordered) — check the overlap, or reorder if the overlap is unintended
+
+  geometry[2] 'sub'
+    cells: 13230
+    x: declared [0.0, 12500.0] um -> realized [0.0, 12600.0] um | face residuals (0.0, 100.0) um | extent 12500.0 -> 12600.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3500.0] um | face residuals (0.0, 100.0) um | extent 3400.0 -> 3500.0 um
+    z: declared [2550.0, 2850.0] um -> realized [2600.0, 2900.0] um | face residuals (50.0, 50.0) um | extent 300.0 -> 300.0 um
+    ! [claimed-by-conductor] 0.2% of this dielectric's cells are also PEC — the conductor wins, so that fraction of the declared material is not solved
+      remedy: check the overlap against the intended stack; shrink whichever body is over-declared
+    ! [inside-absorber] x,y: the realized body extends beyond the declared domain on x,y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.80% of the declared 12500.0 um extent); SIZE 12600.0 um (+100.0 um, +0.80%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (2.94% of the declared 3400.0 um extent); SIZE 3500.0 um (+100.0 um, +2.94%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (16.67% of the declared 300.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+
+  geometry[3] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 805
+    x: declared [1000.0, 12500.0] um -> realized [1100.0, 12600.0] um | face residuals (100.0, 100.0) um | extent 11500.0 -> 11500.0 um
+    y: declared [1400.0, 2000.0] um -> realized [1400.0, 2100.0] um | face residuals (0.0, 100.0) um | extent 600.0 -> 700.0 um
+    z: declared [2850.0, 2950.0] um -> realized [2900.0, 3000.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] x: the realized body extends beyond the declared domain on x — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.87% of the declared 11500.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE 700.0 um (+100.0 um, +16.67%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] z: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[4] 'pec' — volumetric PEC (>= 2 cells on every axis)
+    cells: 66
+    x: declared [800.0, 1200.0] um -> realized [900.0, 1300.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um
+    y: declared [1500.0, 1900.0] um -> realized [1600.0, 2000.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um
+    z: declared [2400.0, 3000.0] um -> realized [2500.0, 3100.0] um | face residuals (100.0, 100.0) um | extent 600.0 -> 600.0 um
+    ! [bbox-offset] x: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] y: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] z: PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+
+  NOT AUDITED by this report
+    ! [out-of-scope] 1 MSL port(s); 1 coaxial port (pin/shield/caps)(s) — these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)
+      remedy: audit those with their own port preflight checks; do not read this report as covering them
+
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:735: UserWarning: compute_coax_msl_transition(): the registered coax port impedance (50.00 ohm) diverges 10.0% from the analytic coax Z0 (45.46 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:735: UserWarning: compute_coax_msl_transition(): the registered msl port impedance (50.00 ohm) diverges 5.8% from the analytic msl Z0 (53.11 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/api/_sparams.py:1881: UserWarning: solve_two_port_from_wave_amplitudes: the two drives are nearly linearly dependent at 3/3 frequencies (cond > 1000; worst 2.91e+07) — usually both ports seeing essentially the same field, e.g. a symmetric structure driven identically, or one drive that failed to excite. S at those bins is degenerate. NOTE this threshold flags DEGENERACY only: cond below it is NOT a reliability certificate, because cond(A) also multiplies whatever noise is on the measured amplitudes (~1.3e-2 relative error in S from 1e-4 noise at cond=199, which never trips this warning).
+
+FDTD run complete in 119.6s (2.0 min)
+
+=== measured witnesses ===
+  settling_db (per drive)          : [-45.9397630721533, -44.17124185980615]  (-40 dB rule cleared: True)
+  cond_a_equilibrated               : [1.0021941511855976, 1.0024592751812058, 1.005013438629622]
+  gamma_ratio (coax-driven, vs HJ beta): [1.1484731207266794, 0.858657230346571, 1.0510942174501197]
+  reciprocity worst deviation (pair=(0, 1)): 0.913919627745057
+  |S22|                             : [0.08078023177463328, 0.10478316571484025, 0.893672853684955]
+  max|S|                            : 0.9932631013833461
+  MSL-driven column power (|S01|^2+|S11|^2): [0.0065254707693085355, 0.010979588441163948, 0.7986516509686326]
+  passivity guard (strict=True) raised: False
+
+=== #589 extended witnesses (all bins; committed bins marked *) ===
+  precision: jax_enable_x64=False, solve complex dtype=complex64 (method rule); s_params dtype=complex128, a_inc dtype=complex128 (assembly)
+  bin  f[GHz]   |S00|dB   |S10|dB   |S01|dB   |S11|dB   colP_coax  colP_msl   lam_min(I-S^HS)  cond_a_raw   cond_a_eq
+  * 0   6.000     -0.06    -90.27    -76.03    -21.85    0.98563    0.00653  +1.43713e-02  1.806e+07  1.002194
+  * 1   8.000     -0.06    -82.60    -71.16    -19.59    0.98579    0.01098  +1.42141e-02  2.075e+07  1.002459
+  * 2  10.000     -0.06    -84.48    -63.17     -0.98    0.98657    0.79865  +1.34255e-02  2.908e+07  1.005013
+  complex S per bin (re, im):
+  * 0   6.000  S00=(-9.927767e-01,-4.815133e-03)  S01=(-7.403654e-05,-1.394358e-04)  S10=(+3.001874e-05,-6.227571e-06)  S11=(+8.018635e-02,-9.777248e-03)
+  * 1   8.000  S00=(-9.928627e-01,-3.098136e-03)  S01=(-1.570651e-04,-2.279353e-04)  S10=(+6.609865e-05,-3.358612e-05)  S11=(+1.030612e-01,-1.891831e-02)
+  * 2  10.000  S00=(-9.932590e-01,-2.858234e-03)  S01=(-6.923087e-04,-4.758076e-05)  S10=(-4.398416e-05,-4.041826e-05)  S11=(-3.266077e-01,-8.318525e-01)
+  A2 verdict: PASSIVE (lambda_min >= -0.02 at all bins; trace(Q) is the missing power)
+  A3 fit_residual [array/drive] per bin (recurrence in parentheses):
+  * 0   6.000  coax/coax 0.002933 (0.000505)  coax/msl 0.008238 (0.000862)  msl/coax 0.06408 (0.0196)  msl/msl 0.2286 (0.139)
+  * 1   8.000  coax/coax 0.002068 (0.000384)  coax/msl 0.01209 (0.00092)  msl/coax 0.06944 (0.0216)  msl/msl 0.2548 (0.176)
+  * 2  10.000  coax/coax 0.001509 (0.000311)  coax/msl 0.01382 (0.00102)  msl/coax 0.1422 (0.0316)  msl/msl 0.1863 (0.152)
+  A3 verdict (MSL ladder, BOTH drives, fit+recurrence, committed bins): EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: 6 GHz: fit_residual 0.2286 > 0.02 (borrowed); 8 GHz: fit_residual 0.2548 > 0.02 (borrowed); 10 GHz: fit_residual 0.1863 > 0.02 (borrowed); 6 GHz: recurrence_residual 0.1386 > 0.02 (borrowed); 8 GHz: recurrence_residual 0.1762 > 0.02 (borrowed); 10 GHz: recurrence_residual 0.1517 > 0.02 (borrowed)
+  |a_inc| / |b_out| per bin [coax array: coax drive, msl drive | msl array: coax drive, msl drive]:
+  * 0   6.000  a: 9.1734e-08, 1.1113e-17 | 4.0726e-12, 5.0789e-15   b: 9.1073e-08, 1.0273e-17 | 2.4900e-12, 4.1027e-16
+  * 1   8.000  a: 6.6911e-08, 7.8775e-18 | 2.3789e-12, 3.2240e-15   b: 6.6434e-08, 6.9540e-18 | 4.7241e-12, 3.3782e-16
+  * 2  10.000  a: 3.4866e-08, 6.0409e-18 | 1.9792e-12, 1.1988e-15   b: 3.4631e-08, 5.1874e-18 | 3.3701e-12, 1.0713e-15
+  A5 |a_inc/b_out| per bin: coax array under MSL drive (expect ~0) | MSL array under coax drive (expect ~0.030)
+  * 0   6.000  1.0818 | 1.6356
+  * 1   8.000  1.1328 | 0.50356
+  * 2  10.000  1.1645 | 0.58728
+  A5 verdict coax side: FLOOR (max ratio 1.165 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor
+  A5 verdict MSL side : FLOOR (max ratio 1.636 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor
+  settling_db per drive: [-45.9397630721533, -44.17124185980615]  (cleared -40 dB: True)
+  solve warnings captured: 3 (dumped verbatim in JSON)
+
+=== A0 reproduction vs baseline (two-tier predeclaration; budget UNMEASURED) ===
+  baseline : scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_result.json
+  status   : compared
+  delta s22_abs: [0.0, 0.0, 0.0]
+  delta col_msl_driven_power: [0.0, 0.0, 0.0]
+  delta max_abs_s: 0.0
+  delta gamma_ratio_coax_driven_info: [0.0, 0.0, 0.0]
+  delta cond_a_equilibrated_info: [0.0, 0.0, 0.0]
+  delta settling_db_info: [0.0, 0.0]
+  delta reciprocity_worst_deviation_info: 0.0
+  cannot compare against this baseline: ['complex S (re/im)', '|S00|', '|S10|', '|S01| (only derivable as col_power - |S22|^2)', 'fit/recurrence residuals', 'a_inc/b_out ratios', 'raw cond_a', 'lambda_min(I - S^H S)', 'preflight output']
+  precision: this run jax_enable_x64=False  baseline jax_enable_x64=False  (no precision key: tracked 369367252283-class record, documented as a default-float32 GPU run (no x64 pin))
+  tier value (max |delta| over comparable |S|-type quantities): 0.0
+  TIER     : reproduced (<= 1e-3)
+
+result JSON written to: /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260830T100444Z-582ebcc07de0-attempt2-x640/remeasure_result.json
+
+=== SUMMARY (for filling SETTLED_RUN_RECORD -- hand-copy, do not auto-apply) ===
+  status              : RUN
+  target_n_steps       : 135000
+  n_steps (this run)   : 135000
+  settling_db          : [-45.9397630721533, -44.17124185980615]  (-40 dB rule cleared: True)
+  reciprocity worst dev: 0.913919627745057
+  |S22|                : [0.08078023177463328, 0.10478316571484025, 0.893672853684955]
+  max|S|               : 0.9932631013833461
+  col_msl_driven_power : [0.0065254707693085355, 0.010979588441163948, 0.7986516509686326]
+  gamma_ratio          : [1.1484731207266794, 0.858657230346571, 1.0510942174501197]
+  log_path             : /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260830T100444Z-582ebcc07de0-attempt2-x640/remeasure_result.json
+  vessl_run_id         : <fill from the VESSL job that ran this>
+
+=== #589 EXTENSION SUMMARY (committed bins; report-only) ===
+  fixture              : attempt2  grid(padded)=[142, 51, 56]
+  precision            : jax_enable_x64=False  solve=complex64  s_params(assembly)=complex128
+  |S00|                : [0.9927883456874995, 0.9928674912224764, 0.9932631013833461]
+  |S10| dB / |S01| dB  : [-90.26914837553588, -82.59869589303904, -84.47545630803377] / [-76.0338669965576, -71.15635518823056, -63.17353903672868]
+  col_coax_driven_power: [0.9856287002728297, 0.9857858606234734, 0.9865715921379058]
+  lambda_min(I-S^HS)   : [0.014371274199059697, 0.014214058409624811, 0.013425502062591419]  -> PASSIVE (lambda_min >= -0.02 at all bins; trace(Q) is the missing power)
+  cond_a raw / eq      : [18061820.42631127, 20754435.283343278, 29084598.761492997] / [1.0021941511855976, 1.0024592751812058, 1.005013438629622]
+  A3 (msl/msl fit_res) : [0.22855146166402784, 0.25482322477315916, 0.18629609652933635]  (msl/coax fit_res [0.0640798065094574, 0.06944364288604052, 0.14221626665696435])  -> EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: 6 GHz: fit_residual 0.2286 > 0.02 (borrowed); 8 GHz: fit_residual 0.2548 > 0.02 (borrowed); 10 GHz: fit_residual 0.1863 > 0.02 (borrowed); 6 GHz: recurrence_residual 0.1386 > 0.02 (borrowed); 8 GHz: recurrence_residual 0.1762 > 0.02 (borrowed); 10 GHz: recurrence_residual 0.1517 > 0.02 (borrowed)
+  A5 coax|MSL ratios   : [1.0817531060066754, 1.1328052616453865, 1.1645359300713285] | [1.6356011226310123, 0.5035624223498975, 0.5872831361255677]
+  A5 verdicts          : coax: FLOOR (max ratio 1.165 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor ; msl: FLOOR (max ratio 1.636 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor
+  A0 tier              : reproduced (<= 1e-3)  [compared]
+  preflight lines      : 9  (method skip_preflight flag is inert; see header)
