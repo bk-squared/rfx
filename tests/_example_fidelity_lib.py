@@ -16,8 +16,9 @@ green gate (2026-08-27 review). Recursive-and-unfiltered has neither hole:
 every ``.py`` under either tree is discovered and must appear in
 ``CLASSIFICATION`` or the contract test fails.
 
-Classification is a hand-authored table (four buckets: ``audited``,
-``builder_fused_with_solve``, ``module_level_solve``, ``no_simulation``)
+Classification is a hand-authored table (five buckets: ``audited``,
+``builder_fused_with_solve``, ``module_level_solve``, ``no_simulation``,
+``no_solve``)
 because "does this script have a build step separable from its solve step"
 is a judgement call a machine cannot make reliably on its own — the AST
 heuristic in ``_functions_building_simulation`` gets it right for all 47
@@ -118,6 +119,14 @@ def _is_main_guard(node: ast.AST) -> bool:
 def has_main_guard(relpath: str) -> bool:
     """A module-scope ``if __name__ == "__main__":`` guard exists."""
     return any(_is_main_guard(node) for node in _parse(relpath).body)
+
+
+def has_any_solve_call(relpath: str) -> bool:
+    """A solve entrypoint is called ANYWHERE in the module (module scope,
+    inside a function, inside the main guard). The predicate the ``no_solve``
+    bucket needs: those scripts build a Simulation only to read its grid and
+    must never gain a solve without reclassification."""
+    return any(_is_solve_call(n) for n in ast.walk(_parse(relpath)))
 
 
 def has_top_level_solve_call(relpath: str, *,
@@ -245,7 +254,8 @@ class Builder:
 
 @dataclass(frozen=True)
 class Entry:
-    kind: str  # audited | builder_fused_with_solve | module_level_solve | no_simulation
+    kind: str  # audited | builder_fused_with_solve | module_level_solve
+    #            | no_simulation | no_solve
     reason: str
     builders: tuple[Builder, ...] = field(default_factory=tuple)
 
@@ -354,6 +364,24 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "`run_example()` builds and calls .run(...) in the same function"),
 
+    "validation/research/cpml_pole_pad/localize_636.py": Entry(
+        "no_simulation",
+        "issue #636 mode-localization analysis: reads committed field dumps "
+        "and does linear algebra -- constructs no Simulation (AST-verified)"),
+    "validation/research/cpml_pole_pad/eigen_scan_636.py": Entry(
+        "no_solve",
+        "issue #636 frozen-coefficient von Neumann scan: builds a Simulation "
+        "in `fixture_dt()` ONLY to read the lock-test grid's dt, then works "
+        "on hand-assembled update matrices -- no solve entrypoint anywhere"),
+    "validation/research/cpml_pole_pad/finite_op_636.py": Entry(
+        "no_solve",
+        "issue #636 finite-operator spectral radius: same pattern -- "
+        "`fixture_dt()` builds a Simulation only for the grid's dt, the "
+        "operator is assembled by hand and never solved"),
+    "validation/research/cpml_pole_pad/factorial_636.py": Entry(
+        "builder_fused_with_solve",
+        "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
+        "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited (23): builder is separable from solve ----
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
