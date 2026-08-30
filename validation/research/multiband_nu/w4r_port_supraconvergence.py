@@ -34,6 +34,14 @@ Port design:
 * Probe: Ez at (18.0, 11.25, 0.75) mm (off the x-center node line of the
   odd mode, on the alignment lattice).
 
+CORRECTION (2026-08-30, note WP6R.13): item 2 calls the knife-edge
+drawing "the actual root cause". That is a bring-up DIAGNOSIS, not a
+verdict, and it was not borne out: this redesign drew knife-edge-free and
+the ladder was still INCONCLUSIVE (note section "W4R outcome"). Read item
+2 as "one defect found and removed at bring-up". This fixture carries no
+F-S4 evidence; F-S4's verdict is taken on the W4R3 z-dominant analytic
+cavity.
+
 Observable and pre-declared rules: see the design-note W4R section
 (committed BEFORE any ladder measurement).
 

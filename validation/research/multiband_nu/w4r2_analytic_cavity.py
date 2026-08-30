@@ -2,12 +2,24 @@
 final fixture; note section W4R2, committed BEFORE any ladder run).
 
 Both P-C-class fixtures (phase-1 W4 and the W4R port fixture) were
-INCONCLUSIVE for instrument reasons that are now diagnosed and recorded:
-the geometry-realization error floor of a rasterized dielectric-loaded
-resonator (knife-edge lottery, then a residual ~+-20 MHz scale-structural
-floor) sits above the ladder's fine-scale discretization errors, and the
-PEC trace edge violates the smoothness hypotheses of the theorem F-S4
-tests in the first place.
+INCONCLUSIVE.
+
+CORRECTION (2026-08-30, note section WP6R.12/WP6R.13): an earlier version
+of this docstring stated the CAUSE as fact — "the geometry-realization
+error floor of a rasterized dielectric-loaded resonator ... sits above the
+ladder's fine-scale discretization errors". That reading is WITHDRAWN. It
+was an interpretation, never a measurement of this lane: what this lane
+measured is only that the ~20 MHz spread is present identically in
+uniform-mesh arms, so it is not a grading effect. (The #786 lane reports
+that fixture's f(h) is non-monotone and exonerates geometry quantization
+and port loading, which would make the "floor" reading wrong outright —
+but that evidence ships in PR #788 and is NOT merged, so it is cited here
+as a pointer, not as this file's ground.)
+
+What stands unchanged as the reason for THIS fixture: the PEC trace edge
+violates the smoothness hypotheses of the theorem F-S4 tests in the first
+place, so a P-C-class fixture is the wrong instrument for an order claim
+regardless of what the spread turns out to be.
 
 W4R2 removes EVERY instrument layer at once by testing supraconvergence
 exactly where Monk & Sueli (1994) / Li & Shields (2016) state it: a

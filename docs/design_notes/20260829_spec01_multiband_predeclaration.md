@@ -1414,3 +1414,150 @@ was taken on a smooth analytic cavity. Whether that fixture's f(h) converges to
 the physical answer is not determined by either lane — #786 has no external
 reference, and the ledger's dielectric-interface staircasing entry stands as
 evidence that a real consistency floor may exist for this fixture class.
+
+## WP6R.13 (2026-08-30, append-only) — the absorber-exclusion universal is FALSE; two withdrawn claims still shipped; #786 evidence re-attributed
+
+Second adversarial review of PR #785. Three blocking findings, all
+claim-side, plus four non-blocking items. **No new physical measurement was
+taken in this repair, and no window, judge, gate or verdict is moved.** The
+one thing executed was a *configuration read* of the committed fixtures
+(what boundary each witness builds), which is a property of the source, not
+a measurement — so there is nothing here to pre-declare a window for.
+Every result quoted below is either read out of a committed file or read
+out of the committed harness.
+
+### WP6R.13.1 — BL1: "every witness ran PEC-closed with `cpml_layers = 0`" is FALSE
+
+**Verification (configuration read of the committed harness).** Six of the
+seven witness fixtures build their grid through
+`harness.build_pec_fixture`, which is `cpml_layers = 0`: F-S1 1-D and 3-D
+(`w1_energy_drift`), F-S2/F-S3 (`w2_w3_reflection`), F-S4 W4R3
+(`w4r3_zdominant_cavity`), the energy revert-proof (`revert_proof`) and the
+order-witness revert-proof. **F-S5 does not.**
+`w5_ad_consistency.loss_from_dz` calls
+
+    make_nonuniform_grid(domain_xy=(0.005, 0.005), dz_profile=dz,
+                         dx=0.5e-3, cpml_layers=4)
+
+with the default `cpml_axes = "xyz"`, i.e. a 4-layer CPML on all six faces,
+including the two z faces the profile grades. Worse for the old wording:
+`fixtures.w5_profile()` is 14 cells whose boundary runways are non-uniform
+(max adjacent-ratio deviation 0.00998 on `z_lo`, 0.01529 on `z_hi`, from the
+1 % anti-tie jitter), so running that fixture through `Simulation.preflight`
+draws **`nu_grading_reaches_absorber` on both z faces** — the lane's own
+exclusion advisory fires on the lane's own witness. (It also draws
+`nu_grading_ratio_beyond_validated_cap`, already recorded as WP6R.7 item
+12.) The W5 pre-declaration (§5) never stated a boundary condition, which is
+how the universal survived to four shipped sites.
+
+**Superseded statements** (append-only bookkeeping; the sentences stay where
+they are and are read through this section):
+
+1. **WP6a exclusion 1**, "every witness ran PEC-closed at `cpml_layers = 0`,
+   so the row says nothing about the combination" — **read: every witness
+   that MEASURES AN ACCURACY OBSERVABLE ran PEC-closed at `cpml_layers = 0`;
+   F-S5 ran with `cpml_layers = 4`.**
+2. **WP6b depth-provenance**, "the multi-band witnesses are absorber-free,
+   which is exactly why the combination is flagged rather than scored" —
+   **read: no multi-band witness SCORES an accuracy quantity with an
+   absorber present.** One witness is absorber-bearing; it scores a
+   gradient-consistency property.
+
+**What the exclusion now rests on, and why it survives.** F-S5 compares
+`jax.grad` to central FD on the profile vector. It compares no field,
+reflection, energy or resonance against any reference, so it cannot say
+whether anything computed beside that absorber is *accurate*; what it does
+establish is the weaker, real fact that a graded mesh next to a CPML
+constructs, runs and differentiates consistently. The exclusion is therefore
+restated on the narrower true statement — **no witness in this row measures
+an accuracy observable with an absorber present** — which is what the
+physics argument (normal-direction inhomogeneity where the pad replicates
+the outermost interior cell; the documented PML breakdown class) was always
+carrying. The exclusion's *conclusion* is unchanged; its *justification* is
+no longer a false universal.
+
+**Sites corrected in this commit** (all four, plus the evidence table):
+
+- `docs/guides/support_matrix.md` — the absorber exclusion bullet, and the
+  F-S5 evidence-table row, which now names `cpml_layers = 4` and the fact
+  that this fixture draws the row's own advisory.
+- `rfx/api/_preflight.py` — the envelope-rationale comment block
+  ("EXCLUSION the witnesses force"), the docstring's depth-provenance
+  paragraph, and **the user-facing advisory string of
+  `nu_grading_reaches_absorber`**, which shipped the false universal to
+  every user who tripped the check.
+
+### WP6R.13.2 — BL2: the shipped preflight rationale still carried two withdrawn claims
+
+`rfx/api/_preflight.py` opened its envelope rationale with "What the
+witnesses establish for **N fine bands per axis**", asserting both the axis
+generality withdrawn by WP6R.7 item 1 and an unbounded band count the
+support row had already narrowed to "up to 3 fine bands / 4 transitions".
+The withdrawal had landed in the documentation and not in the code. Now
+reads "fine bands ALONG Z ... witnessed only up to 3 fine bands / 4
+transitions — the widest profile in the battery", with the in-plane
+non-statement spelled out and the more-bands expectation marked as an
+expectation.
+
+The same block's F-S4 line still quoted **`p_mb = p_uc = 1.95` against the
+analytic TE101** — the W4R2 fixture's numbers, superseded by WP6R.2/W4R3
+(that fixture carries ~1 % of its error on the graded axis). Corrected to
+the W4R3 figures actually claimed by the row: **`p_mb = 2.01`, `p_uc = 2.02`
+against the analytic TE_{1,0,4} of the empty 60 x 3 x 64 mm PEC cavity**,
+with the supersession named inline.
+
+### WP6R.13.3 — BL3: #786's results are re-attributed to an UNMERGED PR
+
+WP6R.12 and the support row stated #786's turn-over, the 6.8e-6-cell
+geometry exoneration and the <= 3.5 kHz port exoneration as settled facts.
+That evidence lives in **PR #788, which is not merged**, so a reader on
+`main` cannot reach any of it. The support row now separates the two
+things:
+
+- **What this lane measured and still stands:** the ~20 MHz spread is
+  present identically in uniform-mesh arms, so it is not a grading effect.
+- **Why the "floor" / "geometry-realization limit" reading is WITHDRAWN:**
+  because it was an interpretation this lane never measured — the
+  withdrawal does not depend on #786 at all.
+- **The #786 findings** are now written as "measured in the #786 lane (PR
+  #788, not yet merged)", explicitly flagged as unmerged-lane results
+  pending #788, including the `ladder_guard` precondition.
+
+This section corrects WP6R.12's own attribution the same way: read every
+#786 figure in WP6R.12 as carrying the "(PR #788, not merged)" qualifier.
+
+### WP6R.13.4 — non-blocking items landed with this repair
+
+1. **A surviving trace of the withdrawn "floor" reading** that WP6R.12's
+   site inventory missed: `w4r2_analytic_cavity.py`'s module docstring
+   stated the geometry-realization floor as the diagnosed CAUSE of both
+   P-C-class inconclusive results. Corrected in place with an explicit
+   WITHDRAWN note; what stands is the smoothness-hypothesis reason (the PEC
+   trace edge), which is fixture-intrinsic and independent of the spread.
+2. **`w4r_port_supraconvergence.py`** called the knife-edge drawing "the
+   actual root cause". It is a bring-up diagnosis that the lane's own
+   outcome did not bear out — that redesign drew knife-edge-free and was
+   still INCONCLUSIVE. Marked as such.
+3. **The BL1 in-plane lock revert (WP6R.8) had no regression test.**
+   Mutating `_PreflightMixin._INPLANE_RATIO_CAP` 1.3 -> 1.4 and both
+   constructor caps left the suite green, so the revert was one careless
+   edit from being undone. Added
+   `test_inplane_grading_lock_stays_at_1_3[x|y]` and
+   `test_inplane_and_z_caps_are_distinct_values`
+   (`tests/test_multiband_nu_envelope.py`). The discriminating ratio is
+   **1.35** — inside the witnessed z cap, above the unwitnessed in-plane
+   threshold — asserted to fire on x and y through BOTH paths (constructor
+   warning and preflight advisory) and to stay silent on z. Verified
+   revert-proof: with the three caps mutated to 1.4 all three tests FAIL;
+   restored, all three pass.
+4. **`support_matrix.md`'s "The cap is 1.4"** paragraph read axis-general
+   while being true only for `dz_profile`. Now "The cap is 1.4 — on z",
+   with the in-plane 1.3 threshold and its no-provenance reason stated in
+   the same paragraph.
+5. **F-S3 "<= 7.5e-6" is false by rounding** (the max in-envelope
+   |T|-deviation in `results/w2_w3.json` is 7.537001e-6, r = 1.2 abrupt).
+   The support row already carries the correct **<= 7.6e-6** and C8 already
+   recorded the slip; §3.4's pre-declaration text keeps its original
+   wording under the append-only rule and is read through C8. **The
+   remaining wrong site is the PR #785 body, which this lane cannot edit
+   (no GitHub writes): it must be updated to <= 7.6e-6 before merge.**

@@ -115,10 +115,16 @@ the transverse mesh uniform — the witness harness takes a scalar transverse
 cell size — so this row says nothing about `dx_profile` / `dy_profile`
 grading, with or without z grading at the same time. See the exclusions.
 
-**The cap is 1.4.** Ratios above it still construct and run; what is lost
-is the accuracy class below, not stability. `Simulation(...)` warns above
-1.4 and preflight adds `nu_grading_ratio_beyond_validated_cap`, both
-advisory. 1.4 matches the commercial default (Tidy3D `max_scale`).
+**The cap is 1.4 — on z.** Ratios above it still construct and run; what
+is lost is the accuracy class below, not stability. On a `dz_profile`,
+`Simulation(...)` warns above 1.4 and preflight adds
+`nu_grading_ratio_beyond_validated_cap`, both advisory. 1.4 matches the
+commercial default (Tidy3D `max_scale`). **On `dx_profile` / `dy_profile`
+the threshold is the pre-existing 1.3**, deliberately NOT moved to 1.4:
+no witness in this row grades an in-plane axis, so there is no in-plane
+provenance for moving an in-plane lock (SPEC-00 §0.2-4). Both the
+constructor warning and the preflight advisory carry the per-axis value,
+and both are advisory on either axis.
 
 **Evidence** (SPEC-01 lane, tracker #780; pre-declaration
 `docs/design_notes/20260829_spec01_multiband_predeclaration.md` — every
@@ -133,15 +139,30 @@ in `validation/research/multiband_nu/`; regression packaging in
 | F-S2 per-transition reflection (`results/w2_w3.json`) | Gated two-run differencing against an exact discrete scattering-chain model, 10 GHz, 30 cells/wavelength in the fine band | r=1.4 abrupt -53.9 dB measured vs -54.0 dB modelled (r=1.1 -67.1 dB, r=1.2 -60.7 dB); every in-envelope arm inside its pre-declared window. **These dB figures are resolution-specific — quote the law, not the number.** Per-transition reflection scales as (dz/lambda)^2, i.e. -12.0 dB per doubling of fine-band resolution; the same chain model gives, for r=1.4 at 15 / 20 / 30 / 60 / 120 fine cells per free-space wavelength, -41.7 / -46.8 / -54.0 / -66.1 / -78.2 dB (the N^-2 law is asymptotic and under-predicts the reflection below ~30 cells/wavelength) |
 | F-S3 round-trip amplitude (`results/w2_w3.json`) | Net amplitude drift across a symmetric rise-and-fall traversal (the Christ amplification/attenuation asymmetry) | \|T\|-deviation <= 7.6e-6 for r <= 1.4, against a 3e-4 floor; r=1.0 null control 2.4e-6 |
 | F-S4 convergence order (`results/w4r3_zdominant_cavity.json`) | Resonance error vs the ANALYTIC TE_{1,0,4} of an empty PEC cavity (60 x 3 x 64 mm), multi-band z profile at the cap ratio r=1.4 vs a uniform-fine control, four scales, on a fixture DESIGNED so the graded axis carries the error budget: an exact discrete-dispersion decomposition (`analytic_dispersion.py`, certified to reproduce every arm to 0.033 MHz) puts 89 % (uniform) to 92 % (multi-band) of the modelled error on the z axis, with 36 % of the multi-band total in the grading-specific term | p_multiband = 2.01, p_uniform = 2.02 — 2nd-order supraconvergence preserved at the cap ratio (Monk & Suli 1994; Li & Shields 2016). The multi-band mesh's extra error at matched scale is measured, not inferred: 28.4 MHz (2.9e-3 relative) at the coarsest scale falling to 0.44 MHz (4.6e-5) at the finest — about 1.56x the uniform-fine error amplitude at equal fine cell size, at the same ORDER |
-| F-S5 differentiability (`results/w5_ad.json`) | `jax.grad` of a multi-band profile observable vs central FD, dominant cells | worst dominant-cell error 1.1e-4 relative (f32 path) and 1.7e-4 (x64 context), inside the existing NU AD convention (15 %) |
+| F-S5 differentiability (`results/w5_ad.json`) | `jax.grad` of a multi-band profile observable vs central FD, dominant cells. **The only witness here that is not PEC-closed:** its grid is built with `cpml_layers = 4` on all six faces, and its profile's boundary runway is non-uniform, so this fixture draws the row's own `nu_grading_reaches_absorber` advisory. It is a gradient-consistency check, not an accuracy measurement — see the absorber exclusion | worst dominant-cell error 1.1e-4 relative (f32 path) and 1.7e-4 (x64 context), inside the existing NU AD convention (15 %) |
 | Revert-proof (`results/revert_proof.json`) | Two deliberate defect injections (one witness weight, one solver transition coefficient) | baseline f64 drift 2.1e-16; corrupted witness 5.8e-3, corrupted solver transition coefficient 7.9e-3 — the witness does fire on the defect family it guards. **Scope limit:** the witness builds its weights from the same `grid.inv_*` arrays the solver steps with (`remis_energy.energy_weights`), so a defect INSIDE those arrays — a wrong dual spacing computed by `make_nonuniform_grid` itself — would corrupt witness and solver identically and stay invisible here. It guards the update path against a correct metric, not the metric |
 | Order-witness revert-proof (`results/w4r3_revert_proof.json`) | One transition coefficient of the multi-band arm deliberately corrupted (E-update dual metric replaced by the primal cell width at a single coarse->fine node — an error that is identically zero on a uniform mesh) | the resonance moves -47.3 / -24.0 / -12.0 / -6.0 MHz at the four scales (20-160x the fit floor) and the fitted order drops to 1.38, so the committed F-S4 judge FIRES. The order gate above can fail for a grading reason |
 
 **Exclusions — these are NOT covered by the row.**
 
-- **Grading must not reach the absorber.** Every witness above ran
-  PEC-closed with `cpml_layers = 0`. Nothing here says how a grading
-  transition interacts with a CPML/UPML face, and the absorber pad
+- **Grading must not reach the absorber.** Every witness above that
+  measures an accuracy observable — F-S1 (1-D and 3-D), F-S2, F-S3, F-S4
+  and both revert-proofs — is PEC-closed with `cpml_layers = 0`; each
+  builds its grid through `harness.build_pec_fixture`. **F-S5 is the
+  exception and does NOT run PEC-closed:** `w5_ad_consistency.py` builds
+  its grid with `cpml_layers = 4`, i.e. a 4-layer CPML on all six faces,
+  so one witness in this row does grade z with an absorber present. Its
+  own profile's boundary runway is not uniform either (the anti-tie
+  jitter, ~1 % and ~1.5 % on the two z faces), so that fixture would
+  itself draw the `nu_grading_reaches_absorber` advisory described here.
+  What F-S5 measures is `jax.grad` against central FD on the profile
+  vector; it compares no field, reflection, energy or resonance against
+  any reference, so what it establishes is that a graded mesh beside an
+  absorber constructs, runs and differentiates consistently — not that
+  anything computed on it is accurate. **The exclusion therefore rests on
+  the narrower true statement: no witness in this row measures an
+  accuracy observable with an absorber present.** Nothing here says how a
+  grading transition interacts with a CPML/UPML face, and the absorber pad
   replicates the outermost interior cell, so a transition in that runway
   changes the discrete medium in the boundary-normal direction exactly
   where the absorber begins — the documented PML breakdown class.
@@ -186,21 +207,29 @@ the order gate capable of failing for a grading reason — the earlier
 `w4r2_analytic_cavity` fixture put only ~1 % of its error on that axis and
 is retained in the design note as a recorded diagnostic, not as evidence
 for this row. On a rasterized dielectric-loaded microstrip-class fixture
-the same ladder was inconclusive. The ~20 MHz (~4e-3) spread it showed was
-present identically in uniform-mesh arms, so it is not a grading effect —
-but the reading of it in an earlier draft of this row (a "floor", and a
-"geometry-realization limit") is WITHDRAWN: issue #786 measured three
-lattice-valid rungs that ladder had skipped and found `f(h)` is
-**non-monotone** on that fixture, turning over at `dz_fine = 0.125 mm`, so
-the quantity being fitted was never an error sequence — its anchor sat past
-the turn. That lane also exonerated geometry quantization (realized-vs-
-declared 6.8e-6 cells; exact integer cell counts; bit-identical material
-maps) and port loading (<= 3.5 kHz over a 10^4 drive span) by 3-5 orders of
-margin. Whether that fixture's `f(h)` converges to the physical answer is
-NOT settled by either lane — see #786 and the ledger's dielectric-interface
-staircasing entry. Convergence on your own geometry still has to be
-demonstrated on your own geometry, and #786's `ladder_guard` precondition
-is there to catch a ladder read across a turn.
+the same ladder was inconclusive. What THIS lane measured there is one
+thing only: the ~20 MHz (~4e-3) spread was present identically in
+uniform-mesh arms, so it is not a grading effect. The reading of that
+spread in an earlier draft of this row (a "floor", and a
+"geometry-realization limit") is WITHDRAWN — it was an interpretation this
+lane never measured, and it is withdrawn on that ground alone.
+
+The evidence that also EXPLAINS the spread was taken in the #786 lane and
+ships in **PR #788, which is not merged**, so the following is a pointer,
+not something a reader can reach from `main`: measured in the #786 lane
+(PR #788, not yet merged) — three lattice-valid rungs this ladder had
+skipped, an `f(h)` reported **non-monotone** on that fixture with a turn
+at `dz_fine = 0.125 mm` (which would put this ladder's anchor past the
+turn, so the fitted quantity was never an error sequence); geometry
+quantization exonerated (realized-vs-declared 6.8e-6 cells, exact integer
+cell counts, bit-identical material maps); port loading exonerated
+(<= 3.5 kHz over a 10^4 drive span). Read those four as unmerged-lane
+results pending #788, not as settled facts of this row. Whether that
+fixture's `f(h)` converges to the physical answer is NOT settled by either
+lane — see #786 and the ledger's dielectric-interface staircasing entry.
+Convergence on your own geometry still has to be demonstrated on your own
+geometry, and #786's `ladder_guard` precondition (also in PR #788) is
+there to catch a ladder read across a turn.
 
 ## Interpreting output and warnings
 

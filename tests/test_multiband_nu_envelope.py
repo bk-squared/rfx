@@ -248,6 +248,89 @@ def test_preflight_absorber_runway_exactly_compliant():
         one_short, cpml=4, boundary="cpml")
 
 
+def _axis_advisories(axis, prof, cpml=0, boundary="pec"):
+    """Preflight grading advisory codes for a profile on ANY axis."""
+    from rfx import Simulation
+    prof = np.asarray(prof, float)
+    span = float(prof.sum())
+    domain = {"x": (span, 10e-3, 10e-3),
+              "y": (10e-3, span, 10e-3),
+              "z": (10e-3, 10e-3, span)}[axis]
+    kw = {f"d{axis}_profile": prof}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=10e9, domain=domain, dx=1e-3,
+                         boundary=boundary, cpml_layers=cpml, **kw)
+        sim.add_source(tuple(d / 2 for d in domain), "ez",
+                       amplitude_kind="current")
+        issues = sim.preflight()
+    return [getattr(i, "code", "") for i in
+            (getattr(issues, "issues", issues) or [])
+            if "grading" in str(getattr(i, "code", ""))]
+
+
+def _ctor_ratio_warnings(axis, prof):
+    """Constructor abrupt-grading warnings raised for a per-axis profile."""
+    from rfx import Simulation
+    prof = np.asarray(prof, float)
+    span = float(prof.sum())
+    domain = {"x": (span, 10e-3, 10e-3),
+              "y": (10e-3, span, 10e-3),
+              "z": (10e-3, 10e-3, span)}[axis]
+    kw = {f"d{axis}_profile": prof}
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        Simulation(freq_max=10e9, domain=domain, dx=1e-3, boundary="pec",
+                   **kw)
+    return [str(x.message) for x in w if "adjacent cell ratio" in str(x.message)]
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_inplane_grading_lock_stays_at_1_3(axis):
+    """REVERT-PROOF for the BL1 in-plane lock (note WP6R.8 / WP6R.13).
+
+    WP6b moved the abrupt-grading threshold 1.3 -> 1.4 on ALL THREE axes;
+    WP6R.8 reverted the in-plane half, because every witness in the
+    multi-band battery grades z with a UNIFORM transverse mesh, so there
+    is no in-plane provenance for moving an in-plane lock (SPEC-00
+    §0.2-4). Nothing locked that revert: moving ``_INPLANE_RATIO_CAP``
+    and both constructor caps back to 1.4 left the suite green.
+
+    The discriminating ratio is 1.35 — inside the witnessed z cap, above
+    the unwitnessed in-plane threshold. On x/y it MUST be flagged by both
+    the constructor and preflight; the same profile on z must be clean.
+    Mutating either in-plane cap to 1.4 fails this test.
+    """
+    mm = 1e-3
+    r = 1.35
+    prof = np.array([1, 1, 1, r, r, r, 1, 1, 1], float) * mm
+
+    codes = _axis_advisories(axis, prof)
+    assert "nu_grading_ratio_beyond_validated_cap" in codes, (
+        f"d{axis}_profile at ratio {r} is above the in-plane threshold "
+        f"(1.3) and must draw the preflight advisory; got {codes}")
+    msgs = _ctor_ratio_warnings(axis, prof)
+    assert msgs, (
+        f"d{axis}_profile at ratio {r} must draw the constructor "
+        f"abrupt-grading warning")
+    assert "1.3" in msgs[0], msgs
+    # ...and the 1.4 z cap must NOT leak into the in-plane message.
+    assert "in-plane" in msgs[0], msgs
+
+    # Same profile on z: witnessed, therefore silent on both paths.
+    assert _axis_advisories("z", prof) == [], (
+        "ratio 1.35 is inside the witnessed z cap and must be clean")
+    assert _ctor_ratio_warnings("z", prof) == []
+
+
+def test_inplane_and_z_caps_are_distinct_values():
+    """The two caps are DIFFERENT numbers by design; a single shared
+    constant would silently re-couple the in-plane lock to the z one."""
+    from rfx.api._preflight import _PreflightMixin as _PM
+    assert _PM._MULTIBAND_RATIO_CAP == 1.4
+    assert _PM._INPLANE_RATIO_CAP == 1.3
+
+
 # ---------------------------------------------------------------------------
 # slow / gpu lane — the full pre-declared arms
 # ---------------------------------------------------------------------------

@@ -4693,8 +4693,15 @@ class _PreflightMixin:
     # docs/design_notes/20260829_spec01_multiband_predeclaration.md,
     # support row docs/guides/support_matrix.md "Multi-band graded mesh").
     #
-    # What the witnesses establish for N fine bands per axis (small-large-
-    # small-large included) with EVERY adjacent-cell ratio <= 1.4:
+    # What the witnesses establish for fine bands ALONG Z (small-large-
+    # small-large included), witnessed only up to 3 fine bands / 4
+    # transitions — the widest profile in the battery — with EVERY
+    # adjacent-cell ratio <= 1.4. Nothing below is an in-plane statement:
+    # every witness holds the transverse mesh uniform, and no witness
+    # grades dx_profile or dy_profile (adversarial review 2026-08-29,
+    # BL1; note section WP6R.1/WP6R.7 item 1). More bands are expected to
+    # behave the same way (each transition is local, and the measured
+    # quantity is per-transition) but are NOT witnessed:
     #   F-S1  Remis-class dual-cell discrete energy is bounded at the
     #         float-accumulation class over 1e6 steps, 1D and 3D.
     #   F-S2  per-transition reflection at r <= 1.4 sits inside the window
@@ -4703,9 +4710,12 @@ class _PreflightMixin:
     #   F-S3  symmetric round-trip amplitude asymmetry stays under the
     #         3e-4 differencing floor.
     #   F-S4  global 2nd-order supraconvergence is preserved on the
-    #         multi-band grid (p_mb = p_uc = 1.95 against the analytic
-    #         TE101 of a PEC cavity) — Monk & Suli 1994 / Li & Shields
-    #         2016 as realized by this solver.
+    #         multi-band grid (p_mb = 2.01, p_uc = 2.02 against the
+    #         analytic TE_{1,0,4} of an empty 60 x 3 x 64 mm PEC cavity,
+    #         the z-DOMINANT W4R3 fixture) — Monk & Suli 1994 / Li &
+    #         Shields 2016 as realized by this solver. The earlier W4R2
+    #         reading (p = 1.95) is superseded: that fixture carried ~1 %
+    #         of its error on the graded axis (note WP6R.2).
     #   F-S5  the mesh-gradient AD path is unchanged by multi-band.
     #
     # 1.4 is a CAP, not a threshold fitted to data: it is the value the
@@ -4716,10 +4726,19 @@ class _PreflightMixin:
     # blocking; what is lost beyond the cap is the validated accuracy
     # class, not stability.
     #
-    # EXCLUSION the witnesses force: every one of them ran PEC-closed with
-    # cpml_layers = 0, so this envelope says NOTHING about grading that
-    # interacts with an absorber. That exclusion is what the second check
-    # reports.
+    # EXCLUSION the witnesses force: every witness that measures an
+    # ACCURACY observable (F-S1 1D/3D, F-S2, F-S3, F-S4, both
+    # revert-proofs) ran PEC-closed with cpml_layers = 0. F-S5 is the one
+    # exception and is NOT PEC-closed — validation/research/multiband_nu/
+    # w5_ad_consistency.py builds its grid with cpml_layers = 4 on all six
+    # faces (and its runway is non-uniform, so that fixture draws the
+    # second check below) — but F-S5 compares jax.grad to central FD, not
+    # a field to a reference, so it is evidence that a graded mesh beside
+    # an absorber constructs, runs and differentiates, and no evidence at
+    # all about accuracy. So: NO witness measures an accuracy observable
+    # with an absorber present, and this envelope says NOTHING about
+    # grading that interacts with one. That exclusion is what the second
+    # check reports (BL1 repair, review 2026-08-30; note WP6R.13).
     # z: the witnessed multi-band envelope cap. x/y: the pre-existing
     # in-plane threshold, deliberately NOT moved to 1.4 — every witness in
     # the multi-band battery grades z with a uniform transverse mesh, so
@@ -4756,9 +4775,11 @@ class _PreflightMixin:
         absorber's. The depth used is the FACE'S OWN allocated layer
         count — the only length the absorber itself defines, and the span
         over which its conductivity ramp acts. No measurement sets this
-        depth and none could: the multi-band witnesses are absorber-free,
-        which is precisely why the combination is flagged rather than
-        scored. Tolerance 1e-6 on the adjacent ratio, i.e. a runway is
+        depth and none could: no multi-band witness measures an accuracy
+        observable with an absorber present (every accuracy witness is
+        PEC-closed at cpml_layers = 0; the one absorber-bearing witness,
+        F-S5, checks the AD path and scores no accuracy quantity), which
+        is precisely why the combination is flagged rather than scored. Tolerance 1e-6 on the adjacent ratio, i.e. a runway is
         "uniform" up to 1 ppm of cell size — far below any grading a user
         can mean, and above float round-tripping in a computed profile.
 
@@ -4842,8 +4863,11 @@ class _PreflightMixin:
                             f"the transition's own reflection no runway to "
                             f"separate from the absorber's. COST: the "
                             f"validated multi-band envelope does not cover "
-                            f"it at all; every one of its witnesses ran "
-                            f"PEC-closed with no absorber "
+                            f"it at all; no witness in it MEASURES an "
+                            f"accuracy observable with an absorber present "
+                            f"(every accuracy witness is PEC-closed at "
+                            f"cpml_layers = 0; the one absorber-bearing "
+                            f"witness checks the AD path only) "
                             f"(docs/guides/support_matrix.md, 'Multi-band "
                             f"graded mesh'). REMEDY: keep at least "
                             f"{layers} uniform interior cells against that "
