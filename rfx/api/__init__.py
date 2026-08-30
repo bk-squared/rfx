@@ -504,17 +504,20 @@ class Simulation(
         # Beyond the cap this warning still fires, and preflight adds the
         # richer advisory nu_grading_ratio_beyond_validated_cap with the
         # accuracy class on both sides.
+        # Caps come from _PreflightMixin (single source of truth — do not
+        # re-type the literals here; _validate_cfg_multiband_grading reads
+        # the same two class attributes).
         for _axis_name, _profile, _cap, _scope in (
-                ("dz_profile", dz_profile, 1.4,
+                ("dz_profile", dz_profile, self._MULTIBAND_RATIO_CAP,
                  "the validated multi-band grading cap"),
-                ("dx_profile", dx_profile, 1.3,
-                 "the in-plane grading threshold — the validated 1.4 "
-                 "multi-band cap is a z-axis envelope and no witness "
-                 "grades an in-plane axis"),
-                ("dy_profile", dy_profile, 1.3,
-                 "the in-plane grading threshold — the validated 1.4 "
-                 "multi-band cap is a z-axis envelope and no witness "
-                 "grades an in-plane axis")):
+                ("dx_profile", dx_profile, self._INPLANE_RATIO_CAP,
+                 "the in-plane grading threshold — the validated "
+                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
+                 "z-axis envelope and no witness grades an in-plane axis"),
+                ("dy_profile", dy_profile, self._INPLANE_RATIO_CAP,
+                 "the in-plane grading threshold — the validated "
+                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
+                 "z-axis envelope and no witness grades an in-plane axis")):
             if (_profile is not None and not is_tracer(_profile)
                     and len(_profile) > 1):
                 import warnings as _w
