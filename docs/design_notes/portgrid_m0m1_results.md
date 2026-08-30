@@ -310,8 +310,10 @@ here for the PI to paste):
 > probe column). Read through a centre-line point probe on the identical runs it still
 > passes, by 1.4 / 2.6 dB at r = 6, and sits above the paper's worst extracted curve. An
 > absolute cross-check against the paper's own all-fine curve shows our y-averaged |S11| is
-> 5.5–6.1 dB below the paper's for a run containing no subgridding at all, so the paper's
-> reported |S11| is not a TEM projection and our numbers are not directly comparable to it.
+> 5.5–6.1 dB below the paper's for a run containing no subgridding at all, so our numbers
+> are not directly comparable to the paper's. The cause of that offset is not decomposed —
+> fixture, observable and extraction all remain open — and no claim is made about the
+> paper's own instrumentation.
 > No exoneration of the scheme is claimed: what is claimed is that the frozen falsifier did
 > not fire under the observable it was declared with.
 
@@ -334,7 +336,18 @@ gap is fixture, observable or extraction. Anchors (dB), band [2, 29.8] GHz as ex
 - The incident (reference) trace at the probe column is y-uniform to **1.0–1.3e-16**
   relative, so the |S11| DENOMINATOR is identical under every projection. The entire gap is
   reflected-field content the y-average discards.
-- **Supported conclusion: the paper's reported |S11| is not a TEM (y-averaged) projection.**
+- **Supported conclusion (and only this):** our all-fine y-averaged |S11| does not land in
+  the ±5 dB class of the paper's own all-fine curve; read through a centre-line point probe
+  it does. The CAUSE is not decomposed. Fixture (rod staircasing at the fine grid, the
+  source/probe columns inferred from Fig. 8, the PML, the shared dt), observable, and
+  extraction (a dB-axis calibration scale error moves all four anchors together) all remain
+  open, and the projection is merely the one this lane could vary. Note the deficit is
+  nearly frequency-flat (−5.64 / −6.08 / −5.47 / −5.81 dB from 10 to 29 GHz, over which the
+  propagating even-mode count goes 2 → 8), which is at least as consistent with a constant
+  fixture or normalisation offset as with mode conversion; and at 10 GHz the quarter-height
+  probe degenerates to the y-mean (−24.51 vs −24.50) yet is still 6.09 dB below the paper.
+  Any inference about the paper's OWN instrumentation is out of scope by this lane's own
+  pre-declaration (`portgrid_m1b_retry_predeclaration.md` R3.4) and is not made here.
 - **Not supported, and not claimed: what the paper's projection is.** No single point row
   matches all four anchors inside the class — the centre line is the only projection inside
   at every anchor (worst |Δ| 3.81 dB), while y ≈ H/4 matches max/25/29 GHz to within 0.4 dB

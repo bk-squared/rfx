@@ -101,8 +101,11 @@ def rescaled_rod_window(our_allfine_peak_linear: float) -> float:
 
     i.e. the +5 dB class allowance carried as a RELATIVE fraction of the
     all-fine signal level and re-applied at this fixture's own level.  The
-    normaliser is the REFERENCE arm's peak; no part of the judged difference
-    enters its own window.
+    normaliser is the all-fine curve's own peak, which IS one term of the
+    judged difference -- deliberate (a relative allowance needs a signal
+    level) but NOT independent of the judged quantity.  Inert in this lane
+    (this window carries no verdict authority; the frozen 0.0941 does), and
+    any lane that gives it authority must declare the dependence.
     """
     return (PAPER_ROD_MISMATCH_LINEAR * 10.0 ** (5.0 / 20.0)
             * our_allfine_peak_linear / PAPER_ALLFINE_PEAK_LINEAR)

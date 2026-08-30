@@ -319,8 +319,13 @@ different amplitude changes the allowance it delivers. Rescaling rule, fixed now
 
 both maxima over [2, 30] GHz, both under the y-average observable the judged mismatch uses;
 `0.0529` is the paper-extracted r=6-vs-all-fine mismatch already committed in
-`portgrid_fig9_extraction.json`. The normaliser is the REFERENCE arm's own peak, not the
-judged difference — no part of the judged quantity enters its own window. Delivered
+`portgrid_fig9_extraction.json`. The normaliser is the all-fine curve's own peak, which IS one of
+the two terms of the judged difference (max| |S11_sub| − |S11_fine| |). That is deliberate —
+converting an absolute allowance into a relative one requires a signal level — but it is
+NOT independent of the judged quantity, and any lane that gives this window verdict
+authority must declare that dependence. In THIS lane the rescaled window carries no verdict
+authority (the frozen 0.0941 keeps it, and the measurement 0.0299 meets both), so the
+dependence is inert here. Delivered
 looseness of the frozen window is recorded as
 `20 log10(paper all-fine peak / our all-fine peak)` dB.
 **The frozen 0.0941 keeps its verdict authority**; the rescaled value is recorded as a
