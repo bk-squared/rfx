@@ -285,6 +285,13 @@ class SParamProbe(NamedTuple):
     # V_port = sum over LIVE wire cells of -E_c*dx. None for lumped ports
     # (single-cell V_port == v_dft there).
     v_port_dft: object = None
+    # PRE-injection drive-sample reference DFT (wire ports only, issue
+    # #683 x #764): the midpoint -E*dx sampled BEFORE apply_wire_port,
+    # bit-identical to the historical v_dft channel.  Feeds only the
+    # #308-calibrated off-diagonal incident wave and the byte-frozen
+    # legacy diagonal in decompose_wire_s_matrix; the physical v/i/v_port
+    # channels sample POST-injection (#683 verdict).  None for lumped.
+    v_ref_dft: object = None
 
 
 class PortVIReplayBundle(NamedTuple):
@@ -329,6 +336,13 @@ class WirePortVIReplayBundle(NamedTuple):
     # recorded production S-matrix used the legacy per-cell diagonal — the
     # replay diagnostic falls back to that convention for such dumps.
     raw_port_voltages_fdt: object = None
+    # PRE-injection drive-sample reference phasors (issue #683 x #764):
+    # required to replay the #308-calibrated off-diagonals and the
+    # byte-frozen legacy diagonal now that ``raw_voltages_fdt`` holds the
+    # physical POST-injection samples.  ``None`` marks a pre-#683 dump,
+    # whose raw voltages ARE the reference — the replay diagnostic falls
+    # back to them.
+    raw_drive_ref_voltages_fdt: object = None
 
 
 def init_sparam_probe(
@@ -382,6 +396,15 @@ def update_sparam_probe(
     reflects only the cavity/load response, not the source injection.
     Sampling after source injection contaminates V with the driving
     waveform, making the wave-decomposition S11 meaningless.
+
+    CAVEAT (issue #683): the paragraph above is the #72 contract, and for
+    WIRE ports it was REFUTED by measurement (2026-08-29) — the wire-port
+    probes now sample the physical V/I/V_port AFTER injection (see
+    ``update_wire_sparam_probe``) and keep the pre-injection sample only
+    as the ``v_ref_dft`` calibration reference.  The lumped ordering here
+    is deliberately unchanged pending its own decision run on a
+    lumped-port known-load fixture; do not flip it just to match the wire
+    family.
 
     X(f) += x(t) * exp(-j*2π*f*t) * dt
 
@@ -950,6 +973,7 @@ def init_wire_sparam_probe(
         window=dft_window,
         window_alpha=float(dft_window_alpha),
         v_port_dft=zeros,
+        v_ref_dft=zeros,
     )
 
 
@@ -964,14 +988,26 @@ def update_wire_sparam_probe(
 ) -> SParamProbe:
     """Accumulate one timestep of V, I, V_inc, and V_port for a WirePort.
 
-    Call this every timestep after update_e() / apply_pec() but
-    **before** apply_wire_port() so that the sampled voltage reflects
-    only the load/cavity response.  V and I are measured at the LIVE-run
-    midpoint cell; V_port is the whole-gap sum over live cells
-    (issue #764).  V_inc uses the per-cell source voltage (V_src / n_live,
-    matching ``apply_wire_port``'s live-cell injection — issue #318;
-    ``n_live=None`` falls back to the all-cells count, the historical
-    behaviour and the degenerate no-dead-cells case).
+    Call this every timestep after update_e() / apply_pec() AND **after**
+    apply_wire_port() (issue #683, decided by measurement 2026-08-29):
+    the post-injection E is the true field level ``E^{n+1}`` of the
+    discrete update, and only the post-injection V/I pair satisfies the
+    known-load circuit law at an excited port (the previous contract —
+    sample before injection, issue #72 — survives for LUMPED ports in
+    ``update_sparam_probe`` pending their own decision run; the #683
+    measurement was made on wire ports).  The PRE-injection drive-sample
+    reference channel is accumulated separately by
+    ``update_wire_drive_ref_probe`` (call it BEFORE apply_wire_port) —
+    the #308/#313 off-diagonal calibration is pinned against that sample
+    (see ``decompose_wire_s_matrix`` and
+    docs/design_notes/issue683_decomposer_flip_predeclaration.md).
+
+    V and I are measured at the LIVE-run midpoint cell; V_port is the
+    whole-gap sum over live cells (issue #764).  V_inc uses the per-cell
+    source voltage (V_src / n_live, matching ``apply_wire_port``'s
+    live-cell injection — issue #318; ``n_live=None`` falls back to the
+    all-cells count, the historical behaviour and the degenerate
+    no-dead-cells case).
     """
     from rfx.sources.sources import _wire_port_cells
 
@@ -994,6 +1030,35 @@ def update_wire_sparam_probe(
 
     return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc,
                           v_port_dft=new_vport)
+
+
+def update_wire_drive_ref_probe(
+    probe: SParamProbe,
+    state,
+    grid,
+    port,
+    dt: float,
+    pec_mask=None,
+) -> SParamProbe:
+    """Accumulate one timestep of the PRE-injection drive-sample reference.
+
+    Call this after update_e() / apply_pec() but **before**
+    apply_wire_port() — the historical (#72) sampling slot.  The channel
+    is bit-identical to the pre-#683 ``v_dft`` and exists because the
+    #308 receive-wave sign and Z0/n_cells normalization were calibrated
+    against this sample (issue #683 x #764 decomposer recalibration; see
+    ``decompose_wire_s_matrix``).  It feeds ONLY the off-diagonal
+    incident-wave denominator and the byte-frozen legacy diagonal; the
+    physical V/I/V_port channels are accumulated post-injection by
+    ``update_wire_sparam_probe``.
+    """
+    t = state.step * dt
+    v_ref = wire_port_voltage(state, grid, port, pec_mask=pec_mask)
+    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
+                                probe.window_alpha)
+    old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
+    return probe._replace(v_ref_dft=old_ref + v_ref * phase * dt * weight)
 
 
 # ---------------------------------------------------------------------------
@@ -1090,7 +1155,8 @@ def decompose_lumped_s_matrix(v, i, z0):
     return S
 
 
-def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
+def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
+                            v_ref=None):
     """Wire-port N-port S-matrix from accumulated midpoint V/I DFTs.
 
     Diagonal entries (every one of which is a DRIVEN reading here — column
@@ -1120,23 +1186,31 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
     documented byte-frozen legacy, and (b) replay of pre-#764 dumps whose
     recorded production S-matrix used the legacy diagonal.
 
-    SAMPLING-ORDER CONTRACT (issue #683 / the 2026-08-29 adversarial
-    review of the uniform-lane flip attempt): every quantity fed to this
-    decomposer — V, I, and V_port alike — must be sampled at the SAME
-    point in the timestep, and on the uniform lane that point is
-    PRE-injection (the issue-#72 probe contract; the off-diagonal #308
-    receive-wave sign and Z0c normalization were calibrated 2026-07-10/11
-    against PRE-injection drive samples, and composing them with POST
-    samples breaks the two-port THRU locks catastrophically —
-    |S21 - S12| max 76.79 vs gate 0.015).  The NU lane samples
-    POST-injection (measured correct, #683) and does NOT route through
-    this function — its extraction lives in rfx/nonuniform.py.  Because
-    the uniform lane's PRE-injection sample contaminates the driven-port
-    V at order 1 (sigma*dt/eps ~ 0.96 on the canonical cell), the
-    PHYSICAL-value validation of the driven diagonal computed here is
-    keyed to the pending #683 POST-ordering flip; until it lands the
-    driven diagonal below is the frame-consistent FORMULA on
-    PRE-injection samples, not a validated physical reading.
+    SAMPLING-ORDER CONTRACT (issue #683 x #764, landed 2026-08-29; the
+    derivation is docs/design_notes/issue683_decomposer_flip_predeclaration.md):
+    V, I, and V_port are sampled POST-injection — the true field level
+    ``E^{n+1}``, the only sample that satisfies the known-load circuit
+    law at the driven port (#683 verdict) — so the driven diagonal above
+    is a validated physical reading (Gamma_L-exact class).  The
+    off-diagonal channel is DIFFERENT: the #308 receive-wave sign and
+    Z0c normalization were calibrated 2026-07-10/11 against the
+    PRE-injection drive sample, and composing them with the POST drive
+    sample detonates the two-port THRU locks (adversarial review of the
+    raw-flip attempt: |S21 - S12| max 76.79 vs gate 0.015 — the POST
+    circuit law makes ``-V + Z0c*I = (Z0c - Z_Lc)*I``, a structural
+    cancellation at a matched drive, the exact mirror of the #308
+    receive-channel cancellation).  The calibrated drive-sample
+    reference is therefore carried as its own channel: ``v_ref`` is the
+    PRE-injection midpoint drive sample (bit-identical to the pre-#683
+    ``v``), consumed ONLY by the off-diagonal incident wave ``a_j`` and
+    the byte-frozen legacy diagonal.  ``v_ref=None`` (pre-#683 callers /
+    dump replay) falls back to ``v``, which for such data IS the
+    reference.  Re-referencing ``a_j`` to the physical incident wave
+    ``(V + Z0c*I)`` would rescale the #313-locked off-diagonal
+    magnitudes by fixture-dependent factors — that renormalization is
+    the #313 reference-plane program, not a sampling fix.  The NU lane
+    does NOT route through this function — its extraction lives in
+    rfx/nonuniform.py and was calibrated in the POST frame directly.
 
     Off-diagonal entries are UNCHANGED: a *per-cell-normalized* impedance
     ``Z0/n_cells`` for the wave decomposition, role-selected per port
@@ -1190,6 +1264,12 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
         port *i* when driving port *j*); only the driven diagonal
         ``v_port[j, j]`` is consumed.  None selects the legacy per-cell
         diagonal (see above).
+    v_ref : (n_ports, n_ports, n_freqs) complex or None
+        PRE-injection drive-sample reference phasors (issue #683 x #764);
+        only the drive diagonal ``v_ref[j, j]`` is consumed — by the
+        off-diagonal incident wave ``a_j`` and the legacy per-cell
+        diagonal.  None falls back to ``v`` (pre-#683 data, where ``v``
+        IS the pre-injection sample).
 
     Returns
     -------
@@ -1201,6 +1281,9 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
     z0 = jnp.asarray(z0)
     if v_port is not None:
         v_port = jnp.asarray(v_port)
+    # Drive-sample reference (issue #683 x #764): pre-injection midpoint
+    # drive sample; falls back to ``v`` for pre-#683 data.
+    v_ref = v if v_ref is None else jnp.asarray(v_ref)
     n_ports = v.shape[0]
     n_freqs = v.shape[-1]
     S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
@@ -1212,7 +1295,9 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
             jnp.ones_like(i[j, j]) * 1e-30,
         )
         if v_port is None:
-            z_in_j = -v[j, j] / safe_i  # legacy per-cell input impedance
+            # Legacy per-cell input impedance — byte-frozen against the
+            # PRE-injection reference (#313 refplane diagonals, replay).
+            z_in_j = -v_ref[j, j] / safe_i
         else:
             z_in_j = v_port[j, j] / safe_i  # driven whole-port Z (issue #764)
         for ri in range(n_ports):
@@ -1231,7 +1316,11 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None):
                     2.0 * jnp.sqrt(z0_cell_i))
                 n_cells_j = max(int(port_cell_counts[j]), 1)
                 z0_cell_j = z0_j / n_cells_j
-                a_j = (-v[j, j] + z0_cell_j * i[j, j]) / (
+                # Incident wave against the PRE-injection drive-sample
+                # reference (issue #683 x #764 — see the SAMPLING-ORDER
+                # CONTRACT above; the #308 sign and Z0c normalization are
+                # calibrations pinned on this reference).
+                a_j = (-v_ref[j, j] + z0_cell_j * i[j, j]) / (
                     2.0 * jnp.sqrt(z0_cell_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
                 S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
@@ -1649,6 +1738,7 @@ def extract_s_matrix_wire(
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     vp_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    vref_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     raw_v = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1711,16 +1801,37 @@ def extract_s_matrix_wire(
                 # 2-D safety comes from the length-1-axis guard.
                 state = apply_pec_mask(state, pec_mask)
 
-            # Record V / I at all ports BEFORE source injection so that
-            # the sampled voltage reflects only the load/cavity response.
+            # Record the PRE-injection drive-sample REFERENCE channel at
+            # the historical (#72) slot — the #308/#313 off-diagonal
+            # calibration is pinned against this sample (issue #683 x
+            # #764 decomposer recalibration; bit-identical to the
+            # pre-#683 v_dft).
             for i in range(n_ports):
-                sprobes[i] = update_wire_sparam_probe(
+                sprobes[i] = update_wire_drive_ref_probe(
                     sprobes[i], state, grid, ports[i], dt,
-                    n_live=port_n_live[i], pec_mask=pec_mask)
+                    pec_mask=pec_mask)
 
             # Excite only port j (live cells only, issue #318)
             state = apply_wire_port(state, grid, ports[j], t, mats,
                                     pec_mask=pec_mask)
+
+            # Record the PHYSICAL V / I / V_port channels at all ports
+            # AFTER source injection (issue #683, decided by measurement
+            # 2026-08-29 — docs/design_notes/
+            # issue683_sampling_order_decision_protocol.md section 9).
+            # The pre-injection sample is not any field time level of the
+            # discrete update and fails the known-load circuit law at the
+            # driven port; the post-injection sample is the true E^{n+1}.
+            # Passive ports (every i != j) read identically on either
+            # side: the injection writes only port j's live cells, and I
+            # reads H only.  This keeps the eager path in lockstep with
+            # the production-scan driver (rfx/simulation.py wire block),
+            # which flipped in the same commit —
+            # test_sparam_driver_matches_eager pins that.
+            for i in range(n_ports):
+                sprobes[i] = update_wire_sparam_probe(
+                    sprobes[i], state, grid, ports[i], dt,
+                    n_live=port_n_live[i], pec_mask=pec_mask)
 
         # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
         # shared wire wave decomposer (``decompose_wire_s_matrix``) — single
@@ -1731,16 +1842,20 @@ def extract_s_matrix_wire(
             i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
             vp_all[j, i, :] = np.asarray(sprobes[i].v_port_dft,
                                          dtype=np.complex128)
+            vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
+                                           dtype=np.complex128)
             if return_vi_dump:
                 raw_v[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 
     z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
     # Issue #764: the whole-port gap-voltage channel feeds the driven
-    # diagonal; off-diagonals keep the per-cell #308 decomposition.
+    # diagonal; off-diagonals keep the per-cell #308 decomposition,
+    # normalized against the PRE-injection drive-sample reference
+    # (issue #683 x #764 — v_ref).
     S = np.asarray(
         decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts,
-                                v_port=vp_all),
+                                v_port=vp_all, v_ref=vref_all),
         dtype=np.complex64)
 
     if return_vi_dump:
@@ -1754,6 +1869,7 @@ def extract_s_matrix_wire(
             port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
             driven_port_indices=tuple(range(n_ports)),
             raw_port_voltages_fdt=vp_all,
+            raw_drive_ref_voltages_fdt=vref_all,
         )
 
     return S

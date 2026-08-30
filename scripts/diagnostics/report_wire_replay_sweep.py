@@ -191,6 +191,11 @@ def _run_case(case: WireSweepCase, output_dir: Path) -> dict:
         # the driven whole-port diagonal of a post-#764 production dump.
         raw_port_voltages_fdt=np.asarray(
             extraction.raw_port_voltages_fdt, dtype=np.complex128),
+        # Issue #683 x #764: pre-injection drive-sample reference channel —
+        # required to replay the #308-calibrated off-diagonals now that
+        # raw_voltages_fdt holds the physical POST-injection samples.
+        raw_drive_ref_voltages_fdt=np.asarray(
+            extraction.raw_drive_ref_voltages_fdt, dtype=np.complex128),
         raw_currents=np.asarray(extraction.raw_currents, dtype=np.complex128),
         port_impedances_ohm=np.asarray(extraction.port_impedances, dtype=np.float64),
         port_cell_counts=np.asarray(extraction.port_cell_counts, dtype=np.int64),

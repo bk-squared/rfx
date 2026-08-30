@@ -5642,6 +5642,250 @@
         }
       ]
     },
+    "validation/research/issue683_sampling_order_decision.py::build::nu-matched": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 16000.0,
+              "declared_um": [
+                0.0,
+                16000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000759959220553
+              ],
+              "mesh_extent_um": 16000.00076,
+              "n_cells": 16,
+              "realized_extent_um": 16000.00076,
+              "realized_um": [
+                0.0,
+                16000.00076
+              ]
+            },
+            "y": {
+              "declared_extent_um": 12000.0,
+              "declared_um": [
+                0.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000569969415415
+              ],
+              "mesh_extent_um": 12000.00057,
+              "n_cells": 12,
+              "realized_extent_um": 12000.00057,
+              "realized_um": [
+                0.0,
+                12000.00057
+              ]
+            },
+            "z": {
+              "declared_extent_um": 12000.0,
+              "declared_um": [
+                0.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.000569969415415
+              ],
+              "mesh_extent_um": 12000.00057,
+              "n_cells": 12,
+              "realized_extent_um": 12000.00057,
+              "realized_um": [
+                0.0,
+                12000.00057
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|4000.000,5000.000,3000.000um->12000.000,7000.000,5000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 8000.0,
+              "declared_um": [
+                4000.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.000189989805138,
+                0.000569969415415
+              ],
+              "realized_extent_um": 8000.00037998,
+              "realized_um": [
+                4000.00018999,
+                12000.00057
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                5000.0,
+                7000.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000332482158992
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                5000.00023749,
+                7000.00033248
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                3000.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.000142492353854,
+                0.000237487256423
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                3000.00014249,
+                5000.00023749
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 32,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        },
+        "geometry|pec|4000.000,5000.000,7000.000um->12000.000,7000.000,9000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 8000.0,
+              "declared_um": [
+                4000.0,
+                12000.0
+              ],
+              "face_residual_um": [
+                0.000189989805138,
+                0.000569969415415
+              ],
+              "realized_extent_um": 8000.00037998,
+              "realized_um": [
+                4000.00018999,
+                12000.00057
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                5000.0,
+                7000.0
+              ],
+              "face_residual_um": [
+                0.000237487256423,
+                0.000332482158992
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                5000.00023749,
+                7000.00033248
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0000475,
+              "declared_extent_um": 2000.0,
+              "declared_um": [
+                7000.0,
+                9000.0
+              ],
+              "face_residual_um": [
+                0.000332482158992,
+                0.000427477062429
+              ],
+              "realized_extent_um": 2000.00009499,
+              "realized_um": [
+                7000.00033248,
+                9000.00042748
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 32,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "Gap between PEC structures: 2mm = 2.0 cells along z \u2014 coupling may be under-resolved.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "port_in_pec",
+          "loc": null,
+          "message": "Port/source at (0.005, 0.006, 0.005) is inside PEC geometry 'pec'. Field will be zero. Move source outside PEC.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "port_in_pec",
+          "loc": null,
+          "message": "Port/source at (0.011, 0.006, 0.005) is inside PEC geometry 'pec'. Field will be zero. Move source outside PEC.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.005, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.011, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
     "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short": {
       "fidelity": {
         "NOT AUDITED by this report": {

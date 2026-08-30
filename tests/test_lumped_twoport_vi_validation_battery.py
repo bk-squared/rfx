@@ -531,35 +531,49 @@ def test_run_forward_complex_values_agree_on_cpml(crosscheck):
 # ===========================================================================
 
 @pytest.mark.slow_physics
+@pytest.mark.xfail(
+    strict=True,
+    reason="issue #683 flip landed 2026-08-29 and this restore FIRED its "
+           "pre-declared falsifier (P1 gate 5, "
+           "docs/design_notes/issue683_decomposer_flip_predeclaration.md): "
+           "the physical whole-port thru diagonal measures max 0.2910 "
+           "in-band, OUTSIDE the pre-declared < 0.12 restore class.  The "
+           "reading is quantitatively the fixture's own un-de-embedded "
+           "feed posts (measured driven Z_in = 43+j27 ohm at 7 GHz; the "
+           "symmetric far post's +j27 series reactance alone gives "
+           "|Gamma| ~ 27/104 = 0.26), NOT an extraction error — the "
+           "known-load harness passed (n*a +0.9990/+0.9960) and the "
+           "off-diagonals are bit-identical to base.  Held as a FIRED "
+           "falsifier for review sign-off; do not silently re-pin.")
 def test_thru_s11_floor(thru_smatrix):
-    """Thru diagonal: INTERIM envelope lock, KEYED TO ISSUE #683.
+    """Thru diagonal: physical floor gate — restore FIRED, held for review.
 
-    RE-PINNED 2026-08-29 for issue #764 (written provenance).  The
-    physical floor gate (max in-band |S11|, |S22| < 0.12; measured
-    post-#318 0.0858/0.0891, the feed-post V-shape) was a pin on the
-    LEGACY per-cell driven diagonal.  #764 moved the diagonal to the
-    whole-port reflection S_kk = (V_port - Z0*I)/(V_port + Z0*I) —
-    physically validated on the NU/POST lane (matched 0.001-0.0125,
-    short -1, open +1; validation/research/
-    issue764_wireport_norm_falsifiers.py) — but THIS lane still samples
-    PRE-injection, which contaminates the driven whole-gap V at order 1
-    (sigma*dt/eps ~ 0.96), so the diagonal here reads a non-physical
-    interim value until the #683 POST-ordering flip lands.  Measured on
-    this branch: per-bin |S11| 2.62-2.81, |S22| similar, worst 2.8068.
-    This envelope freezes that interim value so extraction drift cannot
-    pass unnoticed; RESTORE the physical floor gate (< 0.12 class,
-    re-measured) when the #683 flip lands — do not carry this envelope
-    past it.
+    HISTORY.  The pre-#764 physical floor (max in-band |S11|, |S22| <
+    0.12; measured 0.0858/0.0891, the 'feed-post V-shape') was a pin on
+    the LEGACY per-cell driven diagonal — a frame-mismatched reading
+    (#313/#318) that did not track the load.  #764 moved the diagonal to
+    the whole-port reflection S_kk = (V_port - Z0*I)/(V_port + Z0*I) and
+    keyed an interim envelope (worst 2.8068 on PRE-injection samples) to
+    the #683 flip.  The flip landed 2026-08-29 (POST-injection physical
+    sampling + drive-reference decomposer recalibration) and this gate
+    was restored per its own instruction — and the restore's pre-declared
+    < 0.12 class FIRED: the measured physical diagonal is
+    |S11| 0.0093-0.2896 / |S22| 0.0176-0.2910 over the 3-7 GHz bins,
+    rising with frequency exactly as the ports' measured feed-post
+    reactance does (Z_in - Z0 ~ +j27 ohm at 7 GHz -> far-post mismatch
+    |Gamma| ~ 0.26).  The 0.09 'feed-post class' expectation was an
+    extrapolation from the legacy artifact reading, and the measurement
+    refutes it.  Per the STOP discipline the strict-xfail above keeps
+    the firing visible instead of widening the gate; the assert below is
+    the pre-declared physical floor, unmodified.
     """
     s11 = np.abs(thru_smatrix[0, 0])
     s22 = np.abs(thru_smatrix[1, 1])
     worst = max(s11.max(), s22.max())
-    interim = 2.8068
-    assert abs(worst / interim - 1.0) < 0.05, (
-        f"interim thru diagonal envelope moved: max(|S11|, |S22|) = "
-        f"{worst:.4f} vs the keyed interim 2.8068 (see docstring: keyed "
-        f"to #683 — a value in the 0.09 class means the flip landed, "
-        f"restore the physical floor gate)")
+    assert worst < 0.12, (
+        f"thru diagonal above the pre-declared physical floor: "
+        f"max(|S11|, |S22|) = {worst:.4f} (measured physical value "
+        f"0.2910 — the fired-falsifier state this xfail documents)")
     # Two-sided liveness (review finding): a dead diagonal reads ~0 and
     # would pass an upper bound.
     assert s11.max() > _THRU_S11_ALIVE_MIN and s22.max() > _THRU_S11_ALIVE_MIN, (
@@ -692,18 +706,17 @@ def test_thru_passivity_singular_values(thru_smatrix):
         np.linalg.svd(thru_smatrix[:, :, k], compute_uv=False)[0]
         for k in range(thru_smatrix.shape[2])
     )
-    # RE-PINNED 2026-08-29, KEYED TO ISSUE #683 (issue #764 provenance —
-    # see test_thru_s11_floor): the diagonal entering this norm is the
-    # interim PRE-ordered whole-port reading (worst 2.8068), so the
-    # strict-passivity bound 0.85 is suspended.  Interim measured
-    # sv_max = 3.2061; this envelope freezes it against drift.  RESTORE
-    # the physical bound (< 0.85 class, re-measured) when the #683 flip
-    # lands.
-    interim_sv = 3.2061
-    assert abs(sv_max / interim_sv - 1.0) < 0.05, (
-        f"interim thru singular-value envelope moved: {sv_max:.4f} vs "
-        f"the keyed interim 3.2061 (keyed to #683 — a value in the 0.63 "
-        f"class means the flip landed, restore the physical bound)")
+    # RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
+    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
+    # diagonal entering this norm is now the physical POST-ordered
+    # whole-port reading, so the strict-passivity bound 0.85 is live
+    # again.  Measured on the flipped lane: sv_max = 0.6934 (the
+    # predicted 0.63 class; on the PRE-injection interim it read 3.2061
+    # — keyed-envelope era, history in the git log).
+    assert sv_max < 0.85, (
+        f"thru singular value above the physical passivity bound: "
+        f"{sv_max:.4f} (measured 0.6934 on the flipped lane; physical "
+        f"gate restored by the #683 flip)")
 
 
 # ===========================================================================

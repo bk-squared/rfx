@@ -63,17 +63,16 @@ def test_forward_wire_port_sparams_populated():
     # Closed PEC cavity → energy reflects → |S11| should be near 1 in band
     mag = np.abs(s11)
     assert np.all(mag > 0.6), f"|S11| too low for PEC cavity: {mag}"
-    # KEYED TO ISSUE #683 (issue #764, written provenance): the upper
-    # passivity-ish bound (< 1.20) on the DRIVEN uniform-lane diagonal is
-    # suspended while this lane samples PRE-injection (order-1
-    # contamination of the driven whole-gap V; the same whole-port
-    # formula is validated |S11| <= 1.02 on the NU/POST lane).  Interim
-    # measured: [1.012 ... 1.376, 2.866] with only the two band-edge bins
-    # far off 1.  Restore `assert np.all(mag < 1.20)` when the #683 flip
-    # lands.
-    assert np.all(mag < 2.8662 * 1.10), (
-        f"uniform-lane interim driven-diagonal envelope moved: {mag} "
-        f"(interim max 2.8662; keyed to #683 — see comment above)")
+    # RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
+    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
+    # lane now samples the physical V/I/V_port POST-injection, so the
+    # driven whole-port diagonal is the validated terminal pair and the
+    # upper bound is live again (on the PRE-injection interim this
+    # fixture measured [1.012 ... 1.376, 2.866] — keyed-envelope era,
+    # history in the git log).
+    assert np.all(mag < 1.20), (
+        f"driven wire diagonal envelope exceeded: {mag} "
+        f"(physical gate restored by the #683 flip)")
 
 
 def test_forward_wire_port_grad_flows():

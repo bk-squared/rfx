@@ -194,33 +194,23 @@ def test_wire_sparam_api_integration():
     assert not np.any(np.isnan(result.s_params)), "No NaN in S-params"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="issue #764/#683: uniform-lane driven diagonal is the physical "
-           "whole-port formula on PRE-injection samples; passivity returns "
-           "when the #683 POST-ordering flip lands (remove this marker then "
-           "and re-baseline)")
 def test_wire_port_jit_scan_s11_passivity():
     """Wire port S11 via JIT scan should satisfy |S11| <= 1.
 
-    KEYED TO ISSUE #683 (issue #764, written provenance): the uniform lane
-    still samples V/I PRE-injection, which contaminates the DRIVEN port's
-    whole-gap voltage at order 1 (sigma*dt/eps ~ 0.96 on the canonical
-    cell), so the #764 whole-port driven diagonal
-    S_kk = (V_port - Z0*I)/(V_port + Z0*I) — physically validated on the
-    NU/POST lane (matched 0.001-0.0125, short -1, open +1; see
-    validation/research/issue764_wireport_norm_falsifiers.py) — reads
-    non-physical values on this lane until the #683 POST-ordering flip
-    lands.  The legacy (-V - Z0*I)/(-V + Z0*I) reading stayed passive
-    here only because it is the passive-branch sense applied to a driven
-    port (the reciprocal class), not because it measured the load.
+    RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
+    docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
+    uniform lane now samples the physical V/I/V_port POST-injection, so
+    the #764 whole-port driven diagonal
+    S_kk = (V_port - Z0*I)/(V_port + Z0*I) is the validated terminal pair
+    on this lane (flip-acceptance harness: n*a = +0.9990/+0.9960,
+    n*|b| = 0.066/0.265 Ohm on the six-point known-load sweep) and this
+    passivity gate is live again.  On the PRE-injection interim it read
+    max|S11| = 5.769 on this fixture (keyed-envelope era; history in the
+    git log).
 
-    Measured on this branch: max|S11| = 5.769 on this fixture.
-
-    (Historical note: this test also framed PRE-injection sampling as the
-    non-contaminated choice; per the #683 measurement PRE ordering is the
-    measured-wrong half for driven V, which is exactly why this gate is
-    keyed to that flip.)
+    (Historical note: this test once framed PRE-injection sampling as the
+    non-contaminated choice; per the #683 measurement PRE ordering was
+    the measured-wrong half for driven V.)
     """
     from rfx.api import Simulation
 

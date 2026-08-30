@@ -1440,42 +1440,28 @@ def _build_nu_scan(
 
         # Wire port V/I DFT accumulation.
         #
-        # Ordering: AFTER source injection. That is this lane's original
-        # slot, and it deliberately does NOT match the uniform lane, which
-        # samples BEFORE injection. Which ordering a wire port should use is
-        # OPEN — issue #683 — and is not decided here.
+        # Ordering: AFTER source injection.  Issue #683 is DECIDED (by
+        # measurement, 2026-08-29 — docs/design_notes/
+        # issue683_sampling_order_decision_protocol.md section 9): this
+        # slot is the terminal-consistent, physically correct one.  The
+        # known-load circuit law holds only for the post-injection pair
+        # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
+        # R_L sweep at both decision bins), and the post-injection E is
+        # the true field level E^{n+1} of the discrete update
+        # (Ampere-identity residual 2.3e-7 vs 3.25 pre-injection).  The
+        # once-CONTESTED known-load sweep was settled by that protocol run
+        # (gates G0-G2 all passed; the earlier independent repro's fixture
+        # had failed to load the port), and the once-UNEXAMINED Ampere
+        # identity was examined in the same run (section 7).
         #
-        # The uniform lane's contract (issue #72, rfx/probes/probes.py
-        # update_sparam_probe) says to sample "before apply_lumped_port() so
-        # that the sampled port voltage reflects only the cavity/load
-        # response, not the source injection".
-        #
-        # What does NOT separate the two lanes, checked rather than assumed:
-        # both injections are additive/SOFT. apply_lumped_port is
-        # `E += Cb*V_src/d_par` (rfx/sources/sources.py) and this lane's
-        # source loop is the `field.at[...].add(...)` above. So the argument
-        # that the uniform rule describes hard, field-REPLACING sources and
-        # therefore need not apply here does NOT hold on this code — if that
-        # reasoning is what put this block on one side or the other, it was
-        # reasoning from a premise the source does not support.
-        #
-        # Where #683 actually stands, spelled out so this reads as the open
-        # QUESTION it is and not as a settled answer. Three arguments have
-        # been offered and NONE of them currently decides it:
-        #   - the hard-vs-soft argument above — WITHDRAWN, refuted by the
-        #     two call sites quoted;
-        #   - a known-load sweep favouring post-injection — CONTESTED: an
-        #     independent reproduction agreed on the SIGN but could not
-        #     reproduce its unit-slope signature;
-        #   - the discrete Ampere identity I = -(G + jwC)V + I_imp holding
-        #     for the post-injection E — UNEXAMINED: offered as support,
-        #     never independently checked.
-        #
-        # So the placement of this block is the STATUS QUO ANTE, not a
-        # verdict, and citing #683 here points at that state rather than at
-        # an answer. Do not "align the lanes" without #683 deciding: making
-        # the two agree is not the same as establishing which one is right,
-        # and that is exactly how the earlier attempt at this went wrong.
+        # The uniform lane (rfx/simulation.py wire block) flipped to this
+        # same POST slot for its physical V/I/V_port channels, with the
+        # pre-injection drive sample kept as a separate calibration
+        # reference channel for its #308/#313 off-diagonal decomposition
+        # (issue #683 x #764,
+        # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
+        # This lane's decomposition was calibrated in the POST frame
+        # directly, so it needs NO reference channel and NO change.
         #
         # PASSIVE ports are unaffected either way: I reads H only, and the
         # source loop writes E only, at the SOURCE cell.

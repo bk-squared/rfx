@@ -62,41 +62,27 @@ so ``Re(r) <= 0`` and ``|r| <= Z0/n_live`` — again, both properties of the por
 cell — and in the quasi-static limit ``r -> -Z0/n_live``, i.e.
 ``S11 -> (1 - n_live) / (1 + n_live)``.
 
-THE D2 QUESTION (issue #683, deliberately NOT decided here)
+THE D2 QUESTION (issue #683 — DECIDED 2026-08-29, by measurement)
 ------------------------------------------------------------
-This lane accumulates the wire-port V/I DFT AFTER source injection; the uniform
-lane accumulates BEFORE. An earlier revision of this branch changed this lane to
-match the uniform one, which made the excited-port readings agree. That was
-pulled, because making the two lanes agree is not the same as establishing
-which one is right.
+This lane accumulates the wire-port V/I DFT AFTER source injection; the
+uniform lane used to accumulate BEFORE.  The question was decided by the
+#683 known-load protocol run (one attempt, gates G0-G2 passed;
+docs/design_notes/issue683_sampling_order_decision_protocol.md section 9):
+POST-injection sampling is the terminal-consistent, physically correct
+order (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm on a six-point R_L
+sweep; Ampere-identity residual 2.3e-7 vs 3.25 pre).  The once-CONTESTED
+known-load sweep was settled by that run (the earlier independent repro's
+fixture had failed to load the port), and the once-UNEXAMINED Ampere
+identity was examined in the same run.
 
-One argument that circulated during that review does NOT survive contact with
-the source and should not be recycled: that the issue #72 contract in
-``rfx/probes/probes.py`` describes HARD-source semantics (injected value
-REPLACES the field) and so need not bind this lane's SOFT additive injection.
-Both injections are additive — ``apply_lumped_port`` is
-``E += Cb*V_src/d_par`` (``rfx/sources/sources.py``) and this lane's source
-loop is ``field.at[...].add(...)`` — so source semantics do not separate the
-two lanes at all.
-
-Three arguments have been offered on the question and NONE of them decides
-it, which is the state #683 records:
-
-* the hard-vs-soft argument just above — WITHDRAWN, refuted by the two call
-  sites quoted;
-* a known-load sweep favouring post-injection — CONTESTED: an independent
-  reproduction agreed on the SIGN but could not reproduce its unit-slope
-  signature;
-* the discrete Ampere identity ``I = -(G + jwC)V + I_imp`` holding for the
-  post-injection E — UNEXAMINED: offered as support, never independently
-  checked.
-
-So the NU lane's current ordering is the status quo ante, not a verdict, and
-the reference to #683 here points at that unresolved state rather than at an
-answer.
-
-The disagreement is left VISIBLE, not papered over, by
-``test_excited_port_lane_ordering_disagreement_is_open_683``.
+The uniform lane then flipped its physical V/I/V_port sampling to POST —
+with the pre-injection drive sample kept as the calibration reference for
+its #308/#313 off-diagonal decomposition (issue #683 x #764,
+docs/design_notes/issue683_decomposer_flip_predeclaration.md) — and the
+excited-port disagreement this module kept visible collapsed to float
+noise.  The witness is now the LOCKED parity test
+``test_excited_port_lane_ordering_disagreement_is_open_683`` (name kept
+for git-history greppability).
 """
 
 from __future__ import annotations
@@ -318,47 +304,35 @@ def test_passive_lane_parity_across_the_domain(port_x):
 
 
 # --------------------------------------------------------------------------
-# The excited port — where the OPEN sampling-ordering question (#683) bites.
-# Nothing below is a passing gate; see the module docstring.
+# The excited port — the #683 sampling-ordering question, DECIDED and locked.
 # --------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "issue #683 — OPEN: the two lanes sample the wire-port V/I DFT on "
-    "opposite sides of source injection (NU after, uniform before) and so "
-    "disagree at an EXCITED port. Which ordering is correct is undecided, so "
-    "this is xfail(strict) rather than a re-pinned number: if either lane's "
-    "ordering changes, or #683 is resolved, this XPASSes and pytest turns "
-    "that into a FAILURE, forcing the question to be answered rather than "
-    "silently absorbed."))
 @pytest.mark.parametrize("load", ["vacuum", "pec_plates"])
 def test_excited_port_lane_ordering_disagreement_is_open_683(load):
-    """An EXCITED port SHOULD read the same on both lanes. It does not.
+    """An EXCITED port reads the same on both lanes — LOCKED parity.
 
-    This is the visible marker for issue #683, and it is expected to fail
-    until #683 decides which sampling side is right (the uniform lane still
-    samples PRE-injection). RE-MEASURED 2026-08-29 for issue #764 (written
-    provenance: the old residuals 1.983e-01 / 6.109e-01 were pinned on the
-    known-wrong per-cell driven diagonal; #764's whole-port normalization
-    removed the normalization half of the disagreement, leaving only the
-    #683 ordering half).  Measured on this branch (max over the 3 bins of
-    |S_NU - S_uniform|):
+    CONVERTED 2026-08-29 from the strict-xfail #683 witness (written
+    provenance — docs/design_notes/issue683_decomposer_flip_predeclaration.md
+    P4; verdict in issue683_sampling_order_decision_protocol.md section 9):
+    the uniform lane now samples the physical V/I/V_port POST-injection —
+    the measured-correct side — so the ordering disagreement this witness
+    kept visible is RESOLVED, not absorbed.  The name is kept so the git
+    history of the open question stays greppable.
 
-        vacuum      (n_live=4)  4.975e-02
-        pec_plates  (n_live=6)  1.051e-01
+    Measured residual history (max over the 3 bins of |S_NU - S_uniform|):
 
-    At 0.2 GHz the two readings remain near-conjugates — vacuum gives
-    NU +0.999983-0.004385j against uniform +1.000004+0.005537j — which is
-    the signature of the half-step the injection ordering moves, not of a
-    magnitude error.  Both lanes now read the unloaded driven column as an
-    open (|S11| ~ 1), the physically expected reading.
+        pre-#764 (per-cell diagonal)    1.983e-01 / 6.109e-01
+        #764 base (whole-port, PRE)     4.975e-02 / 1.051e-01
+        #683 flip (whole-port, POST)    6.839e-08 / 1.767e-07   <- locked
+
+    At 0.2 GHz both lanes read vacuum +0.999983-0.004385j (bit-close);
+    the pre-flip near-conjugate signature (uniform +1.000004+0.005537j)
+    was exactly the same-step injection increment the flip removed.
+    Both lanes read the unloaded driven column as an open (|S11| ~ 1),
+    the physically expected reading.
 
     ``direction`` is NOT a confounder here: the fixture pins ``direction`` and
     D1 is fixed, so the split is direction-free on both lanes.
-
-    Note what this test does NOT assert: a passivity envelope on the
-    UNIFORM lane's driven diagonal — its PRE-injection sample contaminates
-    the driven V at order 1 (sigma*dt/eps ~ 0.96), so its physical
-    validation is keyed to the pending #683 flip.
     """
     extent = 3e-3 if load == "vacuum" else 5e-3
     s_uni = _s11(_build(False, extent=extent, excite=True, load=load))

@@ -924,6 +924,10 @@ def _build_step_setup(
                 # v_port_dft (issue #764): whole-port gap voltage
                 # V_port = sum over LIVE cells of -E_c*dx.
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),
+                # v_ref_dft (issue #683 x #764): PRE-injection drive-sample
+                # reference for the #308-calibrated off-diagonal
+                # decomposition (bit-identical to the historical v_dft).
+                jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),
             )
             for wp in wire_port_sparams
         )
@@ -1455,25 +1459,119 @@ def make_core_step(ctx: _StepContext):
                 st, rlc_st_new = ctx.update_rlc_element(st, rlc_st, meta)
                 new_rlc_states.append(rlc_st_new)
 
-        # Compute step time first; wire/lumped S-param DFT blocks below
-        # need `t` and must accumulate BEFORE source injection per the
+        # Compute step time first; the lumped S-param DFT block below
+        # needs `t` and accumulates BEFORE source injection per the
         # rfx/probes/probes.py update_sparam_probe docstring contract
         # ("sample after E-update/apply_pec but before apply_lumped_port
         # so V reflects only the cavity/load response, not the driving
-        # waveform"). The JIT scan path violated it via PR #72 ordering,
-        # producing 5–10 dB train/eval |S11| disagreement on near-matched
-        # antennas where source-injection contamination is large relative
-        # to V (issue #72).
+        # waveform"; issue #72 — the JIT scan path violated it via PR #72
+        # ordering, producing 5-10 dB train/eval |S11| disagreement on
+        # near-matched antennas). The WIRE-port physical V/I/V_port block
+        # moved to AFTER the soft-source loop below (issue #683, decided
+        # by measurement 2026-08-29: only the post-injection sample is the
+        # true field level E^{n+1} and satisfies the known-load circuit
+        # law at an excited port — see
+        # docs/design_notes/issue683_sampling_order_decision_protocol.md
+        # section 9). The lumped ordering is deliberately unchanged: the
+        # #683 measurement was made on wire ports, and flipping lumped on
+        # a wire-port measurement would repeat the align-first-decide-
+        # later mistake the ledger's #673/#672 entry warns about.
         t = step_idx.astype(jnp.float32) * dt
 
-        # Wire port S-param DFT accumulation BEFORE source injection so
-        # that sampled V/I reflects only the load/cavity response.
+        # Wire-port DRIVE-REFERENCE DFT accumulation at the historical
+        # PRE-injection slot (issue #683 x #764 decomposer recalibration,
+        # docs/design_notes/issue683_decomposer_flip_predeclaration.md
+        # section 3): the #308 receive-wave sign and Z0/n_cells
+        # normalization were calibrated against the pre-injection drive
+        # sample, so that sample is kept as its own channel `v_ref_dft` —
+        # bit-identical to the historical `v_dft` — and feeds ONLY the
+        # off-diagonal incident-wave denominator and the byte-frozen
+        # legacy diagonal in decompose_wire_s_matrix. The physical
+        # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop
         if ctx.use_wire_sparams:
-            new_wire_accs = []
+            new_wire_refs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
-                v_dft, i_dft, vinc_dft, v_port_dft = accs
+                v_ref_dft = accs[4]
+                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
+                v_ref = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
+
+        # Lumped port S-param DFT accumulation BEFORE source injection
+        # (issue #72).  Same wave-decomposition pattern as the wire-port
+        # path but for single-cell lumped ports.
+        if ctx.use_lumped_sparams:
+            new_lumped_accs = []
+            for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
+                v_dft_l, i_dft_l = accs
+                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
+                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                # #692: shared loop — see the wire-port block above.
+                i_val_l = _ampere_loop(
+                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_lumped_accs.append((
+                    v_dft_l + v_l * phase_l,
+                    i_dft_l + i_val_l * phase_l,
+                ))
+
+        # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
+        # rect-DFT kernel as the port-cell channels.  This slot is before
+        # the soft-source loop, but the planes sit >= 1 cell from every
+        # source cell, so pre/post-injection sampling is identical here
+        # and the #683 wire-port flip (which moved only the port-CELL
+        # physical channels below the source loop) does not apply.
+        if ctx.use_wire_refplanes:
+            from rfx.probes.refplane import wire_refplane_step_vi
+            new_refplane_accs = []
+            for accs, rp_meta in zip(carry["wire_refplane_accs"],
+                                     ctx.wire_refplane_meta):
+                v_dft_r, im_dft_r, ip_dft_r = accs
+                v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
+                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
+                phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                new_refplane_accs.append((
+                    v_dft_r + v_r * phase_r,
+                    im_dft_r + im_r * phase_r,
+                    ip_dft_r + ip_r * phase_r,
+                ))
+
+        # Soft sources — cast source value to field dtype to avoid
+        # mixed-precision scatter warnings (float32 -> float16).
+        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
+            field = getattr(st, sc)
+            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
+            st = st._replace(**{sc: field})
+
+        # Wire-port PHYSICAL V/I/V_port DFT accumulation AFTER soft-source
+        # injection (issue #683, decided by measurement 2026-08-29;
+        # protocol + results in docs/design_notes/
+        # issue683_sampling_order_decision_protocol.md, recalibration in
+        # issue683_decomposer_flip_predeclaration.md).  This block used to
+        # sit BEFORE the source loop (the #72 wire slot).  The #683
+        # known-load experiment refuted that sample at an EXCITED port:
+        # pre-injection Re(V/I) does not track a known external load
+        # (slope -0.62, intercept -81 Ohm vs the circuit law's +1/n_live
+        # slope), and the pre-injection E is not any field time level of
+        # the discrete update (Ampere-identity residual 3.25 vs 2.3e-7
+        # post).  The post-injection sample here IS the true E^{n+1}: the
+        # soft-source loop above is the last write to E in the step (the
+        # TFSF call below only advances the auxiliary 1D/2D state), and
+        # `t` stamping is unchanged (phase computed at the pre slot and
+        # reused), so a PASSIVE port (no source at its own cells) reads
+        # bit-identically to the old slot.  This also makes the uniform
+        # lane agree with the NU lane (rfx/nonuniform.py), whose
+        # post-injection slot the #683 run validated.
+        if ctx.use_wire_sparams:
+            new_wire_accs = []
+            for accs, wp_meta, (v_ref_new, phase) in zip(
+                    carry["wire_sparam_accs"], ctx.wire_sparam_meta,
+                    new_wire_refs):
+                v_dft, i_dft, vinc_dft, v_port_dft = accs[0], accs[1], accs[2], accs[3]
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
                 field_c = getattr(st, wp_meta.component)
                 v = -field_c[mi, mj, mk] * dx
@@ -1501,61 +1599,19 @@ def make_core_step(ctx: _StepContext):
                 # `_ampere_loop` is jit-safe here: `component` is a static
                 # str and `mi/mj/mk` are static Python ints (see
                 # WireSParamSpec), so every branch resolves at trace time.
+                # (I reads H only, so it is identical on both sides of the
+                # source loop; the flip moves V by the same-step injection
+                # increment at driven cells, which #683's gate G2 measured
+                # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
                     st, (mi, mj, mk), wp_meta.component, dx, periodic)
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_wire_accs.append((
                     v_dft + v * phase,
                     i_dft + i_val * phase,
                     vinc_dft,
                     v_port_dft + v_port * phase,
+                    v_ref_new,
                 ))
-
-        # Lumped port S-param DFT accumulation BEFORE source injection
-        # (issue #72).  Same wave-decomposition pattern as the wire-port
-        # path but for single-cell lumped ports.
-        if ctx.use_lumped_sparams:
-            new_lumped_accs = []
-            for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
-                v_dft_l, i_dft_l = accs
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                # #692: shared loop — see the wire-port block above.
-                i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
-                ))
-
-        # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
-        # pre-source-injection sample point and rect-DFT kernel as the
-        # port-cell channels above.  The planes sit >= 1 cell from every
-        # source cell, so pre/post-injection sampling is identical here.
-        if ctx.use_wire_refplanes:
-            from rfx.probes.refplane import wire_refplane_step_vi
-            new_refplane_accs = []
-            for accs, rp_meta in zip(carry["wire_refplane_accs"],
-                                     ctx.wire_refplane_meta):
-                v_dft_r, im_dft_r, ip_dft_r = accs
-                v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_refplane_accs.append((
-                    v_dft_r + v_r * phase_r,
-                    im_dft_r + im_r * phase_r,
-                    ip_dft_r + ip_r * phase_r,
-                ))
-
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
 
         if ctx.use_tfsf:
             if ctx.tfsf_is_2d:

@@ -1113,6 +1113,7 @@ def _assemble_mixed_power_wave_s(
     v_lw, i_lw, v0_msl, i_msl,
     z0_lw, n_live_lw, z0_hj_msl,
     wire_mode, drive_plan,
+    v_ref_lw=None,
 ):
     """Assemble the mixed-family power-wave S-matrix (issue #488).
 
@@ -1185,6 +1186,13 @@ def _assemble_mixed_power_wave_s(
     s21_power : (n_msl, n_lw, n_freqs) real — |S21| power witness.
     """
     v_lw = jnp.asarray(v_lw)
+    # Issue #683 x #764 (wire mode): drive-sample reference — the
+    # pre-injection drive sample every wave formula below was calibrated
+    # against; v_lw now carries the physical POST samples.  None (lumped
+    # mode / legacy callers) falls back to v_lw, which then IS the
+    # reference.  Only the DRIVE port's own sample differs between the
+    # two; passive receives are slot-invariant.
+    v_ref_lw = v_lw if v_ref_lw is None else jnp.asarray(v_ref_lw)
     i_lw = jnp.asarray(i_lw)
     v0_msl = jnp.asarray(v0_msl)
     i_msl = jnp.asarray(i_msl)
@@ -1216,7 +1224,7 @@ def _assemble_mixed_power_wave_s(
     for run, (fam, loc) in enumerate(drive_plan):
         if fam == "lw":
             col = loc
-            v_d, i_d = v_lw[run, loc], i_lw[run, loc]
+            v_d, i_d = v_ref_lw[run, loc], i_lw[run, loc]
             # Drive wave — probes.py:913/:1018 (z0_cell for wire).
             a = (-v_d + z0c_lw[loc] * i_d) / (2.0 * sq_lw[loc])
             safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
@@ -4550,6 +4558,7 @@ class _SparamMixin:
                     flux_names_msl.append(nm)
 
             v_lw = np.zeros((n_runs, n_lw, n_freqs_used), dtype=np.complex128)
+            vref_lw = np.zeros((n_runs, n_lw, n_freqs_used), dtype=np.complex128)
             i_lw = np.zeros((n_runs, n_lw, n_freqs_used), dtype=np.complex128)
             v0_msl = np.zeros((n_runs, n_msl, n_freqs_used), dtype=np.complex128)
             i_msl = np.zeros((n_runs, n_msl, n_freqs_used), dtype=np.complex128)
@@ -4632,6 +4641,19 @@ class _SparamMixin:
                     _spec_i, vi = accs[i_port]
                     v_lw[run_idx, i_port, :] = np.asarray(vi[0])
                     i_lw[run_idx, i_port, :] = np.asarray(vi[1])
+                    if wire_mode:
+                        # Issue #683 x #764: pre-injection drive-sample
+                        # reference channel (vi[4]) — keeps this lane's
+                        # byte-frozen #488 wave algebra frozen through the
+                        # wire sampling flip (only the drive port's own
+                        # sample moved; passive samples are slot-invariant).
+                        # A shorter tuple marks a lane without a separate
+                        # v_ref channel (the NU lane): it has ALWAYS sampled
+                        # POST-injection and its decomposer was calibrated in
+                        # that frame, so vi[0] is that lane's correct drive
+                        # reference — not a pre-injection sample.
+                        vref_lw[run_idx, i_port, :] = np.asarray(
+                            vi[4] if len(vi) > 4 else vi[0])
 
                 planes = raw.get("dft_planes")
                 if not planes:
@@ -4728,6 +4750,7 @@ class _SparamMixin:
                 np.asarray([pe.impedance for pe in lw_entries]),
                 n_live_lw, np.asarray(z0_hj_per_port),
                 wire_mode, drive_plan,
+                v_ref_lw=(vref_lw if wire_mode else None),
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
 

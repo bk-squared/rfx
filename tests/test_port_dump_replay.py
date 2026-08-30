@@ -318,6 +318,15 @@ def test_wire_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
         # reproduce it; a dump without the key replays the legacy
         # per-cell diagonal (pre-#764 fallback).
         raw_port_voltages_fdt=np.asarray(extraction.raw_port_voltages_fdt),
+        # Issue #683 x #764 (schema re-pin, written provenance —
+        # docs/design_notes/issue683_decomposer_flip_predeclaration.md):
+        # raw_voltages_fdt now holds the physical POST-injection samples,
+        # so the dump must also carry the pre-injection drive-sample
+        # reference for the replay to reproduce the #308-calibrated
+        # off-diagonals; a dump without the key is treated as pre-#683
+        # (its raw voltages ARE the reference).
+        raw_drive_ref_voltages_fdt=np.asarray(
+            extraction.raw_drive_ref_voltages_fdt),
         raw_currents=np.asarray(extraction.raw_currents),
         port_impedances_ohm=np.asarray(extraction.port_impedances),
         port_cell_counts=np.asarray(extraction.port_cell_counts),

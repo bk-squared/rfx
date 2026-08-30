@@ -162,6 +162,12 @@ def compute_lumped_wire_s_matrix_via_scan(
     # comes from the drive run of port j).
     vp_all = (np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
               if wire_mode else None)
+    # PRE-injection drive-sample reference phasors (issue #683 x #764,
+    # wire mode): bit-identical to the historical pre-flip v_all; only
+    # the drive diagonal vref_all[j, j] is consumed (off-diagonal
+    # incident wave + byte-frozen legacy diagonal).
+    vref_all = (np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+                if wire_mode else None)
 
     # Opt-in reference-plane accumulators (issue #313): raw plane phasors
     # per (drive j, port p, plane slot).  Allocated lazily on the first
@@ -199,14 +205,16 @@ def compute_lumped_wire_s_matrix_via_scan(
         for i in range(n_ports):
             spec, vi = accs[i]
             # Lumped accs are (v_dft, i_dft); wire accs are
-            # (v_dft, i_dft, v_inc_dft, v_port_dft) — take the first two
-            # either way, plus the whole-port gap voltage in wire mode
-            # (issue #764).
+            # (v_dft, i_dft, v_inc_dft, v_port_dft, v_ref_dft) — take the
+            # first two either way, plus the whole-port gap voltage and
+            # the pre-injection drive reference in wire mode (issues
+            # #764 and #683).
             v_dft, i_dft = vi[0], vi[1]
             v_all[j, i, :] = np.asarray(v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(i_dft, dtype=np.complex128)
             if wire_mode:
                 vp_all[j, i, :] = np.asarray(vi[3], dtype=np.complex128)
+                vref_all[j, i, :] = np.asarray(vi[4], dtype=np.complex128)
 
         rp_accs = raw.get("wire_refplane")
         if rp_accs:
@@ -246,6 +254,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         )
         out = decompose_wire_s_matrix_with_reference_planes(
             v_all, i_all, z0, port_cell_counts,
+            v_ref=vref_all,
             plane_v=plane_v, plane_im=plane_im, plane_ip=plane_ip,
             plane_enabled=plane_enabled,
             plane_offsets=plane_offsets,
@@ -265,7 +274,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         # diagonal; off-diagonals keep the per-cell #308 decomposition.
         S = np.asarray(
             decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
-                                    v_port=vp_all),
+                                    v_port=vp_all, v_ref=vref_all),
             dtype=np.complex64,
         )
         if return_vi_dump:
@@ -283,6 +292,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
                 driven_port_indices=tuple(range(n_ports)),
                 raw_port_voltages_fdt=vp_all,
+                raw_drive_ref_voltages_fdt=vref_all,
             )
     else:
         S = np.asarray(
