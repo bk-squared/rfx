@@ -6,6 +6,43 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)
+
+The constructor's abrupt-grading warning and `preflight()`'s
+`_validate_cfg_multiband_grading` check share one per-axis threshold on the
+max adjacent-cell ratio in a `dz_profile`/`dx_profile`/`dy_profile`. The
+z-axis cap moves from 1.3 to 1.4; x/y stay at 1.3.
+
+Provenance for the move: 1.3 was `smooth_grading`'s own per-step default,
+with no measurement behind it — ratios in (1.3, 1.4] warned without
+evidence they cost anything. The pre-declared multi-band witness battery
+(`validation/research/multiband_nu/`, results in
+`validation/research/multiband_nu/results/w2_w3.json`) measures the r =
+1.4 transition directly against the exact discrete chain model: abrupt
+r = 1.4 reflection -53.86 dB vs. -53.99 dB predicted by the chain model —
+inside the window, not an accuracy cliff. x/y are NOT moved: every witness
+in that battery grades z with a uniform transverse mesh, so there is no
+in-plane provenance for loosening the in-plane lock.
+
+`preflight()` gains two new advisory-tier findings from
+`_validate_cfg_multiband_grading` (SPEC-01 WP6):
+
+- `nu_grading_ratio_beyond_validated_cap` — an axis's max adjacent-cell
+  ratio exceeds its cap (1.4 on z, 1.3 on x/y), quoting the measured
+  accuracy class on both sides of the cap.
+- `nu_grading_reaches_absorber` — an axis has an active absorber face and
+  its adjacent interior runway (the face's own allocated layer count) is
+  not uniform. No multi-band witness scores an accuracy observable with
+  an absorber present (every accuracy witness in the battery is
+  PEC-closed at `cpml_layers = 0`), so a graded transition landing inside
+  an absorber's runway is flagged rather than scored.
+
+Both caps and the constructor-time warning stay in sync with
+`docs/guides/support_matrix.md`'s 'Multi-band graded mesh' row (the single
+source of truth for the numbers is `_PreflightMixin._MULTIBAND_RATIO_CAP`
+/ `_INPLANE_RATIO_CAP` in `rfx/api/_preflight.py`; the constructor imports
+them rather than re-typing the literals).
+
 ### Fixed — MSL plane-primitive V/I now call the production extractor (issue #514)
 
 `rfx/probes/msl_wave_decomp.py`'s `register_msl_plane_probes` /

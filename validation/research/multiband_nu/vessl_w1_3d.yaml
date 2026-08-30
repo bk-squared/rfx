@@ -1,0 +1,31 @@
+name: rfx-spec01-w1-3d-energy-audit
+description: "SPEC-01 W1 3D (P-B) Remis dual-cell energy audit, 1e6 steps x r in {1.4, 2.0} on the 32x32x181 PEC box (F-S1 verdict arm; CPU sanity already green at 1e4 steps). Launch: vessl run create -f validation/research/multiband_nu/vessl_w1_3d.yaml (from OUTSIDE any git worktree). Code staged by rsync to claude-workspace/rfx/checkouts/multiband-nu-envelope. Harvest per SPEC-00: ~/Documents/vessl-run-logs/harvest.sh RUN_ID rfx-spec01-w1-3d-energy-audit"
+tags: [rfx, spec01, multiband-nu, energy-audit, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail   # pipefail: the python step is piped to tee, so without
+                      # it a FAILING run would exit 0 and VESSL would report
+                      # success (review 2026-08-29).
+  SRC=/root/workspace/claude-workspace/rfx/checkouts/multiband-nu-envelope
+  OUT=/root/workspace/claude-workspace/rfx/runs/spec01-w1-3d-energy-audit
+  mkdir -p "$OUT"
+  cd "$SRC"
+  echo "=== SPEC-01 W1 3D energy audit (P-B, 1e6 steps, r in 1.4/2.0) ==="
+  date
+  python -m pip install -q "scipy>=1.11"
+  export PYTHONPATH="$SRC:${PYTHONPATH:-}"
+  echo "staged commit: $(cat "$SRC/.staged-commit" 2>/dev/null || echo unknown)"
+  python -c "import jax, rfx; print('backend', jax.default_backend(), jax.devices(), '| rfx', rfx.__file__)"
+  python -m validation.research.multiband_nu.w1_energy_drift --arm pb-full \
+      --out "$OUT/w1_pb_full_gpu.json" 2>&1 | tee "$OUT/w1_pb_full_gpu.log"
+  echo "=== DONE ==="
+  date
