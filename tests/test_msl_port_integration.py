@@ -455,9 +455,13 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     mismatch, not as a spread-lock problem.
 
     PLATFORM ENVELOPE (issue #610): both bounds above were derived/checked on
-    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). At a
-    FIXED commit, three platforms now agree to the printed digit: the
-    2026-08-09 derivation (commit 69a6956a, lead machine — CPU/OS/jax/numpy/
+    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). No two
+    datums share a commit, so cross-platform agreement is demonstrated as two
+    same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607 % @69a6956a,
+    GitHub runner 0.46 % @90c79d1d, 4 rfx/ commits apart} and post-drift
+    {GitHub runner 0.47 % @7f68f9fb and @8e004976, this pod 0.4676 % @1f005d0d}.
+    Agreement finer than the 0.01 pp / 0.01 Ω print quantum is NOT MEASURED. The
+    rows: the 2026-08-09 derivation (commit 69a6956a, lead machine — CPU/OS/jax/numpy/
     BLAS NOT RECORDED; PR #611 carries no platform identity, so do not infer
     one), the GitHub ubuntu-24.04 runner (jax 0.6.2, three separate weekly
     CI runs), and an AMD EPYC 9654 pod (jax 0.6.2, x64=False, complex64). See
@@ -479,10 +483,15 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
     at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES
     below the 0.01 Ω print quantum that makes the CI logs' "57.34 → 57.33"
-    look like a bigger move than it is; do not bisect off 2-dp prints. A
-    same-commit second-platform run that failed to reproduce spread to
-    <0.01 pp would falsify the "platform, not code" attribution above — it
-    did not fail (see the ledger). CLASSIFICATION POLICY (this threshold is
+    look like a bigger move than it is; do not bisect off 2-dp prints. The
+    falsifier for the "platform, not code" attribution is a same-commit
+    second-platform run reproducing spread to <0.01 pp. It has NOT been run —
+    no commit in this ledger carries two platforms' datums — so that
+    attribution is provisional. Likewise the drift WINDOW 90c79d1d..7f68f9fb
+    is inferred from 2-significant-figure CI spread prints (0.46 % vs 0.47 %
+    straddle a rounding boundary at 0.465) and cannot resolve the 0.0069 pp
+    shift; only the drift's EXISTENCE is established at full precision.
+    CLASSIFICATION POLICY (this threshold is
     POLICY, not itself measured): a same-commit cross-platform disagreement
     ≥ 0.05 pp is treated as platform variance; a shift entering between two
     same-platform CI runs across a commit window is code drift. The measured

@@ -26,7 +26,7 @@
   },
   "classification_policy": {
     "threshold_pp": 0.05,
-    "note": "POLICY, NOT measured: a same-commit cross-platform spread disagreement >= 0.05 percentage points is classified as platform variance; a shift entering between two same-platform (CI) runs across a commit window is classified as code drift. The measured fact is narrower than this policy number -- cross-platform agreement at a FIXED commit is demonstrated only to the 0.01 pp / 0.01 ohm print quantum (three platforms: GitHub ubuntu-24.04 runner 2026-08-10/17/24 + this pod, 2026-08-29). Agreement finer than that print quantum is NOT MEASURED."
+    "note": "POLICY, NOT measured: a same-commit cross-platform spread disagreement >= 0.05 percentage points is classified as platform variance; a shift entering between two same-platform (CI) runs across a commit window is classified as code drift. The measured fact is narrower than this policy number -- no two datums share a commit, so cross-platform agreement is demonstrated as two same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607% @69a6956a, GitHub runner 0.46% @90c79d1d, 4 rfx/ commits apart} and post-drift {GitHub runner 0.47% @7f68f9fb and @8e004976, this pod 0.4676% @1f005d0d}. Agreement finer than the 0.01 pp / 0.01 ohm print quantum is NOT MEASURED."
   },
   "datums": [
     {
