@@ -27,9 +27,12 @@ from __future__ import annotations
 
 import time
 
+import warnings
+
 import numpy as np
 
 from rfx import Simulation, Box, GaussianPulse
+from rfx.api._preflight import PreflightWarning
 
 C0 = 299792458.0
 
@@ -66,6 +69,28 @@ SUBPIXEL = True
 
 SCALES = (0.5, 0.6, 0.75, 1.0, 1.5)
 REF_SCALE = 0.25
+
+
+# --- warning policy for every harness in this package ------------------
+# SPEC-00 0.2.5 forbids preflight suppression in committed harnesses.
+# The lane's ``main()`` functions originally called a blanket
+# ``warnings.filterwarnings("ignore")``, which silenced rfx's own
+# ``[run] preflight found N advisory issue(s)`` UserWarning along with the
+# third-party noise it was aimed at. This replaces it: third-party
+# deprecation/import noise is silenced by CATEGORY, and every rfx advisory
+# is explicitly re-enabled afterwards (later filters take precedence, so
+# the PreflightWarning rule is installed last and wins).
+def quiet_third_party_warnings() -> None:
+    """Silence third-party import noise; never silence an rfx advisory."""
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=ImportWarning)
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    # RuntimeWarning (overflow/divide-by-zero in the estimators) and
+    # UserWarning (rfx's advisory channel) stay visible.
+    warnings.filterwarnings("default", category=UserWarning)
+    warnings.filterwarnings("always", category=PreflightWarning)
 
 
 def _sym_air_band(length: float, dzf: float, cap: float = RATIO_CAP):

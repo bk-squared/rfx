@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -44,7 +43,7 @@ SCALES = (0.75, 0.5)
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     win = json.load(open(WINDOWS))["D3_port_loading"]
     exo = float(win["exonerate_hz"])
     att = float(win["attribute_hz"])

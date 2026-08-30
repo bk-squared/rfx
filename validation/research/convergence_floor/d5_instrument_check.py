@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -56,7 +55,7 @@ D5_SCALES = (3.0 / 7.0, 0.375, 1.0 / 3.0)
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     win = json.load(open(os.path.join(
         RES, "predeclared_windows_786.json")))["D4_reference_quality"][
             "D4c_independent_estimators"]

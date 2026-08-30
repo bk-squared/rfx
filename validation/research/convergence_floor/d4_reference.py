@@ -19,7 +19,6 @@ import json
 import os
 import sys
 import time
-import warnings
 
 import numpy as np
 
@@ -235,7 +234,7 @@ def part_c(win) -> dict:
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     part = "all"
     if "--part" in sys.argv:
         part = sys.argv[sys.argv.index("--part") + 1]

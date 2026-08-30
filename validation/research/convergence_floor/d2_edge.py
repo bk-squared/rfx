@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -71,7 +70,7 @@ def control_rung(scale: float) -> dict:
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     win = json.load(open(WINDOWS))["D2_edge_singularity"]
     p_lo, p_hi = float(win["p_trace_lo"]), float(win["p_trace_hi"])
     p_smooth_min = float(win["p_smooth_min"])

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -124,7 +123,7 @@ def realized(scale: float, multiband: bool = False) -> dict:
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     base = json.load(open(WINDOWS))["D1_geometry_quantization"]
     add = json.load(open(ADDENDUM))
     frac = float(base["attribute_delta_frac_of_dx"])

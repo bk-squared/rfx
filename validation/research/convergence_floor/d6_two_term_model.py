@@ -38,7 +38,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import warnings
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -92,7 +91,7 @@ def _fit(resid, x0, bounds=None):
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     os.makedirs(RES, exist_ok=True)
     w = windows()
     if os.path.exists(WIN):

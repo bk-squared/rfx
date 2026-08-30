@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import warnings
 
 import numpy as np
 
@@ -72,7 +71,7 @@ def rejudge():
 
 
 def main():
-    warnings.filterwarnings("ignore")
+    fx.quiet_third_party_warnings()
     if "--rejudge" in sys.argv:
         return rejudge()
     with open(WINDOWS) as fh:
