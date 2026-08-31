@@ -332,36 +332,46 @@ ports are required. `run()` provides only per-port diagnostics.
 - The Palace WR-90 comparison covers empty guide, PEC short, and dielectric slab
   from 8.2--12.4 GHz. Across five compared terms, the maximum and mean
   linear-magnitude differences are `0.0707` and `0.00943`.
-  > **PROVENANCE-DISPUTED (2026-08-31, issue #812 Phase 0) — do not quote the two
-  > numbers above as passed cross-solver evidence.** They come from
+  > **STALE — 2026-06-16 numbers; quote them with their date (2026-08-31,
+  > issue #812 Phase 0).** They come from
   > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
-  > whose rfx leg does not reproduce from any committed run of its own producing
-  > script. Verified by re-running that artifact's own builder
+  > which was committed at `b0322c1` (2026-06-16, PR #181) and never
+  > regenerated. Its **provenance is settled**: feeding
+  > `git show b0322c1:tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt`
+  > (that stdout as it stood at the artifact's own commit — it was overwritten
+  > later, at `20e5533`) to the artifact's own builder
   > (`scripts/diagnostics/build_waveguide_wr90_rectangular_broad_e4_comparison.py`
-  > `--reference-column Palace_r_h2`; pure text post-processing, no FDTD) on each
-  > of the three cv11 stdouts committed in the same fixture directory: the slab
-  > `S11` `max_mag_abs_diff` rebuilds to `0.0186` / `0.0194` / `0.0193` against
-  > the artifact's `0.0707` — 3.6x-3.8x smaller than 0.0707 — and the slab `S11`
-  > `mean_mag_abs_diff` rebuilds to `0.007705`-`0.007771`, 5.7x smaller than the
-  > artifact's `0.043976`. The artifact's slab-`S11` rfx magnitude range
-  > `[0.0397, 0.5924]` matches none of the committed runs'
-  > `[0.0018, 0.5243--0.5251]`. The artifact names `/tmp/cv11_fresh.stdout` as its
-  > source, a path no reader can inspect, and records no commit, `dx`,
-  > `NUM_PERIODS` or `CPML_LAYERS` for its rfx leg. The Palace reference column
-  > reproduces exactly; only the rfx leg does not.
+  > `--reference-column Palace_r_h2`; pure text post-processing, **no FDTD**)
+  > rebuilds it field for field — 54 numeric fields, 52 bit-identical, 2
+  > differing at ~1 ulp (`5.3e-18`, `1.7e-18`).
   >
-  > This is a traceability dispute, not a measured accuracy failure: every
-  > committed run is *better* than the artifact, and no rectangular-waveguide
-  > physics verdict is challenged. It is also not proof the artifact is wrong —
-  > the artifact predates the committed stdouts by 2.5 months and at least two
-  > physics-relevant changes to cv11 land in between (`2dcafdb` / #595 replaced
-  > `CPML_LAYERS = 20` with a derived value; `20e5533` / #724 changed the guide
-  > the comparison runs against), so a configuration difference is a live
-  > hypothesis that the artifact records nothing with which to test.
+  > What is wrong with it is its **age**. The cv11 stdouts committed in that
+  > directory today are from 2026-08-28 (`20e5533`, #724/#730), and the same
+  > builder on them rebuilds the slab `S11` `max_mag_abs_diff` to `0.0186` /
+  > `0.0194` / `0.0193` against the artifact's `0.0707` (3.6x-3.8x better) and
+  > the slab `S11` `mean_mag_abs_diff` to `0.007705`-`0.007771` against
+  > `0.043976`. The artifact's slab-`S11` rfx magnitude range
+  > `[0.0397, 0.5924]` reads `[0.0018, 0.5243--0.5251]` on the current runs,
+  > while the Palace reference column is identical throughout — the delta is
+  > entirely on the rfx leg, which is what a code change between June and
+  > August looks like.
   >
-  > Settling it needs a cv11 run at the artifact's own declared configuration
-  > with its stdout committed in-tree — an FDTD run, which #812 Phase 0 forbids.
-  > Full record: the artifact's own `provenance` key and
+  > **Direction matters: this understates the family.** Every current run is
+  > *better*, and `0.0707` is inside the artifact's own `max_mag_abs_tol` of
+  > `0.1`. No gate is at risk and no rectangular-waveguide physics verdict is
+  > challenged. Two minor warts remain: `source_cv11_stdout` records a `/tmp`
+  > path even though a file of that basename is committed beside the artifact,
+  > and there is no `setup` block (no commit, `dx`, `NUM_PERIODS` or
+  > `CPML_LAYERS`).
+  >
+  > **Correction:** commit `2d05212`, earlier on 2026-08-31, labelled this leg
+  > PROVENANCE-DISPUTED and stated it "does not reproduce from any committed
+  > run of its own producing script". That is withdrawn — it rebuilt only from
+  > the working-tree revision of those stdouts, never from their content at the
+  > artifact's commit. Settling this needed `git show`, not an FDTD run. What
+  > remains open is only whether to refresh the artifact, and any refresh must
+  > *explain* the 3.7x delta rather than silently re-pin it. Full record: the
+  > artifact's own `provenance` key and
   > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
