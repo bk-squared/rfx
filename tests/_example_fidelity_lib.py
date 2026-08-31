@@ -497,8 +497,9 @@ CLASSIFICATION: dict[str, Entry] = {
         "`_run_cavity()` builds and calls .run(...) in the same function"),
     "validation/crossval/10_pmc_cpml_half_symmetric.py": Entry(
         "builder_fused_with_solve",
-        "`run_uniform()`/`run_nonuniform()` each build and call .run(...) "
-        "in the same function"),
+        "`_run_half()` (behind `run_uniform()`/`run_nonuniform()`) and "
+        "`run_full_image()` each build and call .run(...) in the same "
+        "function"),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
         "audited",
         "`build_rfx_sim(do_gain=, two_plane=)` returns (sim, patch_shape, "
