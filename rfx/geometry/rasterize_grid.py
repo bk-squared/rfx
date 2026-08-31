@@ -53,9 +53,13 @@ def coords_from_uniform_grid(grid) -> GridCoords:
     nx, ny, nz = grid.shape
     dx = grid.dx
     pad_x, pad_y, pad_z = grid.axis_pads
-    x = jnp.asarray((np.arange(nx) - pad_x) * dx, dtype=jnp.float32)
-    y = jnp.asarray((np.arange(ny) - pad_y) * dx, dtype=jnp.float32)
-    z = jnp.asarray((np.arange(nz) - pad_z) * dx, dtype=jnp.float32)
+    # PROTOTYPE (#802b): concrete float64 numpy nodes, same as
+    # ``rfx.geometry.csg._grid_coords`` -- the float32 cast this carried
+    # put every node ~1e-10 m off its exact value (issue #802).
+    dx = float(dx)
+    x = (np.arange(nx, dtype=np.float64) - pad_x) * dx
+    y = (np.arange(ny, dtype=np.float64) - pad_y) * dx
+    z = (np.arange(nz, dtype=np.float64) - pad_z) * dx
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
 
@@ -112,11 +116,20 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             nodes = cum[:-1] - cum[pad_lo]
             return nodes.astype(jnp.float32)
         d_np = np.asarray(d_arr)
-        return jnp.asarray(_axis_node_positions(d_np, pad_lo), dtype=jnp.float32)
+        # PROTOTYPE (#802b): concrete lane keeps the float64 nodes
+        # ``_axis_node_positions`` already computes; the float32 cast made
+        # the NU realization disagree with the uniform lane's on the same
+        # declaration (13230 vs 12750 cells on .repro_802.py) and violate
+        # the documented half-open convention at every node-aligned face.
+        return _axis_node_positions(d_np, pad_lo)
 
-    x = _axis_nodes(grid.dx_arr, pad_x_lo)
-    y = _axis_nodes(grid.dy_arr, pad_y_lo)
-    z = _axis_nodes(grid.dz, pad_z_lo)
+    # PROTOTYPE (#802b): prefer the float64 declared spacings when the grid
+    # carries them (concrete lane); fall back to the float32 kernel arrays.
+    def _pick(a64, a32):
+        return a32 if a64 is None else a64
+    x = _axis_nodes(_pick(getattr(grid, "dx_arr64", None), grid.dx_arr), pad_x_lo)
+    y = _axis_nodes(_pick(getattr(grid, "dy_arr64", None), grid.dy_arr), pad_y_lo)
+    z = _axis_nodes(_pick(getattr(grid, "dz64", None), grid.dz), pad_z_lo)
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
@@ -475,7 +488,12 @@ def _statics_on_coords(geometry_entries, material_resolver, coords_shifted,
         if window is not None:
             lo_ax, hi_ax = window
             ax_c = coords_shifted[axis]
-            inside = (ax_c >= lo_ax) & (ax_c < hi_ax)
+            # PROTOTYPE (#802b): same node-snap tolerance as Box._axis_mask
+            # (the window is only taken on concrete inputs).
+            from rfx.geometry.csg import NODE_SNAP_REL
+            _half = np.asarray(half_steps_axis, dtype=np.float64).ravel()
+            tol = NODE_SNAP_REL * 2.0 * float(_half.min())
+            inside = (ax_c >= lo_ax - tol) & (ax_c < hi_ax - tol)
             bshape = [1, 1, 1]
             bshape[axis] = inside.shape[0]
             unshifted = entry.shape.mask_on_coords(*coords_node)
@@ -595,8 +613,19 @@ def resample_sheet_node_materials(
         if not is_tracer(m) and not bool(jnp.any(m)):
             continue
         shifted = list(base)
-        shifted[axis] = base[axis] + jnp.asarray(half_steps[axis],
-                                                 dtype=base[axis].dtype)
+        # PROTOTYPE (#802): keep concrete float64 node coordinates in
+        # numpy -- ``jnp.asarray(..., dtype=float64)`` downcasts to float32
+        # under the default config and the shifted rasterization would
+        # again depend on ``jax_enable_x64``.
+        # PROTOTYPE (#802b): a TRACED half-step (jit with half_steps as an
+        # argument -- test_traced_mesh_skips_the_subcell_window) cannot be
+        # converted to numpy; that lane stays in jnp exactly as before.
+        _half = half_steps[axis]
+        if isinstance(base[axis], np.ndarray) and not is_tracer(_half):
+            shifted[axis] = base[axis] + np.asarray(_half, dtype=base[axis].dtype)
+        else:
+            _b = jnp.asarray(base[axis])
+            shifted[axis] = _b + jnp.asarray(_half, dtype=_b.dtype)
         eps_s, sigma_s = _statics_on_coords(
             geometry_entries, material_resolver,
             tuple(shifted), tuple(base), axis, half_steps[axis],

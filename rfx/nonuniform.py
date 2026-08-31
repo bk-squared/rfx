@@ -83,6 +83,16 @@ class NonUniformGrid(NamedTuple):
     pad_y_hi: int = 0
     pad_z_lo: int = 0
     pad_z_hi: int = 0
+    # PROTOTYPE (#802b): the DECLARED per-cell spacings in float64 (numpy,
+    # concrete lane only; ``None`` when the profile is traced). ``dx_arr`` /
+    # ``dy_arr`` / ``dz`` above are the float32 arrays the kernel consumes,
+    # and a node position summed from them sits up to ~6e-8 * |x| off the
+    # declared mesh line (3.2e-10 m at x = 12.5 mm), which is enough to move
+    # a node-aligned Box face by a whole cell. Rasterization and the
+    # fidelity report take node positions from these when present.
+    dx_arr64: object = None
+    dy_arr64: object = None
+    dz64: object = None
 
     @property
     def shape(self):
@@ -419,6 +429,11 @@ def make_nonuniform_grid(
         pad_x_lo=pad_x_lo, pad_x_hi=pad_x_hi,
         pad_y_lo=pad_y_lo, pad_y_hi=pad_y_hi,
         pad_z_lo=pad_z_lo, pad_z_hi=pad_z_hi,
+        # PROTOTYPE (#802b): keep the float64 declared spacings alongside
+        # the float32 kernel arrays (None on the traced lane).
+        dx_arr64=None if is_tracer(dx_full) else np.asarray(dx_full, dtype=np.float64),
+        dy_arr64=None if is_tracer(dy_full) else np.asarray(dy_full, dtype=np.float64),
+        dz64=None if is_tracer(dz_full) else np.asarray(dz_full, dtype=np.float64),
     )
 
 
