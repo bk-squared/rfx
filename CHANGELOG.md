@@ -219,6 +219,53 @@ their DFT probe planes from the resolved entries before the rebuild, so
 neither entry field fed an extracted number.
 
 ## [1.7.0] - 2026-09-01
+### Added — crossval 10 gains a bit-exact PMC-realization gate and an image-doubling amplitude control (issue #812)
+
+`validation/crossval/10_pmc_cpml_half_symmetric.py` gated only a *relative*
+peak spread, `(peak_max − peak_min)/peak_max < 0.02`, across
+`cpml_layers ∈ {2,4,6,8}`. That metric is invariant under `peak_i → c·peak_i`
+for any constant `c > 0`, and deleting the boundary condition the case is named
+for is exactly such a constant factor: the array truncation substitutes a PEC
+(`E_tan = 0`) wall for the absent PMC (`H_tan = 0`) wall, flipping the
+image-source sign and rescaling every leg of the sweep by one number the gate
+divides out. Measured: with `apply_pmc_faces` monkeypatched to a no-op the
+uniform spread **improves** to 0.0667% (from 0.2487%) and the non-uniform
+spread reads 0.0201% (from 0.00784%), both PASS, while the probe peaks scale by
+0.5077 and the field is bit-identical to a PEC wall.
+
+Two gates now close that hole, on both the uniform and non-uniform paths:
+
+- **Gate 3, PMC realization (bit-exact).** `max|Hx[:,0,:]|` and
+  `max|Hz[:,0,:]|` on the declared `y_lo` face must equal `0.0` exactly at
+  every swept `cpml_layers`, guarded by `max|H|` over the array being non-zero
+  so an unexcited run cannot pass vacuously. `0.0` is definitional, not a
+  tolerance: `apply_pmc_faces` writes that literal value after the CPML-H stage
+  and nothing repopulates those cells. Free — no extra run.
+- **Gate 4, image-doubling control arm (absolute).** The half domain is
+  re-solved as its own mirrored full domain — 39 mm in y, mirror plane at
+  19.5 mm, an in-phase `Ez` pair at 19/20 mm, CPML on both y faces and **no PMC
+  face anywhere**, so the reference is immune to any defect in
+  `apply_pmc_faces` — and the half-domain peak must reproduce that absolute
+  amplitude to within 2% at `cpml_layers = 8`. One extra run per path.
+
+The 2% window is gate 1's own existing tolerance re-used unchanged on a
+stricter (absolute) comparator, never widened; it sits at least 2× above the
+−40 dB reflection floor of an 8-layer CPML and more than an order of magnitude
+inside the O(1) amplitude change an image-sign reversal produces. Windows and
+the control geometry were frozen in
+`docs/design_notes/cv10_pmc_realization_regate.md` before the judging
+measurement.
+
+`tests/test_crossval10_pmc_regate.py` pins both directions permanently,
+including the falsifier: with `apply_pmc_faces` monkeypatched to a no-op, gate 1
+is asserted to keep passing (that is the finding) while gates 3 and 4 fail.
+
+Corrected in the same change: the script's docstring claimed the half-cell
+PMC-plane offset "biases NO comparator here … there is no gate-3 class
+comparison against a mirrored full geometry to protect." That was true only
+while every gate was a within-path relative spread. Gate 4 *is* such a
+comparison, so the 0.5·dx plane location is now load-bearing — it fixes the
+control domain at 39 mm and the image pair at 19/20 mm.
 ### Changed — cv09 now gates the REALIZED PMC mirror plane; gate 3 tightened 5% -> 0.356% (issue #812)
 
 `validation/crossval/09_half_symmetric_waveguide.py` (claims-bearing) gains a

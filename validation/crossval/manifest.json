@@ -211,14 +211,17 @@
       "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
       "evidence_levels": ["E1"],
       "references": [
-        {"kind": "self-invariant", "name": "peak stability under per-face PMC+CPML composition", "required_for_script_pass": true}
+        {"kind": "self-invariant", "name": "peak stability under per-face PMC+CPML composition", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "PMC realization: H_tan == 0.0 bit-exact on the declared y_lo face", "required_for_script_pass": true},
+        {"kind": "self-invariant", "name": "image-doubling control arm: half-domain PMC amplitude reproduces the mirrored full-domain image-source amplitude within 2 %", "required_for_script_pass": true}
       ],
-      "claim_scope": "uniform and non-uniform PMC+CPML composition regression lock; not an external cross-solver claim",
+      "claim_scope": "uniform and non-uniform PMC+CPML composition regression lock, bit-exact PMC realization, and an absolute image-doubling amplitude control; not an external cross-solver claim",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/10_pmc_cpml_half_symmetric.py",
-        "tests/unit/boundaries/test_boundary_pmc_composition.py"
+        "tests/unit/boundaries/test_boundary_pmc_composition.py",
+        "tests/test_crossval10_pmc_regate.py"
       ],
       "artifact_paths": [],
       "cpu_runner": {"order": 5},
