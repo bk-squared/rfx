@@ -16,9 +16,15 @@ Every tolerance below is a MEASURED envelope plus stated margin (rfx numbers
 from ``scripts/diagnostics/patch_tutorial_rfx.py`` and
 ``examples/tutorials/patch_antenna_demo.py`` on this same geometry):
 
-* broadside directivity: measured |rfx - openEMS| = 0.08 dB in the research
+* broadside directivity: measured |rfx - openEMS| = 0.60 dB at the DESIGN-mode
+  bin (7.39 vs 6.79 dBi) — locked at 1.0 dB (``D_ABS_TOL_DB`` below).
+  DOCSTRING CORRECTION 2026-08-31 (#812 Phase 0, prose only — no constant
+  changed): this bullet previously read "measured 0.08 dB in the research
   frame (6.71 vs 6.79 dBi, num_periods=250) and 0.11 dB in this test's lean
-  frame (6.68 dBi, num_periods=90) — locked at 0.5 dB;
+  frame (6.68 dBi, num_periods=90) — locked at 0.5 dB". Those were the
+  wrong-mode (40 mm cross-mode) numbers and the pre-#693 tolerance; PR #716 /
+  commit 12d2f00 repinned the constant to 1.0 dB on 2026-08-27 but left this
+  bullet and the gate's own docstring quoting the retired values;
 * E-/H-plane beam peaks: measured 0 deg / -3 deg (openEMS 0 / 0) — locked at
   15 deg from broadside;
 * resonance (REPINNED 2026-08-27, #693): the design mode — the 32 mm
@@ -390,10 +396,19 @@ def test_radiating_mode_is_broadside(rfx_run):
 
 @pytest.mark.slow
 def test_directivity_within_committed_envelope(rfx_run):
-    """|D_rfx - D_openEMS| <= 0.5 dB at the radiating bin. Measured: 0.08 dB in
-    the research frame (6.71 vs 6.79 dBi), 0.11 dB in this lean frame (6.68 dBi
-    at num_periods=90). The 0.5 dB gate is measured-plus-margin headroom for
-    frame/settling scatter — it fails closed if the far-field lane regresses."""
+    """|D_rfx - D_openEMS| <= D_ABS_TOL_DB = 1.0 dB at the radiating bin.
+    Measured: 0.60 dB at the design-mode bin (7.39 vs openEMS 6.79 dBi). The
+    gate is measured-plus-margin headroom for frame/settling scatter — it
+    fails closed if the far-field lane regresses.
+
+    DOCSTRING CORRECTION 2026-08-31 (#812 Phase 0, prose only — the asserted
+    constant is unchanged): this docstring previously read "<= 0.5 dB ...
+    Measured: 0.08 dB in the research frame (6.71 vs 6.79 dBi), 0.11 dB in
+    this lean frame (6.68 dBi at num_periods=90)". Those figures were taken at
+    the WRONG member of the near-degenerate TM pair (the 40 mm cross mode);
+    PR #716 / commit 12d2f00 repinned D_ABS_TOL_DB 0.5 -> 1.0 on 2026-08-27
+    and recorded the design-mode measurement at line 111, but this docstring
+    was left behind."""
     ref = _load_reference()
     d_rfx = float(rfx_run["d_dbi"][rfx_run["k_star"]])
     diff = abs(d_rfx - ref["directivity_dbi"])
