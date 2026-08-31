@@ -132,3 +132,111 @@ defect it was meant to fix is the dx = 0.635 row, and that is the row the new
 gate must fail. The historical 1.835% / 1.722% gate-3 readings recorded in the
 script docstring are used only as a cross-check that this `a_eff` model
 reproduces past measurements; the thresholds above do not descend from them.
+
+---
+
+## Measurements (appended 2026-08-31, AFTER the pre-declaration above)
+
+Host: this pod, CPU JAX, `JAX_PLATFORMS=cpu JAX_ENABLE_X64=1`.
+Code: `agent/regate-cv09`, gates implemented in the commit that follows the
+pre-declaration commit `f1b3e68`.
+
+### Criterion (A) — the case still passes on today's correct code
+
+`python validation/crossval/09_half_symmetric_waveguide.py` -> exit 0,
+`ALL CHECKS PASSED`, 3.5 s + 1.3 s of solve:
+
+```
+PASS: full cavity a     = 22.8600 mm vs declared 22.8600 mm, |resid| =   0.0 um < 127.0 um
+PASS: full cavity b     = 10.1600 mm vs declared 10.1600 mm, |resid| =   0.0 um < 127.0 um
+PASS: full cavity d     = 30.4800 mm vs declared 30.4800 mm, |resid| =   0.0 um < 127.0 um
+PASS: half cavity a_eff = 22.8600 mm vs declared 22.8600 mm, |resid| =   0.0 um < 127.0 um
+PASS: half cavity b     = 10.1600 mm vs declared 10.1600 mm, |resid| =   0.0 um < 127.0 um
+PASS: half cavity d     = 30.4800 mm vs declared 30.4800 mm, |resid| =   0.0 um < 127.0 um
+PASS: full-cavity f = 8.1958 GHz, |err| = 0.007% < 10%
+PASS: half-cavity f = 8.1959 GHz, |err| = 0.007% < 10%
+PASS: |f_full - f_half| / f_full = 0.0006% < 0.3556%
+```
+
+Gate 0 residuals are exactly 0 um; gate 3 clears its new tolerance by 590x.
+The physics verdict is unchanged from the pre-#812 run (full 8.1958 GHz,
+half 8.1959 GHz) — this re-gate changes what is *judged*, not what is solved.
+
+### Criterion (B) — the new gates fail on the defects the old ones passed
+
+Full sweep, every leg an independent FDTD solve pushed through the script's
+own `geometry_gate` / `G3_TOL`:
+
+| mesh | half-domain declaration | n | realized `a_eff` | `\|a_eff-a\|` | gate 0 | `f_half` | gate 3 | NEW | OLD 5% |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.508 | `a/2 + dx/2` (post-#762, shipped) | 23 | 22.8600 mm | 0.0 um | PASS | 8.19589 | 0.0006% | PASS | PASS |
+| 0.508 | `a/2` (pre-#762 convention) | 23 | 22.8600 mm | 0.0 um | PASS | 8.19589 | 0.0006% | PASS | PASS |
+| 0.508 | `a/2 + 3dx/2` (one-cell HI) | 24 | 23.8760 mm | 1016.0 um | **FAIL** | 7.97440 | 2.7018% | **FAIL** | PASS |
+| 0.508 | `a/2 - dx/2` (one-cell LO) | 22 | 21.8440 mm | 1016.0 um | **FAIL** | 8.44174 | 3.0003% | **FAIL** | PASS |
+| 0.635 | `a/2 + dx/2` (naive control) | 19 | 23.4950 mm | 635.0 um | **FAIL** | 8.05451 | 1.7224% | **FAIL** | PASS |
+| 0.635 | `a/2` (pre-#762, its own mesh) | 18 | 22.2250 mm | 635.0 um | **FAIL** | 8.34604 | 1.8347% | **FAIL** | PASS |
+
+(`f_full` = 8.19584 GHz at dx = 0.508 mm, 8.19567 GHz at dx = 0.635 mm; gate-0
+tolerance 127.00 / 158.75 um, gate-3 tolerance 0.3556% / 0.4444%.)
+
+Every pre-declared prediction is confirmed to within the measurement:
+2.702% predicted / 2.7018% measured; 3.001% / 3.0003%; 1.838% / 1.8347%;
+1.721% / 1.7224%. The last two also reproduce the script docstring's own
+historical readings (1.835% and 1.722%), which is the independent check that
+the `a_eff = (2n-1)dx` model is the right model and not a coincidence.
+
+**The old 5% gate passes all four defects.** That is the blindness the audit
+measured, now stated as an executable assertion
+(`test_old_five_percent_gate_was_blind_to_every_defect_above`).
+
+End-to-end falsifier — the shipped script with `HALF_X = a/2 + 3dx/2`
+substituted (one-cell mirror error), run unmodified otherwise:
+
+```
+FAIL: half cavity a_eff = 23.8760 mm vs declared 22.8600 mm, |residual| = 1016.0 um >= DX/4 = 127.0 um
+PASS: full-cavity f = 8.1958 GHz, |err| = 0.007% < 10%
+PASS: half-cavity f = 7.9744 GHz, |err| = 2.709% < 10%
+FAIL: |f_full - f_half| / f_full = 2.7018% >= 0.3556%
+SOME CHECKS FAILED                                          [exit 1]
+```
+
+Note that gates 1 and 2 (10%, unchanged, not widened) both PASS on this
+defect — they never were the instrument for it, which is why gate 0 exists.
+
+### The #762 declaration change is a no-op — as a proposition, not a datum
+
+`n = ceil(HALF_X/dx)` and `a_eff = (2n - 1)*dx`, so `a_eff = a` requires
+`n = (a/dx + 1)/2`, which is an integer only when `a/dx` is ODD. When it is,
+that `n` is produced by ANY declaration in `((a/dx - 1)/2, (a/dx + 1)/2] * dx`
+— an interval containing both `a/2` and `a/2 + dx/2`. When `a/dx` is even,
+`a_eff` is an odd multiple of `dx` and `a` is an even one, so no declaration
+registers. Hence **on a ceil-based grid the `+ dx/2` term never converts a
+wrong mirror plane into a right one**, at any mesh. Rows 1-2 and 5-6 of the
+table are the measurement of both halves of that statement.
+
+This is why the new gate reads the realized plane and not the declaration: it
+reports rows 1 and 2 as identical (correctly — they are the same solve) while
+failing every configuration whose mirror plane is actually wrong.
+
+### Cross-check against the #722 / PR #762 PMC-plane convention
+
+They agree. The convention is realize-declared with an odd cell count:
+`a = 45 dx` makes `a/2 = 22.5 dx` an H-node plane, and the index `-2` H_tan
+zero on the declared hi face at `23 dx` lands exactly there —
+`a_eff = (2*23 - 1) dx = 45 dx = a`, which is what gate 0 measures (0.0 um).
+The one place this note goes further than the convention text is the
+attribution: the convention text credits the `+ dx/2` declaration, and the
+measurement credits the odd-cell mesh. The convention's own load-bearing
+clause ("the ODD-cell condition is load-bearing, not incidental") is the part
+that survives; the declaration term is decoration on a ceil-based grid.
+
+### Not changed
+
+- Gates 1 and 2 stay at 10% of the Pozar closed form. They are loose
+  (measured 0.007%), but no defect in #812's cv09 finding is named against
+  them, and tightening them needs its own derived budget (the discrete-Yee
+  eigenvalue, not the continuum closed form) plus its own two-sided
+  demonstration. Left for a separate lane rather than fitted here.
+- `rfx/boundaries/pmc.py`'s half-cell placement is solver physics pinned by
+  `tests/test_boundary_pmc_hi_faces.py` and is untouched.
+- `HALF_X` keeps the `+ dx/2` form; see above.

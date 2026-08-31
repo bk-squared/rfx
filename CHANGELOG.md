@@ -219,6 +219,50 @@ their DFT probe planes from the resolved entries before the rebuild, so
 neither entry field fed an extracted number.
 
 ## [1.7.0] - 2026-09-01
+### Changed — cv09 now gates the REALIZED PMC mirror plane; gate 3 tightened 5% -> 0.356% (issue #812)
+
+`validation/crossval/09_half_symmetric_waveguide.py` (claims-bearing) gains a
+gate 0 on realize-declared geometry and a tightened gate 3.
+
+**Correction to the #722-ninth-surface entry further down this file.** That
+entry reads the improvement "gates 0.007% / 0.007% / 0.001% (was 0.009% /
+1.825% / 1.835%)" as evidence for the half-domain declaration moving from
+`a/2` to `a/2 + dx/2`. That attribution is wrong: it changed the mesh and the
+declaration in the same step. `Grid` takes `n = ceil(L/dx)`, and the realized
+H_tan mirror plane is `x_m = (n - 0.5)*dx`, so the half domain is the image
+half of a guide of broad wall `a_eff = 2*x_m = (2n - 1)*dx`. At `dx = 0.508 mm`
+(`a = 45 dx`, odd) `ceil(22.5) = ceil(23.0) = 23`: **both declarations build
+grid (24, 21, 61) and realize `a_eff = 22.8600 mm` identically** (measured
+2026-08-31; full/half solves agree to 0.0006% under either). Where `a/dx` is
+even neither declaration registers: at `dx = 0.635 mm` (`a = 36 dx`), `a/2`
+realizes `a_eff = a - dx` (gate 3 measured 1.8347%) and `a/2 + dx/2` realizes
+`a_eff = a + dx` (1.7224%). On a ceil-based grid the `+ dx/2` term never
+converts a wrong mirror plane into a right one — the ODD-cell mesh
+(0.635 -> 0.508 mm) is the entire mechanism. `HALF_X` is kept at `a/2 + dx/2`
+(harmless, and it states the #722 convention), but nothing now depends on it.
+
+- **New gate 0**: every solved extent, and `a_eff` for the half run, must sit
+  within `dx/4` of its declared length. `a_eff` is read off the production
+  reporter `rfx.fidelity.fidelity_report` (domain row), which already applies
+  the PMC half-cell rule, so gate and solve cannot disagree about the
+  convention. `dx/4` is a quarter of the smallest NONZERO misregistration the
+  lattice can express (`dx` when `a/dx` is even, `2 dx` when odd) — derived
+  from the lattice, not from any measured frequency.
+- **Gate 3 tightened `5%` -> `(d^2/(a^2+d^2))*(dx/4)/a = 0.3556%`**, the
+  frequency image of gate 0 through Pozar's log-derivative
+  `d ln f/d ln a = -d^2/(a^2+d^2) = -0.6400` (exact: `a/d = 3/4`). The old 5%
+  window admitted every mirror-plane defect the case exists to catch — a
+  one-cell error is 2.7018% (hi) / 3.0003% (lo) and a half-cell error is
+  1.7224% / 1.8347%, all measured, all below 5%. Gates 1 and 2 (10%) are
+  unchanged and were not widened.
+- **The windowed-FFT fallback is removed from the judged path.** Harminv
+  returning no candidate is now a hard failure; the FFT peak list survives as
+  a printed diagnostic. Its quantum, `1/(3072 dt) = 335.9 MHz = 4.099%` of
+  `f_101`, is 11.5x the new gate-3 tolerance, so it could never judge it.
+- New falsifier battery `tests/test_crossval_cv09_mirror_plane_gate.py` drives
+  the script's own gate functions: correct declaration PASSES, one-cell errors
+  and the pre-#762 convention at its own mesh FAIL, and the old 5% window is
+  asserted to have passed all of them.
 
 ### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)
 

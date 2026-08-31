@@ -190,12 +190,13 @@
         {"kind": "analytic", "name": "Pozar rectangular-cavity TE101 resonance", "required_for_script_pass": true},
         {"kind": "self-invariant", "name": "full PEC cavity versus half PEC+PMC cavity", "required_for_script_pass": true}
       ],
-      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh",
+      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh, with the REALIZED mirror plane (a_eff = 2 x the H_tan wall) gated to dx/4 and the full-vs-half self-invariant gated to that budget's frequency image 0.356% (issue #812; was 5%, which tolerated a full cell of mirror-plane error)",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/09_half_symmetric_waveguide.py",
-        "tests/oracle/test_boundary_pmc_oracle.py"
+        "tests/oracle/test_boundary_pmc_oracle.py",
+        "tests/test_crossval_cv09_mirror_plane_gate.py"
       ],
       "artifact_paths": [],
       "cpu_runner": {"order": 4},
