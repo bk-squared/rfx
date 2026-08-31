@@ -15,7 +15,11 @@ Meep tutorial parameters:
   Source: GaussianSource at (r+0.1, 0)
 
 Exit codes (rfx crossval convention):
-  0 = all PASS including the Meep cross-check (≥2 matched modes, mean err < 5%)
+  0 = all PASS including the Meep cross-check. Five gates (see
+      validation/crossval/comparators/ring_mode_judge.py): every Meep mode
+      assigned a distinct rfx mode (unmatched = FAIL), >=2 modes, mean AND max
+      |df|/f < 5%, and Q within tau_ref/T of the reference for every mode whose
+      decay the record actually observed.
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
@@ -217,27 +221,49 @@ print("=" * 70)
 
 rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 
-# Match modes by frequency proximity
-matched = []
-for mf, mQ in zip(meep_freqs, meep_Qs):
-    best_idx = None
-    best_diff = 1.0
-    for i, rf in enumerate(rfx_freqs_meep):
-        diff = abs(rf - mf) / mf
-        if diff < best_diff:
-            best_diff = diff
-            best_idx = i
-    if best_idx is not None and best_diff < 0.05:
-        rf, rQ, ramp = rfx_modes[best_idx]
-        matched.append((mf, mQ, rfx_freqs_meep[best_idx], rQ))
+# The judge lives in an importable module so this script and
+# tests/test_cv02_ring_mode_judge.py drive the SAME comparison code. It matches
+# modes by a one-to-one assignment that contains NO tolerance, then gates the
+# assigned pairs. The judge that used to sit inline here matched inside a 5%
+# window and then gated the mean error at the same 5% over exactly the pairs
+# that window admitted, so the headline verdict was entailed by the matcher:
+# 200,000 random trials through it never produced a mean error at or above 5%
+# (#812). The old logic is kept verbatim as `legacy_shipped_judge` in that
+# module; tests/test_cv02_ring_mode_judge.py separates the two judges.
+import importlib.util as _ilu
 
-print(f"\n  {'Meep freq':>10} {'Meep Q':>8} {'rfx freq':>10} {'rfx Q':>8} {'df/f (%)':>10}")
-for mf, mQ, rf, rQ in matched:
-    err = abs(rf - mf) / mf * 100
-    print(f"  {mf:>10.6f} {mQ:>8.1f} {rf:>10.6f} {rQ:>8.1f} {err:>10.2f}")
+_judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
+_judge_spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", _judge_path)
+ring_mode_judge = _ilu.module_from_spec(_judge_spec)
+sys.modules["cv02_ring_mode_judge"] = ring_mode_judge
+_judge_spec.loader.exec_module(ring_mode_judge)
 
-if not matched:
-    print("  No matching modes found!")
+# Record length harminv actually saw, in Meep units (a/c). Every Q window below
+# is tau_ref / T computed from THIS and from the reference Q -- no chosen
+# number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
+record_T_meep = len(signal) * dt * C0 / a
+fmin_meep = fcen - df / 2
+fmax_meep = fcen + df / 2
+
+reference_modes = [ring_mode_judge.ReferenceMode(freq=mf, Q=mQ)
+                   for mf, mQ in zip(meep_freqs, meep_Qs)]
+solver_modes = [ring_mode_judge.SolverMode(freq=f * a / C0, Q=Q, amplitude=amp)
+                for f, Q, amp in rfx_modes]
+
+verdict = ring_mode_judge.judge(reference_modes, solver_modes, record_T_meep,
+                                f_min=fmin_meep, f_max=fmax_meep)
+
+print()
+if HAVE_MEEP:
+    print(ring_mode_judge.format_report(verdict))
+else:
+    print(f"  [SKIP] Meep reference unavailable — no modes to assign against.")
+    print(f"  rfx harminv record T = {record_T_meep:.1f} (Meep units); "
+          f"{len(rfx_modes)} rfx mode(s) extracted.")
+
+# Kept in the old shape for PART 4's narrowband visualisation.
+matched = [(row.ref_freq, row.ref_Q, row.rfx_freq, row.rfx_Q)
+           for row in verdict.rows if row.matched]
 
 # =============================================================================
 # PART 4: Mode pattern visualization (narrowband)
@@ -462,25 +488,19 @@ if not HAVE_MEEP:
     sys.exit(1)
 
 # Meep present → evaluate the full cross-check.
+#
+# Five gates, all from the pre-declared judge. `mean_err < 5%` and the
+# `>= 2` mode count are the published values, unchanged; what changed is that
+# the matcher no longer applies the same 5% before the gate reads it, so a
+# mode rfx places far away is now an error term instead of a deleted row.
 PASS = rfx_self_ok
-if matched:
-    errs = [abs(rf - mf) / mf * 100 for mf, _, rf, _ in matched]
-    max_err = max(errs)
-    mean_err = np.mean(errs)
-    print(f"  Max freq error:   {max_err:.2f}%")
-    print(f"  Mean freq error:  {mean_err:.2f}%")
-    if mean_err < 5.0:
-        print(f"  PASS: mean freq error {mean_err:.2f}% < 5%")
-    else:
-        print(f"  FAIL: mean freq error {mean_err:.2f}% >= 5%")
-        PASS = False
-    if len(matched) >= 2:
-        print(f"  PASS: matched {len(matched)} modes (>= 2)")
-    else:
-        print(f"  FAIL: only {len(matched)} mode matched (need >= 2)")
-        PASS = False
-else:
-    print("  FAIL: no modes matched between rfx and Meep")
+print(f"  Unmatched reference modes: {verdict.n_unmatched}")
+if verdict.mean_err_pct is not None:
+    print(f"  Max freq error:   {verdict.max_err_pct:.3f}%")
+    print(f"  Mean freq error:  {verdict.mean_err_pct:.3f}%")
+for gate_name, gate_ok in verdict.gates.items():
+    print(f"  {'PASS' if gate_ok else 'FAIL'}: gate {gate_name}")
+if not verdict.passed:
     PASS = False
 
 if PASS:

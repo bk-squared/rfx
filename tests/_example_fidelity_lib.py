@@ -290,6 +290,10 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/comparators/fdfd_hplane.py": Entry(
         "no_simulation",
         "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),
+    "validation/crossval/comparators/ring_mode_judge.py": Entry(
+        "no_simulation",
+        "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
+        "two lists of extracted modes, no rfx import at all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "

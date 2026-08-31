@@ -194,3 +194,58 @@ Criterion (A) is therefore demonstrated by feeding the judge **today's measured
 rfx modes** together with the **published tutorial reference**, in a committed
 test, and is labelled as such. It is not a claim that a live Meep run was
 performed here.
+
+---
+
+## Correction 1 (2026-08-31, after implementation, before the measurement run)
+
+Section 2, G5 stated:
+
+> the loosest Q gate this rule can ever issue still rejects a factor-3.35 Q
+> error, and every admitted mode rejects a 5x Q error.
+
+**The first clause was wrong.** 3.35 is the bound for *mode 2 of this
+particular run* (`tau_ref/T = 2.35`, so the admitted ratio band is
+`1 + 2.35 = 3.35`), not the bound the rule guarantees in general. The general
+bound follows from the admission cut alone: `tau/T <= 1 / 0.25 = 4`, so the
+widest band the rule can ever issue is `1 + 4 = 5`.
+
+Corrected statement, and the one the test
+`test_no_admitted_q_gate_tolerates_more_than_a_factor_five` checks:
+
+> **Every Q-gated mode rejects any Q error strictly larger than a factor 5**,
+> and the mode this run actually gates most loosely (0.147) rejects anything
+> beyond a factor 3.35.
+
+The gate itself is unchanged — only the claim made about it. No threshold
+moved; nothing was widened.
+
+## Correction 2 (2026-08-31) — the trial stream, not the judge
+
+The first tautology-harness stream drew reference modes across the full
+`[0.10, 0.20]` harminv band with a `0.015` minimum separation. Both choices
+were wrong for the *control* arm of the experiment (defect-free trials, which
+must not fail):
+
+1. a reference mode near a band edge could have its defect-free partner pushed
+   *outside* the harminv search band, where it is legitimately unmatched —
+   measured 146 spurious control failures in 952 defect-free trials;
+2. `0.015` is smaller than twice the largest in-window shift
+   (`2 x 0.05 x 0.19 = 0.019`), so two adjacent reference modes could cross
+   under defect-free perturbation and the assignment correctly swapped them —
+   measured 3 further control failures in ~9,500.
+
+Fixed by drawing reference modes from the band inset by the matcher window
+(`[F_MIN/0.95, F_MAX/1.05]`) with `MIN_SEPARATION = 0.021` and `n_ref` in
+`{2,3,4}`. Both were defects in the *experiment*, not in the judge: with them
+fixed, the new judge fails **zero** defect-free trials while the shipped judge
+fails zero of everything.
+
+## Correction 3 (2026-08-31) — G4 is load-bearing, and here is the proof
+
+G4 (per-mode max) was declared as a tightening whose motivation was the mean's
+null space. That motivation is now measured rather than argued: an rfx mode
+displaced **-12%** from the 0.175 reference — a defect the shipped judge scores
+as a clean 0.03% run — produces `mean = 4.02%`, which **passes** G3's published
+5%. Without G4 the decoupling alone would not have caught it. Recorded in
+`test_b2_displaced_mode_passes_the_shipped_judge_and_fails_the_new_one`.

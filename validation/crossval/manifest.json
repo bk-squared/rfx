@@ -37,10 +37,10 @@
       "references": [
         {"kind": "external-solver", "name": "Meep Basics ring-resonator modes", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep within the published mode-count and mean-error gates",
+      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/02_ring_resonator.py"],
+      "gate_paths": ["validation/crossval/02_ring_resonator.py", "validation/crossval/comparators/ring_mode_judge.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 7},
       "scheduled_external_order": 2,
