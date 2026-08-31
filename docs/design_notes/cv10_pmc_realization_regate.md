@@ -200,9 +200,18 @@ by the documented legacy `amplitude_kind=None` per-path convention — a
 G4 is evaluated per path and never across paths.)
 
 The measured `|R − 1|` of 3.2e−5 / 3.3e−5 sits ~600× inside the 2 % window and
-~1.6× above the √800·2⁻²⁴ ≈ 2e−6 float32 budget of §4(2a) — i.e. the residual is
-at the arithmetic floor, as the exactness argument predicted, and nowhere near
-the −40 dB CPML allowance the window was sized against. The window is **not**
+**~19×** above the √800·2⁻²⁴ = 1.6859e−6 float32 budget of §4(2a)
+(3.2e−5/1.6859e−6 = 18.98, 3.3e−5/1.6859e−6 = 19.57). It is therefore **not** at
+the arithmetic floor: the exactness argument accounts for the order of magnitude
+but leaves a residual an order above pure roundoff, whose origin this lane does
+not establish. It remains far below the −40 dB CPML allowance the window was
+sized against, so the verdict is unaffected.
+
+*(CORRECTION 2026-08-31, adversarial review: this paragraph previously read
+"~1.6× above ... i.e. the residual is at the arithmetic floor, as the exactness
+argument predicted". Both the factor and the conclusion drawn from it were
+wrong — the arithmetic gives ~19×, which does not support an
+at-the-floor reading. The measurements themselves are unchanged.)* The window is **not**
 tightened on the strength of that: it was frozen at `a00a53d` and stays there.
 
 Wall time: 10 runs, 3.0–4.3 s each, ~37 s total. The two control-arm runs cost
