@@ -97,6 +97,70 @@
       "status": "passed"
     }
   ],
+  "provenance": {
+    "consequence_for_readers": "Treat the E4-external leg of the rectangular_waveguide_port broad-E5 chain as PROVENANCE-DISPUTED, not as passed evidence, wherever it is cited. Per docs/guides/physics_validation_evidence_rule.md, an artifact whose numbers cannot be traced to a reproducible run does not meet the reporting requirement (exact command/script, raw metrics, artifact path). Note that the committed runs are all BETTER than this artifact, so the dispute is about traceability, not about a hidden accuracy failure.",
+    "design_note": "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md",
+    "gates_touched": "NONE. No tolerance, threshold, status field, pair value or summary value in this file was changed by #812 Phase 0.",
+    "measured_discrepancy_2026_08_31": {
+      "committed_stdouts_used": [
+        "tests/fixtures/waveguide_broad_e5/cv11_wr90_main_baseline_stdout.txt",
+        "tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt",
+        "tests/fixtures/waveguide_broad_e5/cv11_wr90_witness_np400_stdout.txt"
+      ],
+      "method": "Re-ran THIS artifact's own builder (scripts/diagnostics/build_waveguide_wr90_rectangular_broad_e4_comparison.py --reference-column Palace_r_h2) on each of the three cv11 stdouts committed in this same fixture directory. No FDTD was run; the builder is pure text post-processing.",
+      "slab_S11_max_mag_abs_diff": {
+        "note": "The stdouts' own printed [summary slab S11 vs Palace_r_h2] lines read 0.0186 / 0.0193 / 0.0193; the builder recomputes from the 4-decimal printed columns, which is why the fresh rebuild reads 0.0194 rather than 0.0193. Either way this artifact is 3.6x-3.8x LARGER than any committed run.",
+        "rebuilt_from_fresh_stdout": 0.0194,
+        "rebuilt_from_main_baseline_stdout": 0.0186,
+        "rebuilt_from_witness_np400_stdout": 0.0193,
+        "this_artifact": 0.0707
+      },
+      "slab_S11_mean_mag_abs_diff": {
+        "rebuilt_range": "0.007705 - 0.007771 (5.7x smaller than this artifact)",
+        "this_artifact": 0.0439762
+      },
+      "the_sharpest_witness_is_the_rfx_magnitude_range": {
+        "slab_S11_rfx_mag_range_committed_runs": "[0.0018, 0.5251] / [0.0018, 0.5243] / [0.0018, 0.5244]",
+        "slab_S11_rfx_mag_range_this_artifact": [
+          0.0397,
+          0.5924
+        ],
+        "slab_S21_note": "This artifact's rfx |S21| exceeds 1 by 0.0014; no committed run does.",
+        "slab_S21_rfx_mag_range_committed_runs": "[0.8438, 1.0000] in all three",
+        "slab_S21_rfx_mag_range_this_artifact": [
+          0.8443,
+          1.0014
+        ],
+        "why_it_matters": "This is not scatter. The |S11| peak differs by ~0.068 and the null floor by ~0.038 between this artifact and every committed run. The artifact's rfx column is a DIFFERENT rfx computation, not a noisier sample of the same one."
+      },
+      "top_level_summary_max_mag_abs_diff": {
+        "rebuilt_range": "0.0186 - 0.0194",
+        "this_artifact": 0.0707
+      },
+      "top_level_summary_mean_mag_abs_diff": {
+        "rebuilt_range": "0.001782 - 0.001955",
+        "this_artifact": 0.00943429
+      }
+    },
+    "one_line": "This artifact's rfx leg does not reproduce from ANY committed run of its own producing script, and the stdout it names as its source is not in the repository. Do not quote its numbers as passed cross-solver evidence until this is settled.",
+    "opened": "2026-08-31 (issue #812 Phase 0, documentation/provenance only)",
+    "status": "PROVENANCE-DISPUTED",
+    "what_is_known": {
+      "committed_at": "b0322c1, 2026-06-16, PR #181 (rectangular_waveguide_port broad-E5 close); never regenerated since",
+      "declared_source_stdout": "/tmp/cv11_fresh.stdout (see the sibling key source_cv11_stdout)",
+      "external_reference_leg_reproduces_exactly": "The Palace_r_h2 column DOES reproduce: slab S11 ref_mag_range [0.0014, 0.5437], slab S21 [0.8393, 1.0000], pec_short S11 [1.0000, 1.0000] are identical in all three committed cv11 stdouts. Only the rfx leg fails to reproduce.",
+      "producing_script": "scripts/diagnostics/build_waveguide_wr90_rectangular_broad_e4_comparison.py",
+      "producing_script_is_pure_postprocessing": "It runs no FDTD: it parses the 4-way tables out of a cv11 stdout capture and computes ||S_rfx| - |S_ref||. So the artifact is fully determined by the stdout it was fed."
+    },
+    "what_is_missing": {
+      "no_configuration_record": "The artifact records no commit, no dx, no NUM_PERIODS, no CPML_LAYERS, and no run id for the rfx leg. (Compare the sibling NU fixture tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json, which does carry a setup block with commit 6fd6ea0, dx, num_periods and cpml_layers.) So the discrepancy below cannot be attributed to a configuration difference either.",
+      "source_stdout_not_in_tree": "source_cv11_stdout points at /tmp/cv11_fresh.stdout. A /tmp path cannot be inspected by any reader, cannot be diffed, and does not survive the machine it was written on. There is no in-tree copy."
+    },
+    "what_must_NOT_be_done": "Do NOT silently re-pin this artifact to whatever a fresh cv11 run produces. Overwriting 0.0707 with a fresh number ERASES the discrepancy instead of explaining it: it destroys the only evidence that a 3.7x-divergent rfx leg was once committed as passed E4 evidence, and it leaves the next reader with no way to tell that the number ever moved. If the artifact is regenerated, the old summary and pair values, this provenance block, and the reason for the change must be preserved as a correction record (append-only), per the rfx design-note discipline. Also do NOT edit claim_scope or evidence_level to carry the dispute: check_port_external_references.py and tests/test_waveguide_broad_e5_envelope_gates.py read those strings for blocking tokens, so writing the dispute there would silently flip a family's audited status. That is why this dispute lives in its own key.",
+    "what_this_does_NOT_establish": "The discrepancy is UNEXPLAINED, not proven to be an error. The three committed stdouts are dated 2026-08-28 and this artifact 2026-06-16, and at least two physics-relevant changes to the producing script land in between: 2dcafdb (#595, 2026-08-09) replaced cv11's CPML_LAYERS = 20 with a derived value, and 20e5533 (#724/#730, 2026-08-28) changed the guide the comparison is run against ('compare WR-90 against the guide the solve actually has'). At b0322c1 cv11 read CPML_LAYERS = 20; on main it reads int(ceil(0.75 * lambda_g_low / dx)). A configuration difference is therefore a live hypothesis. What is established is only that the artifact CANNOT BE CHECKED: nothing in the tree reproduces it and nothing in the tree records what produced it. Nothing here challenges the rectangular_waveguide_port physics verdict.",
+    "what_would_settle_it": "A cv11 run at THIS artifact's own declared configuration, with its stdout committed in-tree next to the other three, and a setup block added here recording commit, dx, NUM_PERIODS, CPML_LAYERS and run id. Then either (a) the rebuild reproduces 0.0707 and the artifact is vindicated with its configuration finally on the record, or (b) it does not, and the artifact is withdrawn with the reason written down. Requires an FDTD run, which #812 Phase 0 forbids; tracked for a future lane."
+  },
+  "provenance_status": "PROVENANCE-DISPUTED (issue #812 Phase 0, 2026-08-31)",
   "r5_reference_note": "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is 1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the converged Palace reference is used for the |Gamma|->1 geometry. The disagreement was a reference defect, not an rfx residual (R4/R5).",
   "schema": "rfx.waveguide_wr90_rectangular_broad_e4_comparison",
   "schema_version": 1,

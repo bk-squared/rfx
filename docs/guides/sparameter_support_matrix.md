@@ -332,6 +332,37 @@ ports are required. `run()` provides only per-port diagnostics.
 - The Palace WR-90 comparison covers empty guide, PEC short, and dielectric slab
   from 8.2--12.4 GHz. Across five compared terms, the maximum and mean
   linear-magnitude differences are `0.0707` and `0.00943`.
+  > **PROVENANCE-DISPUTED (2026-08-31, issue #812 Phase 0) — do not quote the two
+  > numbers above as passed cross-solver evidence.** They come from
+  > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
+  > whose rfx leg does not reproduce from any committed run of its own producing
+  > script. Verified by re-running that artifact's own builder
+  > (`scripts/diagnostics/build_waveguide_wr90_rectangular_broad_e4_comparison.py`
+  > `--reference-column Palace_r_h2`; pure text post-processing, no FDTD) on each
+  > of the three cv11 stdouts committed in the same fixture directory: the slab
+  > `S11` `max_mag_abs_diff` rebuilds to `0.0186` / `0.0194` / `0.0193` against
+  > the artifact's `0.0707` — 3.6x-3.8x smaller than 0.0707 — and the slab `S11`
+  > `mean_mag_abs_diff` rebuilds to `0.007705`-`0.007771`, 5.7x smaller than the
+  > artifact's `0.043976`. The artifact's slab-`S11` rfx magnitude range
+  > `[0.0397, 0.5924]` matches none of the committed runs'
+  > `[0.0018, 0.5243--0.5251]`. The artifact names `/tmp/cv11_fresh.stdout` as its
+  > source, a path no reader can inspect, and records no commit, `dx`,
+  > `NUM_PERIODS` or `CPML_LAYERS` for its rfx leg. The Palace reference column
+  > reproduces exactly; only the rfx leg does not.
+  >
+  > This is a traceability dispute, not a measured accuracy failure: every
+  > committed run is *better* than the artifact, and no rectangular-waveguide
+  > physics verdict is challenged. It is also not proof the artifact is wrong —
+  > the artifact predates the committed stdouts by 2.5 months and at least two
+  > physics-relevant changes to cv11 land in between (`2dcafdb` / #595 replaced
+  > `CPML_LAYERS = 20` with a derived value; `20e5533` / #724 changed the guide
+  > the comparison runs against), so a configuration difference is a live
+  > hypothesis that the artifact records nothing with which to test.
+  >
+  > Settling it needs a cv11 run at the artifact's own declared configuration
+  > with its stdout committed in-tree — an FDTD run, which #812 Phase 0 forbids.
+  > Full record: the artifact's own `provenance` key and
+  > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
   PEC-short result with `min |S11| >= 0.99` and `max |S11| < 1.03`.
