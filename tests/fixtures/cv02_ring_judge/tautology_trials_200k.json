@@ -1,0 +1,25 @@
+{
+  "trials": 200000,
+  "seed": 812,
+  "record_T_meep_units": 291.0,
+  "legacy": {
+    "failures": 0,
+    "max_mean_err_pct": 4.985121432556967,
+    "trials_with_mean_err_ge_5pct": 0
+  },
+  "regated": {
+    "failures": 86637,
+    "max_mean_err_pct": 20.830912644065567,
+    "trials_with_mean_err_ge_5pct": 23043,
+    "failures_by_gate": {
+      "unmatched": 62260,
+      "mean_err": 23043,
+      "max_err": 31534
+    }
+  },
+  "defect_free_trials": {
+    "count": 113345,
+    "regated_failures": 0,
+    "legacy_failures": 0
+  }
+}

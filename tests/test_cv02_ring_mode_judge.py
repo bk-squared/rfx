@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JUDGE_PATH = REPO_ROOT / "validation/crossval/comparators/ring_mode_judge.py"
 TRIALS_PATH = REPO_ROOT / "scripts/diagnostics/cv02_judge_tautology_trials.py"
+TRIALS_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/tautology_trials_200k.json"
 SCRIPT_PATH = REPO_ROOT / "validation/crossval/02_ring_resonator.py"
 
 
@@ -396,3 +397,52 @@ def test_the_inline_tautology_is_gone_from_the_script() -> None:
     assert "ring_mode_judge" in source
     # ...and it is still reachable, under a name that says what it is.
     assert "best_diff" in JUDGE_PATH.read_text(encoding="utf-8")
+
+
+def test_committed_200k_rerun_reproduces_the_audit_and_refutes_it() -> None:
+    """The full re-run of #812's harness, committed alongside the judge.
+
+    Regenerate with::
+
+        python scripts/diagnostics/cv02_judge_tautology_trials.py \
+            --trials 200000 \
+            --output tests/fixtures/cv02_ring_judge/tautology_trials_200k.json
+    """
+    import json
+
+    data = json.loads(TRIALS_JSON.read_text(encoding="utf-8"))
+    assert data["trials"] == 200_000
+
+    # The audit's finding, reproduced: through the shipped judge the mean gate
+    # never fires, and mean_err never reaches 5% (#812 saw 4.9997%).
+    assert data["legacy"]["failures"] == 0
+    assert data["legacy"]["trials_with_mean_err_ge_5pct"] == 0
+    assert 4.9 <= data["legacy"]["max_mean_err_pct"] < 5.0
+
+    # The same stream through the new judge: the bound is gone and so is the
+    # tautology.
+    assert data["regated"]["max_mean_err_pct"] > 5.0
+    assert data["regated"]["trials_with_mean_err_ge_5pct"] > 10_000
+    assert data["regated"]["failures"] > 50_000
+    for gate in ("unmatched", "mean_err", "max_err"):
+        assert data["regated"]["failures_by_gate"][gate] > 0, gate
+
+    # ...while defect-free trials still pass, on both judges.
+    assert data["defect_free_trials"]["count"] > 50_000
+    assert data["defect_free_trials"]["regated_failures"] == 0
+    assert data["defect_free_trials"]["legacy_failures"] == 0
+
+
+def test_report_renders_every_row_kind_without_crashing() -> None:
+    """UNMATCHED and SURPLUS cannot co-occur -- the assignment always uses
+    ``min(n_ref, n_rfx)`` pairs -- so each is rendered from its own verdict."""
+    short = [rmj.SolverMode(0.147213 * 0.85, 357.6 * 5.0),
+             rmj.SolverMode(0.118068, 86.5)]
+    text = rmj.format_report(_judge(short))
+    assert "UNMATCHED" in text
+    assert "FAIL: gate unmatched" in text and "FAIL: gate q" in text
+    assert "not gated" in text
+
+    long = rmj.format_report(_judge(RFX_TODAY + [rmj.SolverMode(0.16, 500.0)]))
+    assert "SURPLUS" in long
+    assert "FAIL" not in long
