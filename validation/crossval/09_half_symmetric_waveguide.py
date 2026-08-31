@@ -122,10 +122,70 @@ surface (2026-08-28):
       overhead is fixed, not per-cell.
     Thresholds (10% / 10% / 5%) are UNCHANGED.
 
+CORRECTION (2026-08-31, issue #812 Phase 1 — append-only, the block above
+is left standing as the record of what was believed then):
+    The MEASURED table above compares "DX=0.508mm, HALF_X=a/2+DX/2 (THIS
+    FILE)" against "DX=0.635mm, HALF_X=a/2 (OLD)" and reads the resulting
+    gate-3 improvement 1.835% -> 0.001% as evidence for the DECLARATION
+    change. That is a confounded A/B: it moves the mesh and the declaration
+    together. The declaration change contributes NOTHING to it.
+
+    OLD VALUE / OLD CLAIM: "declare the half domain at a/2 + dx/2 (HALF_X
+    below), not a/2 ... so the half solve IS the image of the full cavity",
+    with gates 10% / 10% / 5% "UNCHANGED".
+    WHY IT WAS WRONG: `Grid` takes n = ceil(HALF_X/dx) cells, and the
+    realized H_tan mirror plane is x_m = (n - 0.5)*dx, so the half domain is
+    the image half of a guide of broad wall
+
+        a_eff = 2*x_m = (2n - 1)*dx     [an ODD multiple of dx]
+
+    which equals a only when a/dx is ODD, and then n = (a/dx + 1)/2 is
+    produced by ANY declaration in ((a/dx - 1)/2, (a/dx + 1)/2] * dx -- an
+    interval containing both a/2 and a/2 + dx/2. At DX = 0.508 mm
+    (a = 45 dx, odd) ceil(22.5) = ceil(23.0) = 23: both declarations build
+    grid (24, 21, 61) and realize a_eff = 22.8600 mm identically (measured
+    2026-08-31 at grid-build level). Where a/dx is EVEN no declaration
+    works: at DX = 0.635 mm (a = 36 dx) a/2 realizes a_eff = a - dx (gate 3
+    1.825%) and a/2 + dx/2 realizes a_eff = a + dx (gate 3 1.722%). So on a
+    ceil-based grid the `+ dx/2` term never converts a wrong mirror plane
+    into a right one; the ODD-cell mesh (0.635 -> 0.508 mm) does all of the
+    work, and the odd-cell condition the block above already calls
+    "load-bearing, not incidental" is in fact the WHOLE mechanism.
+    HALF_X is kept at a/2 + dx/2 -- it is harmless, it puts the declared
+    mesh line on a lattice node, and it states the #722 convention -- but it
+    is no longer what the case relies on.
+
+    Issue #812 also measured that gate 3's 5% window is wider than the
+    signature of the error it exists to catch: a one-cell mirror-plane error
+    is 2.702% (hi) / 3.001% (lo) and a half-cell error is 1.72-1.84%. The
+    gate could not fail for its own stated reason. Both facts are closed by
+    gating the REALIZED quantity -- see gate 0 below and
+    docs/design_notes/issue812_cv09_mirror_plane_regate.md for the
+    pre-declared derivations.
+
 PASS criteria:
-    1. f_full within 10 % of analytic f_{101}.
-    2. f_half within 10 % of analytic f_{101}.
-    3. |f_full - f_half| / f_full < 5 % (PMC mirror matches full cavity).
+    0. REALIZE-DECLARED geometry, both runs (NEW, #812): every solved extent
+       equals its declared length within DX/4, and the half cavity's
+       realized mirror plane satisfies |a_eff - a| < DX/4 with
+       a_eff = 2 * (realized H_tan wall), read off the production reporter
+       rfx.fidelity.fidelity_report. DX/4 is a quarter of the smallest
+       NONZERO a_eff misregistration this lattice can express (dx, reached
+       when a/dx is even; 2*dx when a/dx is odd) -- derived from the lattice,
+       not from any measured frequency.
+    1. f_full within 10 % of analytic f_{101}.  (unchanged)
+    2. f_half within 10 % of analytic f_{101}.  (unchanged)
+    3. |f_full - f_half| / f_full < G3_TOL, TIGHTENED from 5% (#812) to the
+       frequency image of gate 0:
+           G3_TOL = |d ln f/d ln a| * (DX/4)/a = (d^2/(a^2+d^2)) * (DX/4)/a
+       = 0.6400 * 127.0 um / 22.86 mm = 0.3556 % at this mesh. Gate 3 now
+       refuses any full-vs-half discrepancy larger than what a QUARTER-cell
+       mirror-plane misregistration would produce; a one-cell error (2.70% /
+       3.00%) misses it by 7.6-8.4x and the pre-#762 half-cell error (1.838%)
+       by 5.2x.
+    Harminv returning no candidate is a HARD FAIL (#812): the removed
+    windowed-FFT fallback quantises frequency at 1/(3072 dt) = 335.9 MHz =
+    4.099 % of f_101, 11.5x gate 3's new tolerance, so it cannot honestly
+    judge gate 3. The FFT spectrum survives as a printed diagnostic only.
 
 Reference: Pozar, "Microwave Engineering", Ch. 6 (rectangular resonators).
 """
@@ -163,6 +223,24 @@ FREQ_MAX = 20e9  # covers well above f_{101}
 
 F_101_ANALYTIC = 0.5 * C0 * np.sqrt((1.0 / a) ** 2 + (1.0 / d) ** 2)
 
+# ----------------------------------------------------------------------
+# Gate thresholds (issue #812; derivations pre-declared in
+# docs/design_notes/issue812_cv09_mirror_plane_regate.md, committed before
+# the measurement that judges them).
+# ----------------------------------------------------------------------
+#: Gate 0 — realize-declared geometry budget. A quarter of the smallest
+#: NONZERO mirror-plane misregistration the Yee lattice can express
+#: (a_eff = (2n-1)*dx moves in steps of 2*dx and lands off `a` by at least
+#: dx whenever a/dx is even). Lattice-derived; no measured frequency in it.
+GEOM_TOL = DX / 4.0
+#: Gate 3 — the same budget in frequency. Pozar's
+#: f_101 = (c/2) sqrt(1/a^2 + 1/d^2) has
+#: d ln f / d ln a = -(1/a^2)/(1/a^2 + 1/d^2) = -d^2/(a^2 + d^2), which is
+#: exactly 16/25 = 0.6400 here because a/d = 22.86/30.48 = 3/4. Kept as the
+#: closed expression, not a frozen literal, so a mesh change moves the gate
+#: with the physics (SPEC-00 0.2.4). Evaluates to 0.3556 % at DX = 0.508 mm.
+G3_TOL = (d ** 2 / (a ** 2 + d ** 2)) * (DX / 4.0) / a
+
 
 def _run_cavity(
     domain: tuple[float, float, float],
@@ -188,48 +266,105 @@ def _run_cavity(
         res = sim.run(n_steps=n_steps)
     ts = np.asarray(res.time_series)[:, 0]
     dt = float(res.dt)
-    return ts, dt
+    return ts, dt, realized_axes(sim)
 
 
-def _fft_peak_near(
-    ts: np.ndarray, dt: float, f_target: float, rel_window: float = 0.5,
-) -> tuple[float, float]:
-    """Windowed-FFT fallback: return (f_peak, amp_peak) inside the window."""
+def _print_fft_diagnostic(ts: np.ndarray, dt: float) -> None:
+    """Print the ringdown's five strongest FFT peaks — DIAGNOSTIC ONLY.
+
+    Issue #812: this used to be a silent FALLBACK feeding the gates. Its
+    frequency quantum is 1/(N_ringdown * dt) = 335.9 MHz = 4.099 % of
+    f_101 at this mesh, 11.5x gate 3's tolerance, so a gate at G3_TOL
+    cannot be honestly judged by it. Harminv returning nothing is now a
+    hard failure and this only says WHY.
+    """
     ringdown = ts[len(ts) // 4:]
-    n = len(ringdown)
-    window = np.hanning(n)
-    spec = np.abs(np.fft.rfft(ringdown * window))
-    freqs = np.fft.rfftfreq(n, dt)
-    mask = (freqs >= f_target * (1.0 - rel_window)) & \
-           (freqs <= f_target * (1.0 + rel_window))
-    if not np.any(mask):
-        return float("nan"), 0.0
-    band_freqs = freqs[mask]
-    band_spec = spec[mask]
-    idx = int(np.argmax(band_spec))
-    return float(band_freqs[idx]), float(band_spec[idx])
+    spec = np.abs(np.fft.rfft(ringdown * np.hanning(len(ringdown))))
+    freqs = np.fft.rfftfreq(len(ringdown), dt)
+    bin_hz = 1.0 / (len(ringdown) * dt)
+    print(f"  FFT spectrum diagnostic (bin = {bin_hz/1e6:.1f} MHz = "
+          f"{bin_hz/F_101_ANALYTIC:.3%} of f_101 — NOT gate-grade):")
+    for i in np.argsort(-spec)[:5]:
+        print(f"    peak: f = {freqs[i]/1e9:7.3f} GHz, |A| = {spec[i]:.3e}")
 
 
 def _extract_mode_near(
     ts: np.ndarray, dt: float, f_target: float,
     rel_window: float = 0.5, min_q: float = 1.0,
 ):
-    """Harminv on the ringdown tail; return the mode nearest f_target.
-    Falls back to an FFT peak-pick if Harminv returns no candidates."""
+    """Harminv on the ringdown tail; return the mode nearest f_target, or
+    None. No fallback estimator (issue #812) — see _print_fft_diagnostic."""
     ringdown = ts[len(ts) // 4:]
     f_min = f_target * (1.0 - rel_window)
     f_max = f_target * (1.0 + rel_window)
     modes = harminv(ringdown, dt, f_min=f_min, f_max=f_max, min_Q=min_q)
-    if modes:
-        freqs = np.asarray([m.freq for m in modes])
-        return modes[int(np.argmin(np.abs(freqs - f_target)))], "harminv"
-    f_fft, _ = _fft_peak_near(ts, dt, f_target, rel_window=rel_window)
-    if np.isfinite(f_fft):
-        class _FFTMode:
-            freq = f_fft
-            Q = float("nan")
-        return _FFTMode(), "fft"
-    return None, "none"
+    if not modes:
+        return None
+    freqs = np.asarray([m.freq for m in modes])
+    return modes[int(np.argmin(np.abs(freqs - f_target)))]
+
+
+def realized_axes(sim) -> dict:
+    """Per-axis REALIZED geometry of ``sim``, read off the production
+    reporter ``rfx.fidelity.fidelity_report`` (domain row).
+
+    Reading the reporter rather than re-deriving the mesh here is
+    deliberate: the reporter already applies the PMC half-cell rule
+    (rfx/boundaries/pmc.py zeros H_tan at index -2, 0.5*dx INSIDE the
+    declared mesh line), so the gate and the solve cannot disagree about
+    the convention by construction. Each value is in METRES.
+    """
+    from rfx.fidelity import fidelity_report
+    rows = fidelity_report(sim, print_report=False)
+    dom = rows[0]
+    assert dom["entity"].startswith("domain"), dom["entity"]
+    return {ax["axis"]: dict(
+        n_cells=int(ax["n_cells"]),
+        mesh_extent=float(ax["mesh_extent_um"]) * 1e-6,
+        realized_extent=float(ax["realized_extent_um"]) * 1e-6,
+        realized_hi=float(ax["realized_um"][1]) * 1e-6,
+    ) for ax in dom["axes"]}
+
+
+def mirror_a_eff(axes: dict) -> float:
+    """Broad wall of the FULL guide the half domain is the image half of.
+
+    ``axes`` is a :func:`realized_axes` mapping for the half (PEC + PMC)
+    run. Its x row's ``realized_hi`` IS the realized H_tan mirror plane
+    x_m = (n - 0.5)*dx, so the mirrored guide is 2*x_m wide. This is the
+    quantity PR #762 was about and the quantity no gate read before #812.
+    """
+    return 2.0 * float(axes["x"]["realized_hi"])
+
+
+def geometry_rows(axes_full: dict, axes_half: dict) -> list:
+    """Gate-0 rows: (label, realized_metres, declared_metres)."""
+    return [
+        ("full cavity a", axes_full["x"]["realized_extent"], a),
+        ("full cavity b", axes_full["y"]["realized_extent"], b),
+        ("full cavity d", axes_full["z"]["realized_extent"], d),
+        ("half cavity a_eff (2 x realized H_tan mirror plane)",
+         mirror_a_eff(axes_half), a),
+        ("half cavity b", axes_half["y"]["realized_extent"], b),
+        ("half cavity d", axes_half["z"]["realized_extent"], d),
+    ]
+
+
+def geometry_gate(axes_full: dict, axes_half: dict, tol: float = GEOM_TOL):
+    """Gate 0. Returns (passed, lines) — pure, so a falsifier can drive it
+    with an injected mirror-plane error without running FDTD."""
+    ok = True
+    lines = []
+    for label, realized, declared in geometry_rows(axes_full, axes_half):
+        resid = abs(realized - declared)
+        verdict = "PASS" if resid < tol else "FAIL"
+        if verdict == "FAIL":
+            ok = False
+        lines.append(
+            f"{verdict}: {label} = {realized*1e3:.4f} mm vs declared "
+            f"{declared*1e3:.4f} mm, |residual| = {resid*1e6:.1f} um "
+            f"{'<' if verdict == 'PASS' else '>='} DX/4 = {tol*1e6:.1f} um")
+    return ok, lines
 
 
 def main() -> int:
@@ -239,6 +374,9 @@ def main() -> int:
     print(f"a = {a*1e3:.2f} mm, b = {b*1e3:.2f} mm, d = {d*1e3:.2f} mm")
     print(f"dx = {DX*1e3:.3f} mm, n_steps = {N_STEPS}")
     print(f"Analytic TE_101 f = {F_101_ANALYTIC/1e9:.4f} GHz")
+    print(f"Gate 0 tol = DX/4 = {GEOM_TOL*1e6:.1f} um; "
+          f"gate 3 tol = |dlnf/dlna|*(DX/4)/a = {G3_TOL:.4%} "
+          f"(|dlnf/dlna| = {d**2/(a**2 + d**2):.4f})")
     print()
 
     # ----- Full cavity: PEC on all 6 faces -----
@@ -248,20 +386,21 @@ def main() -> int:
 
     print("Run 1: Full cavity (all-PEC)...", flush=True)
     t0 = time.time()
-    ts_full, dt_full = _run_cavity(
+    ts_full, dt_full, axes_full = _run_cavity(
         domain=(a, b, d), spec=spec_full,
         source_pos=src_full, probe_pos=probe_full,
     )
     print(f"  elapsed {time.time() - t0:.1f} s  dt={dt_full*1e12:.3f} ps")
 
-    mode_full, src_full_tag = _extract_mode_near(ts_full, dt_full, F_101_ANALYTIC)
+    mode_full = _extract_mode_near(ts_full, dt_full, F_101_ANALYTIC)
     if mode_full is None:
-        print("FAIL: no mode found in window around f_101 (full cavity)")
+        print("FAIL: Harminv found no mode in the window around f_101 "
+              "(full cavity) — hard failure, no fallback estimator (#812)")
+        _print_fft_diagnostic(ts_full, dt_full)
         return 1
     f_full = float(mode_full.freq)
     q_full = float(mode_full.Q)
-    print(f"  full: f = {f_full/1e9:.4f} GHz, Q = {q_full:.2e}  "
-          f"(via {src_full_tag})")
+    print(f"  full: f = {f_full/1e9:.4f} GHz, Q = {q_full:.2e}  (via harminv)")
 
     # ----- Half cavity: PEC on x_lo, PMC on x_hi, PEC on remaining faces.
     #       PMC-plane convention (issue #722 ninth surface, see docstring):
@@ -283,30 +422,33 @@ def main() -> int:
 
     print("Run 2: Half cavity (PEC + PMC, declared a/2 + dx/2)...", flush=True)
     t0 = time.time()
-    ts_half, dt_half = _run_cavity(
+    ts_half, dt_half, axes_half = _run_cavity(
         domain=(HALF_X, b, d), spec=spec_half,
         source_pos=src_half, probe_pos=probe_half,
     )
     print(f"  elapsed {time.time() - t0:.1f} s  dt={dt_half*1e12:.3f} ps")
 
-    mode_half, src_half_tag = _extract_mode_near(ts_half, dt_half, F_101_ANALYTIC)
+    mode_half = _extract_mode_near(ts_half, dt_half, F_101_ANALYTIC)
     if mode_half is None:
-        print("FAIL: no mode found in window around f_101 (half cavity)")
-        print("  FFT spectrum diagnostic:")
-        ringdown = ts_half[len(ts_half) // 4:]
-        spec = np.abs(np.fft.rfft(ringdown * np.hanning(len(ringdown))))
-        freqs_fft = np.fft.rfftfreq(len(ringdown), dt_half)
-        top = np.argsort(-spec)[:5]
-        for i in top:
-            print(f"    peak: f = {freqs_fft[i]/1e9:7.3f} GHz, |A| = {spec[i]:.3e}")
+        print("FAIL: Harminv found no mode in the window around f_101 "
+              "(half cavity) — hard failure, no fallback estimator (#812)")
+        _print_fft_diagnostic(ts_half, dt_half)
         return 1
     f_half = float(mode_half.freq)
     q_half = float(mode_half.Q)
-    print(f"  half: f = {f_half/1e9:.4f} GHz, Q = {q_half:.2e}  "
-          f"(via {src_half_tag})")
+    print(f"  half: f = {f_half/1e9:.4f} GHz, Q = {q_half:.2e}  (via harminv)")
 
     # ----- Checks -----
     PASS = True
+    print()
+
+    # Gate 0 (#812): the REALIZED geometry, including the mirror plane the
+    # PMC face actually lands on. Nothing here reads a declared length.
+    geom_ok, geom_lines = geometry_gate(axes_full, axes_half)
+    for line in geom_lines:
+        print(line)
+    if not geom_ok:
+        PASS = False
     print()
 
     err_full = abs(f_full - F_101_ANALYTIC) / F_101_ANALYTIC
@@ -328,12 +470,12 @@ def main() -> int:
         PASS = False
 
     rel_gap = abs(f_full - f_half) / f_full
-    if rel_gap < 0.05:
-        print(f"PASS: |f_full - f_half| / f_full = {rel_gap:.3%} < 5% "
-              f"(PMC mirror reproduces full cavity)")
+    if rel_gap < G3_TOL:
+        print(f"PASS: |f_full - f_half| / f_full = {rel_gap:.4%} < "
+              f"{G3_TOL:.4%} (PMC mirror reproduces full cavity)")
     else:
-        print(f"FAIL: |f_full - f_half| / f_full = {rel_gap:.3%} >= 5% "
-              f"(PMC mirror does NOT match full cavity)")
+        print(f"FAIL: |f_full - f_half| / f_full = {rel_gap:.4%} >= "
+              f"{G3_TOL:.4%} (PMC mirror does NOT match full cavity)")
         PASS = False
 
     print()
