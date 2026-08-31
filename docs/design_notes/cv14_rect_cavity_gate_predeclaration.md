@@ -189,3 +189,113 @@ Both, or a justified STOP.
   describe the gate accurately (all seven modes, not "at least one higher mode").
 * No existing gate is widened. T1 and the 2.0 % of T2 are carried over unchanged.
 * No new solver, mesh, or geometry. The gated leg is byte-for-byte the same simulation.
+
+---
+
+## 5. CORRECTION (2026-08-31, appended after the first measurement) — the T3 budget's numeric evaluation was wrong
+
+**What §2 T3 said:** "At the gated leg … `T = 1.9524e-8 s`, `1/T = 51.220 MHz`, budget
+**≈ 5.122 MHz**", and the detection-power table quoted margins of 20× / 28× / 34×.
+
+**Why that was wrong.** I evaluated `T` as the full post-excitation record,
+`(10491 − 251) · Δt = 10240 · Δt`. It is not. `extract_modes` caps the record at
+`_MAX_HARMINV_SAMPLES = 8000` and, when the decimation `step` rounds down to 1 (which it
+does here, `10240 // 8000 = 1`), the `[:max_samples]` slice **truncates** rather than
+decimates. The span actually handed to harminv is therefore `8000 · Δt`, not `10240 · Δt`.
+
+**Correct values:** `T = 8000 × 1.9066e-12 = 1.5253e-8 s`, `1/T = 65.56 MHz`, budget
+`0.1/T =` **6.556 MHz**. Corrected detection-power margins: x **15.5×**, y **21.8×**,
+z **26.5×** — still decisive, and the conclusion of §2 T3 is unchanged.
+
+**What did NOT change:** the declared rule. T3 was declared as `0.1/T` with `T` "computed
+in-script from the record actually handed to harminv (post excitation-skip, post any
+decimation)" — the script computes it that way (`harminv_record`, one source of truth
+shared with `extract_modes`), so the gate that shipped implements the rule as declared.
+Only my hand evaluation of that rule in the note's parenthetical was arithmetically wrong,
+and it is corrected here rather than edited above. The `0.1` factor is untouched. The
+extraction path itself is deliberately left as it was — changing what harminv sees would
+change the measurement this lane exists to gate, not the gate.
+
+---
+
+## 6. RESULTS (2026-08-31) — both sides of the acceptance criterion, measured
+
+Command: `PYTHONPATH=<worktree> .venv/bin/python validation/crossval/14_rect_cavity_pozar.py`
+(grid (51,31,41), Δt = 1.9066e-12 s, 10491 steps, run wall ≈ 2 s).
+
+### (A) The case still PASSES on today's correct code, with margin
+
+```
+Gate 0 [wall reg <= 1e-09 m]:  PASS   max |eff - target| = 0.000e+00 m
+Gate 1 [TE101 < 1%]:           PASS   TE101 err = 0.0083%
+Gate 2 [all 7 modes < 2%]:     PASS   worst TE102 err = 0.0529%   (37.8x inside)
+Gate 3 [|meas-yee| <= 6.556 MHz]: PASS worst TE201 residual = 0.1504 MHz (43.6x inside)
+VERDICT: PASS
+```
+
+Per-mode residual against the discrete-Yee prediction published in §2 T3 **before** this
+run, in MHz: TE101 +0.0024, TM110 −0.0270, TE011 −0.0486, TM111 +0.0635, TE201 −0.1504,
+TM210 +0.0855, TE102 −0.0755. Max 0.1504 MHz — independently confirming the #812 audit's
+"≤ 0.15 MHz on all seven modes", and confirming the published `f_yee` table it was
+predicted against. **The physics verdict is unchanged and was never in question.**
+
+### (B) The audit's measured defect now FAILS
+
+`a` 50 → 25 mm (−50 %, single axis), oracle constants untouched, everything else identical:
+
+```
+OLD Gate 2 [min over six higher < 2%]:  PASS   (best higher: TE011 err = 0.0154%)   <-- the defect
+Gate 0 [wall reg <= 1e-09 m]:  FAIL   max |eff - target| = 2.500e-02 m  (2.5e7x the tolerance)
+Gate 1 [TE101 < 1%]:           FAIL   TE101 not extracted
+Gate 2 [all 7 modes < 2%]:     FAIL   not extracted: TE101
+Gate 3:                        N/A    Gate 0 failed, so the Yee prediction is VOID
+VERDICT: FAIL (exit 1)
+```
+
+TE011 is the `m = 0` mode: it scored **0.0154 %** on a cavity half the intended width,
+exactly as the audit reported, and `min()` handed the gate to it. Under `max` over all
+seven, TE101 is NOT FOUND (its true frequency, 7.0756 GHz, is outside the ±3 % search
+window around the 4.799 GHz oracle) and NOT-FOUND is now a hard failure.
+
+Note on Gate 1's failure mode: the audit reported "TE101 err 47.334 %". Through the
+committed `extract_modes` (±3 % window) TE101 reports NOT FOUND rather than a percentage;
+47.3 % is the analytic magnitude of the shift, and both are the same failure.
+
+Worth recording, because it is why `max` matters more than any single sharp gate: at
+`a`/2 the shrunk cavity's TE101 is **exactly degenerate** with the original box's TE201
+(`k_x = 2π/0.05 = π/0.025`), so the "TE201" row reads 0.0246 % / 0.0045 MHz — it would
+have passed Gate 3 on its own. Three other modes are 141–419 MHz off, i.e. 21–64× the
+Gate-3 budget. A gate that reads one mode can be defeated by a degeneracy; a gate that
+reads all seven cannot.
+
+### (C) Detection power beyond the audited defect — a defect only Gate 3 sees
+
+Cavity fill `eps_r = 1.002` instead of 1.0 (a 0.2 % permittivity error). Geometry
+untouched, so this is invisible to Gate 0 by construction; the frequency shift is
+`1/√1.002 − 1 = −0.0999 %`, far inside Gates 1 and 2. Predicted before the run from the
+oracles alone: −4.79 to −8.06 MHz per mode. Measured:
+
+```
+Gate 0:  PASS   max |eff - target| = 0.000e+00 m
+Gate 1:  PASS   TE101 err = 0.1081%
+Gate 2:  PASS   worst TE102 err = 0.1542%
+Gate 3:  FAIL   worst TE102 residual = 8.2486 MHz  (budget 6.556 MHz)
+VERDICT: FAIL
+```
+
+Per-mode residuals −4.79, −5.85, −6.28, −6.92, −7.24, −7.74, −8.25 MHz against the
+predicted −4.79, −5.82, −6.24, −6.92, −7.06, −7.79, −8.06. Every pre-existing gate passes;
+Gate 3 alone fails. Gate 3 fires at ~0.163 % permittivity error against Gate 2's ~4 %:
+**~25× more sensitive** on this defect class. This is the answer to "why not just tighten
+the 2 %" — a percentage tight enough to do this would have no derivation, whereas `0.1/T`
+does.
+
+### Falsifiers committed
+
+`tests/test_crossval_cv14_cavity_gates.py`, 16 tests: 12 synthetic (fast lane, no FDTD)
+pinning the gate math, the axis-blind `min()` defect, NOT-FOUND handling, the unchanged
+2 % threshold, Gate 0 on a one-cell error on each axis, Gate 3's void-not-passing
+behaviour when Gate 0 fails, and the `0.1/T` scaling; plus 3 end-to-end FDTD legs marked
+`slow` reproducing (A), (B) and (C) above. Each of (B) and (C) first asserts that the
+PRE-#812 gate still passes on that leg, so the regression is anchored to the defect rather
+than to the new code.
