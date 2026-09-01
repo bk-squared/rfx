@@ -287,3 +287,23 @@ run pair, with the retired-arm acceptance fixed now, before that arm is read.
   discriminate → STOP: no gate-band change is committed, the failure is reported
   as the result. The original E6's (7.8, 8.6) window is superseded together with
   the E3 window, same root cause.
+
+## 9. Interruption record and re-run declaration (2026-09-01, before the re-run was read)
+
+The first execution of the evidence script was killed by the session harness after the
+main arm completed and while the retired arm was computing. The script persisted only
+at the very end, so the main arm's arrays died with the process and only its printed
+summary and per-bin trace survive in the run log (the
+`feedback_persist_before_the_optional_stage` lesson, repeated here and now fixed: the
+script persists each arm the moment it finishes, and the two arms run as two separate
+processes in parallel).
+
+This is an infrastructure interruption, not a physics non-closure; the re-run repeats
+the SAME two pre-declared arms with an unchanged config. Additional pre-declared
+expectation for the re-run: the main arm must REPRODUCE the killed run's readings —
+max|S11| 0.9921, crossings 8.8189 / 10.4169 / 13.3725 GHz, dip 10.100 GHz
+(|S11| 0.4426), min|S11| over (7.8, 8.6) = 0.9412 — to about 1e-3 relative (same
+tree, same config; this fixture family measured CPU reproducibility < 4e-8, the slack
+is only for thread-count effects). A main arm that does NOT reproduce is a red flag
+about the measurement itself: STOP and diagnose before any pin. E6' (Section 8) is
+unchanged and is still scored on the retired arm only when it lands.
