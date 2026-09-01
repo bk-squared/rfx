@@ -252,3 +252,18 @@ done
 
 Write rebuilds somewhere scratch — do not let one land on the committed
 artifact (§5).
+
+## 7. Numeric provenance (appended 2026-09-01, #812 round 2 — no finding changed)
+
+The four load-bearing quantities of §1.2 are now bound to their artifact keys and checked
+by `tests/test_evidence_numeric_provenance.py`, so a refresh of the artifact that does not
+also update this note fails the default fast lane:
+
+- this artifact's slab `S11` max: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0707`
+- this artifact's slab `S11` mean: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.043976`
+- the artifact's own tolerance, which `0.0707` sits inside: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::max_mag_abs_tol = 0.1`
+- the August rebuild this artifact is stale against: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.staleness_2026_08_31.summary_max_mag_abs_diff.rebuilt_from_main_baseline_stdout = 0.0186`
+
+The §1.1 rebuild census is bound the same way: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.numeric_fields = 54`
+numeric fields compared, `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.bit_identical = 52`
+bit-identical.
