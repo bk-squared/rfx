@@ -231,3 +231,59 @@ narrate the retirement — correct usage).
 - Contradicted by none found after grep of `MEMORY.md` and the ledger's patch-arc
   sections; the ledger's "Bearing on the committed gate" wording-correction queue
   overlaps surface 1's docstring and is subsumed by this rewrite.
+
+---
+
+## 8. Post-run addendum, main arm only (2026-09-01, written BEFORE the retired arm was read)
+
+The main arm finished (settling witness silent; every preflight advisory captured in
+the run log). Verbatim summary: `max|S11| = 0.9921`, dip at `10.100 GHz`
+(`|S11| = 0.4426`), `Im(Zin) = 0` crossings at `8.8189 / 10.4169 / 13.3725 GHz`,
+`min|S11|` over the candidate band (7.8, 8.6) = `0.9412`.
+
+### Predeclared expectations, scored
+- E1 passivity: **HOLDS** (0.9921 ≤ 1.05).
+- E2 settling: **HOLDS** (witness silent, main arm).
+- E3 crossing in (7.8, 8.6): **FAILED as declared** — the first crossing sits at
+  8.8189 GHz, 0.22 GHz above the window top.
+- E4 floor over (7.8, 8.6): holds (0.9412 > 0.70).
+- E5: the mechanism claim (dip strictly above the crossing) **HOLDS**
+  (10.100 > 8.819); the numeric window (8.8–9.8) was wrong the same way E3 was.
+
+### Root cause of the E3 miss (identified from the run's own trace, no new run)
+The full trace shows a textbook high-impedance antiresonance: Re(Zin) peaks at
+4326 Ω at 8.8 GHz (2067 Ω at 8.9) with Im(Zin) swinging from +5389 (8.7) through
+zero to −1099 (8.9) — the strongly coupled patch antiresonance seen AT THE PORT
+PLANE, i.e. rotated through ~40 cells of feed line. A port-plane reactance zero is
+reference-plane dependent (memory: `feedback_mode_census_needs_reactance_zeros` —
+"zero LOCATIONS are reference-plane dependent"), so predicting it by transferring
+MODAL frequencies across boards (8.16131 GHz × L_H/L_S = 7.966) was a category
+error: the prediction model is **REFUTED**, the measurement is not in doubt. This
+also retroactively strengthens the Section 3 rejection of Option A: no Board-H
+number predicts this gate's observable even to 5 %. The weak non-crossing wiggle at
+7.9–8.1 GHz (Re bump ≈ 30 Ω) is consistent with the parity-suppressed TM001
+(Balanis on Board S: 8.0016 GHz) and stays below any pinned band.
+
+R2 accounting: the transfer-model-derived window is retired after its one attempt;
+no simulation is re-run. What follows is interpretation of the SAME pre-declared
+run pair, with the retired-arm acceptance fixed now, before that arm is read.
+
+### Band pinned from the main arm, and the retired-arm acceptance (E6')
+- `RES_BAND_GHZ = (8.4, 9.2)` — brackets the measured antiresonance (crossing
+  8.8189, Re-peak bin 8.8) with ≈ ±4.5 % margin (stub-length sensitivity is
+  ≈ 0.85 pp per node; harminv-window effects < 0.01 % on driven fed reads), keeps
+  the TM001 wiggle (≤ 8.1) out, and stays clear of the dip (10.100).
+- Floor: measured `min|S11|` over (8.4, 9.2) = **0.8794** → `RES_BAND_S11_MIN`
+  stays 0.70 (0.18 of margin; re-reading it was predeclared).
+- Gate (3): `f_dip > 9.2` — measured 10.100.
+- NEW discriminating assertions: (i) an `Im(Zin) = 0` crossing exists inside
+  (8.4, 9.2); (ii) `max Re(Zin)` inside the band > 500 Ω (measured 4326 Ω — the
+  high-impedance antiresonance that makes "poorly matched at resonance" the right
+  physics; the pre-#702 witness saw the same class, "Re(Zin) peaks > 1.5 kΩ").
+- **E6' (scored when the retired arm is read, rule fixed here):** the retired arm
+  must have NO `Im(Zin) = 0` crossing inside (8.4, 9.2) and its first crossing at
+  ≥ 9.3 GHz (expected 9.5–9.6, the pre-#702 witness class), and its in-band
+  `max Re(Zin)` must sit below 500 Ω. If ANY of these fail, the band cannot
+  discriminate → STOP: no gate-band change is committed, the failure is reported
+  as the result. The original E6's (7.8, 8.6) window is superseded together with
+  the E3 window, same root cause.
