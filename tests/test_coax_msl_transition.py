@@ -3060,3 +3060,101 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
     assert "_attempt3_kwargs" not in globals()
     kw = _attempt2_kwargs(135000)
     assert kw["junction_x"] == JUNCTION_X and kw["n_steps"] == 135000
+
+
+# ---------------------------------------------------------------------------
+# Attempt-3 flux box (issue #589 witness W4) -- opt-in monitors only.
+# ---------------------------------------------------------------------------
+# Six faces of ONE lossless control volume around the junction, plus one
+# full-plane comparator. The volume is
+#
+#   V = {inside the coax shell, 2.2 mm <= z <= 2.5 mm}          (below ground)
+#       U {0.5 <= x <= 2.0, 0.3 <= y <= 3.1, 2.5 <= z <= 3.6 mm} (above ground)
+#
+# and its boundary is closed by PEC where no monitor sits: the coax shell wall,
+# the ground plane at z = N_GND*DX = 2.5 mm outside the 0.4 mm clearance hole,
+# and the pin. A PEC surface carries zero normal Poynting flux (E_tangential = 0
+# there), so those parts of the boundary contribute nothing and the six
+# monitored faces alone close the budget:
+#
+#   coax_z22 = msl_x20 + top_z36 - xlo_x05 - ylo_y03 + yhi_y31
+#
+# (+axis-positive convention; the two -axis-facing faces enter with a minus).
+# No lossy cell is inside V -- the coax annular resistor sits at k = 11
+# (z = 0.3 mm) and the MSL sigma sheet at i = 118 (x = 11.0 mm), both outside --
+# so the residual of that identity measures only radiation leaving through the
+# CPML-facing faces plus discretization, NOT dissipation.
+#
+# All six faces are PATCHES with consistent extents (adversarial-review item:
+# the first draft mixed full planes with patches and gave the side faces a
+# z-span that did not meet the top face, so its "closure residual" was not a
+# closed surface at all). ``msl_x20_full`` is the SAME plane taken full-domain,
+# reported next to the patch as the total +x power (guided + radiated + the
+# part flowing outside the box footprint); it is NOT part of the closure sum.
+FLUX_BOX_X_3 = (0.5e-3, 2.0e-3)     # x faces: xlo_x05 (-x face), msl_x20 (+x face)
+FLUX_BOX_Y_3 = (0.3e-3, 3.1e-3)     # y faces: ylo_y03, yhi_y31
+FLUX_BOX_Z_3 = (N_GND * DX, 3.6e-3)  # ground plane (2.5 mm) up to top_z36
+FLUX_COAX_Z_3 = 2.2e-3               # bottom face: k = 30, strictly between the
+                                     # top coax probe (k = 27, z = 1.9 mm) and the
+                                     # stub top / junction node (k = 32/33)
+FLUX_COAX_PATCH_3 = 1.6e-3           # covers r <= 0.8 mm about the pin axis, i.e.
+                                     # the whole coax cross-section (outer shell
+                                     # radius 0.6 mm + the stamped wall)
+
+
+def _attempt3_scratch_flux_entries():
+    """Flux entries for the attempt-3 W4 box, built the documented way: a
+    scratch Simulation sharing the attempt-3 domain, handing over its
+    ``._flux_monitors`` list (same pattern as
+    ``_attempt2_scratch_flux_entries``; attempt 3 shares attempt 2's domain
+    and dx, only the ground-plane entity differs).
+
+    Report-only instrument: these monitors are passed through
+    ``compute_coax_msl_transition(extra_flux_monitors=...)``, whose
+    non-perturbation is witnessed by
+    ``test_extra_flux_monitors_do_not_perturb_s``.
+    """
+    from rfx.api import Simulation as _Sim
+    scratch = _Sim(freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX,
+                   boundary="cpml")
+    (x_lo, x_hi), (y_lo, y_hi), (z_lo, z_hi) = FLUX_BOX_X_3, FLUX_BOX_Y_3, FLUX_BOX_Z_3
+    x_c, x_s = 0.5 * (x_lo + x_hi), x_hi - x_lo
+    y_c, y_s = 0.5 * (y_lo + y_hi), y_hi - y_lo
+    z_c, z_s = 0.5 * (z_lo + z_hi), z_hi - z_lo
+
+    # bottom face (inside the coax, below the ground plane)
+    scratch.add_flux_monitor(
+        axis="z", coordinate=FLUX_COAX_Z_3, freqs=FREQS_2,
+        size=(FLUX_COAX_PATCH_3, FLUX_COAX_PATCH_3), center=(JUNCTION_X, Y_C),
+        name="coax_z22",
+    )
+    # +x face (toward the MSL feed), between the junction footprint (x <= 1.7 mm)
+    # and the first MSL ladder probe (i = 34, x = 2.6 mm)
+    scratch.add_flux_monitor(
+        axis="x", coordinate=x_hi, freqs=FREQS_2, size=(y_s, z_s),
+        center=(y_c, z_c), name="msl_x20",
+    )
+    # top face
+    scratch.add_flux_monitor(
+        axis="z", coordinate=z_hi, freqs=FREQS_2, size=(x_s, y_s),
+        center=(x_c, y_c), name="top_z36",
+    )
+    # -x face (away from the MSL, above the ground plane)
+    scratch.add_flux_monitor(
+        axis="x", coordinate=x_lo, freqs=FREQS_2, size=(y_s, z_s),
+        center=(y_c, z_c), name="xlo_x05",
+    )
+    # the two y faces
+    scratch.add_flux_monitor(
+        axis="y", coordinate=y_lo, freqs=FREQS_2, size=(x_s, z_s),
+        center=(x_c, z_c), name="ylo_y03",
+    )
+    scratch.add_flux_monitor(
+        axis="y", coordinate=y_hi, freqs=FREQS_2, size=(x_s, z_s),
+        center=(x_c, z_c), name="yhi_y31",
+    )
+    # comparator, NOT part of the closure sum: the same +x plane, full domain
+    scratch.add_flux_monitor(
+        axis="x", coordinate=x_hi, freqs=FREQS_2, name="msl_x20_full",
+    )
+    return scratch._flux_monitors

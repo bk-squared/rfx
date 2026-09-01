@@ -1,5 +1,5 @@
 name: rfx-coax-msl-transition-remeasure
-description: "#589 (coax<->MSL transition, #489 leg 4) MEASUREMENT half of the predeclared Step A/B ladder: re-takes the settled attempt-2 run (VESSL 369367252283, n_steps=135000) with the ADDITIVELY extended driver scripts/diagnostics/coax_msl_transition_settled_run.py (complex S per bin, |S00|/|S10|/|S01|/|S11| dB, coax-driven column power, lambda_min(I - S^H S), raw cond_a next to equilibrated, MSL/coax ladder fit+recurrence residuals, A5 |a_inc/b_out| echo ratios, precision label, driver-side preflight + fidelity_report verbatim, A0 two-tier reproduction vs the tracked JSON -- applied only at matching n_steps/fixture/precision, else labeled NOT COMPARABLE; across an f32/f64 mismatch the predeclared 2x |S10|/|S01| + A0-budget f64 rule is computed instead). Env-parameterized: FIXTURE=attempt2 (Step A, the settled fixture) | attempt2_wide (Step B, domain-clearance FALSIFIER for candidate (c) absorber proximity) | attempt3 (attempt 2 + the REALIZED ground-plane clearance hole, #589 root cause; the realization-contract tests run before the solve); X64=0 (the record's own default-float32 precision, required for A0 to mean anything) | 1 (f64 replicate: the cheapest extractor-floor discriminator for the -55..-97 dB reciprocity signals; pass the Step-A f32 remeasure JSON as BASELINE so the 2x |S10|/|S01| rule is computable -- the tracked record carries no |S10|/|S01|; FP64 throughput on an RTX 4090 is far lower -- the 14400 s timeout is a bound to VERIFY, not a promise); N_STEPS (default 135000); FREQS (optional dense band, GHz, e.g. 5:11:13 -- the committed 6/8/10 GHz bins are always retained). Runs from the dedicated NFS run-clone (NOT the primary checkout) with an EXPECT=<sha> guard: git rev-parse HEAD must equal $EXPECT or the job exits 3 before measuring anything. Report-only: no record, gate or reference number is touched by this job; its JSON is hand-consumed by a later PR. The lane is under a PI HARD-STOP (2026-08-07); submitting this job is a reactivation and needs the PI's explicit go."
+description: "#589 (coax<->MSL transition, #489 leg 4) MEASUREMENT half of the predeclared Step A/B ladder: re-takes the settled attempt-2 run (VESSL 369367252283, n_steps=135000) with the ADDITIVELY extended driver scripts/diagnostics/coax_msl_transition_settled_run.py (complex S per bin, |S00|/|S10|/|S01|/|S11| dB, coax-driven column power, lambda_min(I - S^H S), raw cond_a next to equilibrated, MSL/coax ladder fit+recurrence residuals, A5 |a_inc/b_out| echo ratios, precision label, driver-side preflight + fidelity_report verbatim, A0 two-tier reproduction vs the tracked JSON -- applied only at matching n_steps/fixture/precision, else labeled NOT COMPARABLE; across an f32/f64 mismatch the predeclared 2x |S10|/|S01| + A0-budget f64 rule is computed instead). Env-parameterized: FIXTURE=attempt2 (Step A, the settled fixture) | attempt2_wide (Step B, domain-clearance FALSIFIER for candidate (c) absorber proximity) | attempt3 (attempt 2 + the REALIZED ground-plane clearance hole, #589 root cause; the realization-contract tests run before the solve); X64=0 (the record's own default-float32 precision, required for A0 to mean anything) | 1 (f64 replicate: the cheapest extractor-floor discriminator for the -55..-97 dB reciprocity signals; pass the Step-A f32 remeasure JSON as BASELINE so the 2x |S10|/|S01| rule is computable -- the tracked record carries no |S10|/|S01|; FP64 throughput on an RTX 4090 is far lower -- the 14400 s timeout is a bound to VERIFY, not a promise); N_STEPS (default 135000); FREQS (optional dense band, GHz, e.g. 5:11:13 -- the committed 6/8/10 GHz bins are always retained); DUMP_LADDERS=0|1 (adds --dump-ladders: the raw per-probe ladder voltages are written to <result>.ladders.npz and the label-independent witnesses W1-W3 are computed offline from them; when the production return_ladder_voltages keyword is not on the measured tree the driver says so and the solve runs UNCHANGED); FLUX=0|1 (adds --flux: the six-face lossless flux box around the junction plus the full-plane +x comparator, W4 -- attempt-3 fixture ONLY, the plane coordinates are that fixture's grid; non-perturbation of S is witnessed by test_extra_flux_monitors_do_not_perturb_s). Both default OFF, so with DUMP_LADDERS=0 FLUX=0 this job's JSON is byte-comparable with the earlier remeasures. Runs from the dedicated NFS run-clone (NOT the primary checkout) with an EXPECT=<sha> guard: git rev-parse HEAD must equal $EXPECT or the job exits 3 before measuring anything. Report-only: no record, gate or reference number is touched by this job; its JSON is hand-consumed by a later PR. The lane is under a PI HARD-STOP (2026-08-07); submitting this job is a reactivation and needs the PI's explicit go."
 tags: [rfx, issue-589, issue-489, coax-msl-transition, remeasure]
 resources:
   cluster: remilab-c0
@@ -17,6 +17,10 @@ env:
   RUN_CLONE: "/root/workspace/byungkwan-workspace/research/rfx-fidelity-722"
   FIXTURE: "attempt2"
   X64: "0"
+  # #589 witness half (both default OFF -- the legacy JSON keys and the A0
+  # comparison are unchanged unless they are turned on).
+  DUMP_LADDERS: "0"
+  FLUX: "0"
   N_STEPS: "135000"
   FREQS: ""
   # Optional: override the A0/f64-rule baseline JSON (path relative to the
@@ -28,7 +32,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -euo pipefail
-  echo "=== rfx #589: coax<->MSL transition re-measurement (FIXTURE=$FIXTURE X64=$X64 N_STEPS=$N_STEPS FREQS='${FREQS}') ==="
+  echo "=== rfx #589: coax<->MSL transition re-measurement (FIXTURE=$FIXTURE X64=$X64 N_STEPS=$N_STEPS FREQS='${FREQS}' DUMP_LADDERS=$DUMP_LADDERS FLUX=$FLUX) ==="
   case "$FIXTURE" in
     attempt2|attempt2_wide|attempt3) ;;
     *) echo "FATAL: FIXTURE must be attempt2, attempt2_wide or attempt3 (got '$FIXTURE')"; exit 3 ;;
@@ -37,6 +41,18 @@ run: |-
     0|1) ;;
     *) echo "FATAL: X64 must be 0 or 1 (got '$X64')"; exit 3 ;;
   esac
+  case "$DUMP_LADDERS" in
+    0|1) ;;
+    *) echo "FATAL: DUMP_LADDERS must be 0 or 1 (got '$DUMP_LADDERS')"; exit 3 ;;
+  esac
+  case "$FLUX" in
+    0|1) ;;
+    *) echo "FATAL: FLUX must be 0 or 1 (got '$FLUX')"; exit 3 ;;
+  esac
+  if [ "$FLUX" = "1" ] && [ "$FIXTURE" != "attempt3" ]; then
+    echo "FATAL: FLUX=1 is attempt-3 only (the W4 plane coordinates are that fixture's grid); got FIXTURE=$FIXTURE"
+    exit 3
+  fi
   if [ "$EXPECT" = "FILL_BEFORE_SUBMIT" ]; then
     echo "FATAL: EXPECT still contains the FILL_BEFORE_SUBMIT placeholder -- pin the commit SHA the run-clone is checked out at before submitting"
     exit 3
@@ -73,6 +89,10 @@ run: |-
   # POSIX sh (the VESSL runner is busybox ash, not bash): no arrays, no ${x:0:n}.
   FREQS_OPT=""
   if [ -n "${FREQS}" ]; then FREQS_OPT="--freqs ${FREQS}"; fi
+  DUMP_OPT=""
+  if [ "$DUMP_LADDERS" = "1" ]; then DUMP_OPT="--dump-ladders"; fi
+  FLUX_OPT=""
+  if [ "$FLUX" = "1" ]; then FLUX_OPT="--flux"; fi
   echo "=== measurement: fixture=$FIXTURE n_steps=$N_STEPS x64=$X64 -> $RFX_OUT ==="
   set +e
   timeout 14400 python -u scripts/diagnostics/coax_msl_transition_settled_run.py \
@@ -81,12 +101,15 @@ run: |-
     --preflight \
     --baseline "$BASELINE" \
     $FREQS_OPT \
+    $DUMP_OPT \
+    $FLUX_OPT \
     --output "$RFX_OUT/remeasure_result.json" \
     > "$RFX_OUT/run.log" 2>&1
   rc=$?
   set -e
   tail -n 200 "$RFX_OUT/run.log"
   echo "$rc" > "$RFX_OUT/run.rc"
-  echo "artifacts persisted to (mounted NFS, survives job teardown): $RFX_OUT"
+  ls -l "$RFX_OUT" || true
+  echo "artifacts persisted to (mounted NFS, survives job teardown): $RFX_OUT (remeasure_result.json + run.log; with DUMP_LADDERS/FLUX also remeasure_result.ladders.npz and remeasure_result.witnesses.json)"
   echo "coax_msl_transition_remeasure_rc=$rc"
   exit "$rc"

@@ -203,6 +203,31 @@ are truncated and UNPINNABLE -- report, name a 2x rerun, do not pin.
 ``--freqs`` adds an OPTIONAL dense band (comma list or start:stop:n, GHz);
 the three committed bins are ALWAYS retained and reported separately (the
 legacy keys), and ``ext_589`` carries the full band.
+
+``--dump-ladders`` / ``--flux`` (#589 witness half; BOTH DEFAULT OFF, so
+every pre-existing key and the A0 comparison are byte-unchanged when they
+are not passed):
+
+* ``--dump-ladders`` asks the method for the RAW per-probe modal voltages
+  of both ladders (``return_ladder_voltages=True``). That keyword is the
+  production half of #589 and may not be merged yet, so the driver detects
+  it with ``inspect.signature`` and, when it is absent, says so and runs
+  the solve UNCHANGED (W1-W3 are then reported as SKIPPED; W4 and the
+  label-swap counterfactual still work). The arrays are written to
+  ``<output>.ladders.npz`` next to the JSON, never into the legacy keys.
+* ``--flux`` passes ``extra_flux_monitors=tests/test_coax_msl_transition.py
+  ::_attempt3_scratch_flux_entries()`` -- the six faces of one lossless
+  control volume around the junction (plus the full-plane +x comparator).
+  Attempt-3 fixture only: the plane coordinates are that fixture's grid.
+  Non-perturbation of S is witnessed by
+  ``test_extra_flux_monitors_do_not_perturb_s``.
+
+Both feed ``scripts/diagnostics/coax_msl_ladder_witnesses.py`` (pure NumPy,
+no FDTD), whose W1-W4 tables are printed here and whose full dict is written
+to ``<output>.witnesses.json``. Everything they produce is REPORT-ONLY and
+LABEL-INDEPENDENT by construction; the printed 'label-swap counterfactual'
+is a PREDICTION of H1 (algebraically inv(S_code)), not a measurement, and is
+never written into a legacy key.
 """
 from __future__ import annotations
 
@@ -220,6 +245,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling witness module
 
 import numpy as np  # noqa: E402
 
@@ -602,6 +628,95 @@ def _a0_compare(baseline_path, *, freqs_all, committed, S, n_steps, fixture,
     return out
 
 
+def _witness_dump(*, result, ext, out_path, freqs_all, beta_coax_analytic,
+                  beta_msl_analytic, ladders_requested, ladders_available,
+                  flux_requested):
+    """Write ``<output>.ladders.npz`` + ``<output>.witnesses.json`` and print
+    the W1-W4 tables (issue #589 witness half; REPORT-ONLY).
+
+    Mutates ``ext`` by adding ``ladders_npz``, ``witnesses_json`` and
+    ``w4_flux`` -- and ONLY when this function runs, i.e. only when at least
+    one of ``--dump-ladders`` / ``--flux`` was passed. No legacy key and no
+    pre-existing ``ext_589`` key is touched.
+    """
+    import coax_msl_ladder_witnesses as W
+
+    a_inc = np.asarray(result.a_inc)
+    b_out = np.asarray(result.b_out)
+    payload = {
+        "freqs": np.asarray(freqs_all, dtype=float),
+        "a_inc": a_inc.astype(np.complex128),
+        "b_out": b_out.astype(np.complex128),
+        "gamma": np.asarray(result.gamma).astype(np.complex128),
+        "beta_coax_analytic": np.asarray(beta_coax_analytic, dtype=float),
+        "beta_msl_analytic": np.asarray(beta_msl_analytic, dtype=float),
+    }
+    d = {k: v for k, v in payload.items()}
+    d["coax_ladder_v"] = None
+    d["msl_ladder_v"] = None
+
+    lv = getattr(result, "ladder_voltages", None)
+    ladder_keys_missing = []
+    if lv:
+        wanted = ("coax_ladder_v", "coax_ladder_z_m", "coax_ladder_k", "msl_ladder_v",
+                  "msl_ladder_x_m", "msl_ladder_i", "ref_coax_m", "ref_msl_m",
+                  "z0_ref", "drive_order")
+        for key in wanted:
+            if key not in lv:
+                ladder_keys_missing.append(key)
+                continue
+            val = lv[key]
+            arr = np.asarray(val)
+            if arr.dtype.kind in "USO":
+                arr = np.asarray([str(x) for x in np.atleast_1d(val)])
+            payload[key] = arr
+            d[key] = arr if arr.ndim else arr.item()
+        if ladder_keys_missing:
+            print(f"  NOTE: result.ladder_voltages is missing keys {ladder_keys_missing} "
+                  f"(present: {sorted(lv)}) -- dumped what is there")
+
+    flux = getattr(result, "flux_monitors", None) or {}
+    flux_by_drive = {}
+    for drive_key, spectra in flux.items():
+        for name, arr in spectra.items():
+            a = np.asarray(arr, dtype=float)
+            payload[f"flux__{drive_key}__{name}"] = a
+            flux_by_drive.setdefault(drive_key, {})[name] = a
+    d["flux_by_drive"] = flux_by_drive or None
+
+    npz_path = out_path.with_suffix(".ladders.npz")
+    np.savez(npz_path, **payload)
+    print("\n=== #589 witness dump ===")
+    print(f"  ladders requested      : {ladders_requested}  "
+          f"(method keyword available: {ladders_available})")
+    print(f"  ladder arrays in dump  : "
+          f"{sorted(k for k in payload if k.startswith(('coax_ladder', 'msl_ladder')))}")
+    print(f"  flux requested         : {flux_requested}  "
+          f"drives: {sorted(flux_by_drive)}  faces: "
+          f"{sorted(next(iter(flux_by_drive.values()))) if flux_by_drive else []}")
+    print(f"  npz written to         : {npz_path}")
+
+    witnesses = W.compute_witnesses(d)
+    for line in W.format_tables(witnesses):
+        print(line)
+
+    wit_path = out_path.with_suffix(".witnesses.json")
+    wit_path.write_text(json.dumps(W._jsonable(witnesses), indent=2))
+    print(f"  witness JSON written to: {wit_path}")
+
+    ext["ladders_npz"] = str(npz_path)
+    ext["witnesses_json"] = str(wit_path)
+    ext["w4_flux"] = W._jsonable(witnesses.get("W4_flux"))
+    ext["w4_flux_rules"] = W._jsonable(witnesses.get("W4_rules"))
+    ext["witness_note"] = (
+        "W1-W4 + the label-swap counterfactual are REPORT-ONLY and computed by "
+        "scripts/diagnostics/coax_msl_ladder_witnesses.py from the dumped raw "
+        "ladders/flux; the counterfactual is a PREDICTION of H1 (= inv(S_code)), "
+        "not a measurement, and no legacy key is derived from any of it."
+    )
+    return witnesses
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -634,6 +749,19 @@ def main() -> int:
         "--freqs", type=str, default=None,
         help="optional dense band in GHz: comma list '5,5.5,6' or 'start:stop:n'; "
              "the committed 6/8/10 GHz bins are always retained",
+    )
+    ap.add_argument(
+        "--dump-ladders", action="store_true",
+        help="ask the method for the raw per-probe ladder voltages "
+             "(return_ladder_voltages=True) and write them to <output>.ladders.npz; "
+             "the keyword is detected with inspect.signature, and when it is not on "
+             "this checkout the solve runs UNCHANGED and W1-W3 report SKIPPED",
+    )
+    ap.add_argument(
+        "--flux", action="store_true",
+        help="pass the attempt-3 W4 flux box (six faces of one lossless control "
+             "volume + the full-plane +x comparator) as extra_flux_monitors; "
+             "attempt-3 fixture only",
     )
     args = ap.parse_args()
 
@@ -709,6 +837,35 @@ def main() -> int:
     print(f"skip_preflight: {SKIP_PREFLIGHT_INERT_NOTE}")
 
     sim = build()
+
+    # -- #589 witness half: both opt-ins default OFF (legacy keys unchanged) --
+    ladders_available = None
+    if args.dump_ladders:
+        import inspect
+        try:
+            params = inspect.signature(type(sim).compute_coax_msl_transition).parameters
+            ladders_available = "return_ladder_voltages" in params
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            ladders_available = False
+            print(f"--dump-ladders: inspect.signature failed ({exc}); assuming absent")
+        if ladders_available:
+            kwargs["return_ladder_voltages"] = True
+            print("--dump-ladders: compute_coax_msl_transition accepts "
+                  "return_ladder_voltages -- raw ladders will be dumped")
+        else:
+            print("--dump-ladders: this checkout's compute_coax_msl_transition has NO "
+                  "return_ladder_voltages keyword (the #589 production half is not "
+                  "merged here) -- the solve runs UNCHANGED and W1-W3 will report "
+                  "SKIPPED; W4 and the label-swap counterfactual are unaffected")
+    if args.flux:
+        if args.fixture != "attempt3":
+            print(f"FATAL: --flux is attempt-3 only (the plane coordinates are that "
+                  f"fixture's grid); got --fixture {args.fixture}")
+            return 2
+        kwargs["extra_flux_monitors"] = t._attempt3_scratch_flux_entries()
+        print(f"--flux: {len(kwargs['extra_flux_monitors'])} extra flux monitors "
+              f"({', '.join(m.name for m in kwargs['extra_flux_monitors'])}) -- "
+              "non-perturbation witnessed by test_extra_flux_monitors_do_not_perturb_s")
 
     preflight_lines = None
     fidelity_lines = None
@@ -1055,6 +1212,17 @@ def main() -> int:
         f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{_git_sha()[:12]}.json"
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.dump_ladders or args.flux:
+        beta_coax_analytic = (2.0 * np.pi * np.asarray(result.freqs)
+                              * np.sqrt(t.EPS_COAX) / c0)
+        _witness_dump(
+            result=result, ext=ext, out_path=out_path, freqs_all=np.asarray(result.freqs),
+            beta_coax_analytic=beta_coax_analytic, beta_msl_analytic=beta_analytic_all,
+            ladders_requested=bool(args.dump_ladders),
+            ladders_available=ladders_available, flux_requested=bool(args.flux),
+        )
+
     out_path.write_text(json.dumps(out, indent=2))
     print(f"\nresult JSON written to: {out_path}")
 
