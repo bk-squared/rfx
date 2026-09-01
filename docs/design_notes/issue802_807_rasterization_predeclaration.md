@@ -217,5 +217,37 @@ sphere_offlattice=1506, wire_offlattice=699.
 
 ## Post-fix falsifier results
 
-(filled in after the implementation lands; the fix is falsified if this
-section does not match the PASS conditions above)
+Measured immediately after the implementation commit, same commands, same
+interpreter (`rfx.__file__` = worktree, jax 0.6.2).
+
+**F1 — PASS.** Both flags:
+```
+coords dtype=float64  cells=12750
+x occupied 0..124: lo node 0 coord=0.0 IN; hi node 125 coord=0.0125 OUT
+y occupied 0..33:  lo node 0 coord=0.0 IN; hi node 34 coord=0.0034000000000000002 OUT
+z occupied 25..27: lo node 25 coord=0.0025 IN; hi node 28 coord=0.0028 OUT
+```
+Identical output at x64=0 and x64=1; every face per the documented
+convention.
+
+**F2 — PASS.** Both flags, all three sheet normals:
+planes U=[8] NU=[8], 400 cells per plane (20x20 nodes for the half-open
+[0.5, 2.5) mm transverse span), masks bitwise equal, node-coordinate
+arrays bitwise equal. Evidence: scratchpad f2_result_x640.json /
+f2_result_x641.json. Note the plane moved DOWN one ([9] -> [8]) and the
+transverse span gained its convention-owed node (19 -> 20): both are the
+f32 artifact leaving, as pre-enumerated (WILL-MOVE items 3, 5).
+
+**F4 — PASS.** `tests/test_nonuniform_forward_grad.py` +
+`tests/test_nonuniform_gradient.py`: 15 passed. New
+`tests/test_rasterization_coordinate_exactness.py` (includes the traced
+jit/grad guard and the shape-class census): 57 passed.
+
+**F5 — PASS.** All five off-lattice shapes bit-identical to the pre-fix
+capture: box_midpoint_volume 1444, box_sheet_on_node 361,
+cylinder_offlattice 1071, sphere_offlattice 1506, wire_offlattice 699
+cells, `array_equal` True each. Evidence: scratchpad
+f5_compare_result.json.
+
+**F3 — tracked through the re-pin commits that follow; any moved committed
+value not on the list above is a STOP.**
