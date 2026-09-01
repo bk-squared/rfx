@@ -3491,13 +3491,13 @@
                 11906.25
               ],
               "face_residual_um": [
-                793.75,
-                793.75
+                8.67361737988e-12,
+                8.67361737988e-12
               ],
               "realized_extent_um": 793.75,
               "realized_um": [
-                11906.25,
-                12700.0
+                11112.5,
+                11906.25
               ],
               "sub_cell": true
             }
@@ -3514,12 +3514,6 @@
               "detail": "PLACEMENT off by 675.0 um (1.35% of the declared 50000.0 um extent); SIZE 50006.3 um (+6.3 um, +0.01%)",
               "kind": "off-lattice-face",
               "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            },
-            {
-              "axis": "z",
-              "detail": "declared extent 793.7 um is smaller than the local cell 793.8 um; the body lands 793.7 um (1.00 cell) from its declared face. Placement quantizes to the lattice \u2014 a percentage of the declared extent is not a meaningful measure here",
-              "kind": "sub-cell-placement",
-              "remedy": "place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing"
             },
             {
               "axis": "z",
@@ -3580,13 +3574,13 @@
                 7937.5
               ],
               "face_residual_um": [
-                793.75,
-                793.75
+                5.20417042793e-12,
+                6.93889390391e-12
               ],
               "realized_extent_um": 793.75,
               "realized_um": [
-                7937.5,
-                8731.25
+                7143.75,
+                7937.5
               ],
               "sub_cell": false
             }
@@ -3601,12 +3595,6 @@
             {
               "axis": "y",
               "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65881.2 um (-118.8 um, -0.18%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            },
-            {
-              "axis": "z",
-              "detail": "PLACEMENT off by 793.7 um (100.00% of the declared 793.8 um extent); SIZE preserved",
               "kind": "off-lattice-face",
               "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
             }
@@ -3664,22 +3652,17 @@
               ],
               "face_residual_um": [
                 6.93889390391e-12,
-                793.75
+                8.67361737988e-12
               ],
-              "realized_extent_um": 3968.75,
+              "realized_extent_um": 3175.0,
               "realized_um": [
                 7937.5,
-                11906.25
+                11112.5
               ],
               "sub_cell": false
             }
           },
           "findings": [
-            {
-              "detail": "20.0% of this dielectric's cells are also PEC \u2014 the conductor wins, so that fraction of the declared material is not solved",
-              "kind": "claimed-by-conductor",
-              "remedy": "check the overlap against the intended stack; shrink whichever body is over-declared"
-            },
             {
               "axis": "x",
               "detail": "PLACEMENT off by 731.2 um (1.31% of the declared 56000.0 um extent); SIZE 55562.5 um (-437.5 um, -0.78%)",
@@ -3689,12 +3672,6 @@
             {
               "axis": "y",
               "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65881.2 um (-118.8 um, -0.18%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            },
-            {
-              "axis": "z",
-              "detail": "PLACEMENT off by 793.7 um (25.00% of the declared 3175.0 um extent); SIZE 3968.7 um (+793.7 um, +25.00%)",
               "kind": "off-lattice-face",
               "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
             }
@@ -3707,7 +3684,7 @@
             "name": "sub",
             "sigma": 0.000293739614638
           },
-          "n_cells": 29050,
+          "n_cells": 23240,
           "realization": null
         }
       },
@@ -3729,14 +3706,14 @@
         {
           "code": "sheet_cavity_electrical_thickness",
           "loc": null,
-          "message": "1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=18)/geometry[2](k=23) at in-plane column (53,60): sum(d/eps) mesh 1.804mm vs physical 1.443mm (+25.0%); sum(d*sqrt(eps)) mesh 5.887mm vs physical 4.709mm (+25.0%); node-to-node 3.969mm vs face-to-face 3.175mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column \u2014 the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade \u2014 which face the plane sits on \u2014 not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there \u2014 extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only \u2014 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.",
+          "message": "1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=17)/geometry[2](k=22) at in-plane column (53,60): sum(d/eps) mesh 2.237mm vs physical 1.443mm (+55.0%); sum(d*sqrt(eps)) mesh 5.503mm vs physical 4.709mm (+16.9%); node-to-node 3.969mm vs face-to-face 3.175mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max); of the sum(d/eps) mesh total, 793.8\u00b5m is geometry[0]'s OWN cell (793.8\u00b5m at eps_r 1.000) \u2014 that sheet fills one cell, and rfx zeroes only TANGENTIAL E on a one-cell PEC sheet, so the cell's normal-E edge stays live and sits INSIDE the cavity. OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column \u2014 the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade \u2014 which face the plane sits on \u2014 not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there \u2014 extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only \u2014 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.",
           "severity": "warning",
           "source": "_validate_cfg_sheet_cavity_thickness"
         },
         {
           "code": "wire_port_end_gap_to_conductor",
           "loc": null,
-          "message": "Wire port at (0.027000000000000003, 0.041, 0.00873125) (extent 0.0015875, component ez): its -z-side end cell (42, 60, 19) is live (vacuum/dielectric), but the cell immediately beyond it ((42, 60, 18)) is PEC ['pec'] in the assembled geometry. The port terminates in vacuum/dielectric one cell (gap = 1 cell = 0.00079375 m) short of a rasterized conductor, so the feed never galvanically reaches it and coupling is capacitive only (measured signature: |S21| rising with frequency; issue #556, the #488-lane D5 finding). Remedy: extend the port extent by one cell so its end lands on the conductor's rasterized node, or refine dx so the conductor interface aligns with a grid node (e.g. dx = h/N for an interface at height h).",
+          "message": "Wire port at (0.027000000000000003, 0.041, 0.00873125) (extent 0.0015875, component ez): its +z-side end cell (42, 60, 21) is live (vacuum/dielectric), but the cell immediately beyond it ((42, 60, 22)) is PEC ['pec'] in the assembled geometry. The port terminates in vacuum/dielectric one cell (gap = 1 cell = 0.00079375 m) short of a rasterized conductor, so the feed never galvanically reaches it and coupling is capacitive only (measured signature: |S21| rising with frequency; issue #556, the #488-lane D5 finding). Remedy: extend the port extent by one cell so its end lands on the conductor's rasterized node, or refine dx so the conductor interface aligns with a grid node (e.g. dx = h/N for an interface at height h).",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }
