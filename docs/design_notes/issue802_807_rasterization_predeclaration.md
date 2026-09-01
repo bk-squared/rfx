@@ -279,6 +279,14 @@ their assertions; F1/F2/F5 and the 57-test contract suite stay green;
 the already-committed F2 values (plane [8], 400 cells) are unchanged
 because [0.4, 0.5) mm selects node 8 uniquely.
 
+Tie-rule verification (post-implementation, same session): the two
+fidelity-report tests, cv15's wall-planes test, the two-plane slab pins,
+the sheet-node permittivity suite and the 57-test contract suite all
+green with no assertion touched (134 passed in one run); F1/F2/F5
+re-verified bitwise-identical results; a traced one-cell sheet still
+jits and differentiates (scratchpad traced_thin_smoke.py). The
+authoritative waveguide-port battery: 9 passed.
+
 **Knife-edge residual (measured, not fixable by any tie rule):** cv15's
 ``z_sub_hi = AIR_BELOW + H_SUB`` lands one f64 ulp ABOVE the node
 ``14*DX`` (0.0111125 vs 0.011112499999999999) — a sum-vs-product route
@@ -290,3 +298,64 @@ spell the intended-on-lattice corner in lattice arithmetic
 That is a registration fix consistent with the script's stated intent,
 not a geometry change; the committed cv15 results assume walls at the
 declared planes and keep their validity.
+
+## F3 closure — final verification sweeps (post all re-pins)
+
+- Broad targeted sweep `pytest tests -k "raster or geometry or mask or
+  fidelity or realized"`: 520 passed, 1 skipped (one apparent failure was
+  a race with this session's own snapshot re-capture rewriting
+  `tests/data/example_fidelity_snapshot.json` mid-run; the full
+  `tests/test_example_fidelity_contract.py` re-run against the committed
+  state: 154 passed).
+- WILL-MOVE candidate suites (msl sheet threading golden, two-plane
+  slab, refplane port waves, preflight campaign statics, lumped two-port
+  battery, msl phase referee header, conductor-mask accessor, msl port
+  preflight, mesh import, non-box thin conductor, Sheen LPF and MSL
+  notch referee gates, example fidelity contract): 374 passed.
+- Waveguide port validation battery (authoritative port gates): 9 passed.
+- New contract suite: 57 passed. NU AD tests: 15 passed. Ruff over
+  `rfx/ tests/` + touched validation files: clean.
+- Every committed value that moved is on the pre-enumerated WILL-MOVE
+  list and carried its own re-pin commit; the surfaces that moved
+  OFF-list in the first pass (fidelity-report tie fixtures, cv15 wall
+  planes, msl z0 anchor, coax junction chain, stage1 bit-identity) were
+  investigated per the F3 protocol, root-caused to the thin-branch tie
+  sub-defect and the f64 route-mismatch class, fixed by rule (not by
+  fixture), and are green or re-pinned with provenance above. No
+  tolerance was loosened anywhere.
+
+## Residual ledger — what this change does NOT close (next lanes)
+
+- **cv11 quoted realized numbers** are an as-solved historical record
+  (its slab now realizes x-nodes 95..105 under both flags; the quoted
+  numbers were measured on the pre-fix 95..104 realization at x64=0).
+  The file's precision paragraph says so; the next regeneration
+  re-measures, never splices eras.
+- **MSL z0 anchor artifact**: refreshing it requires RE-SOLVING the
+  frozen bias-floor sweep on the exact-coordinate realization (the
+  aligned class's trace width moved by one cell in three of four rows) —
+  a re-measurement lane, pre-declared here so the next regeneration is
+  not a silent re-pin.
+- **Slow / opt-in lanes not run in this session** (enumerated, may move
+  and then need their own root-caused re-pins with this note as
+  provenance): `tests/test_patch_canonical_farfield_e4.py` slow FDTD
+  gates (cv05 patch is node-aligned at dx=2 mm),
+  `tests/test_v173a_physics_equivalence_slow.py` (its own rebump
+  protocol), GPU/VESSL envelope regeneration lanes (broad-E5 fixtures
+  with cv11-class PEC shorts).
+- **Frozen-replay evidence fixtures** (cv05/cv06b/cv07 results, Mie RCS
+  sphere fixtures, Palace/openEMS referee fixtures): CI-green now,
+  become stale at their next regeneration — regenerate against the
+  exact-coordinate realization and attribute movements to this change.
+- **#722**: part of its "half-open rounds up" catalogue was f32
+  coordinate error, not the convention — note on the issue when closing
+  #802, do not rewrite its history.
+- **#806** (preflight half-cell-margin advisory): untouched here,
+  cross-referenced only; its premise should be re-checked now that
+  preflight and production share exact node values.
+- **#589**: the f64 replicate is unblocked (realized geometry no longer
+  depends on the flag; the coax junction byte-identity chain that caught
+  #802 is x64-invariant again).
+- **rfx-known-issues ledger**: gitignored and local to the primary
+  checkout — this worktree cannot update it; the merging session must
+  move #802/#807 to resolved there with this note as the artifact.
