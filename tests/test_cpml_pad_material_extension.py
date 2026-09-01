@@ -297,9 +297,17 @@ def test_pole_extension_stability_lock():
     instantly on any naive re-addition in the fast lane.
 
     What this 8,000-step test still guards, cheaply: the shipped pad fill
-    (statics extended, poles not) decaying on a resonant edge-touching
-    interior — a ratio >= 1 here means the static hi-face fallback
-    (#627a/#655) has become unsafe for a resonant interior material.
+    decaying on a resonant edge-touching interior — a ratio >= 1 here
+    means the shipped extension has become unsafe for a resonant
+    interior material.
+
+    RE-BASELINE (2026-09-01, #808): the shipped rule now refuses the
+    hi-face statics promotion for pole-carrying columns, so this
+    fixture's x/y hi pads went from eps 4.0 to background and the
+    measured envelope moved again: last/mid 0.4281 (pre-#655) -> 0.4499
+    (b29f9de) -> 0.3979 (this change, x-hi pad eps=1.00 witnessed in the
+    same run). Still decaying, as the #808 pre-declaration predicted —
+    the gate only removes material from pads.
     """
     DX = 1e-3
     NA, NB, NZ = 45, 39, 12
@@ -371,11 +379,11 @@ def test_pole_extension_stability_lock():
         f"last-decile/mid-decile ratio {ratio:.4g} ({pad_witness}) -- the "
         f"shipped (statics-only) pad fill should have its last decile "
         f"below its mid-run decile on this high-Q edge-touching Lorentz "
-        f"fixture (measured S-ONLY 0.4281 at this step count in the "
-        f"original #636 discriminator; 0.2145 at 20,000 steps re-measured "
-        f"2026-08-29 on b29f9de). A ratio at or above 1 means the static "
-        f"hi-face fallback (#627a/#655) has become unsafe for a resonant "
-        f"interior material -- see issue #636 and "
+        f"fixture (measured 0.3979 at this step count on the #808 change, "
+        f"2026-09-01; 0.4281 in the original #636 discriminator; 0.1204 "
+        f"at 20,000 steps on the #808 change). A ratio at or above 1 "
+        f"means the shipped pad fill has become unsafe for a resonant "
+        f"interior material -- see issues #636/#808 and "
         f"test_pole_extension_divergence_repro_636 before changing this "
         f"gate. deciles={deciles}")
 
@@ -445,17 +453,24 @@ def test_pole_extension_divergence_repro_636():
     while the shipped statics-only pad fill decays — same fixture, same
     harness, only the pole-pad contents differ.
 
-    Re-baselined measurements (2026-08-29, b29f9de, this exact fixture,
-    20,000 steps, last/mid-decile of |ez|):
+    Re-baselined measurements (2026-09-01, on the #808 change, this exact
+    fixture, 20,000 steps, last/mid-decile of |ez|):
 
-      shipped (poles NOT extended)      : 0.2145   decays
-      poles extended into the pad       : 5.032    grows (finite, no NaN)
+      shipped (poles NOT extended)      : 0.1204   decays
+      poles + statics extended into pad : 5.032    grows (finite, no NaN)
 
-    The original #627b-era margins (0.1557 vs 649 at 20,000 steps; 0.4281
-    vs 2.546 at 8,000) are historical: since c9c1864 (#655) the onset sits
-    past 8,000 steps, which is why this lock runs 20,000 steps in the slow
-    lane and why ``test_pole_extension_stability_lock`` (8,000 steps) no
-    longer separates the variants. Root-cause envelope and the measured
+    The shipped number moved 0.2145 (b29f9de) -> 0.1204 because #808
+    gates the hi-face statics promotion for pole-carrying columns (this
+    fixture's hi pads are background now); the extended variant is
+    UNCHANGED at 5.032 because ``_PoleExtendedSim`` re-extends the
+    statics ungated, reproducing the documented b29f9de "statics+poles"
+    state value-for-value — which is itself the witness that the harness
+    still measures the same factorial row. The original #627b-era margins
+    (0.1557 vs 649 at 20,000 steps; 0.4281 vs 2.546 at 8,000) are
+    historical: since c9c1864 (#655) the onset sits past 8,000 steps,
+    which is why this lock runs 20,000 steps in the slow lane and why
+    ``test_pole_extension_stability_lock`` (8,000 steps) no longer
+    separates the variants. Root-cause envelope and the measured
     factorial live in docs/design_notes/i636_cpml_pole_pad_predeclaration.md
     and validation/research/cpml_pole_pad/.
 
@@ -517,7 +532,9 @@ def test_pole_extension_divergence_repro_636():
 
     assert ratio_shipped < 1.0, (
         f"shipped variant no longer decays at 20,000 steps: last/mid = "
-        f"{ratio_shipped:.4g} (measured 0.2145 on b29f9de); deciles={dec_s}")
+        f"{ratio_shipped:.4g} (measured 0.1204 on the #808 change, "
+        f"2026-09-01; 0.2145 on b29f9de before the #808 gate); "
+        f"deciles={dec_s}")
     assert ratio_extended > 1.0, (
         f"pole-extended variant no longer grows at 20,000 steps: last/mid "
         f"= {ratio_extended:.4g} (measured 5.032 on b29f9de). If a fix for "

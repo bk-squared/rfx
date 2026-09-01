@@ -150,3 +150,47 @@ R2 ledger for this session: 0 verification arms run at the time of this
 commit; the fix gets ONE pre-declared arm (F1-F4 above). The two discriminator
 arms already spent belong to the discriminator session and are cited, not
 repeated.
+
+## Results (2026-09-01, appended after the pre-declared arm ran; CPU, base 635ab2e3 + this change)
+
+Every falsifier came back on the pass side; none fired.
+
+- **F1 PASS, digit-for-digit**: printed by the committed test (275.3 s):
+  `#580 recovery: de 6.00->3.330 (true 3.0), tau 1.00e-10->5.29e-11
+  (true 5.0e-11), loss 1.436e-04->8.399e-06` — identical to the
+  2026-08-07 pin and to the discriminator's legacy arm. Inside the
+  declared bands [3.30, 3.36] / [5.19e-11, 5.39e-11].
+- **F2 PASS, bit-identical**: harness JSON
+  `{"sha": "3428981502de", "f_res_hz": 1994994938.1663296,
+  "s11_dip_db": -68.32136968566955, "s11_dip_f_hz": 3321838252.746537}` —
+  f_res equals the declared baseline exactly.
+- **F3 PASS**: enumerated movers only. 8k canary last/mid 0.4499-era
+  baseline -> 0.3979 measured (still decays; witness `x-hi pad eps=1.00`,
+  0 pole cells in pads); 20k repro shipped 0.2145 -> 0.1204 (decays),
+  extended variant 5.032 — value-identical to the documented b29f9de
+  number, witnessing that the harness statics re-extension reproduces the
+  same factorial row. Green with no gate edits: pad file 9+1 (fast+slow),
+  face-notch 9 (+2 pre-existing distributed skips), vmap byte-identity 44,
+  NU end-to-end reduction 6, preflight family (all 11 files) 124, advisory
+  file 8 (3 inverted by design), emission contract 3 (frozen 87/58
+  untouched), full material-fit file (see run log). Ruff clean.
+- **F4 PASS both legs**: (a) with only the four pad-rule sources reverted
+  to the pre-fix state, both new guard tests red with `4.0 == 1.0`
+  (the chimera promotion back in the hi pad); restored cleanly.
+  (b) `sim.preflight()` on the exact #808 factory fixture emits
+  `dispersive_pole_at_absorber_face` (severity warning,
+  loc `geometry[#0 y-lo+y-hi+z-lo+z-hi Debye tau=5e-11s]`), stating the
+  lo-pad statics-without-pole and hi-face no-promotion facts. The other
+  six advisories on this fixture (3x mesh_resolution 14.1 cells/lambda_eff,
+  3x absorber_proximity for the probes/port) are unchanged from main.
+  Preflight-context note: the committed fit test itself surfaces no
+  preflight output — `differentiable_material_fit` calls the factory
+  sim's `_assemble_materials` directly (its module never routes through
+  `run()`'s auto-preflight) — so the advisory quote comes from
+  `sim.preflight()` on the identical fixture.
+
+Stability pre-declaration held: both stability asserts stayed green; the
+gate only removed material from pads.
+
+Declared gap (unchanged): the pinned VESSL GPU suite — #808's failing
+lane — is the orchestrator's job post-review.
