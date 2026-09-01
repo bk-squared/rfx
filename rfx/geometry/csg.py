@@ -102,24 +102,26 @@ class Box:
        load-bearing one — see the facing-pair discussion below, where it
        cancels in one case and not the other.
 
-    2. **A corner exactly on a node plane is a knife edge.** What you can
-       observe: *the same drawing recipe, on the same grid, gives a
-       one-cell-too-wide opening at one aperture and a two-cell-too-wide
-       opening at another* — WR-90 fins drawn to the nominal opening give
-       ``d + dx`` at ``d`` = 7.620 and 18.288 mm but ``d + 2*dx`` at
-       12.192 mm, at both a/30 and a/60. Nothing about the nominal
-       dimensions predicts which.
+    2. **A corner exactly on a node plane is a knife edge — now a
+       float64-route one.** Since the exact-coordinate fix (#802), node
+       coordinates are host float64 ``(i - pad) * dx`` and comparisons run
+       in float64, independent of ``jax_enable_x64``. A corner whose f64
+       value equals the node's bitwise sits on the convention's exact
+       boundary and behaves predictably (``lo`` keeps it, ``hi`` drops it).
+       The residual hazard is the ROUTE: a corner computed as ``a - n*dx``
+       or ``a + b`` can land one f64 ulp off the algebraically identical
+       ``m*dx`` node value and flip a whole node plane. Spell
+       intended-on-lattice corners in lattice arithmetic (``m*dx``), or
+       use the midpoint recipe below, which is immune to both.
 
-       Why: masks are evaluated in the default float32 precision, and the
-       node coordinates are themselves double-rounded.
-       :func:`_grid_coords` computes ``f32(f32(i) * f32(dx))`` while a
-       caller's corner is computed in float64 and cast once, so
-       **algebraically equal values land on opposite sides of the
-       comparison**. On a real WR-90 grid an f64 reconstruction of the nodes
-       disagrees with production on 30 of 31 nodes by up to 1.1e-9 m (1e-6
-       of a cell), which is enough to move the occupied-node count by a
-       whole cell. A corner computed as ``a - n*dx`` may thus rasterize
-       differently from the algebraically identical ``m*dx``.
+       Historical (pre-#802, kept because committed values were pinned to
+       it): masks compared float32 coordinates, themselves double-rounded
+       ``f32(f32(i) * f32(dx))``, so a WR-90 f64 node reconstruction
+       disagreed with production on 30 of 31 nodes by up to 1.1e-9 m and
+       the SAME drawing recipe gave ``d + dx`` at one aperture and
+       ``d + 2*dx`` at another, unpredictably. That scatter is gone:
+       drawing fins to the nominal opening now costs exactly one cell
+       (the ``hi``-face retreat), at every aperture.
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
     is zeroed, so consequence (1) is an *electrical* dimension error, not a
@@ -168,12 +170,16 @@ class Box:
     * ``d + 2*dx`` when rounding made the hi fin retreat as well. The two
       retreats cancel and the opening is **symmetric**.
 
-    Which one you get is **not predictable from the nominal dimensions**.
-    Measured on WR-90 at both a/30 and a/60: ``d`` = 7.620 and 18.288 mm
-    give ``d + dx`` (centre offset -0.5 cell), while ``d`` = 12.192 mm gives
-    ``d + 2*dx`` (centred). Over ~99k (guide, mesh, aperture) combinations
-    the split is 82% / 9% / 8% across ``d + dx`` / ``d + 2*dx`` / ``d`` at
-    even parity, shifting one cell up at odd parity (see the recipe).
+    Since #802 the nominal drawing lands on the FIRST case at every
+    aperture (measured across the WR-90 table at a/30 and a/60: excess is
+    uniformly one cell, asymmetric): the hi fin's lo corner, being an
+    exact node value, always captures its node. The second case now needs
+    an actual route mismatch (a corner one f64 ulp below its node), not a
+    rounding accident. Historical (pre-#802, float32): which case you got
+    was unpredictable — ``d`` = 12.192 mm gave ``d + 2*dx`` while 7.620
+    and 18.288 mm gave ``d + dx``, and over ~99k (guide, mesh, aperture)
+    combinations the split was 82% / 9% / 8% across ``d + dx`` /
+    ``d + 2*dx`` / ``d`` at even parity.
     Shifting each interior face half a cell the *wrong* way (toward the
     metal) retreats both faces by construction rather than by luck, giving
     ``d + 2*dx`` deterministically at every aperture — that is the drawing
@@ -232,8 +238,15 @@ class Box:
     docstring exists to prevent.
 
     A box thinner than one local cell takes a separate **thin-sheet**
-    branch (single nearest-centre node); the notes above apply to the
-    volume branch only.
+    branch (a single node); the notes above apply to the volume branch
+    only. The thin branch's node is chosen by the volume rule whenever
+    that rule is decisive: a thin box whose half-open ``[lo, hi)`` window
+    selects exactly one node realizes on THAT node — so a face-registered
+    one-cell box lands on its ``lo``-face node deterministically, not on
+    whichever side of the exact half-cell tie the last f64 ulp of
+    ``(lo+hi)*0.5`` favours (#802 follow-up). Only a window with zero
+    nodes (a sub-cell box straddling none) or several falls back to the
+    nearest-node rule.
     """
 
     corner_lo: tuple[float, float, float]

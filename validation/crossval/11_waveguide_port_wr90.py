@@ -290,14 +290,20 @@ envelope, not here.
   deg at dx=1mm), is carried as part of the 60 deg slab-phase envelope
   rather than resolved by a mesh or quote-realized rule.
 
-  PRECISION REQUIREMENT for any future re-measurement of this file's
-  geometry or fidelity: run with JAX_ENABLE_X64 unset or "0", matching
-  this module's own ``os.environ.setdefault("JAX_ENABLE_X64", "0")``
-  below. float32 knife-edge rasterization (rfx/geometry/csg.py:
-  92-111) moves occupied-node counts by a whole cell vs JAX_ENABLE_X64=1
-  (confirmed: dx=1mm slab occupies x-nodes 95..104, n=10, at x64=0 vs
-  95..105, n=11, at x64=1) — every number quoted above was measured at
-  x64=0 via ``sim._build_waveguide_port_config`` / ``fidelity_report()``.
+  PRECISION NOTE, updated at the exact-coordinate fix (#802): realized
+  geometry is now flag-independent — node coordinates are exact host
+  float64, and the old float32 knife-edge rasterization that moved
+  occupied-node counts by a whole cell between precisions is gone.
+  Re-measured post-fix: the dx=1mm slab occupies x-nodes 95..105, n=11,
+  under BOTH JAX_ENABLE_X64 settings (the pre-fix x64=1 realization; at
+  x64=0 it used to read 95..104, n=10, which is the realization every
+  number quoted above was measured on, via
+  ``sim._build_waveguide_port_config`` / ``fidelity_report()``). The
+  ``os.environ.setdefault("JAX_ENABLE_X64", "0")`` below stays for the
+  SOLVER (complex64 scan carry), not for geometry. Quoted realized
+  numbers above are therefore an as-solved historical record: the next
+  regeneration re-measures them on the exact-coordinate realization and
+  must not silently splice the two eras.
 
   CPML_LAYERS / _LAMBDA_G_LOW_M (below) are UNCHANGED by this edit: DX_M
   stays 1 mm, so the derivation is not re-run. For the record: re-deriving

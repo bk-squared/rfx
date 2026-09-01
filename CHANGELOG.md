@@ -6,7 +6,37 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
-No changes yet.
+### Changed — realized geometry at node-aligned faces no longer depends on JAX_ENABLE_X64 or the solver lane (#802, #807)
+
+Node coordinates for rasterization are now exact host float64, built by
+ONE formula shared by the uniform lane, the non-uniform lane and the
+viewer (previously three constructions that each rounded differently in
+float32). Consequences for default-precision (float32) runs:
+
+- A `Box` face declared on a node multiple now realizes exactly per the
+  documented half-open `[lo, hi)` convention — the lo-face node is kept,
+  the hi-face node is dropped. Under the old float32 coordinates the
+  comparison flipped per face by rounding accident, so the same
+  declaration could gain or lose whole node planes vs `JAX_ENABLE_X64=1`
+  (repro: a node-aligned box on a 100 µm grid realized 13230 cells at
+  x64=0 vs 12750 at x64=1; now 12750 under both).
+- A one-cell sheet realizes on ONE plane, the SAME plane, in the uniform
+  and non-uniform lanes (uniform-valued profiles rasterize bitwise
+  identically to the uniform grid by construction). At the exact
+  half-cell tie of a face-registered one-cell box, the realized plane is
+  the lo-face node — the node the volume rule itself keeps — instead of
+  whichever side the last floating-point ulp favoured.
+- Residual (documented, unchanged in kind): a corner INTENDED on-lattice
+  but computed through a different f64 route (`a + b` or `a - n*dx`
+  instead of `m*dx`) can sit one f64 ulp off the node and flip a plane.
+  Spell such corners in lattice arithmetic or use the half-cell recipe
+  (`Box` docstring).
+- Traced (mesh-as-design-variable) coordinate paths are unchanged and
+  stay fully JAX-traceable.
+
+Golden/snapshot values pinned to the old float32 realizations were
+re-captured as enumerated re-pins (see the per-file commits). The #589
+f64 replicate is unblocked by this change.
 
 ## [1.7.0] - 2026-09-01
 
