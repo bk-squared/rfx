@@ -462,3 +462,11 @@ committed reproducibility census of the measured pair ratio across settling
 length and mesh showing scatter below
 `…::declared_anchored_band.min_half_width_admitting_correct_build`. Absent both,
 #740's detector is and remains `assert_realized_stack` (PR #768).
+
+**Dangling pointer noted.** §6.5 quotes "`mode_id_ok: true` on the live
+reproduction". That field was written by the gate withdrawn in (2) and no
+longer exists in cv15. The fact it recorded is unchanged and is now asserted
+directly on the committed spectra by
+`test_cv15_740_defect_is_a_common_mode_dilation`
+(`assert ident_bad.ok` — the spectral identification passes on the #740
+realization). §6.5 is left as written; this is the correction.
