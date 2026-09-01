@@ -1,0 +1,219 @@
+# Estimator resolution re-gate — cv06b and cv07 (issue #812, mechanism P3)
+
+Status: **PRE-DECLARATION**. Every numeric window below is fixed by this
+commit, before any measurement that judges it. Append-only: later sections
+record measurements; a correction states the old value and why it was wrong.
+
+Lane: `agent/regate-estimator-resolution`. Scope: **instrument only.** No
+physics verdict of either case is challenged, moved, or re-pinned here.
+
+---
+
+## 1. The finding, re-derived rather than quoted
+
+The #812 audit's P3 paragraph says both cases take `argmin` on a grid coarser
+than the tolerance they declare. Re-derived on this checkout:
+
+* **cv06b.** `validation/crossval/06b_msl_notch_filter_uniform.py` calls
+  `sim.compute_msl_s_matrix(n_freqs=100, ...)`. That entry point sweeps
+  `jnp.linspace(freq_max / 10, freq_max, n_freqs)` (`rfx/api/_sparams.py`,
+  the `freqs_arr` assignment in `compute_msl_s_matrix`), i.e. 0.7 - 7.0 GHz in
+  100 points = **63.6364 MHz/bin**, which is **1.754 %** at the 3.627 GHz
+  notch. The gated notch frequency is `f[argmin(|S21|_dB)]`, so the reported
+  `err_pct` is quantised to multiples of 1.754 % about the analytic anchor.
+  Confirmed against committed data: `tests/fixtures/msl_notch_e4/
+  msl_stub_notch_rfx_dx50.json` carries `freqs_ghz[0] = 0.7`,
+  `freqs_ghz[1] - freqs_ghz[0] = 0.0636364` GHz.
+
+  **CORRECTION to a number already in the repository.** The case's own
+  docstring section "THE NOTCH-FREQUENCY ROW IS BIN-LIMITED" states
+  *"`compute_msl_s_matrix(n_freqs=100)` over the 7 GHz band gives 70.7 MHz
+  bins = 1.95 % at 3.627 GHz"*. **That is wrong**: 70.7 MHz is
+  7.0 GHz / 99, i.e. it assumes the sweep starts at DC. The sweep starts at
+  `freq_max / 10`, so the bin is 6.3 GHz / 99 = **63.6364 MHz = 1.754 %**.
+  The paragraph's *conclusion* is unaffected and still holds (one bin is still
+  wider than the 1.40 % error being reported), but the width was overstated by
+  11 %. Corrected in this lane's edit to that docstring.
+
+* **cv06b depth gate.** `pass_notch_depth = s21_notch_db < -10`. For an ideal
+  shunt open stub the transmission zero is a true zero, so the *sampled*
+  minimum is set by how close a bin lands to it, not by the notch's quality.
+  With `S21 = 2 / (2 + j r tan((pi/2) f/f0))` and `r = Z0_line / Z_stub = 1`
+  (cv06b's stub and main line realise the SAME 635.0 um width — the case's own
+  `fidelity_report()` quote), the worst case is a bin half a bin off `f0`:
+  `theta = (pi/2)(1 + h/(2 f0))` with `h = 63.6364` MHz, `f0 = 3.6424` GHz
+  gives `|S21| = 2/sqrt(4 + tan^2 theta) = 0.02745` = **-31.23 dB**, i.e.
+  **21.2 dB inside the -10 dB gate**. The gate cannot fail while a notch
+  exists at all. (The audit published -30.7 dB for this quantity; the
+  derivation above is independent and lands at -31.2 dB. Same conclusion; the
+  0.5 dB difference is the choice of `f0` — bin centre 3.627 vs refined
+  3.642 GHz — and is recorded rather than reconciled away.)
+
+* **cv07.** `validation/crossval/07_sheen_lpf.py` sweeps
+  `np.linspace(F_LO, F_MAX, n_freqs)` = `linspace(0.5, 20.0, 120)` GHz =
+  **163.866 MHz/bin** = **2.081 %** at the 7.874 GHz zero, and gate C1 judges
+  `abs(got - want)/want * 100 <= COMMITTED["null_tol_pct"] = 1.0`. A
+  bin-quantised estimate against a 1.0 % window can only report 0.000 % or
+  >= 2.081 %: **the declared threshold is unexercisable**.
+
+* **cv07 blindness, reproduced.** Erasing the LOWER doublet member (fill the
+  6.399 - 7.874 GHz interval with a straight line in dB through those two
+  untouched anchor bins) leaves *every currently gated quantity bit-identical*:
+  argmin 7.8739 GHz, depth -39.20 dB, passband mean 0.9378, max column power
+  0.9995, correction footprint 0/120. All 17 gates pass on a leg missing one
+  of the two transmission zeros the case exists to characterise.
+
+---
+
+## 2. What is adopted
+
+Sub-bin **log-parabolic vertex refinement** — the method already committed at
+`scripts/diagnostics/build_sheen_lpf_palace_referee.py::_min_in_window` and
+`scripts/diagnostics/build_msl_notch_palace_referee.py::_notch` — factored into
+`validation/crossval/comparators/spectral_features.py` so the crossval cases
+and the referee producers cannot drift apart. The factored
+`refined_extremum()` reproduces the committed referee fixture's
+`referee.fdtd_doublet_ghz` for both solvers **bit-for-bit**, which is the
+integrity check that the factoring changed nothing.
+
+Alongside it, two estimators the cases previously had no equivalent of:
+
+* `band_at_level()` — the width of a stopband at a stated dB level, with both
+  edges linearly interpolated between bracketing bins (sub-bin, not a bin
+  count). This is what replaces cv06b's unfailable depth gate.
+* `level_crossing()` — a sub-bin -3 dB corner frequency. This is what makes
+  cv07's corner a gated quantity.
+
+And one instrument gate:
+
+* `half_grid_witness()` — split the sweep into its two interleaved
+  half-density sub-grids and refine the same feature on each. **The two
+  sub-grids are disjoint in frequency, so a bin-quantised estimator's two
+  answers are ALWAYS at least one full-grid bin apart** (measured: exactly
+  1.0000 bin on both committed cv07 legs). A `spread < 1 full-grid bin` test
+  is therefore *unpassable by the estimator the audit found* and passable only
+  by a genuinely sub-bin one. It is an in-run proof of the resolution claim,
+  not an assertion of it.
+
+---
+
+## 3. Pre-declared windows
+
+### cv06b
+
+**T1 — notch-frequency accuracy vs analytic: 15 % -> 4.0 % (a TIGHTENING).**
+
+The oracle `F_NOTCH_AN = c / (4 L_stub sqrt(eps_eff_HJ))` is a fringing-free,
+junction-free quarter-wave open stub. Three corrections it omits, each
+evaluated on the REALIZED board (`u = W_realized/H_SUB = 635.0/254.0 = 2.500`,
+`eps_eff = 2.882252`, `h = 254 um`, `L_stub = 12.000 mm`, `dx = 63.5 um`):
+
+| term | model | value | % of L_stub |
+|---|---|---|---|
+| open-end fringing | Hammerstad-Bekkadal `dL/h = 0.412 (e+0.3)/(e-0.258) (u+0.264)/(u+0.8)` | 106.288 um | 0.8857 % |
+| shunt-T reference plane on the stub arm | bounded by `0.5 * W_realized` | 317.50 um | 2.6458 % |
+| stub-length rasterisation | half a cell, `0.5 * dx` | 31.75 um | 0.2646 % |
+| **worst-case sum** | | | **3.7961 %** |
+
+Window **4.0 %** (round up, two significant figures). Derived from geometry
+and closed-form discontinuity models only; no measured cv06b output enters it.
+
+Passability, from prior provenance (NOT from the run this will judge): the
+committed 2026-08-27 GPU log reports 1.40 % on the bin-quantised estimator,
+and the sub-bin correction measured on the sibling committed fixture
+`tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json` is +15.12 MHz
+(+0.42 %); so the refined figure is expected in the 1.0 - 1.4 % range,
+>= 2.8x inside the window.
+
+**T2 — -10 dB stopband fractional bandwidth: `[0.80, 1.20] x 0.210274`.**
+
+For an ideal shunt open stub across a matched line,
+`S21 = 2 / (2 + j r tan(theta))`, `theta = (pi/2)(f/f0)`,
+`r = Z0_line / Z_stub`. `|S21| = -10 dB` <=> `r |tan theta| = 6` <=>
+`f/f0 = 1 -+ (2/pi) atan(r/6)`, so the fractional -10 dB bandwidth is
+`(4/pi) atan(r/6)`. cv06b's stub and main line realise the **same** 635.0 um
+width (both verified in the case's own `fidelity_report()` quote), so
+**r = 1 exactly by construction** and `BW_frac = (4/pi) atan(1/6) =
+0.210274`.
+
+Window derivation: the gate must fail on a build whose stub coupling is
+degraded by 25 % (`r <= 0.75`), for which
+`BW_frac(r)/BW_frac(1) = atan(0.125)/atan(1/6) = 0.7530`, i.e. -24.7 %.
+A **+-20 %** window fires at `r <= 0.79` and at `r >= 1.28` (an
+over-broadened, lossy notch). Unlike the depth it replaces, this quantity
+CANNOT be satisfied by a bin landing near a zero: a shallow stub narrows the
+band whatever the sampling does.
+
+Passability, from prior provenance: the committed dx=50 um sibling fixture — a
+real rfx run of the same open-stub notch on the same 63.6364 MHz grid — reads
+`BW_frac = 0.20001`, ratio **0.9512**, i.e. 4.9 % low and 4x inside the window.
+
+**T3 — half-grid resolution witness: `spread < 1.000` full-grid bin.**
+Structural (see section 2); a quantised estimator scores exactly >= 1.0000.
+Prior provenance for a correct build: dx=50 um sibling fixture 0.604 bin;
+cv07 rfx leg 0.521 bin; cv07 openEMS leg 0.119 bin.
+
+**The `s21_notch_db < -10 dB` gate is RETAINED, not removed and not widened.**
+It stays as a reported witness with its -31.23 dB blindness stated beside it.
+
+### cv07
+
+**T4 — refined transmission-zero lock: +-0.50 %,** on four quantities (rfx
+lower/upper, openEMS lower/upper), against values **already committed** in
+`tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json`
+(`referee.fdtd_doublet_ghz`): rfx 6.943990 / 7.925928 GHz, openEMS
+7.030670 / 7.994749 GHz. These are the referee producer's own committed
+output, not new pins by this lane, and this lane's factored estimator
+reproduces all four bit-for-bit.
+
+Window derivation: the smallest geometry error the dx=200 um mesh can express
+on the dimension that sets the stopband zeros — one cell on the 20.320 mm
+wide-patch transverse extent — is **0.984 %**. On the committed rfx leg's own
+grid the log-parabolic estimator reports a +1.000 % frequency-axis shift as
++0.953 % and a -1.000 % shift as -1.060 %. A **0.50 %** window therefore fires
+on a one-cell error with >= 1.9x margin. Its lower bound is the estimator's
+reproducibility on a fixed committed grid, which is exact (a deterministic
+function of a committed file).
+
+**The pre-existing 1.0 % argmin lock (gate C1) is KEPT unchanged.** Nothing is
+widened; one lock is tightened by being computed on a better estimator, and
+the old one stays as the bin-level lock it always was.
+
+**T5 — transmission-zero count in 5 - 15 GHz == 2,** for both solvers.
+A zero = a local minimum of `|S21|` with depth `<= -20 dB` and prominence
+`>= 0.5 dB` against the shallower of its flanking maxima. **-20 dB is not a
+new constant**: it is gate A4's existing threshold in this same file
+("openEMS shows a deep stopband zero", `oems_null_db <= -20.0`). 0.5 dB
+prominence is a 12 % change in `|S21|` — an order above the extraction noise
+the legs' own committed evidence bounds (rfx raw passivity excess <= 0.0145;
+openEMS column power inside the documented 1.10 envelope) — and it exists only
+to stop a dense sweep's shoulder ripple from counting.
+
+**T6 — -3 dB corner-frequency lock: +-0.25 %.**
+`fc` = the lowest frequency above 2.0 GHz at which `|S21|` falls to
+`(mean |S21| over 0.5 - 3.0 GHz) / sqrt(2)`, linearly interpolated between the
+bracketing bins.
+Window derivation: the corner of this LPF is set by the wide patch's shunt
+capacitance, `C` proportional to patch area and `fc` to `1/sqrt(LC)`, so a
+one-cell (0.984 %) transverse-dimension error moves `fc` by **0.49 %**.
+A **0.25 %** window fires on a one-cell error with 2x margin.
+
+**T7 — half-grid resolution witness on the gated upper zero: `spread < 1.000`
+full-grid bin.** Same structural derivation as T3.
+
+---
+
+## 4. Falsifiers this lane must demonstrate (criterion B)
+
+| case | defect | must fail |
+|---|---|---|
+| cv07 | lower transmission zero erased (deterministic dB-linear fill between two untouched anchor bins) | T5 (count 1 != 2) and T4 (lower zero) |
+| cv07 | -20 % corner-frequency error, isolated: monotone piecewise-linear frequency warp that moves the -3 dB corner 5.5036 -> 4.4029 GHz while leaving the passband (<= 3.0 GHz) and both transmission zeros (>= 6.399 GHz) untouched | T6 only — and T4/T5/C1/C3/D must still PASS, which is what proves the corner was an ungated quantity and now is not |
+| cv06b | one-cell stub-length error, `STUB_LEN 12.0000 -> 11.9365 mm` (one dx) — a sub-bin defect: true notch moves +0.53 %, i.e. 0.30 bin | the reported deviation must MOVE by ~0.5 % instead of staying at the bin-quantised value; T1 is an accuracy window against an oracle uncertain at ~3.8 %, so a one-cell error is made *visible*, not fatal, and this is stated rather than gated |
+| cv06b | shallow-notch build: stub width 635.0 -> 317.5 um (5 cells, on-lattice), `Z_stub` ~ 68.9 ohm, `r` ~ 0.67 | T2 (`BW_frac` ratio ~ 0.674, -32.6 %, outside +-20 % with 1.6x margin) |
+
+cv06b's two build-level falsifiers need the 5,729,080-cell dx=63.5 um solve
+this case ships (329.2 s on one RTX4090; the same mesh was abandoned
+UNFINISHED at 2h52m on a 32-core CPU pod — `validation/crossval/manifest.json`
+`cpu_runner.excluded_reason`). They are emitted as a VESSL job, not run here.
+
