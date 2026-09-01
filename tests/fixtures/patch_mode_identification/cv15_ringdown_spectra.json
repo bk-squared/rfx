@@ -1,0 +1,72 @@
+{
+  "_what": "cv15 ring-down spectra for the CORRECT (two_plane ground, the committed leg) and the issue-#740 PRE-FIX (one_plane ground) realizations, both built through cv15's PRODUCTION builder `build_rfx_sim(two_plane=...)` and extracted through its production `_harminv_f0()`.",
+  "_why": "This fixture is the EVIDENCE for the scope limit pre-declared in docs/design_notes/20260901_patch_mode_identification_predeclaration.md section 5: the #740 vacuum ground cell rescales the whole cavity spectrum by a single factor, so it is invisible to the mode-resolved identification and to the audit's proposed mode-pair RATIO band alike. It is caught by assert_realized_stack (PR #768), whose exact refusal is recorded below. Keeping the numbers committed means the claim 'the pair gate closes #740' can be refuted without a solve.",
+  "_provenance": {
+    "repo_commit": "5b6db32964590ced44f66525fac174b2da9664bd",
+    "recorded_utc": "2026-09-01T02:34:11Z",
+    "num_periods": 45.0,
+    "n_freqs": 181,
+    "platform": "CPU"
+  },
+  "two_plane_ground": {
+    "source": "validation/crossval/_15_patch_results/rfx.json (the committed leg)",
+    "f_harminv_hz": 2313947494.5435557,
+    "modes": [
+      {
+        "freq_hz": 1893648067.0520508,
+        "Q": 24.67098040929412,
+        "amplitude": 0.0006539603595272455
+      },
+      {
+        "freq_hz": 2313947494.5435557,
+        "Q": 18.89734411941207,
+        "amplitude": 0.002835939311372672
+      },
+      {
+        "freq_hz": 3083971297.2587504,
+        "Q": 31.24943147002353,
+        "amplitude": 0.0005310562015033731
+      },
+      {
+        "freq_hz": 3712638916.836412,
+        "Q": 16.63216908783741,
+        "amplitude": 0.0013354976391037306
+      }
+    ],
+    "assert_realized_stack": "PASS (ground wall at z_sub_lo)"
+  },
+  "one_plane_ground_740_defect": {
+    "source": "build_rfx_sim(two_plane=False) -- the pre-#768 realization",
+    "f_harminv_hz": 2471858093.4928327,
+    "modes": [
+      {
+        "freq_hz": 2026795704.8237498,
+        "Q": 22.088121258084964,
+        "amplitude": 0.00025318602388838354
+      },
+      {
+        "freq_hz": 2471858093.4928327,
+        "Q": 17.03988328459857,
+        "amplitude": 0.0009571180728129089
+      },
+      {
+        "freq_hz": 3286636409.545451,
+        "Q": 32.46214093742662,
+        "amplitude": 0.00011580611277245275
+      }
+    ],
+    "assert_realized_stack": "RuntimeError: assert_realized_stack: realized electric-wall plane(s) do not match the declared stack -- no electric wall at z_sub_lo=7.9375 mm (k=18, ok=False) and/or z_sub_hi=11.1125 mm (k=22, ok=True); realized full-footprint wall planes at k=[17, 22] (z~[13.4937, 17.4625] mm, pad included). Refuse to quote f0 for a cavity taller than the declared substrate (issue #740).",
+    "committed_prefix_leg_f_harminv_hz": 2471858107.9987745,
+    "committed_prefix_leg": "validation/crossval/_15_patch_results/rfx_one_plane_ground_b29f9de7.json"
+  },
+  "measured_common_mode_dilation": {
+    "per_member": {
+      "TM010": 1.070312768295419,
+      "TM100": 1.0682429481747708,
+      "TM110": 1.065715628568542
+    },
+    "mean": 1.0680904483462441,
+    "half_spread": 0.00229856986343846,
+    "note": "the three members move by the SAME factor to within the half spread -- the defect is a dilation, not a reshaping, which is why every dimensionless spectral observable is blind to it"
+  }
+}

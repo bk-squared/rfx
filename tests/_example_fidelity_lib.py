@@ -330,6 +330,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
         "and the Palace referee producers (#812 P3) -- no rfx import at all"),
+    "validation/crossval/comparators/patch_mode_identification.py": Entry(
+        "no_simulation",
+        "pure-math patch cavity mode identification (#812) -- closed-form "
+        "TM_mn0 spectrum plus a frequency-list assignment; no rfx import at "
+        "all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "

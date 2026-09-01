@@ -1,0 +1,106 @@
+{
+  "_what": "cv05 (validation/crossval/05_patch_antenna.py) PART-1 ring-down spectra, recorded straight out of the production harminv() call by a runpy harness that patches ONLY rfx.Box's x extent for the patch conductor -- so the realized resonant length differs from the declaration while f_resonance_an and every other declared constant stay at L = 29.5 mm. This is the realization/declaration mismatch class the anchored `argmin |f - f_analytic|` selector could not gate. Modes are the script's own filter: Q > 2 and amplitude > 1e-8, harminv band 1.5-3.5 GHz.",
+  "_declared_TM100_hz": 2423509824.70113,
+  "_settling": "EVERY run below is UNDER-SETTLED (-21.5 dB baseline, bar -40 dB) -- cv05 prints that witness and does not gate it. These frequencies are therefore identification evidence, not accuracy evidence, and no accuracy claim may be read from them.",
+  "_provenance": {
+    "repo_commit": "5b6db32964590ced44f66525fac174b2da9664bd",
+    "recorded_utc": "2026-09-01T02:31:08Z",
+    "harness": "runpy of validation/crossval/05_patch_antenna.py, num_periods=60 (the script's own value), CPU"
+  },
+  "runs": {
+    "baseline": {
+      "realized_patch_len_mm": 29.5,
+      "declared_patch_len_mm": 29.5,
+      "script_exit": 2,
+      "harminv_band_hz": [
+        1500000000.0,
+        3500000000.0
+      ],
+      "modes": [
+        {
+          "freq": 2332273091.7241025,
+          "Q": 42.31702622971604,
+          "amplitude": 317286.0735236593
+        },
+        {
+          "freq": 3027435601.452313,
+          "Q": 74.31272973531146,
+          "amplitude": 38004.205877312554
+        },
+        {
+          "freq": 3605239122.8657665,
+          "Q": 105.04274408044282,
+          "amplitude": 552286.0398086933
+        }
+      ]
+    },
+    "patch_len_22p5mm": {
+      "realized_patch_len_mm": 22.5,
+      "declared_patch_len_mm": 29.5,
+      "script_exit": 2,
+      "harminv_band_hz": [
+        1500000000.0,
+        3500000000.0
+      ],
+      "modes": [
+        {
+          "freq": 2873080092.0099983,
+          "Q": 37.05037135937565,
+          "amplitude": 390173.22286635096
+        },
+        {
+          "freq": 3499061455.205304,
+          "Q": 48.495975729486766,
+          "amplitude": 399071.59106610366
+        },
+        {
+          "freq": 3627995015.1649914,
+          "Q": 121.5744400448805,
+          "amplitude": 677882.0125284257
+        }
+      ]
+    },
+    "patch_len_21p0mm": {
+      "realized_patch_len_mm": 21.0,
+      "declared_patch_len_mm": 29.5,
+      "script_exit": 2,
+      "harminv_band_hz": [
+        1500000000.0,
+        3500000000.0
+      ],
+      "modes": [
+        {
+          "freq": 3112588229.0942903,
+          "Q": 33.52526467116288,
+          "amplitude": 432825.1230631551
+        },
+        {
+          "freq": 3636869477.779629,
+          "Q": 132.7677116411736,
+          "amplitude": 761302.3275994853
+        }
+      ]
+    },
+    "patch_len_38p0mm": {
+      "realized_patch_len_mm": 38.0,
+      "declared_patch_len_mm": 29.5,
+      "script_exit": 2,
+      "harminv_band_hz": [
+        1500000000.0,
+        3500000000.0
+      ],
+      "modes": [
+        {
+          "freq": 1813650191.677056,
+          "Q": 48.10316500019997,
+          "amplitude": 197212.34450441934
+        },
+        {
+          "freq": 3574229106.5591526,
+          "Q": 72.48878334603906,
+          "amplitude": 565622.1668682715
+        }
+      ]
+    }
+  }
+}
