@@ -401,3 +401,34 @@ def test_material_gate_rejects_the_permittivity_the_db_gate_cannot_see():
     assert st["n_distinct_eps"] == 3
     assert st["eps_rel_dev"] <= mod.EPS_REALIZED_TOL      # G17-A alone is blind
     assert not mod.material_gate_ok(st)                   # G17-B catches it
+
+
+def test_realized_material_is_recorded_and_will_be_gated_on_the_frozen_leg(fixture):
+    """Forward-guard for the frozen leg.
+
+    The committed fixture predates #812, so no row carries the realized
+    permittivity yet and this leg is protected only indirectly (the script's
+    live gate exits 1, so a fixture regenerated at the wrong material cannot
+    be produced from a green run, and ``config.eps_r`` is pinned at 2.56).
+    That indirection is written down here rather than left implicit, and the
+    moment a regeneration carries the fields they become gated -- all of them,
+    never a silent subset.
+    """
+    src = (_REPO_ROOT / "validation/crossval/17_dielectric_sphere_mie.py"
+           ).read_text(encoding="utf-8")
+    assert '"eps_realized": round(material["eps_realized"], 9)' in src
+    assert '"n_distinct_eps": material["n_distinct_eps"]' in src
+    rows = _all_rows(fixture)
+    carrying = [r for r in rows if "eps_realized" in r]
+    if carrying:
+        assert len(carrying) == len(rows), (
+            "a regeneration recorded the realized permittivity on some rows "
+            "but not others -- a partial record cannot be gated")
+        tol = fixture["gates"]["eps_realized_tol"]
+        for r in carrying:
+            assert r["n_distinct_eps"] == fixture["gates"]["n_distinct_eps_expected"], r
+            assert abs(r["eps_realized"] / 2.56 - 1.0) <= tol, r
+    else:
+        # pre-#812 record: the absence is a dated fact, not a silent gap.
+        assert fixture["schema_version"] == 1
+        assert fixture["config"]["eps_r"] == 2.56
