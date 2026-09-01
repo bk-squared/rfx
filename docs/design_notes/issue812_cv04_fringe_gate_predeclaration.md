@@ -44,7 +44,7 @@ Two defects, both re-read in the source on this branch:
 
 **Negative claim checked, and refuted.** The obvious excuse — "pymeep is absent
 on every runner, so the reference cannot decide" — is **false**.
-`.github/workflows/validation.yml:196-220` defines the `crossval-external` job
+`.github/workflows/validation.yml:193-317` defines the `crossval-external` job
 (scheduled Monday `0 6 * * 1` + `workflow_dispatch`), which installs
 `pymeep` from conda-forge and runs every manifest case with
 `scheduled_external_order is not None` — cv04 is one of them
@@ -63,16 +63,16 @@ is not claimed as a demonstration.
 
 | quantity | value | source |
 |---|---|---|
-| `eps_slab` | 4.0 | script:39 |
-| `n = sqrt(eps)` | 2.0 | script:40 |
-| `d_slab` | 10.0 mm = 10 cells | script:41 |
-| `dx` | 1.0 mm | script:43 |
-| `dt` | 2.335067793382187e-12 s | `Grid(...).dt`, script:100 |
+| `eps_slab` | 4.0 | script:63 |
+| `n = sqrt(eps)` | 2.0 | script:64 |
+| `d_slab` | 10.0 mm = 10 cells | script:65 |
+| `dx` | 1.0 mm | script:67 |
+| `dt` | 2.335067793382187e-12 s | `Grid(...).dt`, script:124 |
 | Courant `S = c dt / dx` | 0.7000533 | derived |
-| `n_steps` | 719 | script:117-119 |
-| `nfft` | 8192 | `2**ceil(log2(719)) * 8`, script:262 |
+| `n_steps` | 719 | script:166 |
+| `nfft` | 8192 | `2**ceil(log2(719)) * 8`, script:290 |
 | spectral bin `df = 1/(nfft dt)` | **52.277 MHz** | derived |
-| evaluated band | 3-15 GHz masked to 2% incident amplitude | script:279 |
+| evaluated band | 3-15 GHz masked to 2% incident amplitude | script:304 |
 
 Free spectral range of the etalon: `FSR = c / (2 n d) = 7.495 GHz`.
 
@@ -172,7 +172,7 @@ Budget for a *correct* run, additive:
    `R_max = 0.36545`, i.e. **+0.0055** (and +0.0024 at 7.495 GHz, +0.0006 at
    3.7475 GHz).
 2. **Finite-run truncation of the etalon ringdown.** Prior committed provenance
-   in this script (the rung-C4 paragraph at script:297-305, job
+   in this script (the rung-C4 paragraph at script:330-339, job
    369367246779) records that extending the run to nx=1500 / 1940 steps shifts
    the band-mean `|dT|`, `|dR|` by **< 0.005**. An extremum is a single bin
    rather than a band mean, so allow **3x** that: **0.015**.
