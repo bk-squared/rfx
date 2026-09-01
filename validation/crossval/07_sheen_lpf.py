@@ -199,6 +199,41 @@ regenerated leg's magnitudes carry no correction > 0.05, but the study
 remains registered for its stopband-STRUCTURE characterization, not as
 an rfx magnitude-accuracy claim at dx=200um.
 
+ESTIMATOR RESOLUTION (#812 mechanism P3, 2026-09-01) — APPENDED, NOTHING ABOVE
+------------------------------------------------------------------------------
+IS WITHDRAWN. The audit found that gate C1 judged a BIN-QUANTISED estimate
+against a declared 1.0 % window. This sweep is `linspace(0.5, 20.0, 120)` GHz
+= 163.866 MHz/bin = **2.081 %** at the 7.87 GHz zero, so the reported
+deviation could only ever be 0.000 % or >= 2.081 %: the 1.0 % threshold was
+UNEXERCISABLE in between. Measured blindness, reproduced on this checkout:
+erasing the LOWER doublet member outright (dB-linear fill between the 6.3992
+and 7.8739 GHz anchor bins) leaves argmin 7.8739 GHz, depth -39.20 dB,
+passband mean 0.9378, max column power 0.9995 and the correction footprint
+0/120 ALL BIT-IDENTICAL — 17/17 gates passed on a leg carrying one of the two
+transmission zeros this case exists to characterise.
+
+Repair (gates C4-C7 below; the pre-existing C1 argmin lock is KEPT at its
+1.0 % window — nothing here is widened):
+  * C4 locks the LOG-PARABOLIC sub-bin refined frequency of BOTH doublet
+    members for BOTH solvers at +-0.50 %, against the values already committed
+    in tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json
+    (referee.fdtd_doublet_ghz). 0.50 % is derived from the smallest geometry
+    error this mesh can express on the dimension that sets the zeros — one
+    dx=200 um cell on the 20.320 mm patch transverse extent, 0.984 % — with
+    the estimator's measured response to a 1.000 % shift (0.953 %) giving
+    >= 1.9x margin.
+  * C5 gates the transmission-zero COUNT at 2 per solver (depth <= -20 dB,
+    gate A4's own existing constant; prominence >= 0.5 dB).
+  * C6 gates the -3 dB corner frequency, which this case never gated at all:
+    fc = first crossing above 2 GHz of (passband mean |S21|)/sqrt(2), sub-bin
+    interpolated, window +-0.25 % (one-cell transverse error moves fc 0.49 %).
+  * C7 is an in-run PROOF that the estimate is not bin-quantised: the two
+    interleaved half-density sub-grids are disjoint in frequency, so a bare
+    argmin's two answers are ALWAYS >= 1 full bin apart (measured: exactly
+    1.0000 on both legs), while the refined pair must agree to < 1 bin.
+Derivations, falsifiers and the measured evidence:
+docs/design_notes/estimator_resolution_regate.md.
+
 Exit contract (crossval registry, validation/crossval/manifest.json)
 -------------------------------------------------------------------
     0 -> every configured gate above passed
@@ -217,6 +252,7 @@ import os
 import sys
 import json
 import argparse
+import importlib.util
 from pathlib import Path
 
 import numpy as np
@@ -237,6 +273,15 @@ C0 = 2.99792458e8
 _REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
+
+# Sub-bin spectral-feature estimators, shared with the Palace referee producers
+# (#812 P3). Loaded by path so a bare `python 07_sheen_lpf.py` from anywhere
+# picks up THIS checkout's copy, exactly like the `import rfx` guard above.
+_SPEC = importlib.util.spec_from_file_location(
+    "_cv07_spectral_features",
+    os.path.join(SCRIPT_DIR, "comparators", "spectral_features.py"))
+sf = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(sf)
 
 # Documented single-run passivity envelope (tests/unit/sparams/test_sparam_passivity_guard.py):
 # |S| <= ~1.05  <=>  column power |S11|^2 + |S21|^2 <= 1.10.
@@ -284,7 +329,32 @@ COMMITTED = dict(
     rfx_passband_mean_s21=0.9378,   # over the CLI passband window, linear
     rfx_max_column_power=0.9995,
     referee_sides_with="openems",
+    # --- #812 P3 sub-bin estimator locks (see the docstring section
+    # "ESTIMATOR RESOLUTION" and docs/design_notes/estimator_resolution_regate.md).
+    # The four doublet frequencies are NOT new pins by this lane: they are the
+    # committed referee producer's own output
+    # (tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json ->
+    # referee.fdtd_doublet_ghz), and gate C4b checks this file against it.
+    doublet_ghz={"rfx": (6.943990, 7.925928),
+                 "openEMS": (7.030670, 7.994749)},
+    doublet_tol_pct=0.50,       # one dx=200um cell on the 20.320mm patch
+                                # transverse extent = 0.984%; the estimator
+                                # reports a 1.000% shift as 0.953% -> 1.9x
+    n_transmission_zeros=2,     # the doublet this case exists to characterise
+    zero_depth_db_max=-20.0,    # gate A4's own existing constant
+    zero_prominence_db=0.5,     # 12% in |S21|; > the legs' bounded extraction
+                                # noise, < the doublet ridge both legs resolve
+    corner_ghz={"rfx": 5.5036, "openEMS": 5.5185},
+    corner_tol_pct=0.25,        # one-cell transverse error moves fc 0.49%
+    half_grid_witness_bins=1.0,  # structural: a bin-quantised estimator scores
+                                 # exactly 1.0000 here, so < 1.0 is unpassable
+                                 # by the estimator this gate replaces
 )
+
+# The doublet search windows are the referee producer's, verbatim
+# (scripts/diagnostics/build_sheen_lpf_palace_referee.py: _LOWER_WIN/_UPPER_WIN)
+# so the two paths cannot drift apart.
+DOUBLET_WINDOWS_GHZ = ((6.3, 7.5), (7.5, 8.6))
 
 # ---------------------------------------------------------------------------
 # SHEEN geometry (metres). Native Sheen frame: x_S (transverse, patch length),
@@ -883,10 +953,12 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
     except Exception as e:
         print(f"(plot skipped: {e})")
 
-    return _gates(R, O, fr, fnull_r, fnull_o, pm_o, do, null_lo, null_hi, pm_r)
+    return _gates(R, O, fr, fnull_r, fnull_o, pm_o, do, null_lo, null_hi,
+                  pm_r, pass_lo, pass_hi)
 
 
-def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi, pm_r):
+def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi,
+           pm_r, pass_lo, pass_hi):
     """The four configured gates. Returns True iff every one passed.
 
     Diagnostic-reporter gates: comparator sanity, comparison shape, the
@@ -945,6 +1017,70 @@ def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi, pm_
          sides == COMMITTED["referee_sides_with"],
          f"sides_with = {sides!r} (expected "
          f"{COMMITTED['referee_sides_with']!r})")
+
+    # --- Gates C4-C7: sub-bin estimator (#812 mechanism P3) ---------------
+    # C1 above judges a BIN-QUANTISED argmin (163.866 MHz = 2.081% at the
+    # 7.87 GHz zero) against a 1.0% window, so its reported deviation can only
+    # be 0.000% or >= 2.081%. C1 is kept as the bin-level lock it always was;
+    # everything below resolves better than a bin. Derivations:
+    # docs/design_notes/estimator_resolution_regate.md.
+    legs = {"rfx": R, "openEMS": O}
+    dtol = COMMITTED["doublet_tol_pct"]
+    for tag, d in legs.items():
+        f_ghz = np.asarray(d["freqs_hz"], dtype=float) / 1e9
+        s21 = np.asarray(d["s21_mag"], dtype=float)
+
+        # C4 — refined vertex of BOTH doublet members
+        want_lo, want_hi = COMMITTED["doublet_ghz"][tag]
+        for name, want, win in (("lower", want_lo, DOUBLET_WINDOWS_GHZ[0]),
+                                ("upper", want_hi, DOUBLET_WINDOWS_GHZ[1])):
+            got = sf.refined_extremum(f_ghz, s21, *win)
+            dev = abs(got["refined_f"] - want) / want * 100.0
+            gate(f"C4 {tag} {name} zero, sub-bin refined", dev <= dtol,
+                 f"{got['refined_f']:.4f} vs committed {want:.4f} GHz "
+                 f"({dev:.3f}% <= {dtol}%); bin argmin was "
+                 f"{got['bin_f']:.4f} GHz, sub-bin shift "
+                 f"{got['sub_bin_shift']:+.3f} bin")
+
+        # C5 — the doublet is TWO zeros. Erasing one used to pass 17/17.
+        zeros = sf.transmission_zeros(
+            f_ghz, s21, null_lo / 1e9, null_hi / 1e9,
+            depth_db_max=COMMITTED["zero_depth_db_max"],
+            prominence_db=COMMITTED["zero_prominence_db"])
+        gate(f"C5 {tag} transmission-zero count",
+             len(zeros) == COMMITTED["n_transmission_zeros"],
+             f"{len(zeros)} == {COMMITTED['n_transmission_zeros']} in "
+             f"{null_lo/1e9:.0f}-{null_hi/1e9:.0f} GHz at "
+             f"<= {COMMITTED['zero_depth_db_max']:.0f} dB: "
+             + ", ".join(f"{z['refined_f']:.4f} GHz ({z['depth_db']:.1f} dB, "
+                         f"prom {z['prominence_db']:.1f} dB)" for z in zeros))
+
+        # C6 — the -3 dB corner: the LPF's defining number, previously ungated
+        pbm = float(np.mean(s21[(f_ghz >= pass_lo / 1e9) & (f_ghz <= pass_hi / 1e9)]))
+        fc = sf.level_crossing(f_ghz, s21, pbm / np.sqrt(2.0), f_min=2.0)
+        want_fc = COMMITTED["corner_ghz"][tag]
+        ctol = COMMITTED["corner_tol_pct"]
+        d_fc = abs(fc - want_fc) / want_fc * 100.0 if fc is not None else 1e9
+        gate(f"C6 {tag} -3 dB corner frequency", d_fc <= ctol,
+             (f"{fc:.4f}" if fc is not None else "NO CROSSING")
+             + f" vs committed {want_fc:.4f} GHz ({d_fc:.3f}% <= {ctol}%), "
+             f"referenced to passband mean {pbm:.4f}")
+
+        # C7 — in-run proof the estimate is NOT bin-quantised
+        w = sf.half_grid_witness(f_ghz, s21, *DOUBLET_WINDOWS_GHZ[1])
+        gate(f"C7 {tag} half-grid resolution witness",
+             w["spread_bins"] < COMMITTED["half_grid_witness_bins"],
+             f"refined half-grid spread {w['spread_bins']:.4f} bin < "
+             f"{COMMITTED['half_grid_witness_bins']:.1f} (the bare argmin on "
+             f"the same two sub-grids spreads {w['argmin_spread_bins']:.4f} "
+             f"bin -- a quantised estimator cannot pass this)")
+
+    # C4b — evidence chain: this file's four locked doublet frequencies are the
+    # committed referee fixture's own, not a private re-pin.
+    gate("C4b doublet locks agree with the committed referee fixture",
+         _doublet_matches_referee(),
+         "COMMITTED['doublet_ghz'] == referee.fdtd_doublet_ghz in "
+         "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json")
 
     # --- Gate D: rfx evidence-chain lock (witness / bound / corrections) ---
     # The regenerated leg is passivity-ENFORCED (PR #468): S is projected onto
@@ -1009,6 +1145,24 @@ def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi, pm_
           "D3-D5; 0 bins on the 2026-08-09 corrected-extractor leg) is\n"
           "artifact-class for magnitude claims at dx=200um.")
     return ok
+
+
+def _doublet_matches_referee():
+    """C4b: the four doublet frequencies this file locks ARE the committed
+    referee producer's own output, not a private re-pin by the gate."""
+    try:
+        with open(REFEREE_JSON) as fp:
+            fd = json.load(fp)["referee"]["fdtd_doublet_ghz"]
+    except (OSError, KeyError, ValueError) as exc:
+        print(f"  (referee fixture unreadable: {exc})")
+        return False
+    key = {"rfx": "rfx", "openEMS": "openems"}
+    for tag, (lo, hi) in COMMITTED["doublet_ghz"].items():
+        blk = fd.get(key[tag], {})
+        if abs(blk.get("lower_ghz", -1) - lo) > 1e-6 or \
+           abs(blk.get("upper_ghz", -1) - hi) > 1e-6:
+            return False
+    return True
 
 
 def _referee_sides_with():
