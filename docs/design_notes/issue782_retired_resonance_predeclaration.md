@@ -366,7 +366,7 @@ committed gate's own `_gate_readings` on both saved arms:
 
 **F2 — sweep completeness: SATISFIED.**
 `git grep -nE "9\.32[0-9]?|9\.21[^0-9]|9\.20[^0-9]|10\.0239|10\.02375|9\.3216|TARGET_GHZ|9\.26 GHz" -- '*.py' '*.md' '*.mdx'`
-returns 36 lines, all in one of four classes, none reading as current:
+returns 40 lines at 60780d81 (36 at a85ae681; the +4 are this record's own retirement narration, added by the record commit), all in one of four classes, none reading as current:
 1. dated pre-#702 historical framing written this session (two_plane_patch_radiation_ab
    16/17/123, patch_edgefed_s11_validation 9/15/16/105/106/122, test_harminv_estimator
    7, test_msl_nprobe_extractor 25/27, test_patch_edgefed_s11_passivity 36,
@@ -391,3 +391,24 @@ returns 36 lines, all in one of four classes, none reading as current:
 Environment: every run in this note used `JAX_PLATFORMS=cpu` with `PYTHONPATH` pinned
 to this worktree; `rfx.__file__` recorded in each run log resolves inside the worktree
 (no editable-install shadow).
+
+
+## Review-round addendum (2026-09-01, adversarial review + independent witness)
+
+Both verifiers reproduced F1 (replay exit 0; retired arm red on (2c) at 470x
+separation) and the surface sweep. Two findings applied:
+
+1. **(2b) attribution corrected.** The inline comment above assertion (2b) claimed it
+   discriminates the #702 retirement; the committed evidence refutes that — the
+   retired physics has an in-band crossing at 9.108 GHz (negative-Re shoulder) and
+   (2b) PASSES on it. Discrimination is carried by (2c) alone (Re floor, 9.2 ohm vs
+   500). The module docstring already said this; the comment now matches it. The
+   original Section-5 F1 wording ("the in-band-crossing assertion FAILS on the retired
+   arm") failed to its letter the same way and is superseded by this addendum.
+2. **Same-class gate found and re-pinned: tests/test_msl_nu_sparam_gate.py** carried
+   its own hand-maintained copy of the retired (9.0, 9.42) band on the identical
+   declared geometry, with no liveness or Re(Zin) witness — vacuous the same way.
+   Fixed by IMPORTING the band, floors, and _gate_readings from the uniform gate
+   (house pattern: bounds imported, not restated), and adding the (2b)/(2c)
+   witnesses. That file is gpu+slow; the re-pinned band's first NU execution rides
+   the next VESSL validation-harness run.

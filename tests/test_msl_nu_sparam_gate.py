@@ -10,12 +10,15 @@ gate), against the NU path's own grid.
 
 Validation rationale (R5 / canonical anchor):
   * We assert the COMMITTED edge-fed physics gate (passivity + edge-fed signature +
-    soft dip-above-band) — NEVER a re-spec to a dip-at-9.3 gate (that is the issue
-    #118 category error). These are the exact assertions from
-    test_patch_edgefed_s11_passivity.py.
-  * We do NOT gate on NU == uniform bit-for-bit: rfx's uniform Grid and
-    NonUniformGrid constructors differ by ~1 cell per axis for the same domain/dx
-    (verified), so the two rasterise the geometry slightly differently. The NU path
+    the in-band antiresonance liveness/high-impedance witnesses + soft
+    dip-above-band) — NEVER a re-spec to a dip-at-a-number gate (the issue #118
+    category error). Constants AND the readings helper are imported from
+    test_patch_edgefed_s11_passivity.py, so this gate cannot drift from the
+    uniform one again. Acceptance of the re-pinned band on the NU lane rides the
+    next VESSL validation-harness run (this file is gpu+slow).
+  * We do NOT gate on NU == uniform bit-for-bit: the constructors may still size
+    the domain a cell apart, though since #834 the uniform-valued-profile RASTER
+    itself is lane-identical (pinned by the #834 contract suite). The NU path
     is validated against PHYSICS on its own grid, exactly as the waveguide NU lane is
     (vs analytic/Meep, not vs a uniform-rfx run). A uniform cross-run is printed as an
     informational witness only.
@@ -37,6 +40,20 @@ import pytest
 from rfx import Box, Simulation
 from rfx.sources import GaussianPulse
 
+# Band + floors are IMPORTED, not restated (issue #782 same-class fix): the retired
+# (9.0, 9.42) band died with #702, and this file's own hand-maintained copy is how it
+# missed the re-pin the uniform gate got. Single source = the uniform gate; its
+# constants were measured on Board S (this file declares the identical geometry, and
+# since #834 the uniform-valued dz_profile raster is lane-identical — the #834
+# contract suite pins mask equality — so the band transfers to the NU build).
+from tests.test_patch_edgefed_s11_passivity import (
+    PASSIVE_TOL,
+    RES_BAND_GHZ,
+    RES_BAND_RE_ZIN_MIN_OHM,
+    RES_BAND_S11_MIN,
+    _gate_readings,
+)
+
 # --- identical geometry to tests/test_patch_edgefed_s11_passivity.py ---
 EPS_R = 3.38
 H_SUB = 0.787e-3
@@ -51,9 +68,7 @@ DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
-PASSIVE_TOL = 1.05
-RES_BAND_GHZ = (9.0, 9.42)
-RES_BAND_S11_MIN = 0.70
+# PASSIVE_TOL / RES_BAND_* imported above — see the #782 same-class note.
 
 
 def _build_patch_sim_nu() -> Simulation:
@@ -107,17 +122,18 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     zin = z0 * (1.0 + s) / (1.0 - s)
     s11 = np.abs(s)
 
-    i_dip = int(np.argmin(s11))
-    f_dip = fr[i_dip]
-    s11_max = float(np.max(s11))
-    band = (fr >= RES_BAND_GHZ[0]) & (fr <= RES_BAND_GHZ[1])
-    s11_res_band_min = float(np.min(s11[band]))
+    g = _gate_readings(fr, s, z0)
+    f_dip = g["f_dip_ghz"]
+    s11_max = g["max_s11"]
+    s11_res_band_min = g["band_min_s11"]
 
     # --- R5 witnesses: full per-frequency trace, never a bare headline ---
     print(f"\n[NU-MSL-GATE] max|S11| = {s11_max:.4f}  dip @ {f_dip:.3f} GHz "
-          f"(|S11|={s11[i_dip]:.4f}, the off-resonance MATCH point)")
+          f"(|S11|={g['s11_at_dip']:.4f}, the off-resonance MATCH point)")
     print(f"[NU-MSL-GATE] min|S11| over resonance band {RES_BAND_GHZ} GHz = "
           f"{s11_res_band_min:.4f} (HIGH => edge-fed signature)")
+    print(f"[NU-MSL-GATE] in-band crossings {g['band_crossings_ghz']} GHz, "
+          f"in-band max Re(Zin) = {g['band_max_re_zin']:.0f} ohm")
     print(f"[NU-MSL-GATE] Z0[0] median Re = {np.median(z0.real):.2f} ohm "
           f"(analytic Hammerstad-Jensen ~50.6 ohm)")
     for f, a, zr, zi in zip(fr, s11, zin.real, zin.imag):
@@ -136,6 +152,23 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         f"{RES_BAND_GHZ} GHz is unexpectedly LOW (<= {RES_BAND_S11_MIN}). "
         "A directly edge-fed patch must be poorly matched at its TM010 resonance; "
         "a deep dip there means the NU lane changed the physics."
+    )
+
+    # --- (2b) liveness: the resonance the band names is THERE on the NU lane too.
+    #          Liveness only — discrimination of the #702 retirement is (2c). ---
+    assert g["band_crossings_ghz"], (
+        f"no Im(Zin)=0 crossing inside the resonance band {RES_BAND_GHZ} GHz on the "
+        f"NU lane — the band would be gating a dead spectral region (the #782 "
+        f"failure class). Measured crossings: "
+        f"{[round(c, 4) for c in g['crossings_ghz']]} GHz."
+    )
+
+    # --- (2c) the in-band antiresonance is the HIGH-IMPEDANCE kind (the
+    #          discriminating witness; see the uniform gate). ---
+    assert g["band_max_re_zin"] > RES_BAND_RE_ZIN_MIN_OHM, (
+        f"in-band max Re(Zin) = {g['band_max_re_zin']:.0f} ohm <= "
+        f"{RES_BAND_RE_ZIN_MIN_OHM:.0f} on the NU lane — the band's crossing is not "
+        "the edge-fed patch antiresonance."
     )
 
     # --- (3) soft: the |S11| minimum (match point) lies ABOVE the resonance band ---

@@ -326,9 +326,11 @@ def test_patch_edgefed_s11_passive_and_match():
     )
 
     # --- (2b) in-band resonance witness: the resonance the band names is THERE.
-    #          This is the assertion that discriminates the #702 retirement: on the
-    #          bit-exact pre-#702 physics (resample_sheet_node_materials disabled) the
-    #          first crossing sits ABOVE this band and this test goes RED (evidence in
+    #          Liveness only — (2b) does NOT discriminate the #702 retirement: the
+    #          bit-exact pre-#702 physics also has an in-band crossing (9.108 GHz, a
+    #          low-impedance negative-Re shoulder), so this assertion PASSES on the
+    #          retired arm. The discriminating assertion is (2c): the retired arm
+    #          reads in-band max Re(Zin) 9.2 ohm vs the 500-ohm floor (470x; evidence
     #          docs/design_notes/issue782_retired_resonance_predeclaration.md). ---
     assert g["band_crossings_ghz"], (
         f"no Im(Zin)=0 crossing inside the resonance band {RES_BAND_GHZ} GHz — the band "
