@@ -201,6 +201,7 @@ GATE_FINE_ABS_PER_CONFIG = {
 def config_key(d_phys_or_mm, glen, frac):
     """Stable key for GATE_FINE_ABS_PER_CONFIG (metres or mm both accepted)."""
     d_mm = d_phys_or_mm * 1e3 if d_phys_or_mm < 1.0 else d_phys_or_mm
+    assert 1.0 <= d_mm <= 50.0, ("aperture out of the WR-90 range", d_mm)
     return f"{d_mm:.3f}|{glen:.2f}|{frac:.2f}"
 
 
@@ -578,7 +579,10 @@ def main(argv):
         # is what the campaign's own setup defect (3) was, at half its size.
         one_cell = []
         for fr in fine_rows:
-            d = fr["d_mm"] * 1e-3
+            # resolve back to the DECLARED aperture object rather than
+            # reconstructing it from the mm field: 18.288 * 1e-3 is not the
+            # same float as 18.288e-3, so str() would miss the oracle cache.
+            d = next(x for x in D_APERTURES if abs(x * 1e3 - fr["d_mm"]) < 1e-9)
             key = config_key(fr["d_mm"], fr["glen_m"], fr["iris_frac"])
             base = np.asarray(oracles[str(d)])
             cr = next(c for c in coarse_rows
