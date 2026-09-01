@@ -1,0 +1,137 @@
+name: rfx-i498-openems-referee
+description: "#498/#517 EXTERNAL REFEREE lane: scripts/diagnostics/i498_openems_probe_fed_msl_referee.py on a source-built openEMS (comparator leg only -- it brackets, it does not judge rfx's own numbers, and it cannot say which of rfx's diagonals is lying). TWO STAGES, and the second refuses to run unless the first passed: STAGE 1 reproduces openEMS's OWN canonical examples -- python/Tutorials/MSL_NotchFilter.py (the MSL-port leg, delegated to the already-verified validation/crossval/20_msl_phase_referee.py port, recorded reproduction 3.6711 GHz / 0.4364% vs the recomputed 3.6871 GHz analytic) and python/Tutorials/Simple_Patch_Antenna.py (the lumped-probe leg -- the DUT's feed IS that tutorial's feed model; upstream-anchored gate D >= 6.0 dBi from '~7 dBi broadside', plus a clearly-labelled repo-internal regression lock on the 2.4300 GHz S11 dip). STAGE 2 builds the #488 probe-fed microstrip transition on rfx's REALIZED board (h_sub 320 um / trace node span 480 um, NOT the declared 254/600 -- the #723 class), reproduces BOTH open ends at x=0 and x=8.00 mm with the conductor stopping at the absorber's inner face (reviewer blocker B4: running the trace into the PML would be a matched termination and would delete the reflections |S22| is made of), de-embeds the MSL stencil to rfx's own probe-0 plane x=4.72 mm, and emits S_raw-comparable |S21|/|S22| magnitudes plus phase. dx=50 um is the COMPARATOR mesh (the do_not_repeat rule: at dx=80 um openEMS's MSL extraction is non-physical, |S11|^2+|S21|^2 up to 8.9); a dx=80 um leg runs REPORTED-ONLY with its passivity sum quoted verbatim. REPORT-ONLY: no gate, tolerance, reference, support-matrix or known_limits value moves, and NO lumped/wire diagonal number is pinned by anything this lane produces. Runs from a dedicated NFS run-clone behind an EXPECT SHA guard -- a clone that does not contain the pinned commit exits 3 instead of measuring the wrong tree. Env: STAGE=1|2|both (default both), optional STAGE1_JSON (required by STAGE=2 -- without it the script exits 4 by design, which is the stage contract firing, not a bug) and RFX_JSON (the #498/#517 measurement artifact; absent, Stage 2 reports openEMS-only numbers). remilab-c0 cpu lane. Submit: vessl run create -f scripts/vessl_i498_openems_referee.yaml"
+tags: [rfx, issue-498, issue-517, openems, external-referee, comparator-leg]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own numThreads (passed explicitly as
+  # --threads 8 below, matching resources.cpu=8) does the parallelism --
+  # the coax lane's own L3 review fix, align cpu / OMP_NUM_THREADS /
+  # numThreads instead of three independently-chosen numbers.
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # STAGE=1 | 2 | both. The script reads --stage, falling back to $STAGE.
+  STAGE: "both"
+  # Pin the run-clone's commit before submitting. The clone's HEAD must
+  # CONTAIN this commit (ancestor check, so a later fast-forward still
+  # passes); otherwise this is a stale clone and the job exits 3 rather
+  # than measuring the wrong tree.
+  EXPECT: "FILL_BEFORE_SUBMIT"
+  # Optional. STAGE1_JSON is REQUIRED by STAGE=2 (the stage contract);
+  # RFX_JSON is the committed #498/#517 measurement artifact -- absent,
+  # Stage 2 still runs and reports openEMS-only numbers.
+  STAGE1_JSON: ""
+  RFX_JSON: ""
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx #498/#517: openEMS referee for the probe-fed MSL transition ==="
+  echo "=== COMPARATOR LEG ONLY -- it brackets, it does not judge ==="
+  date
+
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
+  # The working probe from scripts/vessl_crossval_external.yaml, verbatim:
+  # if the image's bindings are not importable, fail here and not 40
+  # minutes into a stage.
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
+  "$PY" -c "from CSXCAD.CSXCAD import ContinuousStructure; from openEMS.ports import MSLPort; print('CSXCAD + MSLPort: OK')"
+
+  # -- RUN CLONE, not the primary checkout: this lane must not depend on
+  # what research/rfx happens to have checked out. --
+  ROOT=/root/workspace/byungkwan-workspace/research/rfx-i498-openems
+  cd "$ROOT"
+  git config --global --add safe.directory "$ROOT" || true
+  echo "=== provenance ==="
+  git rev-parse HEAD
+  git status --short || true
+
+  if [ "$EXPECT" = "FILL_BEFORE_SUBMIT" ]; then
+    echo "FATAL: EXPECT still holds the FILL_BEFORE_SUBMIT placeholder -- pin the commit the run-clone must contain before submitting"
+    exit 3
+  fi
+  DIRTY=$(git status --porcelain --untracked-files=no || true)
+  if [ -n "$DIRTY" ]; then
+    echo "FATAL: run-clone has modified TRACKED files -- the measured tree would not be $EXPECT; refusing to measure (exit 3)"
+    git status --short
+    exit 3
+  fi
+  git merge-base --is-ancestor "$EXPECT" HEAD || { echo "STALE RUN CLONE: HEAD does not contain $EXPECT"; exit 3; }
+
+  DRV=scripts/diagnostics/i498_openems_probe_fed_msl_referee.py
+  test -f "$DRV" || { echo "STALE RUN CLONE: referee driver missing"; exit 3; }
+  # Content guard: the stage contract must be present in the tree we are
+  # about to measure with. A clone that pre-dates it would happily produce
+  # an rfx-vs-openEMS number with no reproduce gate -- the exact failure
+  # the contract exists to prevent.
+  grep -q "def assert_stage1_gate_passed" "$DRV" || { echo "STALE RUN CLONE: referee has no stage contract"; exit 3; }
+  test -f validation/crossval/20_msl_phase_referee.py || { echo "STALE RUN CLONE: Stage A1 delegate missing"; exit 3; }
+
+  if ! "$PY" -c "import numpy, h5py" >/dev/null 2>&1; then
+    "$PY" -m pip install -q "numpy<2" "h5py>=3.8"
+  fi
+  "$PY" -c "import numpy; print('numpy', numpy.__version__)"
+
+  out=".omx/i498-openems-referee/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  mkdir -p "$out"
+  echo "artifacts: $ROOT/$out"
+
+  # -- pure-numpy mesh/geometry self-check FIRST (no openEMS, seconds):
+  # a layout bug must not burn a stage. --
+  "$PY" -u "$DRV" --self-check | tee "$out/self_check.log"
+
+  # -- the full stage plan + the geometry it WOULD build + what CANNOT be
+  # compared, printed into the run log before any solver starts. --
+  "$PY" -u "$DRV" --dry-run --stage "$STAGE" | tee "$out/stage_plan.log"
+
+  ARGS="--stage $STAGE --output $out/referee.json --sim-root /tmp/i498_openems_referee --threads 8"
+  if [ -n "$STAGE1_JSON" ]; then ARGS="$ARGS --stage1-json $STAGE1_JSON"; fi
+  if [ -n "$RFX_JSON" ]; then ARGS="$ARGS --rfx-json $RFX_JSON"; fi
+
+  set +e
+  # shellcheck disable=SC2086
+  timeout 21600 "$PY" -u "$DRV" $ARGS > "$out/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$out/exit_code"
+  tail -n 120 "$out/run.log" || true
+  echo "i498_openems_referee_rc=$rc"
+
+  # -- settling positive control, quoted from this run's own log: the
+  # SMOKE pass must carry openEMS's max-timesteps warning and the REAL
+  # pass must not. Printed here so the verdict is readable without
+  # opening the JSON. --
+  echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
+  grep -n "reached before the end-criteria of" "$out/run.log" || echo "(phrase absent from the captured driver log -- see the per-stage _openems_stdout.log files under /tmp/i498_openems_referee)"
+
+  echo "===== reproduce-gate + stage summary (quoted from the JSON) ====="
+  if [ -f "$out/referee.json" ]; then
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); s1=a.get("stage1") or {}; s2=a.get("stage2") or {}; print("stage_requested=%s" % a.get("stage_requested")); print("stage1_passed=%s a1=%s a2=%s" % (s1.get("passed"), (s1.get("a1") or {}).get("passed"), (s1.get("a2") or {}).get("passed"))); print("stage2_refusal=%s" % a.get("stage2_refusal")); print("stage2_sanity_passed=%s comparison=%s" % (s2.get("sanity_passed"), s2.get("comparison_status")))' "$out/referee.json" || true
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); legs=((a.get("stage2") or {}).get("legs") or {}); [print("%-22s role=%s passivity_max=%s phase_dev_max_deg=%s truncated=%s" % (k, v.get("role"), v.get("passivity_balance_max"), v.get("phase_self_consistency_max_deg"), v.get("settling_real_run_truncated"))) for k, v in legs.items()]' "$out/referee.json" || true
+  else
+    echo "(no referee.json written)"
+  fi
+
+  ls -la "$out"
+  echo "artifacts persisted to (mounted, survives job teardown): $ROOT/$out"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: the requested stage(s) ran and every self-check passed. COMPARATOR LEG ONLY -- read the JSON's cannot_compare list before quoting any number, and remember no rfx-vs-openEMS number is a gate, a reference or a pinned value." ;;
+    1) echo "SELF-CHECK / GATE FAILED: a reproduce-gate leg or a Stage 2 witness failed -- inspect $out/run.log before trusting any number in the JSON" ;;
+    2) echo "UNEXPECTED: the script reports openEMS missing despite the image probe above succeeding -- investigate the bindings/import path" ;;
+    3) echo "CONFIG ERROR: a layout/geometry assertion or an rfx-artifact contract violation -- a script bug, NOT a physics finding" ;;
+    4) echo "STAGE 2 REFUSED BY THE STAGE CONTRACT: Stage 1 did not run-and-pass both reproduce legs (or STAGE=2 was submitted without STAGE1_JSON). This is the external-comparator law firing as designed -- no rfx-vs-openEMS number may exist without a passing reproduce gate. Run STAGE=1 (or STAGE=both) first and pass its artifact as STAGE1_JSON." ;;
+    124) echo "TIMEOUT: the 21600 s budget was exhausted -- report the wall clock, do NOT shorten the record to fit" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"
