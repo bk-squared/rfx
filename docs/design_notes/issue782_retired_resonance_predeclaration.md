@@ -307,3 +307,46 @@ tree, same config; this fixture family measured CPU reproducibility < 4e-8, the 
 is only for thread-count effects). A main arm that does NOT reproduce is a red flag
 about the measurement itself: STOP and diagnose before any pin. E6' (Section 8) is
 unchanged and is still scored on the retired arm only when it lands.
+
+## 10. Re-run read-out and E6' scoring (2026-09-01)
+
+Both arms ran as parallel processes on tree `4c9f48d1` (this worktree's commits on top
+of `635ab2e3`; the run imported the REWRITTEN test module's builder). Both settled
+(#332 witness silent). Evidence: `patch_edgefed_s11_band_repin_{main,retired}.json` +
+per-arm run logs, this directory.
+
+**Reproduction (Section 9 expectation): HOLDS.** The re-run main arm reproduces the
+killed run at printed precision on every declared reading — max|S11| 0.9921, crossings
+8.8189 / 10.4169 / 13.3725, dip 10.100 GHz (|S11| 0.4426), min|S11| over (7.8, 8.6) =
+0.9412. Since the killed run imported the OLD test module's builder and the re-run the
+rewritten one, this is also a geometry-invariance witness for the `_patch_box()`
+refactor.
+
+**E6' scoring — two proxy legs FAILED as declared, and the declared consequence
+clause is factually wrong; deviation taken, in the open:**
+- leg (i) "no crossing inside (8.4, 9.2)": FAILED — the retired arm crosses at
+  9.1079 GHz in-band.
+- leg (first crossing ≥ 9.3): FAILED — first crossing 9.1079.
+- leg (in-band max Re(Zin) < 500 ohm): HOLDS — 9.2 ohm.
+
+Trace-level mechanism (retired arm, 8.9–9.7 GHz): the retired antiresonance sits at
+9.5–9.6 GHz exactly as predicted (Im swings +8051 at 9.5, Re peaks 5255 ohm at 9.6 —
+the pre-#702 witness class), OUT of the band. The in-band 9.1079 crossing is not that
+resonance: it lies on the negative-Re shoulder below the antiresonance (Re −156 ohm at
+9.1, −459 at 9.2; the near-|S11|=1 region where Zin is ill-conditioned), i.e. a
+low-impedance zero, not the high-impedance patch antiresonance. E6' legs (i)/(first
+crossing) were naive proxies that assumed the antiresonance produces the only
+crossings; the measurement refutes the proxies, not the discrimination.
+
+**Deviation from the declared STOP, stated plainly:** E6' said "if ANY leg fails →
+the band cannot discriminate → STOP, no gate-band change committed". Its premise is
+refuted by the same measurement: the gate DOES discriminate through (2c), which was
+pre-declared in Section 8 before the retired arm was read — in-band max Re(Zin)
+4326 ohm (main) vs 9.2 ohm (retired), a 470x separation, and the F1 replay through the
+committed gate's own `_gate_readings` shows main all-PASS and retired RED on (2c).
+Nothing pinned in Section 8 (band, floors, assertions) changes in response to the
+retired arm; the only retire-arm-driven edit is the gate docstring's factual
+discrimination sentence, which now records that (2b) alone would NOT discriminate and
+(2c) is the discriminating leg. The gate rewrite is committed on that basis; a
+reviewer who holds the STOP clause to its letter should revert the gate commit and
+keep the evidence.

@@ -10,11 +10,14 @@ This runs the *production* compute_msl_s_matrix on the issue-80 patch (same geom
 tests/test_patch_edgefed_s11_passivity.py), derives Zin(f) = Z0 (1+S11)/(1-S11), and reports:
   - f_dip          : argmin |S11|                     (the DIP)
   - f_match        : argmin |Zin - 50|                (the MATCH point; expect == f_dip)
-  - f_res_ImZ0     : zero-crossing of Im(Zin)         (the RESONANCE; expect ~9.2-9.3 GHz)
+  - f_res_ImZ0     : zero-crossing of Im(Zin)         (the RESONANCE witness; expect
+                     inside the gated band (8.4, 9.2) GHz post-#702 — issue #782;
+                     on the pre-#702 tree this read ~9.5-9.6 GHz)
 
 FALSIFIER (this is the gate on the whole #118 re-spec):
-  PASS  (re-spec is a legitimate physics correction): Im(Zin)=0 near ~9.2-9.3 GHz, clearly
-        BELOW f_dip, and f_match == f_dip. => the dip is the match point, resonance is correct.
+  PASS  (re-spec is a legitimate physics correction): Im(Zin)=0 inside the gated band
+        RES_BAND_EXPECT_GHZ, clearly BELOW f_dip, and f_match == f_dip. => the dip is
+        the match point; the resonance witness sits where the committed gate says.
   FAIL  (real MSL-port coupling bug, STOP and reject the re-spec): Im(Zin)=0 coincides with
         f_dip => the fields actually resonate at the dip, so the gate was right to flag it.
 
@@ -51,6 +54,10 @@ DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
 NUM_PERIODS = float(sys.argv[1]) if len(sys.argv) > 1 else 200.0
+# Gated antiresonance band, measured on this board 2026-09-01 (post-#702 tree;
+# tests/test_patch_edgefed_s11_passivity.py, issue #782). The pre-#702 tree read
+# its crossings at ~9.5-9.6 GHz — that number is retired with #702.
+RES_BAND_EXPECT_GHZ = (8.4, 9.2)
 FREQS = np.linspace(6e9, 14e9, 81)
 
 
@@ -127,19 +134,21 @@ def main() -> int:
     print(f"f_dip   (argmin|S11|) = {f_dip:.3f} GHz   |S11|={s11_abs[i_dip]:.4f}", flush=True)
     print(f"f_match (argmin|Zin-50|)= {f_match:.3f} GHz  Zin={zin[i_match]:.1f}", flush=True)
     print(f"Im(Zin)=0 crossings   = {[round(x,3) for x in res_cross]} GHz "
-          f"(RESONANCE; expect ~9.2-9.3)", flush=True)
+          f"(RESONANCE witness; expect inside {RES_BAND_EXPECT_GHZ})", flush=True)
 
     # Verdict logic
-    res_near_93 = any(8.9 <= x <= 9.6 for x in res_cross)
-    dip_above_res = bool(res_cross) and f_dip > (min(res_cross, key=lambda x: abs(x - 9.3)) + 0.3)
+    lo, hi = RES_BAND_EXPECT_GHZ
+    res_in_band = any(lo <= x <= hi for x in res_cross)
+    c_mid = 0.5 * (lo + hi)
+    dip_above_res = bool(res_cross) and f_dip > (min(res_cross, key=lambda x: abs(x - c_mid)) + 0.3)
     dip_is_match = abs(f_dip - f_match) <= 0.3
     print("\n--- FALSIFIER ---", flush=True)
-    print(f"  Im(Zin)=0 near 9.2-9.3 GHz?         {res_near_93}", flush=True)
+    print(f"  Im(Zin)=0 inside {RES_BAND_EXPECT_GHZ} GHz?  {res_in_band}", flush=True)
     print(f"  dip clearly ABOVE the resonance?    {dip_above_res}", flush=True)
     print(f"  dip == match point (|Zin-50| min)?  {dip_is_match}", flush=True)
-    if res_near_93 and dip_above_res and dip_is_match:
-        print("  => PASS: dip is the off-resonance MATCH point; resonance ~9.3 is correct. "
-              "Re-spec is a legitimate physics correction.", flush=True)
+    if res_in_band and dip_above_res and dip_is_match:
+        print("  => PASS: dip is the off-resonance MATCH point; the resonance witness "
+              "sits in the gated band. Re-spec is a legitimate physics correction.", flush=True)
         return 0
     print("  => INSPECT: the clean PASS pattern did not hold — read the full trace above "
           "before trusting the re-spec (do NOT auto-promote).", flush=True)
