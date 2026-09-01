@@ -219,6 +219,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -677,6 +678,34 @@ def min_mesh_cell_m(lines) -> float:
     return float(np.min(np.diff(lines))) if lines.size > 1 else 0.0
 
 
+def _x_uniformity_report(lines, dx_m: float) -> dict:
+    """Measured (never asserted) uniformity of a mesh axis.
+
+    Replaces a hardcoded ``x_mesh_is_uniform_and_start_aligned: True``. The
+    planes of record 4.72 mm and 5.52 mm are off the dx=50um lattice, so the
+    x mesh is NOT uniform and never was; making it uniform would mean moving
+    a plane of record, i.e. changing the DUT. Declared as a systematic.
+    """
+    d = np.diff(np.asarray(lines, dtype=float))
+    if d.size == 0:
+        return {"uniform": False, "reason": "fewer than two lines"}
+    tol = 1e-9 * dx_m
+    off = np.abs(d - dx_m) > tol
+    return {
+        "uniform": bool(not off.any()),
+        "n_cells": int(d.size),
+        "n_cells_off_nominal": int(off.sum()),
+        "nominal_dx_m": float(dx_m),
+        "min_cell_m": float(d.min()),
+        "max_cell_m": float(d.max()),
+        "off_nominal_cells_m": sorted({round(float(v), 15) for v in d[off]}),
+        "cause": (
+            "planes of record that are off the nominal lattice (the MSL "
+            "measurement plane and the MSL port start); making x uniform "
+            "would move a plane of record and change the DUT"),
+    }
+
+
 def openems_mesh_plan(dx_m: float) -> dict:
     """The Stage-2 mesh this script WOULD build at ``dx_m`` -- pure numpy,
     no openEMS. Used by --dry-run, by --self-check, and by the builder
@@ -749,7 +778,29 @@ def openems_mesh_plan(dx_m: float) -> dict:
         "lambda_min_in_substrate_m": float(lam_min_m),
         "cells_per_lambda_min": float(lam_min_m / dx_m),
         "y_lines_are_pre_smoothing": True,
-        "x_mesh_is_uniform_and_start_aligned": True,
+        # What the BUILDER will do to y, stated here so the plan cannot be
+        # read as the mesh that gets built: _build_stage2 calls
+        # SmoothMeshLines("y", dx/4, 1.4) AFTER these lines are handed over.
+        # CSXCAD is not importable off the solver image, so this is a BOUND,
+        # not a reimplementation of its smoother -- reimplementing it here
+        # would recreate the very defect this row exists to retire. The
+        # built mesh is recorded from the real thing in "mesh_as_built".
+        "y_post_smoothing_plan": {
+            "smoother": "SmoothMeshLines('y', dx/4, 1.4) in _build_stage2",
+            "max_cell_target_m": dx_m / 4.0,
+            "min_line_count_bound": int(
+                np.ceil((float(y_lines[-1]) - float(y_lines[0])) / (dx_m / 4.0)) + 1),
+            "planned_line_count_pre_smoothing": int(len(y_lines)),
+            "pml_y_depth_bound_m": B_PML_CELLS * dx_m / 4.0,
+            "note": (
+                "The PML is a CELL COUNT (B_PML_CELLS), so smoothing y to dx/4 "
+                "shrinks the y absorber depth toward this bound -- it is NOT the "
+                "pad thickness the domain was sized with. Reported, not gated."),
+        },
+        # COMPUTED, never asserted: the required planes 4.72 mm and 5.52 mm
+        # are off the dx=50um grid, so inserting them leaves short cell
+        # pairs. A self-check that returns a literal is not a check.
+        "x_mesh_uniformity": _x_uniformity_report(x_lines, dx_m),
         # Smallest cell on each axis. A value at round-off scale means a
         # plane of record got carried by TWO ULP-separated mesh lines and
         # openEMS's operator has a zero-width cell there (all-NaN fields);
@@ -1135,10 +1186,27 @@ def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
 def _check_excitation(port, label: str, *, channel: str = "uf_inc") -> float:
     launched = np.asarray(getattr(port, channel), dtype=np.complex128)
     peak = float(np.max(np.abs(launched))) if launched.size else 0.0
-    if not np.isfinite(peak) or peak == 0.0:
+    # nan and 0.0 are DIFFERENT causes and must not share a sentence.
+    # LumpedPort.CalcPort pins ``Z_ref = self.R`` (a scalar) and base
+    # Port.CalcPort then computes ``uf_inc = 0.5*(uf_tot + if_tot*Z_ref)``
+    # -- a product with NO division -- so a port that genuinely integrated
+    # no field yields exactly 0.0 and can never yield nan. A nan therefore
+    # says the FIELD was already nan in the raw probe files (the solve
+    # diverged or the operator was singular), and the port is not the
+    # suspect. VESSL 369367257610 printed nan and sent the next reader
+    # after the port; it was a zero-width mesh cell at the feed plane.
+    if not np.isfinite(peak):
+        raise RuntimeError(
+            f"[{label}] openEMS port channel {channel} is {peak!r}: the FIELD "
+            "was already non-finite in the raw probe files, so the solve "
+            "diverged or the operator was singular. The port is NOT the "
+            "suspect -- a lumped port cannot produce nan from a zero field "
+            "(Z_ref is a scalar and uf_inc is a product, no division). Check "
+            "the mesh for a degenerate cell and read _openems_stdout.log.")
+    if peak == 0.0:
         raise RuntimeError(
             f"[{label}] openEMS port saw NO wave energy on its launched "
-            f"channel ({channel}={peak!r}): excitation did not couple.")
+            f"channel ({channel}=0.0): excitation did not couple.")
     return peak
 
 
@@ -1371,6 +1439,38 @@ def _build_stage2(ContinuousStructure, openEMS, MSLPort, *, dx_m: float,
     # mesh is handed over as planned, and the MeasPlaneShift cross-check
     # below fails loud if openEMS's own snap disagrees with the plan.
     mesh.SmoothMeshLines("y", dx_u / 4.0, 1.4)
+
+    # The mesh AS BUILT, read back from the object openEMS is about to solve.
+    # The plan above is pre-smoothing on y and says so; this is the truth, and
+    # it is what the artifact must carry. VESSL 369367257610's record claimed
+    # the planned cell count and the planned y-PML depth, neither of which the
+    # solver ever saw. Reported, never gated.
+    _as_built = {}
+    for _ax in ("x", "y", "z"):
+        _l = np.asarray(mesh.GetLines(_ax), dtype=float) / to_u
+        _d = np.diff(_l)
+        _as_built[_ax] = {
+            "n_lines": int(_l.size),
+            "min_cell_m": float(_d.min()) if _d.size else None,
+            "max_cell_m": float(_d.max()) if _d.size else None,
+            "span_m": [float(_l[0]), float(_l[-1])] if _l.size else None,
+            # The PML is a CELL COUNT, so its physical depth follows the cells
+            # that end up at each face -- not the pad the domain was sized with.
+            "pml_depth_lo_m": (float(_l[B_PML_CELLS] - _l[0])
+                               if _l.size > B_PML_CELLS else None),
+            "pml_depth_hi_m": (float(_l[-1] - _l[-1 - B_PML_CELLS])
+                               if _l.size > B_PML_CELLS else None),
+        }
+    _as_built["total_cells"] = int(
+        max(_as_built["x"]["n_lines"] - 1, 0)
+        * max(_as_built["y"]["n_lines"] - 1, 0)
+        * max(_as_built["z"]["n_lines"] - 1, 0))
+    _as_built["planned_total_cells"] = int(plan.get("total_cells") or 0)
+    _as_built["note"] = (
+        "Read back from the built mesh after SmoothMeshLines. Compare with the "
+        "plan's pre-smoothing y rows; a large ratio here is the #490-lane "
+        "smoothing, not a defect, but the PML depths are the honest ones.")
+    plan["mesh_as_built"] = _as_built
 
     x0 = plan["domain_with_pad_m"]["x"][0] * to_u
     x1 = plan["domain_with_pad_m"]["x"][1] * to_u
@@ -1761,11 +1861,44 @@ def main(argv: list[str] | None = None) -> int:
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
+    def _archive_openems_stdout() -> list:
+        """Copy every openEMS stdout log out of sim_root, beside the artifact.
+
+        _run_openems_capturing_stdout writes ``_openems_stdout.log`` INSIDE
+        sim_root, which is not archived, so a job that dies leaves nothing to
+        read. That absence is the single reason VESSL 369367257610's failure
+        could not be separated into 'the solve diverged' vs 'the port was
+        starved' from its artifacts, and it costs a whole re-run each time.
+        Runs on every exit path, including the failing ones, and never raises.
+        """
+        archived = []
+        try:
+            root = os.path.abspath(args.sim_root)
+            dest_root = os.path.join(os.path.dirname(out_path) or ".",
+                                     "openems_logs")
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for fn in filenames:
+                    if fn != "_openems_stdout.log":
+                        continue
+                    src = os.path.join(dirpath, fn)
+                    rel = os.path.relpath(dirpath, root).replace(os.sep, "_")
+                    dst = os.path.join(dest_root, f"{rel}_{fn}")
+                    os.makedirs(dest_root, exist_ok=True)
+                    shutil.copyfile(src, dst)
+                    archived.append(dst)
+        except Exception as exc:  # never let archiving mask the real outcome
+            archived.append(f"<archiving failed: {type(exc).__name__}: {exc}>")
+        return archived
+
     def _write(rc_note: str) -> None:
         artifact["note"] = rc_note
+        artifact["openems_stdout_logs"] = _archive_openems_stdout()
         with open(out_path, "w") as f:
             json.dump(artifact, f, indent=2, default=str)
         print(f"\n=== Written to {out_path} ===")
+        if artifact["openems_stdout_logs"]:
+            print(f"    openEMS stdout archived: "
+                  f"{len(artifact['openems_stdout_logs'])} log(s)")
 
     t0 = time.time()
     try:

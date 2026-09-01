@@ -421,6 +421,19 @@ class _FakeMesh:
 
     def SmoothMeshLines(self, ax, res, ratio):
         self.smoothed.append((ax, res, ratio))
+        # Behave like CSXCAD: subdivide until every cell is <= res. A crude
+        # uniform refill is enough for the as-built RECORDING to be exercised
+        # (the real smoother's exact line placement is not under test here).
+        cur = sorted(set(self.lines.get(ax, [])))
+        if len(cur) >= 2 and res > 0:
+            out = [cur[0]]
+            for a, b in zip(cur[:-1], cur[1:]):
+                n = max(1, int(np.ceil((b - a) / res)))
+                out.extend(a + (b - a) * k / n for k in range(1, n + 1))
+            self.lines[ax] = sorted(set(out))
+
+    def GetLines(self, ax):
+        return np.asarray(sorted(set(self.lines.get(ax, []))), dtype=float)
 
 
 class _FakeCSX:
@@ -840,3 +853,66 @@ def test_predeclaration_7_2_carries_an_explicit_supersession_note():
     head = _PREDECLARATION.read_text().split("## 1.", 1)[0]
     assert "Amendment log" in head and "7.2" in head
 
+
+
+# ---------------------------------------------------------------------------
+# The plan must not claim a mesh the builder does not build, and a self-check
+# that returns a literal is not a check (VESSL 369367257610 follow-up).
+# ---------------------------------------------------------------------------
+def test_x_uniformity_is_computed_and_reports_the_off_lattice_planes(ref):
+    """The old row was the literal True. x is NOT uniform and never was."""
+    plan = ref.openems_mesh_plan(50e-6)
+    assert "x_mesh_is_uniform_and_start_aligned" not in plan, (
+        "the hardcoded uniformity literal must be gone: a self-check that "
+        "returns a constant is not a check")
+    rep = plan["x_mesh_uniformity"]
+    assert rep["uniform"] is False, (
+        "the MSL measurement plane (4.72 mm) and port start (5.52 mm) are off "
+        "the 50 um lattice, so x cannot be uniform; a True here would mean the "
+        "report was computed against the wrong lines")
+    assert rep["n_cells_off_nominal"] > 0
+    assert rep["min_cell_m"] < rep["nominal_dx_m"]
+    # and it must still be a MEASURED report, not an assertion that fails the run
+    assert rep["max_cell_m"] <= rep["nominal_dx_m"] * 1.001
+
+
+def test_plan_states_the_y_smoothing_the_builder_will_apply(ref):
+    """The plan's y lines are pre-smoothing; it must say what happens next."""
+    plan = ref.openems_mesh_plan(50e-6)
+    assert plan["y_lines_are_pre_smoothing"] is True
+    ps = plan["y_post_smoothing_plan"]
+    assert ps["max_cell_target_m"] == pytest.approx(50e-6 / 4.0)
+    # the bound must be a real bound: the built mesh has at least this many lines
+    assert ps["min_line_count_bound"] > ps["planned_line_count_pre_smoothing"], (
+        "smoothing to dx/4 must ADD y lines; a bound below the planned count "
+        "would mean the bound was computed on the wrong span")
+    # and the y PML depth follows the smoothed cells, not the pad it was sized with
+    assert ps["pml_y_depth_bound_m"] == pytest.approx(ref.B_PML_CELLS * 50e-6 / 4.0)
+    assert ps["pml_y_depth_bound_m"] < 8 * 50e-6
+
+
+def test_excitation_check_separates_a_nan_field_from_a_starved_port(ref):
+    """nan and 0.0 have different causes and must not share a sentence."""
+    class _P:
+        def __init__(self, v):
+            self.uf_inc = np.asarray(v, dtype=np.complex128)
+
+    with pytest.raises(RuntimeError, match="FIELD"):
+        ref._check_excitation(_P([np.nan + 0j]), "nanleg")
+    with pytest.raises(RuntimeError, match="NO wave energy"):
+        ref._check_excitation(_P([0j]), "zeroleg")
+    # a healthy port still returns its peak
+    assert ref._check_excitation(_P([0.25 + 0j]), "ok") == pytest.approx(0.25)
+
+
+def test_nan_message_does_not_blame_the_port(ref):
+    """The old message sent the next reader after the port; the source says
+    a lumped port cannot produce nan from a zero field."""
+    class _P:
+        uf_inc = np.asarray([np.nan + 0j])
+
+    with pytest.raises(RuntimeError) as exc:
+        ref._check_excitation(_P(), "leg")
+    msg = str(exc.value)
+    assert "not the suspect" in msg.lower() or "NOT the suspect" in msg
+    assert "excitation did not couple" not in msg
