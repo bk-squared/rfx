@@ -200,7 +200,7 @@ themselves: every arm's `compute_warnings` carries the common-mode
 passivity self-check, quoted verbatim — "compute_waveguide_s_matrix:
 extracted S-matrix failed a passivity/finiteness self-check —
 passivity_violation: max column power 1.36422 exceeds limit 1.1 at
-driven port 0, frequency index 0" (1.35884 on the graded arms) — the
+driven port 0, frequency index 0" (graded arms: 1.35884 on A/B/A_shim, 1.35905 on C) — the
 truncation-artifact class the adjacent settling warning names, so any S
 value read out of these runs carries its own do-not-quote marker. dz-graded waveguide S accuracy remains an OPEN
 item (#810).
