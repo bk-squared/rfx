@@ -1,0 +1,232 @@
+{
+  "meta": {
+    "issue": 812,
+    "mechanism": "P3 estimator quantization",
+    "case": "cv06b",
+    "produced_by": "scripts/diagnostics/cv06b_estimator_falsifiers.py",
+    "driving_fixture": "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json",
+    "driving_fixture_meta": {
+      "solver": "rfx",
+      "api": "Simulation.compute_msl_s_matrix (add_msl_port)",
+      "geometry": "matched openEMS dx=50um (l_line=5mm, margin=1mm, stub=12mm, eps_r=3.66, h_sub=254um, W=600um)",
+      "dx_um": 50.0,
+      "h_sub_cells": 5.08,
+      "n_freqs": 100,
+      "num_periods": 20.0
+    },
+    "board_h_sub_realized_m": 0.0003,
+    "board_u_realized": 2.0000000000000004,
+    "analytic_anchor_hz": 3710997448.039211,
+    "bin_hz": 63636362.55264282,
+    "gate_windows": {
+      "G1_notch_freq_tol_pct": 4.0,
+      "G2_bw_frac_ideal_r1": 0.210274,
+      "G2_bw_ratio_window": [
+        0.8,
+        1.2
+      ],
+      "G3_half_grid_witness_bins": 1.0
+    }
+  },
+  "case_A_baseline": {
+    "f_notch_analytic": 3710997448.039211,
+    "f_notch_bin": 3627272605.895996,
+    "f_notch_refined": 3642397039.104538,
+    "sub_bin_shift": 0.23766900091910909,
+    "bin_hz": 63636541.36657715,
+    "notch_depth_db": -32.94774359681242,
+    "err_pct": 1.8485706308130017,
+    "err_pct_bin": 2.2561277207951895,
+    "bw_lo": 3289843439.193784,
+    "bw_hi": 4018354111.7630796,
+    "bw_bins": 12,
+    "bw_frac": 0.2000085835640794,
+    "bw_ratio": 0.9511807620727214,
+    "witness_bins": 0.603664239764153,
+    "witness_argmin_bins": 1.0000028099333016,
+    "z0_median": 31.38,
+    "worst_sampled_depth_db": -31.23394166489778,
+    "depth_gate_blind_margin_db": -21.23394166489778,
+    "gates": {
+      "G1 notch freq vs analytic": true,
+      "G2 -10 dB stopband width": true,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": false,
+      "notch depth (witness only)": true
+    }
+  },
+  "case_B_sub_bin_ladder": {
+    "one_cell_stub_pct": 0.5291666666666667,
+    "one_cell_stub_bins": 0.30288266370740863,
+    "rows": [
+      {
+        "true_shift_pct": 0.1,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 0.0,
+        "new_refined_delta_pct": 0.10805011726857479
+      },
+      {
+        "true_shift_pct": 0.2,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 0.0,
+        "new_refined_delta_pct": 0.2437222985657734
+      },
+      {
+        "true_shift_pct": 0.26458333333333334,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 0.0,
+        "new_refined_delta_pct": 0.3510500810147729
+      },
+      {
+        "true_shift_pct": 0.5291666666666667,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 1.754390923448608,
+        "new_refined_delta_pct": 0.8324907384215827
+      },
+      {
+        "true_shift_pct": 0.75,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 1.754390923448608,
+        "new_refined_delta_pct": 1.0832906959922153
+      },
+      {
+        "true_shift_pct": 1.0,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 1.754390923448608,
+        "new_refined_delta_pct": 1.287681032520519
+      },
+      {
+        "true_shift_pct": 1.7500000000000002,
+        "sub_bin": false,
+        "old_bin_argmin_delta_pct": 1.754390923448608,
+        "new_refined_delta_pct": 1.7480281997267044
+      },
+      {
+        "true_shift_pct": -0.5291666666666667,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 0.0,
+        "new_refined_delta_pct": -0.31925722570908016
+      },
+      {
+        "true_shift_pct": -1.0,
+        "sub_bin": true,
+        "old_bin_argmin_delta_pct": 0.0,
+        "new_refined_delta_pct": -0.6646197994851838
+      }
+    ]
+  },
+  "case_C_shallow_notch_from_geometry": {
+    "construction": {
+      "module": "scripts/diagnostics/cv06b_shallow_stub_model.py",
+      "defect_input": "stub width, in cells of the 50um board lattice",
+      "w_line_cells": 12,
+      "dx_m": 5e-05,
+      "h_sub_m": 0.0003,
+      "l_line_m": 0.005,
+      "l_stub_m": 0.012,
+      "eps_r": 3.66,
+      "tan_delta": 0.0037,
+      "sigma_s_per_m": 58000000.0,
+      "z_ref_ohm": 50.0,
+      "open_end_extension_m_at_shipped_width": 0.00012092991040107246,
+      "reads_any_cv06b_gate_constant": false
+    },
+    "independence": {
+      "model_bw_frac_at_shipped_width": 0.20507948292927947,
+      "gate_reference_bw_frac": 0.210274,
+      "model_departure_from_gate_reference_pct": -2.4703563306545377,
+      "model_vs_measured_bw_ratio_pct": 2.5353408712958747,
+      "model_vs_measured_f_notch_pct": 1.0606153996814853,
+      "measured_bw_ratio": 0.9511807620727214,
+      "measured_f_notch_refined_hz": 3642397039.104538,
+      "measured_notch_depth_db": -32.94774359681242,
+      "model_notch_depth_db": -32.38987697287823
+    },
+    "rows": [
+      {
+        "stub_cells": 12,
+        "w_stub_m": 0.0006000000000000001,
+        "z0_stub_ohm": 53.10578561884263,
+        "r_coupling": 1.0,
+        "notch_depth_db": -32.38987697287823,
+        "f_notch_refined_hz": 3681028863.018823,
+        "err_pct": 0.8075614559159082,
+        "bw_frac": 0.20507948292927947,
+        "bw_ratio": 0.9752964366934547,
+        "G1_pass": true,
+        "G2_pass": true,
+        "depth_witness_pass": true
+      },
+      {
+        "stub_cells": 10,
+        "w_stub_m": 0.0005,
+        "z0_stub_ohm": 59.08884259501611,
+        "r_coupling": 0.8987447255113755,
+        "notch_depth_db": -33.16358417945059,
+        "f_notch_refined_hz": 3694206397.0699186,
+        "err_pct": 0.4524673272994056,
+        "bw_frac": 0.1860030534993085,
+        "bw_ratio": 0.8845746668599471,
+        "G1_pass": true,
+        "G2_pass": true,
+        "depth_witness_pass": true
+      },
+      {
+        "stub_cells": 8,
+        "w_stub_m": 0.0004,
+        "z0_stub_ohm": 66.70547372735274,
+        "r_coupling": 0.7961233561716912,
+        "notch_depth_db": -28.720463797075343,
+        "f_notch_refined_hz": 3737012791.4101434,
+        "err_pct": 0.7010337176243107,
+        "bw_frac": 0.1652072784694682,
+        "bw_ratio": 0.7856762056624604,
+        "G1_pass": true,
+        "G2_pass": false,
+        "depth_witness_pass": true
+      },
+      {
+        "stub_cells": 6,
+        "w_stub_m": 0.00030000000000000003,
+        "z0_stub_ohm": 76.77251035476513,
+        "r_coupling": 0.6917291797994001,
+        "notch_depth_db": -28.971523961467383,
+        "f_notch_refined_hz": 3761185605.0453715,
+        "err_pct": 1.3524169097092422,
+        "bw_frac": 0.14493149358640744,
+        "bw_ratio": 0.689250661453187,
+        "G1_pass": true,
+        "G2_pass": false,
+        "depth_witness_pass": true
+      },
+      {
+        "stub_cells": 5,
+        "w_stub_m": 0.00025,
+        "z0_stub_ohm": 83.85596476717997,
+        "r_coupling": 0.6332976523051999,
+        "notch_depth_db": -25.587226357012327,
+        "f_notch_refined_hz": 3794572256.2796116,
+        "err_pct": 2.2520847672519806,
+        "bw_frac": 0.1335330108547411,
+        "bw_ratio": 0.635042900476241,
+        "G1_pass": true,
+        "G2_pass": false,
+        "depth_witness_pass": true
+      }
+    ],
+    "first_firing_stub_cells": 8,
+    "narrowest_passing_stub_cells": 10
+  },
+  "case_D_quantised_estimator": {
+    "witness_bins": 1.0000028099333016,
+    "threshold_bins": 1.0,
+    "G3_pass": false
+  },
+  "verdict": {
+    "A_ok": true,
+    "B_ok": true,
+    "C_ok": true,
+    "D_ok": true,
+    "all_ok": true
+  }
+}

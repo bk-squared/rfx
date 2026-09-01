@@ -442,13 +442,16 @@ def test_msl_report_parser_holds_the_tightened_cv06b_windows():
     assert p1["gates"]["notch_freq_error_lt_4pct"] is False
     assert p1["status"] == "failed"
     # A shallow/narrow notch: the depth witness still passes, the width gate
-    # does not -- the blindness #812 measured.
+    # does not -- the blindness #812 measured. The ratio and depth below are
+    # the 6-cell row of tests/fixtures/cv06b_estimator_regate/
+    # cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.rows,
+    # re-read from that artifact by the assertion under this block.
     p2 = msl_report.parse_cv06b_stdout(
         "\n".join(["Notch frequency error = 1.4%",
-                    "Notch depth |S21| = -29.5 dB",
+                    "Notch depth |S21| = -28.97 dB",
                     "Re(Z0) median = 51.8 Ω",
                     "  half-grid witness spread   = 0.6037 bin",
-                    "  ratio to ideal r=1 stub 0.6417"]), rc=0)
+                    "  ratio to ideal r=1 stub 0.6893"]), rc=0)
     assert p2["gates"]["notch_depth_lt_minus_10db_WITNESS"] is True
     assert p2["gates"]["stopband_bw_ratio_in_window"] is False
     assert p2["status"] == "failed"
@@ -460,6 +463,35 @@ def test_msl_report_parser_holds_the_tightened_cv06b_windows():
                     "  ratio to ideal r=1 stub 0.9512"]), rc=0)
     assert p3["gates"]["half_grid_witness_sub_bin"] is False
     assert p3["status"] == "failed"
+
+
+def test_cv06b_shallow_row_used_above_is_the_committed_artifact_row():
+    """Numeric provenance (#812 round 2): the shallow-notch numbers this file
+    types into a synthetic stdout must BE a row of the committed falsifier
+    artifact, not a remembered one."""
+    art = json.loads(
+        (REPO_ROOT / "tests/fixtures/cv06b_estimator_regate"
+                     "/cv06b_estimator_falsifiers.json").read_text())
+    rows = art["case_C_shallow_notch_from_geometry"]["rows"]
+    row = next(r for r in rows if r["stub_cells"] == 6)
+    assert round(row["bw_ratio"], 4) == 0.6893
+    assert round(row["notch_depth_db"], 2) == -28.97
+    assert row["G2_pass"] is False
+    assert row["depth_witness_pass"] is True
+
+
+def test_report_mirrored_cv06b_windows_match_the_case_that_owns_them():
+    """report_msl_envelope parses stdout instead of importing cv06b, so it
+    RESTATES three windows. A restated number is a number that can rot: pin it
+    to the case that owns it."""
+    spec = importlib.util.spec_from_file_location(
+        "_cv06b_case",
+        REPO_ROOT / "validation/crossval/06b_msl_notch_filter_uniform.py")
+    cv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cv)
+    assert msl_report._CV06B_FREQ_TOL_PCT == cv.NOTCH_FREQ_TOL_PCT
+    assert msl_report._CV06B_BW_RATIO_WINDOW == cv.STOPBAND_BW_RATIO_WINDOW
+    assert msl_report._CV06B_WITNESS_BINS == cv.HALF_GRID_WITNESS_BINS
 
 
 def test_msl_report_infers_legacy_xfail_count_from_stdout(tmp_path: Path):

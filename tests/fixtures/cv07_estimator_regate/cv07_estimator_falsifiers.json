@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "issue": 812,
+    "mechanism": "P3 estimator quantization",
+    "case": "cv07",
+    "produced_by": "scripts/diagnostics/cv07_estimator_falsifiers.py",
+    "driving_leg": "validation/crossval/_07_sheen_results/rfx.json"
+  },
+  "window_derivations": {
+    "sweep_bin_mhz": 163.865536,
+    "sweep_bin_pct_at_bin_argmin": 2.0811097648140215,
+    "sweep_bin_pct_at_refined_zero": 2.067461831379248,
+    "upper_zero_bin_argmin_ghz": 7.873949696,
+    "upper_zero_refined_ghz": 7.925927991167884,
+    "one_cell_transverse_pct": 0.984251968503937,
+    "estimator_response_to_frequency_warp_pct": {
+      "+1.000pct": 0.9528135784228284,
+      "-1.000pct": -1.0596102580405855
+    },
+    "one_cell_corner_shift_pct": 0.4921259842519685,
+    "prominence_0p5_db_in_amplitude_pct": 5.9253725177288885,
+    "prominence_0p5_db_in_power_pct": 12.201845430196334
+  },
+  "defects": {
+    "erased_zero": {
+      "exit": 1,
+      "n_gates": 28,
+      "expected_failures": [
+        "C4 rfx lower zero, sub-bin refined",
+        "C5 rfx transmission-zero count"
+      ],
+      "observed_failures": [
+        "C4 rfx lower zero, sub-bin refined",
+        "C5 rfx transmission-zero count"
+      ],
+      "unexpected_failures": [],
+      "expected_but_passed": [],
+      "n_still_passing": 26,
+      "as_designed": true,
+      "failure_lines": [
+        "[FAIL] C4 rfx lower zero, sub-bin refined: 7.5462 vs committed 6.9440 GHz (8.673% <= 0.5%); bin argmin was 7.3824 GHz, sub-bin shift +1.000 bin",
+        "[FAIL] C5 rfx transmission-zero count: 1 == 2 in 5-15 GHz at <= -20 dB: 7.9038 GHz (-39.2 dB, prom 38.5 dB)"
+      ]
+    },
+    "corner_m20": {
+      "exit": 1,
+      "n_gates": 28,
+      "expected_failures": [
+        "C6 rfx -3 dB corner frequency"
+      ],
+      "observed_failures": [
+        "C6 rfx -3 dB corner frequency"
+      ],
+      "unexpected_failures": [],
+      "expected_but_passed": [],
+      "n_still_passing": 27,
+      "as_designed": true,
+      "failure_lines": [
+        "[FAIL] C6 rfx -3 dB corner frequency: 4.4231 vs committed 5.5036 GHz (19.632% <= 0.25%), referenced to passband mean 0.9378"
+      ]
+    }
+  },
+  "baseline": {
+    "exit": 0,
+    "n_gates": 28,
+    "failed": [],
+    "all_pass": true,
+    "verdicts": {
+      "A1 openEMS reference passive": "PASS",
+      "A2 openEMS median Re(Z0) near 50 ohm": "PASS",
+      "A3 openEMS shows a passband": "PASS",
+      "A4 openEMS shows a deep stopband zero": "PASS",
+      "B1 rfx bin count": "PASS",
+      "B2 openEMS bin count": "PASS",
+      "B3 doublet-search band populated in both": "PASS",
+      "C1 rfx argmin null reproduces committed value": "PASS",
+      "C1 openEMS argmin null reproduces committed value": "PASS",
+      "C3 rfx passband mean |S21| reproduces committed value": "PASS",
+      "C2 Palace referee verdict on record": "PASS",
+      "C4 rfx lower zero, sub-bin refined": "PASS",
+      "C4 rfx upper zero, sub-bin refined": "PASS",
+      "C5 rfx transmission-zero count": "PASS",
+      "C6 rfx -3 dB corner frequency": "PASS",
+      "C7 rfx half-grid resolution witness": "PASS",
+      "C4 openEMS lower zero, sub-bin refined": "PASS",
+      "C4 openEMS upper zero, sub-bin refined": "PASS",
+      "C5 openEMS transmission-zero count": "PASS",
+      "C6 openEMS -3 dB corner frequency": "PASS",
+      "C7 openEMS half-grid resolution witness": "PASS",
+      "C4b doublet locks agree with the committed referee fixture": "PASS",
+      "D1 strict passive bound on the quoted S": "PASS",
+      "D6 max column power reproduces committed value": "PASS",
+      "D2 settling witness reproduces committed (< -40 dB rule)": "PASS",
+      "D3 correction footprint matches committed": "PASS",
+      "D4 worst correction matches committed": "PASS",
+      "D5 in-band correction footprint matches committed": "PASS"
+    }
+  },
+  "verdict": {
+    "all_ok": true
+  }
+}

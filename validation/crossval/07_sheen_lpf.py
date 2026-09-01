@@ -342,8 +342,12 @@ COMMITTED = dict(
                                 # reports a 1.000% shift as 0.953% -> 1.9x
     n_transmission_zeros=2,     # the doublet this case exists to characterise
     zero_depth_db_max=-20.0,    # gate A4's own existing constant
-    zero_prominence_db=0.5,     # 12% in |S21|; > the legs' bounded extraction
-                                # noise, < the doublet ridge both legs resolve
+    zero_prominence_db=0.5,     # 5.9% in |S21| (12% in POWER); > the legs'
+                                # bounded extraction noise, < the doublet ridge
+                                # both legs resolve. (CORRECTION 2026-09-01:
+                                # this comment read "12% in |S21|"; 0.5 dB is
+                                # 12% in power and 5.9% in amplitude. Window
+                                # unchanged -- only the description was wrong.)
     corner_ghz={"rfx": 5.5036, "openEMS": 5.5185},
     corner_tol_pct=0.25,        # one-cell transverse error moves fc 0.49%
     half_grid_witness_bins=1.0,  # structural: a bin-quantised estimator scores

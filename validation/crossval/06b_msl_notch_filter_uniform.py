@@ -299,6 +299,21 @@ above is withdrawn except the one arithmetic slip corrected below.
   Derivations, falsifiers and evidence:
   ``docs/design_notes/estimator_resolution_regate.md``.
 
+  ROUND-2 APPEND (2026-09-01). Two things a reader must not infer.
+  (1) CRITERION (A) IS NOT YET DEMONSTRATED ON THIS BOARD. The gates above
+      have been exercised on the committed dx=50um SIBLING sweep, not on a
+      fresh solve of this mesh; ``scripts/vessl_cv06b_estimator_falsifiers.yaml``
+      is what will judge them, and its
+      ``cv06b_build_falsifiers_summary.json::criterion_A_baseline`` is where
+      the answer will live.
+  (2) The round-1 shallow-notch falsifier was WITHDRAWN as near-circular (it
+      rescaled the measured sweep by the closed form G2's window comes from).
+      Its replacement builds the defect from geometry alone
+      (``scripts/diagnostics/cv06b_shallow_stub_model.py``); the ladder and
+      its independence check are
+      ``tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json
+      ::case_C_shallow_notch_from_geometry``. No window moved in either round.
+
 Scope:
   - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=
     3.175, an UNDER-RESOLVED mixed-cell substrate per the "External
@@ -453,6 +468,20 @@ def _realized_trace_width(sim: Simulation) -> float:
     )
 
 
+def worst_sampled_notch_db(bin_hz, f0, r=1.0):
+    """dB of the WORST sampled minimum of an ideal shunt-open-stub zero.
+
+    The retained depth gate reads the SAMPLED minimum of a true transmission
+    zero, so its blindness is set by the grid, not by the notch. The worst a
+    grid of ``bin_hz`` can do is land half a bin off ``f0``:
+    ``|S21| = 2/sqrt(4 + tan^2 theta)``, ``theta = (pi/2)(1 + h/(2 f0))``.
+    Computed live so the margin printed beside the gate cannot go stale if the
+    sweep length ever changes (#812 numeric-provenance discipline).
+    """
+    theta = 0.5 * np.pi * (1.0 + 0.5 * float(bin_hz) / float(f0))
+    return float(20.0 * np.log10(2.0 / np.sqrt(4.0 + (r * np.tan(theta)) ** 2)))
+
+
 def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     """Every gated quantity, as a pure function of the sweep.
 
@@ -504,15 +533,19 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
         "witness_argmin_bins": float(wit["argmin_spread_bins"]),
         "z0_median": z0_median,
     }
+    m["worst_sampled_depth_db"] = worst_sampled_notch_db(
+        m["bin_hz"], m["f_notch_refined"])
+    m["depth_gate_blind_margin_db"] = m["worst_sampled_depth_db"] - (-10.0)
     m["gates"] = {
         "G1 notch freq vs analytic": m["err_pct"] < NOTCH_FREQ_TOL_PCT,
         "G2 -10 dB stopband width": lo_r < bw_ratio < hi_r,
         "G3 half-grid resolution witness": m["witness_bins"] < HALF_GRID_WITNESS_BINS,
         "G4 Z0 median": 40 < z0_median < 65,
         # RETAINED, NOT REMOVED, NOT WIDENED — and it cannot fail while a notch
-        # exists at all (worst sampled minimum on this grid for an ideal r=1
-        # stub is -31.23 dB). It stays as a witness; G2 carries the real depth
-        # requirement.
+        # exists at all: the worst sampled minimum on this grid for an ideal
+        # r=1 stub is computed live above as m["worst_sampled_depth_db"] and
+        # printed beside the verdict. It stays as a witness; G2 carries the
+        # real depth requirement.
         "notch depth (witness only)": m["notch_depth_db"] < -10,
     }
     return m
@@ -568,9 +601,11 @@ def report(m) -> bool:
           f"{'PASS' if g['G4 Z0 median'] else 'FAIL'}  ({m['z0_median']:.1f} Ω)")
     print(f"  Notch depth (< -10 dB):          "
           f"{'PASS' if g['notch depth (witness only)'] else 'FAIL'}  "
-          f"({m['notch_depth_db']:.1f} dB) — WITNESS ONLY: this gate is "
-          f"21.2 dB from its own worst case and cannot fail while a notch "
-          f"exists (#812; see the docstring)")
+          f"({m['notch_depth_db']:.1f} dB) — WITNESS ONLY: an ideal r=1 stub's "
+          f"WORST sampled minimum on this grid is "
+          f"{m['worst_sampled_depth_db']:.2f} dB, i.e. "
+          f"{abs(m['depth_gate_blind_margin_db']):.1f} dB inside the gate, so "
+          f"it cannot fail while a notch exists (#812; see the docstring)")
     return all(g.values())
 
 

@@ -35,7 +35,14 @@ Two defects:
       corner that every pre-existing gate is blind to) rather than its
       unpublished leg.
 
+Every number this script prints, and every window derivation the design note
+cites for cv07, is also written to
+tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json -- the
+committed record prose must reference by key rather than restate (#812
+round-2 numeric-provenance discipline).
+
 Usage:  python scripts/diagnostics/cv07_estimator_falsifiers.py [--keep]
+                                                               [--out-json P]
 Exit 0 iff every falsifier failed exactly the gates it was built to fail.
 """
 from __future__ import annotations
@@ -57,6 +64,14 @@ CV07 = REPO / "validation/crossval/07_sheen_lpf.py"
 RES = REPO / "validation/crossval/_07_sheen_results"
 COMPARATORS = REPO / "validation/crossval/comparators/spectral_features.py"
 REFEREE = REPO / "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json"
+SPECTRAL = REPO / "validation/crossval/comparators/spectral_features.py"
+OUT_JSON = REPO / "tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json"
+
+# Geometry the T4/T6 windows are derived from, read from the case rather than
+# retyped: one dx cell on the wide patch's transverse extent.
+DX_M = 200e-6
+PATCH_TRV_M = 20.320e-3
+UPPER_WIN_GHZ = (7.5, 8.6)
 
 ANCHOR_LO_GHZ = 6.3992     # shoulder bin, untouched
 ANCHOR_HI_GHZ = 7.8739     # deep-zero bin, untouched
@@ -123,14 +138,60 @@ def run_compare(leg: dict, workdir: Path) -> tuple[int, dict[str, str], str]:
     return proc.returncode, verdicts, proc.stdout
 
 
+def _window_derivations(leg: dict) -> dict:
+    """Re-derive every quantity the design note's cv07 windows rest on.
+
+    Nothing here judges anything; it exists so the note can cite a key instead
+    of a digit, and so a changed leg or estimator moves the cited number.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_sf", SPECTRAL)
+    sf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sf)
+
+    f = np.asarray(leg["freqs_hz"], dtype=float) / 1e9
+    s = np.asarray(leg["s21_mag"], dtype=float)
+    bin_ghz = float(f[1] - f[0])
+    base = sf.refined_extremum(f, s, *UPPER_WIN_GHZ)
+    warp = {}
+    for rel in (0.01, -0.01):
+        w = np.interp(f / (1.0 + rel), f, s)
+        r = sf.refined_extremum(f, w, UPPER_WIN_GHZ[0] * (1 + rel),
+                                UPPER_WIN_GHZ[1] * (1 + rel))
+        warp[f"{rel*100:+.3f}pct"] = (
+            (r["refined_f"] - base["refined_f"]) / base["refined_f"] * 100.0)
+    one_cell_pct = DX_M / PATCH_TRV_M * 100.0
+    return {
+        "sweep_bin_mhz": bin_ghz * 1e3,
+        "sweep_bin_pct_at_bin_argmin": bin_ghz / base["bin_f"] * 100.0,
+        "sweep_bin_pct_at_refined_zero": bin_ghz / base["refined_f"] * 100.0,
+        "upper_zero_bin_argmin_ghz": base["bin_f"],
+        "upper_zero_refined_ghz": base["refined_f"],
+        "one_cell_transverse_pct": one_cell_pct,
+        "estimator_response_to_frequency_warp_pct": warp,
+        # fc ~ 1/sqrt(LC), C ~ patch area ~ transverse extent
+        "one_cell_corner_shift_pct": 0.5 * one_cell_pct,
+        "prominence_0p5_db_in_amplitude_pct": (10 ** (0.5 / 20) - 1) * 100.0,
+        "prominence_0p5_db_in_power_pct": (10 ** (0.5 / 10) - 1) * 100.0,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true",
                     help="keep the isolated work trees for inspection")
+    ap.add_argument("--out-json", default=str(OUT_JSON))
     args = ap.parse_args()
 
     committed = json.loads((RES / "rfx.json").read_text())
     ok = True
+    rec = {"meta": {"issue": 812, "mechanism": "P3 estimator quantization",
+                    "case": "cv07",
+                    "produced_by":
+                        "scripts/diagnostics/cv07_estimator_falsifiers.py",
+                    "driving_leg": str(RES.relative_to(REPO) / "rfx.json")},
+           "window_derivations": _window_derivations(committed),
+           "defects": {}}
 
     tmp = Path(tempfile.mkdtemp(prefix="cv07_falsifiers_"))
     try:
@@ -140,6 +201,9 @@ def main() -> int:
         print(f"[baseline]   exit {rc0}   {n} gates   "
               f"{'ALL PASS' if not fails0 else 'FAIL: ' + str(fails0)}")
         ok &= (rc0 == 0 and not fails0)
+        rec["baseline"] = {"exit": rc0, "n_gates": n,
+                           "failed": fails0, "all_pass": not fails0,
+                           "verdicts": v0}
 
         for name, (build, expect) in DEFECTS.items():
             rc, v, out = run_compare(build(committed), tmp / name)
@@ -160,11 +224,27 @@ def main() -> int:
             print(f"   -> {'OK' if good else 'NOT OK'}: "
                   f"failed exactly the {len(expect)} gate(s) it was built to "
                   f"fail; the other {len(v) - len(fails)} still pass")
+            rec["defects"][name] = {
+                "exit": rc, "n_gates": len(v),
+                "expected_failures": sorted(expect),
+                "observed_failures": sorted(fails),
+                "unexpected_failures": sorted(extra),
+                "expected_but_passed": sorted(missing),
+                "n_still_passing": len(v) - len(fails),
+                "as_designed": bool(good),
+                "failure_lines": [ln.strip() for ln in out.splitlines()
+                                  if ln.strip().startswith("[FAIL]")]}
     finally:
         if args.keep:
             print(f"\nwork trees kept in {tmp}")
         else:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    rec["verdict"] = {"all_ok": bool(ok)}
+    out_path = Path(args.out_json)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(rec, indent=2) + "\n")
+    print(f"\nwrote {out_path}")
 
     print("\n" + ("FALSIFIERS OK — every new gate fails on the defect it was "
                   "added for, and only on that defect."
