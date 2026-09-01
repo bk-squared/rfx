@@ -28,6 +28,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling fixture modu
 
 import coax_msl_ladder_witnesses as W  # noqa: E402
 
+from rfx.api._sparams import (  # noqa: E402
+    _dut_sign_from_reference_at_the_dut,
+    _incident_outgoing,
+)
+
 from test_coax_msl_transition import (  # noqa: E402
     DX, FLUX_BOX_X_3, FLUX_BOX_Y_3, FLUX_BOX_Z_3, FLUX_COAX_PATCH_3,
     FLUX_COAX_Z_3, FREQS_2, JUNCTION_X, LX_2, LY, LZ_2, N_GND, Y_C,
@@ -134,7 +139,13 @@ def _w1_rows(amp_toward, amp_away):
 
 def test_w1_h1_sign_witness_resolves_both_ways_on_a_settled_clean_ladder():
     """The verdict must be reachable in BOTH directions -- a witness that can
-    only say 'H1 supported' is not a falsifier."""
+    only say one thing is not a falsifier.
+
+    POST-#822 each direction carries the OPPOSITE conclusion from the one
+    pinned before the fix: the assembler labels the wave LEAVING the
+    junction ``b_out``, so a dominant outgoing wave at the undriven coax
+    port agrees with the labels (H1 KILLED) and a dominant arriving one
+    does not (H1 supported)."""
     clean = [1e-12] * len(FREQS)
     away = W.w1_h1_sign_witness(_w1_rows(1.0, 11.0), fit_residual_by_bin=clean,
                                 settling_db=SETTLED_DB)
@@ -142,10 +153,10 @@ def test_w1_h1_sign_witness_resolves_both_ways_on_a_settled_clean_ladder():
                                   settling_db=SETTLED_DB)
     for r in away:
         assert r["verdict_resolved"] is True, r
-        assert "H1 supported" in r["verdict"]
+        assert "H1 KILLED" in r["verdict"]
     for r in toward:
         assert r["verdict_resolved"] is True, r
-        assert "H1 KILLED" in r["verdict"]
+        assert "H1 supported" in r["verdict"]
 
 
 @pytest.mark.parametrize("settling, resid, why", [
@@ -166,8 +177,8 @@ def test_w1_h1_sign_witness_is_unresolved_when_a_precondition_fails(settling, re
 def test_w1_h1_sign_witness_is_unresolved_on_extractor_floor():
     """The 300-step smoke's own coax-ladder-under-MSL-drive shape: pairwise
     slopes that flip sign along the ladder and a |mean|/beta of ~0.04. The
-    pre-fix witness printed 'H1 supported' at all three bins from exactly
-    this; it must now print UNRESOLVED."""
+    pre-fix witness printed a resolved verdict at all three bins from
+    exactly this; it must now print UNRESOLVED."""
     rng = np.random.default_rng(589)
     n = len(FREQS)
     noise = (rng.standard_normal((len(Z_COAX), n)) + 1j * rng.standard_normal((len(Z_COAX), n)))
@@ -301,8 +312,34 @@ def _flux_case(coax_z22, msl_frac=0.60):
     return faces
 
 
+class _ExtractorOut:
+    """The two amplitudes ``coaxial_line_reflection_from_plane_voltages``
+    returns: ``forward_amp`` travels TOWARD the reference plane."""
+
+    def __init__(self, forward, backward):
+        self.forward_amp = forward
+        self.backward_amp = backward
+
+
 def _ab_for_flux(net_coax, net_msl_out):
-    """a_inc/b_out (2, 2, n_f) with an EXACT coax-drive net |b|^2 - |a|^2.
+    """a_inc/b_out (2, 2, n_f) planted by PHYSICS, labelled by PRODUCTION.
+
+    The caller states two physical facts about the coax-drive column -- the
+    net power flowing TOWARD the junction on the coax ladder (``net_coax``;
+    +z points at the coax junction, so this is the net +z power) and the net
+    power LEAVING the junction on the MSL ladder (``net_msl_out``; +x points
+    away from the MSL junction) -- and the pair is then handed to whichever
+    of the code's two arrays production's OWN geometric split puts it in
+    (:func:`rfx.api._sparams._incident_outgoing`, with the ``dut_sign``
+    derived from the same ladder geometry these witnesses use).
+
+    Planting straight onto ``a``/``b`` would re-encode the assembler's label
+    constant in the test -- the round-trip issue #822 exists to eliminate.
+    That is exactly how this file stayed green while
+    :func:`coax_msl_ladder_witnesses.net_plus_axis_power` still carried the
+    pre-#822 formula: the helper's constant and the fixture's constant
+    cancelled, so the pair could not notice that one of them was wrong for
+    the geometry.
 
     One branch is planted at zero so the tiny (1e-15 W) net survives in
     double precision -- ``|b|^2 = 1 + net`` against ``|a|^2 = 1`` would be
@@ -312,23 +349,42 @@ def _ab_for_flux(net_coax, net_msl_out):
     n = len(FREQS)
     a = np.zeros((2, 2, n), dtype=complex)
     b = np.zeros((2, 2, n), dtype=complex)
-    if net_coax >= 0:
-        b[0, 0] = np.sqrt(net_coax)            # coax ladder: b_code is the +z wave
-    else:
-        a[0, 0] = np.sqrt(-net_coax)
-    a[1, 0] = np.sqrt(net_msl_out)             # MSL ladder: a_code is the +x wave
-    a[0, 1] = 1.0                              # MSL-drive column, unused here
-    b[1, 1] = 1.0
+    # Coax ladder: junction (= reference plane) ABOVE the probes, so the
+    # extractor's forward_amp -- the branch travelling toward the reference
+    # plane -- is the +z wave, i.e. the one travelling toward the junction.
+    toward_c = np.sqrt(net_coax) if net_coax >= 0 else 0.0
+    away_c = 0.0 if net_coax >= 0 else np.sqrt(-net_coax)
+    a[0, 0], b[0, 0] = _incident_outgoing(
+        _ExtractorOut(toward_c, away_c), ref_m=REF_COAX, planes_m=Z_COAX,
+        dut_sign=_dut_sign_from_reference_at_the_dut(ref_m=REF_COAX, planes_m=Z_COAX))
+    # MSL ladder: junction BELOW the probes, so forward_amp is the -x wave
+    # (toward the junction) and the +x wave -- the one carrying net_msl_out
+    # away from it -- is backward_amp.
+    a[1, 0], b[1, 0] = _incident_outgoing(
+        _ExtractorOut(0.0, np.sqrt(net_msl_out)), ref_m=REF_MSL, planes_m=X_MSL,
+        dut_sign=_dut_sign_from_reference_at_the_dut(ref_m=REF_MSL, planes_m=X_MSL))
+    # MSL-drive column: not read by any assertion here, but it must keep the
+    # 2x2 incident matrix non-singular (the end-to-end test re-solves S from
+    # it). Physical placement: the MSL port is the driven one, so its
+    # INCIDENT wave is the unit amplitude and the coax port only radiates.
+    a[1, 1] = 1.0
+    b[0, 1] = 1.0
     return a, b
 
 
-@pytest.mark.parametrize("msl_frac, expect", [(+0.60, "H1 supported"), (-0.60, "H1 KILLED")])
+@pytest.mark.parametrize("msl_frac, expect", [(+0.60, "H1 KILLED"), (-0.60, "H1 supported")])
 def test_w4_h1_verdict_follows_the_sign_of_msl_x20_the_non_driven_port(msl_frac, expect):
     """The H1 flux discriminator is the sign of ``msl_x20`` under the coax
     drive, and BOTH branches are reachable with the SAME (passivity-required)
     ``coax_z22 > 0``. That is the whole point: coax_z22's sign is fixed by the
     geometry for any passive junction, so a verdict keyed on it can only ever
-    say "H1 supported"; msl_x20's sign is a property of the DUT."""
+    say the same thing every time; msl_x20's sign is a property of the DUT.
+
+    POST-#822 the two conclusions are attached to the OPPOSITE signs from
+    the ones this test pinned before the fix: the assembler now labels the
+    MSL ladder's +x (away-from-junction) branch ``b_out``, so power leaving
+    the undriven port AGREES with the labels and kills H1. The measured
+    sign did not move; the labels did."""
     coax_z22 = +1.17e-15
     a, b = _ab_for_flux(net_coax=+1.17e-15, net_msl_out=1.76e-15)
     out = W.w4_flux({"coax": _flux_case(coax_z22, msl_frac=msl_frac)},
@@ -342,7 +398,7 @@ def test_w4_h1_verdict_follows_the_sign_of_msl_x20_the_non_driven_port(msl_frac,
         assert abs(r["closure_rel_residual"]) < 1e-12, r
         assert r["R1_within_calibration_band"] is True          # planted exact
         assert np.isclose(r["R1_coax_z22_over_net_code_coax"], 1.0)
-        assert np.isclose(r["R2_msl_x20_over_abs_a_code_msl_sq"],
+        assert np.isclose(r["R2_msl_x20_over_abs_msl_outgoing_sq"],
                           msl_frac * coax_z22 / 1.76e-15)
 
 
@@ -363,8 +419,8 @@ def test_w4_h1_verdict_is_not_keyed_on_coax_z22():
                "NOT evidence for H1" in r["coax_z22_passivity_check"]
         assert r["coax_z22_sign_is_passivity_entailed"] is True
         assert "h1_sign_verdict" not in r          # the old, non-falsifiable key is gone
-    assert "H1 supported" in verdicts[+0.60]
-    assert "H1 KILLED" in verdicts[-0.60]
+    assert "H1 KILLED" in verdicts[+0.60]        # labels agree with the flux
+    assert "H1 supported" in verdicts[-0.60]     # labels disagree with it
 
 
 def test_w4_h1_verdict_is_unresolved_on_an_unsettled_run():
@@ -425,7 +481,7 @@ def test_w4_r1_outside_the_calibration_band_is_flagged():
         # R1 is label-blind: it is out of band here yet the H1 verdict, which
         # does not consume it, still resolves off the sign of msl_x20.
         assert r["h1_verdict_resolved"] is True
-        assert "H1 supported" in r["h1_flux_verdict"]
+        assert "H1 KILLED" in r["h1_flux_verdict"]
 
 
 def test_w4_msl_drive_expectations_are_reported_not_asserted():
@@ -441,17 +497,55 @@ def test_w4_msl_drive_expectations_are_reported_not_asserted():
 
 
 def test_net_plus_axis_power_uses_the_per_ladder_reference_side():
-    """b_code is the +z wave on the coax ladder (reference above) and the -x
-    wave on the MSL ladder (reference below); the net-power helper must not
-    use one formula for both."""
+    """POST-#822 ``a_code`` is the branch travelling TOWARD the reference
+    plane, which on this lane IS the junction: the +z wave on the coax
+    ladder (junction above) and the -x wave on the MSL ladder (junction
+    below). The net +axis power is therefore ``|a|^2-|b|^2`` on the coax
+    ladder and ``|b|^2-|a|^2`` on the MSL one -- the helper must not use one
+    formula for both, and it must use the POST-fix one: with ``a_code``
+    still read as the away-from-junction branch these two numbers came out
+    +3 and -3, and every quantity derived from them (R1, R2net, the S-side
+    ratio, and the coax-drive net +z power passivity forbids to be
+    negative) inverted.
+    """
     n = len(FREQS)
     a = np.zeros((2, 2, n), dtype=complex)
     b = np.zeros((2, 2, n), dtype=complex)
     a[:, :, :] = 1.0
     b[:, :, :] = 2.0
     k = 0
-    assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 0, 0), 3.0)
-    assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 1, 0), -3.0)
+    assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 0, 0), -3.0)
+    assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 1, 0), +3.0)
+
+
+def test_net_plus_axis_power_recovers_the_planted_physical_net_power():
+    """The label round trip, closed against PHYSICS rather than against a
+    constant (issue #822 review).
+
+    ``_ab_for_flux`` plants a stated net +z power at the coax ladder and a
+    stated net +x power at the MSL ladder and lets PRODUCTION's own
+    geometric split decide which array each amplitude lands in; the witness
+    must read those same two numbers back, sign included. This is the pin
+    the old ``net_plus_axis_power`` could not pass once the assembler's
+    labels were corrected: it returned both with the sign flipped.
+    """
+    net_coax, net_msl_out = +1.17e-15, 1.76e-15
+    a, b = _ab_for_flux(net_coax=net_coax, net_msl_out=net_msl_out)
+    # atol=0.0 is load-bearing: these powers are O(1e-15), far below
+    # np.isclose's DEFAULT atol=1e-8, which would make the comparison
+    # vacuous -- it would pass even with the sign inverted.
+    for k in range(len(FREQS)):
+        assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 0, 0),
+                          net_coax, rtol=1e-12, atol=0.0)
+        assert np.isclose(W.net_plus_axis_power(a[:, :, k], b[:, :, k], 1, 0),
+                          net_msl_out, rtol=1e-12, atol=0.0)
+    # ... and a coax ladder whose net +z power is negative (the sign
+    # passivity forbids under the coax drive) is reported as negative, not
+    # silently turned positive by the label mapping.
+    a_neg, b_neg = _ab_for_flux(net_coax=-1.0e-15, net_msl_out=net_msl_out)
+    for k in range(len(FREQS)):
+        assert np.isclose(W.net_plus_axis_power(a_neg[:, :, k], b_neg[:, :, k], 0, 0),
+                          -1.0e-15, rtol=1e-12, atol=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -502,11 +596,11 @@ def test_compute_witnesses_end_to_end_and_npz_round_trip(tmp_path):
         assert r["relative_to_junction"] == "away"
         assert r["preconditions_failed"] == [], r
         assert r["verdict_resolved"] is True
-        assert "H1 supported" in r["verdict"]
+        assert "H1 KILLED" in r["verdict"]          # post-#822 labels agree
     # and the W4 discriminator resolves off msl_x20, not off coax_z22
     for r in w["W4_flux"]["per_drive"]["coax"]["rows"]:
         assert r["h1_verdict_resolved"] is True
-        assert "H1 supported" in r["h1_flux_verdict"]
+        assert "H1 KILLED" in r["h1_flux_verdict"]
     assert isinstance(w["W4_flux"], dict)
     lines = W.format_tables(w)
     assert any(line.startswith("=== W1") for line in lines)

@@ -1532,6 +1532,33 @@ def _incident_outgoing(out, *, ref_m, planes_m, dut_sign):
     return out.backward_amp, out.forward_amp
 
 
+def _dut_sign_from_reference_at_the_dut(*, ref_m, planes_m):
+    """``dut_sign`` for a ladder whose REFERENCE PLANE IS THE DUT ITSELF.
+
+    Only usable on a lane where the reference plane is placed AT the DUT --
+    :meth:`_SparamMixin.compute_coax_msl_transition` is one: it passes
+    ``ref_coax_m`` = the junction's own z and ``ref_msl_m`` =
+    ``float(junction_x)``. When that holds, "which side of the ladder the
+    DUT is on" and "which side of the ladder the reference plane is on" are
+    the SAME question, so the sign is read off the geometry the caller
+    already supplied instead of being written down as a constant that
+    silently assumes one ladder orientation (issue #822 review).
+
+    This is NOT usable on :func:`_assemble_coaxial_two_port_from_voltages`,
+    whose reference planes are the two FEEDS, on the far side of the probes
+    from the DUT: there the two questions have opposite answers.
+
+    Returns ``+1.0`` when the reference plane sits at LARGER coordinate than
+    the probe centroid, ``-1.0`` when smaller, and ``0.0`` in the degenerate
+    case ``ref_m == centroid`` (a reference plane inside its own ladder,
+    which is not a valid one-port geometry). ``0.0`` is deliberate: composed
+    with :func:`_incident_outgoing` it lands on that function's documented
+    ``> 0.0`` tie branch, so the tie rule keeps living in exactly one place.
+    """
+    centroid = float(np.asarray(planes_m, dtype=float).mean())
+    return float(np.sign(float(ref_m) - centroid))
+
+
 def _assemble_coaxial_two_port_from_voltages(
     *,
     z_planes_bot_m,
@@ -1996,11 +2023,23 @@ def _assemble_coax_msl_transition_from_voltages(
     hard-coded per branch:
 
     * :meth:`_SparamMixin.compute_coax_msl_transition` (this function):
-      both reference planes are placed AT the junction, i.e. on the DUT
-      side of their own probe ladders (coax ref 2.5 mm above probes at
-      0.9-1.9 mm, ``dut_sign=+1``; MSL ref 1.0 mm below probes at
-      2.6-10.6 mm, ``dut_sign=-1`` on the committed attempt-2/3 fixture)
-      -> ``a = forward_amp``.
+      both reference planes are placed AT the junction (``ref_coax_m`` =
+      the junction z, ``ref_msl_m`` = ``float(junction_x)``), i.e. on the
+      DUT side of their own probe ladders. Because the reference plane IS
+      the DUT here, ``dut_sign`` is DERIVED per call by
+      :func:`_dut_sign_from_reference_at_the_dut` from the plane arrays
+      this function already receives -- it is never written down as a
+      constant. On the committed attempt-2/3/3b fixture that derivation
+      returns ``+1`` for the coax ladder (junction 2.5 mm above probes at
+      0.9-1.9 mm) and ``-1`` for the MSL ladder (junction 1.0 mm below
+      probes at 2.6-10.6 mm), and both then resolve to
+      ``a = forward_amp``. A literal ``-1`` for the MSL ladder would have
+      been wrong for the OTHER orientation the calling method supports:
+      ``compute_coax_msl_transition`` accepts a ``"+x"``-facing MSL port
+      (see its ``(1 if msl_pe.direction == "+x" else -1)`` monotonicity
+      branch), whose junction sits at LARGER x than its ladder. Regression:
+      ``tests/test_coax_msl_transition_wave_roles.py::
+      test_assembler_wave_roles_hold_on_a_mirrored_msl_ladder``.
     * :func:`_assemble_coaxial_two_port_from_voltages`: each reference
       plane is that port's own feed, on the FAR side of the probes from
       the DUT -> ``a = backward_amp``.
@@ -2045,6 +2084,17 @@ def _assemble_coax_msl_transition_from_voltages(
         raise ValueError(f"z0_msl must be positive finite, got {z0_msl}")
     sqrt_z0 = np.array([np.sqrt(float(z0_coax)), np.sqrt(float(z0_msl))])
 
+    # Wave roles (#822), derived ONCE from the geometry this function was
+    # already given: on this lane each reference plane IS the junction, so
+    # the DUT side of each ladder is the side its own reference plane lies
+    # on. Writing these as literals would hard-code one MSL orientation --
+    # compute_coax_msl_transition supports both ("+x" and "-x" ports) and
+    # places ref_msl_m = float(junction_x) either way.
+    dut_sign_coax = _dut_sign_from_reference_at_the_dut(
+        ref_m=float(ref_coax_m), planes_m=z_coax)
+    dut_sign_msl = _dut_sign_from_reference_at_the_dut(
+        ref_m=float(ref_msl_m), planes_m=x_msl)
+
     a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
     b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
     rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
@@ -2064,15 +2114,16 @@ def _assemble_coax_msl_transition_from_voltages(
             # Wave roles (#822): the extractor already resolved which branch
             # travels TOWARD each reference plane; _incident_outgoing applies
             # the one bit it cannot know -- whether that plane is on the DUT
-            # side of the probes. On THIS lane both reference planes are the
-            # junction itself (dut_sign = +1 for the coax ladder, whose
-            # junction sits at larger z; -1 for the MSL ladder, whose junction
-            # sits at smaller x), so both resolve to a = forward_amp. See the
-            # Notes section above.
+            # side of the probes. On THIS lane both reference planes ARE the
+            # junction, so that bit is DERIVED from the geometry the caller
+            # already passed (dut_sign_coax / dut_sign_msl above) and is not
+            # a constant here. See the Notes section above.
             a_coax, b_coax = _incident_outgoing(
-                out_coax, ref_m=float(ref_coax_m), planes_m=z_coax, dut_sign=+1.0)
+                out_coax, ref_m=float(ref_coax_m), planes_m=z_coax,
+                dut_sign=dut_sign_coax)
             a_msl, b_msl = _incident_outgoing(
-                out_msl, ref_m=float(ref_msl_m), planes_m=x_msl, dut_sign=-1.0)
+                out_msl, ref_m=float(ref_msl_m), planes_m=x_msl,
+                dut_sign=dut_sign_msl)
             # Raw modal-voltage waves (volts, Z0-free) -> power waves.
             a_inc[0, drive_idx, fi] = a_coax / sqrt_z0[0]
             b_out[0, drive_idx, fi] = b_coax / sqrt_z0[0]

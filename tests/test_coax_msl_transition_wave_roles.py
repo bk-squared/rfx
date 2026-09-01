@@ -99,6 +99,7 @@ import pytest
 
 from rfx.api._sparams import (
     _assemble_coax_msl_transition_from_voltages,
+    _dut_sign_from_reference_at_the_dut,
     _incident_outgoing,
 )
 from rfx.sources.coaxial_port import coaxial_line_reflection_from_plane_voltages
@@ -131,6 +132,25 @@ _GAMMA_T = 0.09          # terminator echo on the NON-driven port (F2 estimate)
 # junction (1.0 mm) at SMALLER x than its probes (2.6-10.6 mm).
 _DUT_SIGN_COAX = +1.0
 _DUT_SIGN_MSL = -1.0
+
+# The OTHER MSL orientation the calling method supports (issue #822 review).
+# ``compute_coax_msl_transition`` accepts a "+x"-facing MSL port -- its
+# ladder monotonicity branch is ``(1 if msl_pe.direction == "+x" else -1)``
+# -- and passes ``ref_msl_m = float(junction_x)`` for either facing. On such
+# a fixture the junction sits at LARGER x than the ladder, so the MSL
+# ``dut_sign`` is +1, the mirror image of the committed one. Geometry below:
+# the same 9 probes at 1 mm pitch and the same 1.6 mm junction standoff,
+# mirrored about the ladder.
+_X_MSL_MIRROR_M = 2.8e-3 + 1.0e-3 * np.arange(9)
+_REF_MSL_MIRROR_M = 12.4e-3
+_DUT_SIGN_MSL_MIRROR = +1.0
+
+
+def _msl_geometry(mirror):
+    """(planes, reference plane, dut_sign) for either MSL port facing."""
+    if mirror:
+        return _X_MSL_MIRROR_M, _REF_MSL_MIRROR_M, _DUT_SIGN_MSL_MIRROR
+    return _X_MSL_M, _REF_MSL_M, _DUT_SIGN_MSL
 
 
 def _gammas():
@@ -213,12 +233,15 @@ def _physical_ladder_voltages(a, b, *, gamma, planes_m, ref_m, dut_sign, z0):
     )
 
 
-def _w5_fixture(*, wrong_side=False):
+def _w5_fixture(*, wrong_side=False, mirror_msl=False):
     """Planted ladders. ``wrong_side=True`` flips ``dut_sign`` at BOTH ports
-    (the non-firing control: the fixture, not the assembler, is wrong)."""
+    (the non-firing control: the fixture, not the assembler, is wrong).
+    ``mirror_msl=True`` plants the MSL ladder on the OTHER supported port
+    facing (junction at larger x), where the MSL ``dut_sign`` is +1."""
     s = _s_true()
     a, b = _plant_ab_signal_flow(s, _GAMMA_T)
     g_c, g_m = _gammas()
+    x_msl, ref_msl, dut_sign_msl = _msl_geometry(mirror_msl)
     flip = -1.0 if wrong_side else +1.0
     v_coax = np.stack([
         _physical_ladder_voltages(
@@ -228,8 +251,8 @@ def _w5_fixture(*, wrong_side=False):
     ])
     v_msl = np.stack([
         _physical_ladder_voltages(
-            a[1, drive], b[1, drive], gamma=g_m, planes_m=_X_MSL_M,
-            ref_m=_REF_MSL_M, dut_sign=flip * _DUT_SIGN_MSL, z0=_Z0_MSL,
+            a[1, drive], b[1, drive], gamma=g_m, planes_m=x_msl,
+            ref_m=ref_msl, dut_sign=flip * dut_sign_msl, z0=_Z0_MSL,
         ) for drive in range(2)
     ])
     return s, a, b, v_coax, v_msl
@@ -244,12 +267,14 @@ def _lambda_min_passivity(s):
     return np.asarray(out)
 
 
-def _run_assembler(*, wrong_side=False):
-    s, a, b, v_coax, v_msl = _w5_fixture(wrong_side=wrong_side)
+def _run_assembler(*, wrong_side=False, mirror_msl=False):
+    s, a, b, v_coax, v_msl = _w5_fixture(wrong_side=wrong_side,
+                                         mirror_msl=mirror_msl)
+    x_msl, ref_msl, _ = _msl_geometry(mirror_msl)
     s_code, cond_a, cond_a_eq, rec_resid, fit_resid, gamma_fit, a_code, b_code = (
         _assemble_coax_msl_transition_from_voltages(
-            z_coax_planes_m=_Z_COAX_M, x_msl_planes_m=_X_MSL_M,
-            ref_coax_m=_REF_COAX_M, ref_msl_m=_REF_MSL_M,
+            z_coax_planes_m=_Z_COAX_M, x_msl_planes_m=x_msl,
+            ref_coax_m=_REF_COAX_M, ref_msl_m=ref_msl,
             v_coax_by_drive=v_coax, v_msl_by_drive=v_msl,
             z0_coax=_Z0_COAX, z0_msl=_Z0_MSL,
         )
@@ -369,6 +394,59 @@ def test_wrong_side_planting_returns_the_inverse_of_s_true():
     np.testing.assert_allclose(ratio, 1.0 / _GAMMA_T, rtol=1e-9)
 
 
+def test_assembler_wave_roles_hold_on_a_mirrored_msl_ladder():
+    """The SAME gate on the OTHER MSL port facing the method supports.
+
+    ``compute_coax_msl_transition`` places no guard on ``msl_pe.direction``
+    -- it handles both facings explicitly (its ladder monotonicity test is
+    ``(1 if msl_pe.direction == "+x" else -1)``) and sets
+    ``ref_msl_m = float(junction_x)`` either way. A hard-coded
+    ``dut_sign=-1`` in the assembler would therefore have been right only
+    for the committed fixture's facing and would have reintroduced the #822
+    defect class -- ``S_code = inv(S_true)`` on the MSL port -- for the
+    other one. Measured 2026-09-01 on this mirrored fixture with the MSL
+    sign forced to the old literal ``-1``, pencil clean (max fit_residual
+    2.52e-15, i.e. not a fit problem)::
+
+        max|S_code - S_true|   3.554 / 2.649 / 5.107
+        lam_min(I - S^H S)    -20.87 / -13.72 / -39.12  (truth +0.326/+0.467/+0.533)
+
+    With the sign DERIVED by
+    :func:`rfx.api._sparams._dut_sign_from_reference_at_the_dut` the same
+    fixture reads instead::
+
+        max|S_code - S_true|   4.88e-14 / 2.79e-14 / 2.67e-14
+        lam_min(I - S^H S)     +0.3258 / +0.4670 / +0.5334 (equal to the truth)
+
+    and on the COMMITTED
+    fixture the derivation returns the same +1/-1 the literals had, so the
+    change is numerically free where it already shipped (pinned by
+    ``test_assembler_wave_roles_follow_the_junction_side_reference_plane``,
+    unchanged).
+    """
+    # The mirrored fixture really is the other orientation, and the
+    # production derivation -- not this test -- decides both signs.
+    assert _REF_MSL_MIRROR_M > _X_MSL_MIRROR_M.max()     # junction ABOVE the ladder
+    assert _REF_MSL_M < _X_MSL_M.min()                   # committed: BELOW it
+    assert _dut_sign_from_reference_at_the_dut(
+        ref_m=_REF_MSL_MIRROR_M, planes_m=_X_MSL_MIRROR_M) == _DUT_SIGN_MSL_MIRROR
+    assert _dut_sign_from_reference_at_the_dut(
+        ref_m=_REF_MSL_M, planes_m=_X_MSL_M) == _DUT_SIGN_MSL
+    assert _DUT_SIGN_MSL_MIRROR == -_DUT_SIGN_MSL
+
+    s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code = _run_assembler(
+        mirror_msl=True)
+    assert np.all(fit_resid < 1e-9), fit_resid.max()     # the pencil is clean
+    np.testing.assert_allclose(s_code, s, atol=1e-9)
+    lam = _lambda_min_passivity(s_code)
+    assert np.all(lam >= -1e-12), lam
+    # ... and NOT the inverse: the mirrored ladder is not a degenerate case
+    # in which the two readings coincide.
+    s_inv = np.stack([np.linalg.inv(s[:, :, fi]) for fi in range(s.shape[-1])], axis=-1)
+    for fi in range(s.shape[-1]):
+        assert np.abs(s_inv[:, :, fi] - s[:, :, fi]).max() > 1.0
+
+
 def test_the_planted_dut_signs_are_the_fixture_geometry():
     """``dut_sign`` is not a tuning knob: it is read off the fixture.
 
@@ -383,6 +461,15 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     assert _REF_MSL_M < _X_MSL_M.min()        # junction below the MSL ladder
     assert _DUT_SIGN_COAX == np.sign(_REF_COAX_M - _Z_COAX_M.mean())
     assert _DUT_SIGN_MSL == np.sign(_REF_MSL_M - _X_MSL_M.mean())
+    # The assembler derives exactly these two from the same geometry rather
+    # than carrying them as literals (issue #822 review): on this lane each
+    # reference plane IS the junction, so the DUT side is the reference
+    # plane's side. The literals above are the fixture's expected values,
+    # not an input to production.
+    assert _dut_sign_from_reference_at_the_dut(
+        ref_m=_REF_COAX_M, planes_m=_Z_COAX_M) == _DUT_SIGN_COAX
+    assert _dut_sign_from_reference_at_the_dut(
+        ref_m=_REF_MSL_M, planes_m=_X_MSL_M) == _DUT_SIGN_MSL
     # And on this lane -- reference plane AT the junction, i.e. on the DUT
     # side of both ladders -- the production helper must resolve BOTH ports
     # to a = forward_amp (the bit the pre-#822 constant got backwards).

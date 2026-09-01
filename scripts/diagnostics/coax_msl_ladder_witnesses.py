@@ -24,8 +24,14 @@ What each witness decides (review-repaired kill table)
 ------------------------------------------------------
 W1 (phase-slope direction): SIGN only, AND ONLY BEHIND PREDECLARED
     PRECONDITIONS. On the coax ladder under the MSL drive, a positive mean
-    slope means the dominant wave LEAVES the junction (-z); the assembler
-    labels that wave ``a_inc``. A NEGATIVE slope there kills H1. But a
+    slope means the dominant wave LEAVES the junction (-z); the POST-#822 assembler labels
+    that wave ``b_out`` (outgoing), so a positive slope is the labels
+    agreeing with the flow and KILLS H1. A NEGATIVE slope there -- the
+    dominant wave arriving at an UNDRIVEN port, which the code would then
+    be calling ``a_inc`` -- is what supports H1. (The pre-#822 assembler
+    labelled that same -z wave ``a_inc``, so both conclusions were the
+    other way round; the fix swapped the conclusions, not the geometry.)
+    But a
     travel direction read out of extractor floor is not a measurement: the
     verdict is emitted only when the run is settled (settling_db <= -40 dB
     on both drives), the pairwise slopes agree in sign (>= 0.8), the mean
@@ -64,29 +70,38 @@ W4 (flux planes): the H1 discriminator is the SIGN of ``msl_x20`` -- the
     keyed on it can only ever say "H1 supported". ``msl_x20`` is different:
     there is no source on the MSL side, so all the power crossing that plane
     came THROUGH the junction, and its sign is a property of the DUT rather
-    than of the drive. Positive (+x, away from the junction) => the wave the
-    assembler labels ``a_inc`` (``a_inc[1] = out_msl.backward_amp``, and
-    ``load_below`` is True on this lane so ``backward_amp`` IS the +x wave) is
-    carrying power OUT => labels inverted, H1 supported. Negative => net power
-    arrives at the junction from the undriven MSL side, the ``a_inc`` label is
-    consistent, and H1 is KILLED. The verdict carries the same predeclared
+    than of the drive. Positive (+x, away from the junction) => the outgoing
+    wave is the +x one, which the POST-#822 assembler labels ``b_out``
+    (``a_inc[1] = out_msl.forward_amp``, and ``load_below`` is True on this
+    lane so ``forward_amp`` is the -x wave, the one travelling toward the
+    junction) => labels consistent, H1 KILLED. Negative => net power arrives
+    at the junction from the undriven MSL side, so the wave the code calls
+    ``a_inc`` is the one carrying power out => labels inverted, H1 supported
+    (or the anomaly is genuine energy injection). Both conclusions are the
+    reverse of what this file said before #822, for the same measured sign:
+    the labels moved, the flux did not. The verdict carries the same predeclared
     preconditions as W1 (settled run; the box closes to within its declared
     band; |msl_x20| above the box's own closure error), and prints UNRESOLVED
-    otherwise. ``R1 = coax_z22 / (|b_code|^2 - |a_code|^2)`` is a Z0
+    otherwise. ``R1 = coax_z22 / (|a_code|^2 - |b_code|^2)`` (POST-#822 label
+    mapping; the pre-#822 dumps computed the same PHYSICAL quantity with the
+    two labels exchanged) is a Z0
     CALIBRATION ratio (analytic z_tem = 45.46 ohm vs the numerical stub) with a
     predeclared >= 10% band, not an identity and NOT an H1 discriminator: its
     denominator is built from the extractor's GEOMETRIC branch identity ("coax:
-    reference above => b_code is the +z wave"), which holds under H1 and under
-    its negation alike, so R1 is label-blind by construction. ``R2 = msl_x20 /
-    |a_code[1,0]|^2`` tests the MSL modal-voltage -> power conversion
-    (``a_code[1,0]`` is the +x, away-from-junction wave on the MSL ladder;
-    under the H1 swap it is the outgoing MSL wave the design wrote as
-    |b_msl|^2 = 1.76e-15). Box closure ``coax_z22 = msl_x20 + top_z36 -
+    reference above => the branch travelling toward the reference plane is the
+    +z wave"), which holds under H1 and under its negation alike, so R1 is
+    label-blind by construction. ``R2 = msl_x20 / |MSL outgoing wave|^2``
+    tests the MSL modal-voltage -> power conversion (the +x,
+    away-from-junction wave on the MSL ladder -- ``b_out[1,0]`` post-#822,
+    ``a_inc[1,0]`` before it, the SAME physical wave and the same number;
+    the design wrote it |b_msl|^2 = 1.76e-15). Box closure ``coax_z22 = msl_x20 + top_z36 -
     xlo_x05 - ylo_y03 + yhi_y31`` (patch faces of one lossless box) is a
     port-model-free check; ``msl_x20_full`` (full plane) is reported next
     to it for the guided+radiated +x power.
 Label-swap counterfactual: the two-drive solve re-run with a<->b equals
-    inv(S_code) exactly (it is the algebraic inverse, not a new estimator);
+    inv(S_code) exactly (it is the algebraic inverse, not a new estimator).
+    POST-#822 it is the reading the PRE-#822 assembler would have produced
+    from the same field, not a prediction of an open hypothesis;
     printed as a PREDICTION of H1, never written into the legacy keys.
 
 W4's box is NOT the predeclared #589 flux instrument -- read this before quoting it
@@ -297,10 +312,12 @@ def w1_h1_sign_witness(rows, *, fit_residual_by_bin, settling_db):
         if failed:
             verdict = "UNRESOLVED -- precondition(s) failed: " + "; ".join(failed)
         elif r["dominant_relative_to_junction"] == "away":
-            verdict = ("dominant wave LEAVES the junction (slope > 0): the assembler "
-                       "labels it a_inc -> H1 supported")
+            verdict = ("dominant wave LEAVES the junction (slope > 0): the post-#822 "
+                       "assembler labels it b_out (outgoing) -> H1 KILLED")
         else:
-            verdict = "dominant wave ARRIVES at the junction (slope < 0) -> H1 KILLED"
+            verdict = ("dominant wave ARRIVES at the junction (slope < 0) at an UNDRIVEN "
+                       "port: the post-#822 assembler labels it a_inc (incident) -> H1 "
+                       "supported")
         out.append({
             "freq_hz": r["freq_hz"],
             "coax_ladder_msl_drive_mean_slope": r["mean_slope_rad_per_m"],
@@ -505,18 +522,36 @@ def nprobe_comparison(v, pos, *, beta_analytic, freqs, subsets):
 def net_plus_axis_power(a_code, b_code, port_array, drive):
     """Net +axis power at a ladder in the code's OWN power-wave units.
 
-    The assembler sets ``b_out = forward_amp`` (the pencil's wave travelling
-    TOWARD the reference plane) and ``a_inc = backward_amp``. Coax: reference
-    above => ``b_code`` is the +z wave => net +z = |b|^2 - |a|^2. MSL:
-    reference below => ``b_code`` is the -x wave => net +x = |a|^2 - |b|^2.
+    POST-#822 (``rfx/api/_sparams.py::_incident_outgoing``): on this lane both
+    reference planes ARE the junction, so the branch travelling TOWARD the
+    reference plane (the pencil's ``forward_amp``) is the one travelling
+    toward the DUT, and the assembler labels it ``a_inc``; ``b_out`` is the
+    branch travelling AWAY from the junction. Hence ``|a|^2 - |b|^2`` is the
+    net power flowing TOWARD the junction at either ladder, and the +axis
+    reading is that quantity signed by which axis direction points at the
+    junction: +z on the coax ladder (junction above the probes) and -x on the
+    MSL one (junction below them). Coax: net +z = |a|^2 - |b|^2. MSL:
+    net +x = |b|^2 - |a|^2.
+
+    BEFORE #822 the assembler used the opposite constant (``a_inc =
+    backward_amp``) and this function carried the mirrored formula, so the
+    NUMBER it returns is unchanged by the fix: the label swap in production
+    and the sign swap here cancel, which is precisely why this file had to be
+    changed WITH production rather than left alone (issue #822 review). What
+    would have moved -- silently, and by a sign -- is what it returns when
+    post-fix amplitudes are fed to the pre-fix formula: measured on the W5
+    fixture, ``net_plus_z_power_code_units_coax`` +7.3612e-01/+8.1936e-01/
+    +8.4814e-01 would have read -7.3612e-01/-8.1936e-01/-8.4814e-01, a coax
+    drive net +z power that this module's own passivity check calls forbidden.
 
     NOTE this is derived from the extractor's GEOMETRIC branch identity (which
-    of the two pencil modes travels toward the reference plane), which is true
-    under H1 and under its negation alike. Anything built on it -- R1 in
-    particular -- is therefore LABEL-BLIND and cannot discriminate H1."""
+    of the two pencil modes travels toward the reference plane) COMPOSED with
+    the assembler's geometric ``dut_sign``; both are true under H1 and under
+    its negation alike. Anything built on it -- R1 in particular -- is
+    therefore LABEL-BLIND and cannot discriminate H1."""
     a = abs(complex(a_code[port_array, drive])) ** 2
     b = abs(complex(b_code[port_array, drive])) ** 2
-    return (b - a) if port_array == 0 else (a - b)
+    return (a - b) if port_array == 0 else (b - a)
 
 
 def h1_flux_verdict(*, msl_x20, coax_z22, closure_residual, closure_rel_residual,
@@ -533,12 +568,17 @@ def h1_flux_verdict(*, msl_x20, coax_z22, closure_residual, closure_rel_residual
 
     Why ``msl_x20`` is different: nothing drives the MSL side, so every watt
     crossing that plane came THROUGH the junction and its sign is a property of
-    the DUT, not of the drive. The assembler labels that same +x branch
-    ``a_inc`` (``rfx/api/_sparams.py``: ``a_inc[1] = out_msl.backward_amp``;
-    ``rfx/sources/coaxial_port.py``: ``load_below`` is True on this lane, so
-    ``backward_amp`` is the +x wave). Measured +x net power therefore means the
-    code's "incident" wave is the outgoing one (H1 supported); measured -x net
-    power means the label is consistent and H1 is KILLED.
+    the DUT, not of the drive. The POST-#822 assembler labels the +x branch
+    ``b_out`` (``rfx/api/_sparams.py``: ``a_inc[1] = out_msl.forward_amp``,
+    the branch travelling toward the reference plane, which IS the junction
+    on this lane; ``rfx/sources/coaxial_port.py``: ``load_below`` is True
+    here, so ``forward_amp`` is the -x wave). Measured +x net power therefore
+    means the code's "outgoing" label sits on the wave that really is
+    outgoing (H1 KILLED); measured -x net power means the code calls the
+    power-carrying wave "incident" at an undriven port, i.e. the labels are
+    inverted (H1 supported). Both readings are the REVERSE of what this
+    function returned before #822 for the same measured sign, because the
+    labels moved; the flux did not.
 
     Preconditions (predeclared): the run is settled; the flux box actually
     closes to within its declared band (an un-settled box's residual IS the
@@ -566,12 +606,14 @@ def h1_flux_verdict(*, msl_x20, coax_z22, closure_residual, closure_rel_residual
         verdict = "UNRESOLVED -- precondition(s) failed: " + "; ".join(failed)
     elif msl_x20 > 0:
         verdict = ("msl_x20 > 0: net power at the NON-DRIVEN MSL port LEAVES the junction "
-                   "(+x); the assembler labels that same +x branch a_inc => the code's "
-                   "'incident' wave is the outgoing one => labels inverted (H1 supported)")
+                   "(+x); the post-#822 assembler labels that same +x branch b_out "
+                   "(a_inc[1] = out_msl.forward_amp = the -x wave, toward the junction) "
+                   "=> the code's 'outgoing' wave IS the outgoing one => H1 KILLED")
     elif msl_x20 < 0:
         verdict = ("msl_x20 < 0: net power ARRIVES at the junction from the undriven MSL "
-                   "side; the assembler's a_inc label on the +x branch is then consistent "
-                   "=> H1 KILLED (and the anomaly is genuine energy injection, not labels)")
+                   "side, so the wave the post-#822 assembler calls a_inc (-x, toward the "
+                   "junction) is the one carrying power OUT => labels inverted (H1 "
+                   "supported), unless the anomaly is genuine energy injection")
     else:
         verdict = "UNRESOLVED -- msl_x20 is exactly zero"
     if not np.isfinite(coax_z22):
@@ -620,7 +662,10 @@ def w4_flux(flux_by_drive, *, a_inc, b_out, freqs, settling_db=None):
             msl_x20 = faces.get("msl_x20", float("nan"))
             net_coax = net_plus_axis_power(a_inc[:, :, k], b_out[:, :, k], 0, d_idx)
             net_msl = net_plus_axis_power(a_inc[:, :, k], b_out[:, :, k], 1, d_idx)
-            a_msl_sq = abs(a_inc[1, d_idx, k]) ** 2
+            # The MSL ladder's OUTGOING (+x, away-from-junction) wave. Named
+            # by the physics, read out of whichever array the assembler's own
+            # geometric split puts it in: post-#822 that is b_out (issue #822).
+            msl_out_sq = abs(b_out[1, d_idx, k]) ** 2
             row = {
                 "freq_hz": float(freqs[k]), "faces": faces,
                 "box_outflow_sum": outflow, "closure_residual": closure_res,
@@ -628,9 +673,9 @@ def w4_flux(flux_by_drive, *, a_inc, b_out, freqs, settling_db=None):
                 "net_plus_z_power_code_units_coax": net_coax,
                 "net_plus_x_power_code_units_msl": net_msl,
                 "R1_coax_z22_over_net_code_coax": (coax_z22 / net_coax if net_coax != 0 else float("nan")),
-                "R2_msl_x20_over_abs_a_code_msl_sq": (msl_x20 / a_msl_sq if a_msl_sq > 0 else float("nan")),
+                "R2_msl_x20_over_abs_msl_outgoing_sq": (msl_x20 / msl_out_sq if msl_out_sq > 0 else float("nan")),
                 "R2net_msl_x20_over_net_code_msl": (msl_x20 / net_msl if net_msl != 0 else float("nan")),
-                "S_side_ratio_abs_a_msl_sq_over_net_coax": (a_msl_sq / net_coax if net_coax != 0 else float("nan")),
+                "S_side_ratio_abs_msl_outgoing_sq_over_net_coax": (msl_out_sq / net_coax if net_coax != 0 else float("nan")),
                 "flux_ratio_msl_x20_over_coax_z22": (msl_x20 / coax_z22 if coax_z22 != 0 else float("nan")),
             }
             if drive == "coax":
@@ -658,7 +703,10 @@ def w4_flux(flux_by_drive, *, a_inc, b_out, freqs, settling_db=None):
 # Label-swap counterfactual
 # =============================================================================
 def label_swap_counterfactual(a_inc, b_out):
-    """Re-solve S with a<->b (report-only PREDICTION of H1). Returns dict with
+    """Re-solve S with a<->b. POST-#822 this is no longer a prediction of a
+    live hypothesis: it is what the PRE-#822 assembler returned, i.e. exactly
+    inv(S_code), kept as a report-only bridge between the two conventions.
+    Returns dict with
     ``s_swap`` (2,2,n_f), column powers, lambda_min(I - S^H S) and the max
     deviation from inv(S_code) -- algebraically identical, see test."""
     a = np.asarray(a_inc, dtype=np.complex128)
@@ -723,7 +771,10 @@ def compute_witnesses(d):
         "coax_ladder": "junction ABOVE the probes (+z is toward the junction)",
         "msl_ladder": "junction BELOW the probes (-x is toward the junction)",
         "flux": "positive = power flowing toward +axis",
-        "code_labels": "b_out = pencil forward_amp (travels toward the reference plane); a_inc = backward_amp",
+        "code_labels": "POST-#822: a_inc = pencil forward_amp (travels toward the reference "
+                       "plane, which on this lane IS the junction); b_out = backward_amp. Runs "
+                       "recorded BEFORE the #822 fix carry the opposite mapping under these same "
+                       "key names -- see rfx/api/_sparams.py::_incident_outgoing.",
     }}
     have_ladders = d.get("coax_ladder_v") is not None and d.get("msl_ladder_v") is not None
     if have_ladders:
@@ -825,9 +876,10 @@ def compute_witnesses(d):
                 "here cannot be separated from face placement) and NO shell-tightness strips (it "
                 "ASSUMES the tightness the predeclared instrument MEASURES). These numbers are "
                 "not directly comparable to that instrument's; the PI arbitrates.",
-            "h1_sign": "coax drive: msl_x20 > 0 (net power LEAVES the junction at the NON-DRIVEN "
-                       "port, whose +x branch the assembler labels a_inc) => labels inverted, H1 "
-                       "supported; msl_x20 < 0 => H1 KILLED. NOT keyed on coax_z22.",
+            "h1_sign": "coax drive, POST-#822: msl_x20 > 0 (net power LEAVES the junction at the "
+                       "NON-DRIVEN port, whose +x branch the assembler now labels b_out) => labels "
+                       "consistent, H1 KILLED; msl_x20 < 0 => labels inverted, H1 supported. NOT "
+                       "keyed on coax_z22. Pre-#822 runs read this sign the other way round.",
             "h1_preconditions": f"the msl_x20 verdict is emitted only when settling_db <= "
                                 f"{SETTLING_DB_MAX:.0f} dB on both drives, |closure_rel_residual| <= "
                                 f"{W4_CLOSURE_REL_MAX} and |msl_x20| >= "
@@ -838,13 +890,18 @@ def compute_witnesses(d):
                         "|a_phys|^2-|b_phys|^2 > 0 for ANY passive junction, whichever branch the "
                         "code labels a and which b. coax_z22 > 0 is therefore confirmatory only; "
                         "coax_z22 <= 0 would mean the box or the run is unphysical.",
-            "R1": f"coax_z22 / (|b_code|^2 - |a_code|^2) on the coax ladder: Z0 CALIBRATION ratio, "
-                  f"predeclared band +-{W4_R1_CALIBRATION_BAND:.0%} (analytic z_tem vs numerical "
-                  f"stub). LABEL-BLIND and therefore NOT an H1 discriminator: its denominator comes "
-                  f"from the extractor's geometric branch identity ('coax: reference above => "
-                  f"b_code is the +z wave'), which holds under H1 and under its negation alike.",
-            "R2": "msl_x20 / |a_code[1,0]|^2: MSL modal-voltage -> power conversion (a_code[1,0] is the "
-                  "+x wave leaving the junction; = the design's '|b_msl|^2 = 1.76e-15' under the swap)",
+            "R1": f"coax_z22 / (|a_code|^2 - |b_code|^2) on the coax ladder (POST-#822 label "
+                  f"mapping; the pre-#822 dumps computed the same PHYSICAL quantity as "
+                  f"|b_code|^2 - |a_code|^2): Z0 CALIBRATION ratio, predeclared band "
+                  f"+-{W4_R1_CALIBRATION_BAND:.0%} (analytic z_tem vs numerical stub). LABEL-BLIND "
+                  f"and therefore NOT an H1 discriminator: its denominator comes from the "
+                  f"extractor's geometric branch identity ('coax: reference above => the branch "
+                  f"toward the reference plane is the +z wave'), which holds under H1 and under "
+                  f"its negation alike.",
+            "R2": "msl_x20 / |MSL outgoing wave|^2: MSL modal-voltage -> power conversion. The "
+                  "outgoing (+x, away-from-junction) wave is b_out[1,0] post-#822 and was "
+                  "a_inc[1,0] before it; the physical quantity, and hence the number, is the same "
+                  "(= the design's '|b_msl|^2 = 1.76e-15').",
             "closure": f"|closure_rel_residual| <= {W4_CLOSURE_REL_MAX} expected for a lossless box of "
                        "patch faces AT STEADY STATE ONLY: the identity is a time-harmonic power "
                        "balance, so on a truncated (un-settled) run the residual is the energy still "
@@ -856,7 +913,9 @@ def compute_witnesses(d):
         out["W4_flux"] = "SKIPPED: no flux spectra in this dump"
     cf = label_swap_counterfactual(a_inc, b_out)
     out["label_swap_counterfactual"] = {
-        "note": "PREDICTION of H1 (a<->b re-solved), NOT a measurement; equals inv(S_code) exactly",
+        "note": "a<->b re-solved, NOT a measurement; equals inv(S_code) exactly. POST-#822 this "
+                "is the S the PRE-#822 assembler would have reported from the same field, not a "
+                "prediction of an open hypothesis (#822 settled H1 analytically).",
         "s_swap_re": cf["s_swap"].real.tolist(), "s_swap_im": cf["s_swap"].imag.tolist(),
         "s_swap_abs": np.abs(cf["s_swap"]).tolist(),
         "col_power_coax_drive": cf["col_power_coax_drive"].tolist(),
@@ -949,11 +1008,11 @@ def format_tables(w):
                 L.append(f"  {_fg(r['freq_hz'])}  " + "  ".join(f"{r['faces'][n]:+12.4e}" for n in names)
                          + f"   {r['closure_residual']:+.3e} ({r['closure_rel_residual']:+.2%})")
             for r in blk["rows"]:
-                L.append(f"  {_fg(r['freq_hz'])}  net code-units coax (|b|^2-|a|^2) {r['net_plus_z_power_code_units_coax']:+.4e}  "
+                L.append(f"  {_fg(r['freq_hz'])}  net code-units coax (|a|^2-|b|^2) {r['net_plus_z_power_code_units_coax']:+.4e}  "
                          f"R1 {r['R1_coax_z22_over_net_code_coax']:+.4f}  "
-                         f"R2 {r['R2_msl_x20_over_abs_a_code_msl_sq']:+.4f}  "
+                         f"R2 {r['R2_msl_x20_over_abs_msl_outgoing_sq']:+.4f}  "
                          f"R2net {r['R2net_msl_x20_over_net_code_msl']:+.4f}  "
-                         f"S-side |a_msl|^2/net_coax {r['S_side_ratio_abs_a_msl_sq_over_net_coax']:+.4f}  "
+                         f"S-side |msl_out|^2/net_coax {r['S_side_ratio_abs_msl_outgoing_sq_over_net_coax']:+.4f}  "
                          f"flux msl_x20/coax_z22 {r['flux_ratio_msl_x20_over_coax_z22']:+.4f}")
                 if "h1_flux_verdict" in r:
                     L.append(f"        H1 discriminator ({r['h1_discriminator']}) "
@@ -969,7 +1028,8 @@ def format_tables(w):
     elif w4:
         L.append(f"=== W4: {w4} ===")
     cf = w["label_swap_counterfactual"]
-    L.append("=== label-swap counterfactual (a<->b re-solved): PREDICTION of H1, NOT a measurement ===")
+    L.append("=== label-swap counterfactual (a<->b re-solved): the PRE-#822 reading of the same "
+             "field, NOT a measurement ===")
     L.append(f"  max |S_swap - inv(S_code)| = {cf['max_abs_dev_from_inv_s_code']:.2e} (algebraic identity)")
     for k, f in enumerate(freqs):
         sa = np.asarray(cf["s_swap_abs"])[:, :, k]
