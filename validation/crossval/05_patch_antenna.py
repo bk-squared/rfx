@@ -64,6 +64,26 @@ Three independent measurements of the patch resonance:
      appears as a small local dip rather than a deep -20 dB match.
      Pattern-match `tests/crossval/test_crossval_comprehensive.py::TestLumpedPortCavity`.
 
+MODE-RESOLVED RESONANCE SELECTION (issue #812, 2026-09-01)
+----------------------------------------------------------
+Both Harminv legs above USED to pick their resonance as
+``argmin |f - f_resonance_an|`` and then report that mode's distance to the
+same ``f_resonance_an``. The anchor was both selector and referee, so whichever
+ring-down mode sat nearest the closed form was promoted to "the" resonance and
+a design mode that had drifted onto a neighbouring cavity member's territory
+was re-anchored instead of flagged. Replaced by mode-RESOLVED identification
+(``comparators/patch_mode_identification.py``): the declared geometry fixes the
+whole TM_mn0 spectrum, every measured mode is assigned to its nearest declared
+member, and the resonance is the mode assigned to the design member TM100 --
+which must exist, be unique, and be accompanied by a member resolving the other
+in-plane axis. Tolerance 12.4988 %, DERIVED as
+``sqrt(min adjacent declared member ratio) - 1`` (the largest tolerance keeping
+"nearest member" unique); it is an IDENTIFICATION tolerance, deliberately
+looser than the closed form's own 5-8 % accuracy, and passing it is NOT an
+accuracy claim. ``harminv_err_pct`` stays REPORTED and NOT gated as before.
+Pre-declaration + falsifiers:
+``docs/design_notes/20260901_patch_mode_identification_predeclaration.md``.
+
 Primary PASS gate: rfx Harminv vs OpenEMS Harminv (resonance frequency) < 20 %
 (`pass_vs_openems`); rfx internal self-consistency < 5 % (`pass_internal`).
 (NOTE: the vs-OpenEMS number is a Harminv-vs-Harminv RESONANCE-FREQUENCY
@@ -206,6 +226,26 @@ from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
 import jax.numpy as jnp
 
+# Mode-RESOLVED identification (issue #812, cv05/cv15 lane). Replaces the
+# self-confirming `argmin |f - f_analytic|` selector: see
+# docs/design_notes/20260901_patch_mode_identification_predeclaration.md.
+import sys as _sys_mid
+_sys_mid.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
+from patch_mode_identification import (            # noqa: E402
+    declared_cavity_spectrum, identify_patch_modes, members_in_band,
+)
+
+HARMINV_F_LO, HARMINV_F_HI = 1.5e9, 3.5e9
+# Declared TM_mn0 spectrum of THIS patch, from the declared geometry only
+# (a = L along x, b = W along y). Its (1,0) entry is f_resonance_an above,
+# bit-for-bit -- asserted here so the two anchors cannot drift apart.
+DECLARED_MODES = members_in_band(
+    declared_cavity_spectrum(eps_r, h_sub, L, W, c0=C0),
+    HARMINV_F_LO, HARMINV_F_HI)
+assert abs(DECLARED_MODES[(1, 0)] - f_resonance_an) < 1.0, (
+    "declared-spectrum TM100 and f_resonance_an disagree -- the mode set and "
+    "the script's own closed form must be the same formula")
+
 # Non-uniform z mesh: coarse air below, fine substrate, coarse air above
 raw_dz = np.concatenate([
     np.full(n_below, dx),                 # below the ground plane
@@ -334,29 +374,41 @@ print(f"Settling witness (#332/G1): end/peak = {_settle_db:.1f} dB "
 skip = int(len(ts) * 0.3)
 signal = ts[skip:]
 print(f"Harminv on last {len(signal)} samples (ringdown region)")
-modes = harminv(signal, dt_h, 1.5e9, 3.5e9)
+modes = harminv(signal, dt_h, HARMINV_F_LO, HARMINV_F_HI)
 modes_good = [m for m in modes if m.Q > 2 and m.amplitude > 1e-8]
-if modes_good:
-    modes_good.sort(key=lambda m: abs(m.freq - f_resonance_an))
-    best = modes_good[0]
-    f_res_harminv = float(best.freq)
-    Q_harminv = float(best.Q)
+
+print("\nHarminv modes (Q > 2, amp > 1e-8):")
+for m in sorted(modes_good, key=lambda m: m.freq):
+    print(f"  f = {m.freq/1e9:.4f} GHz, Q = {m.Q:.1f}, amp = {m.amplitude:.2e}")
+
+# MODE-RESOLVED identification (#812). The resonance is the mode ASSIGNED to
+# the declared design member TM100, not the mode nearest the anchor: the
+# anchor cannot be both the selector and the referee.
+print("\nMode identification vs the declared TM_mn0 spectrum:")
+for _k, _v in sorted(DECLARED_MODES.items(), key=lambda kv: kv[1]):
+    print(f"  declared TM{_k[0]}{_k[1]}0 = {_v/1e9:.5f} GHz")
+ident_rfx = identify_patch_modes([m.freq for m in modes_good], DECLARED_MODES,
+                                 design_order=(1, 0))
+for _line in ident_rfx.report_lines():
+    print("  " + _line)
+
+if ident_rfx.f_design is not None:
+    f_res_harminv = float(ident_rfx.f_design)
+    Q_harminv = float(next(m.Q for m in modes_good
+                           if float(m.freq) == f_res_harminv))
 else:
     f_res_harminv = float("nan")
     Q_harminv = float("nan")
 
-print("\nHarminv modes (Q > 2) near analytic target:")
-for m in sorted(modes_good, key=lambda m: m.freq)[:6]:
-    print(f"  f = {m.freq/1e9:.4f} GHz, Q = {m.Q:.1f}, amp = {m.amplitude:.2e}")
-
 if not np.isnan(f_res_harminv):
     harminv_err_pct = 100 * abs(f_res_harminv - f_resonance_an) / f_resonance_an
-    print(f"\n  Harminv best match: f = {f_res_harminv/1e9:.4f} GHz, Q = {Q_harminv:.1f}")
+    print(f"\n  TM100 (design mode, identified): f = {f_res_harminv/1e9:.4f} GHz, "
+          f"Q = {Q_harminv:.1f}")
     print(f"  Analytic target:    f = {f_resonance_an/1e9:.4f} GHz")
-    print(f"  Harminv error:      {harminv_err_pct:.2f} %")
+    print(f"  Harminv error:      {harminv_err_pct:.2f} %  (REPORTED, not gated)")
 else:
     harminv_err_pct = float("inf")
-    print("  No modes found (Q/amp threshold too tight or sim too short)")
+    print("  Design mode TM100 NOT identified in the ring-down")
 
 # =============================================================================
 # PART 2: OpenEMS — same patch geometry, lumped-port S11 (reference)
@@ -555,12 +607,18 @@ dt_oe = float(t_oe[1] - t_oe[0])
 
 # Skip source ramp-up (first 20 %), keep ringdown
 _skip = int(0.2 * len(ut_oe))
-modes_oe = _harminv(ut_oe[_skip:], dt_oe, 1.5e9, 3.5e9)
+modes_oe = _harminv(ut_oe[_skip:], dt_oe, HARMINV_F_LO, HARMINV_F_HI)
 modes_oe_good = [m for m in modes_oe if m.Q > 2 and m.amplitude > 1e-8]
-if modes_oe_good:
-    modes_oe_good.sort(key=lambda m: abs(m.freq - f_resonance_an))
-    f_res_oe = float(modes_oe_good[0].freq)
-    Q_oe = float(modes_oe_good[0].Q)
+# Same mode-RESOLVED identification as the rfx side (#812) -- the openEMS leg
+# solves the SAME declared geometry, so the same declared member set applies.
+ident_oe = identify_patch_modes([m.freq for m in modes_oe_good], DECLARED_MODES,
+                                design_order=(1, 0))
+print("\n  OpenEMS mode identification vs the declared TM_mn0 spectrum:")
+for _line in ident_oe.report_lines():
+    print("    " + _line)
+if ident_oe.f_design is not None:
+    f_res_oe = float(ident_oe.f_design)
+    Q_oe = float(next(m.Q for m in modes_oe_good if float(m.freq) == f_res_oe))
 else:
     f_res_oe = f_res_oe_s11   # fallback to S11 dip if harminv fails
     Q_oe = float("nan")
@@ -733,9 +791,30 @@ print()
 pass_internal   = rfx_internal_pct < 5.0
 pass_vs_openems = rfx_vs_oe_pct < 20.0
 pass_passivity  = passive
+# MODE IDENTIFICATION (#812): the ring-down must be explainable as the declared
+# cavity spectrum and the design member TM100 must be FOUND. This is the gate
+# the anchored `argmin |f - f_analytic|` selector could not carry -- it promoted
+# whichever mode sat nearest the anchor, so a design mode that had drifted onto
+# a neighbouring member's territory was reported as agreement instead of as a
+# missing mode. Derived tolerance (design note 20260901): sqrt(min adjacent
+# declared member ratio) - 1 = 12.4988 % here. This is an IDENTIFICATION
+# tolerance, deliberately looser than the closed form's own 5-8 % accuracy --
+# passing it is NOT an accuracy claim.
+pass_mode_id_rfx = bool(ident_rfx.ok)
+pass_mode_id_oe = bool(ident_oe.ok)
 # NOTE: pass_vs_analyt (harminv_err_pct < 10 %) intentionally NOT in all_ok.
-all_ok = pass_internal and pass_vs_openems and pass_passivity
+all_ok = (pass_internal and pass_vs_openems and pass_passivity
+          and pass_mode_id_rfx and pass_mode_id_oe)
 
+print(f"  rfx mode identification (TM100 found, tol "
+      f"{ident_rfx.tol*100:.2f} %): "
+      f"{'PASS' if pass_mode_id_rfx else 'FAIL'}")
+for _line in ident_rfx.reasons:
+    print(f"      ! {_line}")
+print(f"  openEMS mode identification:      "
+      f"{'PASS' if pass_mode_id_oe else 'FAIL'}")
+for _line in ident_oe.reasons:
+    print(f"      ! {_line}")
 print(f"  rfx self-consistency (< 5 %):     "
       f"{'PASS' if pass_internal else 'FAIL'}  ({rfx_internal_pct:.2f} %)")
 print(f"  rfx vs analytic (report, not gated): "
@@ -799,6 +878,18 @@ if json_out:
         "rfx_vs_openems_harminv_pct": float(rfx_vs_oe_pct),
         "rfx_internal_pct": float(rfx_internal_pct),
         "rfx_vs_analytic_pct": float(harminv_err_pct),
+        "declared_modes_hz": {f"TM{k[0]}{k[1]}0": float(v)
+                              for k, v in sorted(DECLARED_MODES.items(),
+                                                 key=lambda kv: kv[1])},
+        "mode_identification_tol": float(ident_rfx.tol),
+        "rfx_modes_hz": [float(m.freq) for m in sorted(modes_good,
+                                                       key=lambda m: m.freq)],
+        "rfx_mode_assignment": [
+            [float(f), (f"TM{o[0]}{o[1]}0" if o else None),
+             (float(r) if r is not None else None)]
+            for f, o, r in ident_rfx.assignments],
+        "rfx_mode_id_ok": bool(pass_mode_id_rfx),
+        "openems_mode_id_ok": bool(pass_mode_id_oe),
         "rfx_s11_passive": bool(passive),
         "rfx_s11_max_abs": float(np.max(np.abs(S11))),
         "rfx_s11_min_db": float(s11_min_dB),
