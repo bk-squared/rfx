@@ -267,9 +267,13 @@ above is withdrawn except the one arithmetic slip corrected below.
   main line (see "Mesh convention" above), so r = 1 exactly by construction.
   The worst case is a bin half a bin off f0: θ = (π/2)(1 + h/(2f0)) with
   h = 63.6364 MHz and f0 = 3.6424 GHz gives |S21| = 2/√(4 + tan²θ) =
-  **-31.23 dB**, i.e. 21.2 dB INSIDE the -10 dB gate. (#812 published -30.7 dB
-  for this quantity; the derivation here is independent and lands at -31.2 dB
-  — same conclusion, the 0.5 dB difference is bin-centre vs refined f0.)
+  **-31.23 dB**, i.e. 21.2 dB INSIDE the -10 dB gate. (#812 published
+  -30.7 dB for this quantity. The derivation here is independent and lands at
+  -31.20 dB at f0 = 3.627 GHz, -31.23 at 3.6424, -31.32 at 3.679 — so the
+  choice of f0 moves it 0.12 dB and does NOT account for the 0.5 dB gap;
+  reaching -30.7 dB from this model needs a 67.4 MHz bin. The origin of the
+  difference is NOT established. Both give the same verdict, and this script
+  quotes its own -31.23 dB rather than the audit's.)
 
   WHAT CHANGED (gates below; nothing is widened, one gate is tightened):
     * The notch frequency is now located by LOG-PARABOLIC SUB-BIN VERTEX

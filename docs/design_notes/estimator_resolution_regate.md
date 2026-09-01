@@ -1,8 +1,11 @@
 # Estimator resolution re-gate — cv06b and cv07 (issue #812, mechanism P3)
 
-Status: **PRE-DECLARATION**. Every numeric window below is fixed by this
-commit, before any measurement that judges it. Append-only: later sections
-record measurements; a correction states the old value and why it was wrong.
+Append-only. Sections 1-4 are the **PRE-DECLARATION**: every numeric window
+in them was frozen in commit `fc6ca0a`, before any measurement that judges it.
+Section 5 records what was then measured; it never edits a window. A
+correction states the old value and why it was wrong (there are two: the
+repository's own 70.7 MHz bin figure in section 1, and this note's first
+attribution of the -30.7 vs -31.23 dB difference, both marked in place).
 
 Lane: `agent/regate-estimator-resolution`. Scope: **instrument only.** No
 physics verdict of either case is challenged, moved, or re-pinned here.
@@ -44,10 +47,26 @@ than the tolerance they declare. Re-derived on this checkout:
   `theta = (pi/2)(1 + h/(2 f0))` with `h = 63.6364` MHz, `f0 = 3.6424` GHz
   gives `|S21| = 2/sqrt(4 + tan^2 theta) = 0.02745` = **-31.23 dB**, i.e.
   **21.2 dB inside the -10 dB gate**. The gate cannot fail while a notch
-  exists at all. (The audit published -30.7 dB for this quantity; the
-  derivation above is independent and lands at -31.2 dB. Same conclusion; the
-  0.5 dB difference is the choice of `f0` — bin centre 3.627 vs refined
-  3.642 GHz — and is recorded rather than reconciled away.)
+  exists at all.
+
+  **On the audit's own figure for this quantity.** *(CORRECTION. The
+  `fc6ca0a` version of this paragraph said the 0.5 dB gap "is the choice of
+  `f0` — bin centre 3.627 vs refined 3.642 GHz". That is wrong, and it was
+  wrong in the same way the #812 process note warns about: asserted without
+  evaluating the alternative. Evaluated, `f0` moves the number by 0.12 dB
+  across the whole plausible range. Replaced by the following.)*
+  #812 published -30.7 dB.
+  The derivation above is independent and lands at **-31.20 dB** at
+  `f0 = 3.627` GHz (bin centre), -31.23 dB at 3.6424 GHz (refined) and
+  -31.32 dB at 3.679 GHz (the analytic anchor) — the choice of `f0` moves it
+  by 0.12 dB across that whole range, so it does NOT explain the 0.5 dB gap.
+  Reaching -30.7 dB from the ideal r = 1 model would need a bin of 67.4 MHz
+  rather than 63.6364 MHz. The likeliest explanation is that the audit
+  evaluated the worst case on the measured notch shape rather than the ideal
+  closed form, but that is a guess and is labelled as one: **the origin of
+  the 0.5 dB difference is not established here.** Both numbers give the same
+  verdict — the gate sits >20 dB from its own worst case — and this lane uses
+  its own -31.23 dB, not the audit's, wherever the figure is quoted.
 
 * **cv07.** `validation/crossval/07_sheen_lpf.py` sweeps
   `np.linspace(F_LO, F_MAX, n_freqs)` = `linspace(0.5, 20.0, 120)` GHz =
