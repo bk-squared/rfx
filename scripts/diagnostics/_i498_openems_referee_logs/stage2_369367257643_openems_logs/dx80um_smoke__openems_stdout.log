@@ -1,0 +1,81 @@
+openEMS - fixed number of threads: 8
+openEMS - verbose level 1
+ ---------------------------------------------------------------------- 
+ | openEMS 64bit -- version v0.37.0-rc1-6-g2000574
+ | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license
+ ---------------------------------------------------------------------- 
+	Used external libraries:
+		CSXCAD -- Version: v0.7.0-rc1-3-ge558171
+		hdf5   -- Version: 1.10.4
+		          compiled against: HDF5 library version: 1.10.4
+		tinyxml -- compiled against: 2.6.2
+		fparser
+		boost  -- compiled against: 1_71
+		vtk -- Version: 7.1.1
+		       compiled against: 7.1.1
+
+Create FDTD operator (compressed SSE + multi-threading)
+Multithreaded operator using 8 threads.
+Compressing the FDTD operator... this may take a while...
+Operator::CalcGaussianPulsExcitation: Requested excitation pusle would be 45692 timesteps or 1.14594e-09 s long. Cutting to max number of timesteps!
+------- Stat: FDTD Operator -------
+Dimensions		: 117x301x19 = 669123 Cells (0.67 MCells)
+Size of Operator	: 32117904 Byte (30.63 MiB) 
+Size of Field-Data	: 16058952 Byte (15.32 MiB) 
+-----------------------------------
+Background materials (epsR/mueR/kappa/sigma): 1.00/1.00/0.00/0.00
+-----------------------------------
+Number of PEC edges	: 18986
+in x direction		: 7600
+in y direction		: 7548
+in z direction		: 3838
+-----------------------------------
+Timestep (s)		: 0.00
+Timestep method name	: Rennings_2
+Nyquist criteria (TS)	: 3987
+Nyquist criteria (s)	: 0.00
+-----------------------------------
+SSE compression enabled	: yes
+Unique SSE operators	: 6331
+-----------------------------------
+-----------------------------------
+--- Excitation Extension ---
+Voltage excitations	: 4	 (0, 0, 4)
+Current excitations	: 0	 (0, 0, 0)
+Excitation Length (TS)	: 200
+Excitation Length (s)	: 0.00
+--- Uniaxial PML Extension ---
+ PML range		: [0,0,0] to [8,300,18]
+ Grading function	: " -log(1e-6)*log(2.5)/(2*dl*Z*(pow(2.5,W/dl)-1)) * pow(2.5, D/dl) "
+--- Uniaxial PML Extension ---
+ PML range		: [108,0,0] to [116,300,18]
+ Grading function	: " -log(1e-6)*log(2.5)/(2*dl*Z*(pow(2.5,W/dl)-1)) * pow(2.5, D/dl) "
+--- Uniaxial PML Extension ---
+ PML range		: [9,0,0] to [107,8,18]
+ Grading function	: " -log(1e-6)*log(2.5)/(2*dl*Z*(pow(2.5,W/dl)-1)) * pow(2.5, D/dl) "
+--- Uniaxial PML Extension ---
+ PML range		: [9,292,0] to [107,300,18]
+ Grading function	: " -log(1e-6)*log(2.5)/(2*dl*Z*(pow(2.5,W/dl)-1)) * pow(2.5, D/dl) "
+--- Uniaxial PML Extension ---
+ PML range		: [9,9,10] to [107,291,18]
+ Grading function	: " -log(1e-6)*log(2.5)/(2*dl*Z*(pow(2.5,W/dl)-1)) * pow(2.5, D/dl) "
+--- Series/Parallel Lumped RLC load ---
+Active cells		: 0
+-----------------------------------
+Creation time for operator: 1.93 s
+FDTD simulation size: 117x301x19 --> 669123.00 FDTD cells 
+FDTD timestep is: 0.00 s; Nyquist rate: 3987 timesteps @5000377874.00 Hz
+openEMS::SetupFDTD: Warning, the timestep seems to be very small --> long simulation. Check your mesh!?
+Excitation signal length is: 200 timesteps (0.00s)
+Max. number of timesteps: 200 ( --> 1.00 * Excitation signal length)
+openEMS::SetupFDTD: Warning, max. number of timesteps is smaller than three times the excitation. 
+	You may want to choose a higher number of max. timesteps... 
+Create FDTD engine (compressed SSE + multi-threading)
+Multithreaded engine using 8 threads. Utilization: (15;15;15;15;15;14;14;14)
+Setting up processing...
+Warning: Unused primitive (type: Box) detected in property: msl_port_metal!
+Running FDTD engine... this may take a while... grab a cup of coffee?!?
+RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -infdB was reached... 
+	You may want to choose a higher number of max. timesteps... 
+Time for 200 iterations with 669123.00 cells : 0.60 sec
+Speed: 223.29 MCells/s 

@@ -1,0 +1,86 @@
+==============================================================================
+MESH / GEOMETRY SELF-CHECK (pure numpy -- no openEMS, no rfx)
+==============================================================================
+  [OK  ] plane_on_grid[trace_open_end_lo]: x = 0.000 mm = 0.000000 cells of 80 um
+  [OK  ] plane_index[trace_open_end_lo]: rfx node index 8 (measured 8)
+  [OK  ] plane_on_grid[predeclared_minus_x_flux_plane]: x = 1.440 mm = 18.000000 cells of 80 um
+  [OK  ] plane_index[predeclared_minus_x_flux_plane]: rfx node index 26 (measured 26)
+  [OK  ] plane_on_grid[box_minus_x_face]: x = 1.760 mm = 22.000000 cells of 80 um
+  [OK  ] plane_on_grid[lw_feed]: x = 2.000 mm = 25.000000 cells of 80 um
+  [OK  ] plane_index[lw_feed]: rfx node index 33 (measured 33)
+  [OK  ] plane_on_grid[box_plus_x_face]: x = 2.240 mm = 28.000000 cells of 80 um
+  [OK  ] plane_on_grid[refplane_N]: x = 2.800 mm = 35.000000 cells of 80 um
+  [OK  ] plane_index[refplane_N]: rfx node index 43 (measured 43)
+  [OK  ] plane_on_grid[refplane_2N]: x = 3.600 mm = 45.000000 cells of 80 um
+  [OK  ] plane_index[refplane_2N]: rfx node index 53 (measured 53)
+  [OK  ] plane_on_grid[msl_probe_2]: x = 4.080 mm = 51.000000 cells of 80 um
+  [OK  ] plane_index[msl_probe_2]: rfx node index 59 (measured 59)
+  [OK  ] plane_on_grid[msl_probe_1]: x = 4.400 mm = 55.000000 cells of 80 um
+  [OK  ] plane_index[msl_probe_1]: rfx node index 63 (measured 63)
+  [OK  ] plane_on_grid[msl_probe_0]: x = 4.720 mm = 59.000000 cells of 80 um
+  [OK  ] plane_index[msl_probe_0]: rfx node index 67 (measured 67)
+  [OK  ] plane_on_grid[msl_feed_plane]: x = 5.520 mm = 69.000000 cells of 80 um
+  [OK  ] plane_index[msl_feed_plane]: rfx node index 77 (measured 77)
+  [OK  ] plane_on_grid[trace_open_end_hi]: x = 8.000 mm = 100.000000 cells of 80 um
+  [OK  ] plane_index[trace_open_end_hi]: rfx node index 108 (measured 108)
+  [OK  ] realized_h_sub_is_integer_cells: h_sub 320 um = 4.000 cells (measured 4)
+  [OK  ] realized_trace_is_symmetric_about_feed_node: trace y 1.28..1.76 mm centred at 1.52 mm, feed node y = 1.52 mm
+  [OK  ] realized_w_is_node_span: node span 480 um (cell-span alternative 560 um, carried as a declared +-1-cell systematic)
+  [OK  ] realized_board_differs_from_declared: realized h_sub 320 um vs declared 254 um -- the #723 class; Stage 2 models the REALIZED board
+  [OK  ] trace_has_two_open_ends: conductor spans exactly 0..8.00 mm with NO metal in the absorber pad; the openEMS model reproduces both open ends (blocker B4)
+  [OK  ] open_stub_beyond_msl_feed: 2.48 mm of open stub hangs beyond the MSL feed plane -- it is part of the DUT and is in |S22|
+  [OK  ] comparator_dx50um:x_line_present[lumped_feed]: nearest mesh line 0.000 nm away
+  [OK  ] comparator_dx50um:x_line_present[msl_start]: nearest mesh line 0.000 nm away
+  [OK  ] comparator_dx50um:x_line_present[meas_plane]: nearest mesh line 0.000 nm away
+  [OK  ] comparator_dx50um:x_line_present[open_end_lo]: nearest mesh line 0.000 nm away
+  [OK  ] comparator_dx50um:x_line_present[open_end_hi]: nearest mesh line 0.000 nm away
+  [OK  ] comparator_dx50um:measplane_snap_exact: target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)
+  [OK  ] comparator_dx50um:substrate_cells_ge_5: 6 substrate cells -- the do_not_repeat rule needs the comparator mesh above the 3.175-cell non-physical regime
+  [OK  ] comparator_dx50um:no_degenerate_cell[x]: smallest x cell 20000.000 nm (0.4000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] comparator_dx50um:no_degenerate_cell[y]: smallest y cell 4166.667 nm (0.0833 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] comparator_dx50um:no_degenerate_cell[z]: smallest z cell 50000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] comparator_dx50um:cells_per_lambda_min_ge_10: 626.8 cells per shortest substrate wavelength
+  [OK  ] reported_only_dx80um:x_line_present[lumped_feed]: nearest mesh line 0.000 nm away
+  [OK  ] reported_only_dx80um:x_line_present[msl_start]: nearest mesh line 0.000 nm away
+  [OK  ] reported_only_dx80um:x_line_present[meas_plane]: nearest mesh line 0.000 nm away
+  [OK  ] reported_only_dx80um:x_line_present[open_end_lo]: nearest mesh line 0.000 nm away
+  [OK  ] reported_only_dx80um:x_line_present[open_end_hi]: nearest mesh line 0.000 nm away
+  [OK  ] reported_only_dx80um:measplane_snap_exact: target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)
+  [OK  ] reported_only_dx80um:no_degenerate_cell[x]: smallest x cell 80000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] reported_only_dx80um:no_degenerate_cell[y]: smallest y cell 6666.667 nm (0.0833 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] reported_only_dx80um:no_degenerate_cell[z]: smallest z cell 80000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
+  [OK  ] reported_only_dx80um:cells_per_lambda_min_ge_10: 391.8 cells per shortest substrate wavelength
+
+  -- comparator_dx50um --
+     PLANNED (y pre-smoothing) lines {'x': 179, 'y': 85, 'z': 25}  cells 358,848  substrate 6 cells of 53.33 um
+     AS BUILT  (after SmoothMeshLines y) lines {'x': 179, 'y': 401, 'z': 25}  cells 1,708,800  = 4.76x the plan
+     PML_8 depth per face: x 400/400 um, y 67.7/70.0 um (SHRUNK by the y smoothing), z_hi 400 um; z_lo is PEC
+     pad 0.40 mm (8 cells) vs rfx's 0.64 mm (8 cells) -- declared systematic
+     MSL meas plane 4.72 mm, shift 0.80 mm, effective CalcPort shift -5.421e-19 m
+
+  -- reported_only_dx80um --
+     PLANNED (y pre-smoothing) lines {'x': 117, 'y': 59, 'z': 19}  cells 121,104  substrate 4 cells of 80.00 um
+     AS BUILT  (after SmoothMeshLines y) lines {'x': 117, 'y': 301, 'z': 19}  cells 626,400  = 5.17x the plan
+     PML_8 depth per face: x 640/640 um, y 92.8/105.7 um (SHRUNK by the y smoothing), z_hi 640 um; z_lo is PEC
+     pad 0.64 mm (8 cells) vs rfx's 0.64 mm (8 cells) -- declared systematic
+     MSL meas plane 4.72 mm, shift 0.80 mm, effective CalcPort shift -5.421e-19 m
+
+  self-check passed: True
+
+--- STAGE 2: the #488 probe-fed microstrip transition ---
+
+=== Written to /root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/referee.json ===
+    openEMS stdout archived: 6 log(s)
+
+==============================================================================
+WHAT CANNOT BE COMPARED (repeated after the run, deliberately):
+  * (1) THE LUMPED/WIRE DIAGONAL, as a port-model comparison. rfx's wire diagonal is a per-cell, PRE-INJECTION port-cell quantity with Z0c = Z0/n_live = 50/4 = 12.5 ohm; openEMS's lumped port is a single lumped resistor across a one-cell gap referenced to the full 50 ohm. Agreement or disagreement there is evidence about the FRAME, not about the port, and cannot settle #683/#764/#776/#778. This referee reports |S11| and never adjudicates it.
+  * (2) THE OFF-DIAGONAL'S ABSOLUTE NORMALIZATION, to the extent the frame question touches it. rfx's mixed lane takes the off-diagonal MAGNITUDE from the Poynting-flux channel and its PHASE from the wave channel, while openEMS reports one port-based S. Only the composed |S_ij| is comparable, never 'rfx's wave channel vs openEMS'. In particular, a |S21| disagreement close to sqrt(n_live) = 2.0 is the same FRAME question as (1) and is NOT a physics disagreement this referee can settle.
+  * (3) ANYTHING AFTER enforce_passivity. rfx's result.S is a joint SVD projection (~4.3x on this fixture); only S_raw is comparable. This script refuses to read an 'S' field from the rfx artifact.
+  * (4) CROSS-FAMILY ABSOLUTE PHASE. rfx's mixed lane mixes two reference-plane conventions across families (port cell vs de-embedded MSL probe plane) plus a component-mixing +-1 -- which is why its own reciprocity witness is magnitude-only. Only each solver's own arg(S21) referred to its OWN measured beta is compared; the raw cross-solver phase difference is reported, never gated.
+  * (5) WHICH OF rfx's OWN DIAGONALS IS LYING. An external referee cannot answer that -- F1-F3 of the predeclaration can, which is why this runs after them.
+  * (6) MESH CONVERGENCE. One mesh pair (50 um comparator + 80 um reported-only) is not a convergence study, and this run does not create one.
+  * (7) THE ABSOLUTE ANCHOR IMPEDANCE. rfx normalizes its MSL port to the Hammerstad-Jensen Z0 of the DECLARED board (47.89479996289313 ohm, W=600 um / h=254 um) while the board it actually solves is W=480 um (node span) / h=320 um, whose HJ Z0 is 62.652 ohm (57.463 ohm on the 560 um cell-span reading). openEMS's MSLPort measures its own Z0 from the fields. The gap between those anchors is REPORTED, never gated, and it is part of the predeclaration's budget B -- not a defect this referee attributes to either solver.
+  * (8) THE ABSORBER PAD THICKNESS. rfx pads 8 cells x 80 um = 0.64 mm beyond each declared face; this script pads 8 cells x dx_oe = 0.40 mm at the comparator mesh. Cell COUNT matches, physical thickness does not. Declared systematic on the open-end reflections at x = 0 and x = 8.00 mm.
+==============================================================================
+overall_passed=False (self-checks only -- NOT a verdict on rfx vs openEMS agreement)
