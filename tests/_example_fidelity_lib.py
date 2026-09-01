@@ -344,6 +344,10 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure numpy/scipy fringe-extremum comparator for cv04's etalon R(f) "
         "(issue #812) -- no rfx import at all"),
+    "validation/crossval/comparators/slab_te_dispersion.py": Entry(
+        "no_simulation",
+        "plain-numpy closed-form slab TE0 oracle + two-wave n_eff estimator "
+        "for cv03 (#812) -- no rfx import at all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "

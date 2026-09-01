@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["slab_te0_neff", "measure_neff_from_line", "PhaseFit"]
+__all__ = ["slab_te0_neff", "measure_neff_two_wave", "TwoWaveFit"]
 
 
 def slab_te0_neff(eps_core: float, eps_clad: float, thickness: float,
@@ -100,52 +100,70 @@ def slab_te0_neff(eps_core: float, eps_clad: float, thickness: float,
     return float(np.sqrt(beta_sq) / k0)
 
 
-class PhaseFit(tuple):
-    """``(n_eff, beta, residual_rms_rad)`` for one frequency."""
+class TwoWaveFit(tuple):
+    """``(n_eff, beta, rel_residual, b_over_a)`` for one frequency."""
     __slots__ = ()
 
-    def __new__(cls, n_eff, beta, residual_rms):
+    def __new__(cls, n_eff, beta, rel_residual, b_over_a):
         return tuple.__new__(cls, (float(n_eff), float(beta),
-                                   float(residual_rms)))
+                                   float(rel_residual), float(b_over_a)))
 
     n_eff = property(lambda self: self[0])
     beta = property(lambda self: self[1])
-    residual_rms = property(lambda self: self[2])
+    rel_residual = property(lambda self: self[2])
+    b_over_a = property(lambda self: self[3])
 
 
-def measure_neff_from_line(field_line, x, freqs_hz, *, c0: float,
-                           forward: str = "+x"):
-    """Recover ``n_eff(f)`` from the spatial phase of a complex field line.
+def _two_wave_residual(beta, x, y):
+    """Relative LS residual of ``y ~ A e^{-i beta x} + B e^{+i beta x}``."""
+    design = np.stack([np.exp(-1j * beta * x), np.exp(1j * beta * x)], axis=1)
+    coef, *_ = np.linalg.lstsq(design, y, rcond=None)
+    resid = y - design @ coef
+    return float(np.linalg.norm(resid) / np.linalg.norm(y)), coef
+
+
+def measure_neff_two_wave(field_line, x, freqs_hz, *, c0: float,
+                          eps_core: float, eps_clad: float,
+                          n_scan: int = 4001, n_refine: int = 80):
+    """Recover ``n_eff(f)`` from a field line that carries BOTH directions.
+
+    A lossless uniform section supports exactly two propagating solutions of one
+    bound mode, ``A exp(-i beta x)`` and ``B exp(+i beta x)``.  This fits that
+    model -- ``beta`` by a 1-D search, ``A`` and ``B`` linearly at each trial
+    ``beta`` -- instead of assuming the line is a single travelling wave.
+
+    Written for crossval 03 (#812), where a single-mode linear-phase fit was
+    falsified by its own residual self-check: that guide carries ``|B/A| ~ 0.53``
+    and a phase-slope estimator reads it as a +/-0.7 % wobble in ``n_eff``.  The
+    two-wave fit is not a repair of a noisy estimator; it is the model the
+    physics actually has.
 
     Parameters
     ----------
     field_line : (n_freqs, n_x) complex array
-        DFT phasors of one field component sampled along the propagation axis.
+        DFT phasors of one field component along the propagation axis.
     x : (n_x,) float array
-        Sample positions, metres, monotonically increasing.
+        Sample positions, metres.
     freqs_hz : (n_freqs,) float array
-        Frequencies, Hz.
     c0 : float
-        Speed of light in the same unit system.
-    forward : "+x" or "-x"
-        Propagation direction of the wave being measured.
+        Speed of light, same unit system.
+    eps_core, eps_clad : float
+        Permittivities that set the search bracket.  A bound mode has
+        ``sqrt(eps_clad) < n_eff < sqrt(eps_core)`` -- the window between the
+        cladding and core light lines.  This is a first-principles bracket; it
+        is not derived from any measurement.
+    n_scan : int
+        Coarse samples across the bracket (global minimum).
+    n_refine : int
+        Bisection steps of the local refinement.
 
     Returns
     -------
-    list[PhaseFit]
-        One entry per frequency.
-
-    Notes
-    -----
-    The probe accumulates ``X(f) = sum_t x(t) exp(-i 2 pi f t) dt``, so a wave
-    ``cos(omega t - beta x)`` has ``arg X = -beta x``: the phase slope is
-    ``-beta`` for +x propagation.  The unwrap is unambiguous only while
-    ``beta * dx < pi``; the caller is responsible for the sampling, and this
-    function raises if the *measured* per-sample phase step reaches pi.
-
-    The residual RMS of the linear fit is returned rather than discarded: it is
-    the witness that the single-mode linear-phase premise actually held.  A
-    contaminated line (two modes, a standing wave, radiation) shows it directly.
+    list[TwoWaveFit]
+        One per frequency.  ``rel_residual`` is the witness that the two-wave
+        premise held; ``b_over_a`` is the standing-wave ratio, REPORTED, not
+        gated -- its correct value is a property of the boundary treatment, not
+        of this comparator.
     """
     field_line = np.asarray(field_line)
     x = np.asarray(x, dtype=float)
@@ -156,25 +174,35 @@ def measure_neff_from_line(field_line, x, freqs_hz, *, c0: float,
             f"{field_line.shape} vs n_x={x.size}")
     if field_line.shape[0] != freqs_hz.size:
         raise ValueError("field_line rows must match freqs_hz")
-    if x.size < 4:
-        raise ValueError("need at least 4 samples for a phase fit")
-    if forward not in ("+x", "-x"):
-        raise ValueError(f"forward must be '+x' or '-x', got {forward!r}")
+    if x.size < 8:
+        raise ValueError("need at least 8 samples for a two-wave fit")
+    if not (eps_core > eps_clad > 0.0):
+        raise ValueError("need eps_core > eps_clad > 0 for a bound-mode bracket")
 
-    sign = -1.0 if forward == "+x" else +1.0
+    n_lo = np.sqrt(eps_clad)
+    n_hi = np.sqrt(eps_core)
     out = []
     for i, f in enumerate(freqs_hz):
-        phi = np.unwrap(np.angle(field_line[i]))
-        step = np.max(np.abs(np.diff(phi)))
-        if step >= np.pi:
-            raise ValueError(
-                f"phase step {step:.3f} rad >= pi at f={f:.4e} Hz: the sample "
-                "spacing does not resolve the guided wavelength, so the "
-                "unwrap is ambiguous")
-        slope, intercept = np.polyfit(x, phi, 1)
-        beta = sign * slope
-        resid = phi - (slope * x + intercept)
+        y = field_line[i]
         k0 = 2.0 * np.pi * f / c0
-        out.append(PhaseFit(beta / k0, beta,
-                            float(np.sqrt(np.mean(resid ** 2)))))
+        lo, hi = k0 * n_lo * (1.0 + 1e-6), k0 * n_hi * (1.0 - 1e-6)
+        betas = np.linspace(lo, hi, n_scan)
+        costs = [_two_wave_residual(b, x, y)[0] for b in betas]
+        j = int(np.argmin(costs))
+        step = betas[1] - betas[0]
+        lo_r = max(lo, betas[j] - step)
+        hi_r = min(hi, betas[j] + step)
+        for _ in range(n_refine):
+            mid = 0.5 * (lo_r + hi_r)
+            h = 0.25 * (hi_r - lo_r)
+            if _two_wave_residual(mid - h, x, y)[0] <= \
+                    _two_wave_residual(mid + h, x, y)[0]:
+                hi_r = mid + h
+            else:
+                lo_r = mid - h
+        beta = 0.5 * (lo_r + hi_r)
+        rel, coef = _two_wave_residual(beta, x, y)
+        b_over_a = float(np.abs(coef[1]) / np.abs(coef[0])) if coef[0] != 0 \
+            else float("inf")
+        out.append(TwoWaveFit(beta / k0, beta, rel, b_over_a))
     return out
