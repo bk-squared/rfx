@@ -253,7 +253,14 @@ loss is not represented on this path.
     To model a genuinely lossy conductor, keep σ below 10⁶ S/m; any material at or
     above that threshold is silently promoted to PEC. The library `copper` and
     `aluminum` entries are already above it, so they behave as perfect conductors,
-    not lossy metals.
+    not lossy metals, unless `surface_impedance_f0` is explicitly selected on
+    `add_thin_conductor(...)`.
+
+For a PEC body that rasterizes to one cell along an axis, `sim.add(...,
+two_plane=True)` is an opt-in face-registered realization: it zeros the
+tangential E components on both node planes instead of the default lower plane.
+It is limited to hard PEC on the uniform `run()`/`forward()` scan and the
+single-device non-uniform runner. Other runners reject it explicitly.
 
 ---
 
@@ -273,7 +280,8 @@ sim.add_thin_conductor(
 )
 ```
 
-`add_thin_conductor` picks one of two regimes from `sigma_bulk`:
+`add_thin_conductor` picks a regime from `sigma_bulk` and the optional
+`surface_impedance_f0`:
 
 - **σ_bulk ≥ 10⁶ S/m** (copper, as above): the sheet is enforced as a thin PEC
   sheet — its cells are added to the PEC mask, no volumetric meshing needed. rfx
@@ -281,6 +289,13 @@ sim.add_thin_conductor(
 - **σ_bulk < 10⁶ S/m** (resistive films, inks): rfx sets an effective conductivity
   `σ_eff = σ_bulk · (thickness / Δx)` on the intersected Yee cells rather than
   fully filling them, preserving the sheet resistance `R_s = 1 / (σ_bulk · thickness)`.
+- **`surface_impedance_f0` set to a positive frequency**: rfx uses the
+  band-centre Leontovich resistance
+  `R_s0 = sqrt(π f0 μ0 / σ_bulk)` for metals as well as lower-conductivity
+  sheets. Any rasterizable shape may carry this operator, including patterned
+  `Cylinder`, `Sphere`, and `MeshShape` geometries. The rasterized result must
+  occupy exactly one cell layer along its normal and at least one cell; thicker
+  or vanished sheets fail rather than degrade silently.
 
 On a graded mesh (`dz_profile`), `Δx` above is the spacing between the midpoints
 of the two cells either side of the sheet — `(d[k-1] + d[k]) / 2` — not either
@@ -289,3 +304,9 @@ in the update, so the sheet resistance you asked for is what you get wherever
 the sheet lands. The two are the same number whenever the neighbouring cells
 match, which is every uniform mesh. If a sheet does land on a grading step,
 preflight says so.
+
+The surface-impedance operator is available on the uniform and
+single-device graded-mesh run/S-parameter lanes documented by the support
+matrix. Distributed, subgridded, ADI, UPML, dispersive-overlap, multimode
+waveguide, and MSL-junction combinations remain outside that path and fail
+explicitly.

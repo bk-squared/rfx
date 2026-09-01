@@ -21,10 +21,11 @@ This page summarizes the public support scope for user-facing rfx workflows.
 | Dimension | Recommended subset |
 |---|---|
 | grid / runner | uniform Cartesian Yee |
+| precision | `float32` default; `float64` and `mixed` are uniform-single-device only, with the documented CPML residual-floor caveat for `mixed` |
 | boundaries | PEC, CPML, and UPML within its documented limits |
 | sources | point/current, lumped port, wire port, specialized microstrip-line port, rectangular waveguide port |
 | observables | probes, flux, Harminv resonance, selected S-parameter workflows, documented far-field workflows |
-| materials | isotropic linear, conductive, and documented dispersive subsets |
+| materials | isotropic linear, conductive, documented dispersive subsets, and patterned one-cell surface-impedance sheets only within their stated lane restrictions |
 | workflows | cavity, waveguide, patch-style resonance, simple scattering, de-embedding, selected differentiable proxy objectives |
 | non-uniform profiles | feature-specific limited or experimental scope; use the [Non-Uniform Mesh guide](/rfx/guide/nonuniform-mesh/) for axis and calculator restrictions |
 
@@ -34,7 +35,7 @@ This page summarizes the public support scope for user-facing rfx workflows.
 |---|---|---|
 | lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; use only within its stated validation limits |
 | lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device configuration |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow; Laplace/quasi-TEM directions `+x`, `-x`, `+y`, and `-y`; eigenmode remains x-only and outside the public support envelope |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow; use the guide-recommended normalization mode |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `precision="float32"`; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for rejected registrations and accepted arguments |
 | sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |

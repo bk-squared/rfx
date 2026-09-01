@@ -105,8 +105,8 @@ Use `add_source` for resonance characterization (Harminv) where port loading wou
 
 What the waveform amplitude *means* is controlled by `amplitude_kind`
 (issue #571): `'current'` — amperes, realized as `E += Cb·I/dV` on every
-path and boundary (resolution-independent injected power, the future
-default) — or `'field'` — a raw E-field increment `E += w(t)`. Omitting it
+path and boundary (resolution-independent injected power; default transition:
+**In progress**) — or `'field'` — a raw E-field increment `E += w(t)`. Omitting it
 keeps a deprecated per-path legacy meaning (raw add on uniform+PEC,
 `Cb`-normalized add on uniform+CPML/UPML, current on non-uniform meshes)
 and emits one `DeprecationWarning` per simulation naming which one applies.
@@ -387,7 +387,7 @@ construction to the run; mirror the geometry instead).
 | `add_port(extent=None)` | Lumped-port S-params | `run(compute_s_params=True)`; validated on uniform-Yee examples |
 | `add_port(extent=...)` | Wire / probe-feed S-params | `run(compute_s_params=True)`; probe-feed examples, calibration caveated |
 | `add_lumped_rlc()` | Lumped circuit/load element | no direct S-parameter calculator; can be a differentiable scalar load via `forward(rlc_values_override=...)` in a uniform single-device calculation |
-| `add_msl_port()` | Full-strip microstrip S-matrix | `compute_msl_s_matrix()`; uniform mesh is externally compared; nonuniform `laplace`/`uniform` modes have internal checks only; `eigenmode` is unsupported |
+| `add_msl_port()` | Full-strip microstrip S-matrix | `compute_msl_s_matrix()`; Laplace/quasi-TEM accepts `+x`, `-x`, `+y`, and `-y`; the x-only eigenmode code path remains outside the public support envelope |
 | `add_waveguide_port()` | Modal waveguide S-matrix | `compute_waveguide_s_matrix()`; rectangular guide, cpml + 3D |
 | `add_coaxial_port()` | One-port coaxial line reflection | `compute_coaxial_line_reflection()`; float32 precision; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` port; see the [API constraints](/rfx/api/sources-ports/) |
 | `add_tfsf_source()` | RCS / scattering plane wave | none (not a port) |

@@ -46,6 +46,12 @@ It prints a PASS / WARN / FAIL report (Python and rfx versions, the JAX
 backend and devices, core dependencies, optional extras) and finishes with a
 tiny end-to-end FDTD run. It exits `0` only when every critical check
 passes; WARN lines (CPU-only backend, x64 disabled) are informational.
+An x64-disabled warning is harmless for the default `precision="float32"`
+workflow, but `precision="float64"` requires JAX x64 to be enabled before the
+simulation is constructed. Both `"float64"` and `"mixed"` are limited to the
+uniform single-device lane. Mixed precision works with CPML but raises the
+absorber residual floor, so use float32 for low-reflection and S-parameter
+work near that floor.
 
 The diagnostic's final short run is the installed-package execution check.
 Examples under `examples/` are available only from a source checkout; they are

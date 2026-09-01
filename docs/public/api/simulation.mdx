@@ -51,6 +51,7 @@ Key constructor arguments:
 | `add_port(...)` | add a lumped or wire port | use for impedance-normalized S-parameters within the documented lumped/wire limits |
 | `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
 | `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
+| `fidelity_report(print_report=True)` | compare declared entities with their rasterized realization | run before a solve; reports geometry/material realization, not RF error |
 | `preflight(strict=False)` | validate setup before a long run | returns a coded `PreflightReport`; use `.errors`, `.warnings`, `.by_code(...)`, or `.raise_for_failure()` for automation gates |
 | `mesh_intelligence_report(...)` | summarize configured grid, preflight issues, and AD memory estimates | useful for non-uniform and memory-constrained planning |
 | `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
@@ -76,8 +77,16 @@ sim.add_probe((0.05, 0.03, 0.0125), "ez")
 
 # until_decay is implemented on the uniform CPML/UPML runner and on the
 # non-uniform (dx/dy/dz-profile) runner with CPML/UPML boundaries.
-result = sim.run(until_decay=1e-3)
+sim.fidelity_report()
+result = sim.run(until_decay=1e-3, report_every=250)
 ```
+
+`report_every=N` is optional host-side progress reporting. It prints completed
+steps, elapsed time, rate, and ETA without changing the returned arrays. It is
+supported on the uniform runner and the single-device non-uniform runner when
+that runner is not using incompatible checkpointing. Distributed, ADI,
+subgridded, traced/differentiable, and incompatible checkpointed paths reject
+or warn rather than silently pretending to report progress.
 
 `run()` returns a tuple-like `Result` (a `NamedTuple`) with fields such as
 `time_series`, `s_params`, `freqs`, `ntff_data`, and `grid` — see
@@ -112,6 +121,14 @@ recorded probe series and a `GaussianPulse` registered through `add_source()`,
 `add_polarized_source()`, lumped/wire `add_port()`, or `add_msl_port()`; it does
 not inspect waveguide, TFSF, or Floquet excitations. Other lanes and source
 families must be checked explicitly.
+
+Dedicated S-matrix calculators have their own settling checks:
+`compute_msl_s_matrix`, `compute_waveguide_s_matrix`,
+`compute_mixed_s_matrix`, `compute_coaxial_two_port`, and
+`compute_coax_msl_transition` compare their recorded `settling_db` values with
+the shared -40 dB threshold. A warning means the fixed record may contain a
+truncated transient; it does not modify the returned matrix or establish that
+an unwarned result is validated.
 
 | Signal | Interpretation | Action |
 |---|---|---|

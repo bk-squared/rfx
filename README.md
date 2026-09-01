@@ -29,7 +29,8 @@
 | **Differentiable** | `jax.grad` through the time-domain solver for sensitivity and inverse design |
 | **RF workflow tools** | materials, sources, probes, ports, S-parameters, Harminv, far-field / RCS |
 | **Per-family S-parameters** | lumped/wire, microstrip, rectangular waveguide, and coaxial paths use distinct calculators |
-| **Preflight guards** | `sim.preflight()` surfaces setup errors and support-boundary issues before a run |
+| **Preflight + fidelity guards** | `sim.fidelity_report()` shows declared-vs-rasterized geometry before a solve; `sim.preflight()` surfaces setup errors and support-boundary issues |
+| **Supervisable long runs** | `report_every=N` prints step count, elapsed time, rate, and ETA on supported uniform and single-device non-uniform runs when checkpointing is compatible |
 | **Cross-validated** | public cases mapped to Meep / OpenEMS / Palace / analytic references, each with a reproduce command |
 
 ## Installation
@@ -67,13 +68,18 @@ sim.add_source(
 )
 sim.add_probe((0.11, 0.03, 0.025), "ez")
 
+sim.fidelity_report()
 preflight = sim.preflight()
 print(preflight.format())
 preflight.raise_for_failure()
 
-result = sim.run(n_steps=1200)
+result = sim.run(n_steps=1200, report_every=200)
 print(result.time_series.shape)
 ```
+
+`fidelity_report()` describes how each entity rasterizes; it does not predict
+RF error. Progress reporting is off by default and does not change returned
+arrays.
 
 For a real antenna workflow — including the mesh, time-window, and reference
 checks required before reporting RF results — follow the
@@ -87,8 +93,9 @@ Beyond the Python API:
 - **Experiment CLI** — `rfx experiment run <spec.json>`: versioned CPU runs from a strict JSON spec, with `submit`/`status`/`cancel`.
 - **Studio + MCP** — `pip install "rfx-fdtd[studio]" && rfx studio`: local app with append-only experiment revisions, approval-gated MCP actions, and an optional LLM Design Copilot.
 
-All three share the same `ExperimentSpec` format. Details, safety model, and
-remote deployment: [Studio, CLI, and MCP Experiments](docs/public/guide/studio-experiments.mdx).
+The Experiment CLI and Studio/MCP share the same `ExperimentSpec` format.
+Details, safety model, and remote deployment:
+[Studio, CLI, and MCP Experiments](docs/public/guide/studio-experiments.mdx).
 
 ## Differentiable Design
 

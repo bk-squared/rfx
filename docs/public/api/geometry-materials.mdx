@@ -63,3 +63,14 @@ Geometry and materials are covered only when paired with a documented boundary,
 source or port, mesh, and observable combination. Check
 [Support Boundaries](/rfx/api/support-boundaries/) before reporting RF accuracy for a
 structure that uses a limited configuration.
+
+Two current opt-in conductor realizations have narrower contracts:
+
+- `add(shape, material="pec", two_plane=True)` is hard-PEC-only and
+  face-registers a one-cell PEC body on both node planes. A non-PEC material
+  raises `ValueError`. It is supported only on the uniform `run()`/`forward()`
+  scan and the single-device non-uniform runner.
+- `add_thin_conductor(shape, surface_impedance_f0=...)` applies a band-centre
+  Leontovich sheet resistance to any rasterizable patterned shape that occupies
+  exactly one cell layer and at least one cell. Unsupported solver, boundary,
+  overlap, and port-family combinations fail explicitly.

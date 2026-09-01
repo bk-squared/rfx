@@ -33,9 +33,16 @@ sim.add_source(
 )
 sim.add_probe((0.11, 0.03, 0.025), "ez")
 
-result = sim.run(until_decay=1e-3)
+sim.fidelity_report()
+result = sim.run(until_decay=1e-3, report_every=250)
 modes = result.find_resonances(freq_range=(1e9, 4e9))
 ```
+
+`fidelity_report()` shows how the declared geometry lands on the mesh; it does
+not predict the RF error. `report_every` is off by default and makes supported
+uniform and single-device non-uniform runs observable from the terminal when
+checkpointing is compatible. Traced and unsupported paths warn or raise rather
+than silently ignoring it.
 
 This open-domain pulse example demonstrates the run and resonance-analysis APIs;
 it does not guarantee a resonant mode in the selected band, so `modes` may be
@@ -73,11 +80,12 @@ sim.add_port(
     waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
 )
 
+sim.fidelity_report()
 preflight = sim.preflight()
 print(preflight.format())
 preflight.raise_for_failure()
 
-result = sim.run(n_steps=800, compute_s_params=True)
+result = sim.run(n_steps=800, compute_s_params=True, report_every=200)
 s11 = result.s_params[0, 0, :]
 s11_db = 20 * np.log10(np.abs(s11) + 1e-12)
 ```

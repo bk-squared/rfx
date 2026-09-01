@@ -112,10 +112,16 @@ final design with a convergence or cross-reference check.
 
 ### Float32 finite-difference checks
 
-rfx runs these workflows in float32 by default (complex64 field and DFT
-buffers), unless you enable JAX 64-bit precision. If the finite-difference step
-is too small, cancellation can make the finite-difference witness look worse
-than the AD path.
+rfx runs these workflows in `precision="float32"` by default (complex64 field
+and DFT buffers). The uniform single-device lane can use
+`precision="float64"` after JAX x64 is enabled, or `precision="mixed"` for
+float16 field storage with float32 accumulators. Enabling x64 alone does not
+select float64 field storage. Mixed precision with CPML has a higher absorber
+residual floor and is not suitable for low-reflection or S-parameter
+observables near that floor. Non-uniform, distributed, and subgridded lanes
+reject both non-default precision modes instead of silently running float32.
+If the finite-difference step is too small, cancellation can make the
+finite-difference witness look worse than the AD path.
 
 **Mitigation:** start finite-difference checks with a step that is meaningful for
 the variable scale, often around `h = 1e-2` for permittivity-like variables, then

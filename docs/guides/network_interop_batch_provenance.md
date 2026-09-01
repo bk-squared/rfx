@@ -1,5 +1,7 @@
 # Network Interop and Batch Provenance Roadmap
 
+**Status: In progress.**
+
 This note records the next two bounded contribution topics after runtime artifact
 bundles. It is intentionally scoped to host-side interoperability and repeatable
 workflow infrastructure; it does not change FDTD update equations or solver

@@ -64,6 +64,13 @@ pattern_dB = radiation_pattern(ff)
 `theta`, `phi`, `freqs`) that both `radiation_pattern` and `directivity`
 consume.
 
+For a JAX-traced far-field objective, use
+`compute_far_field_jax(..., max_phase_bytes=4e9)`. The memory budget bounds the
+temporary `(frequency, direction, surface-cell)` phase array by splitting the
+theta grid; the split sum is exact and the returned direction order is
+unchanged. Raise the budget to trade memory for fewer passes, or pass
+`float("inf")` only when the full allocation is known to fit.
+
 ## Directivity
 
 ```python

@@ -13,6 +13,46 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 
 ## Unreleased
 
+No changes yet.
+
+## v1.7.0 — September 1, 2026
+
+- Long solves can report step count, elapsed time, rate, and ETA with
+  `report_every=N` on supported uniform and single-device non-uniform runs.
+  Reporting is off by default and the reported and unreported results are
+  byte-identity locked.
+- `Simulation.fidelity_report()` audits declared geometry against the cells and
+  material realization the solver will use, before a run. It reports
+  rasterization and realization only; it does not predict RF error.
+- `add_msl_port(direction=...)` supports `"+x"`, `"-x"`, `"+y"`, and `"-y"`
+  for the Laplace/quasi-TEM path. The eigenmode path remains x-only and outside
+  the public support envelope.
+- `add_thin_conductor(..., surface_impedance_f0=...)` accepts patterned shapes
+  that rasterize to exactly one cell layer and at least one cell, including
+  CAD-backed `MeshShape` objects. Unsupported sheet realizations and execution
+  lanes fail explicitly.
+- The uniform single-device solver offers `precision="float64"` when JAX x64
+  is enabled. `precision="mixed"` works with CPML, but its float16 field
+  storage raises the absorber residual floor and is not a substitute for
+  float32 in low-reflection or S-parameter work.
+- `compute_far_field_jax(..., max_phase_bytes=...)` bounds the NTFF phase-array
+  allocation by splitting the theta grid. The split is exact and avoids
+  materializing the full direction-by-surface array at once.
+- S-parameter settling warnings use the same -40 dB rule in
+  `compute_msl_s_matrix`, `compute_waveguide_s_matrix`,
+  `compute_mixed_s_matrix`, `compute_coaxial_two_port`, and
+  `compute_coax_msl_transition`.
+- Multi-band graded-z meshes now preserve declared blocks through smoothing,
+  with a measured z-axis adjacent-cell ratio cap of 1.4 and explicit
+  preflight advisories outside the validated envelope.
+- New rasterized-slice and stack-profile views show the cells and material
+  layers the solver actually builds.
+- Wire-port decomposition, MSL probe extraction, CPML material padding,
+  graded-mesh NTFF integration, mesh import containment, and preflight
+  diagnostics received correctness fixes without widening their documented
+  validation envelopes.
+- MSL internal DFT planes now store only the extractor's required crop,
+  reducing accumulator cells without changing the extracted matrix.
 - Differentiable `forward(...)` objectives are now safe to wrap in an outer `jax.jit`: both `jax.jit(loss)` and `jax.jit(jax.grad(loss))` over `forward(eps_override=...)` are regression-locked against the eager path. This fixes a tracer crash in material assembly without changing eager results.
 - `optimize(...)` gained default-off robustness knobs for difficult proxy losses: `n_starts`, `best_iterate`, `step_clamp`, and `seed`. The default single-start Adam path remains byte-identical.
 - `add_lumped_rlc(...)` elements now participate in the differentiable uniform `forward(...)` lane. Use `forward(rlc_values_override={...})` when R/L/C values themselves are scalar design variables; this is still a lumped circuit element, not a `Z0`-referenced port.

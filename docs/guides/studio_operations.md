@@ -117,9 +117,10 @@ prevent DNS rebinding.
 The optional lab adapter hashes user ids into separate workspace and secret
 roots, applies per-user cell/run/artifact quotas, namespaces object storage, and
 assigns scheduler resource names per user. SQLite/filesystem remain the shipped
-single-node adapters. `PostgresMetadataConfig` validates and redacts a future
-Postgres DSN; `ObjectStoreAdapter` and `SchedulerAdapter` define the replacement
-boundaries without making an unavailable service a runtime dependency.
+single-node adapters. **Postgres adapter integration: In progress.**
+`PostgresMetadataConfig` currently validates and redacts its DSN;
+`ObjectStoreAdapter` and `SchedulerAdapter` define the replacement boundaries
+without making an unavailable service a runtime dependency.
 
 Do not treat this adapter as a public multi-tenant SaaS authorization system.
 Deploy behind organization authentication, map the authenticated principal to

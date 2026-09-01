@@ -136,6 +136,15 @@ Automatic checks differ by calculator during normal Python execution:
   registered geometry, circuit elements, monitors, and termination helpers;
   see the [complete argument rules](/rfx/api/sources-ports/).
 
+Settling is a separate guard from passivity. `compute_msl_s_matrix`,
+`compute_waveguide_s_matrix`, `compute_mixed_s_matrix`,
+`compute_coaxial_two_port`, and `compute_coax_msl_transition` compare each
+drive's `settling_db` with the shared -40 dB threshold and warn when a fixed
+record ends too early. The warning does not modify `S`, and no warning is not
+proof of mesh convergence or external accuracy.
+`compute_coaxial_line_reflection()` is not one of those five full-matrix lanes;
+use its returned recurrence and fit diagnostics.
+
 Warnings leave every computed value intact. If a passive model exceeds its
 documented limit, treat that frequency bin as suspect and check settling time,
 normalization, the reference plane, and the extraction setup. Silence only

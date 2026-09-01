@@ -46,7 +46,7 @@ polarization sense.
 |---|---|
 | `add_port(...)` | recommended lumped/wire port path for many RF examples |
 | `add_waveguide_port(...)` | rectangular waveguide modal workflows |
-| `add_msl_port(...)` | specialized microstrip-line S-matrix workflow |
+| `add_msl_port(...)` | specialized microstrip-line S-matrix workflow; Laplace/quasi-TEM directions `+x`, `-x`, `+y`, and `-y` (`mode="eigenmode"` remains x-only and outside the public support envelope) |
 | `add_coaxial_port(...)` | coaxial transmission-line reflection via `compute_coaxial_line_reflection(...)`; float32 precision; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` port |
 | `add_lumped_rlc(...)` | lumped network element at a cell |
 

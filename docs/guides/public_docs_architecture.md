@@ -23,10 +23,14 @@ This document defines the source-of-truth and deployment boundaries for the publ
 
 The public site `remilab.ai/rfx` is part of the documentation deliverable, not a separate afterthought. A docs change is source-complete when the repo checks pass; it is deployment-complete only after the gitops snapshot is exported or a concrete missing-checkout blocker is recorded.
 
-Expected local deploy root:
+The export script discovers a sibling
+`infra/remilab-sites-gitops` checkout from the active workspace. For a
+nonstandard clone layout, pass `--gitops-root` explicitly instead of
+hard-coding or hand-editing a snapshot:
 
-```text
-/root/workspace/infra/remilab-sites-gitops/deploy/obsidian-stack/astro-starlight-presets/public/seed-pages/rfx
+```bash
+python scripts/export_public_docs_to_gitops.py \
+  --gitops-root /path/to/remilab-sites-gitops
 ```
 
 ## Current public hierarchy
@@ -84,6 +88,7 @@ If a feature is outside the documented public support scope but still exists in 
 
 4. In gitops, build and validate the Starlight site.
 5. Commit and push source repo changes and gitops snapshot changes separately.
+   GitHub is the source-of-truth transport; do not edit the deploy host.
 6. On r02, verify checkout cleanliness, pull, recreate `starlight-public`, and smoke-test the live routes.
 
 ## CI guardrails
@@ -105,6 +110,6 @@ This split avoids blocking source-repo authoring on cross-repo drift before the 
 ## Immediate migration posture
 
 - `docs/public/index.mdx`, `docs/public/guide/`, `docs/public/examples/`, `docs/public/validation/`, and `docs/public/api/` are the **canonical public sources**.
-- `docs/agent/**` is Git-repository public for external LLM agents, but remains site-private: do not add it to `remilab.ai` navigation, export it, deploy it, or include it in gitops snapshots.
+- `docs/agent/**` is GitHub-only guidance for external LLM agents: do not add it to `remilab.ai` navigation, export it, deploy it, or include it in gitops snapshots.
 - `docs/guide/` is intentionally reduced to a single redirect-style entrypoint and should not receive new content.
 - `docs/api/` remains generated-only and optional; when present it should be exported as a subordinate deep-reference surface, not treated as the primary authored API contract.

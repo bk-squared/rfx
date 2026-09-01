@@ -67,10 +67,12 @@ Allowed places for those terms are support contracts, maintainer inventories, or
 
 `remilab.ai/rfx` is a first-class deliverable. `docs/public/**` is the only canonical site source; the gitops deploy snapshot should be regenerated from it using `scripts/export_public_docs_to_gitops.py`. Do not hand-edit the gitops snapshot as a parallel source of truth.
 
-Expected deploy root:
+The exporter discovers the sibling gitops checkout in the standard workspace
+layout. For another clone or worktree, provide `--gitops-root` explicitly:
 
-```text
-/root/workspace/infra/remilab-sites-gitops/deploy/obsidian-stack/astro-starlight-presets/public/seed-pages/rfx
+```bash
+python scripts/export_public_docs_to_gitops.py \
+  --gitops-root /path/to/remilab-sites-gitops
 ```
 
 If the checkout is absent, the source repo can still merge docs fixes, but the PR or release note must say that live-site sync remains blocked until the gitops repo is present and the sync check is re-run.

@@ -6,6 +6,10 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+No changes yet.
+
+## [1.7.0] - 2026-09-01
+
 ### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)
 
 The constructor's abrupt-grading warning and `preflight()`'s
