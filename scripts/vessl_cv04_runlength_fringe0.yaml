@@ -1,0 +1,49 @@
+name: rfx-812-cv04-runlength-fringe0
+description: "#812 lane cv04, section 14 falsifier. Criterion (A)'s tightest fringe (the 3.7475 GHz maximum) passes only on the safety factor: correct code's 30.0 MHz displacement is 101.6% of the window's DERIVED budget (df_bin/2 + Yee shift = 29.52 MHz), and the Yee model explains only 11.3% of it. Section 12 hypothesises the maxima are biased by truncating the run at 719 steps while the tail witness still reads 3.6% of incident peak, and predicts the residual shrinks with run length. This run tests that. n_steps is not an independent knob (derived from the CPML round-trip safe time), so the driver moves nx_interior 600 -> 1500, giving the committed rung-C4 length ~1940 steps. DECLARED BEFORE THE RUN: PASS if |dev(fringe 0)| <= 29.52 MHz (truncation artefact confirmed, criterion A physically underwritten); FAIL if it stays ~30 MHz or grows (the window's derivation is missing a term, which must then be derived -- the window is NOT widened to admit the observation). REPORT-ONLY: no gate, threshold or reference moves."
+tags: [rfx, issue-812, cv04, crossval, fresnel, falsifier]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx #812 cv04: section 14 run-length falsifier for fringe 0 ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+
+  ROOT=/root/workspace/claude-workspace/rfx/checkouts/regate-cv04-reference
+  cd "$ROOT"
+  test -f scripts/diagnostics/cv04_fresnel/runlength_fringe0.py || { echo "STALE STAGING: driver missing"; exit 3; }
+  test -f validation/crossval/04_multilayer_fresnel.py || { echo "STALE STAGING: case missing"; exit 3; }
+
+  "$PY" -m pip install -q "numpy<2" "scipy>=1.11" "matplotlib>=3.7"
+  export PYTHONPATH="$ROOT"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, 'rfx from', os.path.dirname(rfx.__file__), 'x64', jax.config.x64_enabled)"
+
+  out=/root/workspace/claude-workspace/rfx/runs/issue812-cv04-runlength-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$out"
+  echo "artifacts: $out"
+
+  set +e
+  timeout 7200 "$PY" -u scripts/diagnostics/cv04_fresnel/runlength_fringe0.py \
+      --output "$out/issue812_cv04_runlength_fringe0.json" > "$out/runlength.log" 2>&1
+  rc=$?
+  set -e
+  cat "$out/runlength.log"
+  echo "runlength_rc=$rc"
+
+  "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print("derived budget (Hz):", d["derived_budget_hz"]); [print("%-30s nx=%s steps=%s dev0=%+.4f MHz  used=%.4f of budget  %s" % (k, (v.get("payload") or {}).get("nx_interior"), (v.get("payload") or {}).get("n_steps"), (v.get("fringe0_dev_hz") or float("nan"))/1e6, v.get("fringe0_abs_dev_over_derived_budget", float("nan")), v.get("fringe0_verdict"))) for k,v in d["configs"].items()]' "$out/issue812_cv04_runlength_fringe0.json" || true
+
+  ls -la "$out"
+  [ "$rc" -eq 0 ]
