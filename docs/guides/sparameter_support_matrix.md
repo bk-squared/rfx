@@ -430,8 +430,9 @@ outside the single-dielectric-slab configuration described next.
   that run `compute_waveguide_s_matrix` had no built-in energy-based
   `settling_db` -- since issue #538 the uniform single-mode waveguide
   lanes carry the same energy-based `settling_db` field and -40 dB
-  aggregate warning as the MSL calculator, with the NU and multimode
-  branches still un-adopted) agrees to `0.000 ns`. A domain-size invariance run (`+100 mm` growth) holds the pass
+  aggregate warning as the MSL calculator; the nonuniform lane adopted
+  the same witness with the #827 waveguide-instance fix, with the
+  multimode branch still un-adopted) agrees to `0.000 ns`. A domain-size invariance run (`+100 mm` growth) holds the pass
   verdict (`0.0266 ns`, still under the gate). Three genuinely independent
   falsifiers (skipping the phase-unwrap step, dropping the leading minus
   sign, and using the wrong `L_eff` -- domain length instead of
@@ -467,7 +468,9 @@ silently solved on the uniform grid built from the scalar `dx` while
 preflight described the graded mesh. A `dz_profile` now dispatches here
 under the same restrictions. No dz-graded accuracy evidence exists yet
 (#810): the Palace comparison above is graded-`dy` only, so dz-graded
-results are dispatch-correct and unvalidated.
+results are dispatch-correct and unvalidated. The nonuniform lane emits
+the same `settling_db` ring-down witness and -40 dB aggregate warning as
+the uniform single-mode lane (#827 waveguide instance).
 
 **The nonuniform E5 fixture was regenerated and promoted (#574, closing the
 staleness #562/#564 recorded).** It now carries post-#562 geometry AND the

@@ -7080,6 +7080,7 @@ class _SparamMixin:
         )
         from rfx.sources.waveguide_port import (
             extract_waveguide_port_waves,
+            settling_db_from_port_records,
             waveguide_plane_positions,
         )
 
@@ -7179,6 +7180,7 @@ class _SparamMixin:
 
         # jnp-functional: collect per-drive columns; stack after loop
         s_columns: list[list] = []  # s_columns[drive_idx] = list of (n_freqs,) jnp arrays over recv_idx
+        settling_runs: list[float] = []  # per-drive ring-down witness (#827)
         ref_shifts: tuple[float, ...] | None = None
         reference_planes_out: np.ndarray | None = None
 
@@ -7260,6 +7262,20 @@ class _SparamMixin:
                         "NU waveguide S-matrix expected one final cfg per "
                         "port on both device and reference runs"
                     )
+
+                # Issue #827 (the waveguide instance of the NU witness gap):
+                # energy ring-down witness per drive, worst over BOTH runs of
+                # the pair -- the reference run feeds a_inc/P_inc, so its
+                # truncation corrupts the same S values (same composition as
+                # the uniform normalized/flux lanes, #538). NaN under tracing
+                # propagates instead of being max()-eaten.
+                _sd_dev = settling_db_from_port_records(
+                    [dev_wg[e.name] for e in original_entries])
+                _sd_ref = settling_db_from_port_records(
+                    [ref_wg[e.name] for e in original_entries])
+                settling_runs.append(
+                    float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+                    else max(_sd_dev, _sd_ref))
 
                 # Compute ref_shifts from the first drive's configs (same
                 # measured planes for every drive / run).
@@ -7387,6 +7403,16 @@ class _SparamMixin:
             self._waveguide_ports = original_entries
             self._dz_profile = _dz_profile_saved
 
+        # Issue #827 (waveguide instance): the ring-down witness now reaches
+        # the NU lane -- same aggregate truncation warning and settling_db
+        # field as the uniform single-mode lanes (#538). NaN entries (traced
+        # AD runs) are skipped by the warner's finite mask; the array itself
+        # is always attached for the record.
+        settling_db = np.asarray(settling_runs, dtype=float)
+        _warn_if_ringdown_truncated(
+            settling_db, tuple(e.name for e in original_entries),
+            num_periods=float(num_periods),
+        )
         return WaveguideSMatrixResult(
             s_params=jnp.stack([jnp.stack(col) for col in s_columns], axis=1),
             freqs=jnp.asarray(port_freqs),
@@ -7402,4 +7428,5 @@ class _SparamMixin:
                 ],
                 dtype=float,
             ),
+            settling_db=settling_db,
         )

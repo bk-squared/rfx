@@ -1229,10 +1229,11 @@ class WaveguideSMatrixResult(NamedTuple):
     reference runs. Rule: below −40 dB, same ``_SETTLING_WITNESS_DB``
     threshold and aggregate warning as the lumped/MSL path. Scope limits
     (modal records only; peak includes the incident pulse): see
-    ``settling_db_from_port_records``. ``None`` on the paths that have
-    not adopted the witness: the NU sibling
-    (``_compute_waveguide_s_matrix_nu``) AND the uniform multimode branch
-    (``extract_multimode_s_matrix*``) — both tracked on the issue. NaN
+    ``settling_db_from_port_records``. ``None`` on the one path that has
+    not adopted the witness: the uniform multimode branch
+    (``extract_multimode_s_matrix*``) — tracked on the issue. The NU
+    sibling (``_compute_waveguide_s_matrix_nu``) carries it since the
+    issue #827 waveguide-instance fix. NaN
     entries mean the run was traced (AD path) and the host-side witness
     was skipped rather than concretised.
     """

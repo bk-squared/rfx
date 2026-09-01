@@ -22,7 +22,7 @@ six sibling S-matrix dispatches all tested dz. This file locks the CLASS:
   metrics — rfx-known-issues lesson).
 
 No module-level jax x64 config here (process-global; contaminates the
-shard), and no FDTD outside the slow_physics falsifier.
+shard), and no FDTD outside the slow_physics tests.
 """
 
 from __future__ import annotations
@@ -308,3 +308,24 @@ def test_two_different_z_meshes_change_the_answer():
         "two genuinely different z meshes returned BIT-IDENTICAL "
         "S-parameters — dz_profile is not reaching the solve (#811 class)"
     )
+
+
+@pytest.mark.slow_physics
+def test_dz_only_short_run_fires_the_settling_witness():
+    """#827 (waveguide instance): the NU lane carries the uniform lane's
+    ring-down settling witness. A deliberately short dz-only run
+    (num_periods=2 cannot drain a resonant guide) must WARN and attach a hot
+    settling_db — before the fix the NU lane returned settling_db=None and
+    no warning, so a truncated dz-graded record read as a clean result
+    (parity with the uniform lane's #538 witness at the uniform return
+    path of rfx/api/_sparams.py)."""
+    sim = _dz_only_wg(_DZ_WR90_A)
+    with pytest.warns(UserWarning, match="ring-down settling witness FAILED"):
+        res = sim.compute_waveguide_s_matrix(num_periods=2, normalize="flux")
+    assert res.settling_db is not None, (
+        "NU lane returned settling_db=None — the #827 witness gap is back")
+    sdb = np.asarray(res.settling_db, dtype=float)
+    assert sdb.shape == (2,)
+    # R5: quote the witness values, not just that the warning fired.
+    print(f"\n[dz-settling] settling_db per drive = {sdb} dB")
+    assert np.all(np.isfinite(sdb)) and np.all(sdb > -40.0), sdb

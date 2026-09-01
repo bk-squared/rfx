@@ -196,7 +196,7 @@
         "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
         "multimode normalize=True is unsupported",
         "nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz",
-        "a dz_profile-only mesh dispatched to the UNIFORM lane until #811 (fixed 2026-09-01): the graded mesh was silently ignored while preflight described it; dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions, and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only",
+        "a dz_profile-only mesh dispatched to the UNIFORM lane until #811 (fixed 2026-09-01): the graded mesh was silently ignored while preflight described it; dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions, and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only; the nonuniform lane now carries the same settling_db ring-down witness and -40 dB aggregate warning as the uniform single-mode lane (#827 waveguide instance)",
         "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
         "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
