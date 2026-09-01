@@ -180,8 +180,10 @@ def test_pole_carrying_column_gets_no_hi_face_static_promotion_nu():
 
 def test_dispersion_poles_are_not_extended_into_the_pad_uniform():
     """(#627b, deliberately NOT fixed) Lock the reverted state: NEITHER
-    pad gets the slab's Debye pole (the box's own rasterized mask never
-    covers pad indices — they are outside [0, domain_extent) — and no
+    pad gets the slab's Debye pole (THIS face-ending box's rasterized mask
+    covers no pad index — its extent stops at the domain face, and pad
+    nodes lie beyond it; a box drawn PAST a face DOES rasterize pole cells
+    into the pad, see the preflight advisory's overdraw branch — and no
     extension step runs for pole masks, on either face, matching the
     original pre-#582 behaviour). If either count goes nonzero, someone
     re-added pole-mask extension — read the module docstring and
@@ -254,6 +256,49 @@ def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
         "documented one-column shortfall, not an unbounded scan")
     assert float(eps[plx + 15, -phy, k]) == 1.0, (
         "y-hi pad picked up material across a genuine multi-cell vacuum gap")
+
+
+def test_corner_pad_refuses_lo_pad_replica_promotion():
+    """(#808 corner sub-rule) The ``poleish`` mask must be REPLICATED through
+    the pad passes, not just consulted where the geometry itself rasterized.
+    A Debye box touching y-lo and z-hi puts a lo-pad STATICS replica of a
+    pole column into the y-lo pad (the pinned lo behaviour); the later z
+    pass's hi-face fallback then sees that replica as its promotion source
+    for the (y-lo, z-hi) CORNER pad. Without the replication the corner pad
+    realizes the eps_inf-without-pole chimera (eps_r 4.0); with it the
+    corner stays background (1.0).
+
+    This is the guard the sub-rule lacked: scratch-reverting ONLY the
+    poleish replication in extend_cpml_pad_materials left every committed
+    test green (adjudicated 2026-09-01) — the single-axis fixtures above
+    never build a corner whose promotion source is itself a pad replica."""
+    nzc = 12
+    sim = Simulation(freq_max=2.5 * F0, domain=(NA * DX, NB * DX, nzc * DX),
+                     dx=DX, boundary="cpml", cpml_layers=8)
+    sim.add_material("slab", eps_r=4.0,
+                     debye_poles=[DebyePole(delta_eps=1.0, tau=1e-10)])
+    # touches y-lo AND z-hi; interior in x
+    sim.add(Box((10 * DX, 0.0, 3 * DX), (20 * DX, 8 * DX, nzc * DX)),
+            material="slab")
+    grid = sim._build_grid()
+    materials, *_ = sim._assemble_materials(grid)
+    eps = np.asarray(materials.eps_r)
+    ply = grid.pad_y_lo
+    phz = grid.pad_z_hi
+    nz = eps.shape[2]
+    i = grid.pad_x_lo + 15
+    # the y-lo pad itself KEEPS the statics replica (the pinned lo envelope)
+    assert float(eps[i, ply - 1, grid.pad_z_lo + 5]) == 4.0, (
+        "y-lo pad lost the statics replica — that is the pinned lo-face "
+        "envelope, not part of the #808 gate")
+    # the z-hi fallback must refuse to promote that replica into the corner
+    assert float(eps[i, ply - 1, nz - phz]) == 1.0, (
+        f"corner pad eps_r={float(eps[i, ply - 1, nz - phz])}: the z-hi "
+        f"fallback promoted a lo-pad REPLICA of a pole column — the "
+        f"poleish replication through the pad passes is gone and the "
+        f"corner realizes the #808 eps_inf-without-pole chimera")
+    # and the z-hi pad above the box's own interior stays background (#808)
+    assert float(eps[i, ply + 4, nz - phz]) == 1.0
 
 
 def test_uniform_and_nu_assemblers_stay_byte_identical_after_the_fix():

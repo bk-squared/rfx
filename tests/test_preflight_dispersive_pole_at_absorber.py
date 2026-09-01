@@ -130,9 +130,36 @@ def test_debye_touching_face_warns():
     assert issue.severity == "warning"
     assert "Debye" in str(issue)
     assert "#808" in str(issue)
+    # exact-touch branch (this box ends AT x-hi): the background-pad
+    # wording is the truthful one and must stay
+    assert "the pad stays background" in str(issue)
+    assert "drawn PAST the domain" not in str(issue)
     # the resonance-risk (#636 divergence-sharp) clause must NOT claim
     # this family is in the divergence class
     assert "divergence-risk class" not in str(issue)
+
+
+def test_overdrawn_hi_face_names_the_realized_pad_truthfully():
+    """A dispersive box drawn PAST a hi face rasterizes its own statics —
+    and pole cells up to the overdraw depth — into the absorber (measured
+    2026-09-01: the whole hi pad reads eps_r 4.0 and the first overdraw
+    layers carry the pole mask). The advisory must say that, not the
+    exact-touch branch's 'the pad stays background'."""
+    sim = _sim()
+    sim.add_material("fr4ish", eps_r=4.0,
+                     debye_poles=[DebyePole(delta_eps=0.4, tau=1e-11)])
+    # drawn 3 cells PAST x-hi; clear of every other face
+    sim.add(Box((10 * DX, 3 * DX, 3 * DX),
+                ((NA + 3) * DX, 8 * DX, 7 * DX)), material="fr4ish")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    msg = str(found[0])
+    assert "x-hi" in found[0].loc
+    assert "drawn PAST the domain" in msg, msg
+    assert "the pad carries the material's statics" in msg, msg
+    assert "the pad stays background" not in msg, (
+        "overdrawn hi face still claims a background pad — the realized "
+        "pad there carries the statics and pole cells: " + msg)
 
 
 def test_pec_boundary_stays_quiet():

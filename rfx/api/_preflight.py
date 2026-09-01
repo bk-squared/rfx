@@ -3495,31 +3495,60 @@ class _PreflightMixin:
             except (NotImplementedError, TypeError):
                 continue
             faces = []
+            hi_exact = hi_over = False
             for ax in range(min(3, len(self._domain))):
                 d = self._domain[ax]
                 if cpml_thick_lo[ax] > 0 and c1[ax] <= 0.5 * dx:
                     faces.append(f"{'xyz'[ax]}-lo")
                 if cpml_thick_hi[ax] > 0 and c2[ax] >= d - 0.5 * dx:
                     faces.append(f"{'xyz'[ax]}-hi")
+                    # Overdraw discriminates the realized hi-face state
+                    # (measured 2026-09-01): drawn PAST the face the shape
+                    # rasterizes its own cells into the absorber, so the
+                    # "pad stays background" wording is false there — the
+                    # message branches on this flag below.
+                    if c2[ax] > d:
+                        hi_over = True
+                    else:
+                        hi_exact = True
             if not faces:
                 continue
             hits.append((idx, entry.material_name, "+".join(faces),
-                         ", ".join(pole_txts), risk))
+                         ", ".join(pole_txts), risk, hi_exact, hi_over))
 
         if not hits:
             return
         worst = hits[0]
         any_risk = any(h[4] for h in hits)
+        # Each hi-face branch states the REALIZED state truthfully: a shape
+        # ending AT the face loses its boundary node ([lo, hi) drop) and the
+        # #808 gate keeps the pad background; a shape drawn PAST the face
+        # rasterizes its own cells into the absorber, so the pad carries the
+        # statics — with pole cells only up to the overdraw depth.
+        any_hi_over = any(h[6] for h in hits)
+        any_hi_exact = any(h[5] for h in hits)
+        hi_clauses = []
+        if any_hi_over:
+            hi_clauses.append(
+                "at a hi face drawn PAST the domain the shape rasterizes "
+                "its own cells into the absorber, so the pad carries the "
+                "material's statics (with pole cells only up to the "
+                "overdraw depth; the deeper pad is statics-without-pole)"
+            )
+        if any_hi_exact or not any_hi_over:
+            hi_clauses.append(
+                "at a hi face ending at the domain face the pad stays "
+                "background and the rasterizer's dropped boundary node is "
+                "left unrepaired (#808 gate)"
+            )
         msg = (
             f"Dispersive material '{worst[1]}' (geometry entry #{worst[0]}, "
             f"{worst[3]}) touches absorbing face(s) {worst[2]}. The realized "
             f"absorber there matches no declared material: a lo-face pad "
             f"replicates the material's STATIC eps/sigma/mu without its "
             f"dispersion poles (#627a; poles are deliberately not extended, "
-            f"#627b), and at a hi face the pad stays background and the "
-            f"rasterizer's dropped boundary node is left unrepaired (#808 "
-            f"gate) — a band-limited impedance step instead of a matched "
-            f"continuation. "
+            f"#627b), and " + ", and ".join(hi_clauses) + " — a band-limited "
+            "impedance step instead of a matched continuation. "
         )
         if len(hits) > 1:
             msg += (

@@ -847,9 +847,13 @@ def extend_cpml_pad_materials(
             # Replicate the pole marking through the identical select, so
             # later axes see which pad cells are copies of pole columns.
             # Where the fallback fired the source column is non-pole by
-            # construction (the gate above), and the dropped outer node is
-            # outside every rasterized mask, so hi pads always end up
-            # False — only lo pads can carry True.
+            # construction (the gate above). Hi pads are NOT always False:
+            # a shape drawn PAST the hi face rasterizes the boundary node
+            # (and any overdrawn pad nodes) into its own mask, so the
+            # naive outer-column copy replicates True outward there —
+            # alongside the statics that copy also carries. Only for a
+            # shape ending AT the face is the dropped outer node outside
+            # every rasterized mask (hi pad False; lo pads carry True).
             psrc = poleish[outer_sl]
             if use_inner is not None:
                 psrc = jnp.where(use_inner, poleish[inner_sl], psrc)
