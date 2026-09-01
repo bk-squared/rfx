@@ -27,11 +27,13 @@ Validation rationale (R5 / canonical anchor):
     separate question 'does coarsening the far-air dz preserve the patch resonance'
     (a graded-z efficiency follow-up; the runner is identical).
 
-Marked gpu + slow: dx=0.197 mm over ~30x18x13 mm with num_periods=200 — GPU-scale,
+Marked gpu + slow: dx=0.197 mm over ~30x18x13 mm with num_periods=280 — GPU-scale,
 run by the VESSL validation harness, excluded from the default CPU suite (mirrors the
 uniform issue-80 gate's resourcing).
 """
 from __future__ import annotations
+
+import warnings
 
 import jax.numpy as jnp
 import numpy as np
@@ -100,6 +102,16 @@ def _build_patch_sim_nu() -> Simulation:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
+    # #402 settling witness (parity with the uniform gate's builder): the
+    # #332 ring-down witness evaluates a POINT-PROBE time series, so the
+    # internal compute_msl_s_matrix run needs at least one probe or the
+    # witness has no data and can never fire. Same cavity Ez probe, same
+    # position, as tests/test_patch_edgefed_s11_passivity.py.
+    x_patch0 = PORT_MARGIN + L_MSL
+    sim.add_probe(
+        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, 4e-3 + DX + H_SUB * 0.5),
+        component="ez",
+    )
     return sim
 
 
@@ -110,11 +122,41 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     exactly like the validated uniform lane. Gates the full fenced NU MSL build."""
     sim = _build_patch_sim_nu()
 
+    # #402 guard: the settling assertion below is only meaningful if a point
+    # probe exists to feed the #332 witness. Without it, #332 has no series,
+    # never fires, and `assert not _trunc` becomes silently always-green.
+    assert getattr(sim, "_probes", None), (
+        "settling-witness probe missing — #332 ring-down witness cannot "
+        "evaluate; the settling assertion would be vacuous (issue #402)"
+    )
+
     # R: never ignore preflight — surface any warning before trusting |S| numbers.
     sim.preflight()
 
     freqs = np.linspace(6e9, 14e9, 81)
-    res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=200.0)
+    # #402 record length: this file solved at num_periods=200, but the
+    # imported Board-S band was measured at 280 with the settling witness
+    # SILENT — and 200 measured -36.2 dB (under-settled, above the -40 dB
+    # bar) on the identical geometry (uniform N_SUB=2 ladder: 120 -> -23.8,
+    # 200 -> -36.2, 280 -> settled). Solve at the record length the band was
+    # pinned on; if #332 fires, this test goes RED instead of passing on a
+    # truncated record.
+    with warnings.catch_warnings(record=True) as _settling:
+        warnings.simplefilter("always")
+        res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs),
+                                       num_periods=280.0)
+    _trunc = [
+        str(w.message) for w in _settling
+        if "#332" in str(w.message) or "ring-down truncated" in str(w.message)
+    ]
+    print("\n[NU-MSL-GATE] framework #332 ring-down energy witness: "
+          f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
+    assert not _trunc, (
+        "ring-down NOT settled at the gated num_periods — the DFT-extracted "
+        f"|S11| may carry truncation error (issue #402; #332 witness fired): "
+        f"{_trunc}. Raise num_periods; do NOT trust the |S11| envelope from "
+        "a truncated record."
+    )
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     s = np.asarray(res.S)[0, 0, :]
