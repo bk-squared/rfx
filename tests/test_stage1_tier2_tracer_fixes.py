@@ -77,17 +77,28 @@ def test_csg_box_mask_on_coords_traceable_with_traced_coords():
 
 def test_csg_box_mask_on_coords_forward_bit_identical():
     """The traceable rewrite is byte-identical to a direct volume mask
-    on concrete coordinates (the non-thin-sheet case)."""
+    on concrete coordinates (the non-thin-sheet case).
+
+    Re-pinned at #802: concrete coordinates are compared on the HOST in
+    float64, so the reference here widens the float32 linspace values to
+    float64 before comparing — exactly what ``_axis_mask`` does. The old
+    reference compared in float32, where a coordinate equal to ``lo``
+    after f32 rounding was included even when its f64 value sits below
+    ``lo``; that flag-dependent inclusion is the defect the fix removed.
+    """
     box = Box((0.002, 0.0, 0.0), (0.0085, 0.01, 0.01))
     x = jnp.linspace(0.0, 0.012, 24)
     y = jnp.linspace(0.0, 0.01, 6)
     z = jnp.linspace(0.0, 0.01, 6)
     m = np.asarray(box.mask_on_coords(x, y, z))
     # x-extent (6.5 mm) spans many cells -> volume path, half-open [lo, hi).
-    mx = np.asarray((x >= 0.002) & (x < 0.0085))
-    expected = mx[:, None, None] & np.asarray(
-        (y >= 0.0) & (y < 0.01))[None, :, None] & np.asarray(
-        (z >= 0.0) & (z < 0.01))[None, None, :]
+    xh = np.asarray(x, dtype=np.float64)
+    yh = np.asarray(y, dtype=np.float64)
+    zh = np.asarray(z, dtype=np.float64)
+    mx = (xh >= 0.002) & (xh < 0.0085)
+    expected = mx[:, None, None] & (
+        (yh >= 0.0) & (yh < 0.01))[None, :, None] & (
+        (zh >= 0.0) & (zh < 0.01))[None, None, :]
     np.testing.assert_array_equal(m, expected)
 
 
