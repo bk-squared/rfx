@@ -460,6 +460,14 @@ differentiation is implemented only with `normalize="flux"`.
 `tests/test_waveguide_nu_flux_ad.py` finite-difference-checks `eps_override`;
 there is no corresponding nonuniform `sigma_override` AD-vs-FD test. Neither
 implementation nor gradient regression is RF validation.
+Dispatch history (#811, fixed 2026-09-01): until that fix
+`compute_waveguide_s_matrix` reached this nonuniform lane only when
+`dx_profile` or `dy_profile` was set — a `dz_profile`-only simulation was
+silently solved on the uniform grid built from the scalar `dx` while
+preflight described the graded mesh. A `dz_profile` now dispatches here
+under the same restrictions. No dz-graded accuracy evidence exists yet
+(#810): the Palace comparison above is graded-`dy` only, so dz-graded
+results are dispatch-correct and unvalidated.
 
 **The nonuniform E5 fixture was regenerated and promoted (#574, closing the
 staleness #562/#564 recorded).** It now carries post-#562 geometry AND the

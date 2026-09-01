@@ -188,13 +188,15 @@
       ],
       "supported_configurations": [
         "uniform_yee_rf",
-        "nonuniform_transverse_dx_dy_restricted"
+        "nonuniform_transverse_dx_dy_restricted",
+        "nonuniform_dz_dispatch_wired_accuracy_pending"
       ],
       "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across five WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Issue #490 Lane 1 adds an Airy PHASE envelope over the SAME five WR bands and 20 mesh/geometry cases (reference-plane-corrected; max phase diff 11.99 degrees against a measured gate of 15.0 degrees), re-analyzing the npz/manifest pair that produced the committed magnitude envelope (restored locally for that analysis -- .omx is gitignored and not present in the tree; no new FDTD run for that sweep). Issue #490 Lane 3 adds a near-cutoff group-delay gate on a purpose-built empty WR-340 fixture (f/fc in [1.152, 1.498]): -d(angle(S21))/d(omega), compared against the analytic L_eff/v_g(f) oracle run through the SAME finite-difference stencil (a like-for-like comparator), matches to 0.0320 ns against a pinned gate of 0.042 ns. Junction and other-configuration phase/group-delay evidence remain narrower -- see caveats. Nonuniform single-mode normalize=True and normalize=flux run. A passed Palace magnitude comparison covers normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz; other nonuniform configurations remain experimental.",
       "known_limits": [
         "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
         "multimode normalize=True is unsupported",
         "nonuniform external magnitude evidence is limited to normalize=flux, graded-dy ratio 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz",
+        "a dz_profile-only mesh dispatched to the UNIFORM lane until #811 (fixed 2026-09-01): the graded mesh was silently ignored while preflight described it; dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions, and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only",
         "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
         "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
