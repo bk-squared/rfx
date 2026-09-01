@@ -320,6 +320,14 @@ class _CompileMixin:
         # and no exception, so nothing downstream catches it. See
         # extend_cpml_pad_materials's docstring and the follow-up issue
         # (filed separately, tracking the stability factorial).
+        #
+        # And the hi-face fallback never promotes a pole-carrying column's
+        # STATICS either (#808): promoting them puts the material's eps_inf
+        # without its poles into the pad and the repaired boundary node — a
+        # material no declared model has — which moved a committed Debye
+        # recovery from its pinned 11% error to 32%, past its 20% gate.
+        # The combined pole mask below gates exactly that fallback; static
+        # materials keep the full #627a/#655 behaviour.
         if (include_cpml_pad_extension
                 and self._boundary in ("cpml", "upml")
                 and self._cpml_layers > 0):
@@ -331,8 +339,14 @@ class _CompileMixin:
             plx, phx = grid.pad_x_lo, grid.pad_x_hi
             ply, phy = grid.pad_y_lo, grid.pad_y_hi
             plz, phz = grid.pad_z_lo, grid.pad_z_hi
+            _pole_mask_any = None
+            for _, _pmask in (list(debye_masks_by_pole.values())
+                              + list(lorentz_masks_by_pole.values())):
+                _pole_mask_any = (_pmask if _pole_mask_any is None
+                                  else (_pole_mask_any | _pmask))
             eps_r, sigma, mu_r = extend_cpml_pad_materials(
                 eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
+                dispersion_pole_mask=_pole_mask_any,
             )
 
         materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)

@@ -167,13 +167,24 @@ def assemble_materials_nu(
     # and reverted): see extend_cpml_pad_materials's docstring — extending
     # a high-Q Lorentz pole into the pad turns a stable edge-touching
     # simulation into a divergent one, with no NaN/exception to catch it.
+    # And a pole-carrying column's STATICS are not promoted by the hi-face
+    # fallback either (#808, same shared rule, same gate as the uniform
+    # lane): the promoted eps_inf-without-pole material matches no
+    # declared model and moved a committed Debye recovery past its gate.
     if sim._boundary in ("cpml", "upml") and sim._cpml_layers > 0:
         plx, phx = grid.pad_x_lo, grid.pad_x_hi
         ply, phy = grid.pad_y_lo, grid.pad_y_hi
         plz, phz = grid.pad_z_lo, grid.pad_z_hi
+        _pole_mask_any = None
+        for _spec in (debye_spec, lorentz_spec):
+            if _spec is not None:
+                for _pmask in _spec[1]:
+                    _pole_mask_any = (_pmask if _pole_mask_any is None
+                                      else (_pole_mask_any | _pmask))
         eps_r_ext, sigma_ext, mu_r_ext = extend_cpml_pad_materials(
             materials.eps_r, materials.sigma, materials.mu_r,
             plx, phx, ply, phy, plz, phz,
+            dispersion_pole_mask=_pole_mask_any,
         )
         materials = MaterialArrays(eps_r=eps_r_ext, sigma=sigma_ext, mu_r=mu_r_ext)
 

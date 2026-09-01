@@ -653,6 +653,7 @@ def extend_cpml_pad_materials(
     plx: int, phx: int,
     ply: int, phy: int,
     plz: int, phz: int,
+    dispersion_pole_mask: jnp.ndarray | None = None,
 ):
     """Extend eps_r/sigma/mu_r into the CPML padding so guided modes see an
     impedance-matched absorber, equivalent to UPML. Each CPML face copies
@@ -749,29 +750,81 @@ def extend_cpml_pad_materials(
     ``tests/test_cpml_pad_material_extension.py``, which reds if pole
     extension is naively reintroduced.
 
+    **Pole-carrying columns get NO hi-face fallback promotion (#808).**
+    With the pole half reverted (#627b), the hi-face fallback promoted a
+    dispersive structure's STATICS anyway: the pad — and, after #655, the
+    dropped boundary node itself — carried the material's eps_inf without
+    its poles, a material that exists in no declared model. Issue #808
+    measured the consequence on a committed observable: a face-touching
+    Debye slab's differentiable recovery moved from its pinned
+    delta_eps 3.330 (11% err) to 3.969 (32%, past the 20% gate), and a
+    controlled pad-rule swap (geometry, observation and optimizer held
+    fixed) toggled the result between the two states digit-for-digit.
+    So when ``dispersion_pole_mask`` marks the fallback's SOURCE (inner)
+    column as pole-carrying, the promotion and the #655 boundary write
+    are suppressed for that transverse cell: the hi pad takes the naive
+    outer-column copy (background) and the dropped node stays as
+    rasterized — the pre-#638 hi-face state every committed dispersive
+    gate was pinned against. Lo faces are deliberately NOT gated: the
+    lo pad replicates a boundary column the material genuinely occupies,
+    that behaviour predates #638, and the #808 discriminator's identity
+    arm measured that removing it too moves the same recovery's tau to
+    64% error — "less pad material" is not automatically better; the
+    committed envelopes pin the lo-statics state. Callers that pass no
+    mask keep the pre-#808 behaviour bit-for-bit.
+
+    Parameters
+    ----------
+    dispersion_pole_mask : bool array or None
+        OR of every Debye/Lorentz per-pole mask on the same padded grid
+        as the material arrays, or None when the simulation declares no
+        dispersive material (or a caller deliberately wants the ungated
+        rule, e.g. the #636 factorial harness). The mask is replicated
+        through the same lo/hi passes as the statics (as ``poleish``
+        below), so a LO-pad copy of a pole-carrying column also refuses a
+        later axis's hi-face promotion — without that, the y/z corner
+        pads would promote the lo-pad chimera copy and realize a state
+        the pinned pipeline never had.
+
     Returns
     -------
     (eps_r, sigma, mu_r)
     """
     arrays = [eps_r, sigma, mu_r]
+    poleish = dispersion_pole_mask
 
     def _vacuum(e, s, m):
         return (e == 1.0) & (s == 0.0) & (m == 1.0)
 
-    def _extend_lo(arrays, pad_lo, lo_src, lo_dst):
+    def _extend_lo(arrays, poleish, pad_lo, lo_src, lo_dst):
         if pad_lo <= 0:
-            return arrays
-        return [a.at[lo_dst].set(a[lo_src]) for a in arrays]
+            return arrays, poleish
+        arrays = [a.at[lo_dst].set(a[lo_src]) for a in arrays]
+        if poleish is not None:
+            poleish = poleish.at[lo_dst].set(poleish[lo_src])
+        return arrays, poleish
 
-    def _extend_hi(arrays, n, pad_lo, pad_hi, outer_sl, inner_sl, dst_sl):
+    def _extend_hi(arrays, poleish, n, pad_lo, pad_hi,
+                   outer_sl, inner_sl, dst_sl):
         if pad_hi <= 0:
-            return arrays
+            return arrays, poleish
         e, s, m = arrays[0], arrays[1], arrays[2]
         outer_vac = _vacuum(e[outer_sl], s[outer_sl], m[outer_sl])
         use_inner = None
         if n - pad_lo - pad_hi >= 2:
             inner_vac = _vacuum(e[inner_sl], s[inner_sl], m[inner_sl])
             use_inner = outer_vac & (~inner_vac)
+            if poleish is not None:
+                # #808: never promote a pole-carrying column's statics —
+                # the promoted material would carry eps_inf without its
+                # poles (a material no declared model has), and #627b's
+                # revert forbids extending the pole itself. Gating
+                # ``use_inner`` kills both the pad promotion and the #655
+                # boundary write below (``src`` stays the outer column,
+                # so the write is value-for-value). ``poleish`` rather
+                # than the raw mask, so a lo-pad replica of a pole column
+                # is refused the same way (see the parameter docs).
+                use_inner = use_inner & (~poleish[inner_sl])
         new_arrays = []
         for a in arrays:
             src = a[outer_sl]
@@ -790,33 +843,48 @@ def extend_cpml_pad_materials(
                 # rewrite of what is already there — byte-identical.
                 a = a.at[outer_sl].set(src)
             new_arrays.append(a.at[dst_sl].set(src))
-        return new_arrays
+        if poleish is not None:
+            # Replicate the pole marking through the identical select, so
+            # later axes see which pad cells are copies of pole columns.
+            # Where the fallback fired the source column is non-pole by
+            # construction (the gate above), and the dropped outer node is
+            # outside every rasterized mask, so hi pads always end up
+            # False — only lo pads can carry True.
+            psrc = poleish[outer_sl]
+            if use_inner is not None:
+                psrc = jnp.where(use_inner, poleish[inner_sl], psrc)
+                poleish = poleish.at[outer_sl].set(psrc)
+            poleish = poleish.at[dst_sl].set(psrc)
+        return new_arrays, poleish
 
     # ---- x ----
-    arrays = _extend_lo(arrays, plx, np.s_[plx:plx + 1, :, :], np.s_[:plx, :, :])
+    arrays, poleish = _extend_lo(
+        arrays, poleish, plx, np.s_[plx:plx + 1, :, :], np.s_[:plx, :, :])
     nx = arrays[0].shape[0]
-    arrays = _extend_hi(
-        arrays, nx, plx, phx,
+    arrays, poleish = _extend_hi(
+        arrays, poleish, nx, plx, phx,
         np.s_[nx - phx - 1:nx - phx, :, :],
         np.s_[nx - phx - 2:nx - phx - 1, :, :],
         np.s_[nx - phx:nx, :, :],
     )
 
     # ---- y ----
-    arrays = _extend_lo(arrays, ply, np.s_[:, ply:ply + 1, :], np.s_[:, :ply, :])
+    arrays, poleish = _extend_lo(
+        arrays, poleish, ply, np.s_[:, ply:ply + 1, :], np.s_[:, :ply, :])
     ny = arrays[0].shape[1]
-    arrays = _extend_hi(
-        arrays, ny, ply, phy,
+    arrays, poleish = _extend_hi(
+        arrays, poleish, ny, ply, phy,
         np.s_[:, ny - phy - 1:ny - phy, :],
         np.s_[:, ny - phy - 2:ny - phy - 1, :],
         np.s_[:, ny - phy:ny, :],
     )
 
     # ---- z ----
-    arrays = _extend_lo(arrays, plz, np.s_[:, :, plz:plz + 1], np.s_[:, :, :plz])
+    arrays, poleish = _extend_lo(
+        arrays, poleish, plz, np.s_[:, :, plz:plz + 1], np.s_[:, :, :plz])
     nz = arrays[0].shape[2]
-    arrays = _extend_hi(
-        arrays, nz, plz, phz,
+    arrays, poleish = _extend_hi(
+        arrays, poleish, nz, plz, phz,
         np.s_[:, :, nz - phz - 1:nz - phz],
         np.s_[:, :, nz - phz - 2:nz - phz - 1],
         np.s_[:, :, nz - phz:nz],

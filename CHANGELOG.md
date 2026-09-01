@@ -6,6 +6,28 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — a face-touching dispersive material no longer gets an eps_inf-without-pole absorber surround (#808)
+
+The CPML pad rule's hi-face fallback (#627a) and boundary-node repair
+(#655) promoted a dispersive structure's STATIC eps/sigma/mu while its
+dispersion poles stayed deliberately un-extended (#627b revert) — so the
+pad ring and the repaired node carried a material that exists in no
+declared model. On the committed Debye-recovery acceptance test this
+moved the recovered delta_eps from its pinned 3.330 (11% error) to 3.969
+(32%, past the 20% gate); a controlled pad-rule swap with geometry,
+observation and optimizer held fixed toggled the two states
+digit-for-digit. The fallback promotion and the node repair are now
+gated off for transverse cells whose source column carries any
+dispersion pole (the gate mask is replicated through the pad passes so
+corner pads refuse lo-pad replicas of pole columns too). Lo-face static
+replication and every static-material behaviour are unchanged — the FR4
+f_res improvement #638 intended is bit-identical. The
+`dispersive_pole_at_absorber_face` preflight advisory now fires for ALL
+pole families touching an absorbing face (the Debye/low-Q/out-of-band
+blind spot #808 exposed) and states what the pad actually contains.
+Pre-declaration and falsifiers:
+`docs/design_notes/issue808_debye_pad_predeclaration.md`.
+
 ### Changed — realized geometry at node-aligned faces no longer depends on JAX_ENABLE_X64 or the solver lane (#802, #807)
 
 Node coordinates for rasterization are now exact host float64, built by

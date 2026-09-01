@@ -3428,14 +3428,20 @@ class _PreflightMixin:
         parameter choice covered the factorial. Guarded by
         tests/test_cpml_pad_material_extension.py.
 
-        Trigger filter (kept narrow to stay quiet on routine setups):
-        only Lorentz poles that are BOTH high-Q (omega_0/(2*delta) >= 10)
-        AND in-band (omega_0 <= 1.5 * 2*pi*freq_max), or Drude-type poles
-        (omega_0 == 0 — metal-like, eps < 0 across (0, omega_p), always
-        mismatch-relevant). Debye relaxations are excluded: Q ~ 0.5, the
-        eps_inf mismatch is broadband-mild, and warning on every lossy
-        PCB substrate that touches a face would be noise. One aggregated
-        advisory per simulation.
+        Trigger (broadened by #808): ANY pole family — Debye, Lorentz of
+        any Q, Drude — whose geometry touches a face that carries an
+        absorber. The original filter warned only on the divergence-risk
+        families (high-Q in-band Lorentz, Drude) and deliberately kept
+        Debye quiet as noise; #808 then measured exactly that quiet
+        configuration silently moving a committed Debye-recovery
+        observable past its gate when the pad's statics-without-pole
+        surround changed (bisect to #638; controlled pad-rule swap
+        toggled the pinned and failing states digit-for-digit — see
+        docs/design_notes/issue808_debye_pad_predeclaration.md). The pad
+        state is an input-fidelity fact for every dispersive
+        face-toucher, so every family now gets the advisory; the
+        resonance-risk families additionally keep the #636 divergence
+        wording. One aggregated advisory per simulation.
         """
         if self._boundary not in ("cpml", "upml"):
             return
@@ -3444,27 +3450,43 @@ class _PreflightMixin:
 
         w_band = 1.5 * 2.0 * np.pi * self._freq_max
 
-        def _risky_poles(mat):
-            found = []
+        def _classify_poles(mat):
+            """Every declared pole with a short label, plus whether any
+            of them is in the #636 divergence-risk class (high-Q in-band
+            Lorentz, or Drude). #808 broadened this from a filter that
+            RETURNED only the risk class to a classifier over all
+            families — the statics-without-pole pad state is a property
+            of every dispersive face-toucher."""
+            texts: list[str] = []
+            risk = False
             for pole in (getattr(mat, "lorentz_poles", None) or ()):
                 w0 = float(pole.omega_0)
                 delta = float(pole.delta)
                 if w0 == 0.0:
-                    found.append(("drude", w0, delta))
-                elif delta > 0 and w0 / (2.0 * delta) >= 10.0 and w0 <= w_band:
-                    found.append(("lorentz", w0, delta))
-                elif delta == 0.0 and w0 <= w_band:
-                    found.append(("lorentz", w0, delta))
-            return found
+                    texts.append("Drude")
+                    risk = True
+                    continue
+                q_txt = (f"Q={w0 / (2.0 * delta):.0f}" if delta > 0
+                         else "Q=inf")
+                in_band = w0 <= w_band
+                high_q = (delta == 0.0) or (w0 / (2.0 * delta) >= 10.0)
+                if high_q and in_band:
+                    texts.append(q_txt)
+                    risk = True
+                else:
+                    texts.append(q_txt + ("" if in_band else " out-of-band"))
+            for pole in (getattr(mat, "debye_poles", None) or ()):
+                texts.append(f"Debye tau={float(pole.tau):.3g}s")
+            return texts, risk
 
-        hits: list[tuple[int, str, str, str]] = []
+        hits: list[tuple[int, str, str, str, bool]] = []
         for idx, entry in enumerate(self._geometry):
             try:
                 mat = self._resolve_material(entry.material_name)
             except Exception:
                 continue
-            poles = _risky_poles(mat)
-            if not poles:
+            pole_txts, risk = _classify_poles(mat)
+            if not pole_txts:
                 continue
             if not hasattr(entry.shape, "bounding_box"):
                 continue
@@ -3481,24 +3503,23 @@ class _PreflightMixin:
                     faces.append(f"{'xyz'[ax]}-hi")
             if not faces:
                 continue
-            kind = ("Drude" if all(p[0] == "drude" for p in poles)
-                    else "high-Q")
-            q_txt = ", ".join(
-                "Drude" if k == "drude" else
-                (f"Q={w0 / (2 * delta):.0f}" if delta > 0 else "Q=inf")
-                for k, w0, delta in poles)
             hits.append((idx, entry.material_name, "+".join(faces),
-                         f"{kind} ({q_txt})"))
+                         ", ".join(pole_txts), risk))
 
         if not hits:
             return
         worst = hits[0]
+        any_risk = any(h[4] for h in hits)
         msg = (
             f"Dispersive material '{worst[1]}' (geometry entry #{worst[0]}, "
-            f"{worst[3]}) touches absorbing face(s) {worst[2]}. The CPML pad "
-            f"replicates only the STATIC eps/sigma/mu (#627a) — dispersion "
-            f"poles are not extended — so the absorber is impedance-matched "
-            f"at eps_inf only and reflects in-band near the pole resonance. "
+            f"{worst[3]}) touches absorbing face(s) {worst[2]}. The realized "
+            f"absorber there matches no declared material: a lo-face pad "
+            f"replicates the material's STATIC eps/sigma/mu without its "
+            f"dispersion poles (#627a; poles are deliberately not extended, "
+            f"#627b), and at a hi face the pad stays background and the "
+            f"rasterizer's dropped boundary node is left unrepaired (#808 "
+            f"gate) — a band-limited impedance step instead of a matched "
+            f"continuation. "
         )
         if len(hits) > 1:
             msg += (
@@ -3506,16 +3527,27 @@ class _PreflightMixin:
                 f"all in this finding's loc). "
             )
         msg += (
-            "This is a band-limited fidelity limitation, not an "
-            "instability. Do NOT extend pole masks into the pad to fix it: "
-            "measured divergent (issue #636 factorial, "
+            "This is a fidelity limitation, not an instability. Do NOT "
+            "extend pole masks into the pad to fix it: measured divergent "
+            "(issue #636 factorial, "
             "docs/design_notes/i636_cpml_pole_pad_predeclaration.md — "
             "surface-polariton modes of the eps(omega)<0 band inside the "
             "absorber grow without bound; the Drude cell diverges even "
-            "under the CFS alpha rule). Mitigations: leave >= 1 cell of "
-            "background material between the dispersive structure and the "
-            "domain face, add pole damping (lower Q), or move the "
-            "resonance out of band."
+            "under the CFS alpha rule)"
+        )
+        if any_risk:
+            msg += (
+                "; this material's pole family is in that divergence-risk "
+                "class, so the in-band mismatch is also resonance-sharp"
+            )
+        msg += (
+            ". And do not extend the statics for it either: the "
+            "eps_inf-without-pole surround silently moved a committed "
+            "Debye recovery past its gate (issue #808, "
+            "docs/design_notes/issue808_debye_pad_predeclaration.md). "
+            "Mitigations: leave >= 1 cell of background material between "
+            "the dispersive structure and the domain face, add pole "
+            "damping (lower Q), or move the resonance out of band."
         )
         _w.warn(
             PreflightWarning(

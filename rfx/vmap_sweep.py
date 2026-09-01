@@ -127,6 +127,7 @@ def _parse_param_name(param_name: str) -> tuple[str | None, str]:
 
 def _extend_batched_cpml_pad(
     eps_r: jnp.ndarray, sigma: jnp.ndarray, mu_r: jnp.ndarray, grid,
+    dispersion_pole_mask: jnp.ndarray | None = None,
 ):
     """Extend BATCHED material arrays, each shape ``(n_batch, Nx, Ny, Nz)``,
     into the CPML padding, by running the package's single pad-extension
@@ -207,7 +208,14 @@ def _extend_batched_cpml_pad(
         return eps_r, sigma, mu_r
 
     def _one(e, s, m):
-        return extend_cpml_pad_materials(e, s, m, plx, phx, ply, phy, plz, phz)
+        # ``dispersion_pole_mask`` is batch-invariant (pole masks are
+        # geometry-derived and the sweep only substitutes eps_r/sigma/mu_r
+        # values), so it rides in as a closed-over constant rather than a
+        # mapped operand — the helper sees the same (Nx, Ny, Nz) mask
+        # ``run()`` hands it (#808 gate).
+        return extend_cpml_pad_materials(
+            e, s, m, plx, phx, ply, phy, plz, phz,
+            dispersion_pole_mask=dispersion_pole_mask)
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 
@@ -330,12 +338,22 @@ def _build_batched_materials(
         # restores the invariant ``_extend_batched_cpml_pad`` documents
         # (its result depends only on interior values, which must all be
         # batch-correct) instead of special-casing the node here.
-        pre_materials, *_ = sim._assemble_materials(
+        pre_materials, _pre_debye, _pre_lorentz, *_ = sim._assemble_materials(
             grid, include_thin_conductors=False,
             include_cpml_pad_extension=False)
         eps_r = pre_materials.eps_r
         sigma = pre_materials.sigma
         mu_r = pre_materials.mu_r
+
+        # #808: run() gates the hi-face fallback on the combined pole mask,
+        # so the batched re-extension below must hand the shared rule the
+        # same mask or a dispersive sweep's pad would diverge from run().
+        _pole_mask_any = None
+        for _spec in (_pre_debye, _pre_lorentz):
+            if _spec is not None:
+                for _pmask in _spec[1]:
+                    _pole_mask_any = (_pmask if _pole_mask_any is None
+                                      else (_pole_mask_any | _pmask))
 
         # Build a mask for the specific material
         sim._resolve_material(mat_name)
@@ -368,6 +386,7 @@ def _build_batched_materials(
         # hand-maintained copy of it.
         batch_eps, batch_sigma, batch_mu = _extend_batched_cpml_pad(
             batch_eps, batch_sigma, batch_mu, grid,
+            dispersion_pole_mask=_pole_mask_any,
         )
 
         # #642: and only NOW the conductors, which is where

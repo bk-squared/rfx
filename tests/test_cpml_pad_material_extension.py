@@ -40,6 +40,18 @@ structure and the CPML pad — the overwhelmingly common case — is
 untouched; that invariant is locked here too (test 4), since an earlier,
 rejected design (an unbounded backward scan for "the last non-vacuum
 column") would have silently bridged it.
+
+(c) #808 (2026-09): for a POLE-CARRYING column, the hi-face fallback (a)
+    promoted the statics anyway, so the pad — and after #655 the dropped
+    boundary node itself — carried the material's eps_inf WITHOUT its
+    poles: a material no declared model has. That surround moved the
+    committed Debye-recovery observable past its gate (pinned 11% error
+    -> 32%). The fallback and the #655 write are now gated on the
+    combined dispersion-pole mask; lo-face statics still extend (the
+    pinned envelope). Locked by the two
+    ``test_pole_carrying_column_gets_no_hi_face_static_promotion_*``
+    tests; pre-declaration and falsifiers in
+    docs/design_notes/issue808_debye_pad_predeclaration.md.
 """
 
 from __future__ import annotations
@@ -111,6 +123,59 @@ def test_hi_face_pad_matches_lo_face_for_domain_touching_box_nu():
     assert x_lo == 4.0, x_lo
     assert x_hi == x_lo, (
         f"NU x-hi pad eps_r={x_hi} != x-lo pad eps_r={x_lo}")
+
+
+def test_pole_carrying_column_gets_no_hi_face_static_promotion_uniform():
+    """(#808) The dispersive twin of the lock above: for a POLE-CARRYING
+    face-touching box, the hi-face fallback must NOT promote the statics.
+    The promoted material would carry eps_inf without its poles — a
+    material that exists in no declared model — and #808 measured that
+    surround moving the committed Debye-recovery observable from its
+    pinned 11% error to 32% (past its 20% gate), with a controlled
+    pad-rule swap toggling the two states digit-for-digit. So the hi pad
+    takes the background instead and the rasterizer's dropped boundary
+    node stays unrepaired: the pre-#638 hi-face state the pin was
+    measured with.
+
+    The lo pad deliberately KEEPS the static copy. That behaviour
+    predates #638, every committed dispersive envelope is pinned against
+    it, and the #808 discriminator's identity arm (all pads background)
+    measured the same recovery's tau at 64% error — "less pad material"
+    is not automatically better.
+
+    This is the F4 revert-probe guard of
+    docs/design_notes/issue808_debye_pad_predeclaration.md: it reds if
+    the pole gate in extend_cpml_pad_materials is reverted."""
+    sim = _build_uniform(dispersive=True)
+    materials, _, plx, phx, ply, plz = _assemble_uniform(sim)
+    eps = np.asarray(materials.eps_r)
+    nx = eps.shape[0]
+    j, k = ply + 1, plz + 1
+    assert float(eps[plx - 1, j, k]) == 4.0, (
+        "x-lo pad must still carry the statics — the lo copy is the "
+        "pinned envelope, not part of the #808 gate")
+    assert float(eps[-phx, j, k]) == 1.0, (
+        f"x-hi pad eps_r={float(eps[-phx, j, k])}: the hi-face fallback "
+        f"promoted a pole-carrying column's statics into the pad — the "
+        f"#808 eps_inf-without-pole surround is back")
+    assert float(eps[nx - phx - 1, j, k]) == 1.0, (
+        "the dropped hi-face boundary node was repaired with a pole "
+        "material's statics — the #655 write must be gated for pole "
+        "columns (#808)")
+
+
+def test_pole_carrying_column_gets_no_hi_face_static_promotion_nu():
+    """(#808) NU mirror of the lock above."""
+    sim = _build_uniform(dispersive=True)
+    materials, _, plx, phx, ply, plz = _assemble_nu(sim)
+    eps = np.asarray(materials.eps_r)
+    nx = eps.shape[0]
+    j, k = ply + 1, plz + 1
+    assert float(eps[plx - 1, j, k]) == 4.0
+    assert float(eps[-phx, j, k]) == 1.0, (
+        f"NU x-hi pad eps_r={float(eps[-phx, j, k])}: #808 gate missing "
+        f"on the non-uniform lane")
+    assert float(eps[nx - phx - 1, j, k]) == 1.0
 
 
 def test_dispersion_poles_are_not_extended_into_the_pad_uniform():
@@ -294,6 +359,11 @@ def test_pole_extension_stability_lock():
     last, mid = deciles[-1], deciles[3]
     ratio = last / max(mid, 1e-300)
 
+    # Witness printed on pass too (R5): the measured envelope, so a
+    # docstring re-baseline never needs a second instrumented run.
+    print(f"\n#636 canary witness: last/mid={ratio:.4f} "
+          f"deciles={[f'{d:.3e}' for d in deciles]} ({pad_witness})")
+
     assert np.isfinite(ts).all(), (
         f"non-finite field values ({pad_witness}) -- this fixture should "
         f"decay cleanly on shipped code")
@@ -322,10 +392,29 @@ class _PoleExtendedSim(Simulation):
 
     def _assemble_materials(self, grid, **kw):
         import jax.numpy as jnp
+        from rfx.core.yee import MaterialArrays
         from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 
         out = super()._assemble_materials(grid, **kw)
         materials, debye_spec, lorentz_spec, *rest = out
+
+        # #808: the shipped assembler now refuses the hi-face statics
+        # promotion for pole-carrying columns, but the #636 factorial row
+        # this harness measures is "statics AND poles both extended" —
+        # without re-running the UNGATED statics extension here, the
+        # variant would drift to the factorial's poles-over-vacuum-eps
+        # row (measured catastrophically divergent to NaN), a different
+        # documented state. Re-extending the finished arrays reproduces
+        # the pre-#808 statics extension value-for-value: the gated cells
+        # are exactly the ones still background, and the ungated rule
+        # promotes them from the same inner columns it always used.
+        if kw.get("include_cpml_pad_extension", True):
+            _e, _s, _m = extend_cpml_pad_materials(
+                materials.eps_r, materials.sigma, materials.mu_r,
+                grid.pad_x_lo, grid.pad_x_hi,
+                grid.pad_y_lo, grid.pad_y_hi,
+                grid.pad_z_lo, grid.pad_z_hi)
+            materials = MaterialArrays(eps_r=_e, sigma=_s, mu_r=_m)
 
         def ext_masks(spec):
             if spec is None:
@@ -422,6 +511,9 @@ def test_pole_extension_divergence_repro_636():
 
     ratio_shipped, dec_s = run_ratio(Simulation, expect_pad_poles=False)
     ratio_extended, dec_e = run_ratio(_PoleExtendedSim, expect_pad_poles=True)
+
+    print(f"\n#636 repro witness: shipped last/mid={ratio_shipped:.4g}, "
+          f"extended last/mid={ratio_extended:.4g}")
 
     assert ratio_shipped < 1.0, (
         f"shipped variant no longer decays at 20,000 steps: last/mid = "
