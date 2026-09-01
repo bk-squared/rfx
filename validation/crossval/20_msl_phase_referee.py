@@ -1126,6 +1126,135 @@ B_GD_TOL_PS = 200.0
 
 
 # ---------------------------------------------------------------------------
+# EXTERNAL PHASE REFERENCES (issue #812 audit pattern P1 -- PRE-DECLARED
+# 2026-09-01, in the commit that carries docs/design_notes/
+# issue812_phase_identity_predeclaration.md and BEFORE any number this
+# lane measures was computed. Nothing below is consumed by a gate at the
+# moment of this declaration; the witnesses that use it land in the NEXT
+# commit.)
+#
+# WHY: ``_self_consistency_witness`` builds ``expected_phase =
+# -beta_re*l12_m`` from the SAME run's own measured beta, so a COHERENT
+# propagation error -- the line's phase velocity is wrong, so that
+# solver's measured beta AND its angle(S21) move together -- cancels.
+# The issue #812 audit measured a FACTOR-2 phase-velocity error reading
+# 0.2414 deg against this file's own 3.0 deg gate: 12x INSIDE. The
+# group-delay leg is blind for the same reason (it differentiates the
+# same identity), and so is
+# ``residual_phase_diff_after_dispersion_deg``, for a THIRD instance of
+# it: residual = raw_diff - (beta_openems - beta_rfx)*L12 subtracts a
+# term built from beta_rfx, so doubling beta_rfx and the rfx phase
+# together leaves the residual unchanged. Only the RAW cross-solver
+# difference is sensitive.
+#
+# TWO independent references exist for this fixture and BOTH are used:
+#
+# (1) ANALYTIC (E2) -- the Hammerstad-Jensen quasi-static eps_eff of the
+#     REALIZED board (h_sub/w_trace as rasterized, sourced from the rfx
+#     fixture's own meta, NOT the declared 254um -- issue #723). Closed
+#     form of declared geometry only; contains no run quantity. Gated
+#     against BOTH solvers' measured beta, so a failure ATTRIBUTES.
+#
+#     B_BETA_ANALYTIC_TOL_FRAC = 0.020 is a linear worst-case sum of the
+#     four terms by which the zero-thickness quasi-static form is known
+#     to differ from what either FDTD actually simulates (beta ~
+#     sqrt(eps_eff), so a fractional eps_eff error halves into beta):
+#       - Hammerstad-Jensen model accuracy +-1.0% in eps_eff
+#         (rfx/microstrip.py's own module docstring)      -> +-0.50% beta
+#       - finite conductor thickness t = dx = 50um, absent from the
+#         zero-thickness form; Bahl-Garg correction
+#         -(er-1)(t/h)/(4.6*sqrt(w/h)) = -0.0681 = -2.41% -> -1.21% beta
+#       - dispersion neglected by the quasi-static form, at the band top
+#         4.5 GHz; Getsinger f_p = Z0/(2*mu0*h) = 70.4 GHz,
+#         G = 0.6+0.009*Z0 = 1.078, +0.13% in eps_eff    -> +0.06% beta
+#       sum 1.77% -> declared 2.00%, one round step up (1.13x the budget).
+#
+# (2) EXTERNAL SOLVER (E4) -- the RAW cross-solver angle(S21) difference,
+#     which this file already computes and, until now, deliberately
+#     declined to gate on the argument that it conflates a physical,
+#     mesh-dependent eps_eff difference with the reference-plane claim.
+#     That argument is right about what the number contains and wrong
+#     about the conclusion: the conflated physical term is BOUNDABLE, and
+#     the alternative it recommended instead (the dispersion-corrected
+#     residual) is provably blind to the very defect this gate must
+#     catch. So the RAW difference is gated, at a tolerance sized to
+#     CONTAIN the physical term:
+#       - inter-solver realized-h_sub difference, +-1 cell (50um):
+#         0.7109% of beta*L12 at beta_max=155.92 rad/m   -> 0.3176 deg
+#       - inter-solver realized-w_trace difference, +-1 cell:
+#         0.3267% of beta*L12                            -> 0.1459 deg
+#       - reference-plane positional uncertainty, +-4 cells total:
+#         this file's own committed GATE-BUDGET DERIVATION -> 1.787 deg
+#       sum 2.2505 deg -> declared 3.00 deg, one round step up.
+#     3.0 deg coinciding with B_PHASE_TOL_DEG is a consequence of sharing
+#     the reference-plane term, not a copy. This gate CANNOT attribute a
+#     failure to either solver -- its message must say so; (1) attributes.
+#
+# NEITHER tolerance is fitted. Disclosure (burned-data rule): the
+# committed run-2 artifact _20_msl_phase_referee_logs/
+# 20260827T102342Z_result.json was read while reproducing the audit, so
+# its in-band numbers were visible when these budgets were written. Both
+# budgets are derived independently of them and land materially LOOSER
+# than that artifact's own values; had they been fitted they would be
+# tighter, not looser.
+B_BETA_ANALYTIC_TOL_FRAC = 0.020
+B_CROSS_SOLVER_PHASE_TOL_DEG = 3.0
+EXTERNAL_PHASE_REFERENCE_PREDECLARATION: dict = {
+    "issue": 812,
+    "pattern": "P1 (self-referential phase gate)",
+    "predeclared_on": "2026-09-01",
+    "design_note": "docs/design_notes/issue812_phase_identity_predeclaration.md",
+    "analytic_reference": (
+        "Hammerstad-Jensen quasi-static eps_eff of the REALIZED board "
+        "(h_sub_realized_m, w_trace_realized_m from the rfx fixture meta; eps_r=B_EPS_R), "
+        "beta = 2*pi*f*sqrt(eps_eff)/c0"
+    ),
+    "analytic_tol_frac": B_BETA_ANALYTIC_TOL_FRAC,
+    "analytic_tol_budget_frac": {
+        "hammerstad_jensen_model": 0.0050,
+        "conductor_thickness_one_cell": 0.0121,
+        "quasi_static_dispersion_at_band_top": 0.0006,
+        "sum": 0.0177,
+    },
+    "cross_solver_reference": "the committed rfx fixture's own de-embedded angle(S21)",
+    "cross_solver_tol_deg": B_CROSS_SOLVER_PHASE_TOL_DEG,
+    "cross_solver_tol_budget_deg": {
+        "h_sub_one_cell": 0.3176,
+        "w_trace_one_cell": 0.1459,
+        "reference_plane_four_cells": 1.787,
+        "sum": 2.2505,
+    },
+    "falsifier": (
+        "(A) both new gates must PASS on the committed run-2 artifact "
+        "(_20_msl_phase_referee_logs/20260827T102342Z_result.json, the #723 realized "
+        "board) AND on the committed run-1 artifact (20260804T055009Z_result.json, the "
+        "declared board, h_sub realized 254um) -- two independent configurations. "
+        "(B) with the rfx side's phase velocity halved coherently (beta_rfx -> "
+        "2*beta_rfx, s21_rfx rotated by exp(-1j*beta_rfx*L12)), BOTH new gates must "
+        "FAIL while the old _self_consistency_witness still PASSES at ~0.24 deg. If "
+        "(A) fails on either configuration: STOP, do NOT widen either tolerance."
+    ),
+}
+
+
+def _hammerstad_jensen_eps_eff(w_m: float, h_m: float, eps_r: float) -> float:
+    """Hammerstad quasi-static microstrip eps_eff (Pozar eq. 3.195).
+
+    The SAME closed form ``_A_EPS_EFF`` already uses for Stage A's notch
+    oracle, factored out so Stage B can evaluate it on the fixture's
+    REALIZED board. Inlined rather than imported from ``rfx.microstrip``
+    on purpose: this module's scope fence forbids importing rfx (see the
+    module docstring's SCOPE FENCE) -- ``tests/test_msl_phase_referee_
+    header.py`` pins this function against ``rfx.microstrip.
+    microstrip_eps_eff`` instead, so the duplication cannot drift.
+    """
+    if not (w_m > 0.0 and h_m > 0.0):
+        raise ValueError(f"w_m and h_m must be positive, got {w_m!r}, {h_m!r}")
+    u = w_m / h_m
+    return float((eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (1.0 + 12.0 / u) ** -0.5)
+
+
+# ---------------------------------------------------------------------------
 # openEMS import plumbing (deferred, matches the coax/thru precedent so
 # this module stays importable -- and testable -- without openEMS).
 # ---------------------------------------------------------------------------

@@ -777,6 +777,119 @@ B_MEAS_STENCIL_MARGIN_CELLS = 5  # M3 fix: extra clearance so CoaxialPort's
 
 
 # ---------------------------------------------------------------------------
+# ANALYTIC-BETA ENVELOPE (issue #812 audit pattern P1 -- PRE-DECLARED
+# 2026-09-01, in the commit that carries docs/design_notes/
+# issue812_phase_identity_predeclaration.md and BEFORE any number this
+# lane measures was computed. Nothing below is used yet by any gate at
+# the moment of this declaration; the witness that consumes it lands in
+# the NEXT commit.)
+#
+# WHY: ``_matched_through_witness``'s Stage-B call passes ``beta`` = the
+# port's OWN measured propagation constant, so ``expected_phase =
+# -beta_measured*L`` and ``measured_phase = unwrap(angle(S21))`` are two
+# readings of ONE field solve. A COHERENT propagation error -- the line's
+# real phase velocity is wrong, so the port's measured beta AND the
+# through-path phase move together by the same factor k -- cancels
+# identically: the deviation is 0.000 deg at EVERY k (measured by the
+# issue #812 audit at k = 1.02/1.10/1.30/1.50/1.57; gd_dev 0.00 ps at
+# every k too, for the same reason -- it is a derivative of the same
+# identity). The gate cannot fail for its own stated reason.
+#
+# THE INDEPENDENT REFERENCE: for a coax TEM mode the continuum
+# propagation constant is EXACT and depends on eps_r ALONE --
+# beta = omega*sqrt(eps_r)/c0, no dependence on a, b, the mesh, or
+# anything this run produces. That is the reference side, and it contains
+# zero run quantities. (The other candidate -- "the committed external
+# reference's own phase" -- does NOT exist for this case: Stage B is a
+# single-solver openEMS fixture and reads no rfx S-parameters at all.
+# See the design note's section 2.)
+#
+# THE ENVELOPE, AND WHY IT IS NOT FITTED: this fixture's measured beta
+# sits a real ~12% ABOVE the continuum value -- Yee staircasing of a
+# curved PTFE annulus spanned by only ~3.8 cells, already diagnosed,
+# attributed, and shown to CONVERGE by the committed 1.5x mesh-refinement
+# run. So the envelope is mesh-dependent, and both its form and its scale
+# come from committed prior provenance (MESH_REFINEMENT_PREDECLARATION
+# below, pre-declared 2026-08-04, filled from VESSL 369367251845):
+#   form  : excess ~ (N_REF/N)**P, the committed two-point convergence law
+#   scale : EXCESS_REF at N_REF, the committed registered-mesh excess
+# The ONLY new number is BETA_ENVELOPE_HEADROOM -- a declared safety
+# factor, one round step above unity, chosen before measurement.
+#
+# The property the old gate lacked: this envelope SHRINKS when the mesh
+# improves. BOUND is 0.157040 at the registered mesh (N=3.789) and
+# 0.086011 at the committed 1.5x refinement (N=5.6835). A gate whose
+# width is round-up(measured x 1.5) never tightens; this one tightens as
+# N**-1.485.
+#
+# DECLARED DETECTION FLOOR (stated, not discovered): a coherent k*beta
+# perturbation fires when |k*(1+EXCESS_REF) - 1| > BOUND, i.e.
+# k > 1.032334 or k < 0.752106 at the registered mesh. The gate therefore
+# CANNOT discriminate the audit's k=1.02 -- that floor is a physical
+# property of a 3.8-cell annulus, not a choice; no honest analytic gate
+# here can be tighter than the staircase bias itself. It DOES discriminate
+# k = 1.10/1.30/1.50/1.57 and the factor-2 (k=0.5) case.
+BETA_ENVELOPE_EXCESS_REF = 0.1208               # MESH_REFINEMENT_PREDECLARATION["excess_before"]
+BETA_ENVELOPE_N_REF = 3.789                     # ..."annulus_cells_before" = (2.055-0.635)/0.37474
+BETA_ENVELOPE_ORDER_P = 1.4847707054524188      # committed two-point implied convergence order
+BETA_ENVELOPE_HEADROOM = 1.30                   # DECLARED HERE, 2026-09-01
+BETA_ENVELOPE_PREDECLARATION: dict = {
+    "issue": 812,
+    "pattern": "P1 (self-referential phase gate)",
+    "predeclared_on": "2026-09-01",
+    "design_note": "docs/design_notes/issue812_phase_identity_predeclaration.md",
+    "gated_quantities": [
+        "max |beta_measured/beta_analytic - 1| over the gated central band",
+        "max |gd_measured/gd_analytic - 1| over the gated central band",
+    ],
+    "analytic_reference": "beta = 2*pi*f*sqrt(B_PTFE_EPS_R)/c0 (exact continuum coax TEM); "
+                          "gd = L12*sqrt(B_PTFE_EPS_R)/c0",
+    "envelope": "HEADROOM * EXCESS_REF * (N_REF/N)**P, N = (B_B_MM-B_A_MM)/dx_mm",
+    "excess_ref": BETA_ENVELOPE_EXCESS_REF,
+    "n_ref": BETA_ENVELOPE_N_REF,
+    "order_p": BETA_ENVELOPE_ORDER_P,
+    "headroom": BETA_ENVELOPE_HEADROOM,
+    "bound_at_n_ref": BETA_ENVELOPE_HEADROOM * BETA_ENVELOPE_EXCESS_REF,
+    "provenance": "form and scale from MESH_REFINEMENT_PREDECLARATION (committed "
+                  "2026-08-04, filled from VESSL 369367251845); headroom declared 2026-09-01",
+    "detection_floor_k_hi": 1.032334,
+    "detection_floor_k_lo": 0.752106,
+    "falsifier": (
+        "(A) the witness must PASS on the committed run-3 registered-mesh data "
+        "(tests/test_coax_two_port_referee_header.py::_RUN3_*, VESSL 369367251629) AND on "
+        "the committed 1.5x-refinement run (_21_coax_two_port_referee_logs/"
+        "mesh_refinement_369367251845_result.json). (B) it must FAIL on a coherent "
+        "k=1.57 perturbation (beta_measured -> k*beta_measured AND s21 rotated by "
+        "exp(-1j*(k-1)*beta_measured*L12)), with the RuntimeError text naming the "
+        "measured-vs-analytic beta comparison. If (A) fails at either mesh: STOP, do "
+        "NOT widen BETA_ENVELOPE_HEADROOM."
+    ),
+}
+
+
+def _beta_envelope_bound(annulus_cells: float) -> float:
+    """Pre-declared fractional envelope on |beta_measured/beta_analytic - 1|.
+
+    ``annulus_cells`` = (b - a)/dx, pure geometry. See
+    ``BETA_ENVELOPE_PREDECLARATION`` above for the derivation and the
+    reason this is the only defensible width at this mesh. Valid as
+    declared for ``annulus_cells >= BETA_ENVELOPE_N_REF`` (the registered
+    mesh and any refinement of it); a COARSER mesh than the registered one
+    is not a registered configuration and the value returned there is an
+    extrapolation of the committed convergence law.
+    """
+    n = float(annulus_cells)
+    if not np.isfinite(n) or n <= 0.0:
+        raise ValueError(f"annulus_cells must be finite and positive, got {annulus_cells!r}")
+    return float(
+        BETA_ENVELOPE_HEADROOM
+        * BETA_ENVELOPE_EXCESS_REF
+        * (BETA_ENVELOPE_N_REF / n) ** BETA_ENVELOPE_ORDER_P
+    )
+
+
+
+# ---------------------------------------------------------------------------
 # MESH-REFINEMENT CONVERGENCE WITNESS (issue #489 active dev track leg 1,
 # R2-TIGHT: one pre-declared attempt). PRE-DECLARED 2026-08-04, BEFORE any
 # refined-mesh run -- committed in this UNRUN placeholder state, same
