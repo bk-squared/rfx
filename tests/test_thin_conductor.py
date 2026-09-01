@@ -453,21 +453,27 @@ def test_is_thin_classification_uses_local_cell_width():
     import jax.numpy as jnp
     from rfx.geometry.csg import Box
 
-    zero = jnp.zeros(1)
+    # Coordinates are host float64, matching the exact node spine production
+    # lanes supply since the #802/#807 fix. The old jnp.asarray route stored
+    # centres in float32 (x64=0), where 7.5e-3 is one ulp BELOW the real face
+    # value — the former ==2 result relied on the face rounding the same way
+    # (an exact-tie accident, the very defect class #802 removed). With exact
+    # coordinates the half-open [lo, hi) convention gives 2 by arithmetic.
+    zero = np.zeros(1)
 
     def n_cells(coords, lo, hi):
         m = np.asarray(Box((0, 0, lo), (0, 0, hi)).mask_on_coords(zero, zero, coords))
         return int(m.sum())
 
     # --- Uniform axis: unchanged (thin <= 1 cell, volume otherwise) ---
-    xu = jnp.asarray(np.arange(20) * 1e-3 + 0.5e-3)   # 1mm cells, centres at k+0.5
+    xu = np.arange(20) * 1e-3 + 0.5e-3   # 1mm cells, centres at k+0.5 (float64)
     assert n_cells(xu, 5e-3, 5.2e-3) == 1              # sub-cell sheet → 1
     assert n_cells(xu, 5e-3, 7.5e-3) == 2              # 2.5mm span → volume, 2 centres
 
     # --- Graded axis: fine 0.5mm (cells 0-7) then coarse 1.5mm (cells 8-15) ---
     dz = np.array([0.5e-3] * 8 + [1.5e-3] * 8)
     edges = np.concatenate([[0.0], np.cumsum(dz)])
-    zc = jnp.asarray(0.5 * (edges[:-1] + edges[1:]))
+    zc = 0.5 * (edges[:-1] + edges[1:])   # host float64, production route
     zc_np = np.asarray(zc)
 
     # A genuine sub-cell sheet still resolves to exactly one cell (the nearest).
