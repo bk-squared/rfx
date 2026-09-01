@@ -217,3 +217,190 @@ this case ships (329.2 s on one RTX4090; the same mesh was abandoned
 UNFINISHED at 2h52m on a 32-core CPU pod — `validation/crossval/manifest.json`
 `cpu_runner.excluded_reason`). They are emitted as a VESSL job, not run here.
 
+
+---
+
+## 5. MEASURED (appended 2026-09-01, after the windows above were frozen in `fc6ca0a`)
+
+Environment: `~/Documents/rfx/.venv` on an Apple M1 Max (10 cores, 64 GB),
+CPU JAX. Every number below is reproducible from committed files by the two
+falsifier scripts named beside it.
+
+### 5.1 cv07 — criterion (A): the case still passes, with margin
+
+`python validation/crossval/07_sheen_lpf.py` -> **exit 0, 28/28 gates PASS**
+(was 17 gates). The refinement is not cosmetic: it moves the estimates off the
+bin centre by
+
+| leg | zero | bin argmin | sub-bin refined | shift |
+|---|---|---|---|---|
+| rfx | lower | 6.8908 GHz | 6.9440 GHz | +0.325 bin (+0.766 %) |
+| rfx | upper | 7.8739 GHz | 7.9259 GHz | +0.317 bin (+0.656 %) |
+| openEMS | lower | 7.0325 GHz | 7.0307 GHz | -0.075 bin (-0.026 %) |
+| openEMS | upper | 7.9831 GHz | 7.9947 GHz | +0.477 bin (+0.146 %) |
+
+i.e. the bare argmin was mislocating the rfx zeros by about a third of a bin —
+a **0.656 - 0.766 %** error that the old 1.0 % window could not express,
+because on a 2.081 %/bin grid the *reported* deviation could only be 0.000 %
+or >= 2.081 %. (openEMS's 801-bin sweep is 6.7x finer, so its argmin error is
+correspondingly smaller: -0.026 % and +0.146 %.)
+All four refined values reproduce the committed referee fixture to the digit
+(gate C4b, and `tests/test_spectral_feature_estimators.py`).
+
+The in-run witness C7 reads **0.5213 bin** (rfx) and **0.1192 bin** (openEMS)
+against its 1.000 threshold, while the bare argmin on the same two sub-grids
+reads **exactly 1.0000 bin** on both legs — the structural claim in section 2,
+measured.
+
+### 5.2 cv07 — criterion (B): the new gates fail on the audit's defects
+
+`python scripts/diagnostics/cv07_estimator_falsifiers.py` -> exit 0. Verbatim:
+
+```
+[baseline]   exit 0   28 gates   ALL PASS
+
+[erased_zero]  exit 1   28 gates
+   [FAIL] C4 rfx lower zero, sub-bin refined: 7.5462 vs committed 6.9440 GHz
+          (8.673% <= 0.5%); bin argmin was 7.3824 GHz, sub-bin shift +1.000 bin
+   [FAIL] C5 rfx transmission-zero count: 1 == 2 in 5-15 GHz at <= -20 dB:
+          7.9038 GHz (-39.2 dB, prom 38.5 dB)
+   -> OK: failed exactly the 2 gate(s) it was built to fail; the other 26 still pass
+
+[corner_m20]  exit 1   28 gates
+   [FAIL] C6 rfx -3 dB corner frequency: 4.4231 vs committed 5.5036 GHz
+          (19.632% <= 0.25%), referenced to passband mean 0.9378
+   -> OK: failed exactly the 1 gate(s) it was built to fail; the other 27 still pass
+```
+
+Read both rows carefully:
+
+* **erased_zero** fails for the RIGHT reason — C5 says the count is 1, C4 says
+  the lower zero is not where it was. And the *other 26 gates pass*, which
+  includes all 17 that existed before this lane: the audit's "17/17 PASS on a
+  leg missing a transmission zero" is reproduced here, in the same run that
+  shows it now failing.
+* **corner_m20** fails C6 and **nothing else** — C1, C4, C5, C3 and the whole
+  D evidence chain still pass. That is the proof that the -3 dB corner was an
+  ungated quantity: a 19.6 % error in the filter's defining number moved
+  nothing the case previously read.
+
+**Honest limit on corner_m20.** This is NOT the audit's own leg. #812 reported
+a -20 % corner defect that "passes all 17 script gates and 7 referee gates"
+with "two spurious zeros appearing". A naive global `f -> f/0.8` compression
+of the committed leg does **not** reproduce that: it drags the argmin to
+6.3992 GHz and fails today's C1 at 18.7 % (measured). The audit's construction
+is not recoverable from what it published, so this lane built its own — a
+monotone piecewise-linear frequency warp that isolates the corner — and states
+that substitution rather than implying the audit's leg was re-run. The warp
+reproduces the audit's stated PROPERTY (a -20 %-class corner error invisible
+to every pre-existing gate); the realised corner lands at 4.4231 GHz rather
+than the 4.4029 GHz the warp targets, a 0.46 % resampling residual of the
+construction itself, recorded rather than tuned away.
+
+### 5.3 cv06b — what was demonstrated on CPU, and what was not
+
+cv06b's own mesh is 5,729,080 cells and GPU-lane (329.2 s on one RTX4090; the
+same mesh was abandoned UNFINISHED at 2h52m on a 32-core CPU pod — the
+manifest's `cpu_runner.excluded_reason`). Grid shape re-confirmed on this
+checkout: `sim._build_grid().shape = (553, 280, 37)`.
+
+So the judgement was factored out of the solve. `evaluate(freqs, s21_mag,
+z0_real, f_notch_analytic)` in the case computes every gated quantity as a
+pure function of the sweep, and `scripts/diagnostics/cv06b_estimator_
+falsifiers.py` drives it with **real committed rfx data**: the sibling fixture
+`tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json`, a real rfx run of
+the same open-stub notch through the same `compute_msl_s_matrix` on the same
+63.6364 MHz grid (its board is the dx=50 um / 300 um-substrate sibling, so its
+analytic anchor is that board's, 3.7110 GHz).
+
+`python scripts/diagnostics/cv06b_estimator_falsifiers.py` -> exit 0.
+
+**A — the estimator gates pass on real committed rfx notch data.**
+refined 3.64240 GHz (+0.238 bin off the argmin 3.62727), err 1.85 %
+(< 4.0), BW ratio **0.9512** (window 0.80-1.20), witness **0.6037** bin
+(< 1.000), depth -32.9 dB. G4 (Re(Z0) in 40-65 ohm) is *not* judged by this
+replay: the fixture records 31.38 ohm for that sibling BOARD, which is a board
+property and none of this harness's business.
+
+**B — a sub-bin frequency error is now visible.** The same sweep, frequency
+axis warped:
+
+| true shift | OLD bin argmin | NEW sub-bin refined |
+|---:|---:|---:|
+| +0.100 % (0.057 bin) | **+0.0000 %** | +0.1081 % |
+| +0.200 % (0.114 bin) | **+0.0000 %** | +0.2437 % |
+| +0.265 % (0.152 bin, half a cell of stub) | **+0.0000 %** | +0.3511 % |
+| +0.529 % (0.303 bin, ONE cell of stub) | +1.7544 % | +0.8325 % |
+| +0.750 % | +1.7544 % | +1.0833 % |
+| +1.000 % | +1.7544 % | +1.2877 % |
+| +1.750 % | +1.7544 % | +1.7480 % |
+| -0.529 % | **+0.0000 %** | -0.3193 % |
+| -1.000 % | **+0.0000 %** | -0.6646 % |
+
+That is the audit's staircase, measured: the old estimator reports **exactly
+0.0000 %** for every defect smaller than its quantum and then jumps a whole
+bin, overstating a one-cell stub error 3.3x (+1.75 % for a +0.53 % truth).
+The refined estimator responds monotonically to all of them. It is not
+unbiased — at +0.529 % it reads +0.83 %, a 1.6x gain error where the notch
+crosses a bin boundary and the parabola stencil changes — and that is recorded
+rather than smoothed over. **Resolution, not accuracy, is what this fixes.**
+
+**C — a shallow-notch build fails the width gate while the depth gate does
+not.** The measured sweep rescaled by `M_r/M_1`, the ratio of ideal
+shunt-open-stub responses (so the passband is untouched and only the notch's
+depth and width move):
+
+| r = Z0_line/Z_stub | depth | BW ratio | closed form | G2 | -10 dB depth gate |
+|---:|---:|---:|---:|---|---|
+| 0.90 | -32.0 dB | 0.8583 | 0.9016 | PASS | PASS |
+| 0.80 | -31.0 dB | 0.7609 | 0.8026 | **FAIL** | PASS |
+| 0.75 | -30.4 dB | 0.7158 | 0.7530 | **FAIL** | PASS |
+| 0.67 | -29.5 dB | 0.6417 | 0.6734 | **FAIL** | PASS |
+| 0.50 | -26.9 dB | 0.4826 | 0.5034 | **FAIL** | PASS |
+
+The retained -10 dB depth gate passes by more than 16 dB on **every** one of
+these, including the 50 %-degraded stub — the blindness #812 measured, shown
+next to the gate that now catches it. Measured firing point: `r <= ~0.83`,
+slightly better than the `r <= 0.79` the +-20 % window was declared to give,
+because this board's own baseline already sits 4.9 % low. Declared window
+unchanged.
+
+**D — a bin-quantised estimator cannot pass the resolution witness.** Replaying
+the same baseline with the vertex refinement disabled scores **exactly 1.0000
+bin** against the `< 1.000` threshold: FAIL. The witness is a proof, not a
+claim.
+
+### 5.4 cv06b — what is NOT demonstrated here (the honest gap)
+
+Criterion (B) at BUILD level — a real solve carrying the defect — is **not**
+done in this lane. `scripts/diagnostics/cv06b_build_falsifiers.py` runs the
+three builds (shipped geometry; `STUB_LEN` 12.0000 -> 11.9365 mm, one dx;
+`W_STUB` 635.0 -> 317.5 um, 5 cells on-lattice) and is wired into
+`scripts/vessl_cv06b_estimator_falsifiers.yaml`, which also runs the case
+itself for criterion (A). **Until that job runs, cv06b's re-gate stands on
+(A)-by-prior-provenance and (B)-by-replay-on-real-committed-data, not on a
+fresh solve.** Stated as a gap, not papered over.
+
+Predictions the job will judge (recorded now so they cannot be adjusted after):
+* baseline: G1 err in 1.0-1.4 % (< 4.0), G2 BW ratio 0.90-1.00, G3 witness
+  < 1.0, all gates PASS;
+* `stub_1cell`: refined notch moves by >= 0.265 % (half the +0.529 % truth) —
+  visible, and NOT expected to fail G1, whose oracle is uncertain at 3.8 %;
+* `stub_narrow`: G2 BW ratio ~ 0.64 (0.673 closed form x this board's ~0.95
+  offset) -> FAIL with ~1.25x margin below 0.80, while the -10 dB depth gate
+  still PASSES.
+
+### 5.5 Scope discipline
+
+No physics verdict changed. No gate was widened. cv06b's `< -10 dB` depth gate
+and cv07's 1.0 % argmin lock both survive verbatim as the witnesses they
+always were. The one gate that moved, cv06b's 15 % -> 4.0 %, moved *inward*
+and every term of the new number is a closed-form discontinuity model
+evaluated on the realized board.
+
+Regression surface touched: `scripts/diagnostics/report_msl_envelope.py`
+mirrors cv06b's windows (it parses stdout rather than importing the case), so
+its gate keys moved with them and `tests/test_physics_gate_reporting.py` gained
+falsifier coverage for the tightening; and
+`tests/_example_fidelity_lib.py::CLASSIFICATION` gained the new pure-numpy
+comparator module.

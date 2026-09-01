@@ -384,21 +384,65 @@ def test_waveguide_report_parser_captures_cv11_gates_and_refs():
 
 
 def test_msl_report_parser_captures_notch_demo_gates():
+    """The cv06b stdout contract, including the #812-P3 estimator-resolution
+    lines. The frequency window was TIGHTENED 15% -> 4.0% with that re-gate
+    (derivation: docs/design_notes/estimator_resolution_regate.md), so the
+    old 6.2% sample no longer passes -- locked below."""
     parsed = msl_report.parse_cv06b_stdout(
         "\n".join(
             [
-                "Notch frequency error = 6.2%",
+                "Notch frequency error = 1.4%",
                 "Notch depth |S21| = -17.4 dB",
                 "Re(Z0) median = 51.8 Ω",
+                "  half-grid witness spread   = 0.6037 bin (bare argmin on "
+                "the same two sub-grids: 1.0000 bin)",
+                "  -10 dB stopband            = 3.2898 – 4.0184 GHz, "
+                "fractional 0.20001 (12 bins), ratio to ideal r=1 stub 0.9512",
             ]
         ),
         rc=0,
     )
 
     assert parsed["status"] == "passed"
-    assert parsed["metrics"]["notch_frequency_error_pct"] == 6.2
+    assert parsed["metrics"]["notch_frequency_error_pct"] == 1.4
     assert parsed["metrics"]["notch_depth_db"] == -17.4
     assert parsed["metrics"]["z0_median_ohm"] == 51.8
+    assert parsed["metrics"]["stopband_bw_ratio"] == 0.9512
+    assert parsed["metrics"]["half_grid_witness_bins"] == 0.6037
+    assert parsed["gates"]["stopband_bw_ratio_in_window"] is True
+    assert parsed["gates"]["half_grid_witness_sub_bin"] is True
+
+
+def test_msl_report_parser_holds_the_tightened_cv06b_windows():
+    """Falsifier coverage for the re-gate: the numbers the OLD windows let
+    through must now come back failed, each for its own gate."""
+    base = ["Notch depth |S21| = -17.4 dB", "Re(Z0) median = 51.8 Ω",
+            "  half-grid witness spread   = 0.6037 bin",
+            "  ratio to ideal r=1 stub 0.9512"]
+    # 6.2% passed the retired 15% window; it must not pass 4.0%.
+    p1 = msl_report.parse_cv06b_stdout(
+        "\n".join(["Notch frequency error = 6.2%"] + base), rc=0)
+    assert p1["gates"]["notch_freq_error_lt_4pct"] is False
+    assert p1["status"] == "failed"
+    # A shallow/narrow notch: the depth witness still passes, the width gate
+    # does not -- the blindness #812 measured.
+    p2 = msl_report.parse_cv06b_stdout(
+        "\n".join(["Notch frequency error = 1.4%",
+                    "Notch depth |S21| = -29.5 dB",
+                    "Re(Z0) median = 51.8 Ω",
+                    "  half-grid witness spread   = 0.6037 bin",
+                    "  ratio to ideal r=1 stub 0.6417"]), rc=0)
+    assert p2["gates"]["notch_depth_lt_minus_10db_WITNESS"] is True
+    assert p2["gates"]["stopband_bw_ratio_in_window"] is False
+    assert p2["status"] == "failed"
+    # A bin-quantised estimator scores exactly 1.0000 on the witness.
+    p3 = msl_report.parse_cv06b_stdout(
+        "\n".join(["Notch frequency error = 1.4%", "Notch depth |S21| = -17.4 dB",
+                    "Re(Z0) median = 51.8 Ω",
+                    "  half-grid witness spread   = 1.0000 bin",
+                    "  ratio to ideal r=1 stub 0.9512"]), rc=0)
+    assert p3["gates"]["half_grid_witness_sub_bin"] is False
+    assert p3["status"] == "failed"
 
 
 def test_msl_report_infers_legacy_xfail_count_from_stdout(tmp_path: Path):

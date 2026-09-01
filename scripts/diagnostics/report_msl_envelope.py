@@ -16,7 +16,22 @@ _CV06B_FLOATS = {
     "notch_frequency_error_pct": re.compile(r"Notch frequency error\s*=\s*([0-9.]+)\s*%"),
     "notch_depth_db": re.compile(r"Notch depth \|S21\|\s*=\s*(-?[0-9.]+)\s*dB"),
     "z0_median_ohm": re.compile(r"Re\(Z0\) median\s*=\s*([0-9.]+)\s*Ω"),
+    # #812 P3: emitted only by post-2026-09-01 cv06b runs (see that script's
+    # "ESTIMATOR RESOLUTION" docstring section).
+    "stopband_bw_ratio": re.compile(
+        r"ratio to ideal r=1 stub\s*([0-9.]+)"),
+    "half_grid_witness_bins": re.compile(
+        r"half-grid witness spread\s*=\s*([0-9.]+)\s*bin"),
 }
+
+# The cv06b windows this reporter mirrors. They are OWNED by
+# validation/crossval/06b_msl_notch_filter_uniform.py (NOTCH_FREQ_TOL_PCT,
+# STOPBAND_BW_RATIO_WINDOW, HALF_GRID_WITNESS_BINS) and derived in
+# docs/design_notes/estimator_resolution_regate.md; they are restated here
+# because this reporter parses stdout rather than importing the case.
+_CV06B_FREQ_TOL_PCT = 4.0
+_CV06B_BW_RATIO_WINDOW = (0.80, 1.20)
+_CV06B_WITNESS_BINS = 1.0
 
 
 def _repo_path(value: str) -> Path:
@@ -73,11 +88,28 @@ def parse_cv06b_stdout(text: str, rc: int) -> dict[str, Any]:
         match = regex.search(text)
         if match:
             metrics[key] = float(match.group(1))
+    lo_r, hi_r = _CV06B_BW_RATIO_WINDOW
     gates = {
-        "notch_freq_error_lt_15pct": metrics.get("notch_frequency_error_pct", 1e9) < 15.0,
-        "notch_depth_lt_minus_10db": metrics.get("notch_depth_db", 1e9) < -10.0,
+        "notch_freq_error_lt_4pct":
+            metrics.get("notch_frequency_error_pct", 1e9) < _CV06B_FREQ_TOL_PCT,
+        # RETAINED as a witness, not removed: on a 63.6364 MHz grid an ideal
+        # r=1 stub's WORST sampled minimum is -31.23 dB, so this cannot fail
+        # while a notch exists at all (#812). The real depth requirement is
+        # the stopband-width gate below.
+        "notch_depth_lt_minus_10db_WITNESS":
+            metrics.get("notch_depth_db", 1e9) < -10.0,
         "z0_median_40_65_ohm": 40.0 < metrics.get("z0_median_ohm", -1e9) < 65.0,
     }
+    # Fail-closed on a post-#812 stdout that is missing them; absent on a
+    # pre-#812 log, where they are reported as unavailable rather than passed.
+    if "stopband_bw_ratio" in metrics:
+        gates["stopband_bw_ratio_in_window"] = \
+            lo_r < metrics["stopband_bw_ratio"] < hi_r
+    if "half_grid_witness_bins" in metrics:
+        gates["half_grid_witness_sub_bin"] = \
+            metrics["half_grid_witness_bins"] < _CV06B_WITNESS_BINS
+    metrics["estimator_resolution_gates_present"] = float(
+        "stopband_bw_ratio" in metrics and "half_grid_witness_bins" in metrics)
     return {
         "status": "passed" if rc == 0 and all(gates.values()) else "failed",
         "returncode": rc,

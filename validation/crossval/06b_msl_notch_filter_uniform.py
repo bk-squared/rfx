@@ -243,6 +243,58 @@ Mesh convention (issue #723, 2026-08-27):
   single-run Yee envelope, and the projection is recorded rather than
   silent, but the |S| values in the table are post-projection.
 
+ESTIMATOR RESOLUTION (#812 mechanism P3, 2026-09-01) — APPENDED. Nothing
+above is withdrawn except the one arithmetic slip corrected below.
+
+  CORRECTION to the "THE NOTCH-FREQUENCY ROW IS BIN-LIMITED" paragraph above.
+  It says ``compute_msl_s_matrix(n_freqs=100)`` "over the 7 GHz band gives
+  70.7 MHz bins = 1.95% at 3.627 GHz". **That is wrong.** 70.7 MHz is
+  7.0 GHz / 99, i.e. it assumes the sweep starts at DC. It does not: that
+  entry point sweeps ``jnp.linspace(freq_max / 10, freq_max, n_freqs)``
+  (``rfx/api/_sparams.py``, the ``freqs_arr`` line inside
+  ``compute_msl_s_matrix``), so the sweep is 0.7 – 7.0 GHz and the bin is
+  6.3 GHz / 99 = **63.6364 MHz = 1.754%** at 3.627 GHz. Confirmed against
+  committed data: ``tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json``
+  has ``freqs_ghz[0] = 0.7`` and a 0.0636364 GHz step. The paragraph's
+  CONCLUSION is unaffected and still holds — one bin is still wider than the
+  1.40% error being reported — but the width was overstated by 11%.
+
+  THE DEPTH GATE COULD NOT FAIL. ``pass_notch_depth = s21_notch_db < -10``
+  reads the *sampled* minimum of a true transmission zero, so it measures how
+  close a bin happened to land, not the notch's quality. For an ideal shunt
+  open stub, S21 = 2/(2 + j·r·tan(θ)) with θ = (π/2)(f/f0) and
+  r = Z0_line/Z_stub; this board realizes the SAME 635.0µm width for stub and
+  main line (see "Mesh convention" above), so r = 1 exactly by construction.
+  The worst case is a bin half a bin off f0: θ = (π/2)(1 + h/(2f0)) with
+  h = 63.6364 MHz and f0 = 3.6424 GHz gives |S21| = 2/√(4 + tan²θ) =
+  **-31.23 dB**, i.e. 21.2 dB INSIDE the -10 dB gate. (#812 published -30.7 dB
+  for this quantity; the derivation here is independent and lands at -31.2 dB
+  — same conclusion, the 0.5 dB difference is bin-centre vs refined f0.)
+
+  WHAT CHANGED (gates below; nothing is widened, one gate is tightened):
+    * The notch frequency is now located by LOG-PARABOLIC SUB-BIN VERTEX
+      REFINEMENT (``validation/crossval/comparators/spectral_features.py``,
+      the same method already committed in
+      ``scripts/diagnostics/build_msl_notch_palace_referee.py``), so the
+      reported error is no longer quantised to 1.754% steps.
+    * G1's window is TIGHTENED 15% -> 4.0%, derived from the three physical
+      corrections the fringing-free quarter-wave oracle omits, evaluated on
+      the realized board: open-end fringing (Hammerstad-Bekkadal) 0.886%,
+      shunt-T reference plane bounded by 0.5·W_realized 2.646%, half-cell
+      stub rasterisation 0.265% — worst-case sum 3.796%.
+    * G2 gates the **-10 dB stopband fractional bandwidth** against the ideal
+      shunt-open-stub closed form (4/π)·atan(r/6) = 0.210274 at r = 1, window
+      ±20% (a stub whose coupling is 25% degraded, r ≤ 0.75, reads -24.7%).
+      A shallow notch narrows this band whatever the sampling does, which is
+      exactly what the depth gate could not see. The old depth gate is KEPT
+      as a reported witness, not removed.
+    * G4 is an in-run PROOF that the estimate is not bin-quantised: the two
+      interleaved half-density sub-grids are disjoint in frequency, so a bare
+      argmin's two answers are ALWAYS ≥ 1 full-grid bin apart, while the
+      refined pair must agree to < 1 bin.
+  Derivations, falsifiers and evidence:
+  ``docs/design_notes/estimator_resolution_regate.md``.
+
 Scope:
   - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=
     3.175, an UNDER-RESOLVED mixed-cell substrate per the "External
@@ -266,6 +318,7 @@ was abandoned at 2 h 52 m unfinished — this script is GPU-lane, see the
 manifest's cpu_runner note and "Runtime" above).
 """
 
+import importlib.util
 import os
 import sys
 import time
@@ -281,12 +334,37 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
 
+# Sub-bin spectral-feature estimators shared with the Palace referee producers
+# (#812 P3). Loaded by path so a bare run picks up THIS checkout's copy.
+_SPEC = importlib.util.spec_from_file_location(
+    "_cv06b_spectral_features",
+    os.path.join(SCRIPT_DIR, "comparators", "spectral_features.py"))
+sf = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(sf)
+
+# --- #812 P3 gate windows, pre-declared in the design note before any
+# --- measurement that judges them. See the "ESTIMATOR RESOLUTION" docstring
+# --- section and docs/design_notes/estimator_resolution_regate.md.
+NOTCH_FREQ_TOL_PCT = 4.0        # 0.886 (open end) + 2.646 (shunt-T plane)
+                                # + 0.265 (half-cell stub) = 3.796, rounded up
+STOPBAND_LEVEL_DB = -10.0
+STOPBAND_BW_FRAC_IDEAL = 0.210274   # (4/pi)*atan(r/6) at r = Z0_line/Z_stub = 1
+STOPBAND_BW_RATIO_WINDOW = (0.80, 1.20)   # fires at r <= 0.79 / r >= 1.28
+HALF_GRID_WITNESS_BINS = 1.0    # structural: a quantised estimator scores 1.0
+
 
 # Geometry — same as cv06, smaller line length
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
 STUB_LEN = 12e-3
+# The stub is the SAME width as the main line, so the ideal-shunt-stub
+# coupling ratio r = Z0_line / Z_stub is exactly 1 -- which is what makes G2's
+# closed-form -10 dB bandwidth (4/pi)*atan(r/6) a first-principles constant
+# rather than a fit. Named separately (== W_TRACE by default, no behaviour
+# change) only so scripts/diagnostics/cv06b_build_falsifiers.py can build the
+# degraded-r variant G2 is supposed to catch.
+W_STUB = W_TRACE
 L_LINE = 30e-3        # vs cv06's 100mm
 PORT_MARGIN = 2e-3
 F_MAX = 7e9
@@ -326,8 +404,8 @@ def _build_sim() -> Simulation:
 
     # Open-circuit stub branching off the main line at x = LX/2
     stub_x_centre = LX / 2.0
-    stub_x_lo = stub_x_centre - W_TRACE / 2.0
-    stub_x_hi = stub_x_centre + W_TRACE / 2.0
+    stub_x_lo = stub_x_centre - W_STUB / 2.0
+    stub_x_hi = stub_x_centre + W_STUB / 2.0
     sim.add(
         Box((stub_x_lo, trace_y_hi, H_SUB),
             (stub_x_hi, trace_y_hi + STUB_LEN, H_SUB + DX)),
@@ -371,6 +449,127 @@ def _realized_trace_width(sim: Simulation) -> float:
     )
 
 
+def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
+    """Every gated quantity, as a pure function of the sweep.
+
+    Factored out of ``main()`` deliberately (#812): the judgement of this case
+    must be replayable on a saved or synthesised |S21| sweep without a
+    5,729,080-cell solve, so a falsifier can show each gate failing on the
+    defect it was added for. ``main()`` calls this; so does
+    ``scripts/diagnostics/cv06b_estimator_falsifiers.py``.
+
+    ``freqs`` in Hz, ``s21_mag`` linear magnitude, ``z0_real`` in ohm.
+    """
+    f = np.asarray(freqs, dtype=float)
+    s21_mag = np.asarray(s21_mag, dtype=float)
+    s21_db = 20 * np.log10(s21_mag + 1e-30)
+    i_notch = int(np.argmin(s21_db))
+
+    # The BIN argmin is kept and reported for continuity with every committed
+    # log; the GATED number is the sub-bin log-parabolic vertex (#812 P3 — a
+    # bin here is 63.6364 MHz = 1.754%, wider than the error being reported).
+    est = sf.refined_extremum(f, s21_mag)
+
+    # -10 dB stopband width — the quantity that replaces the unfailable depth
+    # gate. Both edges are interpolated between bracketing bins (sub-bin).
+    band = sf.band_at_level(f, s21_mag, STOPBAND_LEVEL_DB, i_notch)
+    if band is None:
+        bw_lo = bw_hi = bw_frac = bw_ratio = 0.0
+        bw_bins = 0
+    else:
+        bw_lo, bw_hi, bw_bins = band
+        bw_frac = (bw_hi - bw_lo) / est["refined_f"]
+        bw_ratio = bw_frac / STOPBAND_BW_FRAC_IDEAL
+
+    wit = sf.half_grid_witness(f, s21_mag)          # in-run resolution proof
+    z0_median = float(np.median(np.asarray(z0_real, dtype=float)))
+    lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
+
+    m = {
+        "f_notch_analytic": float(f_notch_analytic),
+        "f_notch_bin": float(f[i_notch]),
+        "f_notch_refined": float(est["refined_f"]),
+        "sub_bin_shift": float(est["sub_bin_shift"]),
+        "bin_hz": float(est["bin_width"]),
+        "notch_depth_db": float(s21_db[i_notch]),
+        "err_pct": abs(est["refined_f"] - f_notch_analytic) / f_notch_analytic * 100.0,
+        "err_pct_bin": abs(float(f[i_notch]) - f_notch_analytic) / f_notch_analytic * 100.0,
+        "bw_lo": bw_lo, "bw_hi": bw_hi, "bw_bins": int(bw_bins),
+        "bw_frac": bw_frac, "bw_ratio": bw_ratio,
+        "witness_bins": float(wit["spread_bins"]),
+        "witness_argmin_bins": float(wit["argmin_spread_bins"]),
+        "z0_median": z0_median,
+    }
+    m["gates"] = {
+        "G1 notch freq vs analytic": m["err_pct"] < NOTCH_FREQ_TOL_PCT,
+        "G2 -10 dB stopband width": lo_r < bw_ratio < hi_r,
+        "G3 half-grid resolution witness": m["witness_bins"] < HALF_GRID_WITNESS_BINS,
+        "G4 Z0 median": 40 < z0_median < 65,
+        # RETAINED, NOT REMOVED, NOT WIDENED — and it cannot fail while a notch
+        # exists at all (worst sampled minimum on this grid for an ideal r=1
+        # stub is -31.23 dB). It stays as a witness; G2 carries the real depth
+        # requirement.
+        "notch depth (witness only)": m["notch_depth_db"] < -10,
+    }
+    return m
+
+
+def report(m) -> bool:
+    """Print the Result / Estimator / Gates blocks. Returns the verdict.
+
+    The three ``Result:`` lines keep their exact historical labels so every
+    committed log and ``scripts/diagnostics/report_msl_envelope.py`` keep
+    parsing.
+    """
+    lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
+    print()
+    print("Result:")
+    print(f"  Notch frequency (rfx)      = {m['f_notch_refined']/1e9:.3f} GHz")
+    print(f"  Notch frequency (analytic) = {m['f_notch_analytic']/1e9:.3f} GHz")
+    print(f"  Notch frequency error      = {m['err_pct']:.2f} %")
+    print(f"  Notch depth |S21|          = {m['notch_depth_db']:.1f} dB")
+    print(f"  Re(Z0) median              = {m['z0_median']:.1f} Ω")
+    print()
+    print("Estimator resolution (#812 P3):")
+    print(f"  sweep bin                  = {m['bin_hz']/1e6:.4f} MHz "
+          f"= {m['bin_hz']/m['f_notch_refined']*100:.3f} % at the notch")
+    print(f"  bin argmin                 = {m['f_notch_bin']/1e9:.4f} GHz "
+          f"(would report {m['err_pct_bin']:.2f} % vs analytic)")
+    print(f"  sub-bin refined vertex     = {m['f_notch_refined']/1e9:.4f} GHz "
+          f"({m['sub_bin_shift']:+.3f} bin)")
+    print(f"  half-grid witness spread   = {m['witness_bins']:.4f} bin "
+          f"(bare argmin on the same two sub-grids: "
+          f"{m['witness_argmin_bins']:.4f} bin)")
+    print(f"  -10 dB stopband            = {m['bw_lo']/1e9:.4f} – "
+          f"{m['bw_hi']/1e9:.4f} GHz, fractional {m['bw_frac']:.5f} "
+          f"({m['bw_bins']} bins), ratio to ideal r=1 stub "
+          f"{m['bw_ratio']:.4f}")
+    g = m["gates"]
+    print()
+    print("Gates:")
+    print(f"  G1 Notch freq vs analytic (< {NOTCH_FREQ_TOL_PCT:.1f} %): "
+          f"{'PASS' if g['G1 notch freq vs analytic'] else 'FAIL'}  "
+          f"({m['err_pct']:.2f} %, sub-bin refined)")
+    print(f"  G2 -10 dB stopband width / ideal r=1 stub ∈ "
+          f"({lo_r:.2f}, {hi_r:.2f}): "
+          f"{'PASS' if g['G2 -10 dB stopband width'] else 'FAIL'}  "
+          f"({m['bw_ratio']:.4f}; measured fractional BW {m['bw_frac']:.5f} "
+          f"vs closed form {STOPBAND_BW_FRAC_IDEAL:.6f})")
+    print(f"  G3 half-grid resolution witness (< "
+          f"{HALF_GRID_WITNESS_BINS:.1f} bin): "
+          f"{'PASS' if g['G3 half-grid resolution witness'] else 'FAIL'}  "
+          f"({m['witness_bins']:.4f} bin; a bin-quantised estimator scores "
+          f"{m['witness_argmin_bins']:.4f} and cannot pass)")
+    print(f"  G4 Z0 median ∈ (40, 65) Ω:       "
+          f"{'PASS' if g['G4 Z0 median'] else 'FAIL'}  ({m['z0_median']:.1f} Ω)")
+    print(f"  Notch depth (< -10 dB):          "
+          f"{'PASS' if g['notch depth (witness only)'] else 'FAIL'}  "
+          f"({m['notch_depth_db']:.1f} dB) — WITNESS ONLY: this gate is "
+          f"21.2 dB from its own worst case and cannot fail while a notch "
+          f"exists (#812; see the docstring)")
+    return all(g.values())
+
+
 def main() -> int:
     print("=" * 70)
     print("Crossval 06b: MSL Notch Filter (uniform mesh + add_msl_port)")
@@ -406,21 +605,8 @@ def main() -> int:
     s21 = np.asarray(res.S[1, 0, :])
     z0 = np.asarray(res.Z0[0, :])
 
-    # Find S21 minimum (the notch)
-    s21_db = 20 * np.log10(np.abs(s21) + 1e-30)
-    i_notch = int(np.argmin(s21_db))
-    f_notch_rfx = float(f[i_notch])
-    s21_notch_db = float(s21_db[i_notch])
-
-    err_pct = abs(f_notch_rfx - F_NOTCH_AN) / F_NOTCH_AN * 100.0
-
-    print()
-    print("Result:")
-    print(f"  Notch frequency (rfx)      = {f_notch_rfx/1e9:.3f} GHz")
-    print(f"  Notch frequency (analytic) = {F_NOTCH_AN/1e9:.3f} GHz")
-    print(f"  Notch frequency error      = {err_pct:.2f} %")
-    print(f"  Notch depth |S21|          = {s21_notch_db:.1f} dB")
-    print(f"  Re(Z0) median              = {float(np.median(z0.real)):.1f} Ω")
+    m = evaluate(f, np.abs(s21), z0.real, F_NOTCH_AN)
+    all_ok = report(m)
 
     # Plot
     fig, axes = plt.subplots(2, 1, figsize=(7, 6), sharex=True)
@@ -430,6 +616,11 @@ def main() -> int:
                  label="|S11| rfx (msl_port)", color="C1")
     axes[0].axvline(F_NOTCH_AN / 1e9, color="k", ls="--", lw=0.8,
                     label=f"analytic notch ({F_NOTCH_AN/1e9:.3f} GHz)")
+    axes[0].axvline(m['f_notch_refined'] / 1e9, color="C3", ls="-", lw=0.8,
+                    label=f"rfx notch, sub-bin "
+                          f"({m['f_notch_refined']/1e9:.4f} GHz)")
+    axes[0].axhline(STOPBAND_LEVEL_DB, color="0.6", ls=":", lw=0.8,
+                    label=f"{STOPBAND_LEVEL_DB:.0f} dB stopband level")
     axes[0].set_ylabel("|S| [dB]")
     axes[0].set_ylim(-50, 5)
     axes[0].grid(True, alpha=0.3)
@@ -448,22 +639,6 @@ def main() -> int:
     fig.savefig(out_png, dpi=120, bbox_inches="tight")
     plt.close(fig)
     print(f"\nSaved plot: {out_png}")
-
-    # Pass criteria — physics-demo, loose tolerances:
-    pass_notch_freq = err_pct < 15.0     # within 15% of analytic
-    pass_notch_depth = s21_notch_db < -10  # at least 10 dB notch visible
-    pass_z0 = 40 < float(np.median(z0.real)) < 65
-
-    print()
-    print("Gates:")
-    print(f"  Notch freq vs analytic (< 15 %): "
-          f"{'PASS' if pass_notch_freq else 'FAIL'}  ({err_pct:.2f} %)")
-    print(f"  Notch depth (< -10 dB):          "
-          f"{'PASS' if pass_notch_depth else 'FAIL'}  ({s21_notch_db:.1f} dB)")
-    print(f"  Z0 median ∈ (40, 65) Ω:          "
-          f"{'PASS' if pass_z0 else 'FAIL'}  ({float(np.median(z0.real)):.1f} Ω)")
-
-    all_ok = pass_notch_freq and pass_notch_depth and pass_z0
     print(f"\n{'PASS' if all_ok else 'FAIL'}: cv06b — "
           f"{'MSL port resolves stub notch' if all_ok else 'gates failed'}")
     return 0 if all_ok else 1
