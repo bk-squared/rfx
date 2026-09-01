@@ -6361,6 +6361,7 @@ class _SparamMixin:
         strict_passivity: bool = False,
         skip_preflight: bool = False,
         extra_flux_monitors: "list | None" = None,
+        return_ladder_voltages: bool = False,
     ) -> "CoaxMSLTransitionResult":
         """EXPERIMENTAL coax<->microstrip transition 2-port S-parameters (issue #489 leg 4).
 
@@ -6516,6 +6517,25 @@ class _SparamMixin:
         ``tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
         The registered-monitor guard is unchanged: monitors registered ON
         this sim still raise, because this method builds its own probes.
+
+        ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
+        a second read-only channel, additive in exactly the same sense. When
+        ``True``, the RAW per-probe modal voltages this method already
+        computed for both drives are attached to
+        ``result.ladder_voltages`` (``None`` otherwise) so the ladders can be
+        re-read OFFLINE — adjacent-pair phase slope (which way the dominant
+        wave travels), standing-wave ratio, subset matrix-pencil fits —
+        without a second FDTD run and without trusting any incident/outgoing
+        LABEL. The dict is documented field-by-field on
+        :class:`~rfx.api._spec.CoaxMSLTransitionResult`. It is built from
+        ``.copy()`` of arrays that are complete before, and consumed by,
+        :func:`_assemble_coax_msl_transition_from_voltages`, and nothing else
+        in this method reads the flag, so every returned number is
+        bit-identical with the option off or on — gated by
+        ``tests/test_coax_msl_transition_ladder_dump.py::
+        test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
+        the same discipline as the flux witness above; the round-trip
+        assertion there also proves the dump IS what the assembler consumed).
 
         Returns
         -------
@@ -7006,6 +7026,30 @@ class _SparamMixin:
 
         reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
         z0_ref = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
+
+        # #589 ladder dump (read-only). Taken AFTER the assembler consumed
+        # the very same arrays, so no number above can depend on the flag.
+        # ``msl_ladder_i`` is recomputed here with the same expression the
+        # drive loop used (``i_x`` there is loop-local by construction).
+        ladder_voltages = None
+        if return_ladder_voltages:
+            ladder_voltages = {
+                "coax_ladder_v": v_coax_by_drive.copy(),
+                "coax_ladder_z_m": np.asarray(z_planes_coax_m, dtype=np.float64).copy(),
+                "coax_ladder_k": np.asarray(probes_coax, dtype=np.int64),
+                "msl_ladder_v": v_msl_by_drive.copy(),
+                "msl_ladder_x_m": np.asarray(xs_sorted, dtype=np.float64),
+                "msl_ladder_i": np.asarray(
+                    [int(grid.position_to_index((x, y_centre, msl_z_lo))[0])
+                     for x in xs_sorted],
+                    dtype=np.int64,
+                ),
+                "drive_order": ("coax", "msl"),
+                "ref_coax_m": float(ref_coax_m),
+                "ref_msl_m": float(junction_x),
+                "z0_ref": z0_ref.copy(),
+            }
+
         result_obj = CoaxMSLTransitionResult(
             s_params=s_params,
             freqs=np.asarray(freqs_arr, dtype=float),
@@ -7022,6 +7066,7 @@ class _SparamMixin:
             settling_db=settling_db,
             status="experimental",
             flux_monitors=(flux_by_drive if extra_flux_monitors else None),
+            ladder_voltages=ladder_voltages,
         )
         # Issue #662, same gap as compute_coaxial_two_port. ``n_steps`` here is
         # the RESOLVED record length (num_periods was folded into it above), and

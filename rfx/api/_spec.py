@@ -1924,6 +1924,42 @@ class CoaxMSLTransitionResult:
         claim beyond what the calling test's own predeclared gate states;
         unlike :class:`CoaxialTwoPortResult` there is no committed accuracy
         battery to derive "passed"/"contaminated" from yet).
+    flux_monitors : dict or None
+        Present only when the caller opted in via
+        :meth:`~rfx.api._sparams._SparamMixin.compute_coax_msl_transition`'s
+        ``extra_flux_monitors=``; ``None`` otherwise. Per-drive Poynting-flux
+        spectra, ``{"coax"|"msl": {monitor_name: (n_monitor_freqs,) float64}}``
+        (net flux, positive = +axis). DIAGNOSTIC ONLY — read-only DFT
+        accumulation that does not enter the S-parameter math.
+    ladder_voltages : dict or None
+        Present only when the caller opted in via
+        ``compute_coax_msl_transition(..., return_ladder_voltages=True)``;
+        ``None`` otherwise. The RAW per-probe modal voltages the assembler
+        itself consumed, so a label-independent re-reading of the ladders
+        (phase slope, SWR, subset fits) needs no second FDTD run
+        (issue #589 witnesses W1/W2/W3). Keys:
+
+        ``coax_ladder_v`` (2, n_coax, n_freqs) complex128, indexed
+        ``[drive, probe, freq]`` (drive 0 = coax driven, 1 = MSL driven);
+        ``coax_ladder_z_m`` (n_coax,) float64 probe-plane z in DOMAIN metres
+        (CPML pad removed, the same array fed to the assembler);
+        ``coax_ladder_k`` (n_coax,) int64 PADDED grid z-indices;
+        ``msl_ladder_v`` (2, n_msl, n_freqs) complex128 ``[drive, probe,
+        freq]``; ``msl_ladder_x_m`` (n_msl,) float64 probe-plane x in domain
+        metres (strictly increasing); ``msl_ladder_i`` (n_msl,) int64 padded
+        grid x-indices; ``drive_order`` ``("coax", "msl")``; ``ref_coax_m``
+        / ``ref_msl_m`` float, each port's own reference plane (identical to
+        ``reference_planes``); ``z0_ref`` (2,) float64 copy of the two
+        analytic reference impedances.
+
+        DIAGNOSTIC ONLY, and label-FREE: these are modal voltages, not
+        wave amplitudes — no incident/outgoing role is assigned here (that
+        assignment is exactly what issue #589 hypothesis H1 disputes; see
+        ``tests/test_coax_msl_transition_wave_roles.py``). Attaching them
+        cannot change any number: they are copies taken AFTER the assembler
+        has consumed the same arrays
+        (``tests/test_coax_msl_transition_ladder_dump.py::
+        test_return_ladder_voltages_does_not_perturb_s``).
     """
 
     s_params: np.ndarray
@@ -1941,6 +1977,7 @@ class CoaxMSLTransitionResult:
     settling_db: np.ndarray
     status: str = "experimental"
     flux_monitors: dict | None = None
+    ladder_voltages: dict | None = None
 
 
 __all__ = [

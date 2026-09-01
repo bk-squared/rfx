@@ -2497,7 +2497,8 @@
       "cond_warn",
       "strict_passivity",
       "skip_preflight",
-      "extra_flux_monitors"
+      "extra_flux_monitors",
+      "return_ladder_voltages"
     ],
     "compute_coaxial_line_reflection": [
       "termination",
