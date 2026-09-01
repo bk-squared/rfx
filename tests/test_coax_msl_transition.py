@@ -246,15 +246,28 @@ def test_unequal_z0_normalization_is_required_off_diagonal_only():
             )
             # #822: a = forward_amp on THIS lane. The extractor already
             # resolved which branch travels toward the reference plane; on
-            # the coax<->MSL lane both reference planes sit at the junction,
+            # the coax<->MSL lane both reference planes sit AT the junction,
             # on the DUT side of their probes, so that branch IS the
-            # incident wave. Changed from backward_amp/forward_amp because
-            # the PHYSICAL CONVENTION says so, not because the test failed:
-            # this block deliberately hand-rolls the production mapping to
-            # reproduce a defect, so if it stopped mirroring production it
-            # would silently stop reproducing anything. (It also FAILS if
-            # left alone once the fixture is planted from geometry, which is
-            # how the mirror was noticed -- but the reason is the geometry.)
+            # incident wave. This block deliberately hand-rolls the
+            # production mapping in order to reproduce a defect on top of
+            # it, so it must keep MIRRORING production or it silently stops
+            # reproducing anything -- the edit is therefore a deliberate
+            # enumerate-and-classify one, made because the physical
+            # convention says so.
+            #
+            # MEASURED, because the loose phrase for this test is "it passes
+            # either way" and that is NOT what it does. It passes exactly
+            # when the hand-rolled mapping matches the planting convention
+            # (max|diag - true| / max|offdiag - predicted|, this fixture):
+            #   old label-round-trip planting + backward_amp: 1.1e-15 / 3.6e-15  PASS
+            #   old label-round-trip planting + forward_amp : 6.0e-01 / 1.9e+00  FAIL
+            #   physical planting          + backward_amp: 6.0e-01 / 1.9e+00  FAIL
+            #   physical planting          + forward_amp : 9.8e-16 / 4.0e-15  PASS
+            # So the blindness is not indifference to the mapping; it is that
+            # helper and hand-roll encoded the SAME constant, and a COUPLED
+            # wrong pair stays green. That is why re-planting from geometry
+            # (above) is what actually removes the blind spot, and why this
+            # line has to move with it rather than be left alone.
             a_raw[0, drive_idx, fi] = out_c.forward_amp   # NO sqrt(Z0) division
             b_raw[0, drive_idx, fi] = out_c.backward_amp
             a_raw[1, drive_idx, fi] = out_m.forward_amp
