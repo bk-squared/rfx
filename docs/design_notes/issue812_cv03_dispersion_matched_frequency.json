@@ -72,6 +72,12 @@
       2.906733697664874
     ],
     "band_n_eff_rises_with_f": true,
+    "n_group_at_carrier_bin": 3.6082590883437904,
+    "n_core": 3.4641016151377544,
+    "tof_round_trip_a_over_c0": {
+      "src_to_far_end_and_back_64a": 230.92858165400258,
+      "src_to_far_end_to_fit_window_75a": 270.6194316257843
+    },
     "band_n_eff_increase_over_band": 0.1360752610448901
   },
   "measured": {

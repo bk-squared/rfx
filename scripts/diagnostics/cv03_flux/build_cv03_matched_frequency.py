@@ -60,6 +60,12 @@ RESULTS_NOTE_BAND_DEV_PCT = [
 _NUM = r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?"
 
 
+def _n_group(f, neff, i):
+    """Group index n_g = d(f * n_eff) / df, central difference at bin i."""
+    fn = f * neff
+    return float((fn[i + 1] - fn[i - 1]) / (f[i + 1] - f[i - 1]))
+
+
 def _scalar(name):
     m = re.search(rf"^{name}\s*=\s*({_NUM})", open(CASE).read(), re.M)
     if m is None:
@@ -150,6 +156,22 @@ def build():
             # n_eff rising with f is WHY a half-bin frequency mismatch could
             # invert the sign of the round-1 deviation.
             "band_n_eff_rises_with_f": bool(np.all(np.diff(neff[band]) > 0.0)),
+            # Group index n_g = d(f*n_eff)/df at the carrier bin.  This is the
+            # speed that sets the far-end round-trip time in the §8.1 time-of-
+            # flight test, and the round-1 note quoted it as "~3.3" -- a
+            # transcription collision with the SWR 3.33 one page above.  It is
+            # emitted here so the number is machine-checkable, not retyped.
+            "n_group_at_carrier_bin": float(_n_group(
+                f, neff, carrier)),
+            "n_core": float(np.sqrt(eps_core)),
+            # Reflection-free window: 2 * path * n_g / c0, in a/c0 units.
+            "tof_round_trip_a_over_c0": {
+                # source at Meep x=-19, far end at +20, fit window low edge -16
+                "src_to_far_end_and_back_64a": float(
+                    64.0 * _n_group(f, neff, carrier)),
+                "src_to_far_end_to_fit_window_75a": float(
+                    75.0 * _n_group(f, neff, carrier)),
+            },
             "band_n_eff_increase_over_band": float(
                 neff[band][-1] - neff[band][0]),
         },

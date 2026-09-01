@@ -63,8 +63,16 @@ CONFIGS = [
      "recipe domain, DFT stopped before its own round trip",
      [("rfx_total_t = 400.0 * a / C0", "rfx_total_t = 150.0 * a / C0")]),
     ("sx40_dft150_before_round_trip",
-     "40a domain, DFT stopped before the far-end return can arrive "
-     "(~211 a/c0 at n_g ~ 3.3): the reflection-free window",
+     "40a domain, DFT stopped before the far-end return can arrive: the "
+     "reflection-free window.  Round trip is 231 a/c0 to the far end and "
+     "back, 271 a/c0 to re-enter the fit window -- see "
+     "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json"
+     "::oracle.tof_round_trip_a_over_c0.  (Round 1 said '~211 a/c0 at "
+     "n_g ~ 3.3'; the true group index is oracle.n_group_at_carrier_bin, "
+     "and 3.3 was a transcription collision with the SWR 3.33.  The error "
+     "was conservative -- the return arrives LATER than round 1 claimed -- "
+     "so the 150 a/c0 window below is still reflection-free and no measured "
+     "row moves.)",
      [("sx = 16.0", "sx = 40.0"),
       ("src_x_meep   = -7.0", "src_x_meep   = -19.0"),
       ("neff_x_lo_meep = flux_in_meep + 1.0     # -4.0",

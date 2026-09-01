@@ -351,3 +351,51 @@ every analytic operand and every deviation in the artifact is recomputed from
 committed code. `scripts/diagnostics/cv03_flux/tof_reflection_free.py` is the
 missing driver and `scripts/vessl_cv03_tof_reflection_free.yaml` regenerates the
 measured side with harness provenance.
+
+---
+
+## Correction C1 — the §8.1 group index was wrong (`n_g ~ 3.3` → 3.6083)
+
+Appended 2026-09-01 after independent adversarial review. This note is
+append-only; §8.1 above is left as written and is superseded by this section.
+
+§8.1 states *"Group index `n_g ~ 3.3`, so a `sx = 40a` guide with the fit window
+at Meep `x in [-16, -8]` needs `~211 a/c` for a wave to reach the far end and
+return."* Both numbers are wrong.
+
+The lane's own oracle — `validation/crossval/comparators/slab_te_dispersion.py`,
+`slab_te0_neff(eps_core, eps_clad, thickness, k0)`, the same closed form the
+case is judged against — gives, at the case's own carrier bin
+`f = 0.1489796 c/a`:
+
+| quantity | committed value (cited by artifact key, per #829) |
+|---|---|
+| `n_eff` | `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_carrier_bin = 2.8389` |
+| `n_g = d(f·n_eff)/df` | `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083` |
+| `n_core = sqrt(12)` | `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_core = 3.4641` |
+| src → far end → back, 64a | `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93` a/c0 |
+| src → far end → fit window, 75a | `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62` a/c0 |
+
+(emitted by the generator so the numbers are machine-checked rather than retyped;
+`n_g > n_core` is the expected sign for a guided mode below cutoff-free
+single-mode operation, where waveguide dispersion adds to material dispersion.)
+
+**Where 3.3 came from.** It is a transcription collision: `3.33` is the standing
+wave ratio `max/min` of `|Ez(x)|` reported two sections above (§8 table and the
+`upml` row). The SWR was copied into the group-index slot.
+
+**What moves as a result: nothing.** The error is *conservative* in the only
+direction that matters. §8.1's argument needs the far-end return to arrive
+*after* the DFT window closes; it claimed the return arrives at 211 a/c0 and
+used a 150 a/c0 window. The return actually arrives at 231 a/c0 (or 271 a/c0 to
+re-enter the fit window) — **later**, so the 150 a/c0 window is reflection-free
+by a wider margin than claimed, not a narrower one. Every measured row in the
+§8.1 table stands, and the mechanism conclusion (the backward wave is a
+reflection off the domain termination, absent to 2e-4 before the round trip and
+0.50 after it) is unaffected.
+
+**Why it still had to be fixed.** A wrong number in a durable document is the
+failure class #814 and #829 exist to stop, and "it happened to be conservative"
+is a property of this instance, not of the practice. The corrected values now
+live in a committed artifact under keys the prose cites by name, so the next
+reader gets the number from the generator rather than from a retyped constant.
