@@ -399,3 +399,37 @@ failure class #814 and #829 exist to stop, and "it happened to be conservative"
 is a property of this instance, not of the practice. The corrected values now
 live in a committed artifact under keys the prose cites by name, so the next
 reader gets the number from the generator rather than from a retyped constant.
+
+---
+
+## Correction C2 — the §8 finding is now filed as #831, with six explanations eliminated
+
+Appended 2026-09-01. §8 says the standing wave is "reported for separate
+filing" and names the deepening-makes-it-worse trend as "the part that most
+needs an owner". It is now **issue #831**.
+
+Before filing, the six candidate explanations were checked against this tree,
+and all six were eliminated:
+
+1. deeper absorber shortens the guide — no: `Grid.interior` is bit-identically
+   161 cells (16a) at `cpml_layers` 20 and 60;
+2. deeper absorber moves the outer wall nearer — no, the opposite: CPML pads
+   outward, `nx` = 201 / 241 / 281 at 20 / 40 / 60 layers;
+3. bare end facet — no: `eps_r = 12` at 201/201 and 281/281 centre-row x-cells
+   (`_assemble_materials(..., include_cpml_pad_extension=True)`), which
+   independently re-confirms §8's own rasterization check;
+4. the CPML profile is N-dependent — it is N-invariant *by construction*
+   (`cpml.py:143` `d = n_layers*dx`, `:147` `sigma_max ∝ 1/d`, so `∫σ dz` is
+   fixed; numerically identical at N = 20/40/60);
+5. `cpml.py:142` uses the vacuum impedance for `sigma_max` regardless of the
+   terminated medium — a real deviation from Gedney's `√ε_r` form, but it only
+   degrades `R_asymptotic` 1e-15 → 4.68e-5 (−86.6 dB), ~4 orders below the
+   measured 0.5, and it is N-invariant;
+6. CFS α — `:158` gives `alpha / sigma_max = 1.4e-6`, effectively zero and
+   N-invariant.
+
+Items 1–3 kill the geometric explanations (both predict the wrong sign), and
+4–6 kill the profile-design explanations. The finding survives all of them and
+is genuinely not root-caused; #831 carries the pre-declared settling run and
+its falsifiers.
+
