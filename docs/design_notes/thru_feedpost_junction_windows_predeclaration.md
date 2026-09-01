@@ -465,7 +465,40 @@ delta_C = 56.0 fF; B_formula = 0.2326 -> **B_eff = min(B, 0.13) =
   passed; example-fidelity: 83 passed + the 33 PRE-EXISTING base
   snapshot failures, count unchanged (34 -> 33 with the one additive
   attempt-4 entry, which repairs exactly the discovery row for the new
-  harness). All with `-o addopts="" -m "not gpu"`.
+  harness). All with `-o addopts="" -m "not gpu"`. [^33-correction]
+
+[^33-correction]: **Correction (appended 2026-08-30, PR #779 review).**
+  "33 PRE-EXISTING base snapshot failures" above is wrong and is
+  withdrawn. Those rows are not base-branch failures independent of
+  this lane. Running `tests/test_example_fidelity_contract.py`
+  standalone off `agent/thru-deembed-r4` (no `main` merge) gives
+  **6 failed, 99 passed**, not 33/83. All 6 failures are snapshot rows
+  captured against a stale rfx build earlier in this same stacked
+  branch, not a pre-existing base condition: 3 were added by this
+  lane's own commit `83ac4a7d` (`thru_feedpost_deembed.py`
+  band-pulse/insitu-refplane, `thru_feedpost_twoseg_extraction.py`
+  refplane-n10), the other 3 were inherited unregenerated from the
+  #777/#778 legs earlier in the stack
+  (`issue683_sampling_order_decision.py`,
+  `issue770_offdiag_adjudication.py` x2). Merging `origin/main` (which
+  does not touch either fidelity file) and re-running
+  `scripts/capture_example_fidelity_snapshot.py` against the branch's
+  own current rfx regenerates exactly those 6 rows — the diff is 18
+  additive lines adding a `mesh_extent_um` field the current schema
+  now emits, no other content moves — and the full contract suite
+  runs **105 passed, 0 failed** (as of PR head `e557f69e`). There is
+  no snapshot debt attached to this PR that pre-dates it. The branch
+  was later rebased onto `main` after #778 squash-merged (`4d8c2fc9`)
+  and re-captured again by a separate pass (`1f39b054`,
+  "re-capture the de-embed harness snapshot keys for the upstream
+  mesh_extent_um field") — an independent 9-line delta across three
+  variants x three axes, for a `mesh_extent_um` field an earlier-merged
+  PMC-plane-convention change added to `fidelity_report`'s domain rows.
+  Both re-captures were verified byte-identical to a fresh run of
+  `scripts/capture_example_fidelity_snapshot.py` at the commit they
+  were made on; at the final rebased tip the suite now collects 46
+  variants (more validation harnesses landed via the #777/#778 stack)
+  and runs **153 passed, 0 failed**.
 
 **Disposition (frozen section 7): STOP — the pin is NOT placeable.**
 The candidate lock gate = 1.25 * 0.1273 rounded up = 0.160 > B_eff =
