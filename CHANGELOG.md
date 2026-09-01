@@ -60,6 +60,22 @@ Golden/snapshot values pinned to the old float32 realizations were
 re-captured as enumerated re-pins (see the per-file commits). The #589
 f64 replicate is unblocked by this change.
 
+### Fixed — dz_profile-only simulations now reach the non-uniform waveguide S lane (#811)
+
+`compute_waveguide_s_matrix` gated its non-uniform lane on `dx_profile` /
+`dy_profile` only, so a simulation whose ONLY profile was `dz_profile`
+was silently solved on the uniform grid built from the scalar `dx` —
+while `preflight()` described the graded mesh the solve never used (two
+genuinely different dz meshes returned bit-identical S in the falsifier
+baseline). A `dz_profile` now dispatches to the non-uniform lane under
+its existing restrictions, and the unsupported default `normalize=False`
+raises `NotImplementedError` naming `dz_profile` instead of returning
+uniform-mesh numbers. dz-graded *accuracy* remains unvalidated (#810); a
+dz-only contract suite locks every `compute_*` entry point's dz-only
+behaviour. The non-uniform waveguide lane also carries the ring-down
+settling witness now (`settling_db` plus the -40 dB aggregate warning —
+the waveguide instance of #827).
+
 ## [1.7.0] - 2026-09-01
 
 ### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)

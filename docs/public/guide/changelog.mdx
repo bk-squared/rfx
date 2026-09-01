@@ -13,7 +13,21 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 
 ## Unreleased
 
-No changes yet.
+- A face-touching dispersive material no longer gets an absorber surround
+  carrying its static permittivity without its dispersion poles — a material
+  no declared model has. The `dispersive_pole_at_absorber_face` preflight
+  advisory now fires for every pole family touching an absorbing face and
+  states what the pad actually contains.
+- Realized geometry at node-aligned faces no longer depends on
+  `JAX_ENABLE_X64` or the solver lane: one exact float64 node formula is
+  shared by the uniform lane, the non-uniform lane, and the viewer, and a
+  one-cell sheet realizes on one and the same plane in both lanes.
+- A `dz_profile`-only simulation now dispatches to the non-uniform waveguide
+  S-matrix lane instead of silently solving on the uniform grid built from
+  the scalar `dx`. The unsupported default `normalize=False` fails loudly
+  there, naming `dz_profile`. dz-graded accuracy remains unvalidated; the
+  non-uniform lane reports the same ring-down settling witness as the
+  uniform lane.
 
 ## v1.7.0 — September 1, 2026
 
