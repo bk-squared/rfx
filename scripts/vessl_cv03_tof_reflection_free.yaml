@@ -1,0 +1,57 @@
+name: rfx-812-cv03-tof-reflection-free
+description: "#812 round 2, lane cv03: regenerate the four time-of-flight configurations of section 8.1 of issue812_cv03_dispersion_regate_predeclaration.md WITH HARNESS PROVENANCE. Round 1 recorded these four measured n_eff values in a design-note table whose driver was never committed; scripts/diagnostics/cv03_flux/tof_reflection_free.py is that driver, and it emits every per-bin array (freqs, n_eff_rfx, n_eff_analytic, two-wave residual, |B/A|, band mask) plus the matched-frequency carrier deviation into one JSON. REPORT-ONLY: no gate, threshold, reference or solver path moves; the crossval case is never modified (each configuration is a set of exact textual edits applied to a copy, as regate_falsifiers.py does). Four CPU FDTD runs: two at the recipe 16a domain and two at 40a, crossed with a 150 / 400 a/c0 DFT window. On VESSL rather than the shared Mac per SPEC-00 0.3b. Harvest docs/design_notes/issue812_cv03_dispersion_tof.json from the run output directory; the design-note correction references its keys."
+tags: [rfx, issue-812, cv03, crossval, dispersion, provenance, report-only]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  LANG: "C.UTF-8"
+  # The cv03 case pins no x64; the committed baseline was measured in the
+  # default mode and these rows must be comparable to it.
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx #812 cv03: time-of-flight reflection-free re-measurement (report-only) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+
+  ROOT=/root/workspace/claude-workspace/rfx/checkouts/regate-cv03-identity
+  cd "$ROOT"
+  echo "=== provenance ==="
+  git rev-parse HEAD 2>/dev/null || echo "(rsync staging, no .git)"
+  test -f scripts/diagnostics/cv03_flux/tof_reflection_free.py || { echo "STALE STAGING: driver missing"; exit 3; }
+  test -f validation/crossval/03_straight_waveguide_flux.py || { echo "STALE STAGING: case missing"; exit 3; }
+
+  "$PY" -m pip install -q "numpy<2" "scipy>=1.11" "matplotlib>=3.7"
+  export PYTHONPATH="$ROOT"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, 'rfx from', os.path.dirname(rfx.__file__), 'x64', jax.config.x64_enabled)"
+
+  out=/root/workspace/claude-workspace/rfx/runs/issue812-cv03-tof-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$out"
+  echo "artifacts: $out"
+
+  set +e
+  timeout 3600 "$PY" -u scripts/diagnostics/cv03_flux/tof_reflection_free.py \
+      --output "$out/issue812_cv03_dispersion_tof.json" > "$out/tof.log" 2>&1
+  rc=$?
+  set -e
+  cat "$out/tof.log"
+  echo "tof_rc=$rc"
+
+  # The one line a reader needs: matched-frequency carrier deviation per row.
+  # Round 1's blocker was a comparison at MISMATCHED frequencies, so this is
+  # printed from the JSON, never retyped.
+  "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1]))["configs"]; [print("%-32s carrier f=%.7f dev=%+.4f%% band_max=%.4f%% |B/A|=%.4f resid=%.4f" % (k, v.get("carrier_bin_f_c_over_a", float("nan")), v.get("carrier_dev_pct_matched", float("nan")), v.get("band_max_abs_dev_pct", float("nan")), v.get("b_over_a_carrier_bin", float("nan")), v.get("band_max_two_wave_rel_residual", float("nan")))) for k, v in d.items()]' "$out/issue812_cv03_dispersion_tof.json" || true
+
+  ls -la "$out"
+  echo "harvest: $out/issue812_cv03_dispersion_tof.json -> docs/design_notes/issue812_cv03_dispersion_tof.json"
+  [ "$rc" -eq 0 ]
