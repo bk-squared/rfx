@@ -455,6 +455,31 @@ def build_rfx_sim(*, do_gain: bool = False, two_plane: bool = True):
     return sim, patch_shape, geom
 
 
+def _provenance(num_periods=None, n_freqs=None, do_gain=None,
+                two_plane=None):
+    """Record WHICH code produced this leg. cv11's stale broad-E4 artifact
+    (#812 Phase 0, PR #814) is the precedent: a result leg with no code
+    identity cannot be told apart from a stale one without a bisect."""
+    import subprocess
+    def _git(*args):
+        try:
+            return subprocess.run(("git",) + args, cwd=REPO_ROOT,
+                                  capture_output=True, text=True,
+                                  timeout=20).stdout.strip() or None
+        except Exception:
+            return None
+    return dict(
+        commit=_git("rev-parse", "HEAD"),
+        commit_date=_git("log", "-1", "--format=%ad", "--date=iso-strict"),
+        dirty=bool(_git("status", "--porcelain")),
+        generated_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        command=(f"python {os.path.basename(__file__)} rfx "
+                 f"--num-periods {num_periods} --n-freqs {n_freqs}"
+                 + (" --gain" if do_gain else "")),
+        two_plane_ground=two_plane,
+    )
+
+
 def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
     sys.path.insert(0, REPO_ROOT)
     import io
@@ -572,6 +597,8 @@ def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
         mode_id_tol=(float(ident.tol) if ident is not None else None),
         gain_dbi=d_dbi, preflight=preflight_txt,
         stack_check=stack_check,
+        provenance=_provenance(num_periods, n_freqs, do_gain,
+                               two_plane=two_plane),
     )
     with open(os.path.join(RES_DIR, "rfx.json"), "w") as fp:
         json.dump(out, fp, indent=2)
@@ -951,9 +978,19 @@ def _mode_id_ok(R):
         f"{f/1e9:.4f}->" + (f"TM{o[0]}{o[1]}0 {r*100:+.2f}%" if o else "UNIDENT")
         for f, o, r in ident.assignments)
     detail = f"tol {ident.tol*100:.2f}% (derived); {named}"
-    if not ident.ok:
-        detail += "; " + " | ".join(ident.reasons)
-    return bool(ident.ok), detail
+    reasons = list(ident.reasons)
+    # Close the loop: the f0 the leg REPORTS must be the mode the
+    # identification assigned to TM100. A leg cannot record one number and
+    # carry a spectrum that names another.
+    f_rep = R.get("f_harminv_hz")
+    if ident.f_design is not None and f_rep is not None and \
+            abs(float(f_rep) - ident.f_design) > 1.0:
+        reasons.append(
+            f"leg reports f_harminv_hz = {float(f_rep)/1e9:.5f} GHz but the "
+            f"identification assigns TM100 to {ident.f_design/1e9:.5f} GHz")
+    if reasons:
+        detail += "; " + " | ".join(reasons)
+    return (bool(ident.ok) and not reasons), detail
 
 
 def compare(f0_env_pct):
