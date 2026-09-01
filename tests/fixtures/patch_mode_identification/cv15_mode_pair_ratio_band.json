@@ -1,0 +1,64 @@
+{
+  "_what": "Closed-form census of mode-pair RATIO band half-widths for cv15 (TM100/TM010): which widths admit the correct build AND reject the issue-#740 one-plane-ground realization. No FDTD; post-processes the committed live reproduction.",
+  "_why": "This artifact is the evidence that REFUTES the negative absolute published in round 1 of this lane (design note sections 5 and 6.5, withdrawn in section 6.9): 'a ratio band cannot fire on #740 at any width that admits the correct build'. The admissible-width interval below is NON-EMPTY, so that claim was false. What the measurement does support is recorded in 'verdict'.",
+  "_command": "python scripts/diagnostics/build_patch_mode_pair_ratio_band_census.py",
+  "_inputs": {
+    "ringdown_fixture": "tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json",
+    "declared_constants": {
+      "eps_r": 2.2,
+      "h": 0.003175,
+      "a": 0.04,
+      "b": 0.05,
+      "c0": 299792458.0,
+      "f_lo": 1600000000.0,
+      "f_hi": 3400000000.0
+    },
+    "pair": [
+      "TM010",
+      "TM100"
+    ]
+  },
+  "_provenance": {
+    "repo_commit": "01677381aaa5273ea2009fd9dbda6f12ea5c77a8",
+    "repo_dirty": true,
+    "generated_utc": "2026-09-01T07:00:57Z"
+  },
+  "declared": {
+    "TM010_hz": 1974051224.4868195,
+    "TM100_hz": 2415595433.5060616,
+    "pair_ratio": 1.2236741395269655,
+    "identification_tolerance": 0.10619805619381073
+  },
+  "measured": {
+    "correct_build": {
+      "source_fixture_key": "two_plane_ground",
+      "TM010_hz": 1893648067.0520508,
+      "TM100_hz": 2313947494.5435557,
+      "pair_ratio": 1.2219522385412454,
+      "residual_vs_declared": -0.00140715647254408,
+      "abs_residual_vs_declared": 0.00140715647254408
+    },
+    "defect_740": {
+      "source_fixture_key": "one_plane_ground_740_defect",
+      "TM010_hz": 2026795704.8237498,
+      "TM100_hz": 2471858093.4928327,
+      "pair_ratio": 1.2195891710298377,
+      "residual_vs_declared": -0.003338281299878565,
+      "abs_residual_vs_declared": 0.003338281299878565
+    }
+  },
+  "declared_anchored_band": {
+    "_definition": "gate |r_measured / r_declared - 1| <= w, with r_declared from the declared geometry alone",
+    "min_half_width_admitting_correct_build": 0.00140715647254408,
+    "max_half_width_still_rejecting_740": 0.003338281299878565,
+    "admissible_interval_is_nonempty": true,
+    "detection_ratio": 2.3723596948981034,
+    "upper_endpoint_over_identification_tolerance": 0.031434485898557546
+  },
+  "measured_anchored_band": {
+    "_definition": "gate |r_measured / r_correct_build - 1| <= w, i.e. a band centred on the correct build's own measured ratio -- admits it for every w >= 0",
+    "defect_offset_from_correct_build": 0.0019338460513225186,
+    "max_half_width_still_rejecting_740": 0.0019338460513225186
+  },
+  "verdict": "A declared-anchored mode-pair ratio band with half-width w both admits the correct build and rejects the #740 realization for every w in [min_half_width_admitting_correct_build, max_half_width_still_rejecting_740). That interval is non-empty, so the round-1 absolute is false and is withdrawn. It is nonetheless not a window this lane may adopt: both endpoints are properties of the two measurements the band would judge (burned-data, SPEC-00 0.2.2), the interval's upper endpoint is upper_endpoint_over_identification_tolerance of the tightest window derivable from declared geometry alone, and the run-to-run reproducibility of the measured pair ratio has not been established at that scale by any committed run. Criterion (B) for cv15 is therefore NOT met by a window whose provenance this lane can supply: cv15 lands as a STOP."
+}

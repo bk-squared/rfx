@@ -1,6 +1,6 @@
 {
   "_what": "cv15 ring-down spectra for the CORRECT (two_plane ground, the committed leg) and the issue-#740 PRE-FIX (one_plane ground) realizations, both built through cv15's PRODUCTION builder `build_rfx_sim(two_plane=...)` and extracted through its production `_harminv_f0()`.",
-  "_why": "This fixture is the EVIDENCE for the scope limit pre-declared in docs/design_notes/20260901_patch_mode_identification_predeclaration.md section 5: the #740 vacuum ground cell rescales the whole cavity spectrum by a single factor, so it is invisible to the mode-resolved identification and to the audit's proposed mode-pair RATIO band alike. It is caught by assert_realized_stack (PR #768), whose exact refusal is recorded below. Keeping the numbers committed means the claim 'the pair gate closes #740' can be refuted without a solve.",
+  "_why": "This fixture is the EVIDENCE for the scope limit pre-declared in docs/design_notes/20260901_patch_mode_identification_predeclaration.md section 5: the #740 vacuum ground cell rescales the whole cavity spectrum by a near-common factor (see measured_common_mode_dilation), so it moves every identification residual by that factor and stays inside the derived identification tolerance -- the mode-resolved gate PASSES on it. The audit's proposed mode-pair RATIO band is a separate question and is settled in cv15_mode_pair_ratio_band.json, NOT here: the ratio does move, and the admissible band widths are enumerated there. #740's detector is assert_realized_stack (PR #768), whose exact refusal is recorded below. Keeping the numbers committed means every claim above can be refuted without a solve.",
   "_provenance": {
     "repo_commit": "5b6db32964590ced44f66525fac174b2da9664bd",
     "recorded_utc": "2026-09-01T02:34:11Z",
@@ -9,7 +9,7 @@
     "platform": "CPU"
   },
   "two_plane_ground": {
-    "source": "validation/crossval/_15_patch_results/rfx.json (the committed leg)",
+    "source": "cv15 build_rfx_sim(two_plane=True) at repo commit 5b6db32, num_periods=45.0 n_freqs=181 --gain (the committed leg's own command). The committed leg validation/crossval/_15_patch_results/rfx.json carries no mode list; its f_harminv_hz agrees with this run's to better than 1e-7 relative -- bound asserted by tests/test_patch_mode_identification.py::test_cv15_reproduction_ringdown_matches_the_committed_leg",
     "f_harminv_hz": 2313947494.5435557,
     "modes": [
       {

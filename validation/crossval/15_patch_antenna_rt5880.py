@@ -78,32 +78,6 @@ port-calibration independent); the |S11| dip is reported as a secondary /
 passivity check and its local minimum is located near the ring-down frequency.
 openEMS's lumped-port |S11| dip is deep (~-20 dB) and used directly.
 
-MODE-RESOLVED f0 SELECTION (issue #812, 2026-09-01)
----------------------------------------------------
-``_harminv_f0()`` USED to return ``argmin |f - fr_an|`` over the Q>2 ring-down
-modes and the gates then judged that number -- the analytic anchor was both the
-selector and the referee. Replaced by mode-RESOLVED identification
-(``comparators/patch_mode_identification.py``): the declared geometry fixes the
-whole TM_mn0 spectrum, every measured mode is assigned to its nearest declared
-member, and f0 is the mode assigned to the design member TM100 -- which must
-exist, be unique, and be accompanied by a member resolving the OTHER in-plane
-axis, so the verdict rests on a mode PAIR. Tolerance 10.6198 %, DERIVED as
-``sqrt(min adjacent declared member ratio) - 1``; an IDENTIFICATION tolerance,
-looser than the closed form's own 5-8 % accuracy on purpose -- passing it is NOT
-an accuracy claim. The leg now records its FULL mode list and ``compare()``
-re-runs the identification against this module's own constants.
-
-  SCOPE LIMIT, measured and stated up front: this spectral gate is blind to a
-  COMMON-MODE dilation of the whole spectrum, because every observable in it is
-  a ratio of a measured frequency to a declared one. Issue #740's vacuum ground
-  cell is exactly that -- MEASURED here as a 1.068 +/- 0.003 uniform rescale
-  across three members (see the design note's measurement log) -- so neither
-  this gate nor the audit's proposed mode-pair RATIO band can fire on #740.
-  #740's detector is and remains ``assert_realized_stack`` (PR #768). The two
-  instruments are complementary: spectral identification sees per-axis errors
-  and is blind to uniform rescaling; the wall-plane check sees stack errors and
-  is blind to in-plane ones.
-
 HONEST SCOPE (PI penalises overclaiming)
 ----------------------------------------
   - PRIMARY gate: resonant f0 rfx(ring-down) vs openEMS(S11 dip) within a stated
@@ -205,28 +179,6 @@ DOM_Z = AIR_BELOW + H_SUB + AIR_ABOVE
 
 F_DESIGN = 2.4e9
 F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band
-
-
-# Mode-RESOLVED identification (issue #812, cv05/cv15 lane): replaces the
-# self-confirming `argmin |f - fr_an|` selector in _harminv_f0(). See
-# docs/design_notes/20260901_patch_mode_identification_predeclaration.md.
-sys.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
-from patch_mode_identification import (            # noqa: E402
-    declared_cavity_spectrum, identify_patch_modes, members_in_band,
-)
-
-
-def declared_modes():
-    """Declared TM_mn0 spectrum of THIS patch inside the harminv band.
-
-    Built from the module's OWN declared constants (a = L_PATCH along x,
-    b = W_PATCH along y, EPS_R, H_SUB) -- so ``compare()`` can re-derive it
-    rather than trust a label recorded in a result leg (the #740 review's
-    required change 1, applied to the spectral gate).
-    """
-    return members_in_band(
-        declared_cavity_spectrum(EPS_R, H_SUB, L_PATCH, W_PATCH, c0=C0),
-        F_LO, F_HI)
 
 
 def f_res_analytic():
@@ -455,31 +407,6 @@ def build_rfx_sim(*, do_gain: bool = False, two_plane: bool = True):
     return sim, patch_shape, geom
 
 
-def _provenance(num_periods=None, n_freqs=None, do_gain=None,
-                two_plane=None):
-    """Record WHICH code produced this leg. cv11's stale broad-E4 artifact
-    (#812 Phase 0, PR #814) is the precedent: a result leg with no code
-    identity cannot be told apart from a stale one without a bisect."""
-    import subprocess
-    def _git(*args):
-        try:
-            return subprocess.run(("git",) + args, cwd=REPO_ROOT,
-                                  capture_output=True, text=True,
-                                  timeout=20).stdout.strip() or None
-        except Exception:
-            return None
-    return dict(
-        commit=_git("rev-parse", "HEAD"),
-        commit_date=_git("log", "-1", "--format=%ad", "--date=iso-strict"),
-        dirty=bool(_git("status", "--porcelain")),
-        generated_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        command=(f"python {os.path.basename(__file__)} rfx "
-                 f"--num-periods {num_periods} --n-freqs {n_freqs}"
-                 + (" --gain" if do_gain else "")),
-        two_plane_ground=two_plane,
-    )
-
-
 def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
     sys.path.insert(0, REPO_ROOT)
     import io
@@ -564,7 +491,7 @@ def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
     # and its local dip is located NEAR the ring-down frequency, not by a global
     # argmin (which lands on the band-edge background).
     fr_an = f_res_analytic()[0]
-    f_harminv, q_harminv, mode_rows, ident = _harminv_f0(ts, dt_ts)
+    f_harminv, q_harminv = _harminv_f0(ts, dt_ts)
     f_center = f_harminv if f_harminv else fr_an
     s11_db = 20 * np.log10(np.maximum(np.abs(s11), 1e-9))
     lo = int(np.searchsorted(f, f_center * 0.94))
@@ -589,16 +516,8 @@ def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
         f_dip_hz=f_dip, s11_dip_db=s11_dip_db, max_abs_s11=max_abs,
         f_harminv_hz=f_harminv, q_harminv=q_harminv,
         f_analytic_hz=fr_an,
-        # #812: the FULL ring-down mode list, so compare() can re-run the
-        # mode-resolved identification against this module's own declared
-        # spectrum instead of trusting the single number recorded above.
-        modes=mode_rows,
-        mode_id_ok=(bool(ident.ok) if ident is not None else False),
-        mode_id_tol=(float(ident.tol) if ident is not None else None),
         gain_dbi=d_dbi, preflight=preflight_txt,
         stack_check=stack_check,
-        provenance=_provenance(num_periods, n_freqs, do_gain,
-                               two_plane=two_plane),
     )
     with open(os.path.join(RES_DIR, "rfx.json"), "w") as fp:
         json.dump(out, fp, indent=2)
@@ -612,45 +531,19 @@ def run_rfx(num_periods, n_freqs, do_gain, *, two_plane: bool = True):
 
 
 def _harminv_f0(ts, dt_ts):
-    """Ring-down f0 by MODE-RESOLVED identification (#812).
-
-    Was ``good.sort(key=lambda m: abs(m.freq - fr_an)); good[0]`` -- the
-    analytic anchor was both the selector and the referee, so whichever mode
-    sat nearest it became "the" resonance. Now every Q>2 mode is assigned to
-    its nearest member of the DECLARED TM_mn0 spectrum and f0 is the mode
-    assigned to the design member TM100; if TM100 has no mode, f0 is None and
-    the caller refuses to quote it, rather than re-anchoring onto a neighbour.
-
-    Returns ``(f0, Q, modes, ident)``.
-    """
     from rfx.harminv import harminv
+    fr_an = f_res_analytic()[0]
     sig = ts[int(len(ts) * 0.30):]
     try:
         modes = harminv(sig, dt_ts, F_LO, F_HI)
     except Exception as e:
         print(f"  (harminv failed: {e})")
-        return None, None, [], None
-    good = sorted((m for m in modes if m.Q > 2 and m.amplitude > 1e-9),
-                  key=lambda m: m.freq)
-    rows = [dict(freq_hz=float(m.freq), Q=float(m.Q),
-                 amplitude=float(m.amplitude)) for m in good]
-    members = declared_modes()
-    print("\n[MODE ID #812] declared TM_mn0 spectrum in band "
-          f"[{F_LO/1e9:.2f}, {F_HI/1e9:.2f}] GHz:")
-    for k, v in sorted(members.items(), key=lambda kv: kv[1]):
-        print(f"  declared TM{k[0]}{k[1]}0 = {v/1e9:.5f} GHz")
-    print("  measured ring-down modes (Q > 2, amp > 1e-9):")
-    for r in rows:
-        print(f"    f = {r['freq_hz']/1e9:.4f} GHz  Q = {r['Q']:.1f}  "
-              f"amp = {r['amplitude']:.3e}")
-    ident = identify_patch_modes([r["freq_hz"] for r in rows], members,
-                                 design_order=(1, 0))
-    for line in ident.report_lines():
-        print("  " + line)
-    if ident.f_design is None:
-        return None, None, rows, ident
-    q = next(r["Q"] for r in rows if r["freq_hz"] == ident.f_design)
-    return float(ident.f_design), float(q), rows, ident
+        return None, None
+    good = [m for m in modes if m.Q > 2 and m.amplitude > 1e-9]
+    if not good:
+        return None, None
+    good.sort(key=lambda m: abs(m.freq - fr_an))
+    return float(good[0].freq), float(good[0].Q)
 
 
 def _rfx_gain(res):
@@ -953,46 +846,6 @@ def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
     return ok, detail
 
 
-def _mode_id_ok(R):
-    """Re-run the #812 mode-resolved identification on a leg's RECORDED mode
-    list against THIS MODULE's own declared spectrum -- never against a label
-    the leg recorded (the #740 review's required change 1, applied to the
-    spectral gate). Pure function (leg dict in, bool+detail out) so
-    ``tests/test_patch_mode_identification.py`` can pin the gate MATH without
-    a solve, following ``_stack_check_ok``'s precedent.
-
-    A leg with no ``modes`` list is a FAIL, not a skip -- SCHEMA-level, and
-    labelled as such in the detail string so it is never mistaken for a
-    physics measurement: a leg predating this check carries no spectrum to
-    identify, and "no evidence" is not "passed".
-    """
-    rows = R.get("modes")
-    if not rows:
-        return False, ("SCHEMA: leg records no ring-down mode list (predates "
-                       "the #812 mode-resolved selector) -- nothing to "
-                       "identify; re-run the rfx leg")
-    members = declared_modes()
-    ident = identify_patch_modes([float(r["freq_hz"]) for r in rows], members,
-                                 design_order=(1, 0))
-    named = ", ".join(
-        f"{f/1e9:.4f}->" + (f"TM{o[0]}{o[1]}0 {r*100:+.2f}%" if o else "UNIDENT")
-        for f, o, r in ident.assignments)
-    detail = f"tol {ident.tol*100:.2f}% (derived); {named}"
-    reasons = list(ident.reasons)
-    # Close the loop: the f0 the leg REPORTS must be the mode the
-    # identification assigned to TM100. A leg cannot record one number and
-    # carry a spectrum that names another.
-    f_rep = R.get("f_harminv_hz")
-    if ident.f_design is not None and f_rep is not None and \
-            abs(float(f_rep) - ident.f_design) > 1.0:
-        reasons.append(
-            f"leg reports f_harminv_hz = {float(f_rep)/1e9:.5f} GHz but the "
-            f"identification assigns TM100 to {ident.f_design/1e9:.5f} GHz")
-    if reasons:
-        detail += "; " + " | ".join(reasons)
-    return (bool(ident.ok) and not reasons), detail
-
-
 def compare(f0_env_pct):
     R, O = _load_legs()
     fr_an = R["f_analytic_hz"]
@@ -1063,9 +916,6 @@ def compare(f0_env_pct):
          f"{d_rfx_oe:.2f}% <= {f0_env_pct:.0f}%")
     sc_ok, sc_detail = _stack_check_ok(R.get("stack_check"))
     gate("stack geometry fidelity (realized wall planes, #740)", sc_ok, sc_detail)
-    mid_ok, mid_detail = _mode_id_ok(R)
-    gate("mode-resolved identification (design mode FOUND, #812)",
-         mid_ok, mid_detail)
     gate("settling witness (open CPML, -40 dB bar)", bool(R["settled"]),
          f"{R['settle_db']:.1f} dB")
     # Passivity is GATED on both legs: |S11| > ~1.05 on a passive radiator is an

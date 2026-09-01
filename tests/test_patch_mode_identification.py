@@ -81,14 +81,22 @@ def test_design_member_reproduces_the_scripts_own_closed_form(case, expected_hz)
     assert members[(1, 0)] == pytest.approx(expected_hz, rel=1e-9)
 
 
-def test_cv15_module_declared_modes_matches_this_construction():
-    """cv15's own ``declared_modes()`` must be the same spectrum -- the gate in
-    ``compare()`` re-derives it from the module's constants, so a drift between
-    the module and this test would silently re-scope the gate."""
+def test_cv15_declared_constants_are_the_scripts_own():
+    """``CV15`` above must BE cv15's declared constants, not a copy that has
+    drifted -- every cv15 number in this file is derived from them.
+
+    cv15 itself ships NO spectral gate (this lane landed cv15 as a STOP; see
+    the design note section 6.9), so there is no module-side ``declared_modes()``
+    to compare against -- the constants are the contract."""
     cv15 = _load_cv15()
-    assert cv15.declared_modes() == _members(CV15)
-    assert cv15.declared_modes()[(1, 0)] == pytest.approx(
+    assert (cv15.EPS_R, cv15.H_SUB, cv15.L_PATCH, cv15.W_PATCH, cv15.C0) == \
+        (CV15["eps_r"], CV15["h"], CV15["a"], CV15["b"], CV15["c0"])
+    assert (cv15.F_LO, cv15.F_HI) == CV15["band"]
+    assert _members(CV15)[(1, 0)] == pytest.approx(
         cv15.f_res_analytic()[0], rel=1e-12)
+    assert not hasattr(cv15, "_mode_id_ok"), (
+        "cv15 has grown a spectral gate -- criterion (B) was never met for it "
+        "(design note section 6.9); re-open the STOP before shipping one")
 
 
 # --------------------------------------------------------------------------
@@ -209,9 +217,14 @@ def test_common_mode_dilation_is_invisible_and_that_is_documented(scale):
     spectrum shifts every residual by exactly the scale factor and leaves every
     dimensionless observable (the mode-pair RATIO included) unchanged.
 
-    1.068 is the measured cv15 #740 vacuum-ground-cell dilation. This test
-    exists so that "the mode-pair gate closes #740" can never be written: it
-    does not, and #740's detector is ``assert_realized_stack`` (PR #768)."""
+    The middle scale is the measured cv15 #740 vacuum-ground-cell dilation,
+    ``cv15_ringdown_spectra.json::measured_common_mode_dilation.mean`` (pinned
+    to that key by ``test_cv15_740_defect_is_a_common_mode_dilation``).
+
+    This is a statement about an EXACT dilation only. The real #740 dilation is
+    not exact, and what its residual spread does to the mode-pair ratio is a
+    separate, measured question -- see
+    ``cv15_mode_pair_ratio_band.json::declared_anchored_band``."""
     members = _members(CV15)
     measured = [f * scale for f in members.values()]
     ident = identify_patch_modes(measured, members)
@@ -223,42 +236,6 @@ def test_common_mode_dilation_is_invisible_and_that_is_documented(scale):
     fs = sorted(f for f in measured)
     assert fs[1] / fs[0] == pytest.approx(
         sorted(members.values())[1] / sorted(members.values())[0], rel=1e-12)
-
-
-# --------------------------------------------------------------------------
-# cv15's leg-level gate
-# --------------------------------------------------------------------------
-
-
-def test_cv15_leg_without_a_mode_list_fails_and_says_it_is_a_schema_failure():
-    """A leg predating the selector carries no spectrum: FAIL, not skip. The
-    detail must say SCHEMA so this is never quoted as a physics measurement."""
-    cv15 = _load_cv15()
-    ok, detail = cv15._mode_id_ok({"f_harminv_hz": 2.4e9})
-    assert ok is False
-    assert detail.startswith("SCHEMA:")
-
-
-def test_cv15_leg_gate_accepts_a_correct_declared_spectrum():
-    cv15 = _load_cv15()
-    members = cv15.declared_modes()
-    leg = {"modes": [{"freq_hz": f, "Q": 20.0, "amplitude": 1e-3}
-                     for f in members.values()]}
-    ok, detail = cv15._mode_id_ok(leg)
-    assert ok is True, detail
-    assert "TM100" in detail
-
-
-def test_cv15_leg_gate_fails_a_24_percent_design_mode_error():
-    cv15 = _load_cv15()
-    members = cv15.declared_modes()
-    f_bad = members[(1, 0)] * 1.24
-    leg = {"modes": [{"freq_hz": f, "Q": 20.0, "amplitude": 1e-3}
-                     for f in (members[(0, 1)], f_bad,
-                               math.hypot(f_bad, members[(0, 1)]))]}
-    ok, detail = cv15._mode_id_ok(leg)
-    assert ok is False
-    assert "DESIGN member TM100" in detail
 
 
 # ==========================================================================
@@ -274,19 +251,22 @@ def _fixture(name):
 
 def test_cv05_correct_build_passes_with_margin():
     """(A) cv05's committed configuration, run through its own script: the
-    design member TM100 is FOUND at 2.3323 GHz (-3.76%) against a derived
-    12.4988% identification tolerance -- a 3.3x margin -- and TM110 resolves
-    the second in-plane axis. The reported resonance is the SAME 2.3323 GHz the
-    anchored selector returned, so no physics verdict moves."""
+    design member TM100 is FOUND, its residual is more than 3x inside the
+    derived identification tolerance, and TM110 resolves the second in-plane
+    axis.
+
+    Frequencies: ``cv05_ringdown_spectra.json::runs.baseline.modes``. The
+    reported resonance is the SAME mode the anchored selector returned (the
+    lowest in-band mode), so no physics verdict cv05 publishes moves."""
     runs = _fixture("cv05_ringdown_spectra.json")["runs"]
     members = _members(CV05)
-    ident = identify_patch_modes([m["freq"] for m in runs["baseline"]["modes"]],
-                                 members)
+    freqs = [m["freq"] for m in runs["baseline"]["modes"]]
+    ident = identify_patch_modes(freqs, members)
     assert ident.ok, ident.reasons
-    assert ident.f_design / 1e9 == pytest.approx(2.33227, abs=1e-5)
+    # the same mode the OLD argmin|f - f_analytic| selector would have returned
+    assert ident.f_design == min(freqs, key=lambda f: abs(f - members[(1, 0)]))
     rel = ident.f_design / members[(1, 0)] - 1
-    assert rel == pytest.approx(-0.0376, abs=5e-4)
-    assert abs(rel) < 0.35 * ident.tol            # margin, not a squeaker
+    assert abs(rel) < ident.tol / 3.0             # margin, not a squeaker
     assert (1, 1) in {o for _f, o, _r in ident.assignments if o}
 
 
@@ -298,20 +278,20 @@ def test_cv05_correct_build_passes_with_margin():
 ])
 def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_ghz, rel):
     """(B) LIVE FDTD reproductions: the patch's realized resonant length is
-    22.5 / 22.0 / 21.0 / 38.0 mm while every declaration -- including the anchor --
-    still says 29.5 mm.
+    mis-built while every declaration -- including the anchor -- still says
+    29.5 mm. Frequencies and the realized-cell census:
+    ``cv05_ringdown_spectra.json::runs`` and ``::_realized_x_cell_census``.
 
-    The audit's +24% point is measured directly: a 22-cell realized patch
-    (declared 22.0 mm) puts the design mode at +23.36%, the closest point the
-    dx = 1 mm lattice offers (its neighbours, 23 and 21 cells, are +18.55% and
-    +28.43% -- ~5 percentage points per cell). Exactly +24.00% is pinned
-    algebraically by
+    The audit's +24% point is measured directly by the 22-cell realization
+    (``runs.patch_len_22p0mm``); the parametrization's ``rel`` column is
+    re-derived from the fixture in the body below, so these digits are checked,
+    not asserted. Exactly +24.00% is pinned algebraically by
     ``test_design_mode_24_percent_high_fails_because_the_member_is_not_found``.
 
     In every case the drifted design mode is captured by a NEIGHBOURING
-    declared member -- TM110 at 22.5/22.0/21.0 mm, TM010 at 38.0 mm, which is
-    the cross-mode capture the audit described -- and the gate reports TM100
-    MISSING rather than reporting the neighbour as the resonance."""
+    declared member -- the cross-mode capture the audit described -- and the
+    gate reports TM100 MISSING rather than reporting the neighbour as the
+    resonance."""
     data = _fixture("cv05_ringdown_spectra.json")["runs"][run]
     members = _members(CV05)
     freqs = [m["freq"] for m in data["modes"]]
@@ -326,35 +306,51 @@ def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_gh
     assert all(o != (1, 0) for _f, o, _r in ident.assignments)
 
 
-def test_cv15_committed_leg_passes_with_margin():
-    """(A) cv15's committed rfx leg identifies all three in-band members; worst
-    residual 4.21% against the derived 10.6198% tolerance (2.5x margin)."""
+def test_cv15_correct_build_would_pass_with_margin():
+    """(A) for cv15, recorded even though cv15 ships no spectral gate: the
+    correct (two_plane) build's ring-down identifies every in-band declared
+    member with margin against the derived tolerance.
+
+    Source: ``cv15_ringdown_spectra.json::two_plane_ground.modes`` -- the live
+    reproduction through cv15's production ``build_rfx_sim(two_plane=True)``.
+    (A) alone is cosmetic; (B) is what cv15 could not meet."""
+    fx = _fixture("cv15_ringdown_spectra.json")
+    members = _members(CV15)
+    ident = identify_patch_modes(
+        [m["freq_hz"] for m in fx["two_plane_ground"]["modes"]], members)
+    assert ident.ok, ident.reasons
+    worst = max(abs(r) for _f, o, r in ident.assignments if o is not None)
+    assert worst < 0.5 * ident.tol        # margin, not a squeaker
+
+
+def test_cv15_reproduction_ringdown_matches_the_committed_leg():
+    """The reproduction the two cv15 fixtures rest on is the same ring-down as
+    the leg #768 committed -- so reverting this lane's regeneration of
+    ``_15_patch_results/rfx.json`` (design note section 6.9) costs no evidence.
+
+    The leg carries no mode list; f0 is the field the two share."""
+    fx = _fixture("cv15_ringdown_spectra.json")["two_plane_ground"]
     leg = json.loads(
         (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
         .read_text(encoding="utf-8"))
-    cv15 = _load_cv15()
-    ok, detail = cv15._mode_id_ok(leg)
-    assert ok, detail
-    ident = identify_patch_modes([m["freq_hz"] for m in leg["modes"]],
-                                 cv15.declared_modes())
-    worst = max(abs(r) for _f, o, r in ident.assignments if o is not None)
-    assert worst < 0.045 and worst < 0.5 * ident.tol
+    assert "modes" not in leg          # the committed leg is #768's, untouched
+    assert fx["f_harminv_hz"] == pytest.approx(leg["f_harminv_hz"], rel=1e-7)
 
 
-def test_cv15_740_defect_is_a_common_mode_dilation_and_the_gate_says_so():
+def test_cv15_740_defect_is_a_common_mode_dilation():
     """The pre-declared scope limit, MEASURED on a live reproduction of the
     #740 one-plane ground realization through cv15's production builder.
 
-    The three declared members all move by the same factor (1.0681, half
-    spread 0.0023), so the mode-resolved identification PASSES on the defect
-    and the audit's proposed mode-pair RATIO band would too. #740's detector is
+    The three declared members move together to within the fixture's recorded
+    half spread, so the mode-resolved identification PASSES on the defect --
+    criterion (B) is not met and cv15 lands as a STOP. #740's detector is
     ``assert_realized_stack``, whose refusal is committed in the fixture.
 
-    This test exists so that "the pair gate closes #740" fails CI the moment
-    anyone writes it."""
+    What this test does NOT say is that no dimensionless spectral test could
+    fire: the ratio does move, and by how much is
+    ``cv15_mode_pair_ratio_band.json`` (next test), not this one."""
     fx = _fixture("cv15_ringdown_spectra.json")
-    cv15 = _load_cv15()
-    members = cv15.declared_modes()
+    members = _members(CV15)
 
     good = [m["freq_hz"] for m in fx["two_plane_ground"]["modes"]]
     bad = [m["freq_hz"] for m in fx["one_plane_ground_740_defect"]["modes"]]
@@ -365,12 +361,19 @@ def test_cv15_740_defect_is_a_common_mode_dilation_and_the_gate_says_so():
 
     # it IS a dilation: every member moves by the same factor
     dil = fx["measured_common_mode_dilation"]
-    assert dil["mean"] == pytest.approx(1.0681, abs=1e-3)
-    assert dil["half_spread"] < 0.003
-    # and the ratio -- the audit's proposed instrument -- barely moves
-    r_good = sorted(good)[1] / sorted(good)[0]
-    r_bad = sorted(bad)[1] / sorted(bad)[0]
-    assert abs(r_bad / r_good - 1) < 0.005
+    per = dil["per_member"]
+    assert dil["mean"] == pytest.approx(
+        sum(per.values()) / len(per), rel=1e-12)
+    assert dil["half_spread"] == pytest.approx(
+        (max(per.values()) - min(per.values())) / 2, rel=1e-12)
+    for i, name in enumerate(("TM010", "TM100", "TM110")):
+        assert per[name] == pytest.approx(sorted(bad)[i] / sorted(good)[i],
+                                          rel=1e-12)
+    # every residual under the defect is the dilation, and all stay in tolerance
+    for _f, order, rel in ident_bad.assignments:
+        if order is not None:
+            assert abs(rel) < ident_bad.tol
+    assert dil["half_spread"] < 0.5 * ident_bad.tol
 
     # the instrument that DOES see it, quoted from the same reproduction
     assert fx["one_plane_ground_740_defect"]["assert_realized_stack"].startswith(
@@ -393,15 +396,95 @@ def test_cv15_one_plane_reproduction_matches_the_committed_prefix_leg():
 
 
 def test_committed_prefix_leg_still_fails_the_live_judge():
-    """The committed pre-fix leg fails cv15's live judge -- but on the
-    realized-wall-plane check and (now) on the SCHEMA clause of the spectral
-    gate, NOT on a physics measurement of the spectrum. Pinned so the
-    distinction cannot be blurred in a later summary."""
+    """The committed pre-fix leg fails cv15's live judge -- on the
+    realized-wall-plane check, NOT on any measurement of its spectrum. Pinned so
+    the distinction cannot be blurred in a later summary: #740 is caught by
+    geometry, and nothing this lane wrote catches it."""
     cv15 = _load_cv15()
     leg = json.loads(
         (REPO_ROOT / "validation/crossval/_15_patch_results"
          / "rfx_one_plane_ground_b29f9de7.json").read_text(encoding="utf-8"))
     sc_ok, sc_detail = cv15._stack_check_ok(leg.get("stack_check"))
     assert sc_ok is False and "missing stack_check" in sc_detail
-    mid_ok, mid_detail = cv15._mode_id_ok(leg)
-    assert mid_ok is False and mid_detail.startswith("SCHEMA:")
+
+
+# ==========================================================================
+# The withdrawn absolute (design note section 6.9): the ratio band that CAN
+# separate the two realizations, and why it still is not one we may adopt
+# ==========================================================================
+
+
+def test_mode_pair_ratio_band_census_reproduces_from_the_committed_spectra():
+    """Round 1 published "a ratio band cannot fire on #740 at ANY width that
+    admits the correct build". It is false. This test re-derives every number
+    in ``cv15_mode_pair_ratio_band.json`` from the ring-down fixture and the
+    declared geometry, so the refutation is mechanical rather than asserted:
+    the admissible half-width interval is non-empty.
+
+    Emitter: ``scripts/diagnostics/build_patch_mode_pair_ratio_band_census.py``
+    (no FDTD)."""
+    band = _fixture("cv15_mode_pair_ratio_band.json")
+    fx = _fixture("cv15_ringdown_spectra.json")
+    members = _members(CV15)
+    r_decl = members[(1, 0)] / members[(0, 1)]
+    assert band["declared"]["pair_ratio"] == pytest.approx(r_decl, rel=1e-12)
+    assert band["declared"]["identification_tolerance"] == pytest.approx(
+        identification_tolerance(members), rel=1e-12)
+
+    widths = {}
+    for key, leg in (("correct_build", "two_plane_ground"),
+                     ("defect_740", "one_plane_ground_740_defect")):
+        fs = sorted(m["freq_hz"] for m in fx[leg]["modes"])
+        r = fs[1] / fs[0]
+        assert band["measured"][key]["pair_ratio"] == pytest.approx(r, rel=1e-12)
+        assert band["measured"][key]["residual_vs_declared"] == pytest.approx(
+            r / r_decl - 1.0, rel=1e-12)
+        widths[key] = abs(r / r_decl - 1.0)
+
+    dab = band["declared_anchored_band"]
+    assert dab["min_half_width_admitting_correct_build"] == pytest.approx(
+        widths["correct_build"], rel=1e-12)
+    assert dab["max_half_width_still_rejecting_740"] == pytest.approx(
+        widths["defect_740"], rel=1e-12)
+    # THE REFUTATION: the interval is non-empty
+    assert widths["correct_build"] < widths["defect_740"]
+    assert dab["admissible_interval_is_nonempty"] is True
+    assert dab["detection_ratio"] == pytest.approx(
+        widths["defect_740"] / widths["correct_build"], rel=1e-12)
+    assert dab["upper_endpoint_over_identification_tolerance"] == pytest.approx(
+        widths["defect_740"] / identification_tolerance(members), rel=1e-12)
+
+
+def test_a_band_from_the_census_interval_does_separate_the_two_realizations():
+    """Constructive form of the same refutation: take a half-width strictly
+    inside the census interval, apply it as a gate, and watch it PASS the
+    correct build and FAIL the #740 realization.
+
+    This is what makes the round-1 absolute false. It is NOT an endorsement:
+    the width used here has no provenance but the two measurements it judges
+    (burned data, SPEC-00 0.2.2) -- see the artifact's ``verdict``."""
+    band = _fixture("cv15_mode_pair_ratio_band.json")
+    fx = _fixture("cv15_ringdown_spectra.json")
+    members = _members(CV15)
+    r_decl = members[(1, 0)] / members[(0, 1)]
+    lo = band["declared_anchored_band"]["min_half_width_admitting_correct_build"]
+    hi = band["declared_anchored_band"]["max_half_width_still_rejecting_740"]
+    w = math.sqrt(lo * hi)          # geometric midpoint of the interval
+
+    def fires(leg):
+        fs = sorted(m["freq_hz"] for m in fx[leg]["modes"])
+        return abs(fs[1] / fs[0] / r_decl - 1.0) > w
+
+    assert not fires("two_plane_ground")            # correct build admitted
+    assert fires("one_plane_ground_740_defect")     # #740 rejected
+
+
+def test_the_census_interval_is_far_tighter_than_anything_derivable():
+    """Why the interval above is not adopted, stated as an assertion rather
+    than as prose: its upper endpoint is orders inside the only window this
+    lane can derive from declared geometry alone."""
+    band = _fixture("cv15_mode_pair_ratio_band.json")
+    assert band["declared_anchored_band"][
+        "upper_endpoint_over_identification_tolerance"] < 0.05
+    assert "burned-data" in band["verdict"]
+    assert "STOP" in band["verdict"]

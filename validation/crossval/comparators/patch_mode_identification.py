@@ -64,15 +64,23 @@ read from it.  Failing it means the mode could not be identified at all.
 
 WHAT THIS INSTRUMENT CANNOT SEE (stated up front, measured in the design note)
 -----------------------------------------------------------------------------
-Every observable here is a RATIO of measured frequencies to declared ones, and
-the identification residual of a common-mode dilation of the whole spectrum is
-that dilation.  A realization error that scales the entire cavity spectrum by a
-single factor -- issue #740's vacuum ground cell is one, measured at
-1.068 +/- 0.003 across three members -- moves every member by the same few
-percent and is INVISIBLE to any dimensionless spectral test (mode-pair ratio
-included).  Such defects are the realized-geometry checks' domain
-(``assert_realized_stack``), not this module's.  See
-``docs/design_notes/20260901_patch_mode_identification_predeclaration.md``.
+Every observable here is a RATIO of measured frequencies to declared ones, so
+under an exact common-mode dilation of the whole spectrum every identification
+residual moves by exactly that dilation and nothing else changes.  Issue #740's
+vacuum ground cell is such a defect to within the spread committed at
+``tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json::
+measured_common_mode_dilation`` -- so it moves every member nearly together and
+this identification PASSES on it.  #740's detector is the realized-geometry
+check ``assert_realized_stack`` (PR #768), not this module.
+
+Do NOT read that as "no dimensionless spectral test can see #740": the dilation
+is not exact, the mode-pair ratio does move, and the band half-widths that would
+separate the two realizations are enumerated in
+``tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::
+declared_anchored_band``.  That interval is non-empty; it is simply not a window
+derivable from declared geometry (see the same file's ``verdict``, and section
+6.9 of
+``docs/design_notes/20260901_patch_mode_identification_predeclaration.md``).
 """
 
 from __future__ import annotations
