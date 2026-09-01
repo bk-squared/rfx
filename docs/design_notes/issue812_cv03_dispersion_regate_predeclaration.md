@@ -181,3 +181,86 @@ Instrument work. No physics verdict of cv03 is challenged or changed. The E4
 Meep leg is untouched and still exits 2 on a host without Meep; this lane adds
 an E2 leg that runs on every host, and demotes the flux identity from
 "the gate" to "a self-check", which is what it always was.
+
+---
+
+## 7. CORRECTION — the pre-declared estimator was falsified by its own self-check
+
+Appended 2026-09-01, **before** the falsifier runs of §5 and **without touching
+G1**. Append-only: §4 above stands as written; this section states what was
+wrong with it and what replaces it.
+
+**What was declared (§4):** a single-mode ordinary-least-squares fit of
+`unwrap(arg Ez)` against `x`, with self-check **S3**: linear-phase residual RMS
+`<= 0.15 rad` at every gated bin.
+
+**What happened:** the first measurement on the real run gave a residual RMS of
+**0.37 - 0.40 rad** at every gated bin — S3 FAILED, for exactly the reason it
+was written for. The premise "one mode, linear phase" does not hold on this
+case's guide. Diagnosis of the residual:
+
+- its dominant spatial component is at `k = 5.43e6 rad/m`, and `2*beta =
+  5.33e6 rad/m` — a ratio of 1.018, i.e. the signature of a **counter-
+  propagating pair**, not of noise;
+- `|Ez(x)|` along the guide centre line has SWR `max/min = 3.33` over the fit
+  window, giving `|B/A| = 0.538`;
+- an ESPRIT decomposition of the same line resolves exactly two undamped
+  components at `n = -2.841` and `+2.843` with `|eigenvalue| = 1.0000`, and the
+  Hankel singular values fall from `0.52` (2nd) to `0.004` (3rd): the line is
+  rank-2 to 0.4 %.
+
+So the guide carries a large backward wave. **That is a physics/solver finding
+about cv03's setup, not an instrument finding, and this lane does not fix it —
+it is reported for separate filing** (see §8). The band-mean transmission is
+`0.96574` in the same run: `T = flux_out/flux_in` is the *net* flux ratio, which
+for a lossless section is `(|A|^2-|B|^2)` at both planes and is therefore
+identically blind to a standing wave of any depth. A guide reflecting more than
+half its amplitude reads `T = 0.966`, PASS — an independent, unplanned
+confirmation of the audit's thesis about this gate.
+
+**Replacement estimator (frozen here, before the §5 falsifier runs).** Fit the
+physically correct two-wave model of a lossless uniform section,
+
+    Ez(x, f) = A(f) exp(-i beta x) + B(f) exp(+i beta x)
+
+by minimizing the relative least-squares residual over `beta`, with `A` and `B`
+solved linearly at each trial `beta`. The search bracket is
+`beta / k0 in (sqrt(eps_clad), sqrt(eps_core))` — the bound-mode window between
+the cladding and core light lines, a first-principles bracket, not a fitted one.
+`|B/A|` is **reported, never gated**: this lane does not own it.
+
+Revised self-checks:
+
+- **S1'** two-wave synthetic with known `beta` and `|B/A| = 0.5`: recovered
+  `n_eff` within 1e-9 relative.
+- **S2** unchanged (closed-form oracle vs independent 1-D FD eigensolve, 3e-4).
+- **S3'** relative residual of the two-wave fit `<= 0.05` at every gated bin,
+  hard gate. Derivation: an unmodelled third spatial component of relative
+  amplitude `rho` separated by `2*beta` biases the fitted `beta` by at most
+  `6*rho/(beta^2 L^2)`; at `rho = 0.05`, `beta = 2.681/a`, `L = 8a` that is
+  **0.065 %**, i.e. 30x inside G1's 2.0 %. The bound, not a measured residual,
+  is what sets 0.05.
+
+**G1 is untouched: still 2.0 %, still derived only from §3.** The estimator was
+wrong about the field's *form*; nothing about the accuracy budget changed.
+
+## 8. Physics finding to file separately (NOT fixed in this lane)
+
+cv03's guide carries a standing wave with `|B/A| ~ 0.52-0.54` at the carrier.
+Measured behaviour of the ratio (band-centre bin, `|Ez|` SWR over Meep
+`x in [-4, 4]`):
+
+| configuration | SWR | `|r|` |
+|---|---:|---:|
+| recipe: `upml`, 20 absorber cells, `sx = 16a`, 400 a/c | 3.33 | 0.538 |
+| `upml`, 40 cells | 3.98 | 0.598 |
+| `upml`, 60 cells | 4.38 | 0.628 |
+| `cpml`, 40 cells | 4.06 | 0.605 |
+| `upml`, 20 cells, 120 a/c integration | 2.68 | 0.457 |
+| `upml`, 20 cells, `sx = 28a` | 4.35 | 0.626 |
+
+The guide *is* continued through the absorber padding (verified on the
+rasterized `eps_r`: `eps = 12` at every `x` index of the centre row, absorber
+cells included), so this is not a bare end facet. Deepening the absorber makes
+the ratio **worse**, which rules out a simple under-absorbing PML and is the
+part that most needs an owner. `T = flux_out/flux_in` cannot see any of it.
