@@ -150,43 +150,63 @@ per-bin sv 0.9874–1.003227, column power 0.9563–0.9908, DC anchor
 
 ## 5. Battery results (module-level, post-implementation)
 
+**RE-VERIFIED 2026-08-31 (KST), post-review**: the four counts below were
+re-measured live on this branch (`agent/issue-770-offdiag`, after the
+review-round Fix 1/2/3 commits and, for the second pass, after merging
+origin/main). The first three reproduce exactly; the fourth (fidelity
+contract) does not — see the correction after it.
+
 - THRU battery + twoport module (`-m "not gpu and (slow_physics or not
   slow_physics)"` — the slow_physics THRU locks RAN): 11 passed,
   1 xfailed (the #683 thru-floor gate 5, still FIRED-and-held; the #770
-  frame change does not touch the diagonal it fired on).
+  frame change does not touch the diagonal it fired on). Reproduces
+  identically pre- and post-origin/main-merge.
 - Dump-parity + port-dump-replay + refplane modules: 44 passed (the
   refplane byte-frozen legacy pins held through the frame change; the
   wholeport-tagged dumps replay faithfully; untagged synthetic dumps
-  replay the per-cell frame).
+  replay the per-cell frame). Reproduces identically pre- and
+  post-origin/main-merge.
 - `test_extract_lumped_s11_is_the_decompose_diagonal` +
   `test_sparam_driver_matches_eager` (driver-vs-eager, wire included):
   6 passed — the eager and driver paths moved together through the
-  shared decomposer, atol 2e-3 held.
-- Example-fidelity contract (discovery + machine-check + snapshot keys
-  for the three newly classified research harnesses): 56 passed; the
-  single failure is the PRE-EXISTING
-  `test_not_auditable_classifications_are_machine_checked[issue764...]`
-  recorded in the #683 P6 addendum (base-branch item, untouched here).
+  shared decomposer, atol 2e-3 held. Reproduces identically pre- and
+  post-origin/main-merge.
+- Example-fidelity contract: **does not reproduce as recorded.** The
+  claim of "56 passed; the single failure is the PRE-EXISTING
+  `test_not_auditable_classifications_are_machine_checked[issue764...]`"
+  does not hold on a fresh run: that test PASSES (it is not a failure),
+  and the 3 snapshot entries this PR added were missing the
+  `mesh_extent_um` key `rfx/fidelity.py` has written for every entry
+  since #762 (CI-blocking; fixed by re-capturing those 3 entries in the
+  review round). Live re-run, full file: 146 passed, 0 failed (146 not
+  98 because the origin/main merge added auditable convergence-floor +
+  multiband_nu fixtures). Machine-check subset alone: 98 passed,
+  0 failed. `ports_and_sparams_101` + `lumped_port_gradient_check`
+  (machine-check + snapshot-match entries together): 8 passed,
+  0 failed — including the 3 re-captured snapshot keys.
 
-## 6. Full-sweep record (appended after the sweep of 2026-08-29 (KST);
-## sections 1–5 unchanged)
+## 6. Full-sweep record — RE-RECORDED 2026-08-31 (KST), post-review
+## (section 1–4 unchanged; original section 5/6 counts below were found
+## not to reproduce and are corrected above/below rather than restated)
 
 Full battery, `-k "wire or lumped or sparam or twoport"`,
 `-m "not gpu and (slow_physics or not slow_physics)"` (marker override
-active — the slow_physics THRU battery ran, not skipped):
-**326 passed, 7 failed, 4 skipped, 1 xfailed** (13:43 CPU) — the same
-counts and the SAME seven failures as the #683 P6 baseline on the
-unchanged base (six `test_example_matches_snapshot` grid-realization
-snapshot drifts: ports_and_sparams_101 x5 + lumped_port_gradient_check;
-plus `test_not_auditable_classifications_are_machine_checked
-[issue764_wireport_norm_falsifiers.py]`).  Zero new movers.  The
-1 xfailed is the held #683 thru-floor gate.
+active — the slow_physics THRU battery ran, not skipped), measured on
+this branch before the origin/main merge (the merge changes no code this
+selection executes — confirmed by re-running the section-5 THRU-battery,
+dump-parity, and extract/driver subsets after the merge and getting
+byte-identical counts):
 
-Recorded deviation: three doc-only commits (fidelity-table
-classification + surgical snapshot keys, CHANGELOG entry, stale-comment
-retirements) landed while the sweep was running; none changes runtime
-behaviour, and the affected fidelity tests were additionally run
-standalone on the final tree (the 56-passed line in section 5).
+**334 passed, 3 skipped, 1 xfailed, 0 failed** (2065 s CPU). The
+previously recorded **326 passed, 7 failed, 4 skipped, 1 xfailed** does
+not reproduce: all 7 of the previously-recorded failures (six
+`test_example_matches_snapshot` grid-realization drifts —
+`ports_and_sparams_101` x5 + `lumped_port_gradient_check` — plus
+`test_not_auditable_classifications_are_machine_checked[issue764...]`)
+PASS on this branch once the missing `mesh_extent_um` snapshot keys are
+re-captured (section 5). Skipped moved 4 -> 3 (one previously-skipped
+case now runs and passes). The 1 xfailed is still the held #683
+thru-floor gate. Zero new failures relative to either record.
 
 The example-fidelity classification additions surfaced a base-branch
 omission: the two #683 research harnesses had no classification entry,
@@ -195,9 +215,11 @@ so `test_discovery_matches_classification_table` (outside the sweep's
 them (`issue683_sampling_order_decision` audited with its separable
 `build()`; `issue683_flip_acceptance` no_simulation — it imports that
 builder) and extending the snapshot additively (581 lines; every
-pre-existing key byte-untouched).  The pre-existing #764 harness
-misclassification failure is left exactly as the #683 P6 addendum
-recorded it.
+pre-existing key byte-untouched).  The #683 P6 addendum recorded a
+pre-existing #764 harness misclassification failure here
+(`test_not_auditable_classifications_are_machine_checked
+[issue764_wireport_norm_falsifiers.py]`); re-verified 2026-08-31, that
+test PASSES on this branch and is not currently failing (see section 5).
 
 Final standing: the whole-port receive channel is validated end to end
 by the pre-declared external falsifiers and locked at its measured
