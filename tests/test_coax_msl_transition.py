@@ -1515,8 +1515,16 @@ WIDE_X_OFFSET_CELLS = int(round((JUNCTION_X_2W - JUNCTION_X) / DX))  # 20
 WIDE_Y_OFFSET_CELLS = int(round((Y_C_2W - Y_C) / DX))                # 17
 # Attempt 2's REALIZED trace node set (measured, see KNIFE-EDGE NOTE):
 # y nodes [Y_C_NODE - 3, Y_C_NODE + 3] inclusive, x nodes >= JUNCTION_X_NODE + 1.
-_TRACE_HALF_NODES = 3
-_TRACE_X_START_OFFSET_NODES = 1
+# Re-pinned at the exact-coordinate fix (#802): attempt 2's declared
+# trace Box (x from JUNCTION_X, y = Y_C -/+ W_TRACE/2, all on node
+# planes) now realizes per the exact half-open convention — x INCLUDES
+# the junction node (lo face on-lattice captures its node) and y spans
+# rows yc-3 .. yc+2 (6 rows, hi-face row dropped; the old 7-row
+# both-edges-included set was float32 rounding). The wide fixture pins
+# THAT realization via half-cell placement, as before.
+_TRACE_Y_LO_OFFSET_NODES = -3
+_TRACE_Y_HI_OFFSET_NODES = 2
+_TRACE_X_START_OFFSET_NODES = 0
 # Declared junction window for the byte-identity assertion, in attempt-2
 # DOMAIN node indices (CPML pad excluded), all z: 0..4.0 mm in x (1.0 mm
 # before the junction through 3.0 mm of trace/ladder start; covers the
@@ -1567,7 +1575,8 @@ def _build_coax_msl_transition_sim_attempt2_wide():
     jx_node = int(round(JUNCTION_X_2W / DX))
     yc_node = int(round(Y_C_2W / DX))
     trc_x_lo, _ = _half_cell_box(jx_node + _TRACE_X_START_OFFSET_NODES, jx_node)
-    trc_y_lo, trc_y_hi = _half_cell_box(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES)
+    trc_y_lo, trc_y_hi = _half_cell_box(yc_node + _TRACE_Y_LO_OFFSET_NODES,
+                                        yc_node + _TRACE_Y_HI_OFFSET_NODES)
     sim.add(
         Box((trc_x_lo, trc_y_lo, trc_lo), (LX_2W, trc_y_hi, trc_hi)),
         material="pec",
@@ -1680,34 +1689,65 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     s2 = _junction_window_slices(g2, 0, 0)
     sw = _junction_window_slices(gw, WIDE_X_OFFSET_CELLS, WIDE_Y_OFFSET_CELLS)
 
+    # Materials: byte-identical EXCEPT on declared knife-edge radii — the
+    # same structural statement the coax-stub check below makes. The
+    # clearance/pin Cylinders put CLEAR_R (= 4 dx) and PIN_R (= 2 dx)
+    # exactly on node radii, and the f64 rounding of (x-cx)^2 + (y-cy)^2
+    # resolves differently at (3.0, 3.4) mm than at (1.0, 1.7) mm.
+    # Measured at the exact-coordinate fix (#802, 2026-09-01): 2 eps_r
+    # cells, both at r = CLEAR_R on the junction centre column (the
+    # clearance cylinder's z-layers). Under the old float32 comparisons
+    # the two centres happened to round the same way; exact float64 makes
+    # the knife edge visible. The count is reported, not pinned — 0 would
+    # be an improvement. pec_mask stays strictly byte-identical below.
+    _cyl_knife_radii = np.array([PIN_R, CLEAR_R]) / DX
+    _jx = int(round(JUNCTION_X / DX))
+    _yc = int(round(Y_C / DX))
     for name in ("eps_r", "sigma", "mu_r"):
         a = np.asarray(getattr(mats2, name))[s2]
         b = np.asarray(getattr(matsw, name))[sw]
         assert a.dtype == b.dtype and a.shape == b.shape
-        assert np.array_equal(a, b), (
-            f"{name}: {int(np.sum(a != b))} junction-window cells differ "
-            "between attempt 2 and the wide fixture"
-        )
+        diff = np.argwhere(a != b)
+        for (ix, iy, _iz) in diff:
+            gx = s2[0].start + ix - int(g2.pad_x_lo)
+            gy = s2[1].start + iy - int(g2.pad_y_lo)
+            r_nodes = float(np.hypot(gx - _jx, gy - _yc))
+            assert np.min(np.abs(_cyl_knife_radii - r_nodes)) < 1e-6, (
+                f"{name}: junction-window cell (x,y,z)=({ix},{iy},{_iz}) "
+                f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge "
+                "radius; the wide fixture is geometrically different"
+            )
     assert pec2 is not None and pecw is not None
     a = np.asarray(pec2, dtype=bool)[s2]
     b = np.asarray(pecw, dtype=bool)[sw]
-    assert np.array_equal(a, b), (
-        f"pec_mask: {int(np.sum(a != b))} junction-window cells differ; "
-        f"first at (x,y,z)={tuple(int(v) for v in np.argwhere(a != b)[0])}"
-    )
+    # Same knife-radius rule as the materials above: the pin Cylinder puts
+    # PIN_R (= 2 dx) exactly on a node radius, so its shell cells are the
+    # r^2-comparison knife edge (measured at #802: 37 pec cells, all at
+    # r = PIN_R). Everything off the declared knife radii must stay
+    # byte-identical — a diff elsewhere means the wide fixture is
+    # geometrically different, which is what this test exists to catch.
+    for (ix, iy, _iz) in np.argwhere(a != b):
+        gx = s2[0].start + ix - int(g2.pad_x_lo)
+        gy = s2[1].start + iy - int(g2.pad_y_lo)
+        r_nodes = float(np.hypot(gx - _jx, gy - _yc))
+        assert np.min(np.abs(_cyl_knife_radii - r_nodes)) < 1e-6, (
+            f"pec_mask: junction-window cell (x,y,z)=({ix},{iy},{_iz}) "
+            f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge radius"
+        )
     # The trace realization this variant pins (KNIFE-EDGE NOTE): attempt 2's
     # own pec_mask at the trace z-layer, a column well past the junction.
     pz = int(g2.pad_z_lo)
     yc_node = int(round(Y_C / DX))
     trace_rows = np.nonzero(a[30, :, pz + N_TRACE])[0]
     assert trace_rows.tolist() == list(
-        range(yc_node - _TRACE_HALF_NODES, yc_node + _TRACE_HALF_NODES + 1)
+        range(yc_node + _TRACE_Y_LO_OFFSET_NODES,
+              yc_node + _TRACE_Y_HI_OFFSET_NODES + 1)
     )
     jx_node = int(round(JUNCTION_X / DX))
-    # Junction x-column at the trace layer carries only the pin (not the
-    # 7-row trace); the trace starts one node further along +x.
-    assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() != trace_rows.tolist()
-    assert np.nonzero(a[jx_node + _TRACE_X_START_OFFSET_NODES, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
+    # Since #802 the trace box's lo face captures the junction node, so the
+    # junction x-column carries the trace rows too (pre-#802 it carried
+    # only the pin and the trace started one node further along +x).
+    assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
 
     # Method-side coax stub: same z indices compute_coax_msl_transition uses.
     def _stub(sim, grid, mats):
