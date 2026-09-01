@@ -257,7 +257,7 @@ print()
 if HAVE_MEEP:
     print(ring_mode_judge.format_report(verdict))
 else:
-    print(f"  [SKIP] Meep reference unavailable — no modes to assign against.")
+    print("  [SKIP] Meep reference unavailable — no modes to assign against.")
     print(f"  rfx harminv record T = {record_T_meep:.1f} (Meep units); "
           f"{len(rfx_modes)} rfx mode(s) extracted.")
 
