@@ -1248,7 +1248,80 @@ class _ExecuteMixin:
                                 "separated port on a different parallel "
                                 "trace also trips it — the check can be "
                                 "revisited if that layout is needed.")
-                    wire_refplane_specs.extend(build_wire_refplane_specs(
+                    # Same guard, extended to MSL ports (issue #498
+                    # correction 6). An MSL port is not a point: its
+                    # de-embedding PROBE LADDER reaches back toward the
+                    # DUT by ``n_probe_offset + n*n_probe_spacing`` cells,
+                    # so the port position alone can sit far outside the
+                    # plane zone while an inner rung sits INSIDE it. On
+                    # the #488 mixed fixture the MSL feed snaps to index
+                    # 77 (far beyond the 2N plane at 53) while the default
+                    # ``n_probes=5`` ladder's last rung is index 51 —
+                    # inboard of the 2N plane, and previously invisible to
+                    # this guard. Message class stays "reach past another
+                    # port" (frozen by
+                    # tests/test_refplane_port_waves.py::
+                    # test_refplane_crossing_guard_rejects_planes_past_other_port),
+                    # with the offending probe coordinate named.
+                    if self._msl_ports:
+                        from rfx.sources.msl_port import (
+                            MSLPort as _MSLPort498,
+                            msl_axis_roles as _msl_axis_roles498,
+                            msl_probe_x_coords_n as _msl_probe_xs498,
+                        )
+                        _ax_idx498 = {"x": 0, "y": 1, "z": 2}
+                        for _mpe in self._msl_ports:
+                            _mx, _my, _mz = (float(c) for c in _mpe.position)
+                            _mp498 = _MSLPort498(
+                                feed_x=_mx,
+                                y_lo=_my - float(_mpe.width) / 2.0,
+                                y_hi=_my + float(_mpe.width) / 2.0,
+                                z_lo=_mz,
+                                z_hi=_mz + float(_mpe.height),
+                                direction=_mpe.direction,
+                                impedance=float(_mpe.impedance),
+                                excitation=_mpe.waveform,
+                            )
+                            _prop498 = _msl_axis_roles498(_mpe.direction)[0]
+                            _prop_ax498 = _ax_idx498[_prop498]
+                            _pxs498 = _msl_probe_xs498(
+                                grid, _mp498,
+                                n_probes=int(_mpe.n_probes),
+                                n_offset_cells=int(_mpe.n_probe_offset),
+                                n_spacing_cells=int(_mpe.n_probe_spacing),
+                            )
+                            for _q498, _xq498 in enumerate(_pxs498):
+                                _pt498 = list(_mpe.position)
+                                _pt498[_prop_ax498] = float(_xq498)
+                                _qi498 = int(grid.position_to_index(
+                                    tuple(_pt498))[_l_ax])
+                                _in_zone_q = (
+                                    (_i_port < _qi498 <= _i_far)
+                                    if _sign > 0
+                                    else (_i_far <= _qi498 < _i_port))
+                                if _in_zone_q:
+                                    raise ValueError(
+                                        "reference_plane_cells: the "
+                                        "reference planes of the port at "
+                                        f"{pe.position} (indices up to "
+                                        f"{_i_far} on axis {_l_ax}) "
+                                        "reach past another port at "
+                                        f"{_mpe.position} — its MSL "
+                                        f"de-embedding probe {_q498} at "
+                                        f"{_prop498} = {_xq498:.6g} m "
+                                        f"(index {_qi498}) lies inside the "
+                                        "plane zone. Reduce N so both "
+                                        "planes stay on the uniform line "
+                                        "between the ports, or reduce "
+                                        "n_probes / n_probe_offset / "
+                                        "n_probe_spacing so the ladder "
+                                        "stays outboard of the 2N plane. "
+                                        "Note: this check compares "
+                                        "line-axis indices only "
+                                        "(conservative), so a TRANSVERSELY "
+                                        "separated MSL port on a different "
+                                        "parallel trace also trips it.")
+                    _specs_498 = build_wire_refplane_specs(
                         grid=grid,
                         port_cells=wp_cells,
                         e_component=pe.component,
@@ -1271,7 +1344,66 @@ class _ExecuteMixin:
                         # the failure.
                         pec_mask=_refplane_conductor_mask(
                             pec_mask, sheet_impedance),
-                    ))
+                    )
+                    # Guard (issue #498 correction 1): both planes must lie
+                    # INSIDE the declared domain and clear of the absorber.
+                    # ``grid.pad_{axis}_{lo,hi}`` is the CPML/UPML stack,
+                    # which pads OUTSIDE the declared domain, so the declared
+                    # domain occupies indices [pad_lo, n-1-pad_hi] on this
+                    # axis. A plane landing outside that span, or within a
+                    # face's own absorber thickness of it, is not on the
+                    # uniform line: it reads the open end / absorber-side
+                    # standing wave instead (measured on the #488 mixed
+                    # fixture: a "+x" feed silently built its 2N plane 5
+                    # cells from the trace's open end). This is a DISTINCT
+                    # message class from "reach past another port" above —
+                    # the two failures have different remedies (move the
+                    # planes inboard vs. reduce N). Checked AFTER
+                    # ``build_wire_refplane_specs`` so its own "no
+                    # conductor found" geometry error keeps precedence
+                    # (frozen by
+                    # tests/test_refplane_port_waves.py::
+                    # test_refplane_requires_pec_trace_at_plane), and
+                    # driven off the BUILT specs' own ``plane_index`` so
+                    # this reads exactly the planes that were registered.
+                    _pad_lo = (grid.pad_x_lo, grid.pad_y_lo,
+                               grid.pad_z_lo)[_l_ax]
+                    _pad_hi = (grid.pad_x_hi, grid.pad_y_hi,
+                               grid.pad_z_hi)[_l_ax]
+                    _n_ax = int(grid.shape[_l_ax])
+                    _dom_lo = int(_pad_lo)
+                    _dom_hi = _n_ax - 1 - int(_pad_hi)
+                    for _spec498 in _specs_498:
+                        _slot = int(_spec498.plane_slot)
+                        _ip = int(_spec498.plane_index)
+                        _axis_name = "xyz"[_l_ax]
+                        if _ip < _dom_lo or _ip > _dom_hi:
+                            raise ValueError(
+                                "reference_plane_cells: reference plane "
+                                f"slot {_slot} of the port at {pe.position} "
+                                f"lands at index {_ip} on axis {_l_ax} "
+                                f"({_axis_name}), OUTSIDE the declared "
+                                f"domain (indices {_dom_lo}..{_dom_hi}; the "
+                                "absorber stack pads outside that span). "
+                                "Reduce N so both planes stay on the "
+                                "uniform line inside the domain.")
+                        if (_ip < _dom_lo + int(_pad_lo)
+                                or _ip > _dom_hi - int(_pad_hi)):
+                            raise ValueError(
+                                "reference_plane_cells: reference plane "
+                                f"slot {_slot} of the port at {pe.position} "
+                                f"lands at index {_ip} on axis {_l_ax} "
+                                f"({_axis_name}), within the absorber "
+                                f"thickness of a declared-domain face "
+                                f"(domain {_dom_lo}..{_dom_hi}, absorber "
+                                f"{_pad_lo}/{_pad_hi} cells lo/hi, so the "
+                                "clear span is "
+                                f"{_dom_lo + int(_pad_lo)}.."
+                                f"{_dom_hi - int(_pad_hi)}). The plane is "
+                                "in the boundary near field, not on the "
+                                "uniform line. Reduce N, or point the port "
+                                "direction so the planes go INTO the DUT.")
+                    wire_refplane_specs.extend(_specs_498)
                 continue
 
             lp = LumpedPort(

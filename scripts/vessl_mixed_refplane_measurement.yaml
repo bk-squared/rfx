@@ -1,0 +1,141 @@
+name: rfx-i498-mixed-refplane-measurement
+description: "#498/#517 step 2: the 60-period, two-drive, reference-plane-instrumented run on the committed #488 mixed lumped/wire<->MSL fixture, predeclared in docs/design_notes/issue498_mixed_refplane_predeclaration.md. REPORT-ONLY -- it records S_raw, the reference-plane (out, inc) pair on both drives, |b_msl|, every flux surface individually and signed, cond(A), settling_db and the preflight text verbatim, then evaluates F1/F2/F3 as predeclared. It pins NOTHING: no gate, no tolerance, no reference, no support-matrix or known_limits edit, no snapshot, and in particular no lumped/wire diagonal value (the PI's sequencing decision on #776/#778 + the parked #683 flip is undecided). CPU lane -- the estimate is 15-30 min for the two drives on 16 cores; if it exceeds the timeout that is REPORTED, and num_periods is NOT shortened to fit. This job CLONES the branch fresh (NFS run-clone): the mounted primary checkout stays on main and does not carry the driver. Submit with: vessl run create -f scripts/vessl_mixed_refplane_measurement.yaml"
+tags: [rfx, issue-498, issue-517, mixed-port, reference-plane, report-only]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 32Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # CPU lane: JAX is the only parallel consumer here, so OMP_NUM_THREADS is
+  # aligned with resources.cpu above rather than chosen independently (the
+  # external-referee lane's own rule, applied to the one solver that runs).
+  OMP_NUM_THREADS: "16"
+  # JAX_ENABLE_X64 stays UNSET on purpose: the committed #488 run this
+  # measurement is comparable with ran in complex64 (its artifact carries the
+  # truncation warnings), and every flux surface is recorded BOTH ways
+  # (lane-default and exact_f64) by the driver itself.
+  RFX_BRANCH: "meas/498-517-mixed-referee"
+  # FILL THIS IN with the commit that carries
+  # scripts/diagnostics/i498_mixed_refplane_measurement.py before submitting.
+  # Empty = UNPINNED: the job still runs, off the RFX_BRANCH tip, and says so
+  # loudly in its own log. RFX_STRICT_SHA=1 turns an unfetchable or empty pin
+  # into a hard abort (exit 3) instead.
+  RFX_EXPECT_SHA: ""
+  RFX_STRICT_SHA: "0"
+  RFX_NUM_PERIODS: "60"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #498/#517: mixed-lane reference-plane measurement (REPORT-ONLY) ==="
+  echo "=== predeclaration: docs/design_notes/issue498_mixed_refplane_predeclaration.md ==="
+  echo "=== this job CLONES RFX_BRANCH -- it does NOT use the mounted primary"
+  echo "=== checkout, which stays on main and has no driver script ==="
+  date -u
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  CLONE_DIR=/tmp/rfx-i498-clone
+  rm -rf "$CLONE_DIR"
+  mkdir -p "$CLONE_DIR"
+  cd "$CLONE_DIR"
+  git init -q
+  git remote add origin https://github.com/bk-squared/rfx.git
+  git config --global --add safe.directory "$CLONE_DIR" || true
+
+  # Fetch the PINNED SHA directly (GitHub serves a reachable commit by SHA on
+  # a public repo), so the pin is the reproduction mechanism rather than a
+  # post-hoc check on a moving branch tip. Falls back to the branch tip, with
+  # a loud warning, when the pin is empty or unfetchable -- unless
+  # RFX_STRICT_SHA=1, which aborts instead.
+  if [ -n "$RFX_EXPECT_SHA" ] && git fetch --depth 1 origin "$RFX_EXPECT_SHA" 2>&1; then
+    git checkout -q FETCH_HEAD
+  elif [ "$RFX_STRICT_SHA" = "1" ]; then
+    echo "FATAL: RFX_EXPECT_SHA is empty or unfetchable and RFX_STRICT_SHA=1."
+    echo "       Refusing to fall back to the RFX_BRANCH tip."
+    exit 3
+  else
+    echo "WARNING: UNPINNED RUN -- RFX_EXPECT_SHA is empty or could not be"
+    echo "         fetched, so this job takes the RFX_BRANCH tip. The record"
+    echo "         below describes THAT commit; check the SHA printed next"
+    echo "         against what you intended. Set RFX_STRICT_SHA=1 to abort"
+    echo "         here instead."
+    git fetch --depth 1 origin "$RFX_BRANCH"
+    git checkout -q FETCH_HEAD
+  fi
+
+  echo "=== provenance ==="
+  ACTUAL_SHA="$(git rev-parse HEAD)"
+  echo "expected SHA   : ${RFX_EXPECT_SHA:-<unpinned>}"
+  echo "checked-out SHA: $ACTUAL_SHA"
+  if [ -n "$RFX_EXPECT_SHA" ] && [ "$ACTUAL_SHA" != "$RFX_EXPECT_SHA" ]; then
+    echo "NOTE: checked-out SHA does not match RFX_EXPECT_SHA -- this run used"
+    echo "      the RFX_BRANCH fallback; the record describes THAT commit."
+  fi
+
+  # EXPECT guard on CONTENT, not only on the SHA: without the driver and its
+  # predeclaration this job has nothing to measure, and a silent no-op run
+  # that still writes a log is exactly the failure mode the lane recipe warns
+  # about.
+  DRIVER="scripts/diagnostics/i498_mixed_refplane_measurement.py"
+  PREDECL="docs/design_notes/issue498_mixed_refplane_predeclaration.md"
+  for f in "$DRIVER" "$PREDECL"; do
+    if [ ! -f "$f" ]; then
+      echo "FATAL: $f is not on the checked-out commit ($ACTUAL_SHA)."
+      echo "       This lane measures the predeclared instrumentation; without"
+      echo "       it there is nothing to run. Fix RFX_EXPECT_SHA/RFX_BRANCH."
+      exit 3
+    fi
+  done
+  echo "EXPECT guard: driver and predeclaration both present on $ACTUAL_SHA"
+
+  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$CLONE_DIR"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx from', os.path.dirname(rfx.__file__))"
+
+  OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/i498-mixed-refplane/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
+  mkdir -p "$OUT_DIR"
+
+  echo "=== the evaluators and the report-only guards must be green on THIS"
+  echo "=== checkout before any physics runs (cheap: pure NumPy) ==="
+  set +e
+  python -u -m pytest tests/test_i498_refplane_measurement.py -m "not slow" -q \
+    > "$OUT_DIR/evaluator_tests.log" 2>&1
+  ev_rc=$?
+  set -e
+  tail -n 20 "$OUT_DIR/evaluator_tests.log"
+  echo "$ev_rc" > "$OUT_DIR/evaluator_tests.rc"
+  if [ "$ev_rc" -ne 0 ]; then
+    echo "FATAL: the falsifier evaluators are RED on this checkout -- refusing"
+    echo "       to spend a 60-period run on verdict code that does not pass"
+    echo "       its own synthetic two-sided tests."
+    exit 1
+  fi
+
+  echo "=== the measurement: two drives, num_periods=$RFX_NUM_PERIODS ==="
+  echo "=== (wall clock is RECORDED, never gated; if this exceeds the timeout"
+  echo "===  that is reported and the record length is NOT shortened to fit) ==="
+  set +e
+  timeout 10800 python -u "$DRIVER" \
+    --num-periods "$RFX_NUM_PERIODS" \
+    --out "$OUT_DIR" \
+    > "$OUT_DIR/run.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 160 "$OUT_DIR/run.log" || true
+  echo "$rc" > "$OUT_DIR/run.rc"
+  echo "artifacts persisted to (mounted NFS, survives job teardown): $OUT_DIR"
+  echo "(the /tmp clone itself is ephemeral and is NOT the artifact store)"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "RAN: the record is in $OUT_DIR. Read the falsifier block in run.log -- UNRESOLVED and NON_DISCRIMINATING are legal outcomes and neither convicts anything. Nothing here may be pinned; see section 10 of the predeclaration." ;;
+    124) echo "TIMEOUT at 10800 s. REPORT the wall clock; do NOT shorten num_periods to fit -- a truncated record makes every DFT number of that drive an artifact." ;;
+    *) echo "FAILED with rc=$rc -- inspect $OUT_DIR/run.log before trusting anything. In particular the driver's own B1 positive control (planes registered on BOTH drives, and no lw source on the MSL-driven run) raises rather than degrading silently." ;;
+  esac
+  exit "$rc"
