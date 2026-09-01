@@ -7,11 +7,13 @@ exposed them:
 * **#493** — ``Box``'s volume branch is half-open ``[lo, hi)`` over NODE
   coordinates, so a PEC obstacle drawn to its nominal physical dimension
   rasterizes short at its ``hi`` face. The tests below pin that arithmetic
-  (including the float32 rounding that decides whether the cost is one cell
-  or two) so the convention is executable documentation rather than
-  folklore. They derive node coordinates from a real ``Grid``, never from an
-  f64 ``arange``, because the two disagree by enough to change the answer.
-  They are
+  so the convention is executable documentation rather than folklore.
+  Since the exact-coordinate fix (#802) production nodes ARE the float64
+  construction, drawing to nominal costs exactly ONE cell at every
+  aperture, and the old per-aperture one-or-two-cell scatter is history:
+  it was float32 double-rounding deciding whether the hi fin's lo corner
+  captured its node. They still derive node coordinates from a real
+  ``Grid`` so they cannot drift from production. They are
   CHARACTERIZATION tests: the convention is deliberate and other paths
   depend on it, so a change here is a deliberate behaviour change and must
   be reviewed as one, not silenced.
@@ -50,18 +52,16 @@ _COORD_CACHE: dict = {}
 
 
 def _real_node_coords(cells: int):
-    """y-node coordinates from a REAL ``Grid`` — the production f32 path.
+    """y-node coordinates from a REAL ``Grid`` — the production path.
 
-    Deliberately NOT ``np.arange(ny) * dx``. ``_grid_coords`` computes
-    ``(jnp.arange(ny) - pad) * dx`` in float32, so every node is
-    ``f32(f32(i) * f32(dx))`` — double-rounded — whereas a ``Box`` corner is
-    computed by the caller in float64 and cast once. An f64 construction
-    differs from production on 30 of 31 nodes by up to 1.12e-9 m, which is
-    enough to flip a whole cell of metal: an earlier revision of these tests
-    built coordinates in f64 and consequently pinned ``d + dx`` at every
-    aperture, while production gives ``d + 2*dx`` at ``d`` = 12.192 mm.
-    Deriving coordinates from a real grid is what keeps these tests from
-    drifting away from the code they document.
+    Since the exact-coordinate fix (#802) production nodes are host
+    float64 ``(i - pad) * dx`` — bit-identical to the f64 construction and
+    independent of ``jax_enable_x64`` (pinned by the equality test below).
+    Historically ``_grid_coords`` computed them in float32, double-rounded
+    ``f32(f32(i) * f32(dx))``, disagreeing with an f64 construction on 30
+    of 31 nodes by up to 1.12e-9 m — enough to flip a whole cell of metal
+    per aperture. Deriving coordinates from a real grid is still what
+    keeps these tests from drifting away from the code they document.
     """
     if cells not in _COORD_CACHE:
         dx = A_WR90 / cells
@@ -136,44 +136,48 @@ def test_box_volume_branch_excludes_the_hi_node_plane(cells):
         assert len(occ) == k
 
 
-def test_production_node_coords_differ_from_an_f64_construction():
-    """Why these tests must derive coordinates from a real grid.
+def test_production_node_coords_equal_the_f64_construction():
+    """Inverted at the exact-coordinate fix (#802) — deliberately.
 
-    Pins the float32 double-rounding finding: production nodes are
-    ``f32(f32(i) * f32(dx))``, an f64 construction is ``f32(i * dx)``, and
-    they disagree on almost every node. The magnitude is ~1e-9 m — 1e-6 of a
-    cell — yet it changes the rasterized footprint (see the nominal-drawing
-    table below, where 12.192 mm lands on a different cell count than the
-    other two apertures).
+    This test used to pin the OPPOSITE claim (production f32 nodes differ
+    from an f64 ``arange`` on almost every node, ~1e-9 m, enough to move
+    whole cells of metal). That was the defect, not a contract: realized
+    geometry depended on ``jax_enable_x64`` and on which of three
+    coordinate constructions a lane used. Production nodes are now host
+    float64 and bit-identical to the f64 construction, so the equality IS
+    the contract.
     """
     for cells in (30, 60):
         y, dx = _real_node_coords(cells)
         y_f64 = np.arange(len(y)) * dx
-        delta = np.abs(y - y_f64)
-        assert (delta > 0).sum() >= cells, "expected almost every node to differ"
-        assert 0 < delta.max() < 1e-8
-        assert delta.max() / dx < 1e-5
+        assert y.dtype == np.float64
+        assert np.array_equal(y, y_f64), (
+            "production node coordinates must equal the exact f64 "
+            "construction (#802)")
 
 
-# Measured on the production f32 coordinate path. The nominal drawing is NOT
-# predictable from the nominal dimensions: 12.192 mm lands on d + 2*dx while
-# the other two apertures land on d + 1*dx, at BOTH mesh rungs. Pinned as a
-# characterization table so a change in the rounding behaviour is visible.
+# Measured on the production coordinate path. Re-pinned at the
+# exact-coordinate fix (#802): the old table carried 2 at 12.192 mm (both
+# mesh rungs) — a float32 double-rounding artifact that made the hi fin's
+# lo corner lose its node. With exact float64 nodes the nominal drawing
+# costs exactly ONE cell everywhere (the half-open convention's own
+# hi-face shortfall), and the excess IS predictable now. Still pinned as a
+# characterization table so any change in rounding behaviour is visible.
 _NOMINAL_EXCESS = {
-    (30, 7.620): 1, (30, 12.192): 2, (30, 18.288): 1,
-    (60, 7.620): 1, (60, 12.192): 2, (60, 18.288): 1,
+    (30, 7.620): 1, (30, 12.192): 1, (30, 18.288): 1,
+    (60, 7.620): 1, (60, 12.192): 1, (60, 18.288): 1,
 }
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
-def test_fins_drawn_to_nominal_aperture_are_one_or_two_cells_too_wide(
+def test_fins_drawn_to_nominal_aperture_are_one_cell_too_wide(
         cells, d_mm):
     """#493's mechanism, with the measured per-config value.
 
     Drawing to the nominal opening never yields the nominal ELECTRICAL
-    opening, and how much it overshoots is config-dependent: one cell from
-    the convention itself, plus a second whenever the hi fin's lo corner
-    fails to capture its node under float32 rounding.
+    opening: exactly one cell from the half-open convention itself. (The
+    former second cell — the hi fin's lo corner failing to capture its
+    node — was float32 rounding, gone at the exact-coordinate fix #802.)
     """
     d_phys = d_mm * 1e-3
     y, dx, d_c, fin_c = _iris(cells, d_phys)
@@ -181,7 +185,7 @@ def test_fins_drawn_to_nominal_aperture_are_one_or_two_cells_too_wide(
 
     excess = aperture_cells - d_c
     assert excess == _NOMINAL_EXCESS[(cells, d_mm)]
-    assert excess in (1, 2), "the drawn-to-nominal defect is 1 or 2 cells"
+    assert excess == 1, "the drawn-to-nominal defect is exactly 1 cell (#802)"
     assert aperture_cells * dx > d_phys, "must never be the nominal opening"
 
 
@@ -282,12 +286,15 @@ def test_half_cell_inward_offset_opens_two_cells_too_wide(cells, d_mm):
 def test_node_plane_corner_is_a_single_float32_ulp_knife_edge():
     """Why the recipe says "cell midpoint" and not "on the node plane".
 
-    Masks are evaluated at float32 (x64 is off by design), so one ULP of the
-    corner — ~5e-10 m at dx = 0.762 mm, 6e-7 of a cell — moves the footprint
-    by a whole cell. Combined with the double-rounded node coordinates, this
-    is why a corner computed as ``a - n*dx`` can rasterize differently from
-    an algebraically identical ``m*dx``. Midpoint corners sit half a cell
-    from either edge and are immune.
+    A corner one ULP below a node plane loses that node — half-open
+    ``[lo, hi)`` is exact, in whatever precision the caller's corner
+    arithmetic ran. Since #802 the comparison itself is float64, so the
+    knife edge is narrower (one f64 ulp, not the old f32 one) but not
+    gone: a corner computed as ``a - n*dx`` can still rasterize
+    differently from an algebraically identical ``m*dx``. Midpoint corners
+    sit half a cell from either edge and are immune. (The perturbations
+    below use f32 ULPs — generous by 2^29 against an f64 comparison, and
+    the footprint still flips, which is the point.)
     """
     y, dx = _real_node_coords(30)
     node = np.float32(y[8])
@@ -325,9 +332,11 @@ def test_drawn_vs_realized_gap_is_ambiguous_between_correct_and_defective():
     # The collision that kills the predicate: same reading, opposite verdicts.
     assert drawn_vs_realized(30, 7.620, 0.0) == pytest.approx(1.0, abs=1e-6)
     assert drawn_vs_realized(30, 7.620, 0.5) == pytest.approx(1.0, abs=1e-6)
-    # Elsewhere the readings do differ, so the predicate is not merely
-    # constant — it is unreliable, which is worse for a guard.
-    assert drawn_vs_realized(30, 12.192, 0.0) == pytest.approx(2.0, abs=1e-6)
+    # Since the exact-coordinate fix (#802) the collision is TOTAL: the
+    # defective nominal drawing and the correct midpoint recipe read +1
+    # cell at every aperture (the old +2 at 12.192 mm was float32
+    # rounding), so the predicate cannot separate them anywhere.
+    assert drawn_vs_realized(30, 12.192, 0.0) == pytest.approx(1.0, abs=1e-6)
     assert drawn_vs_realized(30, 12.192, 0.5) == pytest.approx(1.0, abs=1e-6)
 
 
@@ -729,8 +738,9 @@ def _predicted_excess(cells: int, d_phys: float) -> int:
     y, dx = _real_node_coords(cells)
     d_c = int(round(d_phys / dx))
     fin_c = (cells - d_c) // 2
-    hi_corner = np.float32(A_WR90 - fin_c * dx)
-    node = np.float32(y[cells - fin_c])
+    # Float64 since #802 — the same precision the mask comparison runs at.
+    hi_corner = np.float64(A_WR90 - fin_c * dx)
+    node = np.float64(y[cells - fin_c])
     return 1 + (1 if node < hi_corner else 0)
 
 
@@ -742,14 +752,20 @@ def test_pinned_excess_matches_an_independently_derived_prediction(cells, d_mm):
         cells, d_mm, predicted, _NOMINAL_EXCESS[(cells, d_mm)])
 
 
-def test_excess_table_exercises_both_the_one_and_two_cell_cases():
-    """Keeps the symmetry test's asymmetric branch from going dead.
+def test_excess_table_is_uniformly_one_cell_since_exact_coordinates():
+    """Re-pinned at #802 (was: table must exercise both 1 and 2).
 
-    If every pinned excess became 2, `if excess == 1: assert centre == -0.5`
-    would never execute and the suite would still report green.
+    The two-cell case existed only through float32 rounding, so with exact
+    coordinates it is unreachable from a nominal drawing and every pinned
+    excess is 1. Consequence for the symmetry test above: its
+    ``excess == 2`` branch is intentionally dead code retained as
+    documentation of the mechanism — the two corner types still differ,
+    but only the ``hi``-corner retreat occurs. If a value other than 1
+    ever appears here, rounding behaviour changed: investigate before
+    re-pinning (this table caught #802's class in the first place).
     """
     values = set(_NOMINAL_EXCESS.values())
-    assert values == {1, 2}, values
+    assert values == {1}, values
 
 
 def test_advisory_dedupe_key_keeps_cutoffs_apart_on_one_axis():
