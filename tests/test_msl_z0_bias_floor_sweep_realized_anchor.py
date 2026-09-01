@@ -117,15 +117,33 @@ def test_realized_anchor_matches_fidelity_report_directly():
     out = json.loads(ANCHOR_JSON.read_text(encoding="utf-8"))
     by_label = {r["label"]: r for r in out["rows"]}
 
+    # Re-pinned at the exact-coordinate fix (#802): realized geometry is
+    # now flag-independent and equals what this artifact's own precision
+    # note records as "the alternative (x64) rasterization of the aligned
+    # class's trace width". The committed artifact stays untouched — it is
+    # the as-solved record of the frozen sweep (its Z0 numbers were
+    # measured on the pre-#802 f32 rasterization, and its 0.4% bound test
+    # reads it as such). The live re-derivation therefore matches the
+    # committed rows where the realization did not move (the misaligned
+    # pair, and aligned h_sub/4) and the values below where it did.
+    # Refreshing the artifact itself requires RE-SOLVING the sweep on the
+    # new rasterization — a re-measurement lane, not a value edit here.
+    _post_802_w_um = {
+        "aligned h_sub/3": 592.667,   # was 677.333 (hi-face node was f32-included)
+        "aligned h_sub/5": 558.8,     # was 609.6
+        "aligned h_sub/6": 635.0,     # was 592.667 (route rounding, other way)
+    }
     for label, dx in mod.DX_GRID:
         h_real_um, w_real_um = mod.realized_h_w_um(dx)
         committed = by_label[label]
         assert h_real_um == pytest.approx(
             committed["h_sub_realized_um"], abs=0.01
         ), f"{label}: h_sub realized drifted vs committed artifact"
-        assert w_real_um == pytest.approx(
-            committed["w_trace_realized_um"], abs=0.01
-        ), f"{label}: W_trace realized drifted vs committed artifact"
+        expected_w = _post_802_w_um.get(
+            label, committed["w_trace_realized_um"])
+        assert w_real_um == pytest.approx(expected_w, abs=0.01), (
+            f"{label}: W_trace realized drifted vs the post-#802 "
+            "expectation (committed artifact = pre-#802 as-solved record)")
 
 
 def test_realized_board_deviation_tolerances_hold():
