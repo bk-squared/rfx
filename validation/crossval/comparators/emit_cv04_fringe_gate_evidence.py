@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from scipy.signal import find_peaks
 
 _HERE = Path(__file__).resolve().parent
 OUTPUT_PATH = (
@@ -91,6 +92,42 @@ def ideal_slab_R(freqs: np.ndarray, eps_r: float = EPS_R,
     finesse = 4.0 * r / (1.0 - r) ** 2
     s2 = np.sin(delta) ** 2
     return finesse * s2 / (1.0 + finesse * s2)
+
+
+def withdrawn_reference_blind_probe(fg, freqs: np.ndarray,
+                                    measured: np.ndarray) -> dict:
+    """Re-derive why the reference-BLIND detector was withdrawn (note section 9).
+
+    The withdrawn design located extrema with a prominence floor equal to the
+    value window ``V`` and no reference to the analytic positions. ``find_peaks``
+    measures prominence against the array boundary when no higher peak lies on
+    that side, and this band truncates the outer shoulder of both maxima -- so
+    the floor rejects them and the detector fails criterion (A) on correct code.
+    Measured here on the exact analytic slab so the claim is an artifact key,
+    not a sentence.
+    """
+    floor = fg.FRINGE_VALUE_LIMIT
+    out = {"prominence_floor": floor}
+    survivors = {}
+    for kind, signed in (("max", measured), ("min", -measured)):
+        idx, props = find_peaks(signed, prominence=0.0)
+        prom = props["prominences"]
+        out[f"{kind}_candidates_hz"] = [float(v) for v in freqs[idx]]
+        out[f"{kind}_prominences"] = [float(v) for v in prom]
+        keep = freqs[idx][prom >= floor]
+        survivors[kind] = [float(v) for v in keep]
+        out[f"{kind}_surviving_the_floor_hz"] = survivors[kind]
+    analytic = fg.analytic_slab_extrema(
+        EPS_R, D_M, float(freqs[0]), float(freqs[-1]), c0=C0
+    )
+    n_expected = {"max": sum(1 for k, _, _ in analytic if k == "max"),
+                  "min": sum(1 for k, _, _ in analytic if k == "min")}
+    out["n_analytic"] = n_expected
+    out["n_detected"] = {k: len(v) for k, v in survivors.items()}
+    out["criterion_A_ok"] = bool(
+        out["n_detected"] == n_expected
+    )
+    return out
 
 
 def _verdict_summary(fg, verdict) -> dict:
@@ -259,6 +296,8 @@ def build_evidence() -> dict:
             ),
             "search_half_width_hz": cell_half,
             "pin_margin_bins": fg.PIN_MARGIN_BINS,
+            "withdrawn_alternative_measured":
+                withdrawn_reference_blind_probe(fg, freqs, measured_ideal),
             "withdrawn_alternative": (
                 "a reference-blind prominence detector was implemented, "
                 "measured and withdrawn: on this band it rejected both true "

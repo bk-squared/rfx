@@ -492,6 +492,13 @@ def test_cv04_gate_sources_do_not_claim_reference_blindness():
     it is explicitly negated or named as the withdrawn alternative."""
     ev = _load_cv04_evidence_emitter().build_evidence()
     assert ev["detector"]["reference_blind"] is False
+    # and the withdrawn alternative really does fail criterion (A) on correct
+    # code -- the reason reference-blindness is not the property to restore
+    probe = ev["detector"]["withdrawn_alternative_measured"]
+    assert probe["criterion_A_ok"] is False
+    assert probe["n_analytic"]["max"] == 2
+    assert probe["n_detected"]["max"] == 0
+    assert all(p < probe["prominence_floor"] for p in probe["max_prominences"])
 
     for name in ("04_multilayer_fresnel.py", "comparators/fringe_gate.py"):
         lines = (CROSSVAL_DIR / name).read_text(encoding="utf-8").splitlines()

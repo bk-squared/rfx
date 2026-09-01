@@ -478,3 +478,13 @@ both values.
 table on today's tree. The change is comment-only at AST level, so the table is
 expected to reproduce exactly; the run is reported as a VESSL yaml rather than
 executed locally (SPEC-00 §0.3b).
+
+**One number in section 9 corrected while re-deriving it.** Section 9 gave the
+truncated-shoulder prominences of the two maxima as 0.032 and 0.023, computed
+from `R = 0.36 sin^2(delta)`. That is the small-`r` approximation; the exact
+Airy `R(f)` this case uses gives smaller values, now recorded as
+`detector.withdrawn_alternative_measured.max_prominences`. Section 9's
+conclusion is unchanged and is now mechanically checked: both maxima sit below
+the 0.04 floor, so the withdrawn detector finds zero of the two analytic maxima
+(`...n_detected.max` vs `...n_analytic.max`) and
+`detector.withdrawn_alternative_measured.criterion_A_ok` is false.

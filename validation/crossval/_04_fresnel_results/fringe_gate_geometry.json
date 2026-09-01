@@ -19,7 +19,37 @@
     "pin_margin_bins": 2,
     "reference_blind": false,
     "search_half_width_hz": 1873750000.0,
-    "withdrawn_alternative": "a reference-blind prominence detector was implemented, measured and withdrawn: on this band it rejected both true maxima (their outer shoulders are truncated by the band), so it failed criterion (A) on correct code -- see docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md section 9"
+    "withdrawn_alternative": "a reference-blind prominence detector was implemented, measured and withdrawn: on this band it rejected both true maxima (their outer shoulders are truncated by the band), so it failed criterion (A) on correct code -- see docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md section 9",
+    "withdrawn_alternative_measured": {
+      "criterion_A_ok": false,
+      "max_candidates_hz": [
+        3763977840.910414,
+        11239587215.923931
+      ],
+      "max_prominences": [
+        0.020744903393658365,
+        0.015806189345267285
+      ],
+      "max_surviving_the_floor_hz": [],
+      "min_candidates_hz": [
+        7475644034.098943
+      ],
+      "min_prominences": [
+        0.3599519849480077
+      ],
+      "min_surviving_the_floor_hz": [
+        7475644034.098943
+      ],
+      "n_analytic": {
+        "max": 2,
+        "min": 1
+      },
+      "n_detected": {
+        "max": 0,
+        "min": 1
+      },
+      "prominence_floor": 0.04
+    }
   },
   "falsifiers": [
     {
