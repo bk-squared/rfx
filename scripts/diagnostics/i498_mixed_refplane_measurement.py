@@ -1264,6 +1264,20 @@ def main(argv=None) -> int:
             "box_faces_vs_lane_box_lw_max_rel_dev": fid_box,
             "msl_plane_vs_lane_plane_msl_max_rel_dev": fid_plane,
         },
+        # The openEMS referee's input contract (see
+        # scripts/diagnostics/i498_openems_probe_fed_msl_referee.py, "Required
+        # keys"): top-level ``freqs_hz`` plus ``s_raw`` nested [2][2][n_freqs]
+        # of [re, im], index 0 = lumped/wire family, index 1 = MSL. Emitted
+        # natively so the referee can consume this artifact directly; VESSL
+        # 369367257607 refused an earlier artifact that carried the same
+        # content only under the names below, and needed
+        # scripts/diagnostics/i498_rfx_artifact_to_referee_contract.py to
+        # re-shape it. Same numbers, two spellings, no projected S either way.
+        "freqs_hz": [float(f) for f in np.asarray(freqs).tolist()],
+        "s_raw": [[[[float(S_raw[i, j, k].real), float(S_raw[i, j, k].imag)]
+                    for k in range(S_raw.shape[2])]
+                   for j in range(S_raw.shape[1])]
+                  for i in range(S_raw.shape[0])],
         "s_matrix": {
             "S_raw": _c2(S_raw), "S_raw_shape": list(S_raw.shape),
             "S_shipped_post_passivity": _c2(S_shipped),
