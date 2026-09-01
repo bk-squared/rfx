@@ -299,11 +299,12 @@ def test_scan_populations_carry_their_own_provenance(fixture):
 # issue #812 re-gate — the permittivity gets a channel of its own.
 #
 # The audit of issue #812 measured this case's dB gate passing for a
-# rasterized permittivity wrong by a factor. Re-measured live on today's code
-# (four gated coarse bins, oracle held at the declared 2.56): eps_r = 2.0
-# gives max |delta| = 6.07 dB and eps_r = 5.5 gives 5.50 dB, both inside the
-# 6.3 dB gate; 1.8 (7.70 dB) and 6.0 (8.55 dB) are outside. That window is not
-# a defect of the threshold — it is the sensitivity of the observable:
+# rasterized permittivity wrong by a factor. How wide that blind window is
+# lives in validation/crossval/_17_dielectric_results/material_blind_window.json
+# (no FDTD: committed gated_coarse deltas + the Mie oracle), is re-derived
+# below, and reproduces the live defect runs' pass/fail verdict at every
+# probed permittivity. That window is not a defect of the threshold — it is
+# the sensitivity of the observable:
 # d(sigma_dB)/d(eps/eps) is 9.816/10.202/9.978/7.134 dB per unit RELATIVE
 # permittivity at ka = 0.50/0.75/1.00/1.25, so 6.3 dB IS a factor-wide window
 # and the gate is already round-up(envelope x 1.5), i.e. as tight as the repo
@@ -380,7 +381,8 @@ def test_material_gate_rejects_the_permittivity_the_db_gate_cannot_see():
     assert mod.material_gate_ok(stats)
 
     # (B) the defect: a run whose rasterized permittivity sits at the edge of
-    # the window the 6.3 dB gate measurably tolerates (5.5 -> 5.50 dB, PASS).
+    # the window the 6.3 dB gate tolerates (summary.blind_window_bracket_eps
+    # in material_blind_window.json -- both edges PASS that gate).
     for bad_eps in (5.5, 2.0):
         bad = np.where(np.arange(64).reshape(4, 4, 4) < 20,
                        np.float32(bad_eps), np.float32(1.0))
@@ -432,3 +434,94 @@ def test_realized_material_is_recorded_and_will_be_gated_on_the_frozen_leg(fixtu
         # pre-#812 record: the absence is a dated fact, not a silent gap.
         assert fixture["schema_version"] == 1
         assert fixture["config"]["eps_r"] == 2.56
+
+
+# --------------------------------------------------------------------------- #
+# issue #812 ROUND 2 — numeric provenance for the blind-window claim.
+#
+# Round 1 wrote the width of the dB gate's permittivity blind window as four
+# FDTD-measured digits that no committed artifact carried. The window is now
+# re-derived with no FDTD from the committed gated_coarse deltas plus this
+# file's INDEPENDENT Mie leg, emitted by
+# scripts/diagnostics/build_cv17_material_blind_window.py, and checked here.
+# --------------------------------------------------------------------------- #
+
+_BLIND_WINDOW = (_REPO_ROOT
+                 / "validation/crossval/_17_dielectric_results/material_blind_window.json")
+
+
+@pytest.fixture(scope="module")
+def blind_window() -> dict:
+    with open(_BLIND_WINDOW) as f:
+        return json.load(f)
+
+
+def test_material_blind_window_is_rederived_from_the_committed_deltas(
+        fixture, blind_window):
+    """Every emitted number, recomputed against the independent Mie leg.
+
+    The model holds the solver's discretization error fixed and moves only the
+    material, with the ORACLE at the declared 2.56 -- which is what the dB gate
+    compares against. Nothing here runs FDTD.
+    """
+    art = blind_window
+    rows = fixture["gated_coarse"]
+    gate = fixture["gates"]["coarse_gate_db"]
+    assert art["schema"] == "rfx.rcs_mie_material_blind_window"
+    assert art["runs_fdtd"] is False
+    assert art["config"]["declared_eps_r"] == fixture["config"]["eps_r"] == 2.56
+    assert art["config"]["coarse_gate_db"] == gate
+    assert art["config"]["coarse_ka"] == [r["ka"] for r in rows]
+    assert [s["eps_r"] for s in art["scan"]] == art["eps_grid"]
+
+    def mie_db(eps, ka):
+        return 10 * math.log10(
+            _mie_backscatter_over_pi_a2(float(np.sqrt(eps)), ka))
+
+    for s in art["scan"]:
+        want = [abs(r["delta_db"] + mie_db(s["eps_r"], r["ka"]) - mie_db(2.56, r["ka"]))
+                for r in rows]
+        assert s["per_bin_abs_delta_db"] == pytest.approx(want, abs=2e-3), s["eps_r"]
+        assert s["max_abs_delta_db"] == pytest.approx(max(want), abs=2e-3)
+        assert s["inside_db_gate"] is bool(max(want) <= gate)
+        assert s["eps_rel_dev"] == pytest.approx(
+            abs(s["eps_r"] / 2.56 - 1.0), abs=1e-6)
+
+    summ = art["summary"]
+    inside = [s["eps_r"] for s in art["scan"] if s["inside_db_gate"]]
+    assert summ["blind_window_eps_grid_values"] == inside
+    lo, hi = summ["blind_window_bracket_eps"]
+    assert lo in inside and hi in inside
+    # the bracket is contiguous on the declared grid and contains the declared eps
+    grid = art["eps_grid"]
+    assert all(art["scan"][i]["inside_db_gate"]
+               for i in range(grid.index(lo), grid.index(hi) + 1))
+    assert lo < 2.56 < hi
+    assert summ["first_failing_eps_below"] == grid[grid.index(lo) - 1]
+    assert summ["first_failing_eps_above"] == grid[grid.index(hi) + 1]
+    assert not art["scan"][grid.index(lo) - 1]["inside_db_gate"]
+    assert not art["scan"][grid.index(hi) + 1]["inside_db_gate"]
+
+
+def test_blind_window_is_why_the_material_channel_exists(fixture, blind_window):
+    """The re-scope, restated as an inequality instead of a paragraph.
+
+    The dB gate tolerates a permittivity error two orders of magnitude wider
+    than the material channel does, which is the whole argument for G17-A
+    being a separate channel rather than a tighter dB threshold.
+    """
+    summ = blind_window["summary"]
+    tol = fixture["gates"]["eps_realized_tol"]
+    assert summ["material_gate_rel_tol"] == tol
+    assert summ["blind_window_max_rel_dev"] == pytest.approx(
+        max(abs(e / 2.56 - 1.0)
+            for e in summ["blind_window_eps_grid_values"]), abs=1e-4)
+    assert summ["blind_window_over_material_gate_x"] == pytest.approx(
+        summ["blind_window_max_rel_dev"] / tol, abs=0.2)
+    assert summ["blind_window_over_material_gate_x"] > 100
+    scope = " ".join(fixture["claim_scope"].split())
+    assert "material_blind_window.json" in scope
+    assert "summary.blind_window_bracket_eps" in scope
+    # the withdrawn prose-only digits are gone from the live claim
+    for digits in ("6.07 dB", "5.50 dB", "7.70 dB", "8.55 dB"):
+        assert digits not in scope

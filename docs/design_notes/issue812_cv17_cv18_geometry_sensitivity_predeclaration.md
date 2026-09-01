@@ -201,6 +201,21 @@ exactly the "half-cell effective-aperture ambiguity" the script's own raster
 comment names. **No legal gate can resolve it, and the claim will say so
 instead of implying the calibration is aperture-exact.**
 
+> **CORRECTION (issue #812 round 2, 2026-09-01), scoped to the sentence above
+> and to nothing else in this section.** The table, the declared resolution
+> (8/8 over, 2/8 under) and the conclusion are re-derived and unchanged — they
+> are now committed in
+> `validation/crossval/_18_wr90_iris_results/aperture_resolution.json` and
+> re-derived from the committed traces by an independent oracle in the gate
+> test. What was wrong is the explanation: the trace is *farther* from the
+> oracle at `d - 1 fine cell` than at the declared `d` at all eight
+> configurations, and its nearest oracle on the declared offset grid is at
+> `d + 0.5` fine cells everywhere. The 0.0035 quoted above is the M2 `-1`
+> DEFECT metric from this table's own column, not a distance; the
+> half-cell effective-aperture ambiguity the raster comment names is a WIDE
+> half cell, which is precisely why a one-cell narrowing cancels against it.
+> See §5.2's correction block.
+
 ### 2.5 Pre-declared new gates (cv18)
 
 * **G18-A** per-configuration fine gates, table in 2.3, enforced live in the
@@ -320,6 +335,22 @@ The structural half (G17-B) is falsified separately in
 averaged interface value passes G17-A (its max is still 2.56) and is rejected
 by G17-B.
 
+> **CORRECTION (issue #812 round 2, 2026-09-01) — provenance, not physics.**
+> The four dB magnitudes above (`5.50` / `6.07` / `7.70` / `8.55`) are live
+> FDTD measurements that no committed artifact carries, so they have been
+> withdrawn from cv17's `claim_scope` and from the script and test comments.
+> The window itself is now committed in
+> `validation/crossval/_17_dielectric_results/material_blind_window.json`,
+> built with no FDTD from the committed `gated_coarse` deltas plus the Mie
+> oracle (`scripts/diagnostics/build_cv17_material_blind_window.py --check`)
+> and re-derived against an independent Mie leg in
+> `tests/test_rcs_dielectric_sphere_mie_gates.py::test_material_blind_window_is_rederived_from_the_committed_deltas`.
+> The model returns the SAME pass/fail verdict as the live runs at all four
+> permittivities (`summary.blind_window_bracket_eps`,
+> `summary.first_failing_eps_below`, `summary.first_failing_eps_above`), so
+> the conclusion is unchanged and now has a source. The live magnitudes stay
+> here, in this note, as dated corroboration.
+
 ### 5.2 cv18
 
 **(A) — today's code, through the live gates.** `18_wr90_iris_modematch.py`
@@ -376,6 +407,37 @@ error is already worth about -0.6 to -1 cell of effective aperture, so the
 committed trace sits CLOSER to the oracle one cell narrow (0.0035) than to
 the declared one (0.0097). No legal gate can resolve it and none pretends to.
 
+> **CORRECTION (issue #812 round 2, 2026-09-01) — the paragraph immediately
+> above is SIGN-INVERTED and MIS-SOURCED; it is left in place per the
+> append-only rule, and this block is the record.** The 0.0035 it quotes is
+> not a distance from the committed trace to the narrow oracle; it is the
+> one-cell UNDER-aperture DEFECT metric
+> (`max_f |(fine + [oracle(d-dx) - oracle(d)]) - oracle(d)|`), which carries
+> the oracle shift with the opposite sign. Re-derived from the committed
+> traces, the fine rung's effective aperture is WIDER than nominal, not
+> narrower: over the declared offset grid the trace's nearest oracle sits at
+> `d + 0.5` fine cells at all eight configurations, and the distance to the
+> oracle one fine cell NARROW is larger than the distance at the declared `d`
+> at every configuration. That is why the under-aperture defect is invisible —
+> narrowing the geometry by a cell moves it toward the measured trace. Every
+> number in this class now lives in
+> `validation/crossval/_18_wr90_iris_results/aperture_resolution.json`
+> (`pairs[*].oracle_distance_abs`, `pairs[*].nearest_offset_fine_cells`,
+> `pairs[*].one_cell_defect.under.*`, `summary.*`), is rebuilt by
+> `scripts/diagnostics/build_cv18_aperture_resolution.py --check`, and is
+> re-derived from the committed traces by an independent oracle in
+> `tests/test_wr90_iris_modematch_gates.py::test_aperture_resolution_artifact_is_rederived_from_committed_traces`.
+> The detection COUNTS and the conclusion the section draws (an over-aperture
+> is resolved everywhere, an under-aperture nowhere with margin) are unchanged
+> and re-verified; only the explanation's sign and its source were wrong.
+>
+> The live-FDTD (B) numbers in section 5.2 above (`0.02842` / `0.00588`) are
+> likewise prose-only: no artifact carries them. They are NOT relied on by any
+> gate — criterion (B) is carried by the model table, which is committed and
+> mechanically checked — and a VESSL job to re-emit them as a committed JSON
+> is reported with this round's hand-off. Until it lands, treat those two
+> digits as unprovenanced corroboration.
+
 ### 5.3 What was NOT done, and why
 
 * **No fixture regeneration.** Both fixtures are frozen 2026-07-27/28 evidence
@@ -396,3 +458,24 @@ the declared one (0.0097). No legal gate can resolve it and none pretends to.
   (#820). This lane's cv17 changes are in the same file family (`rfx/rcs.py`
   is read by both cases) but touch no extraction path: the material gate reads
   the rasterized `eps_r` array before the solve and changes no computation.
+
+## 6. Round-2 numeric-provenance ledger (2026-09-01)
+
+Every quantity this lane asserts in a durable document, and where it now lives:
+
+| claim | source of record |
+|---|---|
+| cv18 per-configuration fine gates | `_18_wr90_iris_results/rfx.json::gates.fine_gate_abs_per_config`, bound to the script constant and to `round-up(env x 1.5)` in the gate test |
+| cv18 one-cell detection counts, margins, Richardson blindness | `_18_wr90_iris_results/aperture_resolution.json::summary.*`, `::pairs[*].one_cell_defect.*` |
+| cv18 effective aperture of the fine rung | `_18_wr90_iris_results/aperture_resolution.json::pairs[*].oracle_distance_abs`, `::pairs[*].nearest_offset_fine_cells` (this is the quantity §2.4 and §5.2 got sign-inverted) |
+| cv17 permittivity sensitivity (dB per unit relative eps) | re-derived in `tests/test_rcs_dielectric_sphere_mie_gates.py::test_the_declared_permittivity_sensitivity_is_the_one_recorded` and bound to `claim_scope` |
+| cv17 dB-gate permittivity blind window | `_17_dielectric_results/material_blind_window.json::summary.*`, `::scan[*]` |
+| cv18 live-FDTD (B) run (`0.02842` / `0.00588`) | **prose only, §5.2** — not gate-bearing; criterion (B) is carried by the committed model table. `scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py` re-runs that pair and writes `one_cell_defect_live.json` (it exits 1 unless the defect passes the pooled 0.04 gate and fails the per-config 0.015 one); it is submitted by a VESSL yaml reported to the orchestrator (`scripts/vessl_issue812_r2_cv17_cv18.yaml` in the worktree; `**/vessl*.yaml` is gitignored by repo convention, so the yaml is a hand-off artifact, not a commit). Its geometry half is verified locally with `--geometry-only`: aperture 20 nodes at the fine rung and 10 at the coarse, against nominal 19 / 9. |
+| cv17 live-FDTD defect runs (four dB magnitudes) | **prose only, §5.1** — not gate-bearing; the window is carried by `material_blind_window.json`. |
+
+Both builders are deterministic, read only committed artifacts, run no FDTD,
+and support `--check` (rebuild and diff, exit 1 on any drift).
+The same VESSL yaml re-runs criterion (A) for both cases through their live
+gates and re-checks both builders on the staged tree, so a green (A) cannot sit on
+a drifted artifact. No leg passes `--write-fixture`: the frozen evidence record is
+not regenerated by this round (§5.3 still holds).

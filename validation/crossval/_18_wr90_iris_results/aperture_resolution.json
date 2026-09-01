@@ -1,0 +1,321 @@
+{
+ "schema": "rfx.wr90_iris_aperture_resolution",
+ "schema_version": 1,
+ "issue": 812,
+ "generated_by": "scripts/diagnostics/build_cv18_aperture_resolution.py",
+ "reads": [
+  "validation/crossval/_18_wr90_iris_results/rfx.json"
+ ],
+ "runs_fdtd": false,
+ "method": "oracle_distance_abs[g] = max_f |committed fine |S11| - oracle(d + g*dx_fine)| over the DECLARED offset grid (a property of the fine rung's rasterization); one_cell_defect.{over,under}.fine_gap_abs = max_f |(fine + [oracle(d +- dx_rung) - oracle(d)]) - oracle(d)|, the audit's one-cell-at-each-rung geometry defect against the NOMINAL oracle (what the gate would see). The two are NOT the same quantity; conflating them inverted the round-1 prose claim.",
+ "config": {
+  "a_m": 0.02286,
+  "t_m": 0.001524,
+  "dx_fine_mm": 0.381,
+  "dx_coarse_mm": 0.762,
+  "n_freqs": 29,
+  "richardson_gate_abs": 0.01,
+  "pooled_fine_gate_abs": 0.04
+ },
+ "offset_grid_fine_cells": [
+  -1.0,
+  -0.5,
+  0.0,
+  0.5,
+  1.0
+ ],
+ "pairs": [
+  {
+   "config": "18.288|0.20|0.50",
+   "d_mm": 18.288,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "fine_gate_abs": 0.019,
+   "committed_fine_gap_abs": 0.0122,
+   "oracle_distance_abs": {
+    "-1.0": 0.0469,
+    "-0.5": 0.0291,
+    "+0.0": 0.0122,
+    "+0.5": 0.0045,
+    "+1.0": 0.0203
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0446,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 2.349,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0069,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0225,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.185,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0061,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "12.192|0.20|0.50",
+   "d_mm": 12.192,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "fine_gate_abs": 0.034,
+   "committed_fine_gap_abs": 0.0223,
+   "oracle_distance_abs": {
+    "-1.0": 0.0638,
+    "-0.5": 0.0429,
+    "+0.0": 0.0223,
+    "+0.5": 0.0048,
+    "+1.0": 0.0257
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0648,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.906,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0066,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0269,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.791,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0061,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "7.620|0.20|0.50",
+   "d_mm": 7.62,
+   "glen_m": 0.2,
+   "iris_frac": 0.5,
+   "fine_gate_abs": 0.015,
+   "committed_fine_gap_abs": 0.0097,
+   "oracle_distance_abs": {
+    "-1.0": 0.0229,
+    "-0.5": 0.0167,
+    "+0.0": 0.0097,
+    "+0.5": 0.0018,
+    "+1.0": 0.0071
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0265,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.77,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.003,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0035,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.235,
+     "scores_better_than_undefected": true,
+     "richardson_dev_abs": 0.0019,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "18.288|0.20|0.42",
+   "d_mm": 18.288,
+   "glen_m": 0.2,
+   "iris_frac": 0.42,
+   "fine_gate_abs": 0.022,
+   "committed_fine_gap_abs": 0.0145,
+   "oracle_distance_abs": {
+    "-1.0": 0.0481,
+    "-0.5": 0.0306,
+    "+0.0": 0.0145,
+    "+0.5": 0.0075,
+    "+1.0": 0.0209
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0458,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 2.084,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0064,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.023,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.045,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0058,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "12.192|0.20|0.42",
+   "d_mm": 12.192,
+   "glen_m": 0.2,
+   "iris_frac": 0.42,
+   "fine_gate_abs": 0.035,
+   "committed_fine_gap_abs": 0.0232,
+   "oracle_distance_abs": {
+    "-1.0": 0.0639,
+    "-0.5": 0.0433,
+    "+0.0": 0.0232,
+    "+0.5": 0.0049,
+    "+1.0": 0.0258
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0649,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.855,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0066,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.027,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.771,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.006,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "7.620|0.20|0.42",
+   "d_mm": 7.62,
+   "glen_m": 0.2,
+   "iris_frac": 0.42,
+   "fine_gate_abs": 0.015,
+   "committed_fine_gap_abs": 0.0097,
+   "oracle_distance_abs": {
+    "-1.0": 0.0229,
+    "-0.5": 0.0167,
+    "+0.0": 0.0097,
+    "+0.5": 0.0018,
+    "+1.0": 0.0072
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0265,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.767,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.003,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0036,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.237,
+     "scores_better_than_undefected": true,
+     "richardson_dev_abs": 0.0018,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "12.192|0.16|0.50",
+   "d_mm": 12.192,
+   "glen_m": 0.16,
+   "iris_frac": 0.5,
+   "fine_gate_abs": 0.034,
+   "committed_fine_gap_abs": 0.0222,
+   "oracle_distance_abs": {
+    "-1.0": 0.0639,
+    "-0.5": 0.0429,
+    "+0.0": 0.0222,
+    "+0.5": 0.0048,
+    "+1.0": 0.0257
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0647,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.903,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0067,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0269,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.79,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0061,
+     "detected_by_richardson_gate": false
+    }
+   }
+  },
+  {
+   "config": "12.192|0.24|0.50",
+   "d_mm": 12.192,
+   "glen_m": 0.24,
+   "iris_frac": 0.5,
+   "fine_gate_abs": 0.034,
+   "committed_fine_gap_abs": 0.0222,
+   "oracle_distance_abs": {
+    "-1.0": 0.0638,
+    "-0.5": 0.0429,
+    "+0.0": 0.0222,
+    "+0.5": 0.0047,
+    "+1.0": 0.0256
+   },
+   "nearest_offset_fine_cells": 0.5,
+   "one_cell_defect": {
+    "over": {
+     "fine_gap_abs": 0.0647,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 1.902,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0067,
+     "detected_by_richardson_gate": false
+    },
+    "under": {
+     "fine_gap_abs": 0.0268,
+     "detected_by_fine_gate": false,
+     "fine_margin_x": 0.788,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0061,
+     "detected_by_richardson_gate": false
+    }
+   }
+  }
+ ],
+ "summary": {
+  "n_pairs": 8,
+  "nearest_offset_fine_cells_values": [
+   0.5
+  ],
+  "nearest_offset_is_positive_at_all_pairs": true,
+  "over_aperture_detected": 8,
+  "over_aperture_min_margin_x": 1.767,
+  "under_aperture_detected": 2,
+  "under_aperture_max_margin_x": 1.185,
+  "under_aperture_detected_configs": [
+   "18.288|0.20|0.50",
+   "18.288|0.20|0.42"
+  ],
+  "under_aperture_scores_better_configs": [
+   "7.620|0.20|0.50",
+   "7.620|0.20|0.42"
+  ],
+  "richardson_detected_either_sign": 0
+ }
+}

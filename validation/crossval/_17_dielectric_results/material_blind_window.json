@@ -1,0 +1,189 @@
+{
+ "schema": "rfx.rcs_mie_material_blind_window",
+ "schema_version": 1,
+ "issue": 812,
+ "generated_by": "scripts/diagnostics/build_cv17_material_blind_window.py",
+ "reads": [
+  "validation/crossval/_17_dielectric_results/rfx.json"
+ ],
+ "runs_fdtd": false,
+ "method": "delta_db(eps) = committed gated_coarse delta_db + [mie_db(eps) - mie_db(2.56)] at the same ka, oracle held at the DECLARED 2.56; a permittivity is inside the blind window when the worst of the four gated coarse bins stays within coarse_gate_db. First-order model: the solver's discretization error is held fixed and only the material moves. It reproduces the live defect runs' PASS/FAIL verdict at every probed permittivity (design note 5.1); those live magnitudes are prose-only and are not copied here.",
+ "config": {
+  "declared_eps_r": 2.56,
+  "coarse_ka": [
+   0.5,
+   0.75,
+   1.0,
+   1.25
+  ],
+  "coarse_gate_db": 6.3,
+  "eps_realized_tol": 0.005
+ },
+ "eps_grid": [
+  1.6,
+  1.8,
+  2.0,
+  2.2,
+  2.56,
+  3.0,
+  4.0,
+  5.0,
+  5.5,
+  6.0,
+  6.5
+ ],
+ "scan": [
+  {
+   "eps_r": 1.6,
+   "eps_rel_dev": 0.375,
+   "max_abs_delta_db": 10.002,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    8.27,
+    7.132,
+    10.002,
+    5.757
+   ]
+  },
+  {
+   "eps_r": 1.8,
+   "eps_rel_dev": 0.296875,
+   "max_abs_delta_db": 7.827,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    6.181,
+    4.985,
+    7.827,
+    3.674
+   ]
+  },
+  {
+   "eps_r": 2.0,
+   "eps_rel_dev": 0.21875,
+   "max_abs_delta_db": 6.214,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    4.636,
+    3.39,
+    6.214,
+    2.18
+   ]
+  },
+  {
+   "eps_r": 2.2,
+   "eps_rel_dev": 0.140625,
+   "max_abs_delta_db": 4.959,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.429,
+    2.14,
+    4.959,
+    1.07
+   ]
+  },
+  {
+   "eps_r": 2.56,
+   "eps_rel_dev": 0.0,
+   "max_abs_delta_db": 3.276,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    1.794,
+    0.442,
+    3.276,
+    0.272
+   ]
+  },
+  {
+   "eps_r": 3.0,
+   "eps_rel_dev": 0.171875,
+   "max_abs_delta_db": 1.858,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    0.368,
+    1.038,
+    1.858,
+    1.087
+   ]
+  },
+  {
+   "eps_r": 4.0,
+   "eps_rel_dev": 0.5625,
+   "max_abs_delta_db": 3.127,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    1.668,
+    3.127,
+    0.106,
+    0.433
+   ]
+  },
+  {
+   "eps_r": 5.0,
+   "eps_rel_dev": 0.953125,
+   "max_abs_delta_db": 5.299,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    2.874,
+    4.299,
+    0.309,
+    5.299
+   ]
+  },
+  {
+   "eps_r": 5.5,
+   "eps_rel_dev": 1.148438,
+   "max_abs_delta_db": 4.839,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.306,
+    4.685,
+    0.01,
+    4.839
+   ]
+  },
+  {
+   "eps_r": 6.0,
+   "eps_rel_dev": 1.34375,
+   "max_abs_delta_db": 9.307,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    3.662,
+    4.973,
+    0.802,
+    9.307
+   ]
+  },
+  {
+   "eps_r": 6.5,
+   "eps_rel_dev": 1.539062,
+   "max_abs_delta_db": 11.102,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    3.957,
+    5.177,
+    2.543,
+    11.102
+   ]
+  }
+ ],
+ "summary": {
+  "blind_window_eps_grid_values": [
+   2.0,
+   2.2,
+   2.56,
+   3.0,
+   4.0,
+   5.0,
+   5.5
+  ],
+  "blind_window_bracket_eps": [
+   2.0,
+   5.5
+  ],
+  "first_failing_eps_below": 1.8,
+  "first_failing_eps_above": 6.0,
+  "blind_window_max_rel_dev": 1.1484,
+  "material_gate_rel_tol": 0.005,
+  "blind_window_over_material_gate_x": 229.7
+ }
+}
