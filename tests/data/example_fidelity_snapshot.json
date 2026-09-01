@@ -7681,6 +7681,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 64,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -7698,6 +7699,7 @@
                 0.0,
                 1.73472347598e-11
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 40,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -7715,6 +7717,7 @@
                 0.0,
                 5.20417042793e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 20,
               "realized_extent_um": 10000.0,
               "realized_um": [
@@ -7851,6 +7854,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 64,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -7868,6 +7872,7 @@
                 0.0,
                 1.73472347598e-11
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 40,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -7885,6 +7890,7 @@
                 0.0,
                 5.20417042793e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 20,
               "realized_extent_um": 10000.0,
               "realized_um": [
@@ -8021,6 +8027,7 @@
                 0.0,
                 2.77555756156e-11
               ],
+              "mesh_extent_um": 32000.0,
               "n_cells": 64,
               "realized_extent_um": 32000.0,
               "realized_um": [
@@ -8038,6 +8045,7 @@
                 0.0,
                 1.73472347598e-11
               ],
+              "mesh_extent_um": 20000.0,
               "n_cells": 40,
               "realized_extent_um": 20000.0,
               "realized_um": [
@@ -8055,6 +8063,7 @@
                 0.0,
                 5.20417042793e-12
               ],
+              "mesh_extent_um": 10000.0,
               "n_cells": 20,
               "realized_extent_um": 10000.0,
               "realized_um": [
