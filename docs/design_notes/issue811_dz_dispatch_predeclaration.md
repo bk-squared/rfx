@@ -1,0 +1,234 @@
+# Issue #811 — dz-only waveguide S-matrix dispatch: pre-declaration
+
+Date: 2026-09-01 (KST). Tree: worktree at `150bffb4` (origin/main tip).
+Written BEFORE any falsifier arm ran and BEFORE the fix was applied.
+
+## Defect, verified live on this tree
+
+`rfx/api/_sparams.py:2144` gates the non-uniform waveguide S-matrix lane on
+
+```python
+if self._dx_profile is not None or self._dy_profile is not None:
+```
+
+`dz_profile` is missing, so a simulation whose only profile is `dz_profile`
+is silently solved on the uniform grid built from the scalar `dx`, while
+`preflight()` builds the non-uniform grid and describes the graded mesh the
+solve never uses. Verified empirically on this tree before any change: a
+dz-only WR-90 two-port sim with `Simulation._compute_waveguide_s_matrix_nu`
+monkeypatched to raise a sentinel completed
+`compute_waveguide_s_matrix(n_steps=1, normalize="flux")` without the
+sentinel firing — the NU lane was never entered.
+
+The same two-profile gate is mirrored (with the byte-identical fence
+message, enforced by
+`tests/test_sparameter_support_contract.py::test_waveguide_nu_fence_message_parity_sparams_vs_preflight`)
+in `rfx/api/_preflight.py:2595`
+(`_validate_waveguide_sparameter_request_for_preflight`).
+
+### Class scan (fix the class, not the instance)
+
+Every other multi-profile dispatch predicate in the package was read with
+context on this tree. All of them test `dz_profile` too:
+
+- `rfx/api/_sparams.py` siblings at 2966, 4242, 5126, 5472, 5955, 6583
+  (msl / mixed / coax family lanes) — dz first operand, all correct.
+- `rfx/api/_execute.py` 205, 2347 (`_dispatch_plan` for `run()`/`forward()`),
+  `rfx/api/_compile.py` 523, `rfx/optimize.py` 359, 719,
+  `rfx/visualize.py` 482-483, 786-787,
+  `rfx/api/_preflight.py` 1197, 2188-2189, 2452, 2524, 2633, 3046, 3786, 4354
+  — dz present in every condition.
+- `rfx/api/__init__.py:606` checks dx/dy only, deliberately: it is the ADI
+  guard, and ADI's z-graded (ZCZ) lane accepts `dz_profile`. Per-axis by
+  design, not a member of this defect class.
+
+The defect class is exactly the two sites above. Reachability of the sibling
+gates was probed empirically on this tree: minimal dz-only fixtures raise the
+documented errors for `compute_coaxial_s_matrix` (NotImplementedError,
+"uniform Yee lane only"), `compute_coaxial_line_reflection` /
+`compute_coaxial_two_port` (ValueError, "dx_profile, dy_profile, and
+dz_profile are not supported"), and `compute_mixed_s_matrix`
+(NotImplementedError, "supports the uniform mesh only").
+
+## R1 memory citations
+
+1. `docs/agent-memory/rfx-known-issues.md:23` (primary checkout):
+   "🔴 #811 compute_waveguide_s_matrix ignores dz_profile — graded-z
+   declared, uniform solved (silent wrong answer)". This work is the fix for
+   that active ledger row — consistent.
+2. `docs/agent-memory/rfx-known-issues.md:1010`: "a uniform-valued
+   `dz_profile` tests the NU plumbing, never the NU metrics". Consistent:
+   every falsifier below that claims physics sensitivity uses genuinely
+   different graded z meshes; the one uniform-valued profile (the dy shim in
+   F2) is declared a PLUMBING witness only.
+3. Workspace memory `feedback_generalize_dont_debug_per_example`: "class
+   defect ⇒ default/architecture/detector, never fixture-by-fixture".
+   Consistent: the fix lands at the dispatch gate plus its preflight mirror,
+   and a source-level class lock (AST scan over the dispatch family) plus a
+   contract row per public S-matrix entry point guard the class, not the one
+   fixture.
+4. `CLAUDE.md` (rfx) "No silent gate loosening": no committed gate or
+   tolerance is touched by this work; F3 below is an order-of-magnitude
+   plausibility window on a new measurement, not a gate move.
+5. `docs/agent-memory/index.md` / known-issues comparator rule: no external
+   solver is involved here; both sides of every comparison are rfx runs on
+   one geometry, so the comparator is `np.array_equal` / `max|dS|` on
+   identical-shape arrays.
+
+## Planned change (declared before implementation)
+
+1. `rfx/api/_sparams.py`: add `self._dz_profile is not None` to the
+   waveguide NU dispatch gate (house style of the six siblings); extend the
+   fence message to name dz; extend the method docstring, the historical
+   dispatch comment, and the NU helper's normalize=False message.
+2. `rfx/api/_preflight.py`: identical gate change and BYTE-IDENTICAL fence
+   message change in the preflight mirror.
+3. Docs that describe the old behaviour: `docs/guides/support_matrix.md`
+   (waveguide NU row), `docs/guides/sparameter_support_matrix.md`
+   ("Nonuniform transverse mesh" block), and
+   `docs/guides/sparameter_support_matrix.json` (waveguide `known_limits`).
+   Each keeps a history line pointing at #811 and states that dz-graded
+   ACCURACY evidence is still pending (#810) — dispatch is fixed, the
+   observable is not thereby validated.
+4. New `tests/test_dz_only_dispatch_contract.py`: a dz-only contract row for
+   every public `compute_*` S-matrix entry point plus `run()`/`forward()`
+   lane selection, a no-FDTD dispatch witness (sentinel monkeypatch), a
+   fail-loud check for the default `normalize=False` on dz-only, the AST
+   class lock, and a slow_physics falsifier asserting two genuinely
+   different z meshes change the answer. Existing
+   `test_sparameter_support_contract.py` NU-waveguide fixtures get
+   parametrized over dy-only AND dz-only profiles so the fence-message
+   parity binds on dz too. No module-level x64 anywhere.
+
+Behaviour change to be documented loudly: dz-only +
+`compute_waveguide_s_matrix` with the DEFAULT `normalize=False` flips from
+silently-wrong uniform numbers to `NotImplementedError` (the NU lane's
+existing scope); dz-only + `normalize=True`/`'flux'` single-mode now runs
+the NU solve, so those numbers MOVE — that movement is the fix.
+
+## Falsifiers (declared before any arm ran)
+
+Instrument: `scripts/diagnostics/wr90_dz_dispatch_falsifier.py` (committed
+with this note, before any run). One WR-90 two-port geometry
+(a=22.86 mm, b=10.16 mm, domain x=0.10 m, dx=1 mm, CPML x / PEC y,z,
+cpml_layers=20, eps_r=2.2 slab from x=0.045 to 0.055 m spanning the full
+cross-section, TE10 ports at x=0.015/+x and 0.085/−x, reference planes
+0.020/0.080, freqs = linspace(8.2, 12.4 GHz, 9),
+`compute_waveguide_s_matrix(num_periods=20, normalize="flux")`).
+
+Arms (identical geometry; only the mesh differs; profiles sum EXACTLY to
+b=10.16 mm; adjacent ratios ≤ 1.4):
+
+- `U` — no profiles (uniform lane; equals what every pre-fix dz-only run
+  actually got).
+- `A` — `dz_profile` = 10×0.40 mm + 3×0.52 mm + 2×0.70 mm + 4×0.80 mm
+  (19 cells, fine→coarse).
+- `B` — reversed(A) (same cells, mirrored placement).
+- `C` — 6×0.80 mm + 4×0.62 mm + 4×0.72 mm (14 cells; min cell 0.62 mm, so
+  its dt differs from A/B's by ≈1.55×).
+- `A_shim` — A plus uniform-valued `dy_profile = full(23, 1.0 mm)` (equal to
+  the dy the NU lane synthesizes itself). PLUMBING witness only (memory
+  citation 2).
+
+### F1 — dz-only arms must stop being bit-identical
+
+Post-fix, every pair among {A, B, C} must satisfy
+`np.array_equal(S_i, S_j) == False`. Reported per pair: `max|dS|` over all
+(receiver, driver, bin) entries AND the per-bin `|dS11|` table (9 bins).
+Baseline expectation, declared now: on the PRE-fix tree, A, B, C (and U) are
+bit-identical to one another — running the same instrument before the fix
+must reproduce the defect signature (exit code 2). This is the falsifier's
+resolving-power check.
+
+### F2 — shim agreement (plumbing witness ONLY)
+
+Post-fix `max|S(A) − S(A_shim)|` expected exactly 0.0; PASS tolerance 1e-6
+(a few float32 ulps of headroom). This witnesses that an explicit
+uniform-valued dy equals the synthesized dy on the same lane — plumbing, not
+metric accuracy (memory citation 2).
+
+### F3 — the fixed dz-only answer must move off the uniform answer plausibly
+
+`max_bin |S11(A) − S11(U)|` must land in the order-of-magnitude window
+[1e-5, 1e-1]. Context, not a gate: the issue measured 1.1486e-3 for the
+dispatch flip on ITS meshes (finer, different grading; measure:
+max abs difference of complex S11 over its band); our arms are coarser and
+differently graded, so only the order of magnitude is declared. A value
+below 1e-5 would mean dz still is not reaching the solve (F1 would also
+fire); above 1e-1 would mean the NU solve is broken, not merely dispatched.
+Per-bin `|dS11|` reported verbatim either way.
+
+Additional provenance witness: post-fix arm U must be bit-identical to the
+PRE-fix baseline's arm A (the uniform lane is untouched by this diff; the
+old dz-only "answer" WAS the uniform answer). Checked across the two JSONs.
+
+### F4 — nothing else moves
+
+Only the enumerated stale guards/docs change and no committed pinned value
+moves. Commands (declared):
+
+```
+pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py \
+       tests/test_support_matrix_parity.py tests/test_evidence_citation_pointers.py -q
+pytest tests -k "waveguide and (sparam or s_matrix or dispatch or nonuniform)" -q
+pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q
+ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
+```
+
+### Falsifier run commands (declared)
+
+```
+# pre-fix baseline (defect signature expected, exit 2):
+python scripts/diagnostics/wr90_dz_dispatch_falsifier.py \
+    --arms U,A,B,A_shim \
+    --out scripts/diagnostics/wr90_dz_dispatch_falsifier_prefix_baseline.json
+
+# post-fix battery (all falsifiers expected PASS, exit 0):
+python scripts/diagnostics/wr90_dz_dispatch_falsifier.py \
+    --arms U,A,B,C,A_shim \
+    --out scripts/diagnostics/wr90_dz_dispatch_falsifier_results.json
+```
+
+Scope statement: the numbers these runs produce are dispatch evidence, not
+validated S-parameters. Run length (num_periods=20) is common to every
+compared arm, so truncation is common-mode; no ring-down witness is claimed
+or needed for a bit-identity/non-identity verdict, and none of these numbers
+may be quoted as physics. dz-graded waveguide S accuracy remains an OPEN
+item (#810).
+
+## Locked-value audit (bucket a)
+
+Swept on this tree: no committed test gate, fixture, snapshot, or validation
+result was produced by `compute_waveguide_s_matrix` on a dz-only simulation.
+`grep -rl compute_waveguide_s_matrix tests/ | xargs grep -l dz_profile`
+returns six files, each verified benign:
+
+- `tests/test_stage2_dual_path.py` — its cwsm gate runs on a uniform sim;
+  its dz-only sim expects a raise from `run()`.
+- `tests/test_waveguide_nu_nontrivial.py` — grades dx; the manual
+  `sim._dz_profile` there feeds a dispatch-bypassing internals helper.
+- `tests/_example_fidelity_lib.py` — input-side fidelity snapshots; no
+  variant combines dz_profile with a waveguide cwsm script.
+- `tests/test_sparameter_support_contract.py` — NU waveguide fixture is
+  dy-only; its dz fixtures are MSL/TFSF (dz-aware dispatches).
+- `tests/test_preflight_absorber_frame.py` — cwsm named in a docstring only.
+- `tests/test_sheet_lane_fences.py` — dz-only fixtures are fence/raise
+  tests; the cwsm fences use the uniform `_wr90` fixture.
+
+So bucket (a) is EMPTY: the dispatch fix moves no committed pinned value.
+The values that DO move are out-of-repo dz-only user results (uniform-mesh
+artifacts, to be re-produced on the mesh actually requested) and the
+unpushed #810 working tree's arm results (regenerated by whoever lands #810,
+per that note's own instruction).
+
+## R2 status
+
+Attempt count for this mechanism (dz dispatch fix): 1. No prior attempt
+exists in memory or the ledger; the falsifiers above are pre-declared with
+numeric windows, so the attempt is closing by construction (it ends at a
+declared PASS or a declared STOP).
+
+## Results
+
+(to be appended after the declared runs — nothing below this line existed
+before the arms ran)
