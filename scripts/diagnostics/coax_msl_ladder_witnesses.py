@@ -22,10 +22,17 @@ Sign conventions (frozen, unit-tested in ``tests/test_coax_msl_ladder_witnesses.
 
 What each witness decides (review-repaired kill table)
 ------------------------------------------------------
-W1 (phase-slope direction): SIGN only. On the coax ladder under the MSL
-    drive, a positive mean slope means the dominant wave LEAVES the junction
-    (-z); the assembler labels that wave ``a_inc``. A NEGATIVE slope there
-    kills H1. Magnitudes are printed next to the analytic beta but are not a
+W1 (phase-slope direction): SIGN only, AND ONLY BEHIND PREDECLARED
+    PRECONDITIONS. On the coax ladder under the MSL drive, a positive mean
+    slope means the dominant wave LEAVES the junction (-z); the assembler
+    labels that wave ``a_inc``. A NEGATIVE slope there kills H1. But a
+    travel direction read out of extractor floor is not a measurement: the
+    verdict is emitted only when the run is settled (settling_db <= -40 dB
+    on both drives), the pairwise slopes agree in sign (>= 0.8), the mean
+    slope is actually beta-sized (|mean|/beta_analytic in [0.7, 1.4]) and
+    the same ladder's full-ladder pencil fit residual is < 0.02. Otherwise
+    the row reads UNRESOLVED and names every precondition that failed.
+    Magnitudes are otherwise printed next to the analytic beta but are not a
     kill: on a 1 mm ladder the pairwise slopes of an 11:1 two-wave field
     wander by +-9% and the pencil's own beta is 15-18% above analytic.
     On the MSL ladder the 15%-at-all-pairs criterion of the design is NOT
@@ -47,13 +54,30 @@ W3 (subset two-wave fits): the unchanged production pencil
     refitted with alpha forced to 0 differs from the fitted-gamma value by
     < 1% at every bin (X = 1%, declared here) -- the referral bias is then
     immaterial whatever Re(gamma) the 1 mm ladder pretends to see.
-W4 (flux planes): the SIGN of ``coax_z22`` under the coax drive is the only
-    two-sided FDTD discriminator for H1 in this design: positive (+z, toward
-    the junction) => the wave the code calls ``b_out`` carries the net power
-    into the junction => labels inverted; negative => labels correct and the
-    junction is genuinely active. ``R1 = coax_z22 / (|b_code|^2 - |a_code|^2)``
-    is a Z0 CALIBRATION ratio (analytic z_tem = 45.46 ohm vs the numerical
-    stub) with a predeclared >= 10% band, not an identity. ``R2 = msl_x20 /
+W4 (flux planes): the H1 discriminator is the SIGN of ``msl_x20`` -- the
+    NON-DRIVEN port -- under the coax drive, NOT the sign of ``coax_z22``.
+    ``coax_z22 > 0`` is ENTAILED BY PASSIVITY and is confirmatory only: under
+    the coax drive the feed sits BELOW the coax probes and the junction ABOVE
+    them (ref_coax_m = 2.5 mm > max ladder z = 1.9 mm), so the net +z power at
+    any plane between feed and junction is ``|a_phys|^2 - |b_phys|^2 > 0`` for
+    ANY passive junction, whatever the code calls the two branches -- a witness
+    keyed on it can only ever say "H1 supported". ``msl_x20`` is different:
+    there is no source on the MSL side, so all the power crossing that plane
+    came THROUGH the junction, and its sign is a property of the DUT rather
+    than of the drive. Positive (+x, away from the junction) => the wave the
+    assembler labels ``a_inc`` (``a_inc[1] = out_msl.backward_amp``, and
+    ``load_below`` is True on this lane so ``backward_amp`` IS the +x wave) is
+    carrying power OUT => labels inverted, H1 supported. Negative => net power
+    arrives at the junction from the undriven MSL side, the ``a_inc`` label is
+    consistent, and H1 is KILLED. The verdict carries the same predeclared
+    preconditions as W1 (settled run; the box closes to within its declared
+    band; |msl_x20| above the box's own closure error), and prints UNRESOLVED
+    otherwise. ``R1 = coax_z22 / (|b_code|^2 - |a_code|^2)`` is a Z0
+    CALIBRATION ratio (analytic z_tem = 45.46 ohm vs the numerical stub) with a
+    predeclared >= 10% band, not an identity and NOT an H1 discriminator: its
+    denominator is built from the extractor's GEOMETRIC branch identity ("coax:
+    reference above => b_code is the +z wave"), which holds under H1 and under
+    its negation alike, so R1 is label-blind by construction. ``R2 = msl_x20 /
     |a_code[1,0]|^2`` tests the MSL modal-voltage -> power conversion
     (``a_code[1,0]`` is the +x, away-from-junction wave on the MSL ladder;
     under the H1 swap it is the outgoing MSL wave the design wrote as
@@ -81,6 +105,16 @@ W1_SLOPE_NOISE_MARGIN = 0.05        # added to 2g/(1-g) for the echo-aware slope
 W4_R1_CALIBRATION_BAND = 0.10       # R1 is a Z0 calibration, >= 10% band (review blocker 2)
 W4_CLOSURE_REL_MAX = 0.05           # "a few %" for a lossless box; qualitative if patches differ
 
+# ---- predeclared PRECONDITIONS on the two H1 verdicts ------------------------
+# A witness that emits a hypothesis verdict from numerical noise is not a
+# falsifier. Every H1 verdict below is gated on ALL of the applicable
+# preconditions and prints UNRESOLVED (naming the ones that failed) otherwise.
+SETTLING_DB_MAX = -40.0             # this repo's ring-down settling witness rule
+W1_MIN_SIGN_CONSISTENCY = 0.8       # fraction of pairwise slopes agreeing with the mean sign
+W1_ABS_MEAN_OVER_BETA_BAND = (0.7, 1.4)   # |mean slope| / beta_analytic: is this a wave at all?
+W1_MAX_FIT_RESIDUAL = 0.02          # the same (ladder, drive) full-ladder pencil residual
+W4_MIN_SIGNAL_OVER_CLOSURE = 3.0    # |msl_x20| must exceed the box's own closure error by this
+
 COAX_SUBSETS = ((0, 4), (2, 6))
 MSL_SUBSETS = ((0, 3), (3, 6), (6, 9), (0, 5), (4, 9))
 FLUX_BOX_FACES = ("coax_z22", "msl_x20", "top_z36", "xlo_x05", "ylo_y03", "yhi_y31")
@@ -89,6 +123,29 @@ FLUX_CLOSURE_SIGNS = {  # outflow through each face expressed in the monitor's +
 }
 JUNCTION_SIDE = {"coax": "above", "msl": "below"}   # where the junction sits on each ladder axis
 DRIVE_ORDER = ("coax", "msl")
+
+
+# =============================================================================
+# Shared precondition: is the run settled?
+# =============================================================================
+def settling_precondition(settling_db):
+    """``(ok, note)`` for the repo's ring-down settling rule.
+
+    ``settling_db`` is the per-drive ring-down figure the driver already prints
+    (``result.settling_db``). A truncated run is not in the time-harmonic
+    steady state the whole witness set assumes, so no H1 verdict is emitted
+    from one. ``None``/absent is NOT treated as pass: an unknown settling is a
+    failed precondition, because the alternative is a verdict from an unknown
+    state."""
+    if settling_db is None:
+        return False, "settling_db not in the dump (unknown)"
+    arr = np.asarray(settling_db, dtype=float).ravel()
+    if arr.size == 0 or not np.all(np.isfinite(arr)):
+        return False, f"settling_db not usable ({arr.tolist()})"
+    worst = float(np.max(arr))
+    ok = bool(worst <= SETTLING_DB_MAX)
+    return ok, (f"settling_db worst {worst:+.1f} dB "
+                f"{'<=' if ok else '>'} {SETTLING_DB_MAX:.0f} dB")
 
 
 # =============================================================================
@@ -163,6 +220,61 @@ def w1_ladder(v, pos, *, junction_side, beta_analytic, freqs):
             "dominant_relative_to_junction": "toward" if direction == toward else "away",
         })
     return rows
+
+
+def w1_h1_sign_witness(rows, *, fit_residual_by_bin, settling_db):
+    """The W1 H1-sign reading on the coax ladder under the MSL drive, GATED.
+
+    The sign of the mean phase slope only means something when the field at
+    that ladder is a settled, sign-consistent, beta-sized propagating wave.
+    On a truncated run the non-driven coax array sits at extractor floor --
+    the driver's own A5 line says so -- and its pairwise slopes flip sign
+    along the ladder while |mean|/beta is 0.04. Reading "H1 supported" out of
+    that is reading noise. All four preconditions are predeclared at the top
+    of this module; a row that fails any of them is UNRESOLVED and names them.
+    """
+    lo, hi = W1_ABS_MEAN_OVER_BETA_BAND
+    s_ok, s_note = settling_precondition(settling_db)
+    out = []
+    for k, r in enumerate(rows):
+        resid = (float(fit_residual_by_bin[k])
+                 if fit_residual_by_bin is not None and k < len(fit_residual_by_bin)
+                 else float("nan"))
+        ratio = float(r["abs_mean_over_beta_analytic"])
+        cons = float(r["sign_consistency"])
+        failed = []
+        if not s_ok:
+            failed.append(f"not settled ({s_note})")
+        if cons < W1_MIN_SIGN_CONSISTENCY:
+            failed.append(f"sign_consistency {cons:.2f} < {W1_MIN_SIGN_CONSISTENCY} "
+                          "(pairwise slopes disagree in sign along the ladder)")
+        if not (lo <= ratio <= hi):
+            failed.append(f"|mean slope|/beta_analytic {ratio:.3f} outside "
+                          f"[{lo}, {hi}] (not a beta-sized propagating wave)")
+        if not (np.isfinite(resid) and resid < W1_MAX_FIT_RESIDUAL):
+            failed.append(f"full-ladder pencil fit_residual {resid:.2e} not < "
+                          f"{W1_MAX_FIT_RESIDUAL} (the field here is not two-wave)")
+        if failed:
+            verdict = "UNRESOLVED -- precondition(s) failed: " + "; ".join(failed)
+        elif r["dominant_relative_to_junction"] == "away":
+            verdict = ("dominant wave LEAVES the junction (slope > 0): the assembler "
+                       "labels it a_inc -> H1 supported")
+        else:
+            verdict = "dominant wave ARRIVES at the junction (slope < 0) -> H1 KILLED"
+        out.append({
+            "freq_hz": r["freq_hz"],
+            "coax_ladder_msl_drive_mean_slope": r["mean_slope_rad_per_m"],
+            "dominant_travel": r["dominant_travel"],
+            "relative_to_junction": r["dominant_relative_to_junction"],
+            "sign_consistency": cons,
+            "abs_mean_over_beta_analytic": ratio,
+            "full_ladder_fit_residual": resid,
+            "settling_note": s_note,
+            "preconditions_failed": failed,
+            "verdict_resolved": not failed,
+            "verdict": verdict,
+        })
+    return out
 
 
 # =============================================================================
@@ -356,14 +468,96 @@ def net_plus_axis_power(a_code, b_code, port_array, drive):
     The assembler sets ``b_out = forward_amp`` (the pencil's wave travelling
     TOWARD the reference plane) and ``a_inc = backward_amp``. Coax: reference
     above => ``b_code`` is the +z wave => net +z = |b|^2 - |a|^2. MSL:
-    reference below => ``b_code`` is the -x wave => net +x = |a|^2 - |b|^2."""
+    reference below => ``b_code`` is the -x wave => net +x = |a|^2 - |b|^2.
+
+    NOTE this is derived from the extractor's GEOMETRIC branch identity (which
+    of the two pencil modes travels toward the reference plane), which is true
+    under H1 and under its negation alike. Anything built on it -- R1 in
+    particular -- is therefore LABEL-BLIND and cannot discriminate H1."""
     a = abs(complex(a_code[port_array, drive])) ** 2
     b = abs(complex(b_code[port_array, drive])) ** 2
     return (b - a) if port_array == 0 else (a - b)
 
 
-def w4_flux(flux_by_drive, *, a_inc, b_out, freqs):
-    """Per (drive, bin): faces, closure residual, H1 sign verdict, R1, R2."""
+def h1_flux_verdict(*, msl_x20, coax_z22, closure_residual, closure_rel_residual,
+                    settling_db):
+    """The W4 H1 discriminator: the SIGN of ``msl_x20`` under the COAX drive.
+
+    Why not ``coax_z22``: under the coax drive the feed sits BELOW the coax
+    probes and the junction ABOVE them, so the physically incident wave travels
+    +z and the net +z power at any plane between the two is
+    ``|a_phys|^2 - |b_phys|^2 > 0`` for ANY passive junction -- positive
+    regardless of which branch the code labels ``a`` and which ``b``. A verdict
+    keyed on it can only ever come out FOR H1, which makes it not a falsifier.
+    It is reported here as a passivity CHECK instead.
+
+    Why ``msl_x20`` is different: nothing drives the MSL side, so every watt
+    crossing that plane came THROUGH the junction and its sign is a property of
+    the DUT, not of the drive. The assembler labels that same +x branch
+    ``a_inc`` (``rfx/api/_sparams.py``: ``a_inc[1] = out_msl.backward_amp``;
+    ``rfx/sources/coaxial_port.py``: ``load_below`` is True on this lane, so
+    ``backward_amp`` is the +x wave). Measured +x net power therefore means the
+    code's "incident" wave is the outgoing one (H1 supported); measured -x net
+    power means the label is consistent and H1 is KILLED.
+
+    Preconditions (predeclared): the run is settled; the flux box actually
+    closes to within its declared band (an un-settled box's residual IS the
+    stored energy, so its faces are not a steady-state power balance); and
+    ``|msl_x20|`` exceeds the box's own closure error by ``W4_MIN_SIGNAL_OVER_
+    CLOSURE``, so the discriminating quantity is bigger than the instrument's
+    own inconsistency. Any failure -> UNRESOLVED, naming what failed.
+    """
+    s_ok, s_note = settling_precondition(settling_db)
+    failed = []
+    if not s_ok:
+        failed.append(f"not settled ({s_note})")
+    if not (np.isfinite(closure_rel_residual)
+            and abs(closure_rel_residual) <= W4_CLOSURE_REL_MAX):
+        failed.append(f"box closure {closure_rel_residual:+.2%} outside "
+                      f"+-{W4_CLOSURE_REL_MAX:.0%} (not a steady-state power balance)")
+    if not np.isfinite(msl_x20):
+        failed.append("msl_x20 missing")
+    elif not (np.isfinite(closure_residual)
+              and abs(msl_x20) >= W4_MIN_SIGNAL_OVER_CLOSURE * abs(closure_residual)):
+        failed.append(f"|msl_x20| {abs(msl_x20):.4e} < {W4_MIN_SIGNAL_OVER_CLOSURE:g} x "
+                      f"|closure_residual| {abs(closure_residual):.4e} "
+                      "(the discriminator is below the box's own error)")
+    if failed:
+        verdict = "UNRESOLVED -- precondition(s) failed: " + "; ".join(failed)
+    elif msl_x20 > 0:
+        verdict = ("msl_x20 > 0: net power at the NON-DRIVEN MSL port LEAVES the junction "
+                   "(+x); the assembler labels that same +x branch a_inc => the code's "
+                   "'incident' wave is the outgoing one => labels inverted (H1 supported)")
+    elif msl_x20 < 0:
+        verdict = ("msl_x20 < 0: net power ARRIVES at the junction from the undriven MSL "
+                   "side; the assembler's a_inc label on the +x branch is then consistent "
+                   "=> H1 KILLED (and the anomaly is genuine energy injection, not labels)")
+    else:
+        verdict = "UNRESOLVED -- msl_x20 is exactly zero"
+    if not np.isfinite(coax_z22):
+        conf = "coax_z22 missing"
+    elif coax_z22 > 0:
+        conf = (f"coax_z22 {coax_z22:+.4e} > 0 as REQUIRED BY PASSIVITY (feed below the "
+                "coax probes, junction above them): CONFIRMATORY ONLY -- this sign is "
+                "entailed for any passive junction under either hypothesis and is NOT "
+                "evidence for H1")
+    else:
+        conf = (f"coax_z22 {coax_z22:+.4e} <= 0, which passivity FORBIDS under the coax "
+                "drive: the flux box or the run is unphysical. This is a failed sanity "
+                "check on the instrument, not evidence about H1")
+    return {
+        "h1_discriminator": "sign(msl_x20) under the coax drive (the non-driven port)",
+        "h1_flux_verdict": verdict,
+        "h1_verdict_resolved": not failed,
+        "h1_preconditions_failed": failed,
+        "coax_z22_passivity_check": conf,
+        "coax_z22_sign_is_passivity_entailed": True,
+        "settling_note": s_note,
+    }
+
+
+def w4_flux(flux_by_drive, *, a_inc, b_out, freqs, settling_db=None):
+    """Per (drive, bin): faces, closure residual, H1 flux verdict, R1, R2."""
     out = {"faces": list(FLUX_BOX_FACES), "closure_identity":
            "coax_z22 = msl_x20 + top_z36 - xlo_x05 - ylo_y03 + yhi_y31 (patch faces of one "
            "lossless box; +axis-positive flux)", "per_drive": {}}
@@ -400,13 +594,11 @@ def w4_flux(flux_by_drive, *, a_inc, b_out, freqs):
                 "flux_ratio_msl_x20_over_coax_z22": (msl_x20 / coax_z22 if coax_z22 != 0 else float("nan")),
             }
             if drive == "coax":
-                if np.isfinite(coax_z22) and coax_z22 > 0:
-                    row["h1_sign_verdict"] = ("coax_z22 > 0: net power flows +z INTO the junction; the "
-                                              "wave the code calls b_out carries it => labels inverted "
-                                              "(H1 supported)")
-                elif np.isfinite(coax_z22):
-                    row["h1_sign_verdict"] = ("coax_z22 < 0: net power flows -z back to the feed; labels "
-                                              "consistent, junction genuinely active => H1 KILLED")
+                row.update(h1_flux_verdict(
+                    msl_x20=msl_x20, coax_z22=coax_z22,
+                    closure_residual=closure_res,
+                    closure_rel_residual=row["closure_rel_residual"],
+                    settling_db=settling_db))
                 r1 = row["R1_coax_z22_over_net_code_coax"]
                 row["R1_within_calibration_band"] = bool(
                     np.isfinite(r1) and abs(abs(r1) - 1.0) <= W4_R1_CALIBRATION_BAND)
@@ -480,9 +672,10 @@ def compute_witnesses(d):
     """``d`` is a dict/npz with keys: coax_ladder_v (2,n_c,n_f), coax_ladder_z_m,
     msl_ladder_v (2,n_m,n_f), msl_ladder_x_m, ref_coax_m, ref_msl_m, freqs,
     beta_coax_analytic, beta_msl_analytic, a_inc, b_out; optional
-    flux_by_drive {drive: {name: (n_f,)}}, gamma. Ladders may be absent
+    flux_by_drive {drive: {name: (n_f,)}}, gamma, settling_db. Ladders may be absent
     (then W1-W3 are skipped and only W4 + the counterfactual are computed)."""
     freqs = np.asarray(d["freqs"], dtype=float)
+    settling_db = d.get("settling_db")
     a_inc = np.asarray(d["a_inc"], dtype=np.complex128)
     b_out = np.asarray(d["b_out"], dtype=np.complex128)
     out = {"freqs_hz": freqs.tolist(), "conventions": {
@@ -531,14 +724,21 @@ def compute_witnesses(d):
                 r["worst_pair_within_echo_aware_tolerance"] = bool(
                     np.isfinite(tol) and r["worst_pair_rel_dev_from_beta"] <= tol)
         out["W1_phase_slopes"] = w1
-        out["W1_h1_sign_witness"] = [
-            {"freq_hz": r["freq_hz"], "coax_ladder_msl_drive_mean_slope": r["mean_slope_rad_per_m"],
-             "dominant_travel": r["dominant_travel"], "relative_to_junction": r["dominant_relative_to_junction"],
-             "sign_consistency": r["sign_consistency"],
-             "verdict": ("dominant wave LEAVES the junction (slope > 0): the assembler labels it a_inc "
-                         "-> H1 supported" if r["dominant_relative_to_junction"] == "away"
-                         else "dominant wave ARRIVES at the junction (slope < 0) -> H1 KILLED")}
-            for r in w1["coax_ladder/msl_drive"]]
+        full_resid = []
+        for k in range(len(freqs)):
+            hit = [f for f in w3["coax_ladder/msl_drive"]
+                   if f["subset"].endswith("[all]") and np.isclose(f["freq_hz"], float(freqs[k]))]
+            full_resid.append(hit[0]["fit_residual"] if hit else float("nan"))
+        out["W1_h1_sign_witness"] = w1_h1_sign_witness(
+            w1["coax_ladder/msl_drive"], fit_residual_by_bin=full_resid, settling_db=settling_db)
+        out["W1_h1_sign_preconditions"] = (
+            f"a verdict is emitted only when ALL hold: settling_db <= {SETTLING_DB_MAX:.0f} dB on "
+            f"both drives; sign_consistency >= {W1_MIN_SIGN_CONSISTENCY}; |mean slope|/beta_analytic "
+            f"in {list(W1_ABS_MEAN_OVER_BETA_BAND)}; full-ladder pencil fit_residual < "
+            f"{W1_MAX_FIT_RESIDUAL}. Otherwise UNRESOLVED. Rationale: on a truncated run the "
+            "non-driven coax array is extractor floor (the driver's own A5 line says so), its "
+            "pairwise slopes flip sign along the ladder and |mean|/beta is ~0.04 -- a verdict "
+            "there would be a reading of noise.")
         out["W2_swr"] = w2
         out["W2_note"] = ("coax ladder spans 1 mm vs lambda/2 ~ 17 mm: its SWR |Gamma| is a LOWER BOUND "
                           "and cannot bound the feed-end echo from above; Gamma_feed_end is NOT "
@@ -566,11 +766,27 @@ def compute_witnesses(d):
         out["W1_W2_W3"] = "SKIPPED: no per-probe ladders in this dump"
     flux = d.get("flux_by_drive")
     if flux:
-        out["W4_flux"] = w4_flux(flux, a_inc=a_inc, b_out=b_out, freqs=freqs)
+        out["W4_flux"] = w4_flux(flux, a_inc=a_inc, b_out=b_out, freqs=freqs,
+                                 settling_db=settling_db)
         out["W4_rules"] = {
-            "h1_sign": "coax drive: coax_z22 > 0 => labels inverted (H1 supported); < 0 => H1 KILLED",
+            "h1_sign": "coax drive: msl_x20 > 0 (net power LEAVES the junction at the NON-DRIVEN "
+                       "port, whose +x branch the assembler labels a_inc) => labels inverted, H1 "
+                       "supported; msl_x20 < 0 => H1 KILLED. NOT keyed on coax_z22.",
+            "h1_preconditions": f"the msl_x20 verdict is emitted only when settling_db <= "
+                                f"{SETTLING_DB_MAX:.0f} dB on both drives, |closure_rel_residual| <= "
+                                f"{W4_CLOSURE_REL_MAX} and |msl_x20| >= "
+                                f"{W4_MIN_SIGNAL_OVER_CLOSURE:g} x |closure_residual|; otherwise "
+                                f"UNRESOLVED.",
+            "coax_z22": "PASSIVITY CHECK, not an H1 verdict: under the coax drive the feed is below "
+                        "the coax probes and the junction above them, so net +z power there is "
+                        "|a_phys|^2-|b_phys|^2 > 0 for ANY passive junction, whichever branch the "
+                        "code labels a and which b. coax_z22 > 0 is therefore confirmatory only; "
+                        "coax_z22 <= 0 would mean the box or the run is unphysical.",
             "R1": f"coax_z22 / (|b_code|^2 - |a_code|^2) on the coax ladder: Z0 CALIBRATION ratio, "
-                  f"predeclared band +-{W4_R1_CALIBRATION_BAND:.0%} (analytic z_tem vs numerical stub)",
+                  f"predeclared band +-{W4_R1_CALIBRATION_BAND:.0%} (analytic z_tem vs numerical "
+                  f"stub). LABEL-BLIND and therefore NOT an H1 discriminator: its denominator comes "
+                  f"from the extractor's geometric branch identity ('coax: reference above => "
+                  f"b_code is the +z wave'), which holds under H1 and under its negation alike.",
             "R2": "msl_x20 / |a_code[1,0]|^2: MSL modal-voltage -> power conversion (a_code[1,0] is the "
                   "+x wave leaving the junction; = the design's '|b_msl|^2 = 1.76e-15' under the swap)",
             "closure": f"|closure_rel_residual| <= {W4_CLOSURE_REL_MAX} expected for a lossless box of "
@@ -616,9 +832,13 @@ def format_tables(w):
                          f"{r['dominant_travel']:6s}  {r['dominant_relative_to_junction']}")
                 L.append(f"      pairs: {', '.join(f'{s:+.0f}' for s in r['slopes_rad_per_m'])}")
         L.append("  H1 sign witness (coax ladder, MSL drive):")
+        L.append(f"    preconditions: {w.get('W1_h1_sign_preconditions', '')}")
         for r in w["W1_h1_sign_witness"]:
             L.append(f"    {_fg(r['freq_hz'])} GHz  slope {r['coax_ladder_msl_drive_mean_slope']:+.1f}  "
-                     f"cons {r['sign_consistency']:.2f}  {r['verdict']}")
+                     f"cons {r['sign_consistency']:.2f}  |mean|/beta "
+                     f"{r.get('abs_mean_over_beta_analytic', float('nan')):.3f}  fit_res "
+                     f"{r.get('full_ladder_fit_residual', float('nan')):.2e}  "
+                     f"[{'RESOLVED' if r.get('verdict_resolved') else 'UNRESOLVED'}]  {r['verdict']}")
     if "W2_swr" in w:
         L.append("=== W2: SWR |Gamma| = (max|V|-min|V|)/(max|V|+min|V|) ===")
         L.append("  ladder/drive           f[GHz]  |Gamma|_SWR   SWR    span/(lambda/2)  reading")
@@ -679,8 +899,13 @@ def format_tables(w):
                          f"R2net {r['R2net_msl_x20_over_net_code_msl']:+.4f}  "
                          f"S-side |a_msl|^2/net_coax {r['S_side_ratio_abs_a_msl_sq_over_net_coax']:+.4f}  "
                          f"flux msl_x20/coax_z22 {r['flux_ratio_msl_x20_over_coax_z22']:+.4f}")
-                if "h1_sign_verdict" in r:
-                    L.append(f"        H1 sign: {r['h1_sign_verdict']}; R1 within +-10% band: {r['R1_within_calibration_band']}")
+                if "h1_flux_verdict" in r:
+                    L.append(f"        H1 discriminator ({r['h1_discriminator']}) "
+                             f"[{'RESOLVED' if r['h1_verdict_resolved'] else 'UNRESOLVED'}]: "
+                             f"{r['h1_flux_verdict']}")
+                    L.append(f"        passivity check: {r['coax_z22_passivity_check']}")
+                    L.append(f"        R1 (Z0 calibration, label-blind, NOT an H1 verdict) within "
+                             f"+-{W4_R1_CALIBRATION_BAND:.0%} band: {r['R1_within_calibration_band']}")
                 if "msl_drive_expectations" in r:
                     L.append(f"        MSL-drive expectations: {r['msl_drive_expectations']}")
         for k, v in w["W4_rules"].items():

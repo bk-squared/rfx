@@ -45,6 +45,8 @@ Z_COAX = np.arange(6) * 2 * DX + 0.9e-3        # 0.9 .. 1.9 mm, junction at 2.5 
 REF_COAX = 2.5e-3
 X_MSL = np.arange(9) * 10 * DX + 2.6e-3        # 2.6 .. 10.6 mm, junction at 1.0 mm
 REF_MSL = JUNCTION_X
+SETTLED_DB = np.asarray([-128.5, -118.8])      # the attempt-3 settled run's own figures
+UNSETTLED_DB = np.asarray([-1.6, -1.8])        # the 300-step smoke's own figures
 
 
 def _plant(pos, ref, gamma, toward_junction, amp_toward, amp_away):
@@ -121,6 +123,69 @@ def test_echo_aware_slope_tolerance_is_the_two_wave_bound():
     tol = W.echo_aware_slope_tolerance(g, margin=0.0)
     assert np.isclose(tol, 2 * g / (1 - g))
     assert worst <= tol + 1e-9, (worst, tol)         # the replacement bounds it
+
+
+def _w1_rows(amp_toward, amp_away):
+    n = len(FREQS)
+    v = _plant(Z_COAX, REF_COAX, 1j * BETA_COAX, "+axis",
+               amp_toward * np.ones(n), amp_away * np.ones(n))
+    return W.w1_ladder(v, Z_COAX, junction_side="above", beta_analytic=BETA_COAX, freqs=FREQS)
+
+
+def test_w1_h1_sign_witness_resolves_both_ways_on_a_settled_clean_ladder():
+    """The verdict must be reachable in BOTH directions -- a witness that can
+    only say 'H1 supported' is not a falsifier."""
+    clean = [1e-12] * len(FREQS)
+    away = W.w1_h1_sign_witness(_w1_rows(1.0, 11.0), fit_residual_by_bin=clean,
+                                settling_db=SETTLED_DB)
+    toward = W.w1_h1_sign_witness(_w1_rows(11.0, 1.0), fit_residual_by_bin=clean,
+                                  settling_db=SETTLED_DB)
+    for r in away:
+        assert r["verdict_resolved"] is True, r
+        assert "H1 supported" in r["verdict"]
+    for r in toward:
+        assert r["verdict_resolved"] is True, r
+        assert "H1 KILLED" in r["verdict"]
+
+
+@pytest.mark.parametrize("settling, resid, why", [
+    (UNSETTLED_DB, 1e-12, "not settled"),
+    (None, 1e-12, "not settled"),
+    (SETTLED_DB, 0.5, "not two-wave"),
+])
+def test_w1_h1_sign_witness_is_unresolved_when_a_precondition_fails(settling, resid, why):
+    rows = W.w1_h1_sign_witness(_w1_rows(1.0, 11.0),
+                                fit_residual_by_bin=[resid] * len(FREQS),
+                                settling_db=settling)
+    for r in rows:
+        assert r["verdict_resolved"] is False, r
+        assert r["verdict"].startswith("UNRESOLVED")
+        assert any(why in f for f in r["preconditions_failed"]), r["preconditions_failed"]
+
+
+def test_w1_h1_sign_witness_is_unresolved_on_extractor_floor():
+    """The 300-step smoke's own coax-ladder-under-MSL-drive shape: pairwise
+    slopes that flip sign along the ladder and a |mean|/beta of ~0.04. The
+    pre-fix witness printed 'H1 supported' at all three bins from exactly
+    this; it must now print UNRESOLVED."""
+    rng = np.random.default_rng(589)
+    n = len(FREQS)
+    noise = (rng.standard_normal((len(Z_COAX), n)) + 1j * rng.standard_normal((len(Z_COAX), n)))
+    rows = W.w1_ladder(noise, Z_COAX, junction_side="above",
+                       beta_analytic=BETA_COAX, freqs=FREQS)
+    out = W.w1_h1_sign_witness(rows, fit_residual_by_bin=[1e-12] * n, settling_db=SETTLED_DB)
+    for r in out:
+        assert r["verdict_resolved"] is False, r
+        assert r["verdict"].startswith("UNRESOLVED")
+
+
+def test_settling_precondition_is_the_repo_minus_40_db_rule():
+    assert W.SETTLING_DB_MAX == -40.0
+    assert W.settling_precondition(SETTLED_DB)[0] is True
+    assert W.settling_precondition(UNSETTLED_DB)[0] is False
+    assert W.settling_precondition([-41.0, -39.0])[0] is False   # worst drive governs
+    assert W.settling_precondition(None)[0] is False             # unknown is NOT a pass
+    assert W.settling_precondition([np.nan, -100.0])[0] is False
 
 
 # ---------------------------------------------------------------------------
@@ -215,14 +280,19 @@ def test_w3_h7_impact_criterion_survives_when_alpha_really_matters():
 # ---------------------------------------------------------------------------
 # W4 -- flux box
 # ---------------------------------------------------------------------------
-def _flux_case(coax_z22):
-    """One consistent set of six faces: outflow sums exactly to the inflow."""
+def _flux_case(coax_z22, msl_frac=0.60):
+    """One consistent set of six faces: outflow sums exactly to the inflow.
+
+    ``msl_frac`` is ``msl_x20 / coax_z22``; ``top_z36`` absorbs the balance so
+    the box still closes exactly, which lets a test drive the sign of the H1
+    discriminator (``msl_x20``) INDEPENDENTLY of the sign of ``coax_z22``.
+    """
     n = len(FREQS)
     one = np.ones(n)
     faces = {
         "coax_z22": coax_z22 * one,
-        "msl_x20": 0.60 * coax_z22 * one,
-        "top_z36": 0.20 * coax_z22 * one,
+        "msl_x20": msl_frac * coax_z22 * one,
+        "top_z36": (0.80 - msl_frac) * coax_z22 * one,
         "xlo_x05": -0.10 * coax_z22 * one,
         "ylo_y03": -0.05 * coax_z22 * one,
         "yhi_y31": 0.05 * coax_z22 * one,
@@ -252,51 +322,122 @@ def _ab_for_flux(net_coax, net_msl_out):
     return a, b
 
 
-@pytest.mark.parametrize("sign, expect", [(+1.0, "H1 supported"), (-1.0, "H1 KILLED")])
-def test_w4_h1_verdict_follows_the_sign_of_coax_z22(sign, expect):
-    """The ONLY two-sided FDTD discriminator for H1 in this design: the sign
-    of the net +z flux under the coax drive. Both branches are reachable."""
-    coax_z22 = sign * 1.17e-15
-    a, b = _ab_for_flux(net_coax=sign * 1.17e-15, net_msl_out=1.76e-15)
-    out = W.w4_flux({"coax": _flux_case(coax_z22)}, a_inc=a, b_out=b, freqs=FREQS)
+@pytest.mark.parametrize("msl_frac, expect", [(+0.60, "H1 supported"), (-0.60, "H1 KILLED")])
+def test_w4_h1_verdict_follows_the_sign_of_msl_x20_the_non_driven_port(msl_frac, expect):
+    """The H1 flux discriminator is the sign of ``msl_x20`` under the coax
+    drive, and BOTH branches are reachable with the SAME (passivity-required)
+    ``coax_z22 > 0``. That is the whole point: coax_z22's sign is fixed by the
+    geometry for any passive junction, so a verdict keyed on it can only ever
+    say "H1 supported"; msl_x20's sign is a property of the DUT."""
+    coax_z22 = +1.17e-15
+    a, b = _ab_for_flux(net_coax=+1.17e-15, net_msl_out=1.76e-15)
+    out = W.w4_flux({"coax": _flux_case(coax_z22, msl_frac=msl_frac)},
+                    a_inc=a, b_out=b, freqs=FREQS, settling_db=SETTLED_DB)
     rows = out["per_drive"]["coax"]["rows"]
     assert len(rows) == len(FREQS)
     for r in rows:
-        assert expect in r["h1_sign_verdict"], r["h1_sign_verdict"]
+        assert r["h1_verdict_resolved"] is True, r["h1_flux_verdict"]
+        assert expect in r["h1_flux_verdict"], r["h1_flux_verdict"]
+        assert r["h1_discriminator"].startswith("sign(msl_x20)")
         assert abs(r["closure_rel_residual"]) < 1e-12, r
         assert r["R1_within_calibration_band"] is True          # planted exact
         assert np.isclose(r["R1_coax_z22_over_net_code_coax"], 1.0)
         assert np.isclose(r["R2_msl_x20_over_abs_a_code_msl_sq"],
-                          0.60 * coax_z22 / 1.76e-15)
+                          msl_frac * coax_z22 / 1.76e-15)
+
+
+def test_w4_h1_verdict_is_not_keyed_on_coax_z22():
+    """Regression pin for the review blocker. With coax_z22 held at the SAME
+    positive value passivity requires, flipping only msl_x20 flips the verdict;
+    and the coax_z22 line is stated as a passivity CHECK that is confirmatory
+    only, never as evidence for H1."""
+    a, b = _ab_for_flux(net_coax=+1.17e-15, net_msl_out=1.76e-15)
+    verdicts = {}
+    for msl_frac in (+0.60, -0.60):
+        out = W.w4_flux({"coax": _flux_case(+1.17e-15, msl_frac=msl_frac)},
+                        a_inc=a, b_out=b, freqs=FREQS, settling_db=SETTLED_DB)
+        r = out["per_drive"]["coax"]["rows"][0]
+        verdicts[msl_frac] = r["h1_flux_verdict"]
+        assert "CONFIRMATORY ONLY" in r["coax_z22_passivity_check"]
+        assert "not evidence for H1" in r["coax_z22_passivity_check"].lower() or \
+               "NOT evidence for H1" in r["coax_z22_passivity_check"]
+        assert r["coax_z22_sign_is_passivity_entailed"] is True
+        assert "h1_sign_verdict" not in r          # the old, non-falsifiable key is gone
+    assert "H1 supported" in verdicts[+0.60]
+    assert "H1 KILLED" in verdicts[-0.60]
+
+
+def test_w4_h1_verdict_is_unresolved_on_an_unsettled_run():
+    """The 300-step smoke's own numbers: settling -1.6/-1.8 dB and a box that
+    does not close. No hypothesis verdict may be emitted from that state."""
+    faces = _flux_case(+1.17e-15)
+    a, b = _ab_for_flux(net_coax=+1.17e-15, net_msl_out=1.76e-15)
+    out = W.w4_flux({"coax": faces}, a_inc=a, b_out=b, freqs=FREQS,
+                    settling_db=UNSETTLED_DB)
+    for r in out["per_drive"]["coax"]["rows"]:
+        assert r["h1_verdict_resolved"] is False
+        assert r["h1_flux_verdict"].startswith("UNRESOLVED")
+        assert any("not settled" in f for f in r["h1_preconditions_failed"]), r
+
+
+def test_w4_h1_verdict_is_unresolved_when_settling_is_absent():
+    """An unknown settling is a FAILED precondition, not a pass."""
+    a, b = _ab_for_flux(net_coax=+1.17e-15, net_msl_out=1.76e-15)
+    out = W.w4_flux({"coax": _flux_case(+1.17e-15)}, a_inc=a, b_out=b, freqs=FREQS)
+    for r in out["per_drive"]["coax"]["rows"]:
+        assert r["h1_verdict_resolved"] is False
+        assert "UNRESOLVED" in r["h1_flux_verdict"]
+
+
+def test_w4_h1_verdict_is_unresolved_when_the_discriminator_is_below_the_box_error():
+    """|msl_x20| must beat the box's own closure error by the declared factor;
+    a settled run whose box closes but whose msl_x20 is smaller than the
+    residual is UNRESOLVED, not a verdict."""
+    faces = _flux_case(+1.0e-15, msl_frac=1e-4)      # msl_x20 = 1e-19
+    faces["yhi_y31"] = faces["yhi_y31"] + 0.03e-15   # break closure by 3% (< 5% band)
+    a, b = _ab_for_flux(net_coax=+1.0e-15, net_msl_out=1.0e-15)
+    out = W.w4_flux({"coax": faces}, a_inc=a, b_out=b, freqs=FREQS, settling_db=SETTLED_DB)
+    for r in out["per_drive"]["coax"]["rows"]:
+        assert abs(r["closure_rel_residual"]) <= W.W4_CLOSURE_REL_MAX, r
+        assert r["h1_verdict_resolved"] is False
+        assert any("below the box's own error" in f for f in r["h1_preconditions_failed"]), r
 
 
 def test_w4_closure_residual_catches_a_broken_box():
     faces = _flux_case(1.0e-15)
     faces["top_z36"] = faces["top_z36"] * 3.0          # a face that does not belong
     a, b = _ab_for_flux(net_coax=1.0e-15, net_msl_out=1.0e-15)
-    out = W.w4_flux({"coax": faces}, a_inc=a, b_out=b, freqs=FREQS)
+    out = W.w4_flux({"coax": faces}, a_inc=a, b_out=b, freqs=FREQS, settling_db=SETTLED_DB)
     for r in out["per_drive"]["coax"]["rows"]:
         assert abs(r["closure_rel_residual"]) > W.W4_CLOSURE_REL_MAX, r
+        assert r["h1_verdict_resolved"] is False       # a leaking box decides nothing
 
 
 def test_w4_r1_outside_the_calibration_band_is_flagged():
     """R1 is a Z0 CALIBRATION ratio with a >= 10% band, never an identity
     (review blocker 2): a 30% mismatch must be reported as outside it."""
     a, b = _ab_for_flux(net_coax=1.0e-15, net_msl_out=1.0e-15)
-    out = W.w4_flux({"coax": _flux_case(1.3e-15)}, a_inc=a, b_out=b, freqs=FREQS)
+    out = W.w4_flux({"coax": _flux_case(1.3e-15)}, a_inc=a, b_out=b, freqs=FREQS,
+                    settling_db=SETTLED_DB)
     for r in out["per_drive"]["coax"]["rows"]:
         assert r["R1_within_calibration_band"] is False
         assert np.isclose(r["R1_coax_z22_over_net_code_coax"], 1.3)
+        # R1 is label-blind: it is out of band here yet the H1 verdict, which
+        # does not consume it, still resolves off the sign of msl_x20.
+        assert r["h1_verdict_resolved"] is True
+        assert "H1 supported" in r["h1_flux_verdict"]
 
 
 def test_w4_msl_drive_expectations_are_reported_not_asserted():
     a, b = _ab_for_flux(net_coax=-1.0e-15, net_msl_out=1.0e-15)
-    out = W.w4_flux({"msl": _flux_case(-1.0e-15)}, a_inc=a, b_out=b, freqs=FREQS)
+    out = W.w4_flux({"msl": _flux_case(-1.0e-15)}, a_inc=a, b_out=b, freqs=FREQS,
+                    settling_db=SETTLED_DB)
     for r in out["per_drive"]["msl"]["rows"]:
         exp = r["msl_drive_expectations"]
         assert exp["coax_z22_negative"] is True
         assert exp["msl_x20_negative"] is True
-        assert "h1_sign_verdict" not in r          # H1's sign witness is coax-drive only
+        assert "h1_flux_verdict" not in r          # H1's flux witness is coax-drive only
+        assert "h1_sign_verdict" not in r
 
 
 def test_net_plus_axis_power_uses_the_per_ladder_reference_side():
@@ -349,6 +490,7 @@ def _synthetic_dump():
         "msl_ladder_v": msl, "msl_ladder_x_m": X_MSL,
         "ref_coax_m": REF_COAX, "ref_msl_m": REF_MSL,
         "flux_by_drive": {"coax": _flux_case(1.17e-15), "msl": _flux_case(-1.0e-15)},
+        "settling_db": SETTLED_DB,
     }
 
 
@@ -358,11 +500,19 @@ def test_compute_witnesses_end_to_end_and_npz_round_trip(tmp_path):
     # W1 on the coax ladder under the MSL drive: dominant wave leaves the junction
     for r in w["W1_h1_sign_witness"]:
         assert r["relative_to_junction"] == "away"
+        assert r["preconditions_failed"] == [], r
+        assert r["verdict_resolved"] is True
         assert "H1 supported" in r["verdict"]
+    # and the W4 discriminator resolves off msl_x20, not off coax_z22
+    for r in w["W4_flux"]["per_drive"]["coax"]["rows"]:
+        assert r["h1_verdict_resolved"] is True
+        assert "H1 supported" in r["h1_flux_verdict"]
     assert isinstance(w["W4_flux"], dict)
     lines = W.format_tables(w)
     assert any(line.startswith("=== W1") for line in lines)
     assert any("H1 sign" in line for line in lines)
+    assert any("H1 discriminator" in line for line in lines)
+    assert any("passivity check" in line for line in lines)
 
     payload = {k: np.asarray(v) for k, v in d.items() if k != "flux_by_drive"}
     for drive, spectra in d["flux_by_drive"].items():

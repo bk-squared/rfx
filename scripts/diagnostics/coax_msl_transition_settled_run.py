@@ -650,6 +650,11 @@ def _witness_dump(*, result, ext, out_path, freqs_all, beta_coax_analytic,
         "gamma": np.asarray(result.gamma).astype(np.complex128),
         "beta_coax_analytic": np.asarray(beta_coax_analytic, dtype=float),
         "beta_msl_analytic": np.asarray(beta_msl_analytic, dtype=float),
+        # Predeclared precondition input for the W1/W4 H1 verdicts: a truncated
+        # run is not in the steady state the witnesses assume, so the witness
+        # module refuses to emit a hypothesis verdict without it (and treats an
+        # absent settling_db as a FAILED precondition, not as a pass).
+        "settling_db": np.asarray(result.settling_db, dtype=float),
     }
     d = {k: v for k, v in payload.items()}
     d["coax_ladder_v"] = None
