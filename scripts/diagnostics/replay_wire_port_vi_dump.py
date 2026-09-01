@@ -7,11 +7,18 @@ entries use the per-cell impedance implied by the distributed wire feed.  This
 script intentionally reimplements that math with NumPy only; it does not call
 ``extract_s_matrix_wire`` or import production port extractors.
 
-Receive-wave convention (issue #308): at a passive receive port the b-wave is
-the orthogonal channel ``(V - Z0c I) / (2 sqrt(Z0c))`` in FDTD-sign variables
-(the historical ``(-V - Z0c I)`` channel structurally cancelled the arriving
-wave at a matched port; the overall sign is pinned empirically by the DC
-falsifier on the canonical thru, S21(DC) -> +1).
+Receive-wave convention: frame-tagged (issue #770).  A dump whose metadata
+carries ``"offdiag_frame": "wholeport"`` recorded the whole-port wave pair
+(``b = (V_port - Z0 I)/(2 sqrt(Z0))`` at the receive port against the
+physical incident ``a = (V_port + Z0 I)/(2 sqrt(Z0))`` at the driven port —
+the frame the #770 adjudication validated against the flux/openEMS
+referees).  A dump without the tag replays the historical per-cell #308
+frame: at a passive receive port the b-wave is the orthogonal channel
+``(V - Z0c I) / (2 sqrt(Z0c))`` in FDTD-sign variables (the historical
+``(-V - Z0c I)`` channel structurally cancelled the arriving wave at a
+matched port; the overall sign is pinned empirically by the DC falsifier on
+the canonical thru, S21(DC) -> +1), against the PRE-injection-referenced
+per-cell incident wave.
 """
 
 from __future__ import annotations
@@ -111,6 +118,18 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
             f"{raw_vref.shape} != raw_voltages_fdt shape {raw_v.shape}"
         )
 
+    # Off-diagonal frame tag (issue #770): dumps written by the current
+    # extractor record "wholeport"; its absence marks a pre-#770 dump whose
+    # production S used the per-cell #308 frame.
+    offdiag_frame = str(
+        dump["metadata"].get("offdiag_frame", "percell"))
+    if offdiag_frame not in ("percell", "wholeport"):
+        raise ValueError(f"unknown offdiag_frame {offdiag_frame!r}")
+    if offdiag_frame == "wholeport" and raw_vp is None:
+        raise ValueError(
+            "offdiag_frame='wholeport' requires the raw_port_voltages_fdt "
+            "channel — the whole-port waves cannot be replayed without it")
+
     replay_s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_row, driven_port in enumerate(driven):
         v_drive = raw_v[drive_row, driven_port, :]
@@ -137,6 +156,21 @@ def replay_wire_port_vi_dump(path: Path, *, atol: float = 1e-9, rtol: float = 1e
                 replay_s[receiver, driven_port, :] = (
                     (z_in - z0[receiver]) / (z_in + z0[receiver])
                 )
+                continue
+
+            if offdiag_frame == "wholeport":
+                # Issue #770 whole-port wave pair (global receive sign +1,
+                # DC-witness pinned).
+                b_receiver = (
+                    raw_vp[drive_row, receiver, :]
+                    - z0[receiver] * raw_i[drive_row, receiver, :]
+                ) / (2.0 * np.sqrt(z0[receiver]))
+                a_driven = (
+                    raw_vp[drive_row, driven_port, :]
+                    + z0[driven_port] * i_drive
+                ) / (2.0 * np.sqrt(z0[driven_port]))
+                safe_a = np.where(np.abs(a_driven) > 0.0, a_driven, 1.0 + 0j)
+                replay_s[receiver, driven_port, :] = b_receiver / safe_a
                 continue
 
             z_cell_receiver = z0[receiver] / float(cell_counts[receiver])

@@ -259,7 +259,16 @@ def test_driver_wire_dump_matches_eager_and_replays():
     try:
         np.savez(
             tmp,
-            metadata_json=np.asarray(json.dumps({"schema": "rfx.wire_port_vi_dump"})),
+            # Schema re-pin (issue #770, written provenance — the
+            # adjudication pre-declaration + results note): the metadata
+            # carries the off-diagonal frame tag.  The current extractor
+            # records the whole-port frame; a dump without the tag replays
+            # the pre-#770 per-cell #308 frame, so an untagged dump of the
+            # CURRENT extractor would replay-mismatch loudly (by the
+            # measured frame ratio 1.63-1.75x on the canonical thru).
+            metadata_json=np.asarray(json.dumps(
+                {"schema": "rfx.wire_port_vi_dump",
+                 "offdiag_frame": "wholeport"})),
             freqs_hz=np.asarray(drv.freqs),
             raw_voltages_fdt=np.asarray(drv.raw_voltages_fdt),
             raw_currents=np.asarray(drv.raw_currents),

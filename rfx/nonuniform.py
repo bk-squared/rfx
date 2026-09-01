@@ -2020,6 +2020,11 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     # the S matrix stay zero — callers need to run additional sims
     # with different excited ports to fill them (reciprocity lets us
     # infer S12 from S21 for passive networks).
+    #
+    # Which (a, b) pair fills a GENUINELY excited column is the issue
+    # #770 whole-port pair (see the in-loop derivation below); the
+    # per-cell `_ab` split above survives only in the all-passive
+    # diagnostic fallback.
     if use_wire_ports and "wire_sparams" in final:
         import numpy as _np
         n_wp = len(wire_ports)
@@ -2031,12 +2036,12 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
         # np.asarray(...) (jnp arrays implement __array__).
         S = jnp.zeros((n_wp, n_wp, nf), dtype=jnp.complex64)
 
-        # Pick the first excited port as the "k" column. If no port is
-        # excited (all passive), fall back to the legacy diagonal-only
+        # Pick the excited ports as the filled columns. If no port is
+        # excited (all passive), fall back to the legacy diagnostic
         # extraction (no meaningful S-matrix in that case).
-        # ``genuinely_excited`` (issue #764) keys the whole-port driven
-        # diagonal to meta[7] ONLY — the all-passive fallback stays on the
-        # frozen per-cell convention (see the scope note above).
+        # ``genuinely_excited`` (issues #764 + #770) keys the whole-port
+        # wave pair to meta[7] ONLY — the all-passive fallback stays on
+        # the frozen per-cell convention (see the scope note above).
         genuinely_excited = [
             idx for idx, meta in enumerate(wp_meta) if meta[7]]
         excited_idx = genuinely_excited
@@ -2060,25 +2065,53 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
             a, b = _ab(v_dft, i_dft, z0)
             ab_per_port.append((a, b))
 
-        for k in excited_idx:
-            a_k = ab_per_port[k][0]
-            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
-            for j in range(n_wp):
-                b_j = ab_per_port[j][1]
-                S = S.at[j, k, :].set(b_j / safe_a_k)
+        # All-passive fallback ONLY: the frozen per-cell diagnostic
+        # convention (see the scope note above — no physical falsifier
+        # can gate a load-independent reading; do not "unify").
+        if not genuinely_excited:
+            for k in excited_idx:
+                a_k = ab_per_port[k][0]
+                safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k,
+                                     jnp.ones_like(a_k))
+                for j in range(n_wp):
+                    b_j = ab_per_port[j][1]
+                    S = S.at[j, k, :].set(b_j / safe_a_k)
 
-        # Issue #764: override the diagonal of every GENUINELY excited
-        # column with the whole-port driven reflection (see the derivation
-        # in the comment block above). Off-diagonals and the all-passive
-        # fallback keep the per-cell convention byte-for-byte.
+        # Issue #764 + #770: every GENUINELY excited column is the
+        # whole-port wave pair, frame-consistent across diagonal and
+        # off-diagonal (adjudicated against external physics 2026-08-29,
+        # docs/design_notes/issue770_offdiag_adjudication_predeclaration.md
+        # + results note):
+        #
+        #   a_k = (V_port,k + Z0*I_k) / (2*sqrt(Z0))   # measured drive-only
+        #                                              # constant Z0*I0 (#683)
+        #   b_j = (V_port,j - Z0*I_j) / (2*sqrt(Z0))   # outgoing at port j
+        #   S[j, k] = b_j / a_k    (diagonal reduces to the #764
+        #                           (V_port - Z0*I)/(V_port + Z0*I))
+        #
+        # The old mixed split (per-cell midpoint v against the whole-port
+        # Z0, the open defect #764 section 6 named) measured neither
+        # frame on the canonical thru (|S21| 0.65-0.97, drifting); the
+        # whole-port pair measured |S21| = 0.934-0.995 vs the external
+        # flux referee 0.971-0.997, power closure deficit 0.9-4.4% vs
+        # the 0.2-4.0% flux gap, reciprocity 2.67e-4, and lane parity
+        # 3.97e-6 against the uniform decomposer (#770 harness).
+        # Global receive sign: +1, DC-witness pinned (S21(DC) -> +1,
+        # dev -0.058/-0.115 rad at 0.5/1 GHz; flipped channel at ~pi).
         for k in genuinely_excited:
             v_port_k = final["wire_sparams"][k][3]
             i_k = final["wire_sparams"][k][1]
             z0_k = wp_meta[k][4]
-            denom = v_port_k + z0_k * i_k
-            safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
-                                   jnp.ones_like(denom))
-            S = S.at[k, k, :].set((v_port_k - z0_k * i_k) / safe_denom)
+            a_k = v_port_k + z0_k * i_k
+            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
+            sqrt_z0_k = jnp.sqrt(z0_k)
+            for j in range(n_wp):
+                v_port_j = final["wire_sparams"][j][3]
+                i_j = final["wire_sparams"][j][1]
+                z0_j = wp_meta[j][4]
+                b_j = (v_port_j - z0_j * i_j) * (
+                    sqrt_z0_k / jnp.sqrt(z0_j))
+                S = S.at[j, k, :].set(b_j / safe_a_k)
 
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)

@@ -511,6 +511,14 @@ CLASSIFICATION: dict[str, Entry] = {
         "check rejected the earlier builder_fused_with_solve label for "
         "exactly this separability",
         (Builder("build_fix_a", None, (_v("short", load="short"),)),)),
+    "validation/research/issue770_offdiag_adjudication.py": Entry(
+        "audited",
+        "`build_fix_t(nu, drive)` returns the canonical-THRU Simulation "
+        "with no solve call; the adjudication arms run it separately "
+        "(pre-declared falsifiers live in the same file).",
+        (Builder("build_fix_t", None, (
+            _v("uniform-both", nu=False, drive=None),
+            _v("nu-drive0", nu=True, drive=0))),)),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),

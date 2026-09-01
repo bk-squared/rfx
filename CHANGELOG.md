@@ -207,6 +207,30 @@ re-baselined: a new slow-lane test runs BOTH variants at 20,000 steps
 (shipped 0.2145 decays / extended 5.032 grows, re-measured margins), and the
 8,000-step test remains as the fast-lane shipped-decay canary.
 
+### Fixed — wire-port off-diagonal S-parameters are now the whole-port physical waves (issue #770; value-changing for every wire multiport)
+
+Wire-port off-diagonal entries (S21/S12 class) were extracted in a per-cell
+wave frame (issues #308/#313) whose magnitude was a documented regression
+lock, not physics — deflated 1.6–1.75x on the canonical thru (|S21|
+0.55–0.61 against the extractor-independent flux referee's 0.97–1.0). With
+the driven diagonal made whole-port-physical (#764) and the sampling order
+decided (#683), the frame was adjudicated against pre-declared external
+falsifiers (power conservation bin-by-bin, reciprocity, an absolute
+|S21| → 1 witness on the matched thru; design notes
+`issue770_offdiag_adjudication_*`): the per-cell frame was refuted and both
+lanes now extract every genuinely excited column from the frame-consistent
+whole-port pair `S[i,j] = (V_port,i − Z0·I_i)/(V_port,j + Z0·I_j)`
+(receive sign pinned by the S21(DC) → +1 witness). Measured on the
+canonical thru: |S21| 0.934–0.995 (flux/openEMS class), power closure
+deficit 0.9–4.4% vs the 0.2–4.0% flux gap, reciprocity 2.7e-4 (28x
+tighter), uniform/NU lane parity 4e-6; the NU lane's over-unity mixed-frame
+off-diagonal (up to 2.18 on the 2-port stub) is retired (column power now
+≤ 0.985). Diagonals, lumped ports, MSL/waveguide paths, the opt-in
+reference-plane path, and the all-passive diagnostic fallback are
+unchanged; the legacy per-cell decomposition survives byte-for-byte for
+the reference-plane decomposer and for replaying pre-#770 V/I dumps (new
+`offdiag_frame` metadata tag).
+
 ### Changed — surface-impedance sheets accept patterned shapes, not just boxes (issue #674)
 
 `add_thin_conductor(..., surface_impedance_f0=...)` — the opt-in band-centre

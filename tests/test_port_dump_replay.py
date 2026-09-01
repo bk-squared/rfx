@@ -309,7 +309,14 @@ def test_wire_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
     path = tmp_path / "wire_real_vi_dump.npz"
     np.savez(
         path,
-        metadata_json=np.asarray(json.dumps({"schema": "rfx.wire_port_vi_dump"})),
+        # Issue #770 (schema re-pin, written provenance — the adjudication
+        # pre-declaration + results note): the metadata carries the
+        # off-diagonal frame tag.  The current extractor records the
+        # whole-port frame; an untagged dump replays the pre-#770 per-cell
+        # #308 frame and would mismatch the current production S loudly.
+        metadata_json=np.asarray(json.dumps(
+            {"schema": "rfx.wire_port_vi_dump",
+             "offdiag_frame": "wholeport"})),
         freqs_hz=np.asarray(extraction.freqs),
         raw_voltages_fdt=np.asarray(extraction.raw_voltages_fdt),
         # Issue #764 (schema re-pin, written provenance): the production

@@ -643,7 +643,10 @@ def _run_subgridded_once(
             else:
                 # Passive receive port (issue #308): orthogonal wave channel,
                 # sign pinned by the DC falsifier — single-truth with
-                # decompose_lumped_s_matrix / decompose_wire_s_matrix.
+                # decompose_lumped_s_matrix (and with the wire decomposer's
+                # LEGACY v_port=None path; the wire production off-diagonal
+                # moved to the whole-port frame in #770 — this experimental
+                # subgrid lane still uses the per-cell channel).
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (v_dft[recv] - z0_cell_i * i_dft[recv]) / (
                     2.0 * jnp.sqrt(z0_cell_i)
