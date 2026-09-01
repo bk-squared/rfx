@@ -1,0 +1,565 @@
+{
+  "issue": 498,
+  "scope": "comparator leg only -- brackets, does not judge rfx",
+  "reproduce_gate_record": {
+    "law": "Before any rfx-vs-openEMS number exists, this script must imitate openEMS's own canonical example and reproduce its documented known-good number. A lumped/wire-to-MSL transition has no closed form, so there is no analytic escape hatch. Two legs are required because the DUT uses two port classes.",
+    "a1": {
+      "leg": "MSL-port leg",
+      "example": "openEMS python/Tutorials/MSL_NotchFilter.py",
+      "upstream": {
+        "repo": "thliebig/openEMS",
+        "path": "python/Tutorials/MSL_NotchFilter.py",
+        "verified_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py (2026-08-04, recorded by the #490 lane)"
+      },
+      "implementation": "DELEGATED to validation/crossval/20_msl_phase_referee.py::_run_stage_a_reproduce_gate -- the already-verified faithful port that produced the recorded number, loaded by path (the module name starts with a digit). Delegation, not a second hand-copy, so this leg cannot drift from the run it cites.",
+      "documented_check": "Quarter-wave open-stub notch F_NOTCH_AN = c0/(4*stub_len*sqrt(eps_eff_HJ)) = 3.6871 GHz on the tutorial's own RO4350B board -- RECOMPUTED in the delegated module, never copy-pasted.",
+      "gate": "0.80*F_NOTCH_AN <= f_notch <= 1.05*F_NOTCH_AN AND not truncation-suspect",
+      "recorded_reproduction": {
+        "f_notch_hz": 3671100625.0,
+        "f_notch_expected_hz": 3687100377.611141,
+        "dev_pct": 0.4364433837294213,
+        "vessl_run_id": "369367251705",
+        "log_path": "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
+        "log_present_in_tree": true,
+        "verified_on": "2026-08-04"
+      },
+      "status": "RECORDED"
+    },
+    "a2": {
+      "leg": "lumped-probe leg (the DUT's feed IS this tutorial's feed model)",
+      "example": "openEMS python/Tutorials/Simple_Patch_Antenna.py",
+      "upstream": {
+        "repo": "thliebig/openEMS",
+        "path": "python/Tutorials/Simple_Patch_Antenna.py",
+        "documented_number": "'~7 dBi broadside' -- the ONLY upstream-published figure this repo records"
+      },
+      "implementation": "Faithful port of scripts/diagnostics/patch_tutorial_openems.py (the repo precedent that produced the recorded numbers), with ONE declared delta: the precedent's resonance readout is harminv-on-port-V from rfx.harminv, which this script cannot use without breaking its scope fence, so the gate uses the tutorial's OWN S11-dip readout from the same run.",
+      "gate_upstream_anchored": "broadside directivity D >= 6.0 dBi ('~7 dBi')",
+      "gate_repo_internal_lock": "|f_s11_dip - 2.4300 GHz| / 2.4300 GHz <= 0.01 -- a REGRESSION LOCK on this repo's own earlier source-built run, explicitly NOT a reproduction of an upstream number. Both halves must hold.",
+      "recorded_reproduction": {
+        "f_res_harminv_ghz": 2.4221,
+        "q": 20.1,
+        "f_s11_dip_ghz": 2.43,
+        "s11_min_db": -27.8,
+        "broadside_d_dbi": 6.79,
+        "stop": "EndCriteria=1e-4 at step 8671, energy -41.09 dB",
+        "vessl_run_id": "369367246713",
+        "log_path": "docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log",
+        "log_present_in_tree": false,
+        "log_caveat": "LOCAL-ONLY. Verified 2026-09-01 from this worktree: 'ls docs/research_notes/vessl_logs/' -> 'No such file or directory'. The precedent script's header marks it '(local-only)'; the predeclaration dropped that caveat and it is restored here. This lane writes its own A2 log into the artifact directory so the next reader has one.",
+        "verified_on": "2026-07-11"
+      },
+      "status": "RECORDED"
+    },
+    "do_not_repeat": "scripts/diagnostics/build_msl_notch_openems_comparison.py header, carried in the #490 referee's own record: 'at dx=80 um the substrate is only 3.175 cells ... the openEMS MSL-port extraction is NON-PHYSICAL (|S11|^2+|S21|^2 up to 8.9)'; 'dx=50 um gives 5.08 substrate cells where BOTH solvers are passive'. Stage 2's COMPARATOR mesh is therefore dx=50 um; the dx=80 um leg is run and REPORTED ONLY, with its passivity sum quoted verbatim.",
+    "settling_evidence_protocol": "External scripts get no rfx preflight, so the -40 dB settling witness is hand-ported the way the precedents do it: EndCriteria = 1e-4 (= -40 dB) plus a POSITIVE CONTROL -- each stage runs a deliberately short SMOKE pass (NrTS=200, EndCriteria=0.0) whose max-timesteps warning MUST fire, and a real pass in which it MUST be ABSENT. Both appear in the committed run log. openEMS writes that warning to STDERR, so both fds are captured (the #490 lane's own GUARD CHANNEL-GAP fix).",
+    "stage2_contract": "Stage 2 constructs NO geometry and writes NO rfx-vs-openEMS number unless assert_stage1_gate_passed() accepts a Stage-1 record whose a1 and a2 legs both have status='RUN' and passed=True.",
+    "status": "NOT_RUN"
+  },
+  "rfx_realized_record": {
+    "fixture": "tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl (the committed #488 fixture), read-only -- this script does not touch it.",
+    "declared": {
+      "eps_r": 3.66,
+      "h_sub_m": 0.000254,
+      "w_trace_m": 0.0006,
+      "dx_m": 8e-05,
+      "domain_m": [
+        0.008,
+        0.003,
+        0.000754
+      ],
+      "cpml_layers": 8,
+      "boundary": "x=cpml, y=cpml, z=(lo pec, hi cpml)",
+      "feed_x_m": 0.002,
+      "msl_feed_x_m": 0.0055,
+      "y_c_m": 0.0015
+    },
+    "measured_command": "cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 python3 -c \"<build _base_sim geometry verbatim>; g=sim._build_grid(); mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" -- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845",
+    "measured_output_verbatim": [
+      "shape (117, 55, 19) pad_x 8 8 pad_y 8 8 pad_z 0 8",
+      "interior (slice(8, 109, None), slice(8, 47, None), slice(0, 11, None))",
+      "idx x=0: (8, 27, 0)",
+      "idx x=8mm-eps: (108, 27, 0)",
+      "idx feed 2mm: (33, 27, 0)",
+      "idx 1.44mm: (26, 27, 0)",
+      "idx 4.72mm: (67, 27, 0)",
+      "idx 5.5mm: (77, 27, 0)",
+      "metal k [4] y [24 25 26 27 28 29 30] x 8 108",
+      "eps sub k idx where eps>1 at x=50,y=27: [0 1 2 3]",
+      "eps[:,27,1] x profile at nodes [0,4,7,8,50,108,109,116]: [3.66 3.66 3.66 3.66 3.66 3.66 3.66 3.66]  (dielectric IS edge-replicated through the CPML pad; the conductor is NOT)"
+    ],
+    "realized": {
+      "h_sub_m": 0.00032,
+      "n_z_sub_cells_rfx": 4,
+      "w_trace_node_span_m": 0.00048,
+      "w_trace_cell_span_m": 0.00056,
+      "y_c_m": 0.00152,
+      "trace_y_lo_m": 0.00128,
+      "trace_y_hi_m": 0.00176,
+      "trace_x_lo_m": 0.0,
+      "trace_x_hi_m": 0.008,
+      "trace_thickness_cells": 1,
+      "domain_m": [
+        0.008,
+        0.00304,
+        0.0008
+      ],
+      "pad_cells": {
+        "x_lo": 8,
+        "x_hi": 8,
+        "y_lo": 8,
+        "y_hi": 8,
+        "z_lo": 0,
+        "z_hi": 8
+      },
+      "pad_thickness_m": 0.00064,
+      "dielectric_extends_into_pad": true,
+      "conductor_extends_into_pad": false
+    },
+    "planes_of_record_m": {
+      "trace_open_end_lo": 0.0,
+      "predeclared_minus_x_flux_plane": 0.00144,
+      "box_minus_x_face": 0.00176,
+      "lw_feed": 0.002,
+      "box_plus_x_face": 0.00224,
+      "refplane_N": 0.0028,
+      "refplane_2N": 0.0036,
+      "msl_probe_2": 0.00408,
+      "msl_probe_1": 0.0044,
+      "msl_probe_0": 0.00472,
+      "msl_feed_plane": 0.00552,
+      "trace_open_end_hi": 0.008
+    },
+    "anchor": {
+      "rfx_z0_hj_msl_ohm": 47.89479996289313,
+      "rfx_anchor_board": "DECLARED W=600 um / h=254 um",
+      "hj_z0_realized_node_span_ohm": 62.652,
+      "hj_z0_realized_cell_span_ohm": 57.463,
+      "note": "REPORTED, NEVER GATED. Must not replace the analytic Hammerstad-Jensen anchor anywhere in shipped code (predeclaration section 10)."
+    },
+    "n_live_lw": 4,
+    "rfx_freqs_hz": [
+      1000000000.0,
+      1750000000.0,
+      2500000000.0,
+      3250000000.0,
+      4000000000.0
+    ]
+  },
+  "cannot_compare": [
+    "(1) THE LUMPED/WIRE DIAGONAL, as a port-model comparison. rfx's wire diagonal is a per-cell, PRE-INJECTION port-cell quantity with Z0c = Z0/n_live = 50/4 = 12.5 ohm; openEMS's lumped port is a single lumped resistor across a one-cell gap referenced to the full 50 ohm. Agreement or disagreement there is evidence about the FRAME, not about the port, and cannot settle #683/#764/#776/#778. This referee reports |S11| and never adjudicates it.",
+    "(2) THE OFF-DIAGONAL'S ABSOLUTE NORMALIZATION, to the extent the frame question touches it. rfx's mixed lane takes the off-diagonal MAGNITUDE from the Poynting-flux channel and its PHASE from the wave channel, while openEMS reports one port-based S. Only the composed |S_ij| is comparable, never 'rfx's wave channel vs openEMS'. In particular, a |S21| disagreement close to sqrt(n_live) = 2.0 is the same FRAME question as (1) and is NOT a physics disagreement this referee can settle.",
+    "(3) ANYTHING AFTER enforce_passivity. rfx's result.S is a joint SVD projection (~4.3x on this fixture); only S_raw is comparable. This script refuses to read an 'S' field from the rfx artifact.",
+    "(4) CROSS-FAMILY ABSOLUTE PHASE. rfx's mixed lane mixes two reference-plane conventions across families (port cell vs de-embedded MSL probe plane) plus a component-mixing +-1 -- which is why its own reciprocity witness is magnitude-only. Only each solver's own arg(S21) referred to its OWN measured beta is compared; the raw cross-solver phase difference is reported, never gated.",
+    "(5) WHICH OF rfx's OWN DIAGONALS IS LYING. An external referee cannot answer that -- F1-F3 of the predeclaration can, which is why this runs after them.",
+    "(6) MESH CONVERGENCE. One mesh pair (50 um comparator + 80 um reported-only) is not a convergence study, and this run does not create one.",
+    "(7) THE ABSOLUTE ANCHOR IMPEDANCE. rfx normalizes its MSL port to the Hammerstad-Jensen Z0 of the DECLARED board (47.89479996289313 ohm, W=600 um / h=254 um) while the board it actually solves is W=480 um (node span) / h=320 um, whose HJ Z0 is 62.652 ohm (57.463 ohm on the 560 um cell-span reading). openEMS's MSLPort measures its own Z0 from the fields. The gap between those anchors is REPORTED, never gated, and it is part of the predeclaration's budget B -- not a defect this referee attributes to either solver.",
+    "(8) THE ABSORBER PAD THICKNESS. rfx pads 8 cells x 80 um = 0.64 mm beyond each declared face; this script pads 8 cells x dx_oe = 0.40 mm at the comparator mesh. Cell COUNT matches, physical thickness does not. Declared systematic on the open-end reflections at x = 0 and x = 8.00 mm."
+  ],
+  "rfx_artifact_contract": "The --rfx-json file is the #498/#517 measurement artifact. Required keys: 'freqs_hz' (list of bin frequencies) and 's_raw' (the UNPROJECTED S, shape [2][2][n_freqs] of [re, im] pairs, index 0 = lumped/wire family, index 1 = MSL family). An 'S' / post-passivity field is REFUSED: only S_raw is comparable (CANNOT_COMPARE item 3). Optional: 'z0_hj_msl'. Absent --rfx-json, Stage 2 still runs and reports its own openEMS numbers, with comparison = null and status 'openems-only (rfx artifact not supplied)'.",
+  "self_check": {
+    "checks": [
+      {
+        "name": "plane_on_grid[trace_open_end_lo]",
+        "ok": true,
+        "detail": "x = 0.000 mm = 0.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[trace_open_end_lo]",
+        "ok": true,
+        "detail": "rfx node index 8 (measured 8)"
+      },
+      {
+        "name": "plane_on_grid[predeclared_minus_x_flux_plane]",
+        "ok": true,
+        "detail": "x = 1.440 mm = 18.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[predeclared_minus_x_flux_plane]",
+        "ok": true,
+        "detail": "rfx node index 26 (measured 26)"
+      },
+      {
+        "name": "plane_on_grid[box_minus_x_face]",
+        "ok": true,
+        "detail": "x = 1.760 mm = 22.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_on_grid[lw_feed]",
+        "ok": true,
+        "detail": "x = 2.000 mm = 25.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[lw_feed]",
+        "ok": true,
+        "detail": "rfx node index 33 (measured 33)"
+      },
+      {
+        "name": "plane_on_grid[box_plus_x_face]",
+        "ok": true,
+        "detail": "x = 2.240 mm = 28.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_on_grid[refplane_N]",
+        "ok": true,
+        "detail": "x = 2.800 mm = 35.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[refplane_N]",
+        "ok": true,
+        "detail": "rfx node index 43 (measured 43)"
+      },
+      {
+        "name": "plane_on_grid[refplane_2N]",
+        "ok": true,
+        "detail": "x = 3.600 mm = 45.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[refplane_2N]",
+        "ok": true,
+        "detail": "rfx node index 53 (measured 53)"
+      },
+      {
+        "name": "plane_on_grid[msl_probe_2]",
+        "ok": true,
+        "detail": "x = 4.080 mm = 51.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[msl_probe_2]",
+        "ok": true,
+        "detail": "rfx node index 59 (measured 59)"
+      },
+      {
+        "name": "plane_on_grid[msl_probe_1]",
+        "ok": true,
+        "detail": "x = 4.400 mm = 55.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[msl_probe_1]",
+        "ok": true,
+        "detail": "rfx node index 63 (measured 63)"
+      },
+      {
+        "name": "plane_on_grid[msl_probe_0]",
+        "ok": true,
+        "detail": "x = 4.720 mm = 59.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[msl_probe_0]",
+        "ok": true,
+        "detail": "rfx node index 67 (measured 67)"
+      },
+      {
+        "name": "plane_on_grid[msl_feed_plane]",
+        "ok": true,
+        "detail": "x = 5.520 mm = 69.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[msl_feed_plane]",
+        "ok": true,
+        "detail": "rfx node index 77 (measured 77)"
+      },
+      {
+        "name": "plane_on_grid[trace_open_end_hi]",
+        "ok": true,
+        "detail": "x = 8.000 mm = 100.000000 cells of 80 um"
+      },
+      {
+        "name": "plane_index[trace_open_end_hi]",
+        "ok": true,
+        "detail": "rfx node index 108 (measured 108)"
+      },
+      {
+        "name": "realized_h_sub_is_integer_cells",
+        "ok": true,
+        "detail": "h_sub 320 um = 4.000 cells (measured 4)"
+      },
+      {
+        "name": "realized_trace_is_symmetric_about_feed_node",
+        "ok": true,
+        "detail": "trace y 1.28..1.76 mm centred at 1.52 mm, feed node y = 1.52 mm"
+      },
+      {
+        "name": "realized_w_is_node_span",
+        "ok": true,
+        "detail": "node span 480 um (cell-span alternative 560 um, carried as a declared +-1-cell systematic)"
+      },
+      {
+        "name": "realized_board_differs_from_declared",
+        "ok": true,
+        "detail": "realized h_sub 320 um vs declared 254 um -- the #723 class; Stage 2 models the REALIZED board"
+      },
+      {
+        "name": "trace_has_two_open_ends",
+        "ok": true,
+        "detail": "conductor spans exactly 0..8.00 mm with NO metal in the absorber pad; the openEMS model reproduces both open ends (blocker B4)"
+      },
+      {
+        "name": "open_stub_beyond_msl_feed",
+        "ok": true,
+        "detail": "2.48 mm of open stub hangs beyond the MSL feed plane -- it is part of the DUT and is in |S22|"
+      },
+      {
+        "name": "comparator_dx50um:x_line_present[lumped_feed]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "comparator_dx50um:x_line_present[msl_start]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "comparator_dx50um:x_line_present[meas_plane]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "comparator_dx50um:x_line_present[open_end_lo]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "comparator_dx50um:x_line_present[open_end_hi]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "comparator_dx50um:measplane_snap_exact",
+        "ok": true,
+        "detail": "target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)"
+      },
+      {
+        "name": "comparator_dx50um:substrate_cells_ge_5",
+        "ok": true,
+        "detail": "6 substrate cells -- the do_not_repeat rule needs the comparator mesh above the 3.175-cell non-physical regime"
+      },
+      {
+        "name": "comparator_dx50um:cells_per_lambda_min_ge_10",
+        "ok": true,
+        "detail": "626.8 cells per shortest substrate wavelength"
+      },
+      {
+        "name": "reported_only_dx80um:x_line_present[lumped_feed]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "reported_only_dx80um:x_line_present[msl_start]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "reported_only_dx80um:x_line_present[meas_plane]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "reported_only_dx80um:x_line_present[open_end_lo]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "reported_only_dx80um:x_line_present[open_end_hi]",
+        "ok": true,
+        "detail": "nearest mesh line 0.000 nm away"
+      },
+      {
+        "name": "reported_only_dx80um:measplane_snap_exact",
+        "ok": true,
+        "detail": "target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)"
+      },
+      {
+        "name": "reported_only_dx80um:cells_per_lambda_min_ge_10",
+        "ok": true,
+        "detail": "391.8 cells per shortest substrate wavelength"
+      }
+    ],
+    "failures": [],
+    "mesh": {
+      "comparator_dx50um": {
+        "dx_m": 5e-05,
+        "pml_cells": 8,
+        "pml_thickness_m": 0.0004,
+        "rfx_pad_thickness_m": 0.00064,
+        "domain_with_pad_m": {
+          "x": [
+            -0.0004,
+            0.0084
+          ],
+          "y": [
+            -0.0004,
+            0.0034400000000000003
+          ],
+          "z": [
+            0.0,
+            0.0012000000000000001
+          ]
+        },
+        "n_lines": {
+          "x": 182,
+          "y": 85,
+          "z": 25
+        },
+        "n_cells_total": 364896,
+        "n_substrate_cells": 6,
+        "substrate_cell_dz_m": 5.333333333333334e-05,
+        "trace_y_lo_m": 0.00128,
+        "trace_y_hi_m": 0.00176,
+        "trace_x_span_m": [
+          0.0,
+          0.008
+        ],
+        "open_end_to_pml_cells": 8,
+        "lumped_port_x_m": 0.002,
+        "msl_port_start_x_m": 0.00552,
+        "msl_port_len_m": 0.00030000000000000003,
+        "msl_meas_plane_x_m": 0.00472,
+        "measplane_shift_target_m": 0.0007999999999999995,
+        "measplane_shift_predicted_m": 0.0008,
+        "measplane_shift_residual_m": -5.421010862427522e-19,
+        "ref_plane_shift_msl_m": 0.0007999999999999995,
+        "effective_calcport_shift_predicted_m": -5.421010862427522e-19,
+        "ref_plane_shift_lumped_m": 0.0,
+        "open_stub_beyond_msl_feed_m": 0.0024800000000000004,
+        "line_feed_to_meas_plane_m": 0.00272,
+        "lambda_min_in_substrate_m": 0.03134080562110885,
+        "cells_per_lambda_min": 626.816112422177,
+        "y_lines_are_pre_smoothing": true,
+        "x_mesh_is_uniform_and_start_aligned": true
+      },
+      "reported_only_dx80um": {
+        "dx_m": 8e-05,
+        "pml_cells": 8,
+        "pml_thickness_m": 0.00064,
+        "rfx_pad_thickness_m": 0.00064,
+        "domain_with_pad_m": {
+          "x": [
+            -0.00064,
+            0.00864
+          ],
+          "y": [
+            -0.00064,
+            0.00368
+          ],
+          "z": [
+            0.0,
+            0.00144
+          ]
+        },
+        "n_lines": {
+          "x": 120,
+          "y": 62,
+          "z": 19
+        },
+        "n_cells_total": 130662,
+        "n_substrate_cells": 4,
+        "substrate_cell_dz_m": 8e-05,
+        "trace_y_lo_m": 0.00128,
+        "trace_y_hi_m": 0.00176,
+        "trace_x_span_m": [
+          0.0,
+          0.008
+        ],
+        "open_end_to_pml_cells": 8,
+        "lumped_port_x_m": 0.002,
+        "msl_port_start_x_m": 0.00552,
+        "msl_port_len_m": 0.00048000000000000007,
+        "msl_meas_plane_x_m": 0.00472,
+        "measplane_shift_target_m": 0.0007999999999999995,
+        "measplane_shift_predicted_m": 0.0008,
+        "measplane_shift_residual_m": -5.421010862427522e-19,
+        "ref_plane_shift_msl_m": 0.0007999999999999995,
+        "effective_calcport_shift_predicted_m": -5.421010862427522e-19,
+        "ref_plane_shift_lumped_m": 0.0,
+        "open_stub_beyond_msl_feed_m": 0.0024800000000000004,
+        "line_feed_to_meas_plane_m": 0.00272,
+        "lambda_min_in_substrate_m": 0.03134080562110885,
+        "cells_per_lambda_min": 391.7600702638606,
+        "y_lines_are_pre_smoothing": true,
+        "x_mesh_is_uniform_and_start_aligned": true
+      }
+    },
+    "passed": true
+  },
+  "stage_requested": "1",
+  "stage1": {
+    "a1": {
+      "leg": "MSL-port leg",
+      "example": "openEMS python/Tutorials/MSL_NotchFilter.py",
+      "upstream": {
+        "repo": "thliebig/openEMS",
+        "path": "python/Tutorials/MSL_NotchFilter.py",
+        "verified_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py (2026-08-04, recorded by the #490 lane)"
+      },
+      "implementation": "DELEGATED to validation/crossval/20_msl_phase_referee.py::_run_stage_a_reproduce_gate -- the already-verified faithful port that produced the recorded number, loaded by path (the module name starts with a digit). Delegation, not a second hand-copy, so this leg cannot drift from the run it cites.",
+      "documented_check": "Quarter-wave open-stub notch F_NOTCH_AN = c0/(4*stub_len*sqrt(eps_eff_HJ)) = 3.6871 GHz on the tutorial's own RO4350B board -- RECOMPUTED in the delegated module, never copy-pasted.",
+      "gate": "0.80*F_NOTCH_AN <= f_notch <= 1.05*F_NOTCH_AN AND not truncation-suspect",
+      "recorded_reproduction": {
+        "f_notch_hz": 3671100625.0,
+        "f_notch_expected_hz": 3687100377.611141,
+        "dev_pct": 0.4364433837294213,
+        "vessl_run_id": "369367251705",
+        "log_path": "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
+        "log_present_in_tree": true,
+        "verified_on": "2026-08-04"
+      },
+      "status": "RUN",
+      "passed": true,
+      "f_notch_hz": 3671100625.0,
+      "f_notch_expected_hz": 3687193135.4851503,
+      "f_notch_dev_pct": 0.4364433837294213,
+      "notch_depth_db": -53.01902565046946,
+      "truncated_suspected": false,
+      "elapsed_s": 21.5,
+      "gate_band_hz": [
+        2949754508.3881207,
+        3871552792.259408
+      ],
+      "delegated_to": "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/validation/crossval/20_msl_phase_referee.py"
+    },
+    "a2": {
+      "leg": "lumped-probe leg (the DUT's feed IS this tutorial's feed model)",
+      "example": "openEMS python/Tutorials/Simple_Patch_Antenna.py",
+      "upstream": {
+        "repo": "thliebig/openEMS",
+        "path": "python/Tutorials/Simple_Patch_Antenna.py",
+        "documented_number": "'~7 dBi broadside' -- the ONLY upstream-published figure this repo records"
+      },
+      "implementation": "Faithful port of scripts/diagnostics/patch_tutorial_openems.py (the repo precedent that produced the recorded numbers), with ONE declared delta: the precedent's resonance readout is harminv-on-port-V from rfx.harminv, which this script cannot use without breaking its scope fence, so the gate uses the tutorial's OWN S11-dip readout from the same run.",
+      "gate_upstream_anchored": "broadside directivity D >= 6.0 dBi ('~7 dBi')",
+      "gate_repo_internal_lock": "|f_s11_dip - 2.4300 GHz| / 2.4300 GHz <= 0.01 -- a REGRESSION LOCK on this repo's own earlier source-built run, explicitly NOT a reproduction of an upstream number. Both halves must hold.",
+      "recorded_reproduction": {
+        "f_res_harminv_ghz": 2.4221,
+        "q": 20.1,
+        "f_s11_dip_ghz": 2.43,
+        "s11_min_db": -27.8,
+        "broadside_d_dbi": 6.79,
+        "stop": "EndCriteria=1e-4 at step 8671, energy -41.09 dB",
+        "vessl_run_id": "369367246713",
+        "log_path": "docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log",
+        "log_present_in_tree": false,
+        "log_caveat": "LOCAL-ONLY. Verified 2026-09-01 from this worktree: 'ls docs/research_notes/vessl_logs/' -> 'No such file or directory'. The precedent script's header marks it '(local-only)'; the predeclaration dropped that caveat and it is restored here. This lane writes its own A2 log into the artifact directory so the next reader has one.",
+        "verified_on": "2026-07-11"
+      },
+      "status": "RUN",
+      "passed": true,
+      "f_s11_dip_ghz": 2.43,
+      "s11_min_db": -30.640698938782414,
+      "broadside_d_dbi": 6.8081740563419215,
+      "upstream_anchored_gate_ok": true,
+      "repo_internal_lock_dev": 0.0,
+      "repo_internal_lock_ok": true,
+      "truncated_suspected": false,
+      "settling_positive_control_smoke_warned": true,
+      "settling_positive_control_real_warned": false,
+      "elapsed_s": 20.3,
+      "log_written_by_this_run": "/tmp/i498_openems_referee/a2_patch_tutorial/_openems_stdout.log"
+    },
+    "passed": true,
+    "law": "Before any rfx-vs-openEMS number exists, this script must imitate openEMS's own canonical example and reproduce its documented known-good number. A lumped/wire-to-MSL transition has no closed form, so there is no analytic escape hatch. Two legs are required because the DUT uses two port classes.",
+    "settling_evidence_protocol": "External scripts get no rfx preflight, so the -40 dB settling witness is hand-ported the way the precedents do it: EndCriteria = 1e-4 (= -40 dB) plus a POSITIVE CONTROL -- each stage runs a deliberately short SMOKE pass (NrTS=200, EndCriteria=0.0) whose max-timesteps warning MUST fire, and a real pass in which it MUST be ABSENT. Both appear in the committed run log. openEMS writes that warning to STDERR, so both fds are captured (the #490 lane's own GUARD CHANNEL-GAP fix)."
+  },
+  "elapsed_s": 42.7,
+  "note": "ok"
+}
