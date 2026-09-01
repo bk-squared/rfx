@@ -1979,8 +1979,8 @@ class _SparamMixin:
             because it would shift the V/I DFT windows).  Default
             ``None`` is byte-identical to the pre-checkpoint scan.
 
-            On a NON-uniform mesh (``dx_profile`` / ``dy_profile``,
-            issue #73) ``checkpoint_segments=K`` is now supported: ``K`` is
+            On a NON-uniform mesh (``dx_profile`` / ``dy_profile`` /
+            ``dz_profile``, issue #73) ``checkpoint_segments=K`` is now supported: ``K`` is
             translated to the NU runner's ``checkpoint_every`` chunk size — the
             divisor of ``n_steps`` nearest to ``n_steps/K`` — and applied to the
             *device* run only (the vacuum reference is constant in the design
@@ -2120,7 +2120,10 @@ class _SparamMixin:
 
         # Non-uniform-mesh dispatch. Earlier the uniform scan ran with
         # the coarse boundary dx and silently ignored ``dx_profile`` /
-        # ``dy_profile`` (handover v2 experiment 12). The dedicated NU
+        # ``dy_profile`` (handover v2 experiment 12) — and until #811 a
+        # dz_profile-ONLY mesh still fell through to the uniform lane,
+        # because this gate tested only the transverse profiles while
+        # preflight described the graded mesh. The dedicated NU
         # two-run extractor below is enabled when its supported scope
         # is met (``normalize=True``, single-mode ports); otherwise
         # raise so the user is not given silently-wrong numbers.
@@ -2141,7 +2144,11 @@ class _SparamMixin:
             if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
                 raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
-        if self._dx_profile is not None or self._dy_profile is not None:
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
             if checkpoint_segments is not None and checkpoint_segments < 1:
                 raise ValueError(
                     f"checkpoint_segments must be >= 1, got {checkpoint_segments}"
@@ -2179,10 +2186,11 @@ class _SparamMixin:
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "
-                    "(dx_profile / dy_profile) supports normalize=True or "
+                    "(dx_profile / dy_profile / dz_profile) supports "
+                    "normalize=True or "
                     "normalize='flux' and single-mode ports. "
                     + "; ".join(unsupported)
-                    + ". Drop the dx/dy profile to use the uniform lane."
+                    + ". Drop the dx/dy/dz profile to use the uniform lane."
                 )
             # Far-port absorber advisory, on the NU lane too (#576 review F3).
             # It used to sit ~110 lines below this branch's return, i.e. it was
@@ -7041,7 +7049,7 @@ class _SparamMixin:
 
         Drives each port in turn, running device + vacuum-reference
         scans through ``run_nonuniform_path`` so ``dx_profile`` /
-        ``dy_profile`` actually flow into the Yee update. The per-port
+        ``dy_profile`` / ``dz_profile`` actually flow into the Yee update. The per-port
         drive is implemented by temporarily zeroing ``amplitude`` on
         non-driven entries; the original port list is restored in a
         ``finally`` block. Reference run uses ``eps_override`` /
@@ -7083,8 +7091,8 @@ class _SparamMixin:
             raise NotImplementedError(
                 "compute_waveguide_s_matrix(normalize=False) is not yet "
                 "supported on the non-uniform mesh path; use normalize=True, "
-                "normalize='flux', or drop dx/dy_profile to stay on the "
-                "uniform lane."
+                "normalize='flux', or drop the dx/dy/dz profiles to stay on "
+                "the uniform lane."
             )
 
         entries = list(self._waveguide_ports)

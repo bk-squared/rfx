@@ -2592,7 +2592,11 @@ class _PreflightMixin:
                 "measured/default reference planes or explicit reference_plane "
                 "overrides"
             )
-        if self._dx_profile is not None or self._dy_profile is not None:
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
             unsupported = []
             if normalize is not True and normalize != "flux":
                 unsupported.append("normalize=True or normalize='flux' is required")
@@ -2601,10 +2605,11 @@ class _PreflightMixin:
             if unsupported:
                 raise NotImplementedError(
                     "compute_waveguide_s_matrix() on a non-uniform mesh "
-                    "(dx_profile / dy_profile) supports normalize=True or "
+                    "(dx_profile / dy_profile / dz_profile) supports "
+                    "normalize=True or "
                     "normalize='flux' and single-mode ports. "
                     + "; ".join(unsupported)
-                    + ". Drop the dx/dy profile to use the uniform lane."
+                    + ". Drop the dx/dy/dz profile to use the uniform lane."
                 )
 
     def _validate_coaxial_sparameter_request_for_preflight(self) -> None:
