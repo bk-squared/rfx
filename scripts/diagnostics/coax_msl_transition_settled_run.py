@@ -106,6 +106,21 @@ ones touching this driver are applied here):
   10 GHz) at ALL committed bins under BOTH drives; MSL-drive residuals
   clean while the coax-drive MSL-ladder residuals are not => NON-CLOSING
   ((b)-on-ladder NOT falsified), no attribution.
+* A5 AND #822: this ratio is |incident| / |outgoing| at the NON-driven
+  port, i.e. |Gamma_termination|, and it only means that on the POST-#822
+  labels. Artifacts written before the wave-role fix (372a5fad) carry its
+  RECIPROCAL, because a_inc and b_out were exchanged there. Do not compare
+  an old A5 number with a new one and read the difference as physics: on
+  the committed attempt-3 witness run (369367257533) the archived coax-side
+  ratios 11.132 / 11.609 / 11.903 are the same measurement as 0.0898 /
+  0.0861 / 0.0840 under the corrected labels, and the MSL-side 1.196 /
+  1.285 / 1.203 are 0.836 / 0.778 / 0.832. The VERDICTS move with them: the
+  coax side goes FLOOR -> RESOLVED (0.090 <= 0.15, smooth to 4%), which is
+  the 8.4-9.0% feed-end echo the predeclaration expected to see, while the
+  MSL side stays FLOOR (0.836 > 0.3) against its predeclared 0.030 -- a
+  live discrepancy, not a labelling artifact, and one the #823 near-field
+  ladder finding bears on. Re-reading the archived verdicts is record-half
+  work; this driver reports what the run in front of it says.
 * A5 same-run floor witness for the sub -55 dB transmitted signals:
   |a_inc[0, 1, f] / b_out[0, 1, f]| (coax array, MSL drive -- the coax
   termination's own echo) and |a_inc[1, 0, f] / b_out[1, 0, f]| (MSL
