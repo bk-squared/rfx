@@ -88,6 +88,40 @@ W4 (flux planes): the H1 discriminator is the SIGN of ``msl_x20`` -- the
 Label-swap counterfactual: the two-drive solve re-run with a<->b equals
     inv(S_code) exactly (it is the algebraic inverse, not a new estimator);
     printed as a PREDICTION of H1, never written into the legacy keys.
+
+W4's box is NOT the predeclared #589 flux instrument -- read this before quoting it
+-----------------------------------------------------------------------------------
+``scripts/diagnostics/coax_msl_flux_adjudication.py`` (merged in #597/#599) is
+the STANDING flux instrument on this issue. It implements, verbatim, the face
+table pre-declared on issue #589 in the comment of 2026-08-07
+("PRE-DECLARATION -- item 2 adjudication attempt") for the ATTEMPT-2 fixture:
+xp x=2.2, xm x=0.3, yp y=3.1, ym y=0.3, zt z=3.4, zb z=0.9 mm, with explicit
+outward signs, C1/C2 CONTROL runs that gate interpretation of the target
+(rc=2 if a control fails), +-2-cell face-SHIFT invariance, and below-ground
+``strip_{xp,xm,yp,ym}`` sub-strips that witness coax-shell tightness
+("must read ~0").
+
+W4 here is a SECOND, differently-placed box on the ATTEMPT-3 fixture
+(coordinates in ``tests/test_coax_msl_transition.py``: FLUX_BOX_X_3/Y_3/Z_3,
+FLUX_COAX_Z_3), and it does not supersede that predeclaration. Two of its
+faces are forced by attempt 3: the clearance hole is OPEN, so the coax-shell
+interior is on the power path and the box needs a face INSIDE the coax, and
+that face must sit above the highest coax probe (z = 1.9 mm) and below
+ref_coax_m = 2.5 mm for R1 to be comparable to the ladder's own pencil
+amplitudes -- the predeclared zb = 0.9 mm is a full below-ground plane at the
+BOTTOM of that ladder. The remaining coordinates are a tighter one-box choice,
+not something attempt 3 forces; only the two y-face coordinates (0.3, 3.1 mm)
+coincide with the predeclared ym/yp, and even they carry a different footprint.
+
+Declared omissions (so their absence is not read as a result): this box has NO
+control runs, NO face-shift invariance member -- ``top_z36`` = 3.6 mm sits 3
+cells below the interior top (LZ_2 = 3.9 mm), tighter than the predeclared
+zt = 3.4 mm, and the predeclaration restricted one-sided shifts exactly
+because a face near the CPML inner edge is absorber-fringe contaminated, so a
+settled closure residual here CANNOT be separated from face placement -- and
+NO shell-tightness strips: it ASSUMES the coax-shell tightness the predeclared
+instrument MEASURES. If any of those three matter to a decision, the answer
+comes from ``coax_msl_flux_adjudication.py``, not from W4.
 """
 from __future__ import annotations
 
@@ -117,6 +151,12 @@ W4_MIN_SIGNAL_OVER_CLOSURE = 3.0    # |msl_x20| must exceed the box's own closur
 
 COAX_SUBSETS = ((0, 4), (2, 6))
 MSL_SUBSETS = ((0, 3), (3, 6), (6, 9), (0, 5), (4, 9))
+# The six faces of the attempt-3 W4 box (tests/test_coax_msl_transition.py:
+# FLUX_BOX_X_3/Y_3/Z_3, FLUX_COAX_Z_3). NOT the face table pre-declared on #589
+# on 2026-08-07 and implemented in scripts/diagnostics/coax_msl_flux_adjudication.py
+# -- see the module docstring section "W4's box is NOT the predeclared #589 flux
+# instrument" for what differs, why, and what this box does not carry (no
+# controls, no shift-invariance member, no shell-tightness strips).
 FLUX_BOX_FACES = ("coax_z22", "msl_x20", "top_z36", "xlo_x05", "ylo_y03", "yhi_y31")
 FLUX_CLOSURE_SIGNS = {  # outflow through each face expressed in the monitor's +axis sign
     "msl_x20": +1.0, "top_z36": +1.0, "xlo_x05": -1.0, "ylo_y03": -1.0, "yhi_y31": +1.0,
@@ -769,6 +809,22 @@ def compute_witnesses(d):
         out["W4_flux"] = w4_flux(flux, a_inc=a_inc, b_out=b_out, freqs=freqs,
                                  settling_db=settling_db)
         out["W4_rules"] = {
+            "predeclaration_relation":
+                "THIS IS NOT THE PREDECLARED #589 FLUX INSTRUMENT. The standing one is "
+                "scripts/diagnostics/coax_msl_flux_adjudication.py (merged #597/#599), which "
+                "implements verbatim the face table pre-declared on #589 in the comment of "
+                "2026-08-07 ('PRE-DECLARATION -- item 2 adjudication attempt') on the ATTEMPT-2 "
+                "fixture (xp x=2.2, xm x=0.3, yp y=3.1, ym y=0.3, zt z=3.4, zb z=0.9 mm) with "
+                "C1/C2 control runs that gate interpretation, +-2-cell face-shift invariance and "
+                "below-ground shell-tightness strips. The attempt-3 box used here has DIFFERENT "
+                "coordinates (its bottom face must sit inside the coax, above the top coax probe "
+                "at 1.9 mm and below ref_coax_m = 2.5 mm, because the clearance hole is now open "
+                "and R1 is compared to the ladder's own pencil amplitudes), and carries NO "
+                "controls, NO shift-invariance member (top_z36 = 3.6 mm is 3 cells below the "
+                "interior top, tighter than the predeclared zt = 3.4 mm, so a closure residual "
+                "here cannot be separated from face placement) and NO shell-tightness strips (it "
+                "ASSUMES the tightness the predeclared instrument MEASURES). These numbers are "
+                "not directly comparable to that instrument's; the PI arbitrates.",
             "h1_sign": "coax drive: msl_x20 > 0 (net power LEAVES the junction at the NON-DRIVEN "
                        "port, whose +x branch the assembler labels a_inc) => labels inverted, H1 "
                        "supported; msl_x20 < 0 => H1 KILLED. NOT keyed on coax_z22.",

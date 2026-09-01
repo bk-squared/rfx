@@ -3091,6 +3091,54 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 # closed surface at all). ``msl_x20_full`` is the SAME plane taken full-domain,
 # reported next to the patch as the total +x power (guided + radiated + the
 # part flowing outside the box footprint); it is NOT part of the closure sum.
+#
+# RELATION TO THE STANDING #589 FLUX PREDECLARATION -- READ THIS FIRST.
+# This is the SECOND flux instrument on issue #589 and it does NOT supersede
+# the first. scripts/diagnostics/coax_msl_flux_adjudication.py (merged in
+# #597/#599) implements, verbatim, the face table pre-declared on #589 in the
+# comment of 2026-08-07 ("PRE-DECLARATION -- item 2 adjudication attempt"):
+# xp x=2.2, xm x=0.3, yp y=3.1, ym y=0.3, zt z=3.4, zb z=0.9 mm on the
+# ATTEMPT-2 fixture, with explicit outward signs, C1/C2 control runs that GATE
+# interpretation of the target (rc=2 if a control fails), +-2-cell face-SHIFT
+# invariance, and below-ground strip_{xp,xm,yp,ym} sub-strips that witness
+# coax-shell tightness ("must read ~0"). None of that is reproduced here.
+# Only the two y-face coordinates below (0.3 and 3.1 mm) coincide with that
+# table's ym/yp -- and even they carry a different footprint, since these are
+# patches of a box whose z-span is 2.5-3.6 mm rather than 0.9-3.4 mm. The x
+# and z faces differ outright. W4's numbers are therefore NOT directly
+# comparable to that instrument's and the PI must arbitrate the two knowingly.
+#
+# Why attempt 3 cannot simply reuse the predeclared table:
+#   * The predeclared box was built for ATTEMPT 2, where the ground plane is
+#     solid (the clearance hole is a SHORT). On attempt 3 the hole is OPEN, so
+#     the coax-shell interior is on the power path and the box must have a
+#     face INSIDE the coax; the predeclared zb (z = 0.9 mm) is a below-ground
+#     plane spanning x [0.3, 2.2], y [0.3, 3.1] mm, i.e. the whole footprint,
+#     not a coax cross-section.
+#   * W4's job here is to compare that face to the coax LADDER's own pencil
+#     amplitudes, which are referred to ref_coax_m = 2.5 mm. The bottom face
+#     must therefore sit ABOVE the highest coax probe (k = 27, z = 1.9 mm) and
+#     BELOW the reference plane; the predeclared zb = 0.9 mm sits at the
+#     BOTTOM of the ladder and would enclose the probes it is compared with.
+#   * The remaining coordinates (x 0.5/2.0, y 0.3/3.1, top 3.6 mm) are a
+#     tighter box chosen so that all six faces are PATCHES of one closed
+#     volume that meet at the top face; the y-face COORDINATES coincide with
+#     the predeclared ym/yp (their footprints do not), the x and z faces do
+#     not. That tightening is this instrument's choice, NOT something attempt
+#     3 forces.
+#
+# NOT part of this box, declared here so the omission is not read as a result:
+#   * NO control runs. Nothing here gates interpretation the way C1/C2 do.
+#   * NO face-SHIFT invariance member. top_z36 = 3.6 mm sits only 3 cells
+#     below the interior top (LZ_2 = 3.9 mm) -- inside the predeclaration's
+#     >= 3-cell rule, but TIGHTER than its zt = 3.4 mm, and the predeclaration
+#     restricted one-sided shifts precisely because a face near the CPML inner
+#     edge is absorber-fringe contaminated. With no shift witness, a settled
+#     closure residual here CANNOT be separated from face placement.
+#   * NO below-ground shell-tightness strips. This box ASSUMES the coax-shell
+#     tightness that the predeclared instrument MEASURES; if that assumption
+#     is in doubt, the strip witness lives in coax_msl_flux_adjudication.py,
+#     not here.
 FLUX_BOX_X_3 = (0.5e-3, 2.0e-3)     # x faces: xlo_x05 (-x face), msl_x20 (+x face)
 FLUX_BOX_Y_3 = (0.3e-3, 3.1e-3)     # y faces: ylo_y03, yhi_y31
 FLUX_BOX_Z_3 = (N_GND * DX, 3.6e-3)  # ground plane (2.5 mm) up to top_z36

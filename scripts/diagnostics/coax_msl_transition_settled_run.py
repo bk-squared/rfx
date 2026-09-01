@@ -638,6 +638,14 @@ def _witness_dump(*, result, ext, out_path, freqs_all, beta_coax_analytic,
     ``w4_flux`` -- and ONLY when this function runs, i.e. only when at least
     one of ``--dump-ladders`` / ``--flux`` was passed. No legacy key and no
     pre-existing ``ext_589`` key is touched.
+
+    CALL ORDER IS LOAD-BEARING: the caller writes the result JSON BEFORE
+    calling this, and calls it inside try/except. Everything here is
+    report-only, and it runs at the end of a multi-hour GPU solve whose result
+    JSON is the irreplaceable artifact -- an exception raised in here (a
+    failed ``np.savez`` on NFS, an all-zero subset raising inside the pencil,
+    ``np.linalg.lstsq`` not converging) must never be able to destroy that
+    measurement. Do not move this call above the write.
     """
     import coax_msl_ladder_witnesses as W
 
@@ -1218,18 +1226,48 @@ def main() -> int:
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # The MEASUREMENT is persisted FIRST and unconditionally. The witness dump
+    # below is report-only instrumentation on an irreplaceable ~2-4 h GPU run,
+    # so it is never allowed to stand between the solve and the result JSON:
+    # any exception inside it (np.savez onto a full/odd NFS path, an all-zero
+    # subset raising in the pencil, np.linalg.lstsq) would otherwise destroy
+    # the whole measurement. It runs after this write, inside try/except, and
+    # the additive ext_589 keys are folded in by an ATOMIC re-write that
+    # cannot truncate the file already on disk.
+    out_path.write_text(json.dumps(out, indent=2))
+    print(f"\nresult JSON written to: {out_path}")
+
     if args.dump_ladders or args.flux:
         beta_coax_analytic = (2.0 * np.pi * np.asarray(result.freqs)
                               * np.sqrt(t.EPS_COAX) / c0)
-        _witness_dump(
-            result=result, ext=ext, out_path=out_path, freqs_all=np.asarray(result.freqs),
-            beta_coax_analytic=beta_coax_analytic, beta_msl_analytic=beta_analytic_all,
-            ladders_requested=bool(args.dump_ladders),
-            ladders_available=ladders_available, flux_requested=bool(args.flux),
-        )
-
-    out_path.write_text(json.dumps(out, indent=2))
-    print(f"\nresult JSON written to: {out_path}")
+        try:
+            _witness_dump(
+                result=result, ext=ext, out_path=out_path, freqs_all=np.asarray(result.freqs),
+                beta_coax_analytic=beta_coax_analytic, beta_msl_analytic=beta_analytic_all,
+                ladders_requested=bool(args.dump_ladders),
+                ladders_available=ladders_available, flux_requested=bool(args.flux),
+            )
+        except Exception:  # noqa: BLE001 -- report-only witness must not kill the run
+            import traceback as _tb
+            witness_tb = _tb.format_exc()
+            ext["witness_error"] = witness_tb
+            print("\n  WARNING: the REPORT-ONLY witness dump FAILED. The measurement "
+                  "JSON above is already on disk and is unaffected; the traceback is "
+                  "recorded in ext_589['witness_error'].")
+            print(witness_tb)
+        # Fold the additive ext_589 keys (or witness_error) into the JSON
+        # without ever truncating the file that is already there.
+        try:
+            tmp_path = out_path.with_name(out_path.name + ".tmp")
+            tmp_path.write_text(json.dumps(out, indent=2))
+            os.replace(tmp_path, out_path)
+            print(f"result JSON re-written with the witness keys: {out_path}")
+        except Exception:  # noqa: BLE001
+            import traceback as _tb
+            print("  WARNING: could not re-write the result JSON with the witness "
+                  "keys; the measurement JSON from the first write STANDS as it is "
+                  "(witness artifacts are on disk next to it).")
+            print(_tb.format_exc())
 
     print("\n=== SUMMARY (for filling SETTLED_RUN_RECORD -- hand-copy, do not "
           "auto-apply) ===")
