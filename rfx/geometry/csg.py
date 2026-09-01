@@ -321,6 +321,23 @@ class Box:
                 thin_mask[nearest_idx] = True
             # Volume: half-open [lo, hi).
             volume_mask = (coords >= lo) & (coords < hi)
+            # Thin-branch tie rule (#802 follow-up): a face-registered
+            # one-cell box is an EXACT half-cell tie — mid sits midway
+            # between two nodes — and argmin would resolve it by the last
+            # f64 ulp of (lo+hi)*0.5: same declaration idiom, different
+            # realized plane per fixture, which is the class defect one
+            # level down. Whenever the volume window [lo, hi) selects
+            # EXACTLY ONE node, that node is the realized plane: it is the
+            # documented convention's own answer (lo-face node in, hi-face
+            # node out) and it is ulp-robust in exactly the way the volume
+            # branch is. Zero nodes (a sub-cell box straddling no node) or
+            # several (a graded-transition window) keep nearest-node
+            # argmin. A corner INTENDED on-lattice but computed through a
+            # different f64 route (a+b vs m*dx) can still miss its node by
+            # one ulp — that is the documented knife-edge class; spell such
+            # corners in lattice arithmetic (see the class docstring).
+            n_vol = xp.sum(volume_mask)
+            thin_mask = xp.where(n_vol == 1, volume_mask, thin_mask)
             # Thin sheet when the extent is within one local cell.
             is_thin = extent <= dc_local * 1.01
             return xp.where(is_thin, thin_mask, volume_mask)

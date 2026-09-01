@@ -344,7 +344,13 @@ def build_rfx_sim(*, do_gain: bool = False, two_plane: bool = True):
 
     cx, cy = DOM_X / 2, DOM_Y / 2
     z_sub_lo = AIR_BELOW                          # top face of ground plane
-    z_sub_hi = z_sub_lo + H_SUB
+    # Lattice-arithmetic spelling (#802): z_sub_hi is INTENDED on-lattice
+    # (AIR_BELOW = 10 cells, H_SUB == N_SUB*DX exactly), but the sum
+    # AIR_BELOW + H_SUB lands one f64 ulp ABOVE the node value 14*DX, so
+    # under exact node coordinates the patch's lo corner would miss its
+    # node (the Box docstring's knife-edge class). Same real number,
+    # bit-exact spelling.
+    z_sub_hi = (10 + N_SUB) * DX                  # == AIR_BELOW + H_SUB
     z_patch_lo, z_patch_hi = z_sub_hi, z_sub_hi + DX
     feed_x = cx + FEED_OFFSET_X
 

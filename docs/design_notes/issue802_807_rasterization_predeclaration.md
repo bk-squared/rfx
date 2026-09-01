@@ -251,3 +251,42 @@ f5_compare_result.json.
 
 **F3 — tracked through the re-pin commits that follow; any moved committed
 value not on the list above is a STOP.**
+
+## F3 investigation — the thin-branch tie sub-defect (declared before its fix)
+
+The broad sweep surfaced five failing surfaces beyond the enumerated
+re-pins. Root cause, measured per fixture (scratchpad tie_probe.py): a
+face-registered ONE-CELL box is an exact half-cell tie in the thin branch,
+and with exact f64 coordinates the argmin is decided by the last ulp of
+``(lo+hi)*0.5`` — it flipped UP on cv15's sheets and the fidelity-report
+fixture ([2.0, 2.5] mm at 500 µm) while flipping DOWN on the viewer
+fixture. Same declaration idiom, different realized side, decided by
+invisible ulps — the exact class this fix exists to kill, one level down.
+
+Three committed surfaces independently encode the convention-consistent
+answer (cv15's stack contract, ``test_exact_faces_report_zero_residual``,
+the ground-own-cell-vacuum fixture): a face-registered one-cell box
+realizes on its LO node — the node its own half-open ``[lo, hi)`` volume
+window keeps.
+
+**Declared rule (implemented next):** in the thin branch, when the volume
+window ``[lo, hi)`` selects EXACTLY ONE node, that node IS the realized
+plane (it is the documented convention's own answer, and it is ulp-robust
+in exactly the way the volume branch is); only a window with zero or
+several nodes falls back to nearest-node argmin. Falsifier: the two
+fidelity-report tests and cv15's ground wall go green WITHOUT touching
+their assertions; F1/F2/F5 and the 57-test contract suite stay green;
+the already-committed F2 values (plane [8], 400 cells) are unchanged
+because [0.4, 0.5) mm selects node 8 uniquely.
+
+**Knife-edge residual (measured, not fixable by any tie rule):** cv15's
+``z_sub_hi = AIR_BELOW + H_SUB`` lands one f64 ulp ABOVE the node
+``14*DX`` (0.0111125 vs 0.011112499999999999) — a sum-vs-product route
+mismatch at a corner INTENDED on-lattice (the script's own comments say
+so). Under f32 both routes collapsed to one value; exact comparison
+surfaces it. The remedy is the declaration route, not the comparator:
+spell the intended-on-lattice corner in lattice arithmetic
+(``(10 + N_SUB) * DX``) — the same real number, the bit-exact spelling.
+That is a registration fix consistent with the script's stated intent,
+not a geometry change; the committed cv15 results assume walls at the
+declared planes and keep their validity.

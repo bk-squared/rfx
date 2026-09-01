@@ -244,6 +244,15 @@ def test_one_cell_sheet_lands_on_one_and_the_same_plane_in_both_lanes(axis):
     with enable_x64():
         mu64 = np.asarray(sheet.mask(grid))
     assert np.array_equal(mu, mu64)
+    # Tie rule: a face-registered one-cell box is an exact half-cell tie;
+    # it must realize on its LO-face node — the node its own half-open
+    # [lo, hi) window keeps — not on whichever side the last f64 ulp of
+    # (lo+hi)*0.5 favours (cv15's stack contract and the fidelity-report
+    # exact-faces fixture both encode this).
+    ax_coords = np.asarray(_grid_coords(grid)[axis])
+    lo_node = np.where(ax_coords == lo[axis])[0]
+    assert lo_node.size == 1, "fixture: lo face must sit bitwise on a node"
+    assert pu[0] == lo_node[0]
 
 
 def test_traced_profile_mask_path_still_traces_and_differentiates():
