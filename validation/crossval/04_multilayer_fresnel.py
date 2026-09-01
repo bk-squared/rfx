@@ -12,9 +12,18 @@ Measurement approach (Taflove Ch. 5):
 The PRIMARY reference here is the exact transfer-matrix analytic solution
 (always available). Meep is an OPTIONAL secondary FDTD cross-check.
 
+Both declared references DECIDE the verdict (issue #812):
+  - the analytic transfer matrix is gated fringe-by-fringe (extremum positions
+    and extremum values), not only through a band mean over the interference
+    pattern;
+  - when Meep is importable its NUMBERS are gated too, against the analytic
+    result and directly against rfx. Before #812 the Meep leg was an import
+    check: every Meep quantity was printed and none entered any verdict.
+
 Exit codes (rfx crossval convention):
-  0 = rfx self-check (vs analytic) PASS *and* the Meep secondary cross-check ran
-  1 = rfx self-check failed (broken physics / infra)
+  0 = rfx self-check (vs analytic) PASS *and* the Meep cross-check ran AND
+      agreed numerically
+  1 = rfx self-check failed, or the Meep reference ran and disagreed
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
 
@@ -32,6 +41,21 @@ import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
+
+
+def _load_fringe_gate():
+    """Import the fringe comparator by path (validation/ is not a package)."""
+    import importlib.util
+
+    path = os.path.join(SCRIPT_DIR, "comparators", "fringe_gate.py")
+    spec = importlib.util.spec_from_file_location("_cv04_fringe_gate", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+fringe_gate = _load_fringe_gate()
 
 # =============================================================================
 # Parameters
@@ -314,7 +338,45 @@ c_ok = cons_rfx.mean() < 0.05
 CONS_MAX_LIMIT = 0.06
 cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 
-rfx_self_ok = bool(t_ok and r_ok and c_ok and cons_max_ok and tail_ok)
+# -----------------------------------------------------------------------------
+# FRINGE-RESOLVED GATE vs the analytic reference (ADDED, issue #812).
+#
+# The mean gates above (t_ok/r_ok) are audit pattern P2: the mean's null space
+# is every zero-mean shape error, and the gated observable here IS an
+# interference pattern. The audit measured that with only the mean gates the
+# case reports PASS while R_max is 22.3% low (0.3600 -> 0.2797), or the FDTD
+# slab is built with eps 12.33% too high, or d 8.0% wrong.
+#
+# The metric below is per-fringe, not a band mean: a REFERENCE-BLIND detector
+# locates the interior extrema of R_rfx(f) (prominence floor = the amplitude
+# resolution), refines each vertex to sub-bin resolution by a parabolic fit,
+# and then each extremum's POSITION and VALUE is gated against the analytic
+# slab. Nothing about the analytic extrema enters the detector, so the verdict
+# is not entailed by its own search window.
+#
+# Windows (frozen in docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md
+# in a commit PRECEDING this measurement — do not widen):
+#   position  W(f) = 2 * (df_bin/2 + |exact Yee dispersion shift at f|)
+#                  = 59.1 / 106.3 / 234.9 MHz at 3.7475 / 7.4950 / 11.2425 GHz
+#   value     V    = 0.04 = 11.1% of the analytic fringe contrast (0.36)
+# Detection power, from geometry alone: eps +12.33% moves the three fringes by
+# -211.7 / -423.4 / -635.1 MHz = 3.6x / 4.0x / 2.7x their windows.
+# -----------------------------------------------------------------------------
+freqs_band = freqs[mask]
+df_bin = float(freqs[1] - freqs[0])
+fringe_verdict = fringe_gate.compare_fringes(
+    freqs_band, R_rfx,
+    eps_r=eps_slab, d=d_slab, n_index=n_slab,
+    dx=dx, dt=dt, df_bin_hz=df_bin, c0=C0,
+    label="rfx vs analytic",
+)
+fringe_ok = bool(fringe_verdict.ok)
+print()
+print(fringe_gate.format_fringe_table(fringe_verdict, "rfx vs analytic"))
+
+rfx_self_ok = bool(
+    t_ok and r_ok and c_ok and cons_max_ok and tail_ok and fringe_ok
+)
 
 # =============================================================================
 # PART 3: Meep simulation (OPTIONAL secondary cross-validation reference)
@@ -446,7 +508,6 @@ if HAVE_MEEP:
     R_meep = np.interp(freqs[mask], freqs_meep_Hz, R_meep_full)
 
     # Only evaluate Meep error inside its valid band (avoid edge garbage)
-    freqs_band = freqs[mask]
     in_meep_band = (freqs_band >= meep_f_lo * 1.05) & (freqs_band <= meep_f_hi * 0.95)
     T_err_meep = np.abs(T_meep[in_meep_band] - T_an[in_meep_band])
     R_err_meep = np.abs(R_meep[in_meep_band] - R_an[in_meep_band])
@@ -456,6 +517,66 @@ if HAVE_MEEP:
     print(f"  Meep R(f) mean err: {R_err_meep.mean():.4f}, max: {R_err_meep.max():.4f}")
     print(f"  Meep R+T mean: {np.mean(R_meep[in_meep_band]+T_meep[in_meep_band]):.4f}, "
           f"dev max: {cons_meep.max():.4f}")
+
+    # -------------------------------------------------------------------------
+    # THE MEEP NUMBERS NOW DECIDE (ADDED, issue #812).
+    #
+    # Before this, `rfx_self_ok` was assembled in PART 2 — before this block
+    # even ran — and the exit code was `0` iff `rfx_self_ok and HAVE_MEEP`.
+    # Every Meep quantity computed above was printed and none was compared to
+    # anything with a consequence: the E4 label was carried by an `import`.
+    #
+    # Three binding checks, windows frozen in
+    # docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md section 6:
+    #   1. Meep must reproduce the analytic slab POINTWISE (not in the mean):
+    #      max|R_meep - R_an|, max|T_meep - T_an| <= MEEP_ABS_LIMIT = 0.08
+    #      (= one position budget W(f_top)=234.9 MHz at the maximum fringe
+    #       slope 0.151/GHz -> 0.0355, plus the amplitude budget V = 0.04).
+    #   2. rfx and Meep must agree POINTWISE:
+    #      max|R_rfx - R_meep|, max|T_rfx - T_meep| <= MEEP_CROSS_LIMIT = 0.16
+    #      (two independent solvers -> twice one solver's budget).
+    #   3. Meep's own fringe structure, located on MEEP'S NATIVE flux grid by
+    #      the same reference-blind detector, must match the analytic slab in
+    #      count/order, position and value.
+    # -------------------------------------------------------------------------
+    MEEP_ABS_LIMIT = fringe_gate.MEEP_ABS_LIMIT
+    MEEP_CROSS_LIMIT = fringe_gate.MEEP_CROSS_LIMIT
+
+    T_rfx_meep_diff = np.abs(T_rfx[in_meep_band] - T_meep[in_meep_band])
+    R_rfx_meep_diff = np.abs(R_rfx[in_meep_band] - R_meep[in_meep_band])
+    meep_reasons = fringe_gate.external_pointwise_reasons(
+        R_err_meep, T_err_meep, R_rfx_meep_diff, T_rfx_meep_diff,
+        solver="Meep",
+    )
+
+    # Meep's native flux grid, restricted to the band rfx evaluates. Meep runs
+    # its own Yee scheme at the same dx with its default Courant 0.5, so its
+    # dispersion window is computed from ITS dt, not rfx's.
+    dt_meep = 0.5 * dx / C0
+    native_sel = ((freqs_meep_Hz >= freqs_band[0])
+                  & (freqs_meep_Hz <= freqs_band[-1]))
+    f_meep_native = freqs_meep_Hz[native_sel]
+    R_meep_native = R_meep_full[native_sel]
+    if f_meep_native.size >= 3:
+        df_meep = float(f_meep_native[1] - f_meep_native[0])
+        meep_fringe_verdict = fringe_gate.compare_fringes(
+            f_meep_native, R_meep_native,
+            eps_r=eps_slab, d=d_slab, n_index=n_slab,
+            dx=dx, dt=dt_meep, df_bin_hz=df_meep, c0=C0,
+            label="Meep vs analytic",
+        )
+        print()
+        print(fringe_gate.format_fringe_table(
+            meep_fringe_verdict, "Meep vs analytic (Meep native flux grid)"))
+        if not meep_fringe_verdict.ok:
+            meep_reasons.extend(meep_fringe_verdict.reasons)
+    else:
+        meep_reasons.append(
+            "Meep flux grid has fewer than 3 points inside the evaluated band "
+            "— the Meep fringe gate cannot decide, which is a FAIL, not a pass"
+        )
+
+    meep_numeric_ok = not meep_reasons
 
 # =============================================================================
 # PART 4: comparison table (three-way if Meep ran, else rfx vs analytic)
@@ -561,15 +682,24 @@ print(f"  {'tail total@trans (rel)':<25} {tail_trans_rel:>10.4f} "
 print(f"  {'tail window purity':<25} {tail_inc_rel:>10.2e} "
       f"{TAIL_PURITY_LIMIT:>10.0e}  [{'ok' if tail_window_clean else 'FAIL'}]")
 
+print(f"  {'fringe gate vs analytic':<25} "
+      f"{'ok' if fringe_ok else 'FAIL':>10}")
+for _reason in fringe_verdict.reasons:
+    print(f"    !! {_reason}")
+
 print(f"\n  rfx accuracy: {'PASS' if rfx_self_ok else 'FAIL'}")
 
 if HAVE_MEEP:
-    # Direct rfx vs Meep comparison (within Meep band)
-    T_rfx_meep_diff = np.abs(T_rfx[in_meep_band] - T_meep[in_meep_band])
-    R_rfx_meep_diff = np.abs(R_rfx[in_meep_band] - R_meep[in_meep_band])
+    # Direct rfx vs Meep comparison (within Meep band) — GATED since #812.
     print("\n  rfx vs Meep direct comparison (in Meep band):")
-    print(f"    |T_rfx - T_meep| mean: {T_rfx_meep_diff.mean():.4f}, max: {T_rfx_meep_diff.max():.4f}")
-    print(f"    |R_rfx - R_meep| mean: {R_rfx_meep_diff.mean():.4f}, max: {R_rfx_meep_diff.max():.4f}")
+    print(f"    |T_rfx - T_meep| mean: {T_rfx_meep_diff.mean():.4f}, max: {T_rfx_meep_diff.max():.4f}"
+          f"  (limit {MEEP_CROSS_LIMIT:.2f})")
+    print(f"    |R_rfx - R_meep| mean: {R_rfx_meep_diff.mean():.4f}, max: {R_rfx_meep_diff.max():.4f}"
+          f"  (limit {MEEP_CROSS_LIMIT:.2f})")
+    print(f"\n  Meep reference numeric gate: "
+          f"{'PASS' if meep_numeric_ok else 'FAIL'}")
+    for _reason in meep_reasons:
+        print(f"    !! {_reason}")
 print("\n  Output: 04_fresnel_slab.png, 04_time_domain.png")
 
 # =============================================================================
@@ -582,5 +712,10 @@ if not HAVE_MEEP:
     print("\n[SKIP] Meep secondary reference unavailable — crossval "
           "inconclusive (exit 2)")
     sys.exit(2)
-print("\nALL CHECKS PASSED — rfx vs analytic and Meep secondary cross-check (exit 0)")
+if not meep_numeric_ok:
+    print("\ncrossval reference: FAIL — the Meep reference ran and its "
+          "NUMBERS disagree (exit 1)")
+    sys.exit(1)
+print("\nALL CHECKS PASSED — rfx vs analytic (fringe-resolved) and the Meep "
+      "reference's numbers agree (exit 0)")
 sys.exit(0)

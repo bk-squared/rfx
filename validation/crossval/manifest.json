@@ -77,10 +77,13 @@
         {"kind": "analytic", "name": "normal-incidence transfer-matrix Fresnel R/T", "required_for_script_pass": true},
         {"kind": "external-solver", "name": "Meep slab R/T", "required_for_script_pass": true}
       ],
-      "claim_scope": "normal-incidence multilayer reflection, transmission, and energy balance over the scripted frequency band",
+      "claim_scope": "normal-incidence multilayer reflection, transmission, transmission/reflection fringe structure (Fabry-Perot extremum positions and values), and energy balance over the scripted frequency band",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/04_multilayer_fresnel.py"],
+      "gate_paths": [
+        "validation/crossval/04_multilayer_fresnel.py",
+        "validation/crossval/comparators/fringe_gate.py"
+      ],
       "artifact_paths": [],
       "cpu_runner": {"order": 2},
       "scheduled_external_order": 4,

@@ -259,3 +259,163 @@ printed reason:
 - `validation/README.md:38` — the reference column.
 - `validation/crossval/manifest.json` — `evidence_levels` / gate description
   stay as they are only if the Meep numbers really do bind after this change.
+
+---
+
+## 9. CORRECTION (appended after the first measurement) — the detector, not the windows
+
+**Old design (section 3.1 above), and why it was wrong.** The pre-declaration
+said the extremum detector would find "interior local extrema of the measured
+`R(f)` over the evaluated band with a prominence floor", with the prominence
+floor set to `V = 0.04`. Measured on the committed run, that detector found
+**only one** of the three extrema — the minimum at 7.4706 GHz — and reported a
+count/order mismatch, i.e. it failed criterion (A) on correct code.
+
+The cause is a property of prominence, not of the physics. `scipy.signal.
+find_peaks` measures a peak's prominence against the lowest contour that
+separates it from a higher peak, **using the array boundary when there is no
+higher peak on that side**. The evaluated band is `3.0321–11.8666 GHz`, which
+truncates the outer shoulder of both maxima:
+
+- max at 3.7475 GHz — the band starts at 3.0321 GHz where the analytic
+  `R = 0.36 sin^2(delta)` is already 0.3278, so its left-side prominence is
+  only **0.032**, below the 0.04 floor;
+- max at 11.2425 GHz — the band ends at 11.8666 GHz where `R = 0.337`, so its
+  right-side prominence is only **0.023**.
+
+Both true maxima were therefore rejected. This is an instrument defect in the
+detector; the two gate windows `W` and `V` are untouched by it.
+
+**New design (implemented).** The analytic slab partitions the band into
+half-fringe cells of width `FSR/2 = 3747.5 MHz`, one per extremum, centred on
+the analytic extremum. `FSR/4 = 1873.75 MHz` is the largest half-width that
+cannot contain two extrema of the same kind, so the cells tile the band without
+overlap — pure geometry, no tuning. The measured extremum is the arg-extremum
+inside its own cell, parabolically refined; if it lands within
+`PIN_MARGIN_BINS = 2` bins of a cell edge the gate FAILS with a
+`fringe CONTAINMENT ... PINNED` reason rather than reporting a boundary as an
+extremum.
+
+**Why this still cannot entail the verdict** (the cv02 failure mode). The search
+half-width is 1873.75 MHz; the widest gate window is 234.9 MHz — 8.0x tighter
+(16x on cell width). A defect that moves a fringe by more than `W` but less than
+the cell half-width is *found* and reported as a POSITION failure; a defect that
+moves it out of its cell is reported as a PINNING failure. Both regimes fire, so
+"found in the cell" does not imply "passes the gate".
+`test_cv04_fringe_gate_is_not_entailed_by_its_own_search_window` and
+`test_cv04_fringe_gate_fails_rather_than_reports_a_pinned_extremum` pin both
+halves.
+
+`PROMINENCE_FLOOR` is removed. It was a detector parameter, never a gate
+window; no threshold moved.
+
+## 10. RESULTS
+
+Command (all runs, CPU, this host, Meep absent):
+
+```
+PYTHONPATH=<worktree> .venv/bin/python validation/crossval/04_multilayer_fresnel.py
+```
+
+### (A) The case still passes on correct code, with margin
+
+`exit 2` (unchanged: Meep unavailable is SKIP, not PASS). All pre-existing gates
+unchanged and passing. The new gate:
+
+| extremum | f_analytic | f_measured | dev | W | used |
+|---|---|---|---|---|---|
+| max | 3.7475 GHz | 3.7175 GHz | **-30.0 MHz** | 59.0 MHz | 0.51x |
+| min | 7.4950 GHz | 7.4706 GHz | **-24.4 MHz** | 106.4 MHz | 0.23x |
+| max | 11.2425 GHz | 11.3084 GHz | **+65.9 MHz** | 234.9 MHz | 0.28x |
+
+| extremum | R_analytic | R_measured | dev | V | used |
+|---|---|---|---|---|---|
+| max @3.7175 | 0.3600 | 0.3598 | **-0.0002** | 0.04 | 0.005x |
+| min @7.4706 | 0.0000 | 0.0000 | **+0.0000** | 0.04 | 0.000x |
+| max @11.3084 | 0.3600 | 0.3645 | **+0.0045** | 0.04 | 0.11x |
+
+Tightest margin: the low-frequency maximum at 1.97x. That fringe has the
+smallest window (59.0 MHz) because its derived dispersion shift is only
+3.4 MHz, so the window is essentially one spectral bin.
+
+### (B) The new gate fires on the defects the audit measured it blind to
+
+The audit's probes perturb the **reference**, holding the measurement fixed —
+which is the correct scope, because cv04's other gates (`cons_rfx`, the tail
+witness) compare rfx against rfx and are structurally incapable of seeing a
+disagreement with a reference. Reproduced verbatim:
+
+| probe | pre-#812 gates | new fringe gate |
+|---|---|---|
+| **eps 4.0 -> 4.4933 (+12.33%)** | `T` mean err **0.0494** < 0.05 PASS; `R` mean err **0.0449** < 0.05 PASS; `R+T` mean dev 0.0091 PASS; max\|R+T-1\| 0.0487 <= 0.06 PASS; tail PASS -> **exit 2, "rfx accuracy: PASS"** | **FAIL** — POSITION +181.7 MHz (**3.09x** W), +399.0 MHz (**3.83x**), +700.9 MHz (**3.09x**), plus one VALUE 1.12x |
+| **d +8.0%** | `T` mean err **0.0476** PASS; `R` mean err **0.0464** PASS; max\|R+T-1\| 0.0487 PASS -> **"rfx accuracy: PASS"** | **FAIL** — POSITION +247.6 MHz (**4.30x**), +530.8 MHz (**5.57x**), +898.6 MHz (**4.56x**) |
+| **R_max 0.3600 -> 0.2797 (-22.3%)** | `T` mean err 0.0110 PASS, `R` mean err **0.0452** < 0.05 PASS — **both reference-comparing gates blind** | **FAIL** — VALUE -0.0805 (**2.01x** V) and -0.0768 (**1.92x**), POSITION silent as designed |
+
+That `T` mean err lands at 0.0494 against a 0.05 limit confirms the auditor
+bisected the perturbation to the gate boundary, which is why "12.33%" carries
+four significant figures.
+
+**Honest scope note on the R_max probe.** The pre-existing per-bin conservation
+ceiling (`max|R+T-1| <= 0.06`, issue #341) *does* fire on the amplitude probe
+(0.1291), because scaling `R` alone breaks the internal energy identity. So that
+defect class is not entirely undetected on today's code — but no gate that
+*compares against the declared reference* saw it, and the ceiling would be blind
+to a normalization error that scaled `R` and `T` consistently.
+
+**Physical-injection direction, for completeness.** Building the FDTD slab with
+`eps = 4.4933` (rather than perturbing the reference) also trips the pre-existing
+mean gates (`T` 0.0547, `R` 0.0577) and the conservation ceiling (0.1001),
+because a wrong slab degrades energy balance as well. The audit's "and pass" is
+specific to the reference-perturbation direction; both directions trip the new
+fringe gate (physical injection: 4.60x / 4.21x / 2.37x).
+
+### Falsifiers pinned in the fast lane
+
+`tests/test_crossval_gate_logic.py` imports the same pure functions the crossval
+script calls (it does not replicate them, so it cannot drift) and pins: the three
+frozen windows, acceptance of an exact analytic slab, rejection of each of the
+three audit defects, rejection of a one-cell thickness error, the pinning
+failure on a structureless curve, non-entailment by the search window, and both
+legs of the external-solver pointwise gate including that it is a maximum and
+not a mean. 20 tests, all passing.
+
+## 11. What this lane does NOT demonstrate
+
+The Meep leg is **not** exercised against a live Meep run. Meep is not
+installable on this host (no conda/mamba; `pymeep` has no pip wheel). Its
+falsifier is demonstrated at gate-logic level against synthetic arrays through
+the same function the script calls
+(`test_cv04_external_pointwise_gate_rejects_a_disagreeing_solver`), and the
+live demonstration is owed to the scheduled `crossval-external` job. The
+windows there (`MEEP_ABS_LIMIT = 0.08`, `MEEP_CROSS_LIMIT = 0.16`) are derived
+in section 6 and are deliberately loose: they are sized so a correct Meep run
+cannot red the Monday lane for a budget that could not be measured here, while
+still firing at >= 1.9x on the audit's defects.
+
+One clarification to section 6: it wrote `W_meep(f) = SAFETY * (df_meep/2 +
+|dispersion_shift(f)|)` without saying whose grid the dispersion shift belongs
+to. The implementation uses **Meep's own** grid — same `dx = 1 mm`, Meep's
+default Courant 0.5, so `dt_meep = 0.5 dx / c` — which is the correct reading.
+No number in section 6 changes.
+
+## 12. Physics observation, filed NOT fixed
+
+The measured fringe positions deviate from the *discrete-Yee prediction* by more
+than the prediction itself at the two maxima:
+
+| extremum | Yee prediction | measured | residual vs prediction |
+|---|---|---|---|
+| max @3.7475 GHz | -3.4 MHz | -30.0 MHz | **-26.6 MHz** |
+| min @7.4950 GHz | -27.0 MHz | -24.4 MHz | +2.6 MHz |
+| max @11.2425 GHz | -91.3 MHz | +65.9 MHz | **+157.2 MHz** |
+
+The *minimum* tracks the dispersion prediction to 2.6 MHz (10% of it). The two
+*maxima* do not, and the top one is displaced in the opposite direction. A
+plausible mechanism is that a maximum of `R` is where the etalon ringdown
+contributes most, so truncating the run at 719 steps (the tail witness still
+reads 3.6% of incident peak) biases the peak location, while a minimum — where
+`R -> 0` and the ringdown is destructive — is unaffected. That is a hypothesis,
+not a measurement: it predicts the residual shrinks with run length, and the
+committed rung-C4 provenance (nx=1500 / 1940 steps) is the run that would test
+it. This is physics/measurement, not instrument, and every value stays inside
+the pre-declared window, so it is recorded here and left for a separate lane.
