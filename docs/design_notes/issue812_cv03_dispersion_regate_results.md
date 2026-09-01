@@ -153,3 +153,35 @@ criterion (A) available: in the reflection-free window the measured `n_eff` is
   read from the driver's own output and are unaffected. Recorded rather than
   silently fixed, because this issue has shipped unverified digits into durable
   documents twice already.
+
+- **2026-09-01, round 2 — the reflection-free comparison was frequency-mismatched
+and the conclusion drawn from it is falsified.** The paragraph beginning "One
+number from that test belongs here" divided a carrier-bin measured `n_eff` by
+the analytic `n_eff` at `f = fcen` exactly; §8.2 of the pre-declaration carries
+the mechanism and the artifact is
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json`. Two claims
+in that paragraph are withdrawn.
+- **The deviation and its margin.** Published:
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_dev_pct = -0.026`,
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_margin_factor_vs_g1 = 77`.
+At matched frequency:
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.corrected_dev_pct = +0.1588`.
+No margin factor replaces the withdrawn one — a carrier-bin deviation is not
+G1's statistic; see
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.margin_factor_withdrawn_because`.
+- **"What the recipe's own 16a domain and 400 a/c₀ window cost, not what the
+solver's dispersion costs" is falsified.** At matched frequency all four §8.1
+configurations deviate with the same sign, and the reflection-free one is
+*larger* than the recipe baseline, not smaller:
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.reflection_free_minus_baseline_pct = +0.0574`
+(rows at
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.dev_pct_matched_by_row.sx40_dft150_before_round_trip = 0.1588`
+and
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.dev_pct_matched_by_row.sx16_dft400_recipe_baseline = 0.1014`).
+Removing the backward wave does not collapse the deviation, so the baseline row
+is not measuring the standing wave.
+- **What is unchanged.** Criterion (A) and its margin — the band-max row of the
+criterion (A) table above, measured on the committed case. No gate moved. That
+round 1's "measured `n_eff`" column is the carrier bin, which is what makes this
+the right repair, is cross-checked against the committed run's own per-bin list:
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::column_semantics_cross_check.abs_difference_pct = 0.00036`.

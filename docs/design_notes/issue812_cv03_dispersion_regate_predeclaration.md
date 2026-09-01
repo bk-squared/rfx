@@ -301,3 +301,53 @@ Two consequences worth carrying into whatever issue takes this:
    measured `n_eff` is **2.84338** against the closed form's **2.84411** —
    **−0.026 %**, 77x inside G1's window. The case's physics is not what is
    wrong; its instrument was, and its termination is.
+
+### 8.2 CORRECTION (round 2, 2026-09-01) — item 2 of §8.1 compared two frequencies
+
+Append-only; §8.1 stands as written except for its item 2, corrected here. Every
+quantity below is a key of the committed artifact
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json`, emitted by
+`scripts/diagnostics/cv03_flux/build_cv03_matched_frequency.py` (no FDTD) and
+pinned by `tests/test_cv03_slab_dispersion_oracle.py`.
+
+**What was wrong.** Item 2 divided a measured `n_eff` taken at the case's
+carrier DFT bin, `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::grid.carrier_bin_f_c_over_a = 0.14898`,
+by the analytic `n_eff` at `f = fcen` **exactly**,
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_fcen_exact = 2.84411`.
+Those are different frequencies —
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::grid.fcen_minus_carrier_bin_c_over_a = 0.00102` —
+and `n_eff` rises with `f` across the gated band by
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.band_n_eff_increase_over_band = 0.1361`,
+so the mismatch inflated the denominator and inverted the sign. The analytic
+value at the measured operand's own bin is
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_carrier_bin = 2.83887`.
+
+**The diagnosis is mechanical, not asserted.** Recomputing at the wrong
+frequency regenerates the published number
+(`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_dev_pct = -0.026`
+vs `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.reproduces_published_value = -0.0257`),
+and recomputing at the matched frequency flips its sign to
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.corrected_dev_pct = +0.1588`.
+Both directions are tests in `tests/test_cv03_slab_dispersion_oracle.py`.
+
+**The margin is withdrawn, not restated.** Item 2's factor
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_margin_factor_vs_g1 = 77`
+compared a single-bin deviation against G1, whose statistic is the max over the
+gated band; no factor may be read off one bin. Reason recorded at
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.margin_factor_withdrawn_because`.
+Criterion (A) rests on the committed case run's own band-max, already in the
+results note.
+
+**Unaffected.** §8.1's `|B/A|` table, the time-of-flight reasoning and the
+conclusion that the standing wave is a reflection off the domain termination:
+those turn on `|B/A|`, not on the dispersion comparison. Item 1 of §8.1 is
+unaffected. **No gate, threshold or estimator moves** — G1 is still 2.0 %,
+derived only from §3.
+
+**Provenance grade.** Round 1's driver for the §8.1 rows was never committed, so
+its four measured operands carry note provenance, labelled at
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::measured.provenance`;
+every analytic operand and every deviation in the artifact is recomputed from
+committed code. `scripts/diagnostics/cv03_flux/tof_reflection_free.py` is the
+missing driver and `scripts/vessl_cv03_tof_reflection_free.yaml` regenerates the
+measured side with harness provenance.
