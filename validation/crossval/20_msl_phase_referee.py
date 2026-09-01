@@ -69,6 +69,10 @@ small systematic |S21| bias above unity on Stage B (29/30 bins, max
 1.00872 at bin 0) and that bin's own passivity-balance attribution (74%
 from |S21|^2-1). Read the record fields directly for the full text.
 
+CORRECTION (#812 P1, 2026-09-01): raw_phase_diff_deg is now GATED
+(``_cross_solver_phase_witness``, 3.0 deg, in ``sanity_passed``); the
+paragraph below is the pre-#812 REPORTED-only record of its shape.
+
 REPORTED (not gated) cross-solver comparison: raw_phase_diff_deg runs
 from 4.13 deg at 500 MHz down through -0.13 deg at 5.0 GHz -- 22 of 30
 bins land within 1 deg, only bin 0 exceeds 3 deg, and the first three
@@ -148,6 +152,9 @@ the board held at h_sub=300um and the step reintroduced (5 x 60.0um).
 It is not run here (openEMS lane, ~78 min of VESSL wall clock), so no
 causal claim is made -- the numbers above are an observation, not a
 mechanism.
+
+CORRECTION (#812 P1, 2026-09-01): raw_phase_diff_deg is GATED as of that
+date; the run-1 -> run-2 table below is the pre-#812 REPORTED-only record.
 
 REPORTED (not gated) cross-solver comparison, run-1 -> run-2:
   bins with |raw_phase_diff| <= 1 deg      22/30 -> 21/30
@@ -2376,8 +2383,12 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         exc.partial_stage_b_data = partial_data
         raise
 
-    # --- Cross-solver comparison (REPORTED, not gated -- module docstring
-    # "WHAT IS GATED vs REPORTED"). ---
+    # --- Cross-solver comparison. #812 P1 (2026-09-01) INVERTED the decision
+    # this comment used to record: raw_phase_diff_deg, computed just below, is
+    # now GATED by _cross_solver_phase_witness and wired into sanity_passed.
+    # Still REPORTED, not gated: residual_phase_diff_after_dispersion_deg (it
+    # subtracts a term built from beta_rfx and is provably blind to a coherent
+    # phase-velocity error), beta_ratio_rfx_over_openems, and both |S21|. ---
     s21_rfx = np.asarray([complex(re, im) for re, im in rfx_fixture["s21"]], dtype=np.complex128)
     beta_rfx = np.asarray([complex(re, im) for re, im in rfx_fixture["beta_first_port"]], dtype=np.complex128)
     assert s21_rfx.shape == freqs_hz.shape, "rfx fixture S21 length mismatch vs freqs_hz"

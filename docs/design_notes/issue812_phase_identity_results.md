@@ -244,3 +244,62 @@ and `implied_convergence_order = 1.4847707054524188`. Checked by loading the
 module and printing the dict, not by reading the artifact a second time. The
 envelope in §1 is pinned against that record's own
 `implied_convergence_order` field for exactly this reason.
+
+## 3. Corrections — round 2 (2026-09-01)
+
+Append-only; §§0–2 above are the round-1 record and are not edited. Every number
+below is an artifact key in
+`validation/crossval/_issue812_phase_identity/regate_evidence.json`, written by
+`scripts/diagnostics/build_issue812_phase_identity_evidence.py` (no FDTD; a
+replay of the four committed configurations through the referees' own witness
+functions) and kept current by
+`tests/test_issue812_phase_identity_evidence.py`'s
+`test_committed_artifact_equals_a_fresh_replay`.
+
+**3.1 Blocker (cv20) — the inverted gating decision, still standing where it was
+first written.** Round 1 gated the raw cross-solver `angle(S21)` difference but
+left the superseded "REPORTED, not gated" decision at five live sites: the
+manifest entry's `references[1].name`, the superseded REPORTED list inside the
+same entry's `claim_scope`, the source comment that introduces the block whose
+own witness call now gates the quantity, and the two module-docstring paragraphs
+that report it.
+Each now reads as the code behaves, and the decision itself is machine-readable at
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.cross_solver_raw_phase_difference_is_gated`.
+The 2026-08-04 promotion records (the module docstring's `PROMOTED` section and
+`MUST_MOVE_WHEN_VALIDATED`) still describe the pre-#812 decision and are
+deliberately **not** edited: they record what the #490 reviewer approved on that
+date, which remains true of that date.
+
+**3.2 cv21 criterion (A) — the "establish independently" clause is withdrawn.**
+§1.2's closing sentence claimed the two meshes independently establish that the
+functional form transports; they do not, because the committed convergence order
+*is* the two-point fit through the two committed excesses, so the refined-mesh
+envelope equals the declared headroom times that mesh's own committed excess to
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.bound_at_n_after_minus_headroom_times_excess_after`
+with a recovered-order error of
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.order_p_recovery_abs_error = 0`
+— the refined-mesh check is arithmetically the registered-mesh statement, so
+criterion (A)'s *margin* is established by one configuration, not two. What the
+refined replay does independently confirm is narrower and still worth having:
+the committed refined-mesh data still reads what its record says it reads, and
+the witness runs on it unchanged.
+
+**3.3 cv21 detection floor — two-sided, in every summary.** §1.3's `k = 1.02` row
+names only the HIGH side; the floor is two-sided and the gate is blind for `k`
+between
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_lo = 0.752106`
+and
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_hi = 1.032334`
+at the registered mesh, so a one-sided restatement understates the blind interval
+by its whole LOW side.
+
+**3.4 cv21 `E4` — withdrawn, and attributed where the comparison actually
+happens.** §1.5 kept `E4` on the argument that it covered Stage A's tutorial
+reproduce-gate; the refuting search says otherwise — the referee imports no rfx
+module and reads no rfx fixture, so no leg puts an rfx quantity on either side of
+a comparison (`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.e4_supporting_leg_count = 0`,
+pinned by `test_cv21_registers_no_e4_because_no_leg_supports_one`) — so
+`evidence_levels` is now `["E1", "E2"]` and the E4 is attributed to the
+downstream `compute_coaxial_two_port` label-lift chain in
+`docs/guides/sparameter_support_matrix.md`, which is where rfx's numbers are
+actually compared against this referee's openEMS output.

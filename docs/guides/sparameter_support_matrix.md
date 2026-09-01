@@ -689,7 +689,13 @@ envelope derived from the refinement law above (bound `0.157` at the
 registered mesh and `0.086` at the 1.5x refinement, against measured
 `0.121` and `0.066`); note this leg is **E2, not E4** -- the referee's
 Stage B reads no rfx S-parameters, so no cross-solver phase comparison
-exists for this case; and this method's own reciprocity/`cond(A)`
+exists for this case. Round-2 review (2026-09-01) extended that finding to
+the whole referee: it imports no rfx module and reads no rfx fixture, so
+**no leg inside `21_coax_two_port_referee` is E4** and its manifest
+`evidence_levels` is now `["E1", "E2"]`; the E4 in this method's evidence
+chain is **this paragraph's own comparison** -- rfx's `compute_coaxial_two_port`
+against the referee's committed openEMS output -- and it is owned here, not
+by the referee's registration. This method's own reciprocity/`cond(A)`
 are measured below. **Scope that remains outside this evidence**: every DUT
 it can currently gate against (none, a matched feed, or a coaxial dielectric
 plug) is azimuthally symmetric and excites only TM0n modes, while the

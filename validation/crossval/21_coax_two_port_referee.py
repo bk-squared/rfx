@@ -531,13 +531,20 @@ Stage B's gate set is now, with each leg's level stated in the artifact:
 Stage A is unaffected: its own matched-through call already passes
 ``beta=None`` (the analytic path), so it has always been E2 on this leg.
 
-NO Stage-B leg here is E4. The other candidate independent reference --
-"the committed external solver's own phase" -- does not exist for this
-case: Stage B is a single-solver openEMS fixture and reads no rfx
-S-parameters at all (cv20, the MSL referee, is the case that has one,
-and it is gated there). The case's E4 registration covers Stage A's
-external tutorial reproduce-gate ONLY, and the manifest's claim_scope
-now says so.
+NO leg in this case is E4 -- not Stage B and not Stage A. The other
+candidate independent reference -- "the committed external solver's own
+phase" -- does not exist here: this script imports no rfx module and
+reads no rfx fixture, so nothing puts an rfx quantity on either side of
+a comparison (cv20, the MSL referee, is the case that does, and it is
+gated there). CORRECTION (round-2 review, 2026-09-01): an earlier
+revision of this paragraph kept the case's E4 registration on the
+argument that it covered Stage A's tutorial reproduce-gate; that is
+wrong for the same reason -- Stage A compares openEMS against Coax.m's
+own closed form, an analytic check ON the external solver, not a
+cross-solver check OF rfx. The manifest now registers ["E1", "E2"], and
+the E4 this referee's output feeds is owned DOWNSTREAM by the
+compute_coaxial_two_port label-lift chain in
+docs/guides/sparameter_support_matrix.md.
 
 Usage (VESSL-only; openEMS is not expected to be importable outside the
 lane in ``scripts/vessl_coax_two_port_referee.yaml``, and that lane runs
