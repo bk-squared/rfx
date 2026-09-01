@@ -37,6 +37,13 @@ class GridCoords(NamedTuple):
     smoothed voxel by half a cell. Consumers that need both should derive the
     centre FROM the node (``centre = node + d/2``), and any new producer must
     say which convention it returns.
+
+    **Dtype contract (#802/#807)**: concrete producers return HOST float64
+    numpy arrays — exact node positions, independent of ``jax_enable_x64``.
+    Do not ``jnp.asarray`` them before a comparison; under x64=0 that
+    silently downcasts to float32, which flips inclusion at node-aligned
+    faces (the #802 defect). Only the traced NU producer (mesh as design
+    variable) returns a float32 jnp array.
     """
     x: jnp.ndarray  # (nx,)
     y: jnp.ndarray  # (ny,)
@@ -44,19 +51,36 @@ class GridCoords(NamedTuple):
     shape: tuple[int, int, int]
 
 
+def _uniform_axis_nodes(n: int, pad: int, dx: float) -> np.ndarray:
+    """Exact E-node positions for a uniform axis: host float64, flag-independent.
+
+    ``(i - pad) * dx`` per node in float64 — bit-identical to the x64=1
+    realization verified against the Box half-open convention (#802). This is
+    THE uniform node formula: ``csg._grid_coords``, ``coords_from_uniform_grid``
+    and the uniform-valued branch of ``_axis_node_positions`` all call it, so
+    the uniform and non-uniform lanes cannot rasterize a uniform-valued axis
+    differently (#807 class). Before this builder existed the repo carried
+    three hand-copies that each rounded differently in float32.
+    """
+    return (np.arange(n, dtype=np.float64) - pad) * float(dx)
+
+
 def coords_from_uniform_grid(grid) -> GridCoords:
     """Extract E-NODE coordinates from a uniform Grid.
 
     ``(arange - pad) * dx`` — node i at i*dx from the first interior node,
     despite the historical "cell-center" wording this docstring carried.
+    Returns HOST float64 numpy arrays (see ``_uniform_axis_nodes``); do not
+    ``jnp.asarray`` them before a comparison — under x64=0 that silently
+    downcasts to float32, which is the #802 defect.
     """
     nx, ny, nz = grid.shape
     dx = grid.dx
     pad_x, pad_y, pad_z = grid.axis_pads
-    x = jnp.asarray((np.arange(nx) - pad_x) * dx, dtype=jnp.float32)
-    y = jnp.asarray((np.arange(ny) - pad_y) * dx, dtype=jnp.float32)
-    z = jnp.asarray((np.arange(nz) - pad_z) * dx, dtype=jnp.float32)
-    return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
+    return GridCoords(x=_uniform_axis_nodes(nx, pad_x, dx),
+                      y=_uniform_axis_nodes(ny, pad_y, dx),
+                      z=_uniform_axis_nodes(nz, pad_z, dx),
+                      shape=(nx, ny, nz))
 
 
 def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
@@ -77,6 +101,10 @@ def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
     cell narrower than requested.
     """
     d = np.asarray(d_arr, dtype=np.float64)
+    if d.size and bool(np.all(d == d[0])):
+        # Uniform-valued axis: closed form, bitwise-equal to the uniform
+        # builder by construction — the lane-equality guarantee (#807).
+        return _uniform_axis_nodes(d.size, cpml, float(d[0]))
     edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
     return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
 
@@ -100,7 +128,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
     pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    def _axis_nodes(d_arr, pad_lo):
+    def _axis_nodes(d_arr, pad_lo, d_exact=None):
         # Mesh-as-design-variable path: any axis cell-size profile may be
         # a JAX tracer. Route the cumsum / offset arithmetic through jnp
         # in-trace; fall back to the numpy path on concrete inputs to keep
@@ -111,12 +139,19 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
             return nodes.astype(jnp.float32)
-        d_np = np.asarray(d_arr)
-        return jnp.asarray(_axis_node_positions(d_np, pad_lo), dtype=jnp.float32)
+        # Concrete path: HOST float64, no f32 cast (#802/#807 — the cast
+        # here re-quantized every node position and made the NU lane land
+        # one plane away from the uniform lane at node-aligned faces).
+        # Prefer the grid's exact float64 profile when it carries one:
+        # ``dx_arr``/``dy_arr``/``dz`` are float32 stores, and a cumsum of
+        # f32-widened cell sizes drifts off the exact node positions by the
+        # same 1e-10 m class this function exists to eliminate.
+        d_np = np.asarray(d_arr if d_exact is None else d_exact)
+        return _axis_node_positions(d_np, pad_lo)
 
-    x = _axis_nodes(grid.dx_arr, pad_x_lo)
-    y = _axis_nodes(grid.dy_arr, pad_y_lo)
-    z = _axis_nodes(grid.dz, pad_z_lo)
+    x = _axis_nodes(grid.dx_arr, pad_x_lo, getattr(grid, "dx_arr_f64", None))
+    y = _axis_nodes(grid.dy_arr, pad_y_lo, getattr(grid, "dy_arr_f64", None))
+    z = _axis_nodes(grid.dz, pad_z_lo, getattr(grid, "dz_f64", None))
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
@@ -124,11 +159,15 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
 def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCoords:
     """Extract cell-center coordinates for a subgridded fine region.
 
-    Uses cell centers (offset by dx_f/2), not cell edges.
+    Uses cell centers (offset by dx_f/2), not cell edges. Host float64 like
+    every other concrete producer (#802 policy) — the fine region is
+    cv12/13-fenced experimental, but its coordinates follow the same
+    exactness rule so a face landing on a sample point is not decided by
+    float32 rounding.
     """
-    x = jnp.asarray(x_off + (np.arange(nx_f) + 0.5) * dx_f, dtype=jnp.float32)
-    y = jnp.asarray(y_off + (np.arange(ny_f) + 0.5) * dx_f, dtype=jnp.float32)
-    z = jnp.asarray(z_off + (np.arange(nz_f) + 0.5) * dx_f, dtype=jnp.float32)
+    x = x_off + (np.arange(nx_f, dtype=np.float64) + 0.5) * float(dx_f)
+    y = y_off + (np.arange(ny_f, dtype=np.float64) + 0.5) * float(dx_f)
+    z = z_off + (np.arange(nz_f, dtype=np.float64) + 0.5) * float(dx_f)
     return GridCoords(x=x, y=y, z=z, shape=(nx_f, ny_f, nz_f))
 
 

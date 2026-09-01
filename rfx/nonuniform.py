@@ -83,6 +83,21 @@ class NonUniformGrid(NamedTuple):
     pad_y_hi: int = 0
     pad_z_lo: int = 0
     pad_z_hi: int = 0
+    # Exact float64 copies of the padded cell-size profiles (#802/#807).
+    # The node-position spine (coords_from_nonuniform_grid) reads these, so
+    # realized geometry does not inherit the float32 quantization of the
+    # solver-facing stores above — a cumsum of f32-widened cell sizes lands
+    # ~1e-10 m off the exact node positions, which flips half-open inclusion
+    # at node-aligned faces and splits the one-cell-sheet plane between the
+    # uniform and NU lanes. Populated by make_nonuniform_grid on the
+    # concrete path only (None when the profile is traced, and on grids
+    # built by hand — the coordinate producer then falls back to widening
+    # the f32 store, today's values). Solver arithmetic keeps reading the
+    # float32 fields; both derive from the same padded profile at
+    # construction, so they cannot drift independently.
+    dx_arr_f64: np.ndarray | None = None
+    dy_arr_f64: np.ndarray | None = None
+    dz_f64: np.ndarray | None = None
 
     @property
     def shape(self):
@@ -405,6 +420,17 @@ def make_nonuniform_grid(
     dy_arr = jnp.asarray(dy_full, dtype=jnp.float32)
     dz_arr = jnp.asarray(dz_full, dtype=jnp.float32)
 
+    # Exact float64 spine for node positions (#802/#807): concrete profiles
+    # only — a traced profile has no host copy and its axis keeps the traced
+    # coordinate path.
+    def _exact_f64(d_full):
+        return None if is_tracer(d_full) else np.asarray(d_full,
+                                                         dtype=np.float64)
+
+    dx_arr_f64 = _exact_f64(dx_full)
+    dy_arr_f64 = _exact_f64(dy_full)
+    dz_f64 = _exact_f64(dz_full)
+
     inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
     inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
     inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full)
@@ -419,6 +445,7 @@ def make_nonuniform_grid(
         pad_x_lo=pad_x_lo, pad_x_hi=pad_x_hi,
         pad_y_lo=pad_y_lo, pad_y_hi=pad_y_hi,
         pad_z_lo=pad_z_lo, pad_z_hi=pad_z_hi,
+        dx_arr_f64=dx_arr_f64, dy_arr_f64=dy_arr_f64, dz_f64=dz_f64,
     )
 
 
