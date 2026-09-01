@@ -263,8 +263,21 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   openEMS's `CalcPort(ref_plane_shift=...)` rotation is not exercised by
   this run -- the effective shift is 0 by construction -- so the plane
   match comes from stencil placement, not from the referral transform.
+  Issue #812 P1 (2026-09-01): the per-solver self-consistency figures above
+  are an **E1** leg -- both sides come from one field solve, so a coherent
+  phase-velocity error cancels and a factor-2 error reads `0.241 degrees`
+  against that same 3-degree gate. Two independent-reference gates now run
+  alongside it and are wired into the script's own pass/fail: each solver's
+  measured `beta` against the Hammerstad-Jensen closed form of the realized
+  board (E2, 2.0% tolerance; measured 0.94% rfx / 0.31% openEMS), and the
+  **raw** cross-solver `angle(S21)` difference quoted above (E4, 3-degree
+  tolerance; measured `0.342 degrees` on the #723 realized-board re-run),
+  which was previously reported rather than gated. Do not cite the
+  dispersion-corrected residual as the cross-solver number: it subtracts a
+  term built from `beta_rfx` and is provably blind to this error class.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
-  `20_msl_phase_referee`) and `tests/crossval/test_msl_phase_referee_header.py`.
+  `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
+  `docs/design_notes/issue812_phase_identity_predeclaration.md`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
 during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at
@@ -666,7 +679,17 @@ run VESSL `369367252220`) brackets — it does not judge — this method's own
 witness (VESSL `369367251845`) moved the measured/analytic `beta` ratio from
 `1.1208` to `1.0662` (annulus `3.79` -> `5.68` cells, implied convergence
 order `p ~= 1.5`, two-point, from a single 1.5x step); the `eps_scale` AD
-channel below is `GRAD_SAFE`; and this method's own reciprocity/`cond(A)`
+channel below is `GRAD_SAFE`;
+issue #812 P1 (2026-09-01) adds the leg that phase bracketing was missing --
+the referee's phase-vs-own-`beta` witness is **E1** (a coherent
+phase-velocity error cancels in it exactly), so the port's measured `beta`
+and the group delay taken from `S21` alone are now also gated against the
+**exact continuum coax TEM** values inside a mesh-dependent staircase
+envelope derived from the refinement law above (bound `0.157` at the
+registered mesh and `0.086` at the 1.5x refinement, against measured
+`0.121` and `0.066`); note this leg is **E2, not E4** -- the referee's
+Stage B reads no rfx S-parameters, so no cross-solver phase comparison
+exists for this case; and this method's own reciprocity/`cond(A)`
 are measured below. **Scope that remains outside this evidence**: every DUT
 it can currently gate against (none, a matched feed, or a coaxial dielectric
 plug) is azimuthally symmetric and excites only TM0n modes, while the

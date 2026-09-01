@@ -94,7 +94,7 @@ pre-declared 2026-08-04, filled from VESSL 369367251845):
 |---|---|---|
 | `EXCESS_REF` | `0.1208` | `MESH_REFINEMENT_PREDECLARATION["excess_before"]` |
 | `N_REF` | `3.789` | `MESH_REFINEMENT_PREDECLARATION["annulus_cells_before"]` = `(2.055-0.635)/0.37474` |
-| `P` | `1.4847707054524188` | the committed two-point implied convergence order (same dict's `RUN` comment block and `manifest.json`'s `claim_scope`) |
+| `P` | `1.4847707054524188` | `MESH_REFINEMENT_PREDECLARATION["implied_convergence_order"]` — the committed two-point order from VESSL 369367251845 (`status = "RUN"`) |
 
 Declared envelope:
 
@@ -169,6 +169,12 @@ simulates. `beta ∝ sqrt(eps_eff)`, so a fractional `eps_eff` error halves into
 
 The declared envelope is 2.0%, i.e. `1.13x` the derived budget. It is not fitted: it is
 `ceil` of a sum computed from the board's declared geometry before the measurement.
+
+The three budget terms are exactly the three exclusions `rfx/microstrip.py`'s own
+*Accuracy* section names — conductor thickness, dispersion, surface roughness — with
+roughness zero here because both solvers model ideal PEC. The board sits inside the
+model's stated validity range (`w/h = 2.0` in `[0.05, 20]`, `eps_r = 3.66 <= ~13`), so
+the 1% figure is the applicable one.
 
 Disclosure, because it matters for the burned-data rule: the committed run-2 artifact
 `_20_msl_phase_referee_logs/20260827T102342Z_result.json` was read during §1's audit

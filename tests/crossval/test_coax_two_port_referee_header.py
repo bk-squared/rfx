@@ -37,6 +37,7 @@ from types import ModuleType
 from typing import Final
 
 import numpy as np
+import pytest
 
 REFEREE_DIR: Final = (
     pathlib.Path(__file__).resolve().parents[2]
@@ -1293,3 +1294,346 @@ def test_freqs_overlap_the_rfx_band():
     freqs_ghz = set(round(float(f), 6) for f in module.B_FREQS_GHZ)
     for f in (4.0, 6.0, 8.0, 10.0, 12.0):
         assert f in freqs_ghz, f"{f} GHz missing from referee frequency grid"
+
+
+# ---------------------------------------------------------------------------
+# Issue #812 audit pattern P1 -- the self-referential phase gate, and the
+# independent-reference leg that replaces its blind spot.
+#
+# Every measurement below is a REPLAY of committed field data through the
+# real witness functions. openEMS is absent from this host (both stages
+# exit 2 here), so a fresh run is not available and is not needed: the
+# registered-mesh arrays are the ``_RUN3_*`` literals above (VESSL
+# 369367251629) and the refined-mesh arrays are the committed artifact
+# ``validation/crossval/_21_coax_two_port_referee_logs/
+# mesh_refinement_369367251845_result.json``. This is the same pattern
+# ``test_matched_through_witness_run3_regression_measured_vs_analytic_beta``
+# already established for this file.
+# ---------------------------------------------------------------------------
+_MESH_REFINEMENT_RESULT_PATH: Final = (
+    REPO_ROOT / "validation" / "crossval" / "_21_coax_two_port_referee_logs"
+    / "mesh_refinement_369367251845_result.json"
+)
+
+
+def _run3_arrays(module):
+    freqs_hz = np.array(_RUN3_FREQS_GHZ) * 1e9
+    s21 = _run3_complex(_RUN3_S21)
+    beta = 0.25 * (
+        _run3_complex(_RUN3_BETA_PORT1_D1) + _run3_complex(_RUN3_BETA_PORT2_D1)
+        + _run3_complex(_RUN3_BETA_PORT1_D2) + _run3_complex(_RUN3_BETA_PORT2_D2)
+    )
+    return freqs_hz, s21, beta, module.B_L12_MM * 1e-3
+
+
+def _coherently_perturbed(s21, beta, l_m, k):
+    """A COHERENT phase-velocity error of factor ``k``.
+
+    The line's real propagation constant becomes ``k*beta``; the port
+    measures that, and the through-path phase advances by ``k*beta*L``.
+    Both move together -- which is exactly the defect class the audit
+    measured this file's own witness to be blind to. Note the through
+    path is ROTATED (the propagation term is scaled), not phase-scaled:
+    the extraction residual that separates the real ``angle(S21)`` from
+    ``-beta*L`` is left alone, so the perturbation model contains nothing
+    but the physics error.
+    """
+    return s21 * np.exp(-1j * (k - 1.0) * np.real(beta) * l_m), beta * k
+
+
+def test_beta_envelope_predeclaration_is_grounded_in_committed_provenance():
+    """The new envelope's form AND scale must come from numbers already in
+    the repo before this lane touched it -- not from anything this lane
+    measured. Pinned against ``MESH_REFINEMENT_PREDECLARATION`` itself, so
+    a future edit to either cannot silently decouple them."""
+    module = _load_referee_module()
+    pre = module.MESH_REFINEMENT_PREDECLARATION
+    env = module.BETA_ENVELOPE_PREDECLARATION
+
+    assert module.BETA_ENVELOPE_EXCESS_REF == pre["excess_before"]
+    assert module.BETA_ENVELOPE_N_REF == pre["annulus_cells_before"]
+    # The committed two-point implied convergence order -- pinned against
+    # the record's OWN field, not a re-typed literal, so the two cannot
+    # drift apart if that record is ever refilled.
+    assert module.BETA_ENVELOPE_ORDER_P == pre["implied_convergence_order"]
+    assert module.BETA_ENVELOPE_ORDER_P == 1.4847707054524188
+    assert module.BETA_ENVELOPE_HEADROOM == 1.30
+    assert env["predeclared_on"] == "2026-09-01"
+    assert env["issue"] == 812
+
+    # The property the audit said a round-up(measured x 1.5) width lacks:
+    # this envelope TIGHTENS when the mesh improves.
+    bound_registered = module._beta_envelope_bound(pre["annulus_cells_before"])
+    bound_refined = module._beta_envelope_bound(pre["annulus_cells_after"])
+    assert bound_registered == pytest.approx(0.157040, abs=1e-6)
+    assert bound_refined == pytest.approx(0.086011, abs=1e-6)
+    assert bound_refined < bound_registered
+
+    # The declared detection floor is arithmetic, not a hope.
+    excess = module.BETA_ENVELOPE_EXCESS_REF
+    assert (1.0 + bound_registered) / (1.0 + excess) == pytest.approx(
+        env["detection_floor_k_hi"], abs=1e-6)
+    assert (1.0 - bound_registered) / (1.0 + excess) == pytest.approx(
+        env["detection_floor_k_lo"], abs=1e-6)
+
+
+def test_matched_through_witness_is_identically_blind_to_a_coherent_beta_error():
+    """The audit's own measurement, pinned as a permanent record of WHY the
+    analytic-beta witness exists.
+
+    Two constructions, both the same identity:
+
+      (a) the audit's -- a SYNTHETIC through with ``angle(S21)`` exactly
+          ``-k*beta*L``: the deviation is EXACTLY 0.000 deg and the group
+          delay EXACTLY 0.00 ps at every k in 1.02/1.10/1.30/1.50/1.57,
+          against a 30 deg / 200 ps gate;
+
+      (b) on run-3's OWN committed data: the deviation is BIT-IDENTICAL to
+          its unperturbed value (~0.4365 deg) at every one of those k --
+          the perturbation cannot move it at all.
+
+    Neither is a matter of tolerance. The witness's resolving power for
+    this defect class is zero at ANY tolerance, because both operands
+    derive from the same quantity.
+    """
+    module = _load_referee_module()
+    freqs_hz, s21, beta, l_m = _run3_arrays(module)
+    ks = (1.02, 1.10, 1.30, 1.50, 1.57)
+
+    # (a) the audit's synthetic construction.
+    for k in ks:
+        beta_k = beta * k
+        s21_syn = np.exp(-1j * np.real(beta_k) * l_m)
+        res = module._matched_through_witness(
+            freqs_hz, s21_syn, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+            mag_band=module.B_S21_THRU_BAND, label=f"blind_syn_k{k}", beta=beta_k)
+        assert res["passed"] is True
+        assert res["max_phase_dev_deg"] == pytest.approx(0.0, abs=1e-9), k
+        assert res["group_delay_dev_ps"] == pytest.approx(0.0, abs=1e-9), k
+
+    # (b) on the real committed run-3 data.
+    baseline = module._matched_through_witness(
+        freqs_hz, s21, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+        mag_band=module.B_S21_THRU_BAND, label="blind_baseline", beta=beta)
+    assert baseline["max_phase_dev_deg"] == pytest.approx(0.4365, abs=5e-4)
+    for k in ks:
+        s21_k, beta_k = _coherently_perturbed(s21, beta, l_m, k)
+        res = module._matched_through_witness(
+            freqs_hz, s21_k, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+            mag_band=module.B_S21_THRU_BAND, label=f"blind_real_k{k}", beta=beta_k)
+        assert res["passed"] is True, k
+        assert res["max_phase_dev_deg"] == pytest.approx(
+            baseline["max_phase_dev_deg"], rel=1e-9), k
+        assert res["group_delay_dev_ps"] == pytest.approx(
+            baseline["group_delay_dev_ps"], rel=1e-9), k
+
+    # ...and it now SAYS what it is, in the artifact.
+    assert baseline["evidence_level"] == "E1 (intra-run self-consistency)"
+
+
+def test_analytic_beta_witness_passes_on_the_committed_registered_mesh_run():
+    """Criterion (A) at the registered mesh (dx_scale=1.0, VESSL 369367251629)."""
+    module = _load_referee_module()
+    freqs_hz, s21, beta, l_m = _run3_arrays(module)
+    annulus_cells = module._stage_b_layout(dx_scale=1.0)["annulus_cells"]
+    assert annulus_cells == pytest.approx(module.BETA_ENVELOPE_N_REF, abs=1e-3)
+
+    res = module._analytic_beta_witness(
+        freqs_hz, s21, beta, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+        annulus_cells=annulus_cells, label="run3_registered")
+
+    assert res["passed"] is True
+    assert res["envelope_bound_frac"] == pytest.approx(0.157022, abs=1e-6)
+    assert res["beta_max_abs_dev_frac"] == pytest.approx(0.121179, abs=1e-6)
+    assert res["gd_max_abs_dev_frac"] == pytest.approx(0.125221, abs=1e-6)
+    # The measured ~12% staircase bias, unchanged -- this lane did not
+    # move the physics, only what the gate compares against.
+    assert all(1.10 < r < 1.14 for r in res["beta_ratio_measured_over_analytic"])
+    assert res["implied_phase_error_deg"] == pytest.approx(110.94, abs=0.02)
+    assert res["evidence_level"].startswith("E2")
+
+
+def test_analytic_beta_witness_passes_on_the_committed_refined_mesh_run():
+    """Criterion (A) at the second, independent committed configuration
+    (dx_scale=2/3, VESSL 369367251845) -- and the envelope is TIGHTER
+    there, which is the whole point of deriving it from the convergence
+    law rather than from a fixed round-up."""
+    module = _load_referee_module()
+    stage_b = json.loads(_MESH_REFINEMENT_RESULT_PATH.read_text())["stage_b"]
+    freqs_hz = np.array(stage_b["freqs_ghz"]) * 1e9
+    s21 = _run3_complex(stage_b["s21"])
+    d1, d2 = stage_b["drive1_diagnostics"], stage_b["drive2_diagnostics"]
+    beta = 0.25 * (
+        _run3_complex(d1["beta_port1"]) + _run3_complex(d1["beta_port2"])
+        + _run3_complex(d2["beta_port1"]) + _run3_complex(d2["beta_port2"])
+    )
+
+    res = module._analytic_beta_witness(
+        freqs_hz, s21, beta, L_m=module.B_L12_MM * 1e-3, eps_r=module.B_PTFE_EPS_R,
+        annulus_cells=stage_b["annulus_cells"], label="refined")
+
+    assert res["passed"] is True
+    assert res["envelope_bound_frac"] == pytest.approx(0.086002, abs=1e-6)
+    assert res["beta_max_abs_dev_frac"] == pytest.approx(0.066247, abs=1e-6)
+    assert res["gd_max_abs_dev_frac"] == pytest.approx(0.067494, abs=1e-6)
+    # Consistency with the artifact's own summary field, so this test is
+    # pinned to the committed run and not to a re-derivation of it.
+    assert np.mean(res["beta_ratio_measured_over_analytic"]) == pytest.approx(
+        stage_b["beta_ratio_measured_over_analytic_mean"], rel=2e-4)
+
+
+def test_analytic_beta_witness_fires_on_the_coherent_beta_perturbation():
+    """Criterion (B): the defect the audit measured the old gate blind to,
+    reproduced on the registered-mesh data, must RED the new gate -- and
+    for the right reason (the message must name the measured-vs-analytic
+    beta comparison, not the magnitude band or passivity).
+
+    The declared detection floor is also pinned: k=1.02 is BELOW it and
+    must NOT fire. That is not a gap being papered over -- it is the
+    pre-declared, physically-forced limit of any analytic gate on a
+    3.8-cell annulus (see ``BETA_ENVELOPE_PREDECLARATION``), and a test
+    that pretended otherwise would be the same overclaim this issue is
+    about.
+    """
+    module = _load_referee_module()
+    freqs_hz, s21, beta, l_m = _run3_arrays(module)
+    annulus_cells = module._stage_b_layout(dx_scale=1.0)["annulus_cells"]
+
+    # Below the declared floor: still passes, as declared.
+    s21_k, beta_k = _coherently_perturbed(s21, beta, l_m, 1.02)
+    below = module._analytic_beta_witness(
+        freqs_hz, s21_k, beta_k, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+        annulus_cells=annulus_cells, label="k102")
+    assert below["passed"] is True
+    assert below["beta_max_abs_dev_frac"] == pytest.approx(0.1436, abs=1e-3)
+    assert 1.02 < module.BETA_ENVELOPE_PREDECLARATION["detection_floor_k_hi"]
+
+    expected_dev = {1.10: 0.233296, 1.30: 0.457532, 1.50: 0.681768,
+                    1.57: 0.760250, 0.50: 0.439739}
+    for k, dev in expected_dev.items():
+        s21_k, beta_k = _coherently_perturbed(s21, beta, l_m, k)
+
+        # The OLD witness still passes on the SAME perturbed arrays --
+        # (B) is only meaningful next to the blindness it repairs.
+        old = module._matched_through_witness(
+            freqs_hz, s21_k, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+            mag_band=module.B_S21_THRU_BAND, label=f"old_k{k}", beta=beta_k)
+        assert old["passed"] is True, k
+
+        with pytest.raises(RuntimeError) as excinfo:
+            module._analytic_beta_witness(
+                freqs_hz, s21_k, beta_k, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+                annulus_cells=annulus_cells, label=f"new_k{k}")
+        message = str(excinfo.value)
+        assert "analytic-beta witness failed" in message
+        assert "MEASURED beta" in message and "continuum coax TEM beta" in message
+        assert f"beta dev={dev:.6f}" in message, (k, message[:400])
+        # ...and it is the beta leg that reds, not a magnitude/passivity
+        # side effect: the group-delay leg reds too, from S21 alone.
+        assert "group-delay dev=" in message
+        assert "(ok=False)" in message
+
+
+def test_run_stage_b_reds_end_to_end_on_the_k157_coherent_beta_error(monkeypatch):
+    """Criterion (B) through the REAL ``_run_stage_b`` wiring, not the
+    witness in isolation -- the same ``_run_one_drive`` replay pattern
+    ``test_run_stage_b_passes_end_to_end_on_run3_data_with_the_fix`` uses.
+
+    Baseline: run-3's own data passes and now carries an
+    ``analytic_beta_witness`` block. Perturbed at k=1.57: ``_run_stage_b``
+    raises, and the raised error still carries the partial forensics.
+    """
+    module = _load_referee_module()
+    l_m = module.B_L12_MM * 1e-3
+
+    def make_fake(k):
+        def fake_run_one_drive(_CSX, _openems, _port_cls, *, drive, sim_root, threads,
+                               nrts, end_criteria, dx_scale=1.0):
+            if drive == "port1":
+                s_self, s_thru = _run3_complex(_RUN3_S11), _run3_complex(_RUN3_S21)
+                b1, b2 = _run3_complex(_RUN3_BETA_PORT1_D1), _run3_complex(_RUN3_BETA_PORT2_D1)
+            else:
+                s_self, s_thru = _run3_complex(_RUN3_S22), _run3_complex(_RUN3_S12)
+                b1, b2 = _run3_complex(_RUN3_BETA_PORT1_D2), _run3_complex(_RUN3_BETA_PORT2_D2)
+            beta_mean = 0.5 * (b1 + b2)
+            s_thru, _ = _coherently_perturbed(s_thru, beta_mean, l_m, k)
+            b1, b2 = b1 * k, b2 * k
+            return {
+                "extracted": {"s_self": s_self, "s_thru": s_thru,
+                              "s_thru_alternate_channel": s_thru},
+                "z0_port1": np.zeros(9, dtype=np.complex128),
+                "z0_port2": np.zeros(9, dtype=np.complex128),
+                "beta_port1": b1, "beta_port2": b2,
+                "max_uf_inc": 1.0, "n_trace_samples": 100, "nrts_cap": nrts,
+                "truncated_suspected": False, "elapsed_s": 1.0,
+                "end_criteria_not_reached": False,
+            }
+        return fake_run_one_drive
+
+    monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
+    monkeypatch.setattr(module, "B_FREQS_HZ", np.array(_RUN3_FREQS_GHZ) * 1e9)
+    monkeypatch.setattr(module, "B_FREQS_GHZ", np.array(_RUN3_FREQS_GHZ))
+
+    # (A) end-to-end on the unperturbed committed data.
+    monkeypatch.setattr(module, "_run_one_drive", make_fake(1.0))
+    result = module._run_stage_b(sim_root="/tmp/_unused_812_ok", threads=1,
+                                 nrts=200000, end_criteria=1e-4)
+    assert result["sanity_passed"] is True
+    assert result["analytic_beta_witness"]["passed"] is True
+    assert result["analytic_beta_witness"]["beta_max_abs_dev_frac"] == pytest.approx(
+        0.121179, abs=1e-6)
+
+    # (B) end-to-end on the coherent k=1.57 error.
+    monkeypatch.setattr(module, "_run_one_drive", make_fake(1.57))
+    with pytest.raises(RuntimeError) as excinfo:
+        module._run_stage_b(sim_root="/tmp/_unused_812_bad", threads=1,
+                            nrts=200000, end_criteria=1e-4)
+    message = str(excinfo.value)
+    assert "stage_b_analytic_beta" in message
+    assert "analytic-beta witness failed" in message
+    assert hasattr(excinfo.value, "partial_stage_b_data")
+
+
+def test_analytic_beta_witness_is_wired_into_sanity_passed():
+    """Revert-proof: the new gate must be part of ``sanity_passed``, not a
+    reported-only field a later edit can drop without a test noticing."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._run_stage_b)
+    assert "analytic_beta = _analytic_beta_witness(" in src
+    assert 'and analytic_beta["passed"]' in src
+    assert '"analytic_beta_witness": analytic_beta,' in src
+
+
+def test_the_detection_floor_tightens_when_the_mesh_refines():
+    """The property the audit said a `round-up(measured x 1.5)` width lacks,
+    made executable: the SAME gate that cannot discriminate k=1.02 at the
+    registered mesh DOES discriminate it at the committed 1.5x refinement,
+    with no edit to the gate. The floor is a function of the mesh, not of a
+    tolerance someone chose."""
+    module = _load_referee_module()
+    stage_b = json.loads(_MESH_REFINEMENT_RESULT_PATH.read_text())["stage_b"]
+    freqs_hz = np.array(stage_b["freqs_ghz"]) * 1e9
+    s21 = _run3_complex(stage_b["s21"])
+    d1, d2 = stage_b["drive1_diagnostics"], stage_b["drive2_diagnostics"]
+    beta = 0.25 * (
+        _run3_complex(d1["beta_port1"]) + _run3_complex(d1["beta_port2"])
+        + _run3_complex(d2["beta_port1"]) + _run3_complex(d2["beta_port2"])
+    )
+    l_m = module.B_L12_MM * 1e-3
+    n_refined = stage_b["annulus_cells"]
+
+    s21_k, beta_k = _coherently_perturbed(s21, beta, l_m, 1.02)
+    with pytest.raises(RuntimeError) as excinfo:
+        module._analytic_beta_witness(
+            freqs_hz, s21_k, beta_k, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+            annulus_cells=n_refined, label="refined_k102")
+    assert "analytic-beta witness failed" in str(excinfo.value)
+
+    # ...and the same k at the registered mesh does not, as pre-declared.
+    freqs_reg, s21_reg, beta_reg, _ = _run3_arrays(module)
+    s21_r, beta_r = _coherently_perturbed(s21_reg, beta_reg, l_m, 1.02)
+    assert module._analytic_beta_witness(
+        freqs_reg, s21_r, beta_r, L_m=l_m, eps_r=module.B_PTFE_EPS_R,
+        annulus_cells=module._stage_b_layout(dx_scale=1.0)["annulus_cells"],
+        label="registered_k102")["passed"] is True

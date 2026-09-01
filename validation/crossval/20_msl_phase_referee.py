@@ -574,6 +574,56 @@ claim. So:
   dispersion-predicted term -- for the reviewer's own judgement, not a
   pass/fail.
 
+CORRECTION (2026-09-01, issue #812 audit pattern P1) -- the block above
+described a gate set in which NOTHING gated was independent of the run
+being judged, and this section is where that has to be said. What was
+wrong, in three parts:
+
+  (a) The GATED claim above is intra-run self-consistency on BOTH sides.
+      Its QUALIFIER correctly said the check has a stated resolving
+      power; what it did not say is that its resolving power for a
+      COHERENT phase-velocity error is ZERO, at any tolerance -- a
+      factor-2 error, beta and angle(S21) moved together, was MEASURED
+      by the #812 audit to read 0.2414 deg against the 3.0 deg gate,
+      12x inside. The group-delay leg is blind for the same reason.
+
+  (b) "Gating the RAW cross-solver phase difference would conflate that
+      physical dispersion difference with the convention-resolution
+      claim" is right about what the raw number contains and wrong about
+      what follows. The physical term is BOUNDABLE from the same
+      geometry the rest of this file's budgets come from: a +-1-cell
+      difference in either solver's realized h_sub or w_trace is worth
+      0.3176 + 0.1459 deg over L12 at this band's beta_max. A tolerance
+      that CONTAINS it conflates nothing.
+
+  (c) The alternative this section recommended in place of the raw
+      difference -- the dispersion-corrected residual -- is PROVABLY
+      BLIND to the same defect class, for a third instance of the same
+      reason: residual = raw_diff - (beta_openems - beta_rfx)*L12
+      subtracts a term built from beta_rfx, so doubling beta_rfx and the
+      rfx phase together leaves it bit-unchanged (pinned by
+      tests/test_msl_phase_referee_header.py::
+      test_dispersion_corrected_residual_is_blind_for_the_same_reason).
+
+The gate set is therefore now, with each leg's evidence level stated in
+the artifact rather than inferred from the case's registration:
+
+  E1  each solver's angle(S21) vs its OWN measured beta -- UNCHANGED,
+      still gated at 3.0 deg / 200 ps, still the leg that catches a
+      reference-plane/referral error at fixed beta -- its resolving-power
+      test reads a planted single-port referral drop at 15.88-22.21 deg
+      against this same 3 deg gate. Relabelled, not weakened.
+  E2  each solver's measured beta vs the Hammerstad-Jensen quasi-static
+      closed form of the REALIZED board, at 2.0% (_analytic_beta_witness).
+      Attributes: a failure names the side.
+  E4  the RAW cross-solver angle(S21) difference, at 3.0 deg
+      (_cross_solver_phase_witness). Does NOT attribute.
+
+All three are in sanity_passed. Both new tolerances are pre-declared,
+with their derivations, in EXTERNAL_PHASE_REFERENCE_PREDECLARATION and
+docs/design_notes/issue812_phase_identity_predeclaration.md; no existing
+gate was widened.
+
 GATE-BUDGET DERIVATION (M1 fix -- ``B_PHASE_TOL_DEG``): the 30 deg
 value this script originally shipped with admits a plane-position
 error of 3.372mm (67% of L12=5mm) at this fixture's own measured beta
@@ -1168,6 +1218,12 @@ B_GD_TOL_PS = 200.0
 #         4.5 GHz; Getsinger f_p = Z0/(2*mu0*h) = 70.4 GHz,
 #         G = 0.6+0.009*Z0 = 1.078, +0.13% in eps_eff    -> +0.06% beta
 #       sum 1.77% -> declared 2.00%, one round step up (1.13x the budget).
+#     The budget's three terms are exactly the three exclusions
+#     rfx/microstrip.py's own Accuracy section names -- conductor
+#     thickness, dispersion, surface roughness -- with roughness zero
+#     here because both solvers model ideal PEC. The board is inside
+#     the model's stated validity range (w/h = 2.0 in [0.05, 20],
+#     eps_r = 3.66 <= ~13), so the 1% figure is the applicable one.
 #
 # (2) EXTERNAL SOLVER (E4) -- the RAW cross-solver angle(S21) difference,
 #     which this file already computes and, until now, deliberately
@@ -1471,6 +1527,142 @@ def _passivity_witness(s11: np.ndarray, s21: np.ndarray, label: str, *,
             "tol": tol, "passed": passed}
 
 
+def _gate_band_mask(freqs_hz: np.ndarray) -> np.ndarray:
+    """The 3.0-4.5 GHz gate band, shared by every Stage B witness.
+
+    Factored out of ``_self_consistency_witness`` (issue #812) so the new
+    independent-reference witnesses gate over the SAME bins the existing
+    one does -- a gate band that drifted between legs would make the
+    comparison of their margins meaningless.
+    """
+    mask = (freqs_hz >= B_GATE_F_LO_HZ) & (freqs_hz <= B_GATE_F_HI_HZ)
+    if not np.any(mask):
+        mask = np.ones_like(freqs_hz, dtype=bool)
+    return mask
+
+
+def _analytic_beta_witness(freqs_hz: np.ndarray, beta: np.ndarray, *,
+                           eps_eff: float, tol_frac: float, label: str,
+                           solver: str) -> dict:
+    """E2: one solver's measured beta against a closed form of the board.
+
+    Issue #812 audit pattern P1. ``_self_consistency_witness`` cannot
+    fail on a coherent phase-velocity error; this can, because its
+    reference contains no quantity from the run:
+
+        beta_analytic(f) = 2*pi*f*sqrt(eps_eff_HJ(w, h, eps_r))/c0
+
+    with ``w``/``h`` the REALIZED board (as rasterized -- issue #723 --
+    not the declared 254um) and ``eps_eff_HJ`` the same Hammerstad
+    quasi-static form Stage A's notch oracle uses.
+
+    Applied to BOTH solvers' beta, so a failure ATTRIBUTES to a side --
+    which the cross-solver witness deliberately cannot do.
+
+    The tolerance is ``B_BETA_ANALYTIC_TOL_FRAC``, pre-declared in
+    ``EXTERNAL_PHASE_REFERENCE_PREDECLARATION`` as the linear sum of the
+    Hammerstad-Jensen model's own accuracy, the one-cell conductor
+    thickness the zero-thickness form omits, and the dispersion it
+    neglects. It is a MODEL-ERROR budget, not an accuracy claim about
+    either solver: passing means "this solver's beta is where a
+    quasi-static closed form says a line on this board should be", which
+    is exactly, and only, what kills the coherent-beta blind spot.
+    """
+    freqs = np.asarray(freqs_hz, dtype=np.float64)
+    mask = _gate_band_mask(freqs)
+    beta_re = np.real(np.asarray(beta, dtype=np.complex128))
+    beta_analytic = 2.0 * np.pi * freqs * np.sqrt(eps_eff) / _C0
+    ratio = beta_re[mask] / beta_analytic[mask]
+    max_dev = float(np.max(np.abs(ratio - 1.0)))
+    passed = bool(max_dev <= tol_frac)
+    result = {
+        "solver": solver,
+        "eps_eff_hammerstad_jensen": float(eps_eff),
+        "beta_analytic_rad_per_m": beta_analytic[mask].tolist(),
+        "beta_measured_rad_per_m": beta_re[mask].tolist(),
+        "beta_ratio_measured_over_analytic": ratio.tolist(),
+        "max_abs_dev_frac": max_dev,
+        "tol_frac": float(tol_frac),
+        "evidence_level": "E2 (analytic oracle -- Hammerstad-Jensen quasi-static eps_eff)",
+        "passed": passed,
+    }
+    if not passed:
+        raise RuntimeError(
+            f"[{label}] analytic-beta witness failed for solver '{solver}': its "
+            f"MEASURED beta disagrees with the Hammerstad-Jensen quasi-static "
+            f"closed form for this board (eps_eff={eps_eff:.6f}) by "
+            f"{max_dev:.6f} > {tol_frac:.6f}. The reference here contains NO "
+            f"quantity from the run, so -- unlike the self-consistency witness -- "
+            f"a coherent phase-velocity error cannot satisfy it. Full result: {result}"
+        )
+    return result
+
+
+def _cross_solver_phase_witness(freqs_hz: np.ndarray, raw_phase_diff_deg: np.ndarray, *,
+                                tol_deg: float, label: str) -> dict:
+    """E4: the two solvers' de-embedded angle(S21), against each other.
+
+    Issue #812 audit pattern P1. This file already computed
+    ``raw_phase_diff_deg`` and deliberately declined to gate it (module
+    docstring "WHAT IS GATED vs REPORTED"), on the argument that the raw
+    difference conflates a real, mesh-dependent inter-solver eps_eff
+    difference with the reference-plane claim.
+
+    CORRECTION (2026-09-01): the argument is right about what the number
+    contains and wrong about what follows. The conflated physical term is
+    BOUNDABLE -- a +-1-cell difference in either solver's realized h_sub
+    or w_trace is worth 0.3176 + 0.1459 deg over L12 at this band's
+    beta_max (see ``EXTERNAL_PHASE_REFERENCE_PREDECLARATION``) -- so a
+    tolerance can contain it without conflating anything. And the
+    alternative the docstring recommended instead, the dispersion-
+    corrected residual, is PROVABLY BLIND to the defect this lane exists
+    to catch: ``residual = raw_diff - (beta_openems - beta_rfx)*L12``
+    subtracts a term built from ``beta_rfx``, so doubling ``beta_rfx``
+    and the rfx phase together leaves the residual bit-unchanged. The
+    RAW difference is the only one of the two that moves.
+
+    WHAT THIS WITNESS CANNOT DO: attribute. A failure says the two
+    solvers' de-embedded phases disagree beyond the mesh-and-plane
+    budget; it does not say which one is wrong. ``_analytic_beta_witness``
+    is the leg that attributes, and both are gated, so a real defect on
+    either side reds both.
+
+    ONE MORE LIMIT, stated because the point of this lane is not to
+    replace one silently-bounded gate with another: the difference is
+    wrapped to (-180, 180] deg, so a disagreement beyond half a turn
+    aliases. On this fixture that is remote -- the whole through-path
+    phase is ~45 deg at the top of the gate band, and the per-bin advance
+    is 0.027 rad, so ``np.unwrap`` itself is unambiguous -- and
+    ``_analytic_beta_witness`` is alias-immune regardless, because
+    ``CalcPort`` reports ``beta`` directly rather than through an
+    unwrapped angle.
+    """
+    freqs = np.asarray(freqs_hz, dtype=np.float64)
+    mask = _gate_band_mask(freqs)
+    diff = np.asarray(raw_phase_diff_deg, dtype=np.float64)[mask]
+    max_dev = float(np.max(np.abs(diff)))
+    passed = bool(max_dev <= tol_deg)
+    result = {
+        "band_raw_phase_diff_deg": diff.tolist(),
+        "max_abs_raw_phase_diff_deg": max_dev,
+        "tol_deg": float(tol_deg),
+        "evidence_level": "E4 (external full-wave cross-solver)",
+        "attributes_to_a_solver": False,
+        "passed": passed,
+    }
+    if not passed:
+        raise RuntimeError(
+            f"[{label}] cross-solver phase witness failed: max |angle(S21_rfx) - "
+            f"angle(S21_openems)| = {max_dev:.4f} deg > {tol_deg:.4f} deg over the "
+            f"{B_GATE_F_LO_HZ / 1e9:.1f}-{B_GATE_F_HI_HZ / 1e9:.1f} GHz gate band. "
+            f"ONE OF THE TWO SOLVERS' de-embedded phase is wrong beyond the "
+            f"+-1-cell mesh and +-4-cell reference-plane budget -- this witness does "
+            f"NOT say which; read the analytic-beta witness for that. Full result: "
+            f"{result}"
+        )
+    return result
+
+
 def _self_consistency_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta: np.ndarray,
                               *, l12_m: float, mag_band: tuple[float, float],
                               phase_tol_deg: float, gd_tol_ps: float, label: str) -> dict:
@@ -1479,10 +1671,34 @@ def _self_consistency_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta: np.nd
     beta, over the shared L12 span -- not a cross-solver comparison. See
     the coax lane's ``_matched_through_witness`` for the precedent this
     mirrors (mag band + phase-vs-own-beta + group delay, one-sided).
+
+    SELF-REFERENCE -- CORRECTION (2026-09-01, issue #812 audit pattern
+    P1). "Not a cross-solver comparison" was accurate and incomplete: it
+    is not a comparison against ANYTHING outside the solve. Both sides
+    are built from one field solve, so a COHERENT propagation error --
+    the line's phase velocity is wrong, so that solver's measured beta
+    AND its angle(S21) move together -- cancels. The issue #812 audit
+    measured a FACTOR-2 phase-velocity error reading 0.2414 deg against
+    this file's own 3.0 deg gate: 12x INSIDE. The group-delay leg is
+    blind for the same reason (it differentiates the same identity).
+
+    The module docstring's own QUALIFIER already said this check "proves
+    the referral/shift ARITHMETIC is right to WITHIN the gate's own
+    RESOLVING POWER"; what it did not say is that its resolving power for
+    the coherent-beta class is ZERO, at any tolerance. That is now stated
+    here and in the docstring's WHAT IS GATED section.
+
+    This is an **E1** leg (intra-run self-consistency) and the result
+    dict says so in ``evidence_level``. It is KEPT -- it is what catches
+    a reference-plane/referral error at FIXED beta, the defect class it
+    was derived for -- its resolving-power test reads a planted single-port
+    referral drop at 15.88-22.21 deg against this same 3 deg gate. It is no longer the only gated phase leg:
+    ``_analytic_beta_witness`` (E2, Hammerstad-Jensen) and
+    ``_cross_solver_phase_witness`` (E4, the committed rfx fixture's own
+    de-embedded phase) below both have references containing no quantity
+    from the run they judge.
     """
-    mask = (freqs_hz >= B_GATE_F_LO_HZ) & (freqs_hz <= B_GATE_F_HI_HZ)
-    if not np.any(mask):
-        mask = np.ones_like(freqs_hz, dtype=bool)
+    mask = _gate_band_mask(np.asarray(freqs_hz, dtype=np.float64))
 
     s21_mag = np.abs(s21)
     mag_lo, mag_hi = mag_band
@@ -1504,6 +1720,9 @@ def _self_consistency_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta: np.nd
     passed = bool(mag_ok and phase_ok and gd_ok)
     result = {
         "band_s21_mag": s21_mag[mask].tolist(), "mag_band_expected": [mag_lo, mag_hi],
+        # CORRECTION (2026-09-01, issue #812 P1): both sides of this
+        # comparison come from one field solve. Say so in the artifact.
+        "evidence_level": "E1 (intra-run self-consistency)",
         "mag_ok": mag_ok, "max_phase_dev_deg": max_phase_dev_deg,
         "phase_tol_deg": phase_tol_deg, "phase_ok": phase_ok,
         "group_delay_dev_ps": gd_dev_ps, "gd_tol_ps": gd_tol_ps, "gd_ok": gd_ok,
@@ -2173,8 +2392,44 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         np.angle(np.exp(1j * (np.radians(raw_phase_diff_deg) - dispersion_predicted_diff_rad)))
     )
 
+    # --- Issue #812 P1: the INDEPENDENT-reference gates. ---
+    # Both self-consistency witnesses (below and above) are E1: their
+    # reference is built from the same solve they judge, so a coherent
+    # phase-velocity error cancels and they read ~0.24 deg for a FACTOR-2
+    # error. These two do not have that property.
+    eps_eff_hj = _hammerstad_jensen_eps_eff(
+        layout["w_trace_realized_m"], layout["h_sub_realized_m"], B_EPS_R)
+    try:
+        analytic_beta_openems = _analytic_beta_witness(
+            freqs_hz, beta_openems, eps_eff=eps_eff_hj,
+            tol_frac=B_BETA_ANALYTIC_TOL_FRAC, label="stage_b_analytic_beta",
+            solver="openems")
+        analytic_beta_rfx = _analytic_beta_witness(
+            freqs_hz, beta_rfx, eps_eff=eps_eff_hj,
+            tol_frac=B_BETA_ANALYTIC_TOL_FRAC, label="stage_b_analytic_beta",
+            solver="rfx")
+        cross_solver_phase = _cross_solver_phase_witness(
+            freqs_hz, raw_phase_diff_deg, tol_deg=B_CROSS_SOLVER_PHASE_TOL_DEG,
+            label="stage_b_cross_solver_phase")
+    except RuntimeError as exc:
+        # Same forensics discipline as the guard block above: a failing
+        # gate must not cost the reviewer the per-bin numbers that led
+        # to it.
+        partial_data["cross_solver_partial"] = {
+            "eps_eff_hammerstad_jensen": float(eps_eff_hj),
+            "beta_rfx_real": np.real(beta_rfx).tolist(),
+            "beta_openems_real": np.real(beta_openems).tolist(),
+            "raw_phase_diff_deg": raw_phase_diff_deg.tolist(),
+        }
+        exc.partial_stage_b_data = partial_data
+        raise
+
     cross_solver_report = {
         "l12_m": layout["l12_m"],
+        "eps_eff_hammerstad_jensen": float(eps_eff_hj),
+        "analytic_beta_witness_openems": analytic_beta_openems,
+        "analytic_beta_witness_rfx": analytic_beta_rfx,
+        "cross_solver_phase_witness": cross_solver_phase,
         "beta_rfx_real": np.real(beta_rfx).tolist(),
         "beta_openems_real": np.real(beta_openems).tolist(),
         "beta_ratio_rfx_over_openems": beta_ratio.tolist(),
@@ -2204,6 +2459,11 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
 
     sanity_passed = bool(
         not truncated and passivity["passed"] and self_consistency_openems["passed"]
+        # Issue #812 P1: wired in, not merely reported. The two E1
+        # self-consistency legs above cannot fail on a coherent
+        # phase-velocity error; these three can.
+        and analytic_beta_openems["passed"] and analytic_beta_rfx["passed"]
+        and cross_solver_phase["passed"]
     )
 
     return {

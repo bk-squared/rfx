@@ -1205,3 +1205,314 @@ def test_run1_measured_precision_s21_bias_and_balance_attribution():
     assert s11_sq + s21_mag[0] ** 2 == pytest.approx(balance[0])
     frac = s21_sq_minus1 / excess0
     assert 0.73 < frac < 0.75, f"expected ~74% of balance[0] excess from |S21|^2-1, got {frac:.3f}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #812 audit pattern P1 -- the self-referential phase gate, and the two
+# independent-reference legs that replace its blind spot.
+#
+# Every measurement below REPLAYS committed artifacts through the real
+# witness functions; openEMS is absent from this host, so no fresh run is
+# available and none is needed. Two independent committed configurations are
+# used, not one:
+#   run-1  20260804T055009Z_result.json  -- the DECLARED board (openEMS
+#          substrate 5 x 50.8um = 254um), VESSL 369367251705
+#   run-2  20260827T102342Z_result.json  -- the #723 REALIZED board (openEMS
+#          substrate 6 x 50.0um = 300um), VESSL 369367256520
+# The rfx side is the SAME committed fixture in both, so its own realized
+# board (300um) is the analytic reference for it in both.
+# ---------------------------------------------------------------------------
+_LOGS_DIR: Final = REPO_ROOT / "validation" / "crossval" / "_20_msl_phase_referee_logs"
+_RUN1_RESULT_PATH: Final = _LOGS_DIR / "20260804T055009Z_result.json"
+_RUN2_RESULT_PATH: Final = _LOGS_DIR / "20260827T102342Z_result.json"
+
+
+def _cx(pairs):
+    return np.array([complex(re, im) for re, im in pairs], dtype=np.complex128)
+
+
+def _rfx_realized_eps_eff(module):
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    return module._hammerstad_jensen_eps_eff(
+        fixture["meta"]["w_trace_realized_m"],
+        fixture["meta"]["h_sub_realized_m"],
+        module.B_EPS_R,
+    )
+
+
+def test_inlined_hammerstad_jensen_matches_rfx_microstrip():
+    """The referee may not import rfx (module docstring SCOPE FENCE), so the
+    closed form is duplicated here. Pin the duplicate against rfx's own
+    implementation so the two cannot drift -- the duplication is the price
+    of the fence, not a licence for a second, different formula."""
+    module = _load_referee_module()
+    from rfx.microstrip import microstrip_eps_eff
+
+    for w, h in ((600e-6, 300e-6), (600e-6, 254e-6), (635e-6, 300e-6), (1e-3, 200e-6)):
+        assert module._hammerstad_jensen_eps_eff(w, h, module.B_EPS_R) == pytest.approx(
+            microstrip_eps_eff(w, h, module.B_EPS_R), rel=1e-12)
+
+    # Stage A's own long-standing inline constant must be the same formula.
+    assert module._A_EPS_EFF == pytest.approx(
+        module._hammerstad_jensen_eps_eff(module._A_W_TRACE_M, module._A_H_SUB_M,
+                                          module._A_EPS_R), rel=1e-12)
+
+
+def test_external_phase_reference_budgets_are_recomputable_from_geometry():
+    """Both new tolerances must be re-derivable from the board's DECLARED
+    geometry alone -- that is what makes them pre-declarable. Every term in
+    ``EXTERNAL_PHASE_REFERENCE_PREDECLARATION`` is recomputed here from the
+    realized board, and the declared tolerance must SIT ABOVE the sum (a
+    tolerance below its own budget would be a fitted number wearing a
+    derivation)."""
+    module = _load_referee_module()
+    pre = module.EXTERNAL_PHASE_REFERENCE_PREDECLARATION
+    er, w, h, t_cond = module.B_EPS_R, 600e-6, 300e-6, module.B_DX_M
+    eps0 = module._hammerstad_jensen_eps_eff(w, h, er)
+
+    # (i) Hammerstad-Jensen model accuracy, 1% in eps_eff -> 0.5% in beta.
+    assert pre["analytic_tol_budget_frac"]["hammerstad_jensen_model"] == pytest.approx(
+        0.5 * 0.01, abs=1e-6)
+    # (ii) Bahl-Garg one-cell conductor thickness. The dict records the
+    # budget terms to 3 significant figures (0.0121 vs the exact
+    # 0.0120290), so compare at that resolution -- the DECLARED tolerance
+    # asserted below is the number that binds, and it is unaffected.
+    d_eps_t = -(er - 1.0) * (t_cond / h) / (4.6 * math.sqrt(w / h))
+    assert abs(0.5 * d_eps_t / eps0) == pytest.approx(
+        pre["analytic_tol_budget_frac"]["conductor_thickness_one_cell"], abs=1e-4)
+    # (iii) Getsinger dispersion at the band top.
+    u = w / h
+    z0 = 120.0 * math.pi / (math.sqrt(eps0) * (u + 1.393 + 0.667 * math.log(u + 1.444)))
+    f_p = z0 / (2.0 * 4.0e-7 * math.pi * h)
+    g = 0.6 + 0.009 * z0
+    eps_f = er - (er - eps0) / (1.0 + g * (module.B_GATE_F_HI_HZ / f_p) ** 2)
+    assert 0.5 * (eps_f - eps0) / eps0 == pytest.approx(
+        pre["analytic_tol_budget_frac"]["quasi_static_dispersion_at_band_top"], abs=5e-5)
+
+    budget = pre["analytic_tol_budget_frac"]
+    assert budget["sum"] == pytest.approx(
+        budget["hammerstad_jensen_model"] + budget["conductor_thickness_one_cell"]
+        + budget["quasi_static_dispersion_at_band_top"], abs=2e-4)
+    assert module.B_BETA_ANALYTIC_TOL_FRAC >= budget["sum"]
+    assert module.B_BETA_ANALYTIC_TOL_FRAC == 0.020
+
+    # Cross-solver budget: two one-cell rasterization differences plus this
+    # file's own committed +-4-cell reference-plane term.
+    beta_max = 155.92
+    l12 = 5.0e-3
+    dh = abs(0.5 * (module._hammerstad_jensen_eps_eff(w, h - module.B_DX_M, er) - eps0) / eps0)
+    dw = abs(0.5 * (module._hammerstad_jensen_eps_eff(w - module.B_DX_M, h, er) - eps0) / eps0)
+    xs = pre["cross_solver_tol_budget_deg"]
+    assert math.degrees(dh * beta_max * l12) == pytest.approx(xs["h_sub_one_cell"], abs=2e-3)
+    assert math.degrees(dw * beta_max * l12) == pytest.approx(xs["w_trace_one_cell"], abs=2e-3)
+    assert xs["reference_plane_four_cells"] == 1.787  # the file's own GATE-BUDGET term
+    assert xs["sum"] == pytest.approx(
+        xs["h_sub_one_cell"] + xs["w_trace_one_cell"] + xs["reference_plane_four_cells"],
+        abs=2e-3)
+    assert module.B_CROSS_SOLVER_PHASE_TOL_DEG >= xs["sum"]
+    assert module.B_CROSS_SOLVER_PHASE_TOL_DEG == 3.0
+
+
+def test_self_consistency_witness_is_blind_to_a_factor_two_phase_velocity_error():
+    """The audit's own measurement, pinned as a permanent record of WHY the
+    two independent witnesses exist.
+
+    The audit reported 0.2414 deg for a factor-2 phase-velocity error
+    against this file's 3.0 deg gate. That number comes from SCALING the
+    de-embedded phase (which scales the extraction residual with it); the
+    cleaner model -- rotate the through path by the extra propagation term
+    and scale beta to match -- leaves the deviation BIT-IDENTICAL to its
+    unperturbed value, 0.1207 deg. Both are pinned. Neither is a matter of
+    tolerance: this witness's resolving power for the coherent-beta class
+    is zero at ANY tolerance.
+    """
+    module = _load_referee_module()
+    freqs, s21, beta, layout = _rfx_fixture_s21_beta_l12(module)
+    l12 = layout["l12_m"]
+
+    baseline = module._self_consistency_witness(
+        freqs, s21, beta, l12_m=l12, mag_band=module.B_S21_MAG_BAND,
+        phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+        label="baseline")
+    assert baseline["max_phase_dev_deg"] == pytest.approx(0.12072012657087564, rel=1e-9)
+    assert baseline["evidence_level"] == "E1 (intra-run self-consistency)"
+
+    # (a) the audit's construction: scale the de-embedded phase itself.
+    s21_scaled = np.abs(s21) * np.exp(2.0j * np.angle(s21))
+    audit = module._self_consistency_witness(
+        freqs, s21_scaled, beta * 2.0, l12_m=l12, mag_band=module.B_S21_MAG_BAND,
+        phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+        label="audit_construction")
+    assert audit["passed"] is True
+    assert audit["max_phase_dev_deg"] == pytest.approx(0.2414, abs=5e-4)
+
+    # (b) the propagation-only construction: deviation cannot move at all.
+    for k in (2.0, 0.5):
+        s21_k = s21 * np.exp(-1j * (k - 1.0) * np.real(beta) * l12)
+        res = module._self_consistency_witness(
+            freqs, s21_k, beta * k, l12_m=l12, mag_band=module.B_S21_MAG_BAND,
+            phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+            label=f"coherent_k{k}")
+        assert res["passed"] is True, k
+        assert res["max_phase_dev_deg"] == pytest.approx(
+            baseline["max_phase_dev_deg"], rel=1e-9), k
+        assert res["group_delay_dev_ps"] == pytest.approx(
+            baseline["group_delay_dev_ps"], rel=1e-9), k
+
+
+def test_dispersion_corrected_residual_is_blind_for_the_same_reason():
+    """The module docstring recommends the dispersion-corrected residual as
+    the honest cross-solver number. It is not usable as a gate for THIS
+    defect class: ``residual = raw_diff - (beta_openems - beta_rfx)*L12``
+    subtracts a term built from ``beta_rfx``, so doubling ``beta_rfx`` and
+    the rfx phase together leaves it bit-unchanged. Only the RAW difference
+    moves -- which is why the raw one is what got gated."""
+    module = _load_referee_module()
+    stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
+    freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
+    l12 = stage_b["layout"]["l12_m"]
+    s21_openems = _cx(stage_b["s21"])
+    beta_openems = np.asarray(stage_b["cross_solver_report"]["beta_openems_real"], dtype=float)
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    s21_rfx = _cx(fixture["s21"])
+    beta_rfx = np.real(_cx(fixture["beta_first_port"]))
+
+    def raw_and_residual(s21_r, beta_r):
+        raw = np.degrees(np.angle(np.exp(
+            1j * (np.unwrap(np.angle(s21_r)) - np.unwrap(np.angle(s21_openems))))))
+        resid = np.degrees(np.angle(np.exp(
+            1j * (np.radians(raw) - (beta_openems - beta_r) * l12))))
+        return raw, resid
+
+    raw0, resid0 = raw_and_residual(s21_rfx, beta_rfx)
+    s21_bad = s21_rfx * np.exp(-1j * beta_rfx * l12)          # phase velocity halved
+    raw1, resid1 = raw_and_residual(s21_bad, 2.0 * beta_rfx)
+
+    mask = module._gate_band_mask(freqs)
+    assert np.allclose(resid0, resid1, atol=1e-12), "residual must be provably blind"
+    assert np.max(np.abs(resid0[mask])) == pytest.approx(0.715345, abs=1e-5)
+    assert np.max(np.abs(raw0[mask])) == pytest.approx(0.3418, abs=1e-3)
+    assert np.max(np.abs(raw1[mask])) == pytest.approx(44.8146, abs=1e-3)
+
+
+def _independent_legs_on(module, result_path, eps_eff_openems):
+    stage_b = json.loads(pathlib.Path(result_path).read_text())["stage_b"]
+    freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
+    cross = stage_b["cross_solver_report"]
+    eps_rfx = _rfx_realized_eps_eff(module)
+    rfx = module._analytic_beta_witness(
+        freqs, np.asarray(cross["beta_rfx_real"], dtype=float), eps_eff=eps_rfx,
+        tol_frac=module.B_BETA_ANALYTIC_TOL_FRAC, label="replay", solver="rfx")
+    oe = module._analytic_beta_witness(
+        freqs, np.asarray(cross["beta_openems_real"], dtype=float),
+        eps_eff=eps_eff_openems, tol_frac=module.B_BETA_ANALYTIC_TOL_FRAC,
+        label="replay", solver="openems")
+    xs = module._cross_solver_phase_witness(
+        freqs, np.asarray(cross["raw_phase_diff_deg"], dtype=float),
+        tol_deg=module.B_CROSS_SOLVER_PHASE_TOL_DEG, label="replay")
+    return rfx, oe, xs
+
+
+def test_independent_phase_legs_pass_on_both_committed_runs():
+    """Criterion (A), on TWO independent committed configurations.
+
+    The rfx fixture's realized board is 300um in both runs (it is the same
+    committed fixture). openEMS's own board differs between them -- the
+    declared 254um in run-1, the #723-matched 300um in run-2 -- so each
+    run's openEMS leg is judged against ITS OWN board's closed form, which
+    is exactly what the production wiring does (it reads the realized
+    geometry from the fixture the run was built on).
+    """
+    module = _load_referee_module()
+    eps_declared = module._hammerstad_jensen_eps_eff(600e-6, 254e-6, module.B_EPS_R)
+    eps_realized = _rfx_realized_eps_eff(module)
+    assert eps_realized == pytest.approx(2.8326927491022724, rel=1e-12)
+    assert eps_declared == pytest.approx(2.8693862252597855, rel=1e-12)
+
+    rfx2, oe2, xs2 = _independent_legs_on(module, _RUN2_RESULT_PATH, eps_realized)
+    assert (rfx2["passed"], oe2["passed"], xs2["passed"]) == (True, True, True)
+    assert rfx2["max_abs_dev_frac"] == pytest.approx(0.00938, abs=1e-5)
+    assert oe2["max_abs_dev_frac"] == pytest.approx(0.00307, abs=1e-5)
+    assert xs2["max_abs_raw_phase_diff_deg"] == pytest.approx(0.3418, abs=1e-3)
+
+    rfx1, oe1, xs1 = _independent_legs_on(module, _RUN1_RESULT_PATH, eps_declared)
+    assert (rfx1["passed"], oe1["passed"], xs1["passed"]) == (True, True, True)
+    assert rfx1["max_abs_dev_frac"] == pytest.approx(0.00938, abs=1e-5)
+    assert oe1["max_abs_dev_frac"] == pytest.approx(0.00494, abs=1e-5)
+    assert xs1["max_abs_raw_phase_diff_deg"] == pytest.approx(0.3039, abs=1e-3)
+
+    # Margins, so a future reader sees how much room criterion (A) has.
+    assert module.B_BETA_ANALYTIC_TOL_FRAC / rfx2["max_abs_dev_frac"] > 2.0
+    assert module.B_CROSS_SOLVER_PHASE_TOL_DEG / xs2["max_abs_raw_phase_diff_deg"] > 8.0
+
+    assert rfx2["evidence_level"].startswith("E2")
+    assert xs2["evidence_level"].startswith("E4")
+    assert xs2["attributes_to_a_solver"] is False
+
+
+def test_independent_phase_legs_fire_on_the_factor_two_phase_velocity_error():
+    """Criterion (B): the defect the audit measured this case blind to must
+    RED both new gates, for the right reasons -- the analytic leg naming
+    the Hammerstad-Jensen comparison and attributing to the rfx side, the
+    cross-solver leg naming the two solvers' de-embedded phases and
+    explicitly declining to attribute."""
+    module = _load_referee_module()
+    stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
+    freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
+    l12 = stage_b["layout"]["l12_m"]
+    s21_openems = _cx(stage_b["s21"])
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    s21_rfx = _cx(fixture["s21"])
+    beta_rfx = np.real(_cx(fixture["beta_first_port"]))
+    eps_rfx = _rfx_realized_eps_eff(module)
+
+    for k, dev, xs_deg in ((2.0, 1.018764, 44.8146), (0.5, 0.495643, 22.1883)):
+        beta_bad = beta_rfx * k
+        s21_bad = s21_rfx * np.exp(-1j * (k - 1.0) * beta_rfx * l12)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            module._analytic_beta_witness(
+                freqs, beta_bad, eps_eff=eps_rfx,
+                tol_frac=module.B_BETA_ANALYTIC_TOL_FRAC,
+                label="perturbed", solver="rfx")
+        message = str(excinfo.value)
+        assert "analytic-beta witness failed for solver 'rfx'" in message
+        assert "Hammerstad-Jensen quasi-static" in message
+        assert f"by {dev:.6f} > 0.020000" in message, (k, message[:400])
+
+        raw = np.degrees(np.angle(np.exp(
+            1j * (np.unwrap(np.angle(s21_bad)) - np.unwrap(np.angle(s21_openems))))))
+        with pytest.raises(RuntimeError) as excinfo:
+            module._cross_solver_phase_witness(
+                freqs, raw, tol_deg=module.B_CROSS_SOLVER_PHASE_TOL_DEG,
+                label="perturbed")
+        message = str(excinfo.value)
+        assert "cross-solver phase witness failed" in message
+        assert f"= {xs_deg:.4f} deg > 3.0000 deg" in message, (k, message[:400])
+        assert "does\nNOT say which" in message or "NOT say which" in message
+
+        # ...while the E1 witness the audit measured still passes.
+        old = module._self_consistency_witness(
+            freqs, s21_bad, beta_bad, l12_m=l12, mag_band=module.B_S21_MAG_BAND,
+            phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
+            label="old")
+        assert old["passed"] is True
+
+
+def test_independent_phase_legs_are_wired_into_sanity_passed():
+    """Revert-proof: both new gates must be inside ``sanity_passed`` and
+    inside the forensics try-block, not reported-only fields a later edit
+    can drop silently."""
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._run_stage_b)
+    assert "analytic_beta_openems = _analytic_beta_witness(" in src
+    assert "analytic_beta_rfx = _analytic_beta_witness(" in src
+    assert "cross_solver_phase = _cross_solver_phase_witness(" in src
+    assert 'and analytic_beta_openems["passed"] and analytic_beta_rfx["passed"]' in src
+    assert 'and cross_solver_phase["passed"]' in src
+    assert "exc.partial_stage_b_data = partial_data" in src
+    # The analytic reference must be the REALIZED board (issue #723), not
+    # the declared constants -- a regression to B_H_SUB_M here would make
+    # the E2 leg judge a board that is not simulated.
+    assert 'layout["w_trace_realized_m"], layout["h_sub_realized_m"]' in src
