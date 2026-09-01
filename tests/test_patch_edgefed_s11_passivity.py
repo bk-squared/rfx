@@ -42,7 +42,7 @@ WHAT IS GATED, AND THE BAND'S PROVENANCE (measured 2026-09-01, post-#702 tree)
 Evidence run: ``scripts/diagnostics/patch_edgefed_s11_band_repin.py`` — this exact
 config (same builder import, freqs 6-14 GHz x 81, num_periods = 280), CPU
 (``JAX_PLATFORMS=cpu``), both arms settled (#332 witness silent), every preflight
-advisory captured (7 in the CPU provenance run — two are environment x64 notes — including the +25.2 % substrate column under the
+advisory captured (7 in the CPU provenance run — three are environment x64 notes — including the +25.2 % substrate column under the
 MSL port — the half-open rasterizer rounds the off-node substrate face UP under the
 port; part of this board's identity, quoted in the run log). Per-bin traces:
 ``docs/design_notes/patch_edgefed_s11_band_repin_results.json``; predeclaration and

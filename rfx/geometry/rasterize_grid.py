@@ -443,8 +443,11 @@ def _subcell_box_axis_window(entry_shape, axis, node_coords, half_steps_axis):
     fills, both registered at their mid-plane, both with the shifted sample
     point ~7 um ABOVE the fill's top face. One re-snapped onto the shifted
     node and one did not — the two candidate shifted nodes are equidistant
-    from the fill midpoint by construction, so float32 rounding decided
-    (eps_r 3.520 at one level, 3.380 at the other, from the same geometry).
+    from the fill midpoint by construction, so the last ulp of the shifted
+    coordinates decided; float32 rounding at the time of that measurement,
+    pre-#802/#834 — the concrete coordinates are host-f64 now, and an
+    exact tie is still a tie (eps_r 3.520 at one level, 3.380 at the
+    other, from the same geometry).
     A material value must not be decided that way.
 
     So for a sub-cell Box the resample asks the only question that has an
@@ -583,7 +586,8 @@ def resample_sheet_node_materials(
     **A sub-cell DIELECTRIC needs its own rule**, see
     :func:`_subcell_box_axis_window`: ``Box``'s thin branch would re-snap it
     onto whichever shifted node is now nearest, which for a mid-plane
-    registered fill is a float32 tie-break, so a sub-cell Box takes a
+    registered fill is an exact half-cell tie (a float32 tie-break when it
+    was measured, pre-#802/#834), so a sub-cell Box takes a
     half-open window test along the resampled axis instead.
 
     **Deliberately not resampled.**
@@ -634,8 +638,18 @@ def resample_sheet_node_materials(
         if not is_tracer(m) and not bool(jnp.any(m)):
             continue
         shifted = list(base)
-        shifted[axis] = base[axis] + jnp.asarray(half_steps[axis],
-                                                 dtype=base[axis].dtype)
+        half = half_steps[axis]
+        if is_tracer(base[axis]) or is_tracer(half):
+            shifted[axis] = base[axis] + jnp.asarray(half,
+                                                     dtype=base[axis].dtype)
+        else:
+            # Host float64 to the comparison point (#802 contract): an
+            # unconditional jnp.asarray(dtype=f64) truncates to float32
+            # under x64=0, re-quantizing the very node coordinates
+            # #802/#834 made exact (and emitting the "float64 requested"
+            # environment warning on every resample).
+            shifted[axis] = (np.asarray(base[axis], dtype=np.float64)
+                             + np.asarray(half, dtype=np.float64))
         eps_s, sigma_s = _statics_on_coords(
             geometry_entries, material_resolver,
             tuple(shifted), tuple(base), axis, half_steps[axis],

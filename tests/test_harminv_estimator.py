@@ -63,9 +63,12 @@ def test_harminv_recovers_known_synthetic_frequencies():
 def test_harminv_dominant_is_largest_amplitude_tone():
     """The returned list is amplitude-sorted; the dominant must be the 9.30 GHz tone.
 
-    This is exactly the selection the issue-80 gate relies on (max-by-amplitude,
-    no analytic-nearest bias) — locks that 9.30 is dominant by ENERGY, not by
-    proximity to an expected value.
+    The amplitude sort is the estimator's own API contract. The patch
+    companion gate no longer selects by amplitude rank — it labels modes by
+    spatial parity on a probe cross ("a PARITY label from the probe cross.
+    No amplitude rank", tests/test_patch_edgefed_resonance_harminv.py) — so
+    this locks the estimator contract itself, and that 9.30 is dominant by
+    ENERGY, not by proximity to an expected value.
     """
     modes = harminv(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     assert modes, "no modes recovered"

@@ -1486,10 +1486,12 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 # 2 declares the trace as Box(y = Y_C -/+ W_TRACE/2) = 1.4/2.0 mm, both
 # exactly on node planes -- the rfx/geometry/csg.py Box docstring's
 # "knife edge". Measured on the committed fixture (_assemble_materials,
-# pure NumPy): the realized pec_mask trace occupies y nodes 14..20
+# pure NumPy) BEFORE the #802 exact-coordinate fix -- the pre-2026-09-01
+# f32 realization; the re-pin note below the constants records the
+# current one: the realized pec_mask trace occupied y nodes 14..20
 # INCLUSIVE at the trace z-layer (7 node rows; both edge nodes included by
-# float32 rounding) and x nodes >= 11 -- the junction node x=10 itself is
-# EXCLUDED from the trace box (it carries only the pin). The same declared
+# float32 rounding) and x nodes >= 11 -- the junction node x=10 itself was
+# EXCLUDED from the trace box (it carried only the pin). The same declared
 # construction recentred at (3.0, 3.4) mm (y edges 3.1/3.7 mm) rounds the
 # OTHER way on all three edges: 5 node rows AND the junction x-column
 # included -- 59 pec_mask cells differ, i.e. the naive wide build is NOT
@@ -1499,8 +1501,9 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 # MIDPOINTS (the _half_cell_box_z recipe, applied to x and y) so that it
 # realizes EXACTLY attempt 2's own node set after the offset. The MSL
 # port's registered width stays W_TRACE (600 um) in both fixtures. That
-# attempt 2's declared 600 um trace realizes as 7 electric-wall node rows
-# is itself a declared-vs-realized fidelity observation on the COMMITTED
+# attempt 2's declared 600 um trace realized as 7 electric-wall node rows
+# on the pre-#802 f32 rasterization (6 rows since the #802 re-pin) was
+# itself a declared-vs-realized fidelity observation on the COMMITTED
 # fixture (reported via --preflight's fidelity_report in the driver), not
 # something this variant changes.
 # ---------------------------------------------------------------------------

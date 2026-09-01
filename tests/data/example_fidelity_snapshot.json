@@ -1,5 +1,5 @@
 {
-  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). KNOWN WRONG: domain realized_extent_um/n_cells are NODE counts, one cell too long (#729 site 1; fix in flight as PR #734). Do not quote a domain extent from this file.",
+  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734, and this snapshot was re-captured after that fix. Do not quote a domain extent from this file.",
   "variants": {
     "examples/inverse_design/differentiable_s11_design.py::_build_sim::default": {
       "fidelity": {
