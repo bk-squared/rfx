@@ -326,6 +326,55 @@ def test_openems_mesh_plan_reproduces_the_open_ends_and_the_planes(ref):
     assert abs(plan["effective_calcport_shift_predicted_m"]) < 1e-12
 
 
+def test_openems_mesh_plan_has_no_ulp_duplicated_lines(ref):
+    """A plane of record must appear ONCE, not twice.
+
+    ``openems_mesh_plan`` unions an ``np.arange`` background grid with the
+    literal plane-of-record coordinates.  ``np.arange`` reproduces a plane
+    that IS on its own grid only to within a ULP, so a plain
+    ``np.unique`` keeps BOTH copies and leaves a cell of ~1e-19 m between
+    them.  openEMS then builds an operator with a zero-width cell -- every
+    field it writes is NaN, which is the ``uf_inc=nan`` VESSL run
+    369367257610 died on.  Guarded here for EVERY axis of BOTH mesh legs,
+    because the dx=80 um leg has the same pathology on y as well as x.
+    """
+    for dx_m in (ref.B_DX_COMPARATOR_M, ref.B_DX_REPORTED_ONLY_M):
+        plan = ref.openems_mesh_plan(dx_m)
+        for axis in ("x", "y", "z"):
+            lines = plan[f"{axis}_lines_m"]
+            cells = np.diff(lines)
+            # Any cell below this is not a mesh feature, it is round-off:
+            # the smallest DELIBERATE spacing in this plan is the
+            # thirds-rule y line at dx/12, seven orders of magnitude above.
+            floor_m = 1e-6 * dx_m
+            worst = float(np.min(cells))
+            bad = [(int(i), float(lines[i]), float(lines[i + 1]), float(cells[i]))
+                   for i in np.where(cells < floor_m)[0]]
+            assert not bad, (
+                f"dx={dx_m*1e6:.0f} um, {axis} axis: {len(bad)} degenerate "
+                f"cell(s) below {floor_m:.3e} m (min cell {worst:.6e} m): "
+                f"{bad}"
+            )
+
+
+def test_lumped_port_feed_plane_is_a_single_mesh_line(ref):
+    """The failing leg's own port plane, isolated.
+
+    x = 2.00 mm is the lumped probe's feed plane.  ``x_line_present``
+    (the self-check that passed) only asks whether SOME line is within
+    0 nm of it -- which a DUPLICATED line satisfies.  This asks the
+    question that matters instead: how many.
+    """
+    for dx_m in (ref.B_DX_COMPARATOR_M, ref.B_DX_REPORTED_ONLY_M):
+        lines = ref.openems_mesh_plan(dx_m)["x_lines_m"]
+        n = int(np.sum(np.abs(lines - ref.B_FEED_X_M) < 1e-6 * dx_m))
+        assert n == 1, (
+            f"dx={dx_m*1e6:.0f} um: the lumped feed plane x="
+            f"{ref.B_FEED_X_M*1e3:.2f} mm is carried by {n} mesh lines, "
+            f"not 1 -- a zero-width cell at the port itself"
+        )
+
+
 def test_reported_only_dx80_leg_is_labelled_and_not_the_comparator(ref):
     assert ref.B_DX_COMPARATOR_M == pytest.approx(50e-6)
     assert ref.B_DX_REPORTED_ONLY_M == pytest.approx(80e-6)
@@ -416,7 +465,8 @@ class _FakeFDTD:
 
     def AddLumpedPort(self, nr, R, start, stop, p_dir, excite, priority=0):
         self.lumped = {"nr": nr, "R": R, "start": list(start),
-                       "stop": list(stop), "dir": p_dir, "excite": excite}
+                       "stop": list(stop), "dir": p_dir, "excite": excite,
+                       "priority": priority}
         return _FakeLumpedPort(self.lumped)
 
 
@@ -490,6 +540,78 @@ def test_stage2_builder_plumbing_against_a_recording_double(ref, drive):
     # the x mesh stays uniform and start-aligned (the snap prediction's
     # own assumption); only y is smoothed
     assert fdtd.csx._mesh.smoothed == [("y", ref.B_DX_COMPARATOR_M * 1e3 / 4.0, 1.4)]
+
+
+def test_stage2_lumped_port_is_a_well_formed_openems_port(ref):
+    """Structural contract on the port openEMS is actually handed.
+
+    Checked WITHOUT openEMS, against the mesh and the primitives the
+    builder itself records, and phrased as the four things
+    ``openEMS.ports.LumpedPort`` + CSXCAD need to be true:
+
+      (a) the box is NON-DEGENERATE on its excitation axis -- LumpedPort
+          raises otherwise ("start and stop may not be identical in
+          excitation direction");
+      (b) the excitation axis is consistent with start/stop -- LumpedPort
+          takes ``direction = sign(stop[exc_ny] - start[exc_ny])`` and
+          builds ``exc_vec[exc_ny] = -direction*excite`` from it, so a
+          transverse axis would launch nothing;
+      (c) every box coordinate lands on EXACTLY ONE mesh line.  "At least
+          one" is not enough: two ULP-separated lines put the port's own
+          cells in a zero-width cell, and openEMS's operator there is
+          singular;
+      (d) no HIGHER-priority primitive claims the port's cells.  The port
+          is priority 5; the substrate below it is priority 0 (the port
+          wins, as in the patch precedent) and the trace above it is
+          priority 10, which must therefore not reach down into the
+          port's z span.
+    """
+    _FakeMSLPort.instances = []
+    fdtd, _lumped, _msl, plan, _pi = ref._build_stage2(
+        _FakeCSX, _FakeFDTD, _FakeMSLPort, dx_m=ref.B_DX_COMPARATOR_M,
+        drive="lumped", nrts=1000, end_criteria=1e-4)
+    port = fdtd.lumped
+    start, stop = port["start"], port["stop"]
+    axis = {"x": 0, "y": 1, "z": 2}[port["dir"]]
+
+    # (a) + (b)
+    assert start[axis] != stop[axis], (
+        "lumped port is degenerate on its own excitation axis "
+        f"{port['dir']}: start={start} stop={stop}")
+    for other in (a for a in range(3) if a != axis):
+        assert start[other] == pytest.approx(stop[other]), (
+            "the lumped probe must be a line along its excitation axis "
+            "only, as the patch precedent's feed is")
+    assert port["excite"] != 0.0
+    assert start[axis] == pytest.approx(0.0)                    # ground
+    assert stop[axis] == pytest.approx(ref.B_H_SUB_M * 1e3)     # trace
+
+    # (c) exactly one mesh line under each coordinate, on the mesh the
+    #     builder actually fed the grid.
+    tol_mm = 1e-6 * ref.B_DX_COMPARATOR_M * 1e3
+    for name, coord in (("x", 0), ("y", 1), ("z_start", 2), ("z_stop", 2)):
+        val = start[coord] if name != "z_stop" else stop[coord]
+        ax = {"x": "x", "y": "y", "z_start": "z", "z_stop": "z"}[name]
+        lines = np.asarray(fdtd.csx._mesh.lines[ax])
+        n = int(np.sum(np.abs(lines - val) < tol_mm))
+        assert n == 1, (
+            f"lumped port {name}={val} mm is carried by {n} mesh lines on "
+            f"the {ax} axis, not 1 -- a zero-width cell at the port")
+
+    # (d) nothing of higher priority reaches into the port's z span
+    for box in fdtd.csx.boxes:
+        if box["priority"] <= port["priority"]:
+            continue
+        lo = [min(a, b) for a, b in zip(box["start"], box["stop"])]
+        hi = [max(a, b) for a, b in zip(box["start"], box["stop"])]
+        covers_xy = all(lo[k] <= start[k] <= hi[k] for k in (0, 1))
+        z_lo, z_hi = min(start[2], stop[2]), max(start[2], stop[2])
+        overlap = min(hi[2], z_hi) - max(lo[2], z_lo)
+        assert not (covers_xy and overlap > 0), (
+            f"primitive {box['prop']!r} (priority {box['priority']}) "
+            f"overlaps the lumped port's z span by {overlap} mm and would "
+            f"claim its cells away from the port (priority "
+            f"{port['priority']})")
 
 
 def test_stage2_builder_rejects_an_unknown_drive(ref):

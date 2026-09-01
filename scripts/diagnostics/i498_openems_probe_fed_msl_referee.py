@@ -621,6 +621,62 @@ def phase_self_consistency_deg(s21: np.ndarray, beta: np.ndarray,
     return np.degrees(dev)
 
 
+# A mesh line pair closer together than this fraction of dx is NOT a mesh
+# feature -- it is one line that floating-point round-off split in two.
+# ``np.arange`` reproduces a coordinate that lies exactly on its own grid
+# only to within a ULP (~1e-19 m here), while the same coordinate written
+# as a literal is exact, so ``np.unique`` on their union keeps BOTH and
+# leaves a ZERO-WIDTH cell between them. openEMS then builds an operator
+# with a singular cell and every field it writes is NaN -- VESSL run
+# 369367257610 died exactly there, with the duplicate sitting ON the
+# lumped probe's own feed plane (x = 2.00 mm). The smallest DELIBERATE
+# spacing in this plan is the thirds-rule y line at dx/12, seven orders of
+# magnitude above this floor, so nothing real can be merged by it.
+_MESH_LINE_MERGE_FRAC = 1e-6
+
+
+def merge_coincident_mesh_lines(lines, dx_m: float,
+                                exact: np.ndarray | None = None) -> np.ndarray:
+    """Sort ``lines`` and collapse ULP-separated duplicates into one line.
+
+    ``exact`` names the coordinates whose EXACT value must survive a merge
+    (the planes of record: the port feed planes, the measurement plane and
+    the two open ends). Without that preference the surviving copy would be
+    whichever of the two ``np.unique`` happened to sort first, which can be
+    the ``arange`` round-off rather than the declared coordinate -- the
+    plane would then sit ~1e-19 m off where the artifact says it does.
+
+    Pure numpy; no openEMS, no rfx. Wired into ``openems_mesh_plan`` so the
+    self-check, ``--dry-run`` and the builder all see the SAME mesh.
+    """
+    lines = np.unique(np.asarray(lines, dtype=float))
+    if lines.size < 2:
+        return lines
+    tol = _MESH_LINE_MERGE_FRAC * float(dx_m)
+    exact_arr = (np.unique(np.asarray(exact, dtype=float))
+                 if exact is not None and len(np.atleast_1d(exact))
+                 else np.empty(0, dtype=float))
+
+    kept = [lines[0]]
+    for value in lines[1:]:
+        if value - kept[-1] < tol:
+            # same line, twice. Prefer the declared coordinate if either
+            # copy is one; otherwise keep the one already accepted.
+            for candidate in (kept[-1], value):
+                if exact_arr.size and np.any(np.abs(exact_arr - candidate) == 0.0):
+                    kept[-1] = candidate
+                    break
+            continue
+        kept.append(value)
+    return np.asarray(kept, dtype=float)
+
+
+def min_mesh_cell_m(lines) -> float:
+    """Smallest cell in a line array -- 0.0 for a single line."""
+    lines = np.asarray(lines, dtype=float)
+    return float(np.min(np.diff(lines))) if lines.size > 1 else 0.0
+
+
 def openems_mesh_plan(dx_m: float) -> dict:
     """The Stage-2 mesh this script WOULD build at ``dx_m`` -- pure numpy,
     no openEMS. Used by --dry-run, by --self-check, and by the builder
@@ -637,22 +693,26 @@ def openems_mesh_plan(dx_m: float) -> dict:
     # own CRITICAL note).
     required_x = np.asarray([B_TRACE_X_LO_M, B_FEED_X_M, B_MSL_MEAS_X_M,
                              B_MSL_FEED_X_M, B_TRACE_X_HI_M])
-    x_lines = np.unique(np.concatenate([x_lines, required_x]))
+    x_lines = merge_coincident_mesh_lines(
+        np.concatenate([x_lines, required_x]), dx_m, exact=required_x)
 
     y_lines = np.arange(y0, y1 + 0.5 * dx_m, dx_m)
     trace_y_lo = B_Y_C_M - 0.5 * B_W_TRACE_M
     trace_y_hi = B_Y_C_M + 0.5 * B_W_TRACE_M
     third = np.asarray([2.0 * dx_m / 3.0, -dx_m / 3.0]) / 4.0
-    y_lines = np.unique(np.concatenate([
-        y_lines, [B_Y_C_M, trace_y_lo, trace_y_hi],
-        trace_y_lo + third, trace_y_hi + third]))
+    required_y = np.asarray([B_Y_C_M, trace_y_lo, trace_y_hi])
+    y_lines = merge_coincident_mesh_lines(
+        np.concatenate([y_lines, required_y,
+                        trace_y_lo + third, trace_y_hi + third]),
+        dx_m, exact=required_y)
 
     # Substrate z lines: an explicit linspace across the REALIZED h_sub so
     # the substrate cell count is chosen, never left to an unguided arange.
     n_sub = max(int(round(B_H_SUB_M / dx_m)), 1)
     z_sub = np.linspace(0.0, B_H_SUB_M, n_sub + 1)
     z_air = np.arange(B_H_SUB_M, z1 + 0.5 * dx_m, dx_m)
-    z_lines = np.unique(np.concatenate([z_sub, z_air]))
+    z_lines = merge_coincident_mesh_lines(
+        np.concatenate([z_sub, z_air]), dx_m, exact=z_sub)
 
     meas_shift_target = B_MSL_FEED_X_M - B_MSL_MEAS_X_M
     meas_shift_snapped = snap_shift_to_mesh(meas_shift_target, dx_m)
@@ -690,6 +750,14 @@ def openems_mesh_plan(dx_m: float) -> dict:
         "cells_per_lambda_min": float(lam_min_m / dx_m),
         "y_lines_are_pre_smoothing": True,
         "x_mesh_is_uniform_and_start_aligned": True,
+        # Smallest cell on each axis. A value at round-off scale means a
+        # plane of record got carried by TWO ULP-separated mesh lines and
+        # openEMS's operator has a zero-width cell there (all-NaN fields);
+        # ``merge_coincident_mesh_lines`` is what keeps it physical, and
+        # this row is how a reader SEES that it did.
+        "min_cell_m": {"x": min_mesh_cell_m(x_lines),
+                       "y": min_mesh_cell_m(y_lines),
+                       "z": min_mesh_cell_m(z_lines)},
         "x_lines_m": x_lines,
         "y_lines_m": y_lines,
         "z_lines_m": z_lines,
@@ -793,6 +861,14 @@ def geometry_self_check(*, verbose: bool = True) -> dict:
                   f"{plan['n_substrate_cells']} substrate cells -- the "
                   f"do_not_repeat rule needs the comparator mesh above the "
                   f"3.175-cell non-physical regime")
+        for ax in ("x", "y", "z"):
+            mc = plan["min_cell_m"][ax]
+            check(f"{label}:no_degenerate_cell[{ax}]",
+                  mc >= _MESH_LINE_MERGE_FRAC * dx,
+                  f"smallest {ax} cell {mc*1e9:.3f} nm "
+                  f"({mc/dx:.4f} of dx) -- a round-off-scale cell means a "
+                  f"plane of record is carried by two coincident mesh "
+                  f"lines and openEMS's operator is singular there")
         check(f"{label}:cells_per_lambda_min_ge_10",
               plan["cells_per_lambda_min"] >= 10.0,
               f"{plan['cells_per_lambda_min']:.1f} cells per shortest "
@@ -1272,14 +1348,28 @@ def _build_stage2(ContinuousStructure, openEMS, MSLPort, *, dx_m: float,
     mesh = csx.GetGrid()
     mesh.SetDeltaUnit(unit)
     dx_u = dx_m * to_u
+    # NO ZERO-WIDTH CELL may reach openEMS. A plane of record carried by
+    # two ULP-separated mesh lines makes the FDTD operator singular there
+    # and every field openEMS writes is NaN -- which is how VESSL run
+    # 369367257610 died (uf_inc=nan on the lumped probe's OWN feed plane,
+    # x = 2.00 mm). merge_coincident_mesh_lines is the fix; this is the
+    # build-time proof that it held, checked BEFORE a line is handed over.
+    for _ax in ("x", "y", "z"):
+        _mc = plan["min_cell_m"][_ax]
+        if _mc < _MESH_LINE_MERGE_FRAC * dx_m:
+            raise ConfigError(
+                f"Stage-2 {_ax} mesh has a degenerate cell of {_mc:.6e} m "
+                f"(dx = {dx_m:.6e} m): two coincident mesh lines. openEMS "
+                f"builds a singular operator there and every field it "
+                f"writes is NaN -- the uf_inc=nan failure of VESSL run "
+                f"369367257610. Refusing to build the geometry.")
     mesh.AddLine("x", (plan["x_lines_m"] * to_u).tolist())
     mesh.AddLine("y", (plan["y_lines_m"] * to_u).tolist())
     mesh.AddLine("z", (plan["z_lines_m"] * to_u).tolist())
-    # The x mesh stays STRICTLY uniform and start-aligned -- that is the
-    # assumption snap_shift_to_mesh's MeasPlaneShift prediction rests on,
-    # and the build-time cross-check below fails loud if it ever breaks.
     # Only y is smoothed (the thirds-rule trace-edge lines would otherwise
-    # leave a ~3x cell-ratio jump), exactly as the #490 lane does.
+    # leave a ~3x cell-ratio jump), exactly as the #490 lane does; the x
+    # mesh is handed over as planned, and the MeasPlaneShift cross-check
+    # below fails loud if openEMS's own snap disagrees with the plan.
     mesh.SmoothMeshLines("y", dx_u / 4.0, 1.4)
 
     x0 = plan["domain_with_pad_m"]["x"][0] * to_u
