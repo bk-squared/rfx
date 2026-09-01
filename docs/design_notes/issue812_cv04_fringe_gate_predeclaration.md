@@ -488,3 +488,64 @@ conclusion is unchanged and is now mechanically checked: both maxima sit below
 the 0.04 floor, so the withdrawn detector finds zero of the two analytic maxima
 (`...n_detected.max` vs `...n_analytic.max`) and
 `detector.withdrawn_alternative_measured.criterion_A_ok` is false.
+
+---
+
+## 14. CORRECTION (round 3) — criterion (A)'s tightest fringe passes only on the safety factor
+
+Appended 2026-09-01 after independent adversarial review. Append-only: sections
+10 and 12 stand as written; this section states what they do not say.
+
+Section 10(A) reports the tightest baseline margin as "1.97x" at the
+low-frequency maximum and moves on. Section 12 separately notes that the two
+*maxima* are displaced far more than the discrete-Yee prediction. **Put those
+two facts together and the margin is weaker than 1.97x makes it sound.**
+
+The window is `W = SAFETY * (df_bin/2 + |yee_dispersion_shift|)`, with
+`validation/crossval/_04_fresnel_results/fringe_gate_geometry.json::windows.safety = 2.0`.
+The bracketed part alone — the budget the two *physical* terms derive, before
+the safety factor — is now emitted per fringe as `position_derived_budget_hz`:
+
+| fringe | derived budget | measured dev | of derived budget | of full `W` |
+|---|---:|---:|---:|---:|
+| 3.7475 GHz max | `validation/crossval/_04_fresnel_results/fringe_gate_geometry.json::windows.fringes[0].position_derived_budget_hz = 29519311.32` Hz | −30.0 MHz | **1.016** | 0.508 |
+| 7.4950 GHz min | `validation/crossval/_04_fresnel_results/fringe_gate_geometry.json::windows.fringes[1].position_derived_budget_hz = 53187477.32` Hz | −24.4 MHz | 0.459 | 0.229 |
+| 11.2425 GHz max | `validation/crossval/_04_fresnel_results/fringe_gate_geometry.json::windows.fringes[2].position_derived_budget_hz = 117441477.28` Hz | +65.9 MHz | 0.561 | 0.281 |
+
+**At fringe 0, correct code already consumes 101.6 % of the derived budget.**
+Its displacement is 30.0 MHz against `df_bin/2 = 26.14` MHz and a Yee shift of
+`validation/crossval/_04_fresnel_results/fringe_gate_geometry.json::windows.fringes[0].yee_dispersion_shift_hz = 3380817.0` Hz — the dispersion
+model explains **11.3 %** of what is measured, and bin quantisation cannot
+explain the rest because 30.0 MHz exceeds a half-bin. The fringe passes **only
+because `SAFETY = 2.0` doubles the window**, and a safety factor is a hedge, not
+a derivation. The other two fringes sit at 0.46 and 0.56 of their derived
+budgets and are not affected.
+
+**What this does and does not change.**
+
+- It does **not** invalidate the gate. `SAFETY = 2.0` was pre-declared in
+  section 4 before any measurement, so no window was widened to fit data, and
+  the gate still fires on all three audit defects at 1.92x–5.57x of `W`.
+- It does **not** change any threshold, verdict or number. Nothing in sections
+  10–13 moves.
+- It **does** withdraw the reading "correct code passes with margin" at fringe
+  0. The correct statement is: *correct code passes at fringe 0 on the safety
+  factor, with the physical terms fully consumed.*
+- It **does** make section 12's follow-up load-bearing rather than optional.
+  Section 12 hypothesises that the maxima are biased by truncating the run at
+  719 steps while the tail witness still reads 3.6 % of incident peak, and
+  predicts the residual shrinks with run length. If that is right, fringe 0's
+  displacement is a *measurement artefact that a longer run removes*, and
+  criterion (A) becomes comfortable. If it is wrong — or if a longer run moves
+  fringe 0 the other way by another ~29 MHz — **the gate reds on correct code**,
+  a false positive on the case's own baseline. Either way the committed rung-C4
+  provenance (`nx = 1500`, 1940 steps) is the run that settles it, and it should
+  be run before this gate is relied on to red anything.
+
+**Falsifier for the follow-up, declared now.** Re-run the committed recipe at
+1940 steps and record fringe 0's displacement. Passes if `|dev| <=` the derived
+budget 29.52 MHz (the artefact hypothesis is confirmed and criterion (A) is
+physically underwritten). Fails if `|dev|` stays at ~30 MHz or grows: then the
+displacement is not a truncation artefact, the window's derivation is missing a
+term, and `W(fringe 0)` must be re-derived from whatever that term is — never
+widened to admit the observation.

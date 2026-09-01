@@ -175,6 +175,12 @@ def build_evidence() -> dict:
             "yee_dispersion_shift_hz": shift,
             "position_window_hz": w,
             "position_window_over_cell_half_width": w / cell_half,
+            # The window is SAFETY * (df_bin/2 + |yee shift|).  This key is the
+            # bracketed part alone -- the budget the two PHYSICAL terms actually
+            # derive, before the safety factor.  A measured displacement above
+            # it is not explained by bin quantisation or by Yee dispersion, and
+            # passes only on SAFETY.  See section 14 of the pre-declaration note.
+            "position_derived_budget_hz": w / fg.SAFETY,
         })
     max_w = max(row["position_window_hz"] for row in fringes)
 

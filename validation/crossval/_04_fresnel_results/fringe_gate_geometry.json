@@ -170,6 +170,7 @@
       {
         "f_analytic_hz": 3747500000.0,
         "kind": "max",
+        "position_derived_budget_hz": 29519311.320742484,
         "position_window_hz": 59038622.64148497,
         "position_window_over_cell_half_width": 0.03150827092274048,
         "value_analytic": 0.36,
@@ -178,6 +179,7 @@
       {
         "f_analytic_hz": 7495000000.0,
         "kind": "min",
+        "position_derived_budget_hz": 53187477.31843984,
         "position_window_hz": 106374954.63687968,
         "position_window_over_cell_half_width": 0.056771156577387426,
         "value_analytic": 0.0,
@@ -186,6 +188,7 @@
       {
         "f_analytic_hz": 11242500000.0,
         "kind": "max",
+        "position_derived_budget_hz": 117441477.2834543,
         "position_window_hz": 234882954.5669086,
         "position_window_over_cell_half_width": 0.12535447875485448,
         "value_analytic": 0.36,
