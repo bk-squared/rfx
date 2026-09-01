@@ -36,9 +36,11 @@ from rfx.api import Simulation
 from rfx.api._sparams import (
     _assemble_coaxial_two_port_from_voltages,
     _finalize_sparam_result,
+    _incident_outgoing,
 )
 from rfx.api._spec import CoaxialTwoPortResult
 from rfx.sources.sources import GaussianPulse
+from tests._wave_convention import plant_ladder_voltages_physical
 
 BAND = np.array([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
@@ -98,49 +100,146 @@ def _plant_ab(s_true, gamma_t, n_f):
     return a, b
 
 
-def _voltages_from_ab(a, b, *, gamma, z_planes_m, ref_m, load_below):
-    """Invert the extractor's own extrapolation to build V(z) from known a/b.
+# ---------------------------------------------------------------------------
+# The planted fields below are built by the ONE frozen convention helper,
+# ``tests/_wave_convention.py::plant_ladder_voltages_physical`` (issue #822),
+# which plants from GEOMETRY -- where the DUT is relative to the ladder --
+# and never from the extractor's own labels.
+#
+# The retired local helper ``_voltages_from_ab`` did the opposite: it asked
+# the extractor's ``load_below`` rule which exponential branch would be
+# called ``forward_amp`` and planted ``a`` onto whichever branch the
+# assembler's own constant reads as incident, so helper and assembler were a
+# label ROUND-TRIP -- green for whatever constant is chosen, as long as both
+# are chosen together, and structurally unable to notice that the constant is
+# wrong FOR THE GEOMETRY because geometry never entered the planting. That is
+# precisely how the sibling lane
+# ``_assemble_coax_msl_transition_from_voltages`` shipped with both ports'
+# roles exchanged (S = inv(S_true)) behind a green planted test: it copied
+# the helper AND the constant onto a lane whose reference planes sit on the
+# other side of the probes. The two
+# constructions are algebraically identical ON THIS GEOMETRY -- measured
+# max|old - new| = 4.30e-16 / 2.78e-16 (top, per drive) and 5.47e-16 /
+# 7.77e-16 (bot), pure float association, against assertions at atol=1e-9 --
+# and ``test_planted_fields_are_unchanged_by_the_frozen_planting_contract``
+# pins that equivalence rather than asserting it in prose.
+#
+# The DUT (the through line's interior) lies BELOW the top array's own feed
+# plane and ABOVE the bottom array's, so:
+_DUT_SIGN_TOP = -1.0    # DUT at SMALLER z than the top probes
+_DUT_SIGN_BOT = +1.0    # DUT at LARGER  z than the bottom probes
+# ...and on both arrays the reference plane (that port's feed) is therefore
+# on the FAR side of the probes from the DUT, which is what makes
+# ``a = backward_amp`` correct HERE and wrong on the coax<->MSL lane.
+# ---------------------------------------------------------------------------
 
-    ``coaxial_line_reflection_from_plane_voltages`` fits
-    ``V(z) = A e^{+gamma z} + B e^{-gamma z}`` and, at ``reference_plane_m``,
-    reports ``forward_amp``/``backward_amp`` as one of (A-branch, B-branch)
-    depending on ``load_below``. This is the exact algebraic inverse: given
-    the desired forward/backward amplitude AT the reference plane, solve for
-    (A, B) and evaluate V at every requested z. Used only to PLANT a field;
-    the actual extraction (matrix-pencil fit of gamma, then this same
-    extrapolation) is exercised for real by
-    ``_assemble_coaxial_two_port_from_voltages``.
+_Z_PLANES_TOP_M = np.array([0.10, 0.11, 0.12, 0.13, 0.14, 0.15])
+_Z_PLANES_BOT_M = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
+_REF_TOP_M = 0.17     # ABOVE probes_top (port 1, +z end)
+_REF_BOT_M = -0.02    # BELOW probes_bot (port 2, -z end)
 
-    ``gamma`` may be a scalar (same propagation constant at every frequency)
-    or an array matching ``a``/``b``'s length (a DIFFERENT propagation
-    constant per frequency — used to de-degenerate the planted fixture so a
-    per-frequency indexing bug in the assembly loop would be caught, not
-    just a per-array/per-drive one).
+
+def _plant_two_port_voltages(a, b, *, gamma):
+    """(v_top_by_drive, v_bot_by_drive) for the planted two-port fixture."""
+    v_top = np.stack([
+        plant_ladder_voltages_physical(
+            a[0, drive], b[0, drive], gamma=gamma,
+            planes_m=_Z_PLANES_TOP_M, ref_m=_REF_TOP_M, dut_sign=_DUT_SIGN_TOP,
+        ) for drive in range(2)
+    ], axis=0)
+    v_bot = np.stack([
+        plant_ladder_voltages_physical(
+            a[1, drive], b[1, drive], gamma=gamma,
+            planes_m=_Z_PLANES_BOT_M, ref_m=_REF_BOT_M, dut_sign=_DUT_SIGN_BOT,
+        ) for drive in range(2)
+    ], axis=0)
+    return v_top, v_bot
+
+
+def _s_mat_per_freq(s_true, n_f):
+    return [
+        np.array([[np.atleast_1d(s_true[0])[fi], np.atleast_1d(s_true[1])[fi]],
+                  [np.atleast_1d(s_true[2])[fi], np.atleast_1d(s_true[3])[fi]]])
+        for fi in range(n_f)
+    ]
+
+
+def test_the_planted_dut_signs_are_the_fixture_geometry():
+    """``dut_sign`` is read off the fixture, not tuned.
+
+    Both feeds sit exterior of their own probe array, so on BOTH arrays the
+    reference plane is on the far side of the probes from the through line.
+    The production helper must therefore resolve BOTH to ``a = backward_amp``
+    -- the constant ``_assemble_coaxial_two_port_from_voltages`` ships. This
+    is the executable form of that function's own Notes warning that the
+    constant "is NOT a general fact of the extractor".
     """
-    z_planes_m = np.asarray(z_planes_m, dtype=np.float64)
-    a = np.atleast_1d(np.asarray(a, dtype=np.complex128))
-    b = np.atleast_1d(np.asarray(b, dtype=np.complex128))
-    gamma = np.broadcast_to(np.asarray(gamma, dtype=np.complex128), a.shape)
-    z0 = float(z_planes_m.mean())
-    zr = ref_m - z0
-    # Real extractor: a_wave = A*exp(+gamma*zr) ("travels -z"),
-    # b_wave = B*exp(-gamma*zr) ("travels +z"). load_below=True ->
-    # forward_amp=a_wave, backward_amp=b_wave; load_below=False ->
-    # forward_amp=b_wave, backward_amp=a_wave. Solve for (A, B) given the
-    # desired forward_amp=b (physical "out of network"), backward_amp=a
-    # (physical "into network").
-    if load_below:
-        A = b * np.exp(-gamma * zr)   # forward_amp = a_wave = A*exp(gamma*zr) = b (target)
-        B = a * np.exp(+gamma * zr)   # backward_amp = b_wave = B*exp(-gamma*zr) = a (target)
-    else:
-        A = a * np.exp(-gamma * zr)   # backward_amp = a_wave = A*exp(gamma*zr) = a (target)
-        B = b * np.exp(+gamma * zr)   # forward_amp = b_wave = B*exp(-gamma*zr) = b (target)
-    zc = z_planes_m - z0
-    # shape (n_planes, n_freqs); gamma varies per frequency (per column).
-    return (
-        np.exp(np.multiply.outer(zc, gamma)) * A[None, :]
-        + np.exp(np.multiply.outer(zc, -gamma)) * B[None, :]
+    assert _REF_TOP_M > _Z_PLANES_TOP_M.max()   # feed above the top ladder
+    assert _REF_BOT_M < _Z_PLANES_BOT_M.min()   # feed below the bottom ladder
+    # DUT side is the OPPOSITE side from each feed on this geometry.
+    assert _DUT_SIGN_TOP == -np.sign(_REF_TOP_M - _Z_PLANES_TOP_M.mean())
+    assert _DUT_SIGN_BOT == -np.sign(_REF_BOT_M - _Z_PLANES_BOT_M.mean())
+
+    class _Out:
+        forward_amp, backward_amp = 1.0 + 0j, 2.0 + 0j
+    for ref, planes, sign in ((_REF_TOP_M, _Z_PLANES_TOP_M, _DUT_SIGN_TOP),
+                              (_REF_BOT_M, _Z_PLANES_BOT_M, _DUT_SIGN_BOT)):
+        # a = backward_amp (2.0), b = forward_amp (1.0): the shipped constant.
+        assert _incident_outgoing(_Out(), ref_m=ref, planes_m=planes,
+                                  dut_sign=sign) == (2.0 + 0j, 1.0 + 0j)
+
+
+def test_planted_fields_are_unchanged_by_the_frozen_planting_contract():
+    """The frozen geometric planting reproduces the retired label-blind one.
+
+    Guards the ONE thing that could have moved a committed
+    ``compute_coaxial_two_port`` number when the #822 convention contract
+    was adopted here: the planted FIELD. The retired construction is
+    reproduced inline (it exists nowhere else now) and compared to the
+    frozen contract on this fixture's own geometry.
+    """
+    def _retired_label_blind_planting(a, b, *, gamma, z_planes_m, ref_m, load_below):
+        """The pre-#822 helper, verbatim in algebra: invert the extractor's
+        own extrapolation so the planting agrees with whatever the assembler
+        reads. Retained ONLY as the numerical witness below."""
+        z_planes_m = np.asarray(z_planes_m, dtype=np.float64)
+        a = np.atleast_1d(np.asarray(a, dtype=np.complex128))
+        b = np.atleast_1d(np.asarray(b, dtype=np.complex128))
+        gamma = np.broadcast_to(np.asarray(gamma, dtype=np.complex128), a.shape)
+        z0 = float(z_planes_m.mean())
+        zr = ref_m - z0
+        if load_below:
+            A = b * np.exp(-gamma * zr)
+            B = a * np.exp(+gamma * zr)
+        else:
+            A = a * np.exp(-gamma * zr)
+            B = b * np.exp(+gamma * zr)
+        zc = z_planes_m - z0
+        return (np.exp(np.multiply.outer(zc, gamma)) * A[None, :]
+                + np.exp(np.multiply.outer(zc, -gamma)) * B[None, :])
+
+    n_f = 3
+    s_true = (
+        np.array([0.15 + 0.05j, 0.20 - 0.03j, -0.05 + 0.10j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
+        np.array([-0.10 + 0.08j, 0.05 - 0.12j, 0.15 + 0.02j]),
     )
+    a_true, b_true = _plant_ab(s_true, 0.05, n_f)
+    gamma = 1j * np.array([40.0, 50.0, 65.0])
+    for idx, planes, ref, load_below, dut_sign in (
+        (0, _Z_PLANES_TOP_M, _REF_TOP_M, False, _DUT_SIGN_TOP),
+        (1, _Z_PLANES_BOT_M, _REF_BOT_M, True, _DUT_SIGN_BOT),
+    ):
+        for drive in range(2):
+            old = _retired_label_blind_planting(
+                a_true[idx, drive], b_true[idx, drive], gamma=gamma,
+                z_planes_m=planes, ref_m=ref, load_below=load_below)
+            new = plant_ladder_voltages_physical(
+                a_true[idx, drive], b_true[idx, drive], gamma=gamma,
+                planes_m=planes, ref_m=ref, dut_sign=dut_sign)
+            # Measured 2026-09-01: 4.30e-16 / 2.78e-16 / 5.47e-16 / 7.77e-16.
+            assert np.abs(old - new).max() <= 1e-15, np.abs(old - new).max()
 
 
 def test_planted_voltages_recover_known_asymmetric_s_matrix():
@@ -184,29 +283,12 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     # Lossless synthetic propagation constant, a DIFFERENT beta per
     # frequency (rad/m) — not the same value broadcast across all 3.
     gamma = 1j * np.array([40.0, 50.0, 65.0])
-    z_planes_top_m = np.array([0.10, 0.11, 0.12, 0.13, 0.14, 0.15])
-    z_planes_bot_m = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
-    ref_top_m = 0.17    # ABOVE probes_top -> load_below=False (port 1, +z end)
-    ref_bot_m = -0.02   # BELOW probes_bot -> load_below=True  (port 2, -z end)
-
-    v_top_by_drive = np.stack([
-        _voltages_from_ab(
-            a_true[0, drive], b_true[0, drive], gamma=gamma,
-            z_planes_m=z_planes_top_m, ref_m=ref_top_m, load_below=False,
-        )
-        for drive in range(2)
-    ], axis=0)
-    v_bot_by_drive = np.stack([
-        _voltages_from_ab(
-            a_true[1, drive], b_true[1, drive], gamma=gamma,
-            z_planes_m=z_planes_bot_m, ref_m=ref_bot_m, load_below=True,
-        )
-        for drive in range(2)
-    ], axis=0)
+    v_top_by_drive, v_bot_by_drive = _plant_two_port_voltages(
+        a_true, b_true, gamma=gamma)
 
     s_params, cond_a, rec_resid, fit_resid, gamma_fit = _assemble_coaxial_two_port_from_voltages(
-        z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
-        ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
+        z_planes_bot_m=_Z_PLANES_BOT_M, z_planes_top_m=_Z_PLANES_TOP_M,
+        ref_bot_m=_REF_BOT_M, ref_top_m=_REF_TOP_M,
         v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
     )
 
@@ -223,46 +305,54 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
 
 
 def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
-    """Non-firing-control's mirror: the WRONG convention must NOT also pass.
+    """Non-firing control's mirror: the WRONG convention must NOT also pass,
+    and it must fail in the ONE way the algebra predicts.
 
-    If ``a = forward_amp`` / ``b = backward_amp`` were used instead (the
-    convention that holds for the ORIGINAL 1-port method, where the
-    reference plane is the DUT, not the feed), the recovered S on this same
-    asymmetric fixture must be visibly wrong — otherwise the previous test
-    would not actually be discriminating anything.
+    Plant both ladders on the wrong side of their reference planes
+    (``dut_sign`` flipped at both ports) and the assembler's incident and
+    outgoing roles are exchanged at both, so ``S = B inv(A)`` with ``A`` and
+    ``B`` swapped -- exactly ``inv(S_true)``.
+
+    Was ``assert not np.allclose(...)`` on a single frequency, which fires
+    for ANY discrepancy including a fit that merely fell apart. Strengthened
+    to the exact inverse over all three bins as part of the #822 convention
+    contract: measured max|S - inv(S_true)| = 3.25e-15 / 2.32e-15 / 3.29e-15,
+    against max|S - S_true| = 0.688 / 1.19 / 1.37 (so the control genuinely
+    fires -- ``inv(S_true) != S_true`` by O(1) at every bin).
     """
-    n_f = 1
-    s_true = (0.15 + 0.05j, 0.75 - 0.20j, 0.75 - 0.20j, -0.10 + 0.08j)
-    gamma_t = 0.05
-    a_true, b_true = _plant_ab(s_true, gamma_t, n_f)
-    gamma = 1j * 50.0
-    z_planes_top_m = np.array([0.10, 0.11, 0.12, 0.13, 0.14, 0.15])
-    z_planes_bot_m = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
-    ref_top_m, ref_bot_m = 0.17, -0.02
+    n_f = 3
+    s_true = (
+        np.array([0.15 + 0.05j, 0.20 - 0.03j, -0.05 + 0.10j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
+        np.array([-0.10 + 0.08j, 0.05 - 0.12j, 0.15 + 0.02j]),
+    )
+    a_true, b_true = _plant_ab(s_true, 0.05, n_f)
+    gamma = 1j * np.array([40.0, 50.0, 65.0])
 
-    # Build V(z) with a/b SWAPPED relative to the derived convention.
+    # Wrong side at BOTH ports: claim the DUT is where the feed is.
     v_top_by_drive = np.stack([
-        _voltages_from_ab(
-            b_true[0, drive], a_true[0, drive], gamma=gamma,
-            z_planes_m=z_planes_top_m, ref_m=ref_top_m, load_below=False,
-        )
-        for drive in range(2)
+        plant_ladder_voltages_physical(
+            a_true[0, drive], b_true[0, drive], gamma=gamma,
+            planes_m=_Z_PLANES_TOP_M, ref_m=_REF_TOP_M, dut_sign=-_DUT_SIGN_TOP,
+        ) for drive in range(2)
     ], axis=0)
     v_bot_by_drive = np.stack([
-        _voltages_from_ab(
-            b_true[1, drive], a_true[1, drive], gamma=gamma,
-            z_planes_m=z_planes_bot_m, ref_m=ref_bot_m, load_below=True,
-        )
-        for drive in range(2)
+        plant_ladder_voltages_physical(
+            a_true[1, drive], b_true[1, drive], gamma=gamma,
+            planes_m=_Z_PLANES_BOT_M, ref_m=_REF_BOT_M, dut_sign=-_DUT_SIGN_BOT,
+        ) for drive in range(2)
     ], axis=0)
 
     s_params, *_ = _assemble_coaxial_two_port_from_voltages(
-        z_planes_bot_m=z_planes_bot_m, z_planes_top_m=z_planes_top_m,
-        ref_bot_m=ref_bot_m, ref_top_m=ref_top_m,
+        z_planes_bot_m=_Z_PLANES_BOT_M, z_planes_top_m=_Z_PLANES_TOP_M,
+        ref_bot_m=_REF_BOT_M, ref_top_m=_REF_TOP_M,
         v_bot_by_drive=v_bot_by_drive, v_top_by_drive=v_top_by_drive,
     )
-    s_mat_true = np.array([[s_true[0], s_true[1]], [s_true[2], s_true[3]]])
-    assert not np.allclose(s_params[:, :, 0], s_mat_true, atol=1e-6)
+    for fi, s_mat_true in enumerate(_s_mat_per_freq(s_true, n_f)):
+        s_inv = np.linalg.inv(s_mat_true)
+        np.testing.assert_allclose(s_params[:, :, fi], s_inv, atol=1e-9)
+        assert np.abs(s_inv - s_mat_true).max() > 0.5   # the control fires
 
 
 # ---------------------------------------------------------------------------

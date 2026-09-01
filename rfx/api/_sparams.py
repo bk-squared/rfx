@@ -1487,6 +1487,51 @@ def _warn_thin_absorber_vs_guide_wavelength(
         )
 
 
+def _incident_outgoing(out, *, ref_m, planes_m, dut_sign):
+    """Split an extractor result into (incident, outgoing) using ONE geometric bit.
+
+    :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`
+    already resolves which exponential branch travels TOWARD the reference
+    plane: it computes ``load_below = reference_plane_m <= z.mean()`` itself
+    and returns that branch as ``forward_amp`` (the other as
+    ``backward_amp``). That is the extractor's contract and this function
+    does NOT re-derive it -- duplicating ``load_below`` here (tie rule
+    included) is exactly the double-swap this helper exists to prevent
+    (issue #822).
+
+    What the extractor cannot know is whether "toward the reference plane"
+    means "toward the DUT". That is the one further fact supplied here:
+
+    * ``dut_sign = +1`` when the DUT lies at LARGER coordinate than the
+      probe ladder, ``-1`` when smaller. It is geometry the calling method
+      already has (a junction index, the opposite port's array), never a
+      user knob.
+    * If ``(ref_m - centroid) * dut_sign > 0`` the reference plane sits on
+      the DUT side of the probes, so the wave travelling toward the
+      reference plane is the INCIDENT wave -> ``a = forward_amp``.
+    * Otherwise the reference plane is on the far side from the DUT (the
+      feed-plane geometry of :func:`_assemble_coaxial_two_port_from_voltages`),
+      the wave travelling toward it is leaving the DUT ->
+      ``a = backward_amp``.
+
+    Tie rule: ``> 0.0`` puts the degenerate case ``ref_m == centroid`` on
+    the far-side branch. This is DELIBERATELY not the extractor's ``<=``
+    tie: at ``ref_m == centroid`` the reference plane is inside the probe
+    ladder, which is not a valid one-port geometry for either lane, and
+    resolving it here would only create a second, silently disagreeing
+    copy of a rule that must live in exactly one place.
+
+    Returns
+    -------
+    (incident_amp, outgoing_amp)
+        The extractor's own two amplitudes, ordered.
+    """
+    centroid = float(np.asarray(planes_m, dtype=float).mean())
+    if (float(ref_m) - centroid) * float(dut_sign) > 0.0:
+        return out.forward_amp, out.backward_amp
+    return out.backward_amp, out.forward_amp
+
+
 def _assemble_coaxial_two_port_from_voltages(
     *,
     z_planes_bot_m,
@@ -1588,6 +1633,44 @@ def _assemble_coaxial_two_port_from_voltages(
     i489_stage2_two_port_fdtd_predeclaration.md``. This is NOT a general
     fact of the extractor — a different feed placement would need a
     different mapping.
+
+    **The general rule that constant is an instance of (issue #822)**.
+    ``forward_amp`` is the branch travelling TOWARD the reference plane
+    (already resolved inside the extractor by its own ``load_below``
+    test). Which of ``a``/``b`` that is depends on ONE further fact the
+    extractor cannot know: whether the reference plane is on the DUT side
+    of the probes. Written as :func:`_incident_outgoing`'s derived bit
+    ``(ref_m - centroid) * dut_sign > 0`` (``dut_sign = +1`` when the DUT
+    lies at larger coordinate than the ladder, ``-1`` when smaller), this
+    lane reads:
+
+    * top array (port 1, +z end): probes below their own feed, the
+      through line further below -> ``dut_sign = -1``, ``ref - centroid``
+      POSITIVE, product negative -> bit False -> ``a = backward_amp``.
+    * bot array (port 2, -z end): probes above their own feed, the
+      through line further above -> ``dut_sign = +1``, ``ref - centroid``
+      NEGATIVE, product negative -> bit False -> ``a = backward_amp``.
+
+    On BOTH arrays the feed is on the FAR side of the probes from the
+    through line, so the derived bit is False at both and the rule
+    reproduces the constant above EXACTLY. That is the point: on this lane
+    the derivation and the constant agree,
+    which is why the sibling lane
+    :func:`_assemble_coax_msl_transition_from_voltages` copying the
+    CONSTANT rather than the RULE inverted its whole S-matrix (#822).
+
+    This function still ships the constant, unchanged and numerically
+    byte-identical: replacing it with the derived call is a production
+    edit to a lane recorded as **validated with scope** (issue #489, PI
+    decision 2026-08-06) in ``docs/guides/sparameter_support_matrix.md``,
+    and is PI-gated rather than taken here. What the #822 work DOES change
+    on this lane is the TEST contract: the planted fixtures below are now
+    built from geometry by
+    ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` instead
+    of by inverting the extractor's own labels, so the constant above is
+    now PINNED by a test that would fail if it were wrong, and the
+    wrong-convention mirror asserts the exact ``inv(S_true)`` signature
+    instead of merely "not close".
 
     AD note (#489 leg 3)
     ---------------------
@@ -1829,6 +1912,38 @@ def _assemble_coax_msl_transition_from_voltages(
         POWER-wave amplitudes actually fed to the two-drive solve (post
         ``sqrt(Z0)`` division), exposed for audit per issue #581 review
         finding B2.
+
+    Notes
+    -----
+    **Wave-role convention (issue #822)**. ``forward_amp`` is the branch
+    travelling TOWARD the reference plane -- the extractor's own contract,
+    already resolved there by its ``load_below`` test. Which of ``a``/``b``
+    that is depends on ONE further fact the extractor cannot know: whether
+    the reference plane is on the DUT side of the probes. It is supplied
+    here as ``dut_sign`` and DERIVED by :func:`_incident_outgoing`, never
+    hard-coded per branch:
+
+    * :meth:`_SparamMixin.compute_coax_msl_transition` (this function):
+      both reference planes are placed AT the junction, i.e. on the DUT
+      side of their own probe ladders (coax ref 2.5 mm above probes at
+      0.9-1.9 mm, ``dut_sign=+1``; MSL ref 1.0 mm below probes at
+      2.6-10.6 mm, ``dut_sign=-1`` on the committed attempt-2/3 fixture)
+      -> ``a = forward_amp``.
+    * :func:`_assemble_coaxial_two_port_from_voltages`: each reference
+      plane is that port's own feed, on the FAR side of the probes from
+      the DUT -> ``a = backward_amp``.
+
+    Before #822 this function used the two-port lane's constant
+    (``a = backward_amp``) on the opposite geometry, which swaps ``a`` and
+    ``b`` at BOTH ports; since ``S = B inv(A)``, exchanging ``A`` and ``B``
+    returns ``inv(S_true)``. Every number this function produced before the
+    fix is that inverse. The regression gate is
+    ``tests/test_coax_msl_transition_wave_roles.py::
+    test_assembler_wave_roles_follow_the_junction_side_reference_plane``,
+    whose planted voltages are built from GEOMETRY
+    (``tests/_wave_convention.py::_plant_ladder_voltages_physical``) and
+    never from the extractor's own labels -- planting from the labels is
+    why the pre-existing planted test passed under either assignment.
     """
     from rfx.sources.coaxial_port import (
         coaxial_line_reflection_from_plane_voltages,
@@ -1874,11 +1989,23 @@ def _assemble_coax_msl_transition_from_voltages(
                 x_msl, v_msl_by_drive[drive_idx, :, fi],
                 reference_plane_m=float(ref_msl_m),
             )
+            # Wave roles (#822): the extractor already resolved which branch
+            # travels TOWARD each reference plane; _incident_outgoing applies
+            # the one bit it cannot know -- whether that plane is on the DUT
+            # side of the probes. On THIS lane both reference planes are the
+            # junction itself (dut_sign = +1 for the coax ladder, whose
+            # junction sits at larger z; -1 for the MSL ladder, whose junction
+            # sits at smaller x), so both resolve to a = forward_amp. See the
+            # Notes section above.
+            a_coax, b_coax = _incident_outgoing(
+                out_coax, ref_m=float(ref_coax_m), planes_m=z_coax, dut_sign=+1.0)
+            a_msl, b_msl = _incident_outgoing(
+                out_msl, ref_m=float(ref_msl_m), planes_m=x_msl, dut_sign=-1.0)
             # Raw modal-voltage waves (volts, Z0-free) -> power waves.
-            a_inc[0, drive_idx, fi] = out_coax.backward_amp / sqrt_z0[0]
-            b_out[0, drive_idx, fi] = out_coax.forward_amp / sqrt_z0[0]
-            a_inc[1, drive_idx, fi] = out_msl.backward_amp / sqrt_z0[1]
-            b_out[1, drive_idx, fi] = out_msl.forward_amp / sqrt_z0[1]
+            a_inc[0, drive_idx, fi] = a_coax / sqrt_z0[0]
+            b_out[0, drive_idx, fi] = b_coax / sqrt_z0[0]
+            a_inc[1, drive_idx, fi] = a_msl / sqrt_z0[1]
+            b_out[1, drive_idx, fi] = b_msl / sqrt_z0[1]
             rec_resid[0, drive_idx, fi] = out_coax.recurrence_residual
             fit_resid[0, drive_idx, fi] = out_coax.fit_residual
             gamma[0, drive_idx, fi] = out_coax.gamma
