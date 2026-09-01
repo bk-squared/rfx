@@ -1,0 +1,900 @@
+rfx        : /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/__init__.py
+git SHA    : 356a47cfce346f8832a29cdc0c930bb2be5824b5
+jax        : 0.4.33.dev20241023+e3c6d6430   devices: [CudaDevice(id=0)]
+precision  : jax_enable_x64=False  JAX_ENABLE_X64=0  solve complex dtype (method rule)=complex64  (369367252283 record: default float32 GPU run, no x64 pin)
+fixture    : attempt3 (#589 fix: attempt 2 with the 0.4 mm ground clearance hole REALIZED as 20 half-cell PEC boxes; pec_mask differs from attempt2 in 38 cells at the junction node only; kwargs = _attempt2_kwargs), n_steps=135000 (record target: 135000)
+freqs      : 3 bins (6-10 GHz); committed bins at indices [0, 1, 2] = [6.0, 8.0, 10.0] GHz
+skip_preflight: compute_coax_msl_transition accepts skip_preflight (rfx/api/_sparams.py:6331, 'skip_preflight: bool = False,') but never references it in the method body; the method has NO preflight path. --preflight therefore runs sim.preflight() and sim.fidelity_report() from this driver, before the solve. Production unchanged.
+--dump-ladders: compute_coax_msl_transition accepts return_ladder_voltages -- raw ladders will be dumped
+--flux: 7 extra flux monitors (coax_z22, msl_x20, top_z36, xlo_x05, ylo_y03, yhi_y31, msl_x20_full) -- non-perturbation witnessed by test_extra_flux_monitors_do_not_perturb_s
+
+=== preflight (driver-side; the method's own flag is inert) ===
+  [PREFLIGHT] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' z-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] PEC 'pec' x-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+  [PREFLIGHT] PEC 'pec' y-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along x — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 250µm = 2.5 cells along x — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 50µm = 0.5 cells along x — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 100µm = 1.0 cells along x — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 50µm = 0.5 cells along x — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 150µm = 1.5 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+  [PREFLIGHT] Gap between PEC structures: 150µm = 1.5 cells along y — coupling may be under-resolved.
+  [PREFLIGHT] all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[1](node k=33)/geometry[22](k=37) at in-plane column (78,25): sum(d/eps) mesh 182µm vs physical 81.97µm (+122.0%); sum(d*sqrt(eps)) mesh 673.9µm vs physical 573.9µm (+17.4%); node-to-node 400µm vs face-to-face 300µm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 5 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only — 1 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  [PREFLIGHT] 13 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[6] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[16] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[7] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[17] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[4] 'pec' x: extent 400µm, worst face residual 50µm (12.50% of the extent, df/f ~ 12.50%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 18 axis extent(s) on 21 conductor Box entr(y/ies) on the uniform lane; 45 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 1 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+  [PREFLIGHT] MSL port 'msl_0' (trace W=600µm, h_sub=300µm): lateral clearance to +y absorbing boundary = 600µm (domain edge + 800µm calibrated CPML buffer) < recommended 600µm (= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.
+  [PREFLIGHT] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=300µm, dx=100µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 75.0µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).
+preflight: PASS (49 issue(s))
+- WARNING [mesh_resolution] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] 'pec' y-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] 'pec' z-extent 100µm = 1.0 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+- WARNING [mesh_resolution] PEC 'pec' x-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+- WARNING [mesh_resolution] PEC 'pec' y-extent 400µm = 4.0 cells — volume under-resolved (PEC volume needs ≥5 cells; thin sheets <3 cells are fine).
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along x — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 200µm = 2.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 250µm = 2.5 cells along x — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 50µm = 0.5 cells along x — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 100µm = 1.0 cells along x — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 50µm = 0.5 cells along x — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 150µm = 1.5 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 50µm = 0.5 cells along y — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 300µm = 3.0 cells along z — coupling may be under-resolved.
+- WARNING [mesh_resolution] Gap between PEC structures: 150µm = 1.5 cells along y — coupling may be under-resolved.
+- WARNING [lossless_q] all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+- WARNING [sheet_cavity_electrical_thickness] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[1](node k=33)/geometry[22](k=37) at in-plane column (78,25): sum(d/eps) mesh 182µm vs physical 81.97µm (+122.0%); sum(d*sqrt(eps)) mesh 673.9µm vs physical 573.9µm (+17.4%); node-to-node 400µm vs face-to-face 300µm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 5 node-thin conductor sheet(s) on the uniform lane; physical stack computed from Box entries only — 1 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+- WARNING [off_lattice_design_edges] 13 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[6] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[16] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[7] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[17] 'pec' x: extent 200µm, worst face residual 50µm (25.00% of the extent, df/f ~ 25.00%); geometry[4] 'pec' x: extent 400µm, worst face residual 50µm (12.50% of the extent, df/f ~ 12.50%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 18 axis extent(s) on 21 conductor Box entr(y/ies) on the uniform lane; 45 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 1 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+- WARNING [msl_port_geometry] MSL port 'msl_0' (trace W=600µm, h_sub=300µm): lateral clearance to +y absorbing boundary = 600µm (domain edge + 800µm calibrated CPML buffer) < recommended 600µm (= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.
+- WARNING [msl_port_geometry] MSL port 'msl_0': only 3 substrate cell(s) in z (h_sub=300µm, dx=100µm). Yee staircase at dielectric interface is O(dx) — Z0 staircase error >5% expected. Refine to dx ≤ 75.0µm (4+ substrate cells) AND keep h_sub/dx an integer (aligned) for <5% Z0 bias — measured post-#511/#507 at -3.8%/-1.2%/+0.7% for h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board Hammerstad-Jensen anchor (scripts/diagnostics/msl_z0_bias_floor_sweep.py).
+
+=== fidelity_report (declared vs realized, pre-solve) ===
+=== INPUT-FIDELITY REPORT (declared vs solved; input units only) ===
+  26 entities, 102 findings
+
+  domain (the solved box)
+    x: declared [0.0, 12500.0] um -> realized [0.0, 12500.0] um | face residuals (0.0, 0.0) um | extent 12500.0 -> 12500.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3400.0] um | face residuals (0.0, 0.0) um | extent 3400.0 -> 3400.0 um
+    z: declared [0.0, 3900.0] um -> realized [0.0, 3900.0] um | face residuals (0.0, 0.0) um | extent 3900.0 -> 3900.0 um
+
+  geometry[0] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 210
+    x: declared [0.0, 550.0] um -> realized [0.0, 600.0] um | face residuals (0.0, 50.0) um | extent 550.0 -> 600.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3500.0] um | face residuals (0.0, 100.0) um | extent 3400.0 -> 3500.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] y: the realized body extends beyond the declared domain on y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (9.09% of the declared 550.0 um extent); SIZE 600.0 um (+50.0 um, +9.09%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (2.94% of the declared 3400.0 um extent); SIZE 3500.0 um (+100.0 um, +2.94%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[1] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 3885
+    x: declared [1450.0, 12500.0] um -> realized [1500.0, 12600.0] um | face residuals (50.0, 100.0) um | extent 11050.0 -> 11100.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3500.0] um | face residuals (0.0, 100.0) um | extent 3400.0 -> 3500.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] x,y: the realized body extends beyond the declared domain on x,y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.90% of the declared 11050.0 um extent); SIZE 11100.0 um (+50.0 um, +0.45%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (2.94% of the declared 3400.0 um extent); SIZE 3500.0 um (+100.0 um, +2.94%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[2] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 117
+    x: declared [550.0, 1450.0] um -> realized [600.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 900.0 -> 900.0 um
+    y: declared [0.0, 1250.0] um -> realized [0.0, 1300.0] um | face residuals (0.0, 50.0) um | extent 1250.0 -> 1300.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (5.56% of the declared 900.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (4.00% of the declared 1250.0 um extent); SIZE 1300.0 um (+50.0 um, +4.00%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[3] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 117
+    x: declared [550.0, 1450.0] um -> realized [600.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 900.0 -> 900.0 um
+    y: declared [2150.0, 3400.0] um -> realized [2200.0, 3500.0] um | face residuals (50.0, 100.0) um | extent 1250.0 -> 1300.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] y: the realized body extends beyond the declared domain on y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (5.56% of the declared 900.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (8.00% of the declared 1250.0 um extent); SIZE 1300.0 um (+50.0 um, +4.00%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[4] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 4
+    x: declared [550.0, 950.0] um -> realized [600.0, 1000.0] um | face residuals (50.0, 50.0) um | extent 400.0 -> 400.0 um
+    y: declared [1250.0, 1350.0] um -> realized [1300.0, 1400.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (12.50% of the declared 400.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[5] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 4
+    x: declared [1050.0, 1450.0] um -> realized [1100.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 400.0 -> 400.0 um
+    y: declared [1250.0, 1350.0] um -> realized [1300.0, 1400.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (12.50% of the declared 400.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[6] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 2
+    x: declared [550.0, 750.0] um -> realized [600.0, 800.0] um | face residuals (50.0, 50.0) um | extent 200.0 -> 200.0 um
+    y: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (25.00% of the declared 200.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[7] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 2
+    x: declared [1250.0, 1450.0] um -> realized [1300.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 200.0 -> 200.0 um
+    y: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (25.00% of the declared 200.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[8] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [550.0, 650.0] um -> realized [600.0, 700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1450.0, 1550.0] um -> realized [1500.0, 1600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[9] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1450.0, 1550.0] um -> realized [1500.0, 1600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[10] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [550.0, 650.0] um -> realized [600.0, 700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1550.0, 1650.0] um -> realized [1600.0, 1700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] y: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[11] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1550.0, 1650.0] um -> realized [1600.0, 1700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] y: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[12] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [550.0, 650.0] um -> realized [600.0, 700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1750.0, 1850.0] um -> realized [1800.0, 1900.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[13] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1750.0, 1850.0] um -> realized [1800.0, 1900.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[14] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [550.0, 650.0] um -> realized [600.0, 700.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1850.0, 1950.0] um -> realized [1900.0, 2000.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[15] 'pec' — one-plane sheet (normal x+y+z): electric wall on the LOWER node plane ONLY
+    cells: 1
+    x: declared [1350.0, 1450.0] um -> realized [1400.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    y: declared [1850.0, 1950.0] um -> realized [1900.0, 2000.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] x+y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[16] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 2
+    x: declared [550.0, 750.0] um -> realized [600.0, 800.0] um | face residuals (50.0, 50.0) um | extent 200.0 -> 200.0 um
+    y: declared [1950.0, 2050.0] um -> realized [2000.0, 2100.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (25.00% of the declared 200.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[17] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 2
+    x: declared [1250.0, 1450.0] um -> realized [1300.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 200.0 -> 200.0 um
+    y: declared [1950.0, 2050.0] um -> realized [2000.0, 2100.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (25.00% of the declared 200.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[18] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 4
+    x: declared [550.0, 950.0] um -> realized [600.0, 1000.0] um | face residuals (50.0, 50.0) um | extent 400.0 -> 400.0 um
+    y: declared [2050.0, 2150.0] um -> realized [2100.0, 2200.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (12.50% of the declared 400.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] y: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[19] 'pec' — one-plane sheet (normal y+z): electric wall on the LOWER node plane ONLY
+    cells: 4
+    x: declared [1050.0, 1450.0] um -> realized [1100.0, 1500.0] um | face residuals (50.0, 50.0) um | extent 400.0 -> 400.0 um
+    y: declared [2050.0, 2150.0] um -> realized [2100.0, 2200.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    z: declared [2450.0, 2550.0] um -> realized [2500.0, 2600.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [off-lattice-face] x: PLACEMENT off by 50.0 um (12.50% of the declared 400.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] y: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (50.00% of the declared 100.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sheet-own-cell-live] y+z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[20] 'ptfe'
+    cells: 141
+    x: declared [600.0, 1400.0] um -> realized [700.0, 1500.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um
+    y: declared [1300.0, 2100.0] um -> realized [1400.0, 2200.0] um | face residuals (100.0, 100.0) um | extent 800.0 -> 800.0 um
+    z: declared [2400.0, 2700.0] um -> realized [2500.0, 2800.0] um | face residuals (100.0, 100.0) um | extent 300.0 -> 300.0 um
+    ! [claimed-by-conductor] 23.4% of this dielectric's cells are also PEC — the conductor wins, so that fraction of the declared material is not solved
+      remedy: check the overlap against the intended stack; shrink whichever body is over-declared
+    ! [bbox-offset] x: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] y: PLACEMENT off by 100.0 um (12.50% of the declared 800.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] z: PLACEMENT off by 100.0 um (33.33% of the declared 300.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [materialization-overridden] only 33.3% of this entity's cells carry the declared eps_r 2.100 (assembled range 2.100..3.660)
+      remedy: a later entity overwrites these cells (assembly is declaration-ordered) — check the overlap, or reorder if the overlap is unintended
+
+  geometry[21] 'sub'
+    cells: 13230
+    x: declared [0.0, 12500.0] um -> realized [0.0, 12600.0] um | face residuals (0.0, 100.0) um | extent 12500.0 -> 12600.0 um
+    y: declared [0.0, 3400.0] um -> realized [0.0, 3500.0] um | face residuals (0.0, 100.0) um | extent 3400.0 -> 3500.0 um
+    z: declared [2550.0, 2850.0] um -> realized [2600.0, 2900.0] um | face residuals (50.0, 50.0) um | extent 300.0 -> 300.0 um
+    ! [claimed-by-conductor] 0.2% of this dielectric's cells are also PEC — the conductor wins, so that fraction of the declared material is not solved
+      remedy: check the overlap against the intended stack; shrink whichever body is over-declared
+    ! [inside-absorber] x,y: the realized body extends beyond the declared domain on x,y — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.80% of the declared 12500.0 um extent); SIZE 12600.0 um (+100.0 um, +0.80%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (2.94% of the declared 3400.0 um extent); SIZE 3500.0 um (+100.0 um, +2.94%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] z: PLACEMENT off by 50.0 um (16.67% of the declared 300.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+
+  geometry[22] 'pec' — one-plane sheet (normal z): electric wall on the LOWER node plane ONLY
+    cells: 805
+    x: declared [1000.0, 12500.0] um -> realized [1100.0, 12600.0] um | face residuals (100.0, 100.0) um | extent 11500.0 -> 11500.0 um
+    y: declared [1400.0, 2000.0] um -> realized [1400.0, 2100.0] um | face residuals (0.0, 100.0) um | extent 600.0 -> 700.0 um
+    z: declared [2850.0, 2950.0] um -> realized [2900.0, 3000.0] um | face residuals (50.0, 50.0) um | extent 100.0 -> 100.0 um
+    ! [inside-absorber] x: the realized body extends beyond the declared domain on x — those cells sit in the CPML pad, where the update equations are the absorber's
+      remedy: keep the body inside the domain, or enlarge the domain so the absorber stays empty
+    ! [off-lattice-face] x: PLACEMENT off by 100.0 um (0.87% of the declared 11500.0 um extent); SIZE preserved
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [off-lattice-face] y: PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE 700.0 um (+100.0 um, +16.67%)
+      remedy: place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it
+    ! [sub-cell-placement] z: declared extent 100.0 um is smaller than the local cell 100.0 um; the body lands 50.0 um (0.50 cell) from its declared face. Placement quantizes to the lattice — a percentage of the declared extent is not a meaningful measure here
+      remedy: place a mesh node on the declared face, or resolve the body with >= 1 cell, if this placement is load-bearing
+    ! [sheet-own-cell-live] z: the declared metal's cell volume stays live with eps_r 1.00 inside adjacent cavities — VACUUM substituted for declared metal
+      remedy: two_plane=True on this entry (walls on both faces), or extend the abutting dielectric across this cell, or resolve the thickness with >= 2 cells
+
+  geometry[23] 'pec' — volumetric PEC (>= 2 cells on every axis)
+    cells: 66
+    x: declared [800.0, 1200.0] um -> realized [900.0, 1300.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um
+    y: declared [1500.0, 1900.0] um -> realized [1600.0, 2000.0] um | face residuals (100.0, 100.0) um | extent 400.0 -> 400.0 um
+    z: declared [2400.0, 3000.0] um -> realized [2500.0, 3100.0] um | face residuals (100.0, 100.0) um | extent 600.0 -> 600.0 um
+    ! [bbox-offset] x: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] y: PLACEMENT off by 100.0 um (25.00% of the declared 400.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+    ! [bbox-offset] z: PLACEMENT off by 100.0 um (16.67% of the declared 600.0 um extent); SIZE preserved. Curved boundary sampled cell-wise; midpoint shift +100.0 um (+1.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement — the midpoint shift is the convention-free number
+      remedy: refine the local cell size if either the placement or the realized size is load-bearing for the comparison
+
+  NOT AUDITED by this report
+    ! [out-of-scope] 1 MSL port(s); 1 coaxial port (pin/shield/caps)(s) — these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)
+      remedy: audit those with their own port preflight checks; do not read this report as covering them
+
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:1016: UserWarning: compute_coax_msl_transition(): the registered coax port impedance (50.00 ohm) diverges 10.0% from the analytic coax Z0 (45.46 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:1016: UserWarning: compute_coax_msl_transition(): the registered msl port impedance (50.00 ohm) diverges 5.8% from the analytic msl Z0 (53.11 ohm) this method actually uses for the power-wave normalization (z0_ref) and for sizing the feed resistor / termination. The registered impedance= is NOT the reference impedance of the returned s_params; it only affects source/termination sizing. Pass a matching pin_radius/outer_radius (coax) or width/height/eps_r_sub (msl), or reconcile the mismatch, before trusting a specific reference-impedance interpretation.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/scripts/diagnostics/coax_msl_transition_settled_run.py:1016: UserWarning: compute_coax_msl_transition(): the MSL probe ladder (msl_probe_count=9, msl_probe_start_cells=4, msl_probe_spacing_cells=10; realized x = 2.60, 3.60, 4.60, 5.60, 6.60, 7.60, 8.60, 9.60, 10.60 mm) violates the source near-field standoff of 15 cells (1.50 mm = 5·h_sub, the issue-#80 Fix B constant add_msl_port's own auto n_probe_offset already floors to): 2 of 9 probes sit within 1.50 mm of the MSL port feed plane (x = 11.00 mm) (nearest 0.40 mm = 1.33·h_sub). Within a few substrate thicknesses of a launch discontinuity the field is not the guided mode yet, and the matrix-pencil fit reports the LADDER's error as the field's: measured on the settled attempt-3 run (VESSL 369367257533) a probe at 1.33·h_sub carried 82-128% two-wave model error and dragged the full-ladder fit_residual to 0.342/0.264/0.222, while every window excluding it fit to 1e-5..4e-3. Move the ladder inside [junction + 5·h_sub, feed - 5·h_sub] by raising msl_probe_start_cells and/or lowering msl_probe_count, and read result.ladder_split_gamma_dev / result.ladder_split_reflection_decades for whether this ladder actually disagrees with itself. REPORT-ONLY: nothing is refused.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/probes/probes.py:663: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/lax_numpy.py:185: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/opt/jax/jax/_src/numpy/array_methods.py:118: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/api/_sparams.py:2131: UserWarning: solve_two_port_from_wave_amplitudes: the two drives are nearly linearly dependent at 3/3 frequencies (cond > 1000; worst 4.16e+08) — usually both ports seeing essentially the same field, e.g. a symmetric structure driven identically, or one drive that failed to excite. S at those bins is degenerate. NOTE this threshold flags DEGENERACY only: cond below it is NOT a reliability certificate, because cond(A) also multiplies whatever noise is on the measured amplitudes (~1.3e-2 relative error in S from 1e-4 noise at cond=199, which never trips this warning).
+/root/workspace/byungkwan-workspace/research/rfx-fidelity-722/rfx/api/_sparams.py:7407: UserWarning: compute_coax_msl_transition: extracted S-matrix failed a passivity/finiteness self-check — passivity_violation: max column power 1263.99 exceeds limit 1.1 at driven port 1, frequency index 0. A passive structure cannot have column power > 1; this almost always means the extractor (current sign/scale or reference plane) is wrong and the S-parameters are UNRELIABLE. Inspect the V/I dump via rfx.validation.validate_port_smatrix / replay_smatrix_from_vi_dump before trusting or optimizing against these numbers. compute_coax_msl_transition: per-frequency amplitude advisory at frequency index 0: max |S| = 27.67; passivity violated: extraction/normalization artifact — do not interpret as physics; see the normalize parameter docstring and issue #337
+
+FDTD run complete in 126.8s (2.1 min)
+
+=== measured witnesses ===
+  settling_db (per drive)          : [-128.4904588362289, -118.79848814811461]  (-40 dB rule cleared: True)
+  cond_a_equilibrated               : [6.359675533546335, 1.7877817820570017, 1.7626362349186169]
+  gamma_ratio (coax-driven, vs HJ beta): [1.3801999636193671, 1.0813146777638674, 0.922105214830391]
+  reciprocity worst deviation (pair=(0, 1)): 0.7886900514053978
+  |S22|                             : [22.32142096248982, 7.631561658217321, 1.3967470640930162]
+  max|S|                            : 27.672005822186176
+  MSL-driven column power (|S01|^2+|S11|^2): [1263.9857400077856, 161.580633326388, 15.891523968428206]
+  passivity guard (strict=True) raised: True
+    message: compute_coax_msl_transition: extracted S-matrix failed a passivity/finiteness self-check — passivity_violation: max column power 1263.99 exceeds limit 1.1 at driven port 1, frequency index 0. A passive structure cannot have column power > 1; this almost always means the extractor (current sign/scale or reference plane) is wrong and the S-parameters are UNRELIABLE. Inspect the V/I dump via rfx.validation.validate_port_smatrix / replay_smatrix_from_vi_dump before trusting or optimizing against these numbers. compute_coax_msl_transition: per-frequency amplitude advisory at frequency index 0: max |S| = 27.67; passivity violated: extraction/normalization artifact — do not interpret as physics; see the normalize parameter docstring and issue #337
+
+=== #823 MSL ladder standoff (report-only) ===
+  recipe (count/start/spacing) : 9/4/10
+  realized x (mm)              : [2.6, 3.6, 4.6, 5.6, 6.6, 7.6, 8.6, 9.6, 10.6]
+  required standoff            : 1.500 mm = 5.000 h_sub (15 cells)
+  min distance port / ref (mm) : 0.400 / 1.600  (1.333 / 5.333 h_sub)
+  VIOLATING probes port / ref  : 2 / 0
+
+=== #823 ladder self-consistency witness (disjoint halves; report-only) ===
+  ladder_split_gamma_dev:
+    coax_array: coax_drive [0.33655 0.14332 0.19607]  msl_drive [0.152   0.12453 0.10927]
+    msl_array: coax_drive [0.66747 0.50032 0.50516]  msl_drive [1.61412 1.73299 1.69418]
+  ladder_split_reflection_decades:
+    coax_array: coax_drive [0.00877 0.06793 0.1376 ]  msl_drive [0.31174 0.25649 0.20503]
+    msl_array: coax_drive [0.09541 0.17062 0.34595]  msl_drive [4.37927 4.48686 4.32116]
+
+=== #589 extended witnesses (all bins; committed bins marked *) ===
+  precision: jax_enable_x64=False, solve complex dtype=complex64 (method rule); s_params dtype=complex128, a_inc dtype=complex128 (assembly)
+  bin  f[GHz]   |S00|dB   |S10|dB   |S01|dB   |S11|dB   colP_coax  colP_msl   lam_min(I-S^HS)  cond_a_raw   cond_a_eq
+  * 0   6.000     19.86     18.25     28.84     26.97  163.63738  1263.98574  -1.42599e+03  4.157e+08  6.359676
+  * 1   8.000      9.84      6.64     20.14     17.65   14.25568  161.58063  -1.74708e+02  1.360e+08  1.787782
+  * 2  10.000      4.53     -1.57     11.44      2.90    3.53216   15.89152  -1.83934e+01  4.403e+07  1.762636
+  complex S per bin (re, im):
+  * 0   6.000  S00=(-9.834585e+00,+1.226485e-01)  S01=(-1.656992e+01,+2.216253e+01)  S10=(+1.141029e+00,+8.099465e+00)  S11=(+2.070067e+01,+8.350327e+00)
+  * 1   8.000  S00=(+5.026660e-01,+3.064097e+00)  S01=(-4.746849e+00,+8.989289e+00)  S10=(+1.947483e+00,-9.064389e-01)  S11=(+7.629936e+00,+1.575321e-01)
+  * 2  10.000  S00=(+1.635469e+00,-4.018231e-01)  S01=(-9.720717e-01,+3.604955e+00)  S10=(-5.905268e-01,-5.892497e-01)  S11=(+1.330711e+00,-4.243933e-01)
+  A2 verdict: EXTRACTOR (lambda_min(I - S^H S) < -0.02 at >=1 bin: non-passive S)
+  A3 fit_residual [array/drive] per bin (recurrence in parentheses):
+  * 0   6.000  coax/coax 0.0002098 (0.000214)  coax/msl 0.0001318 (0.000136)  msl/coax 0.0713 (0.0314)  msl/msl 0.3422 (0.157)
+  * 1   8.000  coax/coax 0.0001612 (0.000173)  coax/msl 0.0001881 (0.000194)  msl/coax 0.05419 (0.0318)  msl/msl 0.2639 (0.165)
+  * 2  10.000  coax/coax 0.0003183 (0.000345)  coax/msl 0.0002485 (0.000257)  msl/coax 0.0517 (0.0237)  msl/msl 0.222 (0.153)
+  A3 verdict (MSL ladder, BOTH drives, fit+recurrence, committed bins): EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: 6 GHz: fit_residual 0.3422 > 0.02 (borrowed); 8 GHz: fit_residual 0.2639 > 0.02 (borrowed); 10 GHz: fit_residual 0.222 > 0.02 (borrowed); 6 GHz: recurrence_residual 0.1567 > 0.02 (borrowed); 8 GHz: recurrence_residual 0.1649 > 0.02 (borrowed); 10 GHz: recurrence_residual 0.1535 > 0.02 (borrowed)
+  |a_inc| / |b_out| per bin [coax array: coax drive, msl drive | msl array: coax drive, msl drive]:
+  * 0   6.000  a: 9.4081e-08, 6.9168e-16 | 3.5049e-08, 3.7533e-16   b: 8.7620e-08, 7.6997e-15 | 4.1913e-08, 5.4699e-15
+  * 1   8.000  a: 5.7071e-08, 3.8877e-16 | 1.8766e-08, 3.4305e-16   b: 5.4217e-08, 4.5132e-15 | 2.4108e-08, 3.3900e-15
+  * 2  10.000  a: 2.9558e-08, 2.2765e-16 | 1.1881e-08, 8.1162e-16   b: 2.9095e-08, 2.7097e-15 | 1.4286e-08, 9.7923e-16
+  A5 |a_inc/b_out| per bin: coax array under MSL drive (expect ~0) | MSL array under coax drive (expect ~0.030)
+  * 0   6.000  0.089831 | 0.83624
+  * 1   8.000  0.08614 | 0.7784
+  * 2  10.000  0.084013 | 0.8316
+  A5 verdict coax side: RESOLVED (max ratio 0.08983 <= 0.15, smooth, committed bins): transmitted signals are a genuine TEM pair with the expected termination echo
+  A5 verdict MSL side : FLOOR (max ratio 0.8362 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor
+  settling_db per drive: [-128.4904588362289, -118.79848814811461]  (cleared -40 dB: True)
+  solve warnings captured: 159 (dumped verbatim in JSON)
+
+=== A0 reproduction vs baseline (two-tier predeclaration; budget UNMEASURED) ===
+  baseline : scripts/diagnostics/_coax_msl_transition_settled_run_logs/witnesses_369367257533_attempt3_x64-0_result.json
+  status   : compared
+  delta max_abs_delta_S_complex: 27.496140792508374
+  delta gamma_ratio_coax_driven_info: [0.0, 0.0, 0.0]
+  delta cond_a_equilibrated_info: [4.328262442067988, 3.336266121193152, 8.722071293123166]
+  delta settling_db_info: [0.0, 0.0]
+  delta reciprocity_worst_deviation_info: 1.1102230246251565e-16
+  compared : {'complex_S_per_bin_max_abs_delta': [27.496140792508374, 12.197436953230609, 3.48559304350419]}
+  precision: this run jax_enable_x64=False  baseline jax_enable_x64=False  (ext_589.precision.jax_enable_x64)
+  tier value (max |delta| over comparable |S|-type quantities): 27.496140792508374
+  TIER     : STOP (> 1e-2: fixture or extractor is not what the record says)
+
+result JSON written to: /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260901T105940Z-356a47cfce34-attempt3-x640/remeasure_result.json
+
+=== #589 witness dump ===
+  ladders requested      : True  (method keyword available: True)
+  ladder arrays in dump  : ['coax_ladder_k', 'coax_ladder_v', 'coax_ladder_z_m', 'msl_ladder_i', 'msl_ladder_v', 'msl_ladder_x_m']
+  flux requested         : True  drives: ['coax', 'msl']  faces: ['coax_z22', 'msl_x20', 'msl_x20_full', 'top_z36', 'xlo_x05', 'yhi_y31', 'ylo_y03']
+  npz written to         : /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260901T105940Z-356a47cfce34-attempt3-x640/remeasure_result.ladders.npz
+=== W1: adjacent-pair phase slopes (rad/m; DFT exp(-jwt): +axis wave => slope < 0) ===
+  ladder/drive           f[GHz]  mean slope   |mean|/beta  sign-cons  worst-pair dev  echo-tol  travel  vs junction
+  coax_ladder/coax_drive  6.00        -8.3       0.046      1.00          95.8%  2717.1%  +axis   toward
+      pairs: -8, -8, -8, -9, -9
+  coax_ladder/coax_drive  8.00       -18.3       0.075      1.00          93.8%  3804.3%  +axis   toward
+      pairs: -24, -19, -17, -16, -15
+  coax_ladder/coax_drive 10.00       -78.1       0.257      1.00          85.6%  12565.9%  +axis   toward
+      pairs: -136, -91, -67, -53, -44
+  msl_ladder/coax_drive   6.00      -382.7       1.808      0.88        1133.5%  1026.3%  +axis   away
+      pairs: -40, -272, -2611, -103, -28, -13, -8, +13
+  msl_ladder/coax_drive   8.00      -383.7       1.360      0.88         813.2%   707.5%  +axis   away
+      pairs: -13, -20, -45, -257, -2577, -133, -34, +9
+  msl_ladder/coax_drive  10.00      -383.2       1.086      1.00         630.1%   992.6%  +axis   away
+      pairs: -14, -15, -21, -41, -164, -2576, -223, -12
+  coax_ladder/msl_drive   6.00      +207.8       1.140      1.00          18.0%    24.7%  -axis   away
+      pairs: +203, +204, +207, +210, +215
+  coax_ladder/msl_drive   8.00      +285.3       1.174      1.00          22.8%    23.9%  -axis   away
+      pairs: +276, +279, +284, +290, +298
+  coax_ladder/msl_drive  10.00      +370.1       1.219      1.00          28.9%    23.3%  -axis   away
+      pairs: +354, +360, +368, +378, +392
+  msl_ladder/msl_drive    6.00      +129.0       0.610      0.88          47.5%    19.7%  -axis   toward
+      pairs: +295, +251, +206, +169, +142, +125, +111, -266
+  msl_ladder/msl_drive    8.00      +162.6       0.576      0.88          64.2%    27.5%  -axis   toward
+      pairs: +361, +265, +199, +161, +141, +135, +139, -101
+  msl_ladder/msl_drive   10.00      +195.3       0.554      0.88          95.4%   973.5%  -axis   toward
+      pairs: +372, +250, +189, +165, +165, +189, +249, -16
+  H1 sign witness (coax ladder, MSL drive):
+    preconditions: a verdict is emitted only when ALL hold: settling_db <= -40 dB on both drives; sign_consistency >= 0.8; |mean slope|/beta_analytic in [0.7, 1.4]; full-ladder pencil fit_residual < 0.02. Otherwise UNRESOLVED. Rationale: on a truncated run the non-driven coax array is extractor floor (the driver's own A5 line says so), its pairwise slopes flip sign along the ladder and |mean|/beta is ~0.04 -- a verdict there would be a reading of noise.
+     6.00 GHz  slope +207.8  cons 1.00  |mean|/beta 1.140  fit_res 1.32e-04  [RESOLVED]  dominant wave LEAVES the junction (slope > 0): the post-#822 assembler labels it b_out (outgoing) -> H1 KILLED
+     8.00 GHz  slope +285.3  cons 1.00  |mean|/beta 1.174  fit_res 1.88e-04  [RESOLVED]  dominant wave LEAVES the junction (slope > 0): the post-#822 assembler labels it b_out (outgoing) -> H1 KILLED
+    10.00 GHz  slope +370.1  cons 1.00  |mean|/beta 1.219  fit_res 2.48e-04  [RESOLVED]  dominant wave LEAVES the junction (slope > 0): the post-#822 assembler labels it b_out (outgoing) -> H1 KILLED
+=== W2: SWR |Gamma| = (max|V|-min|V|)/(max|V|+min|V|) ===
+  ladder/drive           f[GHz]  |Gamma|_SWR   SWR    span/(lambda/2)  reading
+  coax_ladder/coax_drive  6.00      0.0330    1.07           0.058  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  coax_ladder/coax_drive  8.00      0.0689    1.15           0.077  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  coax_ladder/coax_drive 10.00      0.3025    1.87           0.097  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/coax_drive   6.00      0.8515   12.47           0.539  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/coax_drive   8.00      0.8020    9.10           0.719  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/coax_drive  10.00      0.7513    7.04           0.898  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  coax_ladder/msl_drive   6.00      0.0103    1.02           0.058  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  coax_ladder/msl_drive   8.00      0.0169    1.03           0.077  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  coax_ladder/msl_drive  10.00      0.0240    1.05           0.097  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/msl_drive    6.00      0.4722    2.79           0.539  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/msl_drive    8.00      0.4972    2.98           0.719  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  msl_ladder/msl_drive   10.00      0.3641    2.15           0.898  LOWER BOUND ONLY (span < lambda/2): cannot bound |Gamma| from above
+  NOTE: coax ladder spans 1 mm vs lambda/2 ~ 17 mm: its SWR |Gamma| is a LOWER BOUND and cannot bound the feed-end echo from above; Gamma_feed_end is NOT MEASURABLE on this fixture (pencil 0.09 is the only estimate) -> W2 cannot kill H2/H3. MSL ladder (8 mm) is a valid |Gamma| only where flagged.
+=== W3: subset two-wave fits (production pencil, unchanged) at the reference plane ===
+  ladder/drive           subset        f[GHz]  Re(g)     Im(g)    Im/beta  fit_res   rec_res   |fwd|       |bwd|       |Gamma|   |Gamma|a=0  a0 shift
+  coax_ladder/coax_drive coax[0:4]      6.00      1.9     192.7    1.057  7.26e-05  1.48e-04   6.405e-07   5.929e-07    0.9258     0.9261     0.03%
+  coax_ladder/coax_drive coax[0:4]      8.00     18.8     276.9    1.140  7.13e-05  1.59e-04   3.783e-07   3.779e-07    0.9989     0.8969    10.21%
+  coax_ladder/coax_drive coax[0:4]     10.00     40.1     355.8    1.172  1.59e-04  3.55e-04   1.857e-07   2.032e-07    1.0947     0.9015    17.65%
+  coax_ladder/coax_drive coax[2:6]      6.00      0.2     234.4    1.286  3.41e-05  7.58e-05   6.273e-07   5.870e-07    0.9357     0.9359     0.01%
+  coax_ladder/coax_drive coax[2:6]      8.00      2.8     293.8    1.209  1.25e-05  2.78e-05   3.890e-07   3.583e-07    0.9212     0.9105     1.16%
+  coax_ladder/coax_drive coax[2:6]     10.00      3.7     345.7    1.138  3.61e-05  8.06e-05   2.069e-07   1.912e-07    0.9240     0.9089     1.63%
+  coax_ladder/coax_drive coax[all]      6.00      1.0     214.0    1.174  2.10e-04  2.14e-04   6.343e-07   5.907e-07    0.9313     0.9317     0.04%
+  coax_ladder/coax_drive coax[all]      8.00     10.1     285.8    1.176  1.61e-04  1.73e-04   3.848e-07   3.655e-07    0.9500     0.9035     4.89%
+  coax_ladder/coax_drive coax[all]     10.00     17.9     349.2    1.150  3.18e-04  3.45e-04   1.993e-07   1.962e-07    0.9843     0.9051     8.05%
+  msl_ladder/coax_drive  msl[0:3]       6.00      1.3     163.4    0.772  6.98e-16  1.62e-16   4.227e-07   4.441e-07    1.0505     1.0398     1.02%
+  msl_ladder/coax_drive  msl[0:3]       8.00      0.2     240.4    0.852  5.28e-16  5.00e-17   1.807e-07   1.936e-07    1.0715     1.0690     0.23%
+  msl_ladder/coax_drive  msl[0:3]      10.00      0.2     305.9    0.867  6.19e-16  3.57e-17   9.408e-08   1.030e-07    1.0949     1.0938     0.10%
+  msl_ladder/coax_drive  msl[3:6]       6.00      0.0     184.4    0.871  2.31e-06  0.00e+00   3.759e-07   3.928e-07    1.0449     1.0448     0.01%
+  msl_ladder/coax_drive  msl[3:6]       8.00      0.2     244.8    0.868  2.48e-05  9.53e-17   1.788e-07   1.917e-07    1.0723     1.0692     0.29%
+  msl_ladder/coax_drive  msl[3:6]      10.00      0.1     306.9    0.870  5.06e-16  3.14e-16   9.415e-08   1.030e-07    1.0939     1.0927     0.10%
+  msl_ladder/coax_drive  msl[6:9]       6.00     26.2     395.8    1.870  3.56e-16  1.39e-16   2.454e-07   3.684e-07    1.5010     0.9872    34.23%
+  msl_ladder/coax_drive  msl[6:9]       8.00     37.2     449.4    1.592  4.45e-16  4.18e-16   9.531e-08   1.727e-07    1.8116     1.0314    43.07%
+  msl_ladder/coax_drive  msl[6:9]      10.00     55.8     522.0    1.480  2.82e-16  0.00e+00   3.900e-08   1.003e-07    2.5713     1.1062    56.98%
+  msl_ladder/coax_drive  msl[0:5]       6.00      1.3     168.9    0.798  1.13e-03  1.64e-03   4.090e-07   4.301e-07    1.0515     1.0408     1.02%
+  msl_ladder/coax_drive  msl[0:5]       8.00      0.1     242.4    0.859  4.51e-04  5.64e-04   1.803e-07   1.929e-07    1.0697     1.0688     0.09%
+  msl_ladder/coax_drive  msl[0:5]      10.00      0.1     306.6    0.869  1.48e-04  2.03e-04   9.412e-08   1.030e-07    1.0942     1.0931     0.10%
+  msl_ladder/coax_drive  msl[4:9]       6.00     16.3     305.2    1.442  2.46e-02  3.17e-02   2.653e-07   3.316e-07    1.2497     1.0278    17.76%
+  msl_ladder/coax_drive  msl[4:9]       8.00     28.4     394.3    1.397  3.04e-02  3.54e-02   1.025e-07   1.592e-07    1.5533     1.0893    29.87%
+  msl_ladder/coax_drive  msl[4:9]      10.00     47.0     483.0    1.369  1.75e-02  4.13e-02   4.292e-08   9.775e-08    2.2773     1.1656    48.82%
+  msl_ladder/coax_drive  msl[all]       6.00     14.9     292.1    1.380  7.13e-02  3.14e-02   2.554e-07   3.054e-07    1.1958     1.0638    11.04%
+  msl_ladder/coax_drive  msl[all]       8.00     13.1     305.1    1.081  5.42e-02  3.18e-02   1.368e-07   1.757e-07    1.2847     1.0944    14.82%
+  msl_ladder/coax_drive  msl[all]      10.00      6.0     325.3    0.922  5.17e-02  2.37e-02   8.658e-08   1.041e-07    1.2025     1.1039     8.20%
+  coax_ladder/msl_drive  coax[0:4]      6.00      1.8     223.8    1.228  1.74e-05  3.88e-05   3.377e-15   5.177e-14   15.3315    16.0124     4.44%
+  coax_ladder/msl_drive  coax[0:4]      8.00      2.0     298.4    1.228  2.28e-05  5.10e-05   2.008e-15   3.030e-14   15.0912    15.7085     4.09%
+  coax_ladder/msl_drive  coax[0:4]     10.00      2.6     373.3    1.229  2.92e-05  6.52e-05   1.248e-15   1.817e-14   14.5644    15.2209     4.51%
+  coax_ladder/msl_drive  coax[2:6]      6.00     25.1     233.9    1.283  4.18e-05  9.35e-05   5.903e-15   5.166e-14    8.7512    13.6700    56.21%
+  coax_ladder/msl_drive  coax[2:6]      8.00     26.2     310.8    1.279  5.98e-05  1.33e-04   3.181e-15   3.035e-14    9.5423    14.3672    50.56%
+  coax_ladder/msl_drive  coax[2:6]     10.00     27.3     387.7    1.277  8.19e-05  1.83e-04   1.779e-15   1.825e-14   10.2599    14.9429    45.64%
+  coax_ladder/msl_drive  coax[all]      6.00     13.7     228.6    1.254  1.32e-04  1.36e-04   4.663e-15   5.191e-14   11.1320    14.7454    32.46%
+  coax_ladder/msl_drive  coax[all]      8.00     14.2     304.4    1.253  1.88e-04  1.94e-04   2.621e-15   3.043e-14   11.6090    14.9124    28.46%
+  coax_ladder/msl_drive  coax[all]     10.00     14.9     380.3    1.252  2.48e-04  2.57e-04   1.535e-15   1.827e-14   11.9029    14.9088    25.25%
+  msl_ladder/msl_drive   msl[0:3]       6.00      5.9     182.8    0.864  1.01e-03  1.25e-16   3.320e-14   8.687e-15    0.2617     0.2626     0.34%
+  msl_ladder/msl_drive   msl[0:3]       8.00      4.7     246.4    0.873  1.08e-03  0.00e+00   1.972e-14   5.720e-15    0.2900     0.2913     0.45%
+  msl_ladder/msl_drive   msl[0:3]      10.00      3.3     308.8    0.876  9.71e-04  1.59e-16   1.201e-14   3.743e-15    0.3116     0.3122     0.17%
+  msl_ladder/msl_drive   msl[3:6]       6.00      0.3     184.3    0.871  4.55e-05  1.29e-16   3.332e-14   8.613e-15    0.2585     0.2585     0.00%
+  msl_ladder/msl_drive   msl[3:6]       8.00      0.1     245.8    0.871  2.65e-05  0.00e+00   1.987e-14   5.804e-15    0.2920     0.2919     0.07%
+  msl_ladder/msl_drive   msl[3:6]      10.00      0.0     307.3    0.871  1.41e-05  1.47e-16   1.210e-14   3.785e-15    0.3130     0.3128     0.05%
+  msl_ladder/msl_drive   msl[6:9]       6.00    814.2     306.8    1.450  1.69e-01  1.63e-16   2.507e-17   1.595e-11  636160.5600     1.3852   100.00%
+  msl_ladder/msl_drive   msl[6:9]       8.00    890.6     160.9    0.570  8.93e-02  2.03e-16   7.910e-18   1.645e-11  2079665.2189     0.9703   100.00%
+  msl_ladder/msl_drive   msl[6:9]      10.00    925.1     150.9    0.428  8.50e-02  3.72e-16   2.623e-18   1.210e-11  4612652.8337     0.6356   100.00%
+  msl_ladder/msl_drive   msl[0:5]       6.00      2.1     184.0    0.870  1.35e-03  4.55e-04   3.323e-14   8.565e-15    0.2577     0.2588     0.44%
+  msl_ladder/msl_drive   msl[0:5]       8.00      1.4     246.2    0.872  1.23e-03  4.68e-04   1.981e-14   5.768e-15    0.2911     0.2914     0.10%
+  msl_ladder/msl_drive   msl[0:5]      10.00      0.9     307.8    0.873  9.82e-04  4.78e-04   1.207e-14   3.779e-15    0.3132     0.3128     0.13%
+  msl_ladder/msl_drive   msl[4:9]       6.00    477.9     202.1    0.955  2.37e-01  1.79e-01   6.431e-16   4.404e-13  684.7804     0.8407    99.88%
+  msl_ladder/msl_drive   msl[4:9]       8.00    474.5     105.1    0.372  1.48e-01  1.94e-01   4.229e-16   2.842e-13  672.0074     0.5853    99.91%
+  msl_ladder/msl_drive   msl[4:9]      10.00    391.3      97.1    0.275  1.37e-01  2.05e-01   4.220e-16   1.154e-13  273.4069     0.3145    99.88%
+  msl_ladder/msl_drive   msl[all]       6.00    339.9     161.1    0.761  3.42e-01  1.57e-01   2.735e-15   3.986e-14   14.5735     0.4383    96.99%
+  msl_ladder/msl_drive   msl[all]       8.00    301.1      87.9    0.312  2.64e-01  1.65e-01   2.500e-15   2.470e-14    9.8818     0.5338    94.60%
+  msl_ladder/msl_drive   msl[all]      10.00    133.9     119.4    0.338  2.22e-01  1.53e-01   5.915e-15   7.136e-15    1.2065     0.2873    76.19%
+  N-probe (extract_msl_nprobe) vs pencil, |(-x wave)|/|(+x wave)| at probe 0 of the subset:
+  msl_ladder/coax_drive  msl[6:9]       6.00  nprobe 1.0176 (beta 278.3, railed True, res 1.95e-08)  pencil 0.9928 (a=0: 1.0130, Im g 395.8)
+  msl_ladder/coax_drive  msl[6:9]       8.00  nprobe 0.9672 (beta 381.0, railed True, res 5.99e-09)  pencil 0.9715 (a=0: 0.9696, Im g 449.4)
+  msl_ladder/coax_drive  msl[6:9]      10.00  nprobe 0.9052 (beta 476.2, railed True, res 2.57e-09)  pencil 0.9076 (a=0: 0.9040, Im g 522.0)
+  msl_ladder/coax_drive  msl[4:9]       6.00  nprobe 0.9719 (beta 279.3, railed False, res 2.31e-08)  pencil 0.9608 (a=0: 0.9729, Im g 305.2)
+  msl_ladder/coax_drive  msl[4:9]       8.00  nprobe 0.9207 (beta 356.1, railed False, res 9.36e-09)  pencil 0.8850 (a=0: 0.9180, Im g 394.3)
+  msl_ladder/coax_drive  msl[4:9]      10.00  nprobe 0.8596 (beta 476.2, railed True, res 5.38e-09)  pencil 0.7437 (a=0: 0.8579, Im g 483.0)
+  msl_ladder/msl_drive   msl[6:9]       6.00  nprobe 0.7871 (beta 137.6, railed True, res 1.38e-14)  pencil 0.3728 (a=0: 0.7219, Im g 306.8)
+  msl_ladder/msl_drive   msl[6:9]       8.00  nprobe 1.0326 (beta 183.4, railed True, res 9.19e-15)  pencil 0.3641 (a=0: 1.0306, Im g 160.9)
+  msl_ladder/msl_drive   msl[6:9]      10.00  nprobe 1.6807 (beta 229.3, railed True, res 4.81e-15)  pencil 0.2774 (a=0: 1.5734, Im g 150.9)
+  msl_ladder/msl_drive   msl[4:9]       6.00  nprobe 1.1917 (beta 137.6, railed True, res 2.12e-14)  pencil 0.3082 (a=0: 1.1895, Im g 202.1)
+  msl_ladder/msl_drive   msl[4:9]       8.00  nprobe 1.8108 (beta 183.4, railed True, res 1.38e-14)  pencil 0.3025 (a=0: 1.7085, Im g 105.1)
+  msl_ladder/msl_drive   msl[4:9]      10.00  nprobe 5.9464 (beta 229.3, railed True, res 7.02e-15)  pencil 0.2927 (a=0: 3.1800, Im g 97.1)
+  H4 kill rule: H4 killed at a bin iff some MSL subset under the MSL drive has fit_residual < 0.02 and Im(gamma)/beta_HJ in [0.8, 1.3] (slope-at-all-pairs is NOT used: a clean two-wave field with echo g deviates by up to 2g/(1-g))
+     6.00 GHz  subsets meeting criterion: ['msl[0:3]', 'msl[3:6]', 'msl[0:5]']  -> H4 KILLED at this bin
+     8.00 GHz  subsets meeting criterion: ['msl[0:3]', 'msl[3:6]', 'msl[0:5]']  -> H4 KILLED at this bin
+    10.00 GHz  subsets meeting criterion: ['msl[0:3]', 'msl[3:6]', 'msl[0:5]']  -> H4 KILLED at this bin
+  H7 rule: H7 killed iff |Gamma_ref| shifts < 1% between the fitted gamma and alpha forced to 0 for the full coax ladder and every subset, at every bin (impact test; Re(gamma) itself is not identifiable on a 1 mm ladder). NOISE-LIMITED: at the settled run's own coax-ladder fit residual (~2e-4) a synthetic LOSSLESS ladder already shows shifts of 0.05-1.1% (full 6-probe) and 0.6-4.8% (4-probe subsets) -- measured in tests/test_coax_msl_ladder_witnesses.py::test_h7_impact_on_the_coax_ladder_is_noise_limited_and_says_so -- so read the printed shift, not the boolean, and treat a 'survives' at the 1-2% level as UNRESOLVED rather than as evidence of real loss
+     6.00 GHz  worst alpha=0 shift of |Gamma_ref| 0.043%  subset |Gamma| spread 0.0100  -> H7 KILLED at this bin
+     8.00 GHz  worst alpha=0 shift of |Gamma_ref| 10.207%  subset |Gamma| spread 0.0777  -> H7 survives at this bin
+    10.00 GHz  worst alpha=0 shift of |Gamma_ref| 17.654%  subset |Gamma| spread 0.1708  -> H7 survives at this bin
+=== W4: flux planes (W, +axis-positive; exact_f64 spectra) ===
+  --- coax drive ---
+  f[GHz]      coax_z22       msl_x20       top_z36       xlo_x05       ylo_y03       yhi_y31  msl_x20_full   closure_res(rel)
+   6.00   +7.6330e-16   +7.5055e-16   -1.3081e-17   -1.6174e-17   -9.7605e-18   +1.8777e-19   +7.7862e-16   -2.913e-19 (-0.04%)
+   8.00   +3.0649e-16   +2.7898e-16   +1.0874e-17   -7.8593e-18   -4.5539e-18   +4.0394e-18   +2.9430e-16   +1.809e-19 (+0.06%)
+  10.00   +1.1007e-16   +1.0447e-16   +4.7861e-18   -3.3747e-19   -2.5785e-20   +2.3208e-19   +1.0656e-16   +2.225e-19 (+0.20%)
+   6.00  net code-units coax (|a|^2-|b|^2) +1.1740e-15  R1 +0.6502  R2 +0.4273  R2net +1.4209  S-side |msl_out|^2/net_coax +1.4963  flux msl_x20/coax_z22 +0.9833
+        H1 discriminator (sign(msl_x20) under the coax drive (the non-driven port)) [RESOLVED]: msl_x20 > 0: net power at the NON-DRIVEN MSL port LEAVES the junction (+x); the post-#822 assembler labels that same +x branch b_out (a_inc[1] = out_msl.forward_amp = the -x wave, toward the junction) => the code's 'outgoing' wave IS the outgoing one => H1 KILLED
+        passivity check: coax_z22 +7.6330e-16 > 0 as REQUIRED BY PASSIVITY (feed below the coax probes, junction above them): CONFIRMATORY ONLY -- this sign is entailed for any passive junction under either hypothesis and is NOT evidence for H1
+        R1 (Z0 calibration, label-blind, NOT an H1 verdict) within +-10% band: False
+   8.00  net code-units coax (|a|^2-|b|^2) +3.1762e-16  R1 +0.9650  R2 +0.4800  R2net +1.2180  S-side |msl_out|^2/net_coax +1.8299  flux msl_x20/coax_z22 +0.9102
+        H1 discriminator (sign(msl_x20) under the coax drive (the non-driven port)) [RESOLVED]: msl_x20 > 0: net power at the NON-DRIVEN MSL port LEAVES the junction (+x); the post-#822 assembler labels that same +x branch b_out (a_inc[1] = out_msl.forward_amp = the -x wave, toward the junction) => the code's 'outgoing' wave IS the outgoing one => H1 KILLED
+        passivity check: coax_z22 +3.0649e-16 > 0 as REQUIRED BY PASSIVITY (feed below the coax probes, junction above them): CONFIRMATORY ONLY -- this sign is entailed for any passive junction under either hypothesis and is NOT evidence for H1
+        R1 (Z0 calibration, label-blind, NOT an H1 verdict) within +-10% band: True
+  10.00  net code-units coax (|a|^2-|b|^2) +2.7172e-17  R1 +4.0510  R2 +0.5119  R2net +1.6594  S-side |msl_out|^2/net_coax +7.5114  flux msl_x20/coax_z22 +0.9491
+        H1 discriminator (sign(msl_x20) under the coax drive (the non-driven port)) [RESOLVED]: msl_x20 > 0: net power at the NON-DRIVEN MSL port LEAVES the junction (+x); the post-#822 assembler labels that same +x branch b_out (a_inc[1] = out_msl.forward_amp = the -x wave, toward the junction) => the code's 'outgoing' wave IS the outgoing one => H1 KILLED
+        passivity check: coax_z22 +1.1007e-16 > 0 as REQUIRED BY PASSIVITY (feed below the coax probes, junction above them): CONFIRMATORY ONLY -- this sign is entailed for any passive junction under either hypothesis and is NOT evidence for H1
+        R1 (Z0 calibration, label-blind, NOT an H1 verdict) within +-10% band: False
+  --- msl drive ---
+  f[GHz]      coax_z22       msl_x20       top_z36       xlo_x05       ylo_y03       yhi_y31  msl_x20_full   closure_res(rel)
+   6.00   -6.3461e-29   -6.0976e-29   -1.1159e-30   +5.5034e-31   +3.4063e-31   -4.1479e-31   -6.2925e-29   -6.293e-32 (-0.10%)
+   8.00   -2.1952e-29   -2.1150e-29   -3.7820e-31   +1.6963e-31   +9.9689e-32   -1.3022e-31   -2.1810e-29   -2.421e-32 (-0.11%)
+  10.00   -7.9741e-30   -7.6910e-30   -1.3850e-31   +5.8970e-32   +3.0941e-32   -4.5269e-32   -7.9261e-30   -9.408e-33 (-0.12%)
+   6.00  net code-units coax (|a|^2-|b|^2) -5.8808e-29  R1 +1.0791  R2 -2.0380  R2net -2.0476  S-side |msl_out|^2/net_coax -0.5088  flux msl_x20/coax_z22 +0.9608
+        MSL-drive expectations: {'msl_x20_negative': True, 'coax_z22_negative': True, 'abs_coax_z22_le_abs_msl_x20': False}
+   8.00  net code-units coax (|a|^2-|b|^2) -2.0218e-29  R1 +1.0858  R2 -1.8404  R2net -1.8595  S-side |msl_out|^2/net_coax -0.5684  flux msl_x20/coax_z22 +0.9635
+        MSL-drive expectations: {'msl_x20_negative': True, 'coax_z22_negative': True, 'abs_coax_z22_le_abs_msl_x20': False}
+  10.00  net code-units coax (|a|^2-|b|^2) -7.2905e-30  R1 +1.0938  R2 -8.0207  R2net -25.6227  S-side |msl_out|^2/net_coax -0.1315  flux msl_x20/coax_z22 +0.9645
+        MSL-drive expectations: {'msl_x20_negative': True, 'coax_z22_negative': True, 'abs_coax_z22_le_abs_msl_x20': False}
+  rule predeclaration_relation: THIS IS NOT THE PREDECLARED #589 FLUX INSTRUMENT. The standing one is scripts/diagnostics/coax_msl_flux_adjudication.py (merged #597/#599), which implements verbatim the face table pre-declared on #589 in the comment of 2026-08-07 ('PRE-DECLARATION -- item 2 adjudication attempt') on the ATTEMPT-2 fixture (xp x=2.2, xm x=0.3, yp y=3.1, ym y=0.3, zt z=3.4, zb z=0.9 mm) with C1/C2 control runs that gate interpretation, +-2-cell face-shift invariance and below-ground shell-tightness strips. The attempt-3 box used here has DIFFERENT coordinates (its bottom face must sit inside the coax, above the top coax probe at 1.9 mm and below ref_coax_m = 2.5 mm, because the clearance hole is now open and R1 is compared to the ladder's own pencil amplitudes), and carries NO controls, NO shift-invariance member (top_z36 = 3.6 mm is 3 cells below the interior top, tighter than the predeclared zt = 3.4 mm, so a closure residual here cannot be separated from face placement) and NO shell-tightness strips (it ASSUMES the tightness the predeclared instrument MEASURES). These numbers are not directly comparable to that instrument's; the PI arbitrates.
+  rule h1_sign: coax drive, POST-#822: msl_x20 > 0 (net power LEAVES the junction at the NON-DRIVEN port, whose +x branch the assembler now labels b_out) => labels consistent, H1 KILLED; msl_x20 < 0 => labels inverted, H1 supported. NOT keyed on coax_z22. Pre-#822 runs read this sign the other way round.
+  rule h1_preconditions: the msl_x20 verdict is emitted only when settling_db <= -40 dB on both drives, |closure_rel_residual| <= 0.05 and |msl_x20| >= 3 x |closure_residual|; otherwise UNRESOLVED.
+  rule coax_z22: PASSIVITY CHECK, not an H1 verdict: under the coax drive the feed is below the coax probes and the junction above them, so net +z power there is |a_phys|^2-|b_phys|^2 > 0 for ANY passive junction, whichever branch the code labels a and which b. coax_z22 > 0 is therefore confirmatory only; coax_z22 <= 0 would mean the box or the run is unphysical.
+  rule R1: coax_z22 / (|a_code|^2 - |b_code|^2) on the coax ladder (POST-#822 label mapping; the pre-#822 dumps computed the same PHYSICAL quantity as |b_code|^2 - |a_code|^2): Z0 CALIBRATION ratio, predeclared band +-10% (analytic z_tem vs numerical stub). LABEL-BLIND and therefore NOT an H1 discriminator: its denominator comes from the extractor's geometric branch identity ('coax: reference above => the branch toward the reference plane is the +z wave'), which holds under H1 and under its negation alike.
+  rule R2: msl_x20 / |MSL outgoing wave|^2: MSL modal-voltage -> power conversion. The outgoing (+x, away-from-junction) wave is b_out[1,0] post-#822 and was a_inc[1,0] before it; the physical quantity, and hence the number, is the same (= the design's '|b_msl|^2 = 1.76e-15').
+  rule closure: |closure_rel_residual| <= 0.05 expected for a lossless box of patch faces AT STEADY STATE ONLY: the identity is a time-harmonic power balance, so on a truncated (un-settled) run the residual is the energy still stored in the box, not a leak -- measured 78% on a 300-step attempt-3 smoke (settling -1.6 dB) and expected to close only once settling_db clears -40 dB. msl_x20_full is a full-plane comparator and is NOT one of the six faces.
+=== label-swap counterfactual (a<->b re-solved): the PRE-#822 reading of the same field, NOT a measurement ===
+  max |S_swap - inv(S_code)| = 4.88e-15 (algebraic identity)
+   6.00 GHz  |S_swap| = [[0.7445, 0.9229], [0.2728, 0.3280]]  colP coax 0.6286  colP msl 0.9594  lam_min -0.5873  single-ratio |Gamma_coax| swapped 1.0737 (code 0.9313)
+   8.00 GHz  |S_swap| = [[1.6085, 2.1426], [0.4528, 0.6545]]  colP coax 2.7923  colP msl 5.0191  lam_min -6.806  single-ratio |Gamma_coax| swapped 1.0526 (code 0.9500)
+  10.00 GHz  |S_swap| = [[1.8237, 4.8751], [1.0892, 2.1989]]  colP coax 4.5124  colP msl 28.6017  lam_min -32.06  single-ratio |Gamma_coax| swapped 1.0159 (code 0.9843)
+  witness JSON written to: /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260901T105940Z-356a47cfce34-attempt3-x640/remeasure_result.witnesses.json
+result JSON re-written with the witness keys: /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260901T105940Z-356a47cfce34-attempt3-x640/remeasure_result.json
+
+=== SUMMARY (for filling SETTLED_RUN_RECORD -- hand-copy, do not auto-apply) ===
+  status              : RUN
+  target_n_steps       : 135000
+  n_steps (this run)   : 135000
+  settling_db          : [-128.4904588362289, -118.79848814811461]  (-40 dB rule cleared: True)
+  reciprocity worst dev: 0.7886900514053978
+  |S22|                : [22.32142096248982, 7.631561658217321, 1.3967470640930162]
+  max|S|               : 27.672005822186176
+  col_msl_driven_power : [1263.9857400077856, 161.580633326388, 15.891523968428206]
+  gamma_ratio          : [1.3801999636193671, 1.0813146777638674, 0.922105214830391]
+  log_path             : /root/workspace/byungkwan-workspace/research/rfx-fidelity-722/.omx/589-remeasure/20260901T105940Z-356a47cfce34-attempt3-x640/remeasure_result.json
+  vessl_run_id         : <fill from the VESSL job that ran this>
+
+=== #589 EXTENSION SUMMARY (committed bins; report-only) ===
+  fixture              : attempt3  grid(padded)=[142, 51, 56]
+  precision            : jax_enable_x64=False  solve=complex64  s_params(assembly)=complex128
+  |S00|                : [9.835349697329221, 3.105054207721503, 1.684107905463512]
+  |S10| dB / |S01| dB  : [18.2544741299904, 6.641079256191472, -1.5743002024801673] / [28.84081280763627, 20.142680368810314, 11.442821392307412]
+  col_coax_driven_power: [163.63738412926307, 14.255683931668118, 3.5321565222695495]
+  lambda_min(I-S^HS)   : [-1425.9931288608548, -174.70820539626723, -18.393434840984256]  -> EXTRACTOR (lambda_min(I - S^H S) < -0.02 at >=1 bin: non-passive S)
+  cond_a raw / eq      : [415707022.37662274, 135980992.1825196, 44027328.2572539] / [6.359675533546335, 1.7877817820570017, 1.7626362349186169]
+  A3 (msl/msl fit_res) : [0.34219966895784, 0.263865922847123, 0.2220152579582658]  (msl/coax fit_res [0.07129910892392793, 0.05419061260006567, 0.05169879645542466])  -> EXTRACTOR ((b)-on-ladder supported): MSL ladder, MSL drive: 6 GHz: fit_residual 0.3422 > 0.02 (borrowed); 8 GHz: fit_residual 0.2639 > 0.02 (borrowed); 10 GHz: fit_residual 0.222 > 0.02 (borrowed); 6 GHz: recurrence_residual 0.1567 > 0.02 (borrowed); 8 GHz: recurrence_residual 0.1649 > 0.02 (borrowed); 10 GHz: recurrence_residual 0.1535 > 0.02 (borrowed)
+  A5 coax|MSL ratios   : [0.08983104389959402, 0.0861403561192189, 0.08401298343288309] | [0.8362422218561094, 0.7783984919481782, 0.8315972682644983]
+  A5 verdicts          : coax: RESOLVED (max ratio 0.08983 <= 0.15, smooth, committed bins): transmitted signals are a genuine TEM pair with the expected termination echo ; msl: FLOOR (max ratio 0.8362 > 0.3 or erratic bin-to-bin, committed bins): the non-driven port's signal is extractor floor
+  A0 tier              : STOP (> 1e-2: fixture or extractor is not what the record says)  [compared]
+  preflight lines      : 50  (method skip_preflight flag is inert; see header)
