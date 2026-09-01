@@ -20,9 +20,13 @@ correctness proof for the extractor.  Acceptance:
   * a finite-difference ``jax.grad`` check passes (the consumer is AD
     inverse design — ``jnp.linalg.lstsq`` carries a native JVP rule).
 
-The full physics validation (issue #80 acceptance criterion 1 — S11 min
-at 9.21 ± 0.20 GHz on the v21 RO4003C patch) needs a GPU FDTD run and is
-intentionally NOT covered here.
+The full physics validation needs a GPU FDTD run and is intentionally NOT
+covered here. (Issue #80's original acceptance criterion 1 — S11 min at
+9.21 ± 0.20 GHz on the v21 RO4003C patch — is retired twice over: the |S11|
+dip is the off-resonance match point, not the resonance (issue #118), and
+9.21 GHz predates the #702 sheet-node material fix (issue #782). The
+current committed gates are tests/test_patch_edgefed_s11_passivity.py and
+tests/test_patch_edgefed_resonance_harminv.py.)
 """
 
 from __future__ import annotations

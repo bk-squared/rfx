@@ -12,9 +12,12 @@ answer is pinned three ways.
 FIXTURE (verbatim from tests/test_patch_edgefed_resonance_harminv.py)
 ---------------------------------------------------------------------
 Edge-fed patch, eps_r 3.38, one-cell ground/feed/patch sheets, uniform mesh
-DX = H_SUB/4, CPML.  Committed one-plane ring-down spectrum (N_SUB=4, 120
-periods): 8.78/Q31, 9.32/Q44 (patch TM010; == OpenEMS 9.20, Balanis 9.21),
-11.90/Q18 (feed lambda/2), 13.72/Q38.  Q~44 of the TM010 is radiation-
+DX = H_SUB/4, CPML.  PRE-#702 one-plane ring-down spectrum (N_SUB=4, 120 periods, the
+tree this A/B ran on): 8.78/Q31, 9.32/Q44 (patch TM010; then-current
+OpenEMS 9.20, design-dimension Balanis 9.21), 11.90/Q18 (feed lambda/2),
+13.72/Q38. Since the #702 sheet-node material fix the same fixture's fed
+TM010 reads 8.16 GHz at N=120 (issue #782) — re-derive the reference
+spectrum before re-running this A/B on today's tree.  Q~44 of the TM010 is radiation-
 dominated (lossless dielectric, PEC metal).
 
 PRE-DECLARED READINGS (before the run)
@@ -117,7 +120,7 @@ def main():
         print("  NOT READ: a settling witness failed; no Q number is trusted.")
         return
     a, b = tm010_of(spec_a), tm010_of(spec_b)
-    print(f"  TM010 A(one-plane): {a}   [committed reference 9.32/Q44]")
+    print(f"  TM010 A(one-plane): {a}   [pre-#702 reference 9.32/Q44; fed TM010 reads 8.16 GHz since #702 — issue #782]")
     print(f"  TM010 B(two-plane): {b}")
     if a is None or b is None:
         print("  -> TM010 MISSING in one arm: two-plane suppresses the radiating mode.")

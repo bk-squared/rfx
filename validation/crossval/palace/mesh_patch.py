@@ -1,9 +1,13 @@
 """Gmsh mesh generator for the X-band inset-fed patch — Palace FEM arbiter.
 
 Third solver (Palace, FEM in the frequency domain) for the S11 dip that rfx
-(FDTD) and openEMS (FDTD) disagree on:  rfx ~10.1 GHz vs openEMS ~9.26 GHz,
-both ~ -12 dB.  Geometry is the exact design from
-scripts/research/calibration/crossval/rfx_patch_inset_xband.py (issue80 frame, inset feed):
+(FDTD) and openEMS (FDTD) disagreed on in the 2026-07 campaign (pre-#702
+tree): rfx ~10.1 GHz vs openEMS ~9.26 GHz, both ~ -12 dB. The rfx figure is
+a pre-#702 measurement and is not reproducible on today's tree (#702 moved
+the rfx patch legs down about 12%; issue #782); the dated campaign record is
+docs/crossval/patch_xband_4solver.md. Geometry is the exact design from the
+campaign's rfx script rfx_patch_inset_xband.py (a campaign-workspace path,
+not in this repo) (issue80 frame, inset feed):
 
     RO4003C  eps_r=3.38  h=0.787 mm
     patch    L=8.595 mm (x, resonant)  x  W=10.129 mm (y)

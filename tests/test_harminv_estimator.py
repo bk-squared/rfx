@@ -4,7 +4,9 @@ Until now ``rfx.harminv`` had NO committed estimator-level test — its only
 validation was indirect, through physics cross-vals (cv05) and the slow
 issue-80 patch resonance gate (``tests/test_patch_edgefed_resonance_harminv.py``).
 The 2026-06-17 reference-verification confirmed (in throwaway scratch scripts)
-that the issue-80 9.32 GHz witness is window-stable, estimator-parameter-stable,
+that the issue-80 witness (fed patch TM010, 9.32 GHz as the fixture read on the
+pre-#702 tree; the same fixture reads 8.16 GHz since the #702 sheet-node
+material fix — issue #782) is window-stable, estimator-parameter-stable,
 and float32-insensitive — but those findings were not regression-locked.
 
 This module locks the estimator's core contract against a SYNTHETIC

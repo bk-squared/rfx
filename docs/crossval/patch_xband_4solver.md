@@ -6,6 +6,15 @@ End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave
 Engineering"* (Fig. 2 and the X-band rows of Table II there). The paper keeps
 only the conclusions; everything needed to verify or reproduce them is here.
 
+> **Post-campaign note (2026-09-01, issue #782).** Every rfx number in this
+> record is a pre-#702 measurement. The #702 sheet-node material fix
+> (2026-08) moves the rfx patch legs down about 12% on today's tree (the
+> edge-fed fixture's fed TM010: 9.32 → 8.16 GHz), so the rfx rows are not
+> reproducible on current main. The other solvers' rows and the
+> CST-internal port-swap control are unaffected. Whether the guided-feed
+> cluster in Sec. 4 survives with a post-#702 rfx leg is a re-run question;
+> this document stands as the dated campaign record.
+
 Campaigns: 2026-07-04 → 2026-07-07 (rfx / openEMS / Palace), 2026-07-12 (CST,
 run independently within REMI Lab from the dimensional specification below,
 without access to the other solvers' setups).

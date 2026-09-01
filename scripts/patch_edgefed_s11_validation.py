@@ -1,17 +1,34 @@
-"""Issue #80 acceptance check — edge-fed patch S11 resonance frequency.
+"""Issue #80 acceptance check — edge-fed patch |S11| passivity (historical harness).
 
 Runs the GitHub issue #80 reproduction (edge-fed Hammerstad patch on
-RO4003C, 50 ohm microstrip feed) through ``compute_msl_s_matrix`` on the
-Fix-A/B/C branch and checks whether the |S11| minimum now lands at the
-analytic Balanis resonance 9.21 +/- 0.20 GHz. Pre-fix it landed at
-10.11 GHz. This is acceptance criterion 1 of issue #80.
+RO4003C, 50 ohm microstrip feed) through ``compute_msl_s_matrix`` and dumps
+the full |S11|(f) trace. The exit code gates PASSIVITY only (max|S11| <=
+1.05 — the issue #80 defect was |S11| > 1).
+
+HISTORY. The original acceptance criterion 1 ("|S11| dip at the analytic
+Balanis 9.21 +/- 0.20 GHz"; pre-fix the dip sat at 10.11 GHz) is retired
+twice over and is no longer gated here:
+
+  * the |S11| dip of a directly edge-fed patch is the OFF-RESONANCE match
+    point, not the resonance — reading the dip as the resonance is a
+    category error (issue #118);
+  * 9.21 GHz is Balanis on the DESIGN dimensions, realized on no mesh, and
+    the 9.32 GHz fed resonance it seemed to confirm was two errors
+    cancelling — the #702 sheet-node material fix moved the fed TM010 to
+    8.16 GHz on the harminv-gate board (issue #782).
+
+The committed gates are tests/test_patch_edgefed_s11_passivity.py
+(passivity + edge-fed signature) and
+tests/test_patch_edgefed_resonance_harminv.py (signed resonance
+envelopes). This script stays as a runnable trace dump + passivity check
+on the same geometry.
 
 S11 = gamma/alpha is a pure voltage-wave amplitude ratio (it does NOT
 use Z0), so the Fix-C N-probe voltage decomposition is what this tests.
 The separate Z0-extraction error (contaminated I1, ~74 vs ~54 ohm) does
 not enter S11 and is tracked as a distinct follow-up.
 
-Exit 0 = PASS (dip in [9.01, 9.41] GHz), exit 1 = FAIL.
+Exit 0 = PASS (max|S11| <= 1.05), exit 1 = FAIL.
 """
 from __future__ import annotations
 
@@ -34,9 +51,6 @@ DOM_X = 29.747e-3
 DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
-
-TARGET_GHZ = 9.21
-TOL_GHZ = 0.20
 
 
 def main() -> int:
@@ -74,9 +88,10 @@ def main() -> int:
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
 
-    # Preflight (user directive 2026-05-20: never ignore preflight). The
-    # patch geometry currently emits 0 warnings on this mesh; surface it
-    # anyway so any future regression is visible in the run log.
+    # Preflight (user directive 2026-05-20: never ignore preflight). This
+    # fixture emits several advisories on this mesh (off-lattice design edges,
+    # sheet-cavity electrical thickness, the +25% substrate column under the
+    # port) — they are part of any number quoted from this run.
     print("=== sim.preflight() ===", flush=True)
     sim.preflight()
 
@@ -86,8 +101,10 @@ def main() -> int:
     # ring-down energy in the DFT window — V (Ez) and I (Hy/Hz) leak
     # differently and corrupt the V·I-split denominator a=(V+Z0·I)/2.
     # 200 periods (~27 ns) is comfortably >60 dB down. If |S11| becomes
-    # bounded and smooth with dip near 9.21 GHz, truncation was the
-    # upstream cause; if not, keep diagnosing.
+    # bounded and smooth, truncation was the upstream cause; if not, keep
+    # diagnosing. (The 2026-05 note here expected the dip near 9.21 GHz —
+    # retired: the dip is the match point (#118), and 9.21 GHz predates the
+    # #702 sheet-node material fix (#782).)
     res = sim.compute_msl_s_matrix(n_freqs=81, num_periods=200.0)
 
     freqs = np.asarray(res.freqs, dtype=float)
@@ -101,8 +118,9 @@ def main() -> int:
 
     print("=== issue #80 acceptance — patch S11 (stage S1: V·I split) ===")
     print(f"PATCH-EDGEFED: S11 minimum = {s11_dip_db:.1f} dB at {f_dip:.3f} GHz")
-    print(f"PATCH-EDGEFED: target = {TARGET_GHZ} +/- {TOL_GHZ} GHz (analytic Balanis)")
-    print(f"PATCH-EDGEFED: pre-fix reference = 10.11 GHz (wrong)")
+    print("PATCH-EDGEFED: dip is reported, NOT gated — it is the off-resonance "
+          "match point (issue #118); the retired 9.21 GHz Balanis target "
+          "predates #702 (issue #782)")
     print(f"PATCH-EDGEFED: max|S11| = {s11_max:.3f} (headline — must be <= 1 for "
           f"a passive patch; pre-S1 Fix-C blew up to ~8.6)")
     print(f"PATCH-EDGEFED: Z0[0] median Re = {np.median(z0.real):.2f} ohm")
@@ -110,15 +128,12 @@ def main() -> int:
     for f, a in zip(freqs / 1e9, s11):
         print(f"PATCH-EDGEFED-TRACE: {f:7.3f} GHz  |S11|={a:.5f}")
 
-    ok_dip = (TARGET_GHZ - TOL_GHZ) <= f_dip <= (TARGET_GHZ + TOL_GHZ)
     ok_passive = s11_max <= 1.0 + 0.05
-    ok = ok_dip and ok_passive
-    print(f"PATCH-EDGEFED: ACCEPTANCE-1 (resonance) {'PASS' if ok_dip else 'FAIL'} "
-          f"(dip at {f_dip:.3f} GHz)")
-    print(f"PATCH-EDGEFED: ACCEPTANCE-headline (|S11|<=1) "
+    print(f"PATCH-EDGEFED: dip at {f_dip:.3f} GHz (reported, not gated — "
+          "off-resonance match point, issue #118)")
+    print(f"PATCH-EDGEFED: ACCEPTANCE (|S11| <= 1.05) "
           f"{'PASS' if ok_passive else 'FAIL'} (max|S11| = {s11_max:.3f})")
-    print(f"PATCH-EDGEFED: OVERALL {'PASS' if ok else 'FAIL'}")
-    return 0 if ok else 1
+    return 0 if ok_passive else 1
 
 
 if __name__ == "__main__":
