@@ -178,6 +178,17 @@ both T(f) and R(f), as well as energy conservation R+T within 5%. In practice
 rfx passes this gate with substantially lower error for well-resolved, lossless
 slabs.
 
+Do not read those mean thresholds as an accuracy statement about the fringe
+structure: a band mean over an interference pattern is blind to every zero-mean
+shape error, and with the mean gates alone the case passed while the true slab
+permittivity was 12.33% away from what the FDTD built (issue #812). Since #812
+the script additionally gates each Fabry-Perot extremum of R(f) one at a time —
+position against a window derived from the spectral bin and the exact Yee
+dispersion relation (59/106/235 MHz at the 3.75/7.50/11.24 GHz fringes) and
+value against 0.04 — and, when Meep is importable, gates Meep's numbers rather
+than only its presence. If you need an accuracy figure for a slab, quote the
+per-fringe deviations the script prints, not the band means.
+
 For dispersive media there is currently **no tracked R(f)/T(f) accuracy oracle**
 in this repository — treat dispersive R/T results as unvalidated against
 analytic references until such a gate exists. Two source-verifiable facts to
