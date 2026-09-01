@@ -350,3 +350,44 @@ discrimination sentence, which now records that (2b) alone would NOT discriminat
 (2c) is the discriminating leg. The gate rewrite is committed on that basis; a
 reviewer who holds the STOP clause to its letter should revert the gate commit and
 keep the evidence.
+
+## 11. Falsifier record (final, 2026-09-01)
+
+**F1 — the gate discriminates: SATISFIED.**
+`scripts/diagnostics/patch_edgefed_s11_band_repin_replay.py` (exit 0) evaluates the
+committed gate's own `_gate_readings` on both saved arms:
+- main arm: passivity / band-floor / band-crossing / band-Re(Zin) / dip-above-band all
+  PASS (max|S11| 0.9921, band min 0.8794, crossing 8.8189, Re max 4325.9, dip 10.100);
+- retired arm (bypass): (2c) FAILS — in-band max Re(Zin) 9.2 ohm vs floor 500 — so the
+  test goes RED on the bit-exact pre-#702 physics. (2b) alone would pass there
+  (shoulder crossing 9.1079 in-band): the discrimination is carried by (2c), which was
+  pinned in Section 8 before the retired arm was read. Deviation from the E6' STOP
+  proxy recorded in Section 10.
+
+**F2 — sweep completeness: SATISFIED.**
+`git grep -nE "9\.32[0-9]?|9\.21[^0-9]|9\.20[^0-9]|10\.0239|10\.02375|9\.3216|TARGET_GHZ|9\.26 GHz" -- '*.py' '*.md' '*.mdx'`
+returns 36 lines, all in one of four classes, none reading as current:
+1. dated pre-#702 historical framing written this session (two_plane_patch_radiation_ab
+   16/17/123, patch_edgefed_s11_validation 9/15/16/105/106/122, test_harminv_estimator
+   7, test_msl_nprobe_extractor 25/27, test_patch_edgefed_s11_passivity 36,
+   palace/mesh_patch 5, patch_xband_4solver.md rows under its post-campaign banner);
+2. retirement narration in this note, the band_repin evidence files, and the harminv
+   companion's own docstring (correct usage per the issue);
+3. numeric coincidences: recipe-design-loop.mdx:59 (9.21e-5 AD error),
+   test_preflight_structured_and_guards.py:400 (9.322e9 frequency-formatter literal);
+4. the retired-arm crossing 9.325 in the new discrimination sentence (a measured
+   pre-#702-physics number, labelled as such).
+
+**F3 — nothing else moves: SATISFIED.**
+- touched test files (s11_passivity fast lane, harminv_estimator, msl_nprobe_extractor,
+  evidence_citation_pointers): 23 passed, 1 deselected (the gpu+slow gate itself);
+- neighbours sharing the surfaces: test_patch_edgefed_resonance_harminv fast gates +
+  test_preflight_campaign_statics 29 passed; sheen/msl public-carrier +
+  crossval-manifest contract tests 40 passed;
+- full-suite `pytest --collect-only`: 4549/4937 collected, zero errors (baseline
+  4548/4936 — the +1 is this file's new raster lock, which runs in the default lane);
+- `ruff check rfx/ tests/` (CI selection): clean.
+
+Environment: every run in this note used `JAX_PLATFORMS=cpu` with `PYTHONPATH` pinned
+to this worktree; `rfx.__file__` recorded in each run log resolves inside the worktree
+(no editable-install shadow).
