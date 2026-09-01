@@ -1,0 +1,174 @@
+{
+  "config": {
+    "band_hi_hz": 11866600000.0,
+    "band_lo_hz": 3032100000.0,
+    "band_n_bins": 170,
+    "band_provenance": "the contiguous band the committed spectral mask selects (04_multilayer_fresnel.py:304); a measured property of the committed run, not a gate threshold",
+    "c0_m_per_s": 299800000.0,
+    "d_m": 0.01,
+    "df_bin_hz": 52276988.63645815,
+    "dt_s": 2.335067793382187e-12,
+    "dx_m": 0.001,
+    "eps_r": 4.0,
+    "n_index": 2.0,
+    "nfft": 8192
+  },
+  "detector": {
+    "anchored_on": "the analytic extremum supplies each extremum's KIND and the CENTRE of its half-fringe search cell",
+    "measured_quantity": "arg-extremum of the measured R(f) strictly inside that cell, refined to sub-bin resolution by a 3-point parabolic vertex fit",
+    "pin_margin_bins": 2,
+    "reference_blind": false,
+    "search_half_width_hz": 1873750000.0,
+    "withdrawn_alternative": "a reference-blind prominence detector was implemented, measured and withdrawn: on this band it rejected both true maxima (their outer shoulders are truncated by the band), so it failed criterion (A) on correct code -- see docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md section 9"
+  },
+  "falsifiers": [
+    {
+      "criterion": "A",
+      "expect_ok": true,
+      "id": "A_ideal_analytic_slab",
+      "verdict": {
+        "n_rows": 3,
+        "ok": true,
+        "reason_classes": [],
+        "worst_position_window_utilisation": 3.5342456859075894e-05,
+        "worst_value_window_utilisation": 1.029820394522532e-06
+      },
+      "what": "an exact lossless-slab R(f) must PASS"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_audit_eps_plus_12_33_percent",
+      "verdict": {
+        "n_rows": 3,
+        "ok": false,
+        "reason_classes": [
+          "POSITION",
+          "VALUE"
+        ],
+        "worst_position_window_utilisation": 4.067257508439367,
+        "worst_value_window_utilisation": 1.1098600029984667
+      },
+      "what": "audit defect: the true slab is eps=4.4933 while rfx built eps=4.0; every pre-#812 gate passes"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_audit_thickness_plus_8_percent",
+      "verdict": {
+        "n_rows": 3,
+        "ok": false,
+        "reason_classes": [
+          "POSITION"
+        ],
+        "worst_position_window_utilisation": 5.830452934754837,
+        "worst_value_window_utilisation": 1.029820394522532e-06
+      },
+      "what": "audit defect: the true slab is 8.0% thicker"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_audit_rmax_minus_22_3_percent",
+      "verdict": {
+        "n_rows": 3,
+        "ok": false,
+        "reason_classes": [
+          "VALUE"
+        ],
+        "worst_position_window_utilisation": 3.5342456859075894e-05,
+        "worst_value_window_utilisation": 2.007499999745059
+      },
+      "what": "audit defect: measured R_max reads 22.3% low with the fringe POSITIONS untouched"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_one_cell_thickness_error",
+      "verdict": {
+        "n_rows": 3,
+        "ok": false,
+        "reason_classes": [
+          "POSITION"
+        ],
+        "worst_position_window_utilisation": 7.332698070222513,
+        "worst_value_window_utilisation": 1.029820394522532e-06
+      },
+      "what": "one dx of thickness error, the smallest the grid expresses"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_structureless_curve_is_a_containment_failure",
+      "verdict": {
+        "n_rows": 0,
+        "ok": false,
+        "reason_classes": [
+          "CONTAINMENT"
+        ],
+        "worst_position_window_utilisation": null,
+        "worst_value_window_utilisation": null
+      },
+      "what": "a flat R(f) has no fringe: the detector must FAIL with CONTAINMENT, never report a cell boundary as an extremum"
+    },
+    {
+      "criterion": "B",
+      "expect_ok": false,
+      "id": "B_shift_inside_the_search_cell_still_fails",
+      "shift_hz": 400000000.0,
+      "shift_over_cell_half_width": 0.2134756504336224,
+      "verdict": {
+        "n_rows": 3,
+        "ok": false,
+        "reason_classes": [
+          "POSITION"
+        ],
+        "worst_position_window_utilisation": 2.5068991848351216,
+        "worst_value_window_utilisation": 6.764936774060583e-07
+      },
+      "what": "a 400 MHz uniform fringe shift is inside every search cell -- it is FOUND, and must still FAIL on POSITION; this is what non_entailment_ratio buys"
+    }
+  ],
+  "gates_described": "validation/crossval/comparators/fringe_gate.py",
+  "generated_by": "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py",
+  "issue": 812,
+  "schema": "cv04_fringe_gate_geometry/1",
+  "windows": {
+    "cell_half_width_hz": 1873750000.0,
+    "cell_half_widths_per_fsr": 0.25,
+    "fringes": [
+      {
+        "f_analytic_hz": 3747500000.0,
+        "kind": "max",
+        "position_window_hz": 59038622.64148497,
+        "position_window_over_cell_half_width": 0.03150827092274048,
+        "value_analytic": 0.36,
+        "yee_dispersion_shift_hz": 3380817.0025134087
+      },
+      {
+        "f_analytic_hz": 7495000000.0,
+        "kind": "min",
+        "position_window_hz": 106374954.63687968,
+        "position_window_over_cell_half_width": 0.056771156577387426,
+        "value_analytic": 0.0,
+        "yee_dispersion_shift_hz": 27048983.000210762
+      },
+      {
+        "f_analytic_hz": 11242500000.0,
+        "kind": "max",
+        "position_window_hz": 234882954.5669086,
+        "position_window_over_cell_half_width": 0.12535447875485448,
+        "value_analytic": 0.36,
+        "yee_dispersion_shift_hz": 91302982.96522522
+      }
+    ],
+    "fsr_hz": 7495000000.0,
+    "max_position_window_hz": 234882954.5669086,
+    "meep_abs_limit": 0.08,
+    "meep_cross_limit": 0.16,
+    "non_entailment_meaning": "search half-width / widest gate window. The verdict cannot be entailed by the search window while this is >> 1 AND an extremum reaching the cell edge is a CONTAINMENT failure rather than a reported boundary; both halves are pinned in tests/test_crossval_gate_logic.py",
+    "non_entailment_ratio": 7.977377513216886,
+    "safety": 2.0,
+    "value_limit": 0.04
+  }
+}

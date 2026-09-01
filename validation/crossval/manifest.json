@@ -82,9 +82,12 @@
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
         "validation/crossval/04_multilayer_fresnel.py",
-        "validation/crossval/comparators/fringe_gate.py"
+        "validation/crossval/comparators/fringe_gate.py",
+        "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py"
       ],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "validation/crossval/_04_fresnel_results/fringe_gate_geometry.json"
+      ],
       "cpu_runner": {"order": 2},
       "scheduled_external_order": 4,
       "failure_sentinel": "rfx accuracy: FAIL"

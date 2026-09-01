@@ -245,7 +245,9 @@ def test_cv04_fringe_windows_match_the_predeclared_values():
     """The frozen windows are 59.1 / 106.3 / 234.9 MHz at the three gated
     fringes (docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md
     section 4, committed BEFORE the measurement). If this test moves, someone
-    widened a pre-declared gate."""
+    widened a pre-declared gate. These are the digits behind
+    `_04_fresnel_results/fringe_gate_geometry.json::windows.fringes[]
+    .position_window_hz`, which is what the gate's comments cite."""
     fg = _load_fringe_gate()
     windows = [
         fg.position_window_hz(
@@ -375,3 +377,171 @@ def test_cv04_external_pointwise_gate_is_a_maximum_not_a_mean():
     spike[2048] = 0.5
     assert fg.external_pointwise_reasons(spike, perfect, perfect, perfect)
     assert float(spike.mean()) < fg.MEEP_ABS_LIMIT   # a mean gate would pass
+
+
+# ---------------------------------------------------------------------------
+# cv04 numeric provenance (issue #812 ROUND 2).
+#
+# Round 1's blocking finding on this lane was not a defective gate: it was a
+# source comment claiming the detector is "REFERENCE-BLIND", which the
+# implementation has not been since the gate was first measured (a
+# reference-blind prominence detector was tried and withdrawn for failing
+# criterion (A) on correct code — pre-declaration note section 9). The repair
+# is mechanical rather than editorial: every quantity cv04's prose asserts about
+# this gate is emitted to a committed artifact and re-derived here, so a stale
+# sentence and a stale number both fail a test instead of a reviewer.
+# ---------------------------------------------------------------------------
+
+CV04_EVIDENCE_JSON = (
+    CROSSVAL_DIR / "_04_fresnel_results" / "fringe_gate_geometry.json"
+)
+
+
+def _load_cv04_evidence_emitter():
+    path = CROSSVAL_DIR / "comparators" / "emit_cv04_fringe_gate_evidence.py"
+    spec = importlib.util.spec_from_file_location("_cv04_evidence_test", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _assert_same(actual, expected, path="$"):
+    """Recursive compare: exact for str/bool/None, 1e-9 relative for numbers."""
+    assert type(actual) is type(expected) or (
+        isinstance(actual, (int, float)) and isinstance(expected, (int, float))
+    ), f"{path}: type {type(actual)} != {type(expected)}"
+    if isinstance(expected, dict):
+        assert actual.keys() == expected.keys(), f"{path}: key set differs"
+        for key in expected:
+            _assert_same(actual[key], expected[key], f"{path}.{key}")
+    elif isinstance(expected, list):
+        assert len(actual) == len(expected), f"{path}: length differs"
+        for i, item in enumerate(expected):
+            _assert_same(actual[i], item, f"{path}[{i}]")
+    elif isinstance(expected, bool) or expected is None:
+        assert actual == expected, f"{path}: {actual!r} != {expected!r}"
+    elif isinstance(expected, (int, float)):
+        assert actual == pytest.approx(expected, rel=1e-9, abs=1e-15), (
+            f"{path}: {actual!r} != {expected!r}"
+        )
+    else:
+        assert actual == expected, f"{path}: {actual!r} != {expected!r}"
+
+
+def test_cv04_committed_evidence_json_is_reproducible():
+    """The committed artifact must be exactly what the emitter produces today.
+
+    This is the numeric-provenance leg: cv04's comments and design note point at
+    keys in this file instead of restating digits, so a number that drifts from
+    the code that produced it fails here rather than surviving in prose."""
+    import json
+
+    assert CV04_EVIDENCE_JSON.exists(), (
+        f"missing {CV04_EVIDENCE_JSON}; regenerate with "
+        "python validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py"
+    )
+    committed = json.loads(CV04_EVIDENCE_JSON.read_text(encoding="utf-8"))
+    fresh = _load_cv04_evidence_emitter().build_evidence()
+    _assert_same(fresh, committed)
+
+
+def test_cv04_evidence_records_every_falsifier_verdict_it_declares():
+    """Each falsifier's measured verdict must match its declared expectation —
+    criterion (A) passes, every criterion (B) probe fails."""
+    ev = _load_cv04_evidence_emitter().build_evidence()
+    ids = [f["id"] for f in ev["falsifiers"]]
+    assert len(ids) == len(set(ids))
+    assert any(f["criterion"] == "A" for f in ev["falsifiers"])
+    assert sum(f["criterion"] == "B" for f in ev["falsifiers"]) >= 5
+    for f in ev["falsifiers"]:
+        assert f["verdict"]["ok"] is f["expect_ok"], f["id"]
+
+
+def test_cv04_search_window_cannot_entail_the_verdict():
+    """The property that replaced the withdrawn reference-blindness claim.
+
+    Non-entailment is a relation between two widths plus the pinning rule, not
+    a property of the detector's ignorance. Both halves are asserted here from
+    the artifact the comments cite."""
+    ev = _load_cv04_evidence_emitter().build_evidence()
+    windows = ev["windows"]
+    # (i) the search cell is much wider than the widest verdict window
+    ratio = windows["cell_half_width_hz"] / windows["max_position_window_hz"]
+    assert ratio == pytest.approx(windows["non_entailment_ratio"], rel=1e-12)
+    assert ratio > 5.0
+    for fringe in windows["fringes"]:
+        assert fringe["position_window_over_cell_half_width"] < 0.2
+    # (ii) reaching the cell edge is a failure, not a reported boundary
+    by_id = {f["id"]: f for f in ev["falsifiers"]}
+    pinned = by_id["B_structureless_curve_is_a_containment_failure"]
+    assert pinned["verdict"]["reason_classes"] == ["CONTAINMENT"]
+    # (iii) a shift the detector CAN find still fails the gate
+    inside = by_id["B_shift_inside_the_search_cell_still_fails"]
+    assert inside["shift_over_cell_half_width"] < 1.0
+    assert inside["verdict"]["reason_classes"] == ["POSITION"]
+    assert inside["verdict"]["worst_position_window_utilisation"] > 1.0
+
+
+def test_cv04_gate_sources_do_not_claim_reference_blindness():
+    """Anti-regression for round 1's blocking finding.
+
+    The detector is reference-ANCHORED. Any file that gates cv04 claiming
+    otherwise is describing an implementation this repo withdrew, so the claim
+    fails a test rather than a reviewer. `reference-blind` may only appear where
+    it is explicitly negated or named as the withdrawn alternative."""
+    ev = _load_cv04_evidence_emitter().build_evidence()
+    assert ev["detector"]["reference_blind"] is False
+
+    for name in ("04_multilayer_fresnel.py", "comparators/fringe_gate.py"):
+        lines = (CROSSVAL_DIR / name).read_text(encoding="utf-8").splitlines()
+        for lineno, line in enumerate(lines, start=1):
+            if "reference-blind" not in line.lower():
+                continue
+            # a comment paragraph wraps, so judge the claim on its neighbours
+            # with the comment markers stripped
+            low = " ".join(
+                raw.strip().lstrip("#").strip()
+                for raw in lines[max(0, lineno - 2):lineno + 1]
+            ).lower()
+            negated = any(
+                token in low
+                for token in (
+                    "not reference-blind",          # the direct denial
+                    "not load-bearing",             # the reason it is denied
+                    "reference-blind prominence",   # the withdrawn detector
+                    "previously claimed",           # the correction itself
+                    "withdrawn",
+                )
+            )
+            assert negated, (
+                f"{name}:{lineno} asserts reference-blindness: {line.strip()!r}"
+            )
+
+
+def test_cv04_evidence_config_still_matches_the_script_it_cites():
+    """The evidence artifact is only worth its keys if its config is the
+    script's config. Each constant is re-read from the cited source line, so an
+    edit to the crossval script that moves eps/d/dx/c0 invalidates the artifact
+    here instead of silently invalidating every number that points at it."""
+    emitter = _load_cv04_evidence_emitter()
+    lines = (CROSSVAL_DIR / "04_multilayer_fresnel.py").read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    def value_on(lineno: int, name: str) -> float:
+        stmt = lines[lineno - 1].split("#")[0].strip()
+        lhs, _, rhs = stmt.partition("=")
+        assert lhs.strip() == name, (
+            f"04_multilayer_fresnel.py:{lineno} is {stmt!r}, not an assignment "
+            f"to {name}"
+        )
+        return float(eval(rhs.strip(), {"math": math, "np": np}))  # noqa: S307
+
+    assert value_on(63, "eps_slab") == emitter.EPS_R
+    assert value_on(65, "d_slab") == emitter.D_M
+    assert value_on(67, "dx") == emitter.DX_M
+    assert value_on(43, "C0") == emitter.C0
+    assert math.sqrt(emitter.EPS_R) == emitter.N_INDEX
+    # the FFT length the bin width is derived from
+    assert "np.ceil(np.log2(n_steps)) * 8" in lines[290 - 1]

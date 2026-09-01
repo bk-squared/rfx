@@ -14,20 +14,24 @@ their POSITIONS and their VALUES one fringe at a time.
 
 Two properties are load-bearing and must survive any edit:
 
-1. **The search window cannot entail the verdict.** The analytic slab
-   partitions the band into half-fringe cells of width ``FSR/2``, one per
-   extremum. The measured extremum is the arg-extremum inside its own cell,
-   refined by a parabolic vertex fit; if it lands on a cell boundary the gate
-   FAILS with "pinned at the edge of its half-fringe cell" rather than
-   silently reporting the boundary. The gate window ``W`` is at most
-   ``0.063 * FSR/2`` (234.9 MHz against 3747.5 MHz in the committed config),
-   so "found in the cell" is 16x looser than "passes the gate" and cannot
-   imply it -- which is exactly how cv02's ``mean_err < 5%`` verdict turned
-   out to be entailed by its own ``best_diff < 0.05`` matcher window (200,000
-   trials, zero failures). A defect that moves a fringe by more than ``W`` but
-   less than the cell half-width is found and reported as a position failure;
-   a defect that moves it out of its cell is reported as a pinning failure.
-   Both regimes fire.
+1. **The search window cannot entail the verdict.** The detector is
+   REFERENCE-ANCHORED, not reference-blind: the analytic slab partitions the
+   band into half-fringe cells of width ``FSR/2``, one per extremum, and
+   supplies each extremum's kind. What is *measured* is the arg-extremum
+   inside its own cell, refined by a parabolic vertex fit; if it lands on a
+   cell boundary the gate FAILS with "pinned at the edge of its half-fringe
+   cell" rather than silently reporting the boundary. Anchoring is safe
+   because the search half-width is far wider than the widest gate window --
+   the ratio is
+   ``_04_fresnel_results/fringe_gate_geometry.json::windows.non_entailment_ratio``
+   for the committed cv04 config -- so "found in the cell" is much looser than
+   "passes the gate" and cannot imply it, which is exactly how cv02's
+   ``mean_err < 5%`` verdict turned out to be entailed by its own
+   ``best_diff < 0.05`` matcher window (200,000 trials, zero failures). A
+   defect that moves a fringe by more than ``W`` but less than the cell
+   half-width is found and reported as a position failure; a defect that moves
+   it out of its cell is reported as a pinning failure. Both regimes fire, and
+   both are pinned as ``falsifiers[]`` entries in that same artifact.
 2. **The windows are derived, not fitted.** ``position_window_hz`` is built from
    the spectral bin and the exact discrete-Yee dispersion relation;
    ``FRINGE_VALUE_LIMIT`` is built from the dispersion-induced contrast change
@@ -72,9 +76,12 @@ CELL_HALF_WIDTHS_PER_FSR = 0.25
 PIN_MARGIN_BINS = 2
 
 # Meep leg (section 6). Pointwise |dR| induced by one position budget
-# W(f_top) = 234.9 MHz at the maximum fringe slope |dR/df| = 0.151/GHz is
-# 0.0355; plus the amplitude budget 0.04 -> 0.08. Two independent solvers
-# differing from each other get twice that.
+# W(f_top) (= windows.max_position_window_hz in the evidence artifact, 234.9 MHz
+# for the committed cv04 config, pinned by
+# tests/test_crossval_gate_logic.py::test_cv04_fringe_windows_match_the_predeclared_values)
+# at the maximum fringe slope |dR/df| = 0.151/GHz is 0.0355; plus the amplitude
+# budget 0.04 -> 0.08. Two independent solvers differing from each other get
+# twice that.
 MEEP_ABS_LIMIT = 0.08
 MEEP_CROSS_LIMIT = 0.16
 
@@ -215,8 +222,10 @@ def position_window_hz(
     """W(f) = safety * (df_bin/2 + |Yee dispersion shift(f)|).
 
     Derived in docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md
-    section 4. Committed cv04 config: 59.1 / 106.3 / 234.9 MHz at the
-    3.7475 / 7.4950 / 11.2425 GHz fringes.
+    section 4. The per-fringe values for the committed cv04 config are in
+    ``validation/crossval/_04_fresnel_results/fringe_gate_geometry.json``
+    under ``windows.fringes[].position_window_hz``, regenerated on every run of
+    ``tests/test_crossval_gate_logic.py``.
     """
     return safety * (
         0.5 * df_bin_hz
@@ -225,7 +234,14 @@ def position_window_hz(
 
 
 # ---------------------------------------------------------------------------
-# reference-blind detection
+# cell-anchored extremum detection
+#
+# NOT reference-blind. The reference supplies the cell centre and the kind; the
+# measurement supplies the arg-extremum inside the cell. See property 1 in the
+# module docstring for why anchoring cannot entail the verdict, and the
+# pre-declaration note section 9 for the reference-blind prominence detector
+# that was implemented, measured, and withdrawn for failing criterion (A) on
+# correct code.
 # ---------------------------------------------------------------------------
 def _parabolic_vertex(
     y_left: float, y_mid: float, y_right: float

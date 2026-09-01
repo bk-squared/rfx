@@ -419,3 +419,62 @@ not a measurement: it predicts the residual shrinks with run length, and the
 committed rung-C4 provenance (nx=1500 / 1940 steps) is the run that would test
 it. This is physics/measurement, not instrument, and every value stays inside
 the pre-declared window, so it is recorded here and left for a separate lane.
+
+## 13. CORRECTION (round 2) — the "reference-blind" claim, and where the numbers live now
+
+**The blocker.** `validation/crossval/04_multilayer_fresnel.py` described the
+gate's detector as "a REFERENCE-BLIND detector ... (prominence floor = the
+amplitude resolution)". That has not been the implementation since section 9:
+the detector is **reference-anchored** — the analytic slab supplies each
+extremum's kind and the centre of its half-fringe search cell, and the
+measurement supplies the arg-extremum inside that cell. Section 9 recorded the
+change; three source comments were never updated with it (the PART 2 block, the
+Meep-leg block that section 6 item 3 describes, and a `fringe_gate.py` section
+header). Read section 6 item 3's "the same reference-blind detector" as "the
+same cell-anchored detector".
+
+**Which way it was closed, and why.** The comments were corrected to describe
+the code; the code was **not** changed to become reference-blind.
+Reference-blindness is not load-bearing for this gate, and section 9 already
+measured it to be *harmful* — the reference-blind prominence detector rejected
+both true maxima on this band, i.e. it failed criterion (A) on correct code.
+What is load-bearing is **non-entailment**: that "found in the cell" cannot
+imply "passes the gate". That is a relation between two widths plus the rule
+that a pinned extremum is a failure — not a property of the detector's
+ignorance — and both halves are now pinned by tests rather than asserted in a
+comment.
+
+**The gate logic did not move**, so sections 10 and 11 stand unchanged. This is
+checkable, not asserted: parsing both gate files at round 1's tip (`b49c2aa`)
+and at round 2, stripping module/class/function docstrings and comparing
+`ast.dump`, gives identical trees for `04_multilayer_fresnel.py` and for
+`comparators/fringe_gate.py`.
+
+**Where the numbers live now.** Artifact
+`validation/crossval/_04_fresnel_results/fringe_gate_geometry.json`, emitted by
+`validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py`
+(closed-form, no FDTD), regenerated and compared field-by-field on every run of
+`tests/test_crossval_gate_logic.py::test_cv04_committed_evidence_json_is_reproducible`.
+The comments and this note reference these keys instead of restating digits:
+
+| claim | key |
+|---|---|
+| position window `W(f)`, per fringe | `windows.fringes[].position_window_hz` |
+| the Yee shift each `W` is built from | `windows.fringes[].yee_dispersion_shift_hz` |
+| value window `V` | `windows.value_limit` |
+| search half-width (`FSR/4`) | `windows.cell_half_width_hz` |
+| non-entailment ratio (section 9's "8.0x tighter") | `windows.non_entailment_ratio` |
+| detection power on each audit defect | `falsifiers[].verdict.worst_position_window_utilisation`, `...worst_value_window_utilisation` |
+| the withdrawn detector | `detector.withdrawn_alternative` |
+
+**Falsifiers for the two new mechanical checks** (both demonstrated, round 2):
+re-injecting round 1's exact sentence makes
+`test_cv04_gate_sources_do_not_claim_reference_blindness` fail, naming the file,
+the line and the sentence; editing one number in the committed JSON makes
+`test_cv04_committed_evidence_json_is_reproducible` fail, naming the key and
+both values.
+
+**Still owed.** An end-to-end re-run of the case confirming section 10's (A)
+table on today's tree. The change is comment-only at AST level, so the table is
+expected to reproduce exactly; the run is reported as a VESSL yaml rather than
+executed locally (SPEC-00 §0.3b).

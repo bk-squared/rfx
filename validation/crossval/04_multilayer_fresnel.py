@@ -344,23 +344,43 @@ cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 # The mean gates above (t_ok/r_ok) are audit pattern P2: the mean's null space
 # is every zero-mean shape error, and the gated observable here IS an
 # interference pattern. The audit measured that with only the mean gates the
-# case reports PASS while R_max is 22.3% low (0.3600 -> 0.2797), or the FDTD
-# slab is built with eps 12.33% too high, or d 8.0% wrong.
+# case reports PASS on each of the three defects catalogued as criterion-(B)
+# entries in `_04_fresnel_results/fringe_gate_geometry.json::falsifiers`.
 #
-# The metric below is per-fringe, not a band mean: a REFERENCE-BLIND detector
-# locates the interior extrema of R_rfx(f) (prominence floor = the amplitude
-# resolution), refines each vertex to sub-bin resolution by a parabolic fit,
-# and then each extremum's POSITION and VALUE is gated against the analytic
-# slab. Nothing about the analytic extrema enters the detector, so the verdict
-# is not entailed by its own search window.
+# The metric below is per-fringe, not a band mean, and its detector is
+# REFERENCE-ANCHORED, not reference-blind (CORRECTED, issue #812 round 2 —
+# this comment previously claimed a reference-blind detector that has not been
+# the implementation since the gate was first measured). The analytic slab
+# supplies each extremum's KIND and the CENTRE of a half-fringe search cell;
+# what is measured is the arg-extremum of R_rfx(f) strictly INSIDE that cell,
+# refined to sub-bin resolution by a 3-point parabolic vertex fit, and then
+# each extremum's POSITION and VALUE is gated against the analytic slab.
+#
+# Reference-blindness is NOT load-bearing here, and was measured to be harmful:
+# the reference-blind prominence detector this comment used to describe was
+# implemented, run, and withdrawn because it rejected both true maxima on this
+# band (the band truncates their outer shoulders), i.e. it failed criterion (A)
+# on correct code — pre-declaration note section 9, and
+# `_04_fresnel_results/fringe_gate_geometry.json::detector.withdrawn_alternative`.
+#
+# What IS load-bearing is NON-ENTAILMENT — that "found in the cell" cannot
+# imply "passes the gate", the cv02 failure mode. Two properties give it, and
+# both are mechanically pinned rather than asserted here:
+#   * the search half-width is far wider than the widest verdict window,
+#     ratio = `fringe_gate_geometry.json::windows.non_entailment_ratio`;
+#   * an extremum that reaches its cell edge is a CONTAINMENT FAILURE, never a
+#     silently reported boundary
+#     (`falsifiers[].id == "B_structureless_curve_is_a_containment_failure"`).
+# A shift small enough to stay inside the cell therefore still fails on
+# POSITION: `falsifiers[].id == "B_shift_inside_the_search_cell_still_fails"`.
 #
 # Windows (frozen in docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md
 # in a commit PRECEDING this measurement — do not widen):
-#   position  W(f) = 2 * (df_bin/2 + |exact Yee dispersion shift at f|)
-#                  = 59.1 / 106.3 / 234.9 MHz at 3.7475 / 7.4950 / 11.2425 GHz
-#   value     V    = 0.04 = 11.1% of the analytic fringe contrast (0.36)
-# Detection power, from geometry alone: eps +12.33% moves the three fringes by
-# -211.7 / -423.4 / -635.1 MHz = 3.6x / 4.0x / 2.7x their windows.
+#   position  W(f) = SAFETY * (df_bin/2 + |exact Yee dispersion shift at f|),
+#                    per fringe in `fringe_gate_geometry.json::windows.fringes`
+#   value     V    = `fringe_gate_geometry.json::windows.value_limit`
+# Detection power against each audit defect, re-derived on every test run:
+# `fringe_gate_geometry.json::falsifiers[].verdict`.
 # -----------------------------------------------------------------------------
 freqs_band = freqs[mask]
 df_bin = float(freqs[1] - freqs[0])
@@ -536,8 +556,9 @@ if HAVE_MEEP:
     #      max|R_rfx - R_meep|, max|T_rfx - T_meep| <= MEEP_CROSS_LIMIT = 0.16
     #      (two independent solvers -> twice one solver's budget).
     #   3. Meep's own fringe structure, located on MEEP'S NATIVE flux grid by
-    #      the same reference-blind detector, must match the analytic slab in
-    #      count/order, position and value.
+    #      the same cell-anchored detector (see the PART 2 comment; NOT
+    #      reference-blind), must match the analytic slab in containment,
+    #      position and value.
     # -------------------------------------------------------------------------
     MEEP_ABS_LIMIT = fringe_gate.MEEP_ABS_LIMIT
     MEEP_CROSS_LIMIT = fringe_gate.MEEP_CROSS_LIMIT
