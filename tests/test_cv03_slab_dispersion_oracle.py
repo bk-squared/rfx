@@ -146,3 +146,87 @@ def test_estimator_rejects_malformed_input():
     with pytest.raises(ValueError):
         measure_neff_two_wave(np.ones((1, 81), dtype=complex), x, f, c0=C0,
                               eps_core=1.0, eps_clad=12.0)
+
+
+# ------------------------------------------- #812 round 2: numeric provenance
+#
+# The round-1 blocker was a comparison whose operands sat at different
+# frequencies.  The corrected operands live in a committed JSON emitted by
+# scripts/diagnostics/cv03_flux/build_cv03_matched_frequency.py; the design
+# notes reference its keys instead of restating digits.  These tests make the
+# artifact fail if it drifts from the code that produced it, and pin the two
+# facts the correction asserts.
+
+_ARTIFACT = (Path(__file__).resolve().parent.parent / "docs" / "design_notes"
+             / "issue812_cv03_dispersion_matched_frequency.json")
+
+
+def _built():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_cv03_mf",
+        Path(__file__).resolve().parent.parent / "scripts" / "diagnostics"
+        / "cv03_flux" / "build_cv03_matched_frequency.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.build()
+
+
+def test_matched_frequency_artifact_is_what_the_builder_emits():
+    """The committed JSON must be byte-reproducible from committed code."""
+    import json
+    assert _ARTIFACT.is_file(), f"missing artifact {_ARTIFACT}"
+    committed = json.loads(_ARTIFACT.read_text())
+    assert committed == _built(), (
+        "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json is "
+        "stale -- re-run scripts/diagnostics/cv03_flux/"
+        "build_cv03_matched_frequency.py")
+
+
+def test_round1_mismatch_mechanism_reproduces_and_inverts():
+    """The published -0.026% must be reproducible ONLY at the wrong frequency.
+
+    Two-sided: evaluating the analytic operand at ``fcen`` exactly regenerates
+    round 1's published number, and evaluating it at the measured operand's own
+    bin flips the sign.  That is the whole diagnosis, mechanised.
+    """
+    doc = _built()
+    err = doc["round1_error"]
+    assert err["reproduces_published_value"] == pytest.approx(
+        err["published_dev_pct"], abs=5e-4)
+    assert err["reproduces_published_value"] < 0.0
+    assert err["corrected_dev_pct"] > 0.0
+    assert doc["grid"]["fcen_minus_carrier_bin_c_over_a"] > 0.0
+    # n_eff rises with f: that is why the mismatch could invert the sign.
+    band = doc["oracle"]["band_n_eff"]
+    assert all(b < a for b, a in zip(band, band[1:]))
+
+
+def test_matched_frequency_deviations_are_one_signed_and_do_not_collapse():
+    """The falsified conclusion, as a test.
+
+    Round 1 concluded the recipe baseline's deviation was a domain/window
+    artefact that the reflection-free run removes.  At matched frequency every
+    configuration deviates with the same sign, and the reflection-free one is
+    larger than the baseline, not smaller.
+    """
+    doc = _built()
+    devs = doc["falsified_conclusion"]["dev_pct_matched_by_row"]
+    assert all(v > 0.0 for v in devs.values())
+    assert (devs["sx40_dft150_before_round_trip"]
+            > devs["sx16_dft400_recipe_baseline"])
+    assert doc["falsified_conclusion"]["reflection_free_minus_baseline_pct"] > 0.0
+
+
+def test_column_semantics_cross_check_holds():
+    """The recipe-baseline row must reproduce the committed run's own bin.
+
+    This is what establishes that round 1's "measured n_eff" column is the
+    carrier-bin two-wave fit, so that dividing it by the analytic value at that
+    same bin is the right repair.
+    """
+    doc = _built()
+    x = doc["column_semantics_cross_check"]
+    assert x["abs_difference_pct"] < 5e-4, (
+        "the recipe-baseline row no longer matches the per-bin deviation the "
+        "results note recorded from the committed case run")
