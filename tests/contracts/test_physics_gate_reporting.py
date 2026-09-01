@@ -411,6 +411,23 @@ def test_msl_report_parser_captures_notch_demo_gates():
     assert parsed["metrics"]["half_grid_witness_bins"] == 0.6037
     assert parsed["gates"]["stopband_bw_ratio_in_window"] is True
     assert parsed["gates"]["half_grid_witness_sub_bin"] is True
+    assert parsed["estimator_resolution_gates_measured"] is True
+    assert parsed["gate_set"] == "post-812-P3"
+
+
+def test_msl_report_marks_a_pre_812_stdout_as_partial_coverage():
+    """The committed 2026-08-27 cv06b GPU log predates the stopband-width and
+    half-grid-witness gates, so a reader must not take its "passed" as
+    coverage of the current gate set."""
+    parsed = msl_report.parse_cv06b_stdout(
+        "\n".join(["Notch frequency error = 1.40%",
+                    "Notch depth |S21| = -43.3 dB",
+                    "Re(Z0) median = 46.5 Ω"]), rc=0)
+    assert parsed["status"] == "passed"
+    assert parsed["estimator_resolution_gates_measured"] is False
+    assert parsed["gate_set"].startswith("pre-812-P3")
+    assert "stopband_bw_ratio_in_window" not in parsed["gates"]
+    assert "half_grid_witness_sub_bin" not in parsed["gates"]
 
 
 def test_msl_report_parser_holds_the_tightened_cv06b_windows():

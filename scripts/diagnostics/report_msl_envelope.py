@@ -108,13 +108,21 @@ def parse_cv06b_stdout(text: str, rc: int) -> dict[str, Any]:
     if "half_grid_witness_bins" in metrics:
         gates["half_grid_witness_sub_bin"] = \
             metrics["half_grid_witness_bins"] < _CV06B_WITNESS_BINS
-    metrics["estimator_resolution_gates_present"] = float(
-        "stopband_bw_ratio" in metrics and "half_grid_witness_bins" in metrics)
+    # A pre-#812 stdout carries neither of the two estimator-resolution
+    # quantities, so its "passed" means "passed the gates in force when it
+    # ran", NOT "passed the current gate set". Say so in the report rather
+    # than letting a reader infer coverage that does not exist.
+    measured = ("stopband_bw_ratio" in metrics
+                and "half_grid_witness_bins" in metrics)
     return {
         "status": "passed" if rc == 0 and all(gates.values()) else "failed",
         "returncode": rc,
         "metrics": metrics,
         "gates": gates,
+        "estimator_resolution_gates_measured": measured,
+        "gate_set": "post-812-P3" if measured else "pre-812-P3 (partial: the "
+                    "stopband-width and half-grid-witness gates are not "
+                    "measured by this stdout)",
     }
 
 
