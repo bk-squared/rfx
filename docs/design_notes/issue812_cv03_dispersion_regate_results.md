@@ -27,8 +27,15 @@ Unmodified case, exit 2 (Meep absent, as before this lane):
 
 Supporting numbers from the same run: band-mean `n_eff` rfx **2.84634** vs
 analytic **2.84203**; the max-deviation bin is `f = 0.1592 c/a` (rfx 2.89607 vs
-analytic 2.88849); `T(f_peak) = 0.9736`, which is the value the script's own
-2026-06-12 header records, so **the case's physics output did not move** — the
+analytic 2.88849); per-bin deviations across the gated band are
+`+0.013 +0.177 +0.160 +0.052 +0.128 +0.172 +0.101 +0.132 +0.199 +0.150 +0.160
++0.262 +0.229 +0.180` %.
+
+**The case's physics output did not move.** Not asserted — measured: the
+pre-change script, taken straight out of `main` with `git show
+main:validation/crossval/03_straight_waveguide_flux.py`, and run on the same
+host, prints `T_rfx(f_peak) = 0.9736` and `rfx band-mean T [0.135,0.165]:
+0.9657`; the re-gated script prints the same two values to every digit. The
 only addition to the run is a passive DFT plane probe.
 
 The deviation is small and one-signed across the band (+0.01 % … +0.26 %),
@@ -119,12 +126,21 @@ smoothing to do; G1 does not claim to catch this defect class and does not.
 
 ## Open, and NOT fixed here
 
-§8 of the pre-declaration: this guide carries a standing wave with
-`|B/A| = 0.393 … 0.585` over the gated band (0.53 at the carrier), it gets **worse**
-when the absorber is deepened, and `T = flux_out/flux_in` is blind to it by
-construction. That is a physics/solver finding and needs its own issue and
-owner. This lane only measured it, reported it, and built an estimator that is
-correct in its presence.
+§8 and §8.1 of the pre-declaration: this guide carries a standing wave with
+`|B/A| = 0.393 … 0.585` over the gated band (0.53 at the carrier). A
+time-of-flight test settles what it is — a reflection of the guided mode off the
+domain termination, `|B/A| = 0.0002` before the round trip can complete and
+0.4979 after, i.e. about **−6 dB in amplitude, 25 % in power** — and does not
+settle why it is four times worse than the ledger's resolved hollow-WR-90
+entry or why it worsens with absorber depth. That is a physics/solver finding
+and needs its own issue and owner. This lane only measured it, reported it, and
+built an estimator that is correct in its presence.
+
+One number from that test belongs here, because it is the cleanest statement of
+criterion (A) available: in the reflection-free window the measured `n_eff` is
+**2.84338** against the closed form's **2.84411**, a deviation of **−0.026 %**,
+77x inside G1's 2.0 %. The 0.262 % of the baseline row is what the recipe's own
+16a domain and 400 a/c₀ window cost, not what the solver's dispersion costs.
 
 ## Corrections to this file
 
