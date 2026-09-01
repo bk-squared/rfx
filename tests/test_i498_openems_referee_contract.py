@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,10 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = _REPO_ROOT / "scripts" / "diagnostics" / "i498_openems_probe_fed_msl_referee.py"
+_YAML = _REPO_ROOT / "scripts" / "vessl_i498_openems_referee.yaml"
+_PREDECLARATION = (
+    _REPO_ROOT / "docs" / "design_notes" / "issue498_mixed_refplane_predeclaration.md"
+)
 
 
 def _load_referee():
@@ -598,3 +603,118 @@ def test_a2_gate_separates_upstream_from_repo_internal_provenance(ref):
     a2 = ref.REPRODUCE_GATE_RECORD["a2"]
     assert "~7 dBi" in a2["gate_upstream_anchored"]
     assert "NOT a reproduction of an upstream number" in a2["gate_repo_internal_lock"]
+
+
+# ---------------------------------------------------------------------------
+# The VESSL lane must name its own prerequisites instead of dying anonymously
+# ---------------------------------------------------------------------------
+def _yaml_run_block() -> str:
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(_YAML.read_text())
+    return doc["run"]
+
+
+def _run_clone_prelude() -> str:
+    """The run block from ``ROOT=`` through ``cd "$ROOT"``, inclusive.
+
+    Frozen by CONTENT (the two symbols), never by line number.
+    """
+    lines = _yaml_run_block().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith("ROOT="))
+    stop = next(i for i, ln in enumerate(lines) if ln.strip() == 'cd "$ROOT"')
+    assert start < stop, "the ROOT assignment must precede the cd into it"
+    return "set -eu\n" + "\n".join(lines[start : stop + 1]) + "\necho REACHED_CD\n"
+
+
+def _sh(fragment: str, run_clone: str):
+    env = dict(os.environ)
+    env["RUN_CLONE"] = run_clone
+    return subprocess.run(
+        ["sh", "-c", fragment], capture_output=True, text=True, env=env
+    )
+
+
+def test_vessl_lane_refuses_a_missing_run_clone_before_it_cds_into_it(tmp_path):
+    """FAIL-BEFORE-FIX: without the guard the job dies at the bare ``cd``
+    under ``set -eux`` with an anonymous shell error, BEFORE any EXPECT or
+    content guard and before the verdict ``case`` can speak.  With it the
+    failure names itself and exits 3 (config error), like every other
+    prerequisite in this lane."""
+    frag = _run_clone_prelude()
+    missing = tmp_path / "no-such-run-clone"
+    assert not missing.exists()
+    proc = _sh(frag, str(missing))
+    assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
+    assert "RUN CLONE MISSING" in proc.stdout
+    assert str(missing) in proc.stdout
+    assert "REACHED_CD" not in proc.stdout
+
+
+def test_vessl_lane_refuses_a_run_clone_that_is_not_a_git_clone(tmp_path):
+    """A directory with no ``.git`` cannot establish provenance, so the
+    EXPECT/ancestor guards downstream would be meaningless."""
+    not_a_clone = tmp_path / "not-a-clone"
+    not_a_clone.mkdir()
+    proc = _sh(_run_clone_prelude(), str(not_a_clone))
+    assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
+    assert "NOT A GIT CLONE" in proc.stdout
+    assert "REACHED_CD" not in proc.stdout
+
+
+def test_vessl_lane_proceeds_when_the_run_clone_exists(tmp_path):
+    """The positive control: a real clone directory reaches the ``cd``."""
+    clone = tmp_path / "clone"
+    (clone / ".git").mkdir(parents=True)
+    proc = _sh(_run_clone_prelude(), str(clone))
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+    assert "REACHED_CD" in proc.stdout
+
+
+def test_vessl_lane_default_run_clone_is_still_the_dedicated_one():
+    """RUN_CLONE is an override, not a silent redirection: unset or empty,
+    the lane still uses its own dedicated clone name."""
+    run = _yaml_run_block()
+    assert "rfx-i498-openems" in run
+    assert 'ROOT="${RUN_CLONE:-' in run
+
+
+# ---------------------------------------------------------------------------
+# The predeclaration and the code must describe the SAME board
+# ---------------------------------------------------------------------------
+def _predeclaration_section_7_2() -> str:
+    text = _PREDECLARATION.read_text()
+    assert "### 7.2" in text and "### 7.3" in text
+    return text.split("### 7.2", 1)[1].split("### 7.3", 1)[0]
+
+
+def test_predeclaration_7_2_describes_the_board_stage_2_actually_builds(ref):
+    """#723 in documentation form: a Stage-2 number quoted against a §7.2
+    that describes a different model is the same failure as measuring the
+    wrong board.  The section must carry the realized board's dimensions,
+    taken from the code's own record, and it must not still assert the
+    superseded declared geometry as the model."""
+    sec = _predeclaration_section_7_2()
+    realized = ref.RFX_REALIZED_RECORD["realized"]
+    h_um = round(realized["h_sub_m"] * 1e6)
+    w_um = round(realized["w_trace_node_span_m"] * 1e6)
+    assert h_um == 320 and w_um == 480
+    assert f"{h_um}" in sec, "§7.2 does not carry the realized substrate height"
+    assert f"{w_um}" in sec, "§7.2 does not carry the realized trace width"
+    # the superseded bullet must not survive verbatim
+    assert (
+        "`h_sub = 254 µm`, `W = 600 µm`, trace from x = 0 to 8 mm" not in sec
+    ), "§7.2 still asserts the declared geometry as the model"
+
+
+def test_predeclaration_7_2_carries_an_explicit_supersession_note():
+    """Not merely edited: the amendment must NAME what it supersedes --
+    review blocker B4 (both open ends) and the realized board -- so the
+    change is auditable against the review that required it."""
+    sec = _predeclaration_section_7_2()
+    assert "SUPERSESSION" in sec
+    assert "B4" in sec
+    assert "REALIZED" in sec.upper()
+    # and the top-of-document amendment log must point at it
+    head = _PREDECLARATION.read_text().split("## 1.", 1)[0]
+    assert "Amendment log" in head and "7.2" in head
+

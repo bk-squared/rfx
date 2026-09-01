@@ -10,6 +10,15 @@ text or snapshot is changed by this document or by the runs it declares.
   assembly residue; step-2 multi-drive solve).
 - Worktree/branch of record: `meas/498-517-mixed-referee`, cut from `gh/main`
   `92018513`.
+- **Amendment log** (the document stays a predeclaration; amendments are
+  additive, dated, and name what they supersede — no result is back-written
+  into it):
+  - **2026-09-01, §7.2 geometry** — superseded by the *realized* board and by
+    the open-ended trace, after the fixture's grid was measured during the
+    referee's implementation (review blocker **B4** + the #723-class
+    realized-board finding). The superseded text is quoted in place. No gate,
+    tolerance, reference, support-matrix entry, `known_limits` text or snapshot
+    moves; §10 is untouched.
 - Predecessor artifact (step 1, PR #543, already on main):
   `scripts/diagnostics/i517_mixed_solve_vs_ratio/i517_mixed_solve_vs_ratio.json`
   (referred to below as **the committed JSON**).
@@ -531,13 +540,74 @@ non-zero. No rfx-vs-openEMS number may exist in an artifact whose
 
 ### 7.2 Stage B — the probe-fed microstrip transition
 
+> **AMENDED 2026-09-01 — SUPERSESSION of this section's geometry bullet**
+> (referee implementation commit `222222e6`, review blocker **B4** plus the
+> realized-board finding). This section was written from the fixture's
+> *declared* dimensions. Before any openEMS geometry was built, the fixture's
+> **realized grid** was measured (command and verbatim output in the driver's
+> `RFX_REALIZED_RECORD`, reproduced independently by the review), and it
+> disagrees with the declared dimensions on two counts that change the model.
+> The committed referee builds the **realized** board; the bullet below is
+> superseded accordingly, so that no Stage-2 number is ever quoted against a
+> §7.2 describing a different model. The two changes:
+>
+> 1. **Blocker B4 — both trace ends are open and the metal stops at the
+>    absorber's inner face.** §3.3's last declared limitation already says
+>    *"the trace has open ends at x = 0 and x = 8 mm (no Box in the padding)"*,
+>    but the geometry bullet's "trace from x = 0 to 8 mm on a PEC ground …
+>    PML on x/y" reads as a line launched into the absorber at both ends.
+>    B4 is resolved by the **first** option — reproduce both open ends — not by
+>    demoting `|S21|`/`|S22|`: the openEMS conductor box spans exactly
+>    x = 0 … 8.00 mm and the mesh is padded 8 cells beyond each declared face,
+>    so the metal terminates at the absorber's inner face with **nothing in the
+>    pad**, cell-count for cell-count with rfx. Consequences that were not
+>    visible from the declared reading: 2.48 mm of **open stub** hangs beyond
+>    the MSL feed plane (x = 5.52 → 8.00 mm) and is part of the DUT, therefore
+>    part of `|S22|`; and the residual *physical* pad thickness differs
+>    (rfx 0.64 mm = 8 × 80 µm; the comparator mesh 0.40 mm = 8 × 50 µm), which
+>    is carried as a CANNOT_COMPARE item, not silently absorbed.
+> 2. **The realized board is not the declared board (#723 class).** Measured on
+>    rfx's own grid: `conductor_mask()` is non-zero at **k = 4 only**, y nodes
+>    **24…30**, x nodes **8…108**; `eps_r > 1` at **k = 0…3**. So the realized
+>    substrate is **h_sub = 4 × 80 µm = 320 µm** (declared 254 µm) and the
+>    realized trace width is **480 µm** as a node span (declared 600 µm), with
+>    **560 µm** carried as the ±1-cell cell-span alternative; `y_c` snaps to
+>    **1.52 mm** (declared 1.50 mm) and the realized domain is
+>    **8.00 × 3.04 × 0.80 mm** (declared 8 × 3 × 0.754 mm). The dielectric **is**
+>    edge-replicated through the CPML pad; the conductor is **not**. Modelling
+>    the declared board here would repeat exactly the error that invalidated the
+>    #490 referee's run-1 under #723.
+>
+>    This has a consequence §6's budget `B` must be read with: rfx normalizes its
+>    MSL port to the Hammerstad–Jensen `Z0` of the **declared** board
+>    (`z0_hj_msl ≈ 47.8948 Ω` for W = 600 µm / h = 254 µm), while the board it
+>    actually solves has HJ `Z0` = **62.652 Ω** on the node-span reading
+>    (**57.463 Ω** on the cell-span reading) — a **20–31 % anchor gap**.
+>    REPORTED, NEVER GATED: this does not replace the analytic anchor anywhere
+>    (§10 stands), and it pins nothing. It is listed for the PI in the referee
+>    implementation's `findings_needing_pi` because it can push `B` into the
+>    predeclaration's own *"B > 0.15 → anchor non-discriminating"* escape.
+>
+> Nothing else in §7.2 moves: the scope fence, the `dx = 50 µm` comparator mesh
+> with the reported-only `dx = 80 µm` leg, the two port classes, the
+> `MeasPlaneShift` de-embedding at x = 4.72 mm and the settling contract are all
+> unchanged, and §7.3/§7.4 are unaffected except that the CANNOT_COMPARE list
+> gains the anchor gap and the pad-thickness difference above.
+
 - **Scope fence:** comparator leg only. The script builds and runs an
   independent openEMS model and reports its own S-parameters; it does **not**
   import or run rfx. rfx's side enters as one committed JSON data file (the
   artifact from §5), exactly as Stage B of the #490 referee reads its rfx fixture.
-- **Geometry:** the §3.1 fixture's physical dimensions — `eps_r = 3.66`,
-  `h_sub = 254 µm`, `W = 600 µm`, trace from x = 0 to 8 mm on a PEC ground,
-  domain 8 × 3 × 0.754 mm, PML on x/y and z_hi, PEC at z_lo.
+- **Geometry (AMENDED — the REALIZED board, superseding the declared reading;
+  see the supersession note above):** `eps_r = 3.66`, **`h_sub = 320 µm`**
+  (4 rfx cells; *declared* 254 µm), **`W = 480 µm`** node span (*declared*
+  600 µm; 560 µm cell-span alternative recorded), trace centred at
+  **`y_c = 1.52 mm`**, one cell thick, spanning **exactly x = 0 → 8.00 mm with
+  both ends open** — the metal stops at the absorber's inner face and does not
+  enter the pad — on a PEC ground; realized domain **8.00 × 3.04 × 0.80 mm**,
+  PML on x/y and z_hi, PEC at z_lo, with the dielectric edge-replicated through
+  the absorber pad exactly as rfx does it. *(The pre-run declared reading, now
+  superseded, was: `h_sub = 254 µm`, `W = 600 µm`, domain 8 × 3 × 0.754 mm.)*
 - **Mesh:** **`dx = 50 µm` is the comparator mesh**, not 80 µm. Recorded
   `do_not_repeat` (from `scripts/diagnostics/build_msl_notch_openems_comparison.py`,
   carried in the #490 referee's own record): *"at dx=80 um the substrate is only

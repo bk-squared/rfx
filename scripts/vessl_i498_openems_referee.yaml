@@ -28,6 +28,12 @@ env:
   # Stage 2 still runs and reports openEMS-only numbers.
   STAGE1_JSON: ""
   RFX_JSON: ""
+  # The run-clone directory. It MUST already exist on the mounted volume --
+  # the run block refuses (exit 3) with a named message if it does not,
+  # instead of dying at a bare `cd`. Leave empty to use the lane's own
+  # dedicated clone (.../research/rfx-i498-openems), or point it at an
+  # existing clone such as .../research/rfx-fidelity-722.
+  RUN_CLONE: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -48,7 +54,21 @@ run: |-
 
   # -- RUN CLONE, not the primary checkout: this lane must not depend on
   # what research/rfx happens to have checked out. --
-  ROOT=/root/workspace/byungkwan-workspace/research/rfx-i498-openems
+  ROOT="${RUN_CLONE:-/root/workspace/byungkwan-workspace/research/rfx-i498-openems}"
+  # The run-clone must EXIST before the job is submitted. Without this guard a
+  # missing directory kills the job at the bare `cd` under `set -eux`, with a
+  # shell error and before any EXPECT / content guard or the verdict `case`
+  # can speak -- an anonymous exit that reads like an infrastructure fault.
+  # Create it once (it lives on the mounted volume and persists):
+  #   git clone /root/workspace/byungkwan-workspace/research/rfx \
+  #             /root/workspace/byungkwan-workspace/research/rfx-i498-openems
+  #   cd .../rfx-i498-openems && git fetch origin && git checkout <branch>
+  # or point RUN_CLONE at an existing clone (e.g. .../rfx-fidelity-722, which
+  # is what the sibling lane scripts/vessl_msl_passive_port_reflection.yaml
+  # reuses). Either way the EXPECT + content guards below still decide whether
+  # the tree may be measured.
+  test -d "$ROOT" || { echo "RUN CLONE MISSING: $ROOT does not exist -- create it (or set RUN_CLONE) before submitting; see the comment above this guard"; exit 3; }
+  test -d "$ROOT/.git" || { echo "RUN CLONE NOT A GIT CLONE: $ROOT exists but has no .git -- provenance cannot be established; refusing to measure"; exit 3; }
   cd "$ROOT"
   git config --global --add safe.directory "$ROOT" || true
   echo "=== provenance ==="
