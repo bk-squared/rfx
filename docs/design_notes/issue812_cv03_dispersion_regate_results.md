@@ -65,8 +65,12 @@ G1's failure message on every failing row is the intended one:
 > (eps=12, d=1a)
 
 and the printed line names both operands, e.g. at `eps=8`:
-`max |n_eff_rfx/n_eff_analytic - 1| over band: 22.863% at f=0.1367 (rfx 2.13383
-vs analytic 2.76610)`. The measured shifts track the closed-form predictions of
+`max |n_eff_rfx/n_eff_analytic - 1| over band: 22.863% at f=0.1367 (rfx 2.13720
+vs analytic 2.77066)`, with `n_eff band mean: rfx 2.20159 analytic 2.84203`.
+Note what that says: 2.20159 is the *correct* index for an `eps = 8` guide (the
+closed form gives 2.20300), so G1 is not reporting a solver error — it is
+reporting that the structure being solved is not the structure the case
+declares. The measured shifts track the closed-form predictions of
 §2 (−5.30 / −10.82 / −22.54 %) to within 0.32 percentage points, so the gate is
 firing on the physics, not on an artefact of the estimator.
 
@@ -116,8 +120,20 @@ smoothing to do; G1 does not claim to catch this defect class and does not.
 ## Open, and NOT fixed here
 
 §8 of the pre-declaration: this guide carries a standing wave with
-`|B/A| ≈ 0.39–0.59` over the gated band (0.53 at the carrier), it gets **worse**
+`|B/A| = 0.393 … 0.585` over the gated band (0.53 at the carrier), it gets **worse**
 when the absorber is deepened, and `T = flux_out/flux_in` is blind to it by
 construction. That is a physics/solver finding and needs its own issue and
 owner. This lane only measured it, reported it, and built an estimator that is
 correct in its presence.
+
+## Corrections to this file
+
+- **2026-09-01, before publication.** The first draft of the "G1 message"
+  paragraph above quoted the `eps = 8` operands as `rfx 2.13383 vs analytic
+  2.76610`. Those digits were written from the line's *format* rather than read
+  off the run. The verified values, from re-running the committed case with the
+  single edit `eps_wg = 12.0` -> `eps_wg = 8.0`, are **`rfx 2.13720 vs analytic
+  2.77066`**. The deviation, 22.863 %, and every other number in the tables were
+  read from the driver's own output and are unaffected. Recorded rather than
+  silently fixed, because this issue has shipped unverified digits into durable
+  documents twice already.
