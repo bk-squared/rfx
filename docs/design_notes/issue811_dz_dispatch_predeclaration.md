@@ -39,7 +39,9 @@ context on this tree. All of them test `dz_profile` too:
   `rfx/api/_preflight.py` 1197, 2188-2189, 2452, 2524, 2633, 3046, 3786, 4354
   — dz present in every condition.
 - `rfx/api/__init__.py:606` checks dx/dy only, deliberately: it is the ADI
-  guard, and ADI's z-graded (ZCZ) lane accepts `dz_profile`. Per-axis by
+  guard, and ADI rejects `dz_profile` separately one line above its dx/dy
+  check (`solver='adi'` raises on nonuniform dz; ZCZ is the scheme name,
+  not a z-graded lane — corrected in the review round). Per-axis by
   design, not a member of this defect class.
 
 The defect class is exactly the two sites above. Reachability of the sibling

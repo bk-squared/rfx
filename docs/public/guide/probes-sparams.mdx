@@ -266,7 +266,8 @@ freqs = wg.freqs
 `normalize=True` is suitable for transmission measurements. On a uniform mesh,
 use `normalize=False` or `normalize="flux"` for strong-reflector S11 (for
 example, a PEC short) to avoid the reference-run subtraction artifact. On a
-non-uniform `dx_profile` / `dy_profile` mesh, `normalize=False` is unsupported;
+non-uniform mesh (`dx_profile` / `dy_profile` / `dz_profile`), `normalize=False`
+is unsupported;
 use `normalize="flux"` for strong-reflector S11. See
 [Migration](/rfx/guide/migration/) and
 [Support Boundaries](/rfx/api/support-boundaries/).
@@ -274,7 +275,7 @@ use `normalize="flux"` for strong-reflector S11. See
 For memory-heavy waveguide AD runs, pass `checkpoint_segments=K` to segment
 the reverse-mode tape (peak backward memory drops from O(n_steps) toward
 O(√n_steps) near K≈√n_steps). On the uniform path, `K` must divide the timestep
-count exactly. On a non-uniform `dx_profile` / `dy_profile` path, `K` is a
+count exactly. On a non-uniform (`dx_profile` / `dy_profile` / `dz_profile`) path, `K` is a
 target segment count and need not divide the timestep count: rfx selects the
 divisor chunk size nearest to `n_steps / K` and applies checkpointing to the
 device run. This non-uniform AD path requires `normalize="flux"` with an

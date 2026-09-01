@@ -41,7 +41,8 @@ _REPO = Path(__file__).resolve().parents[1]
 
 # Genuinely graded z meshes (adjacent ratios <= 1.4). Both sum EXACTLY to
 # the WR-90 narrow wall b = 10.16 mm; their minimum cells differ, so their
-# dt differ (~1.55x) — bit-identical S across them means dz never reached
+# dt differ (~1.34x; dt follows the 3D CFL root-sum — 1.55x is the min-CELL
+# ratio, not the dt ratio) — bit-identical S across them means dz never reached
 # the solve.
 _DZ_WR90_A = np.concatenate([
     np.full(10, 0.40e-3), np.full(3, 0.52e-3),
@@ -241,8 +242,10 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
 # ---------------------------------------------------------------------------
 # Source-level class lock: a dispatch predicate that tests dx_profile AND
 # dy_profile must test dz_profile too. rfx/api/__init__.py is excluded on
-# purpose: its ADI guard tests dx/dy only because ADI's z-graded (ZCZ) lane
-# ACCEPTS dz_profile — a deliberate per-axis check, not this defect class.
+# purpose: its ADI guard tests dx/dy only because dz_profile is rejected
+# separately one line above (solver='adi' raises ValueError on nonuniform
+# dz_profile) — a deliberate per-axis check, not this defect class. ADI has
+# no z-graded lane; ZCZ names the Zheng-Chen-Zhang scheme, not a dz lane.
 # ---------------------------------------------------------------------------
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",

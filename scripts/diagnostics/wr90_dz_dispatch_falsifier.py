@@ -15,7 +15,7 @@ Arms (identical physical geometry, only the z mesh differs):
   A       dz_profile = Z_A (fine->coarse, 19 cells, min 0.4 mm)
   B       dz_profile = Z_B = reversed(Z_A)
   C       dz_profile = Z_C (coarse/fine/mid, 14 cells, min 0.62 mm -> its
-                                            dt differs from A/B by ~1.55x)
+                                            dt differs from A/B by ~1.34x; the min-CELL ratio is 1.55x)
   A_shim  dz_profile = Z_A + uniform-valued dy_profile = full(23, 1e-3)
           (matches the NU lane's own synthesized dy; PLUMBING witness only
           -- a uniform-valued profile tests plumbing, never NU metrics)
