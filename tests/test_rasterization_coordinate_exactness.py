@@ -281,3 +281,51 @@ def test_traced_profile_mask_path_still_traces_and_differentiates():
     assert g.shape == (nz,)
     assert np.all(np.isfinite(np.asarray(g)))
     assert float(jnp.abs(g).sum()) > 0.0
+
+
+def test_cylinder_boundary_inclusion_convention_is_pinned():
+    """Cylinder's radial predicate is CLOSED (``r2 <= radius**2``): a node
+    EXACTLY on the rim belongs to the shape. No committed test pinned that
+    convention — a boundary-inclusion regression (``<=`` -> ``<``) left the
+    whole related suite green (adjudicated 2026-09-01) because every other
+    cylinder fixture keeps its rim off-node.
+
+    Knife-radius contract fixture: the center sits bitwise on a node and the
+    radius is declared as the exact f64 node distance of 6 cells, so rim
+    nodes satisfy ``r2 == radius**2`` EXACTLY in the class's own host-f64
+    arithmetic (#802). Measured on this fixture: 2 rim columns (the +x and
+    +y axis nodes; the -x/-y differences land one ulp off), 7 z planes,
+    791 cells closed vs 777 open — the convention flip drops exactly the
+    14 rim cells and reds the pinned count AND the rim-membership assert,
+    under both x64 flags."""
+    grid = _grid()
+    x, y, z = (np.asarray(c) for c in _grid_coords(grid))
+    pad = grid.axis_pads
+    cxi, cyi, czi = pad[0] + 15, pad[1] + 15, pad[2] + 9
+    cx, cy, cz = float(x[cxi]), float(y[cyi]), float(z[czi])
+    radius = float(x[cxi + 6] - cx)  # exact f64 node distance (6 cells)
+    cyl = Cylinder((cx, cy, cz), radius=radius, height=0.75e-3, axis="z")
+
+    # the class's own host arithmetic, replicated exactly
+    r2 = ((x - cx) ** 2)[:, None] + ((y - cy) ** 2)[None, :]
+    rim = np.argwhere(r2 == radius * radius)
+    assert rim.shape[0] >= 1, (
+        "fixture guard: no node sits EXACTLY on the rim — the closed/open "
+        "conventions would be indistinguishable and this test vacuous")
+    assert rim.shape[0] == 2 and rim.tolist() == [[19, 25], [25, 19]]
+    z_planes = np.flatnonzero(np.abs(z - cz) <= 0.75e-3 / 2)
+    assert z_planes.size == 7
+
+    m0 = np.asarray(cyl.mask(grid))
+    with enable_x64():
+        m1 = np.asarray(cyl.mask(grid))
+    assert np.array_equal(m0, m1), "knife-radius set moved with x64"
+
+    for i, j in rim:
+        assert m0[i, j, z_planes].all(), (
+            f"rim column ({i},{j}) excluded — the closed (r2 <= R^2) "
+            f"boundary convention flipped (open would drop exactly these "
+            f"knife-radius cells while every sibling test stays green)")
+    assert int(m0.sum()) == 791, (
+        f"realized cell count {int(m0.sum())} != pinned 791 (open predicate "
+        f"measures 777: the 2 rim columns x 7 z planes)")
