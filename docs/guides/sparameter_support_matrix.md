@@ -147,9 +147,22 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   (`validation/crossval/_06b_notch_uniform_logs/20260827T131217Z_run.log`)
   reports `1.40%` frequency error against the analytic notch evaluated on the
   realized `635.0 um` trace width, `-43.3 dB` notch depth, and median
-  `Re(Z0)=46.5 ohm` (port 0, median over the 100 bins); it passes the listed
-  gates of frequency error `<15%`, notch depth `<-10 dB`, and median
-  `Re(Z0)` in `(40, 65) ohm`. That `Re(Z0)` sits `-2.9%` from
+  `Re(Z0)=46.5 ohm` (port 0, median over the 100 bins); it passes the gates
+  IN FORCE WHEN IT RAN -- frequency error `<15%`, notch depth `<-10 dB`, and
+  median `Re(Z0)` in `(40, 65) ohm`. **Those are not the case's current
+  gates.** The #812 P3 re-gate (2026-09-01,
+  `docs/design_notes/estimator_resolution_regate.md`) replaced the
+  bin-quantised `argmin` with a sub-bin log-parabolic vertex, TIGHTENED the
+  frequency window to `<4.0%`, added a `-10 dB` stopband-WIDTH gate against
+  the ideal shunt-open-stub closed form `(4/pi)atan(r/6) = 0.210274` at
+  `r = 1` (window `+-20%`), added an in-run half-grid resolution witness
+  (`< 1.000` full-grid bin), and demoted the `<-10 dB` depth gate to a witness
+  because on this `63.6364 MHz` grid an ideal `r = 1` stub's WORST sampled
+  minimum is `-31.23 dB`, `21.2 dB` inside it. The 2026-08-27 log PREDATES
+  those gates and therefore carries no measurement of the two new quantities:
+  re-running the case on GPU
+  (`scripts/vessl_cv06b_estimator_falsifiers.yaml`) is what will judge them.
+  That `Re(Z0)` sits `-2.9%` from
   Hammerstad-Jensen on the DESIGN board (`600/254 um`, `47.90 ohm`) and
   reproduces the independent `msl_z0_bias_floor_sweep` "aligned h_sub/4"
   point (`46.098 ohm`) to `0.87%`. Read it with that run's own warnings, not

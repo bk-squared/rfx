@@ -959,12 +959,14 @@ def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
 
 def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi,
            pm_r, pass_lo, pass_hi):
-    """The four configured gates. Returns True iff every one passed.
+    """The five configured gate families. Returns True iff every one passed.
 
-    Diagnostic-reporter gates: comparator sanity, comparison shape, the
-    committed characterization, and the rfx evidence chain (strict bound,
-    settling witness, correction footprint). None of them asserts
-    rfx-vs-openEMS accuracy (see the module banner).
+    Diagnostic-reporter gates: comparator sanity (A), comparison shape (B),
+    the committed characterization (C1-C3), the sub-bin estimator locks added
+    by the #812 P3 re-gate (C4-C7, plus the C4b evidence-chain link), and the
+    rfx evidence chain (D: strict bound, settling witness, correction
+    footprint). None of them asserts rfx-vs-openEMS accuracy (see the module
+    banner).
     """
     print("\n" + "=" * 72)
     print("GATES (diagnostic-reporter — characterization locks, NOT accuracy)")

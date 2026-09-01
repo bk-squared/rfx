@@ -118,11 +118,15 @@
         {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
         {"kind": "external-solver", "name": "OpenEMS matched-geometry dx=50 um notch artifact", "required_for_script_pass": false}
       ],
-      "claim_scope": "uniform add_msl_port notch demonstration under loose analytic gates, at dx=63.5um=h_sub/4 (issue #723, was dx=80um). The committed matched-geometry dx=50 um OpenEMS/E4 artifacts in artifact_paths are NOT the same board as this script solves post-#723: this script's own substrate now realizes h_sub=254um exactly, while the E4 rfx leg (scripts/diagnostics/build_msl_notch_rfx_dx50.py, deferred, not fixed by #723) still realizes h_sub=300um at its own dx=50um. Treat the E4/OpenEMS comparison as characterizing a DIFFERENT (300um) board until that script is also fixed. Not a broad MSL-port claim.",
+      "claim_scope": "uniform add_msl_port notch demonstration under analytic gates re-derived 2026-09-01 (issue #812 mechanism P3, docs/design_notes/estimator_resolution_regate.md): the notch frequency is a sub-bin log-parabolic vertex judged at <4.0% (was a 63.6364 MHz bin argmin judged at <15%), the -10 dB stopband WIDTH is gated against the ideal shunt-open-stub closed form (4/pi)atan(r/6)=0.210274 at r=1 (+-20%), a half-grid witness proves the estimate is sub-bin, and the old <-10 dB depth check is RETAINED as a witness only because the worst sampled minimum on this grid is -31.23 dB. The committed 2026-08-27 GPU log predates the two new gates; scripts/vessl_cv06b_estimator_falsifiers.yaml is what will judge them. Shipped at dx=63.5um=h_sub/4 (issue #723, was dx=80um). The committed matched-geometry dx=50 um OpenEMS/E4 artifacts in artifact_paths are NOT the same board as this script solves post-#723: this script's own substrate now realizes h_sub=254um exactly, while the E4 rfx leg (scripts/diagnostics/build_msl_notch_rfx_dx50.py, deferred, not fixed by #723) still realizes h_sub=300um at its own dx=50um. Treat the E4/OpenEMS comparison as characterizing a DIFFERENT (300um) board until that script is also fixed. Not a broad MSL-port claim.",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/06b_msl_notch_filter_uniform.py",
+        "validation/crossval/comparators/spectral_features.py",
+        "tests/test_spectral_feature_estimators.py",
+        "scripts/diagnostics/cv06b_estimator_falsifiers.py",
+        "scripts/diagnostics/cv06b_build_falsifiers.py",
         "tests/crossval/test_msl_notch_e4_comparison_gates.py",
         "scripts/diagnostics/build_msl_notch_openems_comparison.py",
         "scripts/diagnostics/report_msl_envelope.py",
@@ -153,7 +157,10 @@
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
         "validation/crossval/07_sheen_lpf.py",
-        "tests/crossval/test_sheen_lpf_palace_referee_gates.py"
+        "tests/crossval/test_sheen_lpf_palace_referee_gates.py",
+        "validation/crossval/comparators/spectral_features.py",
+        "tests/test_spectral_feature_estimators.py",
+        "scripts/diagnostics/cv07_estimator_falsifiers.py"
       ],
       "artifact_paths": [
         "validation/crossval/_07_sheen_results/rfx.json",
