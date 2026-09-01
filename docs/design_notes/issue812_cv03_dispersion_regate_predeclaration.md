@@ -264,3 +264,40 @@ rasterized `eps_r`: `eps = 12` at every `x` index of the centre row, absorber
 cells included), so this is not a bare end facet. Deepening the absorber makes
 the ratio **worse**, which rules out a simple under-absorbing PML and is the
 part that most needs an owner. `T = flux_out/flux_in` cannot see any of it.
+
+### 8.1 Mechanism established: it is a reflection off the guide's own termination
+
+Appended after the §5 falsifier runs. The `|B/A|` trend in the §8 table did not
+identify a mechanism, so a time-of-flight test was run: lengthen the guide and
+stop the DFT before the round trip can complete. Group index `n_g ~ 3.3`, so a
+`sx = 40a` guide with the fit window at Meep `x in [-16, -8]` needs `~211 a/c`
+for a wave to reach the far end and return.
+
+| `sx` | DFT window | fit window | `|B/A|` | measured `n_eff` | rel. residual |
+|---:|---:|---|---:|---:|---:|
+| 40a | 150 a/c (before the return) | [−16, −8] | **0.0002** | 2.84338 | 0.0019 |
+| 40a | 400 a/c (after the return) | [−16, −8] | 0.4979 | 2.84318 | 0.0031 |
+| 16a | 400 a/c | [−4, +4] | 0.5311 | 2.84175 | 0.0061 |
+| 16a | 150 a/c (round trip only ~53 a/c) | [−4, +4] | 0.5233 | 2.84474 | 0.0152 |
+
+The backward wave is **absent to 2e-4 before the round-trip time and 0.50 after
+it**, and the switch-over tracks the domain length. It is a reflection of the
+guided mode off the domain termination — roughly **−6 dB in amplitude, ~25 % in
+power**. Note the contrast with the known-issues ledger, which records the
+hollow WR-90 case as `|b1/a1|` = 11.7 % / 4.2 % / 1.8 % at 10 / 20 / 40 CPML
+layers and marks it resolved: here the guided mode is in `eps = 12` dielectric,
+the reflection is 4x worse than that entry's *worst* number, and the §8 table
+shows it getting **worse**, not better, with absorber depth. Whether that is the
+same defect on a harder configuration or a different one is not established here
+and needs an owner.
+
+Two consequences worth carrying into whatever issue takes this:
+
+1. **`T = flux_out/flux_in` is structurally blind to it.** Net flux in a
+   lossless section is `|A|^2 - |B|^2` at every plane, so a 25 %-power
+   reflection reads `T = 0.9657`, PASS. This is the same blindness #812 found by
+   sweeping `eps_wg`, arrived at from the opposite direction.
+2. **rfx's guide dispersion is right.** In the reflection-free window the
+   measured `n_eff` is **2.84338** against the closed form's **2.84411** —
+   **−0.026 %**, 77x inside G1's window. The case's physics is not what is
+   wrong; its instrument was, and its termination is.
