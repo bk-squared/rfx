@@ -292,3 +292,29 @@ at commit `5b6db32`, now carrying a `provenance` block. Gated consequences of
 the refresh: the f0 gate is unchanged (it reads the ring-down, which did not
 move — 0.69 % vs openEMS either way); passivity stays PASS; dip depth is not
 gated.
+
+### 6.7 CORRECTION (2026-09-01, same day) — two digits in §6.5
+
+**Old text, §6.5:** "the mode-pair ratio moves by **0.19 %** (1.22197 →
+1.21958)".
+
+**Why it was wrong.** Those two ratios were computed by hand from the
+4-decimal-GHz values printed in an exploratory probe log, then written out to
+six digits as if they had that precision. Recomputed from the committed
+fixture `tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json`
+itself:
+
+```
+TM100/TM010, correct build : 1.2219522385412454
+TM100/TM010, #740 defect   : 1.2195891710298377
+change                     : -0.19338 %
+```
+
+**Corrected values: 1.221952 → 1.219589, a change of −0.1934 %.** The
+conclusion is unchanged — the ratio is invariant to the defect at the 0.2 %
+level, two orders below any window that admits the correct build — but the
+digits are now the file's, not a hand transcription of a rounded log line.
+
+Nothing else in §6 was transcribed this way: every other number here was
+printed at full precision by the run or recomputed from the committed file, and
+all of them were re-verified against those files after §6 was written.
