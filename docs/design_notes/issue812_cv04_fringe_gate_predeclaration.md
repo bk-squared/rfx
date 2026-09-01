@@ -549,3 +549,61 @@ physically underwritten). Fails if `|dev|` stays at ~30 MHz or grows: then the
 displacement is not a truncation artefact, the window's derivation is missing a
 term, and `W(fringe 0)` must be re-derived from whatever that term is — never
 widened to admit the observation.
+
+### 14.1 RESULT — the falsifier passes: fringe 0's displacement is a truncation artefact
+
+VESSL run `369367257595` (cpu-32-mem-64, `scripts/vessl_cv04_runlength_fringe0.yaml`),
+driver `scripts/diagnostics/cv04_fresnel/runlength_fringe0.py`, artifact
+`docs/design_notes/issue812_cv04_runlength_fringe0.json`. Log harvested to
+`~/Documents/vessl-run-logs/369367257595_cv04_runlength_fringe0.log`; run deleted.
+
+Section 14 declared: PASS if `|dev(fringe 0)| <= ` its derived budget.
+
+| arm | `n_steps` | fringe 0 dev | of derived budget |
+|---|---:|---:|---:|
+| committed recipe, `nx = 600` | 719 | `docs/design_notes/issue812_cv04_runlength_fringe0.json::configs.nx600_committed_719_steps.payload.rows[0].df_hz = -29960445.21` Hz | `docs/design_notes/issue812_cv04_runlength_fringe0.json::configs.nx600_committed_719_steps.payload.rows[0].abs_dev_over_derived_budget = 1.0149` |
+| rung C4, `nx = 1500` | 1940 | `docs/design_notes/issue812_cv04_runlength_fringe0.json::configs.nx1500_rungC4_1940_steps.payload.rows[0].df_hz = 8721130.53` Hz | `docs/design_notes/issue812_cv04_runlength_fringe0.json::configs.nx1500_rungC4_1940_steps.payload.rows[0].abs_dev_over_derived_budget = 0.5302` |
+
+**The hypothesis is confirmed.** Lengthening the run collapses fringe 0's
+displacement from −29.96 MHz to +8.72 MHz — it shrinks 3.4x *and changes sign*,
+landing at 0.53 of its derived budget. The committed 719-step recipe's fringe-0
+position was measuring truncation, not optical thickness.
+
+**The mechanism §12 proposed is confirmed by the discriminator it predicted.**
+§12 argued that a *maximum* of `R` is where the etalon ringdown contributes
+most, while a *minimum* — where `R -> 0` and the ringdown is destructive —
+should be unaffected. Between the two run lengths:
+
+| fringe | kind | 719 steps | 1940 steps | moved |
+|---|---|---:|---:|---:|
+| 3.7475 GHz | max | −29.960 MHz | +8.721 MHz | **38.68 MHz** |
+| 7.4950 GHz | **min** | −24.361 MHz | −27.225 MHz | **2.86 MHz** |
+| 11.2425 GHz | max | +66.056 MHz | −63.427 MHz | **129.48 MHz** |
+
+The minimum moves 2.86 MHz; the two maxima move 13x and 45x more, and **both
+maxima flip sign**. That is the predicted signature, not a fitted one.
+
+**And the gate gets tighter, not looser, at the longer run.** `df_bin` shrinks
+with run length, so `W(fringe 0)` falls from 59.04 to 32.90 MHz — yet every
+fringe now sits inside its *derived* budget (0.53 / 0.68 / 0.61). **The safety
+factor is no longer load-bearing anywhere.** At 719 steps only fringe 0 needed
+it; at 1940 steps none do.
+
+**What this does and does not change.**
+
+- Criterion (A) **is** physically underwritten — at adequate run length. §14's
+  withdrawal of "passes with margin" stands for the *committed 719-step recipe*
+  and is now explained rather than merely flagged.
+- **Detection power is unaffected.** The audit defects displace fringes by
+  180–900 MHz, one to two orders above the ~30–130 MHz truncation swing, so the
+  1.92x–5.57x firing margins in §10(B) do not depend on run length.
+- **No threshold, window or verdict moves.** Both arms report `fringe_ok = True`.
+- Neither arm is *converged*: at 1940 steps the maxima are still displaced
+  (+8.72, −63.43) and have crossed zero, so a longer run would move them again.
+  The claim is not "converged" — it is "inside the derived budget", which is
+  what §14 asked.
+- **Recommendation, not made here:** the committed recipe's run length is short
+  enough that fringe-0's position is artefact-dominated. Raising `nx_interior`
+  would fix that, but it also multiplies the case's cost and changes a committed
+  recipe that other rows are provenanced against, so it belongs in its own lane
+  with its own before/after, not in this one.

@@ -1,0 +1,120 @@
+{
+  "schema": "issue812-cv04-runlength-fringe0-v1",
+  "issue": 812,
+  "runs_fdtd": true,
+  "declared_pass_if": "abs(dev(fringe 0)) <= windows.fringes[0].position_derived_budget_hz",
+  "derived_budget_hz": 29519311.320742484,
+  "configs": {
+    "nx600_committed_719_steps": {
+      "why": "the committed recipe, reproduced here so both arms come from one driver",
+      "edits": [],
+      "exit_code": 2,
+      "payload": {
+        "nx_interior": 600,
+        "n_steps": 719,
+        "fringe_ok": true,
+        "rows": [
+          {
+            "kind": "max",
+            "f_ref_hz": 3747500000.0,
+            "f_meas_hz": 3717539554.7866054,
+            "df_hz": -29960445.213394642,
+            "f_window_hz": 59038622.64148497,
+            "value_ref": 0.36,
+            "value_meas": 0.35975091664972875,
+            "dvalue": -0.00024908335027123973,
+            "derived_budget_hz": 29519311.320742484,
+            "abs_dev_over_derived_budget": 1.0149439086792713
+          },
+          {
+            "kind": "min",
+            "f_ref_hz": 7495000000.0,
+            "f_meas_hz": 7470639091.780956,
+            "df_hz": -24360908.21904373,
+            "f_window_hz": 106374954.63687968,
+            "value_ref": 0.0,
+            "value_meas": 1.1186400343622786e-05,
+            "dvalue": 1.1186400343622786e-05,
+            "derived_budget_hz": 53187477.31843984,
+            "abs_dev_over_derived_budget": 0.45801962129529167
+          },
+          {
+            "kind": "max",
+            "f_ref_hz": 11242500000.0,
+            "f_meas_hz": 11308556054.127707,
+            "df_hz": 66056054.12770653,
+            "f_window_hz": 234882954.5669086,
+            "value_ref": 0.36,
+            "value_meas": 0.36445789891416364,
+            "dvalue": 0.004457898914163649,
+            "derived_budget_hz": 117441477.2834543,
+            "abs_dev_over_derived_budget": 0.5624593257480491
+          }
+        ],
+        "reasons": []
+      },
+      "fringe0_dev_hz": -29960445.213394642,
+      "fringe0_abs_dev_over_derived_budget": 1.0149439086792713,
+      "fringe0_verdict": "FAIL (derivation is missing a term)"
+    },
+    "nx1500_rungC4_1940_steps": {
+      "why": "rung C4: n_steps follows nx_interior through the CPML safe time",
+      "edits": [
+        [
+          "nx_interior = 600",
+          "nx_interior = 1500"
+        ]
+      ],
+      "exit_code": 2,
+      "payload": {
+        "nx_interior": 1500,
+        "n_steps": 1940,
+        "fringe_ok": true,
+        "rows": [
+          {
+            "kind": "max",
+            "f_ref_hz": 3747500000.0,
+            "f_meas_hz": 3756221130.5297585,
+            "df_hz": 8721130.529758453,
+            "f_window_hz": 32900128.323255893,
+            "value_ref": 0.36,
+            "value_meas": 0.36179058874576275,
+            "dvalue": 0.0017905887457627667,
+            "derived_budget_hz": 16450064.161627946,
+            "abs_dev_over_derived_budget": 0.5301578427944189
+          },
+          {
+            "kind": "min",
+            "f_ref_hz": 7495000000.0,
+            "f_meas_hz": 7467774527.6247225,
+            "df_hz": -27225472.37527752,
+            "f_window_hz": 80236460.3186506,
+            "value_ref": 0.0,
+            "value_meas": -3.6004462107472855e-09,
+            "dvalue": -3.6004462107472855e-09,
+            "derived_budget_hz": 40118230.1593253,
+            "abs_dev_over_derived_budget": 0.6786309432682958
+          },
+          {
+            "kind": "max",
+            "f_ref_hz": 11242500000.0,
+            "f_meas_hz": 11179072796.491915,
+            "df_hz": -63427203.50808525,
+            "f_window_hz": 208744460.24867952,
+            "value_ref": 0.36,
+            "value_meas": 0.37626550436236694,
+            "dvalue": 0.016265504362366956,
+            "derived_budget_hz": 104372230.12433976,
+            "abs_dev_over_derived_budget": 0.6077019091431096
+          }
+        ],
+        "reasons": []
+      },
+      "fringe0_dev_hz": 8721130.529758453,
+      "fringe0_abs_dev_over_derived_budget": 0.2954381433563571,
+      "fringe0_verdict": "PASS (artefact hypothesis confirmed)"
+    }
+  },
+  "vessl_run": "369367257595",
+  "harvested_log": "~/Documents/vessl-run-logs/369367257595_cv04_runlength_fringe0.log"
+}
