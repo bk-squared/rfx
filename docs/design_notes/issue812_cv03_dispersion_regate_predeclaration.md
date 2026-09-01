@@ -19,9 +19,17 @@ audit measured exactly that — sweeping the case's own `eps_wg`:
 | `eps_wg` | audit's `<T>_band` | verdict | audit's measured `<n_eff>_band` |
 |---:|---:|:--|---:|
 | 12 | 0.9657 | PASS | 2.8593 |
-| 11 | 0.9700 | PASS | 2.1905 → (see below) |
-| 10 | 0.9882 | PASS | |
+| 11 | 0.9700 | PASS | (not reported) |
+| 10 | 0.9882 | PASS | (not reported) |
 | 8  | 1.0257 | PASS | 2.1905 |
+
+**Correction, same session, before any measurement in this lane:** the first
+commit of this file put "2.1905" in the `eps = 11` row of the table above. That
+was wrong — the audit reported `<n_eff>_band` only at the two endpoints of its
+sweep, 2.8593 at `eps = 12` and 2.1905 at `eps = 8`. The intermediate rows are
+"not reported". No threshold in §3 was derived from any of these numbers, so the
+error changed nothing downstream; it is corrected here rather than rewritten
+away.
 
 The guide the case declares changed by **−23.4 %** in effective index while the
 gate stayed green with margin. The case's committed reference set is
