@@ -322,4 +322,77 @@ by G17-B.
 
 ### 5.2 cv18
 
-Filled in below with the live rerun and the real-FDTD one-cell falsifier.
+**(A) — today's code, through the live gates.** `18_wr90_iris_modematch.py`
+(no flags), full gated set, 16 FDTD runs:
+
+| d (mm) | glen | frac | fine gap | per-config gate | coarse gap | Richardson |
+|---:|---:|---:|---:|---:|---:|---:|
+| 18.288 | 0.20 | 0.50 | 0.0122 | 0.019 | 0.020 | 0.004 |
+| 12.192 | 0.20 | 0.50 | 0.0223 | 0.034 | 0.041 | 0.005 |
+| 7.620  | 0.20 | 0.50 | 0.0097 | 0.015 | 0.018 | 0.001 |
+| 18.288 | 0.20 | 0.42 | 0.0145 | 0.022 | 0.026 | 0.004 |
+| 12.192 | 0.20 | 0.42 | 0.0232 | 0.035 | 0.043 | 0.005 |
+| 7.620  | 0.20 | 0.42 | 0.0097 | 0.015 | 0.018 | 0.001 |
+| 12.192 | 0.16 | 0.50 | 0.0222 | 0.034 | 0.041 | 0.005 |
+| 12.192 | 0.24 | 0.50 | 0.0222 | 0.034 | 0.040 | 0.005 |
+
+`RESULT: ALL CHECKS PASSED`, exit 0. **Every one of the sixteen gaps
+reproduces the committed 2026-07-28 fixture value exactly** (an independent
+rerun harness measured the same sixteen before the script run, with the same
+numbers), so the fixture is still the record of today's code and the
+tightened gates are satisfied by the same physics that set them, with the
+x1.5 headroom the rule guarantees.
+
+**(B) — the audit's defect, run for real.** `d = 7.620 mm`, upper fin drawn
+one cell short at each rung (the symmetric two-fin lattice can only realise
+an EVEN aperture cell count, so a one-cell error is necessarily asymmetric),
+with `d_phys`, the record and the oracle all at the declared 7.620 mm:
+
+* the defect is realised as intended — rasterized aperture **20 cells at the
+  fine rung (nominal 19) and 10 at the coarse (nominal 9)**, i.e. one cell too
+  wide at each rung, dx-proportional;
+* measured **fine gap 0.02842**: **PASSES the pre-#812 pooled gate 0.04** —
+  the audit's finding, reproduced live on today's code — and **FAILS the new
+  per-config gate 0.015** by a factor 1.89;
+* measured **Richardson deviation 0.00588: PASSES the 0.01 gate**, exactly as
+  section 2.2 predicts and for the stated reason. This is left standing and
+  documented, not papered over.
+* Through the live gate path (the eight configurations replayed from the
+  fixture with this measured pair substituted at d = 7.620), the script
+  prints `d= 7.62 glen=0.20 frac=0.50: max|dS11|=0.0284 gate 0.015 ... FAIL`
+  and **only** that row, then `RESULT: SOME CHECKS FAILED`, exit **1**.
+
+The first-order model of section 2.2 predicted 0.0265 / 0.0030 for this
+defect against the measured 0.02842 / 0.00588 — same class, 7% apart on the
+gated leg, which is the accuracy that model is claimed at and the reason the
+committed detection table in `test_one_cell_aperture_resolution_is_declared_
+and_pinned` is a *model* pinned by a real measurement rather than the reverse.
+
+**What is NOT closed, and is stated in the claim instead:** a one-cell
+UNDER-aperture. Detection margins are 1.18x and 1.05x at d = 18.288 (below
+the repo's own 1.5x) and there is no detection at all at d = 12.192 and
+d = 7.620 -- at the strong aperture the fine rung's own first-order staircase
+error is already worth about -0.6 to -1 cell of effective aperture, so the
+committed trace sits CLOSER to the oracle one cell narrow (0.0035) than to
+the declared one (0.0097). No legal gate can resolve it and none pretends to.
+
+### 5.3 What was NOT done, and why
+
+* **No fixture regeneration.** Both fixtures are frozen 2026-07-27/28 evidence
+  and cv18's reproduces value-for-value on today's code; regenerating would
+  re-freeze the evidence record (a much larger claim than a re-gate) and, for
+  cv17, would land the deferred issue-#725 `a_eff` convention change in the
+  same commit. The cv17 material fields are therefore gated live in the script
+  and guarded forward on the frozen leg.
+* **The cv18 Richardson gate was not tightened.** 0.01 is already the smallest
+  legal value at its quantum (envelope 0.0051), it already detects a
+  rung-LOCAL one-cell error with >= 2.5x margin, and it is blind to the
+  dx-proportional class by construction — a quantum change would buy margin on
+  a channel that has it and nothing on the class that matters.
+* **The cv17 dB gate was not tightened.** 6.3 dB is round-up(4.181 x 1.5); the
+  only move available is the quantum (6.3 -> 6.28), which shifts the blind eps
+  window by under 0.5%.
+* **cv16 was not touched.** Its translation-invariance finding is physics
+  (#820). This lane's cv17 changes are in the same file family (`rfx/rcs.py`
+  is read by both cases) but touch no extraction path: the material gate reads
+  the rasterized `eps_r` array before the solve and changes no computation.
