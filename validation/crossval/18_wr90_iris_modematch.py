@@ -158,8 +158,72 @@ CANONICAL = (0.20, 0.50)
 # gates = round-UP(measured envelope x 1.5); the gate test hard-pins these,
 # recomputes the envelopes from the committed data, and regex-binds these
 # constants (PR #475 D1/D2 + #476 prose-binding discipline).
-GATE_FINE_ABS = 0.04    # = round-up(measured fine envelope 0.0232 x 1.5)
+GATE_FINE_ABS = 0.04    # = round-up(POOLED fine envelope 0.0232 x 1.5)
 GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0051 x 1.5)
+
+# --- issue #812 re-gate (G18-A): PER-CONFIGURATION fine gates -------------
+# The pooled GATE_FINE_ABS above is set by the WORST of eight configurations
+# and then spent at all eight, so the six well-behaved ones carry up to 4x the
+# slack their own data earns.  The same repo rule -- gate = round-UP(measured
+# envelope x 1.5) -- applied to each configuration's OWN committed envelope,
+# at quantum 1000 (precedent: tests/test_msl_port_integration.py):
+#
+#   d(mm)   glen  frac   committed gap   gate
+#   18.288  0.20  0.50   0.0122          0.019
+#   12.192  0.20  0.50   0.0223          0.034
+#    7.620  0.20  0.50   0.0097          0.015
+#   18.288  0.20  0.42   0.0145          0.022
+#   12.192  0.20  0.42   0.0232          0.035
+#    7.620  0.20  0.42   0.0097          0.015
+#   12.192  0.16  0.50   0.0222          0.034
+#   12.192  0.24  0.50   0.0222          0.034
+#
+# GATE_FINE_ABS is RETAINED UNCHANGED (nothing is widened); the per-config
+# gate is strictly tighter and is the binding one.  Why it matters: the audit
+# of issue #812 measured a one-cell aperture error at d = 7.620 moving the
+# fine gap 0.0097 -> 0.0265, inside the pooled 0.04 and outside this 0.015.
+# Pre-declared, with the sensitivity derivation and the resulting detection
+# table, in docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_
+# predeclaration.md section 2.3/2.4, in a commit PRECEDING the measurement
+# that judges them.
+GATE_FINE_ABS_PER_CONFIG = {
+    "18.288|0.20|0.50": 0.019,
+    "12.192|0.20|0.50": 0.034,
+    "7.620|0.20|0.50": 0.015,
+    "18.288|0.20|0.42": 0.022,
+    "12.192|0.20|0.42": 0.035,
+    "7.620|0.20|0.42": 0.015,
+    "12.192|0.16|0.50": 0.034,
+    "12.192|0.24|0.50": 0.034,
+}
+
+
+def config_key(d_phys_or_mm, glen, frac):
+    """Stable key for GATE_FINE_ABS_PER_CONFIG (metres or mm both accepted)."""
+    d_mm = d_phys_or_mm * 1e3 if d_phys_or_mm < 1.0 else d_phys_or_mm
+    return f"{d_mm:.3f}|{glen:.2f}|{frac:.2f}"
+
+
+# --- issue #812 re-gate (G18-C): the declared aperture set is a CLAIM ------
+# Nothing in this case ever checked that the apertures it ran are the
+# apertures it claims: the oracle is evaluated at whatever d_phys run_point
+# was handed, so a silently relabelled aperture moves BOTH sides together and
+# every residual stays nominal.  The pin is geometric, from a = 22.86 mm and
+# the two declared rungs: each aperture must be an exact and EVEN integer
+# number of cells at BOTH rungs.  Even, because the symmetric two-fin
+# construction can only realise an even d_c -- fin_c = (cells - d_c)//2 makes
+# the open-node count cells-1-2*fin_c, which equals d_c-1 only for even d_c.
+# A one-fine-cell relabel (7.620 -> 8.001 mm) is 21 fine cells (odd) and 10.5
+# coarse cells, so it fails this pin with ZERO tolerance.
+def assert_declared_aperture(d_phys):
+    for cells in (COARSE_CELLS, FINE_CELLS):
+        n = d_phys / (A_WR90 / cells)
+        n_i = round(n)
+        assert abs(n - n_i) < 1e-9, ("aperture not grid-exact", d_phys, cells, n)
+        assert n_i % 2 == 0, ("aperture not an EVEN cell count "
+                              "(symmetric-fin parity)", d_phys, cells, n_i)
+    assert any(abs(d_phys - d) < 1e-12 for d in D_APERTURES), (
+        "aperture is not one of the three DECLARED apertures", d_phys)
 
 
 # --------------------------------------------------------------------------- #
@@ -279,6 +343,7 @@ def validate_oracle() -> dict:
 def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
               num_periods=100.0):
     """One 2-port iris run at grid-exact dimensions with raster asserts."""
+    assert_declared_aperture(d_phys)   # issue #812 G18-C
     DX = A_WR90 / cells
     d_c = int(round(d_phys / DX))
     t_c = int(round(T_IRIS / DX))
@@ -366,7 +431,8 @@ def main(argv):
     oracles = {str(d): oracle_s11(d) for d in D_APERTURES}
 
     # --- GATED fine rung: all apertures at canonical + worst-aperture scan ---
-    print(f"\n== GATED fine rung dx=a/{FINE_CELLS} flux (gate {GATE_FINE_ABS} abs) ==")
+    print(f"\n== GATED fine rung dx=a/{FINE_CELLS} flux (PER-CONFIG gates, "
+          f"pooled ceiling {GATE_FINE_ABS} abs) ==")
     fine_rows = []
     fine_configs = ([(d, CANONICAL) for d in D_APERTURES]
                     + [(d, ASYM_CONFIG) for d in D_APERTURES]
@@ -376,11 +442,17 @@ def main(argv):
         r["oracle_s11"] = oracles[str(d)]
         gap = max(_gaps(r, oracles[str(d)]))
         r["max_gap_abs"] = round(gap, 4)
+        key = config_key(d, glen, frac)
+        cfg_gate = GATE_FINE_ABS_PER_CONFIG[key]
+        r["fine_gate_abs"] = cfg_gate
         fine_rows.append(r)
-        passed = gap <= GATE_FINE_ABS
+        # BOTH: the pre-#812 pooled ceiling (never widened) and the tighter
+        # per-configuration gate this case is now judged on.
+        passed = gap <= cfg_gate and gap <= GATE_FINE_ABS
         ok &= passed
         print(f"  d={d*1e3:6.2f} glen={glen:.2f} frac={frac:.2f}: "
-              f"max|dS11|={gap:.3f} colpow={r['max_colpow']:.3f} "
+              f"max|dS11|={gap:.4f} gate {cfg_gate:.3f} "
+              f"colpow={r['max_colpow']:.3f} "
               f"({r['wall_s']:.0f}s) {'PASS' if passed else 'FAIL'}", flush=True)
 
     # --- coarse rung + Richardson gate, DOMAIN-SCANNED (R480 B1: the
@@ -485,6 +557,56 @@ def main(argv):
                 print(f"  ENVELOPE/GATE MISMATCH ({tier}): gate {gate} "
                       f"must equal round-up(env x 1.5) = {required}")
                 ok = False
+        # issue #812 G18-A: the SAME exact-equality demand, per configuration.
+        for fr in fine_rows:
+            key = config_key(fr["d_mm"], fr["glen_m"], fr["iris_frac"])
+            required = gate_from_envelope(fr["max_gap_abs"], quantum=1000)
+            if abs(GATE_FINE_ABS_PER_CONFIG[key] - required) > 1e-9:
+                print(f"  ENVELOPE/GATE MISMATCH (fine {key}): gate "
+                      f"{GATE_FINE_ABS_PER_CONFIG[key]} must equal "
+                      f"round-up(env x 1.5) = {required}")
+                ok = False
+        if set(GATE_FINE_ABS_PER_CONFIG) != {
+                config_key(fr["d_mm"], fr["glen_m"], fr["iris_frac"])
+                for fr in fine_rows}:
+            print("  PER-CONFIG GATE SET does not match the measured configs")
+            ok = False
+
+        # issue #812 G18-B: the one-cell aperture DETECTION table, recomputed
+        # from the rows and the oracle (no FDTD).  The defect modelled is the
+        # audit's: aperture one cell off AT EACH RUNG (dx-proportional), which
+        # is what the campaign's own setup defect (3) was, at half its size.
+        one_cell = []
+        for fr in fine_rows:
+            d = fr["d_mm"] * 1e-3
+            key = config_key(fr["d_mm"], fr["glen_m"], fr["iris_frac"])
+            base = np.asarray(oracles[str(d)])
+            cr = next(c for c in coarse_rows
+                      if (c["d_mm"], c["glen_m"], c["iris_frac"])
+                      == (fr["d_mm"], fr["glen_m"], fr["iris_frac"]))
+            for sgn in (+1, -1):
+                shift_f = np.asarray(oracle_s11(d + sgn * A_WR90 / FINE_CELLS)) - base
+                shift_c = np.asarray(oracle_s11(d + sgn * A_WR90 / COARSE_CELLS)) - base
+                f_def = np.asarray(fr["s11"]) + shift_f
+                c_def = np.asarray(cr["s11"]) + shift_c
+                gap = float(np.max(np.abs(f_def - base)))
+                rich = float(np.max(np.abs(2 * f_def - c_def - base)))
+                one_cell.append({
+                    "config": key, "sign": sgn,
+                    "fine_gap_abs": round(gap, 4),
+                    "fine_gate_abs": GATE_FINE_ABS_PER_CONFIG[key],
+                    "detected_by_fine_gate": bool(
+                        gap > GATE_FINE_ABS_PER_CONFIG[key]),
+                    "richardson_dev_abs": round(rich, 4),
+                    "detected_by_richardson_gate": bool(rich > GATE_RICH_ABS),
+                })
+        n_pos = sum(o["detected_by_fine_gate"] for o in one_cell if o["sign"] > 0)
+        n_neg = sum(o["detected_by_fine_gate"] for o in one_cell if o["sign"] < 0)
+        print(f"\n  one-cell aperture detection: +1 cell {n_pos}/8, "
+              f"-1 cell {n_neg}/8; Richardson "
+              f"{sum(o['detected_by_richardson_gate'] for o in one_cell)}/16 "
+              f"(dx-proportional errors cancel in 2*fine - coarse BY "
+              f"CONSTRUCTION — see the module docstring)")
 
         payload = {
             "schema": "rfx.wr90_iris_modematch",
@@ -559,7 +681,8 @@ def main(argv):
                 "consistently a little worse, which is why flux still "
                 "carries the gate. Palace WavePort corroboration (stage S2) "
                 "and a published multi-iris filter (stage S3) are follow-on "
-                "stages, not claimed here."
+                "stages, not claimed here. "
+                "APERTURE RESOLUTION (issue #812 re-gate, 2026-09-01): the fine gate is now per-CONFIGURATION -- gate = round-up(that configuration's own committed envelope x 1.5) at quantum 1000, giving 0.019/0.034/0.015/0.022/0.035/0.015/0.034/0.034 for the eight configs -- because the pooled 0.04 was set by the worst configuration and then spent at all eight. Measured against those gates, a one-cell aperture error at each rung (the smallest the grid-snapped geometry can express, and the campaign's own setup defect (3) at half its size) is detected as an OVER-aperture at 8 of 8 configurations with margin >= 1.77x, and as an UNDER-aperture at only 2 of 8, both at the weak aperture and both below the repo's own 1.5x margin (1.18x and 1.05x). A one-cell under-aperture is therefore NOT resolved with margin at any configuration, and at d = 12.192 and d = 7.620 mm it is not resolved at all: at d = 7.620 the committed fine trace is CLOSER to the oracle at d minus one fine cell (0.0035) than to the oracle at the declared d (0.0097), the fine rung's own first-order staircase error being worth about -0.6 to -1 cell of effective aperture. The Richardson witness is blind to this whole class in both signs at all eight configurations BY CONSTRUCTION: an aperture error of one cell at each rung is proportional to dx, which is exactly what 2*S(a/60) - S(a/30) is built to remove, so no tightening of its 0.01 gate can catch it and none is attempted. The calibration this case supplies to any downstream multi-iris filter is aperture-resolved to +1 fine cell, NOT to -1. The three declared apertures are now pinned as claims (G18-C): each must be an exact and EVEN integer cell count at BOTH rungs, a geometric condition no one-fine-cell relabel can satisfy."
             ),
             "config": {
                 "a_m": A_WR90, "b_m": B_WR90, "t_m": T_IRIS,
@@ -576,6 +699,7 @@ def main(argv):
             },
             "gates": {
                 "fine_gate_abs": GATE_FINE_ABS,
+                "fine_gate_abs_per_config": dict(GATE_FINE_ABS_PER_CONFIG),
                 "fine_measured_envelope_abs": round(env_fine, 4),
                 "richardson_gate_abs": GATE_RICH_ABS,
                 "richardson_measured_envelope_abs": round(env_rich, 4),
@@ -587,9 +711,11 @@ def main(argv):
                            "and phase are reported, never gated; modal "
                            "extraction is no longer fenced (retracted, see "
                            "provenance) but structures beyond one symmetric "
-                           "inductive iris remain fenced, never gated",
+                           "inductive iris remain fenced, never gated"
+                           "; issue #812 re-gate: the BINDING fine gate is now per-configuration, gate = round-UP(that configuration's own envelope x 1.5) at quantum 1000, with the pooled 0.04 retained unchanged as a ceiling and the one-cell aperture detection table gated as its own claim",
             },
             "gated_fine": fine_rows,
+            "one_cell_aperture_detection_witness": one_cell,
             "modal_extraction_witness": modal_witness,
             "coarse_diagnostic": coarse_rows,
             "raw_extraction_record": raw_rows,

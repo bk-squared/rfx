@@ -293,3 +293,111 @@ def test_scan_populations_carry_their_own_provenance(fixture):
         assert all(r["cells_per_radius"] == 12.8 for r in rows), ka
     for c, fam in fixture["domain_realizations"].items():
         assert all(r["clear_cells"] == int(c) for r in fam), c
+
+
+# --------------------------------------------------------------------------- #
+# issue #812 re-gate — the permittivity gets a channel of its own.
+#
+# The audit of issue #812 measured this case's dB gate passing for a
+# rasterized permittivity wrong by a factor. Re-measured live on today's code
+# (four gated coarse bins, oracle held at the declared 2.56): eps_r = 2.0
+# gives max |delta| = 6.07 dB and eps_r = 5.5 gives 5.50 dB, both inside the
+# 6.3 dB gate; 1.8 (7.70 dB) and 6.0 (8.55 dB) are outside. That window is not
+# a defect of the threshold — it is the sensitivity of the observable:
+# d(sigma_dB)/d(eps/eps) is 9.816/10.202/9.978/7.134 dB per unit RELATIVE
+# permittivity at ka = 0.50/0.75/1.00/1.25, so 6.3 dB IS a factor-wide window
+# and the gate is already round-up(envelope x 1.5), i.e. as tight as the repo
+# rule permits. The fix is a second channel, not a smaller number.
+#
+# Pre-declared with its derivation in
+# docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md
+# section 1.4, in a commit preceding the measurement that judges it.
+# --------------------------------------------------------------------------- #
+
+_SCRIPT_17 = _REPO_ROOT / "validation/crossval/17_dielectric_sphere_mie.py"
+
+
+def _load_script_module():
+    """Import the crossval script by path (its name is not an identifier).
+
+    Imported lazily, inside the tests that need it, so this frozen-fixture
+    lane keeps costing nothing at collection time.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_cv17_script", _SCRIPT_17)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_material_gate_constants_are_pinned_and_bound(fixture):
+    """D2 pattern: bind the constants CI actually enforces, and hard-pin the
+    derived value so widening needs this line edited with a root cause."""
+    src = _SCRIPT_17.read_text(encoding="utf-8")
+    m = re.search(r"^EPS_REALIZED_TOL = ([0-9.]+)", src, re.MULTILINE)
+    n = re.search(r"^N_DISTINCT_EPS_EXPECTED = ([0-9]+)", src, re.MULTILINE)
+    assert m and n, "material gate constants not found in script source"
+    # HARD pin: 0.05 dB (half the gate's 0.1 dB quantum) / 10.202 dB per unit
+    # relative eps (the worst gated-ka Mie sensitivity) = 0.0049 -> 0.005.
+    assert float(m.group(1)) == 0.005
+    assert int(n.group(1)) == 2
+    assert fixture["gates"]["eps_realized_tol"] == float(m.group(1))
+    assert fixture["gates"]["n_distinct_eps_expected"] == int(n.group(1))
+    # the gate must actually be spent in the gated loop, not merely defined
+    assert "material_gate_ok(" in src
+    assert "MATERIAL FAIL" in src
+
+
+def test_the_declared_permittivity_sensitivity_is_the_one_recorded(fixture):
+    """The window in claim_scope is a physical statement; re-derive it here
+    from the independent Mie leg rather than trusting the prose."""
+    scope = " ".join(fixture["claim_scope"].split())
+    expected = {0.5: 9.816, 0.75: 10.202, 1.0: 9.978, 1.25: 7.134}
+    h = 1e-3
+    for ka, want in expected.items():
+        base = _mie_backscatter_over_pi_a2(M_IDX, ka)
+        up = _mie_backscatter_over_pi_a2(float(np.sqrt(2.56 * (1 + h))), ka)
+        slope = 10 * np.log10(up / base) / h
+        assert slope == pytest.approx(want, abs=5e-3), (ka, slope)
+    assert "9.816/10.202/9.978/7.134 dB per unit RELATIVE permittivity" in scope
+    # and the sensitivity-derived tolerance follows from the worst of them
+    assert fixture["gates"]["eps_realized_tol"] == pytest.approx(
+        math.ceil(0.05 / max(expected.values()) * 1000) / 1000, abs=1e-12)
+
+
+def test_material_gate_rejects_the_permittivity_the_db_gate_cannot_see():
+    """Criterion (B). The material actually rasterized is read back out of the
+    array and judged; a permittivity at the measured edge of the dB gate's
+    blind window must fail, and must fail for the RIGHT reason."""
+    mod = _load_script_module()
+    # positive control: what the binary rasterize path really delivers
+    ok_arr = np.where(np.arange(64).reshape(4, 4, 4) < 20,
+                      np.float32(2.56), np.float32(1.0))
+    stats = mod.check_realized_material(ok_arr)
+    assert stats["n_distinct_eps"] == 2
+    assert stats["eps_rel_dev"] < 1e-6, stats      # float32 round-trip only
+    assert mod.material_gate_ok(stats)
+
+    # (B) the defect: a run whose rasterized permittivity sits at the edge of
+    # the window the 6.3 dB gate measurably tolerates (5.5 -> 5.50 dB, PASS).
+    for bad_eps in (5.5, 2.0):
+        bad = np.where(np.arange(64).reshape(4, 4, 4) < 20,
+                       np.float32(bad_eps), np.float32(1.0))
+        st = mod.check_realized_material(bad)
+        assert st["n_distinct_eps"] == 2                  # structurally fine
+        assert st["eps_realized"] == pytest.approx(bad_eps, rel=1e-6)
+        assert st["eps_rel_dev"] == pytest.approx(
+            abs(bad_eps / 2.56 - 1), rel=1e-6)            # the RIGHT reason
+        assert st["eps_rel_dev"] > mod.EPS_REALIZED_TOL
+        assert not mod.material_gate_ok(st)
+
+    # (B) the other half of the headline claim: sub-cell interface averaging
+    # would leave a third value in the array. Nothing checked this before.
+    smoothed = np.where(np.arange(64).reshape(4, 4, 4) < 20,
+                        np.float32(2.56), np.float32(1.0))
+    smoothed[0, 0, 3] = np.float32(1.78)
+    st = mod.check_realized_material(smoothed)
+    assert st["n_distinct_eps"] == 3
+    assert st["eps_rel_dev"] <= mod.EPS_REALIZED_TOL      # G17-A alone is blind
+    assert not mod.material_gate_ok(st)                   # G17-B catches it

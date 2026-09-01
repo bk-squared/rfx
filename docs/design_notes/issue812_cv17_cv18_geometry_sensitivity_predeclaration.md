@@ -253,3 +253,73 @@ guide/grid geometry, and the repo's own committed `round-up(envelope x 1.5)`
 provenance. None is fitted to a number measured after this commit. No existing
 gate is widened. This note is append-only; a later correction states the old
 value and why it was wrong.
+
+---
+
+## 4. CORRECTION to section 1.2 (2026-09-01, written after the measurement)
+
+**What section 1.2 said, and it is wrong.** It published, as the `eps_r`
+window the present 6.3 dB gate polices, **[1.601, 3.867]** (script leg) and
+**[1.684, 3.787]** (frozen leg), and said the audit's **[1.988, 5.622]** /
+[2.054, 4.212] "do not reproduce". **My two numbers are wrong and the audit's
+script-leg window is right.**
+
+**Why it was wrong.** The model behind 1.2 held the FDTD side fixed and moved
+only the oracle. That is not what the defect does: a run at a different
+permittivity changes the FDTD result too, and above 2.56 the staircase error
+moves in the direction that *cancels* part of the oracle shift, so the real
+window is much wider than the oracle-only estimate on the high side.
+
+**Re-measured live** (four gated coarse bins per point, `rasterize` handed the
+wrong material while the declared 2.56 drives the oracle and the operating
+point; `max |delta_db|` over the four bins against the 6.3 dB gate):
+
+| eps_r | 1.2 | 1.4 | 1.6 | 1.8 | **2.0** | 2.2 | **2.56** | 3.0 | 3.5 | 4.0 | 4.5 | 5.0 | **5.5** | 6.0 | 7.0 | 8.0 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| max\|delta\| dB | 18.87 | 13.12 | 9.90 | 7.70 | **6.07** | 4.80 | **3.08** | 1.63 | 2.68 | 3.66 | 4.41 | 5.52 | **5.50** | 8.55 | 11.64 | 11.90 |
+| verdict | FAIL | FAIL | FAIL | FAIL | **PASS** | PASS | PASS | PASS | PASS | PASS | PASS | PASS | **PASS** | FAIL | FAIL | FAIL |
+
+so the blind window is bracketed at **(1.8, 6.0)**, passing at 2.0 and 5.5 —
+the audit's [1.988, 5.622] sits inside that bracket and is corroborated, not
+refuted. The finding is *worse* than 1.2 made it look: the case's dB gate
+accepts a permittivity more than double the declared one.
+
+**Consequence for the pre-declared gates: none.** `EPS_REALIZED_TOL = 0.005`
+was derived in 1.4 from the oracle sensitivity and the gate's own reporting
+quantum, not from this window. The window only fixes where criterion (B)'s
+"edge of the current tolerance" sits, which is now **measured** at
+`eps_r = 5.5` (upper) and `2.0` (lower) instead of assumed.
+
+---
+
+## 5. Measured results (2026-09-01, on `agent/regate-mie-iris`)
+
+### 5.1 cv17
+
+**(A) — today's code, declared material.** `17_dielectric_sphere_mie.py`
+gated set, live: `delta_db` = -1.49 / -0.16 / -3.08 / +0.29 dB at
+ka = 0.50/0.75/1.00/1.25 against the 6.3 dB gate (worst 3.08, margin 2.04x);
+`a_eff/a` = 0.9880/0.9880/0.9893/0.9954 against `A_EFF_TOL_COARSE` 1.5%;
+realized `eps_r` = float32(2.56) = 2.5599999428, **2.2e-8 relative** against
+`EPS_REALIZED_TOL` 0.005 (a factor 2.2e5 of margin), **2 distinct values** in
+the rasterized array at every bin. `RESULT: ALL CHECKS PASSED`, exit 0.
+
+**(B) — the defect, at both measured edges of the blind window.** `rasterize`
+made to deliver `eps_r = 5.5` (and, separately, `2.0`) where 2.56 was
+declared:
+
+* the **dB gate PASSES on every one of the four gated bins** (max \|delta\|
+  5.50 dB at 5.5, 6.07 dB at 2.0, both inside 6.3) — the audit's finding,
+  reproduced live on today's code;
+* the **material gate FAILS on every bin, for the right reason**, printing
+  `MATERIAL FAIL (realized eps_r 5.5, 2 distinct values; declared 2.56, tol
+  0.005 rel, 2 values)`; script prints `SOME CHECKS FAILED` and exits **1**.
+
+The structural half (G17-B) is falsified separately in
+`tests/test_rcs_dielectric_sphere_mie_gates.py`: an array carrying one
+averaged interface value passes G17-A (its max is still 2.56) and is rejected
+by G17-B.
+
+### 5.2 cv18
+
+Filled in below with the live rerun and the real-FDTD one-cell falsifier.
