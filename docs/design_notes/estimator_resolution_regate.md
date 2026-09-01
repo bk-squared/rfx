@@ -3,9 +3,11 @@
 Append-only. Sections 1-4 are the **PRE-DECLARATION**: every numeric window
 in them was frozen in commit `fc6ca0a`, before any measurement that judges it.
 Section 5 records what was then measured; it never edits a window. A
-correction states the old value and why it was wrong (there are two: the
-repository's own 70.7 MHz bin figure in section 1, and this note's first
-attribution of the -30.7 vs -31.23 dB difference, both marked in place).
+correction states the old value and why it was wrong. Three so far: the
+repository's own 70.7 MHz bin figure (section 1), this note's first
+attribution of the -30.7 vs -31.23 dB difference (section 1), and its
+description of a 0.5 dB prominence as "12 % in |S21|" (section 3, T5) — all
+marked in place. No WINDOW has moved.
 
 Lane: `agent/regate-estimator-resolution`. Scope: **instrument only.** No
 physics verdict of either case is challenged, moved, or re-pinned here.
@@ -203,7 +205,10 @@ A zero = a local minimum of `|S21|` with depth `<= -20 dB` and prominence
 `>= 0.5 dB` against the shallower of its flanking maxima. **-20 dB is not a
 new constant**: it is gate A4's existing threshold in this same file
 ("openEMS shows a deep stopband zero", `oems_null_db <= -20.0`). 0.5 dB
-prominence is a 12 % change in `|S21|` — an order above the extraction noise
+prominence is a **5.9 %** change in `|S21|` (12 % in power) — *(CORRECTION:
+`fc6ca0a` wrote "a 12 % change in |S21|"; 0.5 dB is 12 % in POWER and 5.9 % in
+amplitude. The window is unchanged; only the sentence describing it was
+wrong.)* — an order above the extraction noise
 the legs' own committed evidence bounds (rfx raw passivity excess <= 0.0145;
 openEMS column power inside the documented 1.10 envelope) — and it exists only
 to stop a dense sweep's shoulder ripple from counting.
