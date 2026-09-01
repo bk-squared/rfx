@@ -230,5 +230,118 @@ declared PASS or a declared STOP).
 
 ## Results
 
-(to be appended after the declared runs — nothing below this line existed
-before the arms ran)
+### Import-provenance correction (before any accepted run)
+
+The first baseline execution imported the editable-INSTALLED rfx (the
+primary checkout) instead of this tree: `python script.py` puts the
+script's own directory on `sys.path`, not the cwd, so the stale editable
+install shadowed the checkout silently (the known
+stale-editable-install trap). The instrument now records `rfx.__file__`
+in its JSON, and both declared runs below were (re-)executed with
+`PYTHONPATH` pinned to this tree; both JSONs record
+`rfx_module_file = .../wf_7a4bcc28-1ea-4/rfx/__init__.py`.
+
+### Pre-fix baseline (declared defect-signature run)
+
+Working tree: commit `50e38371` with the two fixed files restored to
+their pre-fix state (`git checkout 77158f8f -- rfx/api/_sparams.py
+rfx/api/_preflight.py`), then re-restored from HEAD after the run.
+Output: `scripts/diagnostics/wr90_dz_dispatch_falsifier_prefix_baseline.json`.
+
+```
+arm U       nz=10 dt=1.906575e-12 s  |S11| = [0.9285838 0.5331533 0.31759596 0.21109244 0.14664528 0.08948956 0.04622725 0.1506129 0.29077476]
+arm A       nz=19 dt=1.149708e-12 s  |S11| = identical to U, bit for bit
+arm B       nz=19 dt=1.149708e-12 s  |S11| = identical to U, bit for bit
+arm A_shim  nz=19 dt=1.149708e-12 s  |S11| = [0.9240932 0.5317502 0.31734684 0.21096453 0.14590815 0.08813652 0.04777444 0.15393807 0.29540628]
+
+F1 A vs B: bit_identical=True  max|dS|=0.000000e+00   per-bin |dS11| all 0.0
+F2 A vs A_shim: max|dS|=9.922925e-03  (the dispatch-flip magnitude on these meshes)
+F3 A vs U: max|dS11|=0.000000e+00  max|dS|=0.000000e+00
+VERDICT: dz-only arms bit-identical -- dispatch defect signature (#811) present  (exit 2)
+```
+
+The dz arms' dt differs from the uniform arm's by 1.66x, and preflight
+described the graded mesh ("REALIZED guide ... declared geometry
+(non-uniform mesh)") while the solve returned bit-identical uniform
+numbers — the issue's evidence, reproduced from this tree's own code.
+
+### Post-fix battery (all falsifiers)
+
+Working tree: commit `50e38371` with the fix (`1b5799bd`) in place — the
+`rfx/` code is byte-identical through the later test/docs commits.
+Output: `scripts/diagnostics/wr90_dz_dispatch_falsifier_results.json`.
+Per-bin |S11(left,left)| across the nine 8.2–12.4 GHz bins:
+
+```
+arm U       nz=10 dt=1.906575e-12 s  [0.9285838  0.5331533  0.31759596 0.21109244 0.14664528 0.08948956 0.04622725 0.1506129  0.29077476]
+arm A       nz=19 dt=1.149708e-12 s  [0.9240932  0.5317502  0.31734684 0.21096453 0.14590815 0.08813652 0.04777444 0.15393807 0.29540628]
+arm B       nz=19 dt=1.149708e-12 s  [0.9240932  0.53175026 0.31734666 0.21096452 0.14590847 0.08813567 0.04777575 0.15393846 0.2954064 ]
+arm C       nz=14 dt=1.539454e-12 s  [0.92546934 0.5321789  0.317404   0.2110142  0.14629401 0.0888041  0.04684966 0.15236984 0.29239026]
+arm A_shim  nz=19 dt=1.149708e-12 s  [0.9240932  0.5317502  0.31734684 0.21096453 0.14590815 0.08813652 0.04777444 0.15393807 0.29540628]
+
+F1 A vs B: bit_identical=False max|dS|=6.303530e-03
+   per-bin |dS11|: [0.00306204 0.0042529  0.00384773 0.00082517 0.00238995 0.00630353 0.0018739  0.00053462 0.0040504 ]
+F1 A vs C: bit_identical=False max|dS|=5.926809e-03
+   per-bin |dS11|: [0.00183645 0.00206113 0.00145947 0.00061904 0.00042017 0.00141354 0.0009829  0.00162074 0.00309862]
+F1 B vs C: bit_identical=False max|dS|=6.897247e-03
+   per-bin |dS11|: [0.00449613 0.00227924 0.00239044 0.00021407 0.00225993 0.0051258  0.00178225 0.00182926 0.00561847]
+F2 A vs A_shim: max|dS|=0.000000e+00 (tolerance 1e-6) -> PASS
+F3 A vs U: max|dS11|=5.686986e-03 (window [1e-5, 1e-1]) max|dS|=9.922925e-03 -> PASS
+   per-bin |dS11|: [0.00566571 0.00168449 0.00045048 0.000841   0.0015705  0.00208749 0.00161001 0.00357124 0.00568699]
+VERDICT: all evaluated falsifiers PASS  (exit 0)
+```
+
+F1 PASS: every dz-only pair differs (bit-identity gone). F2 PASS at
+exactly 0.0: the explicit uniform-valued dy equals the synthesized dy,
+bit for bit (plumbing witness, as declared). F3 PASS: 5.687e-3 — same
+order class as the issue's 1.1486e-3 (our meshes are coarser and
+differently graded, hence a few-x larger).
+
+Cross-JSON provenance witnesses (first one declared, second one an
+additional measured observation):
+
+```
+postfix-U vs prefix-A:      bit_identical=True  max|dS|=0.0
+postfix-A vs prefix-A_shim: bit_identical=True  max|dS|=0.0
+```
+
+The first proves the old dz-only "answer" WAS the uniform-grid answer
+(the uniform lane is untouched by this diff). The second proves the
+fixed dz-only path lands on exactly the solve the dy shim used to force.
+
+Preflight context for these arms, quoted (identical family across arms;
+full verbatim text in both JSONs' `preflight_issues`): dielectric 'slab'
+resolution advisory "16.3 cells per λ_eff (eps_r=2.20, freq_max=12.4GHz,
+dx=1mm). Need ≥20 cells/λ_eff"; "all dielectric(s) ['slab'] are
+perfectly lossless in an open (CPML) domain" (harmless — no Q measured);
+both ports' "max measurement frequency 12.400 GHz exceeds 0.90 ×
+fc_next=11.803 GHz ... Evanescent TE20 contamination may exceed 1 %".
+These bound the arms' absolute fidelity, are common-mode across every
+comparison above, and do not affect a bit-identity / non-identity
+verdict. As declared: none of these S values may be quoted as physics;
+dz-graded accuracy evidence remains open under #810.
+
+### F4 — suite results
+
+- `pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py tests/test_support_matrix_parity.py tests/test_evidence_citation_pointers.py -q`
+  → **76 passed, 6 skipped, 1 deselected** (the deselected one is the
+  slow_physics falsifier).
+- `pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q`
+  → **1 passed, 11 deselected** (two genuinely different graded z meshes
+  change the answer; per-bin dump printed by the test).
+- `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402`
+  → All checks passed.
+- Targeted suite `pytest tests -k "waveguide and (sparam or s_matrix or dispatch or nonuniform)" -q`
+  → **52 passed, 1 skipped, 4804 deselected in 119.25s** (exit 0; every
+  warning in the log is pre-existing advisory chatter from other tests'
+  own fixtures).
+
+### Locked values moved
+
+None. Bucket (a) was empty as declared (no committed pin was produced by
+`compute_waveguide_s_matrix` on a dz-only simulation), and the F4 suites
+confirm no committed gate moved. The values that move are out-of-repo
+dz-only user results — uniform-grid artifacts of #811, to be re-produced
+on the mesh actually requested — and the unpushed #810 working tree's
+arm results (regenerated by whoever lands #810, per that note's own
+instruction; its uniform-dy shim is no longer needed).
