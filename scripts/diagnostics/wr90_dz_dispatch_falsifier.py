@@ -247,9 +247,15 @@ def main() -> int:
               f"max|dS|={d_all:.6e} -> {'PASS' if f3_pass else 'FAIL'}")
         print(f"   per-bin |dS11|: {_fmt_bins(per_bin_s11)}")
 
+    import rfx as _rfx
     out = {
         "schema": "rfx.dz_dispatch_falsifier.v1",
         "issue": "#811",
+        # Which rfx actually ran: `python script.py` resolves `import rfx`
+        # from sys.path, NOT from the checkout the script lives in — a
+        # stale editable install silently shadows the working tree. Pin
+        # with PYTHONPATH=<checkout> and check this field.
+        "rfx_module_file": str(getattr(_rfx, "__file__", "?")),
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "num_periods": NUM_PERIODS,
         "normalize": "flux",
@@ -258,6 +264,7 @@ def main() -> int:
     }
     with open(args.out, "w") as fh:
         json.dump(out, fh, indent=2)
+    print(f"rfx module: {out['rfx_module_file']}")
     print(f"wrote {args.out}")
 
     evaluated = [p for p in (f1_pass, f2_pass, f3_pass) if p is not None]
