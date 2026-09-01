@@ -60,6 +60,27 @@
         }
       ]
     },
+    "patch_len_22p0mm": {
+      "realized_patch_len_mm": 22.0,
+      "declared_patch_len_mm": 29.5,
+      "script_exit": 2,
+      "harminv_band_hz": [
+        1500000000.0,
+        3500000000.0
+      ],
+      "modes": [
+        {
+          "freq": 2989557628.2835736,
+          "Q": 35.78767699995988,
+          "amplitude": 274553.77620844764
+        },
+        {
+          "freq": 3633518874.674332,
+          "Q": 113.32565618825313,
+          "amplitude": 692450.9917361491
+        }
+      ]
+    },
     "patch_len_21p0mm": {
       "realized_patch_len_mm": 21.0,
       "declared_patch_len_mm": 29.5,
@@ -102,5 +123,17 @@
         }
       ]
     }
+  },
+  "_realized_x_cell_census": {
+    "_what": "patch x-extent rasterization measured from the geometry mask on cv05's own grid (dx = 1 mm), no FDTD: declared length -> realized x cells. Establishes which design-mode errors are reachable.",
+    "29.5": 29,
+    "23.0": 23,
+    "22.5": 23,
+    "22.0": 22,
+    "21.65": 21,
+    "21.5": 21,
+    "21.0": 21,
+    "20.5": 21,
+    "38.0": 38
   }
 }

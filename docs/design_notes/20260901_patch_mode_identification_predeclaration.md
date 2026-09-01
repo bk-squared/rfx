@@ -318,3 +318,59 @@ digits are now the file's, not a hand transcription of a rounded log line.
 Nothing else in §6 was transcribed this way: every other number here was
 printed at full precision by the run or recomputed from the committed file, and
 all of them were re-verified against those files after §6 was written.
+
+### 6.8 CORRECTION (2026-09-01, same day) — a withdrawn negative claim in §6.3, and a unit slip in §6.6
+
+Three items. The first is the one that matters.
+
+**(1) WITHDRAWN — "the +24 % point is not realizable on cv05's dx = 1 mm mesh".**
+
+> Old text, §6.3: "**On the audit's exact +24 % point.** It is not realizable on
+> cv05's dx = 1 mm mesh: one cell of patch length is ≈ 4–5 % in frequency here,
+> so the reachable neighbours are +18.55 % (22 cells) and +28.43 % (21 cells) —
+> both measured, both FAIL."
+
+**That claim is false and is withdrawn in full.** It was a negative existence
+claim ("not realizable") published from the two injections I happened to have
+run, without the census that could refute it. The census — the patch Box's
+realized x-cell count on cv05's own grid, no FDTD, now committed as
+`_realized_x_cell_census` in
+`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json` — says:
+
+```
+declared 29.5 mm -> 29 cells      declared 22.0 mm -> 22 cells
+declared 23.0 mm -> 23 cells      declared 21.65 / 21.5 / 21.0 / 20.5 mm -> 21 cells
+declared 22.5 mm -> 23 cells      declared 38.0 mm -> 38 cells
+```
+
+A **22-cell** realization exists between the two I had run, and the old text
+even mislabelled the 22.5 mm injection as "22 cells" when it rasterizes to 23.
+Running it (live FDTD, same harness):
+
+| realized | design mode | vs declared TM100 | captured by | verdict |
+|---|---|---|---|---|
+| 23 cells (declared 22.5 mm) | 2.87308 GHz | +18.55 % | TM110 (−6.98 %) | FAIL |
+| **22 cells (declared 22.0 mm)** | **2.98956 GHz** | **+23.36 %** | TM110 (−3.21 %) | **FAIL** |
+| 21 cells (declared 21.0 mm) | 3.11259 GHz | +28.43 % | TM110 (+0.77 %) | FAIL |
+
+So the audit's +24 % point **is** essentially realizable: +23.36 % is the
+closest the lattice offers, 0.64 percentage points from +24 %, and it FAILS
+with the same message. Criterion (B) for cv05 is met at the point the audit
+named, not merely bracketed around it. The per-cell step is ≈ 4.8–5.1
+percentage points here (measured: 18.55 → 23.36 → 28.43 %), not the "4–5 % of
+frequency" the old text asserted without measuring.
+
+*Why this happened, since the issue has been bitten by it twice already:* I
+searched for a realization at +24 % by running two injections and, when neither
+landed there, concluded none could. That is the search that fails to confirm,
+not the search that refutes. The refuting search — enumerate the realized cell
+counts — costs no FDTD at all.
+
+**(2) Unit slip, §6.6.** Old text: "settling to 9 × 10⁻⁵ dB". The settling
+witness values are −53.98492 dB (three code points) and −53.98978 dB (the
+committed leg): the difference is **4.9 × 10⁻³ dB absolute, 9 × 10⁻⁵
+relative**. The "9 × 10⁻⁵" figure was right; the unit label on it was not.
+
+**(3)** §6.3's summary table and the audit-point paragraph are superseded by
+the four-row table above; the 38.0 mm row (−25.16 %, captured by TM010 at
+−5.29 %) is unchanged.

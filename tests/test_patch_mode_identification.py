@@ -292,23 +292,25 @@ def test_cv05_correct_build_passes_with_margin():
 
 @pytest.mark.parametrize("run,f_ghz,rel", [
     ("patch_len_22p5mm", 2.87308, +0.1855),
+    ("patch_len_22p0mm", 2.98956, +0.2336),   # the audit's +24% point
     ("patch_len_21p0mm", 3.11259, +0.2843),
     ("patch_len_38p0mm", 1.81365, -0.2516),
 ])
 def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_ghz, rel):
     """(B) LIVE FDTD reproductions: the patch's realized resonant length is
-    21.0 / 22.5 / 38.0 mm while every declaration -- including the anchor --
+    22.5 / 22.0 / 21.0 / 38.0 mm while every declaration -- including the anchor --
     still says 29.5 mm.
 
-    The +24% point the audit named is not realizable on cv05's dx = 1 mm mesh
-    (one cell of patch length is ~4-5% of frequency here, so the reachable
-    neighbours are +18.55% and +28.43%); it is BRACKETED by two live runs that
-    both fail, and pinned exactly by
+    The audit's +24% point is measured directly: a 22-cell realized patch
+    (declared 22.0 mm) puts the design mode at +23.36%, the closest point the
+    dx = 1 mm lattice offers (its neighbours, 23 and 21 cells, are +18.55% and
+    +28.43% -- ~5 percentage points per cell). Exactly +24.00% is pinned
+    algebraically by
     ``test_design_mode_24_percent_high_fails_because_the_member_is_not_found``.
 
     In every case the drifted design mode is captured by a NEIGHBOURING
-    declared member -- TM110 at 22.5/21.0 mm, TM010 at 38.0 mm, which is the
-    cross-mode capture the audit described -- and the gate reports TM100
+    declared member -- TM110 at 22.5/22.0/21.0 mm, TM010 at 38.0 mm, which is
+    the cross-mode capture the audit described -- and the gate reports TM100
     MISSING rather than reporting the neighbour as the resonance."""
     data = _fixture("cv05_ringdown_spectra.json")["runs"][run]
     members = _members(CV05)
