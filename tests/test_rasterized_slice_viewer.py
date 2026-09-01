@@ -484,9 +484,16 @@ def test_two_plane_wall_is_drawn_plane_locally_on_its_own_wall_plane():
     it is drawn as its own marker rather than only being explained away.
 
     Reproduces the repo's own two_plane fixture (a 2x2 mm, 1-cell-thick
-    box, dx=100 um): measured wall_mask nonzero at z=9 (the body's own
-    plane, the interior normal-E edge) AND z=10 (the far face) -- BEFORE
-    this fix, index=10 showed "0 conductor cells" with no note at all.
+    box, dx=100 um): measured wall_mask nonzero at z=8 (the body's own
+    plane, the interior normal-E edge) AND z=9 (the far face) -- BEFORE
+    the marker fix, the wall's own plane showed "0 conductor cells" with
+    no note at all.
+
+    Re-pinned at the exact-coordinate fix (#802/#807): the old body plane
+    9 was the float32 thin-branch tie artifact; on exact float64 nodes the
+    face-registered one-cell box realizes on its lo-face node (plane 8,
+    the node its own half-open [lo, hi) window keeps), and the transverse
+    span gains its convention-owed node (361 -> 400 cells per plane).
     """
     dom = (3e-3, 3e-3, 2e-3)
 
@@ -506,34 +513,34 @@ def test_two_plane_wall_is_drawn_plane_locally_on_its_own_wall_plane():
         "the premise that the wall marker (not conductor_mask itself) is "
         "what has to carry this information")
 
-    # The body's own plane (index 9): a conductor cell IS present, plus the
+    # The body's own plane (index 8): a conductor cell IS present, plus the
     # interior-normal-E-edge component of the wall operator.
-    fig9 = plot_rasterized_slice(s1, axis=2, index=9)
-    t9 = fig9.axes[0].get_title()
-    assert int(t9.split("—")[1].split()[0]) == 361, "fixture sanity"
-    assert "sealing wall" in t9
+    fig_body = plot_rasterized_slice(s1, axis=2, index=8)
+    t_body = fig_body.axes[0].get_title()
+    assert int(t_body.split("—")[1].split()[0]) == 400, "fixture sanity"
+    assert "sealing wall" in t_body
 
-    # The wall's OWN plane (index 10): flag ON -> marker present, title
+    # The wall's OWN plane (index 9): flag ON -> marker present, title
     # says so, even though there are 0 conductor cells there.
-    fig10_on = plot_rasterized_slice(s1, axis=2, index=10)
-    ax10_on = fig10_on.axes[0]
-    t10_on = ax10_on.get_title()
-    assert int(t10_on.split("—")[1].split()[0]) == 0
-    assert "sealing wall" in t10_on, (
-        f"plane 10 must note the sealing wall even with 0 conductor "
-        f"cells there; got title {t10_on!r}")
+    fig_wall_on = plot_rasterized_slice(s1, axis=2, index=9)
+    ax_wall_on = fig_wall_on.axes[0]
+    t_wall_on = ax_wall_on.get_title()
+    assert int(t_wall_on.split("—")[1].split()[0]) == 0
+    assert "sealing wall" in t_wall_on, (
+        f"plane 9 must note the sealing wall even with 0 conductor "
+        f"cells there; got title {t_wall_on!r}")
     from matplotlib.collections import QuadMesh
-    wall_meshes = [c for c in ax10_on.collections if isinstance(c, QuadMesh)]
+    wall_meshes = [c for c in ax_wall_on.collections if isinstance(c, QuadMesh)]
     assert len(wall_meshes) >= 3, (
         "expected an eps mesh, a conductor overlay mesh, AND a wall "
         f"marker mesh; got {len(wall_meshes)}")
-    leg = ax10_on.get_legend()
+    leg = ax_wall_on.get_legend()
     assert leg is not None and any(
         "two-plane wall" in t.get_text() for t in leg.get_texts())
 
-    # Flag OFF: plane 10 has neither a marker nor a note.
-    fig10_off = plot_rasterized_slice(s0, axis=2, index=10)
-    ax10_off = fig10_off.axes[0]
+    # Flag OFF: the wall plane has neither a marker nor a note.
+    fig_wall_off = plot_rasterized_slice(s0, axis=2, index=9)
+    ax10_off = fig_wall_off.axes[0]
     assert "two-plane" not in ax10_off.get_title()
     wall_meshes_off = [c for c in ax10_off.collections if isinstance(c, QuadMesh)]
     assert len(wall_meshes_off) == 2, (
