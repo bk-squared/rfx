@@ -200,6 +200,23 @@ limited, a FIXTURE finding; invariant within 0.05 (|S00| 0.02) => (c)
 falsified). If B's settling_db > -40 dB at the same n_steps its numbers
 are truncated and UNPINNABLE -- report, name a 2x rerun, do not pin.
 
+``--fixture attempt3b`` (issue #823): attempt 3's fixture UNCHANGED -- the
+builder ``_build_coax_msl_transition_sim_attempt3b`` returns attempt 3's own
+Simulation, and eps_r/sigma/mu_r/pec_mask are asserted ``np.array_equal``
+over the whole domain by ``test_attempt3b_geometry_is_attempt3s_and_only_
+the_msl_probe_kwargs_differ`` -- with the COMPLIANT MSL probe ladder
+``_attempt3b_kwargs`` (msl_probe_count 9 -> 8, msl_probe_start_cells 4 -> 15,
+msl_probe_spacing_cells 10 unchanged; realized probes at x = 2.5 ... 9.5 mm).
+Every probe then stands at least ``msl_source_near_field_standoff_cells``
+= 15 cells = 1.5 mm = 5*h_sub from BOTH the port feed plane (x = 11.0 mm) and
+the reference plane the ladder is referred to (the junction, x = 1.0 mm),
+where attempt 3's own nearest probe stands 0.4 mm = 1.33*h_sub off the feed.
+3b vs 3 is therefore a PURE LADDER-RECIPE comparison on bit-identical
+geometry; its predictions and falsifiers are
+``tests/test_coax_msl_transition.py::PREDECLARATION_ATTEMPT3B`` (status
+UNRUN), a NEW predeclaration that does not touch, relax or reinterpret
+PREDECLARATION_ATTEMPT2/3 or SETTLED_RUN_RECORD.
+
 ``--freqs`` adds an OPTIONAL dense band (comma list or start:stop:n, GHz);
 the three committed bins are ALWAYS retained and reported separately (the
 legacy keys), and ``ext_589`` carries the full band.
@@ -218,7 +235,8 @@ are not passed):
 * ``--flux`` passes ``extra_flux_monitors=tests/test_coax_msl_transition.py
   ::_attempt3_scratch_flux_entries()`` -- the six faces of one lossless
   control volume around the junction (plus the full-plane +x comparator).
-  Attempt-3 fixture only: the plane coordinates are that fixture's grid.
+  attempt3 / attempt3b only: the plane coordinates are that grid's, and
+  attempt3b IS attempt 3's fixture (only the msl_probe_* kwargs differ).
   Non-perturbation of S is witnessed by
   ``test_extra_flux_monitors_do_not_perturb_s``.
 
@@ -232,6 +250,7 @@ never written into a legacy key.
 from __future__ import annotations
 
 import argparse
+import collections
 import contextlib
 import io
 import json
@@ -730,6 +749,87 @@ def _witness_dump(*, result, ext, out_path, freqs_all, beta_coax_analytic,
     return witnesses
 
 
+# ---------------------------------------------------------------------------
+# Fixture dispatch (issue #823 attempt 3b).
+#
+# This used to be an if/elif chain inside main() whose ``else`` branch was
+# attempt2_wide, so a new ``--fixture`` choice added to the argparse list
+# without touching the chain would silently have run attempt2_wide's builder
+# and kwargs under the new label. That is exactly the class of defect this
+# lane exists to fix (#822: a mapping copied from a sibling whose geometry
+# made it correct there), so the dispatch is now a TOTAL function over
+# FIXTURE_CHOICES that raises on anything else, and
+# tests/test_coax_msl_transition.py::
+# test_settled_run_driver_fixture_selection_is_explicit_for_every_label pins
+# each label to its own builder and kwargs by identity.
+# ---------------------------------------------------------------------------
+FIXTURE_CHOICES = ("attempt2", "attempt2_wide", "attempt3", "attempt3b")
+
+FluxFixtureSelection = collections.namedtuple(
+    "FluxFixtureSelection", ("build", "kwargs", "fixture_geom", "banner"))
+
+
+def _select_fixture(t, fixture: str, n_steps: int) -> "FluxFixtureSelection":
+    """(build, kwargs, fixture_geom, banner) for one ``--fixture`` label.
+
+    ``t`` is the imported ``tests/test_coax_msl_transition.py`` module: the
+    fixtures, their kwargs and their geometry constants live there and are
+    reused verbatim, never re-declared here.
+    """
+    target = t.SETTLED_RUN_RECORD["target_n_steps"]
+    geom_2 = {"LX_m": t.LX_2, "LY_m": t.LY, "LZ_m": t.LZ_2,
+              "junction_x_m": t.JUNCTION_X, "feed_x_m": t.FEED_X_2, "y_c_m": t.Y_C}
+    if fixture == "attempt2":
+        return FluxFixtureSelection(
+            t._build_coax_msl_transition_sim_attempt2,
+            t._attempt2_kwargs(n_steps),
+            dict(geom_2),
+            f"attempt2 (same junction as attempt 1, longer MSL ladder, wider "
+            f"x-CPML clearance), n_steps={n_steps} (record target: {target})",
+        )
+    if fixture == "attempt3":
+        return FluxFixtureSelection(
+            t._build_coax_msl_transition_sim_attempt3,
+            t._attempt2_kwargs(n_steps),
+            dict(geom_2),
+            f"attempt3 (#589 fix: attempt 2 with the 0.4 mm ground clearance "
+            f"hole REALIZED as {t.N_GROUND_BOXES_3} half-cell PEC boxes; "
+            f"pec_mask differs from attempt2 in {t.HOLE_XOR_CELLS_3} cells at "
+            f"the junction node only; kwargs = _attempt2_kwargs), "
+            f"n_steps={n_steps} (record target: {target})",
+        )
+    if fixture == "attempt3b":
+        return FluxFixtureSelection(
+            t._build_coax_msl_transition_sim_attempt3b,
+            t._attempt3b_kwargs(n_steps),
+            dict(geom_2),
+            f"attempt3b (#823: attempt 3's GEOMETRY byte-for-byte -- the "
+            f"builder IS attempt 3's -- with the COMPLIANT MSL ladder "
+            f"msl_probe_count={t.PROBE_COUNT_3B} / start_cells="
+            f"{t.PROBE_START_3B} / spacing_cells={t.PROBE_SPACING_3B}, i.e. "
+            f"probes at x = 2.5 ... 9.5 mm, every one at least "
+            f"{t._msl_near_field_standoff_cells(t.DX, t.H_SUB)} cells = "
+            f"5*h_sub from BOTH the port feed plane and the junction; "
+            f"attempt 3's ladder violates that at 2 of its 9 probes), "
+            f"n_steps={n_steps} (record target: {target})",
+        )
+    if fixture == "attempt2_wide":
+        return FluxFixtureSelection(
+            t._build_coax_msl_transition_sim_attempt2_wide,
+            t._attempt2_wide_kwargs(n_steps),
+            {"LX_m": t.LX_2W, "LY_m": t.LY_2W, "LZ_m": t.LZ_2,
+             "junction_x_m": t.JUNCTION_X_2W, "feed_x_m": t.FEED_X_2W,
+             "y_c_m": t.Y_C_2W},
+            f"attempt2_wide (Step B falsifier for candidate (c): junction "
+            f"cells byte-identical to attempt2, LY {t.LY_2W * 1e3:.1f} mm, "
+            f"junction {t.JUNCTION_X_2W * 1e3:.1f} mm from the -x CPML inner "
+            f"edge, LX {t.LX_2W * 1e3:.1f} mm, feed {t.FEED_X_2W * 1e3:.1f} "
+            f"mm), n_steps={n_steps}",
+        )
+    raise ValueError(
+        f"unknown --fixture {fixture!r}; expected one of {FIXTURE_CHOICES}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -742,11 +842,16 @@ def main() -> int:
              "under .omx/, not committed)",
     )
     ap.add_argument(
-        "--fixture", choices=("attempt2", "attempt2_wide", "attempt3"), default="attempt2",
+        "--fixture", choices=FIXTURE_CHOICES, default="attempt2",
         help="attempt2 = the settled fixture (Step A); attempt2_wide = Step B "
              "domain-clearance falsifier for candidate (c) absorber proximity; "
              "attempt3 = attempt 2 with the ground-plane clearance hole REALIZED "
-             "(#589 fix; NOT COMPARABLE to the attempt-2 baseline by design)",
+             "(#589 fix; NOT COMPARABLE to the attempt-2 baseline by design); "
+             "attempt3b = attempt 3's GEOMETRY UNCHANGED with the #823 compliant "
+             "MSL probe ladder (count 8 / start 15 / spacing 10, probes at "
+             "x = 2.5..9.5 mm, every probe >= 5*h_sub from both the port feed "
+             "plane and the junction) -- 3b vs 3 is a pure ladder-recipe "
+             "comparison on bit-identical geometry",
     )
     ap.add_argument(
         "--preflight", action="store_true",
@@ -774,7 +879,8 @@ def main() -> int:
         "--flux", action="store_true",
         help="pass the attempt-3 W4 flux box (six faces of one lossless control "
              "volume + the full-plane +x comparator) as extra_flux_monitors; "
-             "attempt-3 fixture only",
+             "attempt3 / attempt3b only (they share one grid; the plane "
+             "coordinates are that grid's)",
     )
     args = ap.parse_args()
 
@@ -800,34 +906,9 @@ def main() -> int:
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
     n_steps = args.n_steps if args.n_steps is not None else t.SETTLED_RUN_RECORD["target_n_steps"]
-    if args.fixture == "attempt2":
-        print(f"fixture    : attempt2 (same junction as attempt 1, longer MSL ladder, "
-              f"wider x-CPML clearance), n_steps={n_steps} "
-              f"(record target: {t.SETTLED_RUN_RECORD['target_n_steps']})")
-        build = t._build_coax_msl_transition_sim_attempt2
-        kwargs = t._attempt2_kwargs(n_steps)
-        fixture_geom = {"LX_m": t.LX_2, "LY_m": t.LY, "LZ_m": t.LZ_2,
-                        "junction_x_m": t.JUNCTION_X, "feed_x_m": t.FEED_X_2, "y_c_m": t.Y_C}
-    elif args.fixture == "attempt3":
-        print(f"fixture    : attempt3 (#589 fix: attempt 2 with the 0.4 mm ground clearance "
-              f"hole REALIZED as {t.N_GROUND_BOXES_3} half-cell PEC boxes; pec_mask differs "
-              f"from attempt2 in {t.HOLE_XOR_CELLS_3} cells at the junction node only; "
-              f"kwargs = _attempt2_kwargs), n_steps={n_steps} "
-              f"(record target: {t.SETTLED_RUN_RECORD['target_n_steps']})")
-        build = t._build_coax_msl_transition_sim_attempt3
-        kwargs = t._attempt2_kwargs(n_steps)
-        fixture_geom = {"LX_m": t.LX_2, "LY_m": t.LY, "LZ_m": t.LZ_2,
-                        "junction_x_m": t.JUNCTION_X, "feed_x_m": t.FEED_X_2, "y_c_m": t.Y_C}
-    else:
-        print(f"fixture    : attempt2_wide (Step B falsifier for candidate (c): junction "
-              f"cells byte-identical to attempt2, LY {t.LY_2W * 1e3:.1f} mm, junction "
-              f"{t.JUNCTION_X_2W * 1e3:.1f} mm from the -x CPML inner edge, LX "
-              f"{t.LX_2W * 1e3:.1f} mm, feed {t.FEED_X_2W * 1e3:.1f} mm), n_steps={n_steps}")
-        build = t._build_coax_msl_transition_sim_attempt2_wide
-        kwargs = t._attempt2_wide_kwargs(n_steps)
-        fixture_geom = {"LX_m": t.LX_2W, "LY_m": t.LY_2W, "LZ_m": t.LZ_2,
-                        "junction_x_m": t.JUNCTION_X_2W, "feed_x_m": t.FEED_X_2W,
-                        "y_c_m": t.Y_C_2W}
+    selection = _select_fixture(t, args.fixture, n_steps)
+    build, kwargs, fixture_geom = selection.build, selection.kwargs, selection.fixture_geom
+    print(f"fixture    : {selection.banner}")
 
     committed_freqs = np.asarray(t.FREQS_2, dtype=float)
     if args.freqs:
@@ -871,9 +952,12 @@ def main() -> int:
                   "merged here) -- the solve runs UNCHANGED and W1-W3 will report "
                   "SKIPPED; W4 and the label-swap counterfactual are unaffected")
     if args.flux:
-        if args.fixture != "attempt3":
-            print(f"FATAL: --flux is attempt-3 only (the plane coordinates are that "
-                  f"fixture's grid); got --fixture {args.fixture}")
+        # attempt3b IS attempt 3's fixture (same builder, same grid); only the
+        # msl_probe_* kwargs differ, and the W4 plane coordinates do not
+        # depend on them. Any other fixture has a different grid.
+        if args.fixture not in ("attempt3", "attempt3b"):
+            print(f"FATAL: --flux is attempt3/attempt3b only (the plane coordinates "
+                  f"are that grid's); got --fixture {args.fixture}")
             return 2
         kwargs["extra_flux_monitors"] = t._attempt3_scratch_flux_entries()
         print(f"--flux: {len(kwargs['extra_flux_monitors'])} extra flux monitors "
@@ -1131,6 +1215,79 @@ def main() -> int:
         ext["grid_shape_padded"] = [int(grid.nx), int(grid.ny), int(grid.nz)]
     except Exception as exc:  # provenance-only
         ext["grid_shape_padded"] = f"<unavailable: {exc}>"
+
+    # ---- #823: the ladder RECIPE next to its REALIZED coordinates --------
+    # The whole point of #823 is that the two were never compared. Report-only:
+    # nothing here gates or refuses, and the standoff numbers are computed with
+    # the test module's own helpers so the driver and the ladder-contract test
+    # cannot drift apart.
+    try:
+        xs_realized = t._msl_ladder_x_coords(
+            sim, count=kwargs["msl_probe_count"],
+            start_cells=kwargs["msl_probe_start_cells"],
+            spacing_cells=kwargs["msl_probe_spacing_cells"])
+        n_port, n_ref, d_port, d_ref, required_m = t._msl_standoff_violations(
+            xs_realized, feed_x=fixture_geom["feed_x_m"],
+            ref_x=fixture_geom["junction_x_m"], dx=t.DX, h_sub=t.H_SUB)
+        ext["msl_ladder_standoff"] = {
+            "recipe": {"msl_probe_count": int(kwargs["msl_probe_count"]),
+                       "msl_probe_start_cells": int(kwargs["msl_probe_start_cells"]),
+                       "msl_probe_spacing_cells": int(kwargs["msl_probe_spacing_cells"])},
+            "realized_x_m": xs_realized.tolist(),
+            "feed_plane_x_m": float(fixture_geom["feed_x_m"]),
+            "reference_plane_x_m": float(fixture_geom["junction_x_m"]),
+            "required_standoff_m": required_m,
+            "required_standoff_cells": t._msl_near_field_standoff_cells(t.DX, t.H_SUB),
+            "required_standoff_over_h_sub": required_m / t.H_SUB,
+            "min_d_port_m": d_port, "min_d_reference_m": d_ref,
+            "min_d_port_over_h_sub": d_port / t.H_SUB,
+            "min_d_reference_over_h_sub": d_ref / t.H_SUB,
+            "n_violating_port_end": n_port,
+            "n_violating_reference_end": n_ref,
+            "rule": ("max(3, round(5*h_sub/dx)) cells from BOTH the MSL port "
+                     "feed plane and the reference plane the ladder is referred "
+                     "to; the same issue-#80 Fix B constant add_msl_port already "
+                     "floors its AUTO probe offset at. REPORT-ONLY here."),
+        }
+        print(f"\n=== #823 MSL ladder standoff (report-only) ===")
+        print(f"  recipe (count/start/spacing) : "
+              f"{kwargs['msl_probe_count']}/{kwargs['msl_probe_start_cells']}/"
+              f"{kwargs['msl_probe_spacing_cells']}")
+        print(f"  realized x (mm)              : "
+              f"{[round(x * 1e3, 4) for x in xs_realized.tolist()]}")
+        print(f"  required standoff            : {required_m * 1e3:.3f} mm = "
+              f"{required_m / t.H_SUB:.3f} h_sub "
+              f"({t._msl_near_field_standoff_cells(t.DX, t.H_SUB)} cells)")
+        print(f"  min distance port / ref (mm) : {d_port * 1e3:.3f} / {d_ref * 1e3:.3f}"
+              f"  ({d_port / t.H_SUB:.3f} / {d_ref / t.H_SUB:.3f} h_sub)")
+        print(f"  VIOLATING probes port / ref  : {n_port} / {n_ref}")
+    except Exception as exc:  # noqa: BLE001 -- report-only
+        ext["msl_ladder_standoff"] = f"<unavailable: {type(exc).__name__}: {exc}>"
+        print(f"\n  WARNING: #823 ladder standoff report unavailable: {exc}")
+
+    # ---- #823: the extractor's disjoint-half self-consistency witness ----
+    # Report-only, and DETECTED rather than assumed: on a checkout where the
+    # production half of #823 is not merged the result carries no such fields
+    # and the driver says so instead of failing (the same pattern
+    # --dump-ladders uses for return_ladder_voltages).
+    split_fields = ("ladder_split_gamma_dev", "ladder_split_reflection_decades")
+    if all(hasattr(result, f) for f in split_fields):
+        ext["ladder_split_witness"] = {f: _pd(np.asarray(getattr(result, f)))
+                                       for f in split_fields}
+        print("\n=== #823 ladder self-consistency witness (disjoint halves; report-only) ===")
+        for f in split_fields:
+            arr = np.asarray(getattr(result, f))
+            print(f"  {f}:")
+            for name, jj in (("coax_array", 0), ("msl_array", 1)):
+                print(f"    {name}: coax_drive {np.array2string(arr[jj, 0, :], precision=5)}"
+                      f"  msl_drive {np.array2string(arr[jj, 1, :], precision=5)}")
+    else:
+        ext["ladder_split_witness"] = (
+            "NOT ON THIS CHECKOUT: CoaxMSLTransitionResult carries no "
+            f"{'/'.join(split_fields)} field (the #823 production half is not "
+            "merged here); the solve ran UNCHANGED and no legacy key is affected"
+        )
+        print(f"\n  #823 ladder self-consistency witness: {ext['ladder_split_witness']}")
 
     if args.baseline:
         ext["a0_reproduction"] = _a0_compare(

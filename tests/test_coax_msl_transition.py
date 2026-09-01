@@ -40,6 +40,7 @@ from rfx.api._sparams import (
     _mixed_reciprocity_deviation,
 )
 from tests._gate_policy import gate_from_envelope
+from tests._wave_convention import plant_ladder_voltages_physical
 
 
 # ---------------------------------------------------------------------------
@@ -72,34 +73,16 @@ def _plant_ab_power_wave(s_true, gamma_t, n_f):
     return a, b
 
 
-def _voltages_from_ab(a, b, *, gamma, planes_m, ref_m, load_below):
-    """Invert the extractor's own extrapolation to build V(axis) from known a/b.
-
-    Exact copy of ``tests/test_coax_two_port_fdtd.py::_voltages_from_ab``'s
-    algebra (see that function's docstring for the derivation) -- kept as a
-    local, self-contained copy rather than a cross-module import so this
-    test file does not depend on another test file's internals staying
-    stable. ``a``/``b`` here must already be VOLT-wave amplitudes (the
-    ``coaxial_line_reflection_from_plane_voltages`` convention), not power
-    waves -- callers multiply by ``sqrt(Z0)`` before calling this.
-    """
-    planes_m = np.asarray(planes_m, dtype=np.float64)
-    a = np.atleast_1d(np.asarray(a, dtype=np.complex128))
-    b = np.atleast_1d(np.asarray(b, dtype=np.complex128))
-    gamma = np.broadcast_to(np.asarray(gamma, dtype=np.complex128), a.shape)
-    p0 = float(planes_m.mean())
-    pr = ref_m - p0
-    if load_below:
-        A = b * np.exp(-gamma * pr)
-        B = a * np.exp(+gamma * pr)
-    else:
-        A = a * np.exp(-gamma * pr)
-        B = b * np.exp(+gamma * pr)
-    pc = planes_m - p0
-    return (
-        np.exp(np.multiply.outer(pc, gamma)) * A[None, :]
-        + np.exp(-np.multiply.outer(pc, gamma)) * B[None, :]
-    )
+# NOTE (#822): this file's ``_voltages_from_ab`` was DELETED here, not
+# moved. It planted V(axis) by inverting the extractor's own extrapolation
+# -- it asked ``load_below`` which exponential branch the extractor would
+# call ``forward_amp`` and planted the incident wave onto whichever branch
+# the assembler's constant would read as incident. Helper and assembler
+# therefore encoded the SAME constant, so the pair stayed green for
+# whatever constant was chosen, including the backwards one that shipped
+# (#822: S_code = inv(S_true) behind a green planted test). Planting now
+# comes from ``tests/_wave_convention.py::plant_ladder_voltages_physical``,
+# which takes GEOMETRY (``dut_sign``) and never a label.
 
 
 # A deliberately ASYMMETRIC (S11 != S22), reciprocal (S12 == S21) truth --
@@ -129,13 +112,27 @@ def _s_matrix_per_freq(s_true, n_f):
 def _build_planted_fixture(z0_coax, z0_msl):
     """Common planted geometry shared by the tests below.
 
-    Coax reference plane sits ABOVE the coax probe centroid (load_below=False,
-    mirrors the ``ref_top_m`` case in the coax-coax precedent -- the coax
-    stub's own junction reference plane sits past the end of its probe
-    array, toward the DUT). The MSL reference plane sits BELOW the MSL probe
-    centroid (load_below=True -- the junction is on the near side of the
-    probe ladder, which steps away from the port's own feed toward the
-    junction).
+    Planted from GEOMETRY (#822), never from the extractor's labels: see
+    ``tests/_wave_convention.py``. The two ``dut_sign`` values are the only
+    place the geometry enters, and each is ASSERTED below against this
+    fixture's own realized plane positions rather than written as a bare
+    literal.
+
+    This fixture mirrors ``compute_coax_msl_transition``'s real geometry,
+    where BOTH reference planes are placed AT the junction and therefore sit
+    on the DUT side of their probes:
+
+      * coax port: probes at 0.00 - 0.05 m, reference plane at 0.07 m --
+        ABOVE the ladder, with the DUT (the junction) further above, so the
+        incident wave travels ``+z`` and ``dut_sign = +1``.
+      * msl port: probes at 0.15 - 0.20 m, reference plane at 0.13 m --
+        BELOW the ladder, with the DUT below it, so the incident wave
+        travels ``-x`` and ``dut_sign = -1``.
+
+    That is the OPPOSITE arrangement to ``compute_coaxial_two_port``, whose
+    reference planes sit at the feeds, on the far side of the probes from
+    the DUT. One constant cannot serve both lanes; the geometry is what
+    tells them apart.
     """
     a_pow, b_pow = _plant_ab_power_wave(_S_TRUE, _GAMMA_T, _N_F)
     sqrt_z0 = np.array([np.sqrt(z0_coax), np.sqrt(z0_msl)])
@@ -143,26 +140,34 @@ def _build_planted_fixture(z0_coax, z0_msl):
     b_volt = b_pow * sqrt_z0[:, None, None]
 
     z_coax_planes_m = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
-    ref_coax_m = 0.07  # above the probe centroid -> load_below=False
+    ref_coax_m = 0.07
     # Strictly increasing, as coaxial_line_reflection_from_plane_voltages
     # requires -- compute_coax_msl_transition sorts its own MSL probe
     # ladder into this order before calling the extractor (a "-x"-facing
     # port's own ladder comes back DECREASING in x from
     # msl_probe_x_coords_n; see the sort in the real method).
     x_msl_planes_m = np.array([0.15, 0.16, 0.17, 0.18, 0.19, 0.20])
-    ref_msl_m = 0.13   # below the probe centroid -> load_below=True
+    ref_msl_m = 0.13
+
+    # dut_sign, DERIVED from this fixture's own plane positions rather than
+    # asserted as a literal: the DUT sits on the far side of the reference
+    # plane from the ladder, so its sign is the sign of (ref - centroid).
+    dut_sign_coax = float(np.sign(ref_coax_m - z_coax_planes_m.mean()))
+    dut_sign_msl = float(np.sign(ref_msl_m - x_msl_planes_m.mean()))
+    assert dut_sign_coax == +1.0 and ref_coax_m > z_coax_planes_m.max()
+    assert dut_sign_msl == -1.0 and ref_msl_m < x_msl_planes_m.min()
 
     v_coax_by_drive = np.stack([
-        _voltages_from_ab(
+        plant_ladder_voltages_physical(
             a_volt[0, drive], b_volt[0, drive], gamma=_GAMMA_LINE,
-            planes_m=z_coax_planes_m, ref_m=ref_coax_m, load_below=False,
+            planes_m=z_coax_planes_m, ref_m=ref_coax_m, dut_sign=dut_sign_coax,
         )
         for drive in range(2)
     ], axis=0)
     v_msl_by_drive = np.stack([
-        _voltages_from_ab(
+        plant_ladder_voltages_physical(
             a_volt[1, drive], b_volt[1, drive], gamma=_GAMMA_LINE,
-            planes_m=x_msl_planes_m, ref_m=ref_msl_m, load_below=True,
+            planes_m=x_msl_planes_m, ref_m=ref_msl_m, dut_sign=dut_sign_msl,
         )
         for drive in range(2)
     ], axis=0)
@@ -183,10 +188,15 @@ def test_planted_voltages_recover_known_s_matrix_with_unequal_z0():
     noise-free synthetic field.
     """
     fx = _build_planted_fixture(_Z0_COAX, _Z0_MSL)
-    s_params, cond_a, cond_a_eq, rec_resid, fit_resid, gamma_fit, a_inc, b_out = (
-        _assemble_coax_msl_transition_from_voltages(
-            **fx, z0_coax=_Z0_COAX, z0_msl=_Z0_MSL,
-        )
+    # Growth-tolerant unpack (issue #823 enumeration C4): the assembler's
+    # return tuple GAINS the two disjoint-half witness arrays
+    # (ladder_split_gamma_dev, ladder_split_reflection_decades) after the
+    # eight this test reads, so a fixed 8-name unpack here would break on a
+    # purely ADDITIVE production change. The eight leading positions are the
+    # contract this test pins; anything appended is deliberately ignored.
+    (s_params, cond_a, cond_a_eq, rec_resid, fit_resid, gamma_fit, a_inc,
+     b_out, *_appended) = _assemble_coax_msl_transition_from_voltages(
+        **fx, z0_coax=_Z0_COAX, z0_msl=_Z0_MSL,
     )
     s_mat_per_freq = _s_matrix_per_freq(_S_TRUE, _N_F)
     for fi in range(_N_F):
@@ -234,10 +244,21 @@ def test_unequal_z0_normalization_is_required_off_diagonal_only():
                 fx["x_msl_planes_m"], fx["v_msl_by_drive"][drive_idx, :, fi],
                 reference_plane_m=fx["ref_msl_m"],
             )
-            a_raw[0, drive_idx, fi] = out_c.backward_amp   # NO sqrt(Z0) division
-            b_raw[0, drive_idx, fi] = out_c.forward_amp
-            a_raw[1, drive_idx, fi] = out_m.backward_amp
-            b_raw[1, drive_idx, fi] = out_m.forward_amp
+            # #822: a = forward_amp on THIS lane. The extractor already
+            # resolved which branch travels toward the reference plane; on
+            # the coax<->MSL lane both reference planes sit at the junction,
+            # on the DUT side of their probes, so that branch IS the
+            # incident wave. Changed from backward_amp/forward_amp because
+            # the PHYSICAL CONVENTION says so, not because the test failed:
+            # this block deliberately hand-rolls the production mapping to
+            # reproduce a defect, so if it stopped mirroring production it
+            # would silently stop reproducing anything. (It also FAILS if
+            # left alone once the fixture is planted from geometry, which is
+            # how the mirror was noticed -- but the reason is the geometry.)
+            a_raw[0, drive_idx, fi] = out_c.forward_amp   # NO sqrt(Z0) division
+            b_raw[0, drive_idx, fi] = out_c.backward_amp
+            a_raw[1, drive_idx, fi] = out_m.forward_amp
+            b_raw[1, drive_idx, fi] = out_m.backward_amp
 
     solve = solve_two_port_from_wave_amplitudes(a_raw, b_raw)
     s_wrong = solve.s_params
@@ -3276,3 +3297,562 @@ def _attempt3_scratch_flux_entries():
         axis="x", coordinate=x_hi, freqs=FREQS_2, name="msl_x20_full",
     )
     return scratch._flux_monitors
+
+
+# ---------------------------------------------------------------------------
+# ATTEMPT 3B (issue #823) -- attempt 3's GEOMETRY with a COMPLIANT MSL probe
+# ladder. Instrument change only; the junction is not touched.
+#
+# WHY A NEW LADDER. The settled attempt-3 witness run (VESSL 369367257533)
+# measured that the MSL-side matrix-pencil fit is dominated by probes sitting
+# in the MSL port's own near field: the production ladder
+# (msl_probe_count=9, msl_probe_start_cells=4, msl_probe_spacing_cells=10)
+# realizes x = 2.6 ... 10.6 mm against a port feed plane at x = 11.0 mm, so
+# its nearest probe stands 0.4 mm = 1.33 * h_sub off the launch. Fitting the
+# same production pencil over ladder subsets of the committed dump:
+# msl[0:9] (production) fit residual 0.342 / 0.264 / 0.222 with |Gamma| =
+# 14.6 / 9.9 / 1.2, while msl[0:8] -- the SAME code, same reference plane,
+# one probe fewer -- reads 3.68e-3 / 2.54e-3 / 1.78e-3 with |Gamma| =
+# 0.2586 / 0.2914 / 0.3134. One probe carries the corruption.
+#
+# THE RULE THIS FIXTURE OBEYS is NOT a new number. ``add_msl_port`` already
+# floors its AUTO probe offset at ``max(3, _lam_cells, int(round(5*height/dx)))``
+# -- the issue-#80 Fix B "source fringing transient (~5*h_sub)" constant, with
+# a matching advisory in ``_preflight._validate_forward_s11_path``.
+# ``compute_coax_msl_transition`` bypasses it entirely (``msl_probe_start_cells``
+# defaults to the COAX side's ``probe_start_cells`` and never consults h_sub),
+# which is how this ladder was written. Attempt 3b applies the SAME existing
+# constant at BOTH ends the ladder is referred to -- the port feed plane AND
+# the reference plane (the junction) -- via ``_msl_near_field_standoff_cells``.
+#
+# The independent derivation that licenses reusing it (measured on the
+# committed attempt-3 ladder dump, recorded here so the constant is not taken
+# on faith): fitting the two-wave model on the clean window msl[0:6] and
+# extrapolating to all nine planes gives an excess rho(d) that is a flat
+# float32 noise floor (~1.3e-3 / 1.1e-3 / 9.0e-4) at d >= 2.4 mm and rises to
+# 7.6e-3 at d = 1.4 mm and 0.82-1.28 at d = 0.4 mm. The two near-port points
+# give a decay length 0.2056 / 0.1908 / 0.1831 mm (mean 0.1932), against the
+# grounded substrate's transverse quarter-wave evanescent length
+# 1/sqrt((pi/2h)^2 - omega^2 mu0 eps0 eps_r) = 0.19119 / 0.19135 / 0.19155 mm
+# (low-frequency limit 2h/pi = 0.19099 mm) -- 1.1% on the mean. The scale is a
+# property of the SUBSTRATE, not of this fixture. With the coax lane's own
+# documented two-wave residual bar rho_max = 0.02 and the worst extrapolated
+# port-plane amplitude R0 = 11.32, d_min = (2/pi)*h*ln(R0/rho_max) = 4.0354*h.
+# The shipped 5*h therefore carries 24% headroom (rho(5h) = 4.4e-3) and is one
+# number rather than two. Its measured cost on this lane is that it also
+# excludes the d = 1.4 mm probe, which is clean by the 0.02 bar -- a
+# deliberate, report-only over-exclusion, not a physical compromise.
+#
+# LIMITATION, stated because one fixture cannot separate it: the derivation
+# anchors on the substrate height h and was validated at W/h = 2 only. The
+# first higher-order microstrip mode scales with (W + 2h), so a very wide
+# trace could need more standoff than 5*h. Routed to the PI, not decided here.
+# ---------------------------------------------------------------------------
+MSL_STANDOFF_H_SUB_MULTIPLE = 5.0   # the issue-#80 Fix B constant, reused
+PROBE_COUNT_3B = 8
+PROBE_START_3B = 15
+PROBE_SPACING_3B = 10               # UNCHANGED from attempt 2 / attempt 3
+
+
+def _msl_near_field_standoff_cells(dx, h_sub):
+    """Minimum probe standoff in CELLS from an MSL launch/reference plane.
+
+    Delegates to the PRODUCTION predicate,
+    ``rfx.api._preflight.msl_source_near_field_standoff_cells`` -- the one
+    the preflight advisory and ``compute_coax_msl_transition``'s own
+    realized-ladder advisory call. This fixture must never carry a second
+    copy of the rule: a test that re-implements the threshold it is
+    checking cannot notice the day the two disagree. The equality with
+    ``max(3, round(5*h_sub/dx))`` is asserted where it matters, in
+    ``test_attempt3b_ladder_satisfies_the_standoff_at_both_ends``.
+    """
+    from rfx.api._preflight import msl_source_near_field_standoff_cells
+
+    return int(msl_source_near_field_standoff_cells(float(h_sub), float(dx)))
+
+
+def _msl_ladder_x_coords(sim, *, count, start_cells, spacing_cells):
+    """Realized MSL probe x-coordinates, ASCENDING -- built exactly the way
+    ``compute_coax_msl_transition`` builds them (``msl_probe_x_coords_n`` on
+    an ``MSLPort`` reconstructed from the registered entry, then sorted; see
+    the ``xs_sorted`` step in ``rfx/api/_sparams.py``). Measured, never
+    arithmetic on the recipe: the whole point of #823 is that the recipe and
+    the realization were never compared.
+    """
+    from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n
+
+    grid = sim._build_grid()
+    pe = sim._msl_ports[0]
+    x_feed, y_centre, z_lo = (float(c) for c in pe.position)
+    port = MSLPort(
+        feed_x=x_feed,
+        y_lo=y_centre - pe.width / 2, y_hi=y_centre + pe.width / 2,
+        z_lo=z_lo, z_hi=z_lo + pe.height,
+        direction=pe.direction, impedance=pe.impedance, excitation=None,
+    )
+    return np.array(sorted(msl_probe_x_coords_n(
+        grid, port, n_probes=count,
+        n_offset_cells=start_cells, n_spacing_cells=spacing_cells,
+    )), dtype=np.float64)
+
+
+def _msl_standoff_violations(xs, *, feed_x, ref_x, dx, h_sub):
+    """(n_violating_at_port, n_violating_at_reference_plane, min_d_port,
+    min_d_ref, required_m) for a realized ladder."""
+    required_m = _msl_near_field_standoff_cells(dx, h_sub) * dx
+    d_port = np.abs(np.asarray(xs, dtype=np.float64) - float(feed_x))
+    d_ref = np.abs(np.asarray(xs, dtype=np.float64) - float(ref_x))
+    tol = 1e-12
+    return (
+        int(np.sum(d_port < required_m - tol)),
+        int(np.sum(d_ref < required_m - tol)),
+        float(d_port.min()), float(d_ref.min()), float(required_m),
+    )
+
+
+def _build_coax_msl_transition_sim_attempt3b():
+    """Attempt 3b: attempt 3's fixture, UNCHANGED.
+
+    Attempt 3b differs from attempt 3 in the ``msl_probe_*`` METHOD KWARGS
+    only (``_attempt3b_kwargs``), so the fixture builder is attempt 3's own
+    builder and the geometry is identical by CONSTRUCTION, not by copy. This
+    wrapper exists so the driver's ``--fixture attempt3b`` names a builder of
+    its own rather than silently reusing another label's, and so the identity
+    is asserted rather than claimed -- see
+    ``test_attempt3b_geometry_is_attempt3s_and_only_the_msl_probe_kwargs_differ``,
+    which compares eps_r / sigma / mu_r / pec_mask with ``np.array_equal``
+    over the WHOLE assembled domain.
+    """
+    return _build_coax_msl_transition_sim_attempt3()
+
+
+def _attempt3b_kwargs(n_steps):
+    """Attempt 3's compute kwargs (= ``_attempt2_kwargs``) with the three
+    ``msl_probe_*`` values replaced by the compliant ladder. Nothing else."""
+    kw = _attempt2_kwargs(n_steps)
+    kw["msl_probe_count"] = PROBE_COUNT_3B
+    kw["msl_probe_start_cells"] = PROBE_START_3B
+    kw["msl_probe_spacing_cells"] = PROBE_SPACING_3B
+    return kw
+
+
+PREDECLARATION_ATTEMPT3B = {
+    "leg": (
+        "issue #823 attempt 3b -- attempt 3's geometry with a COMPLIANT MSL "
+        "probe ladder (instrument change only)"
+    ),
+    "issue": "#823 (ladder), #822 (wave-role labels), #589 (lane tracker)",
+    "fixture": (
+        "attempt 3's, UNCHANGED (_build_coax_msl_transition_sim_attempt3b "
+        "returns _build_coax_msl_transition_sim_attempt3()'s Simulation; "
+        "eps_r/sigma/mu_r/pec_mask np.array_equal over the whole domain, "
+        "asserted by test_attempt3b_geometry_is_attempt3s_and_only_the_msl_"
+        "probe_kwargs_differ)"
+    ),
+    "this_is_a_new_predeclaration": (
+        "THIS IS A NEW PREDECLARATION FOR A NEW FIXTURE LADDER, NOT A "
+        "LOOSENED ONE. PREDECLARATION_ATTEMPT2, PREDECLARATION_ATTEMPT3 and "
+        "SETTLED_RUN_RECORD are NOT edited, NOT relaxed and NOT reinterpreted "
+        "by this work; they remain the committed record of what was predicted "
+        "and measured for the ladders they describe. Attempt 3b is a "
+        "different instrument, so it carries its own falsifiers and its own "
+        "measured=None."
+    ),
+    "instrument_changes": {
+        "wave_roles": (
+            "#822 side-aware incident/outgoing mapping (a_inc = forward_amp "
+            "at BOTH ports on this lane, because both reference planes sit at "
+            "the junction, on the DUT side of their probes). Attempt 3's "
+            "committed numbers were taken with the inverted mapping."
+        ),
+        "msl_ladder": (
+            "msl_probe_count 9 -> 8, msl_probe_start_cells 4 -> 15, "
+            "msl_probe_spacing_cells 10 (unchanged). Realized probes at "
+            "x = 2.5 ... 9.5 mm; every probe at least 5*h_sub = 1.5 mm from "
+            "BOTH the port feed plane (x = 11.0 mm) and the reference plane "
+            "(the junction, x = 1.0 mm). At the inherited spacing of 10 cells "
+            "this is the UNIQUE MAXIMAL-COUNT compliant ladder: the port end "
+            "requires start >= 15 and the junction end requires "
+            "start + 10*(count-1) <= 85, so count=9 is impossible and count=8 "
+            "forces start=15 exactly. (Shorter ladders are also compliant -- "
+            "count=7 with start in [15, 25] -- and are rejected only for "
+            "carrying less information, not for violating the rule.) NO FREE "
+            "PARAMETER WAS CHOSEN."
+        ),
+        "witness": (
+            "ladder_split_gamma_dev / ladder_split_reflection_decades "
+            "(disjoint-half refit of each ladder; report-only, new in this PR)."
+        ),
+        "advisory": (
+            "the msl_port_geometry near-field standoff advisory must NOT fire "
+            "on this ladder (it fires on attempts 1/2/3)."
+        ),
+    },
+    "prediction_provenance": (
+        "READ THIS BEFORE READING A FALSIFIER HIT. Every number in "
+        "'predictions' below is read off the COMMITTED attempt-3 ladder dump "
+        "(witnesses_369367257533_attempt3_x64-0_ladders.npz) over its clean "
+        "8-probe window msl[0:8] = x 2.6 ... 9.6 mm. Attempt 3b's realized "
+        "probes are x 2.5 ... 9.5 mm -- the SAME recipe spacing on DIFFERENT "
+        "grid cells, one cell offset, because the 5*h_sub rule forces "
+        "start=15 rather than the start=14 that would have made 3b a bit-exact "
+        "subset of attempt 3's dumped probes. The predictions are therefore a "
+        "ONE-CELL-SHIFTED PROXY, not an exact offline precomputation: a near-"
+        "miss on F1 or F2 must be read against that shift before it is called "
+        "a falsifier hit."
+    ),
+    "predictions": {
+        "msl_fit_residual": (
+            "<= 5e-3 at every committed bin under BOTH drives (attempt 3 "
+            "measured 0.342 / 0.264 / 0.222 with the near-field probe "
+            "included; the committed dump's clean 8-probe window measures "
+            "3.7e-3 / 2.5e-3 / 1.8e-3)."
+        ),
+        "beta_over_beta_hj": (
+            "0.86-0.88, flat across the band (declared-vs-realized trace "
+            "width, #722) -- NOT 1.0."
+        ),
+        "abs_gamma_msl_junction": (
+            "0.258 / 0.292 / 0.313 +/- 0.02 at 6/8/10 GHz (the clean-subset "
+            "reading; stable to +/-0.003 across every window of the committed "
+            "dump that excludes the near-field probe)."
+        ),
+        "abs_gamma_coax_junction": (
+            "~0.93 (0.931 / 0.950 / 0.984 read off the corrected labels on "
+            "the committed attempt-3 coax ladder), carrying a 10-18% "
+            "alpha/referral uncertainty at 8/10 GHz -- quoted to two figures, "
+            "with no reciprocity or passivity claim built on it."
+        ),
+        "ladder_split_reflection_decades": (
+            "<= 0.05 on the MSL port array under both drives (attempt 3's own "
+            "disjoint halves read 4.32-4.49)."
+        ),
+        "passivity": (
+            "NOT predicted to pass. The label fix and the ladder fix are "
+            "necessary, not sufficient: the coax ladder cannot identify alpha "
+            "over its 1 mm span and the label-blind Z0 calibration ratio reads "
+            "0.650 / 0.965 / 4.051 against a +/-10% band (#589). The clean-"
+            "window proxy predicts lambda_min(I - S^H S) ~ -1.9 and an MSL-"
+            "driven column power ~ 2.9. A passive result would be a SURPRISE "
+            "and must be re-derived, not celebrated."
+        ),
+    },
+    "falsifiers_predeclared": {
+        "F1_ladder_not_clean": (
+            "msl fit_residual > 5e-3 at any committed bin => the standoff rule "
+            "is not the whole story; do not proceed to re-read the record."
+        ),
+        "F2_gamma_moved": (
+            "|Gamma_msl| outside 0.258 / 0.292 / 0.313 +/- 0.02 => the clean-"
+            "subset reading was window-dependent after all; #823's central "
+            "claim fails."
+        ),
+        "F3_witness_disagrees": (
+            "ladder_split_reflection_decades > 0.05 on a ladder that satisfies "
+            "the standoff => the witness and the rule disagree; the rule is "
+            "wrong, not the run."
+        ),
+        "F4_advisory_fires": (
+            "the near-field advisory fires on this ladder => predicate and "
+            "fixture disagree; a code defect, fix before quoting anything."
+        ),
+        "F5_beta_at_unity": (
+            "beta/beta_HJ within 2% of 1.0 => the declared-vs-realized width "
+            "attribution (#722) is wrong and must be retracted."
+        ),
+    },
+    "realization_contract_tests": [
+        "test_attempt3b_geometry_is_attempt3s_and_only_the_msl_probe_kwargs_differ",
+        "test_attempt3b_ladder_satisfies_the_standoff_at_both_ends",
+        "test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder",
+        "test_attempt3b_predeclaration_is_committed_unrun_and_self_consistent",
+        "test_settled_run_driver_fixture_selection_is_explicit_for_every_label",
+    ],
+    "how_to_run": (
+        "cd <run-clone> && PYTHONPATH=$PWD JAX_ENABLE_X64=0 python scripts/"
+        "diagnostics/coax_msl_transition_settled_run.py --fixture attempt3b "
+        "--n-steps 135000 --preflight --dump-ladders --flux --output "
+        "<run-dir>/attempt3b_x64-0_result.json (VESSL remilab-c0, scripts/"
+        "vessl_coax_msl_transition_remeasure.yaml FIXTURE=attempt3b "
+        "DUMP_LADDERS=1 FLUX=1)"
+    ),
+    "post_review_correction": None,
+    "status": "UNRUN",
+    "measured": None,
+    "log_path": None,
+    "vessl_run_id": None,
+}
+
+
+def test_attempt3b_predeclaration_is_committed_unrun_and_self_consistent():
+    """Fill-contract invariant, the same one SETTLED_RUN_RECORD and
+    PREDECLARATION_ATTEMPT3 carry: UNRUN <=> no measured numbers, no log
+    path, no run id; the prediction fields hold ranges as TEXT, not values;
+    the falsifier key set is frozen; every named realization-contract test
+    exists in this module.
+
+    This is a NEW predeclaration. It does not, and must not, touch
+    PREDECLARATION_ATTEMPT2/3 or SETTLED_RUN_RECORD -- asserted below by
+    re-checking that those three are still UNRUN-or-filled on their own
+    terms, so a future edit that "harmonises" them trips this test.
+    """
+    r = PREDECLARATION_ATTEMPT3B
+    required = {
+        "leg", "issue", "fixture", "this_is_a_new_predeclaration",
+        "instrument_changes", "prediction_provenance", "predictions",
+        "falsifiers_predeclared", "realization_contract_tests", "how_to_run",
+        "post_review_correction", "status", "measured", "log_path",
+        "vessl_run_id",
+    }
+    missing = required - set(r.keys())
+    assert not missing, f"PREDECLARATION_ATTEMPT3B missing fields: {missing}"
+    assert set(r["falsifiers_predeclared"]) == {
+        "F1_ladder_not_clean", "F2_gamma_moved", "F3_witness_disagrees",
+        "F4_advisory_fires", "F5_beta_at_unity",
+    }
+    assert set(r["instrument_changes"]) == {
+        "wave_roles", "msl_ladder", "witness", "advisory",
+    }
+    assert set(r["predictions"]) == {
+        "msl_fit_residual", "beta_over_beta_hj", "abs_gamma_msl_junction",
+        "abs_gamma_coax_junction", "ladder_split_reflection_decades",
+        "passivity",
+    }
+    if r["status"] == "UNRUN":
+        assert r["measured"] is None
+        assert r["log_path"] is None
+        assert r["vessl_run_id"] is None
+    else:
+        assert r["measured"] is not None
+        assert r["log_path"] is not None
+    # Predictions are RANGES AS TEXT while UNRUN -- no bare numbers may be
+    # parked in the prediction slots and later read as measurements.
+    for key, val in r["predictions"].items():
+        assert isinstance(val, str), (key, type(val))
+    assert "NOT A LOOSENED ONE" in r["this_is_a_new_predeclaration"]
+    assert "ONE-CELL-SHIFTED PROXY" in r["prediction_provenance"]
+    names = {n.split("[")[0] for n in r["realization_contract_tests"]}
+    missing_tests = {n for n in names if n not in globals()}
+    assert not missing_tests, missing_tests
+    # The earlier records are UNTOUCHED by this one: their statuses are
+    # pinned here as they stand today (2026-09-01), so a later edit that
+    # "harmonises" attempt 3b's arrival by re-opening or re-filling any of
+    # them trips THIS test instead of passing silently. Filling them is the
+    # record-half PR's job, not attempt 3b's.
+    assert SETTLED_RUN_RECORD["status"] == "RUN"
+    assert SETTLED_RUN_RECORD["measured"] is not None
+    assert PREDECLARATION_ATTEMPT2["status"] == "RUN"
+    assert PREDECLARATION_ATTEMPT2["measured"] is not None
+    assert PREDECLARATION_ATTEMPT3["status"] == "UNRUN"
+    assert PREDECLARATION_ATTEMPT3["measured"] is None
+
+
+def test_attempt3b_geometry_is_attempt3s_and_only_the_msl_probe_kwargs_differ():
+    """The 'instrument change only' claim, ASSERTED not claimed.
+
+    (a) Every assembled material array (eps_r, sigma, mu_r) AND the PEC mask
+        are ``np.array_equal`` over the WHOLE domain between the attempt-3
+        and attempt-3b builders -- not a window, the whole grid.
+    (b) The registered coax and MSL port parameters are identical field by
+        field, including the MSL feed x (the ladder's own anchor): attempt 3b
+        moves the PROBES, never the PORT.
+    (c) ``_attempt3b_kwargs`` differs from attempt 3's own kwargs
+        (``_attempt2_kwargs``, which the driver reuses verbatim for
+        attempt 3) in EXACTLY the three ``msl_probe_*`` keys.
+    """
+    sim3 = _build_coax_msl_transition_sim_attempt3()
+    sim3b = _build_coax_msl_transition_sim_attempt3b()
+
+    g3, g3b = sim3._build_grid(), sim3b._build_grid()
+    assert (g3.nx, g3.ny, g3.nz) == (g3b.nx, g3b.ny, g3b.nz)
+    out3, out3b = sim3._assemble_materials(g3), sim3b._assemble_materials(g3b)
+    mats3, pec3 = out3[0], out3[3]
+    mats3b, pec3b = out3b[0], out3b[3]
+    for name in ("eps_r", "sigma", "mu_r"):
+        a = np.asarray(getattr(mats3, name))
+        b = np.asarray(getattr(mats3b, name))
+        assert a.dtype == b.dtype and a.shape == b.shape
+        assert np.array_equal(a, b), (
+            f"{name}: {int(np.sum(a != b))} cells differ between attempt 3 "
+            "and attempt 3b -- attempt 3b is an INSTRUMENT change only"
+        )
+    assert pec3 is not None and pec3b is not None
+    pa = np.asarray(pec3, dtype=bool)
+    pb = np.asarray(pec3b, dtype=bool)
+    assert np.array_equal(pa, pb), (
+        f"pec_mask: {int(np.sum(pa != pb))} cells differ between attempt 3 "
+        "and attempt 3b"
+    )
+
+    c3, c3b = sim3._coaxial_ports[0], sim3b._coaxial_ports[0]
+    assert c3.pin_radius == c3b.pin_radius == PIN_R
+    assert c3.outer_radius == c3b.outer_radius == OUTER_R
+    assert c3.position == c3b.position and c3.face == c3b.face == "bottom"
+    m3, m3b = sim3._msl_ports[0], sim3b._msl_ports[0]
+    assert m3.width == m3b.width == W_TRACE
+    assert m3.height == m3b.height == H_SUB
+    assert m3.eps_r_sub == m3b.eps_r_sub == EPS_SUB
+    assert m3.direction == m3b.direction == "-x"
+    assert m3.position == m3b.position          # feed plane UNMOVED
+    assert m3.position[0] == FEED_X_2
+
+    k3 = _attempt2_kwargs(135000)               # attempt 3's kwargs, verbatim
+    k3b = _attempt3b_kwargs(135000)
+    assert set(k3) == set(k3b)
+    differing = {k for k in k3 if not np.array_equal(
+        np.asarray(k3[k], dtype=object), np.asarray(k3b[k], dtype=object))}
+    msl_probe_keys = {
+        "msl_probe_count", "msl_probe_start_cells", "msl_probe_spacing_cells"}
+    assert differing <= msl_probe_keys, differing
+    # And exactly which of them moved: the SPACING is INHERITED from attempt
+    # 2/3 (10 cells) so that 3b's pencil conditioning is the instrument the
+    # record already characterised -- only the count and the start move.
+    assert differing == {"msl_probe_count", "msl_probe_start_cells"}, differing
+    assert k3["msl_probe_spacing_cells"] == k3b["msl_probe_spacing_cells"] \
+        == PROBE_SPACING_3B == PROBE_SPACING_2 == 10
+    assert (k3["msl_probe_count"], k3["msl_probe_start_cells"]) == (
+        PROBE_COUNT_2, PROBE_START_2) == (9, 4)
+    assert (k3b["msl_probe_count"], k3b["msl_probe_start_cells"]) == (
+        PROBE_COUNT_3B, PROBE_START_3B) == (8, 15)
+
+
+def test_attempt3b_ladder_satisfies_the_standoff_at_both_ends():
+    """The #823 ladder contract, measured on the REALIZED probe coordinates.
+
+    Attempt 3b: every one of its 8 probes stands at least
+    ``_msl_near_field_standoff_cells`` = 15 cells = 1.5 mm = 5.00 * h_sub
+    from BOTH the MSL port feed plane (x = 11.0 mm) and the reference plane
+    the ladder is referred to (the junction, x = 1.0 mm).
+
+    FAIL-BEFORE-FIX / positive control, in the same test so the record shows
+    the predicate discriminating: attempt 3's committed ladder VIOLATES the
+    same predicate at the port end (2 of 9 probes, at d = 0.4 and 1.4 mm),
+    and its worst standoff is 1.33 * h_sub. A predicate that passed both
+    ladders would certify nothing.
+    """
+    sim3b = _build_coax_msl_transition_sim_attempt3b()
+    xs_3b = _msl_ladder_x_coords(
+        sim3b, count=PROBE_COUNT_3B, start_cells=PROBE_START_3B,
+        spacing_cells=PROBE_SPACING_3B)
+    assert xs_3b.shape == (PROBE_COUNT_3B,)
+    np.testing.assert_allclose(
+        xs_3b * 1e3, [2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5], atol=1e-9)
+
+    n_port, n_ref, d_port, d_ref, required_m = _msl_standoff_violations(
+        xs_3b, feed_x=FEED_X_2, ref_x=JUNCTION_X, dx=DX, h_sub=H_SUB)
+    # The production predicate IS max(3, round(5*h_sub/dx)) on this fixture,
+    # asserted here rather than re-implemented in the helper above.
+    assert _msl_near_field_standoff_cells(DX, H_SUB) == 15
+    assert _msl_near_field_standoff_cells(DX, H_SUB) == max(
+        3, int(round(MSL_STANDOFF_H_SUB_MULTIPLE * H_SUB / DX)))
+    np.testing.assert_allclose(required_m, 1.5e-3, atol=1e-12)
+    np.testing.assert_allclose(required_m / H_SUB, 5.0, atol=1e-9)
+    assert (n_port, n_ref) == (0, 0), (
+        f"attempt 3b violates the standoff: {n_port} probe(s) at the port "
+        f"end, {n_ref} at the reference plane")
+    np.testing.assert_allclose([d_port, d_ref], [1.5e-3, 1.5e-3], atol=1e-9)
+
+    # Positive control: attempt 3's own ladder must FAIL the same predicate.
+    sim3 = _build_coax_msl_transition_sim_attempt3()
+    xs_3 = _msl_ladder_x_coords(
+        sim3, count=PROBE_COUNT_2, start_cells=PROBE_START_2,
+        spacing_cells=PROBE_SPACING_2)
+    np.testing.assert_allclose(
+        xs_3 * 1e3, [2.6, 3.6, 4.6, 5.6, 6.6, 7.6, 8.6, 9.6, 10.6], atol=1e-9)
+    n_port_3, n_ref_3, d_port_3, d_ref_3, _ = _msl_standoff_violations(
+        xs_3, feed_x=FEED_X_2, ref_x=JUNCTION_X, dx=DX, h_sub=H_SUB)
+    assert (n_port_3, n_ref_3) == (2, 0), (n_port_3, n_ref_3)
+    np.testing.assert_allclose(d_port_3, 0.4e-3, atol=1e-9)
+    np.testing.assert_allclose(d_port_3 / H_SUB, 4.0 / 3.0, atol=1e-6)
+    np.testing.assert_allclose(d_ref_3, 1.6e-3, atol=1e-9)
+
+
+def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
+    """No free parameter was chosen. At the INHERITED spacing of 10 cells the
+    compliant window (both ends at 15 cells from a plane 100 cells apart)
+    admits count=8/start=15 and nothing longer; the enumeration is done on
+    the REALIZED coordinates, not on arithmetic over the recipe.
+
+    Shorter compliant ladders exist (count=7, start in [15, 25]) and are
+    named here so 'unique' is never read as 'the only compliant recipe' --
+    3b is the unique MAXIMAL-COUNT one.
+    """
+    sim = _build_coax_msl_transition_sim_attempt3b()
+    compliant = []
+    for count in range(3, 12):
+        for start in range(3, 40):
+            if start + PROBE_SPACING_3B * (count - 1) > 110:
+                continue
+            xs = _msl_ladder_x_coords(
+                sim, count=count, start_cells=start,
+                spacing_cells=PROBE_SPACING_3B)
+            if xs.min() <= 0.0 or xs.max() >= LX_2:
+                continue
+            n_port, n_ref, *_ = _msl_standoff_violations(
+                xs, feed_x=FEED_X_2, ref_x=JUNCTION_X, dx=DX, h_sub=H_SUB)
+            if (n_port, n_ref) == (0, 0):
+                compliant.append((count, start))
+    assert compliant, "no compliant ladder at the inherited spacing"
+    max_count = max(c for c, _ in compliant)
+    assert max_count == PROBE_COUNT_3B
+    assert [s for c, s in compliant if c == max_count] == [PROBE_START_3B]
+    # And the next count down is genuinely non-unique -- 'maximal-count' is
+    # doing real work in that sentence.
+    assert len([s for c, s in compliant if c == max_count - 1]) > 1
+    # The rejected alternative from the design record: spacing 9, count 9,
+    # start 14 clears the DERIVED 4.0354*h floor but not the shipped 5*h rule.
+    xs_alt = _msl_ladder_x_coords(sim, count=9, start_cells=14, spacing_cells=9)
+    n_port_alt, n_ref_alt, d_port_alt, _, _ = _msl_standoff_violations(
+        xs_alt, feed_x=FEED_X_2, ref_x=JUNCTION_X, dx=DX, h_sub=H_SUB)
+    assert (n_port_alt, n_ref_alt) == (1, 1)
+    np.testing.assert_allclose(d_port_alt / H_SUB, 14.0 / 3.0, atol=1e-6)
+
+
+def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
+    """The driver's ``--fixture`` dispatch names EVERY label explicitly and
+    raises on an unknown one.
+
+    Fail-before-fix provenance: the dispatch used to be an if/elif chain
+    whose ``else`` branch was attempt2_wide, so adding a new ``choices``
+    entry without touching the chain would have run attempt2_wide's builder
+    and kwargs under the new label -- a silent mislabel, exactly the class of
+    defect this PR exists to fix (#822). It is now a total function,
+    ``_select_fixture``, and this test pins each label to its own builder and
+    kwargs by identity.
+    """
+    drv = _load_settled_run_driver()
+    import sys
+
+    # THIS module object, not a second import of it: the driver takes the
+    # test module as an argument, and ``import test_coax_msl_transition``
+    # under a tests/-on-sys.path layout would load a SECOND copy whose
+    # function objects are not identical to these, silently weakening every
+    # ``is`` assertion below into a no-op.
+    t_self = sys.modules[__name__]
+
+    expected = {
+        "attempt2": (_build_coax_msl_transition_sim_attempt2, _attempt2_kwargs),
+        "attempt2_wide": (_build_coax_msl_transition_sim_attempt2_wide,
+                          _attempt2_wide_kwargs),
+        "attempt3": (_build_coax_msl_transition_sim_attempt3, _attempt2_kwargs),
+        "attempt3b": (_build_coax_msl_transition_sim_attempt3b, _attempt3b_kwargs),
+    }
+    assert set(drv.FIXTURE_CHOICES) == set(expected)
+    for label, (build, kwargs_fn) in expected.items():
+        sel = drv._select_fixture(t_self, label, 4242)
+        assert sel.build is build, label
+        assert sel.kwargs == kwargs_fn(4242), label
+        assert sel.kwargs["n_steps"] == 4242
+        assert set(sel.fixture_geom) == {
+            "LX_m", "LY_m", "LZ_m", "junction_x_m", "feed_x_m", "y_c_m"}
+        assert label in sel.banner
+    # attempt3b runs on attempt 3's geometry and differs only in the ladder.
+    s3 = drv._select_fixture(t_self, "attempt3", 4242)
+    s3b = drv._select_fixture(t_self, "attempt3b", 4242)
+    assert s3.fixture_geom == s3b.fixture_geom
+    assert {k for k in s3.kwargs if not np.array_equal(
+        np.asarray(s3.kwargs[k], dtype=object),
+        np.asarray(s3b.kwargs[k], dtype=object))} == {
+        "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
+    with pytest.raises(ValueError, match="unknown --fixture"):
+        drv._select_fixture(t_self, "attempt4", 4242)
