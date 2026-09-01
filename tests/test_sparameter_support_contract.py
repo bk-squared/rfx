@@ -252,14 +252,26 @@ def test_msl_nu_fence_message_parity_sparams_vs_preflight():
     )
 
 
-def _nu_waveguide_sim(n_modes: int = 1) -> "Simulation":
+# Which single profile makes the sim non-uniform. dz joined the waveguide
+# dispatch in the #811 fix, so the fence/parity contracts below bind on it
+# too. The dz profile is genuinely graded (a uniform-valued profile only
+# tests plumbing, never NU metrics); it sums exactly to the 0.010 m z
+# extent with adjacent ratios <= 1.4.
+_NU_WG_PROFILES = {
+    "dy": {"dy_profile": np.full(23, 1e-3)},
+    "dz": {"dz_profile": np.concatenate([
+        np.full(10, 0.40e-3), np.full(5, 0.52e-3), np.full(5, 0.68e-3)])},
+}
+
+
+def _nu_waveguide_sim(n_modes: int = 1, profile_axis: str = "dy") -> "Simulation":
     sim = Simulation(
         freq_max=12e9,
         domain=(0.10, 0.023, 0.010),
         dx=1e-3,
-        dy_profile=np.full(23, 1e-3),
         boundary="cpml",
         cpml_layers=4,
+        **_NU_WG_PROFILES[profile_axis],
     )
     for x_position, direction, name in ((0.010, "+x", "wg1"), (0.090, "-x", "wg2")):
         sim.add_waveguide_port(
@@ -274,11 +286,13 @@ def _nu_waveguide_sim(n_modes: int = 1) -> "Simulation":
     return sim
 
 
-def test_preflight_waveguide_nu_accepts_flux_route():
+@pytest.mark.parametrize("profile_axis", ["dy", "dz"])
+def test_preflight_waveguide_nu_accepts_flux_route(profile_axis):
     """normalize='flux' is a supported NU waveguide route (the NU flux extractor
     and its AD channel are wired in _sparams; graded-dy Airy fixtures cover it).
-    preflight must not red-flag a config compute_waveguide_s_matrix() accepts."""
-    report = _nu_waveguide_sim().preflight_sparameters(
+    preflight must not red-flag a config compute_waveguide_s_matrix() accepts.
+    Binds on dz-only too since the #811 dispatch fix."""
+    report = _nu_waveguide_sim(profile_axis=profile_axis).preflight_sparameters(
         calculator="waveguide", normalize="flux"
     )
     fence_issues = [str(i) for i in report.issues if "non-uniform mesh" in str(i)]
@@ -287,18 +301,23 @@ def test_preflight_waveguide_nu_accepts_flux_route():
     )
 
 
+@pytest.mark.parametrize("profile_axis", ["dy", "dz"])
 @pytest.mark.parametrize(
     "normalize, n_modes",
     [(False, 1), (True, 2)],
     ids=["normalize-clause", "multimode-clause"],
 )
-def test_waveguide_nu_fence_message_parity_sparams_vs_preflight(normalize, n_modes):
+def test_waveguide_nu_fence_message_parity_sparams_vs_preflight(
+        normalize, n_modes, profile_axis):
     """Same governance as the MSL parity test above: the NU fence message must
     stay byte-identical between compute_waveguide_s_matrix (_sparams) and
     preflight_sparameters (_preflight), clause by clause. Regression lock for
     the drift where preflight kept rejecting normalize='flux' after _sparams
-    started accepting it (uniform PR #172 flux-AD mirror on the NU lane)."""
-    sim_a = _nu_waveguide_sim(n_modes=n_modes)
+    started accepting it (uniform PR #172 flux-AD mirror on the NU lane).
+    Parametrized over dy-only AND dz-only profiles: before the #811 fix the
+    dz-only variant found neither carrier fencing anything — the request was
+    silently solved on the uniform grid."""
+    sim_a = _nu_waveguide_sim(n_modes=n_modes, profile_axis=profile_axis)
     try:
         sim_a.compute_waveguide_s_matrix(n_steps=1, normalize=normalize)
         msg_sparams = None
@@ -306,7 +325,7 @@ def test_waveguide_nu_fence_message_parity_sparams_vs_preflight(normalize, n_mod
         msg_sparams = str(e)
     assert msg_sparams is not None, "_sparams must fence this config on NU"
 
-    sim_b = _nu_waveguide_sim(n_modes=n_modes)
+    sim_b = _nu_waveguide_sim(n_modes=n_modes, profile_axis=profile_axis)
     report = sim_b.preflight_sparameters(calculator="waveguide", normalize=normalize)
     fence_issues = [str(i) for i in report.issues if "non-uniform mesh" in str(i)]
     assert len(fence_issues) == 1, (
