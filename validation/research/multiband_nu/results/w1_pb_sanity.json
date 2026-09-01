@@ -1,0 +1,80 @@
+[
+ {
+  "E0": 4.312985993273046e-16,
+  "max_drift": 8.546662466288595e-09,
+  "drift_at_end": 2.8159126650871996e-10,
+  "n_end": 10000,
+  "envelope_at_end": 0.00011920928955078125,
+  "envelope_breach": false,
+  "n_breach_first": null,
+  "trend_slope": null,
+  "trend_evaluated": false,
+  "trend_breach": false,
+  "fs1_fired": null,
+  "note": "CPU SANITY ARM \u2014 1e4 steps, no F-S1 verdict claimed; full 1e6-step arm runs on GPU (vessl_w1_3d.yaml)",
+  "r": 1.4,
+  "variant": "abrupt-3d",
+  "n_steps": 10000,
+  "grid": [
+   33,
+   33,
+   181
+  ],
+  "dt": 2.4027649366612596e-12,
+  "adjointness_residual": 3.678215130449772e-16,
+  "wallclock_s": 2.5729331970214844,
+  "drift_series_n": [
+   500,
+   2500,
+   4500,
+   6500,
+   8500
+  ],
+  "drift_series": [
+   0.0,
+   6.263349814150077e-09,
+   4.543321892446631e-09,
+   -8.05037180118392e-10,
+   4.181366189059899e-09
+  ]
+ },
+ {
+  "E0": 4.305733070136912e-16,
+  "max_drift": 2.8937806120596156e-08,
+  "drift_at_end": 2.8804570869327646e-08,
+  "n_end": 10000,
+  "envelope_at_end": 0.00011920928955078125,
+  "envelope_breach": false,
+  "n_breach_first": null,
+  "trend_slope": null,
+  "trend_evaluated": false,
+  "trend_breach": false,
+  "fs1_fired": null,
+  "note": "CPU SANITY ARM \u2014 1e4 steps, no F-S1 verdict claimed; full 1e6-step arm runs on GPU (vessl_w1_3d.yaml)",
+  "r": 2.0,
+  "variant": "abrupt-3d",
+  "n_steps": 10000,
+  "grid": [
+   33,
+   33,
+   181
+  ],
+  "dt": 2.4027649366612596e-12,
+  "adjointness_residual": 1.7228743108453212e-16,
+  "wallclock_s": 2.586266279220581,
+  "drift_series_n": [
+   500,
+   2500,
+   4500,
+   6500,
+   8500
+  ],
+  "drift_series": [
+   0.0,
+   3.0381584815460804e-09,
+   9.721499610773361e-09,
+   1.497854995051494e-08,
+   2.762828316646616e-08
+  ]
+ }
+]

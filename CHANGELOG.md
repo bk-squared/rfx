@@ -6,6 +6,82 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)
+
+The constructor's abrupt-grading warning and `preflight()`'s
+`_validate_cfg_multiband_grading` check share one per-axis threshold on the
+max adjacent-cell ratio in a `dz_profile`/`dx_profile`/`dy_profile`. The
+z-axis cap moves from 1.3 to 1.4; x/y stay at 1.3.
+
+Provenance for the move: 1.3 was `smooth_grading`'s own per-step default,
+with no measurement behind it — ratios in (1.3, 1.4] warned without
+evidence they cost anything. The pre-declared multi-band witness battery
+(`validation/research/multiband_nu/`, results in
+`validation/research/multiband_nu/results/w2_w3.json`) measures the r =
+1.4 transition directly against the exact discrete chain model: abrupt
+r = 1.4 reflection -53.86 dB vs. -53.99 dB predicted by the chain model —
+inside the window, not an accuracy cliff. x/y are NOT moved: every witness
+in that battery grades z with a uniform transverse mesh, so there is no
+in-plane provenance for loosening the in-plane lock.
+
+`preflight()` gains two new advisory-tier findings from
+`_validate_cfg_multiband_grading` (SPEC-01 WP6):
+
+- `nu_grading_ratio_beyond_validated_cap` — an axis's max adjacent-cell
+  ratio exceeds its cap (1.4 on z, 1.3 on x/y), quoting the measured
+  accuracy class on both sides of the cap.
+- `nu_grading_reaches_absorber` — an axis has an active absorber face and
+  its adjacent interior runway (the face's own allocated layer count) is
+  not uniform. No multi-band witness scores an accuracy observable with
+  an absorber present (every accuracy witness in the battery is
+  PEC-closed at `cpml_layers = 0`), so a graded transition landing inside
+  an absorber's runway is flagged rather than scored.
+
+Both caps and the constructor-time warning stay in sync with
+`docs/guides/support_matrix.md`'s 'Multi-band graded mesh' row (the single
+source of truth for the numbers is `_PreflightMixin._MULTIBAND_RATIO_CAP`
+/ `_INPLANE_RATIO_CAP` in `rfx/api/_preflight.py`; the constructor imports
+them rather than re-typing the literals).
+
+### Fixed — MSL plane-primitive V/I now call the production extractor (issue #514)
+
+`rfx/probes/msl_wave_decomp.py`'s `register_msl_plane_probes` /
+`_v_from_plane` / `_i_from_plane` — the plane-DFT geometry primitive
+`validation/tmtt_paper/msl_stub_notch_tuning.py` drives its inverse-design
+cost through — duplicated `compute_msl_s_matrix`'s V/I integration instead
+of calling it, and had drifted in three places: an inclusive `k_lo..k_hi`
+Ez span (~12% low V, the same defect issue #511/PR #516 fixed in
+production), a single pre-issue-#80 Hy-slab current (~1.5x undercount vs.
+the closed Ampere loop), and no leapfrog E/H half-step phase correction
+(issue #240). `_v_from_plane` / `_i_from_plane` now call
+`rfx.api._sparams.msl_modal_voltage` / `rfx.sources.msl_port.msl_loop_current`
+directly, with the trace-conductor span found by the SAME PEC-mask walk
+`compute_msl_s_matrix` uses (not the `round(h_sub/dx)` proxy), so this path
+cannot re-drift from production.
+
+`register_msl_plane_probes` now registers an Hz plane alongside the
+existing 3 Ez + 1 Hy planes (needed for the closed loop) and raises
+`NotImplementedError` on a non-uniform mesh (`sim._dx_profile` /
+`_dy_profile` / `_dz_profile` set) — `sim._build_grid()` never threads
+those profiles into the `Grid` it returns, so this path had no way to
+build the same `NonUniformGrid` production's non-uniform branch uses for
+its trace-PEC search; anchoring on the uniform-only lookup would have
+silently mis-anchored V on a graded mesh.
+
+No production code changed (`rfx/api/_sparams.py`, `rfx/sources/msl_port.py`
+untouched). The `validation/tmtt_paper/msl_stub_notch_tuning.py` -46.1 dB
+single-variable-descent objective is produced by this lane and is pending
+re-derivation after this fix — see the footnote in
+`validation/tmtt_paper/README.md`; the -55.7 dB validated optimized null
+comes from the (unchanged) production S-matrix path. The
+`dx = 254 µm` (1-substrate-cell) MSL case in
+`scripts/diagnostics/optimizer_bakeoff/` is not measured post-#514.
+
+Follow-up (not this change): `scripts/diagnostics/patch_edgefed_stage6_voltage_deembed.py`
+has its own hand-rolled inclusive `dz[k_lo:k_hi + 1]` voltage span
+(`_V_from_plane`) — the same drift class as #514, outside this module;
+needs its own issue.
+
 ### Changed — PMC-plane convention decided: REALIZE-DECLARED (issue #722 ninth surface)
 
 `apply_pmc_faces` zeros H_tan a half-cell (0.5*dx) INSIDE the declared wall

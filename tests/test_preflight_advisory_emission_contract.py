@@ -154,8 +154,16 @@ def _enumerate_emission_sites():
 # with a statics-only (eps_inf-matched) pad; the measured reason pole
 # masks are NOT extended into the pad is documented at the check site
 # and in docs/design_notes/i636_cpml_pole_pad_predeclaration.md.
-_FROZEN_TOTAL_SITES = 85
-_FROZEN_LITERAL_CODE_COUNT = 56
+#
+# 85 -> 87 sites / 56 -> 58 literal codes, SPEC-01 WP6 (#780): the
+# multi-band graded-mesh envelope promotion added
+# _validate_cfg_multiband_grading with two advisory sites/codes,
+# nu_grading_ratio_beyond_validated_cap and nu_grading_reaches_absorber
+# (docs/guides/support_matrix.md 'Multi-band graded mesh' row carries the
+# evidence). A conscious contract edit, same procedure as #738; stacked
+# on the #752/#636 edits above, so the site/code counts sum.
+_FROZEN_TOTAL_SITES = 87
+_FROZEN_LITERAL_CODE_COUNT = 58
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

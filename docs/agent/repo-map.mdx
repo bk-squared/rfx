@@ -54,6 +54,7 @@ command is verified to return at least one hit on the current tree.
 | S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/` | `rfx/api/_sparams.py`, `rfx/sources/`, `rfx/probes/sparam_driver.py` |
 | S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/probes/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/probes/probes.py` |
 | DFT-plane observables / objectives (differentiable) | `grep "def dft_field\|def field_energy\|def field_softmax" rfx/observables.py` | `rfx/observables.py` |
+| Rasterization viewers (what the SOLVE actually builds, not what was declared) | `grep "def plot_rasterized_slice\|def plot_stack_profile" rfx/visualize.py` | `rfx/visualize.py` — import as `rfx.visualize.plot_rasterized_slice` / `rfx.visualize.plot_stack_profile` (not exported at top-level `rfx`, deliberately, to keep `rfx.__all__` curated — see `docs/guides/api_symbol_inventory.json`) |
 
 ## Current port-family caveat
 

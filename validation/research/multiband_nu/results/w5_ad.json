@@ -1,0 +1,38 @@
+{
+ "f32": {
+  "label": "f32-default",
+  "n_cells": 14,
+  "n_dominant": 3,
+  "worst_dominant_rel_err": 0.00011354988088162869,
+  "median_dominant_rel_err": 8.808326155326943e-05,
+  "fs5_fired": false,
+  "g_ad_dominant": [
+   -14766.01171875,
+   -22035.859375,
+   5707.5693359375
+  ],
+  "g_fd_dominant": [
+   -14764.711194832067,
+   -22035.066269903306,
+   5706.921315701901
+  ]
+ },
+ "x64_context": {
+  "label": "x64-context",
+  "n_cells": 14,
+  "n_dominant": 3,
+  "worst_dominant_rel_err": 0.00016511684854914803,
+  "median_dominant_rel_err": 8.478012067675846e-05,
+  "fs5_fired": false,
+  "g_ad_dominant": [
+   -14766.0185546875,
+   -22035.86328125,
+   5707.56982421875
+  ],
+  "g_fd_dominant": [
+   -14763.580838746106,
+   -22035.066269903306,
+   5708.0537537048185
+  ]
+ }
+}

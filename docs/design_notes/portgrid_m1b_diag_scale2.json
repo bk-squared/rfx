@@ -1,0 +1,21 @@
+{
+  "island_coarse_cells": [
+    440,
+    460,
+    10,
+    30
+  ],
+  "mesh_scale": 2,
+  "r=3": {
+    "dt_s": 3.891779655636895e-13,
+    "n_steps": 3598,
+    "max_s11_db_2_20GHz": -56.377163419473966,
+    "max_s11_db_2_30GHz": -45.30648024876753,
+    "windows_db": {
+      "2-20GHz": -45.0,
+      "2-30GHz": -35.0
+    },
+    "F_M1b_fired": false,
+    "max_abs_diff_timeseries": 0.0018750862808942304
+  }
+}

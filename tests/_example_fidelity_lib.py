@@ -269,7 +269,7 @@ def _v_from(label: str, fn: Callable[[ModuleType], dict]) -> Variant:
 
 
 CLASSIFICATION: dict[str, Entry] = {
-    # ---- no_simulation (8): zero real Simulation() calls, AST-verified ----
+    # ---- no_simulation (19): zero real Simulation() calls, AST-verified --
     "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
         "no_simulation",
         "drives the functional rfx.rcs.compute_rcs entry point directly on "
@@ -300,6 +300,115 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/rcwa_referee/rcwa_referee_step1.py": Entry(
         "no_simulation",
         "drives the external grcwa library directly -- no rfx import at all"),
+    "validation/research/portgrid/__init__.py": Entry(
+        "no_simulation",
+        "package docstring pointing at the SPEC-02 predeclaration -- no "
+        "code, no rfx import at all"),
+    "validation/research/portgrid/certificate.py": Entry(
+        "no_simulation",
+        "M0 dissipativity-certificate calculator over hand-assembled "
+        "descriptor-system matrices -- no rfx import at all"),
+    "validation/research/portgrid/fig9_extract.py": Entry(
+        "no_simulation",
+        "vector-data extraction of the arXiv:1606.08761 Fig. 9 curves from "
+        "the PDF's own path data -- no rfx import at all"),
+    "validation/research/portgrid/m1_energy_audit.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/m1_reflection.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/m1b_retry.py": Entry(
+        "no_simulation",
+        "drives the portgrid.sim2d prototype's own lax.scan stepper "
+        "directly -- no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/operators.py": Entry(
+        "no_simulation",
+        "M0 interpolation/restriction operator library over plain arrays -- "
+        "no rfx import at all"),
+    "validation/research/portgrid/sim2d.py": Entry(
+        "no_simulation",
+        "hand-rolled two-region 2-D TEz subgridding prototype (its own "
+        "lax.scan stepper) -- no rfx Simulation is constructed by this "
+        "script; the whole point of this research lane is to NOT go "
+        "through rfx's own Yee update"),
+    "validation/research/portgrid/test_portgrid_m0.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.certificate/operators modules -- "
+        "no rfx Simulation is constructed by this script"),
+    "validation/research/portgrid/test_portgrid_m1.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.sim2d prototype -- no rfx "
+        "Simulation is constructed by this script"),
+    "validation/research/portgrid/test_portgrid_m1b_retry.py": Entry(
+        "no_simulation",
+        "pytest battery over the portgrid.m1b_retry prototype -- no rfx "
+        "Simulation is constructed by this script"),
+
+    # SPEC-01 multiband-NU witness package (#780). These are a witness
+    # LIBRARY plus per-witness measurement drivers, not demo examples; the
+    # thirteen below never construct a `Simulation` (AST-verified). Ten of
+    # them drive the non-uniform kernels through
+    # `rfx.nonuniform.make_nonuniform_grid` / `run_nonuniform` directly
+    # (the design note requires explicit profile vectors, bypassing the
+    # `auto_config` builders so a solver property is never confounded with
+    # a builder defect), and three are pure numpy/analysis.
+    "validation/research/multiband_nu/__init__.py": Entry(
+        "no_simulation", "package marker -- empty file"),
+    "validation/research/multiband_nu/analytic_dispersion.py": Entry(
+        "no_simulation",
+        "exact discrete leapfrog eigenfrequency of an empty PEC box on the "
+        "rfx 1-D operators, solved in plain numpy (the W4R3 design and "
+        "fixture-validity model) -- no rfx import at all"),
+    "validation/research/multiband_nu/chain_model.py": Entry(
+        "no_simulation",
+        "exact discrete 1-D scattering chain solved in plain numpy (the "
+        "F-S2/F-S3 window model) -- no rfx import at all"),
+    "validation/research/multiband_nu/fixtures.py": Entry(
+        "no_simulation",
+        "explicit dz/dx profile-vector builders (numpy) plus the P-C "
+        "geometry constants -- constructs no Simulation"),
+    "validation/research/multiband_nu/harness.py": Entry(
+        "no_simulation",
+        "builds NonUniformGrid/MaterialArrays through "
+        "rfx.nonuniform.make_nonuniform_grid and steps the kernels "
+        "directly -- no Simulation object exists"),
+    "validation/research/multiband_nu/predeclare_windows.py": Entry(
+        "no_simulation",
+        "freezes the F-S2/F-S3 windows from chain_model into "
+        "results/predeclared_windows.json -- functional grid path only"),
+    "validation/research/multiband_nu/remis_energy.py": Entry(
+        "no_simulation",
+        "the Remis-class dual-cell energy functional and its SBP "
+        "adjointness check, over a NonUniformGrid -- no Simulation"),
+    "validation/research/multiband_nu/revert_proof.py": Entry(
+        "no_simulation",
+        "gate-2 defect-injection proof on the functional grid/kernel "
+        "path -- no Simulation"),
+    "validation/research/multiband_nu/w1_energy_drift.py": Entry(
+        "no_simulation",
+        "F-S1 energy-audit driver on the functional grid/kernel path "
+        "-- no Simulation"),
+    "validation/research/multiband_nu/w2_w3_reflection.py": Entry(
+        "no_simulation",
+        "F-S2/F-S3 two-run-differencing driver on the functional "
+        "grid/kernel path -- no Simulation"),
+    "validation/research/multiband_nu/w4r2_analytic_cavity.py": Entry(
+        "no_simulation",
+        "F-S4 analytic-cavity ladder (empty PEC box, no geometry to "
+        "rasterize) driven through the functional grid/kernel path "
+        "-- no Simulation"),
+    "validation/research/multiband_nu/w4r3_zdominant_cavity.py": Entry(
+        "no_simulation",
+        "F-S4 z-dominant analytic-cavity ladder and its grading-side "
+        "revert-proof (empty PEC box, no geometry to rasterize) driven "
+        "through the functional grid/kernel path -- no Simulation"),
+    "validation/research/multiband_nu/w5_ad_consistency.py": Entry(
+        "no_simulation",
+        "F-S5 jax.grad-vs-FD check over an explicit profile vector on "
+        "the functional grid/kernel path -- no Simulation"),
 
     # ---- module_level_solve (6): solves at import time, no main guard ----
     "validation/crossval/01_waveguide_bend.py": Entry(
@@ -368,6 +477,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "issue #636 mode-localization analysis: reads committed field dumps "
         "and does linear algebra -- constructs no Simulation (AST-verified)"),
+    "validation/research/issue683_flip_acceptance.py": Entry(
+        "no_simulation",
+        "issue #683 flip-acceptance harness: imports `build`/`run_pre` from "
+        "issue683_sampling_order_decision.py and drives them -- the script's "
+        "own body constructs no Simulation (AST-verified)"),
     "validation/research/cpml_pole_pad/eigen_scan_636.py": Entry(
         "no_solve",
         "issue #636 frozen-coefficient von Neumann scan: builds a Simulation "
@@ -383,6 +497,13 @@ CLASSIFICATION: dict[str, Entry] = {
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited (23): builder is separable from solve ----
+    "validation/research/issue683_sampling_order_decision.py": Entry(
+        "audited",
+        "issue #683 sampling-order decision harness: `build(nu, r_load, "
+        "boundary)` returns Simulation with no solve call (the solve lives "
+        "in `run_pre()`/`run_post()`); the flip-acceptance script "
+        "(issue683_flip_acceptance.py) imports this same builder",
+        (Builder("build", None, (_v("nu-matched", nu=True, r_load=50.0),)),)),
     "validation/research/issue764_wireport_norm_falsifiers.py": Entry(
         "audited",
         "issue #764 falsifier battery: `build_fix_a()` returns Simulation "
@@ -390,22 +511,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "check rejected the earlier builder_fused_with_solve label for "
         "exactly this separability",
         (Builder("build_fix_a", None, (_v("short", load="short"),)),)),
-    "validation/research/issue683_flip_acceptance.py": Entry(
-        "no_simulation",
-        "issue #683 flip acceptance harness: constructs no Simulation of "
-        "its own -- it imports `build` from "
-        "issue683_sampling_order_decision (whose builder IS audited "
-        "below).  Classification added in the #770 branch; the base #683 "
-        "branch omitted its own harnesses from this table."),
-
-    "validation/research/issue683_sampling_order_decision.py": Entry(
-        "audited",
-        "`build(nu, r_load)` returns a Simulation with no solve call; the "
-        "protocol arms feed it to the spied sim.run(...) separately. "
-        "Classification added in the #770 branch (snapshot keys added "
-        "surgically; every pre-existing snapshot entry byte-untouched).",
-        (Builder("build", None, (
-            _v("nu-matched", nu=True, r_load=50.0),)),)),
     "validation/research/issue770_offdiag_adjudication.py": Entry(
         "audited",
         "`build_fix_t(nu, drive)` returns the canonical-THRU Simulation "
@@ -527,6 +632,94 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
+    # ---- issue #786 attribution lane (validation/research/convergence_floor)
+    "validation/research/convergence_floor/fixture.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile, ...)` returns the W4R P-C "
+        "Simulation with no solve call; `measure()` is what runs it",
+        (Builder("build_sim", None, (
+            _v_from("uniform_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_uniform_profile(1.0))),
+            _v_from("multiband_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_dz_profile_sym(1.0))),
+            _v_from("no_trace_s1.0", lambda m: dict(
+                scale=1.0, dz_profile=m.pc_uniform_profile(1.0),
+                with_trace=False)),
+        )),)),
+    "validation/research/convergence_floor/d4_reference.py": Entry(
+        "builder_fused_with_solve",
+        "`twin_rung()` builds the exact-reference empty-box twin and calls "
+        "sim.run() in the same function -- there is no build-only path",),
+    "validation/research/convergence_floor/__init__.py": Entry(
+        "no_simulation", "package marker"),
+    "validation/research/convergence_floor/d0_reproduce.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d1_geometry.py": Entry(
+        "no_simulation",
+        "assembles materials/masks through fixture.build_sim(); constructs "
+        "no Simulation of its own"),
+    "validation/research/convergence_floor/d2_edge.py": Entry(
+        "no_simulation",
+        "drives fixture.build_sim(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d3_port.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d2_triples.py": Entry(
+        "no_simulation",
+        "successive-triple order arithmetic on committed JSON; no "
+        "Simulation"),
+    "validation/research/convergence_floor/d2_retake.py": Entry(
+        "no_simulation",
+        "re-applies the frozen D2 rule to the nine-rung ladder from "
+        "committed JSON; no Simulation"),
+    "validation/research/convergence_floor/d5_predeclare_and_run.py": Entry(
+        "no_simulation",
+        "drives fixture.measure(); constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d5_instrument_check.py": Entry(
+        "no_simulation",
+        "drives fixture.measure() and re-estimates the stored records; "
+        "constructs no Simulation of its own"),
+    "validation/research/convergence_floor/d6_two_term_model.py": Entry(
+        "no_simulation", "pure model fitting on committed JSON"),
+    "validation/research/convergence_floor/estimators.py": Entry(
+        "no_simulation", "signal-processing estimators; no rfx Simulation"),
+    "validation/research/convergence_floor/ladder_guard.py": Entry(
+        "no_simulation", "ladder-reading preconditions; no rfx Simulation"),
+    "validation/research/convergence_floor/predeclare.py": Entry(
+        "no_simulation", "writes the frozen window file; no Simulation"),
+    "validation/research/convergence_floor/predeclare_addendum.py": Entry(
+        "no_simulation", "writes the addendum window file; no Simulation"),
+    "validation/research/convergence_floor/verdict.py": Entry(
+        "no_simulation", "reads committed JSON only; no Simulation"),
+
+    # SPEC-01 multiband-NU W4 fixtures (#780) -- the only two scripts in
+    # that package that construct a `Simulation` (P-C, the microstrip-class
+    # multi-band resonator; preflight is deliberately ON there). Both
+    # expose `build_sim(scale, dz_profile)` with no solve call, so the gate
+    # pins exactly what this lane most needs pinned: declared-vs-realized
+    # geometry on a multi-band graded mesh. Audited at the COARSEST declared
+    # ladder scale of each script (cheapest build, same declared geometry at
+    # every scale by construction -- the alignment invariant in the design
+    # note's section 1), multiband profile, which is the arm under test.
+    "validation/research/multiband_nu/w4_supraconvergence.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile)` returns Simulation with no solve "
+        "call (phase-1 W4 fixture; its ladder verdict was INCONCLUSIVE and "
+        "the script is kept as the recorded diagnostic)",
+        (Builder("build_sim", None, (
+            _v_from("s1.5_multiband", lambda m: dict(
+                scale=1.5, dz_profile=m.fx.pc_dz_profile_sym(1.5))),
+        )),)),
+    "validation/research/multiband_nu/w4r_port_supraconvergence.py": Entry(
+        "audited",
+        "`build_sim(scale, dz_profile, antisym=True)` returns Simulation "
+        "with no solve call (W4R redesign: mode-selective anti-symmetric "
+        "port pair, knife-edge-free PEC drawing)",
+        (Builder("build_sim", None, (
+            _v_from("s1.5_multiband", lambda m: dict(
+                scale=1.5, dz_profile=m.fx.pc_dz_profile_sym(1.5))),
+        )),)),
 }
 
 

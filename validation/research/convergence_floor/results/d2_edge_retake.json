@@ -1,0 +1,111 @@
+{
+ "issue": 786,
+ "discriminator": "D2",
+ "kind": "RE-TAKE of the D2 letter verdict on the nine-rung ladder",
+ "provenance": {
+  "supersedes": "results/d2_edge.json :: verdict",
+  "superseded_verdict": "EXONERATED as the FLOOR mechanism: with-trace f(s) is monotone and its error against the independent reference decreases at every rung (p_trace=2.61). A wedge exponent can only reduce the ORDER; it cannot produce a non-vanishing floor.",
+  "why": "d2_edge.py evaluated the frozen rule on the five pre-D5 scales only; D5 added 3/s = 7, 8, 9 and the nine-rung ladder falsifies both clauses of the exonerate branch (f is non-monotone; the error against the D4b reference increases over the four finest rungs).",
+  "rule_source": "results/predeclared_windows_786.json :: D2_edge_singularity (frozen, NOT rewritten)",
+  "rule_text": {
+   "exonerate_as_floor": "f(s) of the with-trace ladder is MONOTONE in s and its error against the D4b reference DECREASES at every rung with fitted p_trace >= 1.0 -- a wedge exponent produces a reduced ORDER, never a non-vanishing floor",
+   "attribute_partial": "p_trace in [1.0, 1.6] (consistent with 2*nu = 4/3) AND p_smooth >= 1.8: removing the edge restores the smooth-field order",
+   "inconclusive": "p_trace < 1.0, or the no-trace ladder is itself non-monotone"
+  },
+  "data_source": [
+   "results/d5_turnover.json (nine-rung f(s))",
+   "results/d4_reference_b.json (f_inf, uniform)",
+   "results/d2_edge.json (p_smooth, unchanged)"
+  ],
+  "new_fdtd_runs": 0
+ },
+ "ladder": {
+  "scales": [
+   1.5,
+   1.0,
+   0.75,
+   0.6,
+   0.5,
+   0.42857142857142855,
+   0.375,
+   0.3333333333333333,
+   0.25
+  ],
+  "three_over_s": [
+   2.0,
+   3.0,
+   4.0,
+   5.0,
+   6.0,
+   7.0,
+   8.0,
+   9.0,
+   12.0
+  ],
+  "h_mm": [
+   0.375,
+   0.25,
+   0.1875,
+   0.15,
+   0.125,
+   0.10714285714285714,
+   0.09375,
+   0.08333333333333333,
+   0.0625
+  ],
+  "f_hz": [
+   5404546169.206672,
+   5502114526.260705,
+   5533066155.959281,
+   5542444437.5726,
+   5543558293.505646,
+   5541259719.921784,
+   5537578782.117428,
+   5533355390.015878,
+   5520820807.318383
+  ],
+  "err_vs_f_inf_mhz": {
+   "1.500000": 148.846542546381,
+   "1.000000": 51.27818549234772,
+   "0.750000": 20.326555793771742,
+   "0.600000": 10.948274180452346,
+   "0.500000": 9.83441824740696,
+   "0.428571": 12.13299183126831,
+   "0.375000": 15.813929635624886,
+   "0.333333": 20.037321737174988,
+   "0.250000": 32.57190443466949
+  }
+ },
+ "clauses": {
+  "f_monotone": false,
+  "err_decreasing_at_every_rung": false,
+  "err_increases_at_scales": [
+   0.42857142857142855,
+   0.375,
+   0.3333333333333333,
+   0.25
+  ],
+  "p_trace_loglog_9rung": 0.949504163889273,
+  "p_trace_window": [
+   1.0,
+   1.6
+  ],
+  "p_smooth": 1.9707266478736867,
+  "p_smooth_min": 1.8,
+  "exonerate_branch_satisfied": false,
+  "attribute_branch_satisfied": false
+ },
+ "five_rung_values_for_comparison": {
+  "p_trace_loglog_5rung": 2.6149420755757204,
+  "f_monotone_5rung": true,
+  "err_decreasing_5rung": true
+ },
+ "verdict": "INCONCLUSIVE (p_trace=0.95 < 1.0)",
+ "verdict_letter": "INCONCLUSIVE",
+ "argument_not_measurement": "The wedge THEORY stated in the pre-declaration still stands on its own: a Meixner exponent nu = 2/3 at the trace's 3*pi/2 conductor wedges predicts a leading O(h^{4/3}) frequency error, i.e. a REDUCED ORDER, and an order reduction cannot by itself produce a non-vanishing floor. That is an ARGUMENT from theory, not a measured exoneration. On the nine-rung ladder this lane has NO measurement that exonerates candidate (2), and D6 could not identify the low-order exponent either (RMS_M1 = 4.361 MHz against a 1 MHz window; a = 0.5 fits better than 4/3).",
+ "smooth_control_unchanged": {
+  "p_smooth_analytic": 2.0000514880678795,
+  "p_smooth_measured": 1.9707266478736867,
+  "note": "measured on the exact-reference vacuum twin, which has an EXACT reference at every rung and is not affected by the ladder-anchor problem"
+ }
+}

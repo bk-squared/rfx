@@ -1699,7 +1699,11 @@ class _PreflightMixin:
             # Deliberately NOT ``except Exception`` (PR #555): an async
             # worker timeout must propagate through this advisory. On a
             # narrow failure the caller falls back to the aperture,
-            # which is always defined.
+            # which is always defined. Issue #482 also made the timeout/
+            # cancel exceptions themselves ``BaseException``-derived, so
+            # this tuple is belt-and-suspenders, not the only guard --
+            # see the longer comment at the other ``_assemble_materials``
+            # call site in this file.
             return None
         if pec_mask is None:
             return None
@@ -2964,6 +2968,7 @@ class _PreflightMixin:
         self._validate_cfg_source_on_graded_node(_w)
         self._validate_cfg_wire_port_on_graded_node(_w)
         self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
+        self._validate_cfg_multiband_grading(_w)
         self._validate_cfg_graded_box_rasterization(_w)
         self._validate_cfg_subgrid_limitations(_w)
         self._validate_cfg_conformal_fine_dx(dx)
@@ -4416,14 +4421,14 @@ class _PreflightMixin:
                         # DELIBERATELY NOT ``except Exception`` (CI
                         # incident on PR #555's own head: a broad
                         # ``except Exception`` here caught
-                        # ``rfx.experiments.worker.RunTimedOut``, a
-                        # ``TimeoutError`` subclass a SIGALRM handler
-                        # raises asynchronously while this exact call is
-                        # in flight -- ``execute_run`` arms the alarm
-                        # BEFORE calling ``compiled.preflight()``, so a
-                        # slow ``_assemble_materials`` here is squarely
-                        # inside the timeout window. Swallowing it here
-                        # meant the worker's top-level
+                        # ``rfx.experiments.worker.RunTimedOut`` (at the
+                        # time, a ``TimeoutError`` subclass) a SIGALRM
+                        # handler raises asynchronously while this exact
+                        # call is in flight -- ``execute_run`` arms the
+                        # alarm BEFORE calling ``compiled.preflight()``,
+                        # so a slow ``_assemble_materials`` here is
+                        # squarely inside the timeout window. Swallowing
+                        # it here meant the worker's top-level
                         # ``except RunTimedOut`` handler never ran, so a
                         # 1-second-timeout experiment kept simulating for
                         # its full 500k-step run instead of exiting —
@@ -4434,7 +4439,7 @@ class _PreflightMixin:
                         # 60s). ``rfx/api`` must not import
                         # ``rfx.experiments`` to name that exception type
                         # directly (wrong dependency direction), so the
-                        # general fix is this narrow, purpose-scoped
+                        # first fix here was this narrow, purpose-scoped
                         # tuple: only the errors ``_build_grid``/
                         # ``_assemble_materials`` are actually documented
                         # to raise for a malformed config (bad domain,
@@ -4443,9 +4448,20 @@ class _PreflightMixin:
                         # method). Any signal-driven exception
                         # (``TimeoutError``, ``RuntimeError``-based
                         # cancellation, ``KeyboardInterrupt``,
-                        # ``MemoryError``, ...) now propagates through
-                        # this advisory untouched, exactly like it did
-                        # before this advisory existed.
+                        # ``MemoryError``, ...) propagates through this
+                        # advisory untouched, exactly like it did before
+                        # this advisory existed. Issue #482 added a
+                        # second, general-purpose layer underneath this
+                        # tuple: ``RunTimedOut`` and
+                        # ``RunCancelled`` now derive from
+                        # ``BaseException``, not ``TimeoutError``/
+                        # ``RuntimeError``, so no ``except Exception``
+                        # anywhere in ``rfx/api`` (this narrow tuple
+                        # included) can catch them even if a future edit
+                        # here widens it back to ``Exception`` by
+                        # mistake. Keep this tuple narrow anyway -- it is
+                        # still the only thing distinguishing a genuine
+                        # malformed-config error from everything else.
                         grid = None
                         pec_mask = None
                         classification_unavailable_reason = str(exc)
@@ -4854,6 +4870,199 @@ class _PreflightMixin:
                 ),
                 stacklevel=3,
             )
+
+    # Validated multi-band grading envelope (SPEC-01 WP6, #780; witness
+    # battery validation/research/multiband_nu/, pre-declaration note
+    # docs/design_notes/20260829_spec01_multiband_predeclaration.md,
+    # support row docs/guides/support_matrix.md "Multi-band graded mesh").
+    #
+    # What the witnesses establish for fine bands ALONG Z (small-large-
+    # small-large included), witnessed only up to 3 fine bands / 4
+    # transitions — the widest profile in the battery — with EVERY
+    # adjacent-cell ratio <= 1.4. Nothing below is an in-plane statement:
+    # every witness holds the transverse mesh uniform, and no witness
+    # grades dx_profile or dy_profile (adversarial review 2026-08-29,
+    # BL1; note section WP6R.1/WP6R.7 item 1). More bands are expected to
+    # behave the same way (each transition is local, and the measured
+    # quantity is per-transition) but are NOT witnessed:
+    #   F-S1  Remis-class dual-cell discrete energy is bounded at the
+    #         float-accumulation class over 1e6 steps, 1D and 3D.
+    #   F-S2  per-transition reflection at r <= 1.4 sits inside the window
+    #         computed from the exact discrete scattering chain (-54 dB
+    #         class at 30 cells/wavelength; -44 dB measured at r = 2.0).
+    #   F-S3  symmetric round-trip amplitude asymmetry stays under the
+    #         3e-4 differencing floor.
+    #   F-S4  global 2nd-order supraconvergence is preserved on the
+    #         multi-band grid (p_mb = 2.01, p_uc = 2.02 against the
+    #         analytic TE_{1,0,4} of an empty 60 x 3 x 64 mm PEC cavity,
+    #         the z-DOMINANT W4R3 fixture) — Monk & Suli 1994 / Li &
+    #         Shields 2016 as realized by this solver. The earlier W4R2
+    #         reading (p = 1.95) is superseded: that fixture carried ~1 %
+    #         of its error on the graded axis (note WP6R.2).
+    #   F-S5  the mesh-gradient AD path is unchanged by multi-band.
+    #
+    # 1.4 is a CAP, not a threshold fitted to data: it is the value the
+    # spec claims and the witnesses were run at, and it matches the
+    # commercial default (Tidy3D max_scale = 1.4). Beyond it the run is
+    # still stable (Remis JCP 218:594, 2006 — min-cell CFL is sufficient
+    # on ANY tensor grid), so both checks below are ADVISORY, never
+    # blocking; what is lost beyond the cap is the validated accuracy
+    # class, not stability.
+    #
+    # EXCLUSION the witnesses force: every witness that measures an
+    # ACCURACY observable (F-S1 1D/3D, F-S2, F-S3, F-S4, both
+    # revert-proofs) ran PEC-closed with cpml_layers = 0. F-S5 is the one
+    # exception and is NOT PEC-closed — validation/research/multiband_nu/
+    # w5_ad_consistency.py builds its grid with cpml_layers = 4 on all six
+    # faces (and its runway is non-uniform, so that fixture draws the
+    # second check below) — but F-S5 compares jax.grad to central FD, not
+    # a field to a reference, so it is evidence that a graded mesh beside
+    # an absorber constructs, runs and differentiates, and no evidence at
+    # all about accuracy. So: NO witness measures an accuracy observable
+    # with an absorber present, and this envelope says NOTHING about
+    # grading that interacts with one. That exclusion is what the second
+    # check reports (BL1 repair, review 2026-08-30; note WP6R.13).
+    # z: the witnessed multi-band envelope cap. x/y: the pre-existing
+    # in-plane threshold, deliberately NOT moved to 1.4 — every witness in
+    # the multi-band battery grades z with a uniform transverse mesh, so
+    # there is no in-plane provenance for moving an in-plane lock
+    # (SPEC-00 0.2-4; adversarial review 2026-08-29, finding BL1).
+    _MULTIBAND_RATIO_CAP = 1.4
+    _INPLANE_RATIO_CAP = 1.3
+
+    def _validate_cfg_multiband_grading(self, _w) -> None:
+        """P2: multi-band graded-mesh envelope advisories (SPEC-01 WP6).
+
+        Two advisory-tier checks on every explicit per-axis profile. A
+        profile whose adjacent ratios are all <= 1.4 draws NEITHER — that
+        is the "allow" half of WP6: a small-large-small-large profile is
+        now a documented, witnessed configuration and must construct and
+        preflight clean.
+
+        1. ``nu_grading_ratio_beyond_validated_cap`` — some adjacent-cell
+           ratio exceeds the 1.4 cap. Quotes the measured accuracy class
+           on both sides of the cap so the reader can price the choice.
+        2. ``nu_grading_reaches_absorber`` — an axis has an active
+           absorber face and its adjacent interior runway is not uniform.
+
+        Why check 2 exists, and where its DEPTH comes from. The absorber
+        pad replicates the outermost interior cell
+        (``rfx/nonuniform._pad_profile``), so the absorber itself is
+        always uniformly meshed; what a boundary-adjacent transition does
+        is change the discrete medium in the boundary-NORMAL direction
+        right where the absorber begins. Normal-direction inhomogeneity
+        is the documented breakdown class for PML generally (Meep's PML
+        documentation: PML tolerates media varying only in the
+        boundary-PARALLEL directions), and it leaves the transition's own
+        reflection no interior runway in which to separate from the
+        absorber's. The depth used is the FACE'S OWN allocated layer
+        count — the only length the absorber itself defines, and the span
+        over which its conductivity ramp acts. No measurement sets this
+        depth and none could: no multi-band witness measures an accuracy
+        observable with an absorber present (every accuracy witness is
+        PEC-closed at cpml_layers = 0; the one absorber-bearing witness,
+        F-S5, checks the AD path and scores no accuracy quantity), which
+        is precisely why the combination is flagged rather than scored. Tolerance 1e-6 on the adjacent ratio, i.e. a runway is
+        "uniform" up to 1 ppm of cell size — far below any grading a user
+        can mean, and above float round-tripping in a computed profile.
+
+        Inherited caveat: ``_preflight_face_layers`` over-reports the
+        absorber on the non-port axes of a waveguide-port simulation (the
+        grid drops those axes from ``cpml_axes``, the helper does not).
+        This check inherits that, as every other consumer of the helper
+        does; the effect is a possible advisory on an axis whose absorber
+        the grid will not actually allocate. Advisory tier, so it costs a
+        line of noise, never a run.
+        """
+        face_layers = None
+        for ax_name, profile in (("x", self._dx_profile),
+                                 ("y", self._dy_profile),
+                                 ("z", self._dz_profile)):
+            if profile is None or is_tracer(profile) or len(profile) < 2:
+                continue
+            p = np.asarray(profile, dtype=float)
+            ratios = p[1:] / p[:-1]
+            max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
+            cap = (self._MULTIBAND_RATIO_CAP if ax_name == "z"
+                   else self._INPLANE_RATIO_CAP)
+            scope = ("validated multi-band grading cap"
+                     if ax_name == "z" else
+                     "in-plane grading threshold (the validated 1.4 "
+                     "multi-band cap is a z-axis envelope: no witness in "
+                     "it grades an in-plane axis)")
+            if max_ratio > cap + 1e-6:
+                _w.warn(
+                    PreflightWarning(
+                        f"d{ax_name}_profile max adjacent cell ratio "
+                        f"{max_ratio:.3f} exceeds the {scope} "
+                        f"{cap:g} "
+                        f"(docs/guides/support_matrix.md, 'Multi-band graded "
+                        f"mesh'). WHY: stability is unaffected (dt is the "
+                        f"global min-cell CFL, sufficient on any tensor "
+                        f"grid), but per-transition accuracy is witnessed "
+                        f"only along z and only up to ratio 1.4 — the -54 dB "
+                        f"reflection class at 30 cells/wavelength (it scales "
+                        f"as (dz/lambda)^2), against -44 dB measured at "
+                        f"ratio 2.0. COST: an unquantified reflection and "
+                        f"grading-dispersion error at that transition. "
+                        f"REMEDY: split it into ratio<={cap:g} steps (e.g. "
+                        f"rfx.smooth_grading) to stay inside the "
+                        f"{'validated envelope' if ax_name == 'z' else 'pre-existing in-plane threshold (no in-plane envelope is validated)'}, "
+                        f"or accept it and say so in the report. STALE-IF: "
+                        f"the support-matrix row raises the cap.",
+                        code="nu_grading_ratio_beyond_validated_cap",
+                        source="_validate_cfg_multiband_grading",
+                    ),
+                    stacklevel=3,
+                )
+            if face_layers is None:
+                face_layers = self._preflight_face_layers()
+            for side in ("lo", "hi"):
+                layers = face_layers.get(f"{ax_name}_{side}", 0)
+                if layers < 2 or len(p) < layers:
+                    # layers < 2: "one uniform cell" is vacuous (no adjacent
+                    # ratio exists inside a single-cell runway).
+                    continue
+                # The REMEDY asks for `layers` uniform interior cells
+                # against the face, i.e. `layers - 1` adjacent ratios among
+                # p[0..layers-1]; taking layers+1 cells here demanded one
+                # uniform cell MORE than the remedy and fired on an exactly
+                # compliant profile (review 2026-08-29).
+                runway = p[:layers] if side == "lo" else p[-layers:]
+                r_run = runway[1:] / runway[:-1]
+                dev = float(np.max(np.abs(r_run - 1.0)))
+                if dev > 1e-6:
+                    _w.warn(
+                        PreflightWarning(
+                            f"d{ax_name}_profile is not uniform within the "
+                            f"{layers} interior cells adjacent to the "
+                            f"{ax_name}_{side} absorber face (max adjacent "
+                            f"cell-ratio deviation {dev:.3g}). WHY: the "
+                            f"absorber pad replicates the outermost interior "
+                            f"cell, so a transition in that runway changes "
+                            f"the discrete medium in the boundary-NORMAL "
+                            f"direction exactly where the absorber starts — "
+                            f"the documented PML breakdown class — and gives "
+                            f"the transition's own reflection no runway to "
+                            f"separate from the absorber's. COST: the "
+                            f"validated multi-band envelope does not cover "
+                            f"it at all; no witness in it MEASURES an "
+                            f"accuracy observable with an absorber present "
+                            f"(every accuracy witness is PEC-closed at "
+                            f"cpml_layers = 0; the one absorber-bearing "
+                            f"witness checks the AD path only) "
+                            f"(docs/guides/support_matrix.md, 'Multi-band "
+                            f"graded mesh'). REMEDY: keep at least "
+                            f"{layers} uniform interior cells against that "
+                            f"face, or close it with PEC/PMC. STALE-IF: a "
+                            f"witness that SCORES an accuracy observable "
+                            f"with an absorber present is added to that "
+                            f"row.",
+                            code="nu_grading_reaches_absorber",
+                            source="_validate_cfg_multiband_grading",
+                        ),
+                        stacklevel=3,
+                    )
 
     def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         """Advisory: a LOSSY thin conductor landing on a grading transition.

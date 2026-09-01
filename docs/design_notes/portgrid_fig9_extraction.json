@@ -1,0 +1,51 @@
+{
+  "pdf": "/private/tmp/claude-501/-Users-byungkwankim/4be4411d-c9fe-42f8-b93a-baa240e76fb5/scratchpad/1606.08761.pdf",
+  "page_index": 9,
+  "bottom_panel_interface_only": {
+    "r2": {
+      "n_points": 1100,
+      "db_at_30GHz": -36.51,
+      "max_db_2_20GHz": -53.46,
+      "max_db_2_30GHz": -36.51
+    },
+    "r4": {
+      "n_points": 1108,
+      "db_at_30GHz": -34.63,
+      "max_db_2_20GHz": -51.57,
+      "max_db_2_30GHz": -34.63
+    },
+    "r6": {
+      "n_points": 1105,
+      "db_at_30GHz": -34.29,
+      "max_db_2_20GHz": -51.24,
+      "max_db_2_30GHz": -34.29
+    }
+  },
+  "worst_curve_max_db": {
+    "2_20GHz": -51.24,
+    "2_30GHz": -34.29
+  },
+  "retry_windows_db_worst_plus_5dB": {
+    "2_20GHz": -46.24,
+    "2_30GHz": -29.29
+  },
+  "top_panel_mismatch_vs_allfine_2_29p8GHz": {
+    "r2": {
+      "max_linear_diff_vs_allfine": 0.062,
+      "as_db": -24.16
+    },
+    "r4": {
+      "max_linear_diff_vs_allfine": 0.063,
+      "as_db": -24.01
+    },
+    "r6": {
+      "max_linear_diff_vs_allfine": 0.0529,
+      "as_db": -25.53
+    },
+    "all_coarse": {
+      "max_linear_diff_vs_allfine": 0.1563,
+      "as_db": -16.12
+    }
+  },
+  "rod_arm_window_linear_r6_paper_plus_5dB": 0.0941
+}

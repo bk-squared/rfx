@@ -1,0 +1,15 @@
+{
+  "pml_floor_dt_r2": {
+    "dt_s": 1.1675338966910681e-12,
+    "max_R_db_2_30GHz": -94.02089231027841,
+    "window_db": -50.0,
+    "fired": false
+  },
+  "pml_floor_dt_r6": {
+    "dt_s": 3.891779655636895e-13,
+    "max_R_db_2_30GHz": -94.0451980600439,
+    "window_db": -50.0,
+    "fired": false
+  },
+  "F_M1b_abc_fired": false
+}

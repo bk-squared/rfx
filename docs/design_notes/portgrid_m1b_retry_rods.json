@@ -1,0 +1,24 @@
+{
+  "rods_subgrid_r2": {
+    "dt_s": 1.1675338966910681e-12
+  },
+  "rods_subgrid_r4": {
+    "dt_s": 5.837669483455341e-13
+  },
+  "rods_subgrid_r6": {
+    "dt_s": 3.891779655636895e-13
+  },
+  "rods_allfine": {
+    "dt_s": 3.891779655636895e-13,
+    "wall_s": 17.4
+  },
+  "rods_mismatch_linear_vs_allfine_2_30GHz": {
+    "r2": 0.0662711142818879,
+    "r4": 0.02853318712432168,
+    "r6": 0.0299142330047492,
+    "all_coarse": 0.043699072400638084,
+    "window_linear_r6": 0.0941,
+    "F_M1b_rod_fired": false,
+    "max_s11_fine_linear": 0.20730630511732898
+  }
+}

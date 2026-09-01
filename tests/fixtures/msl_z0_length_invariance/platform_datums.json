@@ -1,0 +1,109 @@
+{
+  "schema": "rfx.msl_z0_length_invariance_platform_datums",
+  "schema_version": 1,
+  "test": "tests/test_msl_port_integration.py::test_msl_thru_line_z0_length_invariance_and_positive_sign",
+  "issue": 610,
+  "_comment": "Deliberately NOT named 'fixture.json' -- tests/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
+  "recipe": {
+    "dx_m": 8e-05,
+    "legs_mm": [8, 10, 12],
+    "band_hz": [3.0e9, 4.5e9],
+    "n_freqs": 30,
+    "num_periods": 12,
+    "port": "+x",
+    "jax_enable_x64": false,
+    "dtype": "float32/complex64"
+  },
+  "bounds_unchanged": {
+    "spread_tol": 0.007,
+    "per_leg_mean_s11_max": 0.15,
+    "note": "Both bounds are single-sourced from tests/test_msl_port_integration.py's MEASURED_SPREAD_ENVELOPE (via tests/_gate_policy.gate_from_envelope) and LEG_S11_BOUND -- this ledger imports them, it does not restate them."
+  },
+  "derivation": {
+    "measured_spread_envelope": 0.004607,
+    "datum_id": "dev-2026-08-09",
+    "policy": "tests/_gate_policy.py gate_from_envelope(quantum=1000)"
+  },
+  "classification_policy": {
+    "threshold_pp": 0.05,
+    "note": "POLICY, NOT measured: a same-commit cross-platform spread disagreement >= 0.05 percentage points is classified as platform variance; a shift entering between two same-platform (CI) runs across a commit window is classified as code drift. The measured fact is narrower than this policy number -- no two datums share a commit, so cross-platform agreement is demonstrated as two same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607% @69a6956a, GitHub runner 0.46% @90c79d1d, 4 rfx/ commits apart} and post-drift {GitHub runner 0.47% @7f68f9fb and @8e004976, this pod 0.4676% @1f005d0d}. Agreement finer than the 0.01 pp / 0.01 ohm print quantum is NOT MEASURED."
+  },
+  "datums": [
+    {
+      "id": "dev-2026-08-09",
+      "role": "derivation",
+      "source": "PR #611 docstring (single process, dev platform, hand-recorded)",
+      "commit": "69a6956a",
+      "platform": {"cpu": "not recorded", "os": "not recorded", "jax": "not recorded", "numpy": "not recorded", "blas": "not recorded"},
+      "precision": "docstring_4-5dp",
+      "legs": {
+        "8": {"mean_abs_z0": 57.3381},
+        "10": {"mean_abs_z0": 57.5778},
+        "12": {"mean_abs_z0": 57.6030, "mean_s11": 0.14874}
+      },
+      "spread": 0.004607,
+      "verdict": "PASSED"
+    },
+    {
+      "id": "gh-ubuntu-24.04-2026-08-10",
+      "role": "witness",
+      "source": "validation.yml run 31367543755 job 93389105380 (slow-tests shard 2), pytest -v -s stdout print",
+      "commit": "main@2026-08-10",
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260720.247.2", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.20"},
+      "precision": "printed_2dp",
+      "legs": {
+        "8": {"mean_abs_z0": 57.34, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.58, "mean_s11": 0.1160, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
+      },
+      "spread": 0.0046,
+      "verdict": "PASSED"
+    },
+    {
+      "id": "gh-ubuntu-24.04-2026-08-17",
+      "role": "witness",
+      "source": "validation.yml run 32004256088 job 95310451682 (slow-tests shard 2), pytest -v -s stdout print",
+      "commit": "main@2026-08-17",
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260810.271.1", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.20"},
+      "precision": "printed_2dp",
+      "legs": {
+        "8": {"mean_abs_z0": 57.33, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.57, "mean_s11": 0.1159, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
+      },
+      "spread": 0.0047,
+      "verdict": "PASSED"
+    },
+    {
+      "id": "gh-ubuntu-24.04-2026-08-24",
+      "role": "witness",
+      "source": "validation.yml run 32700177994 job 97349946815 (slow-tests shard 2; shard red on a DIFFERENT test, test_msl_sheet_threading O1 golden, max dev 2.505e-06 -- not this test), pytest -v -s stdout print",
+      "commit": "main@2026-08-24",
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260816.277.1", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.21"},
+      "precision": "printed_2dp",
+      "legs": {
+        "8": {"mean_abs_z0": 57.33, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.57, "mean_s11": 0.1159, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
+      },
+      "spread": 0.0047,
+      "verdict": "PASSED"
+    },
+    {
+      "id": "pod-epyc9654-2026-08-29",
+      "role": "witness",
+      "source": "Full-precision re-measure reusing test_msl_port_integration._run_msl_thru/GATE_F_LO/GATE_F_HI directly (production comparator, no re-implementation) at HEAD 1f005d0d; raw JSON dump EXIT=0 (the separate `pytest -m slow` run log for the same commit carries a spurious wrapper EXIT=137 line above its genuine '1 passed' summary -- not used as this row's source)",
+      "commit": "1f005d0d",
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor", "os": "Linux 5.15.0-187-generic glibc 2.35", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6 (scipy-openblas 0.3.29)", "python": "3.10.12"},
+      "precision": "float32_full",
+      "legs": {
+        "8": {"mean_abs_z0": 57.32986831665039, "mean_s11": 0.07420126348733902, "mean_s21": 0.9971068501472473, "settling_db": [-99.296128531781, -98.36610660638618]},
+        "10": {"mean_abs_z0": 57.57185363769531, "mean_s11": 0.11594189703464508, "mean_s21": 0.993048906326294, "settling_db": [-98.48874508467928, -102.95149714665023]},
+        "12": {"mean_abs_z0": 57.59873962402344, "mean_s11": 0.1486974060535431, "mean_s21": 0.9886387586593628, "settling_db": [-103.80002898326913, -98.11628314292864]}
+      },
+      "spread": 0.00467601022477662,
+      "verdict": "PASSED",
+      "headroom": {"spread_pp": 0.232399, "leg12_mean_s11": 0.0013025939}
+    }
+  ]
+}

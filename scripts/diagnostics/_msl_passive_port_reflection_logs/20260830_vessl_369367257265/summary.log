@@ -1,0 +1,43 @@
+{
+  "verdict": "NO SINGLE-REFLECTOR MODEL fits all R points within 0.03 (predeclared falsifier) -- report and stop; no two-parameter fit",
+  "hypotheses": {
+    "H_shunt": {
+      "fits_within_band": false,
+      "max_abs_dev": 0.11942214255336575,
+      "n_points": 6,
+      "band": 0.03
+    },
+    "H_shunt_with_C1_stub": {
+      "fits_within_band": false,
+      "max_abs_dev": null,
+      "n_points": 0,
+      "band": 0.03
+    },
+    "H_end": {
+      "fits_within_band": false,
+      "max_abs_dev": 0.2417945198987803,
+      "n_points": 6,
+      "band": 0.03
+    }
+  },
+  "implied_k_finding": "H_shunt implied k per R point = ['1.910', '1.963', '1.568', '1.593', '1.030', '1.037'] (spread 0.933); no consistent k across R points -> shape does not follow 1/(2R+Zc)",
+  "item2_drive_asymmetry": {
+    "C0_abs_gamma_port1": 0.17594771041884888,
+    "C0_abs_gamma_port2": 0.17994516797607107,
+    "C0_difference": 0.003997457557222195,
+    "band": 0.02,
+    "asymmetric": false,
+    "SYM_abs_gamma": [
+      0.17603138387106346,
+      0.17650829892090256
+    ],
+    "SYM_difference": 0.0004769150498390995,
+    "ROTY_abs_gamma": [
+      0.17593789961249195,
+      0.17994299389679855
+    ],
+    "ROTY_difference": 0.004005094284306593,
+    "reading": "C0 ports agree within 0.02: item 2 collapses into item 1"
+  },
+  "comparator_all_passed": true
+}

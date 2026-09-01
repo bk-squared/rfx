@@ -1,0 +1,1570 @@
+# SPEC-01 multiband NU envelope — pre-declaration note (W1–W5)
+
+Date: 2026-08-29 · Lane: `agent/multiband-nu-envelope` · Tracker: #780
+Base: main `bdcf9ea`. Append-only; corrections go in dated sections at the end.
+
+This note is committed BEFORE any falsifier measurement. Every window below is
+derived from geometry / first principles / prior-provenance classes only — no
+window is derived from data it will judge (SPEC-00 §0.2-2).
+
+## 0. Premise verification (spec claims re-checked on main)
+
+| Spec claim | Status on `bdcf9ea` |
+|---|---|
+| `rfx/nonuniform.py` (`run_nonuniform`, profile paths) | confirmed |
+| `rfx/runners/nonuniform.py`, `rfx/auto_config.py` builders | confirmed |
+| `docs/guides/support_matrix.md`, `rfx/api/_preflight.py` | confirmed |
+| PR #775 (preserve_regions) "계류 중" | **STALE — MERGED** as `fc2b582`, in this base. Explicit-vector rule kept anyway (solver/builder separation). |
+| #672 dual-cell folds as open defect lens | **STALE — RESOLVED** 2026-08-20 (PR #684, merge `4eb7fa4`) per ledger `rfx-known-issues.md`. W1 still valuable as the *conserved-functional* witness the fold fixes never had. |
+| Ledger mounted (`nu_known_limits.md` etc.) | confirmed, read in full |
+| dt = global min-cell CFL | confirmed: `make_nonuniform_grid` uses 0.99/(C0·sqrt(Σ 1/d_min²)) |
+
+Literature access: **Christ/Fröhlich/Kuster IEICE E85-B(12):2904 (2002) full text
+obtained** (speag.swiss PDF; equations (1)–(11) and Table 1 extracted).
+**Monk & Süli SIAM J. Numer. Anal. 31(2):393 (1994)**: abstract-level theorem
+confirmed (global 2nd-order supraconvergence despite 1st-order nodal LTE).
+**Remis JCP 218:594 (2006): full text NOT obtainable** through open channels
+from this session. Consequences and mitigation in §2 below — the energy
+functional used here is *derived from the repo's own update equations* and
+validated by an exact-conservation check, not implemented from memory of Remis.
+
+## 1. Fixtures (all explicit `dz_profile` vectors; `_make_dz_profile` unused)
+
+Common transverse fixture for P-A/W2/W3: PEC-closed box, x = 3×1.5 mm
+(x-invariant fields), y = 20×1.5 mm (b = 30 mm; discrete TE10 sine is the
+exact transverse eigenmode), z graded. f0 = 10 GHz (λ0/dz_fine = 30 in fine
+bands; guided λg/dz_fine = 34.6). `cpml_layers = 0` everywhere in W1–W3 (no
+absorber in any energy/reflection arm; gating + 2-run differencing instead).
+
+- **P-A** (`fixtures.pa_profile`): symmetric fine(40)–coarse(30)–fine(40)–
+  coarse(30)–fine(40), dz_fine = 1 mm, coarse = r·1 mm, r ∈ {1.1, 1.2, 1.4,
+  1.5, 2.0}; variants abrupt (single step of ratio r) and smooth (geometric
+  ramp, per-step ≤ 1.3). r=1.0 uniform control arm added (class reference,
+  window NOT taken from it).
+- **P-B** (`W1-3D`): PEC box 32×32×(P-A profile) cells, transverse 1.5 mm
+  uniform; multi-component smooth random initial E blob.
+- **W2 single transition**: fine 140 | (ramp) | coarse 150; B-run uniform fine
+  400 cells; source k=40, probe k=80, all in the shared fine runway.
+- **W3 traversal**: fine 120 | up | coarse 30 | down | fine 40 | up | coarse 30
+  | down | fine 120 (per-r), the symmetric "round trip" through rising and
+  falling transitions; B-run uniform fine 500 cells.
+- **P-C** (`fixtures.pc_dz_profile_sym`): 27×22.5 mm PEC box; substrate
+  1.5 mm εr 4.3 (fine band), trace-level band 1.5 mm (PEC trace 13.5×4.5 mm at
+  z=1.5 mm), air 4.5 mm (ratio-≤1.4 symmetric ramp band), upper dielectric
+  1.5 mm εr 2.2 (fine band), air 4.5 mm to lid (ramp band). Every trace edge
+  and the transverse box sit on multiples of 2.25 mm so scales s ∈ {1, 1.5, 2,
+  3} (dx = 0.75s mm, dz_fine = 0.25s mm) rasterize identically-aligned
+  geometry — no staircase-alignment confound in the order fit. Preflight ON
+  (Simulation-level path).
+- **W5** (`fixtures.w5_profile`): fine(5)–coarse(4)–fine(5) multiband with 1 %
+  deterministic jitter (breaks `jnp.min` ties — ledger caveat).
+
+## 2. W1 — Remis-class dual-cell energy witness
+
+### 2.1 Derivation (from the repo's own operators, not from memory of Remis)
+
+The NU step is leapfrog H → E with
+`update_h_nu`: H ← H − (dt/μ)·curl_fwd(E), curl_fwd scaled by
+`inv_d_h[k] = 1/d[k]` (primal), and
+`update_e_nu`: E ← E + (dt/ε)·curl_bwd(H), curl_bwd scaled by
+`inv_d_e[k] = 2/(d[k-1]+d[k])` (dual), with PEC pinning of tangential E at all
+six faces each step (`apply_pec`).
+
+Define per-axis primal width pd[k] = 1/inv_d_h[k] (0 at the #562 trailing
+bounding duplicate) and dual spacing dd[k] = 1/inv_d_e[k] (identical to
+`e_node_dual_spacings`). Tensor-product weights:
+
+    w(Ex)=pd_x⊗dd_y⊗dd_z   w(Ey)=dd_x⊗pd_y⊗dd_z   w(Ez)=dd_x⊗dd_y⊗pd_z
+    w(Hx)=dd_x⊗pd_y⊗pd_z   w(Hy)=pd_x⊗dd_y⊗pd_z   w(Hz)=pd_x⊗pd_y⊗dd_z
+
+Summation-by-parts: for every curl pairing (component pair, derivative axis)
+the products w·inv collapse to the SAME telescoping constant on both sides
+(e.g. Ex–Hy along z: w(Ex)·inv_dz = pd_x dd_y and w(Hy)·inv_dz_h = pd_x dd_y),
+so with PEC-pinned tangential E and the zero-weight trailing planes,
+
+    Σ_c w(Ec)·e_c·(curl_bwd h)_c = Σ_c w(Hc)·h_c·(curl_fwd e)_c   … (SBP)
+
+(the sign closes because curl's two terms carry opposite signs). With (SBP),
+the mixed-time functional evaluated from the post-step state (E^{n+1},
+H^{n+1/2}), reconstructing H^{n+3/2} with one extra H-update,
+
+    E_n = ½ Σ ε_eff w(Ec) (E^{n+1})² + ½ Σ μ_eff w(Hc) H^{n+1/2}·H^{n+3/2}
+
+telescopes exactly: ΔE_n = ½dt[Σ w_E ē·curl_bwd(h) − Σ w_H h·curl_fwd(ē)] = 0
+with ē = E^n + E^{n+1}. ε_eff/μ_eff are the KERNEL-REALIZED constants
+(dt/cb32, dt/(dt/μ)32 — the kernels compute cb = dt/ε and dt/μ in float32), so
+the functional is conserved by the scheme *as implemented*, to field rounding.
+
+### 2.2 Relation to existing ledger norms (spec-required comparison)
+
+- `e_node_dual_spacings` (#669/#672 fold metric) is exactly the dd factor
+  above: the fold fixes moved *source/sheet normalizations* onto the dual
+  metric; W1 is the first witness that uses the full dual/primal
+  tensor-product as a *conserved* norm.
+- `run_nonuniform_until_decay._interior_energy` uses primal dV for all six
+  components, no ε/μ weighting and no mixed-time H product — fine as a decay
+  stop criterion, NOT conserved, NOT reusable for W1 (documented contrast).
+- Remis 2006 (abstract + secondary sources): stability at min-cell CFL via
+  similarity to a skew-symmetric operator under sqrt-weighted field scaling;
+  the induced norm is this dual-cell energy; their cavity demo conserves it
+  for ~10⁶ iterations. Full text unobtained — affected claims: none of the
+  numbers below depend on Remis internals; the functional's correctness is
+  established by the (SBP) check and the float64 conservation gate (§2.3).
+
+### 2.3 Witness-validity gates (run at harness bring-up, before this commit)
+
+Declared thresholds: adjointness residual < 1e-12 (float64, random fields,
+3 seeds); float64-field conservation over 2000 steps < 1e-12 relative.
+Measured during bring-up on P-A(r=1.4, reduced): residuals {2.9e-16, 0,
+1.5e-16}; f64 drift 2.1e-16. One witness bug found and fixed during bring-up:
+using exact EPS_0/MU_0 instead of the kernel-realized float32 coefficients
+leaves a bounded 2.4e-8 residual in the WITNESS (not the solver); fixed by
+using realized coefficients. These are witness-validation data, not falsifier
+data; no falsifier window was touched.
+
+### 2.4 F-S1 (pre-declared)
+
+Float-accumulation model: each float32 field entry suffers ~10 roundings per
+step (curl 4 mul + 3 add, axpy 2–3), each with relative error ≤ u/2,
+u = 2⁻²⁴. Perturbations persist (lossless, neutral dynamics) and random-walk;
+the energy is quadratic (factor 2). Model class: |E_n−E_0|/E_0 ≲
+2·sqrt(10)·u·sqrt(n)·κ with κ = O(1); safety ×3 ⇒ K = 20.
+
+**F-S1 fires** on any lossless P-A/P-B arm if either
+1. envelope breach: d(n) = |E_n−E_0|/E_0 > K·u·sqrt(n) = 1.19e-3·sqrt(n/10⁶)
+   at any sample n ≥ 10⁴ (E_0 = sample at n = sample_every, after PEC
+   projection of the init), or
+2. growth trend: least-squares slope of log10 d̃ vs log10 n over n ∈ [10⁴, 10⁶]
+   exceeds 0.75 (d̃ = RMS of d in 8 log-spaced bins), evaluated only when
+   max d > 50u = 3.0e-6 (below that the trend is quantization noise).
+
+Arms: 1D CPU ≥10⁶ steps: r ∈ {1.0 control, 1.1, 1.2, 1.4, 1.5, 2.0} abrupt +
+{1.4, 2.0} smooth. 3D P-B: CPU sanity 10⁴ steps (NO verdict claimed) + VESSL
+yaml for the full 10⁶ GPU arm (r ∈ {1.4, 2.0} abrupt). The uniform control is
+a measured class reference only; the window above is model-derived.
+Fire ⇒ full multiband STOP + solver-defect report (top priority).
+
+## 3. W2/W3 — transition reflection and traversal amplitude
+
+### 3.1 Method (pre-declared)
+
+Two-run differencing: A = graded profile, B = uniform-fine profile with
+bit-identical fine runway, source, probe and dt (dt is min-cell-set, equal by
+construction). Reflected signal = gated (A−B) at the fine-runway probe;
+incident = gated B. R_meas = |DFT_{f0}(A−B, gate_R)| / |DFT_{f0}(B, gate_I)|.
+Gates from geometry (declared in the measurement script from node positions
+and discrete group velocity, closing before the wall-echo's transition return
+and before any far-wall return; source Gaussian-modulated sine f0 = 10 GHz,
+σ_t = 64 ps, t0 = 5σ). W3: T_meas = |DFT_{f0}(A at out-probe, gate_T)| /
+|DFT_{f0}(B at out-probe, gate_T′)|; |T| of a gated single propagating mode is
+z-independent in B, so B probe placement needs no sub-cell matching.
+
+### 3.2 Window model (exact discrete chain, frequency domain)
+
+For the x-invariant TE10 fixture the rfx update equations reduce exactly to
+
+    inv_e[k][inv_h[k](E_{k+1}−E_k) − inv_h[k−1](E_k−E_{k−1})] + (S0²−Sy²)E_k = 0
+
+S0 = 2sin(ωdt/2)/(c₀dt), Sy = 2sin(k_y dy/2)/dy, k_y = π/b — the same family
+as Christ (2002) Eq. (8) plus the exact transverse term. Windows come from a
+direct linear scattering solve of this recurrence on the exact explicit
+profile (`chain_model.py`), Bloch BCs on both uniform ends. Self-check:
+uniform profile R = 7.8e-15. This is a first-principles model computed without
+any FDTD time-stepping — burned-data rule respected.
+
+Measurement floor: A−B differencing cancels to float32 accumulation over
+~3e3 steps ≈ u·sqrt(3e3·10) ≈ 1e-5; declared floor 3e-5 (×3 safety).
+
+### 3.3 F-S2 (pre-declared windows, frozen from `predeclared_windows.json`)
+
+**Fires** (for the claimed envelope r ≤ 1.4 only) if
+R_meas(f0) > max(3·R_model, 3e-5):
+
+| r | R_model abrupt | window abrupt | R_model smooth | window smooth |
+|---|---|---|---|---|
+| 1.1 | 4.358e-4 (−67.2 dB) | 1.307e-3 (−57.7 dB) | = abrupt (ramp empty) | = |
+| 1.2 | 9.139e-4 (−60.8 dB) | 2.742e-3 (−51.2 dB) | = abrupt | = |
+| 1.4 | 1.998e-3 (−54.0 dB) | 5.995e-3 (−44.4 dB) | 1.954e-3 | 5.861e-3 |
+| 1.5 | 2.605e-3 (−51.7 dB) | 7.815e-3 (−42.1 dB) | 2.543e-3 | 7.630e-3 |
+| 2.0 | 6.298e-3 (−44.0 dB) | 1.889e-2 (−34.5 dB) | 5.784e-3 | 1.735e-2 |
+
+(The spec's "−60 dB class from Christ 2002" lands at r ≈ 1.2 for this λg/34.6
+resolution; the per-r numbers above are the derivation-fixed exact values the
+spec calls for. Christ Table 1 cross-anchor: 3→30 mm graded traverses show
+0.57–1.55 % phase and 2.4–4.3 % amplitude error — consistent order with the
+model's per-transition numbers at far coarser resolution.)
+Fire at some r ≤ 1.4 ⇒ that r is EXCLUDED from the envelope (no window
+motion, no cap re-declaration). r > 1.4 arms are out-of-envelope references.
+
+### 3.4 F-S3 (pre-declared)
+
+Christ mechanism: complex k_ν — amplification into rising cell size,
+attenuation into falling; a symmetric traversal cancels to
+1−|T|² = O(R²). Chain-model |T| for the W3 profiles: 1−|T| ≤ 2.1e-5 for all
+r ≤ 1.5 (2.05e-4 at r = 2.0). **Fires** if
+| |T_meas(f0)| − |T_model(f0)| | > max(3e-4, 0.5·|1−|T_model||) — the 3e-4
+floor (f32 + gating, ×3 safety) dominates for every in-envelope r.
+Fire ⇒ Christ coefficient correction becomes a candidate FOLLOW-UP WP;
+implementing it in this lane stays out of scope (spec).
+
+## 4. W4 — supraconvergence + cost
+
+Arms: multiband P-C at s ∈ {1, 1.5, 2, 3}; uniform-fine control at the same
+four s; reference f_ref = uniform-fine at s = 2/3. Observable: lowest
+resonance in 3–9 GHz (harminv via `Result.find_resonances`; mode matched to
+the reference's lowest by frequency proximity). e(s) = |f(s) − f_ref|;
+u_ref = |f_uc(1) − f_ref| / 1.25 (Richardson, p=2, ratio 1.5); points with
+e(s) < 3·u_ref are excluded from the fit (declared rule); orders p_mb, p_uc
+from least-squares slope of log e vs log dz_fine(s) over the surviving ≥3
+points (if <3 survive: report inconclusive, no envelope claim).
+
+**F-S4 fires** if p_uc ≥ 1.7 (fixture-valid gate) AND
+(p_mb < 1.5 OR p_mb > 2.6 OR p_mb < p_uc − 0.4).
+If p_uc < 1.7 the fixture is singular/reference-limited: W4 = INCONCLUSIVE,
+envelope promotion blocked, fixture redesign filed — not counted as a
+multiband fault (Monk–Süli assumes smooth fields; the PEC trace edge may cap
+the observable order for BOTH arms). Cost table (cells, wallclock, peak RSS)
+recorded as documentation, no claims.
+
+## 5. W5 — AD consistency (F-S5)
+
+Premise finding: the NU mesh-gradient path is architecturally float32
+(`_pad_profile` tracer branch and `_profile_to_inv_arrays` hard-cast
+`jnp.float32`), so the spec's "~1e-8 (f64) class" is unreachable without code
+changes (out of scope). The existing NU AD convention
+(`test_nonuniform_gradient.py::test_grad_wrt_dz_profile_matches_fd`) is
+AD↔central-FD < 15 % on dominant cells (|g| > 5 % of max), f32.
+
+**F-S5 (pre-declared)**: jax.grad of L = Σ ts² w.r.t. the full multiband
+`w5_profile` vector vs central FD (h = 1e-3·dz[k] relative, f32 path;
+x64-context arm also run and reported): fires if any dominant cell exceeds
+15 % relative error. Fire = regression on a CLOSED item ⇒ report as such.
+The x64 measured class is knowledge output, not a gate.
+
+## 6. Run plan / hygiene
+
+Order: commit this note+harness → W1 1D arms → W1 3D CPU sanity → W2 → W3 →
+W4 → W5 → results commit(s) → VESSL yaml for W1-3D GPU (launch is the
+orchestrator's). Every CPU arm ≤ 20 min (measured 10⁶-step 1D arm ≈ 0.5 min).
+Revert-proof check included: a deliberately corrupted transition coefficient
+(one dual spacing replaced by the primal width in the witness's weight set)
+must break the f64 conservation gate; recorded with the results.
+Existing-gate battery: `pytest -o addopts="" -m "not gpu"` over the
+`test_nonuniform*`/`test_msl_nu*`/NU-related modules (no `rfx/` sources are
+modified in WP1–WP5, so movement is not expected).
+
+## C1/C2 — Corrections (2026-08-29, after first W3 execution; windows UNTOUCHED)
+
+**What happened.** On first execution F-S3 fired on every arm (dev 0.8–6e-2)
+— including, decisively, on an added r=1.0 NULL-CONTROL arm (uniform profile,
+|T| = 1 exactly), proving witness invalidity rather than physics: a falsifier
+that fires on its known-truth control is measuring the instrument.
+
+**C1 — gate omitted the source wall echo.** The declared method requires
+gates that close before any non-transmitted arrival; the implementation's W3
+gate (t_pass + 0.72 ns) admitted the source's z-lo wall echo (lag 2·z_src/vg
+= 0.65 ns, verified full-amplitude at the predicted 2.19 ns on the B trace).
+Repair: runways/probe/source re-sized (lead 240, k_src 200, tail guard) and a
+Gaussian analysis window (sigma_w = 200 ps) centred on the group-delay
+arrival replaced the rectangular gate. The W2 incident gate got the analogous
+tightening (echo tail was ~9 % envelope at the old gate edge; W2 verdicts
+unchanged — differencing had cancelled the echo there).
+
+**C2 — waveguide GVD bias.** After C1 the null control still fired at
++3.5e-3, tracking the A/B propagation-distance mismatch: at fc/f0 = 0.5
+(b = 30 mm) waveguide dispersion is ~0.13 ps/mm/GHz and the windowed
+amplitude is distance-sensitive at the 1e-3 level (a rectangular full-record
+gate is far worse — 9 % — the near-cutoff straggler continuum leaks into f0).
+Repair: W3 transverse instrument moved to b = 90 mm (fc = 1.67 GHz, ~9×
+less GVD), source sigma_t 64→100 ps, B reference group-delay-matched
+(624 cells, out at 424). W1/W2 fixtures unchanged.
+
+**Discipline statement.** The F-S3 window (max(3e-4, 0.5·|1−T_model|)) was
+never moved. Validity is adjudicated by the null control: after C1+C2 it
+measures |T−1| = 2.4e-6 (125× below the floor). The transitions under test,
+f0, the model, and every declared window are exactly as pre-declared.
+First-execution firing + control-diagnosis + instrument repair are recorded
+here in full per the append-only rule.
+
+**W3 re-measurement (final).** All arms pass: in-envelope deviations
+≤ 7.5e-6 (r=1.1/1.2/1.4 abrupt+smooth); out-of-envelope references r=1.5:
+≤1.2e-5, r=2.0: ≤1.2e-4 — all far under the 3e-4 floor and consistent with
+the chain model. The Christ round-trip asymmetry is additionally bounded by
+W1: <3e-6 total energy drift over ~3200 cavity traversals of 4 transitions
+bounds any net per-traversal amplitude drift to the 1e-9 class.
+
+## C3–C5 — W4 fixture corrections (2026-08-29; p-bands and F-S4 rule UNTOUCHED)
+
+**C3 — reference scale violated the alignment invariant.** The declared
+s=2/3 reference has dx=0.5 mm, which does not divide the 2.25 mm common
+grid (trace edge at 6.75 mm lands mid-cell); the repo's own #703-class
+preflight advisory caught it on the first build. Reference moved to
+s=3/4 (dx=0.5625: 2.25/0.5625=4, dz_fine=0.1875: 1.5/0.1875=8, both
+exact); the Richardson divisor follows the same declared principle with
+the corrected ratio 4/3 ((4/3)²−1 = 7/9).
+
+**C4 — two fixture-implementation defects found by the first (discarded,
+INCONCLUSIVE) executions.** (i) The trace was one FINE CELL thick, so its
+physical thickness scaled with s — the ladder was solving different
+resonators. Fixed: trace fills the 1.5 mm trace band (exact multiple of
+every dz_fine including the reference). (ii) T_total = 4.5 ns gave
+~0.2 GHz line resolution over a dense spectrum; the fitted line wandered
+0.6 GHz. Fixed: T_total = 20 ns + a 5 % mode-match guard.
+
+**C5 — ladder moved into the resolved regime.** With C3+C4 the tracked
+line still wandered non-monotonically at s ∈ {2, 3}: the 4.5 mm trace is
+only 2–3 cells wide there and the mode identity is not stable —
+convergence-order fitting outside the asymptotic regime is meaningless.
+Ladder: s ∈ {0.5, 0.75, 1, 1.5} (trace 12/8/6/4 cells), reference
+s = 0.375 (16 cells), all alignment-exact. Diagnostic worth recording:
+at every matched scale the multiband and uniform-control arms agreed to
+< 1 MHz (≤ 6e-5 relative) even in the discarded runs — the
+multiband-vs-uniform delta (the quantity under test) is far smaller than
+the shared extraction noise that invalidated those ladders.
+
+The F-S4 acceptance bands (p_mb ∈ [1.5, 2.6], p_mb ≥ p_uc − 0.4, fixture
+gate p_uc ≥ 1.7) are exactly as pre-declared; no measured order entered
+any of these corrections.
+
+## Revert-proof (gate-2 evidence, `revert_proof.py`)
+
+f64, P-A(r=1.4 reduced), 1000 steps: baseline drift 2.05e-16;
+(a) one transition-node dual weight replaced by the primal width in the
+WITNESS → drift 5.8e-3 (witness metric is load-bearing);
+(b) CORE-C2-class SOLVER corruption (E-update inv_dz[k_tr] → 1/d[k]) with
+the correct witness → drift 7.9e-3 (witness fires on the guarded defect
+family). Both ≫ the 1e-12 validity threshold.
+
+## W4 final outcome (2026-08-29) — F-S4: INCONCLUSIVE per the pre-declared rule
+
+With the C5 ladder (s ∈ {0.5, 0.75, 1, 1.5}, ref 0.375) the pre-declared
+matching rule again produced fewer than 3 valid fit points (s=1 rejected by
+the 5 % guard; the surviving errors 112.7 / 45.4 / 144.5 MHz are
+non-monotonic in h). Root cause, now measured twice at two different
+ladders: the fixture has near-degenerate resonances (~5.25 / ~5.35 GHz)
+whose dominance flips with mesh scale, so the single-line observable is not
+mode-stable across the ladder. Per the declared procedure this is
+**INCONCLUSIVE — no order claim, and no envelope-promotion support from
+W4**; a redesigned fixture (sparser spectrum or a symmetry-selective
+source/probe pair that pins one mode) is follow-up work.
+
+Recorded diagnostics (not claims):
+- At every matched scale, in every run of every ladder, the multiband arm
+  reproduced the uniform-fine-at-same-scale arm to ≤ 0.5 MHz (≤ 1.1e-4
+  relative) — including at scales where the mode identity flips (both arms
+  flip together). The instability is an extraction artifact common to both
+  arms, not a grading effect.
+- Cost actuals (s=0.5 arm): multiband 259,200 cells / 23 s vs uniform-fine
+  466,560 cells / 41 s — 44 % cell and ~44 % wallclock savings at equal
+  fine resolution, same dt (min-cell CFL both).
+
+The measured-order windows (p bands) were never applied to data and remain
+as declared for the redesigned fixture.
+
+## Existing-gate battery (acceptance gate 3)
+
+`pytest -o addopts="" -m "not gpu"` over test_nonuniform_gradient/
+forward_grad/convergence/cavity_accuracy/api/grid_extent_contract/
+uniform_end_to_end_reduction/source_port_dual_spacing:
+**87 passed, 0 failed** (124.8 s). No rfx/ sources are modified by this
+lane (WP1–WP5 add only validation/research/multiband_nu/ and this note).
+
+## F-S1 3D verdict (2026-08-29, appended — GPU arm result)
+
+VESSL run 369367256892 (remilab-c0, rtx4090, staged commit 6892741, log
+archived at vessl-run-logs/369367256892_spec01-w1-3d-audit.log): P-B full
+1e6-step arms — r=1.4 drift_end +4.739e-09, max 7.703e-08; r=2.0
+drift_end +1.321e-07, max 1.957e-07. The committed evaluate_fs1 judge
+(injection-tested in review) reports FIRED=False on both arms: bounded
+random-walk within the pre-declared float-accumulation envelope, no
+growth trend. **F-S1 (3D) PASS.** Evidence:
+validation/research/multiband_nu/results/w1_pb_full_gpu.json.
+With F-S1(1D+3D)/F-S2/F-S3/F-S5 all PASS, WP6 promotion now waits only
+on the W4 fixture redesign (F-S4 currently INCONCLUSIVE).
+
+## C6 — Phase-1 review responses, nonblocking items (2026-08-29; windows and verdicts UNTOUCHED)
+
+**C6a — §3.4 prose slip (numbers only; the frozen JSON was always
+authoritative).** §3.4 says "Chain-model |T| for the W3 profiles:
+1−|T| ≤ 2.1e-5 for all r ≤ 1.5 (2.05e-4 at r = 2.0)". That sentence
+understates the frozen values in
+`results/predeclared_windows.json` (committed in the same
+pre-declaration commit, `3fb162d`): the in-envelope maximum is
+1−|T_model| = 2.64e-5 (r = 1.4 smooth) and r = 1.5 reaches 4.54e-5
+(abrupt); the 2.05e-4 figure is the r = 2.0 smooth value (abrupt
+2.03e-4). The prose number was a draft-profile leftover. No
+consequence: the F-S3 window is max(3e-4, 0.5·|1−T_model|) and the
+3e-4 floor dominates every arm under either set of numbers; the JSON —
+not the prose — is what the measurement script and the verdicts used.
+
+**C6b — F-S3 T_model under the C2 instrument (review-requested
+instrument note).** The C2 repair changed the W3 *instrument* (b: 30 →
+90 mm, runways 120 → 240 fine cells, source σ_t 100 ps, group-delay-
+matched B reference), so the W3 profiles at measurement time are not
+the profiles the §3.3/§3.4 tables were computed for. The T_model each
+arm was judged against is therefore recomputed at measurement time by
+the SAME frozen first-principles chain model (`chain_model.py`,
+unchanged since `3fb162d`) evaluated on the corrected instrument's
+explicit profiles — model class and window RULE exactly as
+pre-declared, only the instrument geometry fed to the model moved
+(recorded values in `results/w2_w3.json`, e.g. r = 2.0 abrupt
+T_model = 0.9999996 on the C2 instrument vs 0.9997967 pre-C2). Under
+both instruments the 3e-4 floor dominates the half-width for every
+arm, so no arm's window width depended on the instrument change.
+
+**C6c — W4-final diagnostic phrasing ("≤ 0.5 MHz (≤ 1.1e-4
+relative)").** The recorded per-scale multiband-vs-uniform deltas in
+`results/w4_supraconvergence.json` are 0.228 / 0.345 / 0.298 /
+0.530 MHz at s = 0.5 / 0.75 / 1.0 / 1.5 (relative 4.3e-5 / 6.5e-5 /
+5.8e-5 / 1.01e-4 of the matched line). The prose pairing rounded the
+MHz bound down (0.53 → 0.5) while padding the relative bound up
+(1.01e-4 → 1.1e-4); corrected statement: **≤ 0.53 MHz, ≤ 1.02e-4
+relative**. Diagnostic prose only — the figure carries no claim and
+entered no window.
+
+**C6d — `fixtures.py` `_sym_air_band` residual-fallback tidy-up.** The
+no-plateau residual branch was a single hard-to-read ternary
+(`... if up else [length]`) whose precedence swallowed the whole
+expression. Rewritten as explicit `if/elif/else` branches with the
+same semantics. Evidence of behaviour preservation: `pc_dz_profile_sym`
+output verified bit-identical (`np.array_equal`) for every scale this
+lane uses (s ∈ {0.25, 0.375, 0.5, 0.75, 1.0, 1.5}); the unsupported
+short-band edge case trips the same pre-existing cap assert as before.
+
+## W4R — W4 redesign pre-declaration (2026-08-29; committed BEFORE any W4R ladder measurement)
+
+Phase-1 F-S4 was INCONCLUSIVE per the declared rule. This section
+pre-declares the redesigned fixture, its instrument, and the freshly
+derived F-S4 rules. The phase-1 p-band numbers were never applied to
+data; where the fresh derivation lands on the same values that is
+convergent derivation, not reuse of burned data. Everything below is
+fixed before the ladder runs; the bring-up measurements quoted are
+instrument-design data, all DISCARDED from judgment (the ladder re-runs
+every arm fresh).
+
+### W4R.1 Bring-up findings (root-cause correction of the phase-1 reading)
+
+1. **Mode-selective port** (the reviewer's recommendation): an
+   anti-symmetric Ez pair under the two trace ends,
+   (6.75, 11.25, 0.75) mm at +1 A and (20.25, 11.25, 0.75) mm at −1 A
+   (`amplitude_kind='current'`, GaussianPulse f0 = 6 GHz bw 0.9),
+   probe Ez at (18.0, 11.25, 0.75) mm. The fixture has exact discrete
+   mirror symmetry about x = 13.5 and y = 11.25 mm, so this excites only
+   the x-odd/y-even class — the trace half-wave mode's class. Bring-up:
+   the driven spectrum shows a SINGLE line in band at every scale tried
+   (dominance = ∞), 20 ns vs 60 ns extraction agrees to ≤ 15 kHz.
+2. **The corrected root cause of the phase-1 wander.** With the port
+   isolating one line, the line STILL wandered non-monotonically
+   (5.10–5.39 GHz). Direct inspection of the realized `pec_mask` per
+   scale found it: phase-1 drew every box corner exactly ON node planes
+   — the documented worst case of the half-open f32 Box rasterization
+   (`rfx/geometry/csg.py` docstring; #703-class advisory family). The
+   realized trace x-span flipped erratically between 13.5−dx and
+   13.5−2dx (lo-node included at s ∈ {0.25, 0.5, 1.0}, excluded at
+   s ∈ {0.375, 0.75, 1.5}); the y-span flipped between 4.5 and 4.5−dx.
+   An O(dx) sign-erratic electrical-length lottery, IDENTICAL in both
+   arms at each scale — which is exactly why the phase-1 arms agreed to
+   ≤ 1e-4 while both wandered. The phase-1 "near-degenerate mode flip"
+   reading was the symptom, not the cause.
+3. **Repair, PEC**: the trace is drawn with half-cell margins
+   ([6.75−dx/2, 20.25+dx/2] × [9−dx/2, 13.5+dx/2] ×
+   [1.5−dzf/2, 3.0+dzf/2] mm), placing every node strictly inside.
+   Verified: the realized zeroed-node set spans exactly
+   [6.75, 20.25] × [9.0, 13.5] × [1.5, 3.0] mm at every scale
+   s ∈ {0.25, 0.375, 0.5, 0.6, 0.75, 1.0, 1.5}, both arms. The
+   #703-class preflight advisory now FIRES on the drawn half-cell
+   offsets — by design: the quantity it protects (realized extent
+   drift) is verified invariant by direct mask measurement. Preflight
+   stays ON, nothing suppressed.
+4. **Repair, dielectrics**: without subpixel smoothing the dielectric
+   staircase (node-based half-open fill) leaves an O(h)
+   consistent-sign interface bias — bring-up uniform arms drifted
+   0.63 GHz across the ladder with mixed apparent order ~1. The ladder
+   therefore runs with `subpixel_smoothing=True` (NU path validated,
+   `tests/test_subpixel_nonuniform.py`; the known subpixel caveat #582
+   is open-boundary only, this fixture is PEC-closed). With it the
+   uniform arm converges monotonically at the 2nd-order class
+   (5.4045 → 5.5021 → 5.5331 → 5.5436 GHz at s = 1.5/1.0/0.75/0.5).
+5. **Instrument noise floor**: at the finest bring-up step the uniform
+   arm reversed by 6.0 MHz (s = 0.5 → 0.375: 5.5436 → 5.5376 GHz),
+   extraction-stable to 15 kHz — a mesh-real non-monotone wobble class
+   (subpixel fraction rounding / edge-singularity residue). Fit floor
+   declared at 3× this class: E_FLOOR = 18 MHz.
+
+### W4R.2 Frozen instrument and ladder
+
+- Fixture: P-C physical geometry unchanged; knife-edge-free drawing
+  (W4R.1-3), subpixel smoothing ON, preflight ON.
+- Observable: frequency of the largest-|amplitude| Q > 30 harminv line
+  in B = [4.0, 6.5] GHz of the port-selected ring-down; T_total = 20 ns
+  for every arm; validity per arm requires dominance ≥ 10 over any
+  other in-band line and |f − f_ref| ≤ 5 % · f_ref.
+- Ladder: s ∈ {0.5, 0.6, 0.75, 1.0, 1.5} (all on the 2.25 mm alignment
+  lattice: dx = 0.75s, dzf = 0.25s divide every patterned dimension),
+  multiband (`pc_dz_profile_sym`) and uniform-fine control at each s.
+- Reference: uniform-fine s = 0.25 (ratio 2 below s_min — the phase-1
+  ratio-4/3 reference made the 3·u_ref exclusion nearly unsatisfiable:
+  under clean p = 2 only 3 of 4 points could ever survive, with
+  equality at the margin; ratio 2 gives 3·u_ref = e(s_min) exactly, so
+  all points survive under clean p = 2).
+- u_ref = e_uc(s_min)/((s_min/s_ref)² − 1) = e_uc(0.5)/3 (Richardson,
+  p = 2, as phase-1); fit excludes points with
+  e < max(3·u_ref, E_FLOOR); order = LS slope of log e vs log dzf over
+  the surviving points; ≥ 3 surviving points required per arm, else
+  INCONCLUSIVE.
+
+### W4R.3 F-S4 rules (fresh derivation)
+
+Expected order: 2 for BOTH arms (Monk & Süli 1994; Li & Shields 2016 —
+supraconvergence on arbitrary tensor grids, of which the multiband
+profile is one). Derived allowances: reference contamination
+(e_meas = C(h² − h_ref²), h_ref = h_min/2) biases the LS slope by
+≤ +0.25 (computed exactly for this ladder under clean p = 2: fitted
+slope 2.13–2.25); the 18 MHz floor admits residual noise ≤ 6/18 of a
+surviving point, worth ≤ ±0.4 of slope over the ladder's log-span.
+Hence:
+
+- **Fixture-validity gate**: p_uc ∈ [1.7, 2.6]
+  (2 − 0.3 fit allowance; 2 + 0.25 contamination + 0.35 noise).
+  p_uc < 1.7: singularity/reference-limited for both arms;
+  p_uc > 2.6: pre-asymptotic ladder. Either ⇒ FIXTURE-INVALID /
+  INCONCLUSIVE — no envelope support, not a multiband fault.
+- **F-S4 fires** iff the fixture is valid AND
+  (p_mb < 1.5 OR p_mb < p_uc − 0.4). Physical rationale: the failure
+  mode of supraconvergence is order LOSS (toward 1). One-sided by
+  construction — an absolute upper clause on p_mb alone (phase-1 had
+  p_mb > 2.6 as a firing clause) would misattribute fixture-level
+  pre-asymptotics, which both arms share, to grading; that structural
+  refinement is made now, before any data, on the reviewer-visible
+  ground that grading cannot RAISE the order above the shared fixture
+  order.
+- **Anomaly A4** (blocks WP6 promotion, filed for investigation, not
+  claimed as a grading fault): fixture valid AND p_mb > p_uc + 0.4.
+- Fire ⇒ the multiband envelope claim STOPS at WP4 exactly as the
+  spec's F-S4 prescribes; INCONCLUSIVE ⇒ promotion stays blocked.
+
+Cost actuals recorded as documentation (no claims), as phase-1.
+
+Bring-up data inventory (all discarded from judgment): parity-scan
+spectra (`results/w4r_diagnostic_bringup.json`, pre-repair drawing),
+per-scale realized-mask measurements, uniform-arm convergence probes
+with/without subpixel at s ∈ {1.5, 1.0, 0.75, 0.5, 0.375}, one
+mb/uc pair at s = 0.75 (5.5258/5.5331 GHz — the 7.2 MHz matched-scale
+delta is the genuine grading cost the phase-1 staircase lottery had
+buried). No number from these enters any window above; the windows come
+from the theory + the two derived allowances + the 3× floor rule.
+
+## C7 — W4R ladder coarse anchor (2026-08-29; appended BEFORE any W4R ladder output was read; windows and rules UNTOUCHED)
+
+Projection from the DISCARDED bring-up probes (W4R.1-4/5): the uniform
+arm's error vs a ~5.54 GHz-class limit is only ~4–10 MHz at
+s ∈ {0.5, 0.6, 0.75} — likely BELOW the declared 18 MHz fit floor — so
+the frozen 5-scale ladder risks leaving fewer than 3 surviving fit
+points (a foreseeable INCONCLUSIVE, the same way the C3 ladder's
+ratio-4/3 reference made its own exclusion rule nearly unsatisfiable).
+An additional x64 probe at s ∈ {0.5, 0.375} reproduced the two
+frequencies bit-identically, so the fine-scale non-monotone wobble is
+deterministic pre-asymptotic structure, not float noise: the fine
+points cannot be rescued by precision, and the floor stays.
+
+Correction: the ladder gains the ONLY remaining lattice-valid coarse
+point, s = 3.0 (dx = 2.25 mm divides every patterned dimension;
+dzf = 0.75 mm divides every band). SCALES =
+{0.5, 0.6, 0.75, 1.0, 1.5, 3.0}. At s = 3 the trace is only 2 cells
+wide in y — the C5-era caution — but the C5 instability's root cause is
+now known to be the rasterization lottery (W4R.1-2), which the repaired
+drawing eliminates; whether s = 3 is usable is adjudicated by the SAME
+pre-declared per-arm validity rules (dominance ≥ 10, 5 % match guard)
+and, at the fit level, by the frozen fixture gate p_uc ∈ [1.7, 2.6] —
+if 2-cell-wide pre-asymptotics bend the shared order out of band, the
+verdict is FIXTURE-INVALID, not a rescue. No p-band, floor, exclusion
+rule, or validity rule moves; s = 3.0's error magnitude has never been
+measured (it cannot have been chosen to steer the fit). The in-flight
+first ladder execution was stopped before any of its output was read;
+the full ladder re-runs fresh with the extended scale set.
+
+## W4R outcome (2026-08-29) — F-S4 again INCONCLUSIVE per the frozen rules; root cause now fully diagnosed
+
+Ladder result (`results/w4r_supraconvergence.json`; reference s = 0.25
+uniform, f_ref = 5.520821 GHz, dominance ∞ everywhere):
+
+- Both s = 3.0 anchors failed the pre-declared 5 % match guard
+  (5.009 / 4.988 GHz, 9.3–9.6 % off — the 2-cell-wide-trace regime
+  detunes the resonator; the C7 gamble adjudicated itself invalid by
+  the declared rule).
+- The uniform control's absolute errors are NON-monotonic and flat at
+  fine scales: 22.7 / 21.6 / 12.2 / 18.7 / 116.3 MHz at
+  s = 0.5/0.6/0.75/1.0/1.5 — the sequence of f values (5.4045 → 5.5021
+  → 5.5331 → 5.5436 → 5.5376 → 5.5208 GHz down to the reference) is not
+  Cauchy: the observable carries a mesh-scale-STRUCTURAL error floor of
+  roughly ±20 MHz (≈4e-3) that does not shrink between s = 1.0 and
+  s = 0.25. The fit cut (max(3·u_ref, 18 MHz) = 22.7 MHz) left 2
+  points per arm → **INCONCLUSIVE (n_fit < 3)**, F-S4 not fired, no
+  order claim, promotion still blocked by W4.
+
+What the three W4 attempts now establish (diagnostics, not claims):
+
+1. The phase-1 wander was the f32 knife-edge rasterization lottery
+   (W4R.1-2, verified by direct mask measurement, repaired).
+2. With that repaired and subpixel on, a residual ±20 MHz-class
+   structural error remains in the ABSOLUTE resonance frequency of the
+   rasterized dielectric-loaded fixture — present identically in
+   uniform-mesh arms, i.e. an rfx geometry-realization/材料-sampling
+   effect, NOT a grading effect (issue-worthy: a converged-in-h
+   staircase/interface convention residue; candidate follow-up issue).
+3. The multiband-vs-uniform CONTRAST at matched scale is clean, smooth
+   and small: f_mb − f_uc = −4.9 / −5.8 / −7.2 / −9.4 / −13.3 MHz at
+   s = 0.5/0.6/0.75/1.0/1.5 (≤ 2.5e-3 relative), decreasing
+   monotonically with refinement with apparent slope ~0.9 in h. The
+   common structural floor cancels in this difference. NOTE HONESTLY:
+   a ~h^1 contrast is also what a genuine first-order grading error
+   component would look like — this cannot be adjudicated on a fixture
+   whose absolute observable is floored, and it is exactly the question
+   W4R2 below is built to answer. No window is derived from this
+   number.
+4. The P-C fixture class VIOLATES the smoothness hypotheses of the
+   Monk–Süli/Li–Shields theorem F-S4 tests (PEC trace edge singularity)
+   — phase-1 §4 said as much. Two instrument-limited INCONCLUSIVEs on
+   that class are evidence about the fixture class, not about multiband
+   grading.
+
+## W4R2 — supraconvergence vs an ANALYTIC target (pre-declaration, committed BEFORE the multiband arms run)
+
+Rationale: remove every instrument layer at once by testing F-S4 where
+the theorem actually lives — a smooth-field eigenmode of an EMPTY PEC
+box on a multiband tensor product grid, judged against the exact
+continuum eigenfrequency. No geometry rasterization (no Box at all —
+the W1 harness), no dielectrics, no subpixel, no reference ladder (no
+Richardson, no contamination), sparse spectrum.
+
+Frozen fixture and instrument (`w4r2_analytic_cavity.py`):
+- PEC box 27 × 18 mm × L_z = 64 mm; z profile fine(12 mm) |
+  coarse(14 mm) | fine(12) | coarse(14) | fine(12), ABRUPT r = 1.4
+  (the envelope cap, worst case); dzf = s mm, coarse 1.4·s mm,
+  dx = dy = 1.5·s mm; uniform control dzf everywhere. Scales
+  s ∈ {0.25, 0.5, 1, 2} — every band and transverse extent an exact
+  multiple at every scale; nz uniform = 64/s exact.
+- Target: TE101 = 6.0255352 GHz analytic; neighbours ≥ 1.24 GHz away
+  (TE102 7.264, TE011 8.651). Observable: harminv line nearest the
+  target in [5.4, 6.6] GHz, guard 3 %. Ey source (~L/4) + Ey probe;
+  T = 15 ns; e(s) = |f_meas − f_TE101|.
+- Fit: LS slope of log e vs log dzf over valid points with
+  e ≥ 0.3 MHz (extraction + f32 field-noise class ×3); ≥ 3 points
+  required per arm.
+- Judge: EXACTLY the frozen W4R.3 structure — fixture gate
+  p_uc ∈ [1.7, 2.6]; **F-S4 fires** iff fixture valid AND
+  (p_mb < 1.5 OR p_mb < p_uc − 0.4); anomaly A4 iff
+  p_mb > p_uc + 0.4 (blocks promotion, filed, not a fault claim).
+
+Bring-up (recorded, pre-commit, harness validation only — multiband
+arms have NEVER been run on this fixture): uniform control at
+s = 2/1/0.5 measured e = 18.079 / 4.544 / 1.167 MHz — successive
+ratios 3.98 / 3.89, the clean 2nd-order class against the analytic
+value, confirming realized cavity extents are exact and the instrument
+has no structural floor down to the ~1 MHz scale. The multiband arms
+and the verdict run only after this section is committed.
+
+Relation to the P-C fixtures: W4R2 carries the F-S4 order VERDICT
+(theorem hypotheses satisfied); the P-C ladders stand as recorded
+diagnostics of geometry-realization limits and of the small matched-
+scale grading contrast (≤ 2.5e-3 at the cap, shrinking with h).
+
+## W4R2 verdict (2026-08-29) — **F-S4 PASS**
+
+`results/w4r2_analytic_cavity.json`, run immediately after the W4R2
+pre-declaration commit (`e1eabf0`), all 8 arms valid, every fit point
+above the 0.3 MHz floor (4 points per arm):
+
+| s | e_uc (MHz) | e_mb (MHz) | f_mb − f_uc |
+|---|---|---|---|
+| 2.0 | 18.079 | 18.111 | −33 kHz |
+| 1.0 | 4.544 | 4.549 | −5.4 kHz |
+| 0.5 | 1.167 | 1.169 | −1.9 kHz |
+| 0.25 | 0.315 | 0.316 | −0.8 kHz |
+
+**p_uc = 1.95, p_mb = 1.95** — fixture gate satisfied, F-S4 does NOT
+fire, no A4 anomaly. Global 2nd-order supraconvergence is preserved on
+the multiband grid at the cap ratio r = 1.4, exactly as Monk–Süli /
+Li–Shields predict; the multiband arm's additional error at matched
+scale is ≤ 1e-6 relative (kHz class) on the smooth-field observable.
+
+Retro-reading of the P-C contrast (W4R outcome item 3): the ~1e-3
+matched-scale contrast there is 3 orders larger than the clean-fixture
+grading contrast measured here — it is dominated by the two arms'
+different z-node placement interacting with the fixture's
+geometry-realization floor, not by grading dispersion. The candidate
+"first-order grading component" reading is thereby answered: on a
+fixture satisfying the theorem's hypotheses, no such component exists
+down to the kHz class.
+
+With F-S1 (1D+3D), F-S2, F-S3, F-S5 (phase 1) and F-S4 (W4R2) all
+PASS, the WP6 promotion gate is open.
+
+## WP6 — envelope promotion (2026-08-29; landed AFTER F-S4 PASS, no window or verdict touched)
+
+Gate state at promotion: F-S1 (1D + 3D), F-S2, F-S3, F-S5 PASS from
+phase 1; F-S4 PASS from W4R2 (`p_uc = p_mb = 1.95` against the analytic
+TE101). Acceptance gate 1 of the spec is met, so WP6 lands. Nothing in
+this section changes a window, a verdict, or a measured number; it is
+documentation, preflight and regression packaging only.
+
+### WP6a — `docs/guides/support_matrix.md`
+
+New row in the nonuniform-mesh classification table, **limited**, plus a
+`### Multi-band graded mesh` subsection carrying: the covered
+configuration (N fine bands per axis, any order, every adjacent ratio
+<= 1.4, abrupt or ramped); the ratio cap and what is advisory above it;
+a per-witness evidence table with the raw-result path for each
+(`w1_pa_1d.json`, `w1_pb_full_gpu.json`, `w2_w3.json`,
+`w4r2_analytic_cavity.json`, `w5_ad.json`, `revert_proof.json`) and the
+measured value; the exclusions; and an explicit honest-scope paragraph.
+
+The exclusions as landed, in the row's own words:
+
+1. **Grading must not reach the absorber** — every witness ran PEC-closed
+   at `cpml_layers = 0`, so the row says nothing about the combination.
+2. **`dt` remains the global min-cell CFL** (0.99 of it) — stated in the
+   row, with the SPEC-00 §0.4-2 reason that recovering it is not pursued.
+3. Ratios above 1.4 are advisory-flagged, not validated (r=1.5 -51.6 dB,
+   r=2.0 -43.9 dB per transition, recorded as out-of-envelope references).
+4. Simultaneous in-plane + z grading is exercised only by the 3-D energy
+   witness; no observable-accuracy statement covers it.
+
+The honest-scope paragraph states in the document itself that these are
+statements about the mesh and the solver on it, NOT about any
+S-parameter/flux/far-field/port result computed on such a mesh, and that
+the F-S4 order result comes from an empty PEC cavity precisely because
+the theorem assumes smooth fields — with the P-C ladders' ~20 MHz
+geometry-realization floor named as a fixture-class limit, not a grading
+effect.
+
+### WP6b — preflight
+
+New `_validate_cfg_multiband_grading` (P2 tier, called from the same
+`_validate_cfg_*` chain as the other nonuniform checks), two advisory
+sites:
+
+- `nu_grading_ratio_beyond_validated_cap` — max adjacent ratio > 1.4.
+- `nu_grading_reaches_absorber` — an axis whose interior runway is not
+  uniform (to 1 ppm) within the ALLOCATED LAYER COUNT of an absorbing
+  face on that side, read from the existing `_preflight_face_layers()`.
+
+The "allow" half is the absence of both on an in-cap multi-band profile;
+`tests/test_multiband_nu_envelope.py::test_preflight_multiband_within_cap_is_clean`
+locks it.
+
+**Depth provenance for the absorber check.** The pad replicates the
+outermost interior cell (`rfx/nonuniform._pad_profile`), so the absorber
+is always uniformly meshed; what a boundary-adjacent transition does is
+make the discrete medium inhomogeneous in the boundary-NORMAL direction
+right where the absorber starts, which is the documented PML breakdown
+class (Meep's PML documentation: PML tolerates media varying only in the
+boundary-PARALLEL directions). The depth used is the face's own allocated
+layer count — the only length the absorber itself defines and the span
+over which its conductivity ramp acts. **No measurement sets this depth
+and none could**: the multi-band witnesses are absorber-free, which is
+exactly why the combination is flagged rather than scored. Recorded here
+so the number is not later mistaken for a measured one.
+
+**Moved lock: the constructor's abrupt-grading warning, 1.3 -> 1.4**
+(`rfx/api/__init__.py`). Physical provenance, as SPEC-00 §0.2-4 requires:
+1.3 was `smooth_grading`'s own per-step default with no measurement behind
+it, so ratios in (1.3, 1.4] warned without evidence they cost anything.
+F-S2 measures the r = 1.4 transition directly at -53.9 dB against a
+-54.0 dB first-principles chain model, F-S3 bounds its round-trip
+asymmetry at 5.8e-6 under a 3e-4 floor, F-S1 bounds 10^6-step energy
+drift at 2.5e-6, and F-S4 shows the order is still 2 at that ratio. That
+is the evidence the old threshold lacked. Above the cap the warning still
+fires and now names the support-matrix row.
+
+**Emission-contract update** (`tests/test_preflight_advisory_emission_contract.py`,
+the procedure #738 and #755 established): `_FROZEN_TOTAL_SITES` 83 -> 85,
+`_FROZEN_LITERAL_CODE_COUNT` 55 -> 57, with the reason recorded inline at
+the constants. The dynamic-site freeze (by enclosing function) is
+untouched — both new sites are literal-code sites.
+
+### WP6c — regression packaging
+
+`tests/test_multiband_nu_envelope.py`:
+
+- FAST lane (~30 s total, default markers): the f64 witness-validity gate
+  plus the committed revert-proof run in an x64 subprocess; a reduced
+  2e4-step F-S1 arm judged by the SAME committed `evaluate_fs1`; one W2
+  arm at the cap ratio judged by the frozen chain-model window; the W5 AD
+  check; the reduced W4R2 F-S4 ladder (three coarse scales) under the
+  frozen W4R.3 judge; and the four WP6 preflight contract tests.
+- `slow_physics`: the full 10^6-step 1-D F-S1 arms and the full four-scale
+  W4R2 ladder.
+- `gpu`: the full 10^6-step 3-D P-B arms (the committed evidence for those
+  is the VESSL run, `results/w1_pb_full_gpu.json`).
+
+Every threshold in the file is either a pre-declared falsifier window or a
+declared witness-validity gate; none is fitted to a measured value. The
+slow F-S4 arm runs the committed script in a scratch cwd so a test run can
+never rewrite `results/w4r2_analytic_cavity.json`.
+
+### WP6d — movers found by the acceptance-gate batteries, with provenance
+
+1. **`tests/test_example_fidelity_contract.py::test_discovery_matches_classification_table` FAILED** —
+   the #737 enumerate-and-classify gate correctly refused the 13 new files
+   under `validation/research/multiband_nu/` with no classification entry.
+   This gate was never run in phase 1 (the phase-1 battery covered the NU
+   tests only), so the failure dates from the phase-1 commits, not from
+   WP6. Resolved by classifying all 13 against their own AST:
+   - 11 `no_simulation` — they drive `rfx.nonuniform.make_nonuniform_grid`
+     and the kernels directly (the design note's explicit-profile rule
+     deliberately bypasses the `auto_config` builders), or are pure
+     numpy/analysis; AST-verified zero `Simulation(...)` calls.
+   - 2 `audited` — `w4_supraconvergence.py` and
+     `w4r_port_supraconvergence.py`, the only two that build a P-C
+     `Simulation`, each via a `build_sim` separable from its solve. Pinned
+     at the coarsest declared ladder scale, multiband profile.
+   To be loadable by the gate (which imports by file path, where a
+   relative import has no parent package) those two now use an absolute
+   `from validation.research.multiband_nu import fixtures as fx`. Import
+   mechanics only; no numeric path touched, and
+   `python -m validation.research.multiband_nu.<mod>` still works.
+2. **`tests/data/example_fidelity_snapshot.json` re-captured** — 33 -> 35
+   variants. Verified key-by-key: exactly two keys ADDED, zero removed,
+   zero changed. No existing example gained or lost an advisory, so
+   neither new preflight site fires on any committed example.
+   Unplanned bonus evidence: the snapshot now pins the W4R.1-2 root cause
+   side by side. At s = 1.5 the phase-1 (knife-edge) fixture realizes its
+   PEC trace over x nodes [7875, 20250] um — the declared 6750 um lo edge
+   DROPPED — while the W4R repaired drawing realizes [6750, 20250] um as
+   declared. That is the rasterization lottery, now frozen in a committed
+   gate rather than only described in prose.
+
+No other gate moved; see the battery record below.
+
+## C8 — corrections found while writing the WP6 support row (2026-08-29; no window, rule or verdict touched)
+
+Writing the support-matrix evidence table required quoting each witness's
+measured value, which surfaced three prose figures that round the wrong
+way against the committed JSON. In every case the JSON is and always was
+authoritative; no verdict, window or judge used the prose number.
+
+**C8a — the W4R2 verdict's matched-scale contrast.** The W4R2 verdict
+section says "the multiband arm's additional error at matched scale is
+≤ 1e-6 relative (kHz class)". Recomputed from
+`results/w4r2_analytic_cavity.json`, |f_mb − f_uc| / f_TE101 is
+5.44e-6 (s = 2.0, 32.8 kHz) / 9.03e-7 (s = 1.0, 5.4 kHz) / 3.05e-7
+(s = 0.5, 1.8 kHz) / 1.58e-7 (s = 0.25, 0.95 kHz). "kHz class" is right;
+"≤ 1e-6 relative" holds only from s = 1.0 down and understates the
+coarsest scale by 5.4×. Corrected statement, and the one the support row
+carries: **the multi-band arm's extra error at matched scale is 33 kHz
+(5.4e-6 relative) at the coarsest scale, falling to 0.95 kHz (1.6e-7) at
+the finest.** The F-S4 verdict is unaffected: it is a statement about the
+fitted ORDERS (p_uc = p_mb = 1.95, both against the analytic target),
+and the contrast figure entered no window and no judge.
+
+**C8b — F-S1 1-D drift bound.** The maximum |E_n−E_0|/E_0 over the eight
+committed 1-D arms is 2.931e-6 (r = 1.4 abrupt), so a "≤ 2.9e-6" phrasing
+is false by rounding. The support row states ≤ 2.94e-6. The pre-declared
+envelope it is judged against (1.19e-3 at 10^6 steps) is untouched, and
+`evaluate_fs1` reported FIRED=False on every arm either way.
+
+**C8c — F-S3 in-envelope deviation bound.** The maximum in-envelope
+|T_meas − T_model| is 7.54e-6 (r = 1.2 abrupt), not ≤ 7.5e-6. The support
+row states ≤ 7.6e-6. The window (max(3e-4, 0.5·|1−T_model|)) is untouched
+and the 3e-4 floor dominates every arm regardless.
+
+## WP6 acceptance batteries (2026-08-29; marker override `-o addopts="" -m "not gpu"` throughout)
+
+| Battery | Selection | Result |
+|---|---|---|
+| NU battery | every `tests/test_*` matching nonuniform / `_nu_` / `nu_` / graded / grading / subpixel / smooth_grading (53 modules) | **438 passed, 3 xfailed, 8 deselected** (715 s) |
+| Preflight battery | the 17 `test_*preflight*` modules | included in the row below |
+| Preflight + example-fidelity + tutorials | the 17 preflight modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **304 passed** (228 s) |
+| Multiband envelope, fast lane | `tests/test_multiband_nu_envelope.py` under default markers | **8 passed** (~30 s) |
+| Multiband envelope, slow lane | same file, `-m "slow_physics and not gpu"` | **5 passed** (160 s) — the four full 10^6-step 1-D F-S1 arms and the full four-scale W4R2 F-S4 ladder |
+| Multiband envelope, gpu lane | same file, `-m gpu` | not runnable on this CPU host; yaml emitted (below). The F-S1 3-D verdict itself is already committed evidence (VESSL 369367256892). |
+| Re-verification after the final doc/docstring edits | emission contract + example fidelity + multiband envelope + in-plane grading guards | **114 passed** (64 s) |
+
+**Movers: two, both explained, both in WP6d above.** (1) the #737
+enumerate-and-classify gate on the 13 phase-1 files, and (2) the
+consequent snapshot re-capture (exactly 2 keys added, 0 removed, 0
+changed). **No unexplained mover.** In particular no committed example
+gained or lost a preflight row, so neither new advisory site fires
+anywhere in the repo's own example set — the 1.3 -> 1.4 constructor
+threshold likewise moved nothing (`test_inplane_grading_guards` drives
+ratio-2 and ratio-4 jumps, both still above the cap).
+
+The slow F-S4 arm runs the committed script in a scratch cwd, verified:
+`git status` shows no modification to any `results/*.json` after the
+slow-lane run.
+
+**GPU yaml emitted** (launch is the orchestrator's, per SPEC-00 §0.6):
+`validation/research/multiband_nu/vessl_wp6_gpu_regression.yaml` —
+cluster `remilab-c0`, preset `gpu-rtx4090`, image
+`nvcr.io/nvidia/jax:24.10-py3`, mount
+`/root/workspace/: volume://remilab-fs/personal-workspaces/`. It runs the
+`gpu`/`slow_physics` arms of `tests/test_multiband_nu_envelope.py` with
+the marker override, i.e. it re-executes the already-recorded F-S1 3-D
+measurement through the committed test wrapper and the committed
+`evaluate_fs1` judge. It adds no claim and moves no window: a pass
+confirms the CI packaging on its target hardware, a failure is a
+packaging defect to report.
+
+## WP6R — adversarial-review repair pre-declaration (2026-08-29; committed BEFORE any W4R3 measurement)
+
+The independent adversarial review of the WP6 promotion returned
+`merge_ready = false` with two BLOCKING findings. Both are honesty
+findings: every committed measurement is reproducible, but the promotion
+text claims more than the witnesses can carry. This section records the
+repair plan and freezes everything that a measurement will later be
+judged against. No window, rule or verdict from phases 1–2 is moved:
+F-S1 (1-D + 3-D), F-S2, F-S3 and F-S5 stand exactly as recorded, and the
+W4R.3 F-S4 pass/fail RULE is carried over unchanged.
+
+### WP6R.1 — BL1: the axis overclaim (documentation repair, no measurement)
+
+The finding is correct and is not disputed. Every witness in this lane
+grades **z only**: `harness.build_pec_fixture(dz_profile, domain_xy, dxy)`
+takes a SCALAR transverse cell size and all of W1 (1-D and 3-D), W2, W3,
+W5 and every W4 fixture pass it (`w1_energy_drift.py` passes `fx.DXY`).
+There is no in-plane-graded witness anywhere in the lane, so:
+
+- the support-matrix row's "N fine bands **per axis**" and its
+  "`dx_profile` / `dy_profile` / `dz_profile` … are covered by the witness
+  battery below" are withdrawn and replaced by z-axis-only wording;
+- the exclusion bullet "Grading in-plane and in z simultaneously was
+  exercised only in the 3-D energy witness" is FALSE as written — the 3-D
+  energy witness (P-B) is transverse-UNIFORM at 1.5 mm and grades z alone.
+  It is replaced by: in-plane grading (`dx_profile` / `dy_profile`) and
+  simultaneous in-plane + z grading are **UNCOVERED** — no witness in this
+  lane exercises either.
+
+Option (b) of the review (run in-plane witnesses and claim what they show)
+is declined for this repair: an in-plane battery is a second full lane
+(W1/W2/W3/W4 all re-run on an x- or y-graded fixture, each with its own
+pre-declaration), not a cheap addition, and narrowing is the honest
+alternative available now. Recorded explicitly so the next lane knows what
+is missing: `make_nonuniform_grid` does accept `dx_profile`/`dy_profile`,
+so the work is well-defined; what does not exist is the evidence. The
+solver's axis code is *structurally* symmetric, which is an argument, not a
+witness, and it is not offered as one anywhere in the row.
+
+### WP6R.2 — BL2: F-S4's fixture was ~99 % blind to the graded axis
+
+The review derived the observable from first principles and reproduced
+every committed W4R2 `f_meas`; that derivation is now committed as
+`validation/research/multiband_nu/analytic_dispersion.py` and independently
+re-run here. For the empty PEC box the TE_{m,0,p} family reduces the rfx
+update equations to one 1-D operator per axis,
+
+    (A E)[k] = -inv_e[k] ( inv_h[k](E[k+1]-E[k]) - inv_h[k-1](E[k]-E[k-1]) )
+    inv_e[k] = 2/(d[k-1]+d[k]),  inv_h[k] = 1/d[k],  Dirichlet ends,
+
+on the padded profile (with the #562 bounding-node duplicate), and leapfrog
+gives the exact discrete eigenfrequency
+
+    sin(omega dt / 2) = (c0 dt / 2) sqrt(mu_x + mu_z).
+
+Certification against the committed W4R2 evidence (prior data, not data
+this section judges): the model reproduces all eight committed `f_meas` to
+**<= 0.041 MHz** (6.8e-6 relative) out of errors of 0.3–18.1 MHz. The
+nested decomposition e_total = e_z + e_x + e_t (graded-axis, transverse and
+time dispersion) then gives, at all four W4R2 scales,
+
+    |e_z| / (|e_z| + |e_x| + |e_t|)  =  0.0106 (uniform) / 0.0114 (multiband)
+
+confirming the finding: ~99 % of the W4R2 error budget is transverse + time
+dispersion, which is bit-identical between the multiband arm and its
+matched uniform control (same dx, same dt). The W4R2 order gate could not
+have fired for a grading reason. **The W4R2 F-S4 PASS is therefore
+demoted**: it stays in the record as a valid measurement of a fixture whose
+graded axis carries 1 % of the error, and it is no longer cited as the
+order evidence for the envelope. The order claim rests on W4R3 below, or it
+is withdrawn.
+
+### WP6R.3 — W4R3 frozen fixture, instrument and gates
+
+Fixture (`w4r3_zdominant_cavity.py`, committed with this section): empty
+PEC box **60 x 3 x 64 mm**, vacuum, `cpml_layers = 0`, no geometry object,
+no dielectric, no subpixel — the W1 harness, exactly the W4R2 class. z
+profile fine(12 mm) | coarse(14 mm) | fine(12) | coarse(14) | fine(12),
+ABRUPT r = 1.4 (the envelope cap, worst case), dzf = s mm, coarse = 1.4 s
+mm; transverse uniform dx = dy = 0.5 s mm; uniform control dzf everywhere.
+Scales s in {0.25, 0.5, 1, 2}; every band length, L_z, both transverse
+extents and both source/probe planes are exact multiples/nodes at every
+scale.
+
+Two design changes carry the error budget onto the graded axis, both by the
+k^4 d^2 scaling of an axis's dispersion error:
+
+1. the target is **TE_{1,0,4}** (k_z = 3.75 k_x) instead of TE_{1,0,1};
+2. **dx = dy = dzf/2** instead of 1.5 dzf, which also lowers the CFL step
+   and with it the time-dispersion term.
+
+Instrument: Ey source pair at x = a/3 and x = 2a/3 (equal sign, both at
+z = 8 mm) and Ey probe at x = a/3, z = 40 mm. Those planes are exact nodes
+of the m = 3 discrete eigenvector and an exactly mirror-symmetric pair
+about x = a/2, so the m = 2, 3, 4 families are neither driven nor observed;
+only the (1,0,p) family survives in band, nearest neighbours 7.456 and
+11.973 GHz. Gaussian-modulated sine at the target, sigma_t = 200 ps,
+T = 15 ns, harminv over [6.5, 13.5] GHz, line nearest the target within
+[8.8, 10.6] GHz, per-arm validity guard 3 %.
+Analytic target: TE_{1,0,4} = (c/2) sqrt((1/a)^2 + (4/L)^2) =
+**9.6958969 GHz** — exact, so there is no reference ladder, no Richardson
+divisor and no reference contamination.
+
+**Derived budget, computed by the frozen model before any arm was run**
+(these are derivations, not measurements; no number below is fitted):
+
+| | s = 2 | s = 1 | s = 0.5 | s = 0.25 |
+|---|---|---|---|---|
+| e_total uniform (MHz) | -50.96 | -12.74 | -3.19 | -0.796 |
+| e_total multiband (MHz) | -79.37 | -19.83 | -4.96 | -1.239 |
+| z_fraction uniform | 0.8877 | 0.8879 | 0.8879 | 0.8879 |
+| z_fraction multiband | 0.9217 | 0.9218 | 0.9218 | 0.9218 |
+| grading share (G2) | 0.358 | 0.357 | 0.357 | 0.357 |
+| contrast f_mb - f_uc (MHz) | -28.41 | -7.09 | -1.77 | -0.443 |
+
+Predicted fitted orders from the model: p_uc = 2.000, p_mb = 2.000. The
+matched-scale contrast — the quantity actually under test — is above the
+0.3 MHz fit floor at every scale, so the grading effect is resolved by the
+instrument rather than buried in it.
+
+**Fit floor**: 0.3 MHz, the same absolute floor W4R2 declared (extraction +
+f32 field-noise class, x3); at the higher target frequency it is a
+strictly more conservative relative floor. >= 3 surviving points per arm
+required, else INCONCLUSIVE. The smallest predicted error is 0.796 MHz =
+2.65x the floor, so a clean ladder keeps all four points and can lose one
+and still fit.
+
+**Fixture-validity gates (re-derived for this fixture; failing any of them
+is FIXTURE-INVALID / INCONCLUSIVE — no envelope support, not a multiband
+fault, and promotion stays blocked):**
+
+- **G1** `z_fraction = |e_z| / (|e_z|+|e_x|+|e_t|) >= 0.80` for every arm at
+  every scale. Derivation of the target: the graded axis must carry at
+  least four fifths of the modelled error budget, so that the residual
+  arm-common terms cannot mask an order loss on the graded axis; 0.80 sits
+  below the derived 0.888 with margin and is a >40x inversion of the
+  W4R2 fixture's 0.011.
+- **G2** grading-SPECIFIC share `|e_z(mb) - e_z(uc)| / |e_total(mb)| >= 0.20`
+  at every scale (derived 0.357; W4R2: 0.0017). G1 alone would be satisfied
+  by a fixture whose z error is large but identical in both arms; G2 is the
+  gate that makes the multiband-vs-uniform contrast a leading term.
+- **G3** `|f_model - f_meas| <= 0.15 MHz` for every arm — the model that G1
+  and G2 are computed from must actually explain the measurement.
+  Prior-provenance derivation: the same model reproduces the eight
+  committed W4R2 arms to <= 0.041 MHz (6.8e-6 relative); scaled to
+  9.696 GHz that class is 0.066 MHz, and the gate takes x2.2 of it.
+
+**F-S4 judge — the frozen W4R.3 rule, carried over WITHOUT change**:
+fixture gate p_uc in [1.7, 2.6]; **F-S4 fires iff the fixture is valid AND
+(p_mb < 1.5 OR p_mb < p_uc - 0.4)**; anomaly A4 iff p_mb > p_uc + 0.4
+(blocks promotion, filed, not a fault claim). The p-bands, the one-sided
+structure and the 0.4 allowance are exactly as frozen in W4R.3 and were
+never applied to W4R3 data.
+
+**If F-S4 fires on this fixture, the order claim is WITHDRAWN from the
+promotion** — the support-matrix row loses its convergence line and the
+envelope keeps only what the stability/reflection/AD witnesses carry. That
+outcome is pre-accepted here, before the measurement.
+
+### WP6R.4 — the grading-side revert-proof (pre-declared)
+
+The review is right that the existing revert-proof
+(`results/revert_proof.json`) guards the W1 energy witness, not the F-S4
+order witness. Pre-declared here: after the clean ladder, the multiband
+arms re-run with a deliberate **grading-side** defect — the CORE-C2 class
+metric error, E-update dual `2/(d[k-1]+d[k])` replaced by the primal
+`1/d[k]`, at **one** node: the coarse->fine transition at z = 38 mm
+(`DEFECT_TRANSITION = 2`). On a uniform mesh the two expressions are
+identical, so the defect is exactly null off the graded axis: it is a
+grading-side defect by construction, and the uniform control arms are
+reused unchanged.
+
+Frozen prediction from the same analytic model: per-scale frequency shift
+-47.3 / -24.0 / -12.0 / -6.0 MHz at s = 2 / 1 / 0.5 / 0.25 (an O(h) error
+riding on the O(h^2) baseline, 11–20x the 0.3 MHz fit floor at every
+scale), giving p_mb = 1.374 — which fires BOTH clauses of the frozen rule
+(< 1.5, and < p_uc - 0.4 = 1.6). **Declared pass condition for the
+revert-proof: the committed judge must return `fs4_fired = True` on the
+defect ladder.** If it does not, the F-S4 witness is too weak to support an
+order claim and that is what will be reported.
+
+### WP6R.5 — bring-up disclosure and run order
+
+Bring-up before this commit, harness validation only, DISCARDED from
+judgment (same discipline as the W4R2 bring-up): the UNIFORM control arm
+was run at s = 2 and s = 1 while the mode-selection scheme was fixed —
+first with a single centred source (which left the m = 3 family in band at
+9.05 GHz and a model residual of -0.131 MHz), then with the committed
+a/3 + 2a/3 pair, which leaves three lines in the whole 6.5–13.5 GHz window
+(7.43 / 9.64 / 11.88 GHz at s = 2) and model residuals of +0.006 MHz
+(s = 2) and +0.001 MHz (s = 1). No multiband arm has ever been run on this
+fixture, and the ladder below re-runs every arm fresh. Those two bring-up
+numbers set no window: G3 comes from the W4R2 prior-provenance class, G1
+and G2 from the frozen model, the fit floor and the p-bands from W4R2 /
+W4R.3.
+
+Run order from here: (1) this section + `analytic_dispersion.py` +
+`w4r3_zdominant_cavity.py` commit; (2) the clean ladder; (3) the verdict,
+taken as it falls; (4) the revert-proof ladder; (5) the documentation
+rewrite that BL1 and BL2 require, plus the review's non-blocking items.
+
+### WP6R.6 — correction, committed BEFORE any judged W4R3 arm (probe plane; no window, rule or gate moved)
+
+The first execution of the W4R3 ladder stopped inside the multiband arms on
+the script's own node-exactness assertion. Cause: the pre-declared probe
+plane z = 40 mm is an exact node of the UNIFORM profile at every scale but
+not of the MULTIBAND one — the band layout is fine(0–12) | coarse(12–26) |
+fine(26–38) | coarse(38–52) | fine(52–64), so z = 40 mm sits 2 mm inside a
+coarse band whose cells are 1.4·dzf (2/0.35 = 5.714 cells at s = 0.25).
+The pre-declaration's own alignment requirement ("both source/probe planes
+land on exact nodes at every scale") was therefore not satisfiable as
+written.
+
+Repair: probe plane moved to **z = 28 mm** — 2 mm into the second FINE band,
+an exact node of both profiles at every scale (verified by
+`assert_planes_realizable()`, now run before every ladder), and |sin| =
+0.924 of the target mode (z = 32 mm would have been a mode NODE, z = 40 mm
+was chosen as an antinode). The source plane z = 8 mm is unchanged.
+
+What this cannot touch: the probe plane does not enter the eigenfrequency —
+it selects which modes are observed, and both z = 40 and z = 28 observe the
+target mode and are on the x = a/3 plane that suppresses m = 2, 3, 4. No
+window, no validity gate, no p-band, no fixture dimension and no judge line
+changes; G1/G2 are unchanged because they are computed from the profiles and
+dt, which are untouched.
+
+Discarded data: the four UNIFORM arms of the stopped execution (probe at
+z = 40 mm) measured f = 9.644940 / 9.683155 / 9.692743 / 9.695128 GHz at
+s = 2 / 1 / 0.5 / 0.25, model residuals +0.006 / +0.001 / +0.032 /
++0.028 MHz. They are DISCARDED from judgment and the full ladder re-runs
+every arm fresh with the corrected probe. They are recorded here because
+the append-only rule requires it, and because they are the first
+independent confirmation that the frozen model's G3 tolerance (0.15 MHz) is
+not tight: the largest residual over four arms spanning a 64x error range
+is 0.032 MHz. No multiband arm has been run on this fixture at any point.
+
+## W4R3 verdict (2026-08-29) — **F-S4 PASS on the z-dominant fixture**, and the order witness now fires on a grading defect
+
+`results/w4r3_zdominant_cavity.json`, run immediately after the WP6R
+pre-declaration commits (`fcb3b9e`, `d9147cb`); all 8 arms valid, all four
+fit points above the 0.3 MHz floor in both arms, 703 s of CPU.
+
+| s | e_uc (MHz) | e_mb (MHz) | f_mb − f_uc (MHz) | z_fraction uc / mb |
+|---|---|---|---|---|
+| 2.0 | 50.959 | 79.386 | −28.428 | 0.8877 / 0.9217 |
+| 1.0 | 12.741 | 19.802 | −7.061 | 0.8879 / 0.9218 |
+| 0.5 | 3.155 | 4.924 | −1.769 | 0.8879 / 0.9218 |
+| 0.25 | 0.767 | 1.209 | −0.442 | 0.8879 / 0.9218 |
+
+**p_uc = 2.02, p_mb = 2.01** — fixture gate satisfied (p_uc in [1.7, 2.6]),
+F-S4 does NOT fire, no A4 anomaly. Fixture-validity gates: G1 = 0.8877
+(>= 0.80), G2 = 0.3573 (>= 0.20), G3 = 0.033 MHz (<= 0.15 MHz). The frozen
+analytic model predicted 0.796 / 3.186 / 12.742 / 50.963 (uniform) and
+1.239 / 4.957 / 19.830 / 79.372 MHz (multiband) before the run; the largest
+measured deviation from it over all eight arms is 0.033 MHz.
+
+What this establishes that W4R2 could not: on a fixture where the graded
+axis carries **89 % (uniform) to 92 % (multiband)** of the modelled error
+budget and the grading-SPECIFIC part is **36 %** of the multiband total,
+global 2nd-order supraconvergence is preserved at the cap ratio r = 1.4
+(Monk–Süli 1994; Li & Shields 2016). The multiband arm's extra error at
+matched scale is now itself a measured quantity above the instrument floor
+at every scale: **28.4 MHz (2.9e-3 relative) at the coarsest scale, falling
+to 0.44 MHz (4.6e-5) at the finest**, i.e. the multiband mesh costs about
+1.56x the uniform-fine mesh's error amplitude at equal fine cell size,
+with the same ORDER. That factor is a new, honest number the promotion did
+not previously carry; it is the price of the coarse bands, and it shrinks
+with h at the same rate as the baseline.
+
+### Revert-proof for the ORDER witness (`results/w4r3_revert_proof.json`)
+
+Pre-declared defect, applied to the multiband arms only: the CORE-C2-class
+metric error (E-update dual `2/(d[k-1]+d[k])` -> primal `1/d[k]`) at ONE
+node, the coarse->fine transition at z = 38 mm. It is identically null on a
+uniform mesh, so it is a purely grading-side defect and the uniform control
+arms are the same runs as above.
+
+Measured frequency shift: **−47.26 / −23.99 / −12.03 / −6.02 MHz** at
+s = 2 / 1 / 0.5 / 0.25 (predicted −47.3 / −24.0 / −12.0 / −6.0), i.e. 20x
+to 160x the 0.3 MHz fit floor — one corrupted transition coefficient out of
+224 z cells is resolved by this observable at every scale. Fitted order
+**p_mb = 1.38** (predicted 1.374) against p_uc = 2.02, and the committed
+judge returns **fs4_fired = True**: the defect fires BOTH clauses of the
+frozen rule (< 1.5, and < p_uc − 0.4). The F-S4 witness is therefore
+revert-proof in the sense the review asked for — an order claim made with
+it can fail for a grading reason.
+
+Recorded honestly: the defect's signature is O(h) riding on the O(h^2)
+baseline, so the fitted slope moves from 2.01 to 1.38 rather than to 1.00;
+the margin against the < 1.5 clause is 0.12 and against the p_uc − 0.4
+clause 0.24. A defect an order of magnitude smaller than one full
+dual-vs-primal coefficient swap would move the fitted slope proportionally
+less and could pass the order gate while still shifting the frequency —
+which is why the per-scale shift is recorded next to the slope.
+
+### Status of the earlier F-S4 fixtures
+
+- **W4R2** (`results/w4r2_analytic_cavity.json`, p_uc = p_mb = 1.95): a
+  valid measurement whose graded axis carries ~1 % of the error budget. It
+  is retained as a recorded diagnostic and is NO LONGER cited as order
+  evidence anywhere in the support matrix.
+- **W4 / W4R** (P-C microstrip class): unchanged — two instrument-limited
+  INCONCLUSIVEs, retained as recorded diagnostics of geometry-realization
+  limits.
+
+## WP6R.7 — statements superseded by this repair (append-only bookkeeping, 2026-08-29)
+
+The note is append-only, so the sentences the adversarial review found are
+listed here with what replaces them. No measurement, window, judge or
+verdict is changed by any item below; every one is a claim-scope or prose
+correction.
+
+**Superseded by WP6R.1 (BL1, axis overclaim).**
+
+1. WP6a: "the covered configuration (N fine bands per axis, any order,
+   every adjacent ratio <= 1.4, abrupt or ramped)" — **read: N fine bands
+   along z**. No witness in this lane grades an in-plane axis.
+2. WP6a exclusion 4: "Simultaneous in-plane + z grading is exercised only
+   by the 3-D energy witness; no observable-accuracy statement covers it."
+   — **read: in-plane grading and simultaneous in-plane + z grading are
+   UNCOVERED**. The 3-D energy witness (P-B) is transverse-UNIFORM at
+   1.5 mm and grades z alone; the sentence asserted a run that never
+   happened.
+3. Section 1's P-B description "(+선택: x/y 동시 grading)" was an option in
+   the SPEC-01 work package that was never exercised; no P-B arm ever used
+   a `dx_profile` or `dy_profile`.
+
+**Superseded by WP6R.2/W4R3 (BL2, F-S4 fixture).**
+
+4. The W4R2 verdict section's "With F-S1 (1D+3D), F-S2, F-S3, F-S5 (phase
+   1) and F-S4 (W4R2) all PASS, the WP6 promotion gate is open." — **read:
+   the F-S4 half of that sentence is now carried by W4R3.** W4R2's PASS
+   stands as a measurement; it is not order evidence for the envelope
+   because its graded axis carries ~1 % of its error budget.
+5. C8a's matched-scale contrast figures for W4R2 (33 kHz / 5.4 kHz /
+   1.8 kHz / 0.95 kHz) are **below that fixture's own declared extraction
+   floor** (E_FLOOR_HZ = 0.3 MHz) at the three finer scales — they are
+   below-instrument and must not be quoted as measured grading costs. The
+   measured, above-floor matched-scale contrast is the W4R3 one
+   (28.4 / 7.06 / 1.77 / 0.44 MHz).
+
+**Non-blocking review items landed with this repair.**
+
+6. F-S1 "no growth trend" (support row, and the F-S1 3-D verdict section's
+   "no growth trend"): **read: bounded inside the pre-declared envelope at
+   every sample; the growth-trend clause did not evaluate.** `evaluate_fs1`
+   gates the trend fit at `FS1_TREND_FLOOR = 50u = 2.980e-6` and reports
+   `trend_evaluated = False` on all eight 1-D arms (max drift 2.931e-6) and
+   on both 3-D arms (max 7.7e-8 / 2.0e-7). Boundedness is established; the
+   absence of a trend is not.
+7. Revert-proof scope (support row): `remis_energy.energy_weights` builds
+   the witness norm from the same `grid.inv_*` arrays the solver steps
+   with, so a defect in those arrays themselves would corrupt witness and
+   solver identically and stay invisible. The check guards the update path
+   against a correct metric, not the metric. Stated in the row.
+8. F-S2 "-53.9 dB per transition" is resolution-specific. The committed
+   chain model gives, for r = 1.4, -41.7 / -46.8 / -54.0 / -66.1 /
+   -78.2 dB at 15 / 20 / 30 / 60 / 120 fine cells per free-space
+   wavelength — a (dz/lambda)^2 law, -12.0 dB per doubling, asymptotic
+   above ~30 cells/wavelength. The support row now carries the law.
+9. Preflight `nu_grading_reaches_absorber` read `p[:layers + 1]`, i.e. it
+   demanded one uniform cell MORE than its own REMEDY asks for and fired on
+   an exactly compliant profile; fixed to `p[:layers]` / `p[-layers:]` with
+   a `layers < 2` skip, and locked by
+   `test_preflight_absorber_runway_exactly_compliant`.
+10. `{max_ratio:.2f}` rendered 1.401 as "1.40 exceeds ... cap 1.4" in both
+    the preflight advisory and the constructor warning; both now `:.3f`.
+11. Both VESSL yamls used `set -eu` with the run piped to `tee`, so a
+    FAILING run exited 0 and VESSL reported success; both now
+    `set -euo pipefail`. The already-harvested W1 3-D run
+    (369367256892) is unaffected — its verdict was read from the committed
+    JSON, not from the exit code.
+12. `fixtures.w5_profile`'s max adjacent ratio is 1.419 (nominal 1.4 plus
+    the 1 % anti-tie jitter), so the lane's own beyond-cap advisory now
+    flags the F-S5 witness. It is left as it is, deliberately, and the
+    reason is documented at the function: F-S5 tests the AD path, the cap
+    is an accuracy statement that does not enter a gradient-consistency
+    check, and re-cutting the profile would re-take a settled falsifier for
+    a cosmetic reason.
+
+**Judge refactor (behaviour-preserving).** `w4r3_zdominant_cavity.judge`
+gained a `scales` argument so the packaged fast-lane regression can judge a
+reduced three-scale ladder through the SAME committed judge. Verified after
+the fact: re-running the judge over the stored arms of both committed
+result files reproduces their `p_uc`, `p_mb`, `fixture_gates`, `fs4_fired`
+and `verdict` exactly.
+
+## WP6R.8 — BL1 in code: the in-plane half of the 1.3 -> 1.4 lock move is reverted (2026-08-30)
+
+BL1 was filed against the documentation, but the same overclaim was in the
+code. WP6b moved the abrupt-grading threshold from 1.3 to 1.4 on **all
+three axes** (`rfx/api/__init__.py` constructor warning) and set the new
+preflight advisory's cap at 1.4 on all three
+(`_MULTIBAND_RATIO_CAP`). The provenance recorded for that move is the
+multi-band witness battery — which grades z and holds the transverse mesh
+uniform in every arm. SPEC-00 §0.2-4 requires physical provenance for a
+lock move, and there is none for an in-plane axis.
+
+Repair (no measurement involved):
+
+- constructor: cap stays 1.4 for `dz_profile`; `dx_profile` / `dy_profile`
+  go back to the pre-WP6 threshold of 1.3, and the message for those axes
+  says why ("the validated 1.4 multi-band cap is a z-axis envelope and no
+  witness grades an in-plane axis").
+- preflight: `_INPLANE_RATIO_CAP = 1.3` alongside `_MULTIBAND_RATIO_CAP =
+  1.4`, chosen per axis, with the same scope sentence in the advisory and
+  the F-S2 resolution scaling named.
+
+This tightens two thresholds and loosens none. Movement check: the
+preflight-advisory emission contract, the example-fidelity contract and the
+fidelity report all pass unchanged (123 passed) — no committed example has
+an in-plane profile with a max adjacent ratio in (1.3, 1.4], so the
+re-tightened in-plane threshold fires nowhere in the repo's own example
+set, exactly as the WP6d check found for the loosening.
+
+### WP6R.9 — arithmetic slip in the WP6R.4 parenthetical (2026-08-30)
+
+WP6R.4 and the W4R3 script docstring described the predicted revert-proof
+shifts (-47.3 / -24.0 / -12.0 / -6.0 MHz) as "11–20x the 0.3 MHz fit
+floor". The ratios are **20x to 158x** (6.02/0.3 = 20; 47.3/0.3 = 158); the
+"11–20x" was an arithmetic slip in a descriptive parenthetical. It entered
+no window, gate, prediction or judge — the pre-declared revert-proof pass
+condition was and is `fs4_fired = True` on the defect ladder. The script
+docstring is corrected to "20-160x"; this note records the slip rather than
+editing WP6R.4, per the append-only rule.
+
+## WP6R.10 — repair acceptance batteries (2026-08-30, marker override `-o addopts="" -m "not gpu"` throughout)
+
+| Battery | Selection | Result |
+|---|---|---|
+| Preflight + example-fidelity + tutorials | the 17 `test_*preflight*` modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **306 passed** (352 s CPU). WP6 recorded 304 for the same selection; the +2 are the enumerate-and-classify gate's per-file cases for the two new lane files. No other mover. |
+| Emission contract + example fidelity + fidelity report (re-run after the in-plane lock revert) | `test_preflight_advisory_emission_contract`, `test_example_fidelity_contract`, `test_fidelity_report` | **123 passed** |
+| Multi-band envelope, fast lane | `tests/test_multiband_nu_envelope.py`, default markers | **11 passed** (128 s) — including the new analytic z-dominance gate, the reduced W4R3 ladder through the committed judge, and the grading-defect test that must FIRE |
+| NU battery, first 89 tests | the 50-module NU selection, in file order: all five `test_distributed_nu_*`, both farfield modules, `test_inplane_grading_guards`, `test_msl_nu_abscissa`, and all 16 tests of `test_multiband_nu_envelope` **including its `slow_physics` arms** (the four full 1e6-step 1-D F-S1 arms and the full four-scale W4R3 F-S4 ladder) | **89 passed, 0 failed** before the run was stopped |
+| NU battery, remaining ~349 tests | `test_nonuniform_*`, `test_nu_*`, `test_subpixel*`, `test_waveguide_nu_*`, `test_smooth_grading_preserve`, `test_optimize_nonuniform`, `test_preflight_graded_rasterization`, `test_thin_conductor_nu_dual_spacing`, ... | **NOT COMPLETED in this session.** Another agent's concurrent pytest runs in other worktrees on this machine drove the 1-minute load average to 127 (5 heavyweight JAX processes plus forked children); the run advanced at roughly one test per five minutes and was left running. **This battery must be re-run on a quiet machine before merge.** |
+
+**What stands behind the unfinished battery, and what does not.** No `rfx/`
+solver, kernel, grid or runner code is modified by this repair. The only
+shared-code changes are two advisory sites — the preflight multi-band check
+(runway off-by-one, `:.3f` formatting, per-axis cap) and the constructor's
+abrupt-grading warning (per-axis cap, `:.3f`) — neither of which can change
+a numeric result. The battery that covers advisory emission
+(preflight + example fidelity + tutorials, 306 passed) ran to completion,
+as did every module that constructs an in-plane profile *and* asserts a
+warning outcome (`test_inplane_grading_guards`, inside the 89).
+
+For the in-plane threshold revert specifically, the blast radius was also
+checked statically over the whole suite: 51 test modules pass a
+`dx_profile`/`dy_profile`; the project sets no `-W error` filter, so an
+extra `UserWarning` can only break a test that asserts a warning is ABSENT;
+exactly two such modules exist, and the profiles they build are uniform
+(ratio 1.0), or graded at ratio 1.25 (below both thresholds) or 1.5 (above
+both) — none in the (1.3, 1.4] window where the two thresholds differ. That
+argument is not a substitute for running the battery; it is what is known
+without it.
+
+## WP6R.11 (2026-08-30, append-only) — pre-merge closure of the review's open items
+
+Three items from the WP6-repair review are closed here; none moves a number,
+a window, or a verdict.
+
+1. **NU battery tail (WP6R.10 open item) is CLOSED.** The repair session could
+   not finish the ~349-test tail because this host was at load average 127 from
+   concurrent worktrees. The reviewer ran the battery to completion
+   independently and reported no mover; the item is therefore closed on the
+   reviewer's run rather than on a rerun of my own.
+
+2. **Band-count claim narrowed to the witnessed profile.** The support-matrix
+   row and scope paragraph said "any number of fine bands"; the battery
+   exercises at most **3 fine bands / 4 transitions** (`fixtures.py`). Both now
+   say so, and the expectation that more bands behave identically (each
+   transition is local; the per-transition reflection is what was measured) is
+   labelled as an argument, not evidence. Same class as BL1 — a claim wider
+   than its witness — caught by the same audit.
+
+3. **In-plane advisory REMEDY no longer contradicts its own gate.** The
+   beyond-cap advisory fires at 1.3 on x/y (the pre-existing lock, since no
+   witness grades an in-plane axis) but its REMEDY still said "split it into
+   ratio<=1.4 steps ... to stay inside the envelope", so a `dx_profile` obeying
+   the remedy would fire again. The REMEDY now quotes the axis's own cap and
+   names the in-plane case as a pre-existing threshold rather than a validated
+   envelope (`rfx/api/_preflight.py`).
+
+## WP6R.12 (2026-08-30, append-only) — the W4R "floor" reading is WITHDRAWN (issue #786)
+
+The W4R port-fixture ladder's inconclusive result was described in this note
+and in the support-matrix row as a "~20 MHz floor" and "a geometry-realization
+limit of that fixture class". Issue #786 attributed it, and both halves of that
+description are withdrawn:
+
+- **Not a floor read from an error sequence.** #786 measured three lattice-valid
+  rungs the W4R ladder skipped (3/s = 7, 8, 9). The full nine-rung uniform
+  sequence is 5.404546 / 5.502115 / 5.533066 / 5.542444 / 5.543558 / 5.541260 /
+  5.537579 / 5.533355 / 5.520821 GHz — exactly one sign change, maximum at
+  dz_fine = 0.125 mm, four rungs on the descending branch. Our ladder fitted the
+  ascending branch and anchored at s = 0.25, four rungs down the far side, so
+  |f(s) - f(0.25)| was never an error sequence at all.
+- **Not geometry realization.** #786's D1 measured realized-vs-declared at
+  6.8e-6 cells worst over six rungs (window 1e-3), exact integer cell counts for
+  every PEC extent, and a bit-identical subpixel-smoothed material map at every
+  rung. Port loading is exonerated too (<= 3.5 kHz over a 10^4 drive span).
+
+What survives from our side is only what we measured: the spread is identical in
+uniform-mesh arms, so it is not a grading effect, and it is why F-S4's verdict
+was taken on a smooth analytic cavity. Whether that fixture's f(h) converges to
+the physical answer is not determined by either lane — #786 has no external
+reference, and the ledger's dielectric-interface staircasing entry stands as
+evidence that a real consistency floor may exist for this fixture class.
+
+## WP6R.13 (2026-08-30, append-only) — the absorber-exclusion universal is FALSE; two withdrawn claims still shipped; #786 evidence re-attributed
+
+Second adversarial review of PR #785. Three blocking findings, all
+claim-side, plus four non-blocking items. **No new physical measurement was
+taken in this repair, and no window, judge, gate or verdict is moved.** The
+one thing executed was a *configuration read* of the committed fixtures
+(what boundary each witness builds), which is a property of the source, not
+a measurement — so there is nothing here to pre-declare a window for.
+Every result quoted below is either read out of a committed file or read
+out of the committed harness.
+
+### WP6R.13.1 — BL1: "every witness ran PEC-closed with `cpml_layers = 0`" is FALSE
+
+**Verification (configuration read of the committed harness).** Six of the
+seven witness fixtures build their grid through
+`harness.build_pec_fixture`, which is `cpml_layers = 0`: F-S1 1-D and 3-D
+(`w1_energy_drift`), F-S2/F-S3 (`w2_w3_reflection`), F-S4 W4R3
+(`w4r3_zdominant_cavity`), the energy revert-proof (`revert_proof`) and the
+order-witness revert-proof. **F-S5 does not.**
+`w5_ad_consistency.loss_from_dz` calls
+
+    make_nonuniform_grid(domain_xy=(0.005, 0.005), dz_profile=dz,
+                         dx=0.5e-3, cpml_layers=4)
+
+with the default `cpml_axes = "xyz"`, i.e. a 4-layer CPML on all six faces,
+including the two z faces the profile grades. Worse for the old wording:
+`fixtures.w5_profile()` is 14 cells whose boundary runways are non-uniform
+(max adjacent-ratio deviation 0.00998 on `z_lo`, 0.01529 on `z_hi`, from the
+1 % anti-tie jitter), so running that fixture through `Simulation.preflight`
+draws **`nu_grading_reaches_absorber` on both z faces** — the lane's own
+exclusion advisory fires on the lane's own witness. (It also draws
+`nu_grading_ratio_beyond_validated_cap`, already recorded as WP6R.7 item
+12.) The W5 pre-declaration (§5) never stated a boundary condition, which is
+how the universal survived to four shipped sites.
+
+**Superseded statements** (append-only bookkeeping; the sentences stay where
+they are and are read through this section):
+
+1. **WP6a exclusion 1**, "every witness ran PEC-closed at `cpml_layers = 0`,
+   so the row says nothing about the combination" — **read: every witness
+   that MEASURES AN ACCURACY OBSERVABLE ran PEC-closed at `cpml_layers = 0`;
+   F-S5 ran with `cpml_layers = 4`.**
+2. **WP6b depth-provenance**, "the multi-band witnesses are absorber-free,
+   which is exactly why the combination is flagged rather than scored" —
+   **read: no multi-band witness SCORES an accuracy quantity with an
+   absorber present.** One witness is absorber-bearing; it scores a
+   gradient-consistency property.
+
+**What the exclusion now rests on, and why it survives.** F-S5 compares
+`jax.grad` to central FD on the profile vector. It compares no field,
+reflection, energy or resonance against any reference, so it cannot say
+whether anything computed beside that absorber is *accurate*; what it does
+establish is the weaker, real fact that a graded mesh next to a CPML
+constructs, runs and differentiates consistently. The exclusion is therefore
+restated on the narrower true statement — **no witness in this row measures
+an accuracy observable with an absorber present** — which is what the
+physics argument (normal-direction inhomogeneity where the pad replicates
+the outermost interior cell; the documented PML breakdown class) was always
+carrying. The exclusion's *conclusion* is unchanged; its *justification* is
+no longer a false universal.
+
+**Sites corrected in this commit** (all four, plus the evidence table):
+
+- `docs/guides/support_matrix.md` — the absorber exclusion bullet, and the
+  F-S5 evidence-table row, which now names `cpml_layers = 4` and the fact
+  that this fixture draws the row's own advisory.
+- `rfx/api/_preflight.py` — the envelope-rationale comment block
+  ("EXCLUSION the witnesses force"), the docstring's depth-provenance
+  paragraph, and **the user-facing advisory string of
+  `nu_grading_reaches_absorber`**, which shipped the false universal to
+  every user who tripped the check.
+
+### WP6R.13.2 — BL2: the shipped preflight rationale still carried two withdrawn claims
+
+`rfx/api/_preflight.py` opened its envelope rationale with "What the
+witnesses establish for **N fine bands per axis**", asserting both the axis
+generality withdrawn by WP6R.7 item 1 and an unbounded band count the
+support row had already narrowed to "up to 3 fine bands / 4 transitions".
+The withdrawal had landed in the documentation and not in the code. Now
+reads "fine bands ALONG Z ... witnessed only up to 3 fine bands / 4
+transitions — the widest profile in the battery", with the in-plane
+non-statement spelled out and the more-bands expectation marked as an
+expectation.
+
+The same block's F-S4 line still quoted **`p_mb = p_uc = 1.95` against the
+analytic TE101** — the W4R2 fixture's numbers, superseded by WP6R.2/W4R3
+(that fixture carries ~1 % of its error on the graded axis). Corrected to
+the W4R3 figures actually claimed by the row: **`p_mb = 2.01`, `p_uc = 2.02`
+against the analytic TE_{1,0,4} of the empty 60 x 3 x 64 mm PEC cavity**,
+with the supersession named inline.
+
+### WP6R.13.3 — BL3: #786's results are re-attributed to an UNMERGED PR
+
+WP6R.12 and the support row stated #786's turn-over, the 6.8e-6-cell
+geometry exoneration and the <= 3.5 kHz port exoneration as settled facts.
+That evidence lives in **PR #788, which is not merged**, so a reader on
+`main` cannot reach any of it. The support row now separates the two
+things:
+
+- **What this lane measured and still stands:** the ~20 MHz spread is
+  present identically in uniform-mesh arms, so it is not a grading effect.
+- **Why the "floor" / "geometry-realization limit" reading is WITHDRAWN:**
+  because it was an interpretation this lane never measured — the
+  withdrawal does not depend on #786 at all.
+- **The #786 findings** are now written as "measured in the #786 lane (PR
+  #788, not yet merged)", explicitly flagged as unmerged-lane results
+  pending #788, including the `ladder_guard` precondition.
+
+This section corrects WP6R.12's own attribution the same way: read every
+#786 figure in WP6R.12 as carrying the "(PR #788, not merged)" qualifier.
+
+### WP6R.13.4 — non-blocking items landed with this repair
+
+1. **A surviving trace of the withdrawn "floor" reading** that WP6R.12's
+   site inventory missed: `w4r2_analytic_cavity.py`'s module docstring
+   stated the geometry-realization floor as the diagnosed CAUSE of both
+   P-C-class inconclusive results. Corrected in place with an explicit
+   WITHDRAWN note; what stands is the smoothness-hypothesis reason (the PEC
+   trace edge), which is fixture-intrinsic and independent of the spread.
+2. **`w4r_port_supraconvergence.py`** called the knife-edge drawing "the
+   actual root cause". It is a bring-up diagnosis that the lane's own
+   outcome did not bear out — that redesign drew knife-edge-free and was
+   still INCONCLUSIVE. Marked as such.
+3. **The BL1 in-plane lock revert (WP6R.8) had no regression test.**
+   Mutating `_PreflightMixin._INPLANE_RATIO_CAP` 1.3 -> 1.4 and both
+   constructor caps left the suite green, so the revert was one careless
+   edit from being undone. Added
+   `test_inplane_grading_lock_stays_at_1_3[x|y]` and
+   `test_inplane_and_z_caps_are_distinct_values`
+   (`tests/test_multiband_nu_envelope.py`). The discriminating ratio is
+   **1.35** — inside the witnessed z cap, above the unwitnessed in-plane
+   threshold — asserted to fire on x and y through BOTH paths (constructor
+   warning and preflight advisory) and to stay silent on z. Verified
+   revert-proof: with the three caps mutated to 1.4 all three tests FAIL;
+   restored, all three pass.
+4. **`support_matrix.md`'s "The cap is 1.4"** paragraph read axis-general
+   while being true only for `dz_profile`. Now "The cap is 1.4 — on z",
+   with the in-plane 1.3 threshold and its no-provenance reason stated in
+   the same paragraph.
+5. **F-S3 "<= 7.5e-6" is false by rounding** (the max in-envelope
+   |T|-deviation in `results/w2_w3.json` is 7.537001e-6, r = 1.2 abrupt).
+   The support row already carries the correct **<= 7.6e-6** and C8 already
+   recorded the slip; §3.4's pre-declaration text keeps its original
+   wording under the append-only rule and is read through C8. **The
+   remaining wrong site is the PR #785 body, which this lane cannot edit
+   (no GitHub writes): it must be updated to <= 7.6e-6 before merge.**
+
+**WP6R.13 addendum (same day).** The `nu_grading_reaches_absorber`
+advisory's STALE-IF read "an absorber-bearing witness is added to that
+row" — a condition already satisfied by F-S5, and therefore vacuous the
+moment BL1 was correct. Tightened to "a witness that SCORES an accuracy
+observable with an absorber present is added to that row", which is the
+condition that would actually retire the exclusion.
