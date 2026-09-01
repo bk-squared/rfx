@@ -37,6 +37,16 @@ _PREDECLARATION = (
 )
 
 
+_SMOOTHER_CACHE = []
+
+
+def _smoother():
+    """The referee's own vendored CSXCAD smoother, loaded once."""
+    if not _SMOOTHER_CACHE:
+        _SMOOTHER_CACHE.append(_load_referee()._csxcad_smooth_mesh_lines)
+    return _SMOOTHER_CACHE[0]
+
+
 def _load_referee():
     spec = importlib.util.spec_from_file_location("_i498_referee_under_test", _SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -421,16 +431,13 @@ class _FakeMesh:
 
     def SmoothMeshLines(self, ax, res, ratio):
         self.smoothed.append((ax, res, ratio))
-        # Behave like CSXCAD: subdivide until every cell is <= res. A crude
-        # uniform refill is enough for the as-built RECORDING to be exercised
-        # (the real smoother's exact line placement is not under test here).
-        cur = sorted(set(self.lines.get(ax, [])))
-        if len(cur) >= 2 and res > 0:
-            out = [cur[0]]
-            for a, b in zip(cur[:-1], cur[1:]):
-                n = max(1, int(np.ceil((b - a) / res)))
-                out.extend(a + (b - a) * k / n for k in range(1, n + 1))
-            self.lines[ax] = sorted(set(out))
+        # Smooth with the SAME routine the plan predicts with, so the builder's
+        # own prediction-vs-real cross-check is genuinely exercised rather than
+        # trivially satisfied by a crude stand-in.
+        cur = np.asarray(sorted(set(self.lines.get(ax, []))), dtype=float)
+        if cur.size >= 2 and res > 0:
+            self.lines[ax] = sorted(
+                _smoother()(cur, res, ratio).tolist())
 
     def GetLines(self, ax):
         return np.asarray(sorted(set(self.lines.get(ax, []))), dtype=float)
@@ -877,18 +884,94 @@ def test_x_uniformity_is_computed_and_reports_the_off_lattice_planes(ref):
 
 
 def test_plan_states_the_y_smoothing_the_builder_will_apply(ref):
-    """The plan's y lines are pre-smoothing; it must say what happens next."""
+    """The plan's y lines are pre-smoothing; it must say what happens next.
+
+    Superseded the earlier BOUND on the line count with the computed mesh --
+    see test_plan_computes_the_post_smoothing_mesh_the_builder_hands_openems.
+    """
     plan = ref.openems_mesh_plan(50e-6)
     assert plan["y_lines_are_pre_smoothing"] is True
-    ps = plan["y_post_smoothing_plan"]
-    assert ps["max_cell_target_m"] == pytest.approx(50e-6 / 4.0)
-    # the bound must be a real bound: the built mesh has at least this many lines
-    assert ps["min_line_count_bound"] > ps["planned_line_count_pre_smoothing"], (
-        "smoothing to dx/4 must ADD y lines; a bound below the planned count "
-        "would mean the bound was computed on the wrong span")
-    # and the y PML depth follows the smoothed cells, not the pad it was sized with
-    assert ps["pml_y_depth_bound_m"] == pytest.approx(ref.B_PML_CELLS * 50e-6 / 4.0)
-    assert ps["pml_y_depth_bound_m"] < 8 * 50e-6
+    built = plan["mesh_as_planned_built"]
+    assert built["max_cell_target_m"] == pytest.approx(50e-6 / 4.0)
+    assert built["n_lines"]["y"] > plan["n_lines"]["y"], (
+        "smoothing to dx/4 must ADD y lines")
+    # the y PML depth follows the smoothed cells, not the pad it was sized with
+    assert built["pml_depth_m"]["y_lo"] < ref.B_PML_CELLS * 50e-6
+    assert built["max_cell_m"]["y"] <= 50e-6 / 4.0 * (1 + 1e-9)
+
+
+def test_plan_computes_the_post_smoothing_mesh_the_builder_hands_openems(ref):
+    """A bound is not the built mesh; the record has to carry the real one.
+
+    The reference numbers are CSXCAD's OWN ``SmoothMeshLines`` (fetched from
+    thliebig/CSXCAD and run against this plan's y lines offline), so this is
+    a lock on the actual smoother, not on a paraphrase of it.
+    """
+    expect = {
+        50e-6: {"y_lines": 401, "cells": 1_708_800,
+                "y_min_um": 3.6364, "y_max_um": 12.5,
+                "pml_y_lo_um": 67.708, "pml_y_hi_um": 70.0},
+        80e-6: {"y_lines": 301, "cells": 626_400,
+                "y_min_um": 6.6667, "y_max_um": 20.0,
+                "pml_y_lo_um": 92.826, "pml_y_hi_um": 105.746},
+    }
+    for dx_m, want in expect.items():
+        plan = ref.openems_mesh_plan(dx_m)
+        built = plan["mesh_as_planned_built"]
+        assert built["n_lines"]["y"] == want["y_lines"]
+        assert built["n_lines"]["x"] == plan["n_lines"]["x"]   # x is not smoothed
+        assert built["n_lines"]["z"] == plan["n_lines"]["z"]
+        assert built["n_cells_total"] == want["cells"]
+        assert built["min_cell_m"]["y"] * 1e6 == pytest.approx(want["y_min_um"], rel=1e-4)
+        assert built["max_cell_m"]["y"] * 1e6 == pytest.approx(want["y_max_um"], rel=1e-6)
+        # PML depth per FACE -- a cell COUNT, so smoothing shrinks it on y only
+        pml = built["pml_depth_m"]
+        assert pml["y_lo"] * 1e6 == pytest.approx(want["pml_y_lo_um"], rel=1e-4)
+        assert pml["y_hi"] * 1e6 == pytest.approx(want["pml_y_hi_um"], rel=1e-4)
+        assert pml["x_lo"] == pytest.approx(ref.B_PML_CELLS * dx_m)
+        assert pml["x_hi"] == pytest.approx(ref.B_PML_CELLS * dx_m)
+        assert pml["z_hi"] == pytest.approx(ref.B_PML_CELLS * dx_m)
+        assert "z_lo" not in pml, "z_lo is PEC, not PML -- it has no depth"
+        # and the honest headline: the built mesh is several times the plan
+        assert built["n_cells_total"] > 4 * plan["n_cells_total"]
+
+
+def test_planned_total_cells_reaches_the_artifact_instead_of_zero(ref):
+    """mesh_as_built compared the built count against plan['total_cells'],
+    a key the plan does not define, so every artifact recorded 0."""
+    _FakeMSLPort.instances = []
+    fdtd, _l, _m, plan, _pi = ref._build_stage2(
+        _FakeCSX, _FakeFDTD, _FakeMSLPort, dx_m=ref.B_DX_COMPARATOR_M,
+        drive="lumped", nrts=10, end_criteria=1e-4)
+    as_built = plan["mesh_as_built"]
+    assert as_built["planned_total_cells"] == plan["n_cells_total"]
+    assert as_built["planned_total_cells"] > 0, (
+        "the artifact recorded a planned cell count of 0 -- the record was "
+        "wrong about itself, which is the whole defect class here")
+
+
+def test_build_refuses_when_the_real_smoother_disagrees_with_the_plan(ref):
+    """The plan predicts the built mesh with a PORT of CSXCAD's smoother.
+
+    If the installed CSXCAD ever smooths differently, the artifact's mesh
+    record would be wrong. That must fail LOUD at build time, in seconds,
+    not silently inside a recorded number.
+    """
+    class _DriftingMesh(_FakeMesh):
+        def SmoothMeshLines(self, ax, res, ratio):
+            # one line coarser than the plan predicts
+            super().SmoothMeshLines(ax, res * 1.05, ratio)
+
+    class _DriftingCSX(_FakeCSX):
+        def __init__(self):
+            super().__init__()
+            self._mesh = _DriftingMesh()
+
+    _FakeMSLPort.instances = []
+    with pytest.raises(ref.ConfigError, match="has drifted from the installed"):
+        ref._build_stage2(_DriftingCSX, _FakeFDTD, _FakeMSLPort,
+                          dx_m=ref.B_DX_COMPARATOR_M, drive="lumped",
+                          nrts=10, end_criteria=1e-4)
 
 
 def test_excitation_check_separates_a_nan_field_from_a_starved_port(ref):

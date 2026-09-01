@@ -678,6 +678,199 @@ def min_mesh_cell_m(lines) -> float:
     return float(np.min(np.diff(lines))) if lines.size > 1 else 0.0
 
 
+# ---------------------------------------------------------------------------
+# CSXCAD's OWN mesh smoother, ported verbatim so the PLAN can state the mesh
+# the BUILDER will hand openEMS instead of a bound on it.
+#
+# Provenance: thliebig/CSXCAD, python/CSXCAD/SmoothMeshLines.py (Unique,
+# CheckSymmetry, SnapToLines, SmoothRange, SmoothMeshLines). CSXCAD is not
+# importable off the solver image, so the plan -- which must produce the same
+# numbers on this pod and on VESSL -- uses this port. It is NOT trusted on its
+# own: ``_build_stage2`` reads the REAL grid back after CSXCAD has smoothed it
+# and raises if the two disagree, so a drift between this port and the
+# installed CSXCAD fails LOUD at build time (seconds), never silently in a
+# recorded number. Same predicted-vs-real discipline the MeasPlaneShift
+# cross-check in this file already uses.
+# ---------------------------------------------------------------------------
+def _csx_unique(l, tol=1e-7):
+    l = np.unique(l)
+    dl = np.diff(l)
+    idx = np.where(dl < np.mean(dl) * tol)[0]
+    if len(idx) > 0:
+        l = np.delete(l, idx)
+    return l
+
+
+def _csx_check_symmetry(lines):
+    tolerance = 1e-10
+    NP = len(lines)
+    if NP <= 2:
+        return 0
+    line_range = lines[-1] - lines[0]
+    center = 0.5 * (lines[-1] + lines[0])
+    for n in range(int(NP / 2)):
+        if abs((center - lines[n]) - (lines[-n - 1] - center)) > line_range * tolerance:
+            return 0
+    if NP % 2 == 1:
+        if abs(lines[int(NP / 2)] - center) > line_range * tolerance:
+            return 0
+    return 2 if NP % 2 == 0 else 1
+
+
+def _csx_snap_to_lines(lines, ref, tol=1e-10):
+    lines = np.array(lines, dtype=float)
+    ref = np.asarray(ref, dtype=float)
+    if len(ref) < 2:
+        return lines
+    abs_tol = (ref[-1] - ref[0]) * tol
+    idx = np.clip(np.searchsorted(ref, lines), 1, len(ref) - 1)
+    left, right = ref[idx - 1], ref[idx]
+    nearest = np.where(lines - left <= right - lines, left, right)
+    snap = np.abs(lines - nearest) <= abs_tol
+    lines[snap] = nearest[snap]
+    return lines
+
+
+def _csx_smooth_range(start, stop, start_res, stop_res, max_res, ratio):
+    assert ratio > 1
+    rng = stop - start
+    if rng < max_res and rng < start_res * ratio and rng < stop_res * ratio:
+        return _csx_unique([start, stop])
+    if start_res >= (max_res / ratio) and stop_res >= (max_res / ratio):
+        N = np.ceil(rng / max_res).astype("int")
+        tmp = np.linspace(start, stop, N + 1)
+        return np.append(np.append(start, tmp[1:-1]), stop)
+
+    def one_side_taper(start_res, ratio, max_res):
+        res, pos, N = start_res, 0, 0
+        while res < max_res and pos < rng:
+            res *= ratio
+            pos += res
+            N += 1
+        if pos > rng:
+            l = np.zeros(N + 1)
+            for n in range(N + 1):
+                l[n] = np.sum(start_res * ratio ** np.arange(1, n + 1))
+            return l * rng / pos
+        _ratio = np.e ** ((np.log(max_res) - np.log(start_res)) / (N))
+        l, pos, res = [0], 0, start_res
+        for n in range(N):
+            res *= _ratio
+            pos += res
+            l.append(pos)
+        while pos < rng:
+            pos += max_res
+            l.append(pos)
+        return np.array(l) * rng / l[-1]
+
+    if start_res < (max_res / ratio) and stop_res >= (max_res / ratio):
+        tmp = start + one_side_taper(start_res, ratio, max_res)
+        return np.append(np.append(start, tmp[1:-1]), stop)
+    if start_res >= (max_res / ratio) and stop_res < (max_res / ratio):
+        tmp = np.sort(stop - one_side_taper(stop_res, ratio, max_res))
+        return np.append(np.append(start, tmp[1:-1]), stop)
+
+    pos1, N1, res = 0, 0, start_res
+    while res < max_res:
+        res *= ratio
+        pos1 += res
+        N1 += 1
+    ratio1 = np.e ** ((np.log(max_res) - np.log(start_res)) / N1)
+    pos1 = np.sum(start_res * ratio1 ** np.arange(1, N1 + 1))
+    pos2, N2, res = 0, 0, stop_res
+    while res < max_res:
+        res *= ratio
+        pos2 += res
+        N2 += 1
+    ratio2 = np.e ** ((np.log(max_res) - np.log(stop_res)) / N2)
+    pos2 = np.sum(stop_res * ratio2 ** np.arange(1, N2 + 1))
+
+    if (pos1 + pos2) < rng:
+        l = [0]
+        for n in range(1, N1 + 1):
+            l.append(l[-1] + start_res * ratio1 ** n)
+        r = [0]
+        for n in range(1, N2 + 1):
+            r.append(r[-1] + stop_res * ratio2 ** n)
+        left = rng - pos1 - pos2
+        N = int(np.ceil(left / max_res))
+        for n in range(N):
+            l.append(l[-1] + max_res)
+        length = l[-1] + r[-1]
+        c = _csx_unique(np.r_[np.array(l), length - np.array(r)])
+        tmp = start + c * rng / length
+        return np.append(np.append(start, tmp[1:-1]), stop)
+
+    l, r = [0], [0]
+    while l[-1] + r[-1] < rng:
+        if start_res == stop_res:
+            start_res *= ratio
+            l.append(l[-1] + start_res)
+            stop_res *= ratio
+            r.append(r[-1] + start_res)
+        elif start_res < stop_res:
+            start_res *= ratio
+            l.append(l[-1] + start_res)
+        else:
+            stop_res *= ratio
+            r.append(r[-1] + start_res)
+    length = l[-1] + r[-1]
+    c = _csx_unique(np.r_[np.array(l), length - np.array(r)])
+    tmp = start + c * rng / length
+    return np.append(np.append(start, tmp[1:-1]), stop)
+
+
+def _csxcad_smooth_mesh_lines(lines, max_res: float, ratio: float = 1.5):
+    """Verbatim port of CSXCAD's ``SmoothMeshLines``. See the block comment."""
+    out_l = _csx_unique(lines)
+    orig_l = out_l
+    sym = _csx_check_symmetry(out_l)
+    if sym == 1:
+        center = 0.5 * (out_l[-1] + out_l[0])
+        out_l = out_l[:int(len(out_l) / 2) + 1]
+    elif sym == 2:
+        center = 0.5 * (out_l[-1] + out_l[0])
+        out_l = out_l[:int(len(out_l) / 2)]
+    dl = np.diff(out_l)
+    while len(np.where(dl > max_res * (1 + 1e-10))[0]) > 0:
+        N = len(out_l)
+        dl[dl <= max_res] = np.max(dl) * 2
+        idx = np.argmin(dl)
+        dl = np.diff(out_l)
+        start_res = dl[idx - 1] if idx > 0 else max_res
+        stop_res = dl[idx + 1] if idx < len(dl) - 1 else max_res
+        l = _csx_smooth_range(out_l[idx], out_l[idx + 1], start_res, stop_res,
+                              max_res, ratio)
+        out_l = _csx_unique(np.r_[out_l, l])
+        dl = np.diff(out_l)
+        if len(out_l) == N:
+            break
+    if sym == 1:
+        return _csx_snap_to_lines(_csx_unique(np.r_[out_l, 2 * center - out_l[:-1]]), orig_l)
+    elif sym == 2:
+        l = _csx_smooth_range(out_l[-1], 2 * center - out_l[-1], dl[-1], dl[-1],
+                              max_res, ratio)
+        return _csx_snap_to_lines(_csx_unique(np.r_[out_l, l, 2 * center - out_l]), orig_l)
+    return _csx_unique(out_l)
+
+
+def _pml_depths_m(x, y, z) -> dict:
+    """Physical depth of the B_PML_CELLS-cell absorber on each ABSORBING face.
+
+    The PML is a CELL COUNT, so its depth follows whatever cells end up at the
+    face -- it is NOT the pad the domain was sized with. z_lo is PEC and has
+    no entry.
+    """
+    def lo(l):
+        return float(l[B_PML_CELLS] - l[0]) if l.size > B_PML_CELLS else float("nan")
+
+    def hi(l):
+        return float(l[-1] - l[-1 - B_PML_CELLS]) if l.size > B_PML_CELLS else float("nan")
+
+    return {"x_lo": lo(x), "x_hi": hi(x), "y_lo": lo(y), "y_hi": hi(y),
+            "z_hi": hi(z)}
+
+
 def _x_uniformity_report(lines, dx_m: float) -> dict:
     """Measured (never asserted) uniformity of a mesh axis.
 
@@ -743,6 +936,16 @@ def openems_mesh_plan(dx_m: float) -> dict:
     z_lines = merge_coincident_mesh_lines(
         np.concatenate([z_sub, z_air]), dx_m, exact=z_sub)
 
+    # The builder smooths ONLY y (see _build_stage2); x and z go over as-is.
+    # IN THE CSX DRAWING UNIT (mm), because that is the scale CSXCAD actually
+    # smooths at -- _build_stage2 hands it mm and a mm max_res. The smoother is
+    # NOT scale-invariant (np.ceil(rng/max_res) and Unique's relative tolerance
+    # both bite differently at 1e-3 vs 1e0), and smoothing in metres here gives
+    # 386 y lines where the builder gets 401.
+    _u = 1.0 / _CSX_UNIT_M
+    y_built = _csxcad_smooth_mesh_lines(
+        y_lines * _u, (dx_m / 4.0) * _u, 1.4) / _u
+
     meas_shift_target = B_MSL_FEED_X_M - B_MSL_MEAS_X_M
     meas_shift_snapped = snap_shift_to_mesh(meas_shift_target, dx_m)
 
@@ -778,24 +981,36 @@ def openems_mesh_plan(dx_m: float) -> dict:
         "lambda_min_in_substrate_m": float(lam_min_m),
         "cells_per_lambda_min": float(lam_min_m / dx_m),
         "y_lines_are_pre_smoothing": True,
-        # What the BUILDER will do to y, stated here so the plan cannot be
-        # read as the mesh that gets built: _build_stage2 calls
-        # SmoothMeshLines("y", dx/4, 1.4) AFTER these lines are handed over.
-        # CSXCAD is not importable off the solver image, so this is a BOUND,
-        # not a reimplementation of its smoother -- reimplementing it here
-        # would recreate the very defect this row exists to retire. The
-        # built mesh is recorded from the real thing in "mesh_as_built".
-        "y_post_smoothing_plan": {
+        # THE MESH THE BUILDER ACTUALLY HANDS openEMS. The y lines above are
+        # pre-smoothing; _build_stage2 then calls SmoothMeshLines("y", dx/4,
+        # 1.4). Computed here with a verbatim port of CSXCAD's own smoother
+        # (see _csxcad_smooth_mesh_lines) so --dry-run and --self-check state
+        # the built mesh off the solver image too, and cross-checked against
+        # the REAL grid at build time. VESSL 369367257610's record carried the
+        # PLANNED cell count and the PLANNED y-PML depth; the solver saw
+        # neither. Reported, never gated.
+        "mesh_as_planned_built": {
             "smoother": "SmoothMeshLines('y', dx/4, 1.4) in _build_stage2",
+            "smoother_source": "verbatim port of CSXCAD SmoothMeshLines.py",
             "max_cell_target_m": dx_m / 4.0,
-            "min_line_count_bound": int(
-                np.ceil((float(y_lines[-1]) - float(y_lines[0])) / (dx_m / 4.0)) + 1),
-            "planned_line_count_pre_smoothing": int(len(y_lines)),
-            "pml_y_depth_bound_m": B_PML_CELLS * dx_m / 4.0,
+            "n_lines": {"x": int(x_lines.size), "y": int(y_built.size),
+                        "z": int(z_lines.size)},
+            "n_cells_total": int((x_lines.size - 1) * (y_built.size - 1)
+                                 * (z_lines.size - 1)),
+            "min_cell_m": {"x": min_mesh_cell_m(x_lines),
+                           "y": min_mesh_cell_m(y_built),
+                           "z": min_mesh_cell_m(z_lines)},
+            "max_cell_m": {"x": float(np.max(np.diff(x_lines))),
+                           "y": float(np.max(np.diff(y_built))),
+                           "z": float(np.max(np.diff(z_lines)))},
+            "pml_depth_m": _pml_depths_m(x_lines, y_built, z_lines),
+            "pml_cells": B_PML_CELLS,
             "note": (
-                "The PML is a CELL COUNT (B_PML_CELLS), so smoothing y to dx/4 "
-                "shrinks the y absorber depth toward this bound -- it is NOT the "
-                "pad thickness the domain was sized with. Reported, not gated."),
+                "The PML is a CELL COUNT, so smoothing y to dx/4 shrinks the y "
+                "absorber DEPTH well below the pad the domain was sized with, "
+                "while x and z keep the full pad. Reported, not gated -- "
+                "changing the smoothing would change the mesh the #490 lane "
+                "validated."),
         },
         # COMPUTED, never asserted: the required planes 4.72 mm and 5.52 mm
         # are off the dx=50um grid, so inserting them leaves short cell
@@ -934,9 +1149,19 @@ def geometry_self_check(*, verbose: bool = True) -> dict:
             print(f"  [{'OK  ' if c['ok'] else 'FAIL'}] {c['name']}: {c['detail']}")
         for label, m in out["mesh"].items():
             print(f"\n  -- {label} --")
-            print(f"     lines {m['n_lines']}  cells {m['n_cells_total']:,}  "
-                  f"substrate {m['n_substrate_cells']} cells of "
+            print(f"     PLANNED (y pre-smoothing) lines {m['n_lines']}  "
+                  f"cells {m['n_cells_total']:,}  substrate "
+                  f"{m['n_substrate_cells']} cells of "
                   f"{m['substrate_cell_dz_m']*1e6:.2f} um")
+            b = m["mesh_as_planned_built"]
+            print(f"     AS BUILT  (after SmoothMeshLines y) lines "
+                  f"{b['n_lines']}  cells {b['n_cells_total']:,}  "
+                  f"= {b['n_cells_total']/m['n_cells_total']:.2f}x the plan")
+            pml = b["pml_depth_m"]
+            print(f"     PML_8 depth per face: x {pml['x_lo']*1e6:.0f}/"
+                  f"{pml['x_hi']*1e6:.0f} um, y {pml['y_lo']*1e6:.1f}/"
+                  f"{pml['y_hi']*1e6:.1f} um (SHRUNK by the y smoothing), "
+                  f"z_hi {pml['z_hi']*1e6:.0f} um; z_lo is PEC")
             print(f"     pad {m['pml_thickness_m']*1e3:.2f} mm "
                   f"({m['pml_cells']} cells) vs rfx's "
                   f"{m['rfx_pad_thickness_m']*1e3:.2f} mm "
@@ -1465,7 +1690,23 @@ def _build_stage2(ContinuousStructure, openEMS, MSLPort, *, dx_m: float,
         max(_as_built["x"]["n_lines"] - 1, 0)
         * max(_as_built["y"]["n_lines"] - 1, 0)
         * max(_as_built["z"]["n_lines"] - 1, 0))
-    _as_built["planned_total_cells"] = int(plan.get("total_cells") or 0)
+    # plan["n_cells_total"] -- NOT "total_cells", a key the plan never
+    # defined, which recorded a planned cell count of 0 in every artifact.
+    _as_built["planned_total_cells"] = int(plan.get("n_cells_total") or 0)
+    # The prediction in the plan is a PORT of CSXCAD's smoother; this is where
+    # it gets checked against the real thing. A drift fails here, in seconds,
+    # before the solve -- never silently inside a recorded number.
+    _pred = plan["mesh_as_planned_built"]
+    for _ax in ("x", "y", "z"):
+        _got, _want = _as_built[_ax]["n_lines"], _pred["n_lines"][_ax]
+        if _got != _want:
+            raise ConfigError(
+                f"Stage-2 {_ax} mesh as built has {_got} lines but the plan "
+                f"predicted {_want}. The vendored CSXCAD smoother port "
+                f"(_csxcad_smooth_mesh_lines) has drifted from the installed "
+                f"CSXCAD, so the artifact's own mesh record would be wrong. "
+                f"Refusing to run.")
+    _as_built["prediction_matched"] = True
     _as_built["note"] = (
         "Read back from the built mesh after SmoothMeshLines. Compare with the "
         "plan's pre-smoothing y rows; a large ratio here is the #490-lane "
