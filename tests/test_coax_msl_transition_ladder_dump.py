@@ -60,6 +60,13 @@ _NUMERIC_FIELDS = (
     "s_params", "freqs", "reference_planes", "z0_ref", "cond_a",
     "cond_a_equilibrated", "recurrence_residual", "fit_residual", "gamma",
     "a_inc", "b_out", "settling_db",
+    # Issue #823 ladder self-consistency witness. Classified INTO the
+    # byte-identity witness (not as an opt-in payload): both are computed
+    # from the same ladder voltages every run produces, unconditionally, so
+    # the read-only ``return_ladder_voltages`` channel must not move them
+    # either. Report-only diagnostics -- see
+    # tests/test_msl_ladder_standoff.py for what they measure.
+    "ladder_split_gamma_dev", "ladder_split_reflection_decades",
 )
 
 

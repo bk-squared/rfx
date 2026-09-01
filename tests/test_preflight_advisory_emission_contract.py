@@ -175,7 +175,30 @@ def _enumerate_emission_sites():
 # is unchanged: compute_coax_msl_transition stays DIAGNOSTIC_ONLY, so the
 # row surfaces via sim.preflight() (the settled-run driver's --preflight)
 # and via run()/forward() elsewhere, not through that method.
-_FROZEN_TOTAL_SITES = 88
+#
+# 88 -> 89 sites / 59 -> 59 literal codes, issue #823 (stacked on the
+# #752/#636/#780/#589 edits above, so the site/code counts sum):
+# ``_check_msl_port_geometry`` gained check 5, the MSL feed's own source
+# near-field standoff advisory. Checks 4/4a/4b all look DOWNSTREAM of
+# the probes (a reflector, the absorber, another port's feed); none of them
+# looked back at the port's OWN feed plane, so an EXPLICIT
+# ``n_probe_offset`` inside the launch near field drew no advisory at all
+# (``add_msl_port``'s AUTO offset has been floored to
+# ``max(3, lam_cells, round(5*h_sub/dx))`` since issue #80, so only explicit
+# offsets can reach it). One new SITE, NO new literal ``code=``: check 5
+# reuses the existing ``msl_port_geometry`` slug because it is the same check
+# family speaking about the same port — the same precedent check 2c set for
+# #752 above — so _FROZEN_LITERAL_CODE_COUNT is unchanged at 59.
+# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare-except path).
+# EMISSION_CLASSIFICATION is unchanged too: compute_coax_msl_transition stays
+# DIAGNOSTIC_ONLY, so this row surfaces via sim.preflight() (the settled-run
+# driver's --preflight) and via run()/forward()/compute_mixed_s_matrix
+# elsewhere, not through that method. The coax<->MSL lane's OWN realized
+# ladder is checked inside ``compute_coax_msl_transition`` with a plain
+# ``warnings.warn`` — deliberately NOT a PreflightWarning construction, so it
+# is invisible to the AST walk above and the site count stays at 89. A
+# conscious contract edit, recorded here rather than absorbed silently.
+_FROZEN_TOTAL_SITES = 89
 _FROZEN_LITERAL_CODE_COUNT = 59
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path

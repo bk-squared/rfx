@@ -787,6 +787,101 @@ def msl_min_probe_clearance(freq_max: float) -> float:
     return 0.25 * lambda_g_min
 
 
+# Issue #80 Fix B / issue #823: the MSL feed's own near-field standoff.
+# ``add_msl_port`` has floored its AUTO ``n_probe_offset`` to
+# ``max(3, lam_cells, round(5*h_sub/dx))`` since issue #80 (rfx/api/__init__.py,
+# the ``_hsub_cells`` term). That same rule is stated three more times in this
+# file (check 4's compliant-interval endpoint, check 4a's ``_abs_off_lo``, and
+# ``_validate_forward_sparameter_request``'s explicit-offset guard). This is
+# the ONE place it is computed; every one of those sites calls it, so they
+# cannot disagree about the same port.
+_MSL_NEAR_FIELD_STANDOFF_H_SUB = 5.0
+_MSL_NEAR_FIELD_MIN_OFFSET_CELLS = 3
+
+
+def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
+    """Cells probe 0 must clear the MSL feed plane by: ``max(3, round(5*h/dx))``.
+
+    NOT a new constant. This is the issue-#80 "Fix B" source-fringing rule
+    (``~5*h_sub``) that ``rfx.api.Simulation.add_msl_port`` already applies to
+    every AUTO ``n_probe_offset``; an auto port therefore cannot violate it by
+    construction. What issue #823 adds is (a) a derivation of WHY that scale is
+    the right one and how much margin it carries, and (b) advisories at the two
+    places an EXPLICIT offset, or a method-level probe ladder, can under-provision
+    it without anything saying so.
+
+    Derivation (issue #823, measured on the settled attempt-3 witness run VESSL
+    369367257533; committed dump ``scripts/diagnostics/
+    _coax_msl_transition_settled_run_logs/
+    witnesses_369367257533_attempt3_x64-0_ladders.npz``, reproduced by
+    ``tests/test_msl_ladder_standoff.py::
+    test_near_field_decay_length_matches_the_substrate_transverse_resonance``)
+    ------------------------------------------------------------------------
+    Fit the two-wave model on a clean window of that fixture's own 9-probe MSL
+    ladder (``msl[0:6]``, 3.4-8.4 mm from the feed), extrapolate it to all nine
+    planes, and read the relative excess ``rho(d) = |V_meas - V_2wave|/|V_2wave|``
+    against the distance ``d`` from the port's feed plane:
+
+        d (mm)    8.4     7.4     6.4     5.4     4.4     3.4     2.4     1.4     0.4
+        6 GHz   2.8e-3  9.6e-4  1.6e-3  1.1e-3  1.2e-4  1.4e-3  3.2e-3  7.6e-3  0.818
+        8 GHz   2.9e-3  9.5e-4  1.3e-3  9.0e-4  1.6e-4  1.2e-3  2.8e-3  6.5e-3  1.019
+       10 GHz   2.4e-3  8.8e-4  9.3e-4  5.9e-4  2.2e-4  1.0e-3  2.6e-3  6.3e-3  1.275
+
+    The six far columns are a flat float32 noise floor (median 1.27e-3 / 1.09e-3 /
+    9.0e-4). Subtracting it, the two near-port probes give a decay length
+    ``delta = 1.0mm / ln(excess(0.4)/excess(1.4))`` = 0.2056 / 0.1908 / 0.1831 mm,
+    mean 0.1932 mm.
+
+    PHYSICAL ANCHOR: a grounded substrate of thickness ``h`` supports a transverse
+    quarter-wave resonance ``k_z = pi/(2h)``; below cutoff the feed's evanescent
+    content decays longitudinally as
+    ``delta_nf = 1/sqrt((pi/2h)^2 - omega^2 mu0 eps0 eps_r)``. For h = 300um,
+    eps_r = 3.66 that is 0.19119 / 0.19135 / 0.19155 mm at 6/8/10 GHz (low-frequency
+    limit ``2h/pi`` = 0.19099 mm; the transverse cutoff
+    ``f_tr = c/(4 h sqrt(eps_r))`` = 130.6 GHz, so the dispersion correction is
+    < 0.3% across this band). Model 0.19099 mm vs measured 0.1932 mm: 1.1% on the
+    mean, +/-8% per bin. The scale is a property of the SUBSTRATE, not of the
+    fixture -- which is what licenses stating it as a rule at all.
+
+    AMPLITUDE and TOLERANCE: extrapolating each bin's excess back to the feed
+    plane with its own delta gives ``R0`` = 5.72 / 8.28 / 11.32 (worst 11.323).
+    Against ``rho_max = 0.02`` -- the coax lane's own documented two-wave
+    fit-residual bar, the only committed number of that kind in this family --
+    ``d_min = delta_nf * ln(R0/rho_max)`` = 1.2106 mm = ``4.0354 * h_sub``, i.e.
+    dimensionlessly ``(2/pi)*ln(R0/rho_max)``. INDEPENDENT-ish check: the model
+    predicts ``rho(1.4mm) = 7.4e-3`` at 10 GHz against a measured 6.3e-3 (17%);
+    note the two model parameters were themselves fitted from the only two
+    contaminated points, so this re-evaluation is a consistency check, not a
+    falsification test. The genuinely independent content is ``delta`` vs
+    ``2h/pi`` above.
+
+    WHAT SHIPS: ``5*h_sub``, the repo's EXISTING constant -- 24% above the
+    4.0354*h floor, i.e. a predicted ``rho(5h) = 4.4e-3`` against the 0.02 bar.
+    Reusing it keeps ONE number in the repo. Its measured cost on the
+    coax<->MSL fixtures is one over-flagged probe slot per attempt-2/3 ladder
+    (d = 1.4 mm, rho = 7.6e-3, clean by that bar); the advisories are
+    report-only, so that costs nothing.
+
+    LIMITATION (not resolved by this work): the anchor is the substrate's
+    transverse resonance, so the rule is written in ``h`` alone. The first
+    higher-order microstrip mode scales with ``(W + 2h)``, and this derivation
+    rests on ONE fixture at ``W/h = 2`` -- a much wider trace could need more
+    than ``5*h``. One fixture cannot separate W from h.
+
+    Degenerate inputs (non-positive ``h_sub_m`` or ``dx_m``) return the floor
+    rather than raising: an advisory predicate must never crash a run.
+    """
+    floor = _MSL_NEAR_FIELD_MIN_OFFSET_CELLS
+    try:
+        h = float(h_sub_m)
+        dx = float(dx_m)
+    except (TypeError, ValueError):
+        return floor
+    if not (h > 0.0) or not (dx > 0.0) or not (math.isfinite(h) and math.isfinite(dx)):
+        return floor
+    return max(floor, int(round(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h / dx)))
+
+
 def msl_nearest_downstream_reflector(
     geometry,
     *,
@@ -1236,13 +1331,22 @@ class _PreflightMixin:
             # default n_probe_offset already floors to max(λ-clearance,
             # 5·h_sub/dx); this warns when an EXPLICIT value under-provisions it.
             for pe in self._msl_ports:
-                if self._dx and pe.n_probe_offset < 5.0 * pe.height / self._dx:
+                # Issue #823: the SAME predicate _check_msl_port_geometry's
+                # check 5 and add_msl_port's auto floor use. This site used to
+                # spell it as a raw float comparison (< 5.0*h/dx) while the
+                # other two rounded to cells, so the three disagreed in a band
+                # (5h/dx = 15.2, offset 15: rounded compliant, float violating).
+                # One helper, one answer.
+                _nf_cells = msl_source_near_field_standoff_cells(
+                    float(pe.height), float(self._dx) if self._dx else 0.0)
+                if (self._dx and pe.n_probe_offset is not None
+                        and int(pe.n_probe_offset) < _nf_cells):
                     messages.append(
                         f"MSL port {pe.name!r}: n_probe_offset="
                         f"{pe.n_probe_offset} sits within the source fringing "
-                        f"transient (~{5.0 * pe.height / self._dx:.0f} cells = "
-                        f"5·h_sub/dx); probe 0 may corrupt the V·I-split S11 of "
-                        f"a high-Q resonant load (issue #80) — increase "
+                        f"transient ({_nf_cells} cells = max(3, round("
+                        f"5·h_sub/dx))); probe 0 may corrupt the V·I-split S11 "
+                        f"of a high-Q resonant load (issue #80) — increase "
                         f"n_probe_offset or leave it None for the safe default."
                     )
         if self._waveguide_ports:
@@ -6006,7 +6110,7 @@ class _PreflightMixin:
         Catches the common mistakes here so users find them in <1 min
         instead of after a full mesh sweep.
 
-        Three checks per MSL port:
+        Checks per MSL port (1, 2 + 2b/2c, 3, 4 + 4a/4b, 5):
 
         1. **Lateral clearance** from trace edge to nearest absorbing
            boundary (CPML/PML) or PEC sidewall must be ≥ 2·h_sub.
@@ -6134,6 +6238,32 @@ class _PreflightMixin:
         3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
            Source-side CPML reflection inflates |S11| if the port is
            too close.
+
+        5. **Probe 0 inside the port's OWN feed near field** (issue #823).
+           Checks 4/4a/4b all look DOWNSTREAM of the probes — at a
+           reflector, the absorber, another port's feed plane. None of
+           them looks back at the feed the ladder is measured FROM, which
+           is itself a launch discontinuity: within a few substrate
+           thicknesses of it the launched field is not the guided mode
+           yet, and a matrix-pencil / N-probe fit that includes such a
+           probe reports the LADDER's error as the field's. Measured on
+           the settled attempt-3 coax<->MSL run (VESSL 369367257533): a
+           probe 1.33·h_sub from the feed carried 82-128 % two-wave model
+           error and dragged the full-ladder fit residual to
+           0.342/0.264/0.222, while every window excluding it fit to
+           1e-5..4e-3. The threshold is ``max(3, round(5·h_sub/dx))`` —
+           the repo's EXISTING issue-#80 Fix B constant, which
+           ``add_msl_port`` already floors every AUTO ``n_probe_offset``
+           to, so only an EXPLICIT offset can reach this check. See
+           :func:`msl_source_near_field_standoff_cells` for the
+           derivation (and for the W/h limitation it carries).
+           REPORT-ONLY; the ``msl_probe_*`` ladder of
+           ``compute_coax_msl_transition`` is a METHOD argument that
+           never reaches a ``_MSLPortEntry``, so that lane checks the
+           same predicate on its own realized ladder instead.
+
+        (The numbering is historical: 2b/2c and 4a/4b were inserted as
+        sub-checks of 2 and 4 respectively; 5 is the next whole check.)
         """
         import warnings as _w
         if not self._msl_ports:
@@ -6766,11 +6896,16 @@ class _PreflightMixin:
                 # found to mislead the same way.
                 d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * dx
                 off_max = int((d_feed_to_refl - min_probe_clear) / dx) - (n_pr - 1) * n_sp
-                _hsub_cells = int(round(5.0 * h_sub / dx))
+                # Issue #823: the lower edge of the compliant interval IS
+                # the near-field standoff; one helper so checks 4, 4a, 5 and
+                # _validate_forward_sparameter_request cannot disagree about
+                # the same port. Numerically identical to the max(3, round(
+                # 5*h/dx)) this line spelled out before.
+                _hsub_cells = msl_source_near_field_standoff_cells(h_sub, dx)
                 interval_txt = (
                     f"compliant n_probe_offset interval ≈ "
-                    f"[{max(3, _hsub_cells)}, {off_max}] cells"
-                    if off_max >= max(3, _hsub_cells)
+                    f"[{_hsub_cells}, {off_max}] cells"
+                    if off_max >= _hsub_cells
                     else "no compliant n_probe_offset exists on this feed "
                     "length (interval empty)"
                 )
@@ -6825,8 +6960,7 @@ class _PreflightMixin:
             _abs_headroom = (
                 _domain_x - x_feed if _dir_sign > 0 else x_feed
             )
-            _abs_hsub_cells = int(round(5.0 * h_sub / dx))
-            _abs_off_lo = max(3, _abs_hsub_cells)
+            _abs_off_lo = msl_source_near_field_standoff_cells(h_sub, dx)
             if _msl_grid is not None:
                 # Issue #510 review (BLOCKING 1): the advertised endpoint
                 # is now VERIFIED against the real predicate via a
@@ -6960,6 +7094,74 @@ class _PreflightMixin:
                         ),
                         stacklevel=3,
                     )
+
+            # ---- 5. Probe 0 inside the FEED's own near field (issue #823)
+            # Checks 4/4a/4b all look DOWNSTREAM of the probes (a reflector,
+            # the absorber, another port's feed). None of them looks back at
+            # the port's OWN feed plane, which is itself a launch
+            # discontinuity: the field within a few substrate thicknesses of
+            # it is not the guided mode yet. ``add_msl_port`` has floored the
+            # AUTO offset to ``max(3, lam_cells, round(5*h_sub/dx))`` since
+            # issue #80 (Fix B), so this can only fire on an EXPLICIT offset
+            # — which is exactly the case nothing warned about.
+            #
+            # Measured (issue #823, settled attempt-3 run VESSL 369367257533):
+            # a probe 0.4 mm = 1.33*h_sub from the feed carried a two-wave
+            # model error of 82-128%, and the production matrix-pencil fit
+            # over a ladder containing it reported a residual of 0.22-0.34
+            # against the 0.02 the coax lane holds itself to; every window
+            # excluding it fit to 1e-5..4e-3. The decay length of that
+            # contamination measures 0.1932 mm against the substrate's own
+            # transverse-resonance scale 2h/pi = 0.19099 mm (1.1%) — see
+            # msl_source_near_field_standoff_cells for the full derivation
+            # and for why the 5*h_sub constant is the one that ships.
+            #
+            # REPORT-ONLY: no gate, no refusal. Same check family, same
+            # ``code=`` slug as checks 1/2/2b/2c/3/4 (the check-2c / #752
+            # precedent) — a new SITE, not a new advisory kind.
+            _nf_cells = msl_source_near_field_standoff_cells(h_sub, dx)
+            _nf_off = pe.n_probe_offset
+            if _nf_off is not None and int(_nf_off) < _nf_cells:
+                _nf_realized = int(_nf_off) * dx
+                _w.warn(
+                    PreflightWarning(
+                        f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                        f"n_probe_offset={int(_nf_off)} puts probe 0 "
+                        f"{_fmt_len(_nf_realized)} "
+                        f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
+                        f"OWN feed plane, inside the source near-field "
+                        f"standoff of {_nf_cells} cells "
+                        f"({_fmt_len(_nf_cells * dx)} = 5·h_sub, the issue-#80 "
+                        f"Fix B constant add_msl_port's auto offset already "
+                        f"floors to). Within a few substrate thicknesses of "
+                        f"the feed the launched field is not the guided mode "
+                        f"yet: the evanescent content decays with the "
+                        f"substrate's own transverse-resonance length "
+                        f"2·h_sub/π = {_fmt_len(2.0 * h_sub / math.pi)} for "
+                        f"THIS board (on the issue-#823 fixture, h_sub=300µm, "
+                        f"that length measured 0.1932mm against a predicted "
+                        f"0.19099mm — 1.1%). The decay LENGTH is a property of "
+                        f"the substrate; the near-feed AMPLITUDE is not, so no "
+                        f"error magnitude is predicted for your port here — "
+                        f"read result diagnostics (the two-wave fit residual, "
+                        f"and on the coax<->MSL lane the ladder-split witness) "
+                        f"rather than trusting this offset. For reference, the "
+                        f"#823 fixture's own measured amplitude (11.3 at the "
+                        f"feed plane) put {5.0:.0f}·h_sub at 4.4e-3 against the "
+                        f"0.02 two-wave residual bar this family holds itself "
+                        f"to, and {_nf_realized / h_sub:.2f}·h_sub at "
+                        f"{11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)):.1e}. "
+                        f"Set n_probe_offset >= {_nf_cells}, or leave it None "
+                        f"for the safe default. REPORT-ONLY: nothing is "
+                        f"refused, and the rule is derived from ONE fixture "
+                        f"at W/h = 2 — a much wider trace may need more (the "
+                        f"first higher-order microstrip mode scales with "
+                        f"W + 2·h, which one fixture cannot separate from h).",
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
 
     # ------------------------------------------------------------------
     # Issue #703: campaign statics checks. Four failure classes a month

@@ -1913,6 +1913,39 @@ class CoaxMSLTransitionResult:
         audit (issue #581 review finding B2) — e.g. to check each drive's
         own excitation actually reached a comparable amplitude before
         trusting ``cond_a``/``cond_a_equilibrated``.
+    ladder_split_gamma_dev, ladder_split_reflection_decades : (2, 2, n_freqs) float
+        LADDER SELF-CONSISTENCY WITNESS (issue #823), same
+        ``[port_array, drive, freq]`` indexing as ``fit_residual``/``gamma``
+        so the rows line up with those diagnostics. Each port's ladder is
+        refit on two DISJOINT CONTIGUOUS halves — ``idx[0:N//2]`` and
+        ``idx[N-N//2:N]``, so for odd ``N`` the middle probe belongs to
+        neither — with the SAME reference plane and the SAME extractor, and
+        the two fits are compared:
+        ``ladder_split_gamma_dev = |g_A - g_B| / (0.5*|g_A + g_B|)`` and
+        ``ladder_split_reflection_decades = |log10(|Gamma_A|/|Gamma_B|)|``.
+        ``NaN`` when a ladder has fewer than 6 probes (each half needs >= 3
+        planes for the matrix pencil) or when a half's ``|Gamma|`` is zero /
+        non-finite — NaN means "no witness", never "a small number".
+
+        Why it is here: ``fit_residual`` is computed over the WHOLE ladder,
+        and a residual computed over a window that includes garbage cannot
+        detect that the window is the problem. On the settled attempt-3 run
+        (VESSL 369367257533) the production 9-probe MSL ladder reports
+        ``fit_residual`` 0.342/0.264/0.222 — attributed for three attempts to
+        junction physics rather than to the ladder — while its two halves
+        disagree about ``|Gamma|`` by 4.379/4.487/4.321 DECADES; the
+        compliant 8-probe subset of the SAME dump disagrees by
+        0.005/0.001/0.002. (The "six orders" figure quoted on #823 is a
+        different, narrower comparison — the W3 table's ``msl[0:3]`` vs
+        ``msl[6:9]`` subsets, 6.386/6.856/7.170 decades. The witness's own
+        halves are wider windows and read 4.32-4.49; both say the same thing
+        and the committed number is the witness's.)
+
+        REPORT-ONLY: no gate, no refusal, no tolerance attached. The coax
+        stub's own ladder reads ``ladder_split_gamma_dev`` 0.11-0.34 on every
+        run of this family — the known 1 mm-span alpha-identification limit
+        (#589) — so a bar tight enough to catch the MSL ladder would refuse
+        the coax ladder for a different defect.
     settling_db : (2,) float
         Ring-down settling witness per drive (worst end/peak field-energy
         ratio, dB; above -40 dB = truncation suspect — see repo ring-down
@@ -1975,6 +2008,11 @@ class CoaxMSLTransitionResult:
     a_inc: np.ndarray
     b_out: np.ndarray
     settling_db: np.ndarray
+    # Issue #823 ladder self-consistency witness (report-only). Defaulted so
+    # the field addition cannot break a positional construction elsewhere;
+    # compute_coax_msl_transition always supplies both.
+    ladder_split_gamma_dev: np.ndarray | None = None
+    ladder_split_reflection_decades: np.ndarray | None = None
     status: str = "experimental"
     flux_monitors: dict | None = None
     ladder_voltages: dict | None = None
