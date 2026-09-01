@@ -195,7 +195,14 @@ Scope statement: the numbers these runs produce are dispatch evidence, not
 validated S-parameters. Run length (num_periods=20) is common to every
 compared arm, so truncation is common-mode; no ring-down witness is claimed
 or needed for a bit-identity/non-identity verdict, and none of these numbers
-may be quoted as physics. dz-graded waveguide S accuracy remains an OPEN
+may be quoted as physics. The fence is explicit in the committed JSONs
+themselves: every arm's `compute_warnings` carries the common-mode
+passivity self-check, quoted verbatim — "compute_waveguide_s_matrix:
+extracted S-matrix failed a passivity/finiteness self-check —
+passivity_violation: max column power 1.36422 exceeds limit 1.1 at
+driven port 0, frequency index 0" (1.35884 on the graded arms) — the
+truncation-artifact class the adjacent settling warning names, so any S
+value read out of these runs carries its own do-not-quote marker. dz-graded waveguide S accuracy remains an OPEN
 item (#810).
 
 ## Locked-value audit (bucket a)
