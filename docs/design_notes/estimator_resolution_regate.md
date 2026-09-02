@@ -570,3 +570,84 @@ live in the code. Fixed in place, window unchanged.
   a synthetic stdout is asserted to BE a row of the cv06b falsifier artifact
   (`test_cv06b_shallow_row_used_above_is_the_committed_artifact_row`).
 
+
+## 7. ROUND 2 REVIEW (appended 2026-09-02). Five blockers; no window moved.
+
+An independent reviewer re-derived every number above with its own NumPy against
+the committed artifacts (all agreed to the printed digits), reproduced criterion
+(B) for both cases from committed data, verified with git that every window was
+fixed in `0b018c8` before the commit that measured it, and traced the shallow-notch
+construction of section 6.1 to confirm no quantity from the judged sweep enters
+it. It returned FIX-THEN-SHIP with five blocking findings. Append-only; the sections
+above are not edited except where a sentence is named below as corrected in place.
+
+**7.1 (B1) The producer of cv06b's criterion (A) was not in the branch.**
+`scripts/vessl_cv06b_estimator_falsifiers.yaml` existed on disk but was untracked
+(`.gitignore` ignores `vessl*.yaml`; the seventeen other job files are force-added
+by convention) while six committed documents named it as what "will judge" (A).
+Force-added. Its two dry runs are recorded in 7.6.
+
+**7.2 (B3) "A bin-quantised estimator cannot pass the half-grid witness" was false
+on cv06b's own sweep.** The witness measured the two sub-grid estimates' spread in
+units of the GLOBAL bin `f[1]-f[0]`; cv06b's frequency axis is float32, whose local
+spacing differs from the global one at ~1e-6 relative, so a bare argmin could read
+0.99999 against the `< 1.000` threshold and pass. Sections 2, 3 (T3), 5.3 (D) and the
+two case docstrings all asserted the opposite. The fix is structural, not a
+threshold change: `half_grid_witness()` now measures the spread in the LOCAL bin
+between the two argmin bins themselves, so adjacent argmin bins score exactly 1.0 in
+floating point (numerator and denominator are the same float subtraction). The
+threshold stays at the pre-declared 1.000. Measured on a float32 axis with a notch
+placed at every interior bin:
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.float32_axis_sweep.n_positions = 98` positions,
+of which the old unit let
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.float32_axis_sweep.global_unit_n_below_one = 50`
+through (worst
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.float32_axis_sweep.global_unit_min_ratio = 0.999994`)
+and the new unit
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.float32_axis_sweep.local_unit_n_below_one = 0`
+(every position reads
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.float32_axis_sweep.local_unit_min_ratio = 1.0`).
+Locked by `test_half_grid_witness_is_unpassable_by_a_bare_argmin_on_a_float32_axis`.
+The committed cv07 legs are float64 and were never exposed; their C7 readings are
+unchanged (`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.rfx.witness_upper.spread_bins = 0.5213`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.openems.witness_upper.spread_bins = 0.1192`). cv06b's sibling
+reading moved in the sixth decimal
+(`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_A_baseline.witness_bins = 0.603663`) and the quantised replay now reads
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_D_quantised_estimator.witness_bins = 1.0` exactly.
+
+**7.3 (B4) "Factored out of the referee producers so they cannot drift apart" was
+false.** `build_sheen_lpf_palace_referee.py` and `build_msl_notch_palace_referee.py`
+still carried their own `_min_in_window` / `_notch` replicas, differing from the
+shared `refined_extremum()` in edge behaviour (no ±1-bin clamp, no non-positive-
+curvature guard, no window in `_notch`). Both producers now import the shared
+function; both `build_referee()` outputs reproduce the committed referee blocks
+field-for-field (checked at 1e-12 before commit, and the fixture values the unit
+tests lock are unchanged to their six decimals). The sentence in section 2 is now
+true rather than reworded.
+
+**7.4 (B5) One wrong number in the T2 derivation.** Section 3 and the cv06b source
+comment said the ±20 % window "fires at `r >= 1.28`". Correct value: ratio 1.2 ⇔
+`atan(r/6) = 1.2·atan(1/6)` ⇒ `r = 1.205`. The lower edge (0.797) was right and the
+window itself is unaffected. Corrected in place at both sites.
+
+**7.5 Non-blocking, closed.** The alias citations in section 6 (an alias, a double colon, a key) did not
+parse under the #829 gate and are rewritten in full form with values (18 references
+resolve, 0 fail); the four `fc6ca0a` hashes were unreachable after the rebase and now
+read `0b018c8`; "bit-for-bit" reads "to the 6 decimals the fixture stores"
+(`round(…, 6)` on both sides); the cv06b docstring's "G4 is an in-run proof" label
+now says G3; "a leg carrying one of the two zeros" now says "missing"; the 67.4 MHz
+bin is stated with its `f0` (67.7 MHz at the paragraph's own 3.6424 GHz); section
+5.1's eight lock numbers are now artifact keys
+(`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.rfx.lower.refined_ghz = 6.943990`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.rfx.upper.refined_ghz = 7.925928`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.openems.lower.refined_ghz = 7.030670`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.openems.upper.refined_ghz = 7.994749`) with the shifts stated
+against the bin argmin the old gate read
+(`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.rfx.lower.shift_pct_vs_bin_argmin = 0.773`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.locks.rfx.upper.shift_pct_vs_bin_argmin = 0.660` — section 5.1's
+"+0.766 %" used the refined value as denominator). Two review observations are
+recorded, not changed: C4/C6's "(A) with margin" is tautological (the lock is the same
+estimator's output on the same committed leg), so only C5 and C7 carry non-trivial (A)
+content for cv07; and `cv06b_shallow_stub_model.py` uses the Hammerstad–Bekkadal
+coefficients (u+0.262)/(u+0.813) where T1 wrote (u+0.264)/(u+0.8), a ~0.5 % difference
+on a 0.886 % term.
