@@ -118,7 +118,7 @@ re-derivable from the file it cites.
 are functions of the DECLARED constants only (`eps_r`, `h`, `a`, `b`, the
 extraction band) through the closed form in §2 — re-derivable with
 `identification_tolerance(members_in_band(declared_cavity_spectrum(...)))` and
-pinned by `tests/test_patch_mode_identification.py`. No measured frequency
+pinned by `tests/crossval/test_patch_mode_identification.py`. No measured frequency
 enters them. Baseline characterisation runs of both cases were made before this
 note (they are what established that cv05's ring-down does **not** contain the
 TM010 cross mode, §6.1); they are recorded below, and they did not set any

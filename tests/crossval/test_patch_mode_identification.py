@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPARATORS = REPO_ROOT / "validation" / "crossval" / "comparators"
 CV15_PATH = REPO_ROOT / "validation" / "crossval" / "15_patch_antenna_rt5880.py"
 sys.path.insert(0, str(COMPARATORS))

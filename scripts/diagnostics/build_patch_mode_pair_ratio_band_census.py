@@ -17,7 +17,7 @@ NO FDTD.  It post-processes ``tests/fixtures/patch_mode_identification/
 cv15_ringdown_spectra.json`` (the committed live reproduction of the #740
 realization through cv15's production builder) plus cv15's own declared
 constants.  Every value it writes is re-derived and pinned by
-``tests/test_patch_mode_identification.py``.
+``tests/crossval/test_patch_mode_identification.py``.
 
 Usage::
 

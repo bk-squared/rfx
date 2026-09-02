@@ -9,7 +9,7 @@
   "platform": "CPU"
  },
  "two_plane_ground": {
-  "source": "cv15 build_rfx_sim(two_plane=True) at repo commit 5b6db32, num_periods=45.0 n_freqs=181 --gain (the committed leg's own command). The committed leg validation/crossval/_15_patch_results/rfx.json carries no mode list; its f_harminv_hz agrees with this run's to better than 1e-7 relative -- bound asserted by tests/test_patch_mode_identification.py::test_cv15_reproduction_ringdown_matches_the_committed_leg",
+  "source": "cv15 build_rfx_sim(two_plane=True) at repo commit 5b6db32, num_periods=45.0 n_freqs=181 --gain (the committed leg's own command). The committed leg validation/crossval/_15_patch_results/rfx.json carries no mode list; its f_harminv_hz agrees with this run's to better than 1e-7 relative -- bound asserted by tests/crossval/test_patch_mode_identification.py::test_cv15_reproduction_ringdown_matches_the_committed_leg",
   "f_harminv_hz": 2313947494.5435557,
   "modes": [
    {
