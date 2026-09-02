@@ -172,7 +172,7 @@ uniform-flip attempt:
        4.034 (pec).
     2. `tests/unit/sparams/test_wire_sparam.py::test_wire_port_jit_scan_s11_passivity`
        — xfail(strict) keyed; interim measured max|S11| 5.769.
-    3. `tests/unit/sparams/test_lumped_wire_sparam_cpml_dielectric.py::test_wire_port_sparam_cpml_dielectric_finite_passive`
+    3. `tests/unit/boundaries/test_cpml_material_aware.py::test_wire_port_sparam_cpml_dielectric_finite_passive`
        — passivity bound suspended, interim envelope 6.1968*1.10; the
        #203 finiteness guard stays live.
     4. `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::test_thru_s11_floor`
