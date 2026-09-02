@@ -1,0 +1,9 @@
+...........................ssssss                                        [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx.json (VESSL run pending)
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx__falsifier_extent_plus_one_fine_cell.json (VESSL run pending)
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx__falsifier_grading_at_wall.json (VESSL run pending)
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx__falsifier_metric_defect.json (VESSL run pending)
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx__falsifier_mode_count_drop_te102.json (VESSL run pending)
+SKIPPED [1] tests/test_cv24_nu_cavity_gates.py:463: cv24 artifact absent: validation/crossval/_24_nu_cavity_results/rfx__falsifier_ratio2_abrupt.json (VESSL run pending)
+27 passed, 6 skipped in 0.87s

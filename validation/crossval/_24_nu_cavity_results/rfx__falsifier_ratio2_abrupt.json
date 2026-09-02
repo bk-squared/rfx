@@ -1,0 +1,1747 @@
+{
+ "schema": "rfx.cv24_nu_rect_cavity_pozar.v1",
+ "case_id": "24_nu_rect_cavity_pozar",
+ "commit": "83b0756ed9ecd144fab040251f65189afdd6a835",
+ "date_utc": "2026-09-02T14:04:15+00:00",
+ "falsifier": "ratio2_abrupt",
+ "smoke": false,
+ "tag": null,
+ "declared": {
+  "a_m": 0.05,
+  "b_m": 0.03,
+  "d_m": 0.04,
+  "band_hz": [
+   4000000000.0,
+   8500000000.0
+  ],
+  "modes": [
+   {
+    "name": "TE101",
+    "mnl": [
+     1,
+     0,
+     1
+    ],
+    "f_hz": 4799020885.048423
+   },
+   {
+    "name": "TM110",
+    "mnl": [
+     1,
+     1,
+     0
+    ],
+    "f_hz": 5826918003.451434
+   },
+   {
+    "name": "TE011",
+    "mnl": [
+     0,
+     1,
+     1
+    ],
+    "f_hz": 6245676208.333334
+   },
+   {
+    "name": "TM111",
+    "mnl": [
+     1,
+     1,
+     1
+    ],
+    "f_hz": 6927916215.335548
+   },
+   {
+    "name": "TE201",
+    "mnl": [
+     2,
+     0,
+     1
+    ],
+    "f_hz": 7070590980.76218
+   },
+   {
+    "name": "TM210",
+    "mnl": [
+     2,
+     1,
+     0
+    ],
+    "f_hz": 7804846493.112532
+   },
+   {
+    "name": "TE102",
+    "mnl": [
+     1,
+     0,
+     2
+    ],
+    "f_hz": 8072158971.329744
+   }
+  ],
+  "w_est": 4e-06,
+  "ratio_cap": 1.4,
+  "r_wall_cells": 4,
+  "fs1_k": 20.0,
+  "cv14_tol": [
+   0.01,
+   0.02
+  ]
+ },
+ "arms": {
+  "uniform": {
+   "name": "uniform",
+   "lane": "uniform",
+   "dx": 0.001,
+   "profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "nodes": [
+    51,
+    31,
+    41
+   ],
+   "cells": [
+    50,
+    30,
+    40
+   ],
+   "n_cells": 60000,
+   "realized_d_m": 0.04,
+   "dt": 1.9065748695310057e-12,
+   "n_steps": 16794,
+   "record": {
+    "df_min_hz": 142674765.42663193,
+    "closest_pair": [
+     "TM111",
+     "TE201"
+    ],
+    "t_post_s": 3.1540265628220354e-08,
+    "t_start_s": 4.77464829275686e-10,
+    "n_start": 251,
+    "n_steps": 16794,
+    "dt": 1.9065748695310057e-12,
+    "n_sub": 11029,
+    "pair_units_full": 4.455000000000001,
+    "pair_units_sub": 2.9700000000000006
+   },
+   "preflight": [
+    "  [PREFLIGHT] All checks passed."
+   ],
+   "metric_swap": false,
+   "search_band_hz": [
+    4000000000.0,
+    8500000000.0
+   ],
+   "measured": {
+    "per_mode": {
+     "TE101": {
+      "f_hz": 4798620984.719757,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 0.0006165167935786657,
+      "error_max": 1.3069961779521577e-08
+     },
+     "TM110": {
+      "f_hz": 5825890095.150942,
+      "n_lines": 1,
+      "channels": [
+       "ez"
+      ],
+      "amp_max": 0.0005578096095607718,
+      "error_max": 8.888955682628819e-09
+     },
+     "TE011": {
+      "f_hz": 6244727276.861334,
+      "n_lines": 1,
+      "channels": [
+       "ex"
+      ],
+      "amp_max": 0.0004492369243079374,
+      "error_max": 4.1370011860664135e-09
+     },
+     "TM111": {
+      "f_hz": 6927520306.002395,
+      "n_lines": 3,
+      "channels": [
+       "ex",
+       "ey",
+       "ez"
+      ],
+      "amp_max": 0.0003315510680286656,
+      "error_max": 1.667236360081148e-07
+     },
+     "TE201": {
+      "f_hz": 7068847205.616574,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 0.00016824910248643696,
+      "error_max": 1.9848086507678886e-08
+     },
+     "TM210": {
+      "f_hz": 7803195765.821351,
+      "n_lines": 1,
+      "channels": [
+       "ez"
+      ],
+      "amp_max": 0.00013820892387804244,
+      "error_max": 1.194777726754026e-07
+     },
+     "TE102": {
+      "f_hz": 8067960136.21369,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 9.911622294843942e-05,
+      "error_max": 3.09336238846214e-08
+     }
+    },
+    "n_clusters_in_band": 7,
+    "orphans": [],
+    "ambiguous": [],
+    "stationarity": {
+     "TE101": 8.07638972567181e-09,
+     "TM110": 5.2704767044230826e-08,
+     "TE011": 2.237091880423147e-08,
+     "TM111": 6.26575041656587e-08,
+     "TE201": 3.0506791809741964e-08,
+     "TM210": 1.1543419698814544e-07,
+     "TE102": 2.8838675799047446e-08
+    },
+    "windows": {
+     "full": {
+      "steps": [
+       251,
+       16794
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798620984.719757,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.0006165167935786657,
+        "error_max": 1.3069961779521577e-08
+       },
+       "TM110": {
+        "f_hz": 5825890095.150942,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.0005578096095607718,
+        "error_max": 8.888955682628819e-09
+       },
+       "TE011": {
+        "f_hz": 6244727276.861334,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 0.0004492369243079374,
+        "error_max": 4.1370011860664135e-09
+       },
+       "TM111": {
+        "f_hz": 6927520306.002395,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 0.0003315510680286656,
+        "error_max": 1.667236360081148e-07
+       },
+       "TE201": {
+        "f_hz": 7068847205.616574,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.00016824910248643696,
+        "error_max": 1.9848086507678886e-08
+       },
+       "TM210": {
+        "f_hz": 7803195765.821351,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.00013820892387804244,
+        "error_max": 1.194777726754026e-07
+       },
+       "TE102": {
+        "f_hz": 8067960136.21369,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 9.911622294843942e-05,
+        "error_max": 3.09336238846214e-08
+       }
+      }
+     },
+     "A": {
+      "steps": [
+       251,
+       11279
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798621293.950386,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.0006162380326577173,
+        "error_max": 3.8937608692890535e-10
+       },
+       "TM110": {
+        "f_hz": 5825888754.843991,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.000559034681003017,
+        "error_max": 1.8006633961675789e-09
+       },
+       "TE011": {
+        "f_hz": 6244728031.740266,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 0.00044870203251969336,
+        "error_max": 2.5024018412977966e-09
+       },
+       "TM111": {
+        "f_hz": 6927522950.77296,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 0.0003311982971084991,
+        "error_max": 1.1568753288671019e-07
+       },
+       "TE201": {
+        "f_hz": 7068847633.627587,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.00016874263296800014,
+        "error_max": 3.428044514919293e-10
+       },
+       "TM210": {
+        "f_hz": 7803195716.700983,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.00014047090414645542,
+        "error_max": 2.1769374081159754e-09
+       },
+       "TE102": {
+        "f_hz": 8067963632.15795,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 9.984292226383969e-05,
+        "error_max": 7.312240812851201e-09
+       }
+      }
+     },
+     "B": {
+      "steps": [
+       5765,
+       16794
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798621332.705919,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.0006174176800027186,
+        "error_max": 2.9250251110113368e-09
+       },
+       "TM110": {
+        "f_hz": 5825889061.896172,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.0005577667866110828,
+        "error_max": 4.741489423309986e-10
+       },
+       "TE011": {
+        "f_hz": 6244727892.039979,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 0.00045192016049802597,
+        "error_max": 1.2481935485197937e-09
+       },
+       "TM111": {
+        "f_hz": 6927523384.834092,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 0.0003344668374561368,
+        "error_max": 7.794700473962024e-08
+       },
+       "TE201": {
+        "f_hz": 7068847417.979737,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.00016953118753532408,
+        "error_max": 5.123693469499813e-09
+       },
+       "TM210": {
+        "f_hz": 7803196617.45662,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 0.00013534787480846814,
+        "error_max": 3.725397768050698e-11
+       },
+       "TE102": {
+        "f_hz": 8067963399.488664,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 0.00010279964447995751,
+        "error_max": 2.1890635970578387e-09
+       }
+      }
+     }
+    },
+    "energy": {
+     "E0": 2.988380848202316e-16,
+     "max_drift": 2.7324208440849528e-08,
+     "drift_at_end": 8.435007492958204e-10,
+     "n_end": 16500,
+     "envelope_at_end": 0.000153127104981722,
+     "envelope_breach": false,
+     "n_breach_first": null,
+     "trend_slope": null,
+     "trend_evaluated": false,
+     "trend_breach": false,
+     "fs1_fired": false,
+     "sample_every": 500,
+     "n_steps": 16500,
+     "nodes": [
+      51,
+      31,
+      41
+     ],
+     "energies": [
+      2.988640181396363e-16,
+      2.988380848202316e-16,
+      2.988380832120926e-16,
+      2.988380825624961e-16,
+      2.988380843510609e-16,
+      2.988380844877592e-16,
+      2.9883808250882034e-16,
+      2.9883808251585866e-16,
+      2.9883808200626827e-16,
+      2.9883808241043184e-16,
+      2.988380859821596e-16,
+      2.9883808588878625e-16,
+      2.988380865992411e-16,
+      2.988380875525976e-16,
+      2.988380873116872e-16,
+      2.9883808811772975e-16,
+      2.988380891441277e-16,
+      2.988380881105731e-16,
+      2.9883809040082357e-16,
+      2.9883809252107806e-16,
+      2.9883809014474265e-16,
+      2.988380884195285e-16,
+      2.9883808483233737e-16,
+      2.9883808707635733e-16,
+      2.9883808881625957e-16,
+      2.9883809020494802e-16,
+      2.9883809298574573e-16,
+      2.9883808752437836e-16,
+      2.9883808847176263e-16,
+      2.9883808902431695e-16,
+      2.988380868333777e-16,
+      2.988380872140752e-16,
+      2.988380845953198e-16,
+      2.9883808456816146e-16
+     ],
+     "steps": [
+      0,
+      500,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      3500,
+      4000,
+      4500,
+      5000,
+      5500,
+      6000,
+      6500,
+      7000,
+      7500,
+      8000,
+      8500,
+      9000,
+      9500,
+      10000,
+      10500,
+      11000,
+      11500,
+      12000,
+      12500,
+      13000,
+      13500,
+      14000,
+      14500,
+      15000,
+      15500,
+      16000,
+      16500
+     ],
+     "kernel": "rfx.nonuniform._build_nu_scan (production NU step_fn) on the arm's grid"
+    }
+   },
+   "cost": {
+    "n_cells": 60000,
+    "n_steps": 16794,
+    "cell_steps": 1007640000,
+    "wall_run_s": 3.7714693546295166,
+    "wall_harminv_s": 19.37875747680664,
+    "wall_energy_s": 4.087745666503906
+   },
+   "declared_profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "ratio2_abrupt": {
+   "name": "ratio2_abrupt",
+   "lane": "nonuniform",
+   "dx": 0.001,
+   "profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "nodes": [
+    51,
+    31,
+    46
+   ],
+   "cells": [
+    50,
+    30,
+    45
+   ],
+   "n_cells": 67500,
+   "realized_d_m": 0.04000000000000001,
+   "dt": 1.348152019085202e-12,
+   "n_steps": 23751,
+   "record": {
+    "df_min_hz": 142674765.42663193,
+    "closest_pair": [
+     "TM111",
+     "TE201"
+    ],
+    "t_post_s": 3.1540265628220354e-08,
+    "t_start_s": 4.77464829275686e-10,
+    "n_start": 355,
+    "n_steps": 23751,
+    "dt": 1.3481520190852313e-12,
+    "n_sub": 15597,
+    "pair_units_full": 4.455000000000001,
+    "pair_units_sub": 2.9700000000000006
+   },
+   "preflight": [
+    "  [PREFLIGHT] dz_profile max adjacent cell ratio 2.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+    "nu_grading_ratio_beyond_validated_cap"
+   ],
+   "metric_swap": false,
+   "search_band_hz": [
+    4000000000.0,
+    8500000000.0
+   ],
+   "measured": {
+    "per_mode": {
+     "TE101": {
+      "f_hz": 4798313385.240516,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 132758.82740770778,
+      "error_max": 4.4310555225024473e-10
+     },
+     "TM110": {
+      "f_hz": 5825297839.936951,
+      "n_lines": 1,
+      "channels": [
+       "ez"
+      ],
+      "amp_max": 120105.835201928,
+      "error_max": 6.257261375708367e-11
+     },
+     "TE011": {
+      "f_hz": 6244017089.546765,
+      "n_lines": 1,
+      "channels": [
+       "ex"
+      ],
+      "amp_max": 96743.98941597335,
+      "error_max": 5.08229458517917e-10
+     },
+     "TM111": {
+      "f_hz": 6926544513.696611,
+      "n_lines": 3,
+      "channels": [
+       "ex",
+       "ey",
+       "ez"
+      ],
+      "amp_max": 71406.23954238636,
+      "error_max": 3.225855149668888e-08
+     },
+     "TE201": {
+      "f_hz": 7067806571.77118,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 36258.122232848946,
+      "error_max": 2.674229837573705e-09
+     },
+     "TM210": {
+      "f_hz": 7801775294.138509,
+      "n_lines": 1,
+      "channels": [
+       "ez"
+      ],
+      "amp_max": 29782.214378558812,
+      "error_max": 1.9045682808638276e-09
+     },
+     "TE102": {
+      "f_hz": 8065449370.772416,
+      "n_lines": 1,
+      "channels": [
+       "ey"
+      ],
+      "amp_max": 21421.07898522066,
+      "error_max": 1.0738070765903274e-08
+     }
+    },
+    "n_clusters_in_band": 7,
+    "orphans": [],
+    "ambiguous": [],
+    "stationarity": {
+     "TE101": 2.8134367239389353e-09,
+     "TM110": 6.556525553079546e-08,
+     "TE011": 2.1908824280496828e-08,
+     "TM111": 1.9805107920352472e-08,
+     "TE201": 1.593964397340729e-08,
+     "TM210": 1.0274416624793983e-07,
+     "TE102": 4.4182783920091166e-08
+    },
+    "windows": {
+     "full": {
+      "steps": [
+       355,
+       23751
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798313385.240516,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 132758.82740770778,
+        "error_max": 4.4310555225024473e-10
+       },
+       "TM110": {
+        "f_hz": 5825297839.936951,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 120105.835201928,
+        "error_max": 6.257261375708367e-11
+       },
+       "TE011": {
+        "f_hz": 6244017089.546765,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 96743.98941597335,
+        "error_max": 5.08229458517917e-10
+       },
+       "TM111": {
+        "f_hz": 6926544513.696611,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 71406.23954238636,
+        "error_max": 3.225855149668888e-08
+       },
+       "TE201": {
+        "f_hz": 7067806571.77118,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 36258.122232848946,
+        "error_max": 2.674229837573705e-09
+       },
+       "TM210": {
+        "f_hz": 7801775294.138509,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 29782.214378558812,
+        "error_max": 1.9045682808638276e-09
+       },
+       "TE102": {
+        "f_hz": 8065449370.772416,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 21421.07898522066,
+        "error_max": 1.0738070765903274e-08
+       }
+      }
+     },
+     "A": {
+      "steps": [
+       355,
+       15951
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798313425.088864,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 132666.26458822712,
+        "error_max": 3.857101305015931e-10
+       },
+       "TM110": {
+        "f_hz": 5825297626.833657,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 120373.19795243643,
+        "error_max": 2.4444590795980048e-09
+       },
+       "TE011": {
+        "f_hz": 6244017173.187459,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 96570.31159911484,
+        "error_max": 3.094000611270076e-10
+       },
+       "TM111": {
+        "f_hz": 6926544461.200413,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 71267.62190118732,
+        "error_max": 7.861415241006142e-08
+       },
+       "TE201": {
+        "f_hz": 7067806726.984991,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 36344.93120768094,
+        "error_max": 2.560726408695757e-09
+       },
+       "TM210": {
+        "f_hz": 7801775190.127762,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 30230.83144465124,
+        "error_max": 4.771774864131828e-09
+       },
+       "TE102": {
+        "f_hz": 8065450032.930786,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 21458.743872315674,
+        "error_max": 5.0370307924652025e-09
+       }
+      }
+     },
+     "B": {
+      "steps": [
+       8153,
+       23751
+      ],
+      "n_clusters_in_band": 7,
+      "per_mode": {
+       "TE101": {
+        "f_hz": 4798313438.588615,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 132962.1553397136,
+        "error_max": 3.1763018881747485e-09
+       },
+       "TM110": {
+        "f_hz": 5825298008.770799,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 120086.07353568575,
+        "error_max": 3.7085161608274575e-09
+       },
+       "TE011": {
+        "f_hz": 6244017036.388386,
+        "n_lines": 1,
+        "channels": [
+         "ex"
+        ],
+        "amp_max": 97330.29105360144,
+        "error_max": 1.4262492298300344e-09
+       },
+       "TM111": {
+        "f_hz": 6926544598.381374,
+        "n_lines": 3,
+        "channels": [
+         "ex",
+         "ey",
+         "ez"
+        ],
+        "amp_max": 72014.59587376115,
+        "error_max": 6.330997370795899e-08
+       },
+       "TE201": {
+        "f_hz": 7067806614.326671,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 36561.21965983578,
+        "error_max": 3.341173338000658e-09
+       },
+       "TM210": {
+        "f_hz": 7801775991.71466,
+        "n_lines": 1,
+        "channels": [
+         "ez"
+        ],
+        "amp_max": 29158.497876115987,
+        "error_max": 1.257493542627941e-08
+       },
+       "TE102": {
+        "f_hz": 8065449676.576779,
+        "n_lines": 1,
+        "channels": [
+         "ey"
+        ],
+        "amp_max": 22218.209855700607,
+        "error_max": 1.0377669834582548e-09
+       }
+      }
+     }
+    },
+    "energy": {
+     "E0": 1.4646951058502793e-16,
+     "max_drift": 4.0378451546164476e-08,
+     "drift_at_end": 3.647706518854537e-08,
+     "n_end": 23500,
+     "envelope_at_end": 0.0001827443804354178,
+     "envelope_breach": false,
+     "n_breach_first": null,
+     "trend_slope": null,
+     "trend_evaluated": false,
+     "trend_breach": false,
+     "fs1_fired": false,
+     "sample_every": 500,
+     "n_steps": 23500,
+     "nodes": [
+      51,
+      31,
+      46
+     ],
+     "energies": [
+      1.464882774477187e-16,
+      1.4646951058502793e-16,
+      1.464695093935581e-16,
+      1.4646950971110477e-16,
+      1.4646950975653902e-16,
+      1.4646950982747369e-16,
+      1.4646950920444946e-16,
+      1.4646951005426476e-16,
+      1.4646950856300218e-16,
+      1.4646950873178163e-16,
+      1.4646950924993627e-16,
+      1.4646950776741934e-16,
+      1.4646950688875096e-16,
+      1.4646950860848396e-16,
+      1.4646950817308924e-16,
+      1.4646950894974158e-16,
+      1.4646950862050097e-16,
+      1.4646950849760872e-16,
+      1.4646950644608753e-16,
+      1.464695074439912e-16,
+      1.4646950766780633e-16,
+      1.464695076808035e-16,
+      1.4646950613664348e-16,
+      1.4646950564058496e-16,
+      1.4646950505024958e-16,
+      1.4646950503097613e-16,
+      1.464695049965106e-16,
+      1.464695053951828e-16,
+      1.464695046708159e-16,
+      1.4646950515495933e-16,
+      1.46469506067452e-16,
+      1.4646950514281625e-16,
+      1.4646950641486299e-16,
+      1.4646950700145867e-16,
+      1.464695049827938e-16,
+      1.464695048174926e-16,
+      1.4646950590249418e-16,
+      1.4646950506705548e-16,
+      1.4646950502781228e-16,
+      1.4646950525429038e-16,
+      1.4646950582668635e-16,
+      1.4646950571853544e-16,
+      1.4646950592964798e-16,
+      1.464695067066147e-16,
+      1.464695071252738e-16,
+      1.464695071533704e-16,
+      1.464695049288743e-16,
+      1.4646950524225005e-16
+     ],
+     "steps": [
+      0,
+      500,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      3500,
+      4000,
+      4500,
+      5000,
+      5500,
+      6000,
+      6500,
+      7000,
+      7500,
+      8000,
+      8500,
+      9000,
+      9500,
+      10000,
+      10500,
+      11000,
+      11500,
+      12000,
+      12500,
+      13000,
+      13500,
+      14000,
+      14500,
+      15000,
+      15500,
+      16000,
+      16500,
+      17000,
+      17500,
+      18000,
+      18500,
+      19000,
+      19500,
+      20000,
+      20500,
+      21000,
+      21500,
+      22000,
+      22500,
+      23000,
+      23500
+     ],
+     "kernel": "rfx.nonuniform._build_nu_scan (production NU step_fn) on the arm's grid"
+    }
+   },
+   "cost": {
+    "n_cells": 67500,
+    "n_steps": 23751,
+    "cell_steps": 1603192500,
+    "wall_run_s": 5.931441307067871,
+    "wall_harminv_s": 61.40600609779358,
+    "wall_energy_s": 5.332383632659912
+   },
+   "declared_profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  }
+ },
+ "evaluations": {
+  "uniform": {
+   "rows": {
+    "TE101": {
+     "mnl": [
+      1,
+      0,
+      1
+     ],
+     "f_pozar_hz": 4799020885.048423,
+     "f_lattice_hz": 4798621473.592679,
+     "f_spatial_lattice_hz": 4797960798.758878,
+     "pred_dev_lattice": -8.322769692215015e-05,
+     "pred_dev_spatial": -0.00022089636926725387,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 4798620984.719757,
+     "dev_raw": -8.332956622703058e-05,
+     "dev_spatial": -0.00022099819649745722,
+     "resid_lattice": -1.0187778398673686e-07,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 8.07638972567181e-09,
+     "stationarity_ok": true
+    },
+    "TM110": {
+     "mnl": [
+      1,
+      1,
+      0
+     ],
+     "f_pozar_hz": 5826918003.451434,
+     "f_lattice_hz": 5825889185.017622,
+     "f_spatial_lattice_hz": 5824706915.64011,
+     "pred_dev_lattice": -0.0001765630532646334,
+     "pred_dev_spatial": -0.0003794609448793951,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 5825890095.150942,
+     "dev_raw": -0.00017640685863151706,
+     "dev_spatial": -0.0003793048453337722,
+     "resid_lattice": 1.5622221627431543e-07,
+     "channels": [
+      "ez"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 5.2704767044230826e-08,
+     "stationarity_ok": true
+    },
+    "TE011": {
+     "mnl": [
+      0,
+      1,
+      1
+     ],
+     "f_pozar_hz": 6245676208.333334,
+     "f_lattice_hz": 6244728211.900944,
+     "f_spatial_lattice_hz": 6243272194.827108,
+     "pred_dev_lattice": -0.0001517844346662356,
+     "pred_dev_spatial": -0.000384908443223142,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 6244727276.861334,
+     "dev_raw": -0.00015193414457415066,
+     "dev_spatial": -0.00038505804841704183,
+     "resid_lattice": -1.4973263495754452e-07,
+     "channels": [
+      "ex"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 2.237091880423147e-08,
+     "stationarity_ok": true
+    },
+    "TM111": {
+     "mnl": [
+      1,
+      1,
+      1
+     ],
+     "f_pozar_hz": 6927916215.335548,
+     "f_lattice_hz": 6927523290.4661255,
+     "f_spatial_lattice_hz": 6925535581.391303,
+     "pred_dev_lattice": -5.671616936608892e-05,
+     "pred_dev_spatial": -0.00034362914767582797,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 6927520306.002395,
+     "dev_raw": -5.7146957446962965e-05,
+     "dev_spatial": -0.0003440595649610856,
+     "resid_lattice": -4.308125148844155e-07,
+     "channels": [
+      "ex",
+      "ey",
+      "ez"
+     ],
+     "n_lines": 3,
+     "lattice_ok": true,
+     "stationarity": 6.26575041656587e-08,
+     "stationarity_ok": true
+    },
+    "TE201": {
+     "mnl": [
+      2,
+      0,
+      1
+     ],
+     "f_pozar_hz": 7070590980.76218,
+     "f_lattice_hz": 7068847723.914111,
+     "f_spatial_lattice_hz": 7066735873.395805,
+     "pred_dev_lattice": -0.0002465503736267527,
+     "pred_dev_spatial": -0.0005452312793745584,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 7068847205.616574,
+     "dev_raw": -0.000246623676910529,
+     "dev_spatial": -0.0005453045169631077,
+     "resid_lattice": -7.332136109372556e-08,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 3.0506791809741964e-08,
+     "stationarity_ok": true
+    },
+    "TM210": {
+     "mnl": [
+      2,
+      1,
+      0
+     ],
+     "f_pozar_hz": 7804846493.112532,
+     "f_lattice_hz": 7803195744.801631,
+     "f_spatial_lattice_hz": 7800355038.779835,
+     "pred_dev_lattice": -0.0002115029824555359,
+     "pred_dev_spatial": -0.000575469913041915,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 7803195765.821351,
+     "dev_raw": -0.00021150028929295406,
+     "dev_spatial": -0.000575467222820536,
+     "resid_lattice": 2.693732348291178e-09,
+     "channels": [
+      "ez"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 1.1543419698814544e-07,
+     "stationarity_ok": true
+    },
+    "TE102": {
+     "mnl": [
+      1,
+      0,
+      2
+     ],
+     "f_pozar_hz": 8072158971.329744,
+     "f_lattice_hz": 8067963977.959622,
+     "f_spatial_lattice_hz": 8064824211.358235,
+     "pred_dev_lattice": -0.0005196866643758513,
+     "pred_dev_spatial": -0.0009086490984084872,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 8067960136.21369,
+     "dev_raw": -0.000520162589831008,
+     "dev_spatial": -0.0009091244682669641,
+     "resid_lattice": -4.7617291587531696e-07,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "stationarity": 2.8838675799047446e-08,
+     "stationarity_ok": true
+    }
+   },
+   "gates": {
+    "cv14_te101": true,
+    "cv14_higher": true,
+    "allowance": true,
+    "lattice": true,
+    "mode_count": true,
+    "stationarity": true,
+    "energy": true,
+    "envelope": true,
+    "extent": true
+   },
+   "ok": true,
+   "w_est": 4e-06,
+   "envelope": {
+    "ok": true,
+    "violations": [],
+    "max_ratio": 1.0,
+    "n_fine_bands": 0,
+    "n_transitions": 0,
+    "n_cells": 40,
+    "extent_m": 0.04
+   },
+   "realized_d_m": 0.04,
+   "declared_d_m": 0.04,
+   "n_clusters_in_band": 7,
+   "n_declared": 7,
+   "search_band_hz": [
+    4000000000.0,
+    8500000000.0
+   ],
+   "dt": 1.9065748695310057e-12,
+   "dxy": 0.001,
+   "profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "ratio2_abrupt": {
+   "rows": {
+    "TE101": {
+     "mnl": [
+      1,
+      0,
+      1
+     ],
+     "f_pozar_hz": 4799020885.048423,
+     "f_lattice_hz": 4798313391.42321,
+     "f_spatial_lattice_hz": 4797983110.805355,
+     "pred_dev_lattice": -0.0001474245772542515,
+     "pred_dev_spatial": -0.00021624707787815112,
+     "allowance": 0.00022865524040960075,
+     "found": true,
+     "f_meas_hz": 4798313385.240516,
+     "dev_raw": -0.00014742586557836557,
+     "dev_spatial": -0.00021624836593614472,
+     "resid_lattice": -1.2885140732166178e-09,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.000453653436907058,
+     "allowance_ok": true,
+     "stationarity": 2.8134367239389353e-09,
+     "stationarity_ok": true
+    },
+    "TM110": {
+     "mnl": [
+      1,
+      1,
+      0
+     ],
+     "f_pozar_hz": 5826918003.451434,
+     "f_lattice_hz": 5825297888.349839,
+     "f_spatial_lattice_hz": 5824706915.64011,
+     "pred_dev_lattice": -0.00027803979747698104,
+     "pred_dev_spatial": -0.0003794609448793951,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 5825297839.936951,
+     "dev_raw": -0.0002780481059667661,
+     "dev_spatial": -0.00037946925084042515,
+     "resid_lattice": -8.310800492239423e-09,
+     "channels": [
+      "ez"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.00038330484533377217,
+     "allowance_ok": true,
+     "stationarity": 6.556525553079546e-08,
+     "stationarity_ok": true
+    },
+    "TE011": {
+     "mnl": [
+      0,
+      1,
+      1
+     ],
+     "f_pozar_hz": 6245676208.333334,
+     "f_lattice_hz": 6244017127.004748,
+     "f_spatial_lattice_hz": 6243289341.673011,
+     "pred_dev_lattice": -0.00026563678187019324,
+     "pred_dev_spatial": -0.0003821630485962846,
+     "allowance": 0.00013499805393782827,
+     "found": true,
+     "f_meas_hz": 6244017089.546765,
+     "dev_raw": -0.0002656427792966376,
+     "dev_spatial": -0.00038216904392607276,
+     "resid_lattice": -5.999019947466877e-09,
+     "channels": [
+      "ex"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.0005240561023548701,
+     "allowance_ok": true,
+     "stationarity": 2.1908824280496828e-08,
+     "stationarity_ok": true
+    },
+    "TM111": {
+     "mnl": [
+      1,
+      1,
+      1
+     ],
+     "f_pozar_hz": 6927916215.335548,
+     "f_lattice_hz": 6926544515.145496,
+     "f_spatial_lattice_hz": 6925551039.033896,
+     "pred_dev_lattice": -0.00019799607088433202,
+     "pred_dev_spatial": -0.00034139793671528196,
+     "allowance": 0.00010971883447482792,
+     "found": true,
+     "f_meas_hz": 6926544513.696611,
+     "dev_raw": -0.00019799628002148406,
+     "dev_spatial": -0.00034139814576250593,
+     "resid_lattice": -2.0917856335955776e-10,
+     "channels": [
+      "ex",
+      "ey",
+      "ez"
+     ],
+     "n_lines": 3,
+     "lattice_ok": true,
+     "allowance_bound": 0.0004577783994359135,
+     "allowance_ok": true,
+     "stationarity": 1.9805107920352472e-08,
+     "stationarity_ok": true
+    },
+    "TE201": {
+     "mnl": [
+      2,
+      0,
+      1
+     ],
+     "f_pozar_hz": 7070590980.76218,
+     "f_lattice_hz": 7067806528.233041,
+     "f_spatial_lattice_hz": 7066751022.180253,
+     "pred_dev_lattice": -0.00039380760911156276,
+     "pred_dev_spatial": -0.0005430887732545964,
+     "allowance": 0.00010533556018869249,
+     "found": true,
+     "f_meas_hz": 7067806571.77118,
+     "dev_raw": -0.0003938014514736077,
+     "dev_spatial": -0.0005430826183751014,
+     "resid_lattice": 6.160063792393089e-09,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.0006546400771518002,
+     "allowance_ok": true,
+     "stationarity": 1.593964397340729e-08,
+     "stationarity_ok": true
+    },
+    "TM210": {
+     "mnl": [
+      2,
+      1,
+      0
+     ],
+     "f_pozar_hz": 7804846493.112532,
+     "f_lattice_hz": 7801774693.501787,
+     "f_spatial_lattice_hz": 7800355038.779835,
+     "pred_dev_lattice": -0.0003935759163815611,
+     "pred_dev_spatial": -0.000575469913041915,
+     "allowance": 0.0,
+     "found": true,
+     "f_meas_hz": 7801775294.138509,
+     "dev_raw": -0.0003934989594904792,
+     "dev_spatial": -0.000575392998159785,
+     "resid_lattice": 7.698719151072453e-08,
+     "channels": [
+      "ez"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.000579467222820536,
+     "allowance_ok": true,
+     "stationarity": 1.0274416624793983e-07,
+     "stationarity_ok": true
+    },
+    "TE102": {
+     "mnl": [
+      1,
+      0,
+      2
+     ],
+     "f_pozar_hz": 8072158971.329744,
+     "f_lattice_hz": 8065449849.021831,
+     "f_spatial_lattice_hz": 8063881341.252482,
+     "pred_dev_lattice": -0.0008311434811606455,
+     "pred_dev_spatial": -0.0010254542937844224,
+     "allowance": 0.0006465424039168022,
+     "found": true,
+     "f_meas_hz": 8065449370.772416,
+     "dev_raw": -0.0008312027279392398,
+     "dev_spatial": -0.0010255135059987763,
+     "resid_lattice": -5.9296062060454346e-08,
+     "channels": [
+      "ey"
+     ],
+     "n_lines": 1,
+     "lattice_ok": true,
+     "allowance_bound": 0.0015596668721837665,
+     "allowance_ok": true,
+     "stationarity": 4.4182783920091166e-08,
+     "stationarity_ok": true
+    }
+   },
+   "gates": {
+    "cv14_te101": true,
+    "cv14_higher": true,
+    "allowance": true,
+    "lattice": true,
+    "mode_count": true,
+    "stationarity": true,
+    "energy": true,
+    "envelope": false,
+    "extent": true
+   },
+   "ok": false,
+   "w_est": 4e-06,
+   "envelope": {
+    "ok": false,
+    "violations": [
+     "ratio 2.000 > cap 1.4"
+    ],
+    "max_ratio": 2.0,
+    "n_fine_bands": 1,
+    "n_transitions": 2,
+    "n_cells": 45,
+    "extent_m": 0.04000000000000001
+   },
+   "realized_d_m": 0.04000000000000001,
+   "declared_d_m": 0.04000000000000001,
+   "n_clusters_in_band": 7,
+   "n_declared": 7,
+   "search_band_hz": [
+    4000000000.0,
+    8500000000.0
+   ],
+   "dt": 1.348152019085202e-12,
+   "dxy": 0.001,
+   "profile_mm": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "falsifier": {
+    "expected_failing_gates": [
+     "envelope"
+    ],
+    "fired": {
+     "envelope": true
+    },
+    "as_declared": true,
+    "name": "ratio2_abrupt"
+   }
+  }
+ },
+ "verdict": {
+  "exit_code": 1,
+  "summary": "rfx accuracy: FAIL -- at least one gate failed on at least one arm (exit 1)  [falsifier ratio2_abrupt: as pre-declared]",
+  "arms": [
+   "uniform",
+   "ratio2_abrupt"
+  ]
+ }
+}

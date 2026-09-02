@@ -1,0 +1,49 @@
+================================================================================================
+CROSSVAL 24 -- graded-z PEC cavity vs EXACT Pozar; arms ['uniform', 'ratio2_abrupt']; falsifier=ratio2_abrupt; smoke=False
+================================================================================================
+cavity (a, b, d) = (50, 30, 40) mm; band 4-8.5 GHz; declared modes ['TE101', 'TM110', 'TE011', 'TM111', 'TE201', 'TM210', 'TE102']; closest pair ('TM111', 'TE201') df 142.7 MHz; W_est 4.0e-06
+/tmp/rfx-cv24/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a raw field increment (E += w; identical to amplitude_kind='field'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.8.
+  sim.add_source(pos, component=comp)
+
+[uniform] lane=uniform dx=1 mm nodes=[51, 31, 41] dt=1.9066e-12 n_steps=16794 (record n_start 251, t_post 31.54 ns) wall run/harminv/energy 3.8/19.4/4.1 s
+  profile (mm): [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  preflight: ['  [PREFLIGHT] All checks passed.']
+  envelope: ok
+  mode     Pozar GHz    meas GHz   dev ppm  pred ppm   spatial  ctrl+A+W  lat resid  station. chan
+  TE101      4.79902    4.798621     -83.3     -83.2    -221.0       nan      -0.10      0.01 ey
+  TM110      5.82692    5.825890    -176.4    -176.6    -379.3       nan       0.16      0.05 ez
+  TE011      6.24568    6.244727    -151.9    -151.8    -385.1       nan      -0.15      0.02 ex
+  TM111      6.92792    6.927520     -57.1     -56.7    -344.1       nan      -0.43      0.06 ex,ey,ez
+  TE201      7.07059    7.068847    -246.6    -246.6    -545.3       nan      -0.07      0.03 ey
+  TM210      7.80485    7.803196    -211.5    -211.5    -575.5       nan       0.00      0.12 ez
+  TE102      8.07216    8.067960    -520.2    -519.7    -909.1       nan      -0.48      0.03 ey
+  clusters in band: 7 / 7 declared; orphans []; ambiguous 0
+  energy: E0 2.988381e-16 max drift 2.732e-08 end 8.435e-10 envelope@end 1.531e-04 fired=False
+  gates: {'cv14_te101': True, 'cv14_higher': True, 'allowance': True, 'lattice': True, 'mode_count': True, 'stationarity': True, 'energy': True, 'envelope': True, 'extent': True} -> PASS
+
+[ratio2_abrupt] FALSIFIER: envelope ratio 2.0; physics excess vs allowance predicted in the note; expected failing gates ('envelope',)
+/tmp/rfx-cv24/validation/crossval/24_nu_rect_cavity_pozar.py:91: UserWarning: dz_profile has max adjacent cell ratio 2.000 (> 1.4, the validated multi-band grading cap — docs/guides/support_matrix.md, 'Multi-band graded mesh'). This may cause numerical reflections. Use rfx.smooth_grading(dz_profile) to fix.
+  sim = Simulation(freq_max=G.FREQ_MAX, domain=(G.A_X, G.B_Y, G.D_Z), boundary="pec", dx=dxy,
+/tmp/rfx-cv24/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.8.
+  sim.add_source(pos, component=comp)
+
+[ratio2_abrupt] lane=nonuniform dx=1 mm nodes=[51, 31, 46] dt=1.3482e-12 n_steps=23751 (record n_start 355, t_post 31.54 ns) wall run/harminv/energy 5.9/61.4/5.3 s
+  profile (mm): [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  preflight: ["  [PREFLIGHT] dz_profile max adjacent cell ratio 2.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 — the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.", 'nu_grading_ratio_beyond_validated_cap']
+  envelope: ['ratio 2.000 > cap 1.4']
+  mode     Pozar GHz    meas GHz   dev ppm  pred ppm   spatial  ctrl+A+W  lat resid  station. chan
+  TE101      4.79902    4.798313    -147.4    -147.4    -216.2     453.7      -0.00      0.00 ey
+  TM110      5.82692    5.825298    -278.0    -278.0    -379.5     383.3      -0.01      0.07 ez
+  TE011      6.24568    6.244017    -265.6    -265.6    -382.2     524.1      -0.01      0.02 ex
+  TM111      6.92792    6.926545    -198.0    -198.0    -341.4     457.8      -0.00      0.02 ex,ey,ez
+  TE201      7.07059    7.067807    -393.8    -393.8    -543.1     654.6       0.01      0.02 ey
+  TM210      7.80485    7.801775    -393.5    -393.6    -575.4     579.5       0.08      0.10 ez
+  TE102      8.07216    8.065449    -831.2    -831.1   -1025.5    1559.7      -0.06      0.04 ey
+  clusters in band: 7 / 7 declared; orphans []; ambiguous 0
+  energy: E0 1.464695e-16 max drift 4.038e-08 end 3.648e-08 envelope@end 1.827e-04 fired=False
+  gates: {'cv14_te101': True, 'cv14_higher': True, 'allowance': True, 'lattice': True, 'mode_count': True, 'stationarity': True, 'energy': True, 'envelope': False, 'extent': True} -> FAIL
+  falsifier: {'expected_failing_gates': ['envelope'], 'fired': {'envelope': True}, 'as_declared': True, 'name': 'ratio2_abrupt'}
+
+  artifact: /tmp/rfx-cv24/validation/crossval/_24_nu_cavity_results/rfx__falsifier_ratio2_abrupt.json
+
+rfx accuracy: FAIL -- at least one gate failed on at least one arm (exit 1)  [falsifier ratio2_abrupt: as pre-declared]

@@ -1,0 +1,47 @@
+================================================================================================
+CROSSVAL 24 -- graded-z PEC cavity vs EXACT Pozar; arms ['uniform', 'grading_at_wall']; falsifier=grading_at_wall; smoke=False
+================================================================================================
+cavity (a, b, d) = (50, 30, 40) mm; band 4-8.5 GHz; declared modes ['TE101', 'TM110', 'TE011', 'TM111', 'TE201', 'TM210', 'TE102']; closest pair ('TM111', 'TE201') df 142.7 MHz; W_est 4.0e-06
+/tmp/rfx-cv24/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a raw field increment (E += w; identical to amplitude_kind='field'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.8.
+  sim.add_source(pos, component=comp)
+
+[uniform] lane=uniform dx=1 mm nodes=[51, 31, 41] dt=1.9066e-12 n_steps=16794 (record n_start 251, t_post 31.54 ns) wall run/harminv/energy 3.8/19.6/4.1 s
+  profile (mm): [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  preflight: ['  [PREFLIGHT] All checks passed.']
+  envelope: ok
+  mode     Pozar GHz    meas GHz   dev ppm  pred ppm   spatial  ctrl+A+W  lat resid  station. chan
+  TE101      4.79902    4.798621     -83.3     -83.2    -221.0       nan      -0.10      0.01 ey
+  TM110      5.82692    5.825890    -176.4    -176.6    -379.3       nan       0.16      0.05 ez
+  TE011      6.24568    6.244727    -151.9    -151.8    -385.1       nan      -0.15      0.02 ex
+  TM111      6.92792    6.927520     -57.1     -56.7    -344.1       nan      -0.43      0.06 ex,ey,ez
+  TE201      7.07059    7.068847    -246.6    -246.6    -545.3       nan      -0.07      0.03 ey
+  TM210      7.80485    7.803196    -211.5    -211.5    -575.5       nan       0.00      0.12 ez
+  TE102      8.07216    8.067960    -520.2    -519.7    -909.1       nan      -0.48      0.03 ey
+  clusters in band: 7 / 7 declared; orphans []; ambiguous 0
+  energy: E0 2.988381e-16 max drift 2.732e-08 end 8.435e-10 envelope@end 1.531e-04 fired=False
+  gates: {'cv14_te101': True, 'cv14_higher': True, 'allowance': True, 'lattice': True, 'mode_count': True, 'stationarity': True, 'energy': True, 'envelope': True, 'extent': True} -> PASS
+
+[grading_at_wall] FALSIFIER: transition chain within R_WALL_CELLS of the z=0 wall; expected failing gates ('envelope',)
+/tmp/rfx-cv24/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.8.
+  sim.add_source(pos, component=comp)
+
+[grading_at_wall] lane=nonuniform dx=1 mm nodes=[51, 31, 47] dt=1.3482e-12 n_steps=23751 (record n_start 355, t_post 31.54 ns) wall run/harminv/energy 6.0/62.2/5.3 s
+  profile (mm): [0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.7, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  preflight: ['  [PREFLIGHT] All checks passed.']
+  envelope: ['grading within 4 cells of the z=0 wall']
+  mode     Pozar GHz    meas GHz   dev ppm  pred ppm   spatial  ctrl+A+W  lat resid  station. chan
+  TE101      4.79902    4.798604     -86.8     -86.8    -155.7     391.8       0.00      0.00 ey
+  TM110      5.82692    5.825298    -278.0    -278.0    -379.5     383.3      -0.01      0.07 ez
+  TE011      6.24568    6.244241    -229.9    -229.9    -346.4     487.5      -0.01      0.01 ex
+  TM111      6.92792    6.926746    -168.9    -168.9    -312.3     428.1      -0.01      0.02 ex,ey,ez
+  TE201      7.07059    7.068004    -365.9    -365.9    -515.2     626.1       0.00      0.02 ey
+  TM210      7.80485    7.801775    -393.5    -393.6    -575.4     579.5       0.07      0.15 ez
+  TE102      8.07216    8.067968    -519.1    -519.1    -713.6    1384.7      -0.07      0.09 ey
+  clusters in band: 7 / 7 declared; orphans []; ambiguous 0
+  energy: E0 1.456894e-16 max drift 8.446e-08 end 7.146e-08 envelope@end 1.827e-04 fired=False
+  gates: {'cv14_te101': True, 'cv14_higher': True, 'allowance': True, 'lattice': True, 'mode_count': True, 'stationarity': True, 'energy': True, 'envelope': False, 'extent': True} -> FAIL
+  falsifier: {'expected_failing_gates': ['envelope'], 'fired': {'envelope': True}, 'as_declared': True, 'name': 'grading_at_wall'}
+
+  artifact: /tmp/rfx-cv24/validation/crossval/_24_nu_cavity_results/rfx__falsifier_grading_at_wall.json
+
+rfx accuracy: FAIL -- at least one gate failed on at least one arm (exit 1)  [falsifier grading_at_wall: as pre-declared]
