@@ -54,6 +54,7 @@ ARM_DX_DIV = {"tand0p1": 1, "tand1": 1, "tand3": 2}
 MEEP_LADDER_RESOLUTIONS = G.MEEP_LADDER_RESOLUTIONS
 MEEP_LADDER_RESOLUTIONS_R2 = (10, 20, 40, 80)   # note section 12: the res-80 rung
 RFX_DX_LADDER = (1, 2, 4)                        # note section 12: --dx-div K per arm
+MEEP_DIAGNOSTIC_TAGS = ("res40_thin1", "res40_thin_half", "res40_shift_half")   # note section 13.2
 MEEP_EPS_AVERAGING = False     # note section 1: conductivity is "not compatible with
                                # subpixel averaging" (Meep docs); faces sit on pixel
                                # boundaries at 10/20/40 px/cm anyway
@@ -308,5 +309,30 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
     evidence of Meep's convergence, not a window term."""
     summ = G.meep_ladder_summary(results_dir, rfx_doc, resolutions=resolutions)
     summ["schema"] = "cv23-meep-ladder/v1"
+    # Note sections 12-14: the three Meep node-count discriminators on tand0p1
+    # at 40 px/cm (thin by one cell, thin by half a cell, centre shifted half
+    # a pixel), evaluated with the same E4 evaluator so their Meep-vs-TMM
+    # means are citable by key.
+    import json as _json
+    diag = {}
+    arm = "tand0p1"
+    if arm in rfx_doc["arms"]:
+        ad = rfx_doc["arms"][arm]
+        e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["params"], ad["dt_s"], tail=ad["tail"])
+        for tag in MEEP_DIAGNOSTIC_TAGS:
+            p = os.path.join(results_dir, f"meep_{arm}__{tag}.json")
+            if not os.path.isfile(p):
+                continue
+            with open(p) as fh:
+                md = _json.load(fh)
+            e4 = evaluate_e4(e2, md)
+            diag[tag] = {"resolution": md["resolution"], "d_slab_m": md.get("d_slab_m"),
+                         "thickness_offset_cells": md.get("thickness_offset_cells", 0),
+                         "center_offset_cells": md.get("center_offset_cells", 0),
+                         "mean_dR_meep_tmm_gated": e4["mean_dR_meep_tmm_gated"],
+                         "mean_dT_meep_tmm_gated": e4["mean_dT_meep_tmm_gated"],
+                         "mean_dA_meep_tmm_gated": e4["mean_dA_meep_tmm_gated"],
+                         "G4_mean_R": e4["gates"]["G4_mean_R"]}
+    summ["diagnostics"] = {arm: diag}
     return summ
 

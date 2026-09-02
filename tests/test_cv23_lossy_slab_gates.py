@@ -371,7 +371,12 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         assert ad["tail"]["fit_start_step"] == rec["n_pulse_end"] + G.TAIL_WINDOW
         refit = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
         rate, nb = refit["fitted_rate_scat_refl_1_s"], refit["fitted_rate_blocks"]
-        assert nb >= 3 and rate == pytest.approx(ad["tail"]["fitted_rate_scat_refl_1_s"])
+        # The fitted tail rate is a diagnostic, not a gate: the shortest record
+        # (tand0p1, 109 post-window steps) has only 2 post-pulse blocks, a
+        # two-point estimate flagged fit_reliable = false (note section 14).
+        assert nb >= 2 and rate == pytest.approx(ad["tail"]["fitted_rate_scat_refl_1_s"])
+        assert refit["fitted_rate_total_trans_1_s"] == pytest.approx(ad["tail"]["fitted_rate_total_trans_1_s"])
+        assert ad["tail"]["fit_reliable"] == refit["fit_reliable"] == (nb >= 3)
         assert np.isfinite(rate) and rate > 0
         print(f"cv23-summary rfx {arm}: n_steps_min {rec['n_steps_min']} reached {rec['n_steps']} "
               f"(+{rec['extensions']} ext); tail scat/trans {ad['tail']['scat_refl_rel']:.2e}/"
@@ -602,6 +607,8 @@ def test_r2_meep_ladder_summary_carries_the_res80_rung():
         for res, rung in v["rungs"].items():
             if rung.get("finite"):
                 assert rung["mean_dR_meep_tmm_gated"] == pytest.approx(fresh["arms"][arm]["rungs"][res]["mean_dR_meep_tmm_gated"], rel=1e-9)
+    for tag, dv in summ.get("diagnostics", {}).get("tand0p1", {}).items():
+        assert dv["mean_dR_meep_tmm_gated"] == pytest.approx(fresh["diagnostics"]["tand0p1"][tag]["mean_dR_meep_tmm_gated"], rel=1e-9)
     print("r2-summary meep ladder orders:", {a: {k: round(o, 2) for k, o in v["orders"].items()} for a, v in summ["arms"].items()})
 
 

@@ -540,7 +540,10 @@ def fit_tail_rate(env_rel, dt: float, start: int = 0):
     first = int(math.ceil(max(0, start + TAIL_WINDOW) / TAIL_WINDOW)) * TAIL_WINDOW
     e = e[first:]
     nb = e.size // TAIL_WINDOW
-    if nb < 3:
+    # Two blocks give a two-point slope: reported, flagged unreliable by
+    # refit_tail (fit_reliable = nb >= 3; cv23 note section 14 -- the
+    # shortest cv23 record has 109 post-window steps = 2 blocks).
+    if nb < 2:
         return float("nan"), int(nb)
     blocks = e[: nb * TAIL_WINDOW].reshape(nb, TAIL_WINDOW).max(axis=1)
     if np.any(blocks <= 0):
@@ -560,6 +563,7 @@ def refit_tail(tail: dict, dt: float, n_steps: int, n_pulse_end: int) -> dict:
     start = int(n_pulse_end) - env_start
     r_s, nb_s = fit_tail_rate(tail["envelope_scat_refl_rel"], dt, start=start)
     r_t, nb_t = fit_tail_rate(tail["envelope_total_trans_rel"], dt, start=start)
+    nb = int(min(nb_s, nb_t))
     return dict(tail, envelope_start_step=env_start, fit_start_step=int(n_pulse_end) + TAIL_WINDOW,
                 fitted_rate_scat_refl_1_s=r_s, fitted_rate_total_trans_1_s=r_t,
-                fitted_rate_blocks=int(min(nb_s, nb_t)))
+                fitted_rate_blocks=nb, fit_reliable=bool(nb >= 3))

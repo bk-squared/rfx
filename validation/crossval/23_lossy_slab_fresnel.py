@@ -182,10 +182,33 @@ def main(argv=None) -> int:
                     help="write rfx__<tag>.json instead of rfx.json (diagnostic arms; never the baseline)")
     ap.add_argument("--recipe", choices=(G.RECIPE_R3, G.RECIPE_CV04), default=G.RECIPE_R3,
                     help="r3 (default): derived record length, nx 1000, -40 dB witness; cv04: the 719-step rule")
+    ap.add_argument("--refit-tail-fits", action="store_true",
+                    help="no FDTD: recompute tail.fitted_rate_* / fit_reliable of every rfx*.json in out-dir from "
+                         "the STORED envelopes (post-processing of a committed artifact; note section 14)")
     ap.add_argument("--meep-ladder-summary", action="store_true",
                     help="no FDTD: read rfx.json + meep_<arm>__res{10,20,40}.json in out-dir and write "
                          "meep_ladder_summary.json (measured Meep convergence order)")
     a = ap.parse_args(argv)
+    if a.refit_tail_fits:
+        import glob
+        od = a.out_dir or RESULTS_DIR
+        for path in sorted(glob.glob(os.path.join(od, "rfx*.json"))):
+            with open(path) as fh:
+                doc = json.load(fh)
+            for arm, ad in doc.get("arms", {}).items():
+                rec = (ad.get("run") or {}).get("record")
+                if rec is None or "envelope_scat_refl_rel" not in ad.get("tail", {}):
+                    continue
+                before = (ad["tail"].get("fitted_rate_scat_refl_1_s"), ad["tail"].get("fitted_rate_blocks"))
+                ad["tail"] = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
+                ad["tail"]["fit_note"] = ("fitted_rate_* recomputed from the stored envelope after the run; a 2-block "
+                                          "fit is a two-point estimate (fit_reliable = false); no FDTD rerun")
+                print(f"{os.path.basename(path)} {arm}: rate {before[0]} ({before[1]} blocks) -> "
+                      f"{ad['tail']['fitted_rate_scat_refl_1_s']:.3e} ({ad['tail']['fitted_rate_blocks']} blocks, "
+                      f"reliable={ad['tail']['fit_reliable']})")
+            with open(path, "w") as fh:
+                json.dump(doc, fh, indent=1)
+        return 0
     if a.meep_ladder_summary:
         od = a.out_dir or RESULTS_DIR
         with open(os.path.join(od, "rfx.json")) as fh:
