@@ -1,0 +1,56 @@
+======================================================================
+Crossval 22: dispersive slab -- arms ['debye', 'lorentz', 'drude']; falsifier=None; smoke=False
+======================================================================
+  windows: W_bin=0.074, W_mean_R=0.01, W_mean_T=0.017 (cv04 envelope x 1.5); gated band 4-10 GHz
+
+[debye] model=debye params_run={'eps_inf': 2.0, 'delta_eps': 4.0, 'tau': 3.183098861837907e-11}
+  grid (1041, 45, 1), dt=2.3351e-12 s, slab cells [515,525), probes 485/555, n_steps=1108 (recipe r3)
+  FDTD 0.8s; masked band 3.01-11.87 GHz (340 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record (r3/§13): n_pulse_end 908 + n_ring 150 (ring component at 1.45 GHz, w 0.62, rate 1.184e+10/s; material 3.142e+10, slowest etalon 1.137e+10 at 1.13 GHz) + window 50 = n_steps_min 1108; reached 1108 after 0 extension(s) (CPML gate 1262, box grows 0); tail scat/trans 7.17e-03/7.23e-03 vs 0.01 -> ok; fitted tail rate scat/trans 7.780e+09/8.134e+09 /s
+  E2: max|dR|=0.0056 (worst 9.54 GHz) max|dT|=0.0055 (worst 8.73 GHz) | mean|dR|=0.0023/0.0101 mean|dT|=0.0028/0.0171
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G2_R': True, 'G2_T': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+      4.00 GHz  R_tmm=0.2856 R_rfx=0.2861 | T_tmm=0.3230 T_rfx=0.3213 | W_ADE R/T 2.4e-05/1.4e-05
+      4.99 GHz  R_tmm=0.2026 R_rfx=0.2048 | T_tmm=0.2849 T_rfx=0.2825 | W_ADE R/T 5.2e-06/1.6e-05
+      6.01 GHz  R_tmm=0.1304 R_rfx=0.1318 | T_tmm=0.2419 T_rfx=0.2401 | W_ADE R/T 1.6e-05/3.3e-06
+      7.01 GHz  R_tmm=0.0908 R_rfx=0.0921 | T_tmm=0.2019 T_rfx=0.1977 | W_ADE R/T 1.4e-06/4.4e-05
+      8.00 GHz  R_tmm=0.0768 R_rfx=0.0802 | T_tmm=0.1690 T_rfx=0.1666 | W_ADE R/T 5.2e-05/9.4e-05
+      8.99 GHz  R_tmm=0.0774 R_rfx=0.0801 | T_tmm=0.1440 T_rfx=0.1394 | W_ADE R/T 1.2e-04/1.5e-04
+     10.01 GHz  R_tmm=0.0840 R_rfx=0.0865 | T_tmm=0.1253 T_rfx=0.1204 | W_ADE R/T 1.9e-04/2.0e-04
+  E4 (meep_debye.json): Meep-vs-TMM max|dR|=0.0072 max|dT|=0.0099 mean 0.0046/0.0084; rfx-vs-Meep max|dR|=0.0094 max|dT|=0.0075 mean 0.0040/0.0055
+  E4 gates: {'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True} -> PASS
+
+[lorentz] model=lorentz params_run={'eps_inf': 2.0, 'delta_eps': 1.5, 'f0': 7000000000.0, 'delta': 7330382858.3761835}
+  grid (1041, 45, 1), dt=2.3351e-12 s, slab cells [515,525), probes 485/555, n_steps=1228 (recipe r3)
+  FDTD 0.8s; masked band 3.01-11.87 GHz (340 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record (r3/§13): n_pulse_end 908 + n_ring 270 (ring component at 3.54 GHz, w 1.00, rate 7.330e+09/s; material 7.330e+09, slowest etalon 1.771e+10 at 4.35 GHz) + window 50 = n_steps_min 1228; reached 1228 after 0 extension(s) (CPML gate 1262, box grows 0); tail scat/trans 8.02e-04/6.42e-04 vs 0.01 -> ok; fitted tail rate scat/trans 8.414e+09/7.948e+09 /s
+  E2: max|dR|=0.0050 (worst 7.68 GHz) max|dT|=0.0032 (worst 9.67 GHz) | mean|dR|=0.0028/0.0104 mean|dT|=0.0016/0.0176
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G2_R': True, 'G2_T': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+      4.00 GHz  R_tmm=0.3107 R_rfx=0.3122 | T_tmm=0.5251 T_rfx=0.5235 | W_ADE R/T 2.3e-05/8.2e-05
+      4.99 GHz  R_tmm=0.2186 R_rfx=0.2199 | T_tmm=0.4218 T_rfx=0.4202 | W_ADE R/T 5.3e-05/3.0e-04
+      6.01 GHz  R_tmm=0.1374 R_rfx=0.1396 | T_tmm=0.1582 T_rfx=0.1559 | W_ADE R/T 2.1e-04/4.6e-04
+      7.01 GHz  R_tmm=0.2227 R_rfx=0.2274 | T_tmm=0.0245 T_rfx=0.0241 | W_ADE R/T 4.8e-05/3.8e-05
+      8.00 GHz  R_tmm=0.2202 R_rfx=0.2244 | T_tmm=0.0331 T_rfx=0.0329 | W_ADE R/T 6.7e-04/3.7e-04
+      8.99 GHz  R_tmm=0.1231 R_rfx=0.1263 | T_tmm=0.1243 T_rfx=0.1234 | W_ADE R/T 9.8e-04/1.2e-03
+     10.01 GHz  R_tmm=0.0332 R_rfx=0.0347 | T_tmm=0.3164 T_rfx=0.3142 | W_ADE R/T 4.6e-04/1.8e-03
+  E4 (meep_lorentz.json): Meep-vs-TMM max|dR|=0.0116 max|dT|=0.0128 mean 0.0050/0.0051; rfx-vs-Meep max|dR|=0.0125 max|dT|=0.0104 mean 0.0040/0.0040
+  E4 gates: {'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True} -> PASS
+
+[drude] model=drude params_run={'eps_inf': 3.0, 'fp': 7000000000.0, 'gamma': 18849555921.538757}
+  grid (1041, 45, 1), dt=2.3351e-12 s, slab cells [515,525), probes 485/555, n_steps=1168 (recipe r3)
+  FDTD 0.8s; masked band 3.01-11.87 GHz (340 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record (r3/§13): n_pulse_end 908 + n_ring 210 (ring component at 3.54 GHz, w 1.00, rate 9.425e+09/s; material 9.425e+09, slowest etalon 1.267e+10 at 1.13 GHz) + window 50 = n_steps_min 1168; reached 1168 after 0 extension(s) (CPML gate 1262, box grows 0); tail scat/trans 7.59e-05/4.09e-05 vs 0.01 -> ok; fitted tail rate scat/trans 1.558e+10/1.792e+10 /s
+  E2: max|dR|=0.0013 (worst 9.98 GHz) max|dT|=0.0039 (worst 9.98 GHz) | mean|dR|=0.0005/0.0100 mean|dT|=0.0017/0.0171
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G2_R': True, 'G2_T': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+      4.00 GHz  R_tmm=0.1101 R_rfx=0.1106 | T_tmm=0.3669 T_rfx=0.3666 | W_ADE R/T 3.6e-05/1.1e-04
+      4.99 GHz  R_tmm=0.0774 R_rfx=0.0779 | T_tmm=0.4804 T_rfx=0.4796 | W_ADE R/T 3.8e-05/1.0e-04
+      6.01 GHz  R_tmm=0.0835 R_rfx=0.0841 | T_tmm=0.5734 T_rfx=0.5721 | W_ADE R/T 7.6e-05/7.3e-05
+      7.01 GHz  R_tmm=0.0785 R_rfx=0.0793 | T_tmm=0.6490 T_rfx=0.6472 | W_ADE R/T 4.0e-05/7.3e-05
+      8.00 GHz  R_tmm=0.0451 R_rfx=0.0454 | T_tmm=0.7234 T_rfx=0.7214 | W_ADE R/T 2.1e-05/9.5e-05
+      8.99 GHz  R_tmm=0.0080 R_rfx=0.0078 | T_tmm=0.7869 T_rfx=0.7847 | W_ADE R/T 3.0e-05/8.7e-05
+     10.01 GHz  R_tmm=0.0100 R_rfx=0.0114 | T_tmm=0.8128 T_rfx=0.8089 | W_ADE R/T 5.6e-05/8.8e-06
+  E4 (meep_drude.json): Meep-vs-TMM max|dR|=0.0038 max|dT|=0.0115 mean 0.0020/0.0095; rfx-vs-Meep max|dR|=0.0036 max|dT|=0.0111 mean 0.0017/0.0078
+  E4 gates: {'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True} -> PASS
+
+  artifact: /tmp/rfx-cv22/validation/crossval/_22_dispersive_results/rfx.json
+
+ALL CHECKS PASSED -- E2 (TMM) and E4 (Meep) on all arms (exit 0)
