@@ -476,7 +476,8 @@ def test_ladder_witnesses_report_then_pin(key):
             print(f"[{key}] richardson {pair}: max|est-oracle|={r['max_abs_diff']:.4g} "
                   f"@ {r['max_abs_diff_bin_hz']/1e9:.1f} GHz (finer rung alone {r['finer_rung_abs_diff_max']:.4g})")
         if lad.get("pinned_richardson_gate") is not None:
-            assert lad["richardson_max_abs_diff"] <= lad["pinned_richardson_gate"], key
+            pair = lad.get("pinned_richardson_pair", "mid-fine")
+            assert lad["richardson"][pair]["max_abs_diff"] <= lad["pinned_richardson_gate"], (key, pair)
     if lad.get("pinned_monotone_fraction_min") is not None:
         assert lad["monotone_fraction_of_bins"] >= lad["pinned_monotone_fraction_min"], key
 
@@ -552,6 +553,10 @@ def _live_compare(fx, rung: str):
                 assert d <= LIVE_ABS_S_TOL, (cid, d, LIVE_ABS_S_TOL)
             if dut != "thru":
                 assert m["non_vacuity_max_s11"] > G.NON_VACUITY_MIN_MAX_S11, cid
+            # §6 gates bind at the claims rung only (the coarse/mid values are
+            # reported, as in the replay): the coarse False-lane slab measured
+            # reciprocity 0.035 / 0.068 on the fixture, above the fine-rung gate.
+            if dut != "thru" and rung == G.CLAIMS_RUNG:
                 assert m["column_power_max"] < G.COLUMN_POWER_MAX, (cid, m["column_power_max"])
                 assert m["reciprocity_mag_mean"] < G.RECIPROCITY_MAG_MAX, cid
                 assert m["reciprocity_complex_max"] <= G.RECIPROCITY_COMPLEX_MAX, cid

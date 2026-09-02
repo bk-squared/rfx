@@ -684,8 +684,9 @@ def recompute_verdicts(fx: dict) -> dict:
             if pin is None:
                 v[f"ladder_richardson|{key}"] = "report_only"
             else:
+                pair = lad.get("pinned_richardson_pair", "mid-fine")
                 v[f"ladder_richardson|{key}"] = (
-                    "pass" if lad["richardson_max_abs_diff"] <= pin else "fail")
+                    "pass" if lad["richardson"][pair]["max_abs_diff"] <= pin else "fail")
         pin_m = lad.get("pinned_monotone_fraction_min")
         if pin_m is None:
             v[f"ladder_monotone|{key}"] = "report_only"
@@ -726,12 +727,21 @@ def pin_fixture(fx: dict) -> dict:
       ``pin_lower_from_envelope(measured, quantum=100)``.
     Nothing measured is touched; only the ``pinned_*`` fields and ``verdicts``.
     """
+    def _in_program(dut: str, gi_key: str) -> bool:
+        # The pre-declared ULP-floor skip leg (PEC-short |S11|² under eps θ) is
+        # outside the gradient program by §5(a) ("the magnitude leg that carries
+        # weight on the PEC-short is the sigma leg"): its gradient is the
+        # derivative of a numerical residual (7.8e-5 measured), so its
+        # invariance ratio is noise over noise and would set the envelope.
+        kind, obj = gi_key.split(":", 1)
+        return (dut, kind, obj) not in EXPECTED_ULP_SKIP
+
     rels = []
     for key, p in fx["plane_shift"].items():
         if key == "cheap_refute":
             continue
-        for gi in p["gradient_invariance"].values():
-            if gi.get("skipped_under_ulp_floor"):
+        for gi_key, gi in p["gradient_invariance"].items():
+            if gi.get("skipped_under_ulp_floor") or not _in_program(p["dut"], gi_key):
                 continue
             if np.isfinite(gi["rel_change"]):
                 rels.append(gi["rel_change"])
@@ -739,15 +749,28 @@ def pin_fixture(fx: dict) -> dict:
     for key, p in fx["plane_shift"].items():
         if key == "cheap_refute":
             continue
-        for gi in p["gradient_invariance"].values():
+        for gi_key, gi in p["gradient_invariance"].items():
             if gi.get("skipped_under_ulp_floor"):
+                continue
+            if not _in_program(p["dut"], gi_key):
+                gi["pinned_gate"] = None
+                gi["excluded_from_envelope"] = ("pre-declared ULP-floor skip leg (§5(a)): a "
+                                                "physically zero derivative, reported only")
                 continue
             gi["pinned_gate"] = grad_pin if np.isfinite(gi["rel_change"]) else None
             gi["pinned_gate_envelope"] = max(rels) if rels else None
     for key, lad in fx["ladder"].items():
+        if lad["verdict"] == "not_interpretable":
+            # "the coarse rung is dropped or a finer one added before any claim"
+            lad["pinned_richardson_gate"] = None
+            lad["pinned_monotone_fraction_min"] = None
+            lad["pin_note"] = "not interpretable at this ladder: no pin (§5(c) guard 2)"
+            continue
         if "richardson" in lad:
+            # the asymptotic pair, cv18's form (its 0.0051 -> 0.01 was the fine pair)
+            lad["pinned_richardson_pair"] = "mid-fine"
             lad["pinned_richardson_gate"] = float(gate_from_envelope(
-                lad["richardson_max_abs_diff"], quantum=RICHARDSON_PIN_QUANTUM[lad["kind"]]))
+                lad["richardson"]["mid-fine"]["max_abs_diff"], quantum=RICHARDSON_PIN_QUANTUM[lad["kind"]]))
         lad["pinned_monotone_fraction_min"] = pin_lower_from_envelope(
             lad["monotone_fraction_of_bins"], quantum=MONOTONE_PIN_QUANTUM)
     fx["pins"] = {"gradient_invariance_envelope": max(rels) if rels else None,
