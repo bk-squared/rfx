@@ -28,11 +28,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling fixture modu
 
 import coax_msl_ladder_witnesses as W  # noqa: E402
 
-from rfx.api._sparams import (  # noqa: E402
-    _dut_sign_from_reference_at_the_dut,
-    _incident_outgoing,
-)
-
 from test_coax_msl_transition import (  # noqa: E402
     DX, FLUX_BOX_X_3, FLUX_BOX_Y_3, FLUX_BOX_Z_3, FLUX_COAX_PATCH_3,
     FLUX_COAX_Z_3, FREQS_2, JUNCTION_X, LX_2, LY, LZ_2, N_GND, Y_C,
@@ -328,10 +323,11 @@ def _ab_for_flux(net_coax, net_msl_out):
     net power flowing TOWARD the junction on the coax ladder (``net_coax``;
     +z points at the coax junction, so this is the net +z power) and the net
     power LEAVING the junction on the MSL ladder (``net_msl_out``; +x points
-    away from the MSL junction) -- and the pair is then handed to whichever
-    of the code's two arrays production's OWN geometric split puts it in
-    (:func:`rfx.api._sparams._incident_outgoing`, with the ``dut_sign``
-    derived from the same ladder geometry these witnesses use).
+    away from the MSL junction) -- and the pair is then handed to the code's
+    two arrays by production's OWN rule for this lane (``a = forward_amp``,
+    the extractor's branch travelling toward the reference plane, which
+    here IS the junction; ``b = backward_amp`` -- see the Notes of
+    :func:`rfx.api._sparams._assemble_coax_msl_transition_from_voltages`).
 
     Planting straight onto ``a``/``b`` would re-encode the assembler's label
     constant in the test -- the round-trip issue #822 exists to eliminate.
@@ -354,15 +350,15 @@ def _ab_for_flux(net_coax, net_msl_out):
     # plane -- is the +z wave, i.e. the one travelling toward the junction.
     toward_c = np.sqrt(net_coax) if net_coax >= 0 else 0.0
     away_c = 0.0 if net_coax >= 0 else np.sqrt(-net_coax)
-    a[0, 0], b[0, 0] = _incident_outgoing(
-        _ExtractorOut(toward_c, away_c), ref_m=REF_COAX, planes_m=Z_COAX,
-        dut_sign=_dut_sign_from_reference_at_the_dut(ref_m=REF_COAX, planes_m=Z_COAX))
+    assert REF_COAX > Z_COAX.max()
+    out_c = _ExtractorOut(toward_c, away_c)
+    a[0, 0], b[0, 0] = out_c.forward_amp, out_c.backward_amp
     # MSL ladder: junction BELOW the probes, so forward_amp is the -x wave
     # (toward the junction) and the +x wave -- the one carrying net_msl_out
     # away from it -- is backward_amp.
-    a[1, 0], b[1, 0] = _incident_outgoing(
-        _ExtractorOut(0.0, np.sqrt(net_msl_out)), ref_m=REF_MSL, planes_m=X_MSL,
-        dut_sign=_dut_sign_from_reference_at_the_dut(ref_m=REF_MSL, planes_m=X_MSL))
+    assert REF_MSL < X_MSL.min()
+    out_m = _ExtractorOut(0.0, np.sqrt(net_msl_out))
+    a[1, 0], b[1, 0] = out_m.forward_amp, out_m.backward_amp
     # MSL-drive column: not read by any assertion here, but it must keep the
     # 2x2 incident matrix non-singular (the end-to-end test re-solves S from
     # it). Physical placement: the MSL port is the driven one, so its

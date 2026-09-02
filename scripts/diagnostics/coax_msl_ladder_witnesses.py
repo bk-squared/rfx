@@ -522,7 +522,7 @@ def nprobe_comparison(v, pos, *, beta_analytic, freqs, subsets):
 def net_plus_axis_power(a_code, b_code, port_array, drive):
     """Net +axis power at a ladder in the code's OWN power-wave units.
 
-    POST-#822 (``rfx/api/_sparams.py::_incident_outgoing``): on this lane both
+    POST-#822 (``_assemble_coax_msl_transition_from_voltages``, Notes): on this lane both
     reference planes ARE the junction, so the branch travelling TOWARD the
     reference plane (the pencil's ``forward_amp``) is the one travelling
     toward the DUT, and the assembler labels it ``a_inc``; ``b_out`` is the
@@ -774,7 +774,8 @@ def compute_witnesses(d):
         "code_labels": "POST-#822: a_inc = pencil forward_amp (travels toward the reference "
                        "plane, which on this lane IS the junction); b_out = backward_amp. Runs "
                        "recorded BEFORE the #822 fix carry the opposite mapping under these same "
-                       "key names -- see rfx/api/_sparams.py::_incident_outgoing.",
+                       "key names -- see the Notes of rfx/api/_sparams.py::"
+                       "_assemble_coax_msl_transition_from_voltages.",
     }}
     have_ladders = d.get("coax_ladder_v") is not None and d.get("msl_ladder_v") is not None
     if have_ladders:

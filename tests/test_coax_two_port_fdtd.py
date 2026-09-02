@@ -36,7 +36,6 @@ from rfx.api import Simulation
 from rfx.api._sparams import (
     _assemble_coaxial_two_port_from_voltages,
     _finalize_sparam_result,
-    _incident_outgoing,
 )
 from rfx.api._spec import CoaxialTwoPortResult
 from rfx.sources.sources import GaussianPulse
@@ -168,25 +167,19 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     """``dut_sign`` is read off the fixture, not tuned.
 
     Both feeds sit exterior of their own probe array, so on BOTH arrays the
-    reference plane is on the far side of the probes from the through line.
-    The production helper must therefore resolve BOTH to ``a = backward_amp``
-    -- the constant ``_assemble_coaxial_two_port_from_voltages`` ships. This
-    is the executable form of that function's own Notes warning that the
-    constant "is NOT a general fact of the extractor".
+    reference plane is on the far side of the probes from the through line:
+    the wave travelling toward it is LEAVING the DUT, which is why
+    ``_assemble_coaxial_two_port_from_voltages`` ships ``a = backward_amp``
+    (its Notes: the constant "is NOT a general fact of the extractor").
+    This test pins the geometry that licenses it; the constant itself is
+    pinned by ``test_planted_voltages_recover_known_asymmetric_s_matrix``,
+    which plants from this geometry and never from the extractor's labels.
     """
     assert _REF_TOP_M > _Z_PLANES_TOP_M.max()   # feed above the top ladder
     assert _REF_BOT_M < _Z_PLANES_BOT_M.min()   # feed below the bottom ladder
     # DUT side is the OPPOSITE side from each feed on this geometry.
     assert _DUT_SIGN_TOP == -np.sign(_REF_TOP_M - _Z_PLANES_TOP_M.mean())
     assert _DUT_SIGN_BOT == -np.sign(_REF_BOT_M - _Z_PLANES_BOT_M.mean())
-
-    class _Out:
-        forward_amp, backward_amp = 1.0 + 0j, 2.0 + 0j
-    for ref, planes, sign in ((_REF_TOP_M, _Z_PLANES_TOP_M, _DUT_SIGN_TOP),
-                              (_REF_BOT_M, _Z_PLANES_BOT_M, _DUT_SIGN_BOT)):
-        # a = backward_amp (2.0), b = forward_amp (1.0): the shipped constant.
-        assert _incident_outgoing(_Out(), ref_m=ref, planes_m=planes,
-                                  dut_sign=sign) == (2.0 + 0j, 1.0 + 0j)
 
 
 def test_planted_fields_are_unchanged_by_the_frozen_planting_contract():

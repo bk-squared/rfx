@@ -44,9 +44,10 @@ the failure was exactly the label swap and nothing else::
     lam_min(I-S^H S): truth +0.326/+0.467/+0.533, code -1.59/-1.52/-3.29
 
 i.e. BOTH ports' incident/outgoing roles were inverted and ``S_code =
-inv(S_true)``. AFTER the fix (``rfx/api/_sparams.py::_incident_outgoing``
-applied at both ports of ``_assemble_coax_msl_transition_from_voltages``),
-GREEN, and the same three numbers read the other way round::
+inv(S_true)``. AFTER the fix (``a = forward_amp`` at both ports of
+``_assemble_coax_msl_transition_from_voltages`` -- the constant of a lane
+whose reference planes ARE the DUT), GREEN, and the same three numbers
+read the other way round::
 
     bin0: max|S_code-S_true|=4.82e-14  max|S_code-inv(S_true)|=1.476
     bin1: max|S_code-S_true|=2.81e-14  max|S_code-inv(S_true)|=1.150
@@ -97,11 +98,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rfx.api._sparams import (
-    _assemble_coax_msl_transition_from_voltages,
-    _dut_sign_from_reference_at_the_dut,
-    _incident_outgoing,
-)
+from rfx.api._sparams import _assemble_coax_msl_transition_from_voltages
 from rfx.sources.coaxial_port import coaxial_line_reflection_from_plane_voltages
 from tests._wave_convention import plant_ladder_voltages_physical
 
@@ -400,38 +397,38 @@ def test_assembler_wave_roles_hold_on_a_mirrored_msl_ladder():
     ``compute_coax_msl_transition`` places no guard on ``msl_pe.direction``
     -- it handles both facings explicitly (its ladder monotonicity test is
     ``(1 if msl_pe.direction == "+x" else -1)``) and sets
-    ``ref_msl_m = float(junction_x)`` either way. A hard-coded
-    ``dut_sign=-1`` in the assembler would therefore have been right only
-    for the committed fixture's facing and would have reintroduced the #822
-    defect class -- ``S_code = inv(S_true)`` on the MSL port -- for the
-    other one. Measured 2026-09-01 on this mirrored fixture with the MSL
-    sign forced to the old literal ``-1``, pencil clean (max fit_residual
-    2.52e-15, i.e. not a fit problem)::
+    ``ref_msl_m = float(junction_x)`` either way. The assembler's constant
+    ``a = forward_amp`` is facing-independent because the EXTRACTOR
+    resolves "the branch travelling toward the reference plane" per call
+    (its ``load_below`` test); what this arm pins is that nothing in the
+    assembler re-derives the orientation on top of that. Measured
+    2026-09-01 on this mirrored fixture with the MSL port read as
+    ``a = backward_amp`` instead, pencil clean (max fit_residual 2.52e-15,
+    i.e. not a fit problem)::
 
         max|S_code - S_true|   3.554 / 2.649 / 5.107
         lam_min(I - S^H S)    -20.87 / -13.72 / -39.12  (truth +0.326/+0.467/+0.533)
 
-    With the sign DERIVED by
-    :func:`rfx.api._sparams._dut_sign_from_reference_at_the_dut` the same
-    fixture reads instead::
+    With the shipped constant the same fixture reads instead::
 
         max|S_code - S_true|   4.88e-14 / 2.79e-14 / 2.67e-14
         lam_min(I - S^H S)     +0.3258 / +0.4670 / +0.5334 (equal to the truth)
 
-    and on the COMMITTED
-    fixture the derivation returns the same +1/-1 the literals had, so the
-    change is numerically free where it already shipped (pinned by
-    ``test_assembler_wave_roles_follow_the_junction_side_reference_plane``,
-    unchanged).
+    Re-measured 2026-09-02 with the same swap applied on the COMMITTED
+    facing: identical, 3.554 / 2.649 / 5.107 and -20.87 / -13.72 / -39.12.
+    Note what this arm can NOT do: it cannot fail under a hard-coded
+    ``a = forward_amp``, because that constant is physically right for
+    both facings -- the wrong reading fails identically on both. An earlier revision of the fix wrote the constant as a
+    per-port bit ``(ref_m - centroid) * sign(ref_m - centroid) > 0``, which
+    is true whenever ``ref_m != centroid`` and so was the same constant
+    with an unreachable branch; the assembler now states the constant
+    plainly (see its Notes).
     """
-    # The mirrored fixture really is the other orientation, and the
-    # production derivation -- not this test -- decides both signs.
+    # The mirrored fixture really is the other orientation; the planting
+    # convention takes the DUT side as an input, production takes none.
     assert _REF_MSL_MIRROR_M > _X_MSL_MIRROR_M.max()     # junction ABOVE the ladder
     assert _REF_MSL_M < _X_MSL_M.min()                   # committed: BELOW it
-    assert _dut_sign_from_reference_at_the_dut(
-        ref_m=_REF_MSL_MIRROR_M, planes_m=_X_MSL_MIRROR_M) == _DUT_SIGN_MSL_MIRROR
-    assert _dut_sign_from_reference_at_the_dut(
-        ref_m=_REF_MSL_M, planes_m=_X_MSL_M) == _DUT_SIGN_MSL
+    assert _DUT_SIGN_MSL_MIRROR == np.sign(_REF_MSL_MIRROR_M - _X_MSL_MIRROR_M.mean())
     assert _DUT_SIGN_MSL_MIRROR == -_DUT_SIGN_MSL
 
     s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code = _run_assembler(
@@ -461,24 +458,8 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     assert _REF_MSL_M < _X_MSL_M.min()        # junction below the MSL ladder
     assert _DUT_SIGN_COAX == np.sign(_REF_COAX_M - _Z_COAX_M.mean())
     assert _DUT_SIGN_MSL == np.sign(_REF_MSL_M - _X_MSL_M.mean())
-    # The assembler derives exactly these two from the same geometry rather
-    # than carrying them as literals (issue #822 review): on this lane each
-    # reference plane IS the junction, so the DUT side is the reference
-    # plane's side. The literals above are the fixture's expected values,
-    # not an input to production.
-    assert _dut_sign_from_reference_at_the_dut(
-        ref_m=_REF_COAX_M, planes_m=_Z_COAX_M) == _DUT_SIGN_COAX
-    assert _dut_sign_from_reference_at_the_dut(
-        ref_m=_REF_MSL_M, planes_m=_X_MSL_M) == _DUT_SIGN_MSL
-    # And on this lane -- reference plane AT the junction, i.e. on the DUT
-    # side of both ladders -- the production helper must resolve BOTH ports
-    # to a = forward_amp (the bit the pre-#822 constant got backwards).
-    class _Out:
-        forward_amp, backward_amp = 1.0 + 0j, 2.0 + 0j
-    for ref, planes, sign in ((_REF_COAX_M, _Z_COAX_M, _DUT_SIGN_COAX),
-                              (_REF_MSL_M, _X_MSL_M, _DUT_SIGN_MSL)):
-        assert _incident_outgoing(_Out(), ref_m=ref, planes_m=planes,
-                                  dut_sign=sign) == (1.0 + 0j, 2.0 + 0j)
-        # ... and flipping the DUT side flips the mapping, nothing else.
-        assert _incident_outgoing(_Out(), ref_m=ref, planes_m=planes,
-                                  dut_sign=-sign) == (2.0 + 0j, 1.0 + 0j)
+    # These two literals are inputs to the PLANTING only. Production takes
+    # no side bit: on this lane each reference plane IS the junction, so the
+    # extractor's "toward the reference plane" branch is the incident wave
+    # at both ports (``a = forward_amp``, a constant of the lane), and the
+    # gate above is what pins it.
