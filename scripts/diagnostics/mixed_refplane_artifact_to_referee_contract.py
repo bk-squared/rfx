@@ -4,10 +4,10 @@
 WHY THIS EXISTS
 ---------------
 The two #498/#517 lanes were built to two different names for the same content.
-The rfx measurement driver (``i498_mixed_refplane_measurement.py``) writes the
+The rfx measurement driver (``mixed_refplane_measurement.py``) writes the
 frequencies under ``fixture.freqs_hz`` and the unprojected S under
 ``s_matrix.S_raw`` (flat ``[re, im]`` pairs plus ``s_matrix.S_raw_shape``); the
-referee (``i498_openems_probe_fed_msl_referee.py``) declares its input contract
+referee (``probe_fed_msl_openems_referee.py``) declares its input contract
 as top-level ``freqs_hz`` and ``s_raw`` nested ``[2][2][n_freqs]``.  VESSL run
 369367257607 refused on exactly that mismatch and classified itself correctly:
 "a script bug, NOT a physics finding".
@@ -87,7 +87,7 @@ def adapt(doc: dict, *, source: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("source", help="path to i498_mixed_refplane_measurement.json")
+    ap.add_argument("source", help="path to mixed_refplane_measurement.json")
     ap.add_argument("--output", required=True, help="path of the derived contract view to write")
     args = ap.parse_args(argv)
 

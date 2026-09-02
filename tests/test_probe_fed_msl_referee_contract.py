@@ -30,10 +30,10 @@ import numpy as np
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_SCRIPT = _REPO_ROOT / "scripts" / "diagnostics" / "i498_openems_probe_fed_msl_referee.py"
-_YAML = _REPO_ROOT / "scripts" / "vessl_i498_openems_referee.yaml"
+_SCRIPT = _REPO_ROOT / "scripts" / "diagnostics" / "probe_fed_msl_openems_referee.py"
+_YAML = _REPO_ROOT / "scripts" / "vessl_probe_fed_msl_referee.yaml"
 _PREDECLARATION = (
-    _REPO_ROOT / "docs" / "design_notes" / "issue498_mixed_refplane_predeclaration.md"
+    _REPO_ROOT / "docs" / "design_notes" / "mixed_refplane_predeclaration.md"
 )
 
 
@@ -48,7 +48,7 @@ def _smoother():
 
 
 def _load_referee():
-    spec = importlib.util.spec_from_file_location("_i498_referee_under_test", _SCRIPT)
+    spec = importlib.util.spec_from_file_location("_probe_fed_msl_referee_under_test", _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -197,7 +197,7 @@ def test_cli_stage_1_without_openems_exits_2_and_writes_no_number(tmp_path):
         capture_output=True, text=True, cwd=str(_REPO_ROOT))
     assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
     assert "openEMS Python bindings not importable" in proc.stderr
-    assert "vessl_i498_openems_referee.yaml" in proc.stderr
+    assert "vessl_probe_fed_msl_referee.yaml" in proc.stderr
     assert not out.exists()
 
 
@@ -812,12 +812,17 @@ def test_vessl_lane_proceeds_when_the_run_clone_exists(tmp_path):
     assert "REACHED_CD" in proc.stdout
 
 
-def test_vessl_lane_default_run_clone_is_still_the_dedicated_one():
-    """RUN_CLONE is an override, not a silent redirection: unset or empty,
-    the lane still uses its own dedicated clone name."""
+def test_vessl_lane_requires_run_clone_by_name():
+    """The yaml carries NO default run-clone path (it is per-workspace, and
+    a public repo must not ship a private absolute path): an empty
+    RUN_CLONE fails by NAME with exit 3, before the ``cd``."""
     run = _yaml_run_block()
-    assert "rfx-i498-openems" in run
-    assert 'ROOT="${RUN_CLONE:-' in run
+    assert 'ROOT="${RUN_CLONE:-}"' in run
+    assert "/root/" not in run and "~/" not in run
+    proc = _sh(_run_clone_prelude(), "")
+    assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
+    assert "RUN CLONE UNSET" in proc.stdout
+    assert "REACHED_CD" not in proc.stdout
 
 
 # ---------------------------------------------------------------------------

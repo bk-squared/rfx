@@ -3,7 +3,7 @@
 
 **REPORT-ONLY.** This script measures; it does not decide, does not gate, and
 does not pin. Its predeclaration is
-``docs/design_notes/issue498_mixed_refplane_predeclaration.md`` (committed
+``docs/design_notes/mixed_refplane_predeclaration.md`` (committed
 BEFORE any run, on ``meas/498-517-mixed-referee``). Read that first: every
 falsifier, budget and outcome below is quoted from it, not invented here.
 
@@ -79,7 +79,7 @@ convention with NO 1/2 — the same convention ``flux_spectrum`` returns
     R3 = |b_msl| / ( |out| / sqrt(Re Zc) )        <=>   |b_msl|^2  vs  |out|^2 / Re(Zc)
 
 NOT ``|out|^2/(4 Re Zc)``, which under-reads by exactly 4 in power. Pinned by
-``tests/test_i498_refplane_measurement.py`` (pure NumPy, written against the
+``tests/test_mixed_refplane_measurement.py`` (pure NumPy, written against the
 wrong form first).
 
 ======================================================================
@@ -135,7 +135,7 @@ REVIEWER NON-BLOCKING ITEMS APPLIED
 Usage
 -----
     cd <worktree> && PYTHONPATH=<worktree> JAX_PLATFORMS=cpu \\
-        python3 scripts/diagnostics/i498_mixed_refplane_measurement.py \\
+        python3 scripts/diagnostics/mixed_refplane_measurement.py \\
             [--num-periods 60] [--out DIR] [--no-write]
 
 ``--num-periods 4`` is the plumbing smoke, NOT the measurement: at that record
@@ -179,8 +179,8 @@ from rfx.probes.refplane import (  # noqa: E402
 )
 from rfx.sources.sources import GaussianPulse  # noqa: E402
 
-OUT_DIR = REPO / "scripts" / "diagnostics" / "i498_mixed_refplane_measurement"
-ARTIFACT_NAME = "i498_mixed_refplane_measurement.json"
+OUT_DIR = REPO / "scripts" / "diagnostics" / "mixed_refplane_measurement"
+ARTIFACT_NAME = "mixed_refplane_measurement.json"
 
 # ---------------------------------------------------------------------------
 # Fixture — verbatim from tests/test_mixed_port_sparam.py (_base_sim,
@@ -202,9 +202,9 @@ _REFPLANE_N = 10              # deviation 1: N (slot 0) and 2N (slot 1)
 _N_PROBES = 3                 # deviation 2: ladder 4.72 / 4.40 / 4.08 mm
 
 # --- predeclared extra flux surfaces ---------------------------------------
-_FLUX_MX_NAME = "_i498_flux_lw_mx"
+_FLUX_MX_NAME = "_mixed_refplane_flux_lw_mx"
 _FLUX_MX_X = 1.44e-3          # predeclared -x full cross-section (index 26)
-_FLUX_PX_NAME = "_i498_flux_lw_px"
+_FLUX_PX_NAME = "_mixed_refplane_flux_lw_px"
 _FLUX_PX_X = 2.56e-3          # symmetric +x full cross-section, REPORTED ONLY
 
 # --- constants quoted from the predeclaration -------------------------------
@@ -413,7 +413,7 @@ def refplane_instrumentation(n_cells: int = _REFPLANE_N):
         driven = [k for k in lw_slots if self._ports[k].excite]
         if len(driven) > 1:
             raise RuntimeError(
-                "i498 instrumentation: more than one lw port is excited on "
+                "refplane instrumentation: more than one lw port is excited on "
                 "this run; the single-drive assumption behind "
                 "_sparam_drive_idx does not hold.")
         drive_idx = (lw_slots.index(driven[0]) if driven
@@ -435,7 +435,7 @@ def refplane_instrumentation(n_cells: int = _REFPLANE_N):
         rp = raw.get("wire_refplane")
         if rp is None or len(rp) == 0:
             raise AssertionError(
-                "i498 instrumentation: raw['wire_refplane'] is empty — the "
+                "refplane instrumentation: raw['wire_refplane'] is empty — the "
                 "reference planes did not register. Do not trust anything "
                 "downstream.")
         wire = raw.get("wire") or ()
@@ -443,7 +443,7 @@ def refplane_instrumentation(n_cells: int = _REFPLANE_N):
         expect = [bool(pe.excite) for pe in saved if pe.impedance != 0.0]
         if excite_flags != expect:
             raise AssertionError(
-                "i498 instrumentation: the drive index changed WHAT IS "
+                "refplane instrumentation: the drive index changed WHAT IS "
                 f"EXCITED (accumulator excite={excite_flags}, lane intent="
                 f"{expect}). Refusing to continue.")
         cap.positive_control.append({
@@ -943,7 +943,7 @@ def main(argv=None) -> int:
           "(REPORT-ONLY)")
     print("=" * 78)
     print("Predeclaration: docs/design_notes/"
-          "issue498_mixed_refplane_predeclaration.md")
+          "mixed_refplane_predeclaration.md")
     print(f"num_periods = {num_periods:g}"
           + ("" if is_measurement else
              "   <-- REDUCED SETTINGS: THIS IS A PLUMBING SMOKE, NOT THE "
@@ -1224,7 +1224,7 @@ def main(argv=None) -> int:
             "reference-plane-instrumented mixed-lane run. Not a reference, "
             "not a gate, not a fixture. Pins nothing."),
         "predeclaration": (
-            "docs/design_notes/issue498_mixed_refplane_predeclaration.md"),
+            "docs/design_notes/mixed_refplane_predeclaration.md"),
         "is_the_measurement": is_measurement,
         "reduced_settings_note": (
             None if is_measurement else
@@ -1265,13 +1265,13 @@ def main(argv=None) -> int:
             "msl_plane_vs_lane_plane_msl_max_rel_dev": fid_plane,
         },
         # The openEMS referee's input contract (see
-        # scripts/diagnostics/i498_openems_probe_fed_msl_referee.py, "Required
+        # scripts/diagnostics/probe_fed_msl_openems_referee.py, "Required
         # keys"): top-level ``freqs_hz`` plus ``s_raw`` nested [2][2][n_freqs]
         # of [re, im], index 0 = lumped/wire family, index 1 = MSL. Emitted
         # natively so the referee can consume this artifact directly; VESSL
         # 369367257607 refused an earlier artifact that carried the same
         # content only under the names below, and needed
-        # scripts/diagnostics/i498_rfx_artifact_to_referee_contract.py to
+        # scripts/diagnostics/mixed_refplane_artifact_to_referee_contract.py to
         # re-shape it. Same numbers, two spellings, no projected S either way.
         "freqs_hz": [float(f) for f in np.asarray(freqs).tolist()],
         "s_raw": [[[[float(S_raw[i, j, k].real), float(S_raw[i, j, k].imag)]

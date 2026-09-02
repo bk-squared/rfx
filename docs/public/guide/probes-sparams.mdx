@@ -185,6 +185,15 @@ result = sim.run(n_steps=5000, compute_s_params=True)
 s11 = result.s_params[0, 0, :]  # complex, shape (n_freqs,)
 ```
 
+`add_port(..., reference_plane_cells=N)` (wire ports, multi-drive S-matrix
+runs only) reads V/I at two planes N and 2N cells from the port along the
+line. The build rejects a plane that leaves the declared domain or sits within
+the absorber's own thickness of a domain face, and a plane zone that reaches
+another port — including any rung of a microstrip port's de-embedding probe
+ladder, at the auto-resolved offset and spacing the run actually probes. Both
+crossing checks compare positions along the line axis only, so a transversely
+separated port on a parallel trace also trips them.
+
 ### Microstrip-line S-matrix
 
 MSL ports use their own calculator and result object:

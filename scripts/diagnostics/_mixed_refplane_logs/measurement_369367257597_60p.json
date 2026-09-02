@@ -1,6 +1,6 @@
 {
   "what_this_is": "REPORT-ONLY diagnostic record of the issue #498/#517 reference-plane-instrumented mixed-lane run. Not a reference, not a gate, not a fixture. Pins nothing.",
-  "predeclaration": "docs/design_notes/issue498_mixed_refplane_predeclaration.md",
+  "predeclaration": "docs/design_notes/mixed_refplane_predeclaration.md",
   "is_the_measurement": true,
   "reduced_settings_note": null,
   "do_not_pin": [

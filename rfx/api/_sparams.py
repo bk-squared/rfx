@@ -3300,6 +3300,11 @@ class _SparamMixin:
                             GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
                     else:
                         wf = None
+                    # Carry the whole probe ladder: an omitted n_probes
+                    # silently reverted to the dataclass default (5) here,
+                    # so a port registered with n_probes=3 ran with a
+                    # five-rung bookkeeping entry (the reference-plane
+                    # crossing guard in _forward_from_materials walks it).
                     run_entries.append(_MSLPortEntry(
                         name=pe.name, position=pe.position,
                         width=pe.width, height=pe.height,
@@ -3307,6 +3312,7 @@ class _SparamMixin:
                         waveform=wf, excite=new_excite,
                         n_probe_offset=pe.n_probe_offset,
                         n_probe_spacing=pe.n_probe_spacing,
+                        n_probes=pe.n_probes,
                         mode=pe.mode,
                         eps_r_sub=pe.eps_r_sub,
                     ))
@@ -4593,8 +4599,15 @@ class _SparamMixin:
                     _dc.replace(pe, excite=(fam == "lw" and k == loc))
                     for k, pe in enumerate(saved_ports)
                 ]
+                # Rebuild from the RESOLVED entries (auto probe offset /
+                # spacing solved above, the ladder ``probe_xs`` was built
+                # from), not from the raw registration ``saved_msl`` — so
+                # ``self._msl_ports`` inside ``_forward_from_materials``
+                # describes the ladder this run actually probes, as
+                # compute_msl_s_matrix already does. ``saved_msl`` is
+                # restored in ``finally``.
                 run_msl = []
-                for k, pe in enumerate(saved_msl):
+                for k, pe in enumerate(entries):
                     driven = fam == "msl" and k == loc
                     wf = (
                         (pe.waveform if pe.waveform is not None else

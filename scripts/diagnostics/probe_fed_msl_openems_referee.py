@@ -197,13 +197,13 @@ USAGE
 ============================================================================
     # no openEMS needed -- prints the full stage plan + the geometry it
     # WOULD build, and the pure-numpy mesh/geometry self-check:
-    python scripts/diagnostics/i498_openems_probe_fed_msl_referee.py --dry-run
-    python scripts/diagnostics/i498_openems_probe_fed_msl_referee.py --self-check
+    python scripts/diagnostics/probe_fed_msl_openems_referee.py --dry-run
+    python scripts/diagnostics/probe_fed_msl_openems_referee.py --self-check
 
-    # VESSL only (scripts/vessl_i498_openems_referee.yaml), openEMS present:
-    ... --stage 1    --output .omx/i498-openems/stage1.json
-    ... --stage 2    --stage1-json .omx/i498-openems/stage1.json   # refuses without it
-    ... --stage both --output .omx/i498-openems/referee.json
+    # VESSL only (scripts/vessl_probe_fed_msl_referee.yaml), openEMS present:
+    ... --stage 1    --output .omx/probe-fed-msl-referee/stage1.json
+    ... --stage 2    --stage1-json .omx/probe-fed-msl-referee/stage1.json   # refuses without it
+    ... --stage both --output .omx/probe-fed-msl-referee/referee.json
     # STAGE=1|2|both is also read from the environment when --stage is absent.
 
 EXIT CODES
@@ -306,7 +306,7 @@ RFX_REALIZED_RECORD: dict = {
         "y_c_m": 1.5e-3,
     },
     "measured_command": (
-        "cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 python3 -c "
+        "cd <local-worktree> && PYTHONPATH=<local-worktree> python3 -c "
         "\"<build _base_sim geometry verbatim>; g=sim._build_grid(); "
         "mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" "
         "-- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845"
@@ -1457,7 +1457,7 @@ def _load_msl_phase_referee_module(repo_root: Path):
             f"hand-copied; without it this script cannot run its own "
             f"reproduce gate."
         )
-    spec = importlib.util.spec_from_file_location("_i498_msl_phase_referee", path)
+    spec = importlib.util.spec_from_file_location("_msl_phase_referee_delegate", path)
     if spec is None or spec.loader is None:
         raise ConfigError(f"could not load {path}")
     mod = importlib.util.module_from_spec(spec)
@@ -2034,8 +2034,8 @@ def main(argv: list[str] | None = None) -> int:
                         "WOULD be built; needs no openEMS")
     p.add_argument("--self-check", action="store_true",
                    help="print the pure-numpy mesh/geometry self-check only")
-    p.add_argument("--output", default=".omx/i498-openems-referee/referee.json")
-    p.add_argument("--sim-root", default="/tmp/i498_openems_referee")
+    p.add_argument("--output", default=".omx/probe-fed-msl-referee/referee.json")
+    p.add_argument("--sim-root", default="/tmp/probe_fed_msl_openems_referee")
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--nrts", type=int, default=B_NRTS_DEFAULT)
     p.add_argument("--end-criteria", type=float, default=B_END_CRITERIA)
@@ -2177,8 +2177,8 @@ def main(argv: list[str] | None = None) -> int:
                 also_dx80=not args.no_dx80_leg)
     except ImportError as exc:
         print(f"SKIP: openEMS Python bindings not importable ({exc}). This "
-              f"script is VESSL-only; see scripts/vessl_i498_openems_"
-              f"referee.yaml.", file=sys.stderr)
+              "script is VESSL-only; see "
+              "scripts/vessl_probe_fed_msl_referee.yaml.", file=sys.stderr)
         return 2
     except ConfigError as exc:
         print(f"CONFIG ERROR (script bug, not a physics finding): {exc}",

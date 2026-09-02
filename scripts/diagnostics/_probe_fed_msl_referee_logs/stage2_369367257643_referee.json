@@ -74,7 +74,7 @@
       "msl_feed_x_m": 0.0055,
       "y_c_m": 0.0015
     },
-    "measured_command": "cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 python3 -c \"<build _base_sim geometry verbatim>; g=sim._build_grid(); mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" -- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845",
+    "measured_command": "cd <local-worktree> && PYTHONPATH=<local-worktree> python3 -c \"<build _base_sim geometry verbatim>; g=sim._build_grid(); mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" -- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845",
     "measured_output_verbatim": [
       "shape (117, 55, 19) pad_x 8 8 pad_y 8 8 pad_z 0 8",
       "interior (slice(8, 109, None), slice(8, 47, None), slice(0, 11, None))",
@@ -3745,7 +3745,7 @@
         "(8) THE ABSORBER PAD THICKNESS. rfx pads 8 cells x 80 um = 0.64 mm beyond each declared face; this script pads 8 cells x dx_oe = 0.40 mm at the comparator mesh. Cell COUNT matches, physical thickness does not. Declared systematic on the open-end reflections at x = 0 and x = 8.00 mm."
       ]
     },
-    "comparison_status": "compared against S_raw from /root/workspace/byungkwan-workspace/research/rfx/.omx/i498-mixed-refplane/20260901T101718Z-38c7552b51027186016cbc123546367fe248b39a/referee_contract_view.json",
+    "comparison_status": "compared against S_raw from <local>/.omx/mixed-refplane/20260901T101718Z-38c7552b51027186016cbc123546367fe248b39a/referee_contract_view.json",
     "sanity_passed": false,
     "cannot_compare": [
       "(1) THE LUMPED/WIRE DIAGONAL, as a port-model comparison. rfx's wire diagonal is a per-cell, PRE-INJECTION port-cell quantity with Z0c = Z0/n_live = 50/4 = 12.5 ohm; openEMS's lumped port is a single lumped resistor across a one-cell gap referenced to the full 50 ohm. Agreement or disagreement there is evidence about the FRAME, not about the port, and cannot settle #683/#764/#776/#778. This referee reports |S11| and never adjudicates it.",
@@ -3762,11 +3762,11 @@
   "elapsed_s": 3243.3,
   "note": "a self-check failed",
   "openems_stdout_logs": [
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_msl__openems_stdout.log",
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_smoke__openems_stdout.log",
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_lumped__openems_stdout.log",
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_msl__openems_stdout.log",
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_smoke__openems_stdout.log",
-    "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_lumped__openems_stdout.log"
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_msl__openems_stdout.log",
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_smoke__openems_stdout.log",
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_lumped__openems_stdout.log",
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_msl__openems_stdout.log",
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx80um_smoke__openems_stdout.log",
+    "<local>/.omx/probe-fed-msl-referee/20260901T124010Z-d18ea64c/openems_logs/dx50um_lumped__openems_stdout.log"
   ]
 }

@@ -1,7 +1,7 @@
 ==============================================================================
 ISSUE #498 / #517 — MIXED-LANE REFERENCE-PLANE MEASUREMENT (REPORT-ONLY)
 ==============================================================================
-Predeclaration: docs/design_notes/issue498_mixed_refplane_predeclaration.md
+Predeclaration: docs/design_notes/mixed_refplane_predeclaration.md
 num_periods = 60
 Nothing here may be pinned. Do-not-pin list: 8 entries (in the artifact).
 
@@ -288,4 +288,4 @@ F3: MSL_RECEIVE_AGREES
     reason           : R3 in window at all bins — the shipped MSL receive extractor agrees with the #313-validated plane wave. The lane's |S10| magnitude gap is NOT in the MSL receive channel. This pins no number; it says where the residual is not.
 
 F4 is NOT a falsifier on this run — prediction only, not pinned: 0.21 +/- 0.03
-artifact -> /root/workspace/byungkwan-workspace/research/rfx/.omx/i498-mixed-refplane/20260901T101718Z-38c7552b51027186016cbc123546367fe248b39a/i498_mixed_refplane_measurement.json
+artifact -> <local>/.omx/mixed-refplane/20260901T101718Z-38c7552b51027186016cbc123546367fe248b39a/mixed_refplane_measurement.json

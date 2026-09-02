@@ -245,7 +245,7 @@ text untouched. The script asserts capture fidelity against `result.S_wave` /
 `result.S_raw` at runtime, exactly as the step-1 script does.
 
 The extra `-x` flux plane is a plain `sim.add_flux_monitor(axis="x",
-coordinate=1.44e-3, freqs=..., name="_i498_flux_lw_mx")` registered **before** the
+coordinate=1.44e-3, freqs=..., name="_mixed_refplane_flux_lw_mx")` registered **before** the
 call: the mixed lane saves and restores `self._flux_monitors` and looks up only
 its own names, so a pre-registered monitor is accumulated by the runner and comes
 back name-keyed in `raw["flux_monitors"]` without touching the lane's own
@@ -799,9 +799,9 @@ runs the primary checkout.
 
 Script: `/tmp/.../498/geo2.py` and `geo3.py` (scratch; the measurement script
 re-derives all of it and writes it into the artifact). Environment for every
-call: `cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 JAX_PLATFORMS=cpu python3 …`,
+call: `cd <local-worktree> && PYTHONPATH=<local-worktree> JAX_PLATFORMS=cpu python3 …`,
 with `python3 -c "import rfx,os;print(os.path.dirname(rfx.__file__))"` verified as
-`/root/rfx-sub/wt-498/rfx`.
+`<local-worktree>/rfx`.
 
 ```
 mask shape (117, 55, 19)
@@ -822,7 +822,7 @@ raised on `main`.)
 ### 11.2 F2's alternative prediction, and the F1/F3 window
 
 ```python
-# cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 python3 - <<'PY'
+# cd <local-worktree> && PYTHONPATH=<local-worktree> python3 - <<'PY'
 import json, numpy as np
 J = "scripts/diagnostics/i517_mixed_solve_vs_ratio/i517_mixed_solve_vs_ratio.json"
 d = json.load(open(J))

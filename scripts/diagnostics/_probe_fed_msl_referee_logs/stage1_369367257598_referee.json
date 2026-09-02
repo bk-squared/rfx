@@ -74,7 +74,7 @@
       "msl_feed_x_m": 0.0055,
       "y_c_m": 0.0015
     },
-    "measured_command": "cd /root/rfx-sub/wt-498 && PYTHONPATH=/root/rfx-sub/wt-498 python3 -c \"<build _base_sim geometry verbatim>; g=sim._build_grid(); mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" -- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845",
+    "measured_command": "cd <local-worktree> && PYTHONPATH=<local-worktree> python3 -c \"<build _base_sim geometry verbatim>; g=sim._build_grid(); mats,_,_=sim._build_materials(g); cm=sim.conductor_mask(g); print(...)\" -- run 2026-09-01 on branch meas/498-517-mixed-referee @ 3038f845",
     "measured_output_verbatim": [
       "shape (117, 55, 19) pad_x 8 8 pad_y 8 8 pad_z 0 8",
       "interior (slice(8, 109, None), slice(8, 47, None), slice(0, 11, None))",
@@ -516,7 +516,7 @@
         2949754508.3881207,
         3871552792.259408
       ],
-      "delegated_to": "/root/workspace/byungkwan-workspace/research/rfx-i498-openems/validation/crossval/20_msl_phase_referee.py"
+      "delegated_to": "<local>/validation/crossval/20_msl_phase_referee.py"
     },
     "a2": {
       "leg": "lumped-probe leg (the DUT's feed IS this tutorial's feed model)",
@@ -554,7 +554,7 @@
       "settling_positive_control_smoke_warned": true,
       "settling_positive_control_real_warned": false,
       "elapsed_s": 20.3,
-      "log_written_by_this_run": "/tmp/i498_openems_referee/a2_patch_tutorial/_openems_stdout.log"
+      "log_written_by_this_run": "/tmp/probe_fed_msl_openems_referee/a2_patch_tutorial/_openems_stdout.log"
     },
     "passed": true,
     "law": "Before any rfx-vs-openEMS number exists, this script must imitate openEMS's own canonical example and reproduce its documented known-good number. A lumped/wire-to-MSL transition has no closed form, so there is no analytic escape hatch. Two legs are required because the DUT uses two port classes.",

@@ -1,5 +1,5 @@
-name: rfx-i498-openems-referee
-description: "#498/#517 EXTERNAL REFEREE lane: scripts/diagnostics/i498_openems_probe_fed_msl_referee.py on a source-built openEMS (comparator leg only -- it brackets, it does not judge rfx's own numbers, and it cannot say which of rfx's diagonals is lying). TWO STAGES, and the second refuses to run unless the first passed: STAGE 1 reproduces openEMS's OWN canonical examples -- python/Tutorials/MSL_NotchFilter.py (the MSL-port leg, delegated to the already-verified validation/crossval/20_msl_phase_referee.py port, recorded reproduction 3.6711 GHz / 0.4364% vs the recomputed 3.6871 GHz analytic) and python/Tutorials/Simple_Patch_Antenna.py (the lumped-probe leg -- the DUT's feed IS that tutorial's feed model; upstream-anchored gate D >= 6.0 dBi from '~7 dBi broadside', plus a clearly-labelled repo-internal regression lock on the 2.4300 GHz S11 dip). STAGE 2 builds the #488 probe-fed microstrip transition on rfx's REALIZED board (h_sub 320 um / trace node span 480 um, NOT the declared 254/600 -- the #723 class), reproduces BOTH open ends at x=0 and x=8.00 mm with the conductor stopping at the absorber's inner face (reviewer blocker B4: running the trace into the PML would be a matched termination and would delete the reflections |S22| is made of), de-embeds the MSL stencil to rfx's own probe-0 plane x=4.72 mm, and emits S_raw-comparable |S21|/|S22| magnitudes plus phase. dx=50 um is the COMPARATOR mesh (the do_not_repeat rule: at dx=80 um openEMS's MSL extraction is non-physical, |S11|^2+|S21|^2 up to 8.9); a dx=80 um leg runs REPORTED-ONLY with its passivity sum quoted verbatim. REPORT-ONLY: no gate, tolerance, reference, support-matrix or known_limits value moves, and NO lumped/wire diagonal number is pinned by anything this lane produces. Runs from a dedicated NFS run-clone behind an EXPECT SHA guard -- a clone that does not contain the pinned commit exits 3 instead of measuring the wrong tree. Env: STAGE=1|2|both (default both), optional STAGE1_JSON (required by STAGE=2 -- without it the script exits 4 by design, which is the stage contract firing, not a bug) and RFX_JSON (the #498/#517 measurement artifact; absent, Stage 2 reports openEMS-only numbers). remilab-c0 cpu lane. Submit: vessl run create -f scripts/vessl_i498_openems_referee.yaml"
+name: rfx-probe-fed-msl-referee
+description: "#498/#517 EXTERNAL REFEREE lane: scripts/diagnostics/probe_fed_msl_openems_referee.py on a source-built openEMS (comparator leg only -- it brackets, it does not judge rfx's own numbers, and it cannot say which of rfx's diagonals is lying). TWO STAGES, and the second refuses to run unless the first passed: STAGE 1 reproduces openEMS's OWN canonical examples -- python/Tutorials/MSL_NotchFilter.py (the MSL-port leg, delegated to the already-verified validation/crossval/20_msl_phase_referee.py port, recorded reproduction 3.6711 GHz / 0.4364% vs the recomputed 3.6871 GHz analytic) and python/Tutorials/Simple_Patch_Antenna.py (the lumped-probe leg -- the DUT's feed IS that tutorial's feed model; upstream-anchored gate D >= 6.0 dBi from '~7 dBi broadside', plus a clearly-labelled repo-internal regression lock on the 2.4300 GHz S11 dip). STAGE 2 builds the #488 probe-fed microstrip transition on rfx's REALIZED board (h_sub 320 um / trace node span 480 um, NOT the declared 254/600 -- the #723 class), reproduces BOTH open ends at x=0 and x=8.00 mm with the conductor stopping at the absorber's inner face (reviewer blocker B4: running the trace into the PML would be a matched termination and would delete the reflections |S22| is made of), de-embeds the MSL stencil to rfx's own probe-0 plane x=4.72 mm, and emits S_raw-comparable |S21|/|S22| magnitudes plus phase. dx=50 um is the COMPARATOR mesh (the do_not_repeat rule: at dx=80 um openEMS's MSL extraction is non-physical, |S11|^2+|S21|^2 up to 8.9); a dx=80 um leg runs REPORTED-ONLY with its passivity sum quoted verbatim. REPORT-ONLY: no gate, tolerance, reference, support-matrix or known_limits value moves, and NO lumped/wire diagonal number is pinned by anything this lane produces. Runs from a dedicated NFS run-clone behind an EXPECT SHA guard -- a clone that does not contain the pinned commit exits 3 instead of measuring the wrong tree. Env: STAGE=1|2|both (default both), optional STAGE1_JSON (required by STAGE=2 -- without it the script exits 4 by design, which is the stage contract firing, not a bug) and RFX_JSON (the #498/#517 measurement artifact; absent, Stage 2 reports openEMS-only numbers). remilab-c0 cpu lane. Submit: vessl run create -f scripts/vessl_probe_fed_msl_referee.yaml"
 tags: [rfx, issue-498, issue-517, openems, external-referee, comparator-leg]
 resources:
   cluster: remilab-c0
@@ -28,11 +28,14 @@ env:
   # Stage 2 still runs and reports openEMS-only numbers.
   STAGE1_JSON: ""
   RFX_JSON: ""
-  # The run-clone directory. It MUST already exist on the mounted volume --
-  # the run block refuses (exit 3) with a named message if it does not,
-  # instead of dying at a bare `cd`. Leave empty to use the lane's own
-  # dedicated clone (.../research/rfx-i498-openems), or point it at an
-  # existing clone such as .../research/rfx-fidelity-722.
+  # REQUIRED. The run-clone directory on the mounted volume: a dedicated
+  # git clone of this branch (never the primary checkout). Its location is
+  # per-workspace, so this yaml carries NO default path -- set it before
+  # submitting. The run block exits 3 with a named message when it is
+  # empty, missing, or not a git clone, instead of dying at a bare `cd`.
+  # An existing clone (e.g. <mount>/<workspace>/research/rfx-fidelity-722)
+  # works too; the EXPECT + content guards decide whether the tree may be
+  # measured.
   RUN_CLONE: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
@@ -54,19 +57,22 @@ run: |-
 
   # -- RUN CLONE, not the primary checkout: this lane must not depend on
   # what research/rfx happens to have checked out. --
-  ROOT="${RUN_CLONE:-/root/workspace/byungkwan-workspace/research/rfx-i498-openems}"
-  # The run-clone must EXIST before the job is submitted. Without this guard a
+  ROOT="${RUN_CLONE:-}"
+  # RUN_CLONE is REQUIRED and this yaml carries no default path (the clone's
+  # location is per-workspace; see the env comment). The run-clone must
+  # EXIST before the job is submitted. Without these guards an empty or
   # missing directory kills the job at the bare `cd` under `set -eux`, with a
   # shell error and before any EXPECT / content guard or the verdict `case`
   # can speak -- an anonymous exit that reads like an infrastructure fault.
   # Create it once (it lives on the mounted volume and persists):
-  #   git clone /root/workspace/byungkwan-workspace/research/rfx \
-  #             /root/workspace/byungkwan-workspace/research/rfx-i498-openems
-  #   cd .../rfx-i498-openems && git fetch origin && git checkout <branch>
+  #   git clone https://github.com/bk-squared/rfx.git \
+  #             <mount>/<workspace>/research/rfx-probe-fed-msl-referee
+  #   cd <that clone> && git fetch origin && git checkout <branch>
   # or point RUN_CLONE at an existing clone (e.g. .../rfx-fidelity-722, which
   # is what the sibling lane scripts/vessl_msl_passive_port_reflection.yaml
   # reuses). Either way the EXPECT + content guards below still decide whether
   # the tree may be measured.
+  test -n "$ROOT" || { echo "RUN CLONE UNSET: RUN_CLONE is empty -- set it to the NFS run-clone of this branch before submitting; see the env comment"; exit 3; }
   test -d "$ROOT" || { echo "RUN CLONE MISSING: $ROOT does not exist -- create it (or set RUN_CLONE) before submitting; see the comment above this guard"; exit 3; }
   test -d "$ROOT/.git" || { echo "RUN CLONE NOT A GIT CLONE: $ROOT exists but has no .git -- provenance cannot be established; refusing to measure"; exit 3; }
   cd "$ROOT"
@@ -87,7 +93,7 @@ run: |-
   fi
   git merge-base --is-ancestor "$EXPECT" HEAD || { echo "STALE RUN CLONE: HEAD does not contain $EXPECT"; exit 3; }
 
-  DRV=scripts/diagnostics/i498_openems_probe_fed_msl_referee.py
+  DRV=scripts/diagnostics/probe_fed_msl_openems_referee.py
   test -f "$DRV" || { echo "STALE RUN CLONE: referee driver missing"; exit 3; }
   # Content guard: the stage contract must be present in the tree we are
   # about to measure with. A clone that pre-dates it would happily produce
@@ -101,7 +107,7 @@ run: |-
   fi
   "$PY" -c "import numpy; print('numpy', numpy.__version__)"
 
-  out=".omx/i498-openems-referee/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  out=".omx/probe-fed-msl-referee/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
   mkdir -p "$out"
   echo "artifacts: $ROOT/$out"
 
@@ -113,7 +119,7 @@ run: |-
   # compared, printed into the run log before any solver starts. --
   "$PY" -u "$DRV" --dry-run --stage "$STAGE" | tee "$out/stage_plan.log"
 
-  ARGS="--stage $STAGE --output $out/referee.json --sim-root /tmp/i498_openems_referee --threads 8"
+  ARGS="--stage $STAGE --output $out/referee.json --sim-root /tmp/probe_fed_msl_openems_referee --threads 8"
   if [ -n "$STAGE1_JSON" ]; then ARGS="$ARGS --stage1-json $STAGE1_JSON"; fi
   if [ -n "$RFX_JSON" ]; then ARGS="$ARGS --rfx-json $RFX_JSON"; fi
 
@@ -124,14 +130,14 @@ run: |-
   set -e
   echo "$rc" > "$out/exit_code"
   tail -n 120 "$out/run.log" || true
-  echo "i498_openems_referee_rc=$rc"
+  echo "probe_fed_msl_openems_referee_rc=$rc"
 
   # -- settling positive control, quoted from this run's own log: the
   # SMOKE pass must carry openEMS's max-timesteps warning and the REAL
   # pass must not. Printed here so the verdict is readable without
   # opening the JSON. --
   echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
-  grep -n "reached before the end-criteria of" "$out/run.log" || echo "(phrase absent from the captured driver log -- see the per-stage _openems_stdout.log files under /tmp/i498_openems_referee)"
+  grep -n "reached before the end-criteria of" "$out/run.log" || echo "(phrase absent from the captured driver log -- see the per-stage _openems_stdout.log files under /tmp/probe_fed_msl_openems_referee)"
 
   echo "===== reproduce-gate + stage summary (quoted from the JSON) ====="
   if [ -f "$out/referee.json" ]; then

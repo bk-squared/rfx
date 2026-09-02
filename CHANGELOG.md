@@ -76,6 +76,36 @@ behaviour. The non-uniform waveguide lane also carries the ring-down
 settling witness now (`settling_db` plus the -40 dB aggregate warning —
 the waveguide instance of #827).
 
+### Added — two reference-plane placement checks on the S-matrix scan path (`add_port(reference_plane_cells=N)`)
+
+Both run while the port sources are assembled for a multi-drive S-matrix run
+and raise `ValueError` for configurations that used to build silently:
+
+- **Planes off the uniform line.** A reference plane that lands outside the
+  declared domain, or within a face's own absorber thickness of it, is
+  rejected (message: "OUTSIDE the declared domain" / "within the absorber
+  thickness of a declared-domain face"). Measured on the probe-fed microstrip
+  fixture: a `"+x"` feed built its 2N plane five cells from the trace's open
+  end, so the plane read the open-end standing wave, not the line.
+- **Planes reaching into a microstrip port's probe ladder.** The existing
+  "reach past another port" check now also walks each `add_msl_port` port's
+  N-probe de-embedding ladder — the ladder the S-matrix drivers actually
+  probe, with an auto `n_probe_offset` / `n_probe_spacing` resolved the same
+  way the drivers resolve it — and rejects a plane zone that contains any
+  rung.
+
+Limitation, the same as the existing check's: both crossing checks compare
+line-axis indices only, so a transversely separated port on a parallel trace
+also trips them (conservative). Reduce `N`, or shorten the ladder, to clear.
+
+Bookkeeping in the same change, no extracted value changes: the per-run port
+entries `compute_msl_s_matrix` rebuilds now keep `n_probes` (the rebuild
+omitted it, so the entry carried the dataclass default 5 for a port
+registered with 3), and `compute_mixed_s_matrix` installs the resolved
+entries for each run instead of the raw registration. Both drivers place
+their DFT probe planes from the resolved entries before the rebuild, so
+neither entry field fed an extracted number.
+
 ## [1.7.0] - 2026-09-01
 
 ### Changed — multi-band graded-mesh z-axis warning cap raised 1.3 -> 1.4; x/y unchanged (SPEC-01 WP6, issue #780)

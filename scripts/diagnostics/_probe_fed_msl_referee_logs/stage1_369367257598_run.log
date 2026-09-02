@@ -36,9 +36,6 @@ MESH / GEOMETRY SELF-CHECK (pure numpy -- no openEMS, no rfx)
   [OK  ] comparator_dx50um:x_line_present[open_end_hi]: nearest mesh line 0.000 nm away
   [OK  ] comparator_dx50um:measplane_snap_exact: target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)
   [OK  ] comparator_dx50um:substrate_cells_ge_5: 6 substrate cells -- the do_not_repeat rule needs the comparator mesh above the 3.175-cell non-physical regime
-  [OK  ] comparator_dx50um:no_degenerate_cell[x]: smallest x cell 20000.000 nm (0.4000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
-  [OK  ] comparator_dx50um:no_degenerate_cell[y]: smallest y cell 4166.667 nm (0.0833 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
-  [OK  ] comparator_dx50um:no_degenerate_cell[z]: smallest z cell 50000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
   [OK  ] comparator_dx50um:cells_per_lambda_min_ge_10: 626.8 cells per shortest substrate wavelength
   [OK  ] reported_only_dx80um:x_line_present[lumped_feed]: nearest mesh line 0.000 nm away
   [OK  ] reported_only_dx80um:x_line_present[msl_start]: nearest mesh line 0.000 nm away
@@ -46,31 +43,25 @@ MESH / GEOMETRY SELF-CHECK (pure numpy -- no openEMS, no rfx)
   [OK  ] reported_only_dx80um:x_line_present[open_end_lo]: nearest mesh line 0.000 nm away
   [OK  ] reported_only_dx80um:x_line_present[open_end_hi]: nearest mesh line 0.000 nm away
   [OK  ] reported_only_dx80um:measplane_snap_exact: target 0.800 mm, snapped 0.800 mm, effective CalcPort shift -0.0 pm (a measured no-op is expected here, reported not skipped)
-  [OK  ] reported_only_dx80um:no_degenerate_cell[x]: smallest x cell 80000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
-  [OK  ] reported_only_dx80um:no_degenerate_cell[y]: smallest y cell 6666.667 nm (0.0833 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
-  [OK  ] reported_only_dx80um:no_degenerate_cell[z]: smallest z cell 80000.000 nm (1.0000 of dx) -- a round-off-scale cell means a plane of record is carried by two coincident mesh lines and openEMS's operator is singular there
   [OK  ] reported_only_dx80um:cells_per_lambda_min_ge_10: 391.8 cells per shortest substrate wavelength
 
   -- comparator_dx50um --
-     PLANNED (y pre-smoothing) lines {'x': 179, 'y': 85, 'z': 25}  cells 358,848  substrate 6 cells of 53.33 um
-     AS BUILT  (after SmoothMeshLines y) lines {'x': 179, 'y': 401, 'z': 25}  cells 1,708,800  = 4.76x the plan
-     PML_8 depth per face: x 400/400 um, y 67.7/70.0 um (SHRUNK by the y smoothing), z_hi 400 um; z_lo is PEC
+     lines {'x': 182, 'y': 85, 'z': 25}  cells 364,896  substrate 6 cells of 53.33 um
      pad 0.40 mm (8 cells) vs rfx's 0.64 mm (8 cells) -- declared systematic
      MSL meas plane 4.72 mm, shift 0.80 mm, effective CalcPort shift -5.421e-19 m
 
   -- reported_only_dx80um --
-     PLANNED (y pre-smoothing) lines {'x': 117, 'y': 59, 'z': 19}  cells 121,104  substrate 4 cells of 80.00 um
-     AS BUILT  (after SmoothMeshLines y) lines {'x': 117, 'y': 301, 'z': 19}  cells 626,400  = 5.17x the plan
-     PML_8 depth per face: x 640/640 um, y 92.8/105.7 um (SHRUNK by the y smoothing), z_hi 640 um; z_lo is PEC
+     lines {'x': 120, 'y': 62, 'z': 19}  cells 130,662  substrate 4 cells of 80.00 um
      pad 0.64 mm (8 cells) vs rfx's 0.64 mm (8 cells) -- declared systematic
      MSL meas plane 4.72 mm, shift 0.80 mm, effective CalcPort shift -5.421e-19 m
 
   self-check passed: True
 
---- STAGE 2: the #488 probe-fed microstrip transition ---
+--- STAGE 1: reproduce-gate (openEMS's own canonical examples) ---
+  A1 (MSL_NotchFilter): f_notch = 3.6711 GHz vs 3.6872 GHz analytic, dev 0.4364% -> passed=True
+  A2 (Simple_Patch_Antenna): S11 dip 2.4300 GHz (-30.6 dB), broadside D 6.81 dBi -> passed=True
 
-=== Written to /root/workspace/byungkwan-workspace/research/rfx-i498-openems/.omx/i498-openems-referee/20260901T124010Z-d18ea64c/referee.json ===
-    openEMS stdout archived: 6 log(s)
+=== Written to <local>/.omx/probe-fed-msl-referee/20260901T101735Z-38c7552b/referee.json ===
 
 ==============================================================================
 WHAT CANNOT BE COMPARED (repeated after the run, deliberately):
@@ -83,4 +74,4 @@ WHAT CANNOT BE COMPARED (repeated after the run, deliberately):
   * (7) THE ABSOLUTE ANCHOR IMPEDANCE. rfx normalizes its MSL port to the Hammerstad-Jensen Z0 of the DECLARED board (47.89479996289313 ohm, W=600 um / h=254 um) while the board it actually solves is W=480 um (node span) / h=320 um, whose HJ Z0 is 62.652 ohm (57.463 ohm on the 560 um cell-span reading). openEMS's MSLPort measures its own Z0 from the fields. The gap between those anchors is REPORTED, never gated, and it is part of the predeclaration's budget B -- not a defect this referee attributes to either solver.
   * (8) THE ABSORBER PAD THICKNESS. rfx pads 8 cells x 80 um = 0.64 mm beyond each declared face; this script pads 8 cells x dx_oe = 0.40 mm at the comparator mesh. Cell COUNT matches, physical thickness does not. Declared systematic on the open-end reflections at x = 0 and x = 8.00 mm.
 ==============================================================================
-overall_passed=False (self-checks only -- NOT a verdict on rfx vs openEMS agreement)
+overall_passed=True (self-checks only -- NOT a verdict on rfx vs openEMS agreement)

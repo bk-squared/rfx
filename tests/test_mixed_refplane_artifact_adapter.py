@@ -9,12 +9,12 @@ import numpy as np
 import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
-_SRC = _REPO / "scripts" / "diagnostics" / "i498_rfx_artifact_to_referee_contract.py"
+_SRC = _REPO / "scripts" / "diagnostics" / "mixed_refplane_artifact_to_referee_contract.py"
 _ARTIFACT = (
-    _REPO / "scripts" / "diagnostics" / "_i498_mixed_refplane_logs" / "measurement_369367257597_60p.json"
+    _REPO / "scripts" / "diagnostics" / "_mixed_refplane_logs" / "measurement_369367257597_60p.json"
 )
 
-_spec = importlib.util.spec_from_file_location("i498_adapter", _SRC)
+_spec = importlib.util.spec_from_file_location("mixed_refplane_adapter", _SRC)
 _mod = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(_mod)

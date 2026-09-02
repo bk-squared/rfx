@@ -1,5 +1,5 @@
-name: rfx-i498-mixed-refplane-measurement
-description: "#498/#517 step 2: the 60-period, two-drive, reference-plane-instrumented run on the committed #488 mixed lumped/wire<->MSL fixture, predeclared in docs/design_notes/issue498_mixed_refplane_predeclaration.md. REPORT-ONLY -- it records S_raw, the reference-plane (out, inc) pair on both drives, |b_msl|, every flux surface individually and signed, cond(A), settling_db and the preflight text verbatim, then evaluates F1/F2/F3 as predeclared. It pins NOTHING: no gate, no tolerance, no reference, no support-matrix or known_limits edit, no snapshot, and in particular no lumped/wire diagonal value (the PI's sequencing decision on #776/#778 + the parked #683 flip is undecided). CPU lane -- the estimate is 15-30 min for the two drives on 16 cores; if it exceeds the timeout that is REPORTED, and num_periods is NOT shortened to fit. This job CLONES the branch fresh (NFS run-clone): the mounted primary checkout stays on main and does not carry the driver. Submit with: vessl run create -f scripts/vessl_mixed_refplane_measurement.yaml"
+name: rfx-mixed-refplane-measurement
+description: "#498/#517 step 2: the 60-period, two-drive, reference-plane-instrumented run on the committed #488 mixed lumped/wire<->MSL fixture, predeclared in docs/design_notes/mixed_refplane_predeclaration.md. REPORT-ONLY -- it records S_raw, the reference-plane (out, inc) pair on both drives, |b_msl|, every flux surface individually and signed, cond(A), settling_db and the preflight text verbatim, then evaluates F1/F2/F3 as predeclared. It pins NOTHING: no gate, no tolerance, no reference, no support-matrix or known_limits edit, no snapshot, and in particular no lumped/wire diagonal value (the PI's sequencing decision on #776/#778 + the parked #683 flip is undecided). CPU lane -- the estimate is 15-30 min for the two drives on 16 cores; if it exceeds the timeout that is REPORTED, and num_periods is NOT shortened to fit. This job CLONES the branch fresh (NFS run-clone): the mounted primary checkout stays on main and does not carry the driver. Submit with: vessl run create -f scripts/vessl_mixed_refplane_measurement.yaml"
 tags: [rfx, issue-498, issue-517, mixed-port, reference-plane, report-only]
 resources:
   cluster: remilab-c0
@@ -20,25 +20,37 @@ env:
   # (lane-default and exact_f64) by the driver itself.
   RFX_BRANCH: "meas/498-517-mixed-referee"
   # FILL THIS IN with the commit that carries
-  # scripts/diagnostics/i498_mixed_refplane_measurement.py before submitting.
+  # scripts/diagnostics/mixed_refplane_measurement.py before submitting.
   # Empty = UNPINNED: the job still runs, off the RFX_BRANCH tip, and says so
   # loudly in its own log. RFX_STRICT_SHA=1 turns an unfetchable or empty pin
   # into a hard abort (exit 3) instead.
   RFX_EXPECT_SHA: ""
   RFX_STRICT_SHA: "0"
   RFX_NUM_PERIODS: "60"
+  # REQUIRED. A directory on the mounted volume that outlives the job (the
+  # /tmp clone below is ephemeral). Its location is per-workspace, so this
+  # yaml carries no default path -- set it before submitting; the run block
+  # exits 3 with a named message when it is empty.
+  RFX_ARTIFACT_ROOT: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
   echo "=== rfx #498/#517: mixed-lane reference-plane measurement (REPORT-ONLY) ==="
-  echo "=== predeclaration: docs/design_notes/issue498_mixed_refplane_predeclaration.md ==="
+  echo "=== predeclaration: docs/design_notes/mixed_refplane_predeclaration.md ==="
   echo "=== this job CLONES RFX_BRANCH -- it does NOT use the mounted primary"
   echo "=== checkout, which stays on main and has no driver script ==="
   date -u
 
+  if [ -z "${RFX_ARTIFACT_ROOT:-}" ]; then
+    echo "FATAL: RFX_ARTIFACT_ROOT is empty -- set it to a directory on the"
+    echo "       mounted volume before submitting (the /tmp clone is ephemeral"
+    echo "       and is NOT the artifact store)."
+    exit 3
+  fi
+
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  CLONE_DIR=/tmp/rfx-i498-clone
+  CLONE_DIR=/tmp/rfx-mixed-refplane-clone
   rm -rf "$CLONE_DIR"
   mkdir -p "$CLONE_DIR"
   cd "$CLONE_DIR"
@@ -80,8 +92,8 @@ run: |-
   # predeclaration this job has nothing to measure, and a silent no-op run
   # that still writes a log is exactly the failure mode the lane recipe warns
   # about.
-  DRIVER="scripts/diagnostics/i498_mixed_refplane_measurement.py"
-  PREDECL="docs/design_notes/issue498_mixed_refplane_predeclaration.md"
+  DRIVER="scripts/diagnostics/mixed_refplane_measurement.py"
+  PREDECL="docs/design_notes/mixed_refplane_predeclaration.md"
   for f in "$DRIVER" "$PREDECL"; do
     if [ ! -f "$f" ]; then
       echo "FATAL: $f is not on the checked-out commit ($ACTUAL_SHA)."
@@ -98,13 +110,13 @@ run: |-
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx from', os.path.dirname(rfx.__file__))"
 
-  OUT_DIR="/root/workspace/byungkwan-workspace/research/rfx/.omx/i498-mixed-refplane/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
+  OUT_DIR="$RFX_ARTIFACT_ROOT/mixed-refplane/$(date -u +%Y%m%dT%H%M%SZ)-${ACTUAL_SHA}"
   mkdir -p "$OUT_DIR"
 
   echo "=== the evaluators and the report-only guards must be green on THIS"
   echo "=== checkout before any physics runs (cheap: pure NumPy) ==="
   set +e
-  python -u -m pytest tests/test_i498_refplane_measurement.py -m "not slow" -q \
+  python -u -m pytest tests/test_mixed_refplane_measurement.py -m "not slow" -q \
     > "$OUT_DIR/evaluator_tests.log" 2>&1
   ev_rc=$?
   set -e
