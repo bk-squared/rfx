@@ -27,15 +27,15 @@ run: |-
 
   echo ""
   echo "=== 1. Energy stability (standalone stepper) ==="
-  pytest tests/unit/subgrid/test_sbp_sat_3d.py -xvs --tb=short || FAIL=1
+  pytest tests/unit/subgrid/test_sbp_sat.py -xvs --tb=short || FAIL=1
 
   echo ""
   echo "=== 2. JIT runner tests (H-coupling) ==="
-  pytest tests/unit/subgrid/test_sbp_sat_jit.py -xvs --tb=short || FAIL=1
+  pytest tests/unit/subgrid/test_sbp_sat.py -xvs --tb=short || FAIL=1
 
   echo ""
   echo "=== 3. SBP-SAT alpha tests ==="
-  pytest tests/unit/subgrid/test_sbp_sat_alpha.py -xvs --tb=short || FAIL=1
+  pytest tests/unit/subgrid/test_sbp_sat.py -xvs --tb=short || FAIL=1
 
   echo ""
   echo "=== 4. Subgrid accuracy crossval (Fresnel + 3D cavity) ==="

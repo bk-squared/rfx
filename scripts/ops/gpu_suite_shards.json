@@ -25,12 +25,11 @@
    "test_optimize_proxy_objectives.py",
    "test_sparam_ad_end_to_end.py",
    "test_optimize_multistart.py",
-   "test_sbp_sat_1d.py",
+   "test_sbp_sat.py",
    "test_optimize_convergence.py",
    "test_subgrid_crossval.py",
    "test_custom_waveforms.py",
-   "test_pml_reflectivity.py",
-   "test_sbp_sat_2d.py"
+   "test_pml_reflectivity.py"
   ],
   [
    "test_topology.py",

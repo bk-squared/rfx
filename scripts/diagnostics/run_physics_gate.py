@@ -363,8 +363,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         group_id="slow_sbp_sat",
         description="Slow SBP-SAT stability and energy-conservation checks.",
         tests=(
-            "tests/unit/subgrid/test_sbp_sat_1d.py",
-            "tests/unit/subgrid/test_sbp_sat_2d.py",
+            "tests/unit/subgrid/test_sbp_sat.py",
         ),
         pytest_args=("-m", "slow"),
         claim_level="E1",
