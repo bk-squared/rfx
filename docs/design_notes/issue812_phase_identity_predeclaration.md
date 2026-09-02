@@ -133,7 +133,7 @@ lane is `k = 1.57`.
 ### 3.4 Falsifier (pre-declared)
 
 1. **(A)** The gate must PASS on the committed run-3 registered-mesh data
-   (the `_RUN3_*` literals in `tests/test_coax_two_port_referee_header.py`, VESSL 369367251629) and on
+   (the `_RUN3_*` literals in `tests/crossval/test_coax_two_port_referee_header.py`, VESSL 369367251629) and on
    the committed 1.5x-refinement run
    (`_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json`), with the
    margins reported.

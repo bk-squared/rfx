@@ -13,7 +13,7 @@ witness functions and records what they return:
 
   cv21 registered mesh   VESSL 369367251629 (run-3 stage_b_partial, committed
                          verbatim as the ``_RUN3_*`` literals in
-                         tests/test_coax_two_port_referee_header.py)
+                         tests/crossval/test_coax_two_port_referee_header.py)
   cv21 1.5x refinement   validation/crossval/_21_coax_two_port_referee_logs/
                          mesh_refinement_369367251845_result.json
   cv20 declared board    validation/crossval/_20_msl_phase_referee_logs/
@@ -26,7 +26,7 @@ Usage::
     PYTHONPATH=<worktree> python scripts/diagnostics/build_issue812_phase_identity_evidence.py \
         [--output validation/crossval/_issue812_phase_identity/regate_evidence.json]
 
-``tests/test_issue812_phase_identity_evidence.py`` re-runs this builder into a
+``tests/crossval/test_issue812_phase_identity_evidence.py`` re-runs this builder into a
 scratch path and asserts the committed artifact still equals what it produces,
 so the artifact cannot go stale against the code it describes.
 """
@@ -93,7 +93,7 @@ def _cv21_run3_arrays(cv21: ModuleType):
     them keeps this builder from re-typing a single digit of them.
     """
     sys.path.insert(0, str(REPO_ROOT))
-    from tests import test_coax_two_port_referee_header as hdr  # noqa: PLC0415
+    from tests.crossval import test_coax_two_port_referee_header as hdr  # noqa: PLC0415
 
     return hdr._run3_arrays(cv21)
 
@@ -408,7 +408,7 @@ def build() -> dict:
         "runs_no_fdtd": True,
         "sources": {
             "cv21_registered_mesh": "VESSL 369367251629 (run-3 stage_b_partial, committed "
-                                    "verbatim as tests/test_coax_two_port_referee_header.py's "
+                                    "verbatim as tests/crossval/test_coax_two_port_referee_header.py's "
                                     "_RUN3_* literals)",
             "cv21_refined_mesh": "validation/crossval/_21_coax_two_port_referee_logs/"
                                  "mesh_refinement_369367251845_result.json",

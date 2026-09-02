@@ -906,7 +906,7 @@ BETA_ENVELOPE_PREDECLARATION: dict = {
     "detection_floor_k_lo": 0.752106,
     "falsifier": (
         "(A) the witness must PASS on the committed run-3 registered-mesh data "
-        "(tests/test_coax_two_port_referee_header.py::_RUN3_*, VESSL 369367251629) AND on "
+        "(tests/crossval/test_coax_two_port_referee_header.py::_RUN3_*, VESSL 369367251629) AND on "
         "the committed 1.5x-refinement run (_21_coax_two_port_referee_logs/"
         "mesh_refinement_369367251845_result.json). (B) it must FAIL on a coherent "
         "k=1.57 perturbation (beta_measured -> k*beta_measured AND s21 rotated by "

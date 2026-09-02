@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 _ARTIFACT = _REPO / "validation/crossval/_issue812_phase_identity/regate_evidence.json"
 _BUILDER = _REPO / "scripts/diagnostics/build_issue812_phase_identity_evidence.py"
 

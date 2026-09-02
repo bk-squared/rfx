@@ -12,12 +12,12 @@ openEMS is absent from this host, so both cases exit 2 here and neither was
 re-run. Every measurement is a **replay of committed field data through the real
 witness functions** — the pattern
 `test_matched_through_witness_run3_regression_measured_vs_analytic_beta` already
-established in `tests/test_coax_two_port_referee_header.py`. Four committed
+established in `tests/crossval/test_coax_two_port_referee_header.py`. Four committed
 configurations were used, two per case:
 
 | case | configuration | source |
 |---|---|---|
-| cv21 | registered mesh, `dx_scale = 1.0`, VESSL 369367251629 | the `_RUN3_*` literals in `tests/test_coax_two_port_referee_header.py` |
+| cv21 | registered mesh, `dx_scale = 1.0`, VESSL 369367251629 | the `_RUN3_*` literals in `tests/crossval/test_coax_two_port_referee_header.py` |
 | cv21 | 1.5x refinement, `dx_scale = 2/3`, VESSL 369367251845 | `validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json` |
 | cv20 | declared board (openEMS `h_sub` 254um), VESSL 369367251705 | `validation/crossval/_20_msl_phase_referee_logs/20260804T055009Z_result.json` |
 | cv20 | #723 realized board (openEMS `h_sub` 300um), VESSL 369367256520 | `validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json` |
@@ -253,7 +253,7 @@ below is an artifact key in
 `scripts/diagnostics/build_issue812_phase_identity_evidence.py` (no FDTD; a
 replay of the four committed configurations through the referees' own witness
 functions) and kept current by
-`tests/test_issue812_phase_identity_evidence.py`'s
+`tests/crossval/test_issue812_phase_identity_evidence.py`'s
 `test_committed_artifact_equals_a_fresh_replay`.
 
 **3.1 Blocker (cv20) — the inverted gating decision, still standing where it was

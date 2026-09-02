@@ -610,7 +610,7 @@ wrong, in three parts:
       reason: residual = raw_diff - (beta_openems - beta_rfx)*L12
       subtracts a term built from beta_rfx, so doubling beta_rfx and the
       rfx phase together leaves it bit-unchanged (pinned by
-      tests/test_msl_phase_referee_header.py::
+      tests/crossval/test_msl_phase_referee_header.py::
       test_dispersion_corrected_residual_is_blind_for_the_same_reason).
 
 The gate set is therefore now, with each leg's evidence level stated in
