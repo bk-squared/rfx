@@ -1,0 +1,44 @@
+== defective run: d=7.620 mm, a/60 ==
+/root/work/regate-mie-iris/rfx/probes/probes.py:689: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  zeros = jnp.zeros((nf, n1, n2), dtype=jnp.complex128)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/scalar_types.py:50: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return asarray(x, dtype=self.dtype)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+{
+ "d_mm": 7.62,
+ "cells_per_a": 60,
+ "dx_mm": 0.381,
+ "glen_m": 0.2,
+ "iris_frac": 0.5,
+ "fin_cells_delta": -1,
+ "nominal_aperture_nodes": 19,
+ "realized_aperture_nodes": 20,
+ "thickness_cells": 4,
+ "wall_s": 882.5
+}
+== defective run: d=7.620 mm, a/30 ==
+{
+ "d_mm": 7.62,
+ "cells_per_a": 30,
+ "dx_mm": 0.762,
+ "glen_m": 0.2,
+ "iris_frac": 0.5,
+ "fin_cells_delta": -1,
+ "nominal_aperture_nodes": 9,
+ "realized_aperture_nodes": 10,
+ "thickness_cells": 2,
+ "wall_s": 73.9
+}
+{
+ "fine_gap_abs": 0.02842,
+ "richardson_dev_abs": 0.00588,
+ "passes_pooled_fine_gate": true,
+ "fails_per_config_fine_gate": true,
+ "per_config_margin_x": 1.895,
+ "passes_richardson_gate": true
+}
+wrote /root/workspace/claude-workspace/rfx/runs/issue812-r2-cv17-cv18/one_cell_defect_live.json
+CRITERION (B) LIVE: CONFIRMED

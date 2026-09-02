@@ -688,3 +688,33 @@ def test_claim_scope_cites_the_artifact_and_not_the_retracted_sentence(fixture):
     # the withdrawn assertion, in every form it was written
     assert "CLOSER to the oracle at d minus one fine cell" not in scope
     assert "-0.6 to -1 cell of effective aperture" not in scope
+
+
+def test_live_one_cell_defect_is_caught_by_the_per_config_gate_and_not_the_old_ones():
+    """#812 round 2, VESSL 369367257708: the audit's defect (upper fin one
+    cell short at each rung at d = 7.620 mm, i.e. an aperture one cell too
+    WIDE) solved for real. It PASSES the pre-#812 pooled 0.04 gate and the
+    Richardson 0.01 gate -- the measured blindness -- and FAILS the new
+    per-configuration 0.015 gate. Pinned so the committed live artifact
+    cannot drift from what the manifest cites; the first-order model row it
+    sits beside is aperture_resolution.json::pairs[2].one_cell_defect.over."""
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "validation/crossval/_18_wr90_iris_results"
+    live = json.loads((root / "one_cell_defect_live.json").read_text())
+    model = json.loads((root / "aperture_resolution.json").read_text())["pairs"][2]
+    assert live["config"]["config_key"] == model["config"] == "7.620|0.20|0.50"
+    assert live["config"]["fin_cells_delta"] == -1
+    m = live["measured"]
+    assert m["fine_gap_abs"] == pytest.approx(0.02842, abs=5e-6)
+    assert m["richardson_dev_abs"] == pytest.approx(0.00588, abs=5e-6)
+    assert m["fine_gap_abs"] <= live["config"]["pooled_fine_gate_abs"] == 0.04
+    assert m["fine_gap_abs"] > live["config"]["fine_gate_abs_per_config"] == 0.015
+    assert m["richardson_dev_abs"] <= live["config"]["richardson_gate_abs"] == 0.01
+    assert m["passes_pooled_fine_gate"] and m["fails_per_config_fine_gate"] and m["passes_richardson_gate"]
+    assert m["per_config_margin_x"] == pytest.approx(m["fine_gap_abs"] / 0.015, abs=1e-3)
+    # the first-order model predicted the same verdicts, 7 % low on the gated leg
+    assert model["one_cell_defect"]["over"]["fine_gap_abs"] == pytest.approx(0.0265, abs=1e-4)
+    assert model["one_cell_defect"]["over"]["detected_by_fine_gate"] is True
+    assert model["one_cell_defect"]["over"]["detected_by_richardson_gate"] is False
+    assert abs(model["one_cell_defect"]["over"]["fine_gap_abs"] / m["fine_gap_abs"] - 1.0) < 0.10

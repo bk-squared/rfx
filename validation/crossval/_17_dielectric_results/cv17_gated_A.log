@@ -1,0 +1,9 @@
+[oracle] dielectric-Mie self-witnesses PASS: {'rayleigh_rel_err': 0.00086, 'm_to_1_limit': 7.585e-07, 'convergence_abs_change': 0.0, 'unitarity_max_dev': 3.331e-16}
+
+== GATED coarse bins ka [0.5, 0.75, 1.0, 1.25] (cpr=6.4, gate 6.3 dB) ==
+  ka=0.50 cpr= 6.4 clear=20 grid=(70, 70, 70) steps=  700  rfx   -54.57 dBsm vs Mie   -53.08  delta  -1.49 dB a_eff/a=0.9880 (7s)  PASS
+  ka=0.75 cpr= 6.4 clear=20 grid=(70, 70, 70) steps=  700  rfx   -43.34 dBsm vs Mie   -43.18  delta  -0.16 dB a_eff/a=0.9880 (7s)  PASS
+  ka=1.00 cpr= 6.4 clear=20 grid=(71, 71, 71) steps=  700  rfx   -40.15 dBsm vs Mie   -37.07  delta  -3.08 dB a_eff/a=0.9893 (7s)  PASS
+  ka=1.25 cpr= 6.4 clear=20 grid=(71, 71, 71) steps=  700  rfx   -33.94 dBsm vs Mie   -34.23  delta  +0.29 dB a_eff/a=0.9954 (7s)  PASS
+
+RESULT: ALL CHECKS PASSED

@@ -590,3 +590,34 @@ four points and does not inside the island; the shared `claim_scope`, the builde
 `method` string, the script docstring and gate comment, the manifest and the public row
 now say so with the keys above. The model artifact is kept as the declared-grid model it
 is, with its island; the live probe sits beside it as the measurement.
+
+### 7.7 The re-verification job ran: (A) on both cases, (B) live on cv18, keyed
+
+`scripts/vessl_issue812_r2_cv17_cv18.yaml`, VESSL 369367257708 (remilab-c0, 32 CPU;
+log harvested, run deleted; try-1 369367257706 is 7.5). Both no-FDTD builders re-checked
+green on the staged tree first. Logs and the live artifact are committed beside the
+results they belong to.
+
+* **cv17 (A)**: `17_dielectric_sphere_mie.py` through its live gates, exit 0
+  (`validation/crossval/_17_dielectric_results/cv17_gated_A.log`).
+* **cv18 (A)**: `18_wr90_iris_modematch.py`, all sixteen fine/coarse checks PASS,
+  `RESULT: ALL CHECKS PASSED`, exit 0, every fine gap equal to the §5.2 table
+  (`validation/crossval/_18_wr90_iris_results/cv18_gated_A.log`).
+* **cv18 (B), live** — the number §6 called "prose only" now has a key:
+  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.fine_gap_abs = 0.02842` PASSES the pre-#812 pooled gate
+  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.pooled_fine_gate_abs = 0.04`) and the Richardson gate
+  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.richardson_dev_abs = 0.00588` against
+  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.richardson_gate_abs = 0.01`) — the measured blindness — and FAILS the
+  per-configuration gate `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.fine_gate_abs_per_config = 0.015` by
+  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.per_config_margin_x = 1.895`. The first-order model row beside it,
+  `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].one_cell_defect.over.fine_gap_abs = 0.0265`, is 7 % low on the gated
+  leg and predicts the same three verdicts. The probe exits 1 unless exactly that
+  pattern holds; it exited 0. Pinned by
+  `test_live_one_cell_defect_is_caught_by_the_per_config_gate_and_not_the_old_ones`.
+* **Gate-test leg**: exited 1 with "No module named pytest" — the image does not ship
+  pytest and the job did not install it. A job-file defect, not evidence: the same two
+  test files ran green on the branch locally and on CI. `pytest` is added to the job's
+  install line for the record; the 2.5 h job is not rerun for a leg CI already covers.
+
+The manifest's cv18 `claim_scope` cites the live keys instead of restating 0.02842.
+Nothing in §5.2 changes; it acquires a source.

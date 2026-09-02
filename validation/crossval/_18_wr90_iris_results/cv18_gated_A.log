@@ -1,0 +1,31 @@
+[oracle] mode-matching self-witnesses PASS: {'unitarity_dev': 1.11e-16, 'mode_convergence': 4.345e-05, 'marcuvitz_max_rel': 0.108, 'open_limit_s11': 1.027e-08, 'deep_limit_s11': 1.0}
+
+== GATED fine rung dx=a/60 flux (PER-CONFIG gates, pooled ceiling 0.04 abs) ==
+/root/work/regate-mie-iris/rfx/probes/probes.py:689: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  zeros = jnp.zeros((nf, n1, n2), dtype=jnp.complex128)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/scalar_types.py:50: UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return asarray(x, dtype=self.dtype)
+/usr/local/lib/python3.10/dist-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+  d= 18.29 glen=0.20 frac=0.50: max|dS11|=0.0122 gate 0.019 colpow=1.000 (886s) PASS
+  d= 12.19 glen=0.20 frac=0.50: max|dS11|=0.0223 gate 0.034 colpow=1.000 (874s) PASS
+  d=  7.62 glen=0.20 frac=0.50: max|dS11|=0.0097 gate 0.015 colpow=1.000 (868s) PASS
+  d= 18.29 glen=0.20 frac=0.42: max|dS11|=0.0145 gate 0.022 colpow=1.000 (861s) PASS
+  d= 12.19 glen=0.20 frac=0.42: max|dS11|=0.0232 gate 0.035 colpow=1.000 (864s) PASS
+  d=  7.62 glen=0.20 frac=0.42: max|dS11|=0.0097 gate 0.015 colpow=1.000 (864s) PASS
+  d= 12.19 glen=0.16 frac=0.50: max|dS11|=0.0222 gate 0.034 colpow=1.000 (779s) PASS
+  d= 12.19 glen=0.24 frac=0.50: max|dS11|=0.0222 gate 0.034 colpow=1.000 (936s) PASS
+
+== coarse rung dx=a/30 + Richardson over ALL pairs (gate 0.01 abs) ==
+  d= 18.29 glen=0.20 frac=0.50: coarse max|dS11|=0.020 richardson dev=0.004 (74s) PASS
+  d= 12.19 glen=0.20 frac=0.50: coarse max|dS11|=0.041 richardson dev=0.005 (71s) PASS
+  d=  7.62 glen=0.20 frac=0.50: coarse max|dS11|=0.018 richardson dev=0.001 (71s) PASS
+  d= 18.29 glen=0.20 frac=0.42: coarse max|dS11|=0.026 richardson dev=0.004 (72s) PASS
+  d= 12.19 glen=0.20 frac=0.42: coarse max|dS11|=0.043 richardson dev=0.005 (71s) PASS
+  d=  7.62 glen=0.20 frac=0.42: coarse max|dS11|=0.018 richardson dev=0.001 (72s) PASS
+  d= 12.19 glen=0.16 frac=0.50: coarse max|dS11|=0.041 richardson dev=0.005 (68s) PASS
+  d= 12.19 glen=0.24 frac=0.50: coarse max|dS11|=0.040 richardson dev=0.005 (80s) PASS
+
+RESULT: ALL CHECKS PASSED

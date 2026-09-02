@@ -45,7 +45,9 @@ run: |-
   # over it leaves that plugin in place and `import jax` segfaults (run
   # 369367257706). Remove the plugin first, then pin the CI jax.
   "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt jax_cuda12_plugin jax_cuda12_pjrt 2>/dev/null || true
-  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8"
+  # pytest is not in the image: the gate-test leg of 369367257708 exited 1 on
+  # "No module named pytest" after every evidence leg had passed.
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "pytest>=7"
   export PYTHONPATH="$ROOT"
   "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, 'rfx from', os.path.dirname(rfx.__file__), 'x64', jax.config.x64_enabled)"
 
