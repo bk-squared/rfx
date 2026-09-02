@@ -127,6 +127,16 @@ Airy, Meep, OpenEMS, and Palace references). See
 [docs/guides/sparameter_support_matrix.md](../guides/sparameter_support_matrix.md)
 for the full artifact and envelope table.
 
+That status is about magnitude and phase accuracy on the documented setups. It
+is **not** a chain-closure status: the v1.8 chain battery
+(`tests/oracle/test_waveguide_chain_battery.py`,
+`tests/fixtures/waveguide_chain_battery/fixture.json`) measured every criterion
+of [`chain_closure_contract.md`](../design_notes/chain_closure_contract.md) in
+one pre-declared WR-90 run and five families of gates are red, so the
+rectangular-waveguide family is not chain-closed. The support-matrix row lists
+the red criteria and their issues; do not read a green accuracy referee as a
+gradient-chain result.
+
 ## Analytic reference
 
 For a dielectric slab in a rectangular waveguide, compare against the

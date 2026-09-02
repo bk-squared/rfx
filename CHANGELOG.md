@@ -6,6 +6,40 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — the rectangular-waveguide support rows now carry the chain-battery verdict: measured, gates red, family NOT chain-closed (v1.8 WP7)
+
+`docs/guides/support_matrix.md`, `docs/guides/sparameter_support_matrix.md`
+and `docs/guides/sparameter_support_matrix.json` previously described the
+rectangular-waveguide family by its magnitude and phase referees alone. They
+now also state its status against the per-family contract in
+`docs/design_notes/chain_closure_contract.md`, and that status is **not
+closed**. The chain battery ran one pre-declared WR-90 measurement over the
+dx rungs `a/9`, `a/18` and `a/36` on the `normalize=False` and
+`normalize="flux"` lanes and left 26 of its 185 stored verdicts red — 23
+failures plus 3 dx ladders the pre-declared guard reports as *not
+interpretable* — in five families: the flux lane's forward identity
+(criterion 1, float32 reassociation of the Poynting DFT, with an x64 witness
+agreeing with the untraced call to `1.5e-15`); the settling witness at the
+PEC-short fine rung (criterion 2, `settling_db` reading `0.00 dB` on records
+that underflowed float32 to zero — issue #869); one zero-derivative AD-vs-FD
+leg (criterion 3(a)); the reference-plane rotation, `6.602` degrees against
+the Yee-discrete beta with a `3` degree gate, because the port's discrete
+TE10 cutoff is solved on an aperture one cell wider than the guide (criterion
+3(b) — issue #868); and three dx ladders below the next admissible rung
+`a/72` (criterion 3(c)). Criterion 3(d) is green at the claims rung, with the
+analytic Airy slab, the PEC short and the five broad-E5 replay bands as
+referees. Independent power closure is **bounded** rather than demonstrated:
+two interior `add_flux_monitor` planes and the port route agree to `2.146e-05`
+against a `0.02` gate at the coarse rung, but both sit at that rung's float32
+field-noise floor; that measurement is under review on PR #870 and is not yet
+on `main`. No gate, tolerance or measured number moved, and no simulation was
+re-run for this entry. Artifacts: `tests/oracle/test_waveguide_chain_battery.py`,
+`tests/unit/geometry/test_waveguide_chain_battery_geometry.py`,
+`tests/fixtures/waveguide_chain_battery/fixture.json`,
+`docs/design_notes/waveguide_chain_battery_predeclaration.md`, and the
+`scripts/diagnostics/waveguide_chain_battery_measure.py` /
+`scripts/vessl_waveguide_chain_battery.yaml` pair that produced it.
+
 ### Changed — `normalize="flux"` waveguide S-matrix now follows `JAX_ENABLE_X64` (v1.8 chain closure, WP1)
 
 `compute_waveguide_s_matrix(normalize="flux")` on the uniform mesh
@@ -14,7 +48,7 @@ precision knob that `normalize=False` and the non-uniform flux lane
 already honoured. The cast is gone: the result is complex64 by default
 and complex128 under `JAX_ENABLE_X64`. Values move at the complex64
 rounding level only — the sha-pinned float64 flux golden
-(`tests/test_waveguide_sparam_ad.py`) went from 3.3e-08 to 2.2e-08
+(`tests/unit/autodiff/test_waveguide_sparam_ad.py`) went from 3.3e-08 to 2.2e-08
 max|delta| against its 1e-6 gate, and the `False` / `True` goldens are
 bit-identical. Code that asserted `s_params.dtype == complex64` under
 x64 will now see complex128.
@@ -3311,7 +3345,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   `.omx/` outputs, so `scripts/diagnostics/check_port_external_references.py`
   reported the family `blocked` on a clean checkout while the manifest claimed
   `broad_e5_passed`; the auditor now reports `rectangular_waveguide_port` passed.
-  New gate `tests/test_waveguide_broad_e5_envelope_gates.py` re-derives both
+  New gate `tests/crossval/test_waveguide_broad_e5.py` re-derives both
   verdicts from the committed fixtures and mirrors the auditor's broad-E5/E4
   acceptance. R5 note: coarse Meep (res 3/4) gives a non-physical PEC-short
   |S11|>1, so the converged Palace high-order FEM reference is used for that
@@ -3346,7 +3380,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   angle of a zero modal ratio); primal values are preserved exactly.
 - Forward regression: S-matrix unchanged vs the numpy path within the
   float-reassociation envelope (measured max|diff| 1.1e-7 on the WR-90
-  fixture). New CI gates in `tests/test_waveguide_flux_ad.py`
+  fixture). New CI gates in `tests/unit/autodiff/test_waveguide_flux_ad.py`
   (composition-level grad finite + central-FD agreement ≤5% + forward
   no-op-override equivalence); support matrix `ad_evidence` updated.
 
@@ -3554,7 +3588,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   on most NumPy/JAX implementations and cascaded into NaN
   S-parameters on any multi-mode frequency sweep that straddled a
   higher-mode cutoff.  Regression-locked by
-  `tests/test_waveguide_port_validation_battery.py::test_below_cutoff_z_mode_no_nan`.
+  `tests/oracle/test_waveguide_port_validation_battery.py::test_below_cutoff_z_mode_no_nan`.
 - **`_compute_beta` Yee-discrete branch.**  Optional `dt, dx` kwargs;
   when both are positive the Yee 3-D dispersion relation is used
   instead of the analytic continuous form.  Now threaded through
@@ -3597,7 +3631,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   CPML absorbing region, and does not intersect a geometry box.
   Raises `ValueError` for out-of-domain; emits `UserWarning` for
   CPML or device overlap with an actionable remediation message.
-- **Validation battery** (`tests/test_waveguide_port_validation_battery.py`):
+- **Validation battery** (`tests/oracle/test_waveguide_port_validation_battery.py`):
   nine tests locking physical-correctness invariants with Meep-class
   gates where achievable and explicitly-ratcheted gates where the
   extractor still has a known residual.  Supersedes the older loose
