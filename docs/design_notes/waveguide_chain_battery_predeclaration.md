@@ -404,3 +404,44 @@ gate does not bind.
 ---
 
 R3: memory=rfx-known-issues.md:3096-3112,:3397-3408,:4106-4125,:4315,:3718-3726,:3525 + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
+
+---
+
+## Erratum (added with the first measurement, WP2 measurement PR)
+
+Two premises of this note were contradicted by the extractor on the first coarse-rung
+plumbing run (CPU, not claims-bearing). Neither changes a tolerance, a position, a rung or a
+drive setting; both change what the numbers above are *referenced to*, and the fixture set
+was corrected in the builder before the one claims-bearing run so that the note's geometry
+holds as written.
+
+1. **§2.3, "left reference plane, default = 0.02032".** rfx's default reported reference plane
+   is the port (source) plane, not `source + ref_offset·dx`
+   (`rfx/api/_sparams.py`, `desired_ref = entry.reference_plane if ... else planes["source"]`,
+   RF-audit 2026-07-23): under `reference_planes=(None, None)` the result reported
+   `reference_planes = [0.01270, 0.10922]`. The builder now passes the declared planes
+   (0.02032 / 0.10160 m) explicitly, which makes them the raw record planes (`ref_shift = 0`,
+   no de-embed β on the base S). Every distance and shift of §2.3, §5(b), §5(c) and §5(d) is
+   therefore realized exactly as written; the geometry test pins the explicit planes.
+2. **§2.4 / §5(b), "the port's numerical TE10 cutoff … 6.557140 GHz" and "against
+   `_compute_beta(dt, dx)`".** Two different "numerical cutoffs" exist. Preflight's
+   wall-to-wall reader gives 6.557 GHz (= c/2a, the number this note computed). The PORT
+   CONFIG's `f_cutoff` — the cutoff `_shift_modal_waves` and `_compute_mode_impedance`
+   actually use — is the discrete 2D eigenvalue on the port aperture
+   (`mode_profile="discrete"`), which measured 5.877 / 6.205 / 6.378 GHz at the three rungs:
+   the discrete cutoff of an aperture ONE CELL WIDER than the guide (effective width
+   10.04 / 19.02 / 37.01 cells). The FDTD guide itself propagates with the 9/18/36-cell
+   discrete cutoff (thru S21 phase fit, coarse rung: fc = 6.525 GHz, rms 0.08°). The
+   rotation gate of §5(b) is therefore evaluated, as declared, against β of the guide's
+   cutoff (c/2a; Yee-discrete and continuous), and the fixture additionally records the
+   residual against the port config's own β as the mechanism witness. Where that gate is red
+   the reason is this cutoff, not the shift algebra (which the port-β residual shows exact).
+3. **§5(a), "sigma = θ" on the PEC-short window.** `sigma_override` replaces the sigma array
+   AFTER `compute_waveguide_s_matrix` folds `pec_mask` into sigma = 1e10, so a base taken from
+   `_assemble_materials` (sigma = 0 inside `pec_like`) silently deleted the short
+   (`sigma_override(θ=0)` reproduced the empty guide's |S11| = 0.076). The builder's
+   `design_override(kind="sigma")` now carries the fold; the leg then measures what §5(a)
+   declares (a lossy window in front of the short).
+
+The measured consequences (which gates are red, with the numbers) are in the fixture and in
+the measurement PR; nothing here is absorbed into a tolerance.

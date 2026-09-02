@@ -698,3 +698,62 @@ def recompute_verdicts(fx: dict) -> dict:
 def pin_from_envelope(values: list[float], quantum: int = GRADIENT_PIN_QUANTUM) -> float:
     """``gate_from_envelope(max(values), quantum)`` — the pin step of §5(b)/(c)."""
     return float(gate_from_envelope(max(float(x) for x in values), quantum=quantum))
+
+
+def pin_lower_from_envelope(measured: float, *, quantum: int) -> float:
+    """Lower-bound counterpart of ``gate_from_envelope`` for a quantity that must
+    stay ABOVE its measured value (the monotone fraction of §5(c) witness (i)):
+    ``floor(measured / ENVELOPE_GATE_MULTIPLIER · quantum) / quantum`` — the same
+    shared multiplier, applied downward."""
+    from tests import _gate_policy
+    return math.floor(float(measured) / _gate_policy.ENVELOPE_GATE_MULTIPLIER * quantum) / quantum
+
+
+RICHARDSON_PIN_QUANTUM = {"mag": 100, "phase": 10}   # cv18 precedent (0.0051 -> 0.01); 0.1 deg for phases
+MONOTONE_PIN_QUANTUM = 100
+
+
+def pin_fixture(fx: dict) -> dict:
+    """The pin step (a separate commit, §5(b)/(c)): fill every ``pinned_*`` field
+    from the measured report-first quantities and recompute the verdicts.
+
+    * gradient invariance: ONE envelope over every resolvable, finite
+      ``rel_change`` of every (dut, lane, objective) →
+      ``gate_from_envelope(max, quantum=1000)`` written into each entry;
+    * Richardson: per (observable, lane) ``gate_from_envelope(richardson_max_abs_diff,
+      quantum=100 | 10)``;
+    * monotone fraction: per (observable, lane) the lower bound
+      ``pin_lower_from_envelope(measured, quantum=100)``.
+    Nothing measured is touched; only the ``pinned_*`` fields and ``verdicts``.
+    """
+    rels = []
+    for key, p in fx["plane_shift"].items():
+        if key == "cheap_refute":
+            continue
+        for gi in p["gradient_invariance"].values():
+            if gi.get("skipped_under_ulp_floor"):
+                continue
+            if np.isfinite(gi["rel_change"]):
+                rels.append(gi["rel_change"])
+    grad_pin = pin_from_envelope(rels, quantum=GRADIENT_PIN_QUANTUM) if rels else None
+    for key, p in fx["plane_shift"].items():
+        if key == "cheap_refute":
+            continue
+        for gi in p["gradient_invariance"].values():
+            if gi.get("skipped_under_ulp_floor"):
+                continue
+            gi["pinned_gate"] = grad_pin if np.isfinite(gi["rel_change"]) else None
+            gi["pinned_gate_envelope"] = max(rels) if rels else None
+    for key, lad in fx["ladder"].items():
+        if "richardson" in lad:
+            lad["pinned_richardson_gate"] = float(gate_from_envelope(
+                lad["richardson_max_abs_diff"], quantum=RICHARDSON_PIN_QUANTUM[lad["kind"]]))
+        lad["pinned_monotone_fraction_min"] = pin_lower_from_envelope(
+            lad["monotone_fraction_of_bins"], quantum=MONOTONE_PIN_QUANTUM)
+    fx["pins"] = {"gradient_invariance_envelope": max(rels) if rels else None,
+                  "gradient_invariance_gate": grad_pin, "gradient_quantum": GRADIENT_PIN_QUANTUM,
+                  "richardson_quantum": RICHARDSON_PIN_QUANTUM, "monotone_quantum": MONOTONE_PIN_QUANTUM,
+                  "policy": "tests/_gate_policy.py gate_from_envelope (x ENVELOPE_GATE_MULTIPLIER, rounded up); "
+                            "lower bounds rounded down by the same multiplier"}
+    fx["verdicts"] = recompute_verdicts(fx)
+    return fx

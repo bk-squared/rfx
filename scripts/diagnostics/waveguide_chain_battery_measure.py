@@ -695,6 +695,22 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
         }
     if not cells:
         raise SystemExit(f"no cell__*.json under {out_dir}")
+    # Report-only: the settling witness restricted to records whose peak lies in
+    # the float32 NORMAL range. Behind a PEC short the far-port records are
+    # subnormal (~1e-40) or exactly zero: on a flush-to-zero CPU the witness
+    # reads 0 dB there ((end+tiny)/(peak+tiny) with peak = 0), on the GPU it
+    # reads the ratio of two subnormals — neither is a ring-down.
+    tiny32 = float(np.finfo(np.float32).tiny)
+    for c in cells:
+        for block in (c, c.get("settling_rerun") or {}):
+            recs = block.get("settling_records") or []
+            vals = [r["db"] for call in recs for r in call
+                    if r.get("db") is not None and r.get("peak", 0.0) >= tiny32]
+            degenerate = [f"call{ci}/port{r['port_index']}/{r['record']}" for ci, call in enumerate(recs)
+                          for r in call if r.get("peak") is not None and r["peak"] < tiny32]
+            block["settling_db_over_normal_records"] = max(vals) if vals else None
+            block["settling_degenerate_records"] = degenerate
+            block["float32_normal_min"] = tiny32
 
     # referee per rung and lane
     referee = {"pec_short": {}, "slab_airy": {}, "broad_e5_replay": {
@@ -816,7 +832,8 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out-dir", type=Path, required=True)
-    ap.add_argument("--stages", default="cells,ad_fd,plane_shift,assemble")
+    ap.add_argument("--stages", default="cells,ad_fd,plane_shift,assemble",
+                    help="comma list of cells, ad_fd, plane_shift, assemble, pin (pin = the separate pin step)")
     ap.add_argument("--rungs", default=",".join(G.RUNG_LABELS), help="cells stage rungs")
     ap.add_argument("--legs-rung", default=G.LEGS_RUNG_DEFAULT, choices=G.RUNG_LABELS,
                     help="rung of the AD/FD and plane-shift legs (default: the claims rung)")
@@ -850,6 +867,14 @@ def main() -> int:
         stage_plane_shift(args, out_dir, args.legs_rung, prov)
     if "assemble" in stages:
         assemble(args, out_dir, prov)
+    if "pin" in stages:
+        # the separate pin step: read the assembled fixture, fill the pinned_*
+        # fields from the measured envelopes, recompute the verdicts, write back
+        target = Path(args.fixture_out) if args.fixture_out else out_dir / "fixture.json"
+        fx = json.loads(target.read_text())
+        fx = G.pin_fixture(fx)
+        _write(target, fx)
+        _log(f"pinned {target}: {fx['pins']}")
     _log(f"done in {time.time() - t0:.0f}s")
     return 0
 

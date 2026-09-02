@@ -60,11 +60,39 @@ LIVE_ABS_S_TOL: float | None = None
 # body). They stay red in the live layer and are xfail(strict=True) here —
 # never loosened. Filled in the measurement commit; an empty family means
 # every case of that family passed.
+_RED_SETTLING = (
+    "measured 0.0 dB on both drives at 40 AND 80 periods (VESSL 369367257823): behind the "
+    "4/8-cell short the far-port records are exactly zero at this rung and "
+    "settling_db_from_port_records reads (end+tiny)/(peak+tiny) = 0 dB on them; the records "
+    "in the float32 normal range ring down to -100 / -98 dB (fixture "
+    "settling_db_over_normal_records). Witness degeneracy, not truncation — see PR body")
+_RED_ROTATION = (
+    "measured resid 6.602 deg (Yee), 6.565 deg (continuous), wrong-sign witness 0.73 deg at the "
+    "fine rung: the port config de-embeds with f_cutoff = 6.378 GHz (discrete cutoff of an "
+    "aperture one cell wider than the guide) while the guide propagates with 6.555 GHz (thru "
+    "S21 phase fit); against the port's own beta the residual is 6e-5 deg. Mechanism, not "
+    "tolerance — see PR body")
+_RED_IDENTITY_FLUX = (
+    "measured max scaled diff 1.440 (slab) / 1.065 (PEC-short) against rtol 1e-5 / atol 1e-7 "
+    "(abs 0.9-1.1e-5): the float32 reverse-mode primal of the flux lane differs from the "
+    "untraced call by reassociation of a 2849-step Poynting DFT; the same call under x64 "
+    "agrees to 1.5e-15 - 2.2e-14 (fixture x64_witness). Gate stays as pre-declared — see PR body")
+_RED_AD_FD_ZERO_DERIVATIVE = (
+    "measured g_ad = +2.68e-5 (float32) vs g_fd = -7.24e-7, rel 38, FD span 6.5e8 ULP: the "
+    "objective's derivative is physically zero (|S11| = 1 for a lossless window in front of a "
+    "PEC); float32 AD noise 2.7e-5 exceeds the O(1e-6) residual derivative, and the x64 AD "
+    "(-9.8e-7) agrees with FD at that level. The pre-declared ULP-floor skip did not occur "
+    "because the float64 FD resolves the residual — see PR body")
 KNOWN_RED: dict[str, dict[str, str]] = {
-    "settling": {},
-    "ad_vs_fd": {},
-    "forward_identity": {},
-    "rotation": {},
+    "settling": {"pec_short-fine-false": _RED_SETTLING, "pec_short-fine-flux": _RED_SETTLING},
+    "ad_vs_fd": {"pec_short-flux-eps-s11_mag2": _RED_AD_FD_ZERO_DERIVATIVE},
+    "forward_identity": {
+        f"{d}-flux-{k}-{o}": _RED_IDENTITY_FLUX
+        for d, k, objs in (("slab", "eps", ("s11_mag2", "s21_mag2", "re_s21", "im_s21")),
+                           ("pec_short", "eps", ("s11_mag2", "re_s11", "im_s11")),
+                           ("pec_short", "sigma", ("s11_mag2",)))
+        for o in objs},
+    "rotation": {f"{d}-{l}": _RED_ROTATION for d in ("pec_short", "slab") for l in ("false", "flux")},
     "physics": {},
     "referee": {},
 }
