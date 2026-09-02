@@ -76,7 +76,16 @@ def main(argv=None) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     k = spec["n_shards"]
-    for i, files in enumerate(spec["shards"]):
+    tests_root = HERE.parents[1] / "tests"
+
+    def resolve(name: str) -> str:
+        hits = sorted(tests_root.rglob(name))
+        if len(hits) != 1:
+            raise SystemExit(f"{name}: expected exactly one match under tests/, found {hits}")
+        return str(hits[0].relative_to(HERE.parents[1]))
+
+    for i, names in enumerate(spec["shards"]):
+        files = [resolve(n) for n in names]
         text = TEMPLATE.format(stamp=args.stamp, i=i, k=k, nfiles=len(files), sha=args.sha,
                                slug=args.slug, files=" ".join(files))
         (out / f"gpu_suite_shard{i}.yaml").write_text(text)
