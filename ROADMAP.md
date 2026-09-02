@@ -1,7 +1,7 @@
 # rfx roadmap to v2.0
 
 *Status: plan (targets and issue references, not validated results). Tracking issue:
-[#825](https://github.com/bk-squared/rfx/issues/825). Last updated: 2026-09-01.*
+[#825](https://github.com/bk-squared/rfx/issues/825). Last updated: 2026-09-02.*
 
 ## The v2.0 criterion
 
@@ -39,6 +39,12 @@ One definition, reused four times:
 | **v1.8 — waveguide + lumped/wire** | Waveguide first; its battery becomes the template. Then lumped/wire: #819 mechanism identified or envelope bounded, #683 implemented | Waveguide is the most mature family (analytic β/Z_TE, flux-path AD) |
 | **v1.9 — MSL + coax** | MSL: settle the Z0 definition (#726) first; acceptance fixtures = notch filter + edge-fed patch S11 (#715). Coax: the validated axisymmetric family; #822, #823 | MSL is the physics-riskiest leg — it goes after the template exists |
 | **v2.0 — all-family chain closed** | All four batteries green; support matrix redefined as *supported = chain-closed* | Feature-complete point |
+
+The per-family contract is written out, with decidable pass conditions and the artifact each
+must leave, in [`docs/design_notes/chain_closure_contract.md`](docs/design_notes/chain_closure_contract.md)
+(2026-09-02). The v1.8 waveguide work plan, its pre-declared falsifiers and the gap table against
+main 1c38b0d7 are in
+[`docs/design_notes/v18_waveguide_s_chain_plan.md`](docs/design_notes/v18_waveguide_s_chain_plan.md).
 
 ## Explicitly outside the v2.0 gate
 
