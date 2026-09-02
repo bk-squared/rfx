@@ -285,7 +285,12 @@ def test_extractor_forward_amp_means_toward_reference_plane(fi):
         "Measured RED 2026-09-01 (max|S_code - S_true| = 1.48/1.15/1.70 per "
         "bin; max|S_code - inv(S_true)| = 9.3e-14/4.3e-14/9.4e-14; "
         "max fit_residual 1.7e-15). Fix is a PRODUCTION change and is "
-        "PI-gated (design open question 1); remove this marker in the fix PR."
+        "PI-gated (design open question 1); remove this marker in the fix PR. "
+        "Lane: this is an offline numpy test with no slow/slow_physics "
+        "marker, so the default fast suite (.github/workflows/pr-tests.yml "
+        "fast-suite, plain pytest under pyproject addopts) collects it on "
+        "every PR and strict=True reds that lane the day the fix lands "
+        "without removing this marker."
     ),
 )
 def test_assembler_wave_roles_follow_the_junction_side_reference_plane():
