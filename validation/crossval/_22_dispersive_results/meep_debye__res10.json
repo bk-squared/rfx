@@ -1,0 +1,28 @@
+{
+ "schema": "cv22-meep-leg-witness/v1",
+ "case_id": "22_dispersive_slab_fresnel",
+ "arm": "debye",
+ "tag": "res10",
+ "resolution": 10,
+ "courant": 0.5,
+ "dt_meep_s": 1.6678204759907604e-12,
+ "fn_debye_map_hz": 100000000000.0,
+ "omega_n_dt": 1.047922510975841,
+ "eps_num_nyq": 0.4862919777877994,
+ "rc": 1,
+ "run": {
+  "finite": false,
+  "error": "RuntimeError: meep: simulation fields are NaN or Inf",
+  "elapsed_s": 0.3481
+ },
+ "source": {
+  "vessl_run": "369367257811",
+  "log": "~/Documents/vessl-run-logs/369367257811_cv22-dispersive-r4.log",
+  "log_lines": "517-521",
+  "note": "built from the run log: a Meep leg that raises inside fields.step() writes no JSON; this witness is the pre-declared F-B instability of the overdamped Debye pole at 10 px/cm (pre-declaration note sections 11.1 and 12.4)"
+ },
+ "precheck": {
+  "passed": true,
+  "note": "the mapping check passed before the run (identical mapping to the res-20/40 legs)"
+ }
+}

@@ -294,9 +294,17 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     # mapping (F3) must not be allowed to widen its own window. The JSON's
     # own meep_params are recorded for audit only.
     doc_mp = meep_doc["meep_params"]
-    fn_map = (doc_mp.get("debye_map") or {}).get("fn_hz", DEBYE_MEEP_MAP_FN_HZ)
-    declared_mp = de.to_meep(model, params, a_m=float(doc_mp.get("a_m", MEEP_A_M)),
-                             fn_debye_map_hz=float(fn_map))
+    # Every Meep-side window input is the DECLARED constant; the reported
+    # values are checked against it, never used (review finding 2: the first
+    # version read fn_hz from the JSON's debye_map to size W_map).
+    if model == "debye":
+        fn_reported = (doc_mp.get("debye_map") or {}).get("fn_hz")
+        if fn_reported is None or abs(float(fn_reported) - DEBYE_MEEP_MAP_FN_HZ) > 1e-6 * DEBYE_MEEP_MAP_FN_HZ:
+            raise ValueError(f"Meep Debye leg reports fn_hz={fn_reported!r}; the declared mapping is "
+                             f"{DEBYE_MEEP_MAP_FN_HZ} (window inputs are never taken from the report)")
+    if abs(float(doc_mp.get("a_m", MEEP_A_M)) - MEEP_A_M) > 1e-12:
+        raise ValueError(f"Meep leg reports a_m={doc_mp.get('a_m')!r}; declared {MEEP_A_M}")
+    declared_mp = de.to_meep(model, params, a_m=MEEP_A_M, fn_debye_map_hz=DEBYE_MEEP_MAP_FN_HZ)
     wm_ade_R, wm_ade_T, w_map_R, w_map_T = meep_windows(
         f, model, params, declared_mp, float(meep_doc["dt_meep_s"]))
     dR_mt = np.abs(R_m - R_an); dT_mt = np.abs(T_m - T_an)
@@ -309,7 +317,12 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     win5_T = 2 * W_BIN + w_ade_T + wm_ade_T + w_map_T
     mean5_R = 2 * W_MEAN_R + _f(np.mean(w_ade_R[g] + wm_ade_R[g] + w_map_R[g]))
     mean5_T = 2 * W_MEAN_T + _f(np.mean(w_ade_T[g] + wm_ade_T[g] + w_map_T[g]))
+    # The leg's own 1e-9 pre-run mapping check is a gate, not a record
+    # (review finding 2). True on every committed primary; the two Meep
+    # falsifier legs carry passed=false by design and fail here as well.
+    precheck_passed = bool((meep_doc.get("precheck") or {}).get("passed", False))
     gates = {
+        "precheck_passed": precheck_passed,
         "band_covered": covers,
         "G4_R": bool(covers and np.all(dR_mt[g] <= win4_R[g])),
         "G4_T": bool(covers and np.all(dT_mt[g] <= win4_T[g])),
@@ -496,12 +509,20 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
     return out
 
 
-def fit_tail_rate(env_rel, dt: float):
+def fit_tail_rate(env_rel, dt: float, start: int = 0):
     """Amplitude decay rate (1/s) of a stored tail envelope (relative to the
     incident peak): log-linear least squares through the running maxima of
     |signal| over TAIL_WINDOW-sized blocks (the etalon is oscillatory; the block
-    maxima trace the envelope). Returns (rate, n_blocks)."""
+    maxima trace the envelope). ``start`` is the envelope index at which the
+    incident pulse has ended (n_pulse_end - envelope_start_step); the fit uses
+    only whole blocks that begin at or after start + TAIL_WINDOW -- one window
+    of margin for the slab's own group delay of the transmitted pulse (review
+    finding 1: the first r4 fit started 100 steps inside the Debye pulse, and
+    the block right after n_pulse_end still holds the delayed transmitted
+    pulse on the Drude arm). Returns (rate, n_blocks)."""
     e = np.asarray(env_rel, dtype=float)
+    first = int(math.ceil(max(0, start + TAIL_WINDOW) / TAIL_WINDOW)) * TAIL_WINDOW
+    e = e[first:]
     nb = e.size // TAIL_WINDOW
     if nb < 3:
         return float("nan"), int(nb)
@@ -511,3 +532,18 @@ def fit_tail_rate(env_rel, dt: float):
     t = (np.arange(nb) + 0.5) * TAIL_WINDOW * dt
     slope, _ = np.polyfit(t, np.log(blocks), 1)
     return float(-slope), int(nb)
+
+
+def refit_tail(tail: dict, dt: float, n_steps: int, n_pulse_end: int) -> dict:
+    """Recompute the fitted tail rates of an artifact's ``tail`` dict from its
+    STORED envelopes, starting the fit after the incident pulse. Used both by
+    the case script at run time and as a post-processing step on the committed
+    r4 artifacts (review finding 1; no rerun)."""
+    n_env = int(tail["envelope_steps"])
+    env_start = int(n_steps) - n_env
+    start = int(n_pulse_end) - env_start
+    r_s, nb_s = fit_tail_rate(tail["envelope_scat_refl_rel"], dt, start=start)
+    r_t, nb_t = fit_tail_rate(tail["envelope_total_trans_rel"], dt, start=start)
+    return dict(tail, envelope_start_step=env_start, fit_start_step=int(n_pulse_end) + TAIL_WINDOW,
+                fitted_rate_scat_refl_1_s=r_s, fitted_rate_total_trans_1_s=r_t,
+                fitted_rate_blocks=int(min(nb_s, nb_t)))

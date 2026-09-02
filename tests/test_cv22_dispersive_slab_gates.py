@@ -106,9 +106,10 @@ def test_arms_have_strong_dispersion_in_the_gated_band(arm):
 
 
 def test_r3_record_lengths_are_derived_from_the_slab_ringdown():
-    """§12 recipe: n_steps = n_pulse_end + ln(100)/rate_slowest/dt + TAIL_WINDOW,
-    per arm, inside the CPML round-trip gate of the nx 1000 rig; all three
-    arms land on the same nfft so the gated bin grid is shared."""
+    """§13 recipe: n_steps_min = n_pulse_end + max_f ln(100 w(f))/rate(f)/dt +
+    TAIL_WINDOW over the incident ring band, per arm, inside the CPML
+    round-trip gate of the nx 1000 rig; all three arms land on the same nfft
+    so the gated bin grid is shared."""
     dt = _rig_dt()
     recs = _r3_records(dt)
     # §13: incident-weighted ring band (w >= 0.5 -> 1.13-15 GHz). Debye's slowest
@@ -256,7 +257,7 @@ def test_meep_falsifiers_exceed_the_e4_windows_analytically(name):
     R, T = G.analytic_rt(f, "lorentz", lp)
     e2 = G.evaluate_e2(f, R, T, "lorentz", lp, dt)
     meep_doc = {"freqs_hz": f.tolist(), "R": Rm.tolist(), "T": Tm.tolist(),
-                "dt_meep_s": dt_meep, "meep_params": bad}
+                "dt_meep_s": dt_meep, "meep_params": bad, "precheck": {"passed": False}}
     e4 = G.evaluate_e4(e2, meep_doc)
     assert not e4["e4_ok"], name
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"]), name
@@ -264,7 +265,8 @@ def test_meep_falsifiers_exceed_the_e4_windows_analytically(name):
     # and the control: the RIGHT mapping passes the same E4 gates.
     eps_ok = np.conj(de.eps_meep_convention(f, good))
     Ro, To = de.tmm_slab_rt(f, eps_ok, G.D_SLAB_M)
-    e4_ok = G.evaluate_e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good})
+    e4_ok = G.evaluate_e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good,
+                               "precheck": {"passed": True}})
     assert e4_ok["e4_ok"]
 
 
@@ -310,8 +312,11 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         assert ad["tail"]["limit"] == G.SETTLING_LIMIT and ad["tail"]["ok"], (arm, ad["tail"])
         # the stored envelope refits to the recorded rate, and the rate is a
         # physical decay (positive, finite)
-        rate, nb = G.fit_tail_rate(ad["tail"]["envelope_scat_refl_rel"], ad["dt_s"])
+        assert ad["tail"]["fit_start_step"] == rec["n_pulse_end"] + G.TAIL_WINDOW, "the fit must start after the pulse"
+        refit = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
+        rate, nb = refit["fitted_rate_scat_refl_1_s"], refit["fitted_rate_blocks"]
         assert nb >= 3 and rate == pytest.approx(ad["tail"]["fitted_rate_scat_refl_1_s"])
+        assert refit["fitted_rate_total_trans_1_s"] == pytest.approx(ad["tail"]["fitted_rate_total_trans_1_s"])
         assert np.isfinite(rate) and rate > 0
         print(f"r4-summary rfx {arm}: n_steps_min {rec['n_steps_min']} reached {rec['n_steps']} "
               f"(+{rec['extensions']} ext, box grows {len(rec.get('nx_grows', []))}); tail scat/trans "
@@ -341,7 +346,11 @@ def test_baseline_artifact_e4_against_the_committed_meep_jsons():
         assert md["precheck"]["max_rel_err"] < 1e-9
         e4 = G.evaluate_e4(_replay_e2(ad), md)
         assert e4["e4_ok"], (arm, e4["gates"], e4["max_dR_rfx_meep_gated"], e4["max_dT_rfx_meep_gated"])
-        assert ad["meep"]["present"] and ad["meep"]["gates"] == e4["gates"]
+        assert e4["gates"]["precheck_passed"]
+        # the committed r4 artifact predates the precheck_passed gate key
+        # (review finding 2); every stored gate must still replay identically
+        assert ad["meep"]["present"]
+        assert {k: v for k, v in e4["gates"].items() if k in ad["meep"]["gates"]} == ad["meep"]["gates"]
     assert doc["verdict"]["exit_code"] == 0
 
 
@@ -503,7 +512,13 @@ def test_meep_ladder_summary_locks_the_measured_first_order_term():
             assert 0.8 <= val <= 1.3, (arm, k, val)
         r40 = summ["arms"][arm]["rungs"]["40"]
         assert r40["mean_dR_meep_tmm_gated"] <= G.W_MEAN_R and r40["mean_dT_meep_tmm_gated"] <= G.W_MEAN_T
-    if "10" in summ["arms"].get("debye", {}).get("rungs", {}):
-        # F-B witness: the overdamped Debye pole is unstable at 10 px/cm (eps_num(Nyq) < 1)
-        assert summ["arms"]["debye"]["rungs"]["10"]["finite"] is False
+    # F-B witness (unconditional, review finding 7): the overdamped Debye pole
+    # is unstable at 10 px/cm (eps_num(Nyq) = 0.486 < 1); the committed
+    # meep_debye__res10.json is built from the run log (no JSON is written by a
+    # leg that raises inside Meep) and the ladder summary carries it as
+    # finite = false.
+    w = _read(_RESULTS / "meep_debye__res10.json")
+    assert w["run"]["finite"] is False and w["rc"] == 1 and w["resolution"] == 10
+    assert w["omega_n_dt"] == pytest.approx(1.048, abs=0.002) and w["eps_num_nyq"] == pytest.approx(0.486, abs=0.002)
+    assert summ["arms"]["debye"]["rungs"]["10"]["finite"] is False
     print("r3-summary meep ladder:", {a: v["orders"] for a, v in summ["arms"].items()})

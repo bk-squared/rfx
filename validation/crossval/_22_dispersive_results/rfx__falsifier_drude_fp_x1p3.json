@@ -5450,9 +5450,12 @@
      1.876830564145454e-05,
      1.7042990956259227e-05
     ],
-    "fitted_rate_scat_refl_1_s": 16176602598.42122,
-    "fitted_rate_total_trans_1_s": 17766259109.588203,
-    "fitted_rate_blocks": 6
+    "fitted_rate_scat_refl_1_s": 11253870270.945164,
+    "fitted_rate_total_trans_1_s": 14491240926.190239,
+    "fitted_rate_blocks": 4,
+    "envelope_start_step": 868,
+    "fit_start_step": 958,
+    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
    },
    "gates": {
     "G1_R": false,

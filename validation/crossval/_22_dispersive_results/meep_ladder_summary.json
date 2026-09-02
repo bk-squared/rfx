@@ -8,26 +8,29 @@
  "arms": {
   "debye": {
    "rungs": {
+    "10": {
+     "finite": false
+    },
     "20": {
      "finite": true,
      "dt_meep_s": 8.339102379953802e-13,
-     "mean_dR_meep_tmm_gated": 0.009049145315383929,
+     "mean_dR_meep_tmm_gated": 0.009049145315383927,
      "mean_dT_meep_tmm_gated": 0.015844745458133837,
-     "max_dR_meep_tmm_gated": 0.01434344708005758,
+     "max_dR_meep_tmm_gated": 0.014343447080057553,
      "max_dT_meep_tmm_gated": 0.0186578722690518
     },
     "40": {
      "finite": true,
      "dt_meep_s": 4.169551189976901e-13,
-     "mean_dR_meep_tmm_gated": 0.004554279655156252,
+     "mean_dR_meep_tmm_gated": 0.004554279655156249,
      "mean_dT_meep_tmm_gated": 0.008374742127076432,
-     "max_dR_meep_tmm_gated": 0.007171242089690971,
+     "max_dR_meep_tmm_gated": 0.007171242089690916,
      "max_dT_meep_tmm_gated": 0.009865288248248227
     }
    },
    "orders": {
-    "order_dR_20_40": 0.9905586544638113,
-    "order_dT_20_40": 0.9198878102153232
+    "order_dR_20_40": 0.9905586544638119,
+    "order_dT_20_40": 0.9198878102153231
    }
   },
   "lorentz": {
@@ -35,8 +38,8 @@
     "10": {
      "finite": true,
      "dt_meep_s": 1.6678204759907604e-12,
-     "mean_dR_meep_tmm_gated": 0.021159467524295823,
-     "mean_dT_meep_tmm_gated": 0.01960053091906003,
+     "mean_dR_meep_tmm_gated": 0.02115946752429582,
+     "mean_dT_meep_tmm_gated": 0.019600530919060024,
      "max_dR_meep_tmm_gated": 0.046346661139096745,
      "max_dT_meep_tmm_gated": 0.050181218071348344
     },
@@ -44,24 +47,24 @@
      "finite": true,
      "dt_meep_s": 8.339102379953802e-13,
      "mean_dR_meep_tmm_gated": 0.010150446633123025,
-     "mean_dT_meep_tmm_gated": 0.010033836313510241,
+     "mean_dT_meep_tmm_gated": 0.010033836313510236,
      "max_dR_meep_tmm_gated": 0.023214624418150448,
      "max_dT_meep_tmm_gated": 0.02541746600556083
     },
     "40": {
      "finite": true,
      "dt_meep_s": 4.169551189976901e-13,
-     "mean_dR_meep_tmm_gated": 0.004959799321586812,
-     "mean_dT_meep_tmm_gated": 0.0050817001770658374,
+     "mean_dR_meep_tmm_gated": 0.004959799321586808,
+     "mean_dT_meep_tmm_gated": 0.005081700177065836,
      "max_dR_meep_tmm_gated": 0.011585243839435266,
      "max_dT_meep_tmm_gated": 0.012787910959050575
     }
    },
    "orders": {
-    "order_dR_10_20": 1.059760113341009,
-    "order_dT_10_20": 0.9660194250389688,
-    "order_dR_20_40": 1.0331895552740575,
-    "order_dT_20_40": 0.9814901448104305
+    "order_dR_10_20": 1.0597601133410088,
+    "order_dT_10_20": 0.966019425038969,
+    "order_dR_20_40": 1.0331895552740586,
+    "order_dT_20_40": 0.9814901448104302
    }
   },
   "drude": {
@@ -69,33 +72,33 @@
     "10": {
      "finite": true,
      "dt_meep_s": 1.6678204759907604e-12,
-     "mean_dR_meep_tmm_gated": 0.0076829687060407225,
-     "mean_dT_meep_tmm_gated": 0.037692374360637285,
+     "mean_dR_meep_tmm_gated": 0.007682968706040722,
+     "mean_dT_meep_tmm_gated": 0.03769237436063728,
      "max_dR_meep_tmm_gated": 0.014382967379728821,
-     "max_dT_meep_tmm_gated": 0.04490780916235343
+     "max_dT_meep_tmm_gated": 0.044907809162353596
     },
     "20": {
      "finite": true,
      "dt_meep_s": 8.339102379953802e-13,
-     "mean_dR_meep_tmm_gated": 0.003994208250303456,
-     "mean_dT_meep_tmm_gated": 0.01891805106141775,
-     "max_dR_meep_tmm_gated": 0.007531923615969965,
-     "max_dT_meep_tmm_gated": 0.02280206604017071
+     "mean_dR_meep_tmm_gated": 0.003994208250303453,
+     "mean_dT_meep_tmm_gated": 0.018918051061417748,
+     "max_dR_meep_tmm_gated": 0.007531923615969924,
+     "max_dT_meep_tmm_gated": 0.022802066040170876
     },
     "40": {
      "finite": true,
      "dt_meep_s": 4.169551189976901e-13,
-     "mean_dR_meep_tmm_gated": 0.0020350921694717726,
-     "mean_dT_meep_tmm_gated": 0.009481862606459822,
-     "max_dR_meep_tmm_gated": 0.003844590673740239,
+     "mean_dR_meep_tmm_gated": 0.0020350921694717713,
+     "mean_dT_meep_tmm_gated": 0.009481862606459817,
+     "max_dR_meep_tmm_gated": 0.0038445906737403154,
      "max_dT_meep_tmm_gated": 0.011465244015446185
     }
    },
    "orders": {
-    "order_dR_10_20": 0.9437543232653101,
+    "order_dR_10_20": 0.9437543232653108,
     "order_dT_10_20": 0.9945092079249525,
     "order_dR_20_40": 0.9728154183416555,
-    "order_dT_20_40": 0.996521076344372
+    "order_dT_20_40": 0.9965210763443725
    }
   }
  }

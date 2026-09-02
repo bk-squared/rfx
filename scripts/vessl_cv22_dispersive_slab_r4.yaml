@@ -34,7 +34,16 @@ run: |-
   cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
   cd "$WORK"
   git config --global --add safe.directory "$WORK" || true
-  git rev-parse HEAD > "$OUT/commit.txt" || echo unknown > "$OUT/commit.txt"
+  # Provenance (review finding 6): the NFS checkout is an rsync without .git,
+  # so `git rev-parse` cannot name the commit on the pod. The orchestrator
+  # writes the source commit to $RFX_CHECKOUT_NFS/.staged_commit at staging
+  # time; the case script reads .staged_commit first and the artifact's
+  # `commit` field then carries it.
+  if [ -s "$WORK/.staged_commit" ]; then
+    cat "$WORK/.staged_commit" > "$OUT/commit.txt"
+  else
+    git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo unknown > "$OUT/commit.txt"
+  fi
   echo "commit: $(cat "$OUT/commit.txt")"
   RES="$WORK/validation/crossval/_22_dispersive_results"
   mkdir -p "$RES"

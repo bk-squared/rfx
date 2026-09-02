@@ -5450,9 +5450,12 @@
      0.0027562571752377026,
      0.0027007158062159055
     ],
-    "fitted_rate_scat_refl_1_s": 7780235473.106887,
-    "fitted_rate_total_trans_1_s": 8134141686.562942,
-    "fitted_rate_blocks": 6
+    "fitted_rate_scat_refl_1_s": 8821615702.722586,
+    "fitted_rate_total_trans_1_s": 8051643183.107595,
+    "fitted_rate_blocks": 3,
+    "envelope_start_step": 808,
+    "fit_start_step": 958,
+    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
    },
    "gates": {
     "G1_R": true,
@@ -16197,9 +16200,12 @@
      0.0003590162105026646,
      0.0003719805157406656
     ],
-    "fitted_rate_scat_refl_1_s": 8414042567.5504675,
-    "fitted_rate_total_trans_1_s": 7947744251.518019,
-    "fitted_rate_blocks": 6
+    "fitted_rate_scat_refl_1_s": 7073777515.481599,
+    "fitted_rate_total_trans_1_s": 8970592127.455292,
+    "fitted_rate_blocks": 5,
+    "envelope_start_step": 928,
+    "fit_start_step": 958,
+    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
    },
    "gates": {
     "G1_R": true,
@@ -26932,9 +26938,12 @@
      3.0468130895748966e-05,
      2.9925266334893727e-05
     ],
-    "fitted_rate_scat_refl_1_s": 15582286638.557829,
-    "fitted_rate_total_trans_1_s": 17920258757.0763,
-    "fitted_rate_blocks": 6
+    "fitted_rate_scat_refl_1_s": 13065106004.435501,
+    "fitted_rate_total_trans_1_s": 16042555653.222027,
+    "fitted_rate_blocks": 4,
+    "envelope_start_step": 868,
+    "fit_start_step": 958,
+    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
    },
    "gates": {
     "G1_R": true,

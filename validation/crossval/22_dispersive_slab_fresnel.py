@@ -52,6 +52,14 @@ CASE_ID = "22_dispersive_slab_fresnel"
 
 
 def _git_commit() -> str:
+    # A staged copy on a pod has no .git: the lane writes the source commit to
+    # .staged_commit at staging time (review finding 6) and it is read first.
+    staged = os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)), ".staged_commit")
+    if os.path.isfile(staged):
+        with open(staged) as fh:
+            val = fh.read().strip()
+        if val:
+            return val
     try:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=SCRIPT_DIR,
                                        text=True, stderr=subprocess.DEVNULL).strip()
@@ -235,8 +243,6 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     n_env = min(G.TAIL_ENVELOPE_STEPS * K, n_steps)
     env_refl = (np.abs(ts_scat_refl[-n_env:]) / inc_peak)
     env_trans = (np.abs(ts_trans[-n_env:]) / inc_peak)
-    rate_refl, nb_r = G.fit_tail_rate(env_refl, dt)
-    rate_trans, nb_t = G.fit_tail_rate(env_trans, dt)
     tail = {
         "window_steps": tw, "purity_inc_rel": float(tail_inc_rel),
         "scat_refl_rel": float(tail_refl_rel), "total_trans_rel": float(tail_trans_rel),
@@ -244,9 +250,11 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
         "ok": bool(tail_clean and tail_refl_rel < tail_limit and tail_trans_rel < tail_limit),
         "envelope_steps": int(n_env),
         "envelope_scat_refl_rel": env_refl.tolist(), "envelope_total_trans_rel": env_trans.tolist(),
-        "fitted_rate_scat_refl_1_s": rate_refl, "fitted_rate_total_trans_1_s": rate_trans,
-        "fitted_rate_blocks": int(min(nb_r, nb_t)),
     }
+    # The fit starts after the incident pulse (rec is None only for the cv04
+    # recipe, where n_pulse_end is not derived: fit the whole envelope).
+    n_pulse_end_fit = rec["n_pulse_end"] if rec is not None else (n_steps - n_env)
+    tail = G.refit_tail(tail, dt, n_steps, n_pulse_end_fit)
 
     # --- cv04 spectral analysis, unchanged ---
     nfft = int(2 ** np.ceil(np.log2(n_steps)) * G.NFFT_OVERSAMPLE)
@@ -344,10 +352,35 @@ def main(argv=None) -> int:
     ap.add_argument("--recipe", choices=(G.RECIPE_R3, G.RECIPE_CV04), default=G.RECIPE_R3,
                     help="r3 (default): record length derived from the slab ring-down, nx 1000, "
                          "-40 dB settling witness; cv04: the 719-step CPML rule (rounds 1-2, truncated)")
+    ap.add_argument("--refit-tail-fits", action="store_true",
+                    help="no FDTD: recompute tail.fitted_rate_* of every rfx*.json in out-dir from the STORED "
+                         "envelopes, fitting only after n_pulse_end (post-processing of a committed artifact)")
     ap.add_argument("--meep-ladder-summary", action="store_true",
                     help="no FDTD: read rfx.json + meep_<arm>__res{10,20,40}.json in out-dir and write "
                          "meep_ladder_summary.json (measured Meep convergence order)")
     a = ap.parse_args(argv)
+    if a.refit_tail_fits:
+        import glob
+        od = a.out_dir or RESULTS_DIR
+        for path in sorted(glob.glob(os.path.join(od, "rfx*.json"))):
+            with open(path) as fh:
+                doc = json.load(fh)
+            changed = []
+            for arm, ad in doc.get("arms", {}).items():
+                rec = (ad.get("run") or {}).get("record")
+                if rec is None or "envelope_scat_refl_rel" not in ad.get("tail", {}):
+                    continue
+                before = (ad["tail"].get("fitted_rate_scat_refl_1_s"), ad["tail"].get("fitted_rate_total_trans_1_s"))
+                ad["tail"] = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
+                ad["tail"]["fit_note"] = ("fitted_rate_* recomputed from the stored envelope with the fit starting at "
+                                          "n_pulse_end (review finding 1); no FDTD rerun")
+                changed.append((arm, before, (ad["tail"]["fitted_rate_scat_refl_1_s"], ad["tail"]["fitted_rate_total_trans_1_s"]),
+                                ad["tail"]["fitted_rate_blocks"]))
+            with open(path, "w") as fh:
+                json.dump(doc, fh, indent=1)
+            for arm, b, c_, nb in changed:
+                print(f"{os.path.basename(path)} {arm}: {b[0]:.3e}/{b[1]:.3e} -> {c_[0]:.3e}/{c_[1]:.3e} ({nb} blocks)")
+        return 0
     if a.meep_ladder_summary:
         od = a.out_dir or RESULTS_DIR
         with open(os.path.join(od, "rfx.json")) as fh:
