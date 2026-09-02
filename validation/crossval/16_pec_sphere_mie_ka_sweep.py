@@ -102,7 +102,7 @@ review, required change 1).
         new envelope that is 4.0 >= 2.731 and 4.0 <= 4.15 — both hold, so
         keeping 4.0 passes the script's own self-check and no run is
         needed to justify it.
-      - ``tests/test_rcs_mie_ka_sweep_gates.py`` asserts EXACT equality
+      - ``tests/crossval/test_rcs_mie_ka_sweep_gates.py`` asserts EXACT equality
         against the fixture-derived ``gate_from_envelope(env_fine)``, next
         to a deliberately redundant hard literal ``== 4.0``. Today both
         hold, because the committed fixture still carries the pre-a_eff

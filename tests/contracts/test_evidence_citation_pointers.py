@@ -6,7 +6,7 @@ and ``validation/README.md`` are the durable statements of what each crossval
 case's evidence *is*. When they delegate a number to a test, they cite it as
 ``tests/....py:LINE``. That pointer is the reader's only route from the claim to
 the assertion that backs it, and a bare line number rots silently: commit
-``f88f992`` wrote ``tests/test_patch_canonical_farfield_e4.py:111-116`` into
+``f88f992`` wrote ``tests/crossval/test_patch_canonical_farfield_e4.py:111-116`` into
 both documents while, in the same commit, adding six lines to that file's module
 docstring -- so the pointer shipped already stale, and line 111 in the shipped
 tree is an unrelated comment inside a mechanism note.

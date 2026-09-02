@@ -21,7 +21,7 @@ Rationale:
 External cross-check (openEMS, 2026-07-05):
   A matched-geometry rfx-vs-openEMS comparison is committed under
   ``tests/fixtures/msl_notch_e4/`` (gate:
-  ``tests/test_msl_notch_e4_comparison_gates.py``). At a CONVERGED dx=50µm mesh
+  ``tests/crossval/test_msl_notch_e4_comparison_gates.py``). At a CONVERGED dx=50µm mesh
   (5.08 substrate cells) where both solvers are passive, the off-notch |S21|
   transmission agrees to ~0.1, while the notch frequency agrees to ~6% (rfx
   3.63 GHz vs openEMS 3.43 GHz; fringing-free analytic 3.69 GHz).
@@ -164,7 +164,7 @@ Mesh convention (issue #723, 2026-08-27):
   Also retracted with it: the sentence crediting this script's own
   preflight prediction ("+20.2% vs -7.9% at ~3 cells ..."), which is the
   same declared-board comparison and cannot vindicate anything.
-  ``tests/test_msl_notch_public_carriers.py::
+  ``tests/crossval/test_msl_notch_public_carriers.py::
   test_z0_anchor_is_the_design_board_not_a_realized_one`` pins the
   retraction so the 30x framing cannot return silently.
 

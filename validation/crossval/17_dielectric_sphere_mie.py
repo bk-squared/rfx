@@ -121,7 +121,7 @@ material value.
   * ``claim_scope`` in the fixture payload below still states the OLD
     (declared-radius) convention. Per PR #721 review required change 3,
     updating it — and the internal-consistency assertions in
-    ``tests/test_rcs_dielectric_sphere_mie_gates.py`` (:254-277, both
+    ``tests/crossval/test_rcs_dielectric_sphere_mie_gates.py`` (:254-277, both
     the ``rfx_monostatic_dbsm`` and ``mie_dbsm`` halves) and the
     AST-pinned prose binding (:102-121) — is deferred to the next
     ``--write-fixture`` regeneration, done in lockstep with the fixture

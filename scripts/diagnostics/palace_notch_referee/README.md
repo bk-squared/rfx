@@ -31,7 +31,7 @@ correction is a ~1-2% effect.
 The verdict is committed as evidence — the raw Palace `port-S.csv` arrays live in
 `tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json` (dB -> LINEAR),
 re-derived by `scripts/diagnostics/build_msl_notch_palace_referee.py`, gated by
-`tests/test_msl_notch_palace_referee_gates.py`. Those survive a clean checkout;
+`tests/crossval/test_msl_notch_palace_referee_gates.py`. Those survive a clean checkout;
 this directory is the *provenance* that generated them.
 
 ## Geometry lock

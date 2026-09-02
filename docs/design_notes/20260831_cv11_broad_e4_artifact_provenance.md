@@ -149,7 +149,7 @@ The artifact is `validation/crossval/manifest.json`'s cv11 entry's **only**
 
 | Site | How it leans |
 |---|---|
-| `tests/test_waveguide_broad_e5_envelope_gates.py:145,164` | two gates read it: pairs pass their tolerance, and it qualifies under the auditor's blocking-token rule |
+| `tests/crossval/test_waveguide_broad_e5_envelope_gates.py:145,164` | two gates read it: pairs pass their tolerance, and it qualifies under the auditor's blocking-token rule |
 | `scripts/diagnostics/port_external_reference_requirements.json` | listed in `external_comparison_artifacts` for the `add_waveguide_port` family, whose `current_status` is `broad_e5_passed` |
 | `docs/guides/sparameter_support_matrix.json` / `.md` | quotes its `0.0707` / `0.00943` as the family's uniform Palace WR-90 numbers |
 | `docs/guides/physics_validation_evidence_rule.md` | the `add_waveguide_port` row cites "external-solver ... artifacts exist" |
@@ -191,7 +191,7 @@ pair value or summary value was changed anywhere**, and no FDTD was run.
 - The dispute was never written into the artifact's `claim_scope` or
   `evidence_level`, and still is not.
   `scripts/diagnostics/check_port_external_references.py` and
-  `tests/test_waveguide_broad_e5_envelope_gates.py:53-56,170` scan those two
+  `tests/crossval/test_waveguide_broad_e5_envelope_gates.py:53-56,170` scan those two
   strings for blocking tokens (`narrow`, `partial`, `limited`, `only`, ...);
   writing a status word there would silently flip the family's audited status,
   which is a gate change and out of scope.

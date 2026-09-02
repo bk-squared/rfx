@@ -2325,7 +2325,7 @@ class _SparamMixin:
             discipline; it does NOT make arbitrary compact junctions
             valid. See the skipped ``test_api.py`` T-junction reciprocity test
             and the companion evidence gate test
-            ``tests/test_waveguide_tjunction_e4e5_gates.py``.
+            ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
         """
         if not normalize:
             import warnings

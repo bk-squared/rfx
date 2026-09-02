@@ -98,7 +98,7 @@ run: |-
   # log to the TRACKED prefix this script's own header-test
   # fill-contract requires (validation/crossval/
   # _21_coax_two_port_referee_logs/ -- tests/
-  # test_coax_two_port_referee_header.py's REPRODUCE_GATE_RECORD
+  # crossval/test_coax_two_port_referee_header.py's REPRODUCE_GATE_RECORD
   # contract test rejects .omx/ and docs/research_notes/vessl_logs/,
   # both gitignored -- PR #548's own log-trackedness lesson). This only
   # places the file on disk at the tracked path inside the mounted

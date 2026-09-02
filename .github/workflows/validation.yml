@@ -125,10 +125,10 @@ jobs:
           pytest -v -ra -s
           -m "not gpu and not highmem"
           --splits 4 --group ${{ matrix.group }}
-          --ignore=tests/test_meep_crossval.py
-          --ignore=tests/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/test_openems_crossval.py
-          --ignore=tests/test_crossval_comprehensive.py
+          --ignore=tests/crossval/test_meep_crossval.py
+          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/crossval/test_openems_crossval.py
+          --ignore=tests/crossval/test_crossval_comprehensive.py
 
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the
@@ -166,10 +166,10 @@ jobs:
         run: >
           pytest -v -ra -s
           -m "highmem and not gpu"
-          --ignore=tests/test_meep_crossval.py
-          --ignore=tests/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/test_openems_crossval.py
-          --ignore=tests/test_crossval_comprehensive.py
+          --ignore=tests/crossval/test_meep_crossval.py
+          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/crossval/test_openems_crossval.py
+          --ignore=tests/crossval/test_crossval_comprehensive.py
 
   # ---------------------------------------------------------------------------
   # Scheduled / manual external-reference crossval lane (roadmap W2.5b).

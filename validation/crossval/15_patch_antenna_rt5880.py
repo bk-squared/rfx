@@ -112,7 +112,7 @@ RELATIONSHIP TO CASE 05 (patch ACCURACY is NOT claimed here)
 ------------------------------------------------------------
 `validation/crossval/05_patch_antenna.py` remains the registered patch case and
 authoritative patch-accuracy evidence stays DELEGATED to the committed tests it
-names (`tests/test_patch_canonical_farfield_e4.py` and friends). This case 15 is
+names (`tests/crossval/test_patch_canonical_farfield_e4.py` and friends). This case 15 is
 a SEPARATE, differently-meshed integration study on a different laminate: it
 does not supersede id 05, does not reopen the #325/#378 demotion decision, and
 adds no patch-accuracy claim of its own.
@@ -820,8 +820,8 @@ def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
     that lands the same walls by a different mechanism still passes.
 
     Pure function (synthetic dicts in, bool+detail out) so
-    ``tests/test_crossval_cv15_wall_planes.py`` can pin the gate MATH
-    without a solve, following ``tests/test_crossval_gate_logic.py``'s
+    ``tests/crossval/test_crossval_cv15_wall_planes.py`` can pin the gate MATH
+    without a solve, following ``tests/crossval/test_crossval_gate_logic.py``'s
     precedent for this crossval directory.
     """
     if not sc:

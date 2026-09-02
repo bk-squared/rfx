@@ -264,7 +264,7 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   this run -- the effective shift is 0 by construction -- so the plane
   match comes from stencil placement, not from the referral transform.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
-  `20_msl_phase_referee`) and `tests/test_msl_phase_referee_header.py`.
+  `20_msl_phase_referee`) and `tests/crossval/test_msl_phase_referee_header.py`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
 during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at
@@ -407,7 +407,7 @@ outside the single-dielectric-slab configuration described next.
   magnitude gate because `|exp(i*anything)| == 1`) reds at `179.87 degrees`.
   A fresh domain-size invariance run (WR-340, domain grown `+100 mm`) holds
   the pass verdict (`8.92 -> 7.73 degrees`). See
-  `tests/test_waveguide_broad_e5_phase_gates.py` and
+  `tests/crossval/test_waveguide_broad_e5_phase_gates.py` and
   `tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json`.
   Caveat: `d_left == d_right` in all five slab fixtures (the slab sits
   centered between symmetric reference planes), so this evidence cannot
@@ -491,7 +491,7 @@ additionally capped by a literal pinned OUTSIDE the artifact, because a gate
 derived from a number living inside the artifact it guards would let a degraded
 regeneration re-derive its own looser gate; that ceiling is blind below a 1.203x
 degradation, measured by mutation in
-`tests/test_waveguide_nu_broad_e5_envelope_gates.py`.
+`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py`.
 
 The improvement is not a backend artifact: the superseded envelope was itself
 produced on GPU, same script and same 16 geometries, the only difference being

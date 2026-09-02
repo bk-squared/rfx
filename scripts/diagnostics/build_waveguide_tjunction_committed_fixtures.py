@@ -396,7 +396,7 @@ def build_envelope(artifacts_dir: Path) -> dict[str, Any]:
             f"breadth requirement (>=2 geometry variants, >=2 distinct dx, "
             f"freq span ratio >=1.4) is genuinely met, so this envelope is now "
             f"listed in the manifest's broad_e5 envelope artifacts and gated by "
-            f"tests/test_waveguide_tjunction_e4e5_gates.py."
+            f"tests/crossval/test_waveguide_tjunction_e4e5_gates.py."
         ),
         "envelope_summary": {
             # Machine-readable breadth record: the auditor's

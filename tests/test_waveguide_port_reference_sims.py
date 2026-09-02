@@ -16,7 +16,7 @@ Coverage
   below 1) yet the overall matrix stays NON-physical (max|S| > 1.05), locking
   the necessary-but-not-sufficient finding. Companion committed evidence lives
   at ``tests/fixtures/waveguide_tjunction_e4/`` /
-  ``tests/test_waveguide_tjunction_e4e5_gates.py``.
+  ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
 """
 
 import numpy as np

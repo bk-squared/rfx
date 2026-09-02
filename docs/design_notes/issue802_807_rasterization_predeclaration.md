@@ -140,7 +140,7 @@ CI-visible (red on this PR without a re-pin):
 4. `tests/fixtures/golden_msl_sheet_thread_{s,freqs}_13de212.npy` +
    `tests/test_msl_sheet_threading.py` byte-identity gate — trace boxes are
    node-aligned at dx=80 µm.
-5. `tests/test_crossval_cv15_wall_planes.py` + cv15 committed wall-plane
+5. `tests/crossval/test_crossval_cv15_wall_planes.py` + cv15 committed wall-plane
    expectations (live fast-CI build on node-aligned z faces + one-cell ground).
 6. `tests/fixtures/msl_z0_length_invariance/platform_datums.json` — new datum
    entries per the ledger's append-only protocol (datums recorded at x64=0).
@@ -148,7 +148,7 @@ CI-visible (red on this PR without a re-pin):
    (exact half-cell tie — verify, may be stable).
 8. `tests/test_coax_msl_transition.py` knife-edge cell count narrative
    (assertion doesn't pin the count; verify it survives).
-9. `tests/test_msl_phase_referee_header.py` realized-substrate pins (live).
+9. `tests/crossval/test_msl_phase_referee_header.py` realized-substrate pins (live).
 10. `tests/test_sheet_node_permittivity.py` sheet plane / eps values (verify).
 11. `tests/test_lumped_twoport_vi_validation_battery.py` (verify n_live).
 12. `tests/locks/test_refplane_port_waves.py` physics legs (verify; plane indices
@@ -166,7 +166,7 @@ Slow / opt-in / regen lanes (won't red on this PR; enumerated so the next
 regeneration is not a silent re-pin):
 17. `tests/data/v173a_pre_t7_phase2_baseline.json` (slow_physics lane; its
     own "chore(baseline): rebump" protocol is the vehicle).
-18. `tests/test_patch_canonical_farfield_e4.py` slow FDTD gates (cv05 patch
+18. `tests/crossval/test_patch_canonical_farfield_e4.py` slow FDTD gates (cv05 patch
     is node-aligned at dx=2 mm).
 19. Frozen-replay evidence fixtures that become stale at next regeneration:
     cv05/cv06b/cv07 committed results, Mie RCS fixtures (Sphere node-radius
@@ -338,7 +338,7 @@ declared planes and keep their validity.
   not a silent re-pin.
 - **Slow / opt-in lanes not run in this session** (enumerated, may move
   and then need their own root-caused re-pins with this note as
-  provenance): `tests/test_patch_canonical_farfield_e4.py` slow FDTD
+  provenance): `tests/crossval/test_patch_canonical_farfield_e4.py` slow FDTD
   gates (cv05 patch is node-aligned at dx=2 mm),
   `tests/test_v173a_physics_equivalence_slow.py` (its own rebump
   protocol), GPU/VESSL envelope regeneration lanes (broad-E5 fixtures

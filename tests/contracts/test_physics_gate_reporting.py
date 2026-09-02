@@ -176,9 +176,9 @@ def _dataset_from_arrays(module, freqs_hz, s_params):
 def test_required_external_solver_skip_blocks_full_coverage():
     stdout = """
 =========================== short test summary info ============================
-SKIPPED [1] tests/test_meep_crossval.py:142: Meep is required.
-SKIPPED [1] tests/test_meep_crossval.py:174: Meep is required.
-SKIPPED [1] tests/test_openems_crossval.py:161: CSXCAD/openEMS is required.
+SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required.
+SKIPPED [1] tests/crossval/test_meep_crossval.py:174: Meep is required.
+SKIPPED [1] tests/crossval/test_openems_crossval.py:161: CSXCAD/openEMS is required.
 3 skipped in 0.93s
 """
     group = run_gate.gate_groups_by_id()["slow_external_crossval"]
@@ -229,9 +229,9 @@ def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path):
         "\n".join(
             [
                 "=========================== short test summary info ============================",
-                "SKIPPED [1] tests/test_meep_crossval.py:142: Meep is required.",
-                "SKIPPED [1] tests/test_meep_crossval.py:174: Meep is required.",
-                "SKIPPED [1] tests/test_openems_crossval.py:161: CSXCAD/openEMS is required.",
+                "SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required.",
+                "SKIPPED [1] tests/crossval/test_meep_crossval.py:174: Meep is required.",
+                "SKIPPED [1] tests/crossval/test_openems_crossval.py:161: CSXCAD/openEMS is required.",
                 "3 skipped in 0.93s",
             ]
         ),
@@ -248,7 +248,7 @@ def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path):
                     {
                         "group_id": "slow_external_crossval",
                         "description": "external solver gate",
-                        "tests": ["tests/test_meep_crossval.py"],
+                        "tests": ["tests/crossval/test_meep_crossval.py"],
                         "command": ["python", "-m", "pytest"],
                         "status": "passed",
                         "returncode": 0,
@@ -631,7 +631,7 @@ def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path):
         "\n".join(
             [
                 "=========================== short test summary info ============================",
-                "SKIPPED [1] tests/test_meep_crossval.py:142: Meep is required for this external cross-validation gate.",
+                "SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required for this external cross-validation gate.",
                 "1 skipped in 0.93s",
             ]
         ),

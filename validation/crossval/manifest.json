@@ -96,12 +96,12 @@
       "references": [
         {"kind": "analytic", "name": "Balanis transmission-line patch resonance (printed reference, NOT a pass gate)", "required_for_script_pass": false},
         {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna (coarse, no thirds-rule; presence required for a full run, numeric comparison reported not gated)", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "openEMS Simple_Patch thirds-rule canonical recipe — COMMITTED reference fixture tests/fixtures/patch_canonical_farfield_e4/ (f_res 2.4221 GHz, D 6.79 dBi, our 2026-07-11 run; envelope-locked by tests/test_patch_canonical_farfield_e4.py)", "required_for_script_pass": false}
+        {"kind": "external-solver", "name": "openEMS Simple_Patch thirds-rule canonical recipe — COMMITTED reference fixture tests/fixtures/patch_canonical_farfield_e4/ (f_res 2.4221 GHz, D 6.79 dBi, our 2026-07-11 run; envelope-locked by tests/crossval/test_patch_canonical_farfield_e4.py)", "required_for_script_pass": false}
       ],
-      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy: the 20% openEMS gate provably passes over two physically different geometries (broken 2-cell and split 6-cell substrate, #325), the ~2.65% agreement is a documented z-under-res/staircase error cancellation, and the openEMS reference omits the thirds-rule + reproduce-gate. Authoritative patch-accuracy evidence is DELEGATED to the committed tests in gate_paths, including the canonical thirds-rule far-field ENVELOPE LOCK test_patch_canonical_farfield_e4.py (committed openEMS reference 2.4221 GHz / 6.79 dBi; D within 1.0 dB, f_res inside the documented [+6%, +16%] coarse-dx bias band, sign-locked HIGH — a regression lock, not an accuracy claim. CORRECTION 2026-08-31 (#812 Phase 0, documentation only — no gate value changed here): this sentence previously read 'D within 0.5 dB, f_res inside the documented [-12%, -5%]'. Those were the PRE-#693 envelopes, pinned on the WRONG member of the patch's near-degenerate TM pair (the 40 mm cross mode, 2.2147 GHz) instead of the 32 mm feed-axis design mode that the committed openEMS 2.4221 GHz reference actually is. The test itself was repinned on 2026-08-27 by PR #716 / commit 12d2f00 (F_RES_REL_LO=+0.06, F_RES_REL_HI=+0.16, D_ABS_TOL_DB=1.0, at tests/test_patch_canonical_farfield_e4.py:117,121,122 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI)); this manifest text was not updated with it and kept quoting the retired band — with the SIGN FLIPPED relative to what the test now asserts. Authoritative source for these numbers: tests/test_patch_canonical_farfield_e4.py:117,121,122 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI) -- cite the NAMES, not only the lines: this pointer read ':111-116' until 2026-08-31 and had been stale since the commit that wrote it (f88f992 added 6 docstring lines to the same file in the same commit), so :111 landed on an unrelated comment. Gated by tests/contracts/test_evidence_citation_pointers.py.)",
+      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy: the 20% openEMS gate provably passes over two physically different geometries (broken 2-cell and split 6-cell substrate, #325), the ~2.65% agreement is a documented z-under-res/staircase error cancellation, and the openEMS reference omits the thirds-rule + reproduce-gate. Authoritative patch-accuracy evidence is DELEGATED to the committed tests in gate_paths, including the canonical thirds-rule far-field ENVELOPE LOCK test_patch_canonical_farfield_e4.py (committed openEMS reference 2.4221 GHz / 6.79 dBi; D within 1.0 dB, f_res inside the documented [+6%, +16%] coarse-dx bias band, sign-locked HIGH — a regression lock, not an accuracy claim. CORRECTION 2026-08-31 (#812 Phase 0, documentation only — no gate value changed here): this sentence previously read 'D within 0.5 dB, f_res inside the documented [-12%, -5%]'. Those were the PRE-#693 envelopes, pinned on the WRONG member of the patch's near-degenerate TM pair (the 40 mm cross mode, 2.2147 GHz) instead of the 32 mm feed-axis design mode that the committed openEMS 2.4221 GHz reference actually is. The test itself was repinned on 2026-08-27 by PR #716 / commit 12d2f00 (F_RES_REL_LO=+0.06, F_RES_REL_HI=+0.16, D_ABS_TOL_DB=1.0, at tests/crossval/test_patch_canonical_farfield_e4.py:117,121,122 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI)); this manifest text was not updated with it and kept quoting the retired band — with the SIGN FLIPPED relative to what the test now asserts. Authoritative source for these numbers: tests/crossval/test_patch_canonical_farfield_e4.py:117,121,122 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI) -- cite the NAMES, not only the lines: this pointer read ':111-116' until 2026-08-31 and had been stale since the commit that wrote it (f88f992 added 6 docstring lines to the same file in the same commit), so :111 landed on an unrelated comment. Gated by tests/contracts/test_evidence_citation_pointers.py.)",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["tests/locks/test_patch_edgefed_resonance_harminv.py", "tests/locks/test_patch_edgefed_s11_passivity.py", "tests/test_patch_cavity_eps_oracle.py", "tests/test_patch_canonical_farfield_e4.py"],
+      "gate_paths": ["tests/locks/test_patch_edgefed_resonance_harminv.py", "tests/locks/test_patch_edgefed_s11_passivity.py", "tests/test_patch_cavity_eps_oracle.py", "tests/crossval/test_patch_canonical_farfield_e4.py"],
       "artifact_paths": ["tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json", "scripts/diagnostics/patch_tutorial_openems.py", "scripts/diagnostics/patch_tutorial_rfx.py"],
       "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
@@ -123,7 +123,7 @@
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/06b_msl_notch_filter_uniform.py",
-        "tests/test_msl_notch_e4_comparison_gates.py",
+        "tests/crossval/test_msl_notch_e4_comparison_gates.py",
         "scripts/diagnostics/build_msl_notch_openems_comparison.py",
         "scripts/diagnostics/report_msl_envelope.py",
         "tests/contracts/test_physics_gate_reporting.py"
@@ -146,14 +146,14 @@
       "evidence_levels": ["E4"],
       "references": [
         {"kind": "external-solver", "name": "openEMS matched-geometry Sheen 1990 LPF run (committed leg validation/crossval/_07_sheen_results/openems.json; required for a full run, and the reference's own passivity plus Re(Z0) sanity IS gated comparator-first)", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "Palace-FEM conformal-mesh referee — COMMITTED fixture tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json (three-solver verdict sides_with=openems; envelope-locked by tests/test_sheen_lpf_palace_referee_gates.py)", "required_for_script_pass": false}
+        {"kind": "external-solver", "name": "Palace-FEM conformal-mesh referee — COMMITTED fixture tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json (three-solver verdict sides_with=openems; envelope-locked by tests/crossval/test_sheen_lpf_palace_referee_gates.py)", "required_for_script_pass": false}
       ],
       "claim_scope": "CHARACTERIZATION ONLY of the Sheen 1990 stepped-impedance LPF stopband — explicitly NOT an rfx accuracy claim. The Palace-FEM referee showed the stopband is a DOUBLE transmission zero (~7.0 and ~8.0 GHz): openEMS resolves both and matches Palace to ~0.7%; the referee records sides_with=openems. HISTORY: the original num_periods=20 default-offset rfx leg was non-passive (58/120 bins, worst column power 1794.5 at 17.05 GHz) and its argmin (7.218 GHz) sat 9.6% from openEMS. Root cause was MEASURED for the truncation half (settling witness -24.7/-24.3 dB; the probe near-field half is measured in PR #468) and the leg regenerated 2026-07-26 with num_periods=60 + n_probe_offset=30 (satisfies BOTH the 5*h_sub near-field clearance and the lambda_g/4 reflector clearance that offset=40 violated) + passivity-enforced S. REGENERATED AGAIN 2026-08-09 (issue #519) on the #511/#507-corrected extractor (PR #516, f95240f): witness -70.2/-71.3 dB, strict ||S||_2 <= 1 at every bin (max column power 0.9995), and the raw passivity excess COLLAPSED (0/120 bins > 0.05, worst 0.0145 at 17.38 GHz; the pre-#516 leg's 84/120 bins worst 0.365 was substantially the extractor defects, not a coarse-mesh envelope). With decontaminated probes the rfx argmin lands at 7.874 GHz — the ~8 GHz doublet member, 1.4% from openEMS — confirming the referee's doublet structure; sides_with=openems stands (structure distance 1.52% vs openEMS 0.66%, re-derived by build_sheen_lpf_palace_referee.py on the regenerated leg). Passband mean |S21| agrees with openEMS to 0.0014 (was 0.0156), and the old ~67 ohm passband Re(Z0) fit residual is gone (50.3 ohm passband, 52.4 ohm in-band). The argmin null POSITION and passband/stopband STRUCTURE are the readable outputs; any bin with correction > 0.05 (none on the current leg) is artifact-class for magnitude claims. Gates lock (A) openEMS reference sanity comparator-first, (B) comparison shape, (C) the committed argmin nulls + rfx passband mean + referee verdict, and (D) the evidence chain: strict bound, settling witness, and the passivity-correction footprint (fail-closed D0 if a leg lacks the witness/enforcement fields).",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
         "validation/crossval/07_sheen_lpf.py",
-        "tests/test_sheen_lpf_palace_referee_gates.py"
+        "tests/crossval/test_sheen_lpf_palace_referee_gates.py"
       ],
       "artifact_paths": [
         "validation/crossval/_07_sheen_results/rfx.json",
@@ -227,7 +227,7 @@
       "gate_paths": [
         "validation/crossval/11_waveguide_port_wr90.py",
         "tests/test_waveguide_port_validation_battery.py",
-        "tests/test_waveguide_broad_e5_envelope_gates.py"
+        "tests/crossval/test_waveguide_broad_e5_envelope_gates.py"
       ],
       "artifact_paths": [
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json"
@@ -289,7 +289,7 @@
       "references": [
         {
           "kind": "analytic",
-          "name": "Exact conducting-sphere Mie backscatter series (Ruck 1970): the script uses the committed independent oracle tests/fixtures/rcs_sphere_mie/mie_oracle.py (Rayleigh/GO/convergence self-witnesses re-run before any gate), and the frozen-fixture gates in tests/test_rcs_mie_ka_sweep_gates.py re-derive the series AGAIN from scipy.special so neither leg can self-certify",
+          "name": "Exact conducting-sphere Mie backscatter series (Ruck 1970): the script uses the committed independent oracle tests/fixtures/rcs_sphere_mie/mie_oracle.py (Rayleigh/GO/convergence self-witnesses re-run before any gate), and the frozen-fixture gates in tests/crossval/test_rcs_mie_ka_sweep_gates.py re-derive the series AGAIN from scipy.special so neither leg can self-certify",
           "required_for_script_pass": true
         }
       ],
@@ -298,7 +298,7 @@
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/16_pec_sphere_mie_ka_sweep.py",
-        "tests/test_rcs_mie_ka_sweep_gates.py"
+        "tests/crossval/test_rcs_mie_ka_sweep_gates.py"
       ],
       "artifact_paths": [
         "validation/crossval/_16_ka_sweep_results/rfx.json"
@@ -326,7 +326,7 @@
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/17_dielectric_sphere_mie.py",
-        "tests/test_rcs_dielectric_sphere_mie_gates.py"
+        "tests/crossval/test_rcs_dielectric_sphere_mie_gates.py"
       ],
       "artifact_paths": [
         "validation/crossval/_17_dielectric_results/rfx.json"
@@ -355,7 +355,7 @@
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/18_wr90_iris_modematch.py",
-        "tests/test_wr90_iris_modematch_gates.py"
+        "tests/crossval/test_wr90_iris_modematch_gates.py"
       ],
       "artifact_paths": [
         "validation/crossval/_18_wr90_iris_results/rfx.json"
@@ -393,12 +393,12 @@
       "gate_paths": [
         "validation/crossval/19_wr90_iris_filter_aghanim.py",
         "validation/crossval/comparators/fdfd_hplane.py",
-        "tests/test_wr90_iris_filter_gates.py"
+        "tests/crossval/test_wr90_iris_filter_gates.py"
       ],
       "artifact_paths": [
         "validation/crossval/_19_iris_filter_results/rfx.json"
       ],
-      "cpu_runner": {"excluded_reason": "CPU-infeasible: the default path's single gated FDTD run is 1160 s against the lane's 900 s per-script timeout (full regeneration is roughly 6 h of FDTD across the nine-configuration witness population plus the formulation-independent FDFD sweeps). Evidence floor is the frozen fixture plus tests/test_wr90_iris_filter_gates.py, which runs in 73 s with no FDTD and no network."},
+      "cpu_runner": {"excluded_reason": "CPU-infeasible: the default path's single gated FDTD run is 1160 s against the lane's 900 s per-script timeout (full regeneration is roughly 6 h of FDTD across the nine-configuration witness population plus the formulation-independent FDFD sweeps). Evidence floor is the frozen fixture plus tests/crossval/test_wr90_iris_filter_gates.py, which runs in 73 s with no FDTD and no network."},
       "scheduled_external_order": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
@@ -412,7 +412,7 @@
       "references": [
         {
           "kind": "analytic",
-          "name": "Hammerstad-Jensen quarter-wave open-stub notch closed form (Stage A reproduce-gate oracle -- the SAME formula validation/crossval/06b_msl_notch_filter_uniform.py uses, but describing Stage A's own declared/exact 600um/254um board, NOT cv06b's own runtime u any more: cv06b's #723 fix computes u from ITS realized 635.0um trace width, not the declared 600um -- see 20_msl_phase_referee.py's 'Mesh convention' docstring section and tests/test_msl_phase_referee_header.py::test_f_notch_an_matches_cv06b_closed_form)",
+          "name": "Hammerstad-Jensen quarter-wave open-stub notch closed form (Stage A reproduce-gate oracle -- the SAME formula validation/crossval/06b_msl_notch_filter_uniform.py uses, but describing Stage A's own declared/exact 600um/254um board, NOT cv06b's own runtime u any more: cv06b's #723 fix computes u from ITS realized 635.0um trace width, not the declared 600um -- see 20_msl_phase_referee.py's 'Mesh convention' docstring section and tests/crossval/test_msl_phase_referee_header.py::test_f_notch_an_matches_cv06b_closed_form)",
           "required_for_script_pass": true
         },
         {
@@ -426,7 +426,7 @@
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
         "validation/crossval/20_msl_phase_referee.py",
-        "tests/test_msl_phase_referee_header.py"
+        "tests/crossval/test_msl_phase_referee_header.py"
       ],
       "artifact_paths": [
         "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
@@ -456,12 +456,12 @@
           "required_for_script_pass": true
         }
       ],
-      "claim_scope": "Issue #489 stage 3, promoted 2026-08-04 (PI decision, issue #489 comment https://github.com/bk-squared/rfx/issues/489#issuecomment-5179893223; evidence = run-3 VESSL 369367251629 plus an offline fix verified by replaying run-3's own committed field data through tests/test_coax_two_port_referee_header.py's regression suite -- no re-run needed). NOTE ON THE COMMITTED LOG: run3_369367251629_run.log records the PRE-FIX run and itself ends in the 111.38deg phase-witness failure (exit 1, analytic-beta model) -- the measured-beta fix was applied AFTER that run and is verified by the offline replay test against run-3's own committed field-data arrays, not by a fresh passing VESSL run; a reader who opens the log artifact before this prose should not expect a green run.log. One through-line geometry: rfx's own SMA-class coaxial_port fixture (pin radius a=0.635mm, outer-conductor inner radius b=2.055mm, PTFE eps_r=2.1, L12=58.4595mm feed-to-feed span), one mesh (dx=0.37474mm, rfx's own auto-derived Yee cell at freq_max=40GHz), two drives (forward port-1-driven and reverse port-2-driven, giving the full S-matrix). GATED: Stage A reproduces Coax.m's own documented line-impedance check (ZL mean=50.432 ohm vs analytic 49.940 ohm, max_dev=0.511 ohm, against its own [0.5,1.3] matched-through band and a settling/truncation witness); Stage B gates each solver's own self-consistency -- passivity (|S11|^2+|S21|^2<=1.05, measured <=1.0001), a one-sided matched-through magnitude band ([0.5,1.1]; the gated central-band leg measured 0.9999966-1.0000282 combined across S21/S12), and a phase/group-delay witness against the port's OWN MEASURED beta, not an idealized analytic beta: the analytic-beta path fails by 111.38deg (max, >30deg tolerance) though its own magnitude and group-delay legs both pass (282.6ps expected, 35.4ps deviation, well inside the 200ps tolerance) -- the measured-beta path collapses the SAME run-3 data to <0.44deg phase deviation on both S21 and S12. This is staircase dispersion (the referral hypothesis is ruled out by the implied-length mismatch matching no candidate discrete referral-cell count) from this coax's own coarse a-to-b PTFE annulus (measured/analytic beta ratio ~1.12x, 1.1205-1.1212 across the gated central band, 1.1202-1.1222 across the full 4-12GHz sweep; ~3.8 cells across (2.055-0.635mm)/0.37474mm), NOW MEASURED BY A MESH-REFINEMENT CONVERGENCE WITNESS (issue #489 leg 1, VESSL 369367251845, 2026-08-05, pre-declared one-sided acceptance band before the run per this repo's R2 discipline): a 1.5x mesh refinement (annulus 3.79->5.68 cells, dx 0.37474mm->0.24983mm) moves the measured/analytic beta ratio from 1.1208 to 1.0661624823818885 (per-bin range 1.0660627719113418-1.0662474785033922 across the gated central band -- essentially flat), implied convergence order p=1.4847707054524188 (two-point, from this single 1.5x step -- not a multi-level fit; between the naive first-order O(dx) lower bound this predeclaration's excess-scaling estimate assumed and second-order O(dx^2) -- consistent with openEMS's own material averaging at a dielectric interface, not a fault narrative) -- the pre-declared one-sided acceptance band (refutes only ratio > 1.11) CONFIRMED. See validation/crossval/21_coax_two_port_referee.py's MESH_REFINEMENT_PREDECLARATION and the committed validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json for the full per-bin evidence. The four agreeing beta readings (port1/port2, both drives, ~0.01% mutual agreement) AT THE ORIGINAL MESH DENSITY remain ONE witness, not four -- same run, same solver, same CalcPort extractor (this repo's own agreement-is-not-independence rule); the mesh-refinement witness above is the independent second axis that rule calls for. REPORTED, NOT GATED: run-3's own |S21|~=1.000 (0.99997-1.00003 across the full 4-12GHz sweep, both drives) for this independent, differently-discretized openEMS geometry -- consistent with, not a refutation of, rfx's own PR #534 raw 0.960->0.737 decline (attributed there to rfx's own numerical staircase attenuation, a DIFFERENT geometry/discretization); reciprocity (|S21| vs |S12|, max mag dev 1.2e-5, max phase dev 0.0012deg -- essentially exact for this passive, matched-mesh fixture). This referee brackets, it does not judge -- it makes no pass/fail verdict about rfx's own compute_coaxial_two_port numbers. UPDATE (2026-08-06, issue #489 final PI decision): compute_coaxial_two_port's own EXPERIMENTAL label was lifted separately, using this referee as one leg of its evidence chain (alongside a mesh-refinement convergence witness and an AD gate) -- see docs/guides/sparameter_support_matrix.md for the current VALIDATED WITH SCOPE statement; this referee's own scope fence (brackets, does not judge) is unchanged. Does not characterize a different geometry, mesh density, coax-planar transition, AD, or the reverse_drive call-site wiring (the active #489 dev track).",
+      "claim_scope": "Issue #489 stage 3, promoted 2026-08-04 (PI decision, issue #489 comment https://github.com/bk-squared/rfx/issues/489#issuecomment-5179893223; evidence = run-3 VESSL 369367251629 plus an offline fix verified by replaying run-3's own committed field data through tests/crossval/test_coax_two_port_referee_header.py's regression suite -- no re-run needed). NOTE ON THE COMMITTED LOG: run3_369367251629_run.log records the PRE-FIX run and itself ends in the 111.38deg phase-witness failure (exit 1, analytic-beta model) -- the measured-beta fix was applied AFTER that run and is verified by the offline replay test against run-3's own committed field-data arrays, not by a fresh passing VESSL run; a reader who opens the log artifact before this prose should not expect a green run.log. One through-line geometry: rfx's own SMA-class coaxial_port fixture (pin radius a=0.635mm, outer-conductor inner radius b=2.055mm, PTFE eps_r=2.1, L12=58.4595mm feed-to-feed span), one mesh (dx=0.37474mm, rfx's own auto-derived Yee cell at freq_max=40GHz), two drives (forward port-1-driven and reverse port-2-driven, giving the full S-matrix). GATED: Stage A reproduces Coax.m's own documented line-impedance check (ZL mean=50.432 ohm vs analytic 49.940 ohm, max_dev=0.511 ohm, against its own [0.5,1.3] matched-through band and a settling/truncation witness); Stage B gates each solver's own self-consistency -- passivity (|S11|^2+|S21|^2<=1.05, measured <=1.0001), a one-sided matched-through magnitude band ([0.5,1.1]; the gated central-band leg measured 0.9999966-1.0000282 combined across S21/S12), and a phase/group-delay witness against the port's OWN MEASURED beta, not an idealized analytic beta: the analytic-beta path fails by 111.38deg (max, >30deg tolerance) though its own magnitude and group-delay legs both pass (282.6ps expected, 35.4ps deviation, well inside the 200ps tolerance) -- the measured-beta path collapses the SAME run-3 data to <0.44deg phase deviation on both S21 and S12. This is staircase dispersion (the referral hypothesis is ruled out by the implied-length mismatch matching no candidate discrete referral-cell count) from this coax's own coarse a-to-b PTFE annulus (measured/analytic beta ratio ~1.12x, 1.1205-1.1212 across the gated central band, 1.1202-1.1222 across the full 4-12GHz sweep; ~3.8 cells across (2.055-0.635mm)/0.37474mm), NOW MEASURED BY A MESH-REFINEMENT CONVERGENCE WITNESS (issue #489 leg 1, VESSL 369367251845, 2026-08-05, pre-declared one-sided acceptance band before the run per this repo's R2 discipline): a 1.5x mesh refinement (annulus 3.79->5.68 cells, dx 0.37474mm->0.24983mm) moves the measured/analytic beta ratio from 1.1208 to 1.0661624823818885 (per-bin range 1.0660627719113418-1.0662474785033922 across the gated central band -- essentially flat), implied convergence order p=1.4847707054524188 (two-point, from this single 1.5x step -- not a multi-level fit; between the naive first-order O(dx) lower bound this predeclaration's excess-scaling estimate assumed and second-order O(dx^2) -- consistent with openEMS's own material averaging at a dielectric interface, not a fault narrative) -- the pre-declared one-sided acceptance band (refutes only ratio > 1.11) CONFIRMED. See validation/crossval/21_coax_two_port_referee.py's MESH_REFINEMENT_PREDECLARATION and the committed validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json for the full per-bin evidence. The four agreeing beta readings (port1/port2, both drives, ~0.01% mutual agreement) AT THE ORIGINAL MESH DENSITY remain ONE witness, not four -- same run, same solver, same CalcPort extractor (this repo's own agreement-is-not-independence rule); the mesh-refinement witness above is the independent second axis that rule calls for. REPORTED, NOT GATED: run-3's own |S21|~=1.000 (0.99997-1.00003 across the full 4-12GHz sweep, both drives) for this independent, differently-discretized openEMS geometry -- consistent with, not a refutation of, rfx's own PR #534 raw 0.960->0.737 decline (attributed there to rfx's own numerical staircase attenuation, a DIFFERENT geometry/discretization); reciprocity (|S21| vs |S12|, max mag dev 1.2e-5, max phase dev 0.0012deg -- essentially exact for this passive, matched-mesh fixture). This referee brackets, it does not judge -- it makes no pass/fail verdict about rfx's own compute_coaxial_two_port numbers. UPDATE (2026-08-06, issue #489 final PI decision): compute_coaxial_two_port's own EXPERIMENTAL label was lifted separately, using this referee as one leg of its evidence chain (alongside a mesh-refinement convergence witness and an AD gate) -- see docs/guides/sparameter_support_matrix.md for the current VALIDATED WITH SCOPE statement; this referee's own scope fence (brackets, does not judge) is unchanged. Does not characterize a different geometry, mesh density, coax-planar transition, AD, or the reverse_drive call-site wiring (the active #489 dev track).",
       "external_dependencies": ["openEMS", "CSXCAD"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": [
         "validation/crossval/21_coax_two_port_referee.py",
-        "tests/test_coax_two_port_referee_header.py"
+        "tests/crossval/test_coax_two_port_referee_header.py"
       ],
       "artifact_paths": [
         "validation/crossval/_21_coax_two_port_referee_logs/run3_369367251629_run.log"

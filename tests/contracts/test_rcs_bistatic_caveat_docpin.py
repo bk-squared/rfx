@@ -17,7 +17,7 @@ false-alarming those tests.
 This test locks the honesty text (docstrings + public guide) so the doc-pin
 cannot be silently stripped. It asserts NO physics and changes NO gate; the
 quantitative gate stays in ``tests/test_rcs_mie_fixture.py`` (monostatic) and
-``tests/test_rcs_mie_reference_gates.py`` (envelope).
+``tests/crossval/test_rcs_mie_reference_gates.py`` (envelope).
 """
 
 from __future__ import annotations

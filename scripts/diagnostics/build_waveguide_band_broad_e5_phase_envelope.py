@@ -101,7 +101,7 @@ PHASE_MAG_FLOOR = 0.30
 # Measured-envelope tolerance (T2.4-style derivation, NOT a round number):
 # worst committed case phase diff across all 5 bands / 20 cases is 11.99 deg
 # (WR-28, dx=100um, eps_r=2, S11). 15.0 = 11.99 x ~1.25 margin -- bounded by
-# tests/test_waveguide_broad_e5_phase_tolerance_envelope.py (>= worst case,
+# tests/crossval/test_waveguide_broad_e5_phase_tolerance_envelope.py (>= worst case,
 # <= worst x 1.5) the same way MAX_TOL is bounded for magnitude.
 MAX_PHASE_TOL_DEG = 15.0
 

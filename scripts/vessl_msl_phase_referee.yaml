@@ -84,7 +84,7 @@ run: |-
   # reviewer judgment): copy the run log to the TRACKED prefix this
   # script's own header-test fill-contract requires
   # (validation/crossval/_20_msl_phase_referee_logs/ -- tests/
-  # test_msl_phase_referee_header.py's REPRODUCE_GATE_RECORD contract
+  # crossval/test_msl_phase_referee_header.py's REPRODUCE_GATE_RECORD contract
   # test rejects .omx/ and docs/research_notes/vessl_logs/, both
   # gitignored, per the coax lane's own PR #548 lesson). This only
   # places the file on disk at the tracked path inside the mounted

@@ -3,7 +3,7 @@
 TRACKED 2026-07-18 as the canonical-patch oracle provenance: this script produced
 the committed openEMS reference fixture
 tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json
-(gated by tests/test_patch_canonical_farfield_e4.py, cv05 manifest gate_paths).
+(gated by tests/crossval/test_patch_canonical_farfield_e4.py, cv05 manifest gate_paths).
 
 REPRODUCE-GATE RECORD (added retroactively 2026-07-18; the run is 2026-07-11 and
 the record-first ordering caveat is stated in the fixture meta):

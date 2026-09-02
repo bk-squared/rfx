@@ -48,10 +48,10 @@ GATE_POLICY = REPO / "tests" / "_gate_policy.py"
 # quantum`, hard-pinned in a test AND re-derived in the crossval script's
 # own --write-fixture self-check.
 _QUANTIZED_GATE_FILES = [
-    REPO / "tests" / "test_wr90_iris_modematch_gates.py",
-    REPO / "tests" / "test_rcs_mie_ka_sweep_gates.py",
-    REPO / "tests" / "test_rcs_dielectric_sphere_mie_gates.py",
-    REPO / "tests" / "test_wr90_iris_filter_gates.py",
+    REPO / "tests" / "crossval" / "test_wr90_iris_modematch_gates.py",
+    REPO / "tests" / "crossval" / "test_rcs_mie_ka_sweep_gates.py",
+    REPO / "tests" / "crossval" / "test_rcs_dielectric_sphere_mie_gates.py",
+    REPO / "tests" / "crossval" / "test_wr90_iris_filter_gates.py",
     REPO / "validation" / "crossval" / "16_pec_sphere_mie_ka_sweep.py",
     REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
@@ -67,7 +67,7 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
-    REPO / "tests" / "test_waveguide_nu_broad_e4_comparison_gates.py",
+    REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
     # #574 promotion. Same shape and the same coverage gap as the E4 pair above:
@@ -78,7 +78,7 @@ _QUANTIZED_GATE_FILES = [
     # which re-derives MAX_TOL through gate_from_envelope AND caps the measured
     # envelope with a literal pinned outside the artifact (blind below 1.203x,
     # measured in that file).
-    REPO / "tests" / "test_waveguide_nu_broad_e5_envelope_gates.py",
+    REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e5_envelope_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e5_envelope.py"),
 ]
@@ -88,8 +88,8 @@ _QUANTIZED_GATE_FILES = [
 # (see tests/_gate_policy.py docstring), so these import the multiplier
 # directly rather than calling gate_from_envelope.
 _MARGIN_CEIL_FILES = [
-    REPO / "tests" / "test_waveguide_broad_e5_tolerance_envelope.py",
-    REPO / "tests" / "test_waveguide_broad_e5_phase_tolerance_envelope.py",
+    REPO / "tests" / "crossval" / "test_waveguide_broad_e5_tolerance_envelope.py",
+    REPO / "tests" / "crossval" / "test_waveguide_broad_e5_phase_tolerance_envelope.py",
     REPO / "tests" / "test_waveguide_group_delay_tolerance_envelope.py",
 ]
 

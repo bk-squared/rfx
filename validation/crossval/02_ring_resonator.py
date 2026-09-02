@@ -222,14 +222,14 @@ print("=" * 70)
 rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 
 # The judge lives in an importable module so this script and
-# tests/test_cv02_ring_mode_judge.py drive the SAME comparison code. It matches
+# tests/crossval/test_cv02_ring_mode_judge.py drive the SAME comparison code. It matches
 # modes by a one-to-one assignment that contains NO tolerance, then gates the
 # assigned pairs. The judge that used to sit inline here matched inside a 5%
 # window and then gated the mean error at the same 5% over exactly the pairs
 # that window admitted, so the headline verdict was entailed by the matcher:
 # 200,000 random trials through it never produced a mean error at or above 5%
 # (#812). The old logic is kept verbatim as `legacy_shipped_judge` in that
-# module; tests/test_cv02_ring_mode_judge.py separates the two judges.
+# module; tests/crossval/test_cv02_ring_mode_judge.py separates the two judges.
 import importlib.util as _ilu
 
 _judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")

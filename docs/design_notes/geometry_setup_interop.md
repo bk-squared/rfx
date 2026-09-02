@@ -282,7 +282,7 @@ difference is emitter fidelity rather than solver physics.
 
 ### The cv06b reference that a future physics comparison would use
 
-`tests/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
+`tests/crossval/test_msl_notch_e4_comparison_gates.py` + `tests/fixtures/msl_notch_e4/`
 already hold a committed physical openEMS dx = 50 µm reference for the cv06b
 microstrip open-stub notch, alongside the rfx result at matched geometry. The
 test runs no FDTD (the ~65 min rfx run is committed as a fixture) and the whole

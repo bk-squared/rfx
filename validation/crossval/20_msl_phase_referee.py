@@ -40,7 +40,7 @@ Log: ``validation/crossval/_20_msl_phase_referee_logs/
 the start here, not retrofitted). Full artifact committed verbatim as the
 run-1 regression fixture: ``validation/crossval/
 _20_msl_phase_referee_logs/20260804T055009Z_result.json`` (``tests/
-test_msl_phase_referee_header.py`` pins its claims-bearing arrays
+crossval/test_msl_phase_referee_header.py`` pins its claims-bearing arrays
 byte-exact). Both moved from ``validation/research/msl_phase_referee/``
 on promotion (below) -- paths as of the pre-promotion fill are historical.
 
@@ -89,7 +89,7 @@ zero) -- so this measured dispersion term explains only part of the raw
 gap's shape, not all of it. All of these arrays are reported here as
 MEASURED numbers only; per this referee's own "WHAT IS GATED vs
 REPORTED" discipline, no verdict is drawn from their shape here -- see
-tests/test_msl_phase_referee_header.py's own run-1 regression-fixture
+tests/crossval/test_msl_phase_referee_header.py's own run-1 regression-fixture
 tests for the exact pinned values a future reviewer can inspect
 directly.
 
@@ -104,7 +104,7 @@ DECLARED 254um board while rfx solved its realized 300um one.
 Log: ``_20_msl_phase_referee_logs/20260827T102342Z_run.log``; full
 artifact ``_20_msl_phase_referee_logs/20260827T102342Z_result.json``
 (both git-tracked). Run-1's fixture pair stays committed and
-``tests/test_msl_phase_referee_header.py`` keeps pinning IT byte-exact --
+``tests/crossval/test_msl_phase_referee_header.py`` keeps pinning IT byte-exact --
 that test is a regression lock on the run-1 artifact, not a live-run
 gate, so it is unaffected by these numbers. ``overall_passed=True``;
 Stage B elapsed 4703 s, total 4755 s, 8 CPU on remilab-c0.
@@ -279,7 +279,7 @@ and how to regenerate, rather than silently falling back to the
 declared board.
 
 Downstream truth this change requires updating (not silently left
-stale): ``tests/test_msl_phase_referee_header.py``'s
+stale): ``tests/crossval/test_msl_phase_referee_header.py``'s
 ``test_f_notch_an_matches_cv06b_closed_form`` recomputes
 ``u = 600e-6/254e-6`` and calls it "the SAME closed form
 06b_msl_notch_filter_uniform.py uses" -- under cv06b's OWN #723 fix,
@@ -295,7 +295,7 @@ current MSL evidence and are corrected in this change too:
 ``validation/README.md`` (cv06b row), ``docs/guides/sparameter_support_
 matrix.md`` + ``.json`` (MSL section's analytic-notch bullet /
 ``numeric_metrics``), and ``docs/agent/port-selection.mdx`` (MSL row).
-``tests/test_msl_notch_public_carriers.py`` now couples all four to
+``tests/crossval/test_msl_notch_public_carriers.py`` now couples all four to
 cv06b's own ``DX`` constant and its committed run log, so the next mesh
 change reds a test instead of silently rotting the contract.
 
@@ -609,7 +609,7 @@ budget instead of a round number:
     +-2-to-4-cell mesh-round-off class does not false-fire.
   - RESOLVING-POWER TEST (the #529 pattern -- a gate must be PROVEN to
     discriminate a real defect, not just pass a real run): ``tests/
-    test_msl_phase_referee_header.py::
+    crossval/test_msl_phase_referee_header.py::
     test_self_consistency_witness_resolving_power_single_port_referral_drop``
     plants a synthetic single-port referral drop (S21 rotated by
     ``exp(+j*beta*ref_shift)`` for ONE port's own 2.5mm ref_plane_shift,

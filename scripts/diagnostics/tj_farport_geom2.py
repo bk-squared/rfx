@@ -1,7 +1,7 @@
 """Far-port H-plane T-junction — GEOMETRY 2 (W=0.036 m) for the broad claim.
 
 Second, genuinely different junction geometry demanded by the single-geometry
-honesty locks (tests/test_waveguide_tjunction_e4e5_gates.py): the numeric
+honesty locks (tests/crossval/test_waveguide_tjunction_e4e5_gates.py): the numeric
 breadth bars require >= 2 junction geometries before any "broad" junction
 claim. Mirrors scripts/diagnostics/tj_farport_diag.py (formerly tj_farport_test.py) (geometry 1, W=0.04)
 with the same far-port discipline on the SAME domain/CPML:

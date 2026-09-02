@@ -25,10 +25,10 @@ run: |-
   echo ""
   echo "=== 1. Fast CI (all non-slow, no -x) ==="
   pytest tests/ --tb=short -q \
-    --ignore=tests/test_meep_crossval.py \
+    --ignore=tests/crossval/test_meep_crossval.py \
     --ignore=tests/test_meep_crossval_patch.py \
-    --ignore=tests/test_openems_crossval.py \
-    --ignore=tests/test_crossval_comprehensive.py \
+    --ignore=tests/crossval/test_openems_crossval.py \
+    --ignore=tests/crossval/test_crossval_comprehensive.py \
     --ignore=tests/test_subpixel.py \
     --ignore=tests/test_distributed.py \
     -k "not slow" || true

@@ -87,7 +87,7 @@ screen):
 - F1: max|S11| ≥ 0.10 → FAIL.
   [Committed thru envelope `thru_max_s11=0.10`,
   `scripts/diagnostics/build_msl_broad_e5_envelope.py` THRESH, pinned by
-  `tests/test_msl_broad_e5_envelope_gates.py`.]
+  `tests/crossval/test_msl_broad_e5_envelope_gates.py`.]
 - F2: mean|S21| ≤ 0.95 → FAIL. [Same envelope, `thru_mean_s21_min=0.95`.]
 - F3: |median Re(Z0_ext) − Z0_HJ| / Z0_HJ ≥ 0.05 → FAIL.
   [Same envelope, `thru_z0_rel_err_med=0.05`. Context: the documented

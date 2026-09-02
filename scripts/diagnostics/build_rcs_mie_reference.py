@@ -28,7 +28,7 @@ arbiter for the sphere. This script:
       ``tests/fixtures/rcs_mie_e4/rcs_pec_sphere_mie.json`` with the raw per-ka
       rfx values + exact Mie values + errors + meta, so the gate test survives a
       clean checkout WITHOUT re-running FDTD (the committed reference column is
-      re-derivable from the series by ``tests/test_rcs_mie_reference_gates.py``).
+      re-derivable from the series by ``tests/crossval/test_rcs_mie_reference_gates.py``).
 
 HONEST-ENVELOPE POSTURE
 -----------------------

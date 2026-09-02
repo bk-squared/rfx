@@ -41,7 +41,7 @@ jobs:
         run: >
           pytest -x -q
           -m "not gpu"
-          --ignore=tests/test_meep_crossval.py
-          --ignore=tests/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/test_openems_crossval.py
-          --ignore=tests/test_crossval_comprehensive.py
+          --ignore=tests/crossval/test_meep_crossval.py
+          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/crossval/test_openems_crossval.py
+          --ignore=tests/crossval/test_crossval_comprehensive.py

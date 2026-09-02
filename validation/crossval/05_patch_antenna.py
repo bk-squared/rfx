@@ -62,7 +62,7 @@ Three independent measurements of the patch resonance:
      cell lumped ports have a known parasitic cell reactance that
      produces a monotonic background S11 trend, so the resonance
      appears as a small local dip rather than a deep -20 dB match.
-     Pattern-match `tests/test_crossval_comprehensive.py::TestLumpedPortCavity`.
+     Pattern-match `tests/crossval/test_crossval_comprehensive.py::TestLumpedPortCavity`.
 
 Primary PASS gate: rfx Harminv vs OpenEMS Harminv (resonance frequency) < 20 %
 (`pass_vs_openems`); rfx internal self-consistency < 5 % (`pass_internal`).

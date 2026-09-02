@@ -9,7 +9,7 @@ PEC-sphere backscatter RCS: Bempp meshes the TRUE curved surface with triangles
 any FDTD code (Meep/openEMS).
 
 Bempp is NOT a CI/runtime dependency of rfx; the emitted numbers are frozen into
-fixture.json and gated by ``tests/test_rcs_sphere_three_way_gates.py`` (which
+fixture.json and gated by ``tests/crossval/test_rcs_sphere_three_way_gates.py`` (which
 re-derives Mie from scipy.special, so this producer cannot self-certify).
 
 Environment (measured, not assumed):

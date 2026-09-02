@@ -204,7 +204,7 @@ ONLY the thru numerator for the reverse drive and left s_self as
 ``uf_inc_self`` is not the reverse drive's launched wave. The reviewer's
 synthetic check (plain complex arithmetic on fake ``uf_inc``/``uf_ref``
 values, no openEMS needed -- see ``_extract_two_port_s``'s docstring and
-``tests/test_coax_two_port_referee_header.py::
+``tests/crossval/test_coax_two_port_referee_header.py::
 test_extract_two_port_s_synthetic_forward_and_reverse_drive``) caught it:
 the numerator-only fix reported S22 as 1/S22_true (0.051 -> 19.61) and
 S12 scaled by the same inverted factor (0.9 -> 17.65). Both directions
@@ -213,7 +213,7 @@ already confirmed by Coax.m's own source; the reverse direction, which
 Coax.m never exercises, by the reviewer's CalcPort-formula arithmetic).
 
 Both ports' computed directions are pinned by
-``tests/test_coax_two_port_referee_header.py::
+``tests/crossval/test_coax_two_port_referee_header.py::
 test_stage_b_port_directions_are_both_positive`` (closes the round-1
 hole: a mutated orientation previously left all 13 tests green).
 
@@ -439,7 +439,7 @@ Hand-ported sanity checks (external scripts get no rfx preflight --
       not gated for Stage A).
   (d) port/mesh clearance: asserted in code, not just described in prose
       -- via ``_stage_b_layout()``, a PURE function testable without
-      openEMS (see ``tests/test_coax_two_port_referee_header.py``).
+      openEMS (see ``tests/crossval/test_coax_two_port_referee_header.py``).
   (e) mesh-line snap at every conductor radius, for rasterization
       QUALITY (``CoaxialPort`` does not have the ``AddLumpedPort``
       off-mesh SILENT-DROP failure mode -- its radii are just rasterized
@@ -529,7 +529,7 @@ import numpy as np
 # (external_solver_comparator.md step 2). Committed in its UNRUN placeholder
 # state; a VESSL run fills these fields AND must supply a log path that
 # actually exists on disk under .omx/ or docs/research_notes/vessl_logs/
-# (M3 fix -- see tests/test_coax_two_port_referee_header.py).
+# (M3 fix -- see tests/crossval/test_coax_two_port_referee_header.py).
 # ---------------------------------------------------------------------------
 _ETA0 = 376.73031346177066  # sqrt(mu0/eps0), vacuum wave impedance (ohm)
 ZL_A_ANALYTIC_OHM = (_ETA0 / (2.0 * np.pi)) * np.log(230.0 / 100.0)  # Coax.m's own ZL_a
@@ -689,7 +689,7 @@ B_PML_DEPTH_MM = B_CPML_CELLS * B_DX_MM  # 5.99584916 mm
 # by dx, overstating the transverse span by +4.5455% (8.6190331675mm ->
 # 8.244292595mm) and the axial span by +0.6211% (60.707972745mm ->
 # 60.3332321725mm). Locked by
-# tests/test_coax_two_port_referee_header.py::
+# tests/crossval/test_coax_two_port_referee_header.py::
 # test_referee_interior_span_constants_match_rebuilt_grid_fencepost
 # against a freshly rebuilt grid, not against these literals.
 B_INTERIOR_X_CELLS = 22
@@ -1071,7 +1071,7 @@ def _stage_b_layout(dx_scale: float = 1.0) -> dict:
     AssertionError -> exit 3, from a physics/self-check failure,
     RuntimeError -> exit 1 -- this function is where the former would
     originate, and its assertions are checked by
-    tests/test_coax_two_port_referee_header.py without needing openEMS).
+    tests/crossval/test_coax_two_port_referee_header.py without needing openEMS).
 
     H2 (RESTORED 2026-08-03, PR #546 review): both ports' conductors run
     straight to the domain's own z edges (z=0, z=lz_mm), INTO PML_16 --
@@ -1237,7 +1237,7 @@ def _import_openems():
     """Deferred openEMS import (kept OUT of module scope on purpose).
 
     This module must stay importable without openEMS installed so
-    ``tests/test_coax_two_port_referee_header.py`` can load it locally
+    ``tests/crossval/test_coax_two_port_referee_header.py`` can load it locally
     and check the header/record/layout fields (fail-loud-honest test
     design). The ImportError-to-exit-2 conversion happens in ``main()``.
     """
@@ -1406,7 +1406,7 @@ def _evaluate_mesh_refinement_ratio(ratio, predeclaration: dict) -> dict:
     Extracted from ``main()`` as a pure function (no I/O, no openEMS) so
     the decision logic itself -- not just the surrounding prose -- is
     unit-testable without running Stage B
-    (``tests/test_coax_two_port_referee_header.py::
+    (``tests/crossval/test_coax_two_port_referee_header.py::
     test_mesh_refinement_gate_confirms_a_ratio_below_the_band`` and its
     siblings).
 
@@ -1915,7 +1915,7 @@ def _extract_two_port_s(port_self, port_thru, *, reverse_drive: bool) -> dict:
     uf_inc_self`` unconditionally -- WRONG for the reverse drive, where
     ``uf_inc_self`` is not the launched wave. The reviewer's synthetic
     check (plain complex arithmetic on fake ``uf_inc``/``uf_ref`` values
-    -- no openEMS needed, see ``tests/test_coax_two_port_referee_header.
+    -- no openEMS needed, see ``tests/crossval/test_coax_two_port_referee_header.
     py::test_extract_two_port_s_synthetic_forward_and_reverse_drive``)
     caught it: the old code reported S22 as 1/S22_true (0.051 -> 19.61)
     and S12 scaled by the SAME inverted factor (0.9 -> 17.65) -- both

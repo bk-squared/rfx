@@ -46,7 +46,7 @@ logs/
 # EVIDENCE, not runtime output -- REPRODUCE_GATE_RECORD's log_path must
 # be git-tracked so a reviewer outside this machine can open it (the
 # whole point of the fill-contract test in
-# tests/test_coax_two_port_referee_header.py). The broad "logs/" rule
+# tests/crossval/test_coax_two_port_referee_header.py). The broad "logs/" rule
 # above would otherwise silently swallow this directory too.
 # The coax two-port referee's own run-3 evidence (issue #489 stage 3)
 # used to need the exception here at

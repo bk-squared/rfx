@@ -58,7 +58,7 @@ backscatter match above, since PO cancels — not a second independent witness.)
   process and emits the full `fixture.json` mechanically. Bempp is **not** an rfx
   CI/runtime dep. **Env:** `pip install bempp-cl gmsh` (import name `bempp_cl` in
   0.4.x); `OPENBLAS_NUM_THREADS≤64` on many-core boxes.
-- Gated by `tests/test_rcs_cube_bem_gates.py`, which recomputes every dB distance
+- Gated by `tests/crossval/test_rcs_cube_bem_gates.py`, which recomputes every dB distance
   from the committed raw sigma arrays (the producer's derived dB is not trusted).
   Additive — relaxes no existing RCS gate. humble-crossval: rfx-centric distances;
   Bempp is the converged arbiter, not a verdict that rfx is "wrong" in a

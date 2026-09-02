@@ -53,6 +53,6 @@ rfx-centric distance; no solver is framed as wrong.
   CI/runtime dependency of rfx; run manually to regenerate. **Env:** `pip install
   bempp-cl gmsh` (import name `bempp_cl` in 0.4.x, not `bempp`); set
   `OPENBLAS_NUM_THREADS<=64` on many-core boxes.
-- Gated by `tests/test_rcs_sphere_three_way_gates.py`, which **re-derives Mie
+- Gated by `tests/crossval/test_rcs_sphere_three_way_gates.py`, which **re-derives Mie
   from `scipy.special`** (does not import the producer) so the reference cannot
   self-certify. Additive — it relaxes no existing RCS gate.

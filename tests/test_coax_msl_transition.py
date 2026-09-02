@@ -1,7 +1,7 @@
 """Tests for ``compute_coax_msl_transition`` (issue #489 leg 4).
 
 Structure (mirrors ``tests/test_coax_two_port_fdtd.py`` and
-``tests/test_coax_two_port_referee_header.py``, the two closest
+``tests/crossval/test_coax_two_port_referee_header.py``, the two closest
 precedents):
 
 1. Pure-assembly tests (no FDTD) for
@@ -1220,7 +1220,7 @@ PREDECLARATION_ATTEMPT2 = {
 
 SETTLED_RUN_RECORD = {
     # Fill-contract pattern (mirrors REPRODUCE_GATE_RECORD in
-    # tests/test_coax_two_port_referee_header.py): UNRUN <=> no numbers,
+    # tests/crossval/test_coax_two_port_referee_header.py): UNRUN <=> no numbers,
     # no log path. This is the settled-run predeclaration issue #585
     # review requires (finding B2/B4 + restructure item (c)): the local
     # runtime available to this session cannot reach the -40 dB rule at

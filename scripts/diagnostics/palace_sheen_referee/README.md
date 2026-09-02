@@ -69,7 +69,7 @@ this referee is a strictly three-SOLVER comparison (rfx / openEMS / Palace).
 The verdict is committed as evidence — the raw Palace `port-S.csv` arrays live in
 `tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json` (dB -> LINEAR),
 re-derived by `build_sheen_lpf_palace_referee.py`, gated by
-`tests/test_sheen_lpf_palace_referee_gates.py`. Those survive a clean checkout;
+`tests/crossval/test_sheen_lpf_palace_referee_gates.py`. Those survive a clean checkout;
 this directory is the *provenance* that generated them.
 
 ## Geometry lock

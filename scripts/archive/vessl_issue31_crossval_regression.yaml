@@ -48,10 +48,10 @@ run: |-
   echo ""
   echo "=== 4. GPU-marked regression (non-crossval) ==="
   pytest tests/ -m gpu --tb=short -q \
-    --ignore=tests/test_meep_crossval.py \
+    --ignore=tests/crossval/test_meep_crossval.py \
     --ignore=tests/test_meep_crossval_patch.py \
-    --ignore=tests/test_openems_crossval.py \
-    --ignore=tests/test_crossval_comprehensive.py \
+    --ignore=tests/crossval/test_openems_crossval.py \
+    --ignore=tests/crossval/test_crossval_comprehensive.py \
     --ignore=tests/test_distributed.py \
     -k "not slow"
 

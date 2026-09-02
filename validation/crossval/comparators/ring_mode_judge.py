@@ -2,7 +2,7 @@
 
 Plain numpy/scipy. No rfx import, no Simulation, no solve: this module only
 compares two lists of extracted modes, so both the crossval script and
-``tests/test_cv02_ring_mode_judge.py`` can drive the same code.
+``tests/crossval/test_cv02_ring_mode_judge.py`` can drive the same code.
 
 Why this module exists (issue #812)
 -----------------------------------

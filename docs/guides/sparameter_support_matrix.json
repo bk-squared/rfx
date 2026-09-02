@@ -228,8 +228,8 @@
         "tests/fixtures/waveguide_broad_e5/waveguide_wr10_wband_broad_e5_phase_envelope.json",
         "tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json",
         "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json",
-        "tests/test_waveguide_broad_e5_phase_gates.py",
-        "tests/test_waveguide_broad_e5_phase_tolerance_envelope.py",
+        "tests/crossval/test_waveguide_broad_e5_phase_gates.py",
+        "tests/crossval/test_waveguide_broad_e5_phase_tolerance_envelope.py",
         "tests/test_waveguide_group_delay_near_cutoff.py",
         "tests/test_waveguide_group_delay_tolerance_envelope.py",
         "scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
@@ -317,7 +317,7 @@
         "tests/test_coax_two_port_fdtd.py",
         "tests/test_coax_two_port_ad.py",
         "validation/crossval/21_coax_two_port_referee.py",
-        "tests/test_coax_two_port_referee_header.py"
+        "tests/crossval/test_coax_two_port_referee_header.py"
       ],
       "numeric_metrics": [
         "analytic 4--12 GHz short/open/matched/resistive 25/100 ohm checks at Z0 48.6 and 63 ohm: method max |Gamma| deviation 0.0372 <= 0.05 and max recurrence residual 0.00588 <= 0.03",

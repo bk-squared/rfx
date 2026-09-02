@@ -3,7 +3,7 @@
 TRACKED 2026-07-18 as the canonical-patch oracle provenance (rfx side of the
 committed reference pair; openEMS side: patch_tutorial_openems.py -> fixture
 tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json, gated by
-tests/test_patch_canonical_farfield_e4.py). Recorded research-frame result
+tests/crossval/test_patch_canonical_farfield_e4.py). Recorded research-frame result
 (cv05_investigation_results/patch_tutorial_rfx.json, num_periods=250, buf=8,
 wall 4615 s): f_res 2.2143 GHz (Q 59.3), D 6.71 dBi, E/H peaks 0/-3 deg,
 two-window-settled per that JSON (the energy-witness field below postdates that
