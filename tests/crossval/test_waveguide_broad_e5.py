@@ -79,7 +79,7 @@ from build_waveguide_band_broad_e5_phase_envelope import (  # type: ignore  # no
     MAX_PHASE_TOL_DEG, PHASE_MAG_FLOOR, _wrapped_phase_diff_deg,
 )
 
-from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER  # noqa: E402
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER, gate_from_envelope  # noqa: E402
 
 FIXTURES = REPO / "tests" / "fixtures" / "waveguide_broad_e5"
 EXPECTED_BANDS = {
@@ -697,3 +697,86 @@ def test_live_empty_guide_s21_anchor():
         f"LIVE empty-guide max(|S11|²+|S21|²)={power.max():.4f} > 1.05 — "
         f"non-passive (energy-injection) extractor bug"
     )
+
+
+# ---------------------------------------------------------------------------
+# Unitarity (power closure) of the committed flux-lane envelopes — v1.8 WP3
+# ---------------------------------------------------------------------------
+#
+# Every case of the five uniform band envelopes stores the per-frequency
+# |S11|^2 + |S21|^2 extremes of the rfx flux lane as ``cases[i].unitarity_min``
+# / ``cases[i].unitarity_max`` (a lossless slab: the ideal is 1.0 at every
+# bin). No test read them before this block. The gate is DERIVED from the
+# committed numbers through the shared policy (``tests/_gate_policy.py``,
+# ``gate_from_envelope``, quantum 1000 = milli-scale residual), never chosen:
+#
+#   measured worst |u - 1| per fixture, max over its cases and both extremes
+#   (the read-out below is reproduced live by ``_worst_unitarity_deviation``):
+#
+#     fixture                  worst |u-1|   from case          per-fixture gate
+#     wr10_wband               1.034737e-4   dx40_slab_er2  (max)   0.001
+#     wr15_vband               1.226664e-4   dx25_slab_er2  (max)   0.001
+#     wr28_kaband              3.151894e-3   dx50_slab_er4  (min)   0.005
+#     wr340_sband              4.434586e-4   dx1500_slab_er4 (max)  0.001
+#     wr62_kuband              5.069375e-4   dx200_slab_er4 (min)   0.001
+#
+#   overall worst = 3.151894e-3 (WR-28, unitarity_min 0.9968481)
+#   gate = ceil(3.151894e-3 x ENVELOPE_GATE_MULTIPLIER x 1000) / 1000
+#        = ceil(4.727840) / 1000 = 0.005
+#
+# One gate for all five fixtures (the overall worst), stated here before the
+# assert was written. ``test_unitarity_gate_is_derived_from_the_committed_envelopes``
+# recomputes it from the JSONs so a hand-moved pin is caught, and caps the
+# measured envelope with a literal pinned OUTSIDE the artifacts so a doctored
+# JSON that widens its own ``unitarity_*`` cannot re-derive a wider gate.
+# Cheap refute (run once, output in the PR body): perturbing one
+# ``unitarity_max`` by +0.01 in a scratch copy makes the assert go red.
+UNITARITY_ABS_GATE: float = 0.005
+UNITARITY_MEASURED_WORST: float = 3.151894e-3   # WR-28 dx50_slab_er4, unitarity_min
+_UNITARITY_WORST_CAP: float = 3.2e-3            # literal pinned outside the JSONs
+
+
+def _worst_unitarity_deviation(env: dict) -> tuple[float, str]:
+    """``max_i max(|unitarity_min_i - 1|, |unitarity_max_i - 1|)`` and the case tag."""
+    worst, tag = -1.0, ""
+    for c in env["cases"]:
+        dev = max(abs(float(c["unitarity_min"]) - 1.0), abs(float(c["unitarity_max"]) - 1.0))
+        if dev > worst:
+            worst, tag = dev, str(c.get("tag", "?"))
+    return worst, tag
+
+
+@pytest.mark.parametrize("path", _mag_fixture_files(), ids=lambda p: p.stem)
+def test_committed_band_envelope_is_unitary_within_the_derived_gate(path: Path) -> None:
+    """Every case's stored |S11|^2 + |S21|^2 extremes sit within
+    ``UNITARITY_ABS_GATE`` of 1 (derivation in the block comment above)."""
+    env = json.loads(path.read_text())
+    for c in env["cases"]:
+        umin, umax = float(c["unitarity_min"]), float(c["unitarity_max"])
+        assert umin <= umax, (path.name, c["tag"], umin, umax)
+        assert abs(umin - 1.0) <= UNITARITY_ABS_GATE, (
+            f"{path.name} case {c['tag']}: unitarity_min={umin:.7f} is "
+            f"{abs(umin - 1.0):.3e} from 1 > gate {UNITARITY_ABS_GATE}")
+        assert abs(umax - 1.0) <= UNITARITY_ABS_GATE, (
+            f"{path.name} case {c['tag']}: unitarity_max={umax:.7f} is "
+            f"{abs(umax - 1.0):.3e} from 1 > gate {UNITARITY_ABS_GATE}")
+    worst, tag = _worst_unitarity_deviation(env)
+    print(f"[{path.stem}] worst |unitarity-1| = {worst:.6e} ({tag}); gate {UNITARITY_ABS_GATE}")
+
+
+def test_unitarity_gate_is_derived_from_the_committed_envelopes() -> None:
+    """The pin equals the shared policy applied to the live overall worst,
+    and the live overall worst equals the one the derivation above quotes."""
+    per_fixture = {p.stem: _worst_unitarity_deviation(json.loads(p.read_text()))
+                   for p in _mag_fixture_files()}
+    assert len(per_fixture) == len(EXPECTED_BANDS), per_fixture
+    overall = max(w for w, _ in per_fixture.values())
+    assert overall == pytest.approx(UNITARITY_MEASURED_WORST, abs=1e-9), per_fixture
+    assert overall <= _UNITARITY_WORST_CAP, per_fixture
+    assert UNITARITY_ABS_GATE == gate_from_envelope(overall, quantum=1000), (
+        UNITARITY_ABS_GATE, overall)
+    # The single gate is not looser than any per-fixture derivation would be
+    # by more than the quantization of the overall worst: every per-fixture
+    # gate is <= the shared one (the WR-28 fixture sets it).
+    for stem, (w, _) in per_fixture.items():
+        assert gate_from_envelope(w, quantum=1000) <= UNITARITY_ABS_GATE, (stem, w)

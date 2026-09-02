@@ -81,6 +81,17 @@ _QUANTIZED_GATE_FILES = [
     REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e5_envelope_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e5_envelope.py"),
+    # v1.8 WP3 unitarity gate on the five uniform broad-E5 envelopes. Same
+    # coverage shape as the two lanes above (flat envelope JSONs, one derived
+    # gate at quantum 1000, per-case `unitarity_min` / `unitarity_max` rather
+    # than a `gates` dict), so the fixture-glob discovery does not reach it;
+    # its from-outside check is that file's own
+    # test_unitarity_gate_is_derived_from_the_committed_envelopes, which
+    # re-derives the pin through gate_from_envelope AND caps the measured
+    # envelope with a literal pinned outside the artifacts. The unitarity
+    # block lives in the consolidated crossval module (tier-3b reorg), which
+    # also appears in _MARGIN_CEIL_FILES below: one file, two gate shapes.
+    REPO / "tests" / "crossval" / "test_waveguide_broad_e5.py",
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against
