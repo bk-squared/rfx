@@ -294,6 +294,20 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure-numpy Pozar spectrum, exact-lattice prediction, allowance, "
         "windows and gates for cv24 -- no rfx import at all"),
+    "validation/crossval/22_dispersive_slab_fresnel.py": Entry(
+        "no_simulation",
+        "cv22 dispersive-slab case: drives cv04's low-level rig (Grid, "
+        "init_tfsf, update_e_debye/lorentz) directly under a main guard -- "
+        "no Simulation() call; the documented add_material path is stated "
+        "as NOT exercised in its manifest entry"),
+    "validation/crossval/comparators/cv22_dispersive_gates.py": Entry(
+        "no_simulation",
+        "pure-numpy windows, falsifiers and TMM/ADE evaluation for cv22 -- "
+        "no rfx Simulation"),
+    "validation/crossval/comparators/dispersive_eps.py": Entry(
+        "no_simulation",
+        "pure-numpy Debye/Lorentz/Drude eps(f) and the rfx->Meep material "
+        "mapping (unit-tested to 1e-9 before any FDTD) -- no rfx import"),
     "validation/crossval/comparators/ring_mode_judge.py": Entry(
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
