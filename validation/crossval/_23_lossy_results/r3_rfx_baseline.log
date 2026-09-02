@@ -1,0 +1,59 @@
+======================================================================
+Crossval 23: lossy slab -- arms ['tand0p1', 'tand1', 'tand3']; falsifier=None; smoke=False
+======================================================================
+  windows: W_bin=0.074, W_mean_R=0.01, W_mean_T=0.017, W_bin_A=0.148, W_mean_A=0.027 (triangle; tighter derivable 0.074/0.014 reported as A_tight_ok); gated band 4-10 GHz
+
+[tand0p1] tan delta @ 7 GHz = 0.1; params_run={'eps_inf': 4.0, 'sigma': 0.15577100776270184}; materials path: direct; recipe dx/1
+  grid (1041, 45, 1), dt=2.3351e-12 s, slab cells [515,525), probes 485/555, n_steps=1067 (recipe r3)
+  FDTD 0.7s; masked band 3.01-11.87 GHz (340 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record: n_pulse_end 908 + n_ring 109 (etalon at 1.13 GHz, w 0.50, rho 0.117, rate 1.540e+10/s; no material pole) + window 50 = n_steps_min 1067; reached 1067 after 0 extension(s) (CPML gate 1262, box grows 0); tail scat/trans 8.86e-04/1.03e-03 vs 0.01 -> ok; fitted tail rate scat/trans nan/nan /s
+  E2: max|dR|=0.0140 max|dT|=0.0147 max|dA|=0.0039 (worst A bin 7.55 GHz) | mean|dR|=0.0039/0.0100 mean|dT|=0.0057/0.0172 mean|dA|=0.0020/0.0272; A_tight_ok=True; max R+T (masked) = 0.8068
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G1_A': True, 'G2_R': True, 'G2_T': True, 'G2_A': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+  lattice witness (reported, not gated): W_lat mean R/T/A 0.00392/0.00567/0.00194; |rfx - lattice| mean R/T/A 2.96e-05/3.08e-05/3.80e-05 (max R 1.42e-04)
+      4.00 GHz  R 0.2987/0.3003 | T 0.5066/0.5050 | A 0.1947/0.1947 (TMM/rfx) | W_sig R/T/A 1.1e-05/3.6e-05/4.7e-05
+      4.99 GHz  R 0.2456/0.2472 | T 0.5542/0.5522 | A 0.2002/0.2007 (TMM/rfx) | W_sig R/T/A 1.7e-05/6.1e-05/7.8e-05
+      6.01 GHz  R 0.1296/0.1299 | T 0.6348/0.6329 | A 0.2356/0.2372 (TMM/rfx) | W_sig R/T/A 1.3e-05/1.2e-04/1.3e-04
+      7.01 GHz  R 0.0245/0.0238 | T 0.6968/0.6941 | A 0.2787/0.2821 (TMM/rfx) | W_sig R/T/A 7.5e-06/2.0e-04/2.0e-04
+      8.00 GHz  R 0.0259/0.0291 | T 0.6819/0.6751 | A 0.2922/0.2958 (TMM/rfx) | W_sig R/T/A 1.1e-05/2.7e-04/2.6e-04
+      8.99 GHz  R 0.1267/0.1368 | T 0.6057/0.5935 | A 0.2676/0.2697 (TMM/rfx) | W_sig R/T/A 3.1e-05/2.8e-04/3.1e-04
+     10.01 GHz  R 0.2353/0.2494 | T 0.5327/0.5180 | A 0.2321/0.2327 (TMM/rfx) | W_sig R/T/A 8.6e-05/2.7e-04/3.5e-04
+  E4 (meep_tand0p1.json): Meep-vs-TMM mean R/T/A 0.0078/0.0056/0.0033 (max 0.0132/0.0120/0.0064); rfx-vs-Meep mean 0.0052/0.0031/0.0028
+  E4 gates: {'precheck_passed': True, 'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True, 'G4_A': True, 'G4_mean_A': True, 'G5_A': True, 'G5_mean_A': True} -> PASS
+
+[tand1] tan delta @ 7 GHz = 1; params_run={'eps_inf': 4.0, 'sigma': 1.5577100776270185}; materials path: api; recipe dx/1
+  grid (1041, 45, 1), dt=2.3351e-12 s, slab cells [515,525), probes 485/555, n_steps=1158 (recipe r3)
+  FDTD 0.7s; masked band 3.01-11.87 GHz (340 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record: n_pulse_end 908 + n_ring 200 (etalon at 1.13 GHz, w 0.50, rho 0.118, rate 8.402e+09/s; no material pole) + window 50 = n_steps_min 1158; reached 1158 after 0 extension(s) (CPML gate 1262, box grows 0); tail scat/trans 9.83e-05/2.83e-05 vs 0.01 -> ok; fitted tail rate scat/trans 3.183e+09/4.613e+09 /s
+  E2: max|dR|=0.0077 max|dT|=0.0031 max|dA|=0.0047 (worst A bin 9.98 GHz) | mean|dR|=0.0051/0.0101 mean|dT|=0.0018/0.0171 mean|dA|=0.0033/0.0270; A_tight_ok=True; max R+T (masked) = 0.4788
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G1_A': True, 'G2_R': True, 'G2_T': True, 'G2_A': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+  lattice witness (reported, not gated): W_lat mean R/T/A 0.00509/0.00176/0.00334; |rfx - lattice| mean R/T/A 2.05e-05/5.28e-06/1.94e-05 (max R 5.41e-05)
+      4.00 GHz  R 0.3330/0.3355 | T 0.0611/0.0605 | A 0.6060/0.6040 (TMM/rfx) | W_sig R/T/A 3.4e-05/3.6e-05/2.2e-06
+      4.99 GHz  R 0.2599/0.2632 | T 0.0585/0.0575 | A 0.6816/0.6793 (TMM/rfx) | W_sig R/T/A 6.0e-05/5.8e-05/1.7e-06
+      6.01 GHz  R 0.2070/0.2111 | T 0.0553/0.0540 | A 0.7377/0.7349 (TMM/rfx) | W_sig R/T/A 1.1e-04/8.5e-05/2.1e-05
+      7.01 GHz  R 0.1807/0.1857 | T 0.0522/0.0504 | A 0.7671/0.7638 (TMM/rfx) | W_sig R/T/A 1.5e-04/1.1e-04/3.9e-05
+      8.00 GHz  R 0.1740/0.1800 | T 0.0495/0.0473 | A 0.7765/0.7726 (TMM/rfx) | W_sig R/T/A 1.7e-04/1.4e-04/3.2e-05
+      8.99 GHz  R 0.1768/0.1838 | T 0.0475/0.0450 | A 0.7757/0.7713 (TMM/rfx) | W_sig R/T/A 1.6e-04/1.7e-04/1.4e-05
+     10.01 GHz  R 0.1791/0.1868 | T 0.0464/0.0433 | A 0.7746/0.7699 (TMM/rfx) | W_sig R/T/A 1.2e-04/2.1e-04/9.3e-05
+  E4 (meep_tand1.json): Meep-vs-TMM mean R/T/A 0.0031/0.0035/0.0033 (max 0.0051/0.0037/0.0085); rfx-vs-Meep mean 0.0045/0.0018/0.0063
+  E4 gates: {'precheck_passed': True, 'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True, 'G4_A': True, 'G4_mean_A': True, 'G5_A': True, 'G5_mean_A': True} -> PASS
+
+[tand3] tan delta @ 7 GHz = 3; params_run={'eps_inf': 4.0, 'sigma': 4.673130232881056}; materials path: api; recipe dx/2
+  grid (2081, 89, 1), dt=1.1675e-12 s, slab cells [1030,1050), probes 970/1110, n_steps=2362 (recipe r3)
+  FDTD 2.5s; masked band 3.01-11.74 GHz (335 bins), gated 229 bins; tail ok=True; incident >= 5% over gated band: True
+  record: n_pulse_end 1816 + n_ring 446 (etalon at 1.13 GHz, w 0.50, rho 0.043, rate 7.520e+09/s; no material pole) + window 100 = n_steps_min 2362; reached 2362 after 0 extension(s) (CPML gate 2524, box grows 0); tail scat/trans 8.56e-05/6.41e-06 vs 0.01 -> ok; fitted tail rate scat/trans 1.006e+10/1.630e+10 /s
+  E2: max|dR|=0.0047 max|dT|=0.0000 max|dA|=0.0047 (worst A bin 9.98 GHz) | mean|dR|=0.0031/0.0100 mean|dT|=0.0000/0.0170 mean|dA|=0.0031/0.0270; A_tight_ok=True; max R+T (masked) = 0.5755
+  E2 gates: {'G1_R': True, 'G1_T': True, 'G1_A': True, 'G2_R': True, 'G2_T': True, 'G2_A': True, 'G3_passivity': True, 'G3_tail': True} -> PASS
+  lattice witness (reported, not gated): W_lat mean R/T/A 0.00311/0.00003/0.00308; |rfx - lattice| mean R/T/A 3.04e-05/2.15e-07/3.03e-05 (max R 7.64e-05)
+      4.00 GHz  R 0.5137/0.5154 | T 0.0028/0.0028 | A 0.4834/0.4818 (TMM/rfx) | W_sig R/T/A 1.4e-05/7.3e-07/1.3e-05
+      4.99 GHz  R 0.4713/0.4734 | T 0.0020/0.0020 | A 0.5267/0.5246 (TMM/rfx) | W_sig R/T/A 2.3e-05/8.9e-07/2.2e-05
+      6.01 GHz  R 0.4358/0.4384 | T 0.0015/0.0015 | A 0.5626/0.5601 (TMM/rfx) | W_sig R/T/A 3.4e-05/1.0e-06/3.3e-05
+      7.01 GHz  R 0.4059/0.4090 | T 0.0012/0.0012 | A 0.5929/0.5899 (TMM/rfx) | W_sig R/T/A 4.6e-05/1.2e-06/4.5e-05
+      8.00 GHz  R 0.3791/0.3827 | T 0.0010/0.0009 | A 0.6199/0.6164 (TMM/rfx) | W_sig R/T/A 5.8e-05/1.3e-06/5.7e-05
+      8.99 GHz  R 0.3550/0.3591 | T 0.0008/0.0008 | A 0.6442/0.6402 (TMM/rfx) | W_sig R/T/A 7.3e-05/1.5e-06/7.1e-05
+     10.01 GHz  R 0.3328/0.3375 | T 0.0007/0.0006 | A 0.6665/0.6618 (TMM/rfx) | W_sig R/T/A 8.9e-05/1.6e-06/8.7e-05
+  E4 (meep_tand3.json): Meep-vs-TMM mean R/T/A 0.0009/0.0002/0.0007 (max 0.0011/0.0003/0.0009); rfx-vs-Meep mean 0.0022/0.0002/0.0024
+  E4 gates: {'precheck_passed': True, 'band_covered': True, 'G4_R': True, 'G4_T': True, 'G4_mean_R': True, 'G4_mean_T': True, 'G5_R': True, 'G5_T': True, 'G5_mean_R': True, 'G5_mean_T': True, 'G4_A': True, 'G4_mean_A': True, 'G5_A': True, 'G5_mean_A': True} -> PASS
+
+  artifact: /tmp/rfx-cv23/validation/crossval/_23_lossy_results/rfx.json
+
+ALL CHECKS PASSED -- E2 (TMM) and E4 (Meep) on all arms, R, T and A (exit 0)
