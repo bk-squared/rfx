@@ -414,23 +414,38 @@ def slab_ringdown_rates(model: str, params: dict):
     f = np.linspace(f_lo, f_hi, 1401)
     eps = de.eps_analytic(f, model, params)
     n = np.sqrt(eps)
-    n = np.where(n.imag > 0, -n, n)         # decaying branch in e^{+jwt}
+    # Forward branch: Re n >= 0 (the principal sqrt already has it; for a
+    # passive medium, Im eps < 0, that branch is the decaying one). The
+    # earlier `where(n.imag > 0, -n, n)` was a no-op for every passive arm
+    # but negated Re n for a GAIN medium (cv23's passivity falsifier),
+    # giving |r|^2 = 9; found while deriving that arm's record.
+    n = np.where(n.real < 0, -n, n)
     k0 = TWO_PI * f / C0
     r = (1 - n) / (1 + n)
-    rho = np.abs(r) ** 2 * np.exp(-2 * k0 * (-n.imag) * D_SLAB_M)
+    rho = np.abs(r) ** 2 * np.exp(2 * k0 * n.imag * D_SLAB_M)   # |e^{-j k0 n d}|^2 per round trip
     t_rt = 2 * np.abs(n.real) * D_SLAB_M / C0
+    if np.any(rho >= 1.0):
+        raise ValueError(f"{model}: etalon round-trip gain >= 1 at {f[np.argmax(rho)]/1e9:.2f} GHz "
+                         f"(rho {rho.max():.3f}); the slab does not ring down")
     rate_et = -np.log(rho) / t_rt
     if model == "debye":
         rate_mat = 1.0 / params["tau"]
     elif model == "lorentz":
         rate_mat = float(params["delta"])
+    elif model == "conductive":
+        # cv23: J = sigma E is memoryless (no P recurrence, no material
+        # ring-down mode); the charge-relaxation pole sigma/(eps0 eps') is a
+        # longitudinal mode that normal incidence does not excite. Only the
+        # etalon decays, and its absorption per pass is already in rho.
+        rate_mat = float("inf")
     else:
         rate_mat = float(params["gamma"]) / 2.0
     w = incident_amplitude_rel(f)
     rate = np.minimum(rate_et, rate_mat)
     t_need = np.log(100.0 * w) / rate       # seconds to -40 dB of the incident peak
     i = int(np.argmax(t_need))
-    return {"rate_material_1_s": float(rate_mat), "rate_etalon_slowest_1_s": float(rate_et.min()),
+    return {"rate_material_1_s": (float(rate_mat) if math.isfinite(rate_mat) else None),
+            "rate_etalon_slowest_1_s": float(rate_et.min()),
             "f_etalon_slowest_hz": float(f[int(np.argmin(rate_et))]),
             "ring_band_hz": [f_lo, f_hi], "ring_w_min": RING_W_MIN,
             "t_ring_s": float(t_need[i]), "f_ring_hz": float(f[i]), "w_ring": float(w[i]),
