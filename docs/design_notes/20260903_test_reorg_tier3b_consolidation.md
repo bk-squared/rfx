@@ -721,3 +721,19 @@ changes (380 passed / 2 skipped on both tips, the 2 skips being the same
 per-test `importorskip("trimesh")`); assertion-line multiset diff empty for all
 10 files; pytest-split shard simulation before [1704.8, 1705.3, 1717.0,
 1690.3] s, after [1705.1, 1705.8, 1704.7, 1702.6] s.
+
+## 8. Post-plan moves folded in (2026-09-03)
+
+The four cv22/cv23 tests that landed on `main` after the tier-4b plan
+(`test_cv22_dispersive_eps_mapping.py`, `test_cv22_dispersive_slab_gates.py`,
+`test_cv23_lossy_eps_mapping.py`, `test_cv23_lossy_slab_gates.py`) were still
+at the top level and are moved to `tests/crossval/` beside
+`test_cv24_nu_cavity_gates.py`. Same treatment as the cv24 move in tier 4b:
+`_REPO = Path(__file__).resolve().parents[1]` → `parents[2]`, and every path
+citation (manifest, validation README, benchmarks table, the two cv22/cv23
+design notes, the cv22 comparator docstring, the eight cv22/cv23 VESSL YAMLs)
+rewritten to the new path. No `.test_durations` keys existed for these files.
+The proof was re-run with `--base origin/agent/reorg-tier4b-unit` (= `a05b584`,
+tier 4b rebased onto `main` after #853/#855): full inventory 5600 → 5599 (+1
+collapse), default lane 5205 → 5204, missing 0, unmapped 0, `PROOF HOLDS`.
+`tests/` now has no top-level test module.

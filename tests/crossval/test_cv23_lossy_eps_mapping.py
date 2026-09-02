@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str, rel: str):

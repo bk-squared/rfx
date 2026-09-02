@@ -36,7 +36,7 @@ from rfx.material_fit import eval_debye, eval_lorentz
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import drude_pole, lorentz_pole
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str, rel: str):

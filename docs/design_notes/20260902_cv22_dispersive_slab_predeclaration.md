@@ -151,7 +151,7 @@ and carried anyway: the same window formula applied at a coarser dt (or a
 higher band) would not be negligible, and the falsifiability of the window
 must not depend on that accident. The formula is also witnessed numerically
 (the recurrences driven with the live `init_debye` / `init_lorentz`
-coefficient arrays reproduce χ_num) in `tests/test_cv22_dispersive_slab_gates.py`.
+coefficient arrays reproduce χ_num) in `tests/crossval/test_cv22_dispersive_slab_gates.py`.
 
 The identical derivation applies to Meep's Lorentzian/Drude update
 (`(1 + γdt/2) z² − (2 − ω0²dt²) z + (1 − γdt/2)`, same polynomial with
@@ -275,7 +275,7 @@ E4 gates (G4, G5) are exercised on real Meep output:
 | `meep_lorentz_no_2pi` | `frequency = ω_n·a/c` instead of `ω_n/(2π)·a/c` | 0.114 (5.7×) | 0.735 (22×) | R 0.232 at 4 GHz; T 0.910 at 7.8 GHz (T > W_bin at all 115 bins) |
 | `meep_lorentz_gamma_half` | `gamma` from δ instead of 2δ (rfx's `2jδω` vs Meep's `iωγ`) | 0.090 (4.5×) | 0.056 (1.6×) | R 0.203 at 7.8 GHz |
 
-Unit-level F3 (no FDTD): `tests/test_cv22_dispersive_eps_mapping.py` asserts
+Unit-level F3 (no FDTD): `tests/crossval/test_cv22_dispersive_eps_mapping.py` asserts
 the 1e-9 mapping test FAILS when the 2π is dropped, when σ is scaled by ω_n²
 (Meep units), when γ is halved, and when the `e^{−iωt}` conjugation is
 dropped.
@@ -538,7 +538,7 @@ Measured order per doubling (`meep_ladder_summary.json::arms.<arm>.orders`): Lor
 
 ### 12.4 Round 3 — pre-declared before the run (`scripts/vessl_cv22_dispersive_slab_r3.yaml`)
 
-**(1) Recipe correction, physics-derived** (`cv22_dispersive_gates.derive_record_length`, locked by `tests/test_cv22_dispersive_slab_gates.py::test_r3_record_lengths_are_derived_from_the_slab_ringdown`). This corrects a truncated measurement; it moves NO tolerance. The record length comes from the slab's own ring-down, not from cv04:
+**(1) Recipe correction, physics-derived** (`cv22_dispersive_gates.derive_record_length`, locked by `tests/crossval/test_cv22_dispersive_slab_gates.py::test_r3_record_lengths_are_derived_from_the_slab_ringdown`). This corrects a truncated measurement; it moves NO tolerance. The record length comes from the slab's own ring-down, not from cv04:
 
     n_steps = n_pulse_end + n_ring + TAIL_WINDOW
     n_pulse_end = ceil( (t0 + a40·τ)/dt + (probe_trans − x_lo)/v_cells )
@@ -679,7 +679,7 @@ Every claims-bearing number reproduced by the reviewer (TMM to 9e-16, ε(f) to 0
 2. **Window inputs from a reported parameter.** `evaluate_e4` sized `W_map` from the `fn_hz` the Meep JSON reported (`debye_map`) — contradicting the "never from the report" statement. Now `W_map` comes from the declared `DEBYE_MEEP_MAP_FN_HZ` (and `a_m` from `MEEP_A_M`); the reported values are asserted equal to the declared ones and otherwise raise. `precheck.passed` is now a gate (`gates.precheck_passed`) rather than a record; it is true on every committed primary (`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.meep.precheck.max_rel_err = 2e-16`, `validation/crossval/_22_dispersive_results/rfx.json::arms.lorentz.meep.precheck.max_rel_err = 1.8e-15`, `validation/crossval/_22_dispersive_results/rfx.json::arms.drude.meep.precheck.max_rel_err = 8.2e-16`), so no verdict changes; the two Meep falsifier legs carry `passed = false` and fail this gate as well as G4/G5.
 3. **Public row scope.** The benchmarks row now carries the same exclusions as the README and manifest (normal incidence, one pole per model, no σ+pole, 4–10 GHz, one thickness and mesh) and says explicitly that the documented user path `Simulation.add_material(..., debye_poles=/lorentz_poles=)` (`docs/public/guide/materials-geometry.mdx`, "Dispersive materials") is NOT exercised — the case drives `update_e_debye` / `update_e_lorentz` directly; the `add_material` wiring is covered only by `tests/test_dispersive_fresnel_validation.py` (slow_physics, band-mean R). The manifest and README say the same.
 4. **Arithmetic slips.** §13.2: `ln(0.53/0.0163)/(108·dt)` = **1.38e10 s⁻¹**, not 1.36e10 (1.36e10 corresponds to 0.0169). §13.3: `0.0169·e^(−1.06e10·42·dt)` = **5.98e-3**, not 6.1e-3. Conclusions unchanged (the r4 witness measured `validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.scat_refl_rel = 0.0072` / `validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.total_trans_rel = 0.0072`).
-5. **Stale docstring** at `tests/test_cv22_dispersive_slab_gates.py` (`test_r3_record_lengths_are_derived_from_the_slab_ringdown`) stated the r3 rule `ln(100)/rate`; it now states the r4 rule `ln(100·w)/rate` over the incident ring band.
+5. **Stale docstring** at `tests/crossval/test_cv22_dispersive_slab_gates.py` (`test_r3_record_lengths_are_derived_from_the_slab_ringdown`) stated the r3 rule `ln(100)/rate`; it now states the r4 rule `ln(100·w)/rate` over the incident ring band.
 6. **Provenance.** `rfx.json::commit` and the pod's `commit.txt` read `unknown` because the NFS checkout is an rsync without `.git`. The run tree was the rsync of branch commit `e81080a` (staged 19:55:08, run start 19:56:07 on 2026-09-02, VESSL 369367257811). From now on the orchestrator writes the source commit to `.staged_commit` in the checkout at staging time; the r4 lane copies it into `commit.txt` and the case script reads it first (`.staged_commit` is gitignored).
 7. **Meep Debye 10 px/cm instability witness.** It existed only in the run log (rc 1, `RuntimeError: meep: simulation fields are NaN or Inf`, log lines 517–521) because a leg that raises inside `fields.step()` writes no JSON, so the gate-test assertion was conditional and never fired. A witness JSON built from the log is committed (`validation/crossval/_22_dispersive_results/meep_debye__res10.json::omega_n_dt = 1`, `validation/crossval/_22_dispersive_results/meep_debye__res10.json::eps_num_nyq = 0.49`, `validation/crossval/_22_dispersive_results/meep_debye__res10.json::rc = 1`, `run.finite = false`, source = run id + log lines); the ladder summary carries the rung as `finite = false` and the assertion is unconditional.
 8. **`lorentz.py:6` docstring sign** — left as recorded (not this lane's fix), filed as **issue #863** ("lorentz.py docstring states the Drude form with the e^{-iωt} sign; the ADE realizes e^{+jωt}").

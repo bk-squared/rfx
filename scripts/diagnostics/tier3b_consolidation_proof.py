@@ -90,6 +90,13 @@ _ABSORBED = {
     ],
 }
 FILE_MAP = {old: new for new, olds in _ABSORBED.items() for old in olds}
+# Plain moves (no merge): the four cv22/cv23 tests that landed on main after
+# the tier-4b plan and were still at the top level; moved into tests/crossval/
+# beside test_cv24_nu_cavity_gates.py.
+_MOVED = {f"tests/{b}": f"tests/crossval/{b}" for b in (
+    "test_cv22_dispersive_eps_mapping.py", "test_cv22_dispersive_slab_gates.py",
+    "test_cv23_lossy_eps_mapping.py", "test_cv23_lossy_slab_gates.py")}
+FILE_MAP.update(_MOVED)
 
 _GP = ("tests/contracts/test_gate_policy_is_shared.py::"
        "test_margin_ceil_case_imports_shared_multiplier_not_a_local_literal")

@@ -111,7 +111,7 @@ run: |-
 
   # -- 7. gate test on the produced artifacts --
   set +e
-  "$PY" -m pytest -q tests/test_cv22_dispersive_slab_gates.py tests/test_cv22_dispersive_eps_mapping.py -rs \
+  "$PY" -m pytest -q tests/crossval/test_cv22_dispersive_slab_gates.py tests/crossval/test_cv22_dispersive_eps_mapping.py -rs \
     > "$OUT/pytest_gates.log" 2>&1
   gate_rc=$?
   set -e

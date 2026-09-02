@@ -137,10 +137,10 @@ run: |-
   #       resolutions, every falsifier, the discriminator readings) --
   "$PY" validation/crossval/23_lossy_slab_fresnel.py --meep-ladder-summary --out-dir "$RES" | tee "$OUT/meep_ladder_summary.log"
   set +e
-  "$PY" -m pytest -q tests/test_cv23_lossy_slab_gates.py tests/test_cv23_lossy_eps_mapping.py -rs -s \
+  "$PY" -m pytest -q tests/crossval/test_cv23_lossy_slab_gates.py tests/crossval/test_cv23_lossy_eps_mapping.py -rs -s \
     > "$OUT/pytest_gates.log" 2>&1
   gate_rc=$?
-  "$PY" -m pytest -q tests/test_cv23_lossy_slab_gates.py -k r2 -rs -s > "$OUT/pytest_r2.log" 2>&1
+  "$PY" -m pytest -q tests/crossval/test_cv23_lossy_slab_gates.py -k r2 -rs -s > "$OUT/pytest_r2.log" 2>&1
   r2_rc=$?
   set -e
   echo "$gate_rc" > "$OUT/pytest_gates.rc"; echo "$r2_rc" > "$OUT/pytest_r2.rc"

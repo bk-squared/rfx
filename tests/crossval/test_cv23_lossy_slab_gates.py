@@ -36,7 +36,7 @@ import pytest
 
 from tests._gate_policy import gate_from_envelope
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 _RESULTS = _REPO / "validation/crossval/_23_lossy_results"
 _GOLDEN_CV04 = _REPO / "tests/fixtures/golden_workflows/multilayer_fresnel.json"
 

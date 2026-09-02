@@ -284,7 +284,7 @@ on real Meep output:
 | `meep_tand1_sigma_2pi` | `σ_D × 2π` (σ_D taken in units of 2πc/a) | 4.58 | 0.347 (17×) | 0.053 (1.6×) | 0.294 (5.4×) | 229 |
 | `meep_tand1_sigma_no_eps` | `σ_D = σ a/(c ε0)` (ε' division dropped: σ applied to E, not D) | 2.60 | 0.261 (13×) | 0.052 (1.5×) | 0.209 (3.9×) | 229 |
 
-Unit level (`tests/test_cv23_lossy_eps_mapping.py`, no FDTD): the 1e-9
+Unit level (`tests/crossval/test_cv23_lossy_eps_mapping.py`, no FDTD): the 1e-9
 mapping test passes for the correct σ_D on all three arms and FAILS for
 `× 2π`, the dropped ε', a dropped `a/c` unit scale, and a dropped
 `e^{−iωt}` conjugation.
@@ -504,7 +504,7 @@ The same lattice solution at Meep's (dx = a/res, Courant 0.5) predicts tand3 Mee
 
 **No window moves.** Every r1 leg is re-run unchanged (baseline expected to exit 1 again on tand3 G2_R and tand0p1 G4_mean_R; nine falsifiers each 1; Meep 40 px/cm primaries; 10/20/40 ladders), plus:
 
-**(a) rfx dx ladder** (`--dx-div 2|4 --tag <arm>_dx<K>`, geometry identical in cells, record re-derived per rung): tand3 (the fired arm), tand1 (control), tand0p1 (completeness). Predictions from the lattice term alone (gated mean |ΔR| / |ΔT| / |ΔA|), locked in `tests/test_cv23_lossy_slab_gates.py::_R2_LATTICE_PRED`:
+**(a) rfx dx ladder** (`--dx-div 2|4 --tag <arm>_dx<K>`, geometry identical in cells, record re-derived per rung): tand3 (the fired arm), tand1 (control), tand0p1 (completeness). Predictions from the lattice term alone (gated mean |ΔR| / |ΔT| / |ΔA|), locked in `tests/crossval/test_cv23_lossy_slab_gates.py::_R2_LATTICE_PRED`:
 
 | arm | dx (r1 measured) | **dx/2** | **dx/4** |
 |---|---|---|---|

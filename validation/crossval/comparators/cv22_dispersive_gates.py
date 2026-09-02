@@ -3,7 +3,7 @@
 Pure numpy (plus ``tests/_gate_policy.py`` for the repo-wide envelope rule).
 Shared by the case script (``validation/crossval/22_dispersive_slab_fresnel.py``),
 the Meep leg (``scripts/crossval/meep_cv22_dispersive_slab.py``) and the gate
-test (``tests/test_cv22_dispersive_slab_gates.py``) so that the pre-declared
+test (``tests/crossval/test_cv22_dispersive_slab_gates.py``) so that the pre-declared
 numbers exist in exactly one place.
 
 Everything numeric here is fixed by
