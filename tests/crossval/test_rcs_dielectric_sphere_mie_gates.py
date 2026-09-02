@@ -536,7 +536,7 @@ def test_island_probe_records_that_the_live_window_is_wider_than_the_model(fixtu
     re-derive each run's verdict from its own per-bin deltas."""
     import json
     from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / "validation/crossval/_17_dielectric_results/cv17_permittivity_island.json"
+    path = Path(__file__).resolve().parents[2] / "validation/crossval/_17_dielectric_results/cv17_permittivity_island.json"
     art = json.loads(path.read_text())
     gate = art["coarse_gate_db"]
     assert gate == fixture["gates"]["coarse_gate_db"]

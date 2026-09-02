@@ -700,7 +700,7 @@ def test_live_one_cell_defect_is_caught_by_the_per_config_gate_and_not_the_old_o
     sits beside is aperture_resolution.json::pairs[2].one_cell_defect.over."""
     import json
     from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "validation/crossval/_18_wr90_iris_results"
+    root = Path(__file__).resolve().parents[2] / "validation/crossval/_18_wr90_iris_results"
     live = json.loads((root / "one_cell_defect_live.json").read_text())
     model = json.loads((root / "aperture_resolution.json").read_text())["pairs"][2]
     assert live["config"]["config_key"] == model["config"] == "7.620|0.20|0.50"
