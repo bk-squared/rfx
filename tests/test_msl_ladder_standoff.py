@@ -122,7 +122,7 @@ def test_near_field_decay_length_matches_the_substrate_transverse_resonance():
     carry a decaying excess whose length is the substrate's own transverse
     quarter-wave scale 2h/pi -- a property of the board, not of the fixture.
     """
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
     v = d["msl_ladder_v"][1]                    # MSL drive
     ref = float(d["ref_msl_m"])
@@ -361,7 +361,7 @@ def test_ladder_split_witness_separates_a_corrupt_ladder_from_a_clean_one():
     disagrees with itself by 4.32-4.49 DECADES in |Gamma|, the compliant
     8-probe subset by 0.001-0.005. Three orders of separation.
     """
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
     v = d["msl_ladder_v"]
     ref = float(d["ref_msl_m"])
@@ -385,7 +385,7 @@ def test_ladder_split_witness_uses_disjoint_halves_and_drops_the_middle():
     """For odd N the two halves must not share a probe: N=9 -> [0:4] and
     [5:9]. Proven by feeding a ladder whose middle probe alone is poisoned:
     the witness is unchanged, because neither half reads it."""
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
     v = np.array(d["msl_ladder_v"])
     ref = float(d["ref_msl_m"])
@@ -399,7 +399,7 @@ def test_ladder_split_witness_uses_disjoint_halves_and_drops_the_middle():
 def test_ladder_split_witness_is_nan_below_six_probes():
     """Each half needs >= 3 planes for the matrix pencil, so a 5-probe
     ladder has no witness -- reported as NaN, never as a small number."""
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
     v = d["msl_ladder_v"]
     ref = float(d["ref_msl_m"])
@@ -417,7 +417,7 @@ def test_witness_reproduces_the_committed_coax_ladder_reading():
     Recorded here as the reason this witness stays REPORT-ONLY rather than
     becoming a gate: a bar tight enough to catch the MSL ladder would refuse
     the coax ladder on a defect that is not this one."""
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     gdev, decades = _ladder_split_witness(
         d["coax_ladder_z_m"], d["coax_ladder_v"], float(d["ref_coax_m"]))
     assert np.all(gdev > 0.10) and np.all(gdev < 0.35), gdev
@@ -491,7 +491,7 @@ def test_witness_matches_a_standalone_refit_of_the_dumped_ladders():
     not a parallel re-derivation: recompute it from the ladder dump and
     require bit equality. Proved on the committed settled dump so this costs
     no FDTD."""
-    d = np.load(_LADDER_NPZ, allow_pickle=True)
+    d = np.load(_LADDER_NPZ, allow_pickle=False)
     gdev_msl, dec_msl = _ladder_split_witness(
         d["msl_ladder_x_m"], d["msl_ladder_v"], float(d["ref_msl_m"]))
     gdev_coax, dec_coax = _ladder_split_witness(
