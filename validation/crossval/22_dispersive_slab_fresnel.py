@@ -64,7 +64,10 @@ def _git_commit() -> str:
 # =============================================================================
 
 def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
-                smoke: bool, verbose: bool = True) -> dict:
+                smoke: bool, verbose: bool = True, dx_div: int = 1) -> dict:
+    """One rfx arm. ``dx_div = K`` refines the SAME rig in cells: dx/K with
+    nx_interior, CPML layers, TFSF margin, probe offsets and tail window all
+    x K (geometry identical; pre-declaration section 11.2(a))."""
     import jax
     from rfx.grid import Grid
     from rfx.core.yee import init_state, init_materials, update_h
@@ -77,15 +80,17 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
         drude_pole, lorentz_pole, init_lorentz, update_e_lorentz,
     )
 
-    dx = G.DX_M
-    n_cpml = G.N_CPML
+    K = int(dx_div)
+    dx = G.DX_M / K
+    n_cpml = G.N_CPML * K
+    nx_interior = int(nx_interior) * K
     grid = Grid(freq_max=20e9, domain=(nx_interior * dx, 0.004, dx),
                 dx=dx, cpml_layers=n_cpml, mode="2d_tmz")
     dt = float(grid.dt)
     periodic = (False, True, True)
 
     tfsf_cfg, tfsf_st = init_tfsf(
-        grid.nx, dx, dt, cpml_layers=n_cpml, tfsf_margin=5,
+        grid.nx, dx, dt, cpml_layers=n_cpml, tfsf_margin=5 * K,
         f0=G.TFSF_F0_HZ, bandwidth=G.TFSF_BW, amplitude=1.0,
         polarization="ez", direction="+x", ny=grid.ny, nz=grid.nz,
     )
@@ -95,8 +100,8 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     slab_hi_g = grid.nx // 2 + int(G.D_SLAB_M / (2 * dx))
     assert x_lo + 10 < slab_lo_g < slab_hi_g < x_hi - 10, \
         f"Slab [{slab_lo_g},{slab_hi_g}) must be inside TFSF [{x_lo},{x_hi}]"
-    probe_refl_x = slab_lo_g - 30
-    probe_trans_x = slab_hi_g + 30
+    probe_refl_x = slab_lo_g - 30 * K
+    probe_trans_x = slab_hi_g + 30 * K
     assert x_lo < probe_refl_x and probe_trans_x < x_hi, "probes must sit in the TF region"
     probe_refl = (probe_refl_x, grid.ny // 2, 0)
     probe_trans = (probe_trans_x, grid.ny // 2, 0)
@@ -109,7 +114,7 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     t_safe_hi = int(2 * dist_to_cpml_hi / v_cells * 0.95)
     t_safe_lo = int(2 * dist_to_cpml_lo / v_cells * 0.95)
     # Smoke ignores the CPML time gate (it only proves the rig executes).
-    n_steps = n_steps_cap if smoke else min(t_safe_hi, t_safe_lo, n_steps_cap)
+    n_steps = n_steps_cap if smoke else min(t_safe_hi, t_safe_lo, n_steps_cap * K)
 
     if verbose:
         print(f"  grid {grid.shape}, dt={dt:.4e} s, slab cells [{slab_lo_g},{slab_hi_g}), "
@@ -162,7 +167,7 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
 
     # --- cv04 tail witnesses (issue #341), unchanged ---
     inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
-    tw = G.TAIL_WINDOW
+    tw = G.TAIL_WINDOW * K
     tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-tw:])), np.max(np.abs(ts_inc_trans[-tw:]))) / inc_peak
     tail_refl_rel = np.max(np.abs(ts_scat_refl[-tw:])) / inc_peak
     tail_trans_rel = np.max(np.abs(ts_trans[-tw:])) / inc_peak
@@ -199,6 +204,7 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
 
     return {
         "dt_s": dt, "n_steps": int(n_steps), "nfft": int(nfft), "nx_interior": int(nx_interior),
+        "dx_m": dx, "dx_div": K, "n_cpml": n_cpml,
         "grid_shape": [int(s) for s in grid.shape], "elapsed_s": elapsed,
         "freqs_hz": f_masked, "R_rfx": R_rfx, "T_rfx": T_rfx, "gated": gated,
         "inc_amp_rel": inc_amp_rel, "band_inc_ok": band_inc_ok, "tail": tail,
@@ -260,7 +266,15 @@ def main(argv=None) -> int:
     ap.add_argument("--out-dir", default=None, help="artifact directory (default: _22_dispersive_results)")
     ap.add_argument("--meep-dir", default=None, help="where the Meep JSONs live (default: out-dir)")
     ap.add_argument("--no-plots", action="store_true")
+    ap.add_argument("--dx-div", type=int, default=1, choices=(1, 2, 4),
+                    help="refine the rig in cells by K (dx/K, all cell counts x K); diagnostic, see note 11.2(a)")
+    ap.add_argument("--nx-interior", type=int, default=None,
+                    help="interior cells at dx (default cv04's 600; 1500 opens the time gate, note 11.2(a'))")
+    ap.add_argument("--tag", default=None,
+                    help="write rfx__<tag>.json instead of rfx.json (diagnostic arms; never the baseline)")
     a = ap.parse_args(argv)
+    if (a.dx_div != 1 or a.nx_interior not in (None, G.NX_INTERIOR)) and not a.tag and not a.smoke:
+        ap.error("--dx-div / --nx-interior arms are diagnostics and require --tag")
 
     out_dir = a.out_dir or (tempfile.mkdtemp(prefix="cv22_smoke_") if a.smoke else RESULTS_DIR)
     os.makedirs(out_dir, exist_ok=True)
@@ -278,7 +292,7 @@ def main(argv=None) -> int:
         meep_fals_key = G.MEEP_FALSIFIER_CASE_NAMES[a.falsifier]
         arms = [G.MEEP_FALSIFIER_ARM] if a.arms is None else arms
 
-    nx_interior = 200 if a.smoke else G.NX_INTERIOR
+    nx_interior = 200 if a.smoke else (a.nx_interior or G.NX_INTERIOR)
     n_steps_cap = 450 if a.smoke else 8000
 
     print("=" * 70)
@@ -291,7 +305,7 @@ def main(argv=None) -> int:
     doc = {
         "schema": SCHEMA, "case_id": CASE_ID, "commit": _git_commit(),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
-        "falsifier": a.falsifier, "smoke": bool(a.smoke),
+        "falsifier": a.falsifier, "smoke": bool(a.smoke), "tag": a.tag, "dx_div": a.dx_div,
         "rig": {"dx_m": G.DX_M, "d_slab_m": G.D_SLAB_M, "nx_interior": nx_interior, "n_cpml": G.N_CPML,
                 "tfsf_f0_hz": G.TFSF_F0_HZ, "tfsf_bw": G.TFSF_BW, "band_gated_hz": list(G.BAND_GATED_HZ),
                 "W_bin": G.W_BIN, "W_mean_R": G.W_MEAN_R, "W_mean_T": G.W_MEAN_T,
@@ -309,7 +323,8 @@ def main(argv=None) -> int:
             print(f"\n[{arm}] FALSIFIER {rfx_fals}: {G.FALSIFIERS[rfx_fals][1]} "
                   f"(FDTD built with the defect; judged against the DECLARED material)")
         print(f"\n[{arm}] model={model} params_run={ {k: float(v) for k, v in params_run.items()} }")
-        run = run_rfx_arm(model, params_run, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke)
+        run = run_rfx_arm(model, params_run, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke,
+                          dx_div=a.dx_div)
         # The oracle is ALWAYS the declared material; a falsifier that were
         # judged against its own defective eps(f) would be self-consistent
         # and pass (caught in review before the first run).
@@ -318,7 +333,8 @@ def main(argv=None) -> int:
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
-        e2["run"] = {k: run[k] for k in ("dt_s", "n_steps", "nfft", "nx_interior", "grid_shape", "elapsed_s")}
+        e2["run"] = {k: run[k] for k in ("dt_s", "n_steps", "nfft", "nx_interior", "grid_shape", "elapsed_s",
+                                         "dx_m", "dx_div", "n_cpml")}
         if not run["band_inc_ok"]:
             e2["gates"]["rig_incident_floor"] = False
             e2["e2_ok"] = False
@@ -384,7 +400,7 @@ def main(argv=None) -> int:
         summary += f"  [falsifier {a.falsifier}: smoke run, verdict not evaluated -- see the E2 gates line]"
     doc["verdict"] = {"rfx_self_ok": not any_e2_fail, "meep_present": not any_meep_missing,
                       "e4_ok": not any_e4_fail, "exit_code": rc, "summary": summary}
-    out_path = os.path.join(out_dir, G.rfx_json_name(a.falsifier))
+    out_path = os.path.join(out_dir, f"rfx__{a.tag}.json" if a.tag else G.rfx_json_name(a.falsifier))
     with open(out_path, "w") as fh:
         json.dump(doc, fh, indent=1)
     print(f"\n  artifact: {out_path}")

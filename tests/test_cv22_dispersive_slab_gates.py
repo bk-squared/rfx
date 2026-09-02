@@ -326,3 +326,100 @@ def test_meep_falsifier_artifacts_fail_e4_against_the_baseline(name):
     e4 = G.evaluate_e4(_replay_e2(doc["arms"][G.MEEP_FALSIFIER_ARM]), md)
     assert not e4["e4_ok"], e4["gates"]
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"])
+
+
+# ---------------------------------------------------------------------------
+# 3. Round-2 replay (note section 11.2): scaling ratios are COMPUTED and
+#    PRINTED against the pre-declared predictions; only structural
+#    acceptances are asserted. Skips until the r2 artifacts exist.
+# ---------------------------------------------------------------------------
+
+_R2_RFX = {"lorentz": ["lorentz_dx2", "lorentz_dx4", "lorentz_nx1500"],
+           "debye": ["debye_dx2", "debye_dx4"]}
+_R2_MEEP_TAGS = ["res20", "res40", "decay1e-6", "src7"]
+
+
+def _r2_rfx_doc(tag: str) -> dict:
+    p = _RESULTS / f"rfx__{tag}.json"
+    if not p.is_file():
+        pytest.skip(f"r2 artifact absent: {p.name}")
+    return _read(p)
+
+
+@pytest.mark.parametrize("arm", sorted(_R2_RFX))
+def test_r2_rfx_refinement_ratios_against_predeclared_predictions(arm):
+    base = _baseline()["arms"][arm]
+    m0 = base["mean_dR_gated"]
+    lines = [f"r2-summary rfx {arm}: baseline mean|dR| {m0:.4f} mean|dT| {base['mean_dT_gated']:.4f} "
+             f"(window {base['mean_window_R']:.4f}/{base['mean_window_T']:.4f})"]
+    for tag in _R2_RFX[arm]:
+        p = _RESULTS / f"rfx__{tag}.json"
+        if not p.is_file():
+            lines.append(f"r2-summary rfx {tag}: ABSENT")
+            continue
+        d = _read(p)["arms"][arm]
+        assert d["params"] == pytest.approx(G.ARMS[arm]["params"])
+        re = _replay_e2(d)                      # same evaluators, its own dt
+        assert re["gates"] == {k: v for k, v in d["gates"].items() if k in re["gates"]}
+        ratio = d["mean_dR_gated"] / m0 if m0 > 0 else float("nan")
+        reading = ("first-order" if 0.20 <= ratio <= 0.35 and tag.endswith("dx4") else
+                   "second-order" if ratio <= 0.12 and tag.endswith("dx4") else
+                   "no-fall" if ratio >= 0.7 else "unresolved")
+        lines.append(f"r2-summary rfx {tag}: dx_div={d['run']['dx_div']} nx={d['run']['nx_interior']} "
+                     f"n_steps={d['run']['n_steps']} mean|dR| {d['mean_dR_gated']:.4f} (x{ratio:.2f}) "
+                     f"mean|dT| {d['mean_dT_gated']:.4f} max|dR| {d['max_dR_gated']:.4f} "
+                     f"E2 {'PASS' if re['e2_ok'] else 'FAIL'}"
+                     + (f" -> {reading}" if tag.endswith("dx4") else ""))
+    print("\n".join(lines))
+
+
+@pytest.mark.parametrize("arm", ["lorentz", "drude"])
+def test_r2_meep_diagnostics_against_predeclared_predictions(arm):
+    base_path = _RESULTS / G.meep_json_name(arm)
+    if not base_path.is_file():
+        pytest.skip("baseline Meep leg absent")
+    doc = _baseline()["arms"][arm]
+    e2 = _replay_e2(doc)
+    e4b = G.evaluate_e4(e2, _read(base_path))
+    lines = [f"r2-summary meep {arm}: baseline (10 px/cm) Meep-vs-TMM mean|dR| {e4b['mean_dR_meep_tmm_gated']:.4f} "
+             f"mean|dT| {e4b['mean_dT_meep_tmm_gated']:.4f}"]
+    for tag in _R2_MEEP_TAGS:
+        p = _RESULTS / f"meep_{arm}__{tag}.json"
+        if not p.is_file():
+            lines.append(f"r2-summary meep {arm}__{tag}: ABSENT")
+            continue
+        md = _read(p)
+        assert md["run"]["finite"] and md["precheck"]["passed"], tag
+        e4 = G.evaluate_e4(e2, md)
+        rT = e4["mean_dT_meep_tmm_gated"] / max(e4b["mean_dT_meep_tmm_gated"], 1e-12)
+        lines.append(f"r2-summary meep {arm}__{tag}: res={md['resolution']} decay={md['decay']} "
+                     f"fcen={md['fcen_meep']:.3f} Meep-vs-TMM mean|dR| {e4['mean_dR_meep_tmm_gated']:.4f} "
+                     f"mean|dT| {e4['mean_dT_meep_tmm_gated']:.4f} (T x{rT:.2f}) max|dT| {e4['max_dT_meep_tmm_gated']:.4f} "
+                     f"G4_mean_T={'pass' if e4['gates']['G4_mean_T'] else 'FAIL'}")
+    print("\n".join(lines))
+
+
+def test_r2_meep_debye_res40_primary_is_the_predeclared_fix():
+    """Section 11.2(c) acceptance: the primary Debye leg is the 40 px/cm one,
+    ran finite, passed the 1e-9 pre-check, and its mapped pole sits where the
+    note says (omega_n dt = 0.262, eps_num(Nyquist) > 1)."""
+    p = _RESULTS / G.meep_json_name("debye")
+    if not p.is_file():
+        pytest.skip("Meep Debye leg absent")
+    md = _read(p)
+    assert md["resolution"] == 40 and md["run"]["finite"] and md["precheck"]["passed"]
+    assert md["fn_debye_map_hz"] == pytest.approx(G.DEBYE_MEEP_MAP_FN_HZ)
+    x = 2 * np.pi * md["fn_debye_map_hz"] * md["dt_meep_s"]
+    assert x == pytest.approx(0.262, abs=0.005)
+    dp = G.ARMS["debye"]["params"]
+    eps_nyq = dp["eps_inf"] - dp["delta_eps"] * x ** 2 / (4 - x ** 2)
+    assert eps_nyq > 1.0
+    print(f"r2-summary meep debye primary: res 40, omega_n dt {x:.3f}, eps_num(Nyq) {eps_nyq:.3f}, "
+          f"precheck max_rel_err {md['precheck']['max_rel_err']:.2e}")
+    q = _RESULTS / "meep_debye__fn40.json"
+    if q.is_file():
+        m40 = _read(q)
+        assert m40["run"]["finite"]
+        e4 = G.evaluate_e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
+        print(f"r2-summary meep debye fn40 cross-check: mean|dT| vs TMM {e4['mean_dT_meep_tmm_gated']:.4f} "
+              f"(W_map mean T carried {np.mean(np.asarray(e4['w_map_T'])[np.asarray(_baseline()['arms']['debye']['gated'])]):.2e})")

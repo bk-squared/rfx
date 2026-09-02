@@ -97,6 +97,13 @@ def main(argv=None) -> int:
     ap.add_argument("--nfreq", type=int, default=200)
     ap.add_argument("--fn-debye-map-hz", type=float, default=G.DEBYE_MEEP_MAP_FN_HZ)
     ap.add_argument("--decay", type=float, default=1e-3)
+    ap.add_argument("--fcen-ghz", type=float, default=G.TFSF_F0_HZ / 1e9,
+                    help="Meep GaussianSource centre (default cv04's 10 GHz)")
+    ap.add_argument("--fwidth-ghz", type=float, default=1.5 * G.TFSF_F0_HZ / 1e9,
+                    help="Meep GaussianSource fwidth (default cv04's 15 GHz)")
+    ap.add_argument("--tag", default=None,
+                    help="write meep_<arm>__<tag>.json (diagnostic legs, note 11.2(b)/(b')/(c)); "
+                         "without it the leg is the one the case script reads")
     a = ap.parse_args(argv)
 
     try:
@@ -137,8 +144,8 @@ def main(argv=None) -> int:
         return 1
 
     # ---- cv04 Meep geometry ----
-    fcen = G.TFSF_F0_HZ * a_m / DE.C0
-    fwidth = 1.5 * fcen
+    fcen = a.fcen_ghz * 1e9 * a_m / DE.C0
+    fwidth = a.fwidth_ghz * 1e9 * a_m / DE.C0
     sx = G.NX_INTERIOR * G.DX_M / a_m
     sy = 0.4
     dpml = G.N_CPML * G.DX_M / a_m
@@ -202,7 +209,9 @@ def main(argv=None) -> int:
 
     doc = {
         "schema": "cv22-meep-leg/v1", "case_id": "22_dispersive_slab_fresnel",
-        "arm": a.arm, "falsifier": a.falsifier, "meep_version": getattr(mp, "__version__", "unknown"),
+        "arm": a.arm, "falsifier": a.falsifier, "tag": a.tag,
+        "meep_version": getattr(mp, "__version__", "unknown"),
+        "fn_debye_map_hz": a.fn_debye_map_hz if model == "debye" else None,
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "a_m": a_m, "resolution": a.resolution, "courant": a.courant, "dt_meep_s": dt_meep_s,
         "nfreq": a.nfreq, "fcen_meep": fcen, "fwidth_meep": fwidth, "decay": a.decay,
@@ -213,7 +222,8 @@ def main(argv=None) -> int:
         "run": {"t_ref_s": t_ref, "t_slab_s": t_slab, "finite": finite,
                 "passive_gated": passive, "max_RT_gated": float((R + T)[g].max()) if finite else None},
     }
-    out = os.path.join(a.out_dir, G.meep_json_name(a.arm, a.falsifier))
+    out = os.path.join(a.out_dir, f"meep_{a.arm}__{a.tag}.json" if a.tag
+                       else G.meep_json_name(a.arm, a.falsifier))
     with open(out, "w") as fh:
         json.dump(doc, fh, indent=1)
     print(f"  wrote {out}")

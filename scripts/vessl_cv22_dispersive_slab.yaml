@@ -30,6 +30,10 @@ run: |-
   OUT="$RFX_RUNS_ROOT/cv22-dispersive-$STAMP"
   mkdir -p "$OUT"
   echo "$OUT" > "$RFX_RUNS_ROOT/cv22-dispersive-LATEST"
+  # The pod writes as root; the NFS volume is read back from a Mac as a
+  # non-root user. Round 1 left every artifact root-owned 0600 (unreadable).
+  # Make everything under $OUT world-readable on ANY exit path.
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
 
   # -- 1. stage the checkout to local disk (NFS checkout is read-only for the pod) --
   test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
@@ -116,8 +120,9 @@ run: |-
   echo "gate_test_rc=$gate_rc"
 
   # -- 8. hand the artifacts back (the NFS checkout is read-only; the orchestrator commits) --
-  cp -a "$RES" "$OUT/_22_dispersive_results"
-  cp "$RES"/*.png "$OUT/" 2>/dev/null || true
+  cp -r --no-preserve=ownership,mode "$RES" "$OUT/_22_dispersive_results"
+  cp --no-preserve=ownership,mode "$RES"/*.png "$OUT/" 2>/dev/null || true
+  chmod -R a+rX "$OUT"
   echo "=== verdict ==="
   echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
   echo "artifacts: $OUT/_22_dispersive_results (copy into validation/crossval/_22_dispersive_results/ and fill artifact_paths)"
