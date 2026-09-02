@@ -141,7 +141,10 @@ def _s21_mag2(deps):
     return jnp.abs(res.s_params[1, 0, 2]) ** 2
 
 
-@pytest.mark.slow
+# PR-lane gate (v1.8 WP5): deliberately NOT ``slow``-marked so the graded-mesh
+# AD-vs-FD check runs on every PR (fast-suite, ~17 s on the CI runner), not only
+# in the weekly lane. The forward-match and perfect-null siblings in this module
+# stay ``slow``. See docs/design_notes/v18_waveguide_s_chain_plan.md, "WP5".
 def test_nu_flux_smatrix_grad_finite_and_fd_consistent():
     """Gates 1+2: traced NU flux extraction yields a finite, FD-consistent
     grad w.r.t. a substrate-eps scalar."""

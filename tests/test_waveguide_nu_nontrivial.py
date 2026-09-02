@@ -426,7 +426,10 @@ def test_nu_nontrivial_slab_verdict():
     # regression witness for the injection-not-noise-floor + passivity gates.
 
 
-@pytest.mark.slow
+# PR-lane gate (v1.8 WP5): deliberately NOT ``slow``-marked so the settled-np
+# power-conservation / reciprocity / passivity(0.02) gate on the graded mesh runs
+# on every PR (fast-suite, ~8 s on the CI runner), not only in the weekly lane.
+# See docs/design_notes/v18_waveguide_s_chain_plan.md, "WP5".
 def test_nu_nontrivial_matches_uniform():
     """SETTLED-np flux gate: the NU non-trivial S-matrix conserves power, is
     reciprocal, and behaves like the uniform path (flipped from strict-xfail
