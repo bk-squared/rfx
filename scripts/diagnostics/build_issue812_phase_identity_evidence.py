@@ -191,6 +191,42 @@ def _cv21_block(cv21: ModuleType) -> dict:
         return {"k_hi": (1.0 + bound) / (1.0 + excess),
                 "k_lo": (1.0 - bound) / (1.0 + excess)}
 
+    # Round-2 review (B1): the detection floor is the declared HEADROOM's
+    # choice, not a property of the annulus. Same formula, same committed
+    # data, other headrooms -- and the tightest envelope the registered data
+    # itself admits, which is the only floor physics forces at this mesh.
+    headroom_declared = float(cv21.BETA_ENVELOPE_HEADROOM)
+    bound_reg_declared = cv21._beta_envelope_bound(n_before)
+    headroom_dependence = []
+    for h in (1.30, 1.10, 1.04):
+        bound_reg_h = bound_reg_declared * h / headroom_declared
+        bound_ref_h = refined["envelope_bound_frac"] * h / headroom_declared
+        headroom_dependence.append({
+            "headroom": h,
+            "envelope_bound_frac_registered": bound_reg_h,
+            "k_hi": (1.0 + bound_reg_h) / (1.0 + excess_before),
+            "k_lo": (1.0 - bound_reg_h) / (1.0 + excess_before),
+            "criterion_a_still_passes_registered": bool(
+                registered["beta_max_abs_dev_frac"] <= bound_reg_h
+                and registered["gd_max_abs_dev_frac"] <= bound_reg_h),
+            "criterion_a_still_passes_refined": bool(
+                refined["beta_max_abs_dev_frac"] <= bound_ref_h
+                and refined["gd_max_abs_dev_frac"] <= bound_ref_h),
+        })
+    physics_forced_bound = max(registered["beta_max_abs_dev_frac"],
+                               registered["gd_max_abs_dev_frac"])
+    physics_forced = {
+        "convention": (
+            "the tightest envelope that still admits the committed registered-mesh "
+            "data (per-bin max over the beta and group-delay legs); no headroom "
+            "choice can place the floor closer to k = 1 than this at this mesh."
+        ),
+        "bound_frac": physics_forced_bound,
+        "implied_headroom": physics_forced_bound / (bound_reg_declared / headroom_declared),
+        "k_hi": (1.0 + physics_forced_bound) / (1.0 + excess_before),
+        "k_lo": (1.0 - physics_forced_bound) / (1.0 + excess_before),
+    }
+
     return {
         "registered_mesh": registered,
         "refined_mesh": refined,
@@ -209,6 +245,8 @@ def _cv21_block(cv21: ModuleType) -> dict:
                 refined["envelope_bound_frac"], refined["beta_max_abs_dev_frac"]),
             "predeclared_k_hi": float(cv21.BETA_ENVELOPE_PREDECLARATION["detection_floor_k_hi"]),
             "predeclared_k_lo": float(cv21.BETA_ENVELOPE_PREDECLARATION["detection_floor_k_lo"]),
+            "headroom_dependence": headroom_dependence,
+            "physics_forced_registered": physics_forced,
         },
         "criterion_b": criterion_b,
         "e1_baseline_max_phase_dev_deg": baseline_e1["max_phase_dev_deg"],
@@ -219,7 +257,7 @@ def _cv21_block(cv21: ModuleType) -> dict:
             "compares an rfx quantity against the external solver; the E4 comparison "
             "that consumes this referee's openEMS output lives downstream, in the "
             "compute_coaxial_two_port label-lift chain recorded in "
-            "docs/guides/sparameter_support_matrix.json"
+            "docs/guides/sparameter_support_matrix.md"
         ),
     }
 
@@ -315,7 +353,38 @@ def _cv20_block(cv20: ModuleType) -> dict:
             "e4_attributes_to_a_solver": xs["attributes_to_a_solver"],
         })
 
+    # Round-2 review (B2): the audit's own blindness construction (scale the
+    # de-embedded phase, which scales the extraction residual with it) and the
+    # dispersion-corrected residual, both previously restated in prose with no
+    # artifact key. Same replay data as criterion (B) above.
+    s21_scaled = np.abs(s21_rfx) * np.exp(2.0j * np.angle(s21_rfx))
+    audit = cv20._self_consistency_witness(
+        freqs, s21_scaled, beta_rfx * 2.0, l12_m=l12, mag_band=cv20.B_S21_MAG_BAND,
+        phase_tol_deg=cv20.B_PHASE_TOL_DEG, gd_tol_ps=cv20.B_GD_TOL_PS,
+        label="audit_construction")
+    beta_openems = np.asarray(stage_b["cross_solver_report"]["beta_openems_real"], dtype=float)
+    mask = cv20._gate_band_mask(freqs)
+
+    def _residual_after_dispersion(s21_r, beta_r):
+        raw = np.degrees(np.angle(np.exp(
+            1j * (np.unwrap(np.angle(s21_r)) - np.unwrap(np.angle(s21_openems))))))
+        return np.degrees(np.angle(np.exp(
+            1j * (np.radians(raw) - (beta_openems - beta_r) * l12))))
+
+    resid_baseline = _residual_after_dispersion(s21_rfx, beta_rfx)
+    resid_k2 = _residual_after_dispersion(
+        s21_rfx * np.exp(-1j * beta_rfx * l12), 2.0 * beta_rfx)
+    blindness = {
+        "audit_construction_e1_max_phase_dev_deg": audit["max_phase_dev_deg"],
+        "audit_construction_e1_passed": bool(audit["passed"]),
+        "e1_tol_deg": float(cv20.B_PHASE_TOL_DEG),
+        "dispersion_corrected_residual_max_abs_deg_baseline": float(np.max(np.abs(resid_baseline[mask]))),
+        "dispersion_corrected_residual_max_abs_deg_k2": float(np.max(np.abs(resid_k2[mask]))),
+        "dispersion_corrected_residual_max_abs_change_deg_k2": float(np.max(np.abs(resid_k2 - resid_baseline))),
+    }
+
     return {
+        "blindness": blindness,
         "eps_eff_hammerstad_jensen_declared_board": eps_declared,
         "eps_eff_hammerstad_jensen_realized_board": eps_realized,
         "run1_declared_board": run1,

@@ -823,7 +823,8 @@ def test_self_consistency_witness_resolving_power_single_port_referral_drop():
 
     # Measure (not just assert-raises) the actual deviation the planted
     # defect produces, over the gate band, so the docstring's own cited
-    # "15.99-22.33 deg" claim is a checked number, not folklore.
+    # "15.88-22.21 deg" claim is a checked number, not folklore (was written
+    # "15.99-22.33" -- the round-2 review re-measured 15.88 / 22.21).
     mask = (freqs >= module.B_GATE_F_LO_HZ) & (freqs <= module.B_GATE_F_HI_HZ)
     expected_phase = -beta_re * layout["l12_m"]
     measured_phase = np.unwrap(np.angle(s21_perturbed))
@@ -1225,6 +1226,8 @@ def test_run1_measured_precision_s21_bias_and_balance_attribution():
 _LOGS_DIR: Final = REPO_ROOT / "validation" / "crossval" / "_20_msl_phase_referee_logs"
 _RUN1_RESULT_PATH: Final = _LOGS_DIR / "20260804T055009Z_result.json"
 _RUN2_RESULT_PATH: Final = _LOGS_DIR / "20260827T102342Z_result.json"
+_EVIDENCE_PATH: Final = (REPO_ROOT / "validation" / "crossval" / "_issue812_phase_identity"
+                         / "regate_evidence.json")
 
 
 def _cx(pairs):
@@ -1516,3 +1519,100 @@ def test_independent_phase_legs_are_wired_into_sanity_passed():
     # the declared constants -- a regression to B_H_SUB_M here would make
     # the E2 leg judge a board that is not simulated.
     assert 'layout["w_trace_realized_m"], layout["h_sub_realized_m"]' in src
+
+
+def _stage_b_replay_fakes(module, monkeypatch, *, openems_k: float = 1.0):
+    """Fake every openEMS seam ``_run_stage_b`` touches and replay the
+    committed run-2 stage-B data through the REAL function (round-2 review
+    of #812 P1: the wiring was pinned by a source-string test only).
+
+    ``openems_k`` scales the openEMS side's phase velocity coherently
+    (``beta`` and the through-path phase together) so the attribution of
+    the E2 leg can be measured on that side too.
+    """
+    stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
+    freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
+    l12 = stage_b["layout"]["l12_m"]
+    s11 = _cx(stage_b["s11"])
+    s21 = _cx(stage_b["s21"])
+    beta0 = _cx(stage_b["beta_port0"])
+    beta1 = _cx(stage_b["beta_port1"])
+    if openems_k != 1.0:
+        beta_mean = 0.5 * np.real(beta0 + beta1)
+        s21 = s21 * np.exp(-1j * (openems_k - 1.0) * beta_mean * l12)
+        beta0, beta1 = beta0 * openems_k, beta1 * openems_k
+
+    class _FakePort:
+        def __init__(self, uf_ref, beta):
+            self.uf_inc = np.ones_like(freqs, dtype=np.complex128)
+            self.uf_ref = np.asarray(uf_ref, dtype=np.complex128)
+            self.beta = np.asarray(beta, dtype=np.complex128)
+
+        def CalcPort(self, sim_dir, freqs_hz, *, ref_plane_shift):  # noqa: N802 (openEMS API)
+            assert np.allclose(freqs_hz, freqs)
+
+    port0, port1 = _FakePort(s11, beta0), _FakePort(s21, beta1)
+    monkeypatch.setattr(module, "_import_openems", lambda: (object, object, object))
+    monkeypatch.setattr(module, "_build_stage_b",
+                        lambda *a, **k: (None, port0, port1, dict(stage_b["port_info"])))
+    monkeypatch.setattr(module, "_run_openems_capturing_stdout", lambda *a, **k: "")
+    monkeypatch.setattr(module, "_scan_stdout_for_bad_patterns", lambda *a, **k: None)
+    monkeypatch.setattr(module, "_log_indicates_truncation", lambda *a, **k: False)
+    monkeypatch.setattr(module, "_check_excitation_and_trace", lambda *a, **k: (1.0, 227))
+
+
+def _perturbed_rfx_fixture(module, k: float) -> dict:
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    s21 = _cx(fixture["s21"])
+    beta = _cx(fixture["beta_first_port"])
+    l12 = module._stage_b_layout(fixture)["l12_m"]
+    s21_k = s21 * np.exp(-1j * (k - 1.0) * np.real(beta) * l12)
+    beta_k = beta * k
+    out = dict(fixture)
+    out["s21"] = [[float(c.real), float(c.imag)] for c in s21_k]
+    out["beta_first_port"] = [[float(c.real), float(c.imag)] for c in beta_k]
+    return out
+
+
+def test_run_stage_b_reds_end_to_end_on_a_coherent_rfx_beta_error(monkeypatch):
+    """Criterion (B) through the REAL ``_run_stage_b`` wiring, not the
+    witnesses in isolation -- the cv21 ``_run_one_drive`` replay pattern.
+
+    (A) run-2's committed data passes and the three independent legs equal
+    the artifact's ``cv20.run2_realized_board`` keys. (B) a coherent
+    factor-2 / factor-0.5 error on the rfx side raises naming solver
+    ``rfx`` and still carries the partial forensics; the same error on the
+    openEMS side raises naming solver ``openems`` -- the E2 leg attributes
+    to whichever side is out of envelope, including openEMS.
+    """
+    module = _load_referee_module()
+    evidence = json.loads(_EVIDENCE_PATH.read_text())["cv20"]["run2_realized_board"]
+
+    _stage_b_replay_fakes(module, monkeypatch)
+    result = module._run_stage_b(sim_root="/tmp/_unused_812_cv20_ok", threads=1, nrts=200000,
+                                 end_criteria=1e-4,
+                                 rfx_fixture=module._load_rfx_fixture(str(RFX_FIXTURE_PATH)))
+    assert result["sanity_passed"] is True
+    report = result["cross_solver_report"]
+    assert report["analytic_beta_witness_rfx"]["max_abs_dev_frac"] == pytest.approx(
+        evidence["analytic_beta_rfx_max_abs_dev_frac"], rel=1e-9)
+    assert report["analytic_beta_witness_openems"]["max_abs_dev_frac"] == pytest.approx(
+        evidence["analytic_beta_openems_max_abs_dev_frac"], rel=1e-9)
+    assert report["cross_solver_phase_witness"]["max_abs_raw_phase_diff_deg"] == pytest.approx(
+        evidence["cross_solver_max_abs_raw_phase_diff_deg"], rel=1e-9)
+
+    for k in (2.0, 0.5):
+        with pytest.raises(RuntimeError) as excinfo:
+            module._run_stage_b(sim_root="/tmp/_unused_812_cv20_bad", threads=1, nrts=200000,
+                                end_criteria=1e-4, rfx_fixture=_perturbed_rfx_fixture(module, k))
+        message = str(excinfo.value)
+        assert "stage_b_analytic_beta" in message and "solver 'rfx'" in message, k
+        assert hasattr(excinfo.value, "partial_stage_b_data")
+        assert "cross_solver_partial" in excinfo.value.partial_stage_b_data
+
+    _stage_b_replay_fakes(module, monkeypatch, openems_k=2.0)
+    with pytest.raises(RuntimeError) as excinfo:
+        module._run_stage_b(sim_root="/tmp/_unused_812_cv20_oe", threads=1, nrts=200000,
+                            end_criteria=1e-4,
+                            rfx_fixture=module._load_rfx_fixture(str(RFX_FIXTURE_PATH)))
+    assert "solver 'openems'" in str(excinfo.value)

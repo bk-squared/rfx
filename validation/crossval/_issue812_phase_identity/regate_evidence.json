@@ -1,5 +1,13 @@
 {
   "cv20": {
+    "blindness": {
+      "audit_construction_e1_max_phase_dev_deg": 0.24144025314175127,
+      "audit_construction_e1_passed": true,
+      "dispersion_corrected_residual_max_abs_change_deg_k2": 1.0658141036401503e-14,
+      "dispersion_corrected_residual_max_abs_deg_baseline": 0.7153450725324438,
+      "dispersion_corrected_residual_max_abs_deg_k2": 0.7153450725324506,
+      "e1_tol_deg": 3.0
+    },
     "criterion_b": [
       {
         "e1_max_phase_dev_deg": 0.12072012657087881,
@@ -117,6 +125,32 @@
         "k_hi": 1.0323340471092077,
         "k_lo": 0.7521056388294075
       },
+      "headroom_dependence": [
+        {
+          "criterion_a_still_passes_refined": true,
+          "criterion_a_still_passes_registered": true,
+          "envelope_bound_frac_registered": 0.15704,
+          "headroom": 1.3,
+          "k_hi": 1.0323340471092077,
+          "k_lo": 0.7521056388294075
+        },
+        {
+          "criterion_a_still_passes_refined": true,
+          "criterion_a_still_passes_registered": true,
+          "envelope_bound_frac_registered": 0.13288000000000003,
+          "headroom": 1.1,
+          "k_hi": 1.0107780157030692,
+          "k_lo": 0.773661670235546
+        },
+        {
+          "criterion_a_still_passes_refined": true,
+          "criterion_a_still_passes_registered": true,
+          "envelope_bound_frac_registered": 0.125632,
+          "headroom": 1.04,
+          "k_hi": 1.0043112062812276,
+          "k_lo": 0.7801284796573876
+        }
+      ],
       "measured_refined": {
         "k_hi": 1.0185266918549538,
         "k_lo": 0.857210452027668
@@ -125,11 +159,18 @@
         "k_hi": 1.0319696675348702,
         "k_lo": 0.7518675035083006
       },
+      "physics_forced_registered": {
+        "bound_frac": 0.12522137210518358,
+        "convention": "the tightest envelope that still admits the committed registered-mesh data (per-bin max over the beta and group-delay legs); no headroom choice can place the floor closer to k = 1 than this at this mesh.",
+        "implied_headroom": 1.036600762460129,
+        "k_hi": 1.0039448359253957,
+        "k_lo": 0.7804948500132195
+      },
       "predeclared_k_hi": 1.032334,
       "predeclared_k_lo": 0.752106
     },
     "e1_baseline_max_phase_dev_deg": 0.4364832132266744,
-    "e4_not_supported_because": "the script imports no rfx module and reads no rfx fixture, so no leg compares an rfx quantity against the external solver; the E4 comparison that consumes this referee's openEMS output lives downstream, in the compute_coaxial_two_port label-lift chain recorded in docs/guides/sparameter_support_matrix.json",
+    "e4_not_supported_because": "the script imports no rfx module and reads no rfx fixture, so no leg compares an rfx quantity against the external solver; the E4 comparison that consumes this referee's openEMS output lives downstream, in the compute_coaxial_two_port label-lift chain recorded in docs/guides/sparameter_support_matrix.md",
     "e4_supporting_leg_count": 0,
     "evidence_levels_supported_by_a_leg_in_this_case": [
       "E1",
