@@ -591,7 +591,8 @@ wrong, in three parts:
       power; what it did not say is that its resolving power for a
       COHERENT phase-velocity error is ZERO, at any tolerance -- a
       factor-2 error, beta and angle(S21) moved together, was MEASURED
-      by the #812 audit to read 0.2414 deg against the 3.0 deg gate,
+      by the #812 audit to read 0.2414 deg (regate_evidence.json::
+      cv20.blindness.audit_construction_e1_max_phase_dev_deg) against the 3.0 deg gate,
       12x inside. The group-delay leg is blind for the same reason.
 
   (b) "Gating the RAW cross-solver phase difference would conflate that
@@ -921,7 +922,9 @@ openems_msl_phase_referee.py`` from authorship (PR #550) through the
 run-1 record-fill; it now lives here, registered in
 ``validation/crossval/manifest.json`` as ``20_msl_phase_referee``, a
 ``diagnostic-reporter`` case (gated claim = per-solver self-consistency;
-cross-solver agreement REPORTED).
+cross-solver agreement REPORTED -- CORRECTION (#812 P1, 2026-09-01;
+sixth site found by the round-2 review 2026-09-02): the raw cross-solver
+angle(S21) difference is GATED, see ``_cross_solver_phase_witness``).
 
 Usage (VESSL-only; openEMS is not importable outside
 ``scripts/vessl_msl_phase_referee.yaml``, which runs the PRIMARY
@@ -1195,7 +1198,8 @@ B_GD_TOL_PS = 200.0
 # propagation error -- the line's phase velocity is wrong, so that
 # solver's measured beta AND its angle(S21) move together -- cancels.
 # The issue #812 audit measured a FACTOR-2 phase-velocity error reading
-# 0.2414 deg against this file's own 3.0 deg gate: 12x INSIDE. The
+# 0.2414 deg (regate_evidence.json::cv20.blindness.audit_construction_
+# e1_max_phase_dev_deg) against this file's own 3.0 deg gate: 12x INSIDE. The
 # group-delay leg is blind for the same reason (it differentiates the
 # same identity), and so is
 # ``residual_phase_diff_after_dispersion_deg``, for a THIRD instance of
@@ -1685,7 +1689,8 @@ def _self_consistency_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta: np.nd
     are built from one field solve, so a COHERENT propagation error --
     the line's phase velocity is wrong, so that solver's measured beta
     AND its angle(S21) move together -- cancels. The issue #812 audit
-    measured a FACTOR-2 phase-velocity error reading 0.2414 deg against
+    measured a FACTOR-2 phase-velocity error reading 0.2414 deg
+    (regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg) against
     this file's own 3.0 deg gate: 12x INSIDE. The group-delay leg is
     blind for the same reason (it differentiates the same identity).
 

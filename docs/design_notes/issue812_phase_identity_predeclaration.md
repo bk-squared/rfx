@@ -87,7 +87,7 @@ by the committed mesh-refinement run. So the envelope must be mesh-dependent, an
 scale comes from committed prior provenance, not from anything this lane measures.
 
 Prior provenance, all present in `main` today
-(`validation/crossval/21_coax_two_port_referee.py::MESH_REFINEMENT_PREDECLARATION`,
+(`MESH_REFINEMENT_PREDECLARATION` in `validation/crossval/21_coax_two_port_referee.py`,
 pre-declared 2026-08-04, filled from VESSL 369367251845):
 
 | symbol | value | source (verbatim literal in main) |
@@ -133,7 +133,7 @@ lane is `k = 1.57`.
 ### 3.4 Falsifier (pre-declared)
 
 1. **(A)** The gate must PASS on the committed run-3 registered-mesh data
-   (`tests/test_coax_two_port_referee_header.py::_RUN3_*`, VESSL 369367251629) and on
+   (the `_RUN3_*` literals in `tests/test_coax_two_port_referee_header.py`, VESSL 369367251629) and on
    the committed 1.5x-refinement run
    (`_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json`), with the
    margins reported.
@@ -255,3 +255,37 @@ explicitly that **no gated Stage-B leg is E4**.
   `test_matched_through_witness_run3_regression_measured_vs_analytic_beta` already
   established in this repo.
 * It does not touch cv05's prose, cv09, cv10, cv02 or cv14 (Phase 0/1, PRs #814–#818).
+
+## 7. Corrections — round 2 review (2026-09-02)
+
+Append-only; nothing above is edited. No threshold, window or declared constant moves.
+
+**7.1 §3.3's "that floor is a physical property of this mesh's staircase envelope, not a
+choice" is withdrawn.** The floor is `k_hi = (1 + HEADROOM·EXCESS_REF)/(1 + EXCESS_REF)`,
+and `HEADROOM = 1.30` is the declared choice. The same formula on the same committed data
+at other headrooms, with criterion (A) re-checked at each:
+
+| headroom | `k_hi` at the registered mesh | (A) still passes |
+|---|---|---|
+| 1.30 (declared) | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[0].k_hi = 1.032334` | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[0].criterion_a_still_passes_registered` |
+| 1.10 | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].k_hi = 1.010778` | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].criterion_a_still_passes_registered` |
+| 1.04 | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].k_hi = 1.004311` | `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].criterion_a_still_passes_registered` |
+
+The only floor physics forces at this mesh is the tightest envelope the committed
+registered-mesh data itself admits (per-bin max over the beta and group-delay legs),
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.bound_frac = 0.125221`, which puts it at
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.k_hi = 1.003945` — an implied headroom of
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.implied_headroom = 1.0366`. The audit's
+`k = 1.02` is missed because of the 1.30 headroom, not because of the 3.8-cell annulus.
+"No analytic gate can be tighter than the bias itself" stands; the sentence built on it did not.
+
+`HEADROOM` is **not** tightened here: that would be a post-measurement threshold change, the
+exact move this lane forbids. A tighter headroom may be pre-declared for a future round, with
+its own (A)/(B) record.
+
+**7.2 Two source-constant pointer spans rewritten, form only.** §3 carried two backtick spans
+written as a `.py` path, a double colon and a constant name, pointing at source constants. The #829 numeric-provenance gate treats
+any backtick span carrying a double colon as an artifact reference and rejects one that does not parse,
+so both are rewritten in place as "`NAME` in `path.py`" — the pointer, the constant and the
+sentence are unchanged. This is the one in-place edit above this section, and it changes no
+claim.

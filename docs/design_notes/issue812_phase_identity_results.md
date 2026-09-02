@@ -303,3 +303,84 @@ pinned by `test_cv21_registers_no_e4_because_no_leg_supports_one`) — so
 downstream `compute_coaxial_two_port` label-lift chain in
 `docs/guides/sparameter_support_matrix.md`, which is where rfx's numbers are
 actually compared against this referee's openEMS output.
+
+## 3 (continued). Corrections — round 2 review (2026-09-02)
+
+Append-only. An independent reviewer re-derived every number in §§0–3 with its own
+NumPy against the committed artifacts (all agreed to the printed digits) and returned
+three blocking findings, all prose or provenance. No gate, threshold, window or physics
+verdict moves. The artifact is rebuilt by the same script; every pre-existing key is
+unchanged and the new keys are named below.
+
+**3.5 (B1) §1.4's "the floor is a physical property of the mesh, not a choice" is
+withdrawn — it is the `HEADROOM = 1.30` choice.** Same formula, same committed data,
+other headrooms, criterion (A) re-checked at each:
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].k_hi = 1.010778` at headroom 1.10 and
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].k_hi = 1.004311` at 1.04, with
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].criterion_a_still_passes_registered`
+and
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].criterion_a_still_passes_registered`
+both true. The only floor physics forces at this mesh is the tightest envelope the
+registered data itself admits,
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.k_hi = 1.003945`. The audit's
+`k = 1.02` is missed because of the declared headroom, not because of the annulus.
+`HEADROOM` is not tightened post hoc; a tighter value may be pre-declared for a future
+round. The same sentence stood at five more sites (predeclaration §3.3, the cv21
+script's envelope comment and witness docstring, the manifest `claim_scope`, the README
+row); each now carries the correction and the keys.
+
+**3.6 (B2) Two headline numbers were restated without an artifact key.** The audit's
+own blindness construction (scale the de-embedded phase, which scales the extraction
+residual with it) is now
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.2414` deg, passing at
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.e1_tol_deg = 3.0`; the dispersion-corrected residual is
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_baseline = 0.715345` deg
+at baseline and
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_k2 = 0.715345` deg with
+the rfx phase velocity halved, a per-bin change of
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_change_deg_k2 = 0.00000` deg.
+The manifest, README, public benchmarks row, support-matrix guide and the script's three
+docstrings now cite the key.
+
+**3.7 (B3) A sixth un-superseded restatement of the old cv20 decision.** §3.1 listed
+five sites; the reviewer found the module docstring's `PROMOTED` paragraph still saying
+"cross-solver agreement REPORTED" in the present tense. It now carries the correction
+in place, next to the sentence. The dated 2026-08-04 promotion records remain history.
+
+**3.8 §3.2 understated its own point.** It said criterion (A)'s margin is "established
+by one configuration, not two"; §1.2 already said the registered-mesh margin is the
+headroom *by construction*, and the refined-mesh check restates it to
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.bound_at_n_after_minus_headroom_times_excess_after`.
+So the count of configurations that establish the margin independently is zero. What the
+replays establish that is not constructed: the per-bin max sits within 0.3 % of the
+record's own mean, and the group-delay leg's margin
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.registered_mesh.gd_margin_x = 1.2540` is a second, differently-computed leg
+inside the same envelope.
+
+**3.9 §1.4's refined-mesh floor.** Written as `k > 1.018528` from rounded inputs; the
+artifact's replayed value is
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.measured_refined.k_hi = 1.018527`. Same conclusion (the
+refined mesh catches `k = 1.02`), now by key.
+
+**3.10 Recorded, not changed — a one-sided envelope.** The staircase only raises
+`beta`, so the physics is one-sided while the envelope is two-sided: a measured `beta`
+15.7 % *below* analytic passes today, and a `(−δ, +BOUND)` form would move
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_lo = 0.752106` to roughly 0.89 at no cost on
+the high side. Changing the envelope's form after measurement is the move this lane
+forbids, so it is left as declared and named here as a candidate for pre-declaration
+in a future round.
+
+**3.11 cv20's `_run_stage_b` wiring, exercised.** Round 1 pinned the wiring by a
+source-string test only. `test_run_stage_b_reds_end_to_end_on_a_coherent_rfx_beta_error`
+now replays run-2 through the real function with the openEMS seams faked (the same
+pattern as cv21's end-to-end test): (A) `sanity_passed` on the committed data with the
+three independent legs equal to the artifact's run-2 keys, (B) `k = 2.0` and `0.5` on
+the rfx side raise naming solver `rfx` and carry `partial_stage_b_data`, and an
+openEMS-side `k = 2.0` raises naming solver `openems` — the "attributes to whichever
+side is out of envelope, including openEMS" sentence in §2.4 was asserted in round 1 and
+is measured now.
+
+**3.12 Two pointer nits.** The artifact's `cv21.e4_not_supported_because` and §3.4
+pointed at the `.json` and `.md` forms of the support matrix respectively; both now
+name the guide, `docs/guides/sparameter_support_matrix.md`. The public benchmarks row
+cited a value with a `°` unit the #829 unit table does not carry; it is cited unit-less.

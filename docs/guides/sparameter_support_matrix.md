@@ -265,8 +265,9 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   match comes from stencil placement, not from the referral transform.
   Issue #812 P1 (2026-09-01): the per-solver self-consistency figures above
   are an **E1** leg -- both sides come from one field solve, so a coherent
-  phase-velocity error cancels and a factor-2 error reads `0.241 degrees`
-  against that same 3-degree gate. Two independent-reference gates now run
+  phase-velocity error cancels and a factor-2 error reads
+  `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.241`
+  degrees against that same 3-degree gate. Two independent-reference gates now run
   alongside it and are wired into the script's own pass/fail: each solver's
   measured `beta` against the Hammerstad-Jensen closed form of the realized
   board (E2, 2.0% tolerance; measured 0.94% rfx / 0.31% openEMS), and the

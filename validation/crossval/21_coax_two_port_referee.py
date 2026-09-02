@@ -866,10 +866,19 @@ B_MEAS_STENCIL_MARGIN_CELLS = 5  # M3 fix: extra clearance so CoaxialPort's
 # DECLARED DETECTION FLOOR (stated, not discovered): a coherent k*beta
 # perturbation fires when |k*(1+EXCESS_REF) - 1| > BOUND, i.e.
 # k > 1.032334 or k < 0.752106 at the registered mesh. The gate therefore
-# CANNOT discriminate the audit's k=1.02 -- that floor is a physical
-# property of a 3.8-cell annulus, not a choice; no honest analytic gate
-# here can be tighter than the staircase bias itself. It DOES discriminate
-# k = 1.10/1.30/1.50/1.57 and the factor-2 (k=0.5) case.
+# CANNOT discriminate the audit's k=1.02. CORRECTION (#812 round-2 review,
+# 2026-09-02): that floor is the HEADROOM choice, not a property of the
+# annulus -- the same formula at headroom 1.10 puts it at k > 1.010778 and
+# at 1.04 at k > 1.004311, and criterion (A) still passes at both; the only
+# floor physics forces at this mesh is the tightest envelope the committed
+# data itself admits, k > 1.003945 (regate_evidence.json::
+# cv21.detection_floor.{headroom_dependence,physics_forced_registered}).
+# No honest analytic gate here can be tighter than the staircase bias
+# itself -- that sentence stands; the "not a choice" built on it did not.
+# HEADROOM is NOT tightened post hoc (that would be a post-measurement
+# threshold change); a tighter value may be pre-declared for a future
+# round. It DOES discriminate k = 1.10/1.30/1.50/1.57 and the factor-2
+# (k=0.5) case.
 BETA_ENVELOPE_EXCESS_REF = 0.1208               # MESH_REFINEMENT_PREDECLARATION["excess_before"]
 BETA_ENVELOPE_N_REF = 3.789                     # ..."annulus_cells_before" = (2.055-0.635)/0.37474
 BETA_ENVELOPE_ORDER_P = 1.4847707054524188      # ..."implied_convergence_order" (two-point, VESSL 369367251845)
@@ -1926,8 +1935,12 @@ def _analytic_beta_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta_measured:
     WHAT THIS DOES NOT CATCH, stated up front: the declared detection
     floor is k > 1.032334 / k < 0.752106 at the registered mesh. The
     audit's k = 1.02 is inside it. No honest analytic gate on a 3.8-cell
-    annulus can be tighter than the staircase bias itself; refining the
-    mesh is the only way to tighten it, and the envelope follows.
+    annulus can be tighter than the staircase bias itself -- but the floor
+    as declared is the 1.30 HEADROOM's choice, not the annulus's (round-2
+    review, 2026-09-02): headroom 1.10 would put it at k > 1.010778 with
+    criterion (A) intact, and the physics-forced floor at this mesh is
+    k > 1.003945. Refining the mesh moves the floor with no change to the
+    gate; a tighter pre-declared headroom would move it too.
     """
     idx = _central_band_idx(np.asarray(freqs_hz).size)
     freqs = np.asarray(freqs_hz, dtype=np.float64)
