@@ -76,6 +76,19 @@ stack). Per-file membership:
 | `test_sheet_impedance_operator.py` L213-214 | in-function import of `_planar_sheet`, `U_Z`, `U_FOOT`, `U_HOLE` from the absorbed sibling (now in-module names) | `fbb212d5e4d9b3e8` |
 | `test_preflight_graded_rasterization.py` L128-129 | mid-file `import math` / `import pytest` (in the merged header) | `5614cabadc4c0438` |
 
+### Non-verbatim edits (found by the independent review, §7; semantics preserved)
+
+The "concatenated verbatim" claim above holds for every test body. Four
+helper-level edits in `tests/unit/boundaries/test_cpml_material_aware.py` are
+not verbatim and were missing from this note:
+
+| edit | before (`3bafe2f`) | after | check |
+|---|---|---|---|
+| max-abs-E helper unified | `test_distributed_cpml_dielectric.py:67-77 _max_abs_e(result)`, `test_distributed_nu_cpml_dielectric.py:110-119 _max_abs_E(state)`, `test_distributed_pmap_cpml_dielectric.py:68-75 _maxabs_e(result)` | `_max_abs_e_state(state)` plus `_max_abs_e(result)` delegating to it; the two other names deleted and their 4 call sites re-pointed | all three bodies were the same loop over `ex, ey, ez` returning `np.inf` on any non-finite value, else the max abs; the reviewer diffed the four bodies |
+| `requires_multidevice` reason strings unified | three markers with the same condition `jax.device_count() < 2` and different reason strings | one marker | applied to the same 6 tests |
+| `EXPECTED_BANDS` reformatted | one-line set | multi-line set | same 5 elements |
+| 4 comment lines above `_MANUAL_FENCES` dropped | comments only | — | no code |
+
 ## 2. Nothing-lost proof
 
 Method: `python -m pytest --collect-only -q -p no:cacheprovider` on the
@@ -132,11 +145,13 @@ quantity with different tolerances, so no tolerance had to be chosen.
 
 ### `.test_durations`
 
-Keys before 3215, after 3215, dropped 0; 261 keys rewritten to their new
-node id (260 by the file map, plus the one collapsed contract case
-`[test_waveguide_broad_e5_tolerance_envelope.py]` → `[test_waveguide_broad_e5.py]`;
-its sibling `[test_waveguide_broad_e5_phase_tolerance_envelope.py]` key is
-kept as-is because rewriting it to the same id would drop a key). Values
+Keys before 3215, after 3214; 260 keys rewritten to their new node id by the
+file map, plus the one collapsed contract case
+`[test_waveguide_broad_e5_tolerance_envelope.py]` → `[test_waveguide_broad_e5.py]`.
+Its sibling key `[test_waveguide_broad_e5_phase_tolerance_envelope.py]` was
+first kept as-is, which left a key matching no collected node id (review
+finding 2, §7); it is now removed, and the proof script counts that removal
+as the only permitted drop (`collapsed_removed=1`). Values
 byte-identical. Insertion order preserved (the file is not sorted; the
 rewrite touches only the renamed lines). Keys that match no collected id:
 33 before (pre-existing, incl. 6 top-level `test_issue325_*` /
@@ -212,7 +227,8 @@ Full default suite: see §5 (appended after the run).
   tests `rfx.visualize3d` (`plot_geometry_3d`, `plot_field_3d`, `save_field_vtk`,
   `save_screenshot`; matplotlib); `tests/unit/api/test_visualize_3d.py` tests
   `rfx.visualize` (`visualize_structure`, `visualize_farfield_3d`; plotly,
-  issue #38). `diff` shows no shared line; both modules exist. Both kept.
+  issue #38). `comm` shows only 4 trivially shared lines (`import pytest`,
+  `return sim`, two closing parens); both modules exist. Both kept.
 * **coax: 7 → 5, not 2.** `tests/unit/autodiff/test_coax_two_port_ad.py` stays
   in `autodiff` (gradient question → autodiff, tier-4b rule) and
   `tests/unit/ports/test_coaxial_port.py` stays in `ports` (port primitive →
@@ -690,3 +706,18 @@ Failures, all pre-existing and none in a merged file:
 Every test of the ten merged files passed in this run (they also passed in
 isolation before each group commit: cpml 13, sbp+settling+waveguide 81,
 coax 109, preflight+sheet 181 passed / 2 skipped).
+
+## 7. Independent review (2026-09-03)
+
+An adversarial review of the branch at `3f88600` (skip/xfail scope per node,
+helper and constant shadowing by AST scan, parametrisation, assertion-line
+multiset diff for all 10 merged files, conftest set, durations and shard
+balance, kept-file reasons) returned SHIP with three note-level findings, all
+applied here: the non-verbatim cpml helper edits (table in §1), the dead
+durations key (§2; removed, proof script updated), and the visualize3d
+"no shared line" overstatement (§3). Numbers the review re-derived: per-node
+outcome diff between the source files at `3bafe2f` and the merged files: zero
+changes (380 passed / 2 skipped on both tips, the 2 skips being the same
+per-test `importorskip("trimesh")`); assertion-line multiset diff empty for all
+10 files; pytest-split shard simulation before [1704.8, 1705.3, 1717.0,
+1690.3] s, after [1705.1, 1705.8, 1704.7, 1702.6] s.

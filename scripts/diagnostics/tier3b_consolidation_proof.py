@@ -164,12 +164,19 @@ def check_durations(base: str) -> bool:
             p, rest = k.split("::", 1)
             nk = FILE_MAP.get(p, p) + "::" + rest
         expected[nk or k] = v
+    # A BEFORE key whose node id collapsed into an already-present AFTER id
+    # (COLLAPSED) would be a dead key after the merge; it is removed, and the
+    # removal is the only permitted drop.
+    collapsed_keys = sorted(k for k in before if k in COLLAPSED)
+    for k in collapsed_keys:
+        expected.pop(k, None)
     dropped = sorted(set(expected) - set(after))
     extra = sorted(set(after) - set(expected))
     same = all(after.get(k) == v for k, v in expected.items())
     print(f"[durations] keys before={len(before)} after={len(after)} "
-          f"remapped={sum(1 for k in before if k not in after)} dropped={len(dropped)} extra={len(extra)} values_identical={same}")
-    return not dropped and not extra and same and len(before) == len(after)
+          f"remapped={sum(1 for k in before if k not in after and k not in collapsed_keys)} "
+          f"collapsed_removed={len(collapsed_keys)} dropped={len(dropped)} extra={len(extra)} values_identical={same}")
+    return not dropped and not extra and same and len(before) == len(after) + len(collapsed_keys)
 
 
 def main() -> int:

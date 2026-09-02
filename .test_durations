@@ -936,7 +936,6 @@
   "tests/contracts/test_gate_policy_is_shared.py::test_crossval_script_import_route_resolves_the_repo_gate_policy_module[18_wr90_iris_modematch.py]": 1.2383142365142703,
   "tests/contracts/test_gate_policy_is_shared.py::test_crossval_script_import_route_resolves_the_repo_gate_policy_module[19_wr90_iris_filter_aghanim.py]": 1.2309333262965083,
   "tests/contracts/test_gate_policy_is_shared.py::test_gate_policy_module_defines_exactly_one_multiplier": 0.005111200734972954,
-  "tests/contracts/test_gate_policy_is_shared.py::test_margin_ceil_case_imports_shared_multiplier_not_a_local_literal[test_waveguide_broad_e5_phase_tolerance_envelope.py]": 0.004466653801500797,
   "tests/contracts/test_gate_policy_is_shared.py::test_margin_ceil_case_imports_shared_multiplier_not_a_local_literal[test_waveguide_broad_e5.py]": 0.004215097986161709,
   "tests/contracts/test_gate_policy_is_shared.py::test_margin_ceil_case_imports_shared_multiplier_not_a_local_literal[test_waveguide_group_delay_tolerance_envelope.py]": 0.004095898009836674,
   "tests/contracts/test_gate_policy_is_shared.py::test_margin_ceiling_lanes_are_bound_by_the_shared_multiplier_from_outside": 0.020114131271839142,
