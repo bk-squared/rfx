@@ -4764,6 +4764,326 @@
         }
       ]
     },
+    "validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::multi_band": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "3 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 50000.0,
+              "declared_um": [
+                0.0,
+                50000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 50000.0,
+              "n_cells": 50,
+              "realized_extent_um": 50000.0,
+              "realized_um": [
+                0.0,
+                50000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                0.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 30000.0,
+              "n_cells": 30,
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                0.0,
+                30000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 49,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::single_band": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "3 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 50000.0,
+              "declared_um": [
+                0.0,
+                50000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 50000.0,
+              "n_cells": 50,
+              "realized_extent_um": 50000.0,
+              "realized_um": [
+                0.0,
+                50000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                0.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 30000.0,
+              "n_cells": 30,
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                0.0,
+                30000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 46,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::uniform": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "3 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 50000.0,
+              "declared_um": [
+                0.0,
+                50000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 50000.0,
+              "n_cells": 50,
+              "realized_extent_um": 50000.0,
+              "realized_um": [
+                0.0,
+                50000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                0.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 30000.0,
+              "n_cells": 30,
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                0.0,
+                30000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 40,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::uniform_fine": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "3 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 50000.0,
+              "declared_um": [
+                0.0,
+                50000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 50000.0,
+              "n_cells": 100,
+              "realized_extent_um": 50000.0,
+              "realized_um": [
+                0.0,
+                50000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                0.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 30000.0,
+              "n_cells": 60,
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                0.0,
+                30000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 80,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
     "validation/research/convergence_floor/fixture.py::build_sim::multiband_s1.0": {
       "fidelity": {
         "NOT AUDITED by this report": {

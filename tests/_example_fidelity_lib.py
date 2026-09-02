@@ -290,6 +290,10 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/comparators/fdfd_hplane.py": Entry(
         "no_simulation",
         "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),
+    "validation/crossval/comparators/nu_cavity_gates.py": Entry(
+        "no_simulation",
+        "pure-numpy Pozar spectrum, exact-lattice prediction, allowance, "
+        "windows and gates for cv24 -- no rfx import at all"),
     "validation/crossval/comparators/ring_mode_judge.py": Entry(
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
@@ -643,6 +647,21 @@ CLASSIFICATION: dict[str, Entry] = {
         "drives it at the main gate leg and the convergence-witness cell size",
         (Builder("build_cavity", None, (
             _v("dx=1.0mm", dx=1.0e-3), _v("dx=0.5mm", dx=0.5e-3))),)),
+    "validation/crossval/24_nu_rect_cavity_pozar.py": Entry(
+        "audited",
+        "`build_cavity(lane, dxy, dz_profile)` returns Simulation with no "
+        "solve call; main() drives it once per arm (uniform / graded / "
+        "uniform-fine) through run_arm()",
+        (Builder("build_cavity", None, (
+            _v_from("uniform", lambda m: dict(
+                lane="uniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["uniform"])),
+            _v_from("single_band", lambda m: dict(
+                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["single_band"])),
+            _v_from("multi_band", lambda m: dict(
+                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["multi_band"])),
+            _v_from("uniform_fine", lambda m: dict(
+                lane="uniform", dxy=m.G.DZ_FINE, dz_profile=m.G.PROFILES["uniform_fine"])),
+        )),)),
     "validation/crossval/19_wr90_iris_filter_aghanim.py": Entry(
         "audited",
         "`build(geo, ...)` returns (Simulation, cpml_cells, guide_length) "

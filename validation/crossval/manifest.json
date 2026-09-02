@@ -469,6 +469,32 @@
       "cpu_runner": {"order": 16},
       "scheduled_external_order": null,
       "failure_sentinel": null
+    },
+    {
+      "id": "24_nu_rect_cavity_pozar",
+      "script": "validation/crossval/24_nu_rect_cavity_pozar.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["pr-fast", "external-manual"],
+      "evidence_levels": ["E2"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "Pozar closed-form air-filled rectangular-cavity resonance f_mnl = (c/2)*sqrt((m/a)^2+(n/b)^2+(l/d)^2), re-derived in validation/crossval/comparators/nu_cavity_gates.py (pozar_freq) with the seven modes below 8.5 GHz identified by (m, n, l); plus the exact discrete Yee-lattice eigenfrequency of the same cavity on each arm's tensor grid (lattice_freq: per-axis primal-operator eigenvalues on rfx's own inv_e / inv_h metrics, summed under the leapfrog relation) as the a-priori witness gated to 4 ppm",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "SCOPE (stated first): one closed lossless air-filled PEC cavity (50 x 30 x 40 mm, cv14's), z grading ONLY, fine cell 0.5 mm / coarse 1.0 mm with the transition chain 0.5-0.7-0.8-1.0 mm (adjacent ratio <= 1.4, the #785 cap), one or two fine bands, the seven closed-form modes below 8.5 GHz; says nothing about S-parameters, ports, absorbers, materials, in-plane (dx/dy) grading, other cavities or other profiles -- the support-matrix row for the multi-band mesh stays MESH-ONLY for S-parameters until #810's Tier-1 cases run. WHY: the non-uniform mesh had no observable-level accuracy evidence (evidence rule: NU S-parameter paths are Shadow; #785 documented the mesh, not an observable on it; #810 proposes the S-parameter campaign). WHAT: cv14's cavity solved four ways -- (a) the uniform 1 mm control (cv14's recipe), (b) a single graded band, (c) small-large-small-large, both inside the #785 envelope, (d) uniform 0.5 mm (the #810 cost control) -- each the same sources, probe point and harminv extraction; every number in validation/crossval/comparators/nu_cavity_gates.py, pre-declared in docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md before any arm ran. GATED per arm: G1 cv14's committed tolerance (TE101 < 1 %, >= 1 higher mode < 2 %); G2 (#810) the graded arm's per-mode deviation on the equal-dt SPATIAL eigenvalue (the leapfrog relation inverted exactly; dt is the global min-cell CFL and differs per arm) must not exceed the uniform arm's plus an allowance DERIVED from #785's frozen F-S2 per-transition reflection table (r = 1.4: -54.0 dB modelled / -53.9 dB measured at 34.6 fine cells per axial wavelength, the (dz/lambda)^2 law) at the fixture's own cells per AXIAL wavelength, mapped to an eigenfrequency by the thin-scatterer bound 2 rho / (l pi) x kz^2/K^2 (218 ppm on TE101 for arm b); G3 the exact discrete-lattice prediction -- the tensor Yee grid's per-axis primal-operator eigenvalues summed under the leapfrog relation, on the SAME inv_e / inv_h metrics rfx/nonuniform.py builds -- to W_est = 4 ppm (1.5 x the worst residual of that model against the two committed TM111 anchors of tests/test_nonuniform_cavity_accuracy.py, 0.5 and 2.4 ppm); G4 mode COUNT 7 in [4, 8.5] GHz with identification by (m, n, l) through Voronoi windows (never argmin-nearest); G5 the #785 F-S1 energy envelope K u sqrt(n) on a source-free run of the arm's own grid; G6 stationarity of every mode across two 2/3 sub-windows to W_est; the profile inside the declared envelope; the realized extent equal to the declared one. RECORD: 31.5 ns post-pulse, derived from the closest declared pair (TM111 / TE201, 142.7 MHz) at 3 matrix-pencil resolution units in each sub-window. PREDICTED before the run (note section 3.4, ppm vs Pozar): TE101 -83 / -150 / -141 / -21 on arms a / b / c / d; TE102 -520 / -821 / -182 / -130 (arm c's TE102 closer to Pozar than the control's is the risky prediction). STATED A PRIORI: the #810 allowance is a loose bound for eigenfrequencies (the lattice transition term is -23 ppm on TE101 (b), 10x under it), so the ratio-2.0 falsifier F1 is predicted to fail the ENVELOPE gate and PASS the allowance gate; the pre-CORE-C2 metric-swap defect (F1c) fails the allowance gate by 5.8-16x and is that gate's falsifier; the lattice gate is the one that measures the mesh. FALSIFIERS (each --falsifier arm must exit 1): ratio2_abrupt (envelope), metric_defect (allowance + lattice), grading_at_wall (envelope; runway R_WALL_CELLS = 4), extent_plus_one_fine_cell (lattice + allowance + extent, BY NAME on the five l >= 1 modes, the two l = 0 modes pass), mode_count_drop_te102 (count 6 != 7). RIG CHECK before the run (note section 12): harminv's auto-decimation was the estimator floor (10-20 ppm); switched off before any arm ran; the uniform and single-band arms then reproduce the lattice prediction to <= 0.5 ppm locally (rig check, not evidence). MEASURED: prose only until the VESSL run (scripts/vessl_cv24_nu_cavity.yaml; 'external-manual' here is that hand-submitted CPU lane -- no external solver is involved) lands and artifact_paths is filled. The E4 leg for the NU lane (the committed Palace graded-dy WR-90 fixture, tests/fixtures/waveguide_nu_broad_e4/) is a FOLLOW-UP case (note section 10), not this one.",
+      "external_dependencies": [],
+      "expected_exit_codes": [0, 1],
+      "gate_paths": [
+        "validation/crossval/24_nu_rect_cavity_pozar.py",
+        "tests/test_cv24_nu_cavity_gates.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"excluded_reason": "Four arms x (FDTD + three harminv windows on 8000 raw samples WITHOUT decimation, ~85 s each -- the decimated path is the 10-20 ppm estimator floor the rig check found -- + a source-free energy audit of the arm's own grid) plus the 480 000-cell uniform-fine arm: estimated ~9 min against the lane's 900 s per-script timeout, so it is not budgeted a CPU slot. The evidence lane is VESSL (scripts/vessl_cv24_nu_cavity.yaml: four arms, five falsifiers, the gate test); the evidence floor on a clean checkout is the committed artifact replayed by tests/test_cv24_nu_cavity_gates.py with no FDTD, plus that test's artifact-free re-derivation of every declared number."},
+      "scheduled_external_order": null,
+      "failure_sentinel": "rfx accuracy: FAIL"
     }
   ]
 }
