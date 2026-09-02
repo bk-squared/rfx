@@ -99,7 +99,7 @@ def test_ntff_box_inside_cpml_trips_absorber_overlap_lo_and_hi():
     detect a real inside-CPML placement bug.
 
     Issue #500: CPML pads EXTERIOR to the requested domain (proved in
-    ``tests/unit/preflight/test_preflight_absorber_frame.py``), so ``[0, 120]`` mm is
+    ``tests/unit/preflight/test_preflight_absorber.py``), so ``[0, 120]`` mm is
     absorber-free by construction — a corner has to sit at a genuinely
     negative coordinate (lo side) or past the domain edge (hi side) to be
     "inside" the 16 mm-thick absorber. The pre-#500 corners here (x=5mm,

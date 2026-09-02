@@ -309,7 +309,7 @@ surfaced by the preflight advisory `dispersive_pole_at_absorber_face`.
   shipped-decay canary (its historical numbers were stale post-#655).
 - `rfx/api/_preflight.py::_validate_cfg_dispersive_pole_at_absorber_face`
   advisory (code `dispersive_pole_at_absorber_face`), 8 targeted tests in
-  `tests/unit/preflight/test_preflight_dispersive_pole_at_absorber.py`.
+  `tests/unit/preflight/test_preflight_absorber.py`.
 - NOT landed (measured unsupportable): pole-mask extension in any form,
   including behind the CFS alpha rule — C4 red. The `_vacuum`
   pole-fold and alpha_max plumbing drafted during the session were

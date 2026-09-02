@@ -220,7 +220,7 @@ returns six files, each verified benign:
   variant combines dz_profile with a waveguide cwsm script.
 - `tests/unit/sparams/test_sparameter_support_contract.py` — NU waveguide fixture is
   dy-only; its dz fixtures are MSL/TFSF (dz-aware dispatches).
-- `tests/unit/preflight/test_preflight_absorber_frame.py` — cwsm named in a docstring only.
+- `tests/unit/preflight/test_preflight_absorber.py` — cwsm named in a docstring only.
 - `tests/unit/materials/test_sheet_lane_fences.py` — dz-only fixtures are fence/raise
   tests; the cwsm fences use the uniform `_wr90` fixture.
 

@@ -1,142 +1,56 @@
-"""Issue #500 — the preflight absorber-overlap validator family compared
-user-frame coordinates against an INTERIOR-CPML reading while every rfx
-grid builder pads the absorber EXTERIOR to the requested domain. That made
-five ``_validate_cfg_*`` / ``_check_msl_port_geometry`` consumers of
-``cpml_thick_lo`` / ``cpml_thick_hi`` false-fire on geometry nowhere near
-the absorber (verified: waveguide reference planes comfortably inside a
-90.678mm domain, a probe at the domain centre), and the whole family had
-NO tests at all before this file (the #303 mis-gated-guard class).
+"""Preflight — the absorber stage: CPML frame, geometry-in-absorber reporting,
+dispersive pole at an absorbing face.
 
-This file:
+One file per preflight stage (tier 3b of the 2026-09 test-corpus
+reorganisation, see ``docs/design_notes/20260903_test_reorg_tier3b_consolidation.md``).
+Sections, each formerly its own file:
 
-1. Proves the exterior-padding ground truth directly off the real grid
-   builders (``rfx.grid.Grid`` for the uniform lane,
-   ``rfx.nonuniform.make_nonuniform_grid`` for the non-uniform/dz_profile
-   lane) — the single fact ``_absorber_boundary_for_axis``
-   (``rfx/api/_preflight.py``) encodes and every consumer now goes
-   through.
-2. Gives each of the five consumers a firing test (geometry genuinely
-   past the requested-domain edge, into the exterior absorber) and a
-   non-firing control (geometry near an edge but still inside the
-   requested domain — the shape the pre-#500 code false-fired on).
-3. Regression-locks the exact false positive PR #499 (the stage-S3 iris
-   filter review that triggered #500) hit: WR-90 waveguide ports
-   comfortably inside a valid 90.678mm domain must not warn.
+1. **Absorber-overlap validator frame (issue #500)** — was
+   ``test_preflight_absorber_frame.py``. The validator family compared
+   user-frame coordinates against an INTERIOR-CPML reading while every rfx
+   grid builder pads the absorber EXTERIOR to the requested domain, so five
+   ``_validate_cfg_*`` / ``_check_msl_port_geometry`` consumers of
+   ``cpml_thick_lo`` / ``cpml_thick_hi`` false-fired on geometry nowhere
+   near the absorber. This section (a) proves the exterior-padding ground
+   truth directly off the real grid builders (uniform ``Grid`` and
+   ``make_nonuniform_grid``) — the single fact ``_absorber_boundary_for_axis``
+   encodes; (b) gives each consumer a firing test and a non-firing control;
+   (c) regression-locks the exact PR #499 false positive (WR-90 ports inside
+   a valid 90.678mm domain). Post-review additions: the distinct
+   ``absorber_proximity`` advisory (H1/M3: a coordinate interior but within
+   2 cells of an active absorber boundary) and the MSL consumer's explicit,
+   separately-calibrated ``cpml_layers*dx`` buffer (MH2/M5: the 2026-05-04
+   ledger rule ``LY >= W + 2*(2*h_sub + 8*dx)``, restored ON TOP OF the
+   exterior-frame boundary). The manual mutation falsifier (swapping the
+   lo/hi roles in ``_absorber_boundary_for_axis`` reds 22 tests, the
+   NON-firing controls) is recorded in the pre-merge file's git history.
+2. **``_validate_cfg_geometry_in_cpml`` reporting contract (issue #660)** —
+   was ``test_preflight_geometry_absorber_aggregation.py``. Pre-#660 the
+   check emitted one warning per geometry entry (61 warnings, 56
+   byte-identical on the reported CAD import) and discarded the overshoot
+   distance. Pinned: aggregation (one warning per crossed AXIS naming the
+   entry count and the worst offender), the distance / crossed side /
+   boundary coordinate / offending bbox face in the message, ``loc`` carrying
+   every entry's index, face and overshoot; plus the two controls (a single
+   overshoot still warns, interior geometry stays silent). The
+   ``code="geometry_in_absorber"`` slug and the ``"extends into CPML region
+   along <axis>-axis"`` substring other tests match on are unchanged.
+3. **Dispersive pole material touching a CPML face (issues #636/#808)** —
+   was ``test_preflight_dispersive_pole_at_absorber.py``. The shipped pad
+   extension replicates only the statics (#627a); pole masks are not
+   replicated (#636 factorial measured naive re-addition divergent, Drude
+   divergent even under the CFS alpha rule); since #808 a pole-carrying
+   column's statics are not promoted by the hi-face fallback either. The
+   advisory ``dispersive_pole_at_absorber_face`` flags EVERY pole family
+   touching a face that carries an absorber (#808 broadened it from
+   {high-Q in-band Lorentz, Drude}: the quiet Debye configuration silently
+   moved a committed recovery observable past its gate). Inset structures
+   and non-absorbing boundaries stay quiet. Module constants of this
+   section carry a ``DP_`` prefix (``DP_DX``, ``_dp_sim``) to coexist with
+   section 2's ``DX`` / ``_sim``; values are unchanged.
 
-Post-review additions (adversarial review of PR #542 caught two real
-findings the first pass missed):
-
-- **H1 / review finding M3** — dropping the interior-frame comparison
-  from consumer 1 (``_validate_cfg_absorber_placement``) also silently
-  dropped the only proximity coverage the pre-#500 (wrong-reason) code
-  happened to provide: a probe genuinely INSIDE the domain but right at
-  its edge used to warn. Two regressions surfaced this as load-bearing —
-  ``tests/unit/preflight/test_run_preflight_parity.py`` (its only warning trigger was a
-  probe one grid cell inside the domain) and
-  ``tests/unit/sparams/test_msl_internal_probe_advisories.py::
-  test_user_probe_advisories_and_332_still_fire`` (the #470 regression
-  lock's "user probe near the x-CPML" case, one cell inside a pad=8
-  grid). The fix is a distinct, honestly-scoped ``absorber_proximity``
-  advisory (:func:`_coord_near_absorber` /
-  ``_ABSORBER_PROXIMITY_CELLS``) for a coordinate that is interior but
-  within 2 cells of an active absorber boundary — see both consumers'
-  fire/non-fire pairs in section 2 below.
-- **MH2 / review finding M5** — consumer 5 (``_check_msl_port_geometry``
-  checks 1 & 3) turned out NOT to be a plain instance of the #500 bug:
-  dropping ``cpml_thick_lo``/``cpml_thick_hi`` from it also dropped an
-  EXPLICIT, separately-calibrated buffer the 2026-05-04 MSL geometry rule
-  requires on top of the exterior-frame domain edge (`docs/agent-memory/
-  rfx-known-issues.md`, "Status 2026-05-04 (CALIBRATED, OpenEMS-class)":
-  ``LY >= W + 2*(2*h_sub + 8*dx)``). The buffer is restored explicitly,
-  reads ``cpml_layers*dx`` off the same ``cpml_thick_{lo,hi}`` inputs so
-  it scales with the configured ``cpml_layers`` rather than the ledger's
-  literal "8", and is added ON TOP OF (not instead of)
-  ``_absorber_boundary_for_axis``'s exterior-frame boundary — see section
-  6's ledger-reproduction tests.
-
-Non-uniform lane (issue #500 "Not verified" item): ``_validate_simulation_config``
-(``rfx/api/_preflight.py``) calls all five consumers unconditionally —
-there is no ``dz_profile`` gate on the whole check family, unlike the
-unrelated #494/#502 two-port absorber advisory (a different, self-contained
-check in ``compute_waveguide_s_matrix`` that PR #502 found silent on the NU
-lane). ``_validate_cfg_compute_cpml_thickness`` already sums the leading
-``dz_profile`` entries for the z-axis thickness, and
-``make_nonuniform_grid`` pads CPML exterior to the ``dz_profile``-covered
-physical domain exactly like the uniform ``Grid`` — proved below — so the
-same frame and the same fix apply on both lanes; there is no separate NU
-code path to special-case.
-
-Mutation falsifier (manual, recorded here rather than left as a permanent
-CI assertion; re-run after the H1/MH2 additions above, and again after
-#510's PR #551 review round): with ``_absorber_boundary_for_axis`` locally
-edited so ``lo_boundary = domain_extent if ct_lo > 0 else None`` /
-``hi_boundary = 0.0 if ct_hi > 0 else None`` (swapping the lo/hi roles),
-**22** tests now go RED (was 16 at the H1/MH2 baseline, 19 after #510's
-first pass added 3, 22 after the #551 review round's BLOCKING 1/2 fixes
-added 3 more) — correctly the NON-FIRING controls plus the helper's own
-unit test, not the firing tests (an earlier draft of this docstring had
-this inverted: the firing tests stay green because the swap makes the
-membership/clearance tests over-inclusive on an already-interior
-coordinate, not blind to a genuinely exterior one). Caveat from the #551
-review: this count is SELECTION-dependent — pytest's warning-registry
-dedup (``warnings.warn`` only re-emits an identical (message, category,
-module, lineno) tuple once per interpreter session by default) can leak
-suppression across tests depending on run order and what else shares the
-session, so the enumerated set below reproduces reliably only when these
-exact 6 files are selected together, in this order, in a fresh process —
-not as a subset, not interleaved with unrelated absorber-adjacent tests,
-and not as a universal invariant of the count "22" itself. Re-run the
-selection below (not a broader or narrower one) to reproduce it.
-
-In this file (10, unchanged by #510):
-``test_absorber_boundary_helper_matches_ground_truth``,
-``test_absorber_placement_silent_on_domain_centre_probe``,
-``test_absorber_placement_proximity_advisory_fires_within_2_cells``,
-``test_absorber_placement_silent_past_the_proximity_margin``,
-``test_geometry_in_cpml_silent_when_entirely_interior``,
-``test_ntff_absorber_overlap_silent_when_box_interior``,
-``test_waveguide_reference_plane_silent_on_wr90_ports_in_valid_domain``,
-``test_waveguide_reference_plane_silent_at_mixin_level_near_edge``,
-``test_msl_x_cpml_clearance_silent_once_past_buffer_plus_recommended``,
-``test_msl_y_clearance_silent_on_ledger_calibrated_ly`` (NOTE:
-``test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism``,
-added alongside these for #510 nit 3, deliberately does NOT count toward
-this red-set — it is a documentation pin on the helper's OWN one-cell
-conservatism, unaffected by the lo/hi swap in the coordinate range this
-fixture happens to probe).
-
-Outside this file (12, was 6 before #510 — confirming M5 that the
-mutation now also reaches the MSL/proximity paths, and #510 that it
-reaches the new absorber-span checks and the BLOCKING-1 walk-down search):
-``test_msl_port_preflight.py::test_clearance_silent_on_wide_ly``,
-``test_msl_port_preflight.py::test_well_setup_msl_port_zero_warnings``,
-``test_msl_port_preflight.py::
-test_issue510_reproduction_fires_both_new_warnings``,
-``test_msl_port_preflight.py::
-test_issue510_clean_geometry_neither_new_warning_fires``,
-``test_msl_port_preflight.py::
-test_issue510_absorber_span_falsifier_compliant_offset_silences_it``,
-``test_msl_port_preflight.py::
-test_issue510_absorber_offset_interval_endpoint_does_not_warn``,
-``test_msl_port_preflight.py::
-test_issue510_absorber_offset_max_endpoint_verified_across_geometries``,
-``test_msl_port_preflight.py::
-test_issue510_absorber_span_names_real_snapped_coordinate_off_grid_feed``,
-``test_msl_internal_probe_advisories.py::
-test_user_probe_advisories_and_332_still_fire``,
-``test_preflight_structured_and_guards.py::
-test_absorber_overlap_no_false_positive_on_2d_collapsed_z``,
-``test_preflight_false_positives.py::
-test_full_domain_dielectric_silent_on_cpml_extension``,
-``test_farfield_asymmetric_cpml.py::
-test_ntff_box_outside_cpml_has_no_absorber_overlap``. Reverted; see the
-PR body / rfx-known-issues.md #500 and #510 entries for the recorded run.
-(``test_issue510_degenerate_ladder_warns_on_clamped_probes``,
-``test_issue510_feed_crossing_names_lumped_port_cleanly``, and
-``test_issue510_feed_crossing_falsifier_separated_ports_silences_it``
-stay green under this mutation, correctly — the degenerate-ladder and
-feed-crossing checks do not route through
-``_absorber_boundary_for_axis`` at all.)
+Every assertion, tolerance, fixture value and parametrisation of the
+absorbed files is kept verbatim.
 """
 
 from __future__ import annotations
@@ -157,7 +71,13 @@ from rfx.api._preflight import (
 )
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.grid import Grid
+from rfx.materials.debye import DebyePole
+from rfx.materials.lorentz import LorentzPole, drude_pole
 
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_absorber.py
+# ===========================================================================
 
 # --------------------------------------------------------------------- #
 # 1. Ground truth: CPML pads EXTERIOR to the requested domain.
@@ -586,3 +506,369 @@ def test_msl_clearance_buffer_scales_with_cpml_layers_not_hardcoded_8():
     hits = [m for m in issues if "x-CPML" in m]
     assert hits, f"doubled cpml_layers must double the buffer and warn; got {issues!r}"
     assert any("1.6mm calibrated CPML buffer" in m for m in hits), hits
+
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_absorber.py
+# ===========================================================================
+
+LX, LY, LZ = 0.030, 0.030, 0.004
+DX = 0.5e-3
+CODE = "geometry_in_absorber"
+
+
+def _sim() -> Simulation:
+    sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
+                     cpml_layers=8, boundary="cpml")
+    sim.add_material("metal", eps_r=1.0)
+    sim.add_material("ro4003c", eps_r=3.55)
+    return sim
+
+
+def _absorber_issues(sim: Simulation) -> list:
+    """Every ``geometry_in_absorber`` finding, as structured issues."""
+    sim.add_source((LX / 2, LY / 2, LZ / 2), "ez")
+    return [i for i in sim.preflight(strict=False)
+            if getattr(i, "code", None) == CODE]
+
+
+def _x_overshoot_box(overshoot: float, y0: float = 0.001) -> Box:
+    """A box whose hi-x face sits ``overshoot`` past the x-hi absorber
+    boundary (which is at ``LX``, the requested domain extent)."""
+    hi = LX + overshoot
+    return Box((hi - 0.002, y0, 0.001), (hi, y0 + 0.002, 0.002))
+
+
+# --------------------------------------------------------------------- #
+# 1. Aggregation: N entries -> one warning per axis.
+# --------------------------------------------------------------------- #
+
+def test_issue660_sixty_one_entries_collapse_to_one_warning():
+    """The reported CAD-import shape: 61 solids displaced past x-hi, 56 of
+    them sharing the material name 'metal'. Pre-#660 this emitted 61
+    warnings (56 byte-identical); it must now emit exactly one."""
+    sim = _sim()
+    for i in range(56):
+        sim.add(_x_overshoot_box(0.013 + i * 1e-5), material="metal")
+    for i in range(5):
+        sim.add(_x_overshoot_box(0.013 + i * 1e-5, y0=0.005),
+                material="ro4003c")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1, (
+        f"61 crossing entries on one axis must aggregate to ONE warning; "
+        f"got {len(issues)}:\n" + "\n".join(str(i) for i in issues[:5])
+    )
+    msg = str(issues[0])
+    assert "61 geometry entries cross the x-axis absorber" in msg, (
+        f"the aggregate must name the entry count; got: {msg}"
+    )
+
+
+def test_issue660_worst_offender_is_the_deepest_not_the_first():
+    """The one entry the aggregate names must be the deepest crossing —
+    that is the one that distinguishes a rounding artefact from a
+    misplaced model. Entry #1 here overshoots 20x further than #0."""
+    sim = _sim()
+    sim.add(_x_overshoot_box(0.0005), material="metal")          # #0
+    sim.add(_x_overshoot_box(0.011, y0=0.005), material="metal")  # #1
+    sim.add(_x_overshoot_box(0.001, y0=0.009), material="metal")  # #2
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1, f"expected one aggregated warning, got {issues!r}"
+    msg = str(issues[0])
+    assert "geometry entry #1" in msg, (
+        f"the deepest crossing (#1, 11mm) must be the one named; got: {msg}"
+    )
+    assert "11mm past" in msg, f"worst overshoot must be quoted; got: {msg}"
+    assert "overshoot 500µm to 11mm" in msg, (
+        f"the aggregate must give the overshoot RANGE so a uniform "
+        f"displacement is distinguishable from a scatter; got: {msg}"
+    )
+
+
+def test_issue660_loc_carries_per_entry_index_face_and_overshoot():
+    """Per-entry detail moves to the structured finding, not to N warning
+    lines. ``loc`` must therefore carry more than the count: every crossing
+    entry's index, crossed face and its own overshoot — so nothing a
+    pre-#660 reader could have learned from N lines is lost."""
+    sim = _sim()
+    sim.add(_x_overshoot_box(0.002), material="metal")
+    sim.add(_x_overshoot_box(0.011, y0=0.005), material="metal")
+    sim.add(Box((0.010, 0.010, -0.0008), (0.012, 0.012, 0.001)),
+            material="ro4003c")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 2, f"expected one warning per axis, got {issues!r}"
+    by_axis = {("x" if " x-axis" in str(i) else "z"): i for i in issues}
+    assert by_axis["x"].loc == "geometry[#0 hi 2mm,#1 hi 11mm]", (
+        f"loc must give each entry's index, face and overshoot; "
+        f"got {by_axis['x'].loc!r}"
+    )
+    assert by_axis["z"].loc == "geometry[#2 lo 800µm]", (
+        f"lo-side loc must record the lo face; got {by_axis['z'].loc!r}"
+    )
+
+
+def test_issue660_separate_axes_get_separate_warnings():
+    """Aggregation is per-axis, so an x crossing and a z crossing stay
+    distinguishable — ``test_periodic_cpml.py`` matches on the axis token."""
+    sim = _sim()
+    sim.add(_x_overshoot_box(0.002), material="metal")
+    # Straddles z=0: c1[2] is genuinely in the exterior z-lo absorber.
+    sim.add(Box((0.010, 0.010, -0.0008), (0.012, 0.012, 0.001)),
+            material="ro4003c")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 2, f"expected one warning per axis, got {issues!r}"
+    by_axis = {("x" if " x-axis" in str(i) else "z"): str(i) for i in issues}
+    assert set(by_axis) == {"x", "z"}, f"axes not separated: {issues!r}"
+    assert " z-axis" not in by_axis["x"] and " x-axis" not in by_axis["z"], (
+        f"each per-axis warning must name only its own axis: {issues!r}"
+    )
+
+
+# --------------------------------------------------------------------- #
+# 2. The distance.
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("overshoot,expected", [
+    (0.011, "11mm past the x-hi absorber boundary at 30mm"),
+    (0.0005, "500µm past the x-hi absorber boundary at 30mm"),
+])
+def test_issue660_message_states_overshoot_and_crossed_boundary(overshoot,
+                                                               expected):
+    """``c2[ax] - hi_b`` and ``hi_b`` are both in scope at the warn site;
+    both must be printed, in the repo's unit-adaptive form."""
+    sim = _sim()
+    sim.add(_x_overshoot_box(overshoot), material="metal")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1, f"expected exactly one warning, got {issues!r}"
+    msg = str(issues[0])
+    assert expected in msg, f"expected {expected!r} in message; got: {msg}"
+    assert "bbox hi face at" in msg, (
+        f"the offending bbox face coordinate must be printed; got: {msg}"
+    )
+
+
+def test_issue660_lo_side_crossing_names_the_lo_boundary():
+    """The lo-side branch reports ``lo_b - c1[ax]`` against the lo face."""
+    sim = _sim()
+    sim.add(Box((0.010, 0.010, -0.0008), (0.012, 0.012, 0.001)),
+            material="ro4003c")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1, f"expected exactly one warning, got {issues!r}"
+    msg = str(issues[0])
+    assert "800µm past the z-lo absorber boundary at 0mm" in msg, (
+        f"lo-side overshoot and boundary must be printed; got: {msg}"
+    )
+    assert "bbox lo face at -800µm" in msg, (
+        f"the negative bbox lo face must be printed; got: {msg}"
+    )
+
+
+# --------------------------------------------------------------------- #
+# 3. Controls — the check must not stop firing, and must not start.
+# --------------------------------------------------------------------- #
+
+def test_issue660_single_shape_overshoot_still_warns():
+    """One legitimately misplaced shape still draws exactly one warning,
+    and the aggregate clause is omitted when there is nothing to
+    aggregate."""
+    sim = _sim()
+    sim.add(_x_overshoot_box(0.011), material="metal")
+
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1, f"a single overshoot must still warn; got {issues!r}"
+    msg = str(issues[0])
+    assert "extends into CPML region along x-axis" in msg, (
+        f"the substring other test files match on must survive; got: {msg}"
+    )
+    assert "geometry entries cross" not in msg, (
+        f"no plural aggregate clause for a single entry; got: {msg}"
+    )
+    assert "issue #61" in msg, f"the physics explanation must survive; got: {msg}"
+
+
+def test_issue660_geometry_fully_inside_the_domain_stays_silent():
+    """Non-firing control. The absorber is padded EXTERIOR to the
+    requested domain (#500), so 61 boxes packed against the domain edges
+    are absorber-free and must produce zero warnings — an aggregation
+    change must not turn a silent case into a firing one."""
+    sim = _sim()
+    for i in range(61):
+        y0 = 0.001 + (i % 10) * 0.002
+        sim.add(Box((LX - 0.002, y0, 0.0), (LX, y0 + 0.001, LZ)),
+                material="metal")
+
+    issues = _absorber_issues(sim)
+    assert not issues, (
+        f"interior geometry must draw no absorber warning; got {issues!r}"
+    )
+
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_absorber.py
+# ===========================================================================
+
+DP_DX = 1e-3
+NA, NB, NZ = 20, 16, 10
+F0 = 3e9
+W0 = 2 * np.pi * F0
+
+
+def _dp_sim(boundary="cpml"):
+    return Simulation(freq_max=2.5 * F0, domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                      dx=DP_DX, boundary=boundary, cpml_layers=8)
+
+
+def _findings(sim):
+    report = sim.preflight()
+    return report.by_code("dispersive_pole_at_absorber_face")
+
+
+def _touching_box():
+    # touches x-lo, x-hi and y-lo; interior in z
+    return Box((0.0, 0.0, 3 * DP_DX), (NA * DP_DX, 8 * DP_DX, 7 * DP_DX))
+
+
+def _inset_box():
+    # >= 2 cells of vacuum before every face
+    return Box((3 * DP_DX, 3 * DP_DX, 3 * DP_DX), (10 * DP_DX, 8 * DP_DX, 7 * DP_DX))
+
+
+def test_high_q_lorentz_touching_face_warns():
+    sim = _dp_sim()
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(_touching_box(), material="slab")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    issue = found[0]
+    assert issue.severity == "warning"
+    assert "Q=60" in str(issue)
+    assert "x-lo" in issue.loc and "y-lo" in issue.loc
+    assert "#636" in str(issue)
+
+
+def test_drude_touching_face_warns():
+    sim = _dp_sim()
+    sim.add_material("metalish", eps_r=1.0,
+                     lorentz_poles=[drude_pole(omega_p=W0, gamma=W0 / 100.0)])
+    sim.add(_touching_box(), material="metalish")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    assert "Drude" in str(found[0])
+
+
+def test_inset_structure_stays_quiet():
+    sim = _dp_sim()
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(_inset_box(), material="slab")
+    assert _findings(sim) == []
+
+
+def test_low_q_lorentz_touching_face_warns():
+    """Inverted from stays-quiet by #808 (module docstring): the
+    statics-without-pole pad state is a property of every pole family."""
+    sim = _dp_sim()
+    sim.add_material("lossy_pole", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 4.0,
+                                                kappa=3.0 * W0 ** 2)])  # Q=2
+    sim.add(_touching_box(), material="lossy_pole")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    assert "Q=2" in str(found[0])
+    assert "#808" in str(found[0])
+
+
+def test_out_of_band_high_q_lorentz_touching_face_warns():
+    """Inverted from stays-quiet by #808: out-of-band only removes the
+    resonance-sharp mismatch, not the undeclared pad material."""
+    sim = _dp_sim()
+    w_hi = 2 * np.pi * 40e9  # far above 1.5 * 2*pi*freq_max (7.5e9 band)
+    sim.add_material("uv_pole", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=w_hi,
+                                                delta=w_hi / 120.0,
+                                                kappa=0.5 * w_hi ** 2)])
+    sim.add(_touching_box(), material="uv_pole")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    assert "out-of-band" in str(found[0])
+
+
+def test_debye_touching_face_warns():
+    """Inverted from stays-quiet by #808 — the #808 fixture IS a Debye
+    face-toucher, and the regression it took (recovery 11% -> 32% error
+    when the pad surround changed under it) is exactly what the original
+    "warning on every lossy PCB substrate would be noise" scoping said
+    could not matter. Written rationale:
+    docs/design_notes/issue808_debye_pad_predeclaration.md."""
+    sim = _dp_sim()
+    sim.add_material("fr4ish", eps_r=4.0,
+                     debye_poles=[DebyePole(delta_eps=0.4, tau=1e-11)])
+    sim.add(_touching_box(), material="fr4ish")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    issue = found[0]
+    assert issue.severity == "warning"
+    assert "Debye" in str(issue)
+    assert "#808" in str(issue)
+    # exact-touch branch (this box ends AT x-hi): the background-pad
+    # wording is the truthful one and must stay
+    assert "the pad stays background" in str(issue)
+    assert "drawn PAST the domain" not in str(issue)
+    # the resonance-risk (#636 divergence-sharp) clause must NOT claim
+    # this family is in the divergence class
+    assert "divergence-risk class" not in str(issue)
+
+
+def test_overdrawn_hi_face_names_the_realized_pad_truthfully():
+    """A dispersive box drawn PAST a hi face rasterizes its own statics —
+    and pole cells up to the overdraw depth — into the absorber (measured
+    2026-09-01: the whole hi pad reads eps_r 4.0 and the first overdraw
+    layers carry the pole mask). The advisory must say that, not the
+    exact-touch branch's 'the pad stays background'."""
+    sim = _dp_sim()
+    sim.add_material("fr4ish", eps_r=4.0,
+                     debye_poles=[DebyePole(delta_eps=0.4, tau=1e-11)])
+    # drawn 3 cells PAST x-hi; clear of every other face
+    sim.add(Box((10 * DP_DX, 3 * DP_DX, 3 * DP_DX),
+                ((NA + 3) * DP_DX, 8 * DP_DX, 7 * DP_DX)), material="fr4ish")
+    found = _findings(sim)
+    assert len(found) == 1, found
+    msg = str(found[0])
+    assert "x-hi" in found[0].loc
+    assert "drawn PAST the domain" in msg, msg
+    assert "the pad carries the material's statics" in msg, msg
+    assert "the pad stays background" not in msg, (
+        "overdrawn hi face still claims a background pad — the realized "
+        "pad there carries the statics and pole cells: " + msg)
+
+
+def test_pec_boundary_stays_quiet():
+    sim = _dp_sim(boundary="pec")
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(_touching_box(), material="slab")
+    assert _findings(sim) == []
+
+
+def test_two_touching_entries_aggregate_into_one_finding():
+    sim = _dp_sim()
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(Box((0.0, 0.0, 3 * DP_DX), (5 * DP_DX, 8 * DP_DX, 7 * DP_DX)),
+            material="slab")  # x-lo
+    sim.add(Box((15 * DP_DX, 0.0, 3 * DP_DX), (NA * DP_DX, 8 * DP_DX, 7 * DP_DX)),
+            material="slab")  # x-hi
+    found = _findings(sim)
+    assert len(found) == 1, found
+    assert "#0" in found[0].loc and "#1" in found[0].loc

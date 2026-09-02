@@ -78,7 +78,7 @@ def _absorber_boundary_for_axis(
     """The single canonical frame for "is/how-far a coordinate from the
     CPML/UPML absorber" on one axis (issue #500).
 
-    Ground truth (proved in ``tests/unit/preflight/test_preflight_absorber_frame.py`` for
+    Ground truth (proved in ``tests/unit/preflight/test_preflight_absorber.py`` for
     both the uniform (``rfx/grid.py`` ``Grid.__init__``: ``nx =
     ceil(domain/dx) + 1 + pad_lo + pad_hi``) and non-uniform
     (``rfx/nonuniform.py`` ``make_nonuniform_grid``: ``dz_profile`` covers
@@ -185,7 +185,7 @@ def _coord_near_absorber(
 # The gate values are module-level on purpose: the falsification tests
 # monkeypatch them in BOTH directions (loosen -> firing fixture goes
 # silent; tighten -> silent fixture fires) to prove each gate is
-# load-bearing (tests/unit/preflight/test_preflight_campaign_statics*.py).
+# load-bearing (tests/unit/preflight/test_preflight_rasterization*.py).
 # --------------------------------------------------------------------------
 
 # Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
@@ -6941,7 +6941,7 @@ class _PreflightMixin:
             # directly (_coord_in_absorber / _coord_near_absorber), NOT
             # the buffered x_abs_lo/x_abs_hi built for check 3 above, so
             # the lo/hi-swap mutation falsifier
-            # (tests/unit/preflight/test_preflight_absorber_frame.py module docstring)
+            # (tests/unit/preflight/test_preflight_absorber.py module docstring)
             # covers this comparison the same way it covers every other
             # consumer of those two helpers.
             #

@@ -127,7 +127,7 @@ recorded in the log. Two arms:
 
 - **main** — tree physics as-is;
 - **retired** — `rfx.api._compile.resample_sheet_node_materials` replaced by the
-  identity, the same bypass `tests/unit/preflight/test_preflight_campaign_statics.py::_bypass_resample`
+  identity, the same bypass `tests/unit/preflight/test_preflight_rasterization.py::_bypass_resample`
   uses; #782 established this reproduces the pre-#702 tree digit for digit.
 
 Both arms dump the full 81-bin |S11| / Re(Zin) / Im(Zin) trace (R5), every
@@ -203,7 +203,7 @@ Recon extras (same defect class, not in the issue):
   are not reproducible on main; the cross-solver conclusions about FEED-MODEL
   dominance are unaffected as history.
 
-Not touched (checked, not surfaces): `tests/unit/preflight/test_preflight_structured_and_guards.py:400`
+Not touched (checked, not surfaces): `tests/unit/preflight/test_preflight_guards.py:400`
 (9.322e9 formatter literal, coincidence); `docs/agent/recipe-design-loop.mdx:59`
 (9.21e-5 AD error); the companion harminv gate's own 9.21/10.0239 mentions (they
 narrate the retirement — correct usage).

@@ -1,28 +1,54 @@
-"""Issue #703 campaign statics preflight checks.
+"""Preflight — the rasterization / statics stage: campaign statics, graded-mesh
+fine-band displacement, thin metal on a non-uniform axis.
 
-Four advisory checks derived from a month-long external cross-validation
-(issue #703): congruent-conductor rasterization parity, node-thin sheet
-live-edge material consistency, sheet-bounded cavity electrical-thickness
-report, and the off-lattice design-edge census.
+One file per preflight stage (tier 3b of the 2026-09 test-corpus
+reorganisation, see ``docs/design_notes/20260903_test_reorg_tier3b_consolidation.md``).
+Sections, each formerly its own file:
 
-Every fixture here is SYNTHETIC and public — the motivating incidents come
-from a private design and none of its dimensions appear here; the issue
-text is the spec.
+1. **Issue #703 campaign statics checks** — was
+   ``test_preflight_campaign_statics.py``. Four advisory checks derived from
+   a month-long external cross-validation: congruent-conductor rasterization
+   parity, node-thin sheet live-edge material consistency, sheet-bounded
+   cavity electrical-thickness report, and the off-lattice design-edge
+   census. Every fixture is SYNTHETIC and public — the motivating incidents
+   come from a private design and none of its dimensions appear here. Every
+   gate is mutation-falsified in BOTH directions inside the tests
+   (monkeypatching the module-level gate constants of ``rfx.api._preflight``):
+   loosening the gate must silence the firing fixture, tightening it must
+   make the silent fixture fire; the observed results are recorded verbatim
+   in each test's docstring.
+2. **Boxes displaced from a graded-mesh fine band** — was
+   ``test_preflight_graded_rasterization.py``: the advisory fires with the
+   ACTUAL and implied z-cell counts, is silent for a box pinned to the real
+   fine band and on a uniform-dz simulation; and — because the validator
+   MODELS the rasterizer — its predicted count must agree with the
+   production rasterize path in both directions (#562 F2, #568 item 1).
+3. **Issue #48 thin PEC on a NU axis** — was ``test_preflight_thin_metal_nu.py``:
+   preflight must warn when a thin PEC sits on a non-uniform axis without
+   symmetric neighbouring cells (Meep/OpenEMS convention), and stay silent
+   on a uniform profile.
 
-Every gate is mutation-falsified in BOTH directions inside the tests
-(monkeypatching the module-level gate constants of ``rfx.api._preflight``):
-loosening the gate must silence the firing fixture, tightening it must make
-the silent fixture fire. The observed results are recorded verbatim in each
-test's docstring so a reader can tell a live gate from a decorative one.
+Every assertion, tolerance, fixture value and parametrisation of the
+absorbed files is kept verbatim (the identical ``_has`` helper is defined
+once).
 """
+
+from __future__ import annotations
+
+import math
+import warnings as _w
 
 import numpy as np
 import pytest
 
 import rfx.api._compile as _compile
 import rfx.api._preflight as _pf
-from rfx.api import Simulation
-from rfx.geometry.csg import Box
+from rfx import Box, Simulation
+
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_rasterization.py
+# ===========================================================================
 
 MM = 1e-3
 
@@ -712,3 +738,236 @@ class TestWiring:
         rep2 = _cavity_sim(True).preflight()
         assert all(h.severity == "warning"
                    for h in rep2.by_code(CAVITY_CODE))
+
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_rasterization.py
+# ===========================================================================
+
+def _issues(sim):
+    return sim.preflight()
+
+
+def _has(issues, substring):
+    return any(substring in issue for issue in issues)
+
+
+def _graded_sim(z_lo: float, z_hi: float) -> Simulation:
+    dz = np.array([1.0e-3, 1.0e-3] + [0.25e-3] * 6 + [1.0e-3] * 2)
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(20e-3, 20e-3, float(np.sum(dz))),
+        dx=1e-3,
+        dz_profile=dz,
+        cpml_layers=2,
+    )
+    sim.add_material("substrate", eps_r=3.5)
+    sim.add(Box((5e-3, 5e-3, z_lo), (15e-3, 15e-3, z_hi)),
+            material="substrate")
+    sim.add_source((10e-3, 10e-3, 1e-3), "ez")
+    return sim
+
+
+def test_shifted_box_warns_with_actual_and_implied_counts():
+    sim = _graded_sim(0.6e-3, 2.1e-3)
+
+    issues = _issues(sim)
+
+    # 2, not 1: the advisory reports what the RUN realizes, and the run puts
+    # this box on the nodes at z = 1.0 and 2.0 mm (measured on the production
+    # rasterize path). The former "1" came from the validator modelling the
+    # rasterizer with cell centres — of which exactly one, z = 1.5 mm, fell in
+    # the span. #562 made coordinates nodes and this validator now calls
+    # Box.mask_on_coords instead of imitating it, so the number is the true
+    # one. The ADVISORY still fires, which is what this test is about: 2 is
+    # still below ceil(0.5 * 6.0) = 3.
+    assert _has(issues, "rasterizes to 2 z cells (implied 6.0)"), issues
+    assert _has(issues, "smooth_grading transition cells may have shifted"), issues
+
+
+def test_box_pinned_to_actual_fine_band_is_silent():
+    sim = _graded_sim(2.0e-3, 3.5e-3)
+
+    assert not _has(_issues(sim), "smooth_grading transition cells may have shifted")
+
+
+def test_uniform_dz_simulation_skips_check():
+    sim = Simulation(
+        freq_max=10e9,
+        domain=(20e-3, 20e-3, 6e-3),
+        dx=1e-3,
+        cpml_layers=2,
+    )
+    sim.add_material("substrate", eps_r=3.5)
+    sim.add(Box((5e-3, 5e-3, 0.5e-3), (15e-3, 15e-3, 2.0e-3)),
+            material="substrate")
+    sim.add_source((10e-3, 10e-3, 1e-3), "ez")
+
+    assert not _has(_issues(sim), "smooth_grading transition cells may have shifted")
+
+
+# --------------------------------------------------------------------------- #
+# The validator MODELS the rasterizer, so it has to agree with it (#562 F2).
+# --------------------------------------------------------------------------- #
+_AGREEMENT_CASES = [
+    # (z_lo_mm, z_hi_mm) — the 4.50-5.50 case is the reviewer's: it straddles a
+    # grading transition, is classified THIN by Box.mask_on_coords (extent ==
+    # one local cell) and so realizes ONE plane, and the hand-rolled
+    # centre-model counted three and stayed silent where it should warn.
+    (4.50, 5.50),
+    (5.00, 6.00),
+    (5.00, 7.00),
+    (4.00, 5.00),
+    (5.25, 6.75),
+    (0.00, 5.00),
+]
+
+
+def _real_rasterized_z_count(sim) -> int:
+    """The z-cell count the RUN actually produces, from the production path."""
+    import numpy as _np
+    from rfx.geometry.rasterize_grid import (rasterize_geometry,
+                                             coords_from_nonuniform_grid)
+    grid = sim._build_nonuniform_grid()
+    coords = coords_from_nonuniform_grid(grid)
+    out = rasterize_geometry(sim._geometry, sim._resolve_material, coords,
+                             pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
+    eps = _np.asarray(getattr(out[0], "eps_r", out[0]))
+    # the substrate is the only non-background material in these fixtures
+    return int(_np.count_nonzero((eps > 1.0 + 1e-6).max(axis=(0, 1))))
+
+
+def _validator_counts(sim):
+    """(reported cell count, reported `implied`) or (None, None) when silent."""
+    for issue in _issues(sim):
+        if "rasterizes to" in issue:
+            count = int(issue.split("rasterizes to")[1].split()[0])
+            implied = float(issue.split("(implied")[1].split(")")[0])
+            return count, implied
+    return None, None
+
+
+def _implied_cells(dz, z_lo, z_hi):
+    """The validator's own `implied` figure: span thickness over the finest
+    cell in a +-5-cell neighbourhood of the span (the #325 shifted-band
+    recipe). Duplicated here on purpose so the SILENT direction can be
+    justified rather than skipped; it is cross-checked against the
+    validator's reported value on every case that fires.
+    """
+    edges = np.concatenate(([0.0], np.cumsum(dz)))
+    local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
+    idx = np.flatnonzero(local)
+    lo_i = max(0, int(idx[0]) - 5)
+    hi_i = min(dz.size, int(idx[-1]) + 6)
+    return (z_hi - z_lo) / float(np.min(dz[lo_i:hi_i]))
+
+
+
+
+@pytest.mark.parametrize("z_lo_mm,z_hi_mm", _AGREEMENT_CASES,
+                         ids=[f"{a:.2f}-{b:.2f}mm" for a, b in _AGREEMENT_CASES])
+def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
+    """This advisory predicts what the rasterizer will do, and a prediction
+    that disagrees with the thing it predicts is worse than no advisory: it
+    reads as a clean bill of health.
+
+    Two separate ways the hand-rolled model was wrong before #562's review:
+    it sampled cell CENTRES where the rasterizer samples E-NODES, and it knew
+    nothing of the THIN-SHEET branch that snaps a box no thicker than its
+    local cell onto a single nearest node. The validator now calls
+    ``Box.mask_on_coords`` on node positions built by the same composition the
+    grid builder uses, so agreement is by construction rather than by a copy
+    that can drift — but only a test that runs both can say it stayed that way.
+    """
+    dz = np.array([1.0e-3] * 5 + [0.25e-3] * 8 + [1.0e-3] * 5)
+    sim = Simulation(freq_max=30e9, domain=(4e-3, 4e-3, float(np.sum(dz))),
+                     dx=1e-3, boundary="pec", dz_profile=dz)
+    sim.add_material("substrate", eps_r=4.0)
+    sim.add(Box((0.0, 0.0, z_lo_mm * 1e-3), (4e-3, 4e-3, z_hi_mm * 1e-3)),
+            material="substrate")
+    sim.add_source((2e-3, 2e-3, 1e-3), "ez")
+
+    real = _real_rasterized_z_count(sim)
+    predicted, implied = _validator_counts(sim)
+
+    # Both directions, because the SILENT one is the F2 failure mode. The
+    # first version of this test only asserted when the advisory fired, so
+    # four of six cases skipped the assertion entirely — and "validator quiet
+    # where it should warn" is exactly what F2 was (#568 item 1).
+    implied_local = _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3)
+    under_resolved = real < math.ceil(0.5 * implied_local)
+    # The validator ALSO requires `actual <= 4`. That cutoff is its policy, not
+    # this test's contract (#569 review, finding 4): hard-coding it here would
+    # red this test the day the advisory is widened. So assert the two directions
+    # the resolution condition settles, and stay silent about the band where the
+    # cutoff alone decides.
+    should_warn = under_resolved and real <= 4
+    if should_warn:
+        assert predicted is not None, (
+            f"advisory SILENT for z-span [{z_lo_mm}, {z_hi_mm}) mm, but the "
+            f"rasterizer realizes {real} cells against "
+            f"{_implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3):.1f} implied "
+            f"— that silence reads as a clean bill of health")
+        assert predicted == real, (
+            f"validator predicts {predicted} z cells, rasterizer realizes "
+            f"{real} for z-span [{z_lo_mm}, {z_hi_mm}) mm")
+        # cross-check this test's own `implied` formula against the validator's
+        assert implied == pytest.approx(implied_local, abs=0.05)
+    elif not under_resolved:
+        assert predicted is None, (
+            f"advisory fired for z-span [{z_lo_mm}, {z_hi_mm}) mm where the "
+            f"realized count {real} is not under-resolved against "
+            f"{implied_local:.1f} implied")
+
+    # and the reviewer's case must actually fire: 1 realized against 4 implied
+    if (z_lo_mm, z_hi_mm) == (4.50, 5.50):
+        assert real == 1, real
+        assert predicted == 1, predicted
+
+
+# ===========================================================================
+# formerly tests/unit/preflight/test_preflight_rasterization.py
+# ===========================================================================
+
+def _build(dz_profile):
+    h_sub = 1.5e-3
+    sim = Simulation(
+        freq_max=4e9, domain=(0.08, 0.075, 0), dx=1e-3,
+        dz_profile=dz_profile, cpml_layers=8,
+    )
+    sim.add_material("fr4", eps_r=4.3)
+    z_gnd_lo = 12e-3 - 0.25e-3
+    z_sub_lo = 12e-3
+    z_sub_hi = 12e-3 + h_sub
+    z_patch_lo = z_sub_hi
+    z_patch_hi = z_sub_hi + 0.25e-3
+    sim.add(Box((0.010, 0.010, z_gnd_lo), (0.070, 0.065, z_sub_lo)),
+            material="pec")
+    sim.add(Box((0.010, 0.010, z_sub_lo), (0.070, 0.065, z_sub_hi)),
+            material="fr4")
+    sim.add(Box((0.025, 0.018, z_patch_lo), (0.054, 0.057, z_patch_hi)),
+            material="pec")
+    return sim
+
+
+def test_asymmetric_metal_on_nu_triggers_warning():
+    # Raw profile with sharp 1mm → 0.25mm → 1mm transitions. Metal planes
+    # sit in cells with 4x larger neighbours — should warn.
+    dz = np.concatenate([np.full(12, 1e-3), np.full(6, 0.25e-3),
+                         np.full(25, 1e-3)])
+    sim = _build(dz)
+    issues = sim.preflight()
+    assert _has(issues, "issue #48"), (
+        f"expected issue #48 warning, got: {issues!r}"
+    )
+
+
+def test_symmetric_metal_on_nu_is_silent():
+    # All-uniform 0.25mm z profile. Metal cells have symmetric neighbours.
+    dz = np.full(60, 0.25e-3)
+    sim = _build(dz)
+    issues = sim.preflight()
+    assert not _has(issues, "issue #48"), (
+        f"uniform-dz profile triggered the asymmetric-metal warning; "
+        f"issues: {issues!r}"
+    )

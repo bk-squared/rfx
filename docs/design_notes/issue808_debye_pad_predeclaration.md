@@ -138,7 +138,7 @@ green. If either goes red, that is a STOP, not a gate edit.
    repro explicitly), `tests/unit/boundaries/test_cpml_pad_face_notch.py`,
    `tests/unit/runners/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity`,
    `tests/unit/nonuniform/test_nonuniform_uniform_end_to_end_reduction.py`,
-   `tests/unit/preflight/test_preflight_dispersive_pole_at_absorber.py`,
+   `tests/unit/preflight/test_preflight_absorber.py`,
    `tests/unit/preflight/test_preflight_advisory_emission_contract.py`, full
    `tests/unit/autodiff/test_differentiable_material_fit.py -m gpu`, ruff (repo profile).
 4. F4: revert probe + advisory quote.

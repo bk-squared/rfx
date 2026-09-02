@@ -153,7 +153,7 @@ CI-visible (red on this PR without a re-pin):
 11. `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py` (verify n_live).
 12. `tests/locks/test_refplane_port_waves.py` physics legs (verify; plane indices
     themselves are python arithmetic, safe).
-13. `tests/unit/preflight/test_preflight_campaign_statics.py` docstring-recorded node sets /
+13. `tests/unit/preflight/test_preflight_rasterization.py` docstring-recorded node sets /
     cell counts (verify).
 14. `tests/unit/materials/test_conductor_mask_accessor.py` (shares the thru fixture; verify).
 15. Box/csg docstrings (f32 double-rounding narrative → historical) and

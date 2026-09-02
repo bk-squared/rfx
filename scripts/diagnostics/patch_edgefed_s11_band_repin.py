@@ -5,7 +5,7 @@ Measures the two arms pre-declared in
 
   * ``main``    — today's tree physics;
   * ``retired`` — ``rfx.api._compile.resample_sheet_node_materials`` replaced by the
-    identity (the same bypass ``tests/unit/preflight/test_preflight_campaign_statics.py`` uses),
+    identity (the same bypass ``tests/unit/preflight/test_preflight_rasterization.py`` uses),
     which reproduces the pre-#702 tree digit for digit (issue #782).
 
 Config is EXACTLY the committed gate's (``tests/locks/test_patch_edgefed_s11_passivity.py``:
@@ -61,7 +61,7 @@ def run_arm(tag: str, bypass_resample: bool) -> dict:
     print(f"\n================ ARM {tag} (bypass_resample={bypass_resample}) "
           f"================", flush=True)
     if bypass_resample:
-        # Same bypass as tests/unit/preflight/test_preflight_campaign_statics.py::_bypass_resample:
+        # Same bypass as tests/unit/preflight/test_preflight_rasterization.py::_bypass_resample:
         # the assembly keeps node-sampled statics — the pre-#702 tree, digit for digit.
         _compile.resample_sheet_node_materials = (
             lambda geo, res, coords, eps, sig, **kw: (eps, sig))

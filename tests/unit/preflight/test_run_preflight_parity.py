@@ -18,7 +18,7 @@ def _sim_with_probe_in_cpml():
     # Probe placed past the domain edge, genuinely inside the (exterior-
     # padded) CPML => preflight flags absorber_overlap. Issue #500: CPML
     # pads EXTERIOR to the requested domain (see rfx-known-issues.md
-    # #500 / tests/unit/preflight/test_preflight_absorber_frame.py), so a probe merely
+    # #500 / tests/unit/preflight/test_preflight_absorber.py), so a probe merely
     # near an edge but still within [0, 0.02] no longer trips this check
     # (z=0.018 here used to false-fire under the pre-#500 interior-frame
     # bug this file doesn't otherwise care about — it only needs ANY one

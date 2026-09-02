@@ -43,10 +43,8 @@ jobs:
           FILES="tests/unit/sparams/test_sparam_passivity_guard.py
             tests/unit/api/test_result_finite_guard.py
             tests/unit/preflight/test_run_preflight_parity.py
-            tests/unit/preflight/test_preflight_structured_and_guards.py
+            tests/unit/preflight/test_preflight_guards.py
             tests/unit/preflight/test_auto_preflight.py
-            tests/unit/preflight/test_preflight_false_positives.py
-            tests/unit/preflight/test_preflight_physics_thresholds.py
             tests/unit/ports/test_port_preflight.py
             tests/unit/ports/test_msl_port_preflight.py
             tests/unit/preflight/test_inverse_design_preflight.py
