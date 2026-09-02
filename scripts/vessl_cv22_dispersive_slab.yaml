@@ -1,0 +1,132 @@
+name: rfx-cv22-dispersive-slab
+description: "cv22 dispersive-slab Fresnel (Debye/Lorentz/Drude) -- gap lane 1 of the crossval campaign. Meep leg for all three arms + two wrong-convention Meep falsifiers, then the rfx case (baseline rc captured), then every rfx-side falsifier (each MUST exit 1; rc captured per arm), then the gate test on the produced artifacts. CPU, remilab-c0. Stages the branch checkout from the read-only NFS mount to local disk first. Submit: vessl run create -f scripts/vessl_cv22_dispersive_slab.yaml"
+tags: [rfx, crossval, cv22, dispersive, meep, gap-lane-1]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  # Branch checkout on the NFS volume (read-only for the pod) and the output root.
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/gap1-dispersive-slab
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  # dash shell (no bashisms). The image ships conda at /opt/conda (openEMS
+  # lane); Meep is NOT in it -- it is installed below into a SEPARATE conda
+  # env (conda-forge pymeep, the only working distribution channel), so the
+  # image's own python (rfx + jax) and the Meep python never share a numpy.
+  echo "=== rfx cv22 dispersive slab: Meep leg + rfx case + falsifiers + gate test ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cv22-dispersive-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv22-dispersive-LATEST"
+
+  # -- 1. stage the checkout to local disk (NFS checkout is read-only for the pod) --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-cv22
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  git rev-parse HEAD > "$OUT/commit.txt" || echo unknown > "$OUT/commit.txt"
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES="$WORK/validation/crossval/_22_dispersive_results"
+  mkdir -p "$RES"
+
+  # -- 2. rfx environment (image python + CPU jax), as in vessl_crossval_external.yaml --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__)"
+
+  # -- 3. Meep environment: conda-forge pymeep in its own env --
+  CONDA=/opt/conda/bin/conda
+  if [ ! -x "$CONDA" ]; then
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    sh /tmp/miniconda.sh -b -p /opt/miniconda-cv22
+    CONDA=/opt/miniconda-cv22/bin/conda
+  fi
+  "$CONDA" create -y -q -n cv22meep --override-channels -c conda-forge python=3.11 pymeep numpy scipy
+  MEEP_PY="$(dirname "$CONDA")/../envs/cv22meep/bin/python"
+  test -x "$MEEP_PY" || MEEP_PY="$("$CONDA" run -n cv22meep which python)"
+  "$MEEP_PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
+
+  # -- 4. Meep leg: three arms, then the two pre-declared wrong-convention falsifiers --
+  # (the falsifier runs record precheck.passed=false and proceed by design)
+  set +e
+  for ARM in debye lorentz drude; do
+    "$MEEP_PY" scripts/crossval/meep_cv22_dispersive_slab.py --arm "$ARM" --out-dir "$RES" \
+      > "$OUT/meep_$ARM.log" 2>&1
+    rc=$?; echo "$rc" > "$OUT/meep_$ARM.rc"; tail -n 8 "$OUT/meep_$ARM.log" || true
+    echo "meep_${ARM}_rc=$rc"
+  done
+  for F in no_2pi gamma_half; do
+    "$MEEP_PY" scripts/crossval/meep_cv22_dispersive_slab.py --arm lorentz --falsifier "$F" --out-dir "$RES" \
+      > "$OUT/meep_lorentz__falsifier_$F.log" 2>&1
+    rc=$?; echo "$rc" > "$OUT/meep_lorentz__falsifier_$F.rc"; tail -n 6 "$OUT/meep_lorentz__falsifier_$F.log" || true
+    echo "meep_lorentz_falsifier_${F}_rc=$rc"
+  done
+  set -e
+  ls -la "$RES"
+
+  # -- 5. rfx case, baseline (expect 0 when all Meep JSONs exist and every gate passes) --
+  set +e
+  "$PY" validation/crossval/22_dispersive_slab_fresnel.py --out-dir "$RES" > "$OUT/rfx_baseline.log" 2>&1
+  base_rc=$?
+  set -e
+  echo "$base_rc" > "$OUT/rfx_baseline.rc"
+  tail -n 40 "$OUT/rfx_baseline.log" || true
+  echo "rfx_baseline_rc=$base_rc"
+
+  # -- 6. every falsifier arm (each MUST exit 1; rc captured per arm) --
+  fals_fail=0
+  for F in debye_tau_x2 debye_deps_zero lorentz_f0_x1p3 lorentz_deps_zero drude_fp_x1p3 drude_wp_zero meep_lorentz_no_2pi meep_lorentz_gamma_half; do
+    set +e
+    "$PY" validation/crossval/22_dispersive_slab_fresnel.py --falsifier "$F" --out-dir "$RES" --no-plots \
+      > "$OUT/rfx_falsifier_$F.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rfx_falsifier_$F.rc"
+    tail -n 4 "$OUT/rfx_falsifier_$F.log" || true
+    echo "falsifier_${F}_rc=$rc"
+    [ "$rc" -eq 1 ] || { echo "ERROR: falsifier $F exited $rc, expected 1 (gate does not resolve the defect)"; fals_fail=1; }
+  done
+
+  # -- 7. gate test on the produced artifacts --
+  set +e
+  "$PY" -m pytest -q tests/test_cv22_dispersive_slab_gates.py tests/test_cv22_dispersive_eps_mapping.py -rs \
+    > "$OUT/pytest_gates.log" 2>&1
+  gate_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_gates.rc"
+  tail -n 25 "$OUT/pytest_gates.log" || true
+  echo "gate_test_rc=$gate_rc"
+
+  # -- 8. hand the artifacts back (the NFS checkout is read-only; the orchestrator commits) --
+  cp -a "$RES" "$OUT/_22_dispersive_results"
+  cp "$RES"/*.png "$OUT/" 2>/dev/null || true
+  echo "=== verdict ==="
+  echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
+  echo "artifacts: $OUT/_22_dispersive_results (copy into validation/crossval/_22_dispersive_results/ and fill artifact_paths)"
+  fail=0
+  case "$base_rc" in
+    0) ;;
+    2) echo "WARNING: baseline exit 2 -- a Meep JSON is missing (Meep leg failed?)"; fail=1 ;;
+    *) echo "ERROR: baseline exit $base_rc"; fail=1 ;;
+  esac
+  [ "$fals_fail" -eq 0 ] || fail=1
+  [ "$gate_rc" -eq 0 ] || fail=1
+  exit "$fail"
