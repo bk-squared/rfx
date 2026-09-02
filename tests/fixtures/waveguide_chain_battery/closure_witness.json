@@ -1,0 +1,761 @@
+{
+ "schema": "rfx.waveguide_chain_battery_closure",
+ "schema_version": 1,
+ "plan": "docs/design_notes/v18_waveguide_s_chain_plan.md",
+ "contract": "docs/design_notes/chain_closure_contract.md",
+ "predeclaration": "docs/design_notes/waveguide_chain_battery_predeclaration.md",
+ "builder": "tests/_waveguide_chain_battery_fixture.py",
+ "test": "tests/test_waveguide_chain_battery_closure.py",
+ "readme": "tests/fixtures/waveguide_chain_battery/README.md",
+ "declaration": {
+  "gate_abs_diff": 0.02,
+  "gate_source": "plan WP3 Falsifier: interior-monitor closure and port closure agree within 0.02, the column-power tolerance",
+  "route_a": "1 - |S11|^2 - |S21|^2 from compute_waveguide_s_matrix(normalize='flux') on the two-port fixture, column 0 (left drive)",
+  "route_b": "[F_dev(guide_in) - F_dev(guide_out)] / F_ref(guide_in) from full-plane add_flux_monitor planes inside the guide, device run on the slab and reference run on the thru",
+  "monitor_x_m": {
+   "guide_in": 0.045720000000000004,
+   "guide_out": 0.0762
+  },
+  "monitor_coarse_cells": {
+   "guide_in": 18,
+   "guide_out": 30
+  },
+  "independence_scope": "independent in the PLANE and the aperture weighting only; both routes call rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect that scales every plane equally cancels in both ratios",
+  "settling_db_max": -40.0,
+  "non_vacuity_min_s11": 0.2
+ },
+ "rung": "coarse",
+ "dx_m": 0.00254,
+ "dut": "slab",
+ "reference_dut": "thru",
+ "num_periods": 40.0,
+ "band_centre_bin": 8,
+ "freqs_hz": [
+  8400000000.0,
+  8600000000.0,
+  8800000000.0,
+  9000000000.0,
+  9200000000.0,
+  9400000000.0,
+  9600000000.0,
+  9800000000.0,
+  10000000000.0,
+  10200000000.0,
+  10400000000.0,
+  10600000000.0,
+  10800000000.0,
+  11000000000.0,
+  11200000000.0,
+  11400000000.0,
+  11600000000.0
+ ],
+ "flux_lane": {
+  "dx_m": 0.00254,
+  "preflight": [
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on x: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on y: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on z: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "lossless_q",
+    "severity": "warning",
+    "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
+   }
+  ],
+  "warnings": [
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 8
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 56
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 8
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 16
+   }
+  ],
+  "settling_db": {
+   "left": -81.35290225482721,
+   "right": -79.5419498848021
+  },
+  "reference_planes_m": [
+   0.02032,
+   0.10160000000000001
+  ],
+  "s_params": {
+   "S11": [
+    [
+     -0.3344261646270752,
+     0.06282640993595123
+    ],
+    [
+     -0.2310258448123932,
+     0.3444070518016815
+    ],
+    [
+     -0.012185892090201378,
+     0.48866480588912964
+    ],
+    [
+     0.23783811926841736,
+     0.5082216858863831
+    ],
+    [
+     0.4751150608062744,
+     0.40345636010169983
+    ],
+    [
+     0.6430126428604126,
+     0.18334458768367767
+    ],
+    [
+     0.6884058713912964,
+     -0.1070074662566185
+    ],
+    [
+     0.5914444923400879,
+     -0.39914798736572266
+    ],
+    [
+     0.37022167444229126,
+     -0.6257367730140686
+    ],
+    [
+     0.06786974519491196,
+     -0.7384575605392456
+    ],
+    [
+     -0.26336148381233215,
+     -0.7089812159538269
+    ],
+    [
+     -0.5601397752761841,
+     -0.5257374048233032
+    ],
+    [
+     -0.7454589009284973,
+     -0.21062630414962769
+    ],
+    [
+     -0.7575293183326721,
+     0.16274750232696533
+    ],
+    [
+     -0.5921311974525452,
+     0.49167391657829285
+    ],
+    [
+     -0.30630257725715637,
+     0.6967291831970215
+    ],
+    [
+     0.01947406679391861,
+     0.7503350377082825
+    ]
+   ],
+   "S21": [
+    [
+     0.3751699924468994,
+     0.8622716069221497
+    ],
+    [
+     0.7738452553749084,
+     0.4786272346973419
+    ],
+    [
+     0.8719476461410522,
+     -0.029004143550992012
+    ],
+    [
+     0.6832300424575806,
+     -0.4672156870365143
+    ],
+    [
+     0.3284320831298828,
+     -0.7096843123435974
+    ],
+    [
+     -0.05392588675022125,
+     -0.7416177988052368
+    ],
+    [
+     -0.38056981563568115,
+     -0.6081270575523376
+    ],
+    [
+     -0.6050159931182861,
+     -0.3533150553703308
+    ],
+    [
+     -0.6858834028244019,
+     -0.030761882662773132
+    ],
+    [
+     -0.6089031100273132,
+     0.28163856267929077
+    ],
+    [
+     -0.40724462270736694,
+     0.5119825005531311
+    ],
+    [
+     -0.13942772150039673,
+     0.6248332262039185
+    ],
+    [
+     0.14031556248664856,
+     0.6166241765022278
+    ],
+    [
+     0.38916999101638794,
+     0.49821799993515015
+    ],
+    [
+     0.569902777671814,
+     0.2878125309944153
+    ],
+    [
+     0.6484546065330505,
+     0.016137389466166496
+    ],
+    [
+     0.6032477617263794,
+     -0.26965728402137756
+    ]
+   ],
+   "S12": [
+    [
+     0.37424618005752563,
+     0.8626827001571655
+    ],
+    [
+     0.7742962837219238,
+     0.477884978055954
+    ],
+    [
+     0.871802806854248,
+     -0.03318343311548233
+    ],
+    [
+     0.6832088232040405,
+     -0.4672434628009796
+    ],
+    [
+     0.3329983055591583,
+     -0.7075536251068115
+    ],
+    [
+     -0.04945128411054611,
+     -0.7419289350509644
+    ],
+    [
+     -0.37970685958862305,
+     -0.6086661219596863
+    ],
+    [
+     -0.6051082611083984,
+     -0.3531580865383148
+    ],
+    [
+     -0.6858299374580383,
+     -0.031919583678245544
+    ],
+    [
+     -0.6096393465995789,
+     0.28004318475723267
+    ],
+    [
+     -0.4074350595474243,
+     0.5118302702903748
+    ],
+    [
+     -0.13795988261699677,
+     0.6251596808433533
+    ],
+    [
+     0.141926571726799,
+     0.6162552833557129
+    ],
+    [
+     0.3896561563014984,
+     0.49783846735954285
+    ],
+    [
+     0.5698805451393127,
+     0.2878556251525879
+    ],
+    [
+     0.6484618782997131,
+     0.015872584655880928
+    ],
+    [
+     0.6029477715492249,
+     -0.2703248858451843
+    ]
+   ],
+   "S22": [
+    [
+     -0.15670806169509888,
+     0.3020259737968445
+    ],
+    [
+     0.0033901683054864407,
+     0.414691686630249
+    ],
+    [
+     0.23063792288303375,
+     0.43100327253341675
+    ],
+    [
+     0.469770222902298,
+     0.30684784054756165
+    ],
+    [
+     0.6212015151977539,
+     0.05127406865358353
+    ],
+    [
+     0.6170321106910706,
+     -0.25758442282676697
+    ],
+    [
+     0.45614731311798096,
+     -0.5265743136405945
+    ],
+    [
+     0.17791599035263062,
+     -0.6909968852996826
+    ],
+    [
+     -0.16651219129562378,
+     -0.7077277898788452
+    ],
+    [
+     -0.5032695531845093,
+     -0.5446594953536987
+    ],
+    [
+     -0.7254071235656738,
+     -0.21398542821407318
+    ],
+    [
+     -0.7440661787986755,
+     0.19113072752952576
+    ],
+    [
+     -0.557442843914032,
+     0.5378891825675964
+    ],
+    [
+     -0.24343006312847137,
+     0.7355833053588867
+    ],
+    [
+     0.10329454392194748,
+     0.7626903057098389
+    ],
+    [
+     0.40963390469551086,
+     0.6414310336112976
+    ],
+    [
+     0.6274070143699646,
+     0.4120354652404785
+    ]
+   ]
+  },
+  "wall_time_s": 9.798235654830933
+ },
+ "device_run": {
+  "dut": "slab",
+  "dx_m": 0.00254,
+  "n_steps": 713,
+  "grid_shape": [
+   83,
+   10,
+   5
+  ],
+  "cpml_layers": 17,
+  "preflight": [
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on x: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on y: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "mesh_resolution",
+    "severity": "warning",
+    "message": "dielectric 'diel' on z: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff."
+   },
+   {
+    "code": "lossless_q",
+    "severity": "warning",
+    "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
+   }
+  ],
+  "warnings": [
+   {
+    "message": "UserWarning: [run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'diel' on x: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'diel' on y: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'diel' on z: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+    "count": 1
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 2
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 14
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 2
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 4
+   }
+  ],
+  "settling_db": -86.65119440310346,
+  "flux": {
+   "guide_in": [
+    1.813799874812537e-24,
+    4.452738395724937e-24,
+    9.466315085434037e-24,
+    1.735508822071244e-23,
+    2.76846790382788e-23,
+    3.9418789365936855e-23,
+    5.0937537511025953e-23,
+    5.93213745068721e-23,
+    6.121600383104675e-23,
+    5.53626496034196e-23,
+    4.392131711212527e-23,
+    3.088514452874562e-23,
+    1.949320735189261e-23,
+    1.1102183833199902e-23,
+    5.683955420131347e-24,
+    2.593549831008699e-24,
+    1.0480886845009148e-24
+   ],
+   "guide_out": [
+    1.813865153052444e-24,
+    4.452368025529936e-24,
+    9.467012438474253e-24,
+    1.7354054812926602e-23,
+    2.768589703951646e-23,
+    3.9417757535872826e-23,
+    5.09381938432991e-23,
+    5.93213745068721e-23,
+    6.121550527095465e-23,
+    5.536362148005483e-23,
+    4.392028843750486e-23,
+    3.088607538461378e-23,
+    1.9492506843408773e-23,
+    1.1102585363400659e-23,
+    5.68372467831657e-24,
+    2.5936172786160952e-24,
+    1.0480910510836305e-24
+   ]
+  },
+  "flux_exact_f64": {
+   "guide_in": [
+    1.8138000848511446e-24,
+    4.452736958943222e-24,
+    9.466315306042321e-24,
+    1.7355087623357886e-23,
+    2.7684682675982695e-23,
+    3.9418789245233874e-23,
+    5.0937558590282786e-23,
+    5.932136780354798e-23,
+    6.121600532519441e-23,
+    5.536262948050072e-23,
+    4.3921311430212193e-23,
+    3.088515242840868e-23,
+    1.9493206159207394e-23,
+    1.1102179822546504e-23,
+    5.68395552740052e-24,
+    2.5935495060195442e-24,
+    1.0480887835553032e-24
+   ],
+   "guide_out": [
+    1.8138648326449602e-24,
+    4.452368245063189e-24,
+    9.46701282894926e-24,
+    1.735405498007643e-23,
+    2.7685897029520027e-23,
+    3.941774808872213e-23,
+    5.0938195220387596e-23,
+    5.932138479676987e-23,
+    6.121550022456001e-23,
+    5.536360638296916e-23,
+    4.3920282456043616e-23,
+    3.0886075487551403e-23,
+    1.9492507458058612e-23,
+    1.11025852451156e-23,
+    5.683724257667575e-24,
+    2.593617275870573e-24,
+    1.0480912823001749e-24
+   ]
+  },
+  "wall_time_s": 1.1601934432983398
+ },
+ "reference_run": {
+  "dut": "thru",
+  "dx_m": 0.00254,
+  "n_steps": 713,
+  "grid_shape": [
+   83,
+   10,
+   5
+  ],
+  "cpml_layers": 17,
+  "preflight": [],
+  "warnings": [
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in zeros is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 2
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 14
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype float64 requested in asarray is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 2
+   },
+   {
+    "message": "UserWarning: Explicitly requested dtype <class 'jax.numpy.complex128'> requested in astype is not available, and will be truncated to dtype complex64. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+    "count": 4
+   }
+  ],
+  "settling_db": -98.71837561723473,
+  "flux": {
+   "guide_in": [
+    2.0512558819692454e-24,
+    5.377729083055413e-24,
+    1.2438148175184273e-23,
+    2.5330741762926456e-23,
+    4.527405894784188e-23,
+    7.129226301295405e-23,
+    9.897555681148328e-23,
+    1.2084860605313388e-22,
+    1.2986298903685404e-22,
+    1.2300804020597312e-22,
+    1.0262321808278903e-22,
+    7.535840552814868e-23,
+    4.8741812601102926e-23,
+    2.777877121160994e-23,
+    1.3943793342438063e-23,
+    6.163988325011006e-24,
+    2.4005727599167458e-24
+   ],
+   "guide_out": [
+    2.0512533181713034e-24,
+    5.377710939254593e-24,
+    1.2438212861778501e-23,
+    2.5330599767963516e-23,
+    4.527420409824844e-23,
+    7.129206106456231e-23,
+    9.897575875987502e-23,
+    1.2084846721361456e-22,
+    1.2986324147234371e-22,
+    1.2300777514870897e-22,
+    1.0262338216585732e-22,
+    7.535829824306557e-23,
+    4.8741910419855174e-23,
+    2.7778755434391836e-23,
+    1.3943755477114613e-23,
+    6.164007257672731e-24,
+    2.4005556021920572e-24
+   ]
+  },
+  "flux_exact_f64": {
+   "guide_in": [
+    2.0512564048029228e-24,
+    5.377729394238256e-24,
+    1.2438150789447845e-23,
+    2.5330742244092987e-23,
+    4.527405756954499e-23,
+    7.12922601533118e-23,
+    9.897555309182132e-23,
+    1.2084862679793629e-22,
+    1.298629562906618e-22,
+    1.2300803835048209e-22,
+    1.0262318781774966e-22,
+    7.53584063327401e-23,
+    4.8741815367802337e-23,
+    2.777877155330313e-23,
+    1.394379281975862e-23,
+    6.163988224546923e-24,
+    2.40057258900013e-24
+   ],
+   "guide_out": [
+    2.05125328096109e-24,
+    5.37771090872185e-24,
+    1.2438214391473499e-23,
+    2.5330598878103375e-23,
+    4.527420767866706e-23,
+    7.129204192095702e-23,
+    9.897576388659986e-23,
+    1.2084850538332042e-22,
+    1.298632299202242e-22,
+    1.230077874615399e-22,
+    1.026233824083062e-22,
+    7.535829308028189e-23,
+    4.8741903836262106e-23,
+    2.777876667184609e-23,
+    1.394375741025983e-23,
+    6.164007431833706e-24,
+    2.4005551801554537e-24
+   ]
+  },
+  "wall_time_s": 1.2025656700134277
+ },
+ "s11_mag2_per_bin": [
+  0.11578801737261579,
+  0.1719891583020061,
+  0.23894178848069472,
+  0.3148562529823353,
+  0.3885113555114623,
+  0.4470804967112301,
+  0.48535324160067134,
+  0.5091257033375313,
+  0.5286105973289138,
+  0.5499258710303959,
+  0.5720136357312003,
+  0.5901563866767959,
+  0.6000724129732546,
+  0.6003374176472285,
+  0.5923625952400232,
+  0.579252823552765,
+  0.5633819080901836
+ ],
+ "s21_mag2_per_bin": [
+  0.884264847336713,
+  0.8279205090602817,
+  0.7611339379540482,
+  0.6850937891295896,
+  0.611519456415639,
+  0.5529049607665224,
+  0.5146519027002404,
+  0.49087588028024587,
+  0.471382335694939,
+  0.45008327738899107,
+  0.4279742635967025,
+  0.4098566500911893,
+  0.3999138321229951,
+  0.39967445736707674,
+  0.4076252289954603,
+  0.42075379207271607,
+  0.4366229128536725
+ ],
+ "closure_s_per_bin": [
+  -5.2864709328748205e-05,
+  9.033263771218714e-05,
+  -7.572643474285101e-05,
+  4.995788807504731e-05,
+  -3.081192710130409e-05,
+  1.4542522247529277e-05,
+  -5.144300911807953e-06,
+  -1.5836177771344495e-06,
+  7.066976147218629e-06,
+  -9.148419386983964e-06,
+  1.2100672097170584e-05,
+  -1.3036767985252773e-05,
+  1.3754903750273773e-05,
+  -1.1875014305218201e-05,
+  1.2175764516508814e-05,
+  -6.615625481043441e-06,
+  -4.820943856120863e-06
+ ],
+ "closure_m_per_bin": [
+  -3.1823547944867e-05,
+  6.887111442044518e-05,
+  -5.606566430899132e-05,
+  4.079658604202422e-05,
+  -2.6902850461551156e-05,
+  1.4473240439030478e-05,
+  -6.631256183726094e-06,
+  0.0,
+  3.839123801148549e-06,
+  -7.900919595214341e-06,
+  1.0023800068112644e-05,
+  -1.2352382745320834e-05,
+  1.4371818495326278e-05,
+  -1.4454570279540598e-05,
+  1.6547994445305002e-05,
+  -1.0942202327464026e-05,
+  -9.858408606390713e-07
+ ],
+ "abs_diff_per_bin": [
+  2.1041161383881204e-05,
+  2.146152329174196e-05,
+  1.9660770433859692e-05,
+  9.161302033023086e-06,
+  3.909076639752937e-06,
+  6.928180849879863e-08,
+  1.486955271918141e-06,
+  1.5836177771344495e-06,
+  3.22785234607008e-06,
+  1.2474997917696227e-06,
+  2.07687202905794e-06,
+  6.843852399319388e-07,
+  6.169147450525054e-07,
+  2.5795559743223973e-06,
+  4.3722299287961885e-06,
+  4.326576846420584e-06,
+  3.835102995481791e-06
+ ],
+ "max_abs_diff": 2.146152329174196e-05,
+ "worst_bin_index": 1,
+ "worst_bin_hz": 8600000000.0,
+ "closure_s_at_worst": 9.033263771218714e-05,
+ "closure_m_at_worst": 6.887111442044518e-05,
+ "closure_s_at_centre": 7.066976147218629e-06,
+ "closure_m_at_centre": 3.839123801148549e-06,
+ "abs_diff_at_centre": 3.22785234607008e-06,
+ "non_vacuity_max_s11": 0.7748144407838747,
+ "verdict": "pass",
+ "wall_time_s": 13.514640092849731,
+ "generated_at": "2026-09-02T14:19:10.701561+00:00",
+ "provenance": {
+  "commit": "505210970630711c1a6c992c5863e8e41df374f7",
+  "run_id": "local",
+  "run_lane": "local",
+  "jax_version": "0.6.2",
+  "numpy_version": "2.2.6",
+  "jax_default_backend": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_enable_x64": false,
+  "precision": "float32",
+  "python": "3.10.12",
+  "hostname": "run-execution-rfrcjp0gsxry-0",
+  "rfx_version": "1.7.0",
+  "recapture_entry_point": "scripts/diagnostics/waveguide_chain_battery_closure_measure.py",
+  "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_closure_measure.py --out tests/fixtures/waveguide_chain_battery/closure_witness.json --run-id <run id> --run-lane <vessl|local>"
+ },
+ "driver": "scripts/diagnostics/waveguide_chain_battery_closure_measure.py"
+}

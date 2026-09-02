@@ -177,3 +177,115 @@ gate test, listed for the 3(d) set, not re-run here.
 Fine-rung values with their gates: `column_power` (1.02), `reciprocity_mag` (0.01),
 `reciprocity_complex` (0.01, first measurement report-only if above), `power_closure`
 (report-only here; gated in WP3), `settling_all_below_minus_40_db` (bool).
+
+## Closure witness — `closure_witness.json`
+
+Written by `scripts/diagnostics/waveguide_chain_battery_closure_measure.py`, replayed by
+`tests/test_waveguide_chain_battery_closure.py`. It answers the one thing `fixture.json`
+cannot answer about itself: `physics_gates[*].power_closure_gate` reads
+`"report-only (WP3)"` because the flux lane's `1 − Σ|S|²` is built from Poynting integrals
+taken at the two PORT PROBE planes, so port column power and the S-matrix are ONE witness.
+This file records the same power balance measured at two planes the extractor never samples.
+
+**Routes.** A (port): `1 − |S11|² − |S21|²` from
+`compute_waveguide_s_matrix(normalize="flux", num_periods=40)`, column 0. B (interior): two
+full-plane `add_flux_monitor` planes at `x = 0.04572 m` (`guide_in`, 18 coarse cells) and
+`x = 0.07620 m` (`guide_out`, 30 coarse cells) — 4 coarse cells outside the nearer slab face,
+strictly between the port probe planes (0.03810 / 0.08382 m) and the slab — read on two
+single-port solves, the `slab` device run and a `thru` reference run:
+`closure_M = [F_dev(guide_in) − F_dev(guide_out)] / F_ref(guide_in)`.
+Gate: `max_f |closure_S − closure_M| ≤ 0.02`, the column-power tolerance named by the plan's
+WP3 Falsifier. Independence scope: the plane and the aperture weighting only — both routes call
+`rfx/probes/probes.py::flux_spectrum`, so a shared-kernel defect that scales every plane
+equally cancels in both ratios and is not caught.
+
+**Rung and cost.** Coarse rung only: `dx = 2.54 mm`, 17 CPML layers, grid 83 × 10 × 5,
+713 steps at `num_periods = 40`, `precision="float32"`, jax 0.6.2 on CPU. Wall time
+9.80 s (flux lane) + 1.16 s (device) + 1.20 s (reference) = 13.5 s total, so the live
+re-measurement stays in the fast lane (contract criterion 3, "fast lane when ≤ 30 s").
+
+**Measured** (`closure_witness.json` keys in brackets):
+
+| quantity | band centre, 10.00 GHz | worst bin, 8.60 GHz |
+|---|---|---|
+| route A, port planes [`closure_s_per_bin`] | 7.067e-06 | 9.033e-05 |
+| route B, interior planes [`closure_m_per_bin`] | 3.839e-06 | 6.887e-05 |
+| \|A − B\| [`abs_diff_per_bin`] | 3.228e-06 | **2.146e-05** [`max_abs_diff`] |
+
+Verdict `pass` [`verdict`]: 2.146e-05 against the 0.02 gate. Read honestly — both routes put
+the closure residual at ~1e-05, the float32 field-noise floor of this rung, so the measurement
+BOUNDS the disagreement rather than resolving a physical closure defect. Three checks say the
+bound is real rather than an artefact of two identical computations:
+
+- the interior planes reproduce the magnitudes separately, not only their sum:
+  `1 − F_dev(in)/F_ref(in)` vs `|S11|²` differs by at most 2.674e-05, `F_dev(out)/F_ref(in)`
+  vs `|S21|²` by at most 2.250e-05;
+- the empty guide transports power between the two monitor planes to
+  `max_f |F_ref(out)/F_ref(in) − 1| = 7.147e-06`, so neither plane is mis-snapped;
+- re-summing the SAME complex64 accumulators in float64 (`flux_exact_f64`, the sanctioned
+  remedy for the issue-#304 subnormal flush) moves `closure_M` by at most 3.080e-07, so the
+  2.146e-05 route difference is field-level float32 noise, not host-side cancellation. The
+  interior fluxes are ~1e-24 W, far above the float32 minimum normal, and no bin reads zero.
+
+A 5 % scaling of `F_dev(guide_out)` drives the gate red (`test_a_perturbed_interior_flux_makes_the_gate_red`),
+which is what says the gate measures the balance rather than passing on agreement of noise.
+
+**Settling witness** [`flux_lane.settling_db`, `device_run.settling_db`,
+`reference_run.settling_db`], all at `num_periods = 40`, all below the −40 dB line:
+flux lane left −81.35 dB / right −79.54 dB; device monitor run −86.65 dB; reference monitor
+run −98.72 dB.
+
+**Preflight** [`flux_lane.preflight`, `device_run.preflight`, `reference_run.preflight`],
+verbatim and part of the result. Both slab solves emit the same four advisories as
+`fixture.json`'s `("slab", "coarse")` cell:
+
+> dielectric 'diel' on x: 5.1 cells per λ_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+
+> dielectric 'diel' on y: 5.1 cells per λ_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+
+> dielectric 'diel' on z: 5.1 cells per λ_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+
+> all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+
+The `thru` reference run is preflight-clean, matching `fixture.json`'s `("thru", "coarse")`
+cell. Every Python warning of every solve is stored verbatim and deduplicated under each
+run's `warnings` key.
+
+**What this witness does NOT bound.** Both routes divide by a reference run's net flux, so a
+reflection at the far absorber biases `F_ref` and the flux lane's `F_ref[i]` by the same
+factor and cancels in the comparison. A travelling backward wave carries the same power at
+every plane, so the `F_ref(out)/F_ref(in) = 1` check above cannot see it either. The absorber
+is bounded by the battery's own thru gates, not here. Likewise, a defect in `flux_spectrum`
+that scales every plane equally is invisible to this test by construction.
+
+**Report-only, from committed artifacts and no extra solve.** The same interior fluxes place
+the `normalize=False` (modal V/I) lane's non-passivity where it belongs. At the coarse rung
+`fixture.json`'s `slab|coarse|false` cell has column-0 closure residual 1.759e-02, while the
+interior monitors put the physical power imbalance at 6.887e-05 —
+`max_f |closure_S(false) − closure_M| = 1.756e-02`, 800x the flux lane's disagreement and
+still inside 0.02. The `thru|coarse|false` cell shows 1.825e-02 on an EMPTY guide, where no
+DUT can absorb anything, which corroborates the reading: the V/I lane's ~1.8 % is its own
+Yee `Z_TE` magnitude error, not lost power. Not gated — it was not pre-declared, and the
+plan's WP3 comparison is against the flux lane.
+
+**Provenance.** `provenance.run_lane` reads `"local"` — this measurement ran on a CPU
+developer box, not on VESSL. Unlike `fixture.json`, that does not make it
+non-claims-bearing: the whole measurement is 13.5 s, so
+`test_live_closure_routes_agree_within_the_column_power_tolerance` re-runs it on every
+fast-lane invocation and re-asserts the gate against physics. The artifact is a replay
+convenience and a record of the intermediates, not the only evidence.
+
+**Schema.** `schema` / `schema_version`, `declaration` (gate, gate source, both route
+formulas, monitor positions in metres and in coarse cells, the independence scope sentence,
+`settling_db_max`, `non_vacuity_min_s11`), `rung` / `dx_m` / `dut` / `reference_dut` /
+`num_periods` / `band_centre_bin` / `freqs_hz`, `flux_lane` (`preflight`, `warnings`,
+`settling_db`, `reference_planes_m`, `s_params` in the `fixture.json` `[re, im]` form,
+`wall_time_s`), `device_run` and `reference_run` (`dut`, `dx_m`, `n_steps`, `grid_shape`,
+`cpml_layers`, `preflight`, `warnings`, `settling_db`, `flux`, `flux_exact_f64`,
+`wall_time_s`), the per-bin dumps `s11_mag2_per_bin` / `s21_mag2_per_bin` /
+`closure_s_per_bin` / `closure_m_per_bin` / `abs_diff_per_bin`, the headline
+`max_abs_diff` / `worst_bin_index` / `worst_bin_hz` / `closure_*_at_worst` /
+`closure_*_at_centre` / `abs_diff_at_centre` / `non_vacuity_max_s11`, `verdict`,
+`wall_time_s`, `generated_at`, `provenance` and `driver`. The replay test recomputes both
+routes from the raw per-bin intermediates and compares with the stored headline, so a
+hand-edited summary cannot pass.
