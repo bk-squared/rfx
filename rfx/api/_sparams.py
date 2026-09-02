@@ -31,7 +31,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,
 )
 
-from rfx.nonuniform import NonUniformGrid
+from rfx.nonuniform import NonUniformGrid, interior_cells
 
 from rfx.api._spec import (
     WaveguideSMatrixResult,
@@ -424,6 +424,89 @@ def _warn_if_ringdown_truncated(
         "value (see the result's settling_db field).",
         stacklevel=2,
     )
+
+
+def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
+    """Cell sizes a waveguide port's reference-plane span crosses on a NU grid.
+
+    The span is the hull of three planes along the port-normal axis: the
+    user-facing port plane (``cfg.source_x_m``), the plane the modal V/I are
+    recorded on (``cfg.reference_x_m``, ``ref_offset`` cells downstream) and
+    the requested reference plane. ``_shift_modal_waves`` moves the recorded
+    waves to the requested plane with ONE ``exp(-/+ j*beta*shift)`` whose beta
+    is evaluated at a single cell size -- ``cfg.dx``, which on this lane is
+    the grid's BOUNDARY cell (``NonUniformGrid.dx``) -- so the shift is exact
+    only when every cell the span crosses has one size. Cell sizes are read
+    from the grid's per-cell arrays (``dx_arr`` / ``dy_arr`` / ``dz``, exact
+    float64 spine when present); a ``NonUniformGrid`` carries no
+    ``*_profile`` attribute.
+
+    Returns ``(axis, span_lo_m, span_hi_m, cell_sizes_m)``: ``cell_sizes_m``
+    is the ordered float64 array of interior cell sizes the span crosses
+    (empty when the three planes coincide). A cell counts as crossed when the
+    span overlaps it by more than 1e-3 of the axis's smallest interior cell,
+    so a plane sitting on a node -- up to the float32 quantisation of the
+    recorded plane positions -- does not drag in its neighbour.
+    """
+    axis = str(cfg.normal_axis)
+    if axis == "x":
+        d_full = grid.dx_arr_f64 if getattr(grid, "dx_arr_f64", None) is not None else grid.dx_arr
+        pad_lo, pad_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
+    elif axis == "y":
+        d_full = grid.dy_arr_f64 if getattr(grid, "dy_arr_f64", None) is not None else grid.dy_arr
+        pad_lo, pad_hi = int(grid.pad_y_lo), int(grid.pad_y_hi)
+    else:
+        d_full = grid.dz_f64 if getattr(grid, "dz_f64", None) is not None else grid.dz
+        pad_lo, pad_hi = int(grid.pad_z_lo), int(grid.pad_z_hi)
+    cells = np.asarray(interior_cells(np.asarray(d_full, dtype=np.float64), pad_lo, pad_hi),
+                       dtype=np.float64)
+    edges = np.insert(np.cumsum(cells), 0, 0.0)
+    planes = (float(cfg.source_x_m), float(cfg.reference_x_m), float(desired_plane_m))
+    lo, hi = min(planes), max(planes)
+    tol = 1e-3 * float(np.min(cells)) if cells.size else 0.0
+    crossed = (edges[:-1] < hi - tol) & (edges[1:] > lo + tol)
+    return axis, lo, hi, cells[crossed]
+
+
+def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
+                                              port_name: str):
+    """Refuse a NU reference-plane shift whose span crosses more than one cell size.
+
+    The NU lane evaluates beta for the reference-plane shift at the boundary
+    cell (``cfg.dx``), not the cell the plane sits in. Inside one uniform
+    grading zone that is a documented second-order envelope
+    (``(beta*dx)^2/24``; ``docs/guides/support_matrix.md``, nonuniform
+    waveguide row, and ``tests/fixtures/waveguide_nu_beta_cell_size_envelope.json``).
+    Across a graded span a single beta is right only by accident, and
+    integrating beta cell by cell over the span is deferred (v1.8 plan WP4,
+    decision 3; tracking issue #854 item 1) -- until then the case fails
+    loudly here instead of silently applying one beta. Returns the
+    ``_nu_shift_span_cells`` tuple when the span is admissible.
+    """
+    axis, lo, hi, sizes = _nu_shift_span_cells(grid, cfg, desired_plane_m)
+    if sizes.size == 0:
+        return axis, lo, hi, sizes
+    distinct = [float(sizes[0])]
+    for v in sizes[1:]:
+        if not any(np.isclose(v, d, rtol=1e-9, atol=0.0) for d in distinct):
+            distinct.append(float(v))
+    if len(distinct) > 1:
+        raise ValueError(
+            f"waveguide port {port_name!r}: the span from its port plane to its "
+            f"reference plane along {axis} ({lo * 1e3:.4f} mm to {hi * 1e3:.4f} mm; "
+            f"port plane {float(cfg.source_x_m) * 1e3:.4f} mm, modal record plane "
+            f"{float(cfg.reference_x_m) * 1e3:.4f} mm, reference plane "
+            f"{float(desired_plane_m) * 1e3:.4f} mm) crosses cells of "
+            f"{len(distinct)} sizes: {[round(d * 1e3, 6) for d in distinct]} mm "
+            f"(cells crossed in order: {[round(float(v) * 1e3, 6) for v in sizes]} mm). "
+            "The reference-plane shift applies one exp(-/+ j*beta*shift) with beta "
+            f"evaluated at the grid's boundary cell ({float(cfg.dx) * 1e3:.4f} mm), "
+            "which is exact only inside one uniform grading zone; integrating beta "
+            "over a graded span is not implemented on the nonuniform lane. Move the "
+            "port and its reference plane into one uniform zone of the profile, or "
+            "keep the graded block away from them."
+        )
+    return axis, lo, hi, sizes
 
 
 def _msl_axis_spacing(grid, axis: int):
@@ -7693,6 +7776,14 @@ class _SparamMixin:
                             entry.reference_plane
                             if entry.reference_plane is not None
                             else planes["source"]
+                        )
+                        # Grading-zone assertion: beta for this shift is the
+                        # boundary-cell value (cfg.dx), so the span the
+                        # shift covers must lie inside one uniform zone of
+                        # the profile -- otherwise fail loudly here rather
+                        # than apply one beta across cells of two sizes.
+                        _assert_nu_shift_span_in_one_grading_zone(
+                            grid, cfg, desired, entry.name,
                         )
                         shifts.append(desired - planes["reference"])
                         planes_out.append(desired)

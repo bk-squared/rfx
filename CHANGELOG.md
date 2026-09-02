@@ -37,6 +37,28 @@ own discrete modal impedance (no `sqrt(Z_i/Z_j)` renormalization), a
 power-wave S only when all ports share one cross-section. Test:
 `tests/test_waveguide_two_run_lane_traced_override.py`.
 
+### Changed — the nonuniform waveguide S-matrix refuses a reference-plane span that crosses cells of more than one size
+
+`compute_waveguide_s_matrix` on a `dx_profile` / `dy_profile` /
+`dz_profile` mesh shifts each port's modal waves to its reference plane
+with one `exp(-/+ jβΔ)` whose β is evaluated at the grid's boundary cell
+(`NonUniformGrid.dx`), not the cell the plane sits in. Inside one
+uniform zone that is a second-order arithmetic envelope — for the
+committed WR-90 fixture (1.5 mm boundary, 0.75 mm fine) the boundary-vs-
+local β difference is 0.082 / 0.311 / 0.705 rad/m at 8 / 10 / 12 GHz,
+0.09° / 0.36° / 0.81° over a 20 mm plane offset, and the modal impedance
+does not depend on the cell size at all
+(`tests/fixtures/waveguide_nu_beta_cell_size_envelope.json`, produced by
+`scripts/diagnostics/waveguide_nu_beta_cell_size_envelope.py` with no
+FDTD run). Across a graded span a single β is right only by accident, so
+the lane now raises `ValueError` naming the axis, the span and the cell
+sizes it crosses; before, it silently applied the boundary-cell β. Spans
+inside one uniform zone — coarse or fine — are unchanged, and every
+committed nonuniform waveguide fixture keeps its planes in uniform
+cells. β integration over a graded span and a fixture with a plane
+inside the graded region are deferred (#854 item 1). The support-matrix
+row for the nonuniform waveguide lane carries the envelope.
+
 ### Fixed — the fidelity report reads the rasterizer's own node line; a missing float64 spine now warns (#833 item 2, the #803 remainder)
 
 `fidelity_report()` re-derived its node positions by cumsumming the
