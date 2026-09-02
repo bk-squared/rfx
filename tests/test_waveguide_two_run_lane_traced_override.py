@@ -9,29 +9,32 @@ extractor ``extract_waveguide_s_params_normalized`` in
 (``np.array(b_recv_dev)``). A design variable passed as a traced
 ``eps_override`` / ``sigma_override`` therefore cannot flow through this
 lane. The v1.8 chain-closure plan (``docs/design_notes/v18_waveguide_s_chain_plan.md``,
-WP1) asks for two things, in order:
+WP1) asked for two things, in order:
 
-1. a committed record of what the lane actually does under a tracer —
-   which of the three sites raises, with the exception type and the
-   traceback frame (this file, step 1);
+1. a committed record of what the lane actually did under a tracer —
+   which of the three sites raised, with the exception type and the
+   traceback frame (step 1, the record below);
 2. a fail-fast ``NotImplementedError`` at the public dispatch in
    ``rfx/api/_sparams.py`` mirroring the non-uniform guard, so the
-   extractor is never entered with a tracer (step 2 — this test flips to
-   assert it).
+   extractor is never entered with a tracer (step 2 — what this file now
+   asserts).
 
-Measured 2026-09-02 on main 378a9c95 (jax 0.6.2, CPU), tiny WR-90 2-port,
-``n_steps=200``, ``jax.grad`` of ``sum|S(:, :, bin 2)|^2`` w.r.t. a scalar
-scaling a whole-grid ``eps_override``:
+Step-1 record, measured 2026-09-02 on main 378a9c95 (jax 0.6.2, CPU),
+tiny WR-90 2-port, ``n_steps=200``, ``jax.grad`` of ``sum|S(:, :, bin 2)|^2``
+w.r.t. a scalar scaling a whole-grid ``eps_override``, before the guard:
 
     jax.errors.TracerArrayConversionError: The numpy.ndarray conversion
     method __array__() was called on traced array with shape complex64[4]
     frame: rfx/sources/waveguide_port.py in extract_waveguide_s_params_normalized
            b_recv_dev_np = np.array(b_recv_dev)
 
-Only the DEVICE-run site fires. The two reference-run sites are reached
-first and see concrete arrays: the vacuum reference run carries no design
-variable, so its waves are never traced. Probe script (not committed):
-the body of ``_grad_through_two_run_lane`` below is the probe.
+Only the DEVICE-run site fired. The two reference-run sites were reached
+first and saw concrete arrays: the vacuum reference run carries no design
+variable, so its waves are never traced.
+
+The guard is scoped to TRACED overrides. A concrete ``eps_override`` on
+this lane still runs forward (third test), so the guard cannot widen
+silently into a forward-mode rejection.
 """
 
 from __future__ import annotations
@@ -41,14 +44,14 @@ import warnings
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec, Boundary
 
 _EXTRACTOR = "extract_waveguide_s_params_normalized"
-_DEVICE_RUN_SITE = "np.array(b_recv_dev)"
-_REFERENCE_RUN_SITES = ("np.array(a_inc_ref)", "np.array(b_ref_i)")
+_DISPATCH = "compute_waveguide_s_matrix"
 
 
 def _wr90_sim():
@@ -72,16 +75,21 @@ def _wr90_sim():
     return sim
 
 
+def _override_base(sim, override_kw: str):
+    base = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
+    if override_kw == "sigma_override":
+        base = base * 1e-3  # a small conductivity field
+    return base
+
+
 def _grad_through_two_run_lane(override_kw: str):
     """``jax.grad`` through ``normalize=True`` with a traced override.
 
-    Returns the exception the lane raised, or ``None`` if it ran.
+    Returns the exception the lane raised, or ``None`` if it ran. This is
+    the step-1 probe, unchanged.
     """
     sim = _wr90_sim()
-    grid = sim._build_grid()
-    base = jnp.ones(grid.shape, dtype=jnp.float32)
-    if override_kw == "sigma_override":
-        base = base * 1e-3  # a small, traced conductivity field
+    base = _override_base(sim, override_kw)
 
     def objective(alpha):
         with warnings.catch_warnings():
@@ -113,43 +121,41 @@ def _describe(exc: BaseException) -> str:
     return "\n".join(lines)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "WP1 step 1 record (measured 2026-09-02, main 378a9c95): the lane raises "
-        "jax.errors.TracerArrayConversionError ('The numpy.ndarray conversion "
-        "method __array__() was called on traced array with shape complex64[4]') "
-        "from extract_waveguide_s_params_normalized at the DEVICE-run site "
-        "`b_recv_dev_np = np.array(b_recv_dev)`; the reference-run sites "
-        "np.array(a_inc_ref) / np.array(b_ref_i) see concrete arrays. "
-        "Flips green when the dispatch guard (WP1 step 2) raises "
-        "NotImplementedError before the extractor is entered."
-    ),
-)
-def test_two_run_lane_traced_eps_override_fails_fast_at_dispatch():
-    exc = _grad_through_two_run_lane("eps_override")
+@pytest.mark.parametrize("override_kw", ["eps_override", "sigma_override"])
+def test_two_run_lane_traced_override_fails_fast_at_dispatch(override_kw):
+    """A traced override on normalize=True raises NotImplementedError at the
+    public dispatch, naming the lane and the override; the extractor is
+    never entered (step-1 record: it used to raise a
+    TracerArrayConversionError from the device-run np.array site)."""
+    exc = _grad_through_two_run_lane(override_kw)
     assert exc is not None, "the two-run lane ran under a tracer without raising"
     record = _describe(exc)
-    print("\n[two-run lane, traced eps_override]\n" + record)
+    print(f"\n[two-run lane, traced {override_kw}]\n" + record)
 
-    if isinstance(exc, jax.errors.TracerArrayConversionError):
-        # The measured raise site. A change here means the record above is
-        # stale: pytest.fail is NOT an AssertionError, so the strict xfail
-        # reports it as a real failure instead of swallowing it.
-        frames = _rfx_frames(exc)
-        hit = [f for f in frames if f.name == _EXTRACTOR and _DEVICE_RUN_SITE in (f.line or "")]
-        if not hit:
-            pytest.fail("raise site moved away from the device-run np.array:\n" + record)
-        leaked = [f for f in frames if any(s in (f.line or "") for s in _REFERENCE_RUN_SITES)]
-        if leaked:
-            pytest.fail("a reference-run np.array site raised:\n" + record)
-
-    # The contract (WP1 step 2): fail fast at the public entry, extractor
-    # never entered with a tracer.
     assert isinstance(exc, NotImplementedError), (
         "expected NotImplementedError at compute_waveguide_s_matrix dispatch, got:\n" + record
     )
-    assert not any(f.name == _EXTRACTOR for f in _rfx_frames(exc)), (
+    msg = str(exc)
+    assert "normalize=True" in msg and override_kw in msg, msg
+    assert "normalize='flux'" in msg and "normalize=False" in msg, msg
+    frames = _rfx_frames(exc)
+    assert frames and frames[-1].name == _DISPATCH, record
+    assert not any(f.name == _EXTRACTOR for f in frames), (
         "the extractor was entered with a tracer:\n" + record
     )
+
+
+def test_two_run_lane_concrete_eps_override_still_runs_forward():
+    """The guard is tracer-scoped: a concrete eps_override on normalize=True
+    still produces a finite S-matrix (forward use of the override channel)."""
+    sim = _wr90_sim()
+    eps = _override_base(sim, "eps_override") * 1.5
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = sim.compute_waveguide_s_matrix(
+            n_steps=200, normalize=True, eps_override=eps,
+        )
+    s = np.asarray(res.s_params)
+    assert s.shape == (2, 2, 4), s.shape
+    assert np.all(np.isfinite(s)), s
+    print(f"\n[two-run lane, concrete eps_override] |S| per bin:\n{np.abs(s)}")

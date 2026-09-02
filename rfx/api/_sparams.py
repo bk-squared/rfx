@@ -2414,6 +2414,33 @@ class _SparamMixin:
                 passivity_tol=2.0 if normalize is False else 0.10,
             )
 
+        # Uniform-lane honesty guard (v1.8 WP1), the mirror of the
+        # non-uniform guard above. The two-run normalized lane
+        # (normalize=True) assembles S on the host:
+        # extract_waveguide_s_params_normalized converts the device-run
+        # outgoing wave with np.array, so a TRACED eps_override /
+        # sigma_override (jax.grad, jax.jit) cannot flow through it.
+        # Measured 2026-09-02 (tests/test_waveguide_two_run_lane_traced_override.py):
+        # only the device-run site fires — the vacuum reference run carries
+        # no design variable. Raise here, naming the lane, instead of a
+        # TracerArrayConversionError deep in the extractor. A concrete
+        # override still runs forward on this lane; the differentiable
+        # lanes are normalize=False and normalize="flux".
+        if normalize and normalize != "flux":
+            for _ov_name, _ov_val in (
+                ("eps_override", eps_override),
+                ("sigma_override", sigma_override),
+            ):
+                if _ov_val is not None and is_tracer(_ov_val):
+                    raise NotImplementedError(
+                        "compute_waveguide_s_matrix(normalize=True) is the "
+                        "host-assembled two-run lane and is outside the "
+                        f"differentiable chain: a traced {_ov_name} (under "
+                        "jax.grad / jax.jit) cannot pass its np.array sites. "
+                        "Use normalize=False or normalize='flux' to "
+                        f"differentiate with respect to {_ov_name}."
+                    )
+
         grid = self._build_grid()
         _wg_sheet_specs: list = []
         base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(
