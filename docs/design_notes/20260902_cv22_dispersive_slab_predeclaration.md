@@ -335,3 +335,32 @@ the window is NOT to be widened to fit; (ii) a falsifier exits 0 — the gate
 does not resolve the declared defect and the case is not claims-bearing;
 (iii) the Meep leg's pre-run ε check fails at 1e-9 on a non-falsifier arm —
 the mapping in `dispersive_eps.py` is wrong and nothing downstream counts.
+
+## 10. Addendum (2026-09-02, same day, before any measurement) — two defects caught in review, and the artifact count
+
+Both were found while writing the gate test against this note, before the
+first FDTD run; neither changes a window, an arm, a band, or a falsifier.
+
+1. **Oracle for a falsifier run.** The first draft of the case script judged
+   a `--falsifier` run against the transfer matrix of the *defective* ε(f) —
+   self-consistent by construction, so every F1/F2 arm would have exited 0
+   and read as "gate does not resolve the defect". Fixed: the FDTD is built
+   with the defect (`params_run`, recorded in the artifact) and judged
+   against the DECLARED material (`params`). A smoke run of `debye_tau_x2`
+   on the 200-cell grid now fails G1_T, G2_R and G2_T with
+   mean|ΔR| = 0.024 / mean|ΔT| = 0.086 against the analytic §6 prediction
+   0.026 / 0.087 — the smoke rig is not evidence, but it shows the defect and
+   the gate are wired to each other.
+2. **Meep-side window from the declared material.** The first draft of
+   `evaluate_e4` computed `W_ADE,meep` from the `meep_params` the Meep JSON
+   *reports*, so a wrongly mapped material (F3) widened its own window and
+   `meep_lorentz_no_2pi` passed E4 in the analytic pre-test. Fixed: the
+   Meep-side windows are derived from `to_meep(declared material)`; the
+   reported parameters are kept for audit only. The analytic F3 pre-test now
+   fails E4 for both Meep falsifiers and passes for the correct mapping.
+
+Artifact count owed by the run (correcting §8/§9's "six"): the case script
+writes **eight** falsifier `rfx__falsifier_<name>.json` files — six F1/F2
+arms plus the two `meep_lorentz_*` arms, in which the rfx Lorentz arm is
+correct and the wrong-convention Meep JSON is read — each with
+`verdict.exit_code = 1`; plus `rfx.json` (exit 0) and the five Meep JSONs.

@@ -265,6 +265,7 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
     for arm, ad in doc["arms"].items():
         assert ad["model"] == G.ARMS[arm]["model"]
         assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
+        assert ad["params_run"] == pytest.approx(G.ARMS[arm]["params"])
         assert ad["run"]["nx_interior"] == G.NX_INTERIOR
         assert ad["band_inc_ok"]
         re = _replay_e2(ad)
@@ -300,12 +301,14 @@ def test_rfx_falsifier_artifacts_fail_for_the_declared_reason(name):
     assert doc["falsifier"] == name and not doc.get("smoke")
     arm = G.FALSIFIERS[name][0]
     ad = doc["arms"][arm]
-    # The artifact carries the DEFECTIVE params it ran with; the oracle it was
-    # judged against is the DECLARED material.
+    # The artifact records the DEFECTIVE params the FDTD ran with (params_run)
+    # and the DECLARED material it was judged against (params); replay both.
     _, model, bad = G.apply_falsifier(name)
-    assert ad["params"] == pytest.approx(bad)
+    assert ad["params_run"] == pytest.approx(bad)
+    assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
     re = G.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], model, G.ARMS[arm]["params"],
                        ad["dt_s"], tail=ad["tail"])
+    assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}
     assert not re["e2_ok"]
     assert not (re["gates"]["G2_R"] and re["gates"]["G2_T"]), "must fail on the band-mean, not only a witness"
     assert doc["verdict"]["exit_code"] == 1

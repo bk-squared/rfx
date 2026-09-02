@@ -302,14 +302,20 @@ def main(argv=None) -> int:
     any_e2_fail = any_e4_fail = any_meep_missing = False
     for arm in arms:
         base = G.ARMS[arm]
-        model, params = base["model"], dict(base["params"])
+        model, params = base["model"], dict(base["params"])   # the DECLARED material = the oracle
+        params_run = dict(params)                              # what the FDTD is built with
         if rfx_fals is not None and G.FALSIFIERS[rfx_fals][0] == arm:
-            _, model, params = G.apply_falsifier(rfx_fals)
-            print(f"\n[{arm}] FALSIFIER {rfx_fals}: {G.FALSIFIERS[rfx_fals][1]}")
-        print(f"\n[{arm}] model={model} params={ {k: float(v) for k, v in params.items()} }")
-        run = run_rfx_arm(model, params, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke)
+            _, model, params_run = G.apply_falsifier(rfx_fals)
+            print(f"\n[{arm}] FALSIFIER {rfx_fals}: {G.FALSIFIERS[rfx_fals][1]} "
+                  f"(FDTD built with the defect; judged against the DECLARED material)")
+        print(f"\n[{arm}] model={model} params_run={ {k: float(v) for k, v in params_run.items()} }")
+        run = run_rfx_arm(model, params_run, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke)
+        # The oracle is ALWAYS the declared material; a falsifier that were
+        # judged against its own defective eps(f) would be self-consistent
+        # and pass (caught in review before the first run).
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
                            tail=run["tail"])
+        e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
         e2["run"] = {k: run[k] for k in ("dt_s", "n_steps", "nfft", "nx_interior", "grid_shape", "elapsed_s")}
@@ -372,8 +378,10 @@ def main(argv=None) -> int:
     else:
         rc = 0
         summary = "ALL CHECKS PASSED -- E2 (TMM) and E4 (Meep) on all arms (exit 0)"
-    if a.falsifier is not None:
+    if a.falsifier is not None and not a.smoke:
         summary += f"  [falsifier {a.falsifier}: {'as pre-declared' if rc == 1 else 'NOT DETECTED -- gate does not resolve the defect'}]"
+    elif a.falsifier is not None:
+        summary += f"  [falsifier {a.falsifier}: smoke run, verdict not evaluated -- see the E2 gates line]"
     doc["verdict"] = {"rfx_self_ok": not any_e2_fail, "meep_present": not any_meep_missing,
                       "e4_ok": not any_e4_fail, "exit_code": rc, "summary": summary}
     out_path = os.path.join(out_dir, G.rfx_json_name(a.falsifier))
