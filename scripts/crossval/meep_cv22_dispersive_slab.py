@@ -87,6 +87,68 @@ def _precheck(mp, medium, model, params, meep_params, fn_map_hz):
     return rec
 
 
+def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float, nfreq: int,
+                      fcen_ghz: float, fwidth_ghz: float, decay: float, eps_averaging=None) -> dict:
+    """cv04's Meep slab geometry, two runs (vacuum reference, then the slab) with
+    reference-flux subtraction. Shared by the cv22 and cv23 legs (factored out of
+    this leg's main() unchanged when cv23 was added); ``medium`` is the slab.
+    ``eps_averaging=None`` leaves Meep's default (cv22); cv23 passes False."""
+    fcen = fcen_ghz * 1e9 * a_m / DE.C0
+    fwidth = fwidth_ghz * 1e9 * a_m / DE.C0
+    sx = G.NX_INTERIOR * G.DX_M / a_m
+    sy = 0.4
+    dpml = G.N_CPML * G.DX_M / a_m
+    d_slab = G.D_SLAB_M / a_m
+    refl_x = -d_slab / 2 - 30 * G.DX_M / a_m
+    trans_x = d_slab / 2 + 30 * G.DX_M / a_m
+    src_x = -d_slab / 2 - 50 * G.DX_M / a_m
+    cell = mp.Vector3(sx, sy, 0)
+    pml = [mp.PML(dpml, direction=mp.X)]
+    src = [mp.Source(mp.GaussianSource(frequency=fcen, fwidth=fwidth), component=mp.Ez,
+                     center=mp.Vector3(src_x, 0), size=mp.Vector3(0, sy))]
+    refl_fr = mp.FluxRegion(center=mp.Vector3(refl_x, 0), size=mp.Vector3(0, sy))
+    trans_fr = mp.FluxRegion(center=mp.Vector3(trans_x, 0), size=mp.Vector3(0, sy))
+    stop = lambda: mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(trans_x, 0), decay)
+    sim_kw = {} if eps_averaging is None else {"eps_averaging": bool(eps_averaging)}
+
+    print(f"Meep: cell {sx}x{sy} (a={a_m} m), pml {dpml}, res {resolution}, Courant {courant}, "
+          f"fcen {fcen:.4f} fwidth {fwidth:.4f}, nfreq {nfreq}"
+          + ("" if eps_averaging is None else f", eps_averaging {bool(eps_averaging)}"))
+    t0 = time.time()
+    sim_ref = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src,
+                            resolution=resolution, Courant=courant, k_point=mp.Vector3(), **sim_kw)
+    refl_ref = sim_ref.add_flux(fcen, fwidth, nfreq, refl_fr)
+    trans_ref = sim_ref.add_flux(fcen, fwidth, nfreq, trans_fr)
+    sim_ref.run(until_after_sources=stop())
+    straight_refl_data = sim_ref.get_flux_data(refl_ref)
+    straight_tran_flux = np.array(mp.get_fluxes(trans_ref))
+    flux_freqs = np.array(mp.get_flux_freqs(refl_ref))
+    t_ref = time.time() - t0
+    print(f"  reference run {t_ref:.1f}s")
+
+    t0 = time.time()
+    sim = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src,
+                        resolution=resolution, Courant=courant, k_point=mp.Vector3(),
+                        geometry=[mp.Block(center=mp.Vector3(0, 0),
+                                           size=mp.Vector3(d_slab, mp.inf, mp.inf),
+                                           material=medium)], **sim_kw)
+    refl = sim.add_flux(fcen, fwidth, nfreq, refl_fr)
+    trans = sim.add_flux(fcen, fwidth, nfreq, trans_fr)
+    sim.load_minus_flux_data(refl, straight_refl_data)
+    sim.run(until_after_sources=stop())
+    slab_refl_flux = np.array(mp.get_fluxes(refl))
+    slab_tran_flux = np.array(mp.get_fluxes(trans))
+    t_slab = time.time() - t0
+    print(f"  slab run {t_slab:.1f}s")
+
+    T = slab_tran_flux / straight_tran_flux
+    R = -slab_refl_flux / straight_tran_flux
+    freqs_hz = flux_freqs * DE.C0 / a_m
+    dt_meep_s = courant / resolution * a_m / DE.C0
+    return {"freqs_hz": freqs_hz, "R": R, "T": T, "dt_meep_s": dt_meep_s, "fcen": fcen, "fwidth": fwidth,
+            "t_ref_s": t_ref, "t_slab_s": t_slab, "eps_averaging": eps_averaging}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--arm", required=True, choices=list(G.ARM_ORDER))
@@ -143,57 +205,10 @@ def main(argv=None) -> int:
         print("ABORT: Meep material mapping does not reproduce eps_analytic to 1e-9 (exit 1)")
         return 1
 
-    # ---- cv04 Meep geometry ----
-    fcen = a.fcen_ghz * 1e9 * a_m / DE.C0
-    fwidth = a.fwidth_ghz * 1e9 * a_m / DE.C0
-    sx = G.NX_INTERIOR * G.DX_M / a_m
-    sy = 0.4
-    dpml = G.N_CPML * G.DX_M / a_m
-    d_slab = G.D_SLAB_M / a_m
-    refl_x = -d_slab / 2 - 30 * G.DX_M / a_m
-    trans_x = d_slab / 2 + 30 * G.DX_M / a_m
-    src_x = -d_slab / 2 - 50 * G.DX_M / a_m
-    cell = mp.Vector3(sx, sy, 0)
-    pml = [mp.PML(dpml, direction=mp.X)]
-    src = [mp.Source(mp.GaussianSource(frequency=fcen, fwidth=fwidth), component=mp.Ez,
-                     center=mp.Vector3(src_x, 0), size=mp.Vector3(0, sy))]
-    refl_fr = mp.FluxRegion(center=mp.Vector3(refl_x, 0), size=mp.Vector3(0, sy))
-    trans_fr = mp.FluxRegion(center=mp.Vector3(trans_x, 0), size=mp.Vector3(0, sy))
-    stop = lambda: mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(trans_x, 0), a.decay)
-
-    print(f"Meep: cell {sx}x{sy} (a={a_m} m), pml {dpml}, res {a.resolution}, Courant {a.courant}, "
-          f"fcen {fcen:.4f} fwidth {fwidth:.4f}, nfreq {a.nfreq}")
-    t0 = time.time()
-    sim_ref = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src,
-                            resolution=a.resolution, Courant=a.courant, k_point=mp.Vector3())
-    refl_ref = sim_ref.add_flux(fcen, fwidth, a.nfreq, refl_fr)
-    trans_ref = sim_ref.add_flux(fcen, fwidth, a.nfreq, trans_fr)
-    sim_ref.run(until_after_sources=stop())
-    straight_refl_data = sim_ref.get_flux_data(refl_ref)
-    straight_tran_flux = np.array(mp.get_fluxes(trans_ref))
-    flux_freqs = np.array(mp.get_flux_freqs(refl_ref))
-    t_ref = time.time() - t0
-    print(f"  reference run {t_ref:.1f}s")
-
-    t0 = time.time()
-    sim = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src,
-                        resolution=a.resolution, Courant=a.courant, k_point=mp.Vector3(),
-                        geometry=[mp.Block(center=mp.Vector3(0, 0),
-                                           size=mp.Vector3(d_slab, mp.inf, mp.inf),
-                                           material=medium)])
-    refl = sim.add_flux(fcen, fwidth, a.nfreq, refl_fr)
-    trans = sim.add_flux(fcen, fwidth, a.nfreq, trans_fr)
-    sim.load_minus_flux_data(refl, straight_refl_data)
-    sim.run(until_after_sources=stop())
-    slab_refl_flux = np.array(mp.get_fluxes(refl))
-    slab_tran_flux = np.array(mp.get_fluxes(trans))
-    t_slab = time.time() - t0
-    print(f"  slab run {t_slab:.1f}s")
-
-    T = slab_tran_flux / straight_tran_flux
-    R = -slab_refl_flux / straight_tran_flux
-    freqs_hz = flux_freqs * DE.C0 / a_m
-    dt_meep_s = a.courant / a.resolution * a_m / DE.C0
+    res = run_slab_two_pass(mp, medium, a_m=a_m, resolution=a.resolution, courant=a.courant, nfreq=a.nfreq,
+                            fcen_ghz=a.fcen_ghz, fwidth_ghz=a.fwidth_ghz, decay=a.decay)
+    R, T, freqs_hz, dt_meep_s = res["R"], res["T"], res["freqs_hz"], res["dt_meep_s"]
+    fcen, fwidth, t_ref, t_slab = res["fcen"], res["fwidth"], res["t_ref_s"], res["t_slab_s"]
     finite = bool(np.all(np.isfinite(R)) and np.all(np.isfinite(T)))
     g = G.gated_mask(freqs_hz)
     passive = bool(finite and np.all((R + T)[g] <= 1.0 + G.CONS_MAX_LIMIT))
