@@ -364,3 +364,144 @@ writes **eight** falsifier `rfx__falsifier_<name>.json` files — six F1/F2
 arms plus the two `meep_lorentz_*` arms, in which the rfx Lorentz arm is
 correct and the wrong-convention Meep JSON is read — each with
 `verdict.exit_code = 1`; plus `rfx.json` (exit 0) and the five Meep JSONs.
+
+## 11. Round 1 fired (VESSL 369367257804, 2026-09-02) — result recorded, round 2 pre-declared
+
+Source for every number below: the run log
+`~/Documents/vessl-run-logs/369367257804_cv22-dispersive-try1.log` (rfx
+baseline lines 386–460, Meep legs 318–398). The artifacts under
+`runs/cv22-dispersive-20260902T101742Z/_22_dispersive_results/` were written
+root-owned 0600 by the YAML's final `cp -a` and are unreadable from the Mac;
+the `path.json::key` citations are added as a further append once they can be
+read (the YAML is fixed in this same commit series: `--no-preserve` copy plus
+`chmod -R a+rX` under an EXIT trap).
+
+### 11.1 What fired
+
+| arm | E2 | numbers (gated 4–10 GHz, 115 bins) | E4 |
+|---|---|---|---|
+| Debye (rfx) | **PASS** (the gate test's per-arm loop passed `debye` before failing on `lorentz`; the E2 summary line itself was cut by the log's `tail -n 40`) | per-frequency table shows \|ΔR\| ≤ 0.023 (9.98 GHz), \|ΔT\| ≤ 0.019 (8.99 GHz) | not evaluated: **Meep Debye leg blew up** (`meep: simulation fields are NaN or Inf` at 0.35 s wall, first steps) |
+| Lorentz (rfx) | **FAIL G2_R** — `mean\|ΔR\| = 0.0122` vs window 0.0104 (1.17×); G2_T pass 0.0140 / 0.0176; G1 pass (max\|ΔR\| 0.0289 at 7.95 GHz, max\|ΔT\| 0.0436 at 9.62 GHz, both < 0.074); G3 pass | — | Meep-vs-TMM mean 0.0211 / 0.0196 (G4_mean FAIL both, per-bin pass: max 0.0463 / 0.0502); rfx-vs-Meep mean R 0.0224 FAIL, T 0.0154 pass |
+| Drude (rfx) | **PASS** — max\|ΔR\| 0.0012, max\|ΔT\| 0.0059, mean 0.0005 / 0.0017 | — | Meep-vs-TMM mean\|ΔT\| **0.0377** (max 0.0449) FAIL, R 0.0077 pass; rfx-vs-Meep mean T 0.0360 FAIL |
+| falsifiers | all 8 exited 1 as pre-declared; Meep F3 legs ran with `precheck.passed = false` recorded (no_2pi: Meep-vs-TMM mean 0.103 / 0.650; gamma_half: 0.110 / 0.050) | | |
+
+Baseline rc 1, gate test 1 failed / 43 passed (the Lorentz replay), Meep
+Debye rc 1. **No window is moved.** Per §9(i) the Lorentz E2 failure is a
+finding with two admissible readings — an ADE defect the E0/E1 tests do not
+see, or the cv04 envelope not transferring — and round 2 is designed to
+separate them. Two further findings not anticipated by §4:
+
+- **F-A (Meep side).** For Drude, rfx agrees with the TMM to 0.006 in T
+  while **Meep is 0.04 off in T**; for Lorentz Meep's mean deviation is
+  ~2× rfx's. The E4 window borrowed cv04's *rfx* envelope for Meep (§4,
+  "stated, not measured"); Meep evidently has its own term that this did
+  not cover. Candidate terms, each with a pre-declared discriminator below:
+  (i) Meep's own spatial discretization at 10 px/cm, (ii) record
+  truncation — `stop_when_fields_decayed(…, 1e-3)` against a source whose
+  Gaussian amplitude is only 4.2 % of peak at 4 GHz and 11 % at 5 GHz
+  (fcen 10, fwidth 15 GHz), so the low band is a ratio of two small
+  numbers truncated at 1e-3 of the run maximum, (iii) an interface
+  half-cell term.
+- **F-B (Meep Debye instability).** Mechanism identified from Meep's own
+  discrete Lorentzian (§3): at the Nyquist frequency `ω̃² = 4/dt²`, `ω̂ = 0`,
+  so the numerical susceptibility of the mapped pole is
+  `χ(Nyq) = −σ (ω_n dt)² / (4 − (ω_n dt)²)`; with σ = 4, ω_n·dt = 1.048 this
+  gives `ε_num(Nyq) = 2 − 1.514 = 0.486 < 1`, i.e. an effective permittivity
+  below vacuum at the grid's highest mode, which puts Meep's Courant 0.5
+  outside the 2-D limit `0.707·√0.486 = 0.49`. The standalone Jury criterion
+  of §2.1 (`ω_n·dt < 2`) is necessary, not sufficient; the coupled criterion
+  is `ε_num(Nyq) ≥ (S/S_max)²`, and the note's "ω_n·dt = 1.048 < 2,
+  Meep-stable" in §7 was wrong on this point. rfx is unaffected: its Lorentz
+  arm has `ω0·dt = 0.103` (ε_num(Nyq) = 1.996) and Drude
+  `ε_num(Nyq) = 2.997`.
+
+### 11.2 Round 2 — pre-declared experiments (`scripts/vessl_cv22_dispersive_slab_r2.yaml`)
+
+Every window stays as declared in §4. Nothing below is a gate change; each
+experiment has a prediction written before the run and an action attached to
+each outcome.
+
+**(a) rfx Lorentz and Debye at dx/2 and dx/4, same rig scaled in cells**
+(`--dx-div 2|4`: nx_interior, CPML layers, TFSF margin, probe offsets,
+tail window and step cap all ×K so the geometry is identical; dt follows the
+Grid's Courant; nfft follows n_steps). Artifacts `rfx__lorentz_dx2.json`,
+`rfx__lorentz_dx4.json`, `rfx__debye_dx2.json`, `rfx__debye_dx4.json`.
+
+A-priori candidate missing term — TMM sensitivity of R, T to a slab
+thickness error of ±dx/2 (the interface half-cell), gated band, computed
+from `dispersive_eps.tmm_slab_rt` before the run:
+
+| arm | ±0.5 mm: mean\|ΔR\| / max | mean\|ΔT\| / max | ±0.25 mm: mean\|ΔR\| | mean\|ΔT\| |
+|---|---|---|---|---|
+| Debye | 0.0108–0.0111 / 0.0207 (5.1–5.4 GHz) | 0.0125–0.0130 / 0.0162 (7.4–7.8 GHz) | 0.0054 | 0.0063 |
+| Lorentz | 0.0088–0.0094 / 0.0314 (5.2–5.3 GHz) | 0.0085–0.0089 / 0.0204 (10 GHz) | 0.0045 | 0.0043 |
+| Drude | 0.0073–0.0076 / 0.0173 | 0.0079–0.0094 / 0.0234 | 0.0037 | 0.0043 |
+| cv04's ε = 4 slab (control) | 0.039 / 0.072 | 0.039 / 0.072 | — | — |
+
+Reading: a full half-cell thickness error would be worth 0.009 of Lorentz
+mean|ΔR| — the same size as the whole measured 0.0122 — but the control row
+shows cv04's slab is 4× MORE sensitive to that error and still measured
+0.0066, so the rig does not realize a full half-cell error and this term
+alone cannot be the Lorentz excess. It is carried as the *first-order*
+hypothesis to be tested by the scaling, not asserted.
+
+Predictions (Lorentz mean|ΔR|, gated; baseline 0.0122):
+
+| hypothesis | dx/2 | dx/4 | action if this is what is seen |
+|---|---|---|---|
+| H1 first-order (interface / staircase) | ≈ 0.0061 (2×) | ≈ 0.0031 (4×) | the cv04 envelope does not transfer to a pole with Re ε → 0 in band; the window gains a derived first-order interface term evaluated per arm (the ±dx/2 table), re-declared in a §12 before any re-run; the ADE is not implicated |
+| H2 second-order (bulk numerical dispersion) | ≈ 0.0031 (4×) | ≈ 0.0008 (16×) | same as H1 with a second-order term |
+| H3 no fall (≥ 0.010 at dx/4) | ≈ 0.012 | ≈ 0.012 | not discretization: either the 719-step time gate (checked by (a') below) or the material model as realized by `update_e_lorentz`; the latter becomes an ADE-defect investigation with the E0/E1 tests as the first suspect |
+
+A first-order fall reads as `mean|ΔR|(dx/4)/mean|ΔR|(dx) ∈ [0.20, 0.35]`,
+second-order `≤ 0.12`, "no fall" `≥ 0.7`; anything between is reported as
+unresolved, not fitted.
+
+**(a') rfx Lorentz at dx with the time gate opened** (`--nx-interior 1500`,
+cv04's rung C4 geometry, ≈ 1940 steps; artifact `rfx__lorentz_nx1500.json`).
+Prediction: if the Lorentz excess is record truncation the mean|ΔR| collapses
+below 0.0104 here while (a) shows no fall; if (a) shows a fall and (a') does
+not move, truncation is excluded. cv04 measured this collapse for its own
+closure witness (0.0487 → 0.0002).
+
+**(b) Meep Lorentz and Drude at 2× and 4× resolution** (20 and 40 px/cm,
+Courant 0.5; artifacts `meep_<arm>__res20.json`, `meep_<arm>__res40.json`).
+Prediction on Drude mean|ΔT| vs TMM (baseline 0.0377): first-order → ≈ 0.019
+then ≈ 0.009; second-order → ≈ 0.009 then ≈ 0.002; no fall → ≈ 0.038. A fall
+means the E4 window's derivation lacked Meep's own discretization term (it
+borrowed the rfx envelope); that term is then derived from the measured
+scaling and declared in §12 before any E4 re-gate. No fall means (i) is
+excluded and (b') decides.
+
+**(b') Meep Lorentz and Drude at 10 px/cm with the truncation and source
+hypotheses removed one at a time**: decay tolerance 1e-6 instead of 1e-3
+(`meep_<arm>__decay1e-6.json`), and the source re-centred on the gated band
+(fcen 7 GHz, fwidth 10 GHz → amplitude 17 % of peak at 4 GHz instead of
+4.2 %; `meep_<arm>__src7.json`). Prediction: if the Drude 0.0377 is
+truncation/source-floor it drops below 0.017 (the T mean window) in at least
+one of these while (b) shows no fall, and the deviation is concentrated in
+4–6 GHz; if both leave it unchanged, (ii) is excluded.
+
+**(c) Meep Debye — pre-declared fix: 4× resolution (40 px/cm), f_n = 100 GHz
+kept.** Then `ω_n·dt_meep = 0.262` (≤ 0.5 as required), `ε_num(Nyq) = 1.930`
+(> 1: the mechanism of F-B is removed with margin), and `W_map` is unchanged
+from §7 (max 3.2e-4 / 1.05e-3 in R / T), `W_ADE,meep` falls to 1.3e-5.
+Chosen over lowering f_n because the alternatives at 10 px/cm cost window:
+f_n = 40 GHz gives `ω_n·dt = 0.419`, `ε_num(Nyq) = 1.816` but a mapping
+residual of 1.6e-2 and `W_map,T` max 6.5e-3 / mean 5.6e-3, a third of the T
+mean window spent on the mapping. The f_n = 40 GHz variant is ALSO run, as a
+cross-check only (`meep_debye__fn40.json`), with its larger `W_map` carried
+by the same formula. The primary res-40 leg is written as `meep_debye.json`
+so the baseline case reads it. Acceptance for (c): the res-40 leg runs finite
+and `precheck.passed` is true — that much is gated in the r2 replay test;
+its E4 verdict is whatever G4/G5 say with the declared windows.
+
+**(d) No threshold moves.** The r2 YAML re-runs the r1 baseline and the eight
+falsifier arms unchanged (so a readable `rfx.json` exists), then the
+diagnostics above, then the gate test. The r2 replay test computes the
+scaling ratios and prints them; it asserts only the structural acceptances
+(finite, precheck, artifact schema) and the (c) acceptance — a test that
+fails when nature disagrees with a hypothesis is the wrong instrument.
+
+Cost: every leg is seconds (r1 rfx arm 0.4 s, Meep leg 0.1–0.6 s); dx/4 is
+16× cells × 4× steps ≈ 64× → ≈ 30 s; Meep 40 px/cm ≈ 16× → seconds.
