@@ -73,7 +73,18 @@
     }
   },
   "diagnostic_note": "max_mag_abs_diff_across_cases 0.0114 (tol 0.05); ratio_spread 0.6837 (floor 0.005); flux-mode recipe from docs/guides/sparameter_support_matrix.md. Absorber is below the 0.5 lambda_g far-port discipline (#496) \u2014 see absorber_discipline.",
-  "rfx_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr62_kuband-flux/rfx-sweep/rfx_wr62_kuband_flux_sweep_manifest.json",
+  "rfx_manifest_path": "scripts/vessl_waveguide_broad_e5.yaml",
+  "recapture_note": {
+    "rfx_manifest_path_is": "the tracked re-capture entry point for this lane (a VESSL job YAML that runs sweep_script then builder_script for all five bands), not the sweep manifest this envelope was built from; that manifest lives under the gitignored .omx/ and is not in the tree (original_manifest_path below)",
+    "recapture_command": "vessl run create -f scripts/vessl_waveguide_broad_e5.yaml",
+    "sweep_script": "scripts/diagnostics/run_waveguide_band_broad_e5_flux_sweep.py",
+    "sweep_args": "--band WR62 --date-tag 2026-06-15",
+    "builder_script": "scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py",
+    "builder_args": "--manifest .omx/physics-gate/2026-06-15-waveguide-broad-e5-wr62_kuband-flux/rfx-sweep/rfx_wr62_kuband_flux_sweep_manifest.json --band-token wr62_kuband --band-label Ku",
+    "original_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr62_kuband-flux/rfx-sweep/rfx_wr62_kuband_flux_sweep_manifest.json",
+    "original_manifest_status": "gitignored (.omx/), not in the tree; produced on gpu-rtx4090 by VESSL run 369367242914 at commit deead58 (commit_hash above)",
+    "cases_rfx_npz_status": "per-case raw-data records under the same gitignored run directory: provenance of THIS capture, regenerated (not resolved) by the re-capture command"
+  },
   "cases": [
     {
       "tag": "dx200_slab_er2",
@@ -166,7 +177,8 @@
     "status": "below_floor_accepted",
     "issue": 496,
     "floor_lambda_g": 0.5,
-    "floor_fraction_is_derived_not_stored": "scripts/diagnostics/i496_unitarity_witness_audit.py derives each case's lambda_g fraction from cases[].dx_m and the recorded absorber; it is deliberately not duplicated here.",
+    "floor_fraction_derivation_script": "scripts/diagnostics/i496_unitarity_witness_audit.py",
+    "floor_fraction_is_derived_not_stored": "the audit script named in floor_fraction_derivation_script derives each case's lambda_g fraction from cases[].dx_m and the recorded absorber; it is deliberately not duplicated here.",
     "decision": "Accepted, not corrected. Regenerating at 0.75 lambda_g costs ~30x wallclock (WR-15 dx25: 961 s/case at 9.0M cells) and buys 1.10-1.20x on the gate-bearing envelope error. Contrast the WR-90 NU lane (#574), where the same change bought 14.4x -- there the absorber genuinely dominated and IS being regenerated. The residual here still scales with dx after the absorber is fixed, i.e. it is mesh-convergent discretization, not an absorber floor.",
     "probe": null,
     "passivity_absorber_limited": null,

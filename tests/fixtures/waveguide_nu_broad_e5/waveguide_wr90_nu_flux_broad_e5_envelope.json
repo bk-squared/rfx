@@ -71,6 +71,8 @@
     "configuration": "cpml_layers=183, num_periods=60, dx=0.00025 m",
     "independent_axis": "record window doubled 60 -> 120 periods, same absorber",
     "artifact": ".omx/i574-step0-absorber-window/gpu/{pec_short,slab}_183x{60,120}.json",
+    "artifact_producer": "scripts/diagnostics/i574_e5_absorber_window_falsifier.py",
+    "artifact_status": "gitignored (.omx/), not in the tree; the cells below are copied from it, so the gate reads this fixture, not the artifact",
     "cells": {
       "pec_short": {
         "max_s11_np60": 1.0000462532043457,
@@ -92,7 +94,20 @@
     "worst_max_s11_shift": 2.8133392333984375e-05,
     "verdict": "the record window does NOT bind at this absorber: doubling it moves max|S11| by at most 2.81e-05, far below the gate 0.002. At the superseded 24-cell absorber the same doubling moved pec_short by 1.46e-02, 520x more \u2014 absorber depth and record length are co-conditions (#576), so this witness is only meaningful read at the absorber actually promoted."
   },
-  "rfx_manifest_path": "/root/workspace/bk-workspace/rfx-residual/.omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/rfx_wr90_nu_flux_sweep_manifest.json",
+  "rfx_manifest_path": "scripts/diagnostics/run_waveguide_wr90_nu_flux_broad_e5_sweep.py",
+  "recapture_note": {
+    "rfx_manifest_path_is": "the tracked re-capture entry point for this lane (the sweep script, run from a clean checkout on a GPU host: this lane has no committed VESSL job YAML), not the sweep manifest this envelope was built from; that manifest lives under the gitignored .omx/ and is not in the tree (original_manifest_path below)",
+    "recapture_command": "python scripts/diagnostics/i574_e5_absorber_window_falsifier.py --all && python scripts/diagnostics/run_waveguide_wr90_nu_flux_broad_e5_sweep.py && python scripts/diagnostics/build_waveguide_wr90_nu_flux_broad_e5_envelope.py",
+    "sweep_script": "scripts/diagnostics/run_waveguide_wr90_nu_flux_broad_e5_sweep.py",
+    "sweep_args": "(none: the sweep writes its manifest to the path the builder reads)",
+    "builder_script": "scripts/diagnostics/build_waveguide_wr90_nu_flux_broad_e5_envelope.py",
+    "builder_args": "(none: the builder reads MANIFEST and writes OUT from its module constants)",
+    "settling_witness_producer": "scripts/diagnostics/i574_e5_absorber_window_falsifier.py",
+    "settling_witness_step": "run settling_witness_producer at the promoted absorber and at both record windows before the builder: it refuses to build an envelope whose witness artifacts are missing",
+    "original_manifest_path": ".omx/physics-gate/2026-05-29-waveguide-wr90-nu-flux-broad-e5/rfx-sweep/rfx_wr90_nu_flux_sweep_manifest.json",
+    "original_manifest_status": "gitignored (.omx/), not in the tree; the builder recorded it as an absolute path inside a secondary checkout (rfx-residual, since deleted) and only the checkout-relative form is kept here; produced on gpu-rtx4090 by VESSL run 369367252286 (cpml_layers 183 = 0.75 lambda_g, num_periods 60, 16 cases) at commit 287b281 (commit_hash above)",
+    "cases_rfx_npz_status": "per-case raw-data records under the same gitignored run directory: provenance of THIS capture, regenerated (not resolved) by the re-capture command"
+  },
   "cases": [
     {
       "tag": "ratio1_er2_L4mm",

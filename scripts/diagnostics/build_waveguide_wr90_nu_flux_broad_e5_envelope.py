@@ -17,6 +17,11 @@ REPO=Path(__file__).resolve().parents[2]
 C0=299_792_458.0; ETA0=376.730313668; RATIO_FLOOR=0.005
 
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO/"scripts"/"diagnostics"))
+from _fixture_recapture import (  # noqa: E402
+    NU_SETTLING_WITNESS_ARTIFACT_STATUS, NU_WR90_E5_SETTLING_WITNESS_PRODUCER,
+    NU_WR90_E5_SWEEP_SCRIPT, RECAPTURE_NOTE_KEY, RECAPTURE_POINTER_KEY,
+    nu_wr90_note, repo_relative)
 # The FROZEN measured envelope of the #574 regeneration (16 cases, GPU,
 # cpml_layers 183 = 0.75 lambda_g, num_periods 60), and the gate DERIVED from it
 # through the repo-wide multiplier — the same shape the E4 producer uses, and
@@ -90,6 +95,8 @@ def _settling_witness(m):
         "configuration":f"cpml_layers={cpml}, num_periods={npd}, dx={m['base_dx_m']} m",
         "independent_axis":f"record window doubled {npd} -> {2*npd} periods, same absorber",
         "artifact":str(WITNESS_DIR.relative_to(REPO))+f"/{{pec_short,slab}}_{cpml}x{{{npd},{2*npd}}}.json",
+        "artifact_producer":NU_WR90_E5_SETTLING_WITNESS_PRODUCER,
+        "artifact_status":NU_SETTLING_WITNESS_ARTIFACT_STATUS,
         "cells":cells,"worst_max_s11_shift":worst,
         "verdict":("the record window does NOT bind at this absorber: doubling it "
             f"moves max|S11| by at most {worst:.2e}, far below the gate {MAX_TOL}. "
@@ -181,7 +188,12 @@ def main():
             f"(issue #88 Step B). eps_r=4 cases test strong-reflector extension past the "
             f"normalize=True 0.077 floor."),
         "settling_witness":_settling_witness(m),
-        "rfx_manifest_path":str(MANIFEST),"cases":cases}
+        # Tracked entry point in the pointer, gitignored manifest in the note
+        # (see _fixture_recapture.py). str(MANIFEST) used to go here and put a
+        # private absolute path from a secondary checkout into the fixture.
+        RECAPTURE_POINTER_KEY:NU_WR90_E5_SWEEP_SCRIPT,
+        RECAPTURE_NOTE_KEY:nu_wr90_note(manifest_relpath=repo_relative(MANIFEST,REPO)),
+        "cases":cases}
     OUT.write_text(json.dumps(env,indent=2))
     print(f"wrote {OUT}\nstatus: {status}, case_count: {len(cases)}")
     print(f"max_mag_abs_diff_across_cases: {mx:.4f}")

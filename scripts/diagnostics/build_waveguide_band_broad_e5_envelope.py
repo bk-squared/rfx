@@ -15,6 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
 
+from _fixture_recapture import (  # noqa: E402  (sibling module: scripts/diagnostics is sys.path[0])
+    RECAPTURE_NOTE_KEY,
+    RECAPTURE_POINTER_KEY,
+    UNIFORM_BAND_E5_JOB_YAML,
+    repo_relative,
+    uniform_band_magnitude_note,
+)
+
 REPO = Path(__file__).resolve().parents[2]
 C0 = 299_792_458.0
 ETA0 = 376.730313668
@@ -291,7 +299,13 @@ def build_envelope(manifest_path: Path, band_token: str, band_label: str):
             f"ratio_spread {ratio_spread:.4f} (floor {RATIO_FLOOR}); flux-mode "
             "recipe from docs/guides/sparameter_support_matrix.md."
         ),
-        "rfx_manifest_path": str(manifest_path),
+        # The committed fixture must point at something tracked: the job YAML
+        # is the lane's re-capture entry point, and the manifest this build
+        # actually read (gitignored .omx/) is kept as provenance in the note.
+        RECAPTURE_POINTER_KEY: UNIFORM_BAND_E5_JOB_YAML,
+        RECAPTURE_NOTE_KEY: uniform_band_magnitude_note(
+            band_token=band_token, band_label=band_label,
+            manifest_relpath=repo_relative(manifest_path, REPO)),
         "cases": cases_out,
     }
 

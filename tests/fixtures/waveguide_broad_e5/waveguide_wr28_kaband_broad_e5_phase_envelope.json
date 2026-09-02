@@ -27,7 +27,18 @@
     "total_bins_checked": 88
   },
   "diagnostic_note": "max_phase_diff_deg_across_cases 11.990 (tol 15.0); masked 0/88 bins (phase_mag_floor 0.3).",
-  "rfx_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr28_kaband-flux/rfx-sweep/rfx_wr28_kaband_flux_sweep_manifest.json",
+  "rfx_manifest_path": "scripts/vessl_waveguide_broad_e5.yaml",
+  "recapture_note": {
+    "rfx_manifest_path_is": "the tracked re-capture entry point for this lane (the VESSL job YAML that produces the npz/manifest pair this phase envelope re-analyses, see source_data_provenance), not the sweep manifest itself, which lives under the gitignored .omx/ and is not in the tree (original_manifest_path below). The YAML does not run the phase builder; builder_script is run afterwards from a checkout holding that pair",
+    "recapture_command": "vessl run create -f scripts/vessl_waveguide_broad_e5.yaml; then python scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
+    "sweep_script": "scripts/diagnostics/run_waveguide_band_broad_e5_flux_sweep.py",
+    "sweep_args": "--band WR28 --date-tag 2026-06-15",
+    "builder_script": "scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
+    "builder_args": "(none: the builder resolves each band's manifest from its BANDS table and writes this file directly)",
+    "original_manifest_path": ".omx/physics-gate/2026-06-15-waveguide-broad-e5-wr28_kaband-flux/rfx-sweep/rfx_wr28_kaband_flux_sweep_manifest.json",
+    "original_manifest_status": "gitignored (.omx/), not in the tree; produced on gpu-rtx4090 by VESSL run 369367242914 and restored locally for this phase re-analysis at commit e682814 (commit_hash above)",
+    "cases_rfx_npz_status": "per-case raw-data records under the same gitignored run directory: provenance of THIS capture, regenerated (not resolved) by the re-capture command"
+  },
   "cases": [
     {
       "tag": "dx50_slab_er2",

@@ -83,6 +83,13 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from build_waveguide_band_broad_e5_envelope import airy_slab, _commit_hash  # noqa: E402
+from _fixture_recapture import (  # noqa: E402
+    RECAPTURE_NOTE_KEY,
+    RECAPTURE_POINTER_KEY,
+    UNIFORM_BAND_E5_JOB_YAML,
+    repo_relative,
+    uniform_band_phase_note,
+)
 
 C0 = 299_792_458.0
 
@@ -248,7 +255,12 @@ def build_phase_envelope(manifest_path: Path, band_token: str, band_label: str):
             f"(tol {MAX_PHASE_TOL_DEG}); masked {total_masked}/{total_bins} bins "
             f"(phase_mag_floor {PHASE_MAG_FLOOR})."
         ),
-        "rfx_manifest_path": str(manifest_path.relative_to(REPO)),
+        # Tracked entry point in the pointer, gitignored manifest in the note
+        # (see _fixture_recapture.py).
+        RECAPTURE_POINTER_KEY: UNIFORM_BAND_E5_JOB_YAML,
+        RECAPTURE_NOTE_KEY: uniform_band_phase_note(
+            band_token=band_token, band_label=band_label,
+            manifest_relpath=repo_relative(manifest_path, REPO)),
         "cases": cases_out,
     }
 
