@@ -347,21 +347,29 @@ def test_profile_falsifiers_are_predicted_as_declared(name):
     assert not G.envelope_check(prof)["ok"]
 
 
-def test_metric_defect_falsifier_fails_the_allowance_gate_by_the_declared_margin():
+def test_metric_defect_falsifier_fails_the_allowance_gate_by_the_gates_own_bound():
+    """The gate's bound is |dev_sp(control)| + A + W_est (evaluate_arm), NOT
+    A + W_est: the control's own dispersion is part of the room. Against
+    the gate's bound the swap fails by 2.4-7.9x (note section 14, review
+    item 7); against A + W_est alone it is 5.8-16x (the note's section 6
+    figure, reported here for the record)."""
     prof = G.PROFILES["single_band"]
     w = G.estimator_floor()
-    margins = []
+    margins_gate, margins_aw = [], []
     for mode in MODES:
         exc = _excess(prof, mode, swap=True)
-        bound = G.allowance(mode["mnl"], prof)["allowance"] + w
+        a_w = G.allowance(mode["mnl"], prof)["allowance"] + w
+        ctrl = abs(G.lattice_freq(mode["mnl"], G.PROFILES["uniform"], G.DX_COARSE)["dev_spatial"])
         if mode["mnl"][2] == 0:
             assert exc == 0.0
         else:
-            margins.append(exc / bound)
+            margins_gate.append(exc / (ctrl + a_w))     # excess over the gate's full bound
+            margins_aw.append(exc / a_w)
             good = G.lattice_freq(mode["mnl"], prof, G.DX_COARSE)["f_lattice_hz"]
             bad = G.lattice_freq(mode["mnl"], prof, G.DX_COARSE, swap_metrics=True)["f_lattice_hz"]
             assert abs(bad / good - 1.0) > 1000 * PPM
-    assert min(margins) > 5.8 and max(margins) < 16.0, margins
+    assert min(margins_gate) > 2.3 and max(margins_gate) < 8.0, margins_gate
+    assert min(margins_aw) > 5.8 and max(margins_aw) < 16.0, margins_aw
     # on a uniform profile the swap is the identity
     u = G.PROFILES["uniform"]
     assert G.axis_mu(u, 1, swap_metrics=True) == G.axis_mu(u, 1)

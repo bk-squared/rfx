@@ -222,11 +222,20 @@ def run_arm(name: str, lane: str, dxy: float, dz_profile, *, smoke: bool, search
             return jnp.asarray(e_bad, dtype=jnp.float32), jnp.asarray(h_bad, dtype=jnp.float32)
         _nu._profile_to_inv_arrays = _swapped
     t0 = time.time()
+    energy = None
+    wall_energy = 0.0
     try:
         res = sim.run(n_steps=int(rec["n_steps"]), compute_s_params=False, skip_preflight=True)
+        wall_run = time.time() - t0
+        # The energy audit runs INSIDE the metric-swap scope (review item 5, after
+        # round 1): the round-1 artifact predates this and its metric_defect
+        # energy witness saw the healthy metric (note section 14).
+        if with_energy and not smoke:
+            t2 = time.time()
+            energy = energy_audit(dz, dxy, rec["n_steps"], facts["nodes"], float(res.dt))
+            wall_energy = time.time() - t2
     finally:
         _nu._profile_to_inv_arrays = saved
-    wall_run = time.time() - t0
     ts = np.asarray(res.time_series)
     dt = float(res.dt)
     if abs(dt - facts["dt"]) > 1e-18:
@@ -237,14 +246,9 @@ def run_arm(name: str, lane: str, dxy: float, dz_profile, *, smoke: bool, search
     t1 = time.time()
     meas = extract(ts, dt, rec, search_band_hz, modes)
     wall_harminv = time.time() - t1
-
-    energy = None
-    wall_energy = 0.0
-    if with_energy and not smoke:
-        t2 = time.time()
-        energy = energy_audit(dz, dxy, rec["n_steps"], facts["nodes"], dt)
-        wall_energy = time.time() - t2
     meas["energy"] = energy or {}
+    if energy is not None:
+        energy["metric_swap_in_scope"] = bool(metric_swap)
 
     return {"name": name, "lane": lane, "dx": dxy, "profile_mm": (dz * 1e3).tolist(),
             "nodes": facts["nodes"], "cells": pred["cells"], "n_cells": pred["n_cells_total"],
