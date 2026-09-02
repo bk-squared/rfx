@@ -651,3 +651,64 @@ estimator's output on the same committed leg), so only C5 and C7 carry non-trivi
 content for cv07; and `cv06b_shallow_stub_model.py` uses the Hammerstad–Bekkadal
 coefficients (u+0.262)/(u+0.813) where T1 wrote (u+0.264)/(u+0.8), a ~0.5 % difference
 on a 0.886 % term.
+
+### 7.6 The GPU job ran: criterion (A) holds on cv06b's own board; one pre-declared falsifier FIRED
+
+`scripts/vessl_cv06b_estimator_falsifiers.yaml`, VESSL run 369367257702 (remilab-c0,
+one RTX 4090; log harvested, run deleted). Two earlier attempts are part of the record:
+369367257699 printed every gate PASS and then lost its exit code when the shipped
+script's `savefig` hit the read-only NFS checkout (the job now stages to local disk),
+and 369367257701 died on an inline heredoc under VESSL's script wrapper (replaced by
+`scripts/diagnostics/compare_json_close.py`). Artifacts are committed under
+`validation/crossval/_06b_msl_notch_results/`; the run's CPU replay reproduced the
+committed cv06b falsifier artifact to 1e-9.
+
+**Criterion (A) — demonstrated, on this board, exit 0.** The shipped
+`06b_msl_notch_filter_uniform.py` (`cv06b_baseline_run.exit` = `EXIT:0`) and the
+build-falsifier baseline leg agree:
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.all_pass` with
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 1.453` (G1, window 4.0 %),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9684` (G2, window 0.80–1.20),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.witness_bins = 0.3175` (G3, threshold 1.000),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm = 46.48` (G4, 40–65 Ω) and a notch depth of
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.notch_depth_db = -43.49` dB (witness only). Section 6.2's
+"UNDEMONSTRATED" is superseded by this paragraph. Solve time
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.solve_s = 312.7` s.
+
+**Criterion (B), narrow stub — fires, and the old gate stays blind.** `W_STUB` = 5·`DX`
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.w_stub_m = 0.0003175` m): the −10 dB width ratio reads
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.648`, so `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.G2_fired`; section 4
+predicted ~0.674 from the closed form, the solve lands 3.9 % lower — inside the window's
+margin either way. The retained depth witness still passes at
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.notch_depth_db = -35.10` dB
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.depth_witness_still_passes`), and G1 still passes at
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.err_pct = 0.208` %: the blindness #812 measured, reproduced on the
+board itself, next to the gate that catches it.
+
+**Criterion (B), one-cell stub — the pre-declared falsifier FIRED.** Section 4 declared
+that a one-cell stub-length error (`STUB_LEN` − `DX`,
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.stub_len_m = 0.0119365` m) would move the *reported* notch by ~0.5 %
+instead of the bin-quantised 0.000 %. Measured on the board: the analytic shift is
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532` % (`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_bins = 0.303`
+bin); the bin argmin moved `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.bin_argmin_delta_pct = 0.0` % as
+predicted; the refined estimate moved
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.145` % — non-zero, so the estimator is not
+bin-quantised, but **27 % of the predicted shift**, below the builder's pre-declared
+visibility criterion (half the predicted shift):
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.visible` is false and `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::verdict.all_ok` is false. This is
+reported as the result, not adjusted.
+
+*Not attributed here.* Two mechanisms are consistent with the number and this run
+cannot separate them: (i) the estimator under-responds — the own-board notch is
+−43.5 dB deep and about one bin wide, so the three-point log-parabola is a poor model of
+a near-Lorentzian null and its vertex is pinned by the deep centre bin; or (ii) the
+physical shift is smaller than the closed form's — a one-cell change of a staircased
+stub also moves the realized open-end and T-junction reference planes, and the closed
+form has no such term. The decisive experiment is cheap and reference-free: re-solve the
+same `baseline` / `stub_1cell` pair with a 2–4× finer DFT grid (longer record) so the
+0.3-bin shift becomes a multi-bin one; (i) predicts the refined shift converges to the
+argmin shift at fine resolution, (ii) predicts both converge to a value below 0.532 %. It
+is owed, not run. What it qualifies: G1's verdict does not rest on sub-bin resolution — a
+full-bin error is 1.75 % and `1.45 + 1.75 < 4.0` — but the claim that the notch
+frequency is resolved *to* sub-bin accuracy on cv06b's own board is **not demonstrated**
+and the case's public row says so.

@@ -17,7 +17,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BUILDER = REPO_ROOT / "scripts/diagnostics/cv06b_build_falsifiers.py"
@@ -79,3 +78,31 @@ def test_the_three_legs_differ_only_in_one_geometric_input():
     src = BUILDER.read_text()
     assert 'setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)' in src
     assert 'setattr(cv, "W_STUB", 5 * cv.DX)' in src
+
+
+def test_committed_gpu_summary_records_criterion_a_and_the_fired_falsifier():
+    """The committed own-board summary (VESSL 369367257702, #812 round 2) is
+    the evidence for cv06b's criterion (A) and for BOTH build-level (B) legs.
+    Pin what it says so a regenerated file cannot silently flip a verdict:
+    (A) passes; the narrow stub fires G2 while the depth witness stays blind;
+    the one-cell stub falsifier FIRED (refined shift below half the predicted
+    shift) and is recorded as such, not softened."""
+    import json
+    from pathlib import Path
+    path = (Path(__file__).resolve().parents[1]
+            / "validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json")
+    s = json.loads(path.read_text())
+    a = s["criterion_A_baseline"]
+    assert a["all_pass"] is True and all(a["gates"].values())
+    assert a["err_pct"] < 4.0 and 0.80 < a["bw_ratio"] < 1.20 and a["witness_bins"] < 1.0
+    n = s["stub_narrow"]
+    assert n["G2_fired"] is True and n["depth_witness_still_passes"] is True
+    assert n["gates"]["G1 notch freq vs analytic"] is True
+    c = s["stub_1cell"]
+    assert c["bin_argmin_delta_pct"] == 0.0
+    assert 0.0 < abs(c["refined_delta_pct"]) < 0.5 * abs(c["true_shift_pct"])
+    assert c["visible"] is False
+    assert s["verdict"]["criterion_A"] is True
+    assert s["verdict"]["criterion_B_G2_fires_on_narrow_stub"] is True
+    assert s["verdict"]["criterion_B_sub_bin_visible"] is False
+    assert s["verdict"]["all_ok"] is False

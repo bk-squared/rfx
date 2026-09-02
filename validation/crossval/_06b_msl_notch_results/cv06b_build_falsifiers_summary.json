@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "issue": 812,
+    "case": "cv06b",
+    "produced_by": "scripts/diagnostics/cv06b_build_falsifiers.py",
+    "board": "cv06b's own dx=63.5um, 5,729,080-cell mesh"
+  },
+  "criterion_A_baseline": {
+    "gates": {
+      "G1 notch freq vs analytic": true,
+      "G2 -10 dB stopband width": true,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "all_pass": true,
+    "err_pct": 1.4530155863890297,
+    "bw_ratio": 0.9683988760970414,
+    "witness_bins": 0.3175061099379293,
+    "notch_depth_db": -43.49096352273952,
+    "f_notch_refined_hz": 3625498439.194138,
+    "f_notch_bin_hz": 3627272704.0,
+    "f_notch_analytic_hz": 3678954217.3889155,
+    "sub_bin_shift_bins": -0.027881365271800063,
+    "z0_median_ohm": 46.4818172454834,
+    "solve_s": 312.70808577537537
+  },
+  "stub_1cell": {
+    "stub_len_m": 0.011936500000000001,
+    "true_shift_pct": 0.5319817366899832,
+    "true_shift_bins": 0.30308192957038443,
+    "bin_argmin_delta_pct": 0.0,
+    "refined_delta_pct": 0.1447171958022862,
+    "visible": false,
+    "gates": {
+      "G1 notch freq vs analytic": true,
+      "G2 -10 dB stopband width": true,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "solve_s": 179.45163202285767
+  },
+  "stub_narrow": {
+    "w_stub_m": 0.00031749999999999997,
+    "bw_ratio": 0.6481963159149952,
+    "bw_frac": 0.13629883213270969,
+    "notch_depth_db": -35.09758588046899,
+    "err_pct": 0.2080765529334878,
+    "gates": {
+      "G1 notch freq vs analytic": true,
+      "G2 -10 dB stopband width": false,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "G2_fired": true,
+    "depth_witness_still_passes": true,
+    "solve_s": 307.8088598251343
+  },
+  "verdict": {
+    "criterion_A": true,
+    "criterion_B_sub_bin_visible": false,
+    "criterion_B_G2_fires_on_narrow_stub": true,
+    "criterion_B_depth_gate_still_blind": true,
+    "all_ok": false
+  }
+}

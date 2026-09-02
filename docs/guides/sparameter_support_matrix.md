@@ -346,6 +346,8 @@ A `True` entry is not an accuracy guarantee.
   loudly when a short feed cannot satisfy both clearances (#469). Library
   witness probes are excluded from preflight advisories (#470).
 
+**cv06b re-gate, judged on its own board (2026-09-02, VESSL 369367257702, issue #812 P3 round 2).** Every gate passed on the shipped dx = 63.5 µm mesh: notch error `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 1.453` % (window 4.0 %), −10 dB width ratio `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9684` (window 0.80–1.20). The build-level narrow-stub falsifier fires the width gate while the retained depth witness stays blind. One pre-declared falsifier FIRED and is recorded, not softened: a one-cell stub-length error (analytic shift 0.532 %, `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532`) moved the refined notch estimate by `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.145` % — non-zero, but below the declared half-of-predicted visibility criterion — so sub-bin resolution of the notch frequency on this board is not demonstrated; cause not attributed (design note section 7.6 names the two candidates and the finer-DFT experiment that separates them).
+
 ## Rectangular-waveguide port
 
 **API:** use `compute_waveguide_s_matrix(...)` for a full matrix. At least two

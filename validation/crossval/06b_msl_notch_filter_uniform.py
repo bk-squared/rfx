@@ -301,12 +301,19 @@ above is withdrawn except the one arithmetic slip corrected below.
   ``docs/design_notes/estimator_resolution_regate.md``.
 
   ROUND-2 APPEND (2026-09-01). Two things a reader must not infer.
-  (1) CRITERION (A) IS NOT YET DEMONSTRATED ON THIS BOARD. The gates above
-      have been exercised on the committed dx=50um SIBLING sweep, not on a
-      fresh solve of this mesh; ``scripts/vessl_cv06b_estimator_falsifiers.yaml``
-      is what will judge them, and its
-      ``cv06b_build_falsifiers_summary.json::criterion_A_baseline`` is where
-      the answer will live.
+  (1) CRITERION (A) -- ANSWERED 2026-09-02 (was "not yet demonstrated on
+      this board"): ``scripts/vessl_cv06b_estimator_falsifiers.yaml`` ran
+      (VESSL 369367257702, exit 0) and every gate passed on THIS mesh --
+      ``validation/crossval/_06b_msl_notch_results/
+      cv06b_build_falsifiers_summary.json::criterion_A_baseline`` (err 1.453 %,
+      BW ratio 0.9684, witness 0.3175 bin, Z0 46.48 ohm). Same run, build-level
+      (B): a 5-cell stub fires G2 (BW ratio 0.648) while the depth witness
+      still passes; and ONE PRE-DECLARED FALSIFIER FIRED -- a one-cell
+      stub-length error moved the refined estimate 0.145 % against a
+      predicted 0.532 % (bin argmin: 0.000 %). Recorded, not softened, and
+      not attributed (see the design note, section 7.6). G1's verdict does
+      not rest on sub-bin resolution (1.45 + 1.75 < 4.0), but sub-bin
+      resolution of the notch on this board is NOT demonstrated.
   (2) The round-1 shallow-notch falsifier was WITHDRAWN as near-circular (it
       rescaled the measured sweep by the closed form G2's window comes from).
       Its replacement builds the defect from geometry alone
