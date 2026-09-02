@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -40,11 +41,40 @@ def committed() -> dict:
     return json.loads(_ARTIFACT.read_text())
 
 
+def _leaves_beyond_tolerance(fresh, committed, path="", rel=1e-9, abs_=1e-12):
+    """Every leaf where the fresh replay and the committed artifact disagree:
+    floats beyond ``rel``/``abs_`` (the committed file was written on macOS and
+    CI replays it on Linux, where last-digit rounding of the same arithmetic
+    differs -- a byte-equal comparison red on CI for that reason on
+    2026-09-02), everything else exactly, structure exactly."""
+    bad = []
+    if isinstance(fresh, dict) and isinstance(committed, dict):
+        for k in sorted(set(fresh) | set(committed)):
+            if k in fresh and k in committed:
+                bad += _leaves_beyond_tolerance(fresh[k], committed[k], f"{path}.{k}", rel, abs_)
+            else:
+                bad.append(f"{path}.{k}: present on one side only")
+    elif isinstance(fresh, list) and isinstance(committed, list):
+        if len(fresh) != len(committed):
+            bad.append(f"{path}: length {len(fresh)} vs {len(committed)}")
+        else:
+            for i, (a, b) in enumerate(zip(fresh, committed)):
+                bad += _leaves_beyond_tolerance(a, b, f"{path}[{i}]", rel, abs_)
+    elif (isinstance(fresh, float) or isinstance(committed, float)) and not (
+            isinstance(fresh, bool) or isinstance(committed, bool)):
+        if not math.isclose(fresh, committed, rel_tol=rel, abs_tol=abs_):
+            bad.append(f"{path}: fresh {fresh!r} vs committed {committed!r}")
+    elif fresh != committed:
+        bad.append(f"{path}: fresh {fresh!r} vs committed {committed!r}")
+    return bad
+
+
 def test_committed_artifact_equals_a_fresh_replay(tmp_path, committed):
     module = _builder()
     out = tmp_path / "regate_evidence.json"
     assert module.main(["--output", str(out)]) == 0
-    assert json.loads(out.read_text()) == committed
+    bad = _leaves_beyond_tolerance(json.loads(out.read_text()), committed)
+    assert not bad, "committed artifact is stale or platform-divergent beyond 1e-9:\n" + "\n".join(bad)
 
 
 def test_cv20_records_that_the_cross_solver_difference_is_now_gated(committed):
