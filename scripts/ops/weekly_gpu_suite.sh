@@ -23,48 +23,69 @@ LOGS="$HOME/Documents/vessl-run-logs"
 HARVEST="$LOGS/harvest.sh"
 ISSUE_TITLE="Weekly GPU suite (remilab-c0)"
 POST=1
-for a in "$@"; do case "$a" in --no-post) POST=0;; esac; done
+ATTACH=""          # --attach "id id ..." --stamp S --sha H : skip clone+submit, resume at the poll step
+STAMP=""; SHA=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-post) POST=0;;
+    --attach) ATTACH="$2"; shift;;
+    --stamp) STAMP="$2"; shift;;
+    --sha) SHA="$2"; shift;;
+  esac
+  shift
+done
 
 mkdir -p "$OPS/reports" "$OPS/work"
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+[ -n "$STAMP" ] || STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 WORK="$OPS/work/$STAMP"
 mkdir -p "$WORK"
 exec > >(tee -a "$WORK/orchestrator.log") 2>&1
 echo "=== weekly gpu suite $STAMP ==="
-
-# --- 1. checkout ---------------------------------------------------------
-mount | grep -q "remilab-fs" || { echo "NFS not mounted (sudo mount ... ~/mnt/remilab-fs); abort"; exit 2; }
-git clone -q --depth 1 --branch main "$REPO_URL" "$WORK/rfx"
-SHA=$(git -C "$WORK/rfx" rev-parse --short HEAD)
-SLUG="gpu-suite-$SHA"
-echo "main @ $SHA -> $SLUG"
-mkdir -p "$NFS/checkouts/$SLUG"
-rsync -a --delete --exclude .git --exclude .venv --exclude __pycache__ "$WORK/rfx/" "$NFS/checkouts/$SLUG/"
-
-# --- 2. render + submit --------------------------------------------------
 PY=$(command -v python3)
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)   # this script's own copy of the ops tools
-"$PY" "$HERE/render_gpu_suite_shards.py" --slug "$SLUG" --stamp "$STAMP" --sha "$SHA" --out "$WORK/yamls" > /dev/null
+# macOS ships bash 3.2: no associative arrays, no mapfile -- plain files and
+# indexed arrays only (the first run died on `declare -A` after submitting).
+DONEFILE="$WORK/done.txt"; : > "$DONEFILE"
 RUN_IDS=()
-cd "$WORK"   # vessl CLI must not run inside a git repo
-for y in "$WORK"/yamls/gpu_suite_shard*.yaml; do
-  id=$(vessl run create -f "$y" --project "$PROJECT" 2>&1 | grep -oE "runs/$PROJECT/[0-9]+" | head -1 | grep -oE "[0-9]+$" || true)
-  [ -n "$id" ] || { echo "submit failed for $y"; continue; }
-  echo "submitted $(basename "$y") -> $id"
-  RUN_IDS+=("$id")
-done
-[ "${#RUN_IDS[@]}" -gt 0 ] || { echo "no runs submitted; abort"; exit 3; }
+
+if [ -z "$ATTACH" ]; then
+  # --- 1. checkout -------------------------------------------------------
+  mount | grep -q "remilab-fs" || { echo "NFS not mounted (sudo mount ... ~/mnt/remilab-fs); abort"; exit 2; }
+  git clone -q --depth 1 --branch main "$REPO_URL" "$WORK/rfx"
+  SHA=$(git -C "$WORK/rfx" rev-parse --short HEAD)
+  SLUG="gpu-suite-$SHA"
+  echo "main @ $SHA -> $SLUG"
+  mkdir -p "$NFS/checkouts/$SLUG"
+  rsync -a --delete --exclude .git --exclude .venv --exclude __pycache__ "$WORK/rfx/" "$NFS/checkouts/$SLUG/"
+
+  # --- 2. render + submit ------------------------------------------------
+  "$PY" "$HERE/render_gpu_suite_shards.py" --slug "$SLUG" --stamp "$STAMP" --sha "$SHA" --out "$WORK/yamls" > /dev/null
+  cd "$WORK"   # vessl CLI must not run inside a git repo
+  for y in "$WORK"/yamls/gpu_suite_shard*.yaml; do
+    id=$(vessl run create -f "$y" --project "$PROJECT" 2>&1 | grep -oE "runs/$PROJECT/[0-9]+" | head -1 | grep -oE "[0-9]+$" || true)
+    [ -n "$id" ] || { echo "submit failed for $y"; continue; }
+    echo "submitted $(basename "$y") -> $id"
+    RUN_IDS+=("$id")
+  done
+  [ "${#RUN_IDS[@]}" -gt 0 ] || { echo "no runs submitted; abort"; exit 3; }
+else
+  [ -n "$SHA" ] || { echo "--attach needs --sha"; exit 2; }
+  SLUG="gpu-suite-$SHA"
+  for id in $ATTACH; do RUN_IDS+=("$id"); done
+  echo "attached to runs: ${RUN_IDS[*]} (main @ $SHA)"
+  cd "$WORK"
+fi
 
 # --- 3. poll, harvest, delete --------------------------------------------
-declare -A DONE
+is_done() { grep -q "^$1 " "$DONEFILE"; }
 for i in $(seq 1 120); do            # up to 6 h at 3-minute polls
   all=1
   for id in "${RUN_IDS[@]}"; do
-    [ -n "${DONE[$id]:-}" ] && continue
+    is_done "$id" && continue
     s=$(vessl run read "$id" --project "$PROJECT" 2>/dev/null | grep -E "^ *Status " | head -1 | awk '{print $2}' || true)
     if echo "$s" | grep -qiE "completed|failed|terminated|stopped|cancel"; then
       echo "$(date -u +%H:%M:%SZ) run $id $s"
-      DONE[$id]="$s"
+      echo "$id $s" >> "$DONEFILE"
     else
       all=0
     fi
@@ -73,7 +94,7 @@ for i in $(seq 1 120); do            # up to 6 h at 3-minute polls
   sleep 180
 done
 for id in "${RUN_IDS[@]}"; do
-  [ -n "${DONE[$id]:-}" ] || { echo "run $id still not terminal after 6 h; left in place"; continue; }
+  is_done "$id" || { echo "run $id still not terminal after 6 h; left in place"; continue; }
   bash "$HARVEST" "$id" "gpu-suite-$STAMP" >/dev/null 2>&1 || echo "harvest failed for $id (run left in place)"
 done
 
@@ -99,6 +120,6 @@ if [ "$POST" -eq 1 ]; then
 fi
 
 # --- cleanup ---------------------------------------------------------------
-rm -rf "$NFS/checkouts/$SLUG" "$WORK/rfx"
+rm -rf "$NFS/checkouts/$SLUG" "$WORK/rfx" 2>/dev/null || true
 echo "=== done (suite rc=$SUITE_RC) ==="
 exit "$SUITE_RC"
