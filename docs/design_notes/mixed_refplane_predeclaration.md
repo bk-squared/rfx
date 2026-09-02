@@ -221,7 +221,7 @@ Declared geometric limitations (stated now, not after a surprise):
 `docs/guides/sparameter_support_matrix.{md,json}` under the lane's
 `known_limits` ("... mixed lumped+wire sets, reference_plane_cells, non-uniform
 meshes, SBP-SAT and ADI are all rejected loudly"), which the parity gate
-`tests/test_support_matrix_parity.py` couples to the md text. **Editing that pair
+`tests/contracts/test_support_matrix_parity.py` couples to the md text. **Editing that pair
 is out of scope under the current authorization**, so the measurement must not
 lift the guard.
 
@@ -758,7 +758,7 @@ runs the primary checkout.
    parked #683 flip, may any lw-diagonal number be discussed for pinning. If the
    mixed-lane refplane guard is ever lifted, `docs/guides/sparameter_support_matrix.md`
    and `.json` must be edited **together** (parity gate:
-   `tests/test_support_matrix_parity.py`, the
+   `tests/contracts/test_support_matrix_parity.py`, the
    `add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)`
    entries — frozen by symbol, not by line number). That is out of scope here.
 

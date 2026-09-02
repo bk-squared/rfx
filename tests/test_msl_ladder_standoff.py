@@ -249,7 +249,7 @@ def test_committed_example_msl_port_geometries_are_all_compliant():
     """FALSE-POSITIVE census over the committed examples/validation scripts.
 
     Measured 2026-09-01 by instrumenting ``Simulation.add_msl_port`` across
-    ``tests/test_example_fidelity_contract.py`` (which BUILDS all 35 snapshot
+    ``tests/contracts/test_example_fidelity_contract.py`` (which BUILDS all 35 snapshot
     variants without solving): 92 passed, 6 MSL ports registered, 0
     violating. So ``tests/data/example_fidelity_snapshot.json`` and the
     ``msl_port_geometry 6`` header count in that file do NOT move and were

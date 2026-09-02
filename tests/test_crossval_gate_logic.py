@@ -7,7 +7,7 @@ ceiling gate, issue #340) and ``validation/crossval/04_multilayer_fresnel.py``
 Neither crossval script's actual FDTD gate runs in any automated CI workflow
 (confirmed 2026-07-14: no ``.github/workflows/*.yml`` invokes
 ``scripts/run_crossval_cpu.py`` or either script directly;
-``tests/test_crossval_manifest_contract.py`` only unit-tests the runner's
+``tests/contracts/test_crossval_manifest_contract.py`` only unit-tests the runner's
 classification logic against synthetic/mocked subprocess results, and the
 manifest's structural self-consistency — never the scripts themselves). This
 file pins the GATE MATH against synthetic arrays so a future edit to either

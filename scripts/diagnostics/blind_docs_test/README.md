@@ -82,5 +82,5 @@ after #294 merges should move `grad-optimize` and `lumped-load-s11` toward
 - [ ] ≥ 2 model families, one non-Anthropic
 - [ ] no source/test/memory leakage in any agent prompt
 - [ ] every `BITTEN` (or cross-model divergence) → a doc-pin PR + a contract test
-      locking the new text (see `tests/test_empty_window_gradient_caveat_docpin.py`
-      and `tests/test_rcs_bistatic_caveat_docpin.py` for the pattern)
+      locking the new text (see `tests/contracts/test_empty_window_gradient_caveat_docpin.py`
+      and `tests/contracts/test_rcs_bistatic_caveat_docpin.py` for the pattern)

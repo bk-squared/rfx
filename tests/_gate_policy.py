@@ -52,7 +52,7 @@ number regardless of what the plant's own file claims.
 A change to ``ENVELOPE_GATE_MULTIPLIER`` here moves every one of the above
 at once -- that is the visibility guarantee issue #528 asks for: a per-case
 relaxation now requires editing a shared, reviewer-visible object instead of
-a local literal. ``tests/test_gate_policy_is_shared.py`` carries three kinds
+a local literal. ``tests/contracts/test_gate_policy_is_shared.py`` carries three kinds
 of guard, in increasing order of how load-bearing they are: (1) a source
 grep that only catches the literal string ``1.5`` (cosmetic -- evadable, see
 above); (2) two falsifiers for the quantized-gate lanes -- one execs a

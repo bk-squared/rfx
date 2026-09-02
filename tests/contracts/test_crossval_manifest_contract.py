@@ -11,7 +11,7 @@ from types import ModuleType
 from typing import Literal, TypedDict
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
 MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 RUNNER_PATH = REPO_ROOT / "scripts" / "run_crossval_cpu.py"

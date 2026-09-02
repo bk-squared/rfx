@@ -305,7 +305,7 @@ declared planes and keep their validity.
   fidelity or realized"`: 520 passed, 1 skipped (one apparent failure was
   a race with this session's own snapshot re-capture rewriting
   `tests/data/example_fidelity_snapshot.json` mid-run; the full
-  `tests/test_example_fidelity_contract.py` re-run against the committed
+  `tests/contracts/test_example_fidelity_contract.py` re-run against the committed
   state: 154 passed).
 - WILL-MOVE candidate suites (msl sheet threading golden, two-plane
   slab, refplane port waves, preflight campaign statics, lumped two-port

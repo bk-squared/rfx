@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 _SCRIPT = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "scripts"
     / "precompute_gallery_artifacts.py"
 )
@@ -316,7 +316,7 @@ def test_quick_smoke_emits_bundle(tmp_path):
 # ---------------------------------------------------------------------------
 
 _RECONCILE = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "scripts"
     / "reconcile_gallery_manifests.py"
 )
@@ -502,7 +502,7 @@ def test_reconcile_after_quick_smoke(tmp_path):
     result = subprocess.run(
         ["git", "status", "--short",
          "docs/public/gallery/assets/"],
-        cwd=str(Path(__file__).resolve().parents[1]),
+        cwd=str(Path(__file__).resolve().parents[2]),
         capture_output=True, text=True,
     )
     assert result.stdout.strip() == "", \
