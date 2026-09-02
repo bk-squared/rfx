@@ -5,7 +5,7 @@
  "contract": "docs/design_notes/chain_closure_contract.md",
  "predeclaration": "docs/design_notes/waveguide_chain_battery_predeclaration.md",
  "builder": "tests/_waveguide_chain_battery_fixture.py",
- "test": "tests/test_waveguide_chain_battery_closure.py",
+ "test": "tests/oracle/test_waveguide_chain_battery_closure.py",
  "readme": "tests/fixtures/waveguide_chain_battery/README.md",
  "declaration": {
   "gate_abs_diff": 0.02,
@@ -20,7 +20,7 @@
    "guide_in": 18,
    "guide_out": 30
   },
-  "independence_scope": "independent in the PLANE INDEX ONLY; both routes integrate the same transverse window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell dropped) reaches neither monitor",
+  "independence_scope": "independent in the PLANE INDEX ONLY; both routes integrate the same transverse window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell dropped) reaches neither monitor. NOT caught either: the reference-plane de-embedding \u2014 both routes are magnitude-only, |S| = sqrt(P_num/P_inc) is built from flux alone and ref_shifts reaches only jnp.angle(ratio), so moving the left reference plane five coarse cells (12.7 mm) swings angle(S11) by 277.3 deg while closure_S moves 1.09e-07 and |S| moves 7.0e-08, against a 0.02 gate and a committed max|closure_S| = 9.033264e-05. CAUGHT: any failure of power transport in the guide between the two plane pairs; a wrong plane index only when it mis-snaps into the slab or the absorber, since the closure residual is plane-invariant in a lossless source-free region",
   "settling_db_max": -40.0,
   "non_vacuity_min_s11": 0.2
  },

@@ -181,7 +181,7 @@ Fine-rung values with their gates: `column_power` (1.02), `reciprocity_mag` (0.0
 ## Closure witness — `closure_witness.json`
 
 Written by `scripts/diagnostics/waveguide_chain_battery_closure_measure.py`, replayed by
-`tests/test_waveguide_chain_battery_closure.py`. It answers the one thing `fixture.json`
+`tests/oracle/test_waveguide_chain_battery_closure.py`. It answers the one thing `fixture.json`
 cannot answer about itself: `physics_gates[*].power_closure_gate` reads
 `"report-only (WP3)"` because the flux lane's `1 − Σ|S|²` is built from Poynting integrals
 taken at the two PORT PROBE planes, so port column power and the S-matrix are ONE witness.
@@ -200,8 +200,16 @@ transverse window with the same uniform `dA = dx²` (measured `u[0,10)`, `v[0,5)
 `dA = 6.4516003e-06`) through `rfx/probes/probes.py::flux_spectrum` — the port's `aperture_dA`,
 which drops the +face PEC cell, serves the modal V/I integral and reaches neither monitor. So a
 shared-kernel defect that scales every plane equally, and any area-weighting error, cancel in
-both ratios and are not caught. What is caught: a wrong port plane index, a wrong de-embedding
-of the port planes, and any failure of power transport in the guide between the two plane pairs.
+both ratios and are not caught. The reference-plane de-embedding is not caught either: both
+routes are magnitude-only, `|S| = sqrt(P_num / P_inc)` is built from flux alone and `ref_shifts`
+reaches only `jnp.angle(ratio)`. Measured with a positive control that the shift really acted:
+moving the left reference plane five coarse cells (0.02032 → 0.03302 m) swings `∠S11` by 277.3°
+while `closure_S` moves 1.09e-07 and `|S|` moves 7.0e-08, against a 0.02 gate — so the one-cell
+port aperture cutoff error (issue #868) cannot reach this witness. What IS caught: any failure of power transport in the
+guide between the two plane pairs. A wrong plane index is caught only when it mis-snaps into the
+slab or the absorber, because the closure residual is plane-invariant in a lossless source-free
+region — the port planes (k = 15/33) give `max|closure_S| = 9.033e-05` and the interior planes
+(k = 18/30) give `max|closure_M| = 6.887e-05`, agreeing to 2.146e-05 across a three-cell move.
 
 **Rung and cost.** Coarse rung only: `dx = 2.54 mm`, 17 CPML layers, grid 83 × 10 × 5,
 713 steps at `num_periods = 40`, `precision="float32"`, jax 0.6.2 on CPU. Wall time

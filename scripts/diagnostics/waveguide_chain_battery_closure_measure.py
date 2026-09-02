@@ -2,7 +2,7 @@
 """WR-90 chain battery — interior power-closure witness driver (v1.8 WP3).
 
 Runs the pre-declared measurement of
-``tests/test_waveguide_chain_battery_closure.py`` (route A: the flux lane's
+``tests/oracle/test_waveguide_chain_battery_closure.py`` (route A: the flux lane's
 ``1 − |S11|² − |S21|²``; route B: the same power balance read off two
 ``add_flux_monitor`` planes inside the guide) and writes
 ``tests/fixtures/waveguide_chain_battery/closure_witness.json``. The
@@ -42,7 +42,7 @@ import jax  # noqa: E402
 
 import rfx  # noqa: E402
 
-from tests import test_waveguide_chain_battery_closure as C  # noqa: E402
+from tests.oracle import test_waveguide_chain_battery_closure as C  # noqa: E402
 
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_closure_measure.py"
 DEFAULT_OUT = "tests/fixtures/waveguide_chain_battery/closure_witness.json"

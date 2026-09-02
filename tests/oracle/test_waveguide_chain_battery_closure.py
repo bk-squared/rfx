@@ -39,11 +39,32 @@ drops the +face PEC cell, zeroing 14 of 50 cells here) serves the modal V/I
 integral and reaches neither monitor.
 
 So route B calls the same ``rfx/probes/probes.py::flux_spectrum`` kernel with the
-same weights at a different plane. NOT caught by this test: a shared Poynting
-kernel defect that scales every plane by the same factor, and any area-weighting
-error, both of which cancel in the two ratios alike. Caught: a wrong port plane
-index, a wrong de-embedding of the port planes, and any failure of power
-transport in the guide between the two plane pairs.
+same weights at a different plane.
+
+NOT caught, each checked rather than asserted:
+  * a shared Poynting kernel defect that scales every plane by the same factor,
+    and any area-weighting error — both cancel in the two ratios alike;
+  * the reference-plane de-embedding. Both routes are MAGNITUDE-only. In
+    ``extract_waveguide_s_matrix_flux`` the shift enters through ``ref_shifts``
+    at ``rfx/sources/waveguide_port.py:2149`` and ``:2191``, and both uses feed
+    ``extract_waveguide_port_waves`` whose result reaches only
+    ``phase = jnp.angle(ratio)``; the magnitude is ``sqrt(P_num / safe_P_inc)``,
+    built from flux alone, so ``|S|`` and ``closure_S = 1 − |S11|² − |S21|²`` do
+    not depend on the shift by construction. Measured on this fixture, with a
+    positive control that the shift really acted: moving the left reference
+    plane five coarse cells (0.02032 → 0.03302 m, 12.7 mm) swings ``∠S11`` by
+    277.3°, while ``closure_S`` moves 1.09e-07 and ``|S|`` moves 7.0e-08 —
+    against a 0.02 gate and a committed ``max|closure_S| = 9.033264e-05``. The
+    one-cell port aperture cutoff error (issue #868) therefore cannot reach this
+    witness.
+
+CAUGHT: any failure of power transport in the guide between the two plane pairs
+— a lossy or reflecting feature between them, an absorber reaching in, energy
+appearing where none is fed. A wrong plane INDEX is caught only when the plane
+mis-snaps into the slab or the absorber: in a lossless source-free region the
+closure residual is plane-invariant, which the artifact's own numbers show
+(port planes k=15/33 give max|closure_S| = 9.033e-05, interior planes k=18/30
+give max|closure_M| = 6.887e-05, agreeing to 2.146e-05 for a three-cell move).
 
 Nor does it bound the far absorber. Both routes divide by a reference run's net
 flux, so a reflection there biases ``F_ref`` and the flux lane's ``F_ref[i]``
@@ -126,7 +147,7 @@ from rfx.sources.waveguide_port import settling_db_from_port_records
 from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 WITNESS = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "closure_witness.json"
 
 SCHEMA = "rfx.waveguide_chain_battery_closure"
@@ -287,7 +308,16 @@ INDEPENDENCE_SCOPE = (
     "window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) "
     "through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an "
     "area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell "
-    "dropped) reaches neither monitor")
+    "dropped) reaches neither monitor. "
+    "NOT caught either: the reference-plane de-embedding — both routes are magnitude-only, "
+    "|S| = sqrt(P_num/P_inc) is built from flux alone and ref_shifts reaches only "
+    "jnp.angle(ratio), so moving the left reference plane five coarse cells (12.7 mm) swings "
+    "angle(S11) by 277.3 deg while closure_S moves 1.09e-07 and |S| moves 7.0e-08, against a "
+    "0.02 gate and a committed max|closure_S| = 9.033264e-05. CAUGHT: any failure of power "
+    "transport in the guide between the two plane pairs; a wrong plane index only when it "
+    "mis-snaps into the slab or the absorber, since the closure residual is plane-invariant "
+    "in a lossless source-free region"
+)
 
 
 def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
@@ -324,7 +354,7 @@ def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
         "contract": "docs/design_notes/chain_closure_contract.md",
         "predeclaration": "docs/design_notes/waveguide_chain_battery_predeclaration.md",
         "builder": "tests/_waveguide_chain_battery_fixture.py",
-        "test": "tests/test_waveguide_chain_battery_closure.py",
+        "test": "tests/oracle/test_waveguide_chain_battery_closure.py",
         "readme": "tests/fixtures/waveguide_chain_battery/README.md",
         "declaration": {
             "gate_abs_diff": CLOSURE_ABS_DIFF_GATE,
@@ -615,7 +645,7 @@ def test_live_closure_routes_agree_within_the_column_power_tolerance(witness):
     # coherence check, not a reproduction gate: it must fire when the witness
     # stops describing the run at all, and must not fire on run-to-run float32
     # noise. The bound is the gate itself divided by 20 (0.02 / 20 = 1e-3): a
-    # drift that large is a fifth of the disagreement the gate allows, so it
+    # drift that large is a twentieth of the disagreement the gate allows, so it
     # cannot hide a real change, while sitting far above the 5e-6 cross-backend
     # |S| envelope the battery measured. Tightening it to that envelope would
     # make this assert a second, undeclared reproduction gate.
