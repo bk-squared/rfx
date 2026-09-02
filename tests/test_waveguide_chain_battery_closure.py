@@ -52,13 +52,13 @@ refer to ``docs/design_notes/waveguide_chain_battery_predeclaration.md``):
   the unmodified two-port fixture; per bin
   ``closure_S(f) = 1 − |S11(f)|² − |S21(f)|²`` from column 0 (left drive).
 * Route B: two x-normal full-plane monitors at ``18·dx_coarse = 0.04572 m``
-  (``m_in``) and ``30·dx_coarse = 0.07620 m`` (``m_out``) — 4 coarse cells
+  (``guide_in``) and ``30·dx_coarse = 0.07620 m`` (``guide_out``) — 4 coarse cells
   outside the nearer slab face, 6 either side of the slab centre, and strictly
   between the port probe planes (0.03810 / 0.08382 m) and the slab. Two
   single-port runs of the SAME builder at the same rung, drive and record
   length: the ``slab`` device run and a ``thru`` reference run.
-  ``closure_M(f) = [F_dev(m_in,f) − F_dev(m_out,f)] / F_ref(m_in,f)``.
-  ``F_ref(m_in)`` is the incident power at that plane, the same role
+  ``closure_M(f) = [F_dev(guide_in,f) − F_dev(guide_out,f)] / F_ref(guide_in,f)``.
+  ``F_ref(guide_in)`` is the incident power at that plane, the same role
   ``F_ref[i]`` plays in the flux lane's own ratios.
 * GATE: ``max_f |closure_S(f) − closure_M(f)| ≤ 0.02`` — the column-power
   tolerance the plan's WP3 Falsifier names.
@@ -70,7 +70,7 @@ refer to ``docs/design_notes/waveguide_chain_battery_predeclaration.md``):
   witness above −40 dB — is reported as NON-CLOSING and no verdict is drawn.
 * Recorded with every number (R5 + repo rule 10): preflight findings verbatim
   for all three solves, ``settling_db`` per drive, the per-bin dumps of
-  ``F_dev(m_in)``, ``F_dev(m_out)``, ``F_ref(m_in)``, ``|S11|²``, ``|S21|²``,
+  ``F_dev(guide_in)``, ``F_dev(guide_out)``, ``F_ref(guide_in)``, ``|S11|²``, ``|S21|²``,
   ``closure_S``, ``closure_M`` and their difference.
 
 MEASURED (one run, branch (i)): ``max_f |closure_S − closure_M| = 2.146e-05``
