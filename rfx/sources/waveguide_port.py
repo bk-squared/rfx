@@ -2214,7 +2214,12 @@ def extract_waveguide_s_matrix_flux(
                 p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
             )
 
-            col_entries.append((mag * jnp.exp(1j * phase)).astype(jnp.complex64))
+            # No dtype cast: the column follows the freqs precision through
+            # _rect_dft / flux_spectrum (complex64 by default, complex128
+            # under JAX_ENABLE_X64), the same rule as normalize=False and
+            # the non-uniform flux lane. A hard complex64 cast lived here
+            # until v1.8 (removed under the chain-closure plan, WP1 step 3).
+            col_entries.append(mag * jnp.exp(1j * phase))
 
         # (n_ports, n_freqs) column for this drive port
         s_columns.append(jnp.stack(col_entries, axis=0))
