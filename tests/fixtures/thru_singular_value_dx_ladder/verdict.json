@@ -1,0 +1,148 @@
+{
+  "study": "thru_singular_value_dx_ladder",
+  "adjudicated_on": "2026-09-02",
+  "predeclaration": "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md",
+  "predeclaration_section": "3. Outcome table",
+  "vessl_run_id": "369367257803",
+  "run_dir_on_nfs": "claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189",
+  "rfx_sha": "088281899727fcc644814f0ae9451b6b89a26af8",
+  "floor": 1e-05,
+  "excess_3ghz": {
+    "dx": 0.0032274714899067636,
+    "dx_over_2": 0.00032169749389643343,
+    "dx_over_4": -0.000845823521890221
+  },
+  "signs": {
+    "dx": 1.0,
+    "dx_over_2": 1.0,
+    "dx_over_4": -1.0
+  },
+  "ratio_floored_magnitudes": {
+    "e1_over_e2": 10.032628637591465,
+    "e2_over_e4": 0.38033642429039277
+  },
+  "log2_ratio": {
+    "e1_over_e2": 3.3266277492485297,
+    "e2_over_e4": -1.3946519844049008
+  },
+  "abs_e4_above_floor": true,
+  "outcome_a_discretization": false,
+  "outcome_b_refuted": false,
+  "outcome_b_spread": 0.004073295011796985,
+  "outcome_b_threshold": 0.0006454942979813527,
+  "verdict": "C",
+  "verdict_text": "C \u2014 non-closing: the excess keeps its sign and falls 10.03x on the first halving (dx -> dx/2), then changes sign on the second (dx/2 -> dx/4, |e4| = 8.46e-4 above the 1e-5 floor). The ladder bounds the excess (every bin below the 1.01 gate at every rung; every bin below unity at dx/4) but its order cannot be fitted. STOP; redesign before any further rung.",
+  "unity_crossing_hz": {
+    "dx": [
+      [
+        4500000000.0,
+        5000000000.0
+      ]
+    ],
+    "dx_over_2": [
+      [
+        3000000000.0,
+        3500000000.0
+      ]
+    ],
+    "dx_over_4": []
+  },
+  "all_bins_below_unity_at_dx_over_4": true,
+  "successive_difference_sv_max_per_bin": {
+    "dx_to_dx2": [
+      0.00290577399601033,
+      0.003497710538452603,
+      0.004016245966090737,
+      0.004402475817462115,
+      0.00464490460819067,
+      0.004752219276660141,
+      0.004724861215937848,
+      0.004561445227943772,
+      0.004169134351975412
+    ],
+    "dx2_to_dx4": [
+      0.0011675210157866545,
+      0.001331531011890985,
+      0.0014410051038464822,
+      0.0015208857217370308,
+      0.001576558913280457,
+      0.0016308496590244914,
+      0.001690782590437756,
+      0.0017375291696279938,
+      0.0017669420509925926
+    ]
+  },
+  "gate_thru_max_singular_value": 1.01,
+  "sv_max_below_gate_at_every_rung": true,
+  "validity_gates": {
+    "G1_delta_vs_battery": 4.71489906672673e-07,
+    "G1_pass": true,
+    "G2_battery_codes_present": {
+      "dx_over_1": true,
+      "dx_over_2": true,
+      "dx_over_4": true
+    },
+    "G2_extra_codes": {
+      "dx_over_1": [],
+      "dx_over_2": [],
+      "dx_over_4": []
+    },
+    "G3_settling_db_per_drive": {
+      "dx_over_1": [
+        -138.3110637590139,
+        -141.82619091173692
+      ],
+      "dx_over_2": [
+        -134.6680149911226,
+        -134.76404427031116
+      ],
+      "dx_over_4": [
+        -129.20619102224873,
+        -126.2216208749715
+      ]
+    },
+    "G3_main_pass_settling_db": {
+      "dx_over_1": -140.44433583157894,
+      "dx_over_2": -132.04275347910612,
+      "dx_over_4": -133.01258410165718
+    },
+    "G3_pass": true,
+    "G4_finite_pec_cells": [
+      340,
+      1360,
+      5440
+    ],
+    "G4_wire_port_cells": [
+      3,
+      5,
+      9
+    ],
+    "G4_wire_port_live": [
+      2,
+      4,
+      8
+    ],
+    "G4_cpml_layers": [
+      8,
+      16,
+      32
+    ],
+    "G4_pass": true,
+    "G5_pass": true
+  },
+  "column_power_max": {
+    "dx_over_1": 0.9912394971743359,
+    "dx_over_2": 0.9925046010195504,
+    "dx_over_4": 0.9929959658144206
+  },
+  "column_power_min": {
+    "dx_over_1": 0.9563471700874668,
+    "dx_over_2": 0.952637830197802,
+    "dx_over_4": 0.951845985082157
+  },
+  "reciprocity_abs_max": {
+    "dx_over_1": 0.0002668571372691985,
+    "dx_over_2": 5.664125618630794e-05,
+    "dx_over_4": 1.2401096935056067e-05
+  }
+}

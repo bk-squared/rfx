@@ -175,3 +175,206 @@ precision and record-length checks, a different mechanism family) |
 falsifier=G1 — the dx rung on CPU, run before launch with the witness probes
 present, reproduces sv_max 1.003227 within 1e-5; the number and the wall time
 are quoted in the PR body.
+
+## 9. RESULTS (appended 2026-09-02 after the single VESSL run; sections 1–8 unchanged)
+
+Run: VESSL 369367257803 (`rfx-thru-sv-dx-ladder`, remilab-c0 gpu-rtx4090,
+image nvcr.io/nvidia/jax:24.10-py3, `scripts/vessl_thru_singular_value_dx_ladder.yaml`),
+rfx pinned at 08828189 (the PR #858 head; main carries it as 30fad4bb). All
+three rungs returned rc=0; each rung's JSON was persisted before the next
+rung started. Wall time 6.6 / 12.2 / 160.2 s total for dx / dx/2 / dx/4.
+
+Artifacts:
+- committed: `tests/fixtures/thru_singular_value_dx_ladder/rung_dx_over_{1,2,4}.json`
+  (byte-identical copies of the run's JSONs; sha256 in that directory's
+  README), the adjudication `verdict.json` next to them, and the replay gate
+  `tests/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD:
+  re-derives sv(f) from the stored S matrices and the outcome-table verdict
+  from the stored excesses, compares both with `verdict.json`).
+- originals: `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/`
+  on the personal-workspaces NFS mount (`rung_dx_over_{1,2,4}.{json,log,rc}`).
+- job log: `docs/vessl-logs/rfx-thru-sv-dx-ladder_369367257803_completed.log`
+  in the primary checkout (gitignored, local only).
+
+Provenance (every rung JSON, key `provenance`): jax 0.4.33.dev20241023+e3c6d6430,
+backend gpu (cuda:0), x64 False, field_dtype null (the default), python 3.10.12.
+The CI pin is jax 0.6.2 on CPU; the dx rung on that stack (PR #858 body) gave
+sv_max 1.0032274707981712, this GPU run 1.0032274714899068 — a spread of
+6.9e-10, four orders below the G1 tolerance.
+
+### 9.1 Validity gates (section 4) — all pass, the ladder is readable
+
+- G1 PASS. dx rung sv_max = 1.0032274714899068 at 3 GHz; delta vs the recorded
+  1.003227 = +4.7e-7 (gate 1e-5). Preflight codes exactly
+  `[pec_faces_finite_pec, wire_port_dead_extent_cells, wire_port_dead_extent_cells]`,
+  `extra_codes = []` — the three witness probes add no advisory.
+- G2 PASS. The same three codes at dx/2 and dx/4, `extra_codes = []` at every
+  rung. The wire-port advisory text changes only in its counts: n = 3 / 5 / 9
+  cells, 1 dead at every rung, n_live 2 / 4 / 8, and the pre-#318 phantom
+  termination it quotes 33.3 / 40.0 / 44.4 ohm.
+- G3 PASS. `settling_db` per drive (worst probe = `mid_line` at every rung):
+  dx −138.3 / −141.8 dB (main pass −140.4); dx/2 −134.7 / −134.8 (main −132.0);
+  dx/4 −129.2 / −126.2 (main −133.0). Every value is at least 86 dB below the
+  −40 dB rule; no run-length rerun was needed.
+- G4 PASS. Finite-PEC cells 340 / 1360 / 5440 (×4.00 per halving), wire-port
+  cells 3 / 5 / 9 with the top cell dead, live 2 / 4 / 8, CPML layers 8 / 16 / 32
+  (4.0 mm held), grids 81×57×29 / 161×113×57 / 321×225×113.
+- G5 PASS. SHA, jax version and backend, x64 flag, field dtype, wall time,
+  preflight messages and warnings are in every JSON verbatim.
+
+Preflight, verbatim at the dx rung (three advisories; the same text at the other
+rungs with the count substitutions listed under G2, quoted in full in each JSON's
+`preflight.messages_verbatim`):
+
+> pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.
+
+> Wire port at (0.008, 0.01, 0.0) (extent 0.001) rasterizes to n=3 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm — the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).
+
+> (the same text for the wire port at (0.024, 0.01, 0.0))
+
+Warnings, verbatim, the same set at every rung (`warnings_verbatim`): one
+"UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True
+to suppress:" carrying the three advisories above, and twelve of
+"UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in
+astype is not available, and will be truncated to dtype float32. To enable more
+dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell
+environment variable. See https://github.com/google/jax#current-gotchas for more."
+— the x64-off truncation warning this fixture always emits (PR #858 recorded the
+same twelve on CPU).
+
+### 9.2 Outcome table (section 3) applied — verdict C, non-closing
+
+e(dx) = sv(3 GHz) − 1, from `singular_values.excess_3ghz`:
+
+| rung | sv_max at 3 GHz | e | sign |
+|---|---|---|---|
+| dx = 0.5 mm | 1.0032274714899068 | +3.2274714899e-3 | + |
+| dx/2 = 0.25 mm | 1.0003216974938964 | +3.2169749390e-4 | + |
+| dx/4 = 0.125 mm | 0.9991541764781098 | −8.4582352189e-4 | − |
+
+Floor 1e-5, comparisons on max(|e|, floor) in log space: e1/e2 = 10.03
+(log2 = 3.33); e2/e4 = 0.380 (log2 = −1.39) and the sign changes. |e4| = 8.46e-4
+is above the floor, so the floor does not absorb the crossing.
+
+- A (discretization): FALSE. "All the same sign" fails at dx/4; "e2/e4 ≥ 2"
+  fails (0.38). The first pair on its own satisfies the A condition (same sign,
+  ratio 10.03, fitted p = 3.33), but the table requires both pairs and no
+  envelope is quoted from one.
+- B (discretization refuted): FALSE. max(e) − min(e) = 4.07e-3 against
+  0.20·e1 = 6.45e-4.
+- C (non-closing): TRUE — "a sign flip" and "a non-monotone e" both hold.
+
+**Verdict: C — non-closing.** The excess keeps its sign and falls 10.03× on the
+first halving (dx → dx/2), then changes sign on the second (dx/2 → dx/4,
+|e4| = 8.46e-4 above the 1e-5 floor). The ladder bounds the excess — every
+bin at every rung is below the 1.01 gate (max 1.0032275, at dx), and every
+bin at dx/4 is below unity — but its order cannot be fitted. STOP; redesign
+before any further rung (9.5). Under R2 at the RF/EM threshold this attempt on
+the mesh-resolution mechanism is closed; a second needs a named new falsifier
+or an identified defect of attempt 1, in writing.
+
+Gate `_THRU_MAX_SINGULAR_VALUE = 1.01` and every measured number stay as they
+are. The replay test imports the live constant and asserts it is 1.01.
+
+### 9.3 Every frequency bin (`singular_values.max_per_bin`, `min_per_bin`)
+
+| f (GHz) | sv_max dx | sv_max dx/2 | sv_max dx/4 | sv_min dx | sv_min dx/2 | sv_min dx/4 |
+|---|---|---|---|---|---|---|
+| 3.0 | 1.0032275 | 1.0003217 | 0.9991542 | 0.9877287 | 0.9921246 | 0.9938213 |
+| 3.5 | 1.0029304 | 0.9994327 | 0.9981012 | 0.9824581 | 0.9879052 | 0.9898787 |
+| 4.0 | 1.0021866 | 0.9981704 | 0.9967294 | 0.9768735 | 0.9828919 | 0.9849299 |
+| 4.5 | 1.0010032 | 0.9966007 | 0.9950798 | 0.9716669 | 0.9776580 | 0.9795427 |
+| 5.0 | 0.9993989 | 0.9947540 | 0.9931775 | 0.9675501 | 0.9729531 | 0.9745898 |
+| 5.5 | 0.9973740 | 0.9926218 | 0.9909909 | 0.9650987 | 0.9694705 | 0.9708771 |
+| 6.0 | 0.9948537 | 0.9901288 | 0.9884380 | 0.9645975 | 0.9676708 | 0.9689025 |
+| 6.5 | 0.9916542 | 0.9870927 | 0.9853552 | 0.9659964 | 0.9676088 | 0.9686952 |
+| 7.0 | 0.9873984 | 0.9832293 | 0.9814624 | 0.9689178 | 0.9690032 | 0.9698638 |
+
+- sv_max(f) is monotone decreasing in f at every rung (`monotone_decreasing_in_f`
+  True ×3).
+- The unity crossing moves down in frequency with refinement: between 4.5 and
+  5.0 GHz at dx, between 3.0 and 3.5 GHz at dx/2, and at dx/4 no bin exceeds
+  unity (max 0.9991542 at 3 GHz).
+- The whole sv_max(f) curve moves down with each halving: dx → dx/2 by
+  2.91e-3 (3 GHz) … 4.17e-3 (7 GHz); dx/2 → dx/4 by 1.17e-3 … 1.77e-3. The
+  ratio of successive differences is 2.49 at 3 GHz and 2.36 at 7 GHz. This
+  is arithmetic on the record, not a pre-declared observable, and it decides
+  nothing here; 9.5 uses it to name the next falsifier.
+- sv_min moves up: 0.98773 → 0.99212 → 0.99382 at 3 GHz.
+
+### 9.4 Column power, reciprocity and |S| across the ladder
+
+- Column power Σ_i |S_ij|² per drive column: max over bins 0.99124 / 0.99251 /
+  0.99300, min 0.95635 / 0.95264 / 0.95185 — below 1 everywhere, moving by
+  < 2e-3 per halving; the 1.02 plausibility ceilings are never approached. At
+  3 GHz the two columns differ by 4.1e-4 / 5.5e-5 / 2.2e-6: the port-1 /
+  port-2 asymmetry of the coarse rung vanishes with refinement.
+- Reciprocity max_f |S21 − S12|: 2.67e-4 / 5.66e-5 / 1.24e-5, ×4.7 and ×4.6
+  per halving. It moved with dx.
+- |S11| at 3 GHz 0.0093 / 0.0171 / 0.0344 (|S22| 0.0176 / 0.0176 / 0.0343);
+  |S11| at 7 GHz 0.290 / 0.392 / 0.486; |S21| at 7 GHz 0.934 / 0.894 / 0.846.
+  The fixture's reflection is not held across the ladder: it grows with
+  refinement, by 0.20 in |S11| at 7 GHz from dx to dx/4. Section 2.1 accepted
+  one confounder — the sheet thickness t/h = 0.5 → 0.25 → 0.125, called "a
+  small change in Zc" — and this record does not bear out "small". Which of
+  the thickness, the port's live-cell count (2 / 4 / 8) or something else
+  moves |S11| is not measured by this ladder; the slab variant of 2.1 is the
+  design that separates the first of them.
+
+### 9.5 STOP — memory re-read, alternative architectures, redesign (R2)
+
+Memory (R1), re-read after the verdict:
+- `docs/agent-memory/rfx-known-issues.md`, "#778/#779 stack merged" (#819
+  entry): "the excess is systematic with mechanism unidentified". Consistent.
+  This ladder adds two facts: the 3 GHz excess is not invariant to dx (10× on
+  the first halving), so it is not a fixed extraction offset; and it crosses
+  zero, so "excess over unity" is the wrong quantity to fit an order to.
+- `feedback_gate_can_bind_artifact`: "a green physics test proves nothing
+  about physics until you show the gate can FAIL on wrong physics". The 1.01
+  gate was nowhere near binding on any rung; the replay test locks the
+  record, not the physics.
+- `feedback_label_mechanism_provenance`: "never prescribe a fix for a
+  mechanism you have not instrumented". 9.4 names candidates and attributes
+  nothing.
+- `project_thin_pec_sheet_live_ez_edge`: the reason the sheet was kept (2.1);
+  the slab variant stays the named alternative.
+- `feedback_quote_the_measure_with_the_number`: each number above is tied to
+  its measure (excess over unity, successive difference, |S11|).
+
+Alternative architectures — not parameter tweaks — for the next SINGLE
+pre-declared attempt. One of them, its own note, one run:
+
+1. Same fixture and rungs, a different observable. The record shows sv_max(f)
+   converging from above to a limit below unity, so an observable that does
+   not reference unity can carry an order: the successive difference
+   Δ_k(f) = sv(dx_k; f) − sv(dx_k/2; f) per bin, or 1 − sv_min(f), which
+   converges from below and never crosses. The named new falsifier is a fourth
+   rung dx/8: the two recorded pairs predict Δ(dx/4 → dx/8) ≈ Δ(dx/2 → dx/4) /
+   2.4 per bin, and the pre-declaration fixes the ratio window and the floor
+   before the run. The recorded pairs supply the prediction; only the new rung
+   is evidence. Cost: 65M cells × 32000 steps × 3 passes, about 16× the dx/4
+   wall (roughly 45 min on the same GPU) — GPU lane only.
+2. The slab variant of 2.1 (0.5 mm physical thickness held; the Ez-shorting
+   operator class flips between dx and dx/2 by design). It separates the
+   thickness confounder named in 9.4 from the discretization.
+3. Candidate 2 of #819 (same extractor, a different port family). It asks
+   whether the excess is the extractor's or this geometry's; it does not
+   fit an order on this fixture, so it follows, rather than replaces, the
+   observable question.
+
+This note recommends 1: it re-uses the three rungs as the prediction basis
+and needs one run. The choice is the PI's; nothing is launched here.
+
+### 9.6 Not done in this round
+
+No gate or measured number touched (`_THRU_MAX_SINGULAR_VALUE = 1.01` asserted
+by the replay test). No rung re-run. Nothing folded into the waveguide
+battery. Issue #819 stays open; this note is its candidate-1 record.
+
+R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
+feedback_gate_can_bind_artifact + feedback_label_mechanism_provenance +
+project_thin_pec_sheet_live_ez_edge + feedback_quote_the_measure_with_the_number
+| R2-attempts=1 (closed as non-closing; no second run on this mechanism) |
+falsifier=`tests/test_thru_singular_value_dx_ladder_replay.py` re-derives sv(f)
+from the stored S matrices and the A/B/C verdict from the stored excesses and
+compares both with `verdict.json` (ran; passes).
