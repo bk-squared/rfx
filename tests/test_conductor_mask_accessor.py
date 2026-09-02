@@ -194,7 +194,7 @@ def test_refplane_call_site_sees_the_sheet():
 # that was changed.
 #
 # The board is the committed refplane thru fixture
-# (tests/test_refplane_port_waves.py) with ONE substitution: the PEC signal
+# (tests/locks/test_refplane_port_waves.py) with ONE substitution: the PEC signal
 # trace becomes a ``surface_impedance_f0`` sheet at the same z. Everything
 # else — dx, domain, port positions, N — is byte-identical, which is what
 # lets the plane geometry below be compared against that file's hand-derived
@@ -291,7 +291,7 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
 
     The leg/span indices asserted here are the hand-derived Phase-0 values
     pinned for the PEC thru in
-    ``tests/test_refplane_port_waves.py::
+    ``tests/locks/test_refplane_port_waves.py::
     test_refplane_registers_two_planes_per_port_with_phase0_geometry``.
     They can only come out equal if the cross-section BFS found the sheet
     at the same cells the PEC box occupies — a fallback or a partial mask

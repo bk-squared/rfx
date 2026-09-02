@@ -240,7 +240,7 @@ this harness or held xfail with the firing documented): (1) THRU-battery
 |S21| band, phase-dev band, sv_max, reciprocity measured quotes, DC-anchor
 measured quotes; (2) `test_twoport_wire_port.py` |S21| class quotes;
 (3) default-path off-diagonal byte-pins (e.g. refplane-vs-default
-inequality/equality pins) in `tests/test_refplane_port_waves.py`;
+inequality/equality pins) in `tests/locks/test_refplane_port_waves.py`;
 (4) replay/dump schema pins; (5) NU off-diagonal value pins if any test
 carries them.  ANY mover outside these classes = STOP and report.  A
 full wire/lumped/sparam/twoport battery WITH the slow_physics marker

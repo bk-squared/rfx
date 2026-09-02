@@ -2,7 +2,7 @@
 
 Until now ``rfx.harminv`` had NO committed estimator-level test — its only
 validation was indirect, through physics cross-vals (cv05) and the slow
-issue-80 patch resonance gate (``tests/test_patch_edgefed_resonance_harminv.py``).
+issue-80 patch resonance gate (``tests/locks/test_patch_edgefed_resonance_harminv.py``).
 The 2026-06-17 reference-verification confirmed (in throwaway scratch scripts)
 that the issue-80 witness (fed patch TM010, 9.32 GHz as the fixture read on the
 pre-#702 tree; the same fixture reads 8.16 GHz since the #702 sheet-node
@@ -66,7 +66,7 @@ def test_harminv_dominant_is_largest_amplitude_tone():
     The amplitude sort is the estimator's own API contract. The patch
     companion gate no longer selects by amplitude rank — it labels modes by
     spatial parity on a probe cross ("a PARITY label from the probe cross.
-    No amplitude rank", tests/test_patch_edgefed_resonance_harminv.py) — so
+    No amplitude rank", tests/locks/test_patch_edgefed_resonance_harminv.py) — so
     this locks the estimator contract itself, and that 9.30 is dominant by
     ENERGY, not by proximity to an expected value.
     """

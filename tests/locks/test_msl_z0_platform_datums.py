@@ -22,7 +22,7 @@ from tests._gate_policy import gate_from_envelope
 from tests.test_msl_port_integration import LEG_S11_BOUND, MEASURED_SPREAD_ENVELOPE
 
 DATUMS_PATH = (
-    Path(__file__).resolve().parent / "fixtures" / "msl_z0_length_invariance" / "platform_datums.json"
+    Path(__file__).resolve().parents[1] / "fixtures" / "msl_z0_length_invariance" / "platform_datums.json"
 )
 
 # Recomputing a spread from a record's own `legs` dict does not reproduce the

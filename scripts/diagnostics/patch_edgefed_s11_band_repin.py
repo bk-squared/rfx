@@ -8,7 +8,7 @@ Measures the two arms pre-declared in
     identity (the same bypass ``tests/test_preflight_campaign_statics.py`` uses),
     which reproduces the pre-#702 tree digit for digit (issue #782).
 
-Config is EXACTLY the committed gate's (``tests/test_patch_edgefed_s11_passivity.py``:
+Config is EXACTLY the committed gate's (``tests/locks/test_patch_edgefed_s11_passivity.py``:
 same ``_build_patch_sim()`` geometry — imported from the test module, not copied —
 freqs = linspace(6, 14 GHz, 81), num_periods = 280). This board ("Board S") realizes
 44 x 51 patch cells = 8.668 x 10.047 mm at dx = 197 um; it is NOT the harminv gate's
@@ -40,7 +40,7 @@ import numpy as np  # noqa: E402
 
 import rfx  # noqa: E402
 import rfx.api._compile as _compile  # noqa: E402
-from test_patch_edgefed_s11_passivity import _build_patch_sim  # noqa: E402
+from tests.locks.test_patch_edgefed_s11_passivity import _build_patch_sim  # noqa: E402
 
 FREQS = np.linspace(6e9, 14e9, 81)
 NUM_PERIODS = 280.0

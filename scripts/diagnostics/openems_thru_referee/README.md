@@ -2,7 +2,7 @@
 
 Independent cross-solver anchor for the reference-plane port-wave architecture
 (PR #320) on the canonical 16 mm air-microstrip thru
-(`tests/test_refplane_port_waves.py` fixture geometry, coordinate-identical
+(`tests/locks/test_refplane_port_waves.py` fixture geometry, coordinate-identical
 model; the one structural difference is the port family — rfx vertical wire
 point-feeds vs openEMS 3 mm MSL launch spans — stated below where it matters).
 

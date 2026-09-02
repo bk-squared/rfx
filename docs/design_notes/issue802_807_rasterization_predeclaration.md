@@ -144,14 +144,14 @@ CI-visible (red on this PR without a re-pin):
    expectations (live fast-CI build on node-aligned z faces + one-cell ground).
 6. `tests/fixtures/msl_z0_length_invariance/platform_datums.json` — new datum
    entries per the ledger's append-only protocol (datums recorded at x64=0).
-7. `tests/test_two_plane_pec_slab.py` off-state golden + pinned plane k=3
+7. `tests/locks/test_two_plane_pec_slab.py` off-state golden + pinned plane k=3
    (exact half-cell tie — verify, may be stable).
 8. `tests/test_coax_msl_transition.py` knife-edge cell count narrative
    (assertion doesn't pin the count; verify it survives).
 9. `tests/test_msl_phase_referee_header.py` realized-substrate pins (live).
 10. `tests/test_sheet_node_permittivity.py` sheet plane / eps values (verify).
 11. `tests/test_lumped_twoport_vi_validation_battery.py` (verify n_live).
-12. `tests/test_refplane_port_waves.py` physics legs (verify; plane indices
+12. `tests/locks/test_refplane_port_waves.py` physics legs (verify; plane indices
     themselves are python arithmetic, safe).
 13. `tests/test_preflight_campaign_statics.py` docstring-recorded node sets /
     cell counts (verify).

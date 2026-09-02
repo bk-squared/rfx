@@ -53,7 +53,7 @@ _CAVITY_DOMAIN = (0.030, 0.020, 0.015)
 _CAVITY_DX = 5.0e-3
 _CAVITY_FREQS = (0.8e9, 1.0e9, 1.2e9, 1.5e9, 1.8e9)
 
-# Matches the committed thru fixture in tests/test_refplane_port_waves.py.
+# Matches the committed thru fixture in tests/locks/test_refplane_port_waves.py.
 _THRU_DX = 0.5e-3
 _THRU_DOMAIN = (0.032, 0.020, 0.010)
 _THRU_H = 1.0e-3

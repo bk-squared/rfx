@@ -3,7 +3,7 @@
 Loads the two saved arms from ``docs/design_notes/patch_edgefed_s11_band_repin_results.json``
 (written by ``patch_edgefed_s11_band_repin.py``) and evaluates the COMMITTED gate's own
 ``_gate_readings`` + assertion conditions (imported from
-``tests/test_patch_edgefed_s11_passivity.py``, not re-implemented) on each arm:
+``tests/locks/test_patch_edgefed_s11_passivity.py``, not re-implemented) on each arm:
 
   * main arm    -> every gate condition must PASS;
   * retired arm -> the in-band-crossing witness (2b) and/or the antiresonance
@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(_REPO, "tests"))
 
 import numpy as np  # noqa: E402
 
-from test_patch_edgefed_s11_passivity import (  # noqa: E402
+from tests.locks.test_patch_edgefed_s11_passivity import (  # noqa: E402
     PASSIVE_TOL, RES_BAND_GHZ, RES_BAND_RE_ZIN_MIN_OHM, RES_BAND_S11_MIN,
     _gate_readings,
 )

@@ -130,7 +130,7 @@ Moved WITH written provenance (each carries it in-file):
   — residuals re-measured: vacuum 1.983e-01 -> 4.975e-02, pec_plates
   6.109e-01 -> 1.051e-01 (normalization half removed; #683 ordering half
   remains, near-conjugate signature preserved). Stays xfail.
-- `tests/test_refplane_port_waves.py::test_run_short_diagonals_byte_frozen_offdiagonals_move`
+- `tests/locks/test_refplane_port_waves.py::test_run_short_diagonals_byte_frozen_offdiagonals_move`
   — the default-path and refplane-path diagonals now intentionally
   DIFFER (default = #764 whole-port driven; refplane = byte-frozen #313
   legacy); the byte-equality pin became a byte-inequality pin so a

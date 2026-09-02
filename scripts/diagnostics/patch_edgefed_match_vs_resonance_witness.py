@@ -7,7 +7,7 @@ patch theory (Balanis/Pozar) says the edge input resistance at the TM010 resonan
 the resonance. The resonance itself is where Im(Zin) crosses zero.
 
 This runs the *production* compute_msl_s_matrix on the issue-80 patch (same geometry as
-tests/test_patch_edgefed_s11_passivity.py), derives Zin(f) = Z0 (1+S11)/(1-S11), and reports:
+tests/locks/test_patch_edgefed_s11_passivity.py), derives Zin(f) = Z0 (1+S11)/(1-S11), and reports:
   - f_dip          : argmin |S11|                     (the DIP)
   - f_match        : argmin |Zin - 50|                (the MATCH point; expect == f_dip)
   - f_res_ImZ0     : zero-crossing of Im(Zin)         (the RESONANCE witness; expect
@@ -55,7 +55,7 @@ Y_C = DOM_Y / 2.0
 
 NUM_PERIODS = float(sys.argv[1]) if len(sys.argv) > 1 else 200.0
 # Gated antiresonance band, measured on this board 2026-09-01 (post-#702 tree;
-# tests/test_patch_edgefed_s11_passivity.py, issue #782). The pre-#702 tree read
+# tests/locks/test_patch_edgefed_s11_passivity.py, issue #782). The pre-#702 tree read
 # its crossings at ~9.5-9.6 GHz — that number is retired with #702.
 RES_BAND_EXPECT_GHZ = (8.4, 9.2)
 FREQS = np.linspace(6e9, 14e9, 81)

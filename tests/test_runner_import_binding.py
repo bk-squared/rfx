@@ -14,7 +14,7 @@ monkeypatched (e.g. ``tests/test_coax_two_port_fdtd.py``'s
 but has no way to reach the copy already bound into ``rfx.runners.uniform``'s
 own namespace. Every later uniform-lane run in that process then silently
 calls the stale stub. The concrete symptom was order-dependent:
-``pytest tests/test_coax_two_port_fdtd.py tests/test_refplane_port_waves.py``
+``pytest tests/test_coax_two_port_fdtd.py tests/locks/test_refplane_port_waves.py``
 gave ``1 failed, 63 passed`` (a ``TypeError`` from the leaked stub), while
 either file alone, or the suite in its usual collection order, passed clean.
 
@@ -94,7 +94,7 @@ def test_coax_then_refplane_order_does_not_leak_fake_run():
         [
             sys.executable, "-m", "pytest",
             "tests/test_coax_two_port_fdtd.py",
-            "tests/test_refplane_port_waves.py",
+            "tests/locks/test_refplane_port_waves.py",
             "-q",
         ],
         cwd=__file__.rsplit("/tests/", 1)[0],

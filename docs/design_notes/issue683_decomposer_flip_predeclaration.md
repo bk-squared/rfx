@@ -273,7 +273,7 @@ active — the slow_physics THRU battery ran, not skipped):
   (b) the mixed-lane fill in rfx/api/_sparams.py guards accumulator
   tuples shorter than 5 (the bisecting-mesh path's lane did not flip;
   its vi[0] still IS the pre-injection reference).
-- tests/test_refplane_port_waves.py (not matched by the -k selection)
+- tests/locks/test_refplane_port_waves.py (not matched by the -k selection)
   run explicitly: 32 passed — the #313 reference-plane path's
   byte-frozen diagonals and non-opted off-diagonals held through the
   flip via the same v_ref reference.

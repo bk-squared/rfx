@@ -9,7 +9,7 @@ loaded Q than the reference solver; before attributing that to structure-
 specific representation, test the mechanism on the canonical fixture whose
 answer is pinned three ways.
 
-FIXTURE (verbatim from tests/test_patch_edgefed_resonance_harminv.py)
+FIXTURE (verbatim from tests/locks/test_patch_edgefed_resonance_harminv.py)
 ---------------------------------------------------------------------
 Edge-fed patch, eps_r 3.38, one-cell ground/feed/patch sheets, uniform mesh
 DX = H_SUB/4, CPML.  PRE-#702 one-plane ring-down spectrum (N_SUB=4, 120 periods, the

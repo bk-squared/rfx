@@ -17,9 +17,9 @@ twice over and is no longer gated here:
     cancelling — the #702 sheet-node material fix moved the fed TM010 to
     8.16 GHz on the harminv-gate board (issue #782).
 
-The committed gates are tests/test_patch_edgefed_s11_passivity.py
+The committed gates are tests/locks/test_patch_edgefed_s11_passivity.py
 (passivity + edge-fed signature) and
-tests/test_patch_edgefed_resonance_harminv.py (signed resonance
+tests/locks/test_patch_edgefed_resonance_harminv.py (signed resonance
 envelopes). This script stays as a runnable trace dump + passivity check
 on the same geometry.
 

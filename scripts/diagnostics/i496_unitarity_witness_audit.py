@@ -16,7 +16,7 @@ Written because the absorber depth was RECORDED in six committed envelope
 fixtures and asserted by nothing, which is how five band lanes at 0.060-0.162
 lambda_g and the WR-90 NU lane at 0.099 all shipped (#574, #576).
 
-That gap is now closed by ``tests/test_absorber_discipline_witness.py``, which
+That gap is now closed by ``tests/locks/test_absorber_discipline_witness.py``, which
 asserts the same derivation over the same glob: floor, depth recomputed from
 each artifact's own dx and cutoff, the passivity witness, and an explicit
 ``absorber_discipline`` acceptance for any lane deliberately below the floor.

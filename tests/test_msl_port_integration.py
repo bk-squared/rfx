@@ -92,7 +92,7 @@ GATE_F_HI = 4.5e9
 
 # Issue #610 (single-source, no second copy of the gate): hoisted out of
 # test_msl_thru_line_z0_length_invariance_and_positive_sign to module scope so
-# tests/test_msl_z0_platform_datums.py can import and re-derive the SAME gate
+# tests/locks/test_msl_z0_platform_datums.py can import and re-derive the SAME gate
 # instead of restating 0.007 as a fresh literal in a second file. Values and
 # derivation are UNCHANGED — see that test's docstring for the arithmetic and
 # tests/fixtures/msl_z0_length_invariance/platform_datums.json for the
@@ -468,7 +468,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     tests/fixtures/msl_z0_length_invariance/platform_datums.json for the full
     per-datum ledger (each record carries a `precision` tag; CI/derivation
     rows are hand- or print-captured at 2-5 dp, only the pod row is full
-    float32) and tests/test_msl_z0_platform_datums.py for the fast structural
+    float32) and tests/locks/test_msl_z0_platform_datums.py for the fast structural
     check that keeps it internally consistent with THIS test's own gate.
 
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure

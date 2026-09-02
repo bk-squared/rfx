@@ -150,7 +150,7 @@ def _refplane_reject_msl_ladder_in_plane_zone(
     that probes the ladder, which has already emitted them once.
 
     Message class stays "reach past another port" (frozen by
-    tests/test_refplane_port_waves.py::
+    tests/locks/test_refplane_port_waves.py::
     test_refplane_crossing_guard_rejects_planes_past_other_port), with the
     offending rung named. Line-axis indices only (conservative): a
     TRANSVERSELY separated microstrip port on a parallel trace also trips.
@@ -1434,7 +1434,7 @@ class _ExecuteMixin:
                     # class. Checked AFTER build_wire_refplane_specs so
                     # its own "no conductor found" geometry error keeps
                     # precedence (frozen by
-                    # tests/test_refplane_port_waves.py::
+                    # tests/locks/test_refplane_port_waves.py::
                     # test_refplane_requires_pec_trace_at_plane).
                     _refplane_reject_planes_off_the_uniform_line(
                         grid, pe, _plane_specs, line_axis=_l_ax)

@@ -46,7 +46,7 @@ __all__ = [
 # NOT in scope (``_apply_cpml_*_distributed`` and ``_apply_cpml_*_local_nu``
 # receive only field arrays + profile coefficients). The vacuum form is
 # therefore structural; these helpers + the guard test in
-# ``tests/test_cpml_axis_params_refactor_bit_identical.py`` make that
+# ``tests/locks/test_cpml_axis_params_refactor_bit_identical.py`` make that
 # explicit and prevent a CORE-C2-class hidden-assumption helper. A
 # per-cell-``eps_r`` CPML coefficient is a separate future effort and is
 # deliberately NOT supported by this signature.

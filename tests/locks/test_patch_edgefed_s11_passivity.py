@@ -24,7 +24,7 @@ THE BOARD THIS GATE MEASURES ("Board S", issue #782 one-mesh anchor rule)
 ``DX = 0.197 mm`` exactly — NOT ``H_SUB/4 = 196.75 um`` — so this fixture rasterizes to
 a 44 x 51-cell patch = 8.668 x 10.047 mm on a 4-cell (788 um) substrate. That is a
 DIFFERENT realized board from the Harminv companion gate's 43 x 51 at h/4
-(``tests/test_patch_edgefed_resonance_harminv.py``), and every constant below was
+(``tests/locks/test_patch_edgefed_resonance_harminv.py``), and every constant below was
 measured on THIS board; no companion number (e.g. its fed TM010 8.16131 GHz at N=260)
 is reused here. Mixing dimensions or anchors across the two boards describes a board
 that exists on no mesh — the ~2-point error class #782 documents. The raster is locked

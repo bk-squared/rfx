@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 C0 = 299_792_458.0
 FAR_PORT_LAMBDA_G_FRACTION_FLOOR = 0.5          # #496
 # Lossless slabs: column power is 1. 1e-3 is the band the E4 witness uses for

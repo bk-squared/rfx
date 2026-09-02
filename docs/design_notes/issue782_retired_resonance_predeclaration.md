@@ -26,7 +26,7 @@ dimensions from two meshes describes a board that exists on no mesh (the 44×51 
 There are TWO distinct boards in this arc, and the distinction was not previously
 written down on any committed surface:
 
-### Board H — the harminv-gate board (`tests/test_patch_edgefed_resonance_harminv.py`)
+### Board H — the harminv-gate board (`tests/locks/test_patch_edgefed_resonance_harminv.py`)
 `DX = H_SUB/4 = 196.75 µm`. Realized patch raster 43 × 51 cells =
 8.46025 × 10.03425 mm.
 
@@ -41,7 +41,7 @@ written down on any committed surface:
 | Leg A envelope (unfed vs Balanis) | −6.17 ± 1.125 % | committed constants, harminv gate |
 | Leg B envelope (fed/unfed − 1) | −6.109 ± 0.986 % | committed constants, harminv gate |
 
-### Board S — the S11-passivity-gate board (`tests/test_patch_edgefed_s11_passivity.py`)
+### Board S — the S11-passivity-gate board (`tests/locks/test_patch_edgefed_s11_passivity.py`)
 `DX = 0.197 mm` exactly (NOT `H_SUB/4`). Measured this session (geometry probe, no
 FDTD, `rfx.__file__` pinned to this worktree): realized patch raster **44 × 51 cells
 = 8.668 × 10.047 mm**, substrate 4 cells = 788 µm, and the substrate column under
@@ -173,7 +173,7 @@ preflight advisory verbatim, and the #332 settling-witness outcome.
 ## 6. Surface-by-surface plan
 
 The seven from #782, verified live on `635ab2e3`:
-1. `tests/test_patch_edgefed_s11_passivity.py` — the live gate; rewritten per
+1. `tests/locks/test_patch_edgefed_s11_passivity.py` — the live gate; rewritten per
    Section 3 (separate commit, root cause in the message). Docstring chain
    (9.32 == 9.20 == 9.21, "dip ~11 GHz", mesh-ladder 10.50/9.80/9.70) gets dated
    pre-#702 framing.
@@ -405,7 +405,7 @@ separation) and the surface sweep. Two findings applied:
    500). The module docstring already said this; the comment now matches it. The
    original Section-5 F1 wording ("the in-band-crossing assertion FAILS on the retired
    arm") failed to its letter the same way and is superseded by this addendum.
-2. **Same-class gate found and re-pinned: tests/test_msl_nu_sparam_gate.py** carried
+2. **Same-class gate found and re-pinned: tests/locks/test_msl_nu_sparam_gate.py** carried
    its own hand-maintained copy of the retired (9.0, 9.42) band on the identical
    declared geometry, with no liveness or Re(Zin) witness — vacuous the same way.
    Fixed by IMPORTING the band, floors, and _gate_readings from the uniform gate

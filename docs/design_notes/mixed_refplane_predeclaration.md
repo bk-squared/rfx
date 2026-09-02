@@ -166,7 +166,7 @@ carries 141 of them; the new artifact must carry its own list, not a summary).
 
 1. **`add_port(..., direction="-x", reference_plane_cells=10)`** on the lw feed.
    `direction` is the **outward** normal and `outboard_sign = -1` for `'+'`
-   (`build_wire_refplane_specs`; cf. `tests/test_refplane_port_waves.py`'s thru
+   (`build_wire_refplane_specs`; cf. `tests/locks/test_refplane_port_waves.py`'s thru
    fixture, which gives its x-lo port `direction="-x"`), so `"-x"` puts the planes
    **into the DUT**, toward the MSL port. Verified on the real grid (§11.1):
    slot 0 at index 43 = **x = 2.80 mm**, slot 1 at index 53 = **x = 3.60 mm**.
@@ -264,7 +264,7 @@ guard also walks `self._msl_ports`, resolving each port's `probe_xs` with
 n_offset_cells=pe.n_probe_offset, n_spacing_cells=pe.n_probe_spacing)` and
 applying the same in-zone test to every rung's line-axis index. The message class
 stays **"reach past another port"** (pinned by
-`tests/test_refplane_port_waves.py::test_refplane_crossing_guard_rejects_planes_past_other_port`
+`tests/locks/test_refplane_port_waves.py::test_refplane_crossing_guard_rejects_planes_past_other_port`
 — frozen by symbol, never by line number), with the offending probe coordinate
 named in the text.
 

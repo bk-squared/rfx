@@ -12,7 +12,7 @@ Gates (predeclared in the #383 design doc BEFORE implementation):
 * **Gate C** — forced-N envelope: ``decay_by=0.0`` + ``decay_max_steps=N``
   runs exactly N steps and matches ``run_nonuniform(n_steps=N)`` within
   the predeclared ``np.allclose(rtol=1e-6, atol=1e-10)`` envelope (the
-  uniform scan-vs-loop precedent, tests/test_run_until_decay_ab_identity.py).
+  uniform scan-vs-loop precedent, tests/locks/test_run_until_decay_ab_identity.py).
 * **Gate F** — a non-rect flux-monitor DFT window combined with
   ``until_decay`` on the NU lane raises ``ValueError`` (a streaming
   windowed DFT needs the true total step count in advance).
@@ -50,7 +50,7 @@ from rfx.sources.sources import GaussianPulse
 #     (hz is a physically-null component here — max|hz| ~ 3.5 vs
 #     |hx|,|hy| ~ 3.7e5 — so its delta is absolute float noise of the
 #     dominant components, not a relative error of its own scale)
-# Root cause (same class as tests/test_run_until_decay_ab_identity.py on
+# Root cause (same class as tests/locks/test_run_until_decay_ab_identity.py on
 # the uniform lane): the decay path runs jax.jit-wrapped lax.scan chunks
 # while run_nonuniform calls lax.scan eagerly; XLA fuses/reassociates the
 # float32 Yee arithmetic differently between the two programs. The
