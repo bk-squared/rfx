@@ -2500,8 +2500,53 @@ ANNULUS_CELLS_3 = 36     # |{4 < di^2 + dj^2 <= 16}|  -- PIN_R < r <= CLEAR_R on
 LIP_CELLS_3 = 32         # |{16 < di^2 + dj^2 <= 25}| -- CLEAR_R < r <= shell_inner
 SHELL_CELLS_3 = 32       # |{25 < di^2 + dj^2 <= 36}| -- shell_inner < r <= OUTER_R
 PIN_FOOTPRINT_CELLS_2 = 11   # attempt 2's REALIZED pin Cylinder footprint at node 25 (knife edge, #802)
-TRACE_NODE_ROWS_2 = 7        # attempt 2's REALIZED trace width in node rows (declared 600 um = 6 cells)
+TRACE_NODE_ROWS_2 = 6        # attempt 2's REALIZED trace width in node rows on exact node coordinates (= the declared 600 um)
 HOLE_XOR_CELLS_3 = HOLE_CELLS_3 - PIN_FOOTPRINT_CELLS_2   # 38
+# RASTERIZER NOTE (re-derived on b5605391, identical under JAX_ENABLE_X64=0
+# and =1). #834 (635ab2e3) moved the rasterizer to exact host-float64 node
+# coordinates AFTER the two attempt-3 runs below were made (VESSL
+# 369367257283 / 369367257533, both on the pre-#834 float32 path at x64=0).
+# On this fixture, whose radii and faces sit on lattice knife edges
+# (PIN_R = 2 dx, CLEAR_R = 4 dx, node-aligned Box faces), that changed:
+#   * TRACE_NODE_ROWS_2: 7 -> 6. The trace Box's y span [Y_C - 300 um,
+#     Y_C + 300 um] = nodes [14, 20] exactly; the documented half-open
+#     ``lo <= y < hi`` on exact coordinates gives nodes 14..19 = 6 rows =
+#     the declared 600 um. The 7th row was the float32-included hi node
+#     (the #802 class #834 fixed). Hammerstad-Jensen Z0 of the realized
+#     trace is therefore the declared-width 53.11 ohm, not the 48.27 ohm
+#     PREDECLARATION_ATTEMPT3 quotes for the 700 um the runs realized.
+#   * PIN_FOOTPRINT_CELLS_2 stays 11, but the two knife-edge cells at
+#     r = 2 dx that count changed from (0,+2),(+2,0) to (-2,0),(0,-2):
+#     ``r^2 <= R^2`` resolves each of the four lattice points by the
+#     float64 rounding of (node - centre)^2. HOLE_XOR_CELLS_3 stays 38.
+#   * The PTFE Cylinder (radius 4 dx, z faces on nodes 24 and 27) realizes
+#     48 cells per plane (was 47: three of the four r = 4 dx lattice
+#     points resolve inside, was two) on 4 planes (was 3: the closed
+#     ``|h| <= height/2`` now includes both node-plane end faces) = 192
+#     cells, was 141. The pin Cylinder likewise gains its lower end plane
+#     (66 -> 77 cells). The one lattice-hole cell outside the realized
+#     PTFE disk, (0,+4), carries vacuum (eps_r 1.0), not PTFE.
+#   * The full-plane Boxes lose the float32-included hi node on the
+#     node-aligned x and y faces: ground sheet 4410 -> 4250 cells,
+#     substrate 13230 -> 12750, trace 805 -> 690.
+#   * Attempt 2's ground sheet is a one-node PEC sheet, so its own-cell
+#     eps_r is RESAMPLED half a cell up, at z = 25.5 dx (#702,
+#     rfx/geometry/rasterize_grid.py::resample_sheet_node_materials) --
+#     which is exactly the substrate Box's lower face
+#     (_half_cell_box_z(26, 28) -> 25.5 dx). Exact coordinates put that
+#     point inside the substrate (half-open includes lo) -> 3.66 across the
+#     sheet, where float32 put it below the face -> 2.1 under the PTFE
+#     Cylinder and 1.0 elsewhere. Attempt 3's hole cells are not
+#     conductor cells, so they are not resampled and keep the PTFE volume
+#     sample (2.1). eps_r therefore differs between the two builders at
+#     EXACTLY the 38 hole cells (test_attempt3_junction_is_attempt2_plus_
+#     hole_only), where it was np.array_equal on the float32 path.
+# Consequence for the archived runs: the current tree realizes the same
+# declared attempt-3 fixture differently in 315 pec_mask cells (planes
+# 24..30) and 7244 eps_r cells (planes 24..25, mostly the sheet resample),
+# so those runs are records of the pre-#834 realization and are not
+# bit-reproducible from this tree. The shell-contact (32/32), ground-lip
+# (32/32), annulus (0/36) and first-ring (0/16) counts are unchanged.
 
 
 def _integer_disk_row_half_widths(r_cells):
@@ -2888,22 +2933,46 @@ def test_attempt3_method_stamp_leaves_junction_open():
 
 
 def test_attempt3_junction_is_attempt2_plus_hole_only():
-    """Byte-level: eps_r, sigma, mu_r np.array_equal to attempt 2; pec_mask
-    ^ pec_mask_attempt2 is EXACTLY the 38 cells at the junction node equal
-    to the integer disk minus the pin footprint; ports/materials/domain
-    identical (mirrors test_attempt2_junction_geometry_is_byte_identical_to_
-    attempt1). Fails trivially on attempt 2 vs itself (xor 0 cells)."""
+    """Byte-level: sigma and mu_r np.array_equal to attempt 2; pec_mask ^
+    pec_mask_attempt2 is EXACTLY the 38 cells at the junction node equal
+    to the integer disk minus the pin footprint; eps_r differs from
+    attempt 2 at EXACTLY those same 38 cells and nowhere else, and there
+    attempt 3 carries what the hole exposes (the PTFE volume sample where
+    the realized PTFE disk covers the cell, vacuum at the one lattice-hole
+    cell outside it) while attempt 2 carries the sheet's resampled
+    own-cell value (RASTERIZER NOTE above: the resample point 25.5 dx is
+    the substrate's lower face, so 3.66). Ports/materials/domain identical
+    (mirrors test_attempt2_junction_geometry_is_byte_identical_to_
+    attempt1). Fails trivially on attempt 2 vs itself (xor 0 cells).
+
+    Pre-#834 the eps_r arrays were np.array_equal: the float32 resample
+    point fell below the substrate face and the sheet cells read the PTFE
+    (2.1) the hole cells also read. That equality was a knife-edge
+    coincidence, not a property of the hole."""
     sim2 = _build_coax_msl_transition_sim_attempt2()
     sim3 = _build_coax_msl_transition_sim_attempt3()
     g2, m2, pec2, i2, j2, k2 = _assemble_junction(sim2)
     g3, m3, pec3, i3, j3, k3 = _assemble_junction(sim3)
     assert g2.shape == g3.shape and (i2, j2, k2) == (i3, j3, k3)
-    assert np.array_equal(np.asarray(m2.eps_r), np.asarray(m3.eps_r))
     assert np.array_equal(np.asarray(m2.sigma), np.asarray(m3.sigma))
     assert np.array_equal(np.asarray(m2.mu_r), np.asarray(m3.mu_r))
 
     xor = pec2 ^ pec3
     assert int(xor.sum()) == HOLE_XOR_CELLS_3, int(xor.sum())
+
+    eps2, eps3 = np.asarray(m2.eps_r), np.asarray(m3.eps_r)
+    eps_diff = eps2 != eps3
+    assert np.array_equal(eps_diff, xor), (
+        "eps_r differs outside the hole cells: "
+        f"{np.argwhere(eps_diff & ~xor).tolist()[:8]}; "
+        f"hole cells with equal eps_r: {np.argwhere(xor & ~eps_diff).tolist()[:8]}")
+    ptfe3 = np.asarray(sim3._geometry[N_GROUND_BOXES_3].shape.mask(g3), bool)
+    assert sim3._geometry[N_GROUND_BOXES_3].material_name == "ptfe"
+    # float32 material arrays vs float64 constants: compare to 1 ulp.
+    np.testing.assert_allclose(eps3[xor & ptfe3], EPS_COAX, rtol=1e-6)
+    np.testing.assert_array_equal(eps3[xor & ~ptfe3], 1.0)
+    assert int((xor & ~ptfe3).sum()) == 1, int((xor & ~ptfe3).sum())   # the (0,+4) knife-edge cell
+    np.testing.assert_allclose(eps2[xor], EPS_SUB, rtol=1e-6)
     z_hit = np.where(xor.any(axis=(0, 1)))[0]
     assert z_hit.tolist() == [k3], (z_hit - g3.pad_z_lo).tolist()
     # attempt 3 only REMOVES PEC (the hole); it never adds any.
@@ -3031,9 +3100,10 @@ def test_junction_coax_shell_contacts_ground(fixture):
 def test_junction_trace_width_in_cells_is_attempt2s(fixture):
     """INVARIANT (MSL side untouched): the contiguous PEC node-row run across
     the trace at the trace node, 5 cells down the trace from the junction,
-    is 7 rows -- attempt 2's measured realization of the declared 600 um
-    (KNIFE-EDGE NOTE above). Passes on both fixtures; the trace Box is the
-    same code path in both."""
+    is TRACE_NODE_ROWS_2 rows on both fixtures; the trace Box is the same
+    code path in both. 6 rows on exact node coordinates (= the declared
+    600 um); the archived runs realized 7 on the pre-#834 float32 path
+    (RASTERIZER NOTE and KNIFE-EDGE NOTE above)."""
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, _, pec, i0, j0, kj = _assemble_junction(sim)
     kt = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
