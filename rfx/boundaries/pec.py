@@ -129,7 +129,7 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
     applies a resistive update on them), so the PEC and sheet footprints
     are structurally identical — pinned by
-    tests/unit/materials/test_sheet_impedance_operator.py (G4 footprint identity). Both
+    tests/unit/materials/test_sheet_impedance.py (G4 footprint identity). Both
     consumers must be handed the SAME ``periodic``, or that identity is
     computed against two different neighbour rules.
 

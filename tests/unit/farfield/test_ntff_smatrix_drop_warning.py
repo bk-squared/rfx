@@ -56,7 +56,7 @@ def _intercept_grid_build(monkeypatch):
 # --------------------------------------------------------------------------
 # fixtures — the committed MSL thru line, a coarse WR-90 two-port, and the
 # one-port coax box (geometry copied from tests/unit/runners/test_run_progress_reporting,
-# tests/unit/materials/test_sheet_lane_fences, tests/unit/sparams/test_coaxial_s_matrix respectively).
+# tests/unit/materials/test_sheet_impedance, tests/unit/sparams/test_coaxial_s_matrix respectively).
 # --------------------------------------------------------------------------
 
 

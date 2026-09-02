@@ -679,7 +679,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # longer rides materials.sigma, so the two-run vacuum reference's
         # sigma_override cannot strip it — dropping the ctx here is the
         # reference-run analogue of strip_interior_pec below. Pinned by the
-        # G8 negative control (tests/unit/materials/test_sheet_impedance_operator.py).
+        # G8 negative control (tests/unit/materials/test_sheet_impedance.py).
         _sheet_specs = []
 
     # Two-run S-matrix vacuum reference: drop the interior-geometry PEC

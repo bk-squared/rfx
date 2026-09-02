@@ -809,7 +809,7 @@ def test_leontovich_add_time_validation():
     normal is. The rasterized refusals (a body with HEIGHT, a sheet that
     folds zero cells) need the grid and so raise at build time — NU
     defensive mirror below; full non-Box contract in
-    tests/unit/materials/test_thin_conductor_nonbox_sheet.py."""
+    tests/unit/materials/test_sheet_impedance.py."""
     import pytest
     from rfx.api import Simulation
     from rfx.geometry.csg import Sphere

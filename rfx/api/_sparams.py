@@ -3140,7 +3140,7 @@ class _SparamMixin:
         at its edges). ADI refuses on both channels through the shared
         ``refuse_f0_sheets`` helper; the subgridded and distributed lanes
         carry their own call sites at whichever entry reaches them —
-        ``FENCE_REGISTRY`` in ``tests/unit/materials/test_sheet_lane_fences.py`` is the
+        ``FENCE_REGISTRY`` in ``tests/unit/materials/test_sheet_impedance.py`` is the
         authoritative per-lane list, AST-guarded against drift.
         ``subpixel_smoothing`` / ``conformal_pec`` are ``run()``-only
         keywords, so that combination is unreachable on the ``eps_override``
