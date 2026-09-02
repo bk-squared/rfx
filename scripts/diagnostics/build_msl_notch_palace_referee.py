@@ -76,6 +76,12 @@ from typing import Any
 
 import numpy as np
 
+import importlib.util as _ilu
+_SF_PATH = Path(__file__).resolve().parents[2] / "validation" / "crossval" / "comparators" / "spectral_features.py"
+_spec = _ilu.spec_from_file_location("_spectral_features", _SF_PATH)
+_sf = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_sf)
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURES = _REPO_ROOT / "tests/fixtures/msl_notch_e4"
 _REFEREE_FIXTURE = "msl_stub_notch_palace_referee.json"
@@ -110,27 +116,21 @@ def _n_local_minima(s21_mag: Any) -> int:
 def _notch(freqs: Any, s11_mag: Any, s21_mag: Any) -> dict[str, Any]:
     """Notch bin (argmin |S21|) + log-parabolic vertex refinement.
 
-    i=argmin(|S21|), y=log(|S21|),
-    df = 0.5*(y[i-1]-y[i+1]) / (y[i-1]-2*y[i]+y[i+1]) * (f[i+1]-f[i]).
+    Delegates to the crossval estimator the cv06b case script gates with
+    (``validation/crossval/comparators/spectral_features.refined_extremum``,
+    whole-sweep window), so the referee producer and the gate cannot drift
+    apart (#812 P3 round 2: until then this function was a replica that
+    differed in edge behaviour -- no +-1-bin clamp, no non-positive-curvature
+    guard).
     """
-    f = np.asarray(freqs, dtype=float)
     s11 = np.asarray(s11_mag, dtype=float)
-    s21 = np.asarray(s21_mag, dtype=float)
-    i = int(np.argmin(s21))
-    bin_f = float(f[i])
-    depth_db = float(20.0 * np.log10(max(float(s21[i]), 1e-300)))
-    if 0 < i < len(f) - 1:
-        y = np.log(s21)
-        denom = float(y[i - 1] - 2.0 * y[i] + y[i + 1])
-        df = 0.5 * float(y[i - 1] - y[i + 1]) / denom * float(f[i + 1] - f[i]) if denom != 0.0 else 0.0
-        parab_f = bin_f + df
-    else:
-        parab_f = bin_f
+    r = _sf.refined_extremum(np.asarray(freqs, dtype=float), np.asarray(s21_mag, dtype=float),
+                             None, None, transform="log")
     return {
-        "bin_f_ghz": bin_f,
-        "parabolic_f_ghz": float(parab_f),
-        "depth_db": depth_db,
-        "s11_at_notch": float(s11[i]),
+        "bin_f_ghz": float(r["bin_f"]),
+        "parabolic_f_ghz": float(r["refined_f"]),
+        "depth_db": float(r["depth_db"]),
+        "s11_at_notch": float(s11[r["index"]]),
     }
 
 

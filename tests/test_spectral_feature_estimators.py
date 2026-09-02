@@ -5,7 +5,7 @@ Two things must hold for the cv06b/cv07 re-gate to mean anything:
  1. Factoring the log-parabolic vertex out of the two Palace referee producers
     changed NOTHING -- ``refined_extremum`` must reproduce the committed
     referee fixture's ``referee.fdtd_doublet_ghz`` for both FDTD solvers
-    bit-for-bit. Otherwise the new gates would be locking a different number
+    to the 6 decimals the fixture stores. Otherwise the new gates would be locking a different number
     than the fixture the evidence chain already carries.
 
  2. The half-grid witness is *structurally* unpassable by a bin-quantised
@@ -127,3 +127,27 @@ def test_worst_sampled_notch_minimum_on_the_cv06b_grid(sf):
     worst_db = 20.0 * np.log10(2.0 / np.sqrt(4.0 + np.tan(theta) ** 2))
     assert worst_db == pytest.approx(-31.23, abs=0.05)
     assert worst_db < -10.0 - 20.0
+
+
+def test_half_grid_witness_is_unpassable_by_a_bare_argmin_on_a_float32_axis(sf):
+    """#812 round-2 review (B3): with the spread measured in GLOBAL bins
+    (``f[1]-f[0]``) a bare argmin on cv06b's float32 sweep read 0.99999 at
+    dozens of bin positions and PASSED ``< 1.0``.  The witness now measures
+    in the LOCAL bin between the two argmin bins, so adjacent argmin bins
+    score exactly 1.0 -- numerator and denominator are the same float
+    subtraction -- at every position.  The committed cv06b artifact records
+    the same sweep (``case_D_quantised_estimator.float32_axis_sweep``)."""
+    f = np.linspace(0.7e9, 7.0e9, 100).astype(np.float32).astype(np.float64)
+    n_global_below, n_local_below, n = 0, 0, 0
+    for k in range(1, 99):
+        mag = 1.0 - 0.9 * np.exp(-((f - f[k]) / (f[k + 1] - f[k])) ** 2)
+        w = sf.half_grid_witness(f, mag)
+        if w["argmin_index_gap"] != 1:
+            continue
+        n += 1
+        n_global_below += int(w["argmin_spread"] / w["full_bin_width"] < 1.0)
+        n_local_below += int(w["argmin_spread_bins"] < 1.0)
+        assert w["argmin_spread_bins"] == 1.0, k
+    assert n >= 90
+    assert n_global_below > 0, "the defect this guards against must be reproducible"
+    assert n_local_below == 0

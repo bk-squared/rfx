@@ -24,7 +24,7 @@ in this repository at
 ``scripts/diagnostics/build_msl_notch_palace_referee.py::_notch``; this module
 factors it out so the crossval scripts and the referee producers cannot drift
 apart.  ``refined_extremum`` reproduces the committed referee fixture's
-``fdtd_doublet_ghz`` values bit-for-bit (locked by
+``fdtd_doublet_ghz`` values to the 6 decimals the fixture stores (locked by
 ``tests/test_spectral_feature_estimators.py``).
 
 WHAT THE REFINEMENT ASSUMES, AND WHERE IT STOPS.
@@ -123,26 +123,43 @@ def half_grid_witness(freqs, mag, lo=None, hi=None, *, transform="log"):
     sub-bin estimator's two answers converge on the same physical feature.
 
     Returns ``spread`` (max-min of the two refined estimates, same units as
-    ``freqs``), ``spread_bins`` (in FULL-grid bins), the two refined values,
-    and the same two numbers for the bare argmin as the contrast.
+    ``freqs``), ``spread_bins`` (in LOCAL full-grid bins -- the spacing
+    between the two argmin bins themselves, so a bare argmin scores exactly
+    1.0 in floating point), the two refined values, and the same two numbers
+    for the bare argmin as the contrast.
     """
     f = np.asarray(freqs, dtype=float)
     s = np.asarray(mag, dtype=float)
     h = float(f[1] - f[0])
-    ref, binned = [], []
+    ref, binned, index = [], [], []
     for phase in (0, 1):
         r = refined_extremum(f[phase::2], s[phase::2], lo, hi, transform=transform)
         ref.append(r["refined_f"])
         binned.append(r["bin_f"])
+        index.append(2 * r["index"] + phase)          # full-grid index
     spread = float(max(ref) - min(ref))
+    argmin_spread = float(max(binned) - min(binned))
+    # The unit is the LOCAL full-grid bin between the two argmin bins, not
+    # f[1]-f[0]: on a float32 frequency axis the global spacing differs from
+    # the local one at ~1e-6 relative, which is enough for a bare argmin to
+    # read 0.99999 against a "< 1" threshold (measured on
+    # linspace(0.7e9, 7e9, 100).astype(float32): 25 of 99 bin positions).
+    # With the local unit, adjacent argmin bins score exactly 1.0 -- the
+    # same float subtraction in numerator and denominator -- so the
+    # structural claim "a bin-quantised estimator cannot score < 1" holds in
+    # floating point, not only in exact arithmetic (#812 round-2 review).
+    gap = abs(index[1] - index[0])
+    local_h = argmin_spread / gap if gap > 0 else h
     return {
         "full_bin_width": h,
+        "local_bin_width": local_h,
+        "argmin_index_gap": int(gap),
         "refined": [float(x) for x in ref],
         "binned": [float(x) for x in binned],
         "spread": spread,
-        "spread_bins": spread / h,
-        "argmin_spread": float(max(binned) - min(binned)),
-        "argmin_spread_bins": float(max(binned) - min(binned)) / h,
+        "spread_bins": spread / local_h,
+        "argmin_spread": argmin_spread,
+        "argmin_spread_bins": argmin_spread / local_h,
     }
 
 

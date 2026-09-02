@@ -209,7 +209,7 @@ UNEXERCISABLE in between. Measured blindness, reproduced on this checkout:
 erasing the LOWER doublet member outright (dB-linear fill between the 6.3992
 and 7.8739 GHz anchor bins) leaves argmin 7.8739 GHz, depth -39.20 dB,
 passband mean 0.9378, max column power 0.9995 and the correction footprint
-0/120 ALL BIT-IDENTICAL — 17/17 gates passed on a leg carrying one of the two
+0/120 ALL BIT-IDENTICAL — 17/17 gates passed on a leg missing one of the two
 transmission zeros this case exists to characterise.
 
 Repair (gates C4-C7 below; the pre-existing C1 argmin lock is KEPT at its

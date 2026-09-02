@@ -85,6 +85,12 @@ from typing import Any
 
 import numpy as np
 
+import importlib.util as _ilu
+_SF_PATH = Path(__file__).resolve().parents[2] / "validation" / "crossval" / "comparators" / "spectral_features.py"
+_spec = _ilu.spec_from_file_location("_spectral_features", _SF_PATH)
+_sf = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_sf)
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURES = _REPO_ROOT / "tests/fixtures/sheen_lpf_e4"
 _REFEREE_FIXTURE = "sheen_lpf_palace_referee.json"
@@ -118,26 +124,21 @@ def _n_local_minima(s21_mag: Any) -> int:
 
 def _min_in_window(freqs: np.ndarray, s11: np.ndarray, s21: np.ndarray,
                    lo: float, hi: float) -> dict[str, Any]:
-    """Deepest |S21| bin in [lo,hi] GHz + log-parabolic vertex refinement."""
-    band = (freqs >= lo) & (freqs <= hi)
-    idx = np.where(band)[0]
-    if idx.size == 0:
-        idx = np.arange(len(freqs))
-    i = int(idx[int(np.argmin(s21[idx]))])
-    bin_f = float(freqs[i])
-    depth_db = float(20.0 * np.log10(max(float(s21[i]), 1e-300)))
-    if 0 < i < len(freqs) - 1:
-        y = np.log(s21)
-        denom = float(y[i - 1] - 2.0 * y[i] + y[i + 1])
-        df = 0.5 * float(y[i - 1] - y[i + 1]) / denom * float(freqs[i + 1] - freqs[i]) if denom != 0.0 else 0.0
-        parab_f = bin_f + df
-    else:
-        parab_f = bin_f
+    """Deepest |S21| bin in [lo,hi] GHz + log-parabolic vertex refinement.
+
+    Delegates to the crossval estimator the cv07 case script gates with
+    (``validation/crossval/comparators/spectral_features.refined_extremum``),
+    so the referee producer and the gate cannot drift apart (#812 P3 round 2:
+    until then this function was a replica that differed in edge behaviour --
+    no +-1-bin clamp, no non-positive-curvature guard).
+    """
+    r = _sf.refined_extremum(np.asarray(freqs, dtype=float), np.asarray(s21, dtype=float),
+                             lo, hi, transform="log")
     return {
-        "bin_f_ghz": bin_f,
-        "parabolic_f_ghz": float(parab_f),
-        "depth_db": depth_db,
-        "s11_at_min": float(s11[i]),
+        "bin_f_ghz": float(r["bin_f"]),
+        "parabolic_f_ghz": float(r["refined_f"]),
+        "depth_db": float(r["depth_db"]),
+        "s11_at_min": float(np.asarray(s11, dtype=float)[r["index"]]),
     }
 
 

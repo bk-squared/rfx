@@ -42,8 +42,8 @@
     "bw_bins": 12,
     "bw_frac": 0.2000085835640794,
     "bw_ratio": 0.9511807620727214,
-    "witness_bins": 0.603664239764153,
-    "witness_argmin_bins": 1.0000028099333016,
+    "witness_bins": 0.603662543512669,
+    "witness_argmin_bins": 1.0,
     "z0_median": 31.38,
     "worst_sampled_depth_db": -31.23394166489778,
     "depth_gate_blind_margin_db": -21.23394166489778,
@@ -218,9 +218,18 @@
     "narrowest_passing_stub_cells": 10
   },
   "case_D_quantised_estimator": {
-    "witness_bins": 1.0000028099333016,
+    "witness_bins": 1.0,
     "threshold_bins": 1.0,
-    "G3_pass": false
+    "G3_pass": false,
+    "float32_axis_sweep": {
+      "axis": "linspace(7e+08, 7e+09, 100).astype(float32)",
+      "n_positions": 98,
+      "global_unit_n_below_one": 50,
+      "global_unit_min_ratio": 0.9999939657131823,
+      "local_unit_n_below_one": 0,
+      "local_unit_min_ratio": 1.0,
+      "local_unit_max_ratio": 1.0
+    }
   },
   "verdict": {
     "A_ok": true,

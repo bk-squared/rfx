@@ -135,6 +135,43 @@ def _bin_argmin_metrics(cv, f, s21, z0, f_an):
         cv.sf = real
 
 
+
+def _float32_axis_sweep(sf, n_bins: int = 100, f_lo: float = 0.7e9, f_hi: float = 7.0e9) -> dict:
+    """Round-2 review (B3): the witness threshold ``< 1.000`` had zero margin
+    against a float32 frequency axis when the spread was measured in units of
+    the GLOBAL bin ``f[1]-f[0]`` -- cv06b's sweep is float32, and the local
+    spacing differs from the global one at ~1e-6 relative, so a bare argmin
+    could read 0.99999 and PASS.  Put a symmetric notch at EVERY interior bin
+    of ``linspace(f_lo, f_hi, n_bins).astype(float32)`` and judge the bare
+    argmin (the two sub-grid argmin bins) in both units: the global unit lets
+    some positions through; the LOCAL unit the witness now uses scores exactly
+    1.0 at every position, so ``< 1.0`` is unpassable in floating point.
+    """
+    f = np.linspace(f_lo, f_hi, n_bins).astype(np.float32).astype(np.float64)
+    below_global, below_local, min_global, max_local, min_local = 0, 0, np.inf, -np.inf, np.inf
+    positions = 0
+    for k in range(1, n_bins - 1):
+        mag = 1.0 - 0.9 * np.exp(-((f - f[k]) / (f[k + 1] - f[k])) ** 2)
+        w = sf.half_grid_witness(f, mag)
+        if w["argmin_index_gap"] != 1:
+            continue                      # not the adjacent-bin case this probes
+        positions += 1
+        g = w["argmin_spread"] / w["full_bin_width"]
+        loc = w["argmin_spread_bins"]
+        below_global += int(g < 1.0)
+        below_local += int(loc < 1.0)
+        min_global = min(min_global, g)
+        min_local, max_local = min(min_local, loc), max(max_local, loc)
+    return {
+        "axis": f"linspace({f_lo:g}, {f_hi:g}, {n_bins}).astype(float32)",
+        "n_positions": positions,
+        "global_unit_n_below_one": below_global,
+        "global_unit_min_ratio": float(min_global),
+        "local_unit_n_below_one": below_local,
+        "local_unit_min_ratio": float(min_local),
+        "local_unit_max_ratio": float(max_local),
+    }
+
 def _plain(o):
     """numpy scalars/arrays -> JSON-native, recursively."""
     if isinstance(o, dict):
@@ -249,7 +286,7 @@ def main() -> int:
           "constant enters it.")
     main_line = MSLLine(W_LINE_CELLS * DX50, H_SUB_REALIZED, cv.EPS_R,
                         TAN_D, SIGMA_CU)
-    rows_c, c_model = [], {}
+    rows_c = []
     print(f"     {'cells':>6} {'w_stub':>9} {'Z0_stub':>9} {'r':>7} "
           f"{'depth dB':>10} {'BW ratio':>10} {'G1':>6} {'G2':>6} "
           f"{'depth':>7}")
@@ -268,8 +305,6 @@ def main() -> int:
                "G2_pass": bool(m["gates"]["G2 -10 dB stopband width"]),
                "depth_witness_pass": bool(m["gates"]["notch depth (witness only)"])}
         rows_c.append(row)
-        if n == W_LINE_CELLS:
-            c_model = m
         print(f"     {n:>6d} {n*DX50*1e6:>8.1f}u {stub.z0_static:>9.2f} "
               f"{r:>7.4f} {m['notch_depth_db']:>10.2f} {m['bw_ratio']:>10.4f} "
               f"{'PASS' if row['G1_pass'] else 'FAIL':>6} "
@@ -336,10 +371,17 @@ def main() -> int:
           f"(threshold < {cv.HALF_GRID_WITNESS_BINS:.1f}): "
           f"{'PASS' if q['gates']['G3 half-grid resolution witness'] else 'FAIL'}")
     d_ok = not q["gates"]["G3 half-grid resolution witness"]
+    sweep = _float32_axis_sweep(cv.sf)
+    print(f"     float32-axis sweep, bare argmin at {sweep['n_positions']} bin positions: "
+          f"global-unit ratio < 1.0 at {sweep['global_unit_n_below_one']} positions "
+          f"(min {sweep['global_unit_min_ratio']:.6f}); local-unit ratio < 1.0 at "
+          f"{sweep['local_unit_n_below_one']} (min {sweep['local_unit_min_ratio']:.6f})")
+    d_ok &= sweep["local_unit_n_below_one"] == 0
     rec["case_D_quantised_estimator"] = {
         "witness_bins": q["witness_bins"],
         "threshold_bins": cv.HALF_GRID_WITNESS_BINS,
-        "G3_pass": bool(q["gates"]["G3 half-grid resolution witness"])}
+        "G3_pass": bool(q["gates"]["G3 half-grid resolution witness"]),
+        "float32_axis_sweep": sweep}
     ok &= d_ok
     print(f"     -> {'OK' if d_ok else 'NOT OK'}: a bin-quantised estimator "
           f"cannot pass the resolution witness\n")

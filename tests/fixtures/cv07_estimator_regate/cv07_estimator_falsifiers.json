@@ -94,6 +94,46 @@
       "D3 correction footprint matches committed": "PASS",
       "D4 worst correction matches committed": "PASS",
       "D5 in-band correction footprint matches committed": "PASS"
+    },
+    "locks": {
+      "rfx": {
+        "lower": {
+          "bin_argmin_ghz": 6.890756096,
+          "refined_ghz": 6.943989682907571,
+          "shift_bins": 0.3248612698917318,
+          "shift_pct_vs_bin_argmin": 0.7725362233974952
+        },
+        "upper": {
+          "bin_argmin_ghz": 7.873949696,
+          "refined_ghz": 7.925927991167884,
+          "shift_bins": 0.3172007740970911,
+          "shift_pct_vs_bin_argmin": 0.6601298862029711
+        },
+        "witness_upper": {
+          "spread_bins": 0.5213060714023946,
+          "argmin_spread_bins": 1.0,
+          "sweep_bin_mhz": 163.865536
+        }
+      },
+      "openems": {
+        "lower": {
+          "bin_argmin_ghz": 7.0325,
+          "refined_ghz": 7.0306704760456915,
+          "shift_bins": -0.0750573929972662,
+          "shift_pct_vs_bin_argmin": -0.026015271301930227
+        },
+        "upper": {
+          "bin_argmin_ghz": 7.983125,
+          "refined_ghz": 7.994748576807862,
+          "shift_bins": 0.4768646895533181,
+          "shift_pct_vs_bin_argmin": 0.14560183897736886
+        },
+        "witness_upper": {
+          "spread_bins": 0.11917290192006738,
+          "argmin_spread_bins": 1.0,
+          "sweep_bin_mhz": 24.375000000000036
+        }
+      }
     }
   },
   "verdict": {

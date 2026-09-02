@@ -271,7 +271,8 @@ above is withdrawn except the one arithmetic slip corrected below.
   -30.7 dB for this quantity. The derivation here is independent and lands at
   -31.20 dB at f0 = 3.627 GHz, -31.23 at 3.6424, -31.32 at 3.679 — so the
   choice of f0 moves it 0.12 dB and does NOT account for the 0.5 dB gap;
-  reaching -30.7 dB from this model needs a 67.4 MHz bin. The origin of the
+  reaching -30.7 dB from this model needs a 67.4 MHz bin at f0 = 3.627 GHz
+  (67.7 MHz at 3.6424 GHz). The origin of the
   difference is NOT established. Both give the same verdict, and this script
   quotes its own -31.23 dB rather than the audit's.)
 
@@ -292,7 +293,7 @@ above is withdrawn except the one arithmetic slip corrected below.
       A shallow notch narrows this band whatever the sampling does, which is
       exactly what the depth gate could not see. The old depth gate is KEPT
       as a reported witness, not removed.
-    * G4 is an in-run PROOF that the estimate is not bin-quantised: the two
+    * G3 is an in-run PROOF that the estimate is not bin-quantised: the two
       interleaved half-density sub-grids are disjoint in frequency, so a bare
       argmin's two answers are ALWAYS ≥ 1 full-grid bin apart, while the
       refined pair must agree to < 1 bin.
@@ -368,7 +369,7 @@ NOTCH_FREQ_TOL_PCT = 4.0        # 0.886 (open end) + 2.646 (shunt-T plane)
                                 # + 0.265 (half-cell stub) = 3.796, rounded up
 STOPBAND_LEVEL_DB = -10.0
 STOPBAND_BW_FRAC_IDEAL = 0.210274   # (4/pi)*atan(r/6) at r = Z0_line/Z_stub = 1
-STOPBAND_BW_RATIO_WINDOW = (0.80, 1.20)   # fires at r <= 0.79 / r >= 1.28
+STOPBAND_BW_RATIO_WINDOW = (0.80, 1.20)   # fires at r <= 0.797 / r >= 1.205
 HALF_GRID_WITNESS_BINS = 1.0    # structural: a quantised estimator scores 1.0
 
 

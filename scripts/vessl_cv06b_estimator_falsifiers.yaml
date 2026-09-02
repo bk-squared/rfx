@@ -1,0 +1,68 @@
+name: rfx-cv06b-estimator-falsifiers
+description: "cv06b #812-P3 re-gate on cv06b's OWN board. Criterion (A): the shipped case with the new G1/G2/G3 gates, plus the baseline leg of the build falsifier. Criterion (B): a one-cell stub-length error (sub-bin) and a 5-cell narrow stub. 4 x 5,729,080-cell dx=63.5um solves; the shipped mesh runs 329.2s on one RTX4090 and was abandoned unfinished at 2h52m on a 32-core CPU pod. vessl run create -f scripts/vessl_cv06b_estimator_falsifiers.yaml"
+tags: [rfx, msl, cv06b, issue-812, estimator-resolution, falsifier]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # Stage this lane's checkout here first (rsync from the Mac, per SPEC-00 0.3):
+  #   claude-workspace/rfx/checkouts/regate-estimator-resolution/
+  # The NFS checkout is read-only for this pod's uid and the shipped case
+  # script writes its PNG next to itself (try-1, VESSL 369367257699: every
+  # gate printed PASS, then savefig raised PermissionError and the exit code
+  # was lost). Stage to local disk first; artifacts still go to NFS.
+  STAGE=/root/work/regate-estimator-resolution
+  mkdir -p "$STAGE"
+  cp -r /root/workspace/claude-workspace/rfx/checkouts/regate-estimator-resolution/. "$STAGE/"
+  cd "$STAGE"
+  echo "=== cv06b #812-P3 re-gate: criteria (A) and (B) on cv06b's own board ==="
+  date
+  git rev-parse HEAD || true
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('jax_backend', jax.default_backend(), 'rfx', getattr(rfx,'__version__','unknown'))"
+  OUT=/root/workspace/claude-workspace/rfx/runs/cv06b_estimator_falsifiers
+  mkdir -p "$OUT"
+
+  # 0) CPU-side instrument replay, re-run HERE so the committed artifact is
+  #    reproduced from the same code state the solves use (seconds).
+  ( python scripts/diagnostics/cv06b_estimator_falsifiers.py \
+      --out-json "$OUT/cv06b_estimator_falsifiers.json"; \
+    echo "EXIT:$?" > "$OUT/cv06b_estimator_falsifiers.exit" ) \
+      2>&1 | tee "$OUT/cv06b_estimator_falsifiers.log"
+  # Compare to the committed artifact at 1e-9 relative (try-1 showed the two
+  # hosts differ in the last float digit; try-2 died on an inline heredoc
+  # under VESSL's script wrapper, hence the tracked helper).
+  python scripts/diagnostics/compare_json_close.py \
+      "$OUT/cv06b_estimator_falsifiers.json" \
+      tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json \
+      || echo "WARNING: committed CPU artifact differs from this run"
+
+  # 1) CRITERION (A): the shipped case, on its own board, with the new gates.
+  #    Its exit code is the verdict; the log is the record.
+  ( python validation/crossval/06b_msl_notch_filter_uniform.py; \
+    echo "EXIT:$?" > "$OUT/cv06b_baseline_run.exit" ) \
+      2>&1 | tee "$OUT/cv06b_baseline_run.log"
+  echo "cv06b shipped-script $(cat "$OUT/cv06b_baseline_run.exit") "\
+       "(criterion A: EXIT:0 == every gate passed on cv06b's own board)"
+
+  # 2) CRITERION (B): three builds, one geometric input changed each time.
+  #    Writes cv06b_falsifier_{baseline,stub_1cell,stub_narrow}.json and
+  #    cv06b_build_falsifiers_summary.json -- the summary is the artifact the
+  #    design note and issue comment must cite by key.
+  ( python scripts/diagnostics/cv06b_build_falsifiers.py --out-dir "$OUT"; \
+    echo "EXIT:$?" > "$OUT/cv06b_build_falsifiers.exit" ) \
+      2>&1 | tee "$OUT/cv06b_build_falsifiers.log"
+  echo "build falsifiers $(cat "$OUT/cv06b_build_falsifiers.exit")"
+
+  ls -la "$OUT"
+  echo "=== DONE ==="

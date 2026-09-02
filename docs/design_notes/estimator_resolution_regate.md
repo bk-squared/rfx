@@ -1,7 +1,7 @@
 # Estimator resolution re-gate — cv06b and cv07 (issue #812, mechanism P3)
 
 Append-only. Sections 1-4 are the **PRE-DECLARATION**: every numeric window
-in them was frozen in commit `fc6ca0a`, before any measurement that judges it.
+in them was frozen in commit `0b018c8`, before any measurement that judges it.
 Section 5 records what was then measured; it never edits a window. A
 correction states the old value and why it was wrong. Three in sections 1-3:
 the repository's own 70.7 MHz bin figure (section 1), this note's first
@@ -53,7 +53,7 @@ than the tolerance they declare. Re-derived on this checkout:
   exists at all.
 
   **On the audit's own figure for this quantity.** *(CORRECTION. The
-  `fc6ca0a` version of this paragraph said the 0.5 dB gap "is the choice of
+  `0b018c8` version of this paragraph said the 0.5 dB gap "is the choice of
   `f0` — bin centre 3.627 vs refined 3.642 GHz". That is wrong, and it was
   wrong in the same way the #812 process note warns about: asserted without
   evaluating the alternative. Evaluated, `f0` moves the number by 0.12 dB
@@ -63,7 +63,7 @@ than the tolerance they declare. Re-derived on this checkout:
   `f0 = 3.627` GHz (bin centre), -31.23 dB at 3.6424 GHz (refined) and
   -31.32 dB at 3.679 GHz (the analytic anchor) — the choice of `f0` moves it
   by 0.12 dB across that whole range, so it does NOT explain the 0.5 dB gap.
-  Reaching -30.7 dB from the ideal r = 1 model would need a bin of 67.4 MHz
+  Reaching -30.7 dB from the ideal r = 1 model would need a bin of 67.4 MHz (at f0 = 3.627 GHz; 67.7 MHz at 3.6424 GHz)
   rather than 63.6364 MHz. The likeliest explanation is that the audit
   evaluated the worst case on the measured notch shape rather than the ideal
   closed form, but that is a guess and is labelled as one: **the origin of
@@ -90,12 +90,12 @@ than the tolerance they declare. Re-derived on this checkout:
 ## 2. What is adopted
 
 Sub-bin **log-parabolic vertex refinement** — the method already committed at
-`scripts/diagnostics/build_sheen_lpf_palace_referee.py::_min_in_window` and
-`scripts/diagnostics/build_msl_notch_palace_referee.py::_notch` — factored into
+`_min_in_window` in `scripts/diagnostics/build_sheen_lpf_palace_referee.py` and
+`_notch` in `scripts/diagnostics/build_msl_notch_palace_referee.py` — factored into
 `validation/crossval/comparators/spectral_features.py` so the crossval cases
 and the referee producers cannot drift apart. The factored
 `refined_extremum()` reproduces the committed referee fixture's
-`referee.fdtd_doublet_ghz` for both solvers **bit-for-bit**, which is the
+`referee.fdtd_doublet_ghz` for both solvers **to the 6 decimals the fixture stores**, which is the
 integrity check that the factoring changed nothing.
 
 Alongside it, two estimators the cases previously had no equivalent of:
@@ -161,7 +161,7 @@ width (both verified in the case's own `fidelity_report()` quote), so
 Window derivation: the gate must fail on a build whose stub coupling is
 degraded by 25 % (`r <= 0.75`), for which
 `BW_frac(r)/BW_frac(1) = atan(0.125)/atan(1/6) = 0.7530`, i.e. -24.7 %.
-A **+-20 %** window fires at `r <= 0.79` and at `r >= 1.28` (an
+A **+-20 %** window fires at `r <= 0.797` and at `r >= 1.205` (an
 over-broadened, lossy notch). Unlike the depth it replaces, this quantity
 CANNOT be satisfied by a bin landing near a zero: a shallow stub narrows the
 band whatever the sampling does.
@@ -186,7 +186,7 @@ lower/upper, openEMS lower/upper), against values **already committed** in
 (`referee.fdtd_doublet_ghz`): rfx 6.943990 / 7.925928 GHz, openEMS
 7.030670 / 7.994749 GHz. These are the referee producer's own committed
 output, not new pins by this lane, and this lane's factored estimator
-reproduces all four bit-for-bit.
+reproduces all four to the 6 decimals the fixture stores.
 
 Window derivation: the smallest geometry error the dx=200 um mesh can express
 on the dimension that sets the stopband zeros — one cell on the 20.320 mm
@@ -207,7 +207,7 @@ A zero = a local minimum of `|S21|` with depth `<= -20 dB` and prominence
 new constant**: it is gate A4's existing threshold in this same file
 ("openEMS shows a deep stopband zero", `oems_null_db <= -20.0`). 0.5 dB
 prominence is a **5.9 %** change in `|S21|` (12 % in power) — *(CORRECTION:
-`fc6ca0a` wrote "a 12 % change in |S21|"; 0.5 dB is 12 % in POWER and 5.9 % in
+`0b018c8` wrote "a 12 % change in |S21|"; 0.5 dB is 12 % in POWER and 5.9 % in
 amplitude. The window is unchanged; only the sentence describing it was
 wrong.)* — an order above the extraction noise
 the legs' own committed evidence bounds (rfx raw passivity excess <= 0.0145;
@@ -245,7 +245,7 @@ UNFINISHED at 2h52m on a 32-core CPU pod — `validation/crossval/manifest.json`
 
 ---
 
-## 5. MEASURED (appended 2026-09-01, after the windows above were frozen in `fc6ca0a`)
+## 5. MEASURED (appended 2026-09-01, after the windows above were frozen in `0b018c8`)
 
 Environment: `~/Documents/rfx/.venv` on an Apple M1 Max (10 cores, 64 GB),
 CPU JAX. Every number below is reproducible from committed files by the two
@@ -432,7 +432,7 @@ Regression surface touched: `scripts/diagnostics/report_msl_envelope.py`
 mirrors cv06b's windows (it parses stdout rather than importing the case), so
 its gate keys moved with them and `tests/test_physics_gate_reporting.py` gained
 falsifier coverage for the tightening; and
-`tests/_example_fidelity_lib.py::CLASSIFICATION` gained the new pure-numpy
+`CLASSIFICATION` in `tests/_example_fidelity_lib.py` gained the new pure-numpy
 comparator module.
 
 
@@ -443,15 +443,17 @@ comparator module.
 Numbers in this section are **not restated from memory**: each is a key in a
 committed artifact, regenerated by the script named beside it and re-derived
 in-test by `tests/test_cv06b_shallow_stub_model.py`. Prose that needs a
-quantity names the key.
+quantity cites the key in the form the #829 numeric-provenance gate resolves —
+the artifact path, a double colon, the key path and the value (round-2 review: the alias form this section first
+used, an alias followed by a double colon, does not parse under that gate and is retired).
 
 Artifacts:
-* `A6` = `tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json`
+* `tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json`
   — `scripts/diagnostics/cv06b_estimator_falsifiers.py`
-* `A7` = `tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json`
+* `tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json`
   — `scripts/diagnostics/cv07_estimator_falsifiers.py`
-* `AB` = `cv06b_build_falsifiers_summary.json` — emitted by the VESSL job of
-  section 6.2, **not yet produced**.
+* `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json`
+  — emitted by the VESSL job of section 6.2 (see section 7 for its record).
 
 ### 6.1 cv06b criterion (B): the shallow-notch defect was near-circular. Rebuilt.
 
@@ -468,7 +470,7 @@ line (the repository's own `hammerstad_jensen_z0_eps_eff`), Getsinger
 dispersion, dielectric + conductor loss, Hammerstad-Bekkadal open end, and a
 2x2 ABCD cascade referenced to the **50 ohm port** rather than to the line.
 The only defect input is the **stub width in cells**
-(`A6::case_C_shallow_notch_from_geometry.construction.defect_input`). No
+(`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.construction.defect_input`). No
 cv06b gate constant is read anywhere in it, and that is checked
 mechanically on the module's parsed AST with docstrings stripped
 (`test_construction_reads_no_cv06b_gate_constant`) — including a ban on
@@ -476,22 +478,26 @@ mechanically on the module's parsed AST with docstrings stripped
 
 **Why that is not the same formula in disguise, quantified.** At the shipped
 stub width the model does **not** return G2's reference bandwidth:
-`A6::case_C_shallow_notch_from_geometry.independence.model_departure_from_gate_reference_pct`.
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.independence.model_departure_from_gate_reference_pct = -2.47`.
 A construction that reproduced the reference would read 0.00 % there;
 `test_model_does_not_reproduce_the_gate_reference` fails the suite if it ever
 gets within 1 %.
 
 **Why it is nevertheless this board.** At the same shipped width the model
 agrees with the **committed measured** dx=50 um sibling sweep on all three
-features it is judged by — `independence.model_vs_measured_bw_ratio_pct`,
-`independence.model_vs_measured_f_notch_pct`, and
-`independence.model_notch_depth_db` against
-`independence.measured_notch_depth_db`. Bounds are pinned at 2 % / 5 % / 1 dB
+features it is judged by —
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.independence.model_vs_measured_bw_ratio_pct = 2.54`,
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.independence.model_vs_measured_f_notch_pct = 1.06`, and
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.independence.model_notch_depth_db = -32.39` against
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.independence.measured_notch_depth_db = -32.95`.
+Bounds are pinned at 2 % / 5 % / 1 dB
 in `test_model_reproduces_the_committed_measured_sweep`.
 
 **Two-sided, as criterion (B) requires.** G2 **passes** at the shipped width
-and down to `A6::…narrowest_passing_stub_cells`, and **fails** from
-`A6::…first_firing_stub_cells` down, while the retained -10 dB depth witness
+and down to `tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.narrowest_passing_stub_cells = 10`
+cells, and **fails** from
+`tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.first_firing_stub_cells = 8` cells
+down, while the retained -10 dB depth witness
 passes on **every** row — the blindness #812 measured, shown beside the gate
 that now catches it. G1 also passes on every row, so the failure is
 attributable to the width gate alone. Every row is re-derived in
@@ -511,17 +517,20 @@ own board. That stand-in is withdrawn as evidence for (A).
 
 `scripts/vessl_cv06b_estimator_falsifiers.yaml` runs, on one RTX4090:
 
-1. the CPU replay, re-emitting `A6` and `diff`-ing it against the committed
-   copy (so the harvested run proves the committed artifact is not stale);
+1. the CPU replay, re-emitting the cv06b falsifier artifact and comparing it
+   to the committed copy at 1e-9 relative (so the harvested run proves the
+   committed artifact is not stale; try-1 showed the two hosts differ in the
+   last float digit, so a byte `diff` was the wrong instrument);
 2. **criterion (A)** — the shipped `06b_msl_notch_filter_uniform.py` on its
    own board, its exit code captured to `cv06b_baseline_run.exit`;
 3. **criterion (B) at build level** — `cv06b_build_falsifiers.py`: `baseline`,
    `stub_1cell` (`STUB_LEN` minus one `DX`), `stub_narrow` (`W_STUB` = 5·`DX`),
-   one geometric input changed each time, reduced to `AB`.
+   one geometric input changed each time, reduced to the build-falsifier summary.
 
-Until that job runs and `AB` exists, **cv06b's criterion (A) is UNDEMONSTRATED
-on its own board** and this lane says so rather than borrowing the sibling's
-result. Section 4's predictions stand as written and are what `AB` will judge.
+Until that job runs and the summary exists, **cv06b's criterion (A) is
+UNDEMONSTRATED on its own board** and this lane says so rather than borrowing
+the sibling's result. Section 4's predictions stand as written and are what
+the summary will judge. (Section 7 records the job.)
 The reporting and JSON half of that job is exercised with the solve stubbed
 out (`tests/test_cv06b_build_falsifier_plumbing.py`) so a formatting crash
 cannot cost four GPU solves.
@@ -529,15 +538,19 @@ cannot cost four GPU solves.
 ### 6.3 cv07: re-verified, design unchanged
 
 cv07's half was not blocked. Re-run on this checkout: criterion (A) is
-`A7::baseline` (`n_gates`, `all_pass`), criterion (B) is `A7::defects`
-(`erased_zero`, `corner_m20` — each with `expected_failures`,
-`observed_failures`, `unexpected_failures`, `n_still_passing`). Every window
-derivation section 3 states for cv07 is now recomputed into
-`A7::window_derivations`: `sweep_bin_mhz`, `sweep_bin_pct_at_bin_argmin`,
-`one_cell_transverse_pct`, `estimator_response_to_frequency_warp_pct`,
-`one_cell_corner_shift_pct`, `prominence_0p5_db_in_amplitude_pct` and
-`…_in_power_pct`. All reproduce the values section 3 declared; no window
-moved and no gate changed.
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.n_gates = 28` gates with
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::baseline.all_pass`; criterion (B) is
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::defects.erased_zero.n_still_passing = 26` (the two expected
+failures, C4-lower and C5, and no other) and
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::defects.corner_m20.n_still_passing = 27` (C6 only). Every window
+derivation section 3 states for cv07 is recomputed there:
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.sweep_bin_mhz = 163.866`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.sweep_bin_pct_at_bin_argmin = 2.081`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.one_cell_transverse_pct = 0.984`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.one_cell_corner_shift_pct = 0.492`,
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.prominence_0p5_db_in_amplitude_pct = 5.93` and
+`tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json::window_derivations.prominence_0p5_db_in_power_pct = 12.20`. All
+reproduce the values section 3 declared; no window moved and no gate changed.
 
 **One source-comment correction.** `07_sheen_lpf.py`'s `zero_prominence_db`
 comment read "12% in |S21|". 0.5 dB is 12 % in **power** and 5.9 % in
@@ -554,6 +567,6 @@ live in the code. Fixed in place, window unchanged.
   `test_report_mirrored_cv06b_windows_match_the_case_that_owns_them` pins them
   to the case that owns them.
 * The one shallow-notch row `tests/test_physics_gate_reporting.py` types into
-  a synthetic stdout is asserted to BE a row of `A6`
+  a synthetic stdout is asserted to BE a row of the cv06b falsifier artifact
   (`test_cv06b_shallow_row_used_above_is_the_committed_artifact_row`).
 

@@ -176,6 +176,42 @@ def _window_derivations(leg: dict) -> dict:
     }
 
 
+
+LOWER_WIN_GHZ = (6.3, 7.5)     # DOUBLET_WINDOWS_GHZ[0] in 07_sheen_lpf.py
+
+
+def _locks(legs: dict[str, dict]) -> dict:
+    """Round-2 provenance: the per-leg lock numbers the design note tabulates
+    (bin argmin, sub-bin refined value, shift in bins and per cent, and the
+    C7 witness) as artifact keys, computed by the same estimator the case
+    gates with.  ``shift_pct`` is relative to the bin argmin (the old gate's
+    reading), so it is the error the old estimator carried."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_sf_locks", SPECTRAL)
+    sf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sf)
+    out = {}
+    for name, leg in legs.items():
+        f = np.asarray(leg["freqs_hz"], dtype=float) / 1e9
+        s = np.asarray(leg["s21_mag"], dtype=float)
+        rec = {}
+        for zero, win in (("lower", LOWER_WIN_GHZ), ("upper", UPPER_WIN_GHZ)):
+            r = sf.refined_extremum(f, s, *win)
+            rec[zero] = {
+                "bin_argmin_ghz": r["bin_f"],
+                "refined_ghz": r["refined_f"],
+                "shift_bins": r["sub_bin_shift"],
+                "shift_pct_vs_bin_argmin": 100.0 * (r["refined_f"] - r["bin_f"]) / r["bin_f"],
+            }
+        w = sf.half_grid_witness(f, s, *UPPER_WIN_GHZ)
+        rec["witness_upper"] = {
+            "spread_bins": w["spread_bins"],
+            "argmin_spread_bins": w["argmin_spread_bins"],
+            "sweep_bin_mhz": 1e3 * w["full_bin_width"],
+        }
+        out[name] = rec
+    return out
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true",
@@ -203,7 +239,10 @@ def main() -> int:
         ok &= (rc0 == 0 and not fails0)
         rec["baseline"] = {"exit": rc0, "n_gates": n,
                            "failed": fails0, "all_pass": not fails0,
-                           "verdicts": v0}
+                           "verdicts": v0,
+                           "locks": _locks({
+                               "rfx": committed,
+                               "openems": json.loads((RES / "openems.json").read_text())})}
 
         for name, (build, expect) in DEFECTS.items():
             rc, v, out = run_compare(build(committed), tmp / name)
