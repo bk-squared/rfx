@@ -30,6 +30,21 @@ __all__ = ["fidelity_report"]
 _SUB_CELL_TIE_REL = 1e-9
 
 
+def _zero_tie(residual_m, cell_m):
+    """Return a face residual with pure float64 round-off snapped to 0.0.
+
+    A declared face that sits ON a node still leaves ``k*dz - face`` at the
+    1e-18 m level (a cumsum / product ulp), and that last digit differs
+    between hosts (measured 2026-09-02: 3.5e-12 um on CI vs 0.0 here for the
+    same variant), so a snapshot that records it is platform-dependent. The
+    margin is the same 1e-9 of the LOCAL cell used for ``sub_cell``: far above
+    round-off, far below any placement a user could intend.
+    """
+    if abs(float(residual_m)) < _SUB_CELL_TIE_REL * abs(float(cell_m)):
+        return 0.0
+    return float(residual_m)
+
+
 def _axis_names():
     return ("x", "y", "z")
 
@@ -253,11 +268,16 @@ def fidelity_report(sim, print_report: bool = True):
         eff_lo = half_lo
         eff_hi = mesh_extent - half_hi
         realized = eff_hi - eff_lo
+        # Local cell at each face for the round-off tie (see _zero_tie).
+        cell_lo = float(sizes[a][i_lo]) if len(sizes[a]) > i_lo else mesh_extent
+        cell_hi = (float(sizes[a][max(i_hi - 1, i_lo)])
+                   if len(sizes[a]) > max(i_hi - 1, i_lo) else mesh_extent)
         ax = dict(axis=axis_name, n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),
                   mesh_extent_um=mesh_extent * 1e6,
                   realized_um=(eff_lo * 1e6, eff_hi * 1e6),
-                  face_residual_um=(eff_lo * 1e6, abs(eff_hi - declared) * 1e6),
+                  face_residual_um=(_zero_tie(eff_lo, cell_lo) * 1e6,
+                                    _zero_tie(abs(eff_hi - declared), cell_hi) * 1e6),
                   declared_extent_um=declared * 1e6,
                   realized_extent_um=realized * 1e6)
         if axis_not_solved:
@@ -386,17 +406,18 @@ def fidelity_report(sim, print_report: bool = True):
             if dom_hi > 0 and (d_lo < -1e-12 or d_hi > dom_hi + 1e-12):
                 clipped_axes.append(_axis_names()[a])
                 d_lo, d_hi = max(d_lo, 0.0), min(d_hi, dom_hi)
+            # Local cell size on this axis over the body's span — the scale a
+            # placement can actually be resolved to.
+            cell_m = float(np.mean(sizes[a][i0:i1 + 1]))
+            cell_um = cell_m * 1e6
             ax = dict(axis=_axis_names()[a],
                       declared_um=(d_lo * 1e6, d_hi * 1e6),
                       realized_um=(r_lo * 1e6, r_hi * 1e6),
-                      face_residual_um=(abs(r_lo - d_lo) * 1e6,
-                                        abs(r_hi - d_hi) * 1e6),
+                      face_residual_um=(_zero_tie(abs(r_lo - d_lo), cell_m) * 1e6,
+                                        _zero_tie(abs(r_hi - d_hi), cell_m) * 1e6),
                       declared_extent_um=(d_hi - d_lo) * 1e6,
                       realized_extent_um=(r_hi - r_lo) * 1e6)
             ext = ax["declared_extent_um"]
-            # Local cell size on this axis over the body's span — the scale a
-            # placement can actually be resolved to.
-            cell_um = float(np.mean(sizes[a][i0:i1 + 1])) * 1e6
             ax["cell_um"] = cell_um
             # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.
             ax["sub_cell"] = bool(ext < cell_um * (1.0 - _SUB_CELL_TIE_REL))
