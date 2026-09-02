@@ -2531,7 +2531,7 @@ class _SparamMixin:
         # extract_waveguide_s_params_normalized converts the device-run
         # outgoing wave with np.array, so a TRACED eps_override /
         # sigma_override (jax.grad, jax.jit) cannot flow through it.
-        # Measured 2026-09-02 (tests/test_waveguide_two_run_lane_traced_override.py):
+        # Measured 2026-09-02 (tests/unit/autodiff/test_waveguide_two_run_lane_traced_override.py):
         # only the device-run site fires — the vacuum reference run carries
         # no design variable. Raise here, naming the lane, instead of a
         # TracerArrayConversionError deep in the extractor. A concrete

@@ -24,7 +24,7 @@ discrete eigenfrequency is
     sin(omega dt / 2) = (c0 dt / 2) sqrt(mu_x(m) + mu_y(n) + mu_z(l))
 
 with ``mu_axis(i)`` the i-th eigenvalue of that axis's 1-D primal operator
-(``mu(0) = 0``). ``tests/test_cv24_nu_cavity_gates.py`` checks this
+(``mu(0) = 0``). ``tests/crossval/test_cv24_nu_cavity_gates.py`` checks this
 separation against a dense 3-D assembly of the same operators on a small
 graded box, so the separable formula is not taken on trust.
 """
@@ -561,7 +561,7 @@ def derive_record(dt: float, modes: list[dict] | None = None) -> dict:
             "pair_units_sub": df_min * t_post * STATIONARITY_FRACTION * HARMINV_PENCIL_PARAMETER * 3.0}
 
 
-# Committed anchors for the estimator floor: tests/test_nonuniform_cavity_accuracy.py
+# Committed anchors for the estimator floor: tests/oracle/test_nonuniform_cavity_accuracy.py
 # (a = 40, b = 35 mm; TM111; dx = 1 mm; the docstring table) --
 #   uniform z (40 x 1 mm)                -> 0.0011 % measured
 #   4:1 graded z (0.25 mm band, smoothed 1.3) -> 0.0252 % measured (_MEASURED_ENVELOPE_PCT)

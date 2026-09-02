@@ -10,10 +10,10 @@ number here is restated there with its derivation.
 
 Consumers:
 
-* ``tests/test_waveguide_chain_battery_geometry.py`` (fast lane) — guard
+* ``tests/unit/geometry/test_waveguide_chain_battery_geometry.py`` (fast lane) — guard
   (iii) of plan decision 6: at every rung the realized guide node counts
   and the rasterized DUT cell counts scale exactly with ``1/dx``.
-* ``tests/test_waveguide_chain_battery.py`` (the measurement, a later PR)
+* ``tests/oracle/test_waveguide_chain_battery.py`` (the measurement, a later PR)
   — imports ``build_simulation`` and the constants; must not restate them.
 
 Design rules baked in (plan WP2, "Fixture predeclaration"):
@@ -29,7 +29,7 @@ Design rules baked in (plan WP2, "Fixture predeclaration"):
   ``rfx/sources/waveguide_port.py::_shift_modal_waves``), so they need no
   node alignment; they are still multiples of ``DX_COARSE`` for legibility.
 * The absorber is derived, not chosen: the rule at
-  ``tests/test_waveguide_twoport_contract_v1.py:35-48``,
+  ``tests/unit/sparams/test_waveguide_twoport_contract_v1.py:35-48``,
   ``CPML_LAYERS = ceil(0.75 · λ_g(f_low) / dx)`` with λ_g taken at the
   port's NUMERICAL TE10 cutoff — the cutoff preflight's
   ``_check_waveguide_port_evanescent`` derives from the realized guide
@@ -104,7 +104,7 @@ PROBE_LEFT_M = PORT_LEFT_X_M + D_PROBE_M         # 0.03810
 PROBE_RIGHT_M = PORT_RIGHT_X_M - D_PROBE_M       # 0.08382
 # WP2(b) shifted pair — asymmetric on purpose (4 vs 5 coarse cells inward),
 # the same reason the source pair at
-# tests/test_waveguide_twoport_contract_v1.py:257 is asymmetric: a sign
+# tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric: a sign
 # error on one port must not be cancelled by the other.
 REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.03048 (+10.16 mm)
 REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.08890 (-12.70 mm)
@@ -135,7 +135,7 @@ _K_WINDOW_LO, _K_WINDOW_HI = 19, 23   # 0.04826..0.05842, 10.16 mm, ends on the 
 PEC_SHORT_WINDOW_X_M = (_K_WINDOW_LO * DX_COARSE, _K_WINDOW_HI * DX_COARSE)
 THETA0_EPS = 0.0          # eps legs evaluate at the unperturbed fixture
 THETA0_SIGMA_S_PER_M = 0.05   # loss leg: PEC-short window conductivity, S/m
-FD_STEP_EPS = 0.05        # the step at tests/test_waveguide_flux_ad.py:80
+FD_STEP_EPS = 0.05        # the step at tests/unit/autodiff/test_waveguide_flux_ad.py:80
 FD_STEP_SIGMA_S_PER_M = 0.005
 
 
@@ -156,7 +156,7 @@ def guide_wavelength_m(freq_hz: float, fc_hz: float) -> float:
 
 def cpml_layers_for(dx: float, fc_numerical_hz: float,
                     f_low_hz: float = float(FREQS[0])) -> int:
-    """The absorber rule of ``tests/test_waveguide_twoport_contract_v1.py:35-48``:
+    """The absorber rule of ``tests/unit/sparams/test_waveguide_twoport_contract_v1.py:35-48``:
     ``ceil(0.75 · λ_g(f_low) / dx)`` with λ_g at the NUMERICAL TE10 cutoff.
     """
     lam_g = guide_wavelength_m(f_low_hz, fc_numerical_hz)
@@ -164,7 +164,7 @@ def cpml_layers_for(dx: float, fc_numerical_hz: float,
 
 
 def _boundary() -> BoundarySpec:
-    # The canonical WR-90 construction in tests/test_waveguide_flux_ad.py:
+    # The canonical WR-90 construction in tests/unit/autodiff/test_waveguide_flux_ad.py:
     # CPML on the port-normal axis, PEC walls on both transverse axes.
     return BoundarySpec(
         x="cpml",
@@ -177,7 +177,7 @@ def _add_dut(sim: Simulation, dut: str) -> None:
     if dut == "thru":
         return
     if dut == "pec_short":
-        # The construction at tests/test_waveguide_twoport_contract_v1.py:59-60
+        # The construction at tests/unit/sparams/test_waveguide_twoport_contract_v1.py:59-60
         # (pec_like: eps_r=1.0, sigma=1e10) restated in THIS guide's
         # coordinates: full cross-section, 5.08 mm thick.
         sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
@@ -300,7 +300,7 @@ def numerical_te10_cutoff_hz(sim: Simulation, port_index: int = 0) -> float:
     ``_emit_waveguide_port_cutoff_findings`` (``(c/2)·sqrt((m/a)²+(n/b)²)``)
     on the ``guide`` span, i.e. the wall-to-wall extent measured on the
     assembled PEC mask. This is the fixture's "numerical cutoff" in the sense
-    of ``tests/test_waveguide_twoport_contract_v1.py:36-39``.
+    of ``tests/unit/sparams/test_waveguide_twoport_contract_v1.py:36-39``.
     """
     sp = transverse_spans(sim, port_index)
     return (C0 / 2.0) * math.sqrt((1.0 / sp.a_guide_m) ** 2 + (0.0 / sp.b_guide_m) ** 2)
@@ -375,7 +375,7 @@ def snapped_planes(sim: Simulation) -> dict[str, PortPlanes]:
 def design_region_index_range(sim: Simulation, dut: str) -> tuple[int, int]:
     """Padded-grid x-index range ``[i_lo, i_hi)`` of the θ window — the
     ``grid.position_to_index`` pattern of
-    ``tests/test_waveguide_flux_ad.py::_eps_override_for``."""
+    ``tests/unit/autodiff/test_waveguide_flux_ad.py::_eps_override_for``."""
     grid = sim._build_grid()
     lo, hi = design_region_x_m(dut)
     i_lo = grid.position_to_index((lo, 0.0, 0.0))[0]

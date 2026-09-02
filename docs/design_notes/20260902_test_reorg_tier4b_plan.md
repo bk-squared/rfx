@@ -573,3 +573,26 @@ are left untouched. `pyproject.toml` `testpaths = ["tests"]` is unchanged.
 | `test_v173a_physics_equivalence_slow.py` | V173-A bit-identity release gate over scripts |
 | `test_weekly_rss_reporter.py` | root conftest RSS reporter |
 
+
+## Post-plan additions (2026-09-03)
+
+Files main added at top level after this plan was written (#858-#867 and
+#871, merged while the stack was in review), moved in one extra commit on
+this branch by the same rules. Same mechanical fixes (`parents[N]`, package
+imports, `tests/test_x` references rewritten repo-wide; frozen run records
+under `scripts/diagnostics/_*_logs/` and `validation/crossval/_*_results/`
+left as history). None had `.test_durations` keys yet. The two helpers
+`tests/_waveguide_chain_battery_fixture.py` / `_gates.py` stay at top level
+(helper convention); their imports of moved tests were rewritten.
+
+| file | destination | reason |
+|---|---|---|
+| `test_cv24_nu_cavity_gates.py` | `tests/crossval/` | crossval case cv24 gate replay (tier 3a rule: subject is a `validation/crossval` case) |
+| `test_waveguide_fixture_recapture_pointers.py` | `tests/contracts/` | evidence-integrity contract: every fixture re-capture pointer resolves to a tracked path (tier 2 rule) |
+| `test_thru_singular_value_dx_ladder_replay.py` | `tests/unit/sparams/` | wire-THRU S-matrix singular-value replay; imports `unit/sparams/test_lumped_twoport_vi_validation_battery` |
+| `test_waveguide_flux_dtype_follows_x64.py` | `tests/unit/sparams/` | `normalize="flux"` S-matrix dtype contract |
+| `test_waveguide_nu_beta_cell_size_envelope.py` | `tests/unit/sparams/` | NU S-matrix reference-plane beta replay (sibling of `test_waveguide_nu_sparam`) |
+| `test_waveguide_nu_grading_zone.py` | `tests/unit/sparams/` | `rfx.api._sparams` NU shift-span grading-zone assertion |
+| `test_waveguide_two_run_lane_traced_override.py` | `tests/unit/autodiff/` | `jax.grad` through the two-run lane with a traced override (gradient question → autodiff) |
+| `test_waveguide_chain_battery_geometry.py` | `tests/unit/geometry/` | rasterizer / `fidelity_report` guard: every rung realizes one guide and one DUT |
+| `test_waveguide_chain_battery.py` | `tests/oracle/` | WR-90 falsifier battery vs closed forms (beta rotation, Airy, PEC short), same genre as `test_waveguide_port_validation_battery` |

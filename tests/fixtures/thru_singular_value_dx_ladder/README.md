@@ -1,7 +1,7 @@
 # thru_singular_value_dx_ladder — the three rung records and their adjudication
 
 The wire-THRU singular-value dx ladder: the 2-port wire THRU fixture of
-`tests/test_lumped_twoport_vi_validation_battery.py::_build_thru` run at dx, dx/2 and
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::_build_thru` run at dx, dx/2 and
 dx/4 (0.5 / 0.25 / 0.125 mm) with the CPML physical thickness (4 mm) and the physical
 run time (4000 steps at dx) held. Pre-declared before any rung ran in
 `docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md` (sections 1–8);
@@ -53,7 +53,7 @@ number are untouched.
 
 ## Replay gate
 
-`tests/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD) re-derives the
+`tests/unit/sparams/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD) re-derives the
 per-bin singular values from the stored S matrices, re-applies the outcome table to the
 stored excesses, checks the five validity gates from the stored witnesses, and compares
 everything with `verdict.json` and with the headline numbers above. A silent edit to any

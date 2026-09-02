@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from _fixture_recapture import (  # type: ignore  # noqa: E402
     NU_WR90_E5_SETTLING_WITNESS_PRODUCER,

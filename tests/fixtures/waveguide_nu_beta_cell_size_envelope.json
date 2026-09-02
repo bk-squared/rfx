@@ -1,6 +1,6 @@
 {
   "producer": "scripts/diagnostics/waveguide_nu_beta_cell_size_envelope.py",
-  "fixture": "tests/test_waveguide_nu_flux_ad.py::_wr90_nu_sim",
+  "fixture": "tests/unit/autodiff/test_waveguide_nu_flux_ad.py::_wr90_nu_sim",
   "generated_utc": "2026-09-02T10:08:17Z",
   "rfx_version": "1.7.0",
   "jax_version": "0.6.2",

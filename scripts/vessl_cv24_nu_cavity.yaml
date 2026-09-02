@@ -69,7 +69,7 @@ run: |-
   # -- 3. the artifact-free half of the gate test first: every declared number
   #       re-derived, the 3-D separation, the identifier -- a red here is a
   #       rig defect and nothing should run --
-  "$PY" -m pytest -q tests/test_cv24_nu_cavity_gates.py -rs -p no:cacheprovider > "$OUT/pytest_predeclared.log" 2>&1 || { tail -n 30 "$OUT/pytest_predeclared.log"; echo "ERROR: pre-declaration witnesses red"; exit 4; }
+  "$PY" -m pytest -q tests/crossval/test_cv24_nu_cavity_gates.py -rs -p no:cacheprovider > "$OUT/pytest_predeclared.log" 2>&1 || { tail -n 30 "$OUT/pytest_predeclared.log"; echo "ERROR: pre-declaration witnesses red"; exit 4; }
   tail -n 3 "$OUT/pytest_predeclared.log"
 
   # -- 4. baseline: the four arms, every gate, energy audits (expect exit 0) --
@@ -86,7 +86,7 @@ run: |-
 
   # -- 6. the full gate test on the produced set (artifact replay must be green, no skips on rfx*.json) --
   set +e
-  "$PY" -m pytest -q tests/test_cv24_nu_cavity_gates.py -rs -s -p no:cacheprovider > "$OUT/pytest_gates.log" 2>&1
+  "$PY" -m pytest -q tests/crossval/test_cv24_nu_cavity_gates.py -rs -s -p no:cacheprovider > "$OUT/pytest_gates.log" 2>&1
   gate_rc=$?
   set -e
   echo "$gate_rc" > "$OUT/pytest_gates.rc"

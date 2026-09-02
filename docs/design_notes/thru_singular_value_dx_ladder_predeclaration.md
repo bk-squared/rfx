@@ -12,7 +12,7 @@ Governing plan: `docs/design_notes/v18_waveguide_s_chain_plan.md`, section
 ## 1. What is measured
 
 Fixture: the 2-port wire THRU of
-`tests/test_lumped_twoport_vi_validation_battery.py::_build_thru` — air
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::_build_thru` — air
 microstrip, trace width 5 mm at height 1 mm over a `pec_faces` ground, ports
 at x = 8 mm and 24 mm (16 mm line), dx = 0.5 mm, CPML 8 layers on x/y and
 z-hi, 4000 steps, Gaussian pulse f0 = 5 GHz bandwidth 0.8, nine bins 3–7 GHz.
@@ -188,7 +188,7 @@ Artifacts:
 - committed: `tests/fixtures/thru_singular_value_dx_ladder/rung_dx_over_{1,2,4}.json`
   (byte-identical copies of the run's JSONs; sha256 in that directory's
   README), the adjudication `verdict.json` next to them, and the replay gate
-  `tests/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD:
+  `tests/unit/sparams/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD:
   re-derives sv(f) from the stored S matrices and the outcome-table verdict
   from the stored excesses, compares both with `verdict.json`).
 - originals: `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/`
@@ -375,6 +375,6 @@ R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
 feedback_gate_can_bind_artifact + feedback_label_mechanism_provenance +
 project_thin_pec_sheet_live_ez_edge + feedback_quote_the_measure_with_the_number
 | R2-attempts=1 (closed as non-closing; no second run on this mechanism) |
-falsifier=`tests/test_thru_singular_value_dx_ladder_replay.py` re-derives sv(f)
+falsifier=`tests/unit/sparams/test_thru_singular_value_dx_ladder_replay.py` re-derives sv(f)
 from the stored S matrices and the A/B/C verdict from the stored excesses and
 compares both with `verdict.json` (ran; passes).

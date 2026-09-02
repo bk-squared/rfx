@@ -27,7 +27,7 @@ collected in issue **#854**; the reasoning for each is in Appendix B.
 
 1. **Flux-lane `complex64` cast — remove it.** `normalize="flux"` follows `JAX_ENABLE_X64` like
    `normalize=False` and the NU lane. Falsifier: the sha-pinned float64 golden at
-   `tests/test_waveguide_sparam_ad.py:98-141`, unchanged. WP1 step 3.
+   `tests/unit/autodiff/test_waveguide_sparam_ad.py:98-141`, unchanged. WP1 step 3.
 2. **Plane-shift gradient leg — report-then-pin.** First run reports against a pre-declared 1e-2;
    the same PR pins `gate_from_envelope(measured, quantum=1000)`. Magnitude objectives are
    gradient-invariant, complex objectives rotation-covariant. WP2(b), contract 3(b).
@@ -96,7 +96,7 @@ recording the tracer error to asserting the `NotImplementedError`.
 `complex64` at `waveguide_port.py:2217`, while `normalize=False` follows the `freqs` precision
 through `_rect_dft` (the dtype rule is stated at `waveguide_port.py:1583-1585`) and the NU flux lane
 carries no such cast. Delete the cast, so all three waveguide lanes follow `JAX_ENABLE_X64`.
-Falsifier: the sha-pinned float64 golden `tests/test_waveguide_sparam_ad.py:98-141` at
+Falsifier: the sha-pinned float64 golden `tests/unit/autodiff/test_waveguide_sparam_ad.py:98-141` at
 `diff.max() < 1e-6` (`:141`). complex64 rounding at |S| ≤ 1 is about 6e-8, so the golden is expected
 to hold; if the delta exceeds 1e-6 the cast is restored and the reason recorded in the PR body. The
 golden is never moved.
@@ -107,12 +107,12 @@ and outside the differentiable chain".
 
 **Falsifier.** After step 2, `jax.grad` on a tiny WR-90 probe with a traced `eps_override` and
 `normalize=True` raises `NotImplementedError` at the public entry. The three sha-pinned golden
-equivalence tests (`tests/test_waveguide_sparam_ad.py:98-141`, float64, `diff.max() < 1e-6` at
+equivalence tests (`tests/unit/autodiff/test_waveguide_sparam_ad.py:98-141`, float64, `diff.max() < 1e-6` at
 `:141`) stay green. Expected: the `False` and `True` goldens bit-identical; the flux golden moves
 with the step-3 cast removal, and then by less than 1e-6. If the flux delta exceeds 1e-6, the cast
 removal is reverted — the gate is not.
 
-**Cheap refute.** `pytest tests/test_waveguide_sparam_ad.py tests/test_waveguide_flux_ad.py tests/test_sparam_ad_end_to_end.py`
+**Cheap refute.** `pytest tests/unit/autodiff/test_waveguide_sparam_ad.py tests/unit/autodiff/test_waveguide_flux_ad.py tests/unit/autodiff/test_sparam_ad_end_to_end.py`
 on CPU.
 
 **Must not.** jnp-ify `extract_waveguide_s_params_normalized` (`waveguide_port.py:2229-2454`) —
@@ -122,7 +122,7 @@ that creates new differentiable surface on a lane memory excludes. Re-pin the go
 
 ## WP2 — the falsifier battery on one common fixture set (CPU; the template)
 
-**Deliverables.** `tests/test_waveguide_chain_battery.py`,
+**Deliverables.** `tests/oracle/test_waveguide_chain_battery.py`,
 `tests/fixtures/waveguide_chain_battery/fixture.json`, and
 `docs/design_notes/waveguide_chain_battery_predeclaration.md` — **written and committed before
 the first run**.
@@ -131,7 +131,7 @@ the first run**.
 battery alone. Criterion 3(d)'s referee set is the battery's Airy slab and PEC-short **plus** the
 five broad-E5 replay bands — WR-340, WR-62, WR-28, WR-15, WR-10
 (`tests/fixtures/waveguide_broad_e5/*_broad_e5_envelope.json`, gated in the fast lane by
-`tests/test_waveguide_broad_e5_envelope_gates.py`, zero run cost because they are replay). cv18,
+`tests/crossval/test_waveguide_broad_e5_envelope_gates.py`, zero run cost because they are replay). cv18,
 cv19 and the Meep T-junction are cited as 3(d) support only: they are magnitude-only flux gates with
 no AD leg, so they can never carry criterion 1 or 3(a).
 
@@ -143,14 +143,14 @@ in the PR body, and name the shard if it goes slow.
 - Guide: WR-90, a = 22.86 mm, b = 10.16 mm. Domain and dx as in the ladder below.
 - DUTs, three: (i) thru, empty guide, used only as the non-vacuity control, never as a gate
   fixture (#395); (ii) PEC-short — a `pec_like` box (`eps_r=1.0, sigma=1e10`), the
-  construction at `tests/test_waveguide_twoport_contract_v1.py:59-60`, which spans the full
+  construction at `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:59-60`, which spans the full
   cross-section and is 5 mm thick at x ∈ [0.050, 0.055] m in **that** file's 40 × 20 mm guide;
   the WR-90 fixture must restate thickness and x-position as its own absolute coordinates,
   not inherit those numbers; (iii) an εr = 4 slab, full cross-section, stated the same way.
 - Port planes, probe planes and reference planes: absolute physical coordinates for each,
   with the reference-plane offset from each port stated explicitly.
 - CPML: derived, not chosen, by the **rule** at
-  `tests/test_waveguide_twoport_contract_v1.py:35-48` —
+  `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:35-48` —
   `CPML_LAYERS = ceil(0.75 * lambda_g_low / dx)` using the port's **numerical** TE10 cutoff
   from the far-port advisory, not the analytic `c/2a`. That file's `FC_TE10_NUMERICAL = 3.476e9`
   (`:39`) belongs to its own 40 × 20 mm guide; the WR-90 fixture records its own advisory
@@ -161,17 +161,17 @@ in the PR body, and name the shard if it goes slow.
 
 **Pre-declared falsifiers.** Each value below comes from an existing gate; none is invented.
 - **(a) AD vs FD.** FD legs under a per-test x64 context with a ULP-span assert following
-  `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/test_msl_ad_fd_converged.py:136` (the gate assert is
+  `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/unit/autodiff/test_msl_ad_fd_converged.py:136` (the gate assert is
   `:556`, the bidirectional falsifier `:629-634`). Objectives: |S11|² (PEC-short and slab),
   |S21|² (slab), and Re/Im S21 (slab), at the band-centre bin. Pass `rel ≤ 0.05`
-  (`tests/test_sparam_ad_end_to_end.py:298`, `tests/test_waveguide_flux_ad.py:84`). Expected
+  (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`). Expected
   order 1e-3 (ledger 2.0e-4 at `:3093-3099`). An FD leg below the span floor skips with the
   span printed; it never passes.
 - **(b) Reference plane.** Shift left 0.02 m and right 0.08 m, the asymmetric pair actually
-  used at `tests/test_waveguide_twoport_contract_v1.py:257` (an earlier draft of this plan
+  used at `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257` (an earlier draft of this plan
   wrote ±0.02 m; that pair does not appear in the repo). |S| allclose `rtol=1e-3, atol=1e-4`
   (`:270`); complex S21 invariant (`:276`); ∠S11 rotation equals 2β·Δ against `_compute_beta`
-  within 3° (`tests/test_waveguide_phase_gate.py:259`) and against a continuous analytic β
+  within 3° (`tests/unit/sparams/test_waveguide_phase_gate.py:259`) and against a continuous analytic β
   within 6° (`PHASE_TOL_DEG = 6.0`, `:63`). Gradient invariance d|S21|²/dθ across the two
   plane sets: **report-only on the first run** against a pre-declared 1e-2, then pinned by
   `gate_from_envelope(measured, quantum=1000)` in the same PR.
@@ -194,7 +194,7 @@ in the PR body, and name the shard if it goes slow.
   {2, 1.5, 1} mm, which realizes a as 11.43 / 15.24 / 22.86 cells — three different guides under one
   name, the #703 class. The existing battery ladder has the same defect and is a warning, not a
   model: dx ∈ {3, 2, 1.5} mm in a 40 × 20 mm guide
-  (`tests/test_waveguide_port_validation_battery.py:42`, rungs at `:454`) realizes a as
+  (`tests/oracle/test_waveguide_port_validation_battery.py:42`, rungs at `:454`) realizes a as
   13.33 / 20 / 26.67 cells. This WP does not change that test; the new battery does not copy it.
   CPML is scaled to constant physical thickness (the `:449-457` pattern).
 
@@ -248,7 +248,7 @@ path — it would add the numpy round-trip at `:539-542`.
 ## WP3 — power-closure witnesses (CPU)
 
 **Scope.**
-1. `tests/test_waveguide_broad_e5_envelope_gates.py`: assert each fixture's `unitarity_min` /
+1. `tests/crossval/test_waveguide_broad_e5_envelope_gates.py`: assert each fixture's `unitarity_min` /
    `unitarity_max`. All five committed uniform envelopes carry those fields and no test reads
    them (`grep unitarity` on that file returns nothing).
 2. A new test placing `add_flux_monitor` planes inside the guide on the WP2 slab fixture,
@@ -268,7 +268,7 @@ means one of the two routes is wrong and is reported as such.
 **Cheap refute.** Perturb one `unitarity_max` in a copied fixture by +0.01; the new assert must
 go red.
 
-**Must not.** Change the `0.6 < mean_power < 1.40` gate at `tests/test_conservation_laws.py:161`
+**Must not.** Change the `0.6 < mean_power < 1.40` gate at `tests/oracle/test_conservation_laws.py:161`
 without a written root cause for the `normalize=True` deficit it documents.
 
 ---
@@ -290,7 +290,7 @@ A 3° threshold therefore cannot be reached by this mechanism at the plane offse
 uses; a falsifier written against 3° is pre-decided in favour of "leave the boundary cell".
 
 **Second finding: the existing NU fixture cannot exercise the defect at all.**
-`tests/test_waveguide_nu_flux_ad.py:50-95` builds 30 mm of 1.5 mm cells, then 40 mm of 0.75 mm
+`tests/unit/autodiff/test_waveguide_nu_flux_ad.py:50-95` builds 30 mm of 1.5 mm cells, then 40 mm of 0.75 mm
 cells, then 30 mm of 1.5 mm, smoothed by `smooth_grading(max_ratio=1.3)`, with both reference
 planes 0.020 m from the ends (`:90`, `:95`). Running that construction shows the first
 non-coarse cell begins at x = 0.030 m, so both shift spans are uniform 1.5 mm cells and the
@@ -319,7 +319,7 @@ over a 20 mm offset, so a fixture built to measure it would measure under 1° an
 fixture plus its settling witness. The assertion in step 2 closes the silent-failure path, which is
 what the risk actually was.
 
-**Cheap refute.** `pytest tests/test_waveguide_nu_flux_ad.py tests/test_waveguide_nu_nontrivial.py -m slow`
+**Cheap refute.** `pytest tests/unit/autodiff/test_waveguide_nu_flux_ad.py tests/unit/sparams/test_waveguide_nu_nontrivial.py -m slow`
 after any change: the gates at `nu_flux_ad:145-161` and `nu_nontrivial:491-500` must stay inside
 their own tolerances.
 
@@ -375,7 +375,7 @@ and the contract's exclusions). What remains:
    is tracked and is the lane's re-capture entry point.
 2. **Settling witnesses.** No committed waveguide fixture records an energy-based `settling_db`.
    Record the substitute explicitly in the ledger row, naming the record-length form at
-   `tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` and its stated reason (`:175-176`).
+   `tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` and its stated reason (`:175-176`).
 3. **Snapshot definition.** Decide what `tests/data/example_fidelity_snapshot.json` pins for a
    port entry, or state that the host-geometry entry is the whole deliverable. Note that cv18
    is not missing from the snapshot — `tests/_example_fidelity_lib.py:468-471` classifies it as
@@ -407,7 +407,7 @@ appear as 3(d) support, never as the chain-closure evidence.
 **Follow-on, not part of this PR (decision 7).** The warn-only runtime reciprocity check for the
 waveguide family is sequenced after WP2 measures the complex reciprocity envelope: the tolerance
 comes from `gate_from_envelope`, and the preflight emission-site counters in
-`tests/test_preflight_advisory_emission_contract.py` (`_FROZEN_LITERAL_CODE_COUNT` at `:202`, test at
+`tests/unit/preflight/test_preflight_advisory_emission_contract.py` (`_FROZEN_LITERAL_CODE_COUNT` at `:202`, test at
 `:218`) are updated in the same PR as the new advisory. Tracked as #854 item 4.
 
 **Verifier lane, named.** A `verifier` agent that did not author any of WP1–WP6 reviews the PR
@@ -424,7 +424,7 @@ tolerance moved. The verifier's sign-off comment is the artifact.
 ## WP8 — lumped/wire tail (GPU/VESSL likely for #819)
 
 **#819 — dx-refinement study.** Fixture: the 2-port wire THRU behind
-`tests/test_lumped_twoport_vi_validation_battery.py:722`
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py:722`
 (`test_thru_passivity_singular_values`). Recorded state: sv_max 1.003227 at 3 GHz falling
 monotonically to 0.9874 at 7 GHz (`:727-731`), reproduced under f64 fields, 4× and 2× step
 counts and complex128 algebra, mechanism unidentified (`rfx-known-issues.md:137-141`; gh #819
@@ -478,18 +478,18 @@ the measure named. A bare percentage with no measure is what the ledger's
 
 | Contract sub-item | Uniform lane | Uniform evidence | NU lane | NU evidence | What v1.8 must add |
 |---|---|---|---|---|---|
-| **1a. In-graph extraction → complex S_ij(f)** | VALIDATED (fast) for `normalize=False` and `normalize="flux"`; ABSENT for `normalize=True` and for `n_modes>1` | On tape: `rfx/sources/waveguide_port.py:1955` (`b_recv / safe_a`), stacks at `:1957`/`:1961`; flux lane `:1967-2223` (magnitude `:2208-2215`, stack `:2221-2223`). `normalize=True` is a numpy shell: `np.zeros(..., complex64)` `:2327`, `np.array(...)` on extracted waves at `:2383`, `:2397`, `:2434`. Multimode host-side: `:2836` (normalize), `:3026`/`:3036` (flux). Gates: `tests/test_sparam_ad_end_to_end.py:228-306`, `tests/test_waveguide_flux_ad.py:73-86`, `tests/test_waveguide_sparam_ad.py:98-141` (sha-pinned float64 goldens, `diff.max() < 1e-6` at `:141`). | VALIDATED (slow) for `normalize="flux"`; `eps_override`/`sigma_override` rejected on every other NU mode | `rfx/api/_sparams.py:7574` (device run threads the override) and `:7592` (vacuum reference run); flux magnitude `:7700-7717`; stack `:7766`. `rfx/runners/nonuniform.py:1400-1414` keeps `flux_spectrum` on the tape. Dispatch guard `_sparams.py:2332-2341`, locked by `tests/test_waveguide_nu_sparam.py:377-390` (two `NotImplementedError` tests). Gate `tests/test_waveguide_nu_flux_ad.py:145-161`. | A fail-fast guard on the **uniform** `normalize=True` lane mirroring `_sparams.py:2332-2341`, so a traced `eps_override` raises `NotImplementedError` at dispatch instead of a `TracerArrayConversionError` deep in the extractor. The raise site must be recorded by a committed red test first — the lane has three `np.array` sites (`:2383`, `:2397`, `:2434`) and which one fires has not been measured. Written scope statement that multimode is outside the v1.8 battery. Removal of the flux lane's `complex64` cast at `waveguide_port.py:2217` (decision 1), so all three lanes follow `JAX_ENABLE_X64` as `normalize=False` already does through `_rect_dft` (`waveguide_port.py:1583-1585`). |
-| **1b. Reference-plane shift** | VALIDATED (fast) at value level | `waveguide_port.py:1655-1684` `_shift_modal_waves` (`exp(∓jβ·shift)` at `:1681-1682`, `step_sign` handling in the docstring `:1666-1670`); shift distance `_sparams.py:2799-2805`; β from `_compute_beta` `:1419-1469` (Yee-discrete branch `:1444-1459`), cutoff from the discrete 2D eigenvalue by default (`rfx/api/__init__.py:2283`, `mode_profile="discrete"`). Gates: `tests/test_waveguide_phase_gate.py:211-266` (rotation vs analytic, `≤3.0°` at `:259`, wrong-sign witness asserted `>10°` at `:266` and described as ~50° at `:264`); `:129-145` (`PHASE_TOL_DEG = 6.0` at `:63`, residual vs an independent β). | PARTIAL | Shift computed at `_sparams.py:7635-7645`. But `waveguide_port.py:603` sets `dx = float(grid_obj.dx)`, and `rfx/nonuniform.py:37-55` documents `dx`/`dy` as the **boundary** cell (`:54`), so β and Z_TE use the boundary cell at a graded port. No NU phase or reference-plane gate; `docs/guides/support_matrix.md:94` states phase is not validated on this lane. | Both lanes: record that `shift_m` is a Python float (`waveguide_port.py:1679`, `if shift_m == 0.0`) — the plane is static geometry, not a design variable. NU: the boundary-vs-local-cell β question is **arithmetic, not a measurement** (see the derivation in the plan, WP4); it also needs the check that the shift span lies in one grading zone. In the existing NU AD fixture it does: `tests/test_waveguide_nu_flux_ad.py:50-95` grades 1.5 mm → 0.75 mm with the fine block starting at x = 0.030 m, and both reference planes sit 0.020 m from the ends, so the whole shift span is uniform 1.5 mm cells. **That fixture therefore cannot exercise this defect at all.** |
+| **1a. In-graph extraction → complex S_ij(f)** | VALIDATED (fast) for `normalize=False` and `normalize="flux"`; ABSENT for `normalize=True` and for `n_modes>1` | On tape: `rfx/sources/waveguide_port.py:1955` (`b_recv / safe_a`), stacks at `:1957`/`:1961`; flux lane `:1967-2223` (magnitude `:2208-2215`, stack `:2221-2223`). `normalize=True` is a numpy shell: `np.zeros(..., complex64)` `:2327`, `np.array(...)` on extracted waves at `:2383`, `:2397`, `:2434`. Multimode host-side: `:2836` (normalize), `:3026`/`:3036` (flux). Gates: `tests/unit/autodiff/test_sparam_ad_end_to_end.py:228-306`, `tests/unit/autodiff/test_waveguide_flux_ad.py:73-86`, `tests/unit/autodiff/test_waveguide_sparam_ad.py:98-141` (sha-pinned float64 goldens, `diff.max() < 1e-6` at `:141`). | VALIDATED (slow) for `normalize="flux"`; `eps_override`/`sigma_override` rejected on every other NU mode | `rfx/api/_sparams.py:7574` (device run threads the override) and `:7592` (vacuum reference run); flux magnitude `:7700-7717`; stack `:7766`. `rfx/runners/nonuniform.py:1400-1414` keeps `flux_spectrum` on the tape. Dispatch guard `_sparams.py:2332-2341`, locked by `tests/unit/sparams/test_waveguide_nu_sparam.py:377-390` (two `NotImplementedError` tests). Gate `tests/unit/autodiff/test_waveguide_nu_flux_ad.py:145-161`. | A fail-fast guard on the **uniform** `normalize=True` lane mirroring `_sparams.py:2332-2341`, so a traced `eps_override` raises `NotImplementedError` at dispatch instead of a `TracerArrayConversionError` deep in the extractor. The raise site must be recorded by a committed red test first — the lane has three `np.array` sites (`:2383`, `:2397`, `:2434`) and which one fires has not been measured. Written scope statement that multimode is outside the v1.8 battery. Removal of the flux lane's `complex64` cast at `waveguide_port.py:2217` (decision 1), so all three lanes follow `JAX_ENABLE_X64` as `normalize=False` already does through `_rect_dft` (`waveguide_port.py:1583-1585`). |
+| **1b. Reference-plane shift** | VALIDATED (fast) at value level | `waveguide_port.py:1655-1684` `_shift_modal_waves` (`exp(∓jβ·shift)` at `:1681-1682`, `step_sign` handling in the docstring `:1666-1670`); shift distance `_sparams.py:2799-2805`; β from `_compute_beta` `:1419-1469` (Yee-discrete branch `:1444-1459`), cutoff from the discrete 2D eigenvalue by default (`rfx/api/__init__.py:2283`, `mode_profile="discrete"`). Gates: `tests/unit/sparams/test_waveguide_phase_gate.py:211-266` (rotation vs analytic, `≤3.0°` at `:259`, wrong-sign witness asserted `>10°` at `:266` and described as ~50° at `:264`); `:129-145` (`PHASE_TOL_DEG = 6.0` at `:63`, residual vs an independent β). | PARTIAL | Shift computed at `_sparams.py:7635-7645`. But `waveguide_port.py:603` sets `dx = float(grid_obj.dx)`, and `rfx/nonuniform.py:37-55` documents `dx`/`dy` as the **boundary** cell (`:54`), so β and Z_TE use the boundary cell at a graded port. No NU phase or reference-plane gate; `docs/guides/support_matrix.md:94` states phase is not validated on this lane. | Both lanes: record that `shift_m` is a Python float (`waveguide_port.py:1679`, `if shift_m == 0.0`) — the plane is static geometry, not a design variable. NU: the boundary-vs-local-cell β question is **arithmetic, not a measurement** (see the derivation in the plan, WP4); it also needs the check that the shift span lies in one grading zone. In the existing NU AD fixture it does: `tests/unit/autodiff/test_waveguide_nu_flux_ad.py:50-95` grades 1.5 mm → 0.75 mm with the fine block starting at x = 0.030 m, and both reference planes sit 0.020 m from the ends, so the whole shift span is uniform 1.5 mm cells. **That fixture therefore cannot exercise this defect at all.** |
 | **1c. Impedance normalization** | PARTIAL | S is the ratio `b_i/a_j` (`waveguide_port.py:1955`) with per-port discrete Z_TE from `_compute_mode_impedance:1471` via `_extract_global_waves:1540`. No `sqrt(Z_i/Z_j)` renormalization exists anywhere in the port path. Flux magnitude is `sqrt(P/P_inc)` (`:2208-2215`). Documented only as a caveat: `_sparams.py:2106-2130` ("Yee impedance mismatch Z_TE_num/Z_TE_exact ≈ 3 % at dx/λ = 0.07", `:2111-2112`); `docs/public/guide/probes-sparams.mdx` names no reference impedance. | PARTIAL | Same ratio form at `_sparams.py:7731` (diagonal) and `:7749` (off-diagonal); same Z_TE from the boundary `dx` (see 1b). | State in the public docstring that S is a voltage-wave ratio referenced to each port's own discrete TE10 Z_TE, and equals a power-wave S only when all ports share a cross-section. Add either a guard or an explicit same-cross-section scope sentence, plus one dissimilar-port test. No new normalization math unless the PI asks. |
-| **1d. No host round-trip θ→S** | PARTIAL | Break-free: `normalize=False`, `normalize="flux"`. Hard breaks: `normalize=True` (`waveguide_port.py:2383`, `:2397`, `:2434`), multimode (`:2836`, `:3026`, `:3036`), traced `freqs` (`rfx/api/__init__.py:2472`, documented by `tests/test_waveguide_sparam_ad.py:206-257`), plane distance as a Python float (`waveguide_port.py:1679`). Tracer-safe skips, not breaks: settling witness (`waveguide_port.py:1794`, tracer → NaN at `:1826-1827`), passivity guard (`_sparams.py:766-824`), `rfx/probes/probes.py:745-764` (flux check skipped under jit/grad). | VALIDATED (slow) on flux | `_sparams.py:7574`/`:7592`; settling witness attached `:7758-7763`. | The guard from 1a, plus a written list of what is and is not a traced input (θ = `eps_override` / `sigma_override` only). |
-| **2a. Passivity** | VALIDATED (fast) — warn-only runtime guard plus live gates | Guard `_sparams.py:766-824` → `rfx/validation.py:447-466`, wired at `:2414`, `:2752`, `:2945` with `passivity_tol = 2.0` for `normalize=False` and `0.10` otherwise; warn unless `strict_passivity`. `_project_passive` (`:699`) is **not** applied on this family (only MSL `:4157`, mixed `:5101`). Live gates: `tests/test_waveguide_port_validation_battery.py:278-309` (flux, εr=4 DUT, max column power `<1.02` at `:307`, measured 1.0005); `:500-554` PEC-short on `normalize=False` (min `≥0.99` at `:541`, max `<1.03` at `:550`); `tests/test_waveguide_twoport_contract_v1.py:129-197` (dielectric, max column power `<1.05` at `:187`, measured 1.0128 at `:148`/`:183`) and `:199-231` (PEC-short, `<1.05` at `:226`, measured mean 0.9998 / max 1.0208 at `:224`); `tests/test_sparam_passivity_guard.py` runs in the required `guards-and-preflight` job. | VALIDATED (slow) at the tight tolerance | `tests/test_waveguide_nu_nontrivial.py:430-523` (dx-graded, flux, `|P_col − 1| < 0.02` on both drives at `:491` and `:496`). The fast lane carries only `tests/test_waveguide_nu_flux.py:100-127` at 1.10 (`:121`). Graded-dy: frozen replay only. Multimode: ABSENT — `tests/test_multimode_waveguide.py:362-401` asserts shape and mode map only. | Nothing on values. Make the NU 0.02 gate visible in the PR lane or pin its shard (see WP5 for the wall-time arithmetic), and add the multimode scope statement. |
-| **2b. Reciprocity** | VALIDATED (fast) — **magnitude only** | `battery:320-342` mean `‖S21|−|S12‖/max < 0.01` at `:340` (measured 0.0005, `:337-338`); `:398-...` asymmetric case at `<0.10`; `contract_v1:196` `mean(recip) < 1e-3`; `tests/test_conservation_laws.py:170-202` `< 0.05` at `:201` (measured 0.0414). `rfx/validation.py:468-486` implements a reciprocity check, but the runtime guard never enables it — `check_reciprocity` defaults to `False` (`rfx/validation.py:342`) and `_sparams.py:816-824` passes only `check_passivity=True`. | VALIDATED (slow) — magnitude only | `tests/test_waveguide_nu_nontrivial.py:500` (`recip.max() < 0.01`), where `recip = np.abs(s21_nu - s12_nu)` at `:480` is built from magnitudes taken at `:474-475` — so this is a magnitude gate, not a complex one. | A **complex** reciprocity gate `max_f |S21 − S12| / max|S|` on the same fixtures (WP3). Runtime wiring of `check_reciprocity` is optional and not a contract requirement. |
-| **2c. Power closure** | VALIDATED (fast) on flux; PARTIAL otherwise | Flux: `battery:278-309` (1.0005 against 1.02). `normalize=True`: `tests/test_conservation_laws.py:129-163` gates `0.6 < mean_power < 1.40` at `:161` around a measured ~0.73 — that documents a deficit, it does not demonstrate closure. The five committed E5 fixtures carry `unitarity_min`/`unitarity_max` fields, but `grep unitarity tests/test_waveguide_broad_e5_envelope_gates.py` returns nothing, so no test reads them. Independent witness ABSENT: no `add_flux_monitor` appears in any waveguide test, and column power reuses the port's own Poynting integrals. | VALIDATED (slow) | `nu_nontrivial:491-513`; record-length witness `tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` (max\|S11\| shift under a doubled record window `< MAX_TOL/10`, column power at np=60 within 1e-3 of unity). | Assert `unitarity_min`/`unitarity_max` per case in the frozen E5 gate. Add one interior-flux-monitor witness of `1 − |S11|² − |S21|²` on a lossless DUT — two routes through the same port DFT are one witness, not two. |
-| **3a. AD-vs-FD on an S-native objective** | PARTIAL | `tests/test_sparam_ad_end_to_end.py:228-306`: objective `jnp.real(jnp.sum(jnp.abs(S[:,:,k0])**2))` at `:257-259`, `normalize=False`, `rel_err < 0.05` at `:298`, FD in float32 at h = 1e-3 (`:288`) with **no** ULP-span validity assert. The repo's ULP-span pattern is `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/test_msl_ad_fd_converged.py:136` (gate assert `:556`, bidirectional falsifier `:629-634`), also used by `tests/test_coax_two_port_ad.py`. `tests/test_waveguide_flux_ad.py:73-86`: \|S21\|² at bin 2, flux, `rel ≤ 0.05` at `:84`, float32 FD at h = 0.05. | PARTIAL (slow) | `tests/test_waveguide_nu_flux_ad.py:145-161` (\|S21\|² flux, `rel ≤ 0.05`) and the perfect-null gradient test. No NU `sigma_override` FD test — stated in `docs/guides/sparameter_support_matrix.md:461-462`. | Float64 FD legs with a `_MIN_FD_ULP_SPAN`-style validity assert **before** the accuracy gate (the #527 class); add \|S11\|² and one complex-S objective; add the NU `sigma_override` leg. No new AD plumbing — the tape already carries complex S (`rfx-known-issues.md:3093-3099`, RESOLVED 2026-05-25). |
-| **3b. Reference-plane-shift invariance** | PARTIAL | `contract_v1:233-300`: shift is left 0.02 m / right 0.08 m (`:257`), `|S|` allclose `rtol=1e-3, atol=1e-4` at `:270`, complex S21 invariant at `:276`, S11 rotation asserted only as `> 0.1 rad` at `:285` — and the whole test runs on `normalize=True`. `phase_gate:211-266` checks the one-way βΔ on a single-port incident wave to 3°. Gradient invariance under a shift: ABSENT (`grep -l "jax.grad\|value_and_grad" tests/ | xargs grep -l reference_plane` → no hit). | ABSENT | No NU reference-plane test. The NU AD fixture sets non-zero planes (`tests/test_waveguide_nu_flux_ad.py:90`, `:95`) but never varies them. | A value gate on the two differentiable lanes asserting S11 rotation = 2βL against the Yee β to a pre-declared tolerance; a gradient-invariance falsifier; a NU sibling. |
-| **3c. Mesh-refinement consistency** | PARTIAL | `battery:449-479`: dx ∈ {3, 2, 1.5} mm at 6 GHz, `normalize=True`, `fine_delta ≤ coarse_delta + 0.005` at `:474` and `fine_delta < 0.10` at `:478`. cv18 Richardson replay: `tests/fixtures/wr90_iris_modematch/fixture.json` pins `richardson_measured_envelope_abs = 0.0051` against `richardson_gate_abs = 0.01`. The broad-E5 gates require ≥2 dx values per band (`tests/test_waveguide_broad_e5_envelope_gates.py:81`) but make no monotonic statement. Conformal-PEC ladder is closed by a strict xfail (`tests/test_subpixel_pec.py:614-637`). | ABSENT | The NU broad-E5 envelope varies the grading ratio at fixed base dx (`mesh_axis_kind = nonuniform_dy_profile_ratio`), never dx itself. | A ladder on \|S11\| and ∠S21 for PEC-short and slab on the flux/`False` lanes, and a NU base-dx ladder. Note the shape limitation: `fine ≤ coarse + floor` is a **non-increase** test, not a convergence test — decision 6 keeps that gate and adds the monotonicity and Richardson witnesses plus the integer-N rung, worst-bin and rasterization guards. |
-| **3d. External / analytic referee** | VALIDATED (fast, magnitude); phase = analytic Airy only | Airy magnitude, 5 bands: `tests/test_waveguide_broad_e5_envelope_gates.py:73-98`, `MAX_TOL = 0.05` (`scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py:33`), worst case WR-15 at 0.041399. Airy phase: `tests/test_waveguide_broad_e5_phase_gates.py:67-99`, `MAX_PHASE_TOL_DEG = 15.0` (`build_waveguide_band_broad_e5_phase_envelope.py:99`), worst WR-28 at 11.9897°. Palace E4: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json` — `summary.max_mag_abs_diff = 0.0707` against `max_mag_abs_tol = 0.1`, `summary.mean_mag_abs_diff = 0.009434` against `mean_mag_abs_tol = 0.07`, `provenance.status = "STALE (provenance settled; refresh decision open)"`. Meep T-junction: measured `max_mag_abs_diff = 0.09154` against `EXPECTED_XFDTD_TOL = 0.11` (`tests/test_waveguide_tjunction_e4e5_gates.py:103`). cv18: 0.0232 measured against 0.04. cv19: `f0_measured_envelope_mhz = 12.123` against `f0_gate_mhz = 19.0`. Group delay WR-340: worst 0.0320 ns against 0.042 ns (`tests/test_waveguide_group_delay_tolerance_envelope.py:36`). | VALIDATED (slow, magnitude, graded-dy only) | Airy: `MEASURED_MAX_ENVELOPE = 0.001081` (`tests/test_waveguide_nu_broad_e5_envelope_gates.py:66`) under a derived `MAX_TOL` and an outside ceiling of 0.0013 (`:88`). Palace: **two measures, name which** — the per-pair worst max is 0.008529 and the per-pair worst mean is 0.002998 (`tests/test_waveguide_nu_broad_e4_comparison_gates.py:60-61`, ceilings 0.010 / 0.004 at `:83-84`); the *summary* mean 0.000709 is the number `docs/guides/sparameter_support_matrix.md:456` quotes, and `:57-58` records that deriving a gate from it "failed 1 of 5 pairs on its first run". No dz-graded evidence (#810, OPEN). | The #812 refresh decision on the uniform Palace artifact is **not** a v1.8 item (see the contract's exclusions). The analytic Airy is the v1.8 phase referee (decision 5); a gated conjugation-corrected Meep phase leg is #854 item 3. |
-| **4a. Pinned envelopes** | VALIDATED (fast) as replay plus bounded-margin locks; the re-capture chain is partly off-tree | Goldens sha-pinned (`tests/test_waveguide_sparam_ad.py:107-120`). Gate derivation is shared: `gate_from_envelope` (`tests/_gate_policy.py:89`) with `ENVELOPE_GATE_MULTIPLIER = 1.5` (`:81`). All five uniform magnitude envelopes carry `absorber_discipline.status = "below_floor_accepted"` (#496). Dangling pointers: every uniform `rfx_manifest_path` points into the gitignored `.omx/physics-gate/...`; the NU E5 one points into a different checkout (a different checkout's gitignored `.omx/...`); the WR-28 fixture's absorber note (`waveguide_wr28_kaband_broad_e5_envelope.json:180`) cites `scripts/vessl_i496_band_absorber_probe.yaml`, which `git ls-files` does not return. No committed waveguide fixture records an energy-based `settling_db`. | same | same | Fix the dangling re-capture pointers. Record the substitute settling witness explicitly in the ledger row, naming the record-length form (`tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199`) and the reason it is a substitute: that file's own docstring at `:175-176` states rfx exposes no total-energy monitor. |
+| **1d. No host round-trip θ→S** | PARTIAL | Break-free: `normalize=False`, `normalize="flux"`. Hard breaks: `normalize=True` (`waveguide_port.py:2383`, `:2397`, `:2434`), multimode (`:2836`, `:3026`, `:3036`), traced `freqs` (`rfx/api/__init__.py:2472`, documented by `tests/unit/autodiff/test_waveguide_sparam_ad.py:206-257`), plane distance as a Python float (`waveguide_port.py:1679`). Tracer-safe skips, not breaks: settling witness (`waveguide_port.py:1794`, tracer → NaN at `:1826-1827`), passivity guard (`_sparams.py:766-824`), `rfx/probes/probes.py:745-764` (flux check skipped under jit/grad). | VALIDATED (slow) on flux | `_sparams.py:7574`/`:7592`; settling witness attached `:7758-7763`. | The guard from 1a, plus a written list of what is and is not a traced input (θ = `eps_override` / `sigma_override` only). |
+| **2a. Passivity** | VALIDATED (fast) — warn-only runtime guard plus live gates | Guard `_sparams.py:766-824` → `rfx/validation.py:447-466`, wired at `:2414`, `:2752`, `:2945` with `passivity_tol = 2.0` for `normalize=False` and `0.10` otherwise; warn unless `strict_passivity`. `_project_passive` (`:699`) is **not** applied on this family (only MSL `:4157`, mixed `:5101`). Live gates: `tests/oracle/test_waveguide_port_validation_battery.py:278-309` (flux, εr=4 DUT, max column power `<1.02` at `:307`, measured 1.0005); `:500-554` PEC-short on `normalize=False` (min `≥0.99` at `:541`, max `<1.03` at `:550`); `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:129-197` (dielectric, max column power `<1.05` at `:187`, measured 1.0128 at `:148`/`:183`) and `:199-231` (PEC-short, `<1.05` at `:226`, measured mean 0.9998 / max 1.0208 at `:224`); `tests/unit/sparams/test_sparam_passivity_guard.py` runs in the required `guards-and-preflight` job. | VALIDATED (slow) at the tight tolerance | `tests/unit/sparams/test_waveguide_nu_nontrivial.py:430-523` (dx-graded, flux, `|P_col − 1| < 0.02` on both drives at `:491` and `:496`). The fast lane carries only `tests/unit/sparams/test_waveguide_nu_flux.py:100-127` at 1.10 (`:121`). Graded-dy: frozen replay only. Multimode: ABSENT — `tests/unit/ports/test_multimode_waveguide.py:362-401` asserts shape and mode map only. | Nothing on values. Make the NU 0.02 gate visible in the PR lane or pin its shard (see WP5 for the wall-time arithmetic), and add the multimode scope statement. |
+| **2b. Reciprocity** | VALIDATED (fast) — **magnitude only** | `battery:320-342` mean `‖S21|−|S12‖/max < 0.01` at `:340` (measured 0.0005, `:337-338`); `:398-...` asymmetric case at `<0.10`; `contract_v1:196` `mean(recip) < 1e-3`; `tests/oracle/test_conservation_laws.py:170-202` `< 0.05` at `:201` (measured 0.0414). `rfx/validation.py:468-486` implements a reciprocity check, but the runtime guard never enables it — `check_reciprocity` defaults to `False` (`rfx/validation.py:342`) and `_sparams.py:816-824` passes only `check_passivity=True`. | VALIDATED (slow) — magnitude only | `tests/unit/sparams/test_waveguide_nu_nontrivial.py:500` (`recip.max() < 0.01`), where `recip = np.abs(s21_nu - s12_nu)` at `:480` is built from magnitudes taken at `:474-475` — so this is a magnitude gate, not a complex one. | A **complex** reciprocity gate `max_f |S21 − S12| / max|S|` on the same fixtures (WP3). Runtime wiring of `check_reciprocity` is optional and not a contract requirement. |
+| **2c. Power closure** | VALIDATED (fast) on flux; PARTIAL otherwise | Flux: `battery:278-309` (1.0005 against 1.02). `normalize=True`: `tests/oracle/test_conservation_laws.py:129-163` gates `0.6 < mean_power < 1.40` at `:161` around a measured ~0.73 — that documents a deficit, it does not demonstrate closure. The five committed E5 fixtures carry `unitarity_min`/`unitarity_max` fields, but `grep unitarity tests/crossval/test_waveguide_broad_e5_envelope_gates.py` returns nothing, so no test reads them. Independent witness ABSENT: no `add_flux_monitor` appears in any waveguide test, and column power reuses the port's own Poynting integrals. | VALIDATED (slow) | `nu_nontrivial:491-513`; record-length witness `tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` (max\|S11\| shift under a doubled record window `< MAX_TOL/10`, column power at np=60 within 1e-3 of unity). | Assert `unitarity_min`/`unitarity_max` per case in the frozen E5 gate. Add one interior-flux-monitor witness of `1 − |S11|² − |S21|²` on a lossless DUT — two routes through the same port DFT are one witness, not two. |
+| **3a. AD-vs-FD on an S-native objective** | PARTIAL | `tests/unit/autodiff/test_sparam_ad_end_to_end.py:228-306`: objective `jnp.real(jnp.sum(jnp.abs(S[:,:,k0])**2))` at `:257-259`, `normalize=False`, `rel_err < 0.05` at `:298`, FD in float32 at h = 1e-3 (`:288`) with **no** ULP-span validity assert. The repo's ULP-span pattern is `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/unit/autodiff/test_msl_ad_fd_converged.py:136` (gate assert `:556`, bidirectional falsifier `:629-634`), also used by `tests/unit/autodiff/test_coax_two_port_ad.py`. `tests/unit/autodiff/test_waveguide_flux_ad.py:73-86`: \|S21\|² at bin 2, flux, `rel ≤ 0.05` at `:84`, float32 FD at h = 0.05. | PARTIAL (slow) | `tests/unit/autodiff/test_waveguide_nu_flux_ad.py:145-161` (\|S21\|² flux, `rel ≤ 0.05`) and the perfect-null gradient test. No NU `sigma_override` FD test — stated in `docs/guides/sparameter_support_matrix.md:461-462`. | Float64 FD legs with a `_MIN_FD_ULP_SPAN`-style validity assert **before** the accuracy gate (the #527 class); add \|S11\|² and one complex-S objective; add the NU `sigma_override` leg. No new AD plumbing — the tape already carries complex S (`rfx-known-issues.md:3093-3099`, RESOLVED 2026-05-25). |
+| **3b. Reference-plane-shift invariance** | PARTIAL | `contract_v1:233-300`: shift is left 0.02 m / right 0.08 m (`:257`), `|S|` allclose `rtol=1e-3, atol=1e-4` at `:270`, complex S21 invariant at `:276`, S11 rotation asserted only as `> 0.1 rad` at `:285` — and the whole test runs on `normalize=True`. `phase_gate:211-266` checks the one-way βΔ on a single-port incident wave to 3°. Gradient invariance under a shift: ABSENT (`grep -l "jax.grad\|value_and_grad" tests/ | xargs grep -l reference_plane` → no hit). | ABSENT | No NU reference-plane test. The NU AD fixture sets non-zero planes (`tests/unit/autodiff/test_waveguide_nu_flux_ad.py:90`, `:95`) but never varies them. | A value gate on the two differentiable lanes asserting S11 rotation = 2βL against the Yee β to a pre-declared tolerance; a gradient-invariance falsifier; a NU sibling. |
+| **3c. Mesh-refinement consistency** | PARTIAL | `battery:449-479`: dx ∈ {3, 2, 1.5} mm at 6 GHz, `normalize=True`, `fine_delta ≤ coarse_delta + 0.005` at `:474` and `fine_delta < 0.10` at `:478`. cv18 Richardson replay: `tests/fixtures/wr90_iris_modematch/fixture.json` pins `richardson_measured_envelope_abs = 0.0051` against `richardson_gate_abs = 0.01`. The broad-E5 gates require ≥2 dx values per band (`tests/crossval/test_waveguide_broad_e5_envelope_gates.py:81`) but make no monotonic statement. Conformal-PEC ladder is closed by a strict xfail (`tests/unit/geometry/test_subpixel_pec.py:614-637`). | ABSENT | The NU broad-E5 envelope varies the grading ratio at fixed base dx (`mesh_axis_kind = nonuniform_dy_profile_ratio`), never dx itself. | A ladder on \|S11\| and ∠S21 for PEC-short and slab on the flux/`False` lanes, and a NU base-dx ladder. Note the shape limitation: `fine ≤ coarse + floor` is a **non-increase** test, not a convergence test — decision 6 keeps that gate and adds the monotonicity and Richardson witnesses plus the integer-N rung, worst-bin and rasterization guards. |
+| **3d. External / analytic referee** | VALIDATED (fast, magnitude); phase = analytic Airy only | Airy magnitude, 5 bands: `tests/crossval/test_waveguide_broad_e5_envelope_gates.py:73-98`, `MAX_TOL = 0.05` (`scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py:33`), worst case WR-15 at 0.041399. Airy phase: `tests/crossval/test_waveguide_broad_e5_phase_gates.py:67-99`, `MAX_PHASE_TOL_DEG = 15.0` (`build_waveguide_band_broad_e5_phase_envelope.py:99`), worst WR-28 at 11.9897°. Palace E4: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json` — `summary.max_mag_abs_diff = 0.0707` against `max_mag_abs_tol = 0.1`, `summary.mean_mag_abs_diff = 0.009434` against `mean_mag_abs_tol = 0.07`, `provenance.status = "STALE (provenance settled; refresh decision open)"`. Meep T-junction: measured `max_mag_abs_diff = 0.09154` against `EXPECTED_XFDTD_TOL = 0.11` (`tests/crossval/test_waveguide_tjunction_e4e5_gates.py:103`). cv18: 0.0232 measured against 0.04. cv19: `f0_measured_envelope_mhz = 12.123` against `f0_gate_mhz = 19.0`. Group delay WR-340: worst 0.0320 ns against 0.042 ns (`tests/oracle/test_waveguide_group_delay_tolerance_envelope.py:36`). | VALIDATED (slow, magnitude, graded-dy only) | Airy: `MEASURED_MAX_ENVELOPE = 0.001081` (`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:66`) under a derived `MAX_TOL` and an outside ceiling of 0.0013 (`:88`). Palace: **two measures, name which** — the per-pair worst max is 0.008529 and the per-pair worst mean is 0.002998 (`tests/crossval/test_waveguide_nu_broad_e4_comparison_gates.py:60-61`, ceilings 0.010 / 0.004 at `:83-84`); the *summary* mean 0.000709 is the number `docs/guides/sparameter_support_matrix.md:456` quotes, and `:57-58` records that deriving a gate from it "failed 1 of 5 pairs on its first run". No dz-graded evidence (#810, OPEN). | The #812 refresh decision on the uniform Palace artifact is **not** a v1.8 item (see the contract's exclusions). The analytic Airy is the v1.8 phase referee (decision 5); a gated conjugation-corrected Meep phase leg is #854 item 3. |
+| **4a. Pinned envelopes** | VALIDATED (fast) as replay plus bounded-margin locks; the re-capture chain is partly off-tree | Goldens sha-pinned (`tests/unit/autodiff/test_waveguide_sparam_ad.py:107-120`). Gate derivation is shared: `gate_from_envelope` (`tests/_gate_policy.py:89`) with `ENVELOPE_GATE_MULTIPLIER = 1.5` (`:81`). All five uniform magnitude envelopes carry `absorber_discipline.status = "below_floor_accepted"` (#496). Dangling pointers: every uniform `rfx_manifest_path` points into the gitignored `.omx/physics-gate/...`; the NU E5 one points into a different checkout (a different checkout's gitignored `.omx/...`); the WR-28 fixture's absorber note (`waveguide_wr28_kaband_broad_e5_envelope.json:180`) cites `scripts/vessl_i496_band_absorber_probe.yaml`, which `git ls-files` does not return. No committed waveguide fixture records an energy-based `settling_db`. | same | same | Fix the dangling re-capture pointers. Record the substitute settling witness explicitly in the ledger row, naming the record-length form (`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199`) and the reason it is a substitute: that file's own docstring at `:175-176` states rfx exposes no total-energy monitor. |
 | **4b. Fidelity-snapshot entries** | PARTIAL | `tests/data/example_fidelity_snapshot.json` carries cv11, cv19, tmtt taper, tutorial and inverse-design variants, each stamped "NOT AUDITED by this report". cv18 **is** registered — `tests/_example_fidelity_lib.py:468-471` classifies `validation/crossval/18_wr90_iris_modematch.py` as `builder_fused_with_solve` (the builder and the solve live in one function), which is why it produces no separable builder entry. | same | same | Define what a snapshot entry pins for a port (realized aperture, cutoff, evanescent advisory), or state that the host-geometry entry is the whole deliverable. |
 | **4c. Ledger record** | PARTIAL | Live and correct: `rfx-known-issues.md:3093-3099` (waveguide end-to-end AD RESOLVED 2026-05-25, FD↔AD rel_err 2.0e-4), `:3384-3395` (`normalize=True` limitation), `:196-197` (the contract doc is the first v1.8 deliverable), `:198-200` (#827 stays open for the general lane), `:256-260` (v2.0 milestones). Stale: `docs/agent-memory/index.md:249` still calls the cv11 ∠S21 offset an OPEN residual and points at roadmap W3.4, and `:280` repeats it, while `rfx-known-issues.md:4093-4112` closed it on 2026-07-02 as a Meep time-convention conjugation. `rfx-known-issues.md:3394` still says "NU mesh not yet supported (raises)" for the flux lane, which is now the gated NU lane. The open-issue list at `:27-28` still carries #822 and #823, which GitHub reports CLOSED and `:120` records as closed with #837. No per-lane in-graph status table exists anywhere in the repo. | same | same | The contract document plus one per-lane row in `rfx-known-issues.md`; the three stale statements above. |
 
@@ -512,7 +512,7 @@ work is collected in **#854**; the one-line summary is the "Decisions" section a
 The alternative — keep it and document that one lane silently ignores the precision knob — costs
 nothing to ship and everything to explain, and it would leave the support matrix asserting a
 precision promise the lane does not keep. The risk is bounded by a falsifier that already exists:
-the sha-pinned float64 golden `tests/test_waveguide_sparam_ad.py:98-141` at `diff.max() < 1e-6`
+the sha-pinned float64 golden `tests/unit/autodiff/test_waveguide_sparam_ad.py:98-141` at `diff.max() < 1e-6`
 (`:141`). complex64 rounding at |S| ≤ 1 is about 6e-8, so the golden is expected to pass. If it
 exceeds 1e-6 the cast is restored and the reason recorded — the golden is never moved. Implemented
 as WP1 step 3, in its own commit.
@@ -541,7 +541,7 @@ reaches the tape, or a shift factor that is not unit-modulus. Without the split,
 ## 3. A NU fixture with a reference plane inside the graded region — DO NOT BUILD ONE NOW
 
 Measured on main: the existing NU AD fixture cannot exercise the boundary-cell-β question at all.
-`tests/test_waveguide_nu_flux_ad.py:50-95` puts both reference planes 0.020 m from the ends, and the
+`tests/unit/autodiff/test_waveguide_nu_flux_ad.py:50-95` puts both reference planes 0.020 m from the ends, and the
 first non-coarse cell begins at x = 0.030 m, so both shift spans are uniform 1.5 mm cells. The
 derived size of the effect at WR-90 is 0.07° / 0.32° / 0.76° at 8 / 10 / 12 GHz over a 20 mm offset
 (WP4's table).
@@ -569,7 +569,7 @@ item 1** — deferred, not dropped.
 referee set for 3(d) is the battery's Airy slab and PEC-short **plus** the five broad-E5 replay
 bands — WR-340, WR-62, WR-28, WR-15, WR-10
 (`tests/fixtures/waveguide_broad_e5/*_broad_e5_envelope.json`, gated by
-`tests/test_waveguide_broad_e5_envelope_gates.py`). They are replay gates, so widening 3(d) from one
+`tests/crossval/test_waveguide_broad_e5_envelope_gates.py`). They are replay gates, so widening 3(d) from one
 band to five costs no run time. cv18, cv19 and the Meep T-junction are cited as 3(d) support only:
 magnitude-only flux gates with no AD leg can never carry criterion 1 or 3(a).
 
@@ -611,7 +611,7 @@ in the pod restart, so the leg is not even runnable today without a rebuild.
 ## 6. Monotone-approach clause on the dx ladder — KEEP THE GATE, ADD REPORT-FIRST WITNESSES
 
 **Decision: gate stays option (a)** — `fine_delta ≤ coarse_delta + floor`, the shape the existing
-`tests/test_waveguide_port_validation_battery.py:474` gate has, with its limitation stated. A
+`tests/oracle/test_waveguide_port_validation_battery.py:474` gate has, with its limitation stated. A
 monotonicity gate can go red for physical reasons (band-edge behaviour, staircase parity) and would
 need a root cause each time, which is a poor trade for a first battery.
 
@@ -631,7 +631,7 @@ Richardson witness as trivially 1; PEC-short phase against 2βL is included.
    realizes a as 11.43 / 15.24 / 22.86 cells — three different guides under one name, the #703
    class. The existing battery ladder has the same property and is a warning rather than a model:
    dx ∈ {3, 2, 1.5} mm in a 40 × 20 mm guide
-   (`tests/test_waveguide_port_validation_battery.py:42`, `:454`) realizes a as 13.33 / 20 / 26.67
+   (`tests/oracle/test_waveguide_port_validation_battery.py:42`, `:454`) realizes a as 13.33 / 20 / 26.67
    cells.
 2. **Worst-bin reporting and an interpretability flag.** Every frequency bin is evaluated and the
    worst reported. At ratio-2 rungs the successive-delta ratio should approach 0.5 for a first-order
@@ -656,6 +656,6 @@ choosing a tolerance before the complex reciprocity envelope has been measured, 
 would fire across the existing suite with no measured basis for the threshold. So: WP2 measures the
 envelope first; then a warn-only check for the **waveguide family** takes its tolerance from
 `gate_from_envelope`, and the preflight emission-site counters in
-`tests/test_preflight_advisory_emission_contract.py` (`_FROZEN_LITERAL_CODE_COUNT` at `:202`, test
+`tests/unit/preflight/test_preflight_advisory_emission_contract.py` (`_FROZEN_LITERAL_CODE_COUNT` at `:202`, test
 at `:218`) are updated in the same PR. Tracked as **#854 item 4**, carried in WP7 as a follow-on,
 and listed in the contract's "explicitly not required for v1.8".

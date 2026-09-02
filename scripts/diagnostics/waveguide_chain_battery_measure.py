@@ -7,7 +7,7 @@ set built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
 ``tests/fixtures/waveguide_chain_battery/fixture.json`` (schema:
 ``tests/fixtures/waveguide_chain_battery/README.md``). Gate arithmetic lives in
 ``tests/_waveguide_chain_battery_gates.py`` and is shared with the replay test
-``tests/test_waveguide_chain_battery.py``; this file only builds, runs,
+``tests/oracle/test_waveguide_chain_battery.py``; this file only builds, runs,
 records and persists.
 
 Stages (``--stages``), each persisting one JSON per case into ``--out-dir``
@@ -716,7 +716,7 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
     referee = {"pec_short": {}, "slab_airy": {}, "broad_e5_replay": {
         "fixtures": sorted(str(p.relative_to(REPO)) for p in
                            (REPO / "tests/fixtures/waveguide_broad_e5").glob("waveguide_*_broad_e5_envelope.json")),
-        "gate_test": "tests/test_waveguide_broad_e5_envelope_gates.py",
+        "gate_test": "tests/crossval/test_waveguide_broad_e5_envelope_gates.py",
         "note": "criterion 3(d) support set; replayed by its own gate test, not re-run here"}}
     for c in cells:
         S = G.s_from_json(c["s_params"])

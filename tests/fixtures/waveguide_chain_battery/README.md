@@ -2,7 +2,7 @@
 
 `fixture.json` in this directory is written by the measurement driver
 `scripts/diagnostics/waveguide_chain_battery_measure.py` (one JSON per case persisted as it
-finishes, then assembled) and replayed by `tests/test_waveguide_chain_battery.py`. The
+finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py`. The
 pre-declaration `docs/design_notes/waveguide_chain_battery_predeclaration.md` and the builder
 `tests/_waveguide_chain_battery_fixture.py` were committed first (PR #861) so that every
 tolerance, position and drive setting provably predates the first measured S-parameter. This
@@ -151,7 +151,7 @@ uses `2β_yee(c/2a)Δ`. `pinned_gate` stays null on the first run and is filled 
 `forward_identity` = `{max_abs_diff, max_scaled_diff, worst_entry, abs_s_at_worst, rtol, atol,
 pass}` (the θ0 reverse-mode-traced primal vs the untraced call; `max_scaled_diff ≤ 1` is the
 rtol 1e-5 / atol 1e-7 gate), `forward_identity_concrete_override_vs_plain` (eps legs: the concrete
-no-op override vs the plain call, the form of `tests/test_waveguide_flux_ad.py:104`), and
+no-op override vs the plain call, the form of `tests/unit/autodiff/test_waveguide_flux_ad.py:104`), and
 `x64_witness` (report-only, first objective of each (dut, lane, kind) and every non-finite float32
 gradient): `{g_ad_x64, value_x64, forward_identity_x64}` from the same reverse-mode call under a
 scoped x64 context.

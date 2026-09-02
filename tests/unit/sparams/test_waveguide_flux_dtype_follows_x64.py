@@ -44,7 +44,7 @@ from rfx.boundaries.spec import BoundarySpec, Boundary
 
 
 def _wr90_sim():
-    """Tiny 2-port WR-90, the golden fixture of tests/test_waveguide_sparam_ad.py."""
+    """Tiny 2-port WR-90, the golden fixture of tests/unit/autodiff/test_waveguide_sparam_ad.py."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),

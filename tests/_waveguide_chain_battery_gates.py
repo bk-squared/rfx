@@ -6,7 +6,7 @@ Consumers:
   driver calls these to write the per-cell metrics, the ladder, the
   plane-shift rotations, the referee and the ``verdicts`` block of
   ``tests/fixtures/waveguide_chain_battery/fixture.json``.
-* ``tests/test_waveguide_chain_battery.py`` — the replay layer recomputes every
+* ``tests/oracle/test_waveguide_chain_battery.py`` — the replay layer recomputes every
   verdict from the stored numbers through the same functions and compares with
   the stored verdict; a disagreement is itself a failure (README, "verdicts").
 
@@ -57,11 +57,11 @@ from rfx.sources.waveguide_port import C0_LOCAL, _compute_beta  # noqa: E402
 
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
-from tests.test_msl_ad_fd_converged import (  # noqa: E402
+from tests.unit.autodiff.test_msl_ad_fd_converged import (  # noqa: E402
     _MIN_FD_ULP_SPAN,
     _fd_ulp_span,
 )
-from tests.test_waveguide_phase_gate import MAG_MASK_FRAC, PHASE_TOL_DEG  # noqa: E402
+from tests.unit.sparams.test_waveguide_phase_gate import MAG_MASK_FRAC, PHASE_TOL_DEG  # noqa: E402
 from build_waveguide_band_broad_e5_envelope import _committed_noise_floor  # type: ignore  # noqa: E402
 
 # --- pre-declared gates, each with its source -------------------------------

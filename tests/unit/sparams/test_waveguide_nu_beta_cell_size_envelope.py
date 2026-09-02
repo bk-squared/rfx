@@ -32,7 +32,7 @@ import pytest
 
 from tests._x64_compat import enable_x64
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling fixture module
 
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_nu_beta_cell_size_envelope.json"
@@ -59,7 +59,7 @@ def test_fixture_shape_and_provenance(envelope):
     assert envelope["no_fdtd_run"] is True
     assert envelope["settling_db"] is None
     assert envelope["producer"] == "scripts/diagnostics/waveguide_nu_beta_cell_size_envelope.py"
-    assert envelope["fixture"].startswith("tests/test_waveguide_nu_flux_ad.py")
+    assert envelope["fixture"].startswith("tests/unit/autodiff/test_waveguide_nu_flux_ad.py")
     rows = envelope["rows"]
     f = np.array([r["f_hz"] for r in rows])
     assert f.min() <= 8e9 and f.max() >= 12e9, f
@@ -141,7 +141,7 @@ def test_live_functions_reproduce_the_committed_beta(envelope):
 
 def test_live_fixture_reproduces_the_committed_inputs(envelope):
     """The JSON's cutoff, dt, boundary dx and plane positions are the fixture's own (no FDTD)."""
-    from test_waveguide_nu_flux_ad import NUM_PERIODS, _FREQS, _wr90_nu_sim
+    from tests.unit.autodiff.test_waveguide_nu_flux_ad import NUM_PERIODS, _FREQS, _wr90_nu_sim
     from rfx.api._sparams import _assert_nu_shift_span_in_one_grading_zone
     from rfx.runners.nonuniform import _build_waveguide_port_config_nu
     from rfx.sources.waveguide_port import waveguide_plane_positions

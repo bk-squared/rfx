@@ -33,9 +33,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.test_lumped_twoport_vi_validation_battery import _THRU_MAX_SINGULAR_VALUE
+from tests.unit.sparams.test_lumped_twoport_vi_validation_battery import _THRU_MAX_SINGULAR_VALUE
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[3]
 FIXTURE_DIR = REPO / "tests" / "fixtures" / "thru_singular_value_dx_ladder"
 NOTE = REPO / "docs" / "design_notes" / "thru_singular_value_dx_ladder_predeclaration.md"
 

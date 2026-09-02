@@ -18,9 +18,9 @@ matching FD on an uncalibrated S is not closure; a calibrated S with no gradient
 Three tests decide it per lane. (1) **Trace:** `jax.value_and_grad` of a scalar of
 `compute_*(..., eps_override=θ).s_params` returns finite values with no `TracerArrayConversionError`.
 (2) **Forward identity:** S under a no-op traced override equals the untraced call to
-`rtol=1e-5, atol=1e-7` (the bound at `tests/test_waveguide_flux_ad.py:104`). (3) **Unsupported
+`rtol=1e-5, atol=1e-7` (the bound at `tests/unit/autodiff/test_waveguide_flux_ad.py:104`). (3) **Unsupported
 lane:** any lane that cannot trace raises `NotImplementedError` at public dispatch, naming the lane —
-the shape at `rfx/api/_sparams.py:2332-2341`, locked by `tests/test_waveguide_nu_sparam.py:377-390`.
+the shape at `rfx/api/_sparams.py:2332-2341`, locked by `tests/unit/sparams/test_waveguide_nu_sparam.py:377-390`.
 
 A `np.*` call on the S path is admissible only behind an explicit tracer guard: an `is_tracer(...)`
 or `isinstance(..., jax.core.Tracer)` branch that returns before the call, the form at
@@ -33,7 +33,7 @@ reference-impedance convention.
 ## Criterion 2 — physics gates
 
 On a reflecting DUT, never an empty guide (#395; the empty-guide identity is vacuous, see
-`tests/test_waveguide_twoport_contract_v1.py:131-136`): max column power ≤ 1 + tol_p; complex
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py:131-136`): max column power ≤ 1 + tol_p; complex
 reciprocity `max_f |S_ij − S_ji| / max|S| ≤ tol_r`; power closure `|1 − Σ_i |S_ij|²| ≤ tol_c` on a
 lossless DUT. Tolerances are derived from a measured envelope by `gate_from_envelope`
 (`tests/_gate_policy.py:89`, `ENVELOPE_GATE_MULTIPLIER = 1.5` at `:81`), never chosen.
@@ -41,7 +41,7 @@ lossless DUT. Tolerances are derived from a measured envelope by `gate_from_enve
 **Settling witness.** Energy-based `settling_db ≤ −40 dB` is required where the lane emits one, as the
 waveguide lanes do (`rfx/api/_sparams.py:7758-7763`). Where no energy monitor exists, one substitute
 is admissible: **record-length invariance** in the form of
-`tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` — double the record window at a fixed
+`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` — double the record window at a fixed
 absorber, require the max|S11| shift below one tenth of the magnitude gate and column power within
 1e-3 of unity on a lossless structure. Reason at `:175-176`: rfx has no total-energy monitor, so
 truncation shows first as non-passive column power. A two-window Harminv comparison is not a witness.
@@ -53,12 +53,12 @@ substitute in the fixture JSON.
 One common fixture set (thru, PEC-short, dielectric slab) across the differentiable lanes.
 
 **(a) AD vs central FD.** FD legs in float64 with a ULP-span validity assert of the form
-`_MIN_FD_ULP_SPAN = 1.0e4` (`tests/test_msl_ad_fd_converged.py:136`; gate `:556`, bidirectional
+`_MIN_FD_ULP_SPAN = 1.0e4` (`tests/unit/autodiff/test_msl_ad_fd_converged.py:136`; gate `:556`, bidirectional
 falsifier `:629-634`), evaluated **before** the accuracy gate. `rel ≤ 0.05` on |S11|², |S21|² and
 one complex-S objective. An FD leg below the span floor skips with the span printed.
 
 **(b) Reference-plane invariance.** Under a plane change: |S| invariant to `rtol=1e-3, atol=1e-4` (the
-pinned form at `tests/test_waveguide_twoport_contract_v1.py:270`); ∠S11 rotates by 2βL within a
+pinned form at `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:270`); ∠S11 rotates by 2βL within a
 pre-declared angle; d(objective)/dθ invariant. The shift is post-processing by a unit-modulus
 `exp(∓jβΔ)` (`waveguide_port.py:1681-1682`) whose β is a property of the port cross-section, not of θ.
 A **magnitude** objective (|S11|², |S21|²) is therefore gradient-invariant up to rounding, ~1e-6; a
@@ -120,6 +120,6 @@ matrix, wording stays "limited"/"experimental" plus "chain-closed (v1.8)"; "supp
 |---|---|---|---|---|
 | Waveguide, uniform | PARTIAL — `False`/`flux` on tape; `normalize=True` and multimode host-side; normalization implicit (`waveguide_port.py:1955`) | VALIDATED magnitude (battery `:307` 1.0005 < 1.02; reciprocity `:340` 0.0005 < 0.01); complex reciprocity ABSENT; independent closure witness ABSENT | PARTIAL — AD-vs-FD on \|S\|² only, float32 FD, no ULP guard; plane invariance on `normalize=True` only; one \|S21\| ladder; referees green | PARTIAL — envelopes gated, re-capture chains off-tree, snapshot "NOT AUDITED" for ports, `index.md:249` stale |
 | Waveguide, non-uniform | VALIDATED (slow) for `flux`; β/Z_TE read the boundary cell (`waveguide_port.py:603`) | VALIDATED at 0.02 in the slow lane only (`nu_nontrivial:491-500`) | PARTIAL — flux AD-vs-FD only; no plane test, no dx ladder; referees green on graded-dy | PARTIAL — no dz-graded evidence (#810 OPEN); #827 open for the general lane |
-| Lumped / wire | ABSENT on the reference-plane lane — extraction is numpy complex128 → complex64 (`rfx/probes/refplane.py:410-411`, `:539-542`; `sparam_driver.py:268-270`) | thru gates exist but `slow_physics` only (`tests/test_refplane_port_waves.py:779-860`); #819 sv_max 1.003227, mechanism unidentified | ABSENT; #683 decided POST-injection, not implemented | ledger rows present (`rfx-known-issues.md:4278-4306`) |
+| Lumped / wire | ABSENT on the reference-plane lane — extraction is numpy complex128 → complex64 (`rfx/probes/refplane.py:410-411`, `:539-542`; `sparam_driver.py:268-270`) | thru gates exist but `slow_physics` only (`tests/locks/test_refplane_port_waves.py:779-860`); #819 sv_max 1.003227, mechanism unidentified | ABSENT; #683 decided POST-injection, not implemented | ledger rows present (`rfx-known-issues.md:4278-4306`) |
 | MSL | PARTIAL — `extract_msl_nprobe` is jnp (`rfx/probes/msl_wave_decomp.py:601`), but passivity projection is default-ON except on the AD channel (`_sparams.py:2981-2986`), so `run()` and AD see different S | gates run through the projection; raw passivity ungated | ABSENT; Z0 definition #726 open | partial |
-| Coax | VALIDATED for the reflection step (`rfx/sources/coaxial_port.py:1601-1610`; `tests/test_ad_surface_contract.py:271`); end-to-end AD is `slow_physics` **and** `highmem` (`tests/test_coax_end_to_end_ad.py:59-60`, +10.8 GB RSS), so only the weekly highmem job can run it | per-fixture | ABSENT | #822/#823 CLOSED on GitHub and at `rfx-known-issues.md:120`; the open list at `:27-28` is stale |
+| Coax | VALIDATED for the reflection step (`rfx/sources/coaxial_port.py:1601-1610`; `tests/unit/autodiff/test_ad_surface_contract.py:271`); end-to-end AD is `slow_physics` **and** `highmem` (`tests/unit/autodiff/test_coax_end_to_end_ad.py:59-60`, +10.8 GB RSS), so only the weekly highmem job can run it | per-fixture | ABSENT | #822/#823 CLOSED on GitHub and at `rfx-known-issues.md:120`; the open list at `:27-28` is stale |

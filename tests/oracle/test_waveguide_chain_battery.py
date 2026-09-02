@@ -48,7 +48,7 @@ from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
 from tests._gate_policy import gate_from_envelope
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 
 # Live-layer tolerance on |S_live − S_fixture| (absolute, per entry), derived
@@ -397,7 +397,7 @@ def test_ad_vs_fd_leg(lid):
 @pytest.mark.parametrize("lid", _params_legs(family="forward_identity"))
 def test_forward_identity_traced_equals_untraced(lid):
     """Contract criterion 1: S under the θ0 traced override equals the untraced
-    call to rtol 1e-5 / atol 1e-7 (``tests/test_waveguide_flux_ad.py:104``)."""
+    call to rtol 1e-5 / atol 1e-7 (``tests/unit/autodiff/test_waveguide_flux_ad.py:104``)."""
     l = _leg(lid)
     ident = l["forward_identity"]
     conc = l.get("forward_identity_concrete_override_vs_plain")

@@ -5,12 +5,12 @@ measured, so that in git history every tolerance, position and drive setting pro
 predates the first number. This note carries no measured S value; the first measurement
 lands in a later PR as `tests/fixtures/waveguide_chain_battery/fixture.json` (schema:
 `tests/fixtures/waveguide_chain_battery/README.md`) together with
-`tests/test_waveguide_chain_battery.py`.
+`tests/oracle/test_waveguide_chain_battery.py`.
 
 Governing documents: `docs/design_notes/v18_waveguide_s_chain_plan.md` (WP2, decisions 2, 4
 and 6) and `docs/design_notes/chain_closure_contract.md` (criteria 1–3). Builder (constructs,
 never runs): `tests/_waveguide_chain_battery_fixture.py`. Structural guard, fast lane:
-`tests/test_waveguide_chain_battery_geometry.py`. Every file:line below was read on main
+`tests/unit/geometry/test_waveguide_chain_battery_geometry.py`. Every file:line below was read on main
 `378a9c95` (2026-09-02).
 
 What this note does not do: run anything, loosen any quoted tolerance, introduce a source
@@ -32,7 +32,7 @@ on 2026-09-02; the plan's numbers (in parentheses) drifted by a few lines since 
   `S11 = (b_dev − b_ref)/a_ref` does NOT cancel Yee dispersion for reflection … ±10–20 %
   |S11| error with `normalize=True`." *Consistent*: lanes are `normalize=False` and
   `normalize="flux"` only. Consequence recorded in §5(b): the complex-S21 invariance pinned at
-  `tests/test_waveguide_twoport_contract_v1.py:276` is a two-run cancellation of that lane and
+  `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:276` is a two-run cancellation of that lane and
   is **not** the expectation here.
 - **`:4106-4125` (plan `:4093-4112`)** and **`:4120`** — "The offset is a time-convention
   conjugation … `S21_meep ≈ conj(S21_rfx)` … Do not de-embed by the fitted slope/intercept;
@@ -68,7 +68,7 @@ Nothing found in the ledger contradicts this fixture set (grep terms: `WR-90`, `
 
 WR-90: a = 22.86 mm along y, b = 10.16 mm along z. Port-normal axis x. Boundary: CPML on
 x, PEC on both y faces and both z faces — the construction of
-`tests/test_waveguide_flux_ad.py:33-44` (`BoundarySpec(x="cpml", y=pec/pec, z=pec/pec)`).
+`tests/unit/autodiff/test_waveguide_flux_ad.py:33-44` (`BoundarySpec(x="cpml", y=pec/pec, z=pec/pec)`).
 Preflight measures the guide on the domain faces (`guide_source = "domain_faces"`) and reports
 22.86 × 10.16 mm at every rung (verified by the geometry test).
 
@@ -83,7 +83,7 @@ Preflight measures the guide on the domain faces (`guide_source = "domain_faces"
 Every rung is `dx = a/N` at integer N, so all three realize one guide (nodes = N + 1; the
 wall-to-wall extent is N·dx = a exactly). This replaces any ladder whose rungs do not divide
 a (the #703 class; the existing battery's {3, 2, 1.5} mm in a 40 mm guide realizes 13.33 /
-20 / 26.67 cells, `tests/test_waveguide_port_validation_battery.py:42`, `:454`, and is a
+20 / 26.67 cells, `tests/oracle/test_waveguide_port_validation_battery.py:42`, `:454`, and is a
 warning, not a model).
 
 ### 2.3 x layout — absolute coordinates, all integer multiples of 2.54 mm
@@ -109,7 +109,7 @@ builder; the reader checks each metre value by multiplication.
 Both DUTs are centred on x = 0.06096 m, so the two default reference planes are 38.10 mm from
 the PEC-short faces and 35.56 mm from the slab faces on both sides.
 
-The DUTs restate the construction of `tests/test_waveguide_twoport_contract_v1.py:59-60`
+The DUTs restate the construction of `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:59-60`
 (`pec_like`: `eps_r=1.0, sigma=1e10`, a Box spanning the full cross-section) and `:66-67`
 (`diel`: `eps_r=4.0`) in this guide's own coordinates; the 40 × 20 mm file's 5 mm / 20 mm
 thicknesses at x ∈ [0.050, 0.055] / [0.050, 0.070] are not inherited. Thicknesses are 2 and
@@ -131,7 +131,7 @@ The geometry test pins all of this.
 
 ### 2.4 Absorber — derived by the rule, with this guide's own cutoff
 
-Rule (`tests/test_waveguide_twoport_contract_v1.py:35-48`):
+Rule (`tests/unit/sparams/test_waveguide_twoport_contract_v1.py:35-48`):
 `CPML_LAYERS = ceil(0.75 · λ_g(f_low) / dx)` with λ_g at the port's **numerical** TE10
 cutoff. That cutoff is what preflight's `_check_waveguide_port_evanescent` computes
 (`rfx/api/_preflight.py:2364`; `_emit_waveguide_port_cutoff_findings` at `:2204`:
@@ -147,7 +147,7 @@ with the same reader (`numerical_te10_cutoff_hz` in the builder):
 - λ_g(8.4 GHz) = 57.102 mm; 0.75 λ_g = 42.83 mm.
 - **CPML layers = 17 / 34 / 68** (0.75 λ_g/dx = 16.86 / 33.72 / 67.44), i.e. 43.18 mm at
   every rung — the constant-physical-thickness pattern of
-  `tests/test_waveguide_port_validation_battery.py:449-457` falls out of the rule without a
+  `tests/oracle/test_waveguide_port_validation_battery.py:449-457` falls out of the rule without a
   separate rounding step.
 
 ### 2.5 Band and drive
@@ -166,7 +166,7 @@ with the same reader (`numerical_te10_cutoff_hz` in the builder):
   to the fixture JSON per (dut, dx, lane, port). Pre-declared threshold **≤ −40 dB**
   (`CLAUDE.md` ring-down rule; contract criterion 2). A drive above −40 dB at
   `num_periods = 40` is re-run at `num_periods = 80` (record-length doubling at the same
-  absorber, the form of `tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199`) and
+  absorber, the form of `tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199`) and
   **both** numbers are written; the 40-period number of that cell is then not claims-bearing.
   `num_periods` is never tuned per cell silently.
 - Lanes: `normalize=False` and `normalize="flux"`. Precision: the `Simulation` default
@@ -198,7 +198,7 @@ is informational here (no Q is measured).
 
 ## 3. What the geometry test pins now (guard iii of decision 6)
 
-`tests/test_waveguide_chain_battery_geometry.py`, fast lane, 15 checks, measured 4.7 s wall on
+`tests/unit/geometry/test_waveguide_chain_battery_geometry.py`, fast lane, 15 checks, measured 4.7 s wall on
 CPU for nine builds (budget 20 s): guide cells 9/18/36 × 4/8/16 and aperture = guide = 22.86 ×
 10.16 mm with source `domain_faces`; numerical fc_TE10 = c/2a to 1e-12 relative; CPML 17/34/68
 = 43.18 mm with zero transverse pads; the DUT run lengths and counts of §2.3 with
@@ -212,7 +212,7 @@ before any physics is measured.
 ## 4. Non-vacuity control
 
 The thru (empty guide) cell is run and written but gates nothing: on an empty guide the
-identities are two-run bookkeeping (`tests/test_waveguide_twoport_contract_v1.py:131-136`,
+identities are two-run bookkeeping (`tests/unit/sparams/test_waveguide_twoport_contract_v1.py:131-136`,
 #395). Its role is the control that the two reflecting DUTs differ from it: pre-declared
 witness `max_f |S11| > 0.20` on both DUTs (the form at `:266`). By the Airy oracle the slab's
 |S11| runs 0.19 (8.4 GHz) → 0.69 (11.2 GHz), 0.63 at the centre bin, with its nearest null at
@@ -234,15 +234,15 @@ witness `max_f |S11| > 0.20` on both DUTs (the form at `:266`). By the Airy orac
   see; loss leg θ0 = 0.05 S/m.
 - Objectives at the band-centre bin (10.0 GHz): |S11|² (slab, eps θ; PEC-short, sigma θ),
   |S21|² (slab, eps θ), Re S21 and Im S21 (slab, eps θ), Re S11 and Im S11 (PEC-short, eps θ).
-- FD: central, h = 0.05 on eps (`tests/test_waveguide_flux_ad.py:80`), h = 0.005 S/m on
+- FD: central, h = 0.05 on eps (`tests/unit/autodiff/test_waveguide_flux_ad.py:80`), h = 0.005 S/m on
   sigma, under a per-test x64 context; **ULP-span assert before the accuracy gate**,
-  `_MIN_FD_ULP_SPAN = 1.0e4` (`tests/test_msl_ad_fd_converged.py:136`; gate `:556`;
+  `_MIN_FD_ULP_SPAN = 1.0e4` (`tests/unit/autodiff/test_msl_ad_fd_converged.py:136`; gate `:556`;
   bidirectional falsifier `:629-634`), the ULP taken in the loss's own dtype. A leg under the
   floor **skips with the span printed; it never passes**.
 - Gate: `rel = |g_AD − g_FD| / max(|g_FD|, 1e-12) ≤ 0.05`
-  (`tests/test_sparam_ad_end_to_end.py:298`, `tests/test_waveguide_flux_ad.py:84`).
+  (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`).
 - Forward identity alongside (contract criterion 1): S under the θ = 0 traced override equals
-  the untraced call to `rtol=1e-5, atol=1e-7` (`tests/test_waveguide_flux_ad.py:104`).
+  the untraced call to `rtol=1e-5, atol=1e-7` (`tests/unit/autodiff/test_waveguide_flux_ad.py:104`).
 - **Expected order**: rel ≈ 1e-3 (ledger 2.0e-4 at `:3110`). **Expected skip, declared now**:
   PEC-short |S11|² under a lossless eps θ has a physically zero derivative (|S11| = 1 for any
   lossless window), so that leg is expected to fall under the ULP floor and skip; the
@@ -255,7 +255,7 @@ witness `max_f |S11| > 0.20` on both DUTs (the form at `:266`). By the Airy orac
 Base = default planes (0.02032 / 0.10160 m). Shifted = (0.03048 / 0.08890 m): Δ_L = +10.16
 mm, Δ_R = −12.70 mm, both inward, deliberately unequal so a sign error on one port cannot be
 cancelled by the other — the reason the source pair at
-`tests/test_waveguide_twoport_contract_v1.py:257` is asymmetric. That file's 0.02 / 0.08 m
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257` is asymmetric. That file's 0.02 / 0.08 m
 belong to its 0.12 m domain with ports at 0.01 / 0.09 m and are not inherited.
 
 The shift is post-processing: `forward · exp(−jβ·s)`, `backward · exp(+jβ·s)` with
@@ -270,7 +270,7 @@ Working the factors through `S = b/a` on these lanes gives, pre-declared:
 | ∠S22 | +2β·\|Δ_R\| | 160.1° / 230.3° / 291.9° |
 | ∠S21 = ∠S12 | +β·(Δ_L + \|Δ_R\|) = β · 22.86 mm | 144.1° / 207.3° / 262.7° |
 
-Angle gates: against `_compute_beta(dt, dx)` within **3°** (`tests/test_waveguide_phase_gate.py:259`);
+Angle gates: against `_compute_beta(dt, dx)` within **3°** (`tests/unit/sparams/test_waveguide_phase_gate.py:259`);
 against the continuous analytic β within **6°** (`PHASE_TOL_DEG = 6.0`, `:63`). Yee-vs-continuous
 over Δ_L is 0.76° / 0.19° / 0.05° at the three rungs (computed from `_compute_beta`), so both
 gates are reachable at every rung. Sign-discrimination witness: the wrong-sign prediction must
@@ -299,7 +299,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 `fine_delta = |S(1.27) − S(0.635)|`, phases wrapped.
 
 - **Gate**: `fine_delta ≤ coarse_delta + floor`, floor **0.005** for magnitudes
-  (`tests/test_waveguide_port_validation_battery.py:474`; 12× the 0.0004 PEC-short spread at
+  (`tests/oracle/test_waveguide_port_validation_battery.py:474`; 12× the 0.0004 PEC-short spread at
   ledger `:3525`) and **1°** for phases. Stated limitation, from the contract: this is a
   non-increase test — a lane stuck at a wrong value passes it.
 - **Witness (i), report-first**: monotonicity of the three-point sequence and the
@@ -339,7 +339,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
   Yee-vs-continuous β over 35.56 mm contributes 2.7° / 0.7° / 0.2° at the three rungs.
 - Also in the 3(d) set (decision 4), zero run cost: the five broad-E5 replay bands
   (`tests/fixtures/waveguide_broad_e5/*_broad_e5_envelope.json`, gated by
-  `tests/test_waveguide_broad_e5_envelope_gates.py`). cv18, cv19 and the Meep T-junction are
+  `tests/crossval/test_waveguide_broad_e5_envelope_gates.py`). cv18, cv19 and the Meep T-junction are
   magnitude-only support and carry neither criterion 1 nor 3(a).
 
 ---
@@ -347,7 +347,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 ## 6. Physics gates on the same fixture (fine rung; reported at all rungs)
 
 - Column power `max_f Σ_i |S_ij|² < 1.02` on both reflecting DUTs
-  (`tests/test_waveguide_port_validation_battery.py:307`).
+  (`tests/oracle/test_waveguide_port_validation_battery.py:307`).
 - Magnitude reciprocity `mean_f |S21| − |S12| / max < 0.01` (`:340`).
 - **Complex reciprocity** `max_f |S21 − S12| / max|S| ≤ 0.01`, pre-declared here for the
   first time; a first measurement above 0.01 is **reported**, not absorbed — the runtime
@@ -403,7 +403,7 @@ gate does not bind.
 
 ---
 
-R3: memory=rfx-known-issues.md:3096-3112,:3397-3408,:4106-4125,:4315,:3718-3726,:3525 + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
+R3: memory=rfx-known-issues.md:3096-3112,:3397-3408,:4106-4125,:4315,:3718-3726,:3525 + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/unit/geometry/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
 
 ---
 

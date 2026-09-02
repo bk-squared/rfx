@@ -3,7 +3,7 @@
 
 Measures sv(f), the largest singular value of the 2x2 S-matrix per bin, of
 the 2-port wire THRU fixture behind
-``tests/test_lumped_twoport_vi_validation_battery.py::_build_thru`` at dx,
+``tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::_build_thru`` at dx,
 dx/2 or dx/4, with the CPML physical thickness and the physical run time
 held constant.  What is held, what varies, the outcome table and the
 validity gates are pre-declared in

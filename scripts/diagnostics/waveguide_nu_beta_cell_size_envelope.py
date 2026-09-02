@@ -8,7 +8,7 @@ cell (``NonUniformGrid.dx``), not the cell the plane sits in. This script
 does no FDTD run. It evaluates the production functions ``_compute_beta`` and
 ``_compute_mode_impedance`` (``rfx/sources/waveguide_port.py``) at the
 boundary cell and at the fine cell of the committed NU AD fixture
-(``tests/test_waveguide_nu_flux_ad.py``, coarse 1.5 mm / fine 0.75 mm,
+(``tests/unit/autodiff/test_waveguide_nu_flux_ad.py``, coarse 1.5 mm / fine 0.75 mm,
 ``smooth_grading(max_ratio=1.3)``) over 8--12 GHz with the fixture's own
 discrete cutoff and time step, and writes the table -- beta at both sizes,
 their difference, and the phase error that difference makes over the
@@ -21,7 +21,7 @@ is second order, ``beta(dx) = s_x * (1 + (s_x*dx)^2/24 + 3*(s_x*dx)^4/640 + ...)
 with ``s_x^2 = (sin(w*dt/2)/(c*dt/2))^2 - kc^2``, so the boundary-vs-local
 difference is ``s_x^3 * (dx_b^2 - dx_l^2) / 24`` to leading order. The table
 below carries that closed form beside the production value, and
-``tests/test_waveguide_nu_beta_cell_size_envelope.py`` replays the JSON
+``tests/unit/sparams/test_waveguide_nu_beta_cell_size_envelope.py`` replays the JSON
 against it. ``Z_TE`` needs no table: the discrete form
 ``mu0*dx*sin(w*dt/2) / (dt*sin(beta*dx/2))`` has ``sin(beta*dx/2) = s_x*dx/2``
 by construction, so it does not depend on ``dx`` at all -- the JSON records
@@ -85,7 +85,7 @@ from rfx.sources.waveguide_port import (  # noqa: E402
 )
 
 OUT_PATH = REPO / "tests" / "fixtures" / "waveguide_nu_beta_cell_size_envelope.json"
-FIXTURE_MODULE = "tests/test_waveguide_nu_flux_ad.py"
+FIXTURE_MODULE = "tests/unit/autodiff/test_waveguide_nu_flux_ad.py"
 PRODUCER = "scripts/diagnostics/waveguide_nu_beta_cell_size_envelope.py"
 
 DX_BOUNDARY_M = 1.5e-3   # the fixture's coarse cell = NonUniformGrid.dx

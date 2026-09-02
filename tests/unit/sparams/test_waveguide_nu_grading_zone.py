@@ -114,7 +114,7 @@ def test_span_crossing_transition_cells_raises_negative_port():
 
 def test_committed_fixture_spans_lie_in_uniform_coarse_cells():
     """The NU AD fixture: both port-to-reference spans are uniform 1.5 mm cells (no raise)."""
-    from test_waveguide_nu_flux_ad import _wr90_nu_sim
+    from tests.unit.autodiff.test_waveguide_nu_flux_ad import _wr90_nu_sim
     sim, _ = _wr90_nu_sim()
     for entry in sim._waveguide_ports:
         grid, cfg, desired = _span_check(sim, entry)
