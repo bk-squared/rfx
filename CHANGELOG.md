@@ -6,6 +6,37 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — `normalize="flux"` waveguide S-matrix now follows `JAX_ENABLE_X64` (v1.8 chain closure, WP1)
+
+`compute_waveguide_s_matrix(normalize="flux")` on the uniform mesh
+hard-cast its assembled S column to complex64, so the lane ignored the
+precision knob that `normalize=False` and the non-uniform flux lane
+already honoured. The cast is gone: the result is complex64 by default
+and complex128 under `JAX_ENABLE_X64`. Values move at the complex64
+rounding level only — the sha-pinned float64 flux golden
+(`tests/test_waveguide_sparam_ad.py`) went from 3.3e-08 to 2.2e-08
+max|delta| against its 1e-6 gate, and the `False` / `True` goldens are
+bit-identical. Code that asserted `s_params.dtype == complex64` under
+x64 will now see complex128.
+
+### Changed — `normalize=True` waveguide S-matrix rejects a traced `eps_override` / `sigma_override` up front
+
+The uniform two-run lane assembles S on the host (`np.array` on the
+device-run outgoing wave), so it never carried a JAX tracer: `jax.grad`
+or `jax.jit` over a design variable ran one vacuum reference and one
+device FDTD pass and then died inside the extractor with a
+`TracerArrayConversionError`. `compute_waveguide_s_matrix(normalize=True)`
+now raises `NotImplementedError` at the call, naming the lane and
+pointing at `normalize=False` / `normalize="flux"` — the differentiable
+lanes — the same fail-fast the non-uniform dispatch already had. A
+concrete override on `normalize=True` still runs forward. Multimode
+(`n_modes>1`) is host-assembled on every lane and stays outside the
+differentiable chain. The docstring now also states the reference
+impedance: S is a modal voltage-wave ratio referenced to each port's
+own discrete modal impedance (no `sqrt(Z_i/Z_j)` renormalization), a
+power-wave S only when all ports share one cross-section. Test:
+`tests/test_waveguide_two_run_lane_traced_override.py`.
+
 ### Fixed — the fidelity report reads the rasterizer's own node line; a missing float64 spine now warns (#833 item 2, the #803 remainder)
 
 `fidelity_report()` re-derived its node positions by cumsumming the

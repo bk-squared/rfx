@@ -2111,7 +2111,9 @@ class _SparamMixin:
             (Z_TE_num/Z_TE_exact ≈ 3 % at dx/λ = 0.07).  Use for
             |S11| of strong reflectors (PEC short, high-Q resonators)
             where this error is smaller than the ±10–20 % round-trip
-            dispersion error introduced by ``normalize=True``.
+            dispersion error introduced by ``normalize=True``.  On the
+            differentiable chain: a traced ``eps_override`` /
+            ``sigma_override`` flows through it.
 
             ``True`` — two-run modal normalization.  Cancels one-way
             Yee dispersion for **transmission** (off-diagonal) by
@@ -2119,14 +2121,40 @@ class _SparamMixin:
             at the same port.  **Does not** cancel dispersion for
             reflection (round-trip vs one-way path mismatch); use
             ``normalize=False`` or ``normalize="flux"`` for S11 of
-            strong reflectors.
+            strong reflectors.  Host-assembled and **outside the
+            differentiable chain**: a traced ``eps_override`` /
+            ``sigma_override`` (``jax.grad``, ``jax.jit``) raises
+            ``NotImplementedError`` at this call, before any FDTD run;
+            a concrete override still runs forward.
 
             ``"flux"`` — hybrid power-flux extraction.  Magnitude from
             Poynting-vector DFT (|S|² = P_flux / P_inc), phase from
             modal V/I.  Corrects both the Z_TE impedance-mismatch error
             in S11 and the round-trip dispersion error in the
             ``normalize=True`` diagonal formula.  Costs 2 × N_ports
-            FDTD runs (same as ``normalize=True``).
+            FDTD runs (same as ``normalize=True``).  On the
+            differentiable chain like ``False``.  The result dtype
+            follows the ``freqs`` precision — complex64 by default,
+            complex128 under ``JAX_ENABLE_X64`` — the same rule as
+            ``False`` (a hard complex64 cast on this lane was removed
+            in v1.8).
+
+            **Reference impedance.**  On ``False`` and ``True`` each
+            S_ij is the modal voltage-wave ratio ``b_i / a_j``, where
+            the waves at a port are decomposed with that port's OWN
+            discrete modal impedance (Yee-discrete Z_TE or Z_TM from
+            the port's cutoff and cell size); no ``sqrt(Z_i / Z_j)``
+            renormalization is applied.  ``"flux"`` takes |S_ij| from
+            the power ratio and its phase from the same modal waves.
+            The returned matrix therefore equals a power-wave S only
+            when every port shares one cross-section and mode — the
+            validated scope (straight guides and same-guide junctions).
+            Ports with dissimilar cross-sections are outside it.
+
+            **Multimode.**  ``n_modes > 1`` on any port is assembled on
+            the host for every ``normalize`` value and is outside the
+            differentiable chain; ``eps_override`` / ``sigma_override``
+            differentiation is single-mode only.
         checkpoint_segments : int or None
             Segmented gradient checkpointing for the **uniform** waveguide
             AD path (issue #73 / PR #125).  Splits the ``n_steps`` scan
