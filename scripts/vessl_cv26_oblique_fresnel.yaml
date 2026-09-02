@@ -1,0 +1,144 @@
+name: rfx-cv26-oblique-fresnel
+description: "cv26 oblique slab Fresnel, ROUND 1 -- pre-declared in docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md before this run. rfx Bloch TFSF (fixed k_y, realized angle per bin) on cv04's slab: seven primary arms (te_00/30/45/60, tm_00/45/60 -- TM through the exact eps<->mu duality; oblique arms at dx/2 by the section 4.6 rule), three grazing compact-box arms at 82 deg (vacuum leakage witness, PEC absorber gate vs the exact Yee-lattice CPML model, slab), the 8/16/32 absorber depth ladder, the dx rungs of the oblique arms as evidence, six rfx falsifiers (each must exit 1), Meep legs at 40 px/cm on six arms + the wrong-2pi k_point falsifier, the gate test (must be green). CPU only: every arm is a 2-D grid (<= 3081 x 85 complex64). Exit 0 iff baseline 0 / falsifiers 1 / gate test 0 / Meep legs 0. Submit: vessl run create -f scripts/vessl_cv26_oblique_fresnel.yaml"
+tags: [rfx, crossval, cv26, oblique, fresnel, cpml, meep, gap-lane-4, round-1]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 32Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/gap4-oblique-fresnel
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx cv26 oblique slab Fresnel ROUND 1 ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cv26-oblique-r1-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv26-oblique-r1-LATEST"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  # -- 1. stage the checkout (NFS is read-only for the pod); provenance from .staged_commit --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-cv26
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  if [ -s "$WORK/.staged_commit" ]; then
+    cat "$WORK/.staged_commit" > "$OUT/commit.txt"
+  else
+    git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo unknown > "$OUT/commit.txt"
+  fi
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES="$WORK/validation/crossval/_26_oblique_results"
+  mkdir -p "$RES"
+
+  # -- 2. rfx environment --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__)"
+
+  # -- 3. Meep environment (conda-forge pymeep, separate env) --
+  CONDA=/opt/conda/bin/conda
+  if [ ! -x "$CONDA" ]; then
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    sh /tmp/miniconda.sh -b -p /opt/miniconda-cv26
+    CONDA=/opt/miniconda-cv26/bin/conda
+  fi
+  "$CONDA" create -y -q -n cv26meep --override-channels -c conda-forge python=3.11 pymeep numpy scipy
+  MEEP_PY="$(dirname "$CONDA")/../envs/cv26meep/bin/python"
+  test -x "$MEEP_PY" || MEEP_PY="$("$CONDA" run -n cv26meep which python)"
+  "$MEEP_PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
+  MEEP="$MEEP_PY scripts/crossval/meep_cv26_oblique_slab.py"
+
+  run_meep() {  # name, then args
+    NAME=$1; shift
+    set +e
+    $MEEP "$@" --out-dir "$RES" > "$OUT/meep_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/meep_$NAME.rc"; tail -n 5 "$OUT/meep_$NAME.log" || true
+    echo "meep_${NAME}_rc=$rc"
+  }
+  run_rfx() {  # name, then args
+    NAME=$1; shift
+    set +e
+    "$PY" validation/crossval/26_oblique_slab_fresnel.py "$@" --out-dir "$RES" --no-plots > "$OUT/rfx_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rfx_$NAME.rc"; grep -E "^\[|  record|  E2|  gates|  E4|  G6|  G7|  leakage|  Brewster|  lattice|FDTD|artifact|PASSED|FAIL|SKIP" "$OUT/rfx_$NAME.log" | tail -n 40 || true
+    echo "rfx_${NAME}_rc=$rc"
+  }
+
+  # -- 4. Meep legs: six primary arms at 40 px/cm (k_point from the declared theta0, pre-checked to 1e-9),
+  #       and the F4 wrong-2pi k_point falsifier on te_45 (pre-check recorded failed, run proceeds) --
+  for ARM in te_00 te_30 te_45 te_60 tm_45 tm_60; do
+    run_meep $ARM --arm "$ARM"
+  done
+  run_meep te_45__falsifier_k_2pi --arm te_45 --falsifier k_2pi
+  ls -la "$RES"
+
+  # -- 5. rfx baseline: all ten arms at their primary recipes (expect 0) --
+  run_rfx baseline
+  base_rc=$(cat "$OUT/rfx_baseline.rc")
+
+  # -- 6. the six rfx-side falsifiers + the Meep-leg falsifier read through the case (each must exit 1) --
+  fals_fail=0
+  for F in te_60_angle_m5 te_45_swap_tm tm_60_swap_te te_45_eps_x1p2 graze_pec_depth_half graze_pec_sigma_half meep_te_45_k_2pi; do
+    run_rfx falsifier_$F --falsifier "$F"
+    rc=$(cat "$OUT/rfx_falsifier_$F.rc")
+    [ "$rc" -eq 1 ] || { echo "ERROR: falsifier $F exited $rc, expected 1"; fals_fail=1; }
+  done
+
+  # -- 7. evidence rungs (diagnostic arms, rc 0/1/2 admissible): the absorber depth ladder on the PEC
+  #       compact box, and the dx rungs of the oblique arms (the lattice term at dx, second order) --
+  ladder_fail=0
+  for D in 8 16 32; do
+    run_rfx graze_pec_d$D --arm graze_pec --n-cpml $D --tag graze_pec_d$D
+    rc=$(cat "$OUT/rfx_graze_pec_d$D.rc"); case "$rc" in 0|1|2) ;; *) echo "ERROR: ladder rung d$D exited $rc"; ladder_fail=1;; esac
+  done
+  for ARM in te_30 te_45 te_60 tm_45 tm_60; do
+    run_rfx ${ARM}_dx1 --arm "$ARM" --dx-div 1 --tag ${ARM}_dx1
+    rc=$(cat "$OUT/rfx_${ARM}_dx1.rc"); case "$rc" in 0|1|2) ;; *) echo "ERROR: dx rung $ARM exited $rc"; ladder_fail=1;; esac
+  done
+
+  # -- 8. the gate test on the produced set (MUST be green) and the comparator unit tests --
+  set +e
+  "$PY" -m pytest -q tests/test_cv26_oblique_fresnel_gates.py tests/test_cv26_oblique_fresnel_comparator.py -rs -s \
+    > "$OUT/pytest_gates.log" 2>&1
+  gate_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_gates.rc"
+  grep -E "passed|failed|SKIPPED|Error|assert" "$OUT/pytest_gates.log" | tail -n 40 || true
+  echo "gate_test_rc=$gate_rc"
+
+  # -- 9. hand back, readable --
+  cp -r --no-preserve=ownership,mode "$RES" "$OUT/_26_oblique_results"
+  cp "$OUT/rfx_baseline.log" "$OUT/_26_oblique_results/r1_rfx_baseline.log" || true
+  cp "$OUT/commit.txt" "$OUT/_26_oblique_results/r1_commit.txt" || true
+  chmod -R a+rX "$OUT"
+  echo "=== verdict ==="
+  echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) ladders_ok=$([ "$ladder_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
+  echo "artifacts: $OUT/_26_oblique_results  (commit into validation/crossval/_26_oblique_results/ and fill artifact_paths)"
+  fail=0
+  [ "$base_rc" -eq 0 ] || { echo "ERROR: baseline exit $base_rc"; fail=1; }
+  [ "$fals_fail" -eq 0 ] || fail=1
+  [ "$ladder_fail" -eq 0 ] || fail=1
+  [ "$gate_rc" -eq 0 ] || { echo "ERROR: gate test exit $gate_rc"; fail=1; }
+  for ARM in te_00 te_30 te_45 te_60 tm_45 tm_60; do
+    [ "$(cat "$OUT/meep_$ARM.rc")" -eq 0 ] || { echo "ERROR: Meep leg $ARM failed"; fail=1; }
+  done
+  exit "$fail"
