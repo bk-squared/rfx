@@ -344,7 +344,7 @@ by G17-B.
 > built with no FDTD from the committed `gated_coarse` deltas plus the Mie
 > oracle (`scripts/diagnostics/build_cv17_material_blind_window.py --check`)
 > and re-derived against an independent Mie leg in
-> `tests/test_rcs_dielectric_sphere_mie_gates.py::test_material_blind_window_is_rederived_from_the_committed_deltas`.
+> `test_material_blind_window_is_rederived_from_the_committed_deltas` in `tests/test_rcs_dielectric_sphere_mie_gates.py`.
 > The model returns the SAME pass/fail verdict as the live runs at all four
 > permittivities (`summary.blind_window_bracket_eps`,
 > `summary.first_failing_eps_below`, `summary.first_failing_eps_above`), so
@@ -426,7 +426,7 @@ the declared one (0.0097). No legal gate can resolve it and none pretends to.
 > `pairs[*].one_cell_defect.under.*`, `summary.*`), is rebuilt by
 > `scripts/diagnostics/build_cv18_aperture_resolution.py --check`, and is
 > re-derived from the committed traces by an independent oracle in
-> `tests/test_wr90_iris_modematch_gates.py::test_aperture_resolution_artifact_is_rederived_from_committed_traces`.
+> `test_aperture_resolution_artifact_is_rederived_from_committed_traces` in `tests/test_wr90_iris_modematch_gates.py`.
 > The detection COUNTS and the conclusion the section draws (an over-aperture
 > is resolved everywhere, an under-aperture nowhere with margin) are unchanged
 > and re-verified; only the explanation's sign and its source were wrong.
@@ -465,11 +465,11 @@ Every quantity this lane asserts in a durable document, and where it now lives:
 
 | claim | source of record |
 |---|---|
-| cv18 per-configuration fine gates | `_18_wr90_iris_results/rfx.json::gates.fine_gate_abs_per_config`, bound to the script constant and to `round-up(env x 1.5)` in the gate test |
-| cv18 one-cell detection counts, margins, Richardson blindness | `_18_wr90_iris_results/aperture_resolution.json::summary.*`, `::pairs[*].one_cell_defect.*` |
-| cv18 effective aperture of the fine rung | `_18_wr90_iris_results/aperture_resolution.json::pairs[*].oracle_distance_abs`, `::pairs[*].nearest_offset_fine_cells` (this is the quantity §2.4 and §5.2 got sign-inverted) |
-| cv17 permittivity sensitivity (dB per unit relative eps) | re-derived in `tests/test_rcs_dielectric_sphere_mie_gates.py::test_the_declared_permittivity_sensitivity_is_the_one_recorded` and bound to `claim_scope` |
-| cv17 dB-gate permittivity blind window | `_17_dielectric_results/material_blind_window.json::summary.*`, `::scan[*]` |
+| cv18 per-configuration fine gates | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[0].fine_gate_abs = 0.019` … `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].fine_gate_abs = 0.015` (eight entries, identical to the per-configuration dict in `validation/crossval/_18_wr90_iris_results/rfx.json` under gates), bound to the script constant and to `round-up(env x 1.5)` in the gate test |
+| cv18 one-cell detection counts, margins, Richardson blindness | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::summary.over_aperture_detected = 8` and the sibling `summary` keys, and each pair's `one_cell_defect` block |
+| cv18 effective aperture of the fine rung | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::summary.nearest_offset_fine_cells_values[0] = 0.5` and each pair's `oracle_distance_abs` (this is the quantity §2.4 and §5.2 got sign-inverted) |
+| cv17 permittivity sensitivity (dB per unit relative eps) | re-derived in `test_the_declared_permittivity_sensitivity_is_the_one_recorded` in `tests/test_rcs_dielectric_sphere_mie_gates.py` and bound to `claim_scope` |
+| cv17 dB-gate permittivity blind window | `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][0] = 2.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][1] = 4.5` and `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][0] = 5.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][1] = 5.6`, the island `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[0] = 4.6`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[3] = 4.9` (worst bin `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].max_abs_delta_db = 9.787` dB), and the `scan` rows |
 | cv18 live-FDTD (B) run (`0.02842` / `0.00588`) | **prose only, §5.2** — not gate-bearing; criterion (B) is carried by the committed model table. `scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py` re-runs that pair and writes `one_cell_defect_live.json` (it exits 1 unless the defect passes the pooled 0.04 gate and fails the per-config 0.015 one); it is submitted by a VESSL yaml reported to the orchestrator (`scripts/vessl_issue812_r2_cv17_cv18.yaml` in the worktree; `**/vessl*.yaml` is gitignored by repo convention, so the yaml is a hand-off artifact, not a commit). Its geometry half is verified locally with `--geometry-only`: aperture 20 nodes at the fine rung and 10 at the coarse, against nominal 19 / 9. |
 | cv17 live-FDTD defect runs (four dB magnitudes) | **prose only, §5.1** — not gate-bearing; the window is carried by `material_blind_window.json`. |
 
@@ -479,3 +479,78 @@ The same VESSL yaml re-runs criterion (A) for both cases through their live
 gates and re-checks both builders on the staged tree, so a green (A) cannot sit on
 a drifted artifact. No leg passes `--write-fixture`: the frozen evidence record is
 not regenerated by this round (§5.3 still holds).
+
+## 7. Round-2 review (2026-09-02). Four blockers; no gate, window or measurement moved.
+
+An independent reviewer re-derived every number in §§0–6 against the artifacts (the 40
+cv18 oracle distances, the 16-entry detection table, the per-configuration gates, the
+cv17 sensitivities and the blind-window grid all agreed to the printed digits),
+confirmed with git that every window was fixed in `a2a14d1` before the commit that
+measured it and that no committed measurement row was regenerated, and returned
+FIX-THEN-SHIP. Append-only; the one in-place edit is named in 7.5.
+
+**7.1 (B1) The cv17 blind window was reported as one contiguous bracket the model does
+not have.** The declared grid (…, 4.0, 5.0, 5.5, …) stepped over a FAIL island: at eps
+4.6–4.9 the ka = 1.25 bin sits on a Mie resonance and the model's worst bin reaches
+`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].max_abs_delta_db = 9.787` dB, so "[2.0, 5.5]" was
+self-consistent on the grid and wrong as described (the #829 note's class 3). The grid
+now carries 0.1 steps from 4.0 to 5.6 and the artifact reports the PASS SET:
+`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][0] = 2.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][1] = 4.5` (the
+run containing the declared 2.56) and
+`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][0] = 5.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][1] = 5.6`, with
+the island `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[0] = 4.6`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[3] = 4.9`
+between them. The physical conclusion survives — the dB channel is blind to a
+factor-wide permittivity error, `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.blind_window_over_material_gate_x = 237.5`
+over the whole pass set — but the word "bracket" is withdrawn wherever it stood (script
+docstring and gate comment, the shared claim_scope, manifest, README, public row). No
+live defect point sits in the island: the live runs of §5.1 were at 1.8 / 2.0 / 5.5 /
+6.0 and agree with the model's verdicts there; the model–live magnitude gap already
+seen at 4.5 (live 4.41 dB vs model 5.31 dB) says the island's *edges* are model-only.
+The run that settles them is the cv17 defect harness at eps 4.6 / 4.7 / 4.8 / 4.9 on
+the gated bins; it is owed, not run.
+
+**7.2 (B2) §4's diagnosis of §1.2 was itself wrong.** §4 said §1.2's [1.601, 3.867] /
+[1.684, 3.787] came from "holding the FDTD side fixed and moving only the oracle". The
+committed builder makes exactly that assumption and gives [1.988, 4.556] (outer edge 5.62
+through the island) for the 4-row leg and [2.054, 4.212] for the 40-row leg — which are
+also the audit's own numbers. Flipping the sign of the Mie shift reproduces §1.2
+exactly. So §1.2 was a **sign-inverted model** — the same failure class this round exists
+to close — and §4 misnamed the cause. Correct statement: §1.2 subtracted the oracle shift
+where it should have added it; the artifact model is the sign-corrected §1.2; the live
+runs corroborate it at the four probed permittivities.
+
+**7.3 (B3, B4) Prose-only live digits and an untraceable edge.** The cv18 manifest
+`claim_scope` carried the live fine gap 0.02842 with no artifact behind it (§6 already
+said so); it stays until `one_cell_defect_live.json` from the VESSL job lands and is
+cited by key (7.6). The cv17 manifest and public row said "measured live … (1.8, 6.0)"
+for what is the model's first-failing grid neighbours; both now cite
+`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_below = 1.8` and
+`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_above = 4.6` (the latter moved from 6.0 because the run
+containing 2.56 now ends at 4.5) and name the live points separately. The script's
+"roughly [2.0, 5.6]" (two sites) is replaced by the pass set; three different windows
+were being printed across sites.
+
+**7.4 Recorded, not changed.** The four cv17 sensitivities (9.816 / 10.202 / 9.978 /
+7.134 dB per unit relative eps) are forward differences at h = 1e-3, not derivatives;
+central differences read 9.827 / 10.213 / 9.990 / 7.150, and the tolerance derivation is
+unaffected (0.05 / 10.213 = 0.0049 → 0.005). The live cv17 (A) deltas (−1.49 / −0.16 /
+−3.08 / +0.29 dB) differ from the committed rows (−1.794 / −0.442 / −3.276 / +0.272) by
+up to 0.35 dB because #731 moved the Mie evaluation to `ka_eff` without regenerating
+the fixture; the blind-window model is built on the old-convention deltas while the live
+defect runs use the new one — a convention mismatch, stated. Per-configuration cv18
+gates are ×1.5 of a population of one row each (the pooled gate's population was eight);
+they are accepted on the value-for-value fixture reproduction of §5.2 and named as such.
+G17-A/B read the array `rasterize` returns, before `MaterialArrays`; a defect between
+the array and the update coefficients stays visible only to the factor-wide dB channel,
+which is adequate for the binary-rasterize claim as scoped.
+
+**7.5 Citations, form only.** The note's ten backtick spans with a double colon were
+`.py` test pointers, wildcard key paths, or artifact paths missing their
+`validation/crossval/` prefix; none parsed under the #829 gate. They are rewritten in
+place to scalar keys with values (this is the in-place edit; no sentence changed
+meaning). `scripts/vessl_issue812_r2_cv17_cv18.yaml` was gitignored while §6 described
+it as the hand-off; it is force-added, matching the other tracked job files, and staged
+to local disk before running (a script writing beside itself on the read-only NFS
+checkout cost another lane a finished solve). Its first attempt (VESSL 369367257706)
+segfaulted at `import jax`: pinning `jax[cpu]==0.6.2` over the NVIDIA image leaves an
+incompatible CUDA plugin installed; the plugin is now removed first.

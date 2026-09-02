@@ -42,7 +42,16 @@ _OUT = _REPO_ROOT / "validation/crossval/_17_dielectric_results/material_blind_w
 
 # Declared BEFORE the measurement: a fixed permittivity grid, not a solved-for
 # edge, so the emitted bracket is reproducible bit-for-bit and cannot be tuned.
-EPS_GRID = (1.6, 1.8, 2.0, 2.2, 2.56, 3.0, 4.0, 5.0, 5.5, 6.0, 6.5)
+# Round-2 review (2026-09-02): the original grid (1.6 ... 4.0, 5.0, 5.5 ...)
+# stepped straight over a FAIL island at eps ~ 4.6-4.9, where the ka = 1.25
+# bin sits on a Mie resonance (per-bin delta reaches ~ -9.8 dB at eps = 4.8),
+# so "widest contiguous run on the grid" reported a window the model itself
+# does not have. The grid now carries 0.1 steps from 4.0 to 5.6 and the
+# summary reports the PASS SET (every contiguous run, and the islands between
+# them), not a single bracket. Still a fixed grid; still no solved-for edge.
+EPS_GRID = tuple(sorted(set(
+    (1.6, 1.8, 2.0, 2.2, 2.56, 3.0, 6.0, 6.5)
+    + tuple(round(4.0 + 0.1 * k, 1) for k in range(17)))))       # 4.0 ... 5.6
 DECLARED_EPS = 2.56
 
 
@@ -81,13 +90,32 @@ def build() -> dict:
         })
 
     inside = [s["eps_r"] for s in scan if s["inside_db_gate"]]
-    # widest CONTIGUOUS run on the declared grid that contains the declared eps
+    # the CONTIGUOUS run on the declared grid that contains the declared eps
     i0 = EPS_GRID.index(DECLARED_EPS)
     lo = hi = i0
     while lo - 1 >= 0 and scan[lo - 1]["inside_db_gate"]:
         lo -= 1
     while hi + 1 < len(EPS_GRID) and scan[hi + 1]["inside_db_gate"]:
         hi += 1
+    # every contiguous PASS run on the grid, and the FAIL islands between them
+    runs, cur = [], None
+    for i, s_ in enumerate(scan):
+        if s_["inside_db_gate"]:
+            cur = [EPS_GRID[i], EPS_GRID[i]] if cur is None else [cur[0], EPS_GRID[i]]
+        elif cur is not None:
+            runs.append(cur)
+            cur = None
+    if cur is not None:
+        runs.append(cur)
+    islands = []
+    for a, b in zip(runs, runs[1:]):
+        ia, ib = EPS_GRID.index(a[1]), EPS_GRID.index(b[0])
+        islands.append({
+            "eps_r": [EPS_GRID[k] for k in range(ia + 1, ib)],
+            "worst_bin_index": int(max(range(ia + 1, ib),
+                                       key=lambda k: scan[k]["max_abs_delta_db"])),
+            "max_abs_delta_db": max(scan[k]["max_abs_delta_db"] for k in range(ia + 1, ib)),
+        })
 
     return {
         "schema": "rfx.rcs_mie_material_blind_window",
@@ -115,7 +143,12 @@ def build() -> dict:
         "scan": scan,
         "summary": {
             "blind_window_eps_grid_values": inside,
+            # the contiguous PASS run containing the declared eps (was called
+            # the "bracket"; the key is kept, its meaning is now exact)
             "blind_window_bracket_eps": [EPS_GRID[lo], EPS_GRID[hi]],
+            "pass_runs_eps": runs,
+            "fail_islands_eps": islands,
+            "outer_pass_envelope_eps": [min(inside), max(inside)],
             "first_failing_eps_below": (EPS_GRID[lo - 1] if lo > 0 else None),
             "first_failing_eps_above": (EPS_GRID[hi + 1]
                                         if hi + 1 < len(EPS_GRID) else None),

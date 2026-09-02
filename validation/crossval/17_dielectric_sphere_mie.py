@@ -162,7 +162,10 @@ the geometry side.
     2.2e-8 relative (four orders inside G17-A), exactly two distinct values
     at every gated bin.
   * NOT claimed: any permittivity resolution from the dB channel. The dB
-    tier's blind window is roughly [2.0, 5.6] and stays that way.
+    tier's blind window is the committed pass set in
+    validation/crossval/_17_dielectric_results/material_blind_window.json
+    (summary.pass_runs_eps: [2.0, 4.5] and [5.0, 5.6], with a FAIL island at
+    4.6-4.9 on the ka = 1.25 Mie resonance) and stays that way.
 
 NOTE on preflight: this script drives the functional ``compute_rcs`` entry
 point, which runs NO preflight. The operating-point guarantees (internal-
@@ -250,8 +253,11 @@ A_EFF_TOL_COARSE = 0.015   # 1.5% of declared radius, cpr=6.4
 # channel cannot do that job: d(sigma_dB)/d(eps/eps) from the Mie oracle is
 # 9.816 / 10.202 / 9.978 / 7.134 dB per unit RELATIVE permittivity at
 # ka = 0.50 / 0.75 / 1.00 / 1.25, so a 6.3 dB window is ~ a factor-of-two
-# window in eps_r (measured live: the gate passes for a rasterized
-# permittivity anywhere in roughly [2.0, 5.6] — see the design note).
+# window in eps_r: the committed model pass set is [2.0, 4.5] and
+# [5.0, 5.6] with a FAIL island at 4.6-4.9 (material_blind_window.json,
+# summary.pass_runs_eps / summary.fail_islands_eps); live defect runs at
+# 2.0 / 5.5 (pass) and 1.8 / 6.0 (fail) agree with the model's verdicts —
+# see the design note. No live point sits in the island.
 #
 # G17-A: the realized permittivity is gated on its own channel, with the
 # window derived from that sensitivity — half the gate's own reporting
@@ -571,7 +577,7 @@ def main(argv):
                 "the gated region, and the domain-size axis dominates. Non-FDTD corroboration "
                 "(Bempp PMCHWT) is an offline follow-up; no Bempp leg is "
                 "committed for the dielectric case yet. "
-                "MATERIAL FIDELITY (issue #812 re-gate, 2026-09-01): until #812 no gate in this case looked at the permittivity that was actually rasterized, and the dB channel cannot do that job -- the Mie oracle's sensitivity is 9.816/10.202/9.978/7.134 dB per unit RELATIVE permittivity at ka = 0.50/0.75/1.00/1.25, so the 6.3 dB window is a FACTOR-wide window in eps_r: the width of that window is COMMITTED rather than restated here -- validation/crossval/_17_dielectric_results/material_blind_window.json, keys summary.blind_window_bracket_eps, summary.first_failing_eps_below, summary.first_failing_eps_above and summary.blind_window_over_material_gate_x, with the per-permittivity rows under scan[*] -- built with NO FDTD from the committed gated_coarse deltas plus the Mie oracle (scripts/diagnostics/build_cv17_material_blind_window.py) and re-derived from the same committed rows in tests/test_rcs_dielectric_sphere_mie_gates.py. Live defect runs at the same permittivities return the SAME pass/fail verdict at every one of them (design note section 5.1); those live magnitudes are prose-only corroboration and are deliberately not restated here. The 6.3 dB gate is round-up(envelope x 1.5) and cannot be tightened under the repo rule, and no tightening of it could resolve a permittivity error of a few percent anyway; this is stated rather than papered over. The permittivity is therefore gated on its OWN channel, the material twin of the existing per-row a_eff geometric gate: G17-A requires the permittivity read back out of the rasterized array to be within 0.5% relative of the declared 2.56 -- derived as half the gate's own 0.1 dB reporting quantum divided by the worst gated-ka sensitivity 10.202 dB per unit relative eps -- and G17-B requires the array to hold EXACTLY two distinct values (background 1.0 and the declared eps_r), which is the first check anywhere of this case's headline BINARY-rasterize claim; sub-cell averaging, a partial fill or a smoothed interface each add a third value. Measured on today's code the realized permittivity is float32(2.56) = 2.5599999428, i.e. 2.2e-8 relative, four orders inside G17-A, with exactly two distinct values at every gated bin."
+                "MATERIAL FIDELITY (issue #812 re-gate, 2026-09-01): until #812 no gate in this case looked at the permittivity that was actually rasterized, and the dB channel cannot do that job -- the Mie oracle's sensitivity is 9.816/10.202/9.978/7.134 dB per unit RELATIVE permittivity at ka = 0.50/0.75/1.00/1.25, so the 6.3 dB window is a FACTOR-wide window in eps_r: the width of that window is COMMITTED rather than restated here -- validation/crossval/_17_dielectric_results/material_blind_window.json, keys summary.pass_runs_eps (every contiguous PASS run on the declared grid: [2.0, 4.5] and [5.0, 5.6]), summary.fail_islands_eps (the FAIL island 4.6-4.9 between them, where the ka = 1.25 bin sits on a Mie resonance -- found by the round-2 review after the original grid stepped over it; the grid now carries 0.1 steps from 4.0 to 5.6), summary.blind_window_bracket_eps (the run containing the declared 2.56, [2.0, 4.5]), summary.outer_pass_envelope_eps ([2.0, 5.6]), summary.first_failing_eps_below (1.8), summary.first_failing_eps_above (4.6) and summary.blind_window_over_material_gate_x (237.5, over the whole pass set), with the per-permittivity rows under scan[*] -- built with NO FDTD from the committed gated_coarse deltas plus the Mie oracle (scripts/diagnostics/build_cv17_material_blind_window.py) and re-derived from the same committed rows in tests/test_rcs_dielectric_sphere_mie_gates.py. Live defect runs at the same permittivities return the SAME pass/fail verdict at every one of them (design note section 5.1); those live magnitudes are prose-only corroboration and are deliberately not restated here. The 6.3 dB gate is round-up(envelope x 1.5) and cannot be tightened under the repo rule, and no tightening of it could resolve a permittivity error of a few percent anyway; this is stated rather than papered over. The permittivity is therefore gated on its OWN channel, the material twin of the existing per-row a_eff geometric gate: G17-A requires the permittivity read back out of the rasterized array to be within 0.5% relative of the declared 2.56 -- derived as half the gate's own 0.1 dB reporting quantum divided by the worst gated-ka sensitivity 10.202 dB per unit relative eps -- and G17-B requires the array to hold EXACTLY two distinct values (background 1.0 and the declared eps_r), which is the first check anywhere of this case's headline BINARY-rasterize claim; sub-cell averaging, a partial fill or a smoothed interface each add a third value. Measured on today's code the realized permittivity is float32(2.56) = 2.5599999428, i.e. 2.2e-8 relative, four orders inside G17-A, with exactly two distinct values at every gated bin."
             ),
             "config": {
                 "f0_hz": F0, "bandwidth": BANDWIDTH, "eps_r": EPS_R,

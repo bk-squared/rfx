@@ -1,0 +1,99 @@
+name: rfx-812-r2-cv17-cv18
+description: "issue #812 round 2, lane geometry-sensitivity: re-verify criteria (A) and (B) for cv17 (17_dielectric_sphere_mie) and cv18 (18_wr90_iris_modematch) on branch agent/regate-mie-iris, and emit the ONE remaining prose-only number as JSON. (A) = both crossval scripts run through their live gates on today's code (cv18 ~2.5 h CPU, 16 FDTD runs; cv17 gated set). (B) = scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py, the upper fin drawn one cell short at each rung at d = 7.620 mm, which must PASS the pre-#812 pooled 0.04 gate and FAIL the new per-config 0.015 gate (exit 1 if it does not). The two no-FDTD builders are re-checked on the same tree so a drifted artifact cannot hide behind a green run. Nothing is regenerated: --write-fixture is NOT passed, so the frozen evidence record is untouched. vessl run create -f scripts/vessl_issue812_r2_cv17_cv18.yaml"
+tags: [rfx, issue-812, crossval, cv17, cv18, regate, round-2]
+resources:
+  cluster: remilab-c0
+  cpu: 32
+  memory: 64Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx #812 round 2: cv17/cv18 (A) and (B) re-verification ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+
+  # Staged checkout of agent/regate-mie-iris (rsync'd from the Mac per
+  # SPEC-00 0.3; the Mac uid cannot write inside it, so all output goes to
+  # the runs/ tree).
+  # Stage to LOCAL disk first: the NFS checkout is read-only for the pod's
+  # uid, and a case script that writes anything next to itself (cv06b's PNG
+  # cost run 369367257699 its exit code after a full solve) must not be able
+  # to fail that way here. Artifacts still go to the mounted runs/ tree.
+  ROOT=/root/work/regate-mie-iris
+  mkdir -p "$ROOT"
+  cp -r /root/workspace/claude-workspace/rfx/checkouts/regate-mie-iris/. "$ROOT/"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue812-r2-cv17-cv18
+  cd "$ROOT"
+  test -f validation/crossval/18_wr90_iris_modematch.py || { echo "STALE CHECKOUT: cv18 missing"; exit 3; }
+  test -f scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py || { echo "STALE CHECKOUT: (B) probe missing"; exit 3; }
+  test -f validation/crossval/_18_wr90_iris_results/aperture_resolution.json || { echo "STALE CHECKOUT: aperture_resolution.json missing"; exit 3; }
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+
+  # The image ships jax 0.4.33 plus a CUDA PJRT plugin; installing jax 0.6.2
+  # over it leaves that plugin in place and `import jax` segfaults (run
+  # 369367257706). Remove the plugin first, then pin the CI jax.
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt jax_cuda12_plugin jax_cuda12_pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8"
+  export PYTHONPATH="$ROOT"
+  "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, 'rfx from', os.path.dirname(rfx.__file__), 'x64', jax.config.x64_enabled)"
+
+  # ---- 0. the no-FDTD artifacts must still rebuild on THIS tree ----------
+  # (cheap, and it fails fast if a committed artifact has drifted from its
+  # builder -- a green (A) run on a stale artifact would be worthless)
+  "$PY" -u scripts/diagnostics/build_cv18_aperture_resolution.py --check 2>&1 | tee "$OUT/aperture_resolution_check.log"
+  "$PY" -u scripts/diagnostics/build_cv17_material_blind_window.py --check 2>&1 | tee "$OUT/material_blind_window_check.log"
+
+  fails=0
+  leg() {
+    name="$1"; shift
+    set +e
+    "$PY" -u "$@" > "$OUT/$name.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/$name.rc"
+    echo "----- $name rc=$rc (log tail) -----"
+    tail -n 60 "$OUT/$name.log" || true
+    [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  }
+
+  # ---- 1. criterion (A): both cases through their LIVE gates -------------
+  # NO --write-fixture anywhere: the frozen evidence record is not regenerated
+  # by this run (see design note 5.3).
+  leg cv17_gated_A validation/crossval/17_dielectric_sphere_mie.py
+  leg cv18_gated_A validation/crossval/18_wr90_iris_modematch.py
+
+  # ---- 2. criterion (B) live, cv18: the one-cell OVER-aperture defect ----
+  # exits 1 unless it PASSES the pooled 0.04 gate and FAILS the per-config
+  # 0.015 gate -- i.e. unless the re-gate is doing exactly what it claims.
+  leg cv18_defect_B scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py \
+      --output "$OUT/one_cell_defect_live.json"
+
+  # ---- 3. the frozen-fixture gate tests on the same tree -----------------
+  set +e
+  "$PY" -m pytest -q -o addopts="" -m "not gpu" \
+      tests/test_wr90_iris_modematch_gates.py \
+      tests/test_rcs_dielectric_sphere_mie_gates.py \
+      > "$OUT/gate_tests.log" 2>&1
+  trc=$?
+  set -e
+  echo "$trc" > "$OUT/gate_tests.rc"
+  tail -n 30 "$OUT/gate_tests.log" || true
+
+  echo "===== verdicts ====="
+  for f in "$OUT"/*.rc; do echo "$(basename "$f" .rc) rc=$(cat "$f")"; done
+  ls -la "$OUT"
+  echo "artifacts persisted to (mounted, survives teardown): $OUT"
+  echo "issue812_r2_failed_legs=$fails gate_tests_rc=$trc"
+  [ "$fails" -eq 0 ] && [ "$trc" -eq 0 ]

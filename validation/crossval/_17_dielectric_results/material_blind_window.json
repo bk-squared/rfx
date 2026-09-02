@@ -27,8 +27,22 @@
   2.56,
   3.0,
   4.0,
+  4.1,
+  4.2,
+  4.3,
+  4.4,
+  4.5,
+  4.6,
+  4.7,
+  4.8,
+  4.9,
   5.0,
+  5.1,
+  5.2,
+  5.3,
+  5.4,
   5.5,
+  5.6,
   6.0,
   6.5
  ],
@@ -118,6 +132,114 @@
    ]
   },
   {
+   "eps_r": 4.1,
+   "eps_rel_dev": 0.601562,
+   "max_abs_delta_db": 3.275,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    1.816,
+    3.275,
+    0.009,
+    1.015
+   ]
+  },
+  {
+   "eps_r": 4.2,
+   "eps_rel_dev": 0.640625,
+   "max_abs_delta_db": 3.415,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    1.957,
+    3.415,
+    0.074,
+    1.745
+   ]
+  },
+  {
+   "eps_r": 4.3,
+   "eps_rel_dev": 0.679688,
+   "max_abs_delta_db": 3.548,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    2.091,
+    3.548,
+    0.146,
+    2.667
+   ]
+  },
+  {
+   "eps_r": 4.4,
+   "eps_rel_dev": 0.71875,
+   "max_abs_delta_db": 3.834,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    2.218,
+    3.673,
+    0.206,
+    3.834
+   ]
+  },
+  {
+   "eps_r": 4.5,
+   "eps_rel_dev": 0.757812,
+   "max_abs_delta_db": 5.313,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    2.34,
+    3.792,
+    0.254,
+    5.313
+   ]
+  },
+  {
+   "eps_r": 4.6,
+   "eps_rel_dev": 0.796875,
+   "max_abs_delta_db": 7.134,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    2.456,
+    3.905,
+    0.29,
+    7.134
+   ]
+  },
+  {
+   "eps_r": 4.7,
+   "eps_rel_dev": 0.835938,
+   "max_abs_delta_db": 9.039,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    2.568,
+    4.012,
+    0.314,
+    9.039
+   ]
+  },
+  {
+   "eps_r": 4.8,
+   "eps_rel_dev": 0.875,
+   "max_abs_delta_db": 9.787,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    2.674,
+    4.113,
+    0.325,
+    9.787
+   ]
+  },
+  {
+   "eps_r": 4.9,
+   "eps_rel_dev": 0.914062,
+   "max_abs_delta_db": 8.116,
+   "inside_db_gate": false,
+   "per_bin_abs_delta_db": [
+    2.776,
+    4.209,
+    0.324,
+    8.116
+   ]
+  },
+  {
    "eps_r": 5.0,
    "eps_rel_dev": 0.953125,
    "max_abs_delta_db": 5.299,
@@ -130,6 +252,54 @@
    ]
   },
   {
+   "eps_r": 5.1,
+   "eps_rel_dev": 0.992187,
+   "max_abs_delta_db": 4.385,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    2.967,
+    4.385,
+    0.281,
+    2.588
+   ]
+  },
+  {
+   "eps_r": 5.2,
+   "eps_rel_dev": 1.03125,
+   "max_abs_delta_db": 4.467,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.057,
+    4.467,
+    0.238,
+    0.253
+   ]
+  },
+  {
+   "eps_r": 5.3,
+   "eps_rel_dev": 1.070312,
+   "max_abs_delta_db": 4.544,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.144,
+    4.544,
+    0.179,
+    1.726
+   ]
+  },
+  {
+   "eps_r": 5.4,
+   "eps_rel_dev": 1.109375,
+   "max_abs_delta_db": 4.616,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.226,
+    4.616,
+    0.103,
+    3.407
+   ]
+  },
+  {
    "eps_r": 5.5,
    "eps_rel_dev": 1.148438,
    "max_abs_delta_db": 4.839,
@@ -139,6 +309,18 @@
     4.685,
     0.01,
     4.839
+   ]
+  },
+  {
+   "eps_r": 5.6,
+   "eps_rel_dev": 1.1875,
+   "max_abs_delta_db": 6.057,
+   "inside_db_gate": true,
+   "per_bin_abs_delta_db": [
+    3.383,
+    4.75,
+    0.104,
+    6.057
    ]
   },
   {
@@ -173,17 +355,53 @@
    2.56,
    3.0,
    4.0,
+   4.1,
+   4.2,
+   4.3,
+   4.4,
+   4.5,
    5.0,
-   5.5
+   5.1,
+   5.2,
+   5.3,
+   5.4,
+   5.5,
+   5.6
   ],
   "blind_window_bracket_eps": [
    2.0,
-   5.5
+   4.5
+  ],
+  "pass_runs_eps": [
+   [
+    2.0,
+    4.5
+   ],
+   [
+    5.0,
+    5.6
+   ]
+  ],
+  "fail_islands_eps": [
+   {
+    "eps_r": [
+     4.6,
+     4.7,
+     4.8,
+     4.9
+    ],
+    "worst_bin_index": 14,
+    "max_abs_delta_db": 9.787
+   }
+  ],
+  "outer_pass_envelope_eps": [
+   2.0,
+   5.6
   ],
   "first_failing_eps_below": 1.8,
-  "first_failing_eps_above": 6.0,
-  "blind_window_max_rel_dev": 1.1484,
+  "first_failing_eps_above": 4.6,
+  "blind_window_max_rel_dev": 1.1875,
   "material_gate_rel_tol": 0.005,
-  "blind_window_over_material_gate_x": 229.7
+  "blind_window_over_material_gate_x": 237.5
  }
 }
