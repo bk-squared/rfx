@@ -1,6 +1,6 @@
 """Committed gate for the coaxial-line broad-E5 reflection envelope.
 
-Mirrors ``tests/crossval/test_waveguide_broad_e5_envelope_gates.py``, two layers:
+Mirrors ``tests/crossval/test_waveguide_broad_e5.py``, two layers:
 
 1. **Committed-fixture re-derivation** — load
    ``tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json``

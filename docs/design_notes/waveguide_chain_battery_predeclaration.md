@@ -339,7 +339,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
   Yee-vs-continuous β over 35.56 mm contributes 2.7° / 0.7° / 0.2° at the three rungs.
 - Also in the 3(d) set (decision 4), zero run cost: the five broad-E5 replay bands
   (`tests/fixtures/waveguide_broad_e5/*_broad_e5_envelope.json`, gated by
-  `tests/crossval/test_waveguide_broad_e5_envelope_gates.py`). cv18, cv19 and the Meep T-junction are
+  `tests/crossval/test_waveguide_broad_e5.py`). cv18, cv19 and the Meep T-junction are
   magnitude-only support and carry neither criterion 1 nor 3(a).
 
 ---

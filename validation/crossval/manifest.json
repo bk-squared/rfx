@@ -227,7 +227,7 @@
       "gate_paths": [
         "validation/crossval/11_waveguide_port_wr90.py",
         "tests/oracle/test_waveguide_port_validation_battery.py",
-        "tests/crossval/test_waveguide_broad_e5_envelope_gates.py"
+        "tests/crossval/test_waveguide_broad_e5.py"
       ],
       "artifact_paths": [
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json"

@@ -21392,7 +21392,7 @@
     "tests/fixtures/waveguide_broad_e5/waveguide_wr340_sband_broad_e5_envelope.json",
     "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_envelope.json"
    ],
-   "gate_test": "tests/crossval/test_waveguide_broad_e5_envelope_gates.py",
+   "gate_test": "tests/crossval/test_waveguide_broad_e5.py",
    "note": "criterion 3(d) support set; replayed by its own gate test, not re-run here"
   },
   "conventions": {

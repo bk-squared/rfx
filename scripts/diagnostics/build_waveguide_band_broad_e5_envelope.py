@@ -34,7 +34,7 @@ ETA0 = 376.730313668
 # grid dispersion (see docs/research_notes/20260617_t2.4_dispersion_tolerance_falsified.md).
 # So MAX_TOL is the measured envelope: the worst committed case diff is 0.0414
 # (an eps_r=4 slab at fine mesh); 0.05 = 0.0414 × ~1.2 safety margin. The margin
-# is bounded on BOTH sides by tests/crossval/test_waveguide_broad_e5_tolerance_envelope.py
+# is bounded on BOTH sides by tests/crossval/test_waveguide_broad_e5.py
 # (>= worst case so it never fails a validated case; <= worst × 1.5 so it is not
 # slack). Tightening below ~0.05 would fail real eps_r=4 cases — that ceiling is
 # physics, not slack.

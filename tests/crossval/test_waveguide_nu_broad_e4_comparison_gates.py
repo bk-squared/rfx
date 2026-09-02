@@ -1,7 +1,7 @@
 """Committed gate for the WR-90 NONUNIFORM (graded-dy) flux broad-E4 external
 comparison.
 
-Mirrors ``tests/crossval/test_waveguide_broad_e5_envelope_gates.py`` (the uniform lane)
+Mirrors ``tests/crossval/test_waveguide_broad_e5.py`` (the uniform lane)
 for the external-solver leg of the NONUNIFORM waveguide flux lane. The
 nonuniform lane already carried a committed broad-E5 *analytic* envelope
 (``tests/fixtures/waveguide_nu_broad_e5/``, vs analytic Airy); its one remaining

@@ -407,7 +407,7 @@ outside the single-dielectric-slab configuration described next.
   magnitude gate because `|exp(i*anything)| == 1`) reds at `179.87 degrees`.
   A fresh domain-size invariance run (WR-340, domain grown `+100 mm`) holds
   the pass verdict (`8.92 -> 7.73 degrees`). See
-  `tests/crossval/test_waveguide_broad_e5_phase_gates.py` and
+  `tests/crossval/test_waveguide_broad_e5.py` and
   `tests/fixtures/waveguide_broad_e5/phase_falsifier_and_domain_invariance.json`.
   Caveat: `d_left == d_right` in all five slab fixtures (the slab sits
   centered between symmetric reference planes), so this evidence cannot

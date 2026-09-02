@@ -1,6 +1,6 @@
 """Committed gate for the WR-90 nonuniform graded-dy FLUX broad-E5 envelope.
 
-Mirrors ``tests/crossval/test_waveguide_broad_e5_envelope_gates.py`` for the NONUNIFORM
+Mirrors ``tests/crossval/test_waveguide_broad_e5.py`` for the NONUNIFORM
 (graded transverse ``dy``) waveguide-port flux lane. It closes the
 "uncommitted ``.omx``" defect for the NU broad-E5-analytic evidence: the envelope
 JSON (``tests/fixtures/waveguide_nu_broad_e5/``, regenerated on gpu-rtx4090,

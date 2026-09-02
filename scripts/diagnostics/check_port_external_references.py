@@ -58,7 +58,7 @@ BROAD_E4_COMPARISON_BLOCKING_TOKENS = BROAD_E5_ENVELOPE_BLOCKING_TOKENS
 # authored prose string + a token blocklist — gameable by writing the right
 # adjectives. These minima make "broad" a property of the artifact's own
 # machine-readable summary, enforced for EVERY family (the floor previously lived
-# only in tests/crossval/test_waveguide_broad_e5_envelope_gates.py for one family).
+# only in tests/crossval/test_waveguide_broad_e5.py for one family).
 MIN_BROAD_E5_ENVELOPE_CASES = 4
 MIN_BROAD_E5_MESH_POINTS = 2          # distinct dx values (mesh-refinement axis)
 MIN_BROAD_E5_GEOMETRY_VARIANTS = 2    # distinct eps_r OR distinct geometries
