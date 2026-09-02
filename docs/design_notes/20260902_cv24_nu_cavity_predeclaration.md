@@ -171,3 +171,28 @@ Owed: the four arms with every gate green; the five falsifiers each exit 1 for t
 ## 11. Scope statement (the row this case will carry)
 
 Closed lossless air-filled PEC cavity, one geometry (50 × 30 × 40 mm), z grading only, fine cell 0.5 mm / coarse 1.0 mm, chain ratio ≤ 1.4, ≤ 2 fine bands, eigenfrequencies of the seven modes below 8.5 GHz, E2 against the exact Pozar spectrum with the exact-lattice prediction as the gate. No S-parameters, no ports, no absorber, no material, no in-plane grading, no other cavity. The support-matrix row for the multi-band mesh stays MESH-ONLY for S-parameters until #810's Tier-1 cases run; what this case can add to it, if green, is one sentence: "eigenfrequencies on the graded-z mesh: E2, cv24".
+
+## 12. Addendum (2026-09-02, same day, BEFORE any VESSL arm ran) — the rig check, one estimator defect fixed, and what it showed
+
+Written after the comparator, script and gate test existed and before `scripts/vessl_cv24_nu_cavity.yaml` was emitted. Nothing in sections 1–11 is edited; no window, allowance, record or gate moved. Local runs here are RIG CHECKS (the ≤ 20 s smoke budget: the uniform and single-band arms at dx = 1 mm take 2–5 s of FDTD each); their numbers are not evidence and are not committed as artifacts — the VESSL run is.
+
+### 12.1 The rig check fired the stationarity witness, as section 9 said it could
+
+Uniform arm, full record (16 794 steps), cv14's extraction verbatim (8000-sample subsampling, harminv defaults incl. `decimate="auto"`): lattice residual +1.78 / −0.35 / −1.76 / −0.34 / +4.48 / +3.89 / −9.90 ppm (TE101 … TE102) and two-window scatter 3.1 / 6.1 / 6.8 / 13.5 / 2.5 / 13.5 / 22.5 ppm — the witness (≤ 4 ppm) fires on five modes and the lattice gate on three. Per section 9 that is a rig failure, and the remedy is not the floor.
+
+### 12.2 Mechanism, found on the same time series without re-running the FDTD
+
+Extraction variants on the SAME record (max |lattice residual| / max scatter, ppm): cv14's rig 9.9 / 22.5; no subsampling, auto-decimation 11.0 / 37.7; 8000 samples, `decimate=False` **0.48 / 0.12**; auto-decimation with `sv_threshold = 1e-4` 0.69 / 1.9; `1e-5` admits 18 spurious lines; `pencil_parameter = 0.5` 8.8 / 16.1; a 2× record with cv14's rig 2.3 / 6.4. So the record derivation of section 5 is adequate (doubling it does not reach the floor) and the floor is harminv's **auto-decimation**: `rfx/harminv.py` multiplies its rank threshold by `sqrt(decimation factor)` after the FIR stage (factor 7 here, 1e-3 → 2.6e-3), which drops the weakly excited members of this 12-mode signal (the five modes between 8.66 and 9.74 GHz are excited at 3–37 % of TE101, and every mode is weak on two of the three probe channels), and the retained poles absorb their residual. With the raw 8000 samples the estimator is exact to 0.5 ppm — 8× under the 4 ppm derived floor.
+
+### 12.3 What changed, declared here before the run
+
+`HARMINV_DECIMATE = False` in the case script (`_lines`), the only change; cv14's subsampling to 8000 samples, harminv's `pencil_parameter = 0.33` and `sv_threshold = 1e-3` (the counting floor `AMP_FLOOR_REL` is derived from the latter) stay. Cost: the SVD of the 5333 × 2667 pencil is ~85 s per arm for the three windows × three channels; no GPU is needed and the VESSL lane stays on the CPU image. The manifest's `cpu_runner` exclusion states this cost.
+
+### 12.4 Rig check after the change (local, not evidence)
+
+Uniform arm: lattice residual −0.10 / +0.16 / −0.15 / −0.43 / −0.07 / −0.00 / −0.48 ppm; scatter ≤ 0.12 ppm; 7 / 7 clusters. Single-band arm (b): residual +0.00 / −0.01 / −0.00 / −0.00 / +0.01 / +0.08 / −0.06 ppm; scatter ≤ 0.11 ppm; 7 / 7 — including TE101 at −149.7 ppm measured vs −149.7 predicted, i.e. the −23 ppm transition term of section 3.4 is measured, not only modelled. The falsifier paths execute at 1/8 record (`--smoke --falsifier …`): the metric swap reads −3519 ppm on TE101 against the predicted −3519; the extra fine cell −7507 ppm excess against 7502; the narrowed band counts 6. Every one of section 6's predictions stands; the note's predictions column is unchanged.
+
+### 12.5 Two records corrected in passing
+
+- F3 (`extent_plus_one_fine_cell`): the mis-realized grid shifts every node above the fine band by 0.5 mm and puts the `ex` source (z = 17 mm) on a transition node, so the `source_on_graded_node` preflight advisory IS expected on that arm (section 1's "absent" applies to the four arms and the other falsifiers); eigenfrequencies do not depend on source position. F3 is judged against the DECLARED profile (b) — oracle, lattice prediction, allowance — with a separate `extent` gate on the realized z extent, so it fails `lattice`, `allowance` and `extent`, not `envelope` as section 6's row said (the declared profile is inside the envelope; the realization is what is wrong).
+- The gate test's dense 3-D assembly of the Yee curl-curl on a graded 3 × 2 × 7-cell box reproduces the separable spectrum of section 3.2 to 1e-9 relative, multiplicities included, and the second-order formula of section 3.3 agrees with the exact eigenvalue to 6.5e-8 (`l = 1`) and 2.5e-6 (`l = 2`) of `μ_z` on every arm.
