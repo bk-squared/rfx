@@ -163,6 +163,10 @@ def test_port_planes_and_theta_window_sit_on_declared_coordinates(sims, dx):
     # the cell offsets scale with 1/dx (10 / 20 / 40 and 3 / 6 / 12).
     for e in sim._waveguide_ports:
         assert e.probe_offset == 10 * s and e.ref_offset == 3 * s, (dx, e.name)
+    # The declared default plane is passed EXPLICITLY (rfx's own default
+    # reports S at the port plane, not at source + ref_offset·dx).
+    assert sim._waveguide_ports[0].reference_plane == pytest.approx(F.REF_LEFT_DEFAULT_M, abs=1e-12)
+    assert sim._waveguide_ports[1].reference_plane == pytest.approx(F.REF_RIGHT_DEFAULT_M, abs=1e-12)
 
     for dut in ("slab", "pec_short"):
         sim_d = sims[(dut, dx)]

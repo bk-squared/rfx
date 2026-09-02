@@ -209,8 +209,15 @@ def build_simulation(
     recorded fixture.
 
     ``reference_planes`` are the explicit ``reference_plane`` overrides for
-    (left, right); ``(None, None)`` keeps the measured default planes
-    ``D_REF_M`` inward of each port.
+    (left, right). ``None`` on either side resolves to the DECLARED default
+    plane of that port (``REF_LEFT_DEFAULT_M`` / ``REF_RIGHT_DEFAULT_M`` =
+    ``D_REF_M`` inward of the port, i.e. the raw record plane, ref_shift 0).
+    It is passed explicitly because rfx's own default reports S at the
+    PORT plane (``rfx/api/_sparams.py``, ``desired_ref = ... planes["source"]``,
+    RF-audit 2026-07-23), not at ``source + ref_offset·dx``; the first
+    coarse-rung plumbing run of the battery measured
+    ``reference_planes = [0.0127, 0.10922]`` under ``(None, None)``, which is
+    not the plane the pre-declaration (§2.3) references every oracle to.
     """
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
@@ -220,8 +227,10 @@ def build_simulation(
         probe = _build(dut, dx, cpml_layers=8, reference_planes=(None, None),
                        precision=precision)
         cpml_layers = cpml_layers_for(dx, numerical_te10_cutoff_hz(probe))
+    left = REF_LEFT_DEFAULT_M if reference_planes[0] is None else float(reference_planes[0])
+    right = REF_RIGHT_DEFAULT_M if reference_planes[1] is None else float(reference_planes[1])
     return _build(dut, dx, cpml_layers=cpml_layers,
-                  reference_planes=reference_planes, precision=precision)
+                  reference_planes=(left, right), precision=precision)
 
 
 def _build(dut, dx, *, cpml_layers, reference_planes, precision):
@@ -297,6 +306,20 @@ def numerical_te10_cutoff_hz(sim: Simulation, port_index: int = 0) -> float:
     return (C0 / 2.0) * math.sqrt((1.0 / sp.a_guide_m) ** 2 + (0.0 / sp.b_guide_m) ** 2)
 
 
+def port_cutoff_hz(sim: Simulation, port_index: int = 0) -> float:
+    """The TE10 cutoff the PORT CONFIG carries (``WaveguidePortConfig.f_cutoff``)
+    — the number ``_shift_modal_waves`` / ``_compute_mode_impedance`` use for
+    β and Z_TE. With ``mode_profile="discrete"`` it is the discrete 2D
+    eigenvalue on the port aperture and is NOT the same quantity as
+    :func:`numerical_te10_cutoff_hz` (preflight's wall-to-wall reader); the
+    battery records both so a difference is visible in the artifact."""
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[port_index]
+    cfg = sim._build_waveguide_port_config(
+        entry, grid, jnp.asarray(FREQS), int(grid.num_timesteps(NUM_PERIODS)))
+    return float(cfg.f_cutoff)
+
+
 def dut_masks(sim: Simulation) -> dict[str, np.ndarray]:
     """Production rasterization of every geometry entry, keyed by material
     name, on the padded grid the solve uses (``Box.mask(grid)``)."""
@@ -366,11 +389,28 @@ def design_override(sim: Simulation, dut: str, theta, *, kind: str = "eps"):
     array with ``theta`` added on the θ window. The override replaces the
     assembled array wholesale (``rfx/api/_sparams.py``, "materials._replace"),
     so it must carry the slab's eps_r = 4 itself — a ``jnp.ones`` base would
-    silently delete the DUT. ``theta`` may be a tracer.
+    silently delete the DUT — and, for ``kind="sigma"``, the lane's own PEC
+    fold (sigma = 1e10 on ``pec_mask``), or the override deletes the PEC
+    short. ``theta`` may be a tracer.
     """
     grid = sim._build_grid()
-    mats = sim._assemble_materials(grid)[0]
-    base = mats.eps_r if kind == "eps" else mats.sigma
+    assembled = sim._assemble_materials(grid)
+    mats, pec_mask = assembled[0], assembled[3]
+    if kind == "eps":
+        base = jnp.asarray(mats.eps_r)
+    else:
+        # ``_assemble_materials`` moves every conductor with sigma >= the PEC
+        # threshold OUT of ``materials.sigma`` into ``pec_mask`` (the assembled
+        # sigma is 0 inside ``pec_like``), and ``compute_waveguide_s_matrix``
+        # folds that mask back into sigma = 1e10 before applying the
+        # overrides ("Fold PEC mask back into high sigma", rfx/api/_sparams.py).
+        # ``sigma_override`` replaces the FOLDED array wholesale, so a base
+        # taken from the pre-fold assembly silently deletes the PEC short
+        # (measured on the coarse rung: sigma_override(theta=0) gives the
+        # empty guide's |S11| = 0.076 instead of 1.0). The base therefore
+        # carries the fold itself, exactly as the lane would have built it.
+        base = jnp.asarray(mats.sigma)
+        if pec_mask is not None:
+            base = jnp.where(jnp.asarray(pec_mask), jnp.asarray(1e10, dtype=base.dtype), base)
     i_lo, i_hi = design_region_index_range(sim, dut)
-    base = jnp.asarray(base)
     return base.at[i_lo:i_hi, :, :].add(jnp.asarray(theta, dtype=base.dtype))
