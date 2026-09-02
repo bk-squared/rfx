@@ -1,0 +1,31 @@
+name: rfx-812-cv17-island-probe
+description: "issue #812 round 2, cv17: live defect runs across the material-blind-window FAIL island (eps 4.5 ... 5.0, rasterizer delivers eps, oracle stays at the declared 2.56) on the four gated coarse bins, next to the committed model's prediction per eps. Report-only; no gate, window or fixture touched. 24 solves of ~5 s each on CPU. vessl run create -f scripts/vessl_cv17_permittivity_island.yaml"
+tags: [rfx, issue-812, cv17, crossval, mie, probe]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  PY=python
+  ROOT=/root/work/regate-mie-iris
+  mkdir -p "$ROOT"
+  cp -r /root/workspace/claude-workspace/rfx/checkouts/regate-mie-iris/. "$ROOT/"
+  cd "$ROOT"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue812-cv17-island-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  "$PY" -m pip install -q "numpy<2" "scipy>=1.11"
+  export PYTHONPATH="$ROOT"
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.default_backend())"
+  "$PY" -u scripts/diagnostics/probe_cv17_permittivity_island.py \
+      --eps 4.5 4.6 4.7 4.8 4.9 5.0 --output "$OUT/cv17_permittivity_island.json" 2>&1 | tee "$OUT/probe.log"
+  ls -la "$OUT"
