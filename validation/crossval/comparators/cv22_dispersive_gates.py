@@ -50,6 +50,24 @@ TAIL_PURITY_LIMIT = 1e-3
 TAIL_LIMIT = 0.10
 CONS_MAX_LIMIT = 0.06
 
+# ---------------------------------------------------------------------------
+# Round-3 recipe (§12): the record length comes from the slab's OWN ring-down,
+# not from cv04's 719-step CPML rule. Settling witness bar = -40 dB of the
+# incident peak (amplitude 1e-2), the bar the other cases use.
+# ---------------------------------------------------------------------------
+RECIPE_R3 = "r3"
+RECIPE_CV04 = "cv04"
+NX_INTERIOR_R3 = 1000          # derived in derive_record_length(): the smallest
+                               # round number whose CPML round-trip gate exceeds
+                               # the longest derived record (Lorentz)
+SETTLING_LIMIT = 1e-2          # -40 dB, amplitude, last TAIL_WINDOW steps
+TFSF_MARGIN = 5
+PROBE_OFFSET_CELLS = 30
+SRC_T0_OVER_TAU = 3.0          # rfx.sources.tfsf: src_t0 = 3 tau for differentiated_gaussian
+PULSE_END_ARG_40DB = 2.5255070008312575   # 2a e^{-a^2} = 1e-2 x peak (peak at a = 1/sqrt2)
+MEEP_PRIMARY_RESOLUTION = 40   # §12: the converged Meep reference (first-order ladder measured in r2)
+MEEP_LADDER_RESOLUTIONS = (10, 20, 40)
+
 # Gated band (§5) and the rig-sanity floor on incident amplitude inside it.
 BAND_GATED_HZ = (4.0e9, 10.0e9)
 GATED_BAND_MIN_INC_AMP_FRAC = 0.05
@@ -320,3 +338,115 @@ def meep_json_name(arm: str, falsifier: str | None = None) -> str:
 
 def rfx_json_name(falsifier: str | None = None) -> str:
     return "rfx.json" if falsifier is None else f"rfx__falsifier_{falsifier}.json"
+
+
+# ---------------------------------------------------------------------------
+# Round-3 record-length derivation (§12) -- physics, no measurement enters.
+# ---------------------------------------------------------------------------
+
+def rig_cells(nx_interior: int, dx_div: int = 1):
+    """Cell bookkeeping of the cv04 rig (Grid adds 2*n_cpml + 1 cells)."""
+    K = int(dx_div)
+    n_cpml = N_CPML * K
+    nx = int(nx_interior) * K + 2 * n_cpml + 1
+    half = int(D_SLAB_M / (2 * DX_M / K))
+    slab_lo = nx // 2 - half
+    slab_hi = nx // 2 + half
+    x_lo = n_cpml + TFSF_MARGIN * K
+    probe_refl = slab_lo - PROBE_OFFSET_CELLS * K
+    probe_trans = slab_hi + PROBE_OFFSET_CELLS * K
+    return {"nx": nx, "n_cpml": n_cpml, "slab_lo": slab_lo, "slab_hi": slab_hi,
+            "x_lo": x_lo, "probe_refl": probe_refl, "probe_trans": probe_trans}
+
+
+def slab_ringdown_rates(model: str, params: dict):
+    """Amplitude decay rates (1/s) of the slab's own ring-down in the gated band:
+    the material pole (Debye 1/tau, Lorentz delta, Drude gamma/2) and the
+    slowest etalon round-trip, rho = |r|^2 exp(-2 k0 Im(n) d) per t_rt = 2 Re(n) d / c."""
+    f = np.linspace(BAND_GATED_HZ[0], BAND_GATED_HZ[1], 601)
+    eps = de.eps_analytic(f, model, params)
+    n = np.sqrt(eps)
+    n = np.where(n.imag > 0, -n, n)         # decaying branch in e^{+jwt}
+    k0 = TWO_PI * f / C0
+    r = (1 - n) / (1 + n)
+    rho = np.abs(r) ** 2 * np.exp(-2 * k0 * (-n.imag) * D_SLAB_M)
+    t_rt = 2 * np.abs(n.real) * D_SLAB_M / C0
+    rate_et = -np.log(rho) / t_rt
+    i = int(np.argmin(rate_et))
+    if model == "debye":
+        rate_mat = 1.0 / params["tau"]
+    elif model == "lorentz":
+        rate_mat = float(params["delta"])
+    else:
+        rate_mat = float(params["gamma"]) / 2.0
+    return {"rate_material_1_s": float(rate_mat), "rate_etalon_slowest_1_s": float(rate_et[i]),
+            "f_etalon_slowest_hz": float(f[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
+
+
+def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: int = NX_INTERIOR_R3,
+                         dx_div: int = 1) -> dict:
+    """n_steps = n_pulse_end + n_ring + TAIL_WINDOW (all in steps):
+      n_pulse_end : the differentiated-Gaussian incident has fallen to -40 dB at
+                    the transmission probe: t0 + a40 tau, plus propagation from the
+                    TFSF injection plane at the Courant speed;
+      n_ring      : ln(100) / (slowest ring-down rate) -- from amplitude 1 (an upper
+                    bound on any reflected/transmitted level) to 1e-2 = -40 dB;
+      TAIL_WINDOW : the witness window itself sits after the ring-down.
+    The CPML round-trip gate of the rig must exceed n_steps (asserted)."""
+    K = int(dx_div)
+    dx = DX_M / K
+    cells = rig_cells(nx_interior, dx_div)
+    tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
+    t0 = SRC_T0_OVER_TAU * tau
+    v_cells = C0 * dt / dx
+    n_pulse_end = int(math.ceil((t0 + PULSE_END_ARG_40DB * tau) / dt
+                                + (cells["probe_trans"] - cells["x_lo"]) / v_cells))
+    rates = slab_ringdown_rates(model, params)
+    rate_slow = min(rates["rate_material_1_s"], rates["rate_etalon_slowest_1_s"])
+    n_ring = int(math.ceil(math.log(100.0) / (rate_slow * dt)))
+    tail_window = TAIL_WINDOW * K
+    n_steps = n_pulse_end + n_ring + tail_window
+    dist_hi = cells["nx"] - cells["n_cpml"] - cells["probe_trans"]
+    dist_lo = cells["probe_refl"] - cells["n_cpml"]
+    t_safe = int(min(2 * dist_hi, 2 * dist_lo) / v_cells * 0.95)
+    return {"recipe": RECIPE_R3, "nx_interior": int(nx_interior) * K, "dx_div": K,
+            "n_pulse_end": n_pulse_end, "n_ring": n_ring, "tail_window": tail_window,
+            "n_steps": n_steps, "t_safe_cpml_steps": t_safe, "cpml_gate_ok": bool(t_safe >= n_steps),
+            "settling_limit": SETTLING_LIMIT, "rate_slowest_1_s": float(rate_slow), **rates,
+            "src_t0_s": t0, "src_tau_s": tau, "v_cells": float(v_cells), **cells}
+
+
+def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
+    """Meep-vs-TMM deviation per resolution (from meep_<arm>__res<N>.json) and the
+    measured convergence order per doubling. Measured-in-r2 evidence, not a
+    pre-declared window term."""
+    import json as _json
+    out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(MEEP_LADDER_RESOLUTIONS), "arms": {}}
+    for arm, ad in rfx_doc["arms"].items():
+        e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"], ad["params"], ad["dt_s"],
+                         tail=ad["tail"])
+        rungs = {}
+        for res in MEEP_LADDER_RESOLUTIONS:
+            p = os.path.join(results_dir, f"meep_{arm}__res{res}.json")
+            if not os.path.isfile(p):
+                continue
+            with open(p) as fh:
+                md = _json.load(fh)
+            if not md["run"]["finite"]:
+                rungs[str(res)] = {"finite": False}
+                continue
+            e4 = evaluate_e4(e2, md)
+            rungs[str(res)] = {"finite": True, "dt_meep_s": md["dt_meep_s"],
+                               "mean_dR_meep_tmm_gated": e4["mean_dR_meep_tmm_gated"],
+                               "mean_dT_meep_tmm_gated": e4["mean_dT_meep_tmm_gated"],
+                               "max_dR_meep_tmm_gated": e4["max_dR_meep_tmm_gated"],
+                               "max_dT_meep_tmm_gated": e4["max_dT_meep_tmm_gated"]}
+        orders = {}
+        for lo, hi in ((10, 20), (20, 40)):
+            a, b = rungs.get(str(lo)), rungs.get(str(hi))
+            if a and b and a.get("finite") and b.get("finite"):
+                for q in ("mean_dR_meep_tmm_gated", "mean_dT_meep_tmm_gated"):
+                    if b[q] > 0:
+                        orders[f"order_{q[5:7]}_{lo}_{hi}"] = float(math.log2(a[q] / b[q]))
+        out["arms"][arm] = {"rungs": rungs, "orders": orders}
+    return out

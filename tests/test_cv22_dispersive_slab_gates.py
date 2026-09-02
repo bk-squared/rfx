@@ -55,10 +55,17 @@ def _rig_dt() -> float:
     return float(grid.dt)
 
 
+def _r3_records(dt):
+    return {arm: G.derive_record_length(G.ARMS[arm]["model"], G.ARMS[arm]["params"], dt)
+            for arm in G.ARM_ORDER}
+
+
 def _rfx_bins():
-    """The rfx rFFT bin grid of the committed rig (719 steps -> nfft 8192)."""
+    """The rfx rFFT bin grid of the r3 recipe (Lorentz record 1228 steps ->
+    nfft 16384; all three arms share it, see test_r3_record_lengths_are_derived)."""
     dt = _rig_dt()
-    nfft = int(2 ** np.ceil(np.log2(719)) * G.NFFT_OVERSAMPLE)
+    n_steps = _r3_records(dt)["lorentz"]["n_steps"]
+    nfft = int(2 ** np.ceil(np.log2(n_steps)) * G.NFFT_OVERSAMPLE)
     f = np.fft.rfftfreq(nfft, d=dt)
     f = f[(f > G.MASK_F_LO_HZ) & (f < G.MASK_F_HI_HZ)]
     return f, dt
@@ -96,6 +103,26 @@ def test_arms_have_strong_dispersion_in_the_gated_band(arm):
     tand = -eps.imag / eps.real
     assert np.any((tand >= 0.1) & (tand <= 1.0)) or (tand.min() <= 1.0 <= tand.max())
     assert np.all(eps.imag < 0)  # passive in the rfx convention
+
+
+def test_r3_record_lengths_are_derived_from_the_slab_ringdown():
+    """§12 recipe: n_steps = n_pulse_end + ln(100)/rate_slowest/dt + TAIL_WINDOW,
+    per arm, inside the CPML round-trip gate of the nx 1000 rig; all three
+    arms land on the same nfft so the gated bin grid is shared."""
+    dt = _rig_dt()
+    recs = _r3_records(dt)
+    assert {a: r["n_steps"] for a, r in recs.items()} == {"debye": 1066, "lorentz": 1228, "drude": 1168}
+    for arm, r in recs.items():
+        assert r["cpml_gate_ok"] and r["t_safe_cpml_steps"] == 1262
+        assert r["n_pulse_end"] == 908 and r["settling_limit"] == 1e-2
+        assert r["nx_interior"] == G.NX_INTERIOR_R3 == 1000
+        # the slowest rate is the material pole for Lorentz/Drude, the etalon for Debye
+        slow = "material" if arm in ("lorentz", "drude") else "etalon_slowest"
+        assert r["rate_slowest_1_s"] == r[f"rate_{slow}_1_s"]
+    nffts = {int(2 ** np.ceil(np.log2(r["n_steps"])) * G.NFFT_OVERSAMPLE) for r in recs.values()}
+    assert nffts == {16384}
+    # cv04's own 719-step gate truncates every arm's ring-down (the r2 finding).
+    assert all(r["n_steps"] > 719 for r in recs.values())
 
 
 def test_ade_stability_constraints_of_the_note():
@@ -266,7 +293,12 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         assert ad["model"] == G.ARMS[arm]["model"]
         assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
         assert ad["params_run"] == pytest.approx(G.ARMS[arm]["params"])
-        assert ad["run"]["nx_interior"] == G.NX_INTERIOR
+        assert ad["run"]["recipe"] == G.RECIPE_R3, "the baseline must be the r3 (derived-record) recipe"
+        assert ad["run"]["nx_interior"] == G.NX_INTERIOR_R3
+        rec = ad["run"]["record"]
+        want = G.derive_record_length(ad["model"], ad["params"], ad["dt_s"])
+        assert ad["run"]["n_steps"] == rec["n_steps"] == want["n_steps"], arm
+        assert ad["tail"]["limit"] == G.SETTLING_LIMIT and ad["tail"]["ok"], (arm, ad["tail"])
         assert ad["band_inc_ok"]
         re = _replay_e2(ad)
         assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}, arm
@@ -284,6 +316,8 @@ def test_baseline_artifact_e4_against_the_committed_meep_jsons():
     for arm, ad in doc["arms"].items():
         md = _read(_RESULTS / G.meep_json_name(arm))
         assert md["falsifier"] is None and md["arm"] == arm
+        assert md["resolution"] == G.MEEP_PRIMARY_RESOLUTION == 40, "§12: the converged Meep reference"
+        assert md["run"]["finite"]
         assert md["precheck"]["passed"], (arm, md["precheck"]["max_rel_err"])
         assert md["precheck"]["max_rel_err"] < 1e-9
         e4 = G.evaluate_e4(_replay_e2(ad), md)
@@ -423,3 +457,34 @@ def test_r2_meep_debye_res40_primary_is_the_predeclared_fix():
         e4 = G.evaluate_e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
         print(f"r2-summary meep debye fn40 cross-check: mean|dT| vs TMM {e4['mean_dT_meep_tmm_gated']:.4f} "
               f"(W_map mean T carried {np.mean(np.asarray(e4['w_map_T'])[np.asarray(_baseline()['arms']['debye']['gated'])]):.2e})")
+
+
+# ---------------------------------------------------------------------------
+# 4. Meep ladder (measured-in-r2 evidence of Meep's first-order term; §12)
+# ---------------------------------------------------------------------------
+
+def test_meep_ladder_summary_locks_the_measured_first_order_term():
+    p = _RESULTS / "meep_ladder_summary.json"
+    if not p.is_file():
+        pytest.skip("meep_ladder_summary.json absent")
+    summ = _read(p)
+    doc = _baseline()
+    # The committed summary must be what the committed rungs replay to.
+    fresh = G.meep_ladder_summary(str(_RESULTS), doc)
+    for arm, v in summ["arms"].items():
+        assert v["rungs"].keys() == fresh["arms"][arm]["rungs"].keys()
+        for res, rung in v["rungs"].items():
+            if rung.get("finite"):
+                assert rung["mean_dT_meep_tmm_gated"] == pytest.approx(
+                    fresh["arms"][arm]["rungs"][res]["mean_dT_meep_tmm_gated"], rel=1e-9)
+    for arm in ("lorentz", "drude"):
+        o = summ["arms"][arm]["orders"]
+        # first order per doubling (r2 measured 0.94-1.06 across R/T and both doublings)
+        for k, val in o.items():
+            assert 0.8 <= val <= 1.3, (arm, k, val)
+        r40 = summ["arms"][arm]["rungs"]["40"]
+        assert r40["mean_dR_meep_tmm_gated"] <= G.W_MEAN_R and r40["mean_dT_meep_tmm_gated"] <= G.W_MEAN_T
+    if "10" in summ["arms"].get("debye", {}).get("rungs", {}):
+        # F-B witness: the overdamped Debye pole is unstable at 10 px/cm (eps_num(Nyq) < 1)
+        assert summ["arms"]["debye"]["rungs"]["10"]["finite"] is False
+    print("r3-summary meep ladder:", {a: v["orders"] for a, v in summ["arms"].items()})

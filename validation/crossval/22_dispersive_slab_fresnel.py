@@ -64,7 +64,8 @@ def _git_commit() -> str:
 # =============================================================================
 
 def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
-                smoke: bool, verbose: bool = True, dx_div: int = 1) -> dict:
+                smoke: bool, verbose: bool = True, dx_div: int = 1,
+                recipe: str = G.RECIPE_R3) -> dict:
     """One rfx arm. ``dx_div = K`` refines the SAME rig in cells: dx/K with
     nx_interior, CPML layers, TFSF margin, probe offsets and tail window all
     x K (geometry identical; pre-declaration section 11.2(a))."""
@@ -114,11 +115,24 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     t_safe_hi = int(2 * dist_to_cpml_hi / v_cells * 0.95)
     t_safe_lo = int(2 * dist_to_cpml_lo / v_cells * 0.95)
     # Smoke ignores the CPML time gate (it only proves the rig executes).
-    n_steps = n_steps_cap if smoke else min(t_safe_hi, t_safe_lo, n_steps_cap * K)
+    rec = None
+    if smoke:
+        n_steps = n_steps_cap
+    elif recipe == G.RECIPE_R3:
+        # §12: record length from the slab's own ring-down (-40 dB), not cv04's
+        # CPML rule; the CPML gate must still exceed it.
+        rec = G.derive_record_length(model, params, dt, nx_interior=nx_interior // K, dx_div=K)
+        assert rec["probe_trans"] == probe_trans_x and rec["x_lo"] == x_lo, "rig bookkeeping drift"
+        n_steps = rec["n_steps"]
+        assert n_steps <= min(t_safe_hi, t_safe_lo), \
+            f"derived record {n_steps} exceeds the CPML round-trip gate {min(t_safe_hi, t_safe_lo)}"
+    else:
+        n_steps = min(t_safe_hi, t_safe_lo, n_steps_cap * K)
+    tail_limit = G.SETTLING_LIMIT if recipe == G.RECIPE_R3 else G.TAIL_LIMIT
 
     if verbose:
         print(f"  grid {grid.shape}, dt={dt:.4e} s, slab cells [{slab_lo_g},{slab_hi_g}), "
-              f"probes {probe_refl_x}/{probe_trans_x}, n_steps={n_steps}")
+              f"probes {probe_refl_x}/{probe_trans_x}, n_steps={n_steps} (recipe {recipe})")
 
     # --- materials: eps_inf in the slab; the pole lives only in the slab ---
     materials = init_materials(grid.shape)
@@ -175,8 +189,8 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     tail = {
         "window_steps": tw, "purity_inc_rel": float(tail_inc_rel),
         "scat_refl_rel": float(tail_refl_rel), "total_trans_rel": float(tail_trans_rel),
-        "purity_limit": G.TAIL_PURITY_LIMIT, "limit": G.TAIL_LIMIT,
-        "ok": bool(tail_clean and tail_refl_rel < G.TAIL_LIMIT and tail_trans_rel < G.TAIL_LIMIT),
+        "purity_limit": G.TAIL_PURITY_LIMIT, "limit": tail_limit,
+        "ok": bool(tail_clean and tail_refl_rel < tail_limit and tail_trans_rel < tail_limit),
     }
 
     # --- cv04 spectral analysis, unchanged ---
@@ -204,7 +218,7 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
 
     return {
         "dt_s": dt, "n_steps": int(n_steps), "nfft": int(nfft), "nx_interior": int(nx_interior),
-        "dx_m": dx, "dx_div": K, "n_cpml": n_cpml,
+        "dx_m": dx, "dx_div": K, "n_cpml": n_cpml, "recipe": recipe, "record": rec,
         "grid_shape": [int(s) for s in grid.shape], "elapsed_s": elapsed,
         "freqs_hz": f_masked, "R_rfx": R_rfx, "T_rfx": T_rfx, "gated": gated,
         "inc_amp_rel": inc_amp_rel, "band_inc_ok": band_inc_ok, "tail": tail,
@@ -272,7 +286,25 @@ def main(argv=None) -> int:
                     help="interior cells at dx (default cv04's 600; 1500 opens the time gate, note 11.2(a'))")
     ap.add_argument("--tag", default=None,
                     help="write rfx__<tag>.json instead of rfx.json (diagnostic arms; never the baseline)")
+    ap.add_argument("--recipe", choices=(G.RECIPE_R3, G.RECIPE_CV04), default=G.RECIPE_R3,
+                    help="r3 (default): record length derived from the slab ring-down, nx 1000, "
+                         "-40 dB settling witness; cv04: the 719-step CPML rule (rounds 1-2, truncated)")
+    ap.add_argument("--meep-ladder-summary", action="store_true",
+                    help="no FDTD: read rfx.json + meep_<arm>__res{10,20,40}.json in out-dir and write "
+                         "meep_ladder_summary.json (measured Meep convergence order)")
     a = ap.parse_args(argv)
+    if a.meep_ladder_summary:
+        od = a.out_dir or RESULTS_DIR
+        with open(os.path.join(od, "rfx.json")) as fh:
+            summ = G.meep_ladder_summary(od, json.load(fh))
+        with open(os.path.join(od, "meep_ladder_summary.json"), "w") as fh:
+            json.dump(summ, fh, indent=1)
+        for arm, v in summ["arms"].items():
+            print(arm, {r: (round(x.get("mean_dR_meep_tmm_gated", float("nan")), 4),
+                            round(x.get("mean_dT_meep_tmm_gated", float("nan")), 4)) for r, x in v["rungs"].items()},
+                  {k: round(o, 2) for k, o in v["orders"].items()})
+        print("wrote", os.path.join(od, "meep_ladder_summary.json"))
+        return 0
     if (a.dx_div != 1 or a.nx_interior not in (None, G.NX_INTERIOR)) and not a.tag and not a.smoke:
         ap.error("--dx-div / --nx-interior arms are diagnostics and require --tag")
 
@@ -292,7 +324,8 @@ def main(argv=None) -> int:
         meep_fals_key = G.MEEP_FALSIFIER_CASE_NAMES[a.falsifier]
         arms = [G.MEEP_FALSIFIER_ARM] if a.arms is None else arms
 
-    nx_interior = 200 if a.smoke else (a.nx_interior or G.NX_INTERIOR)
+    nx_default = G.NX_INTERIOR_R3 if a.recipe == G.RECIPE_R3 else G.NX_INTERIOR
+    nx_interior = 200 if a.smoke else (a.nx_interior or nx_default)
     n_steps_cap = 450 if a.smoke else 8000
 
     print("=" * 70)
@@ -306,6 +339,7 @@ def main(argv=None) -> int:
         "schema": SCHEMA, "case_id": CASE_ID, "commit": _git_commit(),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "falsifier": a.falsifier, "smoke": bool(a.smoke), "tag": a.tag, "dx_div": a.dx_div,
+        "recipe": a.recipe,
         "rig": {"dx_m": G.DX_M, "d_slab_m": G.D_SLAB_M, "nx_interior": nx_interior, "n_cpml": G.N_CPML,
                 "tfsf_f0_hz": G.TFSF_F0_HZ, "tfsf_bw": G.TFSF_BW, "band_gated_hz": list(G.BAND_GATED_HZ),
                 "W_bin": G.W_BIN, "W_mean_R": G.W_MEAN_R, "W_mean_T": G.W_MEAN_T,
@@ -324,7 +358,7 @@ def main(argv=None) -> int:
                   f"(FDTD built with the defect; judged against the DECLARED material)")
         print(f"\n[{arm}] model={model} params_run={ {k: float(v) for k, v in params_run.items()} }")
         run = run_rfx_arm(model, params_run, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke,
-                          dx_div=a.dx_div)
+                          dx_div=a.dx_div, recipe=a.recipe)
         # The oracle is ALWAYS the declared material; a falsifier that were
         # judged against its own defective eps(f) would be self-consistent
         # and pass (caught in review before the first run).
@@ -334,7 +368,15 @@ def main(argv=None) -> int:
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
         e2["run"] = {k: run[k] for k in ("dt_s", "n_steps", "nfft", "nx_interior", "grid_shape", "elapsed_s",
-                                         "dx_m", "dx_div", "n_cpml")}
+                                         "dx_m", "dx_div", "n_cpml", "recipe", "record")}
+        if run["record"] is not None:
+            r_ = run["record"]
+            print(f"  record (r3): n_pulse_end {r_['n_pulse_end']} + n_ring {r_['n_ring']} "
+                  f"(slowest rate {r_['rate_slowest_1_s']:.3e}/s: material {r_['rate_material_1_s']:.3e}, "
+                  f"etalon {r_['rate_etalon_slowest_1_s']:.3e} at {r_['f_etalon_slowest_hz']/1e9:.2f} GHz) "
+                  f"+ window {r_['tail_window']} = n_steps {r_['n_steps']} (CPML gate {r_['t_safe_cpml_steps']}); "
+                  f"tail scat/trans {run['tail']['scat_refl_rel']:.2e}/{run['tail']['total_trans_rel']:.2e} "
+                  f"vs {G.SETTLING_LIMIT:g} -> {'ok' if run['tail']['ok'] else 'FAIL'}")
         if not run["band_inc_ok"]:
             e2["gates"]["rig_incident_floor"] = False
             e2["e2_ok"] = False

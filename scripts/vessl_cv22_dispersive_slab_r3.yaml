@@ -1,0 +1,140 @@
+name: rfx-cv22-dispersive-slab-r3
+description: "cv22 dispersive slab, ROUND 3 (pre-declared in docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md section 12 before this run). Corrected recipe: record length derived per arm from the slab's own ring-down (-40 dB settling witness, nx 1000), Meep at 40 px/cm as the converged primary reference for all three arms (+ the two wrong-convention Meep falsifiers at 40 px/cm), the res-10/20/40 Meep ladder kept as committed evidence of Meep's first-order term, the 8 rfx falsifiers at the corrected recipe (each must exit 1), then the gate test (must be green). No window moves. Outputs chmod a+rX. Submit: vessl run create -f scripts/vessl_cv22_dispersive_slab_r3.yaml"
+tags: [rfx, crossval, cv22, dispersive, meep, gap-lane-1, round-3]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/gap1-dispersive-slab
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx cv22 dispersive slab ROUND 3 (corrected recipe) ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cv22-dispersive-r3-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv22-dispersive-r3-LATEST"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  # -- 1. stage the checkout (NFS is read-only for the pod) --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-cv22
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  git rev-parse HEAD > "$OUT/commit.txt" || echo unknown > "$OUT/commit.txt"
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES="$WORK/validation/crossval/_22_dispersive_results"
+  mkdir -p "$RES"
+
+  # -- 2. rfx environment --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__)"
+
+  # -- 3. Meep environment (conda-forge pymeep, separate env) --
+  CONDA=/opt/conda/bin/conda
+  if [ ! -x "$CONDA" ]; then
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    sh /tmp/miniconda.sh -b -p /opt/miniconda-cv22
+    CONDA=/opt/miniconda-cv22/bin/conda
+  fi
+  "$CONDA" create -y -q -n cv22meep --override-channels -c conda-forge python=3.11 pymeep numpy scipy
+  MEEP_PY="$(dirname "$CONDA")/../envs/cv22meep/bin/python"
+  test -x "$MEEP_PY" || MEEP_PY="$("$CONDA" run -n cv22meep which python)"
+  "$MEEP_PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
+  MEEP="$MEEP_PY scripts/crossval/meep_cv22_dispersive_slab.py"
+
+  run_meep() {  # name, then args
+    NAME=$1; shift
+    set +e
+    $MEEP "$@" --out-dir "$RES" > "$OUT/meep_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/meep_$NAME.rc"; tail -n 5 "$OUT/meep_$NAME.log" || true
+    echo "meep_${NAME}_rc=$rc"
+  }
+  run_rfx() {  # name, then args
+    NAME=$1; shift
+    set +e
+    "$PY" validation/crossval/22_dispersive_slab_fresnel.py "$@" --out-dir "$RES" > "$OUT/rfx_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rfx_$NAME.rc"; grep -E "^\[|  record|  E2:|  E2 gates|  E4|FDTD|artifact|PASSED|FAIL|SKIP" "$OUT/rfx_$NAME.log" | tail -n 18 || true
+    echo "rfx_${NAME}_rc=$rc"
+  }
+
+  # -- 4. Meep PRIMARY legs at 40 px/cm (section 12): the three arms the baseline reads,
+  #       and the two wrong-convention falsifiers at the same resolution --
+  for ARM in debye lorentz drude; do
+    run_meep $ARM --arm "$ARM" --resolution 40
+  done
+  run_meep lorentz__falsifier_no_2pi --arm lorentz --falsifier no_2pi --resolution 40
+  run_meep lorentz__falsifier_gamma_half --arm lorentz --falsifier gamma_half --resolution 40
+
+  # -- 5. Meep ladder, committed evidence of Meep's first-order term (measured in r2) --
+  for ARM in lorentz drude; do
+    for R in 10 20 40; do
+      run_meep ${ARM}__res$R --arm "$ARM" --resolution $R --tag res$R
+    done
+  done
+  # Debye ladder: 10 px/cm is the pre-declared F-B instability witness (expected rc 1, NaN);
+  # 20 and 40 px/cm are predicted stable (eps_num(Nyq) 1.705 / 1.930).
+  run_meep debye__res10 --arm debye --resolution 10 --tag res10 || true
+  run_meep debye__res20 --arm debye --resolution 20 --tag res20
+  run_meep debye__res40 --arm debye --resolution 40 --tag res40
+  ls -la "$RES"
+
+  # -- 6. rfx baseline at the corrected recipe (expect 0), then the eight falsifiers (each 1) --
+  run_rfx baseline
+  base_rc=$(cat "$OUT/rfx_baseline.rc")
+  fals_fail=0
+  for F in debye_tau_x2 debye_deps_zero lorentz_f0_x1p3 lorentz_deps_zero drude_fp_x1p3 drude_wp_zero meep_lorentz_no_2pi meep_lorentz_gamma_half; do
+    run_rfx falsifier_$F --falsifier "$F" --no-plots
+    rc=$(cat "$OUT/rfx_falsifier_$F.rc")
+    [ "$rc" -eq 1 ] || { echo "ERROR: falsifier $F exited $rc, expected 1"; fals_fail=1; }
+  done
+
+  # -- 7. ladder summary (no FDTD) + gate test (must be green) --
+  "$PY" validation/crossval/22_dispersive_slab_fresnel.py --meep-ladder-summary --out-dir "$RES" | tee "$OUT/meep_ladder_summary.log"
+  set +e
+  "$PY" -m pytest -q tests/test_cv22_dispersive_slab_gates.py tests/test_cv22_dispersive_eps_mapping.py -rs -s \
+    > "$OUT/pytest_gates.log" 2>&1
+  gate_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_gates.rc"
+  grep -E "r3-summary|r2-summary|passed|failed|SKIPPED|Error" "$OUT/pytest_gates.log" | tail -n 40 || true
+  echo "gate_test_rc=$gate_rc"
+
+  # -- 8. hand back, readable --
+  cp -r --no-preserve=ownership,mode "$RES" "$OUT/_22_dispersive_results"
+  chmod -R a+rX "$OUT"
+  echo "=== verdict ==="
+  echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
+  echo "artifacts: $OUT/_22_dispersive_results  (commit into validation/crossval/_22_dispersive_results/ and fill artifact_paths)"
+  for f in "$OUT"/meep_*.rc; do
+    rc=$(cat "$f"); case "$rc" in 0) ;; *) echo "NOTE: $(basename "$f") = $rc";; esac
+  done
+  fail=0
+  [ "$base_rc" -eq 0 ] || { echo "ERROR: baseline exit $base_rc"; fail=1; }
+  [ "$fals_fail" -eq 0 ] || fail=1
+  [ "$gate_rc" -eq 0 ] || { echo "ERROR: gate test exit $gate_rc"; fail=1; }
+  for ARM in debye lorentz drude; do
+    [ "$(cat "$OUT/meep_$ARM.rc")" -eq 0 ] || { echo "ERROR: Meep primary leg $ARM failed"; fail=1; }
+  done
+  exit "$fail"
