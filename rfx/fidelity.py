@@ -17,23 +17,66 @@ import numpy as np
 
 __all__ = ["fidelity_report"]
 
+# A body declared exactly one cell thick has ``declared_extent == cell``
+# only up to round-off in the user's own arithmetic: ``11 * dx - 10 * dx``
+# is 499.9999999999996 um against a 500.0 um cell, and the exact compare
+# ``ext < cell`` this replaced classed that body sub-cell on both lanes and
+# both x64 flags (measured 2026-09-02 while closing the #803 remainder).
+# The round-off scales with the coordinate magnitude — about one float64
+# ulp of the face position, i.e. ~2e-16 * |z| / cell relative to the cell —
+# so the margin is relative to the cell: 1e-9 of a cell is 0.5 nm at
+# 500 um, far above that noise and far below any sub-cell body a user
+# would declare on purpose.
+_SUB_CELL_TIE_REL = 1e-9
+
 
 def _axis_names():
     return ("x", "y", "z")
 
 
 def _node_arrays(sim, grid, nonuniform):
+    """Per-axis ``(cell sizes, node positions)`` on the padded grid.
+
+    Both come from the SAME exact host-float64 producers the rasterizer
+    reads — ``coords_from_nonuniform_grid`` (float64 spine) on the
+    non-uniform lane and ``_uniform_axis_nodes`` (closed form) on the
+    uniform lane — so the report and the realized mask cannot disagree on
+    where a node is. Before this the report re-derived its own node line by
+    cumsumming the solver's float32 cell-size stores (NU) or a float64
+    ``np.full`` (uniform); on a graded 0.3048 mm profile that line sat
+    3.9e-10 m off the rasterizer's, a uniform-valued NU axis reported a
+    declared 500.0 um cell as 500.00002374872565 um, and exactly-on-node
+    faces carried ~1e-12 um residuals (#833 item 2, measured 2026-09-02).
+
+    ``sizes[a]`` has one entry per node-provider cell (``grid.shape[a]``
+    entries); ``nodes[a]`` has one more — the grid's own nodes plus the far
+    edge of the last cell — so ``nodes[a][i + 1]`` is the far face of cell
+    ``i`` for every ``i``. Node index ``pad_lo`` sits at domain 0 on every
+    axis, by the producers' construction.
+    """
+    from rfx.geometry.rasterize_grid import (
+        _uniform_axis_nodes, coords_from_nonuniform_grid)
     if nonuniform:
-        dx = np.asarray(grid.dx_arr, dtype=float)
-        dy = np.asarray(grid.dy_arr, dtype=float)
-        dz = np.asarray(grid.dz, dtype=float)
+        c = coords_from_nonuniform_grid(grid)
+        lines = tuple(np.asarray(v, dtype=np.float64) for v in (c.x, c.y, c.z))
+        stores = (grid.dx_arr, grid.dy_arr, grid.dz)
+        spines = (getattr(grid, "dx_arr_f64", None),
+                  getattr(grid, "dy_arr_f64", None),
+                  getattr(grid, "dz_f64", None))
+        # Cell sizes from the same spine the node line was built from; a
+        # grid without one has already been warned about by the producer.
+        sizes = tuple(np.asarray(store if spine is None else spine,
+                                 dtype=np.float64)
+                      for store, spine in zip(stores, spines))
     else:
         n = grid.shape
-        dx = np.full(n[0], float(grid.dx))
-        dy = np.full(n[1], float(grid.dx))
-        dz = np.full(n[2], float(grid.dx))
-    nodes = tuple(np.concatenate([[0.0], np.cumsum(d)]) for d in (dx, dy, dz))
-    return (dx, dy, dz), nodes
+        dx = float(grid.dx)
+        pads = grid.axis_pads
+        lines = tuple(_uniform_axis_nodes(n[a], pads[a], dx) for a in range(3))
+        sizes = tuple(np.full(n[a], dx) for a in range(3))
+    nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
+                  for line, d in zip(lines, sizes))
+    return sizes, nodes
 
 
 def _entity_mask(entry, sim, grid, nonuniform):
@@ -123,8 +166,9 @@ def fidelity_report(sim, print_report: bool = True):
     sizes, nodes = _node_arrays(sim, grid, nonuniform)
     domain = tuple(float(v) for v in getattr(sim, "_domain", (0.0, 0.0, 0.0)))
     # Mask/material arrays live on the PADDED grid (CPML pad cells on every
-    # side); declared coordinates are DOMAIN coordinates. Shift node arrays so
-    # index pad_lo sits at domain 0.
+    # side); declared coordinates are DOMAIN coordinates. The producers
+    # behind _node_arrays already place node pad_lo at exactly 0.0, so this
+    # shift is an exact no-op kept to state the convention where it is used.
     pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
     nodes = tuple(n - n[p] for n, p in zip(nodes, pads))
 
@@ -354,7 +398,8 @@ def fidelity_report(sim, print_report: bool = True):
             # placement can actually be resolved to.
             cell_um = float(np.mean(sizes[a][i0:i1 + 1])) * 1e6
             ax["cell_um"] = cell_um
-            ax["sub_cell"] = bool(ext < cell_um)
+            # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.
+            ax["sub_cell"] = bool(ext < cell_um * (1.0 - _SUB_CELL_TIE_REL))
             if ext > 0:
                 worst = max(ax["face_residual_um"])
                 # A body thinner than a cell cannot be placed more precisely

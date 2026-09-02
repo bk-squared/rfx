@@ -6,6 +6,32 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — the fidelity report reads the rasterizer's own node line; a missing float64 spine now warns (#833 item 2, the #803 remainder)
+
+`fidelity_report()` re-derived its node positions by cumsumming the
+solver's float32 cell-size stores (non-uniform lane) instead of reading
+the exact float64 producer the mask was rasterized on. On a graded
+0.3048 mm profile the report's nodes sat 3.9e-10 m off the
+rasterizer's; a uniform-valued `dz_profile` reported a declared 500.0 um
+cell as 500.00002374872565 um and node-aligned faces as
+(5000.000237, 5500.000261) um; exactly-on-node faces carried ~1e-12 um
+residuals; and domain-filling bodies on non-uniform lanes were flagged
+`inside-absorber` because the widened hi node read 27000.0002 um
+against a 27000.0 um domain. The report now takes cell sizes and nodes
+from `coords_from_nonuniform_grid` / the uniform node formula, so it
+cannot disagree with the realized mask. Separately, the `sub_cell`
+classification was an exact compare (`ext < cell`) that classed a body
+declared exactly one cell thick as sub-cell on both lanes and both
+`JAX_ENABLE_X64` flags (`11*dx - 10*dx` is 499.9999999999996 um against
+a 500.0 um cell); it now carries a 1e-9-of-a-cell margin. Realized
+masks and solve results are unchanged (the example fidelity snapshot
+was re-captured: 685 report-side values moved, no `n_cells` or
+preflight row did). A `NonUniformGrid` whose float64 spine is missing
+(hand-built, or a spine field replaced by a non-float64 array) emits
+`ExactNodeSpineMissingWarning` instead of silently widening the float32
+store — `make_nonuniform_grid` always populates the spine, so no
+in-repo path warns.
+
 ### Fixed — a face-touching dispersive material no longer gets an eps_inf-without-pole absorber surround (#808)
 
 The CPML pad rule's hi-face fallback (#627a) and boundary-node repair

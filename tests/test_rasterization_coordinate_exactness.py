@@ -28,6 +28,7 @@ context — never at module level (process-global, contaminates the shard).
 from __future__ import annotations
 
 import inspect
+import warnings
 
 import numpy as np
 import jax
@@ -329,3 +330,44 @@ def test_cylinder_boundary_inclusion_convention_is_pinned():
     assert int(m0.sum()) == 791, (
         f"realized cell count {int(m0.sum())} != pinned 791 (open predicate "
         f"measures 777: the 2 rim columns x 7 z planes)")
+
+
+def test_hand_built_grid_without_the_exact_spine_warns_and_widens():
+    """A NonUniformGrid whose float64 spine is missing (built by hand, or a
+    spine field replaced by a non-float64 array) used to fall back to the
+    widened float32 store SILENTLY — the pre-#802 node line, 2.8e-10 m
+    (uniform-valued x) / 3.9e-10 m (graded z at 0.3048 mm) off the exact
+    one, which realized a node-aligned box at 2000 cells against 1800 from
+    the spine (measured 2026-09-02, both flags). The producer now says so.
+    `make_nonuniform_grid` always populates the spine on concrete profiles,
+    so a built grid must NOT warn — that is asserted too."""
+    from rfx.geometry.rasterize_grid import ExactNodeSpineMissingWarning
+
+    g = _nu_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ExactNodeSpineMissingWarning)
+        ref = coords_from_nonuniform_grid(g)          # built grid: silent
+
+    cases = [
+        ("z only", dict(dz_f64=None), "axis z"),
+        ("all three", dict(dx_arr_f64=None, dy_arr_f64=None, dz_f64=None),
+         "axis x, y, z"),
+        ("wrong dtype", dict(dz_f64=np.asarray(g.dz_f64, dtype=np.float32)),
+         "axis z"),
+    ]
+    for tag, kill, expect in cases:
+        g_hand = g._replace(**kill)
+        with pytest.warns(ExactNodeSpineMissingWarning, match=expect):
+            c = coords_from_nonuniform_grid(g_hand)
+        z = np.asarray(c.z)
+        assert z.dtype == np.float64, tag
+        # the warning is about a real difference: the widened store moves
+        # the node line (uniform-valued DX = 100 um here)
+        dz_max = float(np.max(np.abs(z - np.asarray(ref.z))))
+        assert 0.0 < dz_max < 1e-8, (tag, dz_max)
+        for keep in ("x", "y"):
+            if keep in expect.replace("axis ", ""):
+                continue
+            np.testing.assert_array_equal(
+                np.asarray(getattr(c, keep)), np.asarray(getattr(ref, keep)),
+                err_msg=f"{tag}: axis {keep} kept its spine and must not move")

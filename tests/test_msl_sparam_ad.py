@@ -41,8 +41,12 @@ REPLAY_GOLDEN_F64_PATH = (
     Path(__file__).resolve().parent / "fixtures" / "msl_replay_golden_f64.npy"
 )
 
-# Slow end-to-end golden: pre-change S1 numpy output captured before assembly
-# was converted.  Must NOT be regenerated from post-change code.
+# Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined
+# 2026-07-30, PR #516), regenerable ONLY with a written reason in
+# test_compute_msl_s_matrix_end_to_end_matches_historical_base's docstring
+# (scripts/capture_msl_e2e_golden.py). The original "pre-change S1 capture,
+# must NOT be regenerated" contract this comment used to state was retired
+# by that re-baseline; the docstring is the contract.
 E2E_GOLDEN_PATH = (
     Path(__file__).resolve().parent
     / "fixtures"
@@ -510,6 +514,20 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality),
     and every deliberate algorithm change to date has exceeded it by >10x, so
     the lock still discriminates.
+
+    MEASURED, NOT RE-BASELINED (2026-09-02, closing the #803 remainder).
+    After the exact-coordinate rasterization fix (#802/#807, PR #834) this
+    fixture realizes the substrate box at 25900 cells (x nodes 0..174) and
+    the trace at 1225, identical at both x64 flags (``_build_thru_line_sim``,
+    no solve, measured here); the pre-#834 base 06cf29f0 realized 26048
+    (x nodes 0..175) / 1232 at x64=0 (measured by the #803 remainder
+    assessment) — one x node plane fewer on each, the x-hi face. Re-running
+    scripts/capture_msl_e2e_golden.py on main b5605391 at JAX_ENABLE_X64=0
+    gave old-vs-new max|dS| = 1.2307e-4 (mean|S11| 0.0852 -> 0.0851,
+    mean|S21| 0.9954 unchanged), 16x inside atol, so the golden was left as
+    captured by PR #516. The lock's remaining headroom against that S is
+    2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
+    as its starting point.
     """
     golden = np.load(E2E_GOLDEN_PATH)
     sim = _build_thru_line_sim()

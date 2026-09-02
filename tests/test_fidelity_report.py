@@ -442,3 +442,170 @@ def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):
         + printed)
     # the x/y rows ARE compared, so they must NOT carry a note
     assert "note" not in dom["axes"][0] and "note" not in dom["axes"][1]
+
+
+# ---------------------------------------------------------------------------
+# #833 item 2 (the #803 remainder): the report reads the SAME exact node line
+# and cell sizes the rasterizer reads. Before, `_node_arrays` re-derived its
+# own node line by cumsumming the solver's float32 cell-size stores on the
+# non-uniform lane (a float64 np.full on the uniform lane). Measured
+# 2026-09-02 on main b5605391, both x64 flags: on a graded 0.3048 mm profile
+# the report's nodes sat 3.927e-10 m off the rasterizer's; a uniform-valued
+# non-uniform axis reported a declared 500.0 um cell as 500.00002374872565
+# um and a node-aligned box as realized (5000.000237, 5500.000261) um; and
+# exactly-on-node faces carried 3.7e-05 / 1.85e-04 um residuals. A second
+# node line is a second chance to disagree with the mask; there is now one.
+#
+# Every test below runs at the session's x64 flag AND again under the scoped
+# enable_x64() context (never a module-level flip), so a single process
+# covers both realizations; CI additionally runs the file at each flag.
+# ---------------------------------------------------------------------------
+
+import contextlib
+import warnings
+
+import pytest
+
+from tests._x64_compat import enable_x64
+
+_DX_WR90 = 0.3048e-3   # the WR-90 a/30 class cell the residuals were measured at
+_D_HALF_MM = 0.5e-3
+
+
+def _both_flags(build):
+    """Run ``build()`` at the session flag and again with x64 forced on."""
+    out = [("session-flag", build())]
+    with enable_x64():
+        out.append(("x64-forced", build()))
+    return out
+
+
+def _graded_z_sim():
+    """z: 20 cells of DX, 10 of DX/2, 20 of DX; x/y uniform DX. One
+    dielectric box with node-aligned x/y faces and z faces on the graded
+    axis' own cumsum nodes (20*DX .. 25*DX)."""
+    from rfx.boundaries.spec import BoundarySpec
+    D = _DX_WR90
+    dz = np.concatenate([np.full(20, D), np.full(10, D / 2), np.full(20, D)])
+    with warnings.catch_warnings():
+        # the grading-ratio advisory (2.0 > 1.4) is not what is under test
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=12e9,
+                         domain=(30 * D, 20 * D, float(dz.sum())), dx=D,
+                         cpml_layers=8,
+                         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
+                         dz_profile=dz)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((5 * D, 5 * D, 20 * D), (25 * D, 15 * D, 25 * D)),
+            material="sub")
+    return sim
+
+
+def test_report_node_line_is_the_rasterizer_node_line_on_a_graded_profile():
+    """Bitwise, per axis, both flags: `_node_arrays` == the producer the
+    mask was rasterized on. Pre-fix: max |dz| = 3.927e-10 m on z (cumsum of
+    the float32 store), 2.8e-10 m on the uniform-valued x/y axes."""
+    from rfx.fidelity import _node_arrays
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+
+    def build():
+        sim = _graded_z_sim()
+        g = sim._build_nonuniform_grid()
+        return g, coords_from_nonuniform_grid(g), _node_arrays(sim, g, True)
+
+    for tag, (g, c, (sizes, nodes)) in _both_flags(build):
+        pads = g.axis_pads
+        for a, line in enumerate((c.x, c.y, c.z)):
+            line = np.asarray(line)
+            assert line.dtype == np.float64 and nodes[a].dtype == np.float64
+            assert nodes[a].shape[0] == line.shape[0] + 1, tag
+            np.testing.assert_array_equal(
+                nodes[a][:-1], line,
+                err_msg=f"{tag}: report node line != rasterizer node line "
+                        f"on {'xyz'[a]} (a cumsum of the float32 store)")
+            assert nodes[a][pads[a]] == 0.0, tag
+            # far edge of the last cell, from the same exact cell sizes
+            assert nodes[a][-1] == line[-1] + sizes[a][-1], tag
+        # cell sizes come from the exact profile, not the float32 store
+        assert sizes[2][pads[2] + 20] == _DX_WR90 / 2, tag
+        assert sizes[2][pads[2]] == _DX_WR90, tag
+        assert sizes[0][pads[0]] == _DX_WR90, tag
+
+
+def test_node_aligned_faces_on_uniform_valued_axes_report_zero_residual():
+    """The box's x/y faces are declared in lattice arithmetic (k*DX) on
+    uniform-valued axes, whose exact node line is the same product; the
+    report must read them back as exactly on-node. Pre-fix residuals:
+    3.704e-05 um (lo) / 1.852e-04 um (hi) on x, from the widened float32
+    cell size 0.00030479999259114265."""
+    def build():
+        return _geo(_graded_z_sim().fidelity_report(print_report=False), 0)
+
+    for tag, item in _both_flags(build):
+        assert item["n_cells"] == 1800, tag   # realized mask: unchanged by this
+        for ax in item["axes"][:2]:
+            assert ax["face_residual_um"] == (0.0, 0.0), (tag, ax)
+            assert ax["realized_um"] == ax["declared_um"], (tag, ax)
+            assert ax["cell_um"] == _DX_WR90 * 1e6, (tag, ax)
+
+
+def _one_cell_box_sim(nonuniform):
+    """A box exactly one 0.5 mm cell thick in z, faces on lattice nodes
+    (10*D .. 11*D), on the uniform lane or on a uniform-VALUED dz_profile."""
+    from rfx.boundaries.spec import BoundarySpec
+    D = _D_HALF_MM
+    kw = dict(dz_profile=np.full(30, D)) if nonuniform else {}
+    sim = Simulation(freq_max=6e9, domain=(20 * D, 20 * D, 30 * D), dx=D,
+                     cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"), **kw)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((5 * D, 5 * D, 10 * D), (15 * D, 15 * D, 11 * D)),
+            material="sub")
+    return sim
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
+def test_one_cell_body_reads_its_cell_exactly_and_is_not_sub_cell(lane):
+    """Two defects on one fixture. (a) `sub_cell = ext < cell_um` was an
+    exact compare: the declared extent (11*D - 10*D)*1e6 is
+    499.9999999999996 um in float64 against a 500.0 um cell, so a body
+    declared exactly one cell thick was classed sub-cell on BOTH lanes and
+    both flags. (b) On the non-uniform lane `cell_um` read the float32
+    store widened, 500.00002374872565, and the realized faces
+    (5000.000237, 5500.000261) um — a spurious 0.24 nm 'placement' on a
+    box whose faces sit on lattice nodes."""
+    D = _D_HALF_MM
+    ext_declared_um = (11 * D - 10 * D) * 1e6
+    assert ext_declared_um < 500.0, (
+        "fixture guard: the declared extent must land BELOW the cell by "
+        "round-off for the tie to be exercised; it is "
+        f"{ext_declared_um!r}")
+
+    def build():
+        return _geo(_one_cell_box_sim(lane == "nonuniform")
+                    .fidelity_report(print_report=False), 0)
+
+    for tag, item in _both_flags(build):
+        z = item["axes"][2]
+        assert item["n_cells"] == 100, (tag, item["n_cells"])
+        assert z["cell_um"] == 500.0, (tag, z)
+        assert z["realized_um"] == (5000.0, 5500.0), (tag, z)
+        assert z["face_residual_um"] == (0.0, 0.0), (tag, z)
+        assert z["sub_cell"] is False, (tag, z)
+        assert not item["findings"], (tag, item["findings"])
+
+
+def test_sub_cell_margin_does_not_swallow_a_real_sub_cell_body():
+    """The margin (_SUB_CELL_TIE_REL, 1e-9 of the cell) absorbs round-off
+    only: a body 0.999 of a cell thick is still sub-cell, as is a 1e-6 one."""
+    from rfx.boundaries.spec import BoundarySpec
+    D = _D_HALF_MM
+    for frac in (0.999, 1.0 - 1e-6):
+        sim = Simulation(freq_max=6e9, domain=(20 * D, 20 * D, 30 * D), dx=D,
+                         cpml_layers=8,
+                         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"))
+        sim.add_material("sub", eps_r=2.2)
+        sim.add(Box((5 * D, 5 * D, 10 * D), (15 * D, 15 * D, 10 * D + frac * D)),
+                material="sub")
+        item = _geo(sim.fidelity_report(print_report=False), 0)
+        assert item["axes"][2]["sub_cell"] is True, (frac, item["axes"][2])

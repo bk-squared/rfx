@@ -71,7 +71,16 @@ def main() -> int:
             "The #729-site-1 defect (domain realized_extent_um/n_cells "
             "read NODE counts, one cell too long) was FIXED by PR #734, "
             "and this snapshot was re-captured after that fix. Do not "
-            "quote a domain extent from this file."
+            "quote a domain extent from this file. Re-captured 2026-09-02 "
+            "after the report started reading the rasterizer's exact "
+            "float64 node line (#833 item 2): realized_um / cell_um / "
+            "face_residual_um on non-uniform lanes moved by the float32 "
+            "cell-size widening (<= 0.011 um), 108 on-node residuals "
+            "went to 0.0, 12 one-cell bodies stopped reading sub_cell, "
+            "and 6 'inside-absorber' rows on domain-filling bodies "
+            "(convergence_floor fixture; hi face read 27000.0002 um "
+            "against a 27000.0 um domain) went away; no n_cells or "
+            "preflight row moved."
         ),
         variants=snapshot,
     )

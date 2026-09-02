@@ -7,6 +7,7 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
+import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -49,6 +50,20 @@ class GridCoords(NamedTuple):
     y: jnp.ndarray  # (ny,)
     z: jnp.ndarray  # (nz,)
     shape: tuple[int, int, int]
+
+
+class ExactNodeSpineMissingWarning(UserWarning):
+    """A concrete NonUniformGrid axis has no float64 cell-size spine.
+
+    ``coords_from_nonuniform_grid`` then widens the solver's float32 store
+    to build node positions — the pre-#802 values, ~1e-10 m off the exact
+    node line, which flips half-open inclusion at node-aligned faces (a
+    node-aligned Box on a graded 0.3048 mm profile realized 2000 cells from
+    the widened store against 1800 from the exact spine, measured
+    2026-09-02). ``make_nonuniform_grid`` always populates the spine on
+    concrete profiles, so this fires only for grids assembled by hand or
+    whose spine fields were replaced by non-float64 arrays.
+    """
 
 
 def _uniform_axis_nodes(n: int, pad: int, dx: float) -> np.ndarray:
@@ -127,8 +142,9 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
     pad_y_lo = int(getattr(grid, "pad_y_lo", grid.cpml_layers))
     pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
     nx, ny, nz = grid.nx, grid.ny, grid.nz
+    spine_missing = []
 
-    def _axis_nodes(d_arr, pad_lo, d_exact=None):
+    def _axis_nodes(d_arr, pad_lo, d_exact, axis_name):
         # Mesh-as-design-variable path: any axis cell-size profile may be
         # a JAX tracer. Route the cumsum / offset arithmetic through jnp
         # in-trace; fall back to the numpy path on concrete inputs to keep
@@ -142,16 +158,35 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
         # Concrete path: HOST float64, no f32 cast (#802/#807 — the cast
         # here re-quantized every node position and made the NU lane land
         # one plane away from the uniform lane at node-aligned faces).
-        # Prefer the grid's exact float64 profile when it carries one:
-        # ``dx_arr``/``dy_arr``/``dz`` are float32 stores, and a cumsum of
-        # f32-widened cell sizes drifts off the exact node positions by the
-        # same 1e-10 m class this function exists to eliminate.
-        d_np = np.asarray(d_arr if d_exact is None else d_exact)
+        # Read the grid's exact float64 profile: ``dx_arr``/``dy_arr``/``dz``
+        # are float32 stores, and a cumsum of f32-widened cell sizes drifts
+        # off the exact node positions by the same 1e-10 m class this
+        # function exists to eliminate. A grid without the spine (built by
+        # hand, or a spine field replaced by a non-float64 array) gets the
+        # widened store AND a warning: silently falling back reproduced the
+        # #802 realization with no trace of why.
+        if d_exact is None or np.asarray(d_exact).dtype != np.float64:
+            spine_missing.append(axis_name)
+            d_np = np.asarray(d_arr)
+        else:
+            d_np = np.asarray(d_exact)
         return _axis_node_positions(d_np, pad_lo)
 
-    x = _axis_nodes(grid.dx_arr, pad_x_lo, getattr(grid, "dx_arr_f64", None))
-    y = _axis_nodes(grid.dy_arr, pad_y_lo, getattr(grid, "dy_arr_f64", None))
-    z = _axis_nodes(grid.dz, pad_z_lo, getattr(grid, "dz_f64", None))
+    x = _axis_nodes(grid.dx_arr, pad_x_lo, getattr(grid, "dx_arr_f64", None),
+                    "x")
+    y = _axis_nodes(grid.dy_arr, pad_y_lo, getattr(grid, "dy_arr_f64", None),
+                    "y")
+    z = _axis_nodes(grid.dz, pad_z_lo, getattr(grid, "dz_f64", None), "z")
+    if spine_missing:
+        warnings.warn(
+            "NonUniformGrid carries no exact float64 cell-size spine on axis "
+            f"{', '.join(spine_missing)} (dx_arr_f64 / dy_arr_f64 / dz_f64 "
+            "is None or not float64): node positions were widened from the "
+            "float32 store and can sit ~1e-10 m off the exact node line, "
+            "which flips half-open inclusion at node-aligned faces (#802 "
+            "class). Build the grid with make_nonuniform_grid, or set the "
+            "spine fields from the float64 profile.",
+            ExactNodeSpineMissingWarning, stacklevel=2)
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 

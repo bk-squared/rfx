@@ -91,9 +91,10 @@ class NonUniformGrid(NamedTuple):
     # at node-aligned faces and splits the one-cell-sheet plane between the
     # uniform and NU lanes. Populated by make_nonuniform_grid on the
     # concrete path only (None when the profile is traced, and on grids
-    # built by hand — the coordinate producer then falls back to widening
-    # the f32 store, today's values). Solver arithmetic keeps reading the
-    # float32 fields; both derive from the same padded profile at
+    # built by hand — the coordinate producer then widens the f32 store,
+    # the pre-#802 values, and emits ExactNodeSpineMissingWarning so the
+    # degraded node line is never silent). Solver arithmetic keeps reading
+    # the float32 fields; both derive from the same padded profile at
     # construction, so they cannot drift independently.
     dx_arr_f64: np.ndarray | None = None
     dy_arr_f64: np.ndarray | None = None
