@@ -258,8 +258,16 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     R_an = np.asarray(e2["R_tmm"]); T_an = np.asarray(e2["T_tmm"])
     R_x = np.asarray(e2["R_rfx"]); T_x = np.asarray(e2["T_rfx"])
     w_ade_R = np.asarray(e2["w_ade_R"]); w_ade_T = np.asarray(e2["w_ade_T"])
+    # The Meep-side windows are derived from the DECLARED material mapped by
+    # to_meep(...), never from the parameters the Meep JSON reports: a wrong
+    # mapping (F3) must not be allowed to widen its own window. The JSON's
+    # own meep_params are recorded for audit only.
+    doc_mp = meep_doc["meep_params"]
+    fn_map = (doc_mp.get("debye_map") or {}).get("fn_hz", DEBYE_MEEP_MAP_FN_HZ)
+    declared_mp = de.to_meep(model, params, a_m=float(doc_mp.get("a_m", MEEP_A_M)),
+                             fn_debye_map_hz=float(fn_map))
     wm_ade_R, wm_ade_T, w_map_R, w_map_T = meep_windows(
-        f, model, params, meep_doc["meep_params"], float(meep_doc["dt_meep_s"]))
+        f, model, params, declared_mp, float(meep_doc["dt_meep_s"]))
     dR_mt = np.abs(R_m - R_an); dT_mt = np.abs(T_m - T_an)
     win4_R = W_BIN + wm_ade_R + w_map_R
     win4_T = W_BIN + wm_ade_T + w_map_T
@@ -285,7 +293,8 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
         "present": True,
         "source": meep_doc.get("_source"),
         "dt_meep_s": float(meep_doc["dt_meep_s"]),
-        "meep_params": meep_doc["meep_params"],
+        "meep_params_reported": doc_mp,
+        "meep_params_declared": declared_mp,
         "precheck": meep_doc.get("precheck"),
         "R_meep": R_m.tolist(), "T_meep": T_m.tolist(),
         "dR_meep_tmm": dR_mt.tolist(), "dT_meep_tmm": dT_mt.tolist(),
