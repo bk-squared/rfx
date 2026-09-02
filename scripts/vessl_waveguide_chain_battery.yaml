@@ -56,7 +56,7 @@ run: |-
   git rev-parse HEAD 2>/dev/null || echo "(no .git: tarball fetch of $RFX_EXPECT_SHA)"
 
   echo "=== runtime deps ==="
-  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
   export PYTHONPATH="$ROOT"
   python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), 'from', os.path.dirname(rfx.__file__), '| x64', jax.config.x64_enabled)"
 
