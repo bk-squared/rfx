@@ -308,6 +308,20 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure-numpy Debye/Lorentz/Drude eps(f) and the rfx->Meep material "
         "mapping (unit-tested to 1e-9 before any FDTD) -- no rfx import"),
+    "validation/crossval/23_lossy_slab_fresnel.py": Entry(
+        "no_solve",
+        "cv23 lossy-slab case: two arms build a Simulation through the "
+        "documented add_material(sigma=) path and assemble its material "
+        "arrays (asserted bit-identical to the direct construction) but time "
+        "stepping is the low-level rig's -- Simulation.run() is never called"),
+    "validation/crossval/comparators/cv23_lossy_gates.py": Entry(
+        "no_simulation",
+        "pure-numpy windows, falsifiers and TMM evaluation for cv23 (R, T and "
+        "absorption A) -- no rfx Simulation"),
+    "validation/crossval/comparators/slab_rig.py": Entry(
+        "no_simulation",
+        "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
+        "tail witness, envelope fit) factored out of cv22 -- no Simulation()"),
     "validation/crossval/comparators/ring_mode_judge.py": Entry(
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
