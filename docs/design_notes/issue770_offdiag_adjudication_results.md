@@ -138,8 +138,8 @@ per-bin sv 0.9874–1.003227, column power 0.9563–0.9908, DC anchor
    unchanged from #764 to 5 decimals).  Independent confirmation on a
    graded NU mesh at n_live = 4.
 5. Dump/replay schema re-pins: `offdiag_frame` metadata tag in
-   `tests/test_sparam_driver_dump_parity.py`,
-   `tests/test_port_dump_replay.py`,
+   `tests/unit/sparams/test_sparam_driver_dump_parity.py`,
+   `tests/unit/sparams/test_port_dump_replay.py`,
    `scripts/diagnostics/generate_wire_port_vi_dump.py`,
    `scripts/diagnostics/report_wire_replay_sweep.py`; replay diagnostic
    frame dispatch in `scripts/diagnostics/replay_wire_port_vi_dump.py`.

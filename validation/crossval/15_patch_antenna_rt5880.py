@@ -919,7 +919,7 @@ def compare(f0_env_pct):
     gate("settling witness (open CPML, -40 dB bar)", bool(R["settled"]),
          f"{R['settle_db']:.1f} dB")
     # Passivity is GATED on both legs: |S11| > ~1.05 on a passive radiator is an
-    # extraction defect, never physics (tests/test_sparam_passivity_guard.py).
+    # extraction defect, never physics (tests/unit/sparams/test_sparam_passivity_guard.py).
     gate("rfx passivity (max|S11| <= 1.05)", R["max_abs_s11"] <= 1.05,
          f"max|S11| = {R['max_abs_s11']:.3f}")
     gate("openEMS passivity (max|S11| <= 1.05)", O["max_abs_s11"] <= 1.05,

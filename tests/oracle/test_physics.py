@@ -174,7 +174,7 @@ def test_fresnel_normal_incidence_effective_eps_consistency():
 
     The GENUINE oblique-injection gate — a real 30 deg TE plane wave through
     the 2D-aux TFSF path compared to analytic Fresnel-at-30-deg — lives in
-    ``tests/test_verification.py::test_oblique_tfsf_fresnel`` and
+    ``tests/unit/autodiff/test_verification.py::test_oblique_tfsf_fresnel`` and
     ``::test_oblique_tfsf_fresnel_plane_dft``. Renamed from the former
     ``test_fresnel_oblique_te`` (issue #397): the old name/header claimed an
     oblique simulation that never ran.

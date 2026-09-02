@@ -105,8 +105,8 @@ text (old = f32 rounding artifact of #802, new = documented convention).
 Any moved committed value NOT on the list = STOP and report, not a re-pin.
 
 **F4 — traced paths unbroken.**
-Command: `pytest tests/test_nonuniform_forward_grad.py
-tests/test_nonuniform_gradient.py -q` plus a new traced-profile contract
+Command: `pytest tests/unit/autodiff/test_nonuniform_forward_grad.py
+tests/unit/autodiff/test_nonuniform_gradient.py -q` plus a new traced-profile contract
 test (jax.grad through a mask-dependent scalar w.r.t. dz_profile).
 PASS iff all pass.
 
@@ -131,14 +131,14 @@ CI-visible (red on this PR without a re-pin):
    face_residual/message drift. One whole-file enumerated re-capture commit
    via `scripts/capture_example_fidelity_snapshot.py`, key-by-key diff quoted.
    (PR #734 owns the separate domain-row defect — NOT folded in.)
-2. `tests/test_waveguide_geometry_hygiene.py` —
+2. `tests/unit/ports/test_waveguide_geometry_hygiene.py` —
    `test_production_node_coords_differ_from_an_f64_construction` INVERTS
    (production nodes become the f64 construction); `_NOMINAL_EXCESS`
    re-measured (expected uniform 1, but measured, not predicted); docstrings.
-3. `tests/test_rasterized_slice_viewer.py` two-plane wall test — body plane
+3. `tests/unit/api/test_rasterized_slice_viewer.py` two-plane wall test — body plane
    9 → 8, per-plane cells 361 → 400, wall plane 10 → 9.
 4. `tests/fixtures/golden_msl_sheet_thread_{s,freqs}_13de212.npy` +
-   `tests/test_msl_sheet_threading.py` byte-identity gate — trace boxes are
+   `tests/unit/sparams/test_msl_sheet_threading.py` byte-identity gate — trace boxes are
    node-aligned at dx=80 µm.
 5. `tests/crossval/test_crossval_cv15_wall_planes.py` + cv15 committed wall-plane
    expectations (live fast-CI build on node-aligned z faces + one-cell ground).
@@ -146,16 +146,16 @@ CI-visible (red on this PR without a re-pin):
    entries per the ledger's append-only protocol (datums recorded at x64=0).
 7. `tests/locks/test_two_plane_pec_slab.py` off-state golden + pinned plane k=3
    (exact half-cell tie — verify, may be stable).
-8. `tests/test_coax_msl_transition.py` knife-edge cell count narrative
+8. `tests/unit/sparams/test_coax_msl_transition.py` knife-edge cell count narrative
    (assertion doesn't pin the count; verify it survives).
 9. `tests/crossval/test_msl_phase_referee_header.py` realized-substrate pins (live).
-10. `tests/test_sheet_node_permittivity.py` sheet plane / eps values (verify).
-11. `tests/test_lumped_twoport_vi_validation_battery.py` (verify n_live).
+10. `tests/unit/materials/test_sheet_node_permittivity.py` sheet plane / eps values (verify).
+11. `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py` (verify n_live).
 12. `tests/locks/test_refplane_port_waves.py` physics legs (verify; plane indices
     themselves are python arithmetic, safe).
-13. `tests/test_preflight_campaign_statics.py` docstring-recorded node sets /
+13. `tests/unit/preflight/test_preflight_campaign_statics.py` docstring-recorded node sets /
     cell counts (verify).
-14. `tests/test_conductor_mask_accessor.py` (shares the thru fixture; verify).
+14. `tests/unit/materials/test_conductor_mask_accessor.py` (shares the thru fixture; verify).
 15. Box/csg docstrings (f32 double-rounding narrative → historical) and
     `validation/crossval/11_waveguide_port_wr90.py` PRECISION REQUIREMENT
     paragraph.
@@ -238,9 +238,9 @@ f2_result_x641.json. Note the plane moved DOWN one ([9] -> [8]) and the
 transverse span gained its convention-owed node (19 -> 20): both are the
 f32 artifact leaving, as pre-enumerated (WILL-MOVE items 3, 5).
 
-**F4 — PASS.** `tests/test_nonuniform_forward_grad.py` +
-`tests/test_nonuniform_gradient.py`: 15 passed. New
-`tests/test_rasterization_coordinate_exactness.py` (includes the traced
+**F4 — PASS.** `tests/unit/autodiff/test_nonuniform_forward_grad.py` +
+`tests/unit/autodiff/test_nonuniform_gradient.py`: 15 passed. New
+`tests/unit/geometry/test_rasterization_coordinate_exactness.py` (includes the traced
 jit/grad guard and the shape-class census): 57 passed.
 
 **F5 — PASS.** All five off-lattice shapes bit-identical to the pre-fix
@@ -340,7 +340,7 @@ declared planes and keep their validity.
   and then need their own root-caused re-pins with this note as
   provenance): `tests/crossval/test_patch_canonical_farfield_e4.py` slow FDTD
   gates (cv05 patch is node-aligned at dx=2 mm),
-  `tests/test_v173a_physics_equivalence_slow.py` (its own rebump
+  `tests/unit/misc/test_v173a_physics_equivalence_slow.py` (its own rebump
   protocol), GPU/VESSL envelope regeneration lanes (broad-E5 fixtures
   with cv11-class PEC shorts).
 - **Frozen-replay evidence fixtures** (cv05/cv06b/cv07 results, Mie RCS

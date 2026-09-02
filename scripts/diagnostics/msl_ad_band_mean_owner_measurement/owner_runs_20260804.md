@@ -8,7 +8,7 @@ primary checkout stays on `main`) — see that YAML's comments for why.
 
 Per the #548 standard: this file exists because the raw run logs live only
 under the primary checkout's gitignored `.omx/msl-ad-band-mean-owner/` — this
-is the tracked copy the gate's docstring (`tests/test_msl_ad_fd_converged.py`)
+is the tracked copy the gate's docstring (`tests/unit/autodiff/test_msl_ad_fd_converged.py`)
 points readers at.
 
 ## Run 1 — `369367251813`, standalone measurement only
@@ -82,7 +82,7 @@ commit did not touch the objective itself):
 standalone diagnostic replica, run against the same clone:
 
 ```
-$ python -u -m pytest tests/test_msl_ad_fd_converged.py -m "" -q -ra -s
+$ python -u -m pytest tests/unit/autodiff/test_msl_ad_fd_converged.py -m "" -q -ra -s
 
 [MSL-FD-TIGHT] n_steps=26226, checkpoint_segments=141 (~sqrt=161.9)
 
@@ -107,7 +107,7 @@ $ python -u -m pytest tests/test_msl_ad_fd_converged.py -m "" -q -ra -s
 ## Derived threshold
 
 `tests._gate_policy.gate_from_envelope(0.0146, quantum=100) == 0.03` — see
-`tests/test_msl_ad_fd_converged.py`'s `_REL_ERR_THRESHOLD` comment and the
+`tests/unit/autodiff/test_msl_ad_fd_converged.py`'s `_REL_ERR_THRESHOLD` comment and the
 "GATE REBUILT" / "THRESHOLD DERIVATION" sections of
 `test_msl_ad_fd_converged_tight`'s docstring for the full derivation and why
 the envelope input is the h-sweep's worst point (0.0146) rather than only the

@@ -205,7 +205,7 @@ def assemble_materials_nu(
     # E-NODE, where tangential Ex/Ey actually sit, so Box's argmin-nearest thin
     # branch minimizes the realized-plane error |node - z0|; a genuinely
     # matching-thickness (sub-cell) box takes the same thin branch and selects
-    # the identical layer (verified, tests/test_thin_conductor.py). No fix here.
+    # the identical layer (verified, tests/unit/materials/test_thin_conductor.py). No fix here.
     # (This said "cell CENTRE" until #562: the NU coordinates the argmin runs
     # over were centres then, half a cell off the fields. The #371 argument is
     # STRENGTHENED by the correction — the minimized quantity is now the
@@ -679,7 +679,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # longer rides materials.sigma, so the two-run vacuum reference's
         # sigma_override cannot strip it — dropping the ctx here is the
         # reference-run analogue of strip_interior_pec below. Pinned by the
-        # G8 negative control (tests/test_sheet_impedance_operator.py).
+        # G8 negative control (tests/unit/materials/test_sheet_impedance_operator.py).
         _sheet_specs = []
 
     # Two-run S-matrix vacuum reference: drop the interior-geometry PEC
@@ -1278,7 +1278,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # stop uses, with the stop disabled (decay_by=0.0 is that loop's
         # documented forced-N escape) and min_steps past the end so no
         # energy check ever runs. Chunk re-entry threads the full carry
-        # (bit-identity locked by tests/test_nu_progress_chunking.py).
+        # (bit-identity locked by tests/unit/nonuniform/test_nu_progress_chunking.py).
         from rfx.progress import validate_report_every
         _re = validate_report_every(report_every, n_steps=n_steps)
         r = run_nonuniform_until_decay(

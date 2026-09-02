@@ -26,7 +26,7 @@ Layer 2 drives the producer's own ``airy()`` formula + ``MAX_TOL`` with syntheti
 ideal / perturbed S-parameters to lock the gate semantics. Pure-Python (no FDTD);
 both layers replay frozen numbers, so a regression in the live
 ``compute_waveguide_s_matrix`` does not flip them -- that live anchor is the
-np=40 power/reciprocity gate in ``tests/test_waveguide_nu_nontrivial.py``.
+np=40 power/reciprocity gate in ``tests/unit/sparams/test_waveguide_nu_nontrivial.py``.
 """
 from __future__ import annotations
 

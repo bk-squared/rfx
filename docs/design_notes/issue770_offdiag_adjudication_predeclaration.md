@@ -40,7 +40,7 @@ Prior measured facts consumed here (NOT re-derived, NOT re-measured):
   |S11| 0.0093–0.2896 / |S22| 0.0176–0.2910 with the whole-port
   Z_in(3 GHz) = 49.1 − j0.05 Ω rising to 42.9 + j27.1 Ω at 7 GHz (the
   un-de-embedded feed-post reflection, +j27 Ω series class).
-- Canonical THRU battery locks (tests/test_lumped_twoport_vi_validation_battery.py):
+- Canonical THRU battery locks (tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py):
   shipped per-cell |S21| = 0.54606–0.60974 (band lock [0.35, 0.85]);
   phase-dev band [−1.1, −0.1] rad; reciprocity gates 1.5e-2 abs / 0.10
   rel (measured 7.53e-3 / 0.0136); sv_max gate 0.85 (measured 0.6934
@@ -132,7 +132,7 @@ not assumed.
 ## 3. Fixture and lanes (declared)
 
 **FIX-T** — the canonical THRU battery geometry, verbatim
-(`tests/test_lumped_twoport_vi_validation_battery.py::_build_thru`):
+(`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::_build_thru`):
 32×20×10 mm, dx = 0.5 mm, CPML(x, y, z_hi) + PEC z_lo ground, 16 mm
 air microstrip w/h = 5 (Zc ~ 50 Ω), two ez wire ports extent 1 mm
 (n_live = 2, one dead extent cell each — the pinned advisory set), Z0 =

@@ -646,7 +646,7 @@ def jacobian_fwd(
         ``jax.jit`` anything; compiled as part of one program if the
         caller wraps its own outer function, as
         ``scripts/benchmark_jacobian_fwd.py`` and
-        ``tests/test_jacobian_fwd.py`` both do for compiled/jaxpr
+        ``tests/unit/autodiff/test_jacobian_fwd.py`` both do for compiled/jaxpr
         measurement) -- an earlier version of this docstring claimed
         ``jax.jit`` wrapping was part of this function's own behaviour,
         which was never true. The two paths (batched vs. sequential) are

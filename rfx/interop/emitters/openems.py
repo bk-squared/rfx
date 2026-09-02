@@ -120,7 +120,7 @@ docs/design_notes/geometry_setup_interop.md):
 ``D17`` PMC-face wall position (issue #722 ninth surface, decided
         2026-08-28). rfx realizes a PMC face's H_tan wall a half-cell
         (0.5*dx) INSIDE the declared mesh line (``rfx/boundaries/pmc.py``,
-        pinned by ``tests/test_boundary_pmc_hi_faces.py``), while this
+        pinned by ``tests/unit/boundaries/test_boundary_pmc_hi_faces.py``), while this
         emitter maps a ``pmc`` face straight to openEMS's ``'PMC'`` string
         (``pad=0``) sitting ON the emitted mesh line — see the ``token ==
         "pmc"`` branch above. An rfx-vs-openEMS comparison on a PMC-faced

@@ -50,7 +50,7 @@ PMC-plane convention: REALIZE-DECLARED, decided on issue #722's ninth
 surface (2026-08-28):
     rfx enforces PMC on a `_hi` face by zeroing H_tan at array index -2,
     i.e. at the half cell 0.5*dx INSIDE the declared wall (pinned by
-    tests/test_boundary_pmc_hi_faces.py — that placement is solver
+    tests/unit/boundaries/test_boundary_pmc_hi_faces.py — that placement is solver
     physics, measured, and is NOT changed here; see
     rfx/boundaries/pmc.py). A half-domain declared at exactly a/2
     therefore realizes its H_tan wall at a/2 - dx/2, mirroring into a
@@ -267,7 +267,7 @@ def main() -> int:
     #       PMC-plane convention (issue #722 ninth surface, see docstring):
     #       declared a/2 + dx/2, not a/2, so apply_pmc_faces' H_tan zero
     #       (a half-cell INSIDE the declared x_hi wall, pinned by
-    #       tests/test_boundary_pmc_hi_faces.py) lands ON the a/2 mirror
+    #       tests/unit/boundaries/test_boundary_pmc_hi_faces.py) lands ON the a/2 mirror
     #       plane instead of a half-cell short of it. y, z unchanged. The
     #       source/probe x coords must stay inside [0, a/2 + dx/2]; since
     #       src x = 0.25 a and probe x = 0.40 a are both < 0.5 a, they

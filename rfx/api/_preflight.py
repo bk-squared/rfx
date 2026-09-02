@@ -78,7 +78,7 @@ def _absorber_boundary_for_axis(
     """The single canonical frame for "is/how-far a coordinate from the
     CPML/UPML absorber" on one axis (issue #500).
 
-    Ground truth (proved in ``tests/test_preflight_absorber_frame.py`` for
+    Ground truth (proved in ``tests/unit/preflight/test_preflight_absorber_frame.py`` for
     both the uniform (``rfx/grid.py`` ``Grid.__init__``: ``nx =
     ceil(domain/dx) + 1 + pad_lo + pad_hi``) and non-uniform
     (``rfx/nonuniform.py`` ``make_nonuniform_grid``: ``dz_profile`` covers
@@ -185,7 +185,7 @@ def _coord_near_absorber(
 # The gate values are module-level on purpose: the falsification tests
 # monkeypatch them in BOTH directions (loosen -> firing fixture goes
 # silent; tighten -> silent fixture fires) to prove each gate is
-# load-bearing (tests/test_preflight_campaign_statics*.py).
+# load-bearing (tests/unit/preflight/test_preflight_campaign_statics*.py).
 # --------------------------------------------------------------------------
 
 # Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
@@ -814,7 +814,7 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     369367257533; committed dump ``scripts/diagnostics/
     _coax_msl_transition_settled_run_logs/
     witnesses_369367257533_attempt3_x64-0_ladders.npz``, reproduced by
-    ``tests/test_msl_ladder_standoff.py::
+    ``tests/unit/sparams/test_msl_ladder_standoff.py::
     test_near_field_decay_length_matches_the_substrate_transverse_resonance``)
     ------------------------------------------------------------------------
     Fit the two-wave model on a clean window of that fixture's own 9-probe MSL
@@ -1498,7 +1498,7 @@ class _PreflightMixin:
                     # for a PEC material that advice is a NO-OP — a sub-cell PEC
                     # Box and add_thin_conductor() on the same footprint produce
                     # a BIT-IDENTICAL pec_mask (verified in
-                    # tests/test_thin_conductor_honesty.py). Neither models a
+                    # tests/unit/materials/test_thin_conductor_honesty.py). Neither models a
                     # sub-cell thickness; both give one cell of mask, which
                     # rfx/boundaries/pec.py treats as a surface. Say what is
                     # actually true instead of offering a change that changes
@@ -1854,7 +1854,7 @@ class _PreflightMixin:
 
         The first version of this helper set ``guide`` to the rasterized
         extent of the whole transverse DOMAIN. Review measurement on
-        ``tests/test_waveguide_port_reference_sims.py::_tj_device`` (PEC
+        ``tests/unit/sparams/test_waveguide_port_reference_sims.py::_tj_device`` (PEC
         Boxes fill y in [0, 0.04] and [0.08, 0.12], ports
         ``y_range=(0.04, 0.08)``) showed that is wrong wherever the walls
         are interior PEC: it reported fc_TE10 = 1.249 GHz / fc_TE20 =
@@ -1869,11 +1869,11 @@ class _PreflightMixin:
         :meth:`_range_to_slice`'s explicit branch rounds range endpoints
         to the nearest cell, so it snaps above OR below depending on
         which side of a half-cell the endpoints fall (see the round-up
-        case in ``tests/test_port_aperture_rasterization.py``).
+        case in ``tests/unit/ports/test_port_aperture_rasterization.py``).
 
         On a conformal (Dey-Mittra) axis the wall sits at the exact
         declared coordinate via a fractional-cell eps_correction
-        (``tests/test_subpixel_pec.py``, "Stage 1 step 3"), not the
+        (``tests/unit/geometry/test_subpixel_pec.py``, "Stage 1 step 3"), not the
         ``(n-1)*dx`` staircase — disclosed, unmeasured non-regression:
         a conformal closed axis keeps the declared domain extent, which
         is what this code did before #738.
@@ -2017,8 +2017,8 @@ class _PreflightMixin:
 
         It does NOT fire on ``declared != guide``: a port whose aperture
         is narrower than the guide it sits in is the normal sub-aperture
-        pattern (``tests/test_waveguide_port_reference_sims.py``,
-        ``tests/test_api.py``, ``tests/test_distributed.py``) and nothing
+        pattern (``tests/unit/sparams/test_waveguide_port_reference_sims.py``,
+        ``tests/unit/api/test_api.py``, ``tests/unit/runners/test_distributed.py``) and nothing
         snapped there.
         """
         import warnings as _w
@@ -2383,7 +2383,7 @@ class _PreflightMixin:
           with what is actually solved rather than loosening it; the
           aperture can snap to either side of the declared width (see
           the round-up case in
-          ``tests/test_port_aperture_rasterization.py``), so this is not
+          ``tests/unit/ports/test_port_aperture_rasterization.py``), so this is not
           a one-directional relaxation.
         - the 0.90 x fc_next margin heuristic is evaluated on the GUIDE,
           i.e. the wall-to-wall extent measured on the assembled
@@ -3311,7 +3311,7 @@ class _PreflightMixin:
         no geometry fix at the API level; a stable plane-wave lumped lane needs a
         solver-level fix to the TFSF↔lumped coupling. The tunable-load (varactor)
         gradient IS validated on the PORT-fed lane (``add_port`` +
-        ``forward(rlc_values_override=...)`` — tests/test_lumped_rlc_ad.py); use that
+        ``forward(rlc_values_override=...)`` — tests/unit/autodiff/test_lumped_rlc_ad.py); use that
         for varactor/RIS design. See the tracking issue (#425).
         """
         if self._tfsf is None or not self._lumped_rlc:
@@ -3499,7 +3499,7 @@ class _PreflightMixin:
             # not on a hard-stop.
             # MAINTENANCE: delete this guard when the BCK/USC contour-FIT
             # redesign lands. The strict-xfail tracker
-            # tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec
+            # tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec
             # will hard-fail (XPASS) to force this removal (conformal-PEC
             # known issue).
             _w.warn(
@@ -3526,7 +3526,7 @@ class _PreflightMixin:
         KNOWN-INACCURATE unconditionally. ``adi_step_3d`` now implements the
         full Zheng–Chen–Zhang two-sub-step 3D ADI (issue #338 follow-up):
         eigenfrequency error measured 1.2% at 2x CFL on the 12^3 PEC-cavity
-        adjudication test (``tests/test_review_tier1_validation_battery.py::
+        adjudication test (``tests/unit/misc/test_review_tier1_validation_battery.py::
         test_optc1_adi_3d_cavity_eigenfrequency``, 2% gate, ~15 cells/wave).
 
         What remains is the honest large-dt envelope of ANY Crank–Nicolson-
@@ -3656,7 +3656,7 @@ class _PreflightMixin:
         boundaries inside the pad — a regime where stretched-coordinate
         PMLs violate the geometric stability condition — so no CPML
         parameter choice covered the factorial. Guarded by
-        tests/test_cpml_pad_material_extension.py.
+        tests/unit/boundaries/test_cpml_pad_material_extension.py.
 
         Trigger (broadened by #808): ANY pole family — Debye, Lorentz of
         any Q, Drude — whose geometry touches a face that carries an
@@ -4149,9 +4149,9 @@ class _PreflightMixin:
         happened to provide — a probe genuinely INSIDE the domain but
         right at its edge used to warn (for the wrong reason) and, after
         the #500 fix alone, went silent. Two regressions surfaced this as
-        load-bearing: ``tests/test_run_preflight_parity.py`` (a probe one
+        load-bearing: ``tests/unit/preflight/test_run_preflight_parity.py`` (a probe one
         cell inside a 0.02m domain was the run()-parity fixture's only
-        warning trigger) and ``tests/test_msl_internal_probe_advisories.py::
+        warning trigger) and ``tests/unit/sparams/test_msl_internal_probe_advisories.py::
         test_user_probe_advisories_and_332_still_fire`` (the #470
         regression lock's "user probe near the x-CPML" case, node 9 of a
         pad=8 grid — one cell inside). :func:`_coord_near_absorber`
@@ -4423,7 +4423,7 @@ class _PreflightMixin:
         # 2026-07-02). The NU runner accumulates the NTFF box and
         # compute_far_field handles graded-z per-cell dS + z-edges; a graded-z
         # dipole directivity benchmarks within ~0.05 dB of theory
-        # (tests/test_farfield_nonuniform.py). No guard needed.
+        # (tests/unit/farfield/test_farfield_nonuniform.py). No guard needed.
 
     def _validate_cfg_ntff_min_steps(self, dx: float) -> None:
         """P1.7: NTFF with too few steps."""
@@ -5910,8 +5910,8 @@ class _PreflightMixin:
         paths via per-face ``pad_{axis}_{lo,hi}`` allocation. The
         warning is retained as a no-op anchor so external references
         ("[P2.7]") don't break and as a reminder that the fix is
-        regression-locked via tests/test_silent_drop_warnings.py and
-        tests/test_boundary_pmc_hi_faces.py.
+        regression-locked via tests/unit/runners/test_silent_drop_warnings.py and
+        tests/unit/boundaries/test_boundary_pmc_hi_faces.py.
         """
         if self._waveguide_ports:
             axis_map = {"x": 0, "y": 1, "z": 2}
@@ -6148,7 +6148,7 @@ class _PreflightMixin:
            entirely (as an earlier #500 pass did) silently re-admits the
            negative-clearance configuration the 2026-05-04 calibration
            closed — measured on this repo's own
-           ``tests/test_msl_port_preflight.py`` fixture: 3 advisories at
+           ``tests/unit/ports/test_msl_port_preflight.py`` fixture: 3 advisories at
            base (pre-drop), 0 on the buffer-dropped branch.
 
         2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells, on an
@@ -6941,7 +6941,7 @@ class _PreflightMixin:
             # directly (_coord_in_absorber / _coord_near_absorber), NOT
             # the buffered x_abs_lo/x_abs_hi built for check 3 above, so
             # the lo/hi-swap mutation falsifier
-            # (tests/test_preflight_absorber_frame.py module docstring)
+            # (tests/unit/preflight/test_preflight_absorber_frame.py module docstring)
             # covers this comparison the same way it covers every other
             # consumer of those two helpers.
             #

@@ -536,7 +536,7 @@ def compute_floquet_s_params(
     """Compute Floquet S-parameters from DFT accumulators.
 
     .. warning:: **Experimental.** This pipeline carries an E0 contract test
-        (``tests/test_floquet_s_params_contract.py``) — the first real pytest
+        (``tests/unit/ports/test_floquet_s_params_contract.py``) — the first real pytest
         caller, a passivity check on pre-isolated pure-wave input, and a
         finite-grad AD smoke (the path is jnp-pure and AD-traceable) — but **no
         accuracy validation against an external periodic-cell solver**. It also

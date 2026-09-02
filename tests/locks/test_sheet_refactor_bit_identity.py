@@ -31,7 +31,7 @@ loosened, and it got teeth rather than losing them:
 
 The boundary behaviour itself (the defect, both wrap-keeping guards, and
 the 2-D end-to-end witness) is pinned in
-``tests/test_pec_mask_boundary_convention.py``.
+``tests/unit/boundaries/test_pec_mask_boundary_convention.py``.
 """
 
 LOCK_PROVENANCE = {

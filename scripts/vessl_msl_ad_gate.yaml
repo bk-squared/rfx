@@ -29,7 +29,7 @@ run: |-
   out=".omx/msl-ad-gate/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
   mkdir -p "$out"
   set +e
-  timeout 5400 python -u -m pytest tests/test_msl_ad_fd_converged.py -m "" -q -ra -s > "$out/gate.log" 2>&1
+  timeout 5400 python -u -m pytest tests/unit/autodiff/test_msl_ad_fd_converged.py -m "" -q -ra -s > "$out/gate.log" 2>&1
   rc=$?
   set -e
   cat "$out/gate.log"

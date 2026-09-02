@@ -23,7 +23,7 @@ Two solve shapes need two mechanisms:
   That claim is not assumed. It is the same architecture the non-uniform
   ``until_decay`` lane already shipped (issue #383), whose chunk re-entry is
   locked at exact equality, and it is re-locked here for the uniform lane by
-  ``tests/test_run_progress_reporting.py`` with SHA-256 digests over raw
+  ``tests/unit/runners/test_run_progress_reporting.py`` with SHA-256 digests over raw
   field bytes, the probe time series, the DFT-plane accumulators and the
   extracted S / Z0 / beta.
 

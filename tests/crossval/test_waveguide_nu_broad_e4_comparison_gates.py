@@ -23,7 +23,7 @@ reference is Palace high-order FEM (the physically-converged reference the
 uniform fixture also uses — Meep is non-physical on PEC-short at this
 resolution). Magnitude only (cross-solver phase conventions differ 100 deg+).
 Both layers replay frozen numbers; the live NU anchor is the np=40
-power/reciprocity gate in ``tests/test_waveguide_nu_nontrivial.py``.
+power/reciprocity gate in ``tests/unit/sparams/test_waveguide_nu_nontrivial.py``.
 """
 from __future__ import annotations
 

@@ -1877,7 +1877,7 @@ def run(
         result is a continuation and not a re-solve; the DFT accumulators
         and every port / flux / monitor state live in that carry.
         Bit-exactness against ``report_every=None`` is locked by
-        ``tests/test_run_progress_reporting.py``.
+        ``tests/unit/runners/test_run_progress_reporting.py``.
 
         Costs, measured rather than hidden: each report inserts one device
         synchronisation (without it the host would dispatch every chunk at

@@ -40,17 +40,17 @@ jobs:
         # The collect-count floor makes silent deselection detectable.
         run: |
           set -e
-          FILES="tests/test_sparam_passivity_guard.py
-            tests/test_result_finite_guard.py
-            tests/test_run_preflight_parity.py
-            tests/test_preflight_structured_and_guards.py
-            tests/test_auto_preflight.py
-            tests/test_preflight_false_positives.py
-            tests/test_preflight_physics_thresholds.py
-            tests/test_port_preflight.py
-            tests/test_msl_port_preflight.py
-            tests/test_inverse_design_preflight.py
-            tests/test_api.py"
+          FILES="tests/unit/sparams/test_sparam_passivity_guard.py
+            tests/unit/api/test_result_finite_guard.py
+            tests/unit/preflight/test_run_preflight_parity.py
+            tests/unit/preflight/test_preflight_structured_and_guards.py
+            tests/unit/preflight/test_auto_preflight.py
+            tests/unit/preflight/test_preflight_false_positives.py
+            tests/unit/preflight/test_preflight_physics_thresholds.py
+            tests/unit/ports/test_port_preflight.py
+            tests/unit/ports/test_msl_port_preflight.py
+            tests/unit/preflight/test_inverse_design_preflight.py
+            tests/unit/api/test_api.py"
           collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu" $FILES | grep -c "::" || true)
           echo "collected $collected guard tests"
           if [ "$collected" -lt 100 ]; then
@@ -63,7 +63,7 @@ jobs:
       - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
         run: |
           python -m pytest -q -p no:cacheprovider -o addopts="" \
-            "tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec"
+            "tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec"
 
   # The default fast suite ("not gpu and not slow and not slow_physics" — the
   # suite developers run as plain `pytest`) previously ran as a whole in NO

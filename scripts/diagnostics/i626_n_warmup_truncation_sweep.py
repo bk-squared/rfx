@@ -6,12 +6,12 @@ This is the committed artifact behind the "fixture 2" curve quoted in
 docs/agent-memory/rfx-known-issues.md's "Added 2026-08-11 -- #626 RESOLVED"
 entry and the CHANGELOG.md entry of the same name. Fixture 1 (the smaller,
 faster sweep) is committed directly as a pytest regression test instead --
-see tests/test_n_warmup.py::test_warmup_truncation_error_grows_with_k --
+see tests/unit/autodiff/test_n_warmup.py::test_warmup_truncation_error_grows_with_k --
 because it is cheap enough to run on every CI pass; this script's fixture 2
 (larger grid, more steps) is a slower confirmatory sweep kept here as a
 reproducible artifact rather than as a standing test.
 
-Design (see tests/test_n_warmup.py's docstring for the full rationale): the
+Design (see tests/unit/autodiff/test_n_warmup.py's docstring for the full rationale): the
 LOSS WINDOW is held FIXED at time_series[N_FIXED:] for every K in the
 sweep, and K (n_warmup) is varied independently -- conflating the two (as
 the pre-existing test_warmup_grad_finite_and_same_sign does) cannot isolate
@@ -87,7 +87,7 @@ def main():
     objective = _make_objective(sim, ti, tj, tk, g.shape)
 
     # Forward-value identity sanity check (must hold per
-    # tests/test_n_warmup.py::test_forward_matches_plain).
+    # tests/unit/autodiff/test_n_warmup.py::test_forward_matches_plain).
     eps_probe = jnp.ones(g.shape, dtype=jnp.float32).at[ti, tj, tk].set(ALPHA0)
     ts0 = np.asarray(sim.forward(eps_override=eps_probe, n_steps=N_STEPS, n_warmup=0,
                                   skip_preflight=True).time_series)

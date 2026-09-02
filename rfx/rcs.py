@@ -347,7 +347,7 @@ def compute_rcs(
     # uniform-aperture oracle at the gate grid to +0.86/+0.85 dB (theta 20/40)
     # with a measured 2.4 dB resolution sensitivity lambda/30 -> lambda/60 —
     # a +/-2 dB-class calibration, envelope-pinned by
-    # tests/test_oblique_rcs_absolute_sigma.py. sigma corresponds to an
+    # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py. sigma corresponds to an
     # aperture height h_eff = (k_hi-k_lo)*dx = 2*dx (z-faces cancel for
     # x-y-plane observation; span-doubling ratio 4.000 measured). Kept fenced
     # for combos Method B does not support: non-ez polarization and

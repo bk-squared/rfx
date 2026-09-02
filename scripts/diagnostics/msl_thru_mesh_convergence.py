@@ -13,7 +13,7 @@ the EXISTING static-Laplace source by refining the mesh:
   * |S11| plateaus near ~0.11 regardless of dx   -> SOURCE-MODE-limited; NEW
     evidence justifying the eigenmode build.
 
-Replicates tests/test_msl_port_integration.py::test_msl_thru_line_passive_gate
+Replicates tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_passive_gate
 exactly (RO4350B, h_sub=254um, W=600um, mode='laplace'), parameterized over dx.
 """
 from __future__ import annotations

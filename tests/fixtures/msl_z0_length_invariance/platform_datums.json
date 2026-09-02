@@ -1,7 +1,7 @@
 {
   "schema": "rfx.msl_z0_length_invariance_platform_datums",
   "schema_version": 1,
-  "test": "tests/test_msl_port_integration.py::test_msl_thru_line_z0_length_invariance_and_positive_sign",
+  "test": "tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_z0_length_invariance_and_positive_sign",
   "issue": 610,
   "_comment": "Deliberately NOT named 'fixture.json' -- tests/contracts/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
   "recipe": {
@@ -17,7 +17,7 @@
   "bounds_unchanged": {
     "spread_tol": 0.007,
     "per_leg_mean_s11_max": 0.15,
-    "note": "Both bounds are single-sourced from tests/test_msl_port_integration.py's MEASURED_SPREAD_ENVELOPE (via tests/_gate_policy.gate_from_envelope) and LEG_S11_BOUND -- this ledger imports them, it does not restate them."
+    "note": "Both bounds are single-sourced from tests/unit/sparams/test_msl_port_integration.py's MEASURED_SPREAD_ENVELOPE (via tests/_gate_policy.gate_from_envelope) and LEG_S11_BOUND -- this ledger imports them, it does not restate them."
   },
   "derivation": {
     "measured_spread_envelope": 0.004607,

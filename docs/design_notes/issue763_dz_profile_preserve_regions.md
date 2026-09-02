@@ -7,7 +7,7 @@
 
 `_make_dz_profile` (`rfx/auto_config.py:659`) returns
 `smooth_grading(cells, max_ratio=1.3)` with no `preserve_regions`, although the
-kwarg exists and `tests/test_smooth_grading_preserve.py` pins exactly this
+kwarg exists and `tests/unit/nonuniform/test_smooth_grading_preserve.py` pins exactly this
 failure mode. On the declared demo fixture (h_sub = 254 um, eps_r = 3.38,
 W = 6*h_sub low-Z MSL, dx = W/8 = 190.5 um, phys_z = h_sub + 1.5 mm margin
 = 1.754 mm), production code realizes:
@@ -98,7 +98,7 @@ UNAFFECTED by this fix and that demo stays STOPPED.
 
 ## Results (appended AFTER the measurements; no threshold above was changed)
 
-Profile-level falsifiers, measured post-fix (tests/test_auto_dz_profile_preserve.py):
+Profile-level falsifiers, measured post-fix (tests/unit/nonuniform/test_auto_dz_profile_preserve.py):
 
 - (a) HELD: demo-fixture substrate-top edge distance = 0.0 m (<= 1e-12 m).
 - (b) HELD: post-thirds block [63.5, 63.5, 63.5, 42.333, 21.167] um passes

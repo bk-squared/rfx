@@ -738,7 +738,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
 
     Accuracy envelope (12^3 PEC cavity, TE101 at ~15 cells per
     wavelength): eigenfrequency error is -1.4% at 2x the 3D Yee CFL
-    limit (test-measured, ``tests/test_review_tier1_validation_battery.py``),
+    limit (test-measured, ``tests/unit/misc/test_review_tier1_validation_battery.py``),
     growing ~dt^2 (Crank–Nicolson-like temporal lag) to ~ -6.7% at 5x CFL
     (von Neumann analysis — the 5x point is not test-measured). Runs
     at 5-50x CFL remain stable but are quantitative only for features

@@ -220,7 +220,7 @@ def _ad_test_check(value: Any) -> dict[str, Any]:
     fails here too. The AUTHORITATIVE, collection-time proof (catches conditional
     / parametrize / fixture markers the AST can't see, and dynamic skips it also
     can't — those remain a documented boundary) lives in
-    ``tests/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip``.
+    ``tests/unit/autodiff/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip``.
     Both gates share this manifest, so they cannot point at different tests, and
     the static backstop means the release verdict cannot silently diverge from
     the collection check (reviewer T2.2). Together they wire the differentiability

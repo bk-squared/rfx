@@ -48,7 +48,7 @@ than the uniform-fine-z arm on the same machine.
    254 µm interface lands mid-cell at fraction 0.346 — inside preflight's
    own [0.10, 0.40] mixed-cell danger zone, which preflight duly warned
    about pre-run. This is precisely the issue-#48 failure mode pinned by
-   `tests/test_smooth_grading_preserve.py`; the production profile builder
+   `tests/unit/nonuniform/test_smooth_grading_preserve.py`; the production profile builder
    simply does not use the fix that test pins. The +6.6% Z0 bias against
    the 5% committed envelope follows.
 2. **Efficiency (F5, F6):** the thirds rule splits the top substrate cell

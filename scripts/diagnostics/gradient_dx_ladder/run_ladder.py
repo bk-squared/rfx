@@ -119,7 +119,7 @@ LADDER_RUNGS = (20, 30, 40, 60)   # coarsest -> finest CPU rungs
 FINEST_RUNG = 60                  # comparator falsifier runs here first
 WALL_BUDGET_S = 2.5 * 3600.0
 
-# Gate constants (also enforced by tests/test_gradient_dx_ladder_gates.py)
+# Gate constants (also enforced by tests/unit/autodiff/test_gradient_dx_ladder_gates.py)
 REL_ERR_FLOOR = 0.10              # plan's per-rung rel_err gate
 REL_ERR_MARGIN = 1.5             # regression margin above the measured value
 # NOTE (review): at the measured magnitudes (~1e-5) the 1.5x margin is inert --

@@ -234,7 +234,7 @@ def fidelity_report(sim, print_report: bool = True):
     # apply_pmc_faces zeros H_tan a HALF-CELL INSIDE the declared wall on
     # every PMC face (rfx/boundaries/pmc.py: index 0 on a `_lo` face, index
     # -2 on a `_hi` face -- both 0.5*dx inside the declared mesh line, pinned
-    # by tests/test_boundary_pmc_hi_faces.py -- that placement is solver
+    # by tests/unit/boundaries/test_boundary_pmc_hi_faces.py -- that placement is solver
     # physics, measured, and is NOT touched here). A PMC-mirrored model's
     # H_tan wall therefore sits half a cell inside the mesh line this report
     # would otherwise quote as "realized", so the domain row must read the
@@ -322,7 +322,7 @@ def fidelity_report(sim, print_report: bool = True):
                 detail=(
                     f"{'/'.join(pmc_face_labels)} zero H_tan a half-cell "
                     "INSIDE the declared mesh line (rfx/boundaries/pmc.py, "
-                    "pinned by tests/test_boundary_pmc_hi_faces.py): the "
+                    "pinned by tests/unit/boundaries/test_boundary_pmc_hi_faces.py): the "
                     f"realized H_tan wall on this axis is "
                     f"[{eff_lo * 1e6:.1f}, {eff_hi * 1e6:.1f}] um against "
                     f"the declared mesh line at [0.0, {declared * 1e6:.1f}] "

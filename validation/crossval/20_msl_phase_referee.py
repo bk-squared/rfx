@@ -183,7 +183,7 @@ applicable finding: "at dx=80 um the substrate is only 3.175 cells
 openEMS MSL-port extraction is NON-PHYSICAL (|S11|^2+|S21|^2 up to
 8.9, passivity grossly violated). dx=50 um gives 5.08 substrate cells
 where BOTH solvers are passive, so it is the only valid matched-mesh
-comparison." ``tests/test_msl_port_integration.py``'s own committed
+comparison." ``tests/unit/sparams/test_msl_port_integration.py``'s own committed
 thru-line gate happens to use dx=80um (3.175 substrate cells) for rfx
 alone -- reusing THAT dx here for a cross-solver comparison would
 repeat the exact recorded openEMS failure. This script's Stage B
@@ -688,7 +688,7 @@ external referees).
 STAGE B -- rfx's OWN ``compute_msl_s_matrix`` thru-line fixture, at
 DX=50um (matched-mesh; see DO-NOT-REPEAT above)
 ============================================================================
-Geometry: the SAME substrate/trace/line ``tests/test_msl_port_
+Geometry: the SAME substrate/trace/line ``tests/unit/sparams/test_msl_port_
 integration.py`` validates (RO4350B, W_TRACE=600um, L_LINE=10mm,
 PORT_MARGIN=2mm), rebuilt at dx=50um by ``scripts/diagnostics/
 build_msl_thru_phase_dx50um_reference.py`` and committed as ``tests/
@@ -1094,7 +1094,7 @@ B_PORT_W_CELLS = 6  # thru_openems.py's own PORT_W pattern -- sets the
 B_F0_HZ = 0.5 * B_F_MAX_HZ            # 2.5 GHz -- thru_openems.py midband pattern
 B_FC_HZ = 0.85 * B_F_MAX_HZ           # 4.25 GHz -- thru_openems.py 0.85x pattern
 
-# Self-consistency witness gate band -- matches tests/test_msl_port_
+# Self-consistency witness gate band -- matches tests/unit/sparams/test_msl_port_
 # integration.py's own "quasi-TEM well-established" window (conservative;
 # not re-derived for dx=50um, which should if anything establish earlier).
 B_GATE_F_LO_HZ = 3.0e9

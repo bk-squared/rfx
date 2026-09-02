@@ -88,7 +88,7 @@ from rfx.geometry.csg import Box
 from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n
 
 # ---------------------------------------------------------------------------
-# Geometry -- identical to tests/test_msl_port_integration.py except DX.
+# Geometry -- identical to tests/unit/sparams/test_msl_port_integration.py except DX.
 # ---------------------------------------------------------------------------
 EPS_R = 3.66          # RO4350B
 H_SUB = 254e-6        # substrate thickness, metres

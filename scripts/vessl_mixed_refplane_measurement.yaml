@@ -116,7 +116,7 @@ run: |-
   echo "=== the evaluators and the report-only guards must be green on THIS"
   echo "=== checkout before any physics runs (cheap: pure NumPy) ==="
   set +e
-  python -u -m pytest tests/test_mixed_refplane_measurement.py -m "not slow" -q \
+  python -u -m pytest tests/unit/sparams/test_mixed_refplane_measurement.py -m "not slow" -q \
     > "$OUT_DIR/evaluator_tests.log" 2>&1
   ev_rc=$?
   set -e

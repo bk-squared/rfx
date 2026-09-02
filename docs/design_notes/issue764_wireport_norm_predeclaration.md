@@ -166,10 +166,10 @@ model, never folded into the gates.
 @ b29f9de and this branch (the change adds DFT accumulators and extraction
 only; no field write is touched).
 
-**F11 binding.** `tests/test_nu_wire_port_lane_parity.py` (closed-form +
-parity, excite=False), `tests/test_nu_port_sigma_dual_spacing.py` (ORACLE 1/2,
-excite=False), `tests/test_twoport_wire_port.py` off-diagonal assertions,
-`tests/test_nonuniform_source_port_dual_spacing.py` — green without edits,
+**F11 binding.** `tests/unit/nonuniform/test_nu_wire_port_lane_parity.py` (closed-form +
+parity, excite=False), `tests/unit/nonuniform/test_nu_port_sigma_dual_spacing.py` (ORACLE 1/2,
+excite=False), `tests/unit/sparams/test_twoport_wire_port.py` off-diagonal assertions,
+`tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py` — green without edits,
 except the tests named in the lock-move list below.
 
 ## 3. Locks EXPECTED to move (re-pin only with written physical provenance)
@@ -177,15 +177,15 @@ except the tests named in the lock-move list below.
 Pins on the known-wrong driven normalization (single-cell V against whole-port
 Z0) or on the dead-mid/all-extent midpoint pick:
 
-- `tests/test_twoport_wire_port.py` — 28.511 envelope and the
+- `tests/unit/sparams/test_twoport_wire_port.py` — 28.511 envelope and the
   +0.35426 / +0.26780 docstring witnesses (driven column; diagonal moves).
-- `tests/test_nu_wire_port_lane_parity.py::test_excited_port_lane_ordering_disagreement_is_open_683`
+- `tests/unit/nonuniform/test_nu_wire_port_lane_parity.py::test_excited_port_lane_ordering_disagreement_is_open_683`
   — xfail(strict) on the OLD lane disagreement; the NU driven diagonal moves,
   so the measured residuals in its docstring are re-measured. It must remain a
   failing (xfail) marker while the uniform lane awaits the #683 flip.
 - Uniform-lane driven-diagonal value pins discovered by the suite run
   (forward/run fast-path S11 values), including the dump-parity schema lock in
-  `tests/test_sparam_driver_dump_parity.py` (the replay bundle grows the
+  `tests/unit/sparams/test_sparam_driver_dump_parity.py` (the replay bundle grows the
   whole-port gap-voltage channel the physical diagonal needs).
 - Any dead-mid-cell quenched-current pins surfaced by the suite run (open
   question 2) — each re-pin carries its own provenance note.

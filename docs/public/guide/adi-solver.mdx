@@ -59,9 +59,9 @@ wavelength, reads a cavity TE101 at **−0.54% (factor 2)** and **−2.6% (facto
 
 - **3D accuracy is validated against an analytic oracle.** A lossless 3D PEC
   cavity eigenfrequency matches the closed-form mode within the 2% gate at
-  `adi_cfl_factor = 2` (`tests/test_review_tier1_validation_battery.py`,
+  `adi_cfl_factor = 2` (`tests/unit/misc/test_review_tier1_validation_battery.py`,
   measured 1.2%). The 2D TMz path (`mode="2d_tmz"`) holds a 2% resonance gate at
-  5× CFL (`tests/test_adi.py::test_adi_cavity_resonance`) and is unconditionally
+  5× CFL (`tests/unit/runners/test_adi.py::test_adi_cavity_resonance`) and is unconditionally
   stable well beyond it.
 - **The stiff-mesh throughput advantage is not yet demonstrated.** The larger
   timestep is a real property of an unconditionally stable scheme, but a

@@ -21,7 +21,7 @@ SLOW (canonical 16 mm thru, 4000 steps, production driver): the plane-path
 measurement lane with gates anchored to the Phase-0 closed-box flux
 referee. LOUD RE-BASELINE (issue #313 falsifier item 8): the committed
 legacy battery |S21| regression-lock band [0.35, 0.85]
-(tests/test_lumped_twoport_vi_validation_battery.py) is EXPECTED to fail
+(tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py) is EXPECTED to fail
 on the plane path — the shipped drive-side deflation kappa(f)=1.49-1.86
 disappears and |S21| moves to the flux-implied ~0.96-1.0.  That legacy
 band stays committed and green for the DEFAULT path; this module carries

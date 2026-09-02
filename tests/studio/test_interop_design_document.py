@@ -1701,7 +1701,7 @@ def test_auto_msl_offset_is_frozen_resolved_in_the_document():
 
     Geometry = the #469 Sheen-parameter case: stored lower edge 20 cells,
     compliant interval [20, 33] -> resolved midpoint 26 (hand arithmetic in
-    tests/test_msl_probe_offset_interval.py)."""
+    tests/unit/sparams/test_msl_probe_offset_interval.py)."""
     sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=2e-4,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
@@ -1734,7 +1734,7 @@ def test_auto_msl_spacing_is_frozen_resolved_in_the_document():
     """Issue #681 sibling of the #469 contract above: the document records
     an AUTO port's RESOLVED (span-widened) n_probe_spacing, not the
     conservative registration default. Geometry = the open-thru case of
-    tests/test_msl_probe_offset_interval.py: registration default 2 cells,
+    tests/unit/sparams/test_msl_probe_offset_interval.py: registration default 2 cells,
     driver-time span solve widens to 12 (hand arithmetic there)."""
     sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=2e-4,
                      boundary="cpml", cpml_layers=8)

@@ -190,7 +190,7 @@ def _extend_batched_cpml_pad(
     premise fails. The caller therefore now assembles with
     ``include_cpml_pad_extension=False``. Verified by the byte-identity
     matrix in
-    ``tests/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
+    ``tests/unit/runners/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
 
     A no-op on any face with zero pad depth (non-CPML boundary, or a
     reflector/periodic face with ``pad=0`` on that side), so this is safe
@@ -288,7 +288,7 @@ def _build_batched_materials(
     there too and the global sweep overwrites those pad cells along with
     the interior ones (issue #637 scope note — verified by
     ``test_global_sweep_pad_cells_still_correct`` in
-    ``tests/test_vmap_sweep_dft_planes.py``).
+    ``tests/unit/runners/test_vmap_sweep_dft_planes.py``).
 
     For a material-specific sweep (e.g. ``"substrate.eps_r"``), the parameter
     is applied only to cells occupied by that named material — geometry

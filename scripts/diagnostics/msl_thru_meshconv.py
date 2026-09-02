@@ -1,6 +1,6 @@
 """MSL thru-line mesh-convergence + energy-balance diagnostic.
 
-Re-uses the geometry of ``tests/test_msl_port_integration.py`` and runs
+Re-uses the geometry of ``tests/unit/sparams/test_msl_port_integration.py`` and runs
 the integration over a DX ladder.  For each DX it records:
 
     DX | mean |S11| | mean |S21| | mean Re(Z0) | residual = 1 - |S11|^2 - |S21|^2

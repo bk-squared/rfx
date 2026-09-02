@@ -2,7 +2,7 @@
 build give a single clean fundamental at the cv05 FR4 operating point (vs the
 mode-split the FIRED STOP-1 graded 6-cell re-registration produced)?
 
-The grid-build lock (tests/test_patch_uniform_fine_substrate.py) proved the
+The grid-build lock (tests/unit/nonuniform/test_patch_uniform_fine_substrate.py) proved the
 geometry rasterizes to 6 fine cells with the grading transition held clear. This
 runs the ACTUAL FDTD harminv at the cv05 FR4 point (eps_r=4.3, 38x29.5mm patch,
 60x55mm GP, 1.5mm/6-cell substrate) at two buffer widths (N_BUF=8, 16); the

@@ -134,7 +134,7 @@ comparison against a projection artifact.
 
 ### 3.1 Verbatim from the committed #488 fixture
 
-Taken **unchanged** from `tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`
+Taken **unchanged** from `tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`
 (the same constructor calls the committed step-1 script already reused):
 
 | Quantity | Value |
@@ -275,7 +275,7 @@ named in the text.
 | **T1** | The mixed-lane refplane path rejects a plane that lands **outside the declared domain**, or **within `cpml_layers` cells of a declared-domain face on the line axis** (a distinct message class from "reach past another port"). | On `main`, the `"+x"` fixture builds slot 0 at 1.20 mm and slot 1 at 0.40 mm **silently** (verified, §11.1) — the test asserting a raise is red first. |
 | **T2** | The crossing guard walks MSL probe ladders: `n_probes=5` raises (2N plane 3.60 mm vs last probe 3.44 mm) and `n_probes=3` is silent. Bookkeeping only, `num_periods=4`. | On `main` the `n_probes=5` registration is accepted silently (the guard sees only port positions). |
 | **T3** | Pure-NumPy normalization identity: for a synthetic single-travelling-wave line, `\|b_msl\| == \|out\|/sqrt(Re Zc)` exactly (and the reviewer's `\|out\|²/(4·Re Zc)` form is off by 4 in power). | Written against the wrong (÷4) form first, so the fixed form is what turns it green — the evidence for §1.2(c). |
-| **T4** | Registering the extra `-x` flux monitor does not perturb the lane's S (`num_periods=4`, two runs, `S_raw` compared). Same class as `tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s`. | n/a (positive control; it must pass, and it must be *shown* to pass before the 60-period run). |
+| **T4** | Registering the extra `-x` flux monitor does not perturb the lane's S (`num_periods=4`, two runs, `S_raw` compared). Same class as `tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s`. | n/a (positive control; it must pass, and it must be *shown* to pass before the 60-period run). |
 
 T1 and T2 are guard additions (loud rejections). They add no gate, no tolerance,
 no reference and no support-matrix change; the matrix's "rejected loudly" text
@@ -703,7 +703,7 @@ example of the same evidence.
 ### 9.1 Wall clock
 
 - **Measured (this pod, CPU):** the two-drive `num_periods=4` plumbing smoke —
-  `tests/test_mixed_port_sparam.py::test_mixed_probe_fed_msl_plumbing_smoke` —
+  `tests/unit/sparams/test_mixed_port_sparam.py::test_mixed_probe_fed_msl_plumbing_smoke` —
   ran in **211.89 s** (compile-dominated).
 - **NOT measured:** the `num_periods=60` two-drive run. Estimate **15–30 min**
   on this shared CPU pod (≈15× the steps, compile amortized). The reference-plane

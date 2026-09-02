@@ -59,7 +59,7 @@ _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
 # `**_removed_kwargs` and calls this helper so a removed kwarg gets a
 # `TypeError` naming the actual reason and the one-line migration path
 # instead. Deliberately still a `TypeError` (not some other exception
-# type) -- `tests/test_design_mask_removed.py` pins "the kwarg is
+# type) -- `tests/unit/autodiff/test_design_mask_removed.py` pins "the kwarg is
 # rejected" via `pytest.raises(TypeError, match="design_mask")`, and this
 # only changes the MESSAGE, not the exception class or that contract.
 # ---------------------------------------------------------------------------
@@ -2854,7 +2854,7 @@ class _ExecuteMixin:
             smoothly from a ~1.5% noise floor up to 58% at the
             loss-window boundary itself, and EXACTLY zero (gradient fully
             vanished) once ``n_warmup`` extends far enough into the loss
-            window (``tests/test_n_warmup.py::
+            window (``tests/unit/autodiff/test_n_warmup.py::
             test_warmup_truncation_error_grows_with_k``); a
             FAR-FROM-SOURCE placement (design cell 62 cells from the
             source, ``K_safe=108`` measured from the grid's own ``dt``)
@@ -3289,7 +3289,7 @@ class _ExecuteMixin:
             the SAME compiled scan with ``carry`` threaded through — a
             continuation, not a re-solve, and bit-exact against
             ``report_every=None`` (locked by
-            ``tests/test_run_progress_reporting.py``).
+            ``tests/unit/runners/test_run_progress_reporting.py``).
 
             Each report costs one device synchronisation plus one print.
             On a 118k-cell CPU fixture that cost was **not resolvable above

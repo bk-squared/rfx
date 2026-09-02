@@ -84,8 +84,8 @@ define an S-parameter port.
 - Analytic extractor and V/I replay checks validate algebra and reproducibility;
   they do not establish a generally calibrated lumped-port result.
 
-Relevant implementations and tests include `tests/test_sparam.py`,
-`tests/test_port_dump_replay.py`,
+Relevant implementations and tests include `tests/unit/sparams/test_sparam.py`,
+`tests/unit/sparams/test_port_dump_replay.py`,
 `scripts/diagnostics/report_lumped_analytic_oracles.py`, and
 `scripts/diagnostics/build_lumped_openems_sweep_comparison.py`.
 
@@ -126,7 +126,7 @@ intended model is a distributed microstrip line.
 - `forward(port_s11_freqs=...)` is uniform and single-device only.
 
 Relevant checks include `validation/crossval/05_patch_antenna.py`,
-`tests/test_twoport_wire_port.py`, `tests/test_wire_port_sparams_forward.py`, and
+`tests/unit/sparams/test_twoport_wire_port.py`, `tests/unit/sparams/test_wire_port_sparams_forward.py`, and
 `scripts/diagnostics/report_wire_replay_sweep.py`.
 
 ## Microstrip-line port
@@ -178,7 +178,7 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 - The `eps_override` gradient is checked against an f64 AD-vs-FD referee on
   band-mean `\|S21\|^2` (issue #530; this REPLACES the prior `sum_ij\|S_ij\|^2`
   objective, which was 99.96% a passivity-pinned structural constant — see
-  `tests/test_msl_ad_fd_converged.py`'s docstring for the full replacement
+  `tests/unit/autodiff/test_msl_ad_fd_converged.py`'s docstring for the full replacement
   rationale). Tracked run log:
   `scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md`
   (both VESSL runs' full measurement tables plus the actual pytest gate's
@@ -209,7 +209,7 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   CONTAINED — by the f64 comparator's 2.9e6x resolving-power headroom above
   `_MIN_FD_ULP_SPAN` and by the resolving-power floor assert (issue #527's
   fix, unchanged by the objective swap) reporting a comparator failure loudly
-  instead of silently — not eliminated (see `tests/test_msl_ad_fd_converged.py`
+  instead of silently — not eliminated (see `tests/unit/autodiff/test_msl_ad_fd_converged.py`
   for the ULP-resolving-power derivation and `tests/_msl_ad_objective.py` for
   the full statement, including what mechanism drives the gradient — a
   reference-plane artifact against the wave split's frozen Hammerstad-Jensen
@@ -243,7 +243,7 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   shares this same objective function (`tests/_msl_ad_objective.py`) so the
   two tests cannot drift apart. The launch fixture derives from registered
   materials on both the FD and AD sides; staticness is regression-locked by
-  `tests/test_msl_source_fixture_static.py` (pre-fix `0.126` vs gate `0.03`
+  `tests/unit/ports/test_msl_source_fixture_static.py` (pre-fix `0.126` vs gate `0.03`
   at `num_periods=1`).
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes
@@ -458,7 +458,7 @@ evidence for that configuration, not for other profiles, bands, phase,
 multimode extraction, or arbitrary junctions. The calculation remains
 experimental outside those stated results. `eps_override` and `sigma_override`
 differentiation is implemented only with `normalize="flux"`.
-`tests/test_waveguide_nu_flux_ad.py` finite-difference-checks `eps_override`;
+`tests/unit/autodiff/test_waveguide_nu_flux_ad.py` finite-difference-checks `eps_override`;
 there is no corresponding nonuniform `sigma_override` AD-vs-FD test. Neither
 implementation nor gradient regression is RF validation.
 Dispatch history (#811, fixed 2026-09-01): until that fix
@@ -640,7 +640,7 @@ do not fit; it does not silently use fewer planes.
   channel; the cited AD-versus-finite-difference discrepancy is `2.6%`.
 
 See `tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`, and
-`tests/test_coax_end_to_end_ad.py`.
+`tests/unit/autodiff/test_coax_end_to_end_ad.py`.
 
 This API is not a general multi-port coaxial-network solver and does not cover
 arbitrary launches, mixed port families, nonuniform meshes, TFSF, Floquet, or
@@ -676,10 +676,10 @@ nor does this evidence generalize beyond this single coax geometry family.
 The measured single-run envelope (60 mm /
 40 GHz fixture, 4-12 GHz): `|S21|`,`|S12|` 0.74-0.96, `|S11|`,`|S22|`
 `<= 0.051` (measured max `0.0502` at 12 GHz,
-`tests/test_coax_two_port_fdtd.py:699`; the committed gate itself is the
+`tests/unit/sparams/test_coax_two_port_fdtd.py:699`; the committed gate itself is the
 wider inherited 1-port envelope `<= 0.08`), reciprocity within `0.3%`
 magnitude / `0.21` degree phase, `cond(A) <= 1.11`. See
-`tests/test_coax_two_port_fdtd.py` for the full measured envelope and its
+`tests/unit/sparams/test_coax_two_port_fdtd.py` for the full measured envelope and its
 provenance.
 
 Coax<->planar transitions are a SEPARATE lane, `compute_coax_msl_transition(...)`
@@ -694,7 +694,7 @@ scoped `enable_x64()` around the forward call makes the DFT-accumulator-and-
 downstream math run at float64 (`rfx/probes/probes.py` keys the accumulator
 dtype off `jax.config.x64_enabled`, independent of the `precision="float32"`
 pin). Measured rel_err 0.51% at `h=2e-3` against a 2% gate; owner-platform
-(GPU) re-measurement pending. See `tests/test_coax_two_port_ad.py` and
+(GPU) re-measurement pending. See `tests/unit/autodiff/test_coax_two_port_ad.py` and
 `scripts/coax_two_port_ad_fd_f64_referee.py`.
 
 Numerical line attenuation at the validated 3.79-cell annulus gives `|S21|`
@@ -847,7 +847,7 @@ mismatch" failure mode anticipated for this leg: solving directly on raw
 each off-diagonal entry by `sqrt(Z0_i/Z0_j)`, invisible on a coax-coax
 through line (equal Z0 cancels) but not invisible here. This normalization is
 independently unit-tested against a PLANTED, analytically known S-matrix
-under UNEQUAL port impedances (`tests/test_coax_msl_transition.py`), including
+under UNEQUAL port impedances (`tests/unit/sparams/test_coax_msl_transition.py`), including
 a dedicated regression test that reproduces the exact defect the fix
 prevents.
 
@@ -903,7 +903,7 @@ on the MSL array does not track the analytic Hammerstad-Jensen beta
 the true beta is not), and the MSL's own-drive fit gives 4.5/36.2/2881.3
 rad/m with an implied decay length near one grid cell (not a real
 propagating/decaying wave). Both discriminants are locked as test
-assertions, not just prose (`tests/test_coax_msl_transition.py`). Whether
+assertions, not just prose (`tests/unit/sparams/test_coax_msl_transition.py`). Whether
 the junction's own physical reflection also contributes is genuinely
 UNRESOLVED by this one fixture — `sim.preflight()` on the same fixture
 independently names a THIRD, also-unruled-out candidate mechanism (the MSL
@@ -1024,7 +1024,7 @@ unmodified), driven at `n_steps=135000` on VESSL `369367252283` (git SHA
 `settling_db` `-45.94` / `-44.17` dB. Tracked run log and result JSON:
 `scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_run.log`
 / `..._result.json`. Fill-contract record:
-`tests/test_coax_msl_transition.py::SETTLED_RUN_RECORD` (`status: "RUN"`).
+`tests/unit/sparams/test_coax_msl_transition.py::SETTLED_RUN_RECORD` (`status: "RUN"`).
 
 | discriminant | attempt 2, 20000 steps | attempt 2, 45000 steps | settled, 135000 steps | verdict |
 |---|---|---|---|---|

@@ -172,7 +172,7 @@ column power at every frequency so that quote is explicit, not implied.
 
 ======================================================================
 Fixture (pre-declared, the #488 lane's own committed lumped/wire<->MSL
-fixture, `tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`,
+fixture, `tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`,
 reused verbatim — imitating the lane's own test invocation) — UNCHANGED
 from v1, same run parameters (num_periods=60, freqs 1-4 GHz x5).
 ======================================================================
@@ -385,7 +385,7 @@ REPO = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO / "scripts" / "diagnostics" / "i517_mixed_solve_vs_ratio"
 
 # ---------------------------------------------------------------------------
-# Fixture — verbatim from tests/test_mixed_port_sparam.py (_base_sim,
+# Fixture — verbatim from tests/unit/sparams/test_mixed_port_sparam.py (_base_sim,
 # _add_feed, _add_msl), the #488 lane's own committed lumped/wire<->MSL
 # fixture. Not re-derived; imitates the lane's own test invocation.
 # ---------------------------------------------------------------------------

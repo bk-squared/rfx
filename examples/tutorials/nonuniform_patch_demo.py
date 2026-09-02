@@ -13,7 +13,7 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      where the built ``dz_profile`` actually put the fine cells, keep a
      uniform-fine BUFFER so the grading transition sits clear of the
      resonator, and assert the realized cell count.  The committed lock for
-     this pattern is ``tests/test_patch_uniform_fine_substrate.py``.
+     this pattern is ``tests/unit/nonuniform/test_patch_uniform_fine_substrate.py``.
 
   Rule 2 — NU TRADES ACCURACY FOR CELLS.  At matched dx a graded mesh is NOT
      more accurate than uniform — use it to make big problems tractable, not
@@ -161,7 +161,7 @@ assert not naive_ok, "expected the naive placement to misregister (the lesson)"
 
 # =============================================================================
 # PART 2 — THE FIX: buffered fine band + z DERIVED from the built profile.
-# (Same pattern as tests/test_patch_uniform_fine_substrate.py::
+# (Same pattern as tests/unit/nonuniform/test_patch_uniform_fine_substrate.py::
 #  build_uniform_fine_z and scripts/diagnostics/patch_tutorial_rfx.py.)
 # =============================================================================
 print("\n[2] THE FIX — buffered fine band, z derived from the built mesh:")

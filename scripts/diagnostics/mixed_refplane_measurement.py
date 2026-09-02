@@ -11,7 +11,7 @@ falsifier, budget and outcome below is quoted from it, not invented here.
 WHAT IT DOES
 ======================================================================
 One two-drive FDTD run on the committed #488 mixed lumped/wire<->MSL fixture
-(``tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl``, verbatim)
+(``tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl``, verbatim)
 with exactly TWO declared deviations:
 
   1. ``add_port(..., direction="-x", reference_plane_cells=10)`` on the lw
@@ -79,7 +79,7 @@ convention with NO 1/2 — the same convention ``flux_spectrum`` returns
     R3 = |b_msl| / ( |out| / sqrt(Re Zc) )        <=>   |b_msl|^2  vs  |out|^2 / Re(Zc)
 
 NOT ``|out|^2/(4 Re Zc)``, which under-reads by exactly 4 in power. Pinned by
-``tests/test_mixed_refplane_measurement.py`` (pure NumPy, written against the
+``tests/unit/sparams/test_mixed_refplane_measurement.py`` (pure NumPy, written against the
 wrong form first).
 
 ======================================================================
@@ -183,7 +183,7 @@ OUT_DIR = REPO / "scripts" / "diagnostics" / "mixed_refplane_measurement"
 ARTIFACT_NAME = "mixed_refplane_measurement.json"
 
 # ---------------------------------------------------------------------------
-# Fixture — verbatim from tests/test_mixed_port_sparam.py (_base_sim,
+# Fixture — verbatim from tests/unit/sparams/test_mixed_port_sparam.py (_base_sim,
 # _add_feed, _add_msl), plus the two declared deviations.
 # ---------------------------------------------------------------------------
 _EPS_R = 3.66

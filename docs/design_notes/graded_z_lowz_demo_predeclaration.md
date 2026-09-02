@@ -20,7 +20,7 @@ accuracy envelope?
 ## Fixture (all absolute physical coordinates)
 
 Identical physical geometry in both arms; the committed thru-line fixture
-class (`tests/test_msl_port_integration.py::test_msl_thru_line_passive_gate`,
+class (`tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_passive_gate`,
 `scripts/diagnostics/msl_thru_mesh_convergence.py`), re-dimensioned to the
 escape-hatch line:
 
@@ -149,7 +149,7 @@ Computed from the production profile for this fixture (no FDTD involved):
 - Graded profile: nz_B = 24 cells, sum = 2.380 mm (the machinery INFLATES
   the nominal 1.754 mm column: `smooth_grading` inserts transition cells
   without preserving total length — the documented issue-#48 behavior,
-  pinned by `tests/test_smooth_grading_preserve.py`, and
+  pinned by `tests/unit/nonuniform/test_smooth_grading_preserve.py`, and
   `_make_dz_profile` does not pass `preserve_regions`).
 - dz_min = 21.17 µm (the thirds-rule 1/3-cell) → dt_B = 6.905e-14 s vs
   dt_A = 1.897e-13 s: the graded arm needs 2.75× more steps.

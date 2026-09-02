@@ -389,7 +389,7 @@ def topology_optimize(
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
     # the surface-impedance sheet is unsupported on this lane whether or not
     # optax happens to be installed, and hoisting it is what lets
-    # tests/test_sheet_lane_fences.py pin THIS call site in an environment
+    # tests/unit/materials/test_sheet_lane_fences.py pin THIS call site in an environment
     # without the [optimization] extra (a fence pinned only where an optional
     # package exists is a fence nothing checks in the default CI image).
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0

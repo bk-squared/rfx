@@ -289,7 +289,7 @@ CANNOT_COMPARE: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 RFX_REALIZED_RECORD: dict = {
     "fixture": (
-        "tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl "
+        "tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl "
         "(the committed #488 fixture), read-only -- this script does not "
         "touch it."
     ),

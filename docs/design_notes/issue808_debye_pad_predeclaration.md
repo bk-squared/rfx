@@ -6,7 +6,7 @@ of the fix runs, per the one-attempt discipline.
 
 ## What is established (inputs to this note, not re-run here)
 
-- `tests/test_differentiable_material_fit.py::test_recover_debye_reference_mode_public_entry`
+- `tests/unit/autodiff/test_differentiable_material_fit.py::test_recover_debye_reference_mode_public_entry`
   fails on main: de recovered 3.969 (CPU) vs true 3.0, 32.3% against the 20%
   gate pinned 2026-08-07 at de 3.330 (11.0%) / tau 5.29e-11 (5.8%),
   loss 1.44e-4 -> 8.40e-6. Bisect first-bad: fce10916 (PR #638).
@@ -69,7 +69,7 @@ sweep (`rfx/vmap_sweep.py`, closure constant under `jax.vmap`). Default
 
 ### The guard (class guard, not fixture guard)
 
-1. Contract tests in `tests/test_cpml_pad_material_extension.py` (uniform +
+1. Contract tests in `tests/unit/boundaries/test_cpml_pad_material_extension.py` (uniform +
    NU): for the existing dispersive face-touching fixture, the hi-face pad
    must stay background (eps 1.0) and the dropped boundary node must stay
    unrepaired, while the same fixture with the pole removed keeps the full
@@ -131,16 +131,16 @@ green. If either goes red, that is a STOP, not a gate edit.
 
 ## Planned verification runs
 
-1. F1: `pytest tests/test_differentiable_material_fit.py::test_recover_debye_reference_mode_public_entry -m gpu -s`
+1. F1: `pytest tests/unit/autodiff/test_differentiable_material_fit.py::test_recover_debye_reference_mode_public_entry -m gpu -s`
    (CPU, editable-install finder stripped in-process, `rfx.__file__` printed).
 2. F2: v173a harness (~1 min).
-3. F3: `tests/test_cpml_pad_material_extension.py` (fast lane + the slow 20k
-   repro explicitly), `tests/test_cpml_pad_face_notch.py`,
-   `tests/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity`,
-   `tests/test_nonuniform_uniform_end_to_end_reduction.py`,
-   `tests/test_preflight_dispersive_pole_at_absorber.py`,
-   `tests/test_preflight_advisory_emission_contract.py`, full
-   `tests/test_differentiable_material_fit.py -m gpu`, ruff (repo profile).
+3. F3: `tests/unit/boundaries/test_cpml_pad_material_extension.py` (fast lane + the slow 20k
+   repro explicitly), `tests/unit/boundaries/test_cpml_pad_face_notch.py`,
+   `tests/unit/runners/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity`,
+   `tests/unit/nonuniform/test_nonuniform_uniform_end_to_end_reduction.py`,
+   `tests/unit/preflight/test_preflight_dispersive_pole_at_absorber.py`,
+   `tests/unit/preflight/test_preflight_advisory_emission_contract.py`, full
+   `tests/unit/autodiff/test_differentiable_material_fit.py -m gpu`, ruff (repo profile).
 4. F4: revert probe + advisory quote.
 
 Declared gap: GPU acceptance (the pinned VESSL GPU suite — #808's failing

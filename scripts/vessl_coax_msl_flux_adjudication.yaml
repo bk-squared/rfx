@@ -26,7 +26,7 @@ run: |-
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
   echo "=== bit-identity witness must be green on THIS checkout before the physics runs ==="
-  python -m pytest tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s -m slow_physics -x -q
+  python -m pytest tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s -m slow_physics -x -q
   out=".omx/coax-msl-flux-adjudication/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
   mkdir -p "$out"
   set +e

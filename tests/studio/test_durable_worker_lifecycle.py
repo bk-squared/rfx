@@ -273,7 +273,7 @@ def test_run_timed_out_and_run_cancelled_are_baseexception_not_swallowed(tmp_pat
     unavailable" advisory instead of letting it propagate, so the worker
     kept simulating for its full step count instead of dying (see
     ``test_worker_timeout_is_durable_failed_outcome`` above, and
-    ``tests/test_mixed_port_sparam.py::
+    ``tests/unit/sparams/test_mixed_port_sparam.py::
     test_wire_port_advisory_does_not_swallow_a_timeout_signal`` for the
     narrow-tuple advisory fix that landed first). Making both exceptions
     derive from ``BaseException`` instead closes the whole class: no

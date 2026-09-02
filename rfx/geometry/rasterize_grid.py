@@ -417,7 +417,7 @@ def sheet_normal_live_axis_masks(
     separate on a sheet three orders of magnitude more resistive
     (sigma_sheet 1e3 S/m: A 1.15e-03 vs 1.35e-01), which is not a metal.
     Pinned by
-    ``tests/test_sheet_node_permittivity.py::test_f0_sheet_coefficients_are_in_the_resistive_limit``.
+    ``tests/unit/materials/test_sheet_node_permittivity.py::test_f0_sheet_coefficients_are_in_the_resistive_limit``.
 
     Parameters
     ----------
@@ -458,7 +458,7 @@ def sheet_normal_live_axis_masks(
     # split into a per-body guard plus an overlap guard: each covered the
     # other's cases, so neither could be falsified alone (measured -- mutating
     # either one left all 18 tests of
-    # tests/test_sheet_node_permittivity.py green).
+    # tests/unit/materials/test_sheet_node_permittivity.py green).
     claimed = sum(m.astype(jnp.int32) for m in masks)
     unique = claimed == 1
     return tuple(m & unique for m in masks)
@@ -500,7 +500,7 @@ def _subcell_box_axis_window(entry_shape, axis, node_coords, half_steps_axis):
     combination (sub-cell dielectric Box + node-thin conductor + traced mesh)
     the traced primal is a different model from the eager one: measured on
     the fixture of
-    ``tests/test_sheet_node_permittivity.py::test_subcell_dielectric_fill_does_not_follow_the_shifted_sample``,
+    ``tests/unit/materials/test_sheet_node_permittivity.py::test_subcell_dielectric_fill_does_not_follow_the_shifted_sample``,
     eager ``eps_r`` 3.38 against traced 3.52. A gradient taken there is a
     gradient of that other model, and nothing reports it at run time. Narrow
     — it needs all three conditions at once — but silent, so it is written
@@ -636,7 +636,7 @@ def resample_sheet_node_materials(
       Moving a resonant pole mask onto a new cell is the change #627b
       measured turning a stable run divergent, so it is a separate decision
       with its own stability argument, not a side effect of this one.
-      Pinned by ``tests/test_sheet_node_permittivity.py``.
+      Pinned by ``tests/unit/materials/test_sheet_node_permittivity.py``.
 
     Parameters
     ----------
@@ -796,7 +796,7 @@ def extend_cpml_pad_materials(
     argument for the resonant-pole-in-a-CPML-pad regime — see the
     follow-up issue (filed separately from #627, tracking this factorial)
     and the physics-level regression lock in
-    ``tests/test_cpml_pad_material_extension.py``, which reds if pole
+    ``tests/unit/boundaries/test_cpml_pad_material_extension.py``, which reds if pole
     extension is naively reintroduced.
 
     **Pole-carrying columns get NO hi-face fallback promotion (#808).**

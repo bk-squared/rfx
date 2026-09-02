@@ -2,7 +2,7 @@
 
 NOT a cross-validation against an external solver. This is a rfx
 self-test that exercises the inverse-design pipeline end-to-end on
-the PASSING pattern from ``tests/test_optimize_convergence.py``:
+the PASSING pattern from ``tests/unit/autodiff/test_optimize_convergence.py``:
 optimize a dielectric slab's permittivity to maximize transmission
 through an air–slab–air sandwich in a PEC cavity.
 

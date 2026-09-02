@@ -818,7 +818,7 @@ def run_uniform(
         # the complete 1-port S-matrix (diagonal IS the full matrix), and this
         # path is BETTER-CONDITIONED than the per-drive driver on lossless PEC
         # cavities — it stays passive and byte-close to forward() in-band (the
-        # keystone contract in tests/test_run_forward_s11_contract.py). It is
+        # keystone contract in tests/unit/sparams/test_run_forward_s11_contract.py). It is
         # kept ONLY for the single-port case; MULTI-port wire routes through the
         # driver below because this diagonal-only fill silently drops the
         # off-diagonal S[i,j] (a 2-port wire S21 came out identically 0).
@@ -885,7 +885,7 @@ def run_uniform(
         # latent off-diagonal drop of the single-port fast-path above (its
         # diagonal-only fill returned S21 = 0; the driver's
         # decompose_wire_s_matrix fills the full N-port matrix, byte-close to
-        # the eager extractor on CPML — tests/test_sparam_driver_matches_eager).
+        # the eager extractor on CPML — tests/unit/sparams/test_sparam_driver_matches_eager).
         # (The well-conditioned single-port wire case stays on the fast-path so
         # the run()↔forward() PEC contract is preserved.)
         from rfx.probes.sparam_driver import (

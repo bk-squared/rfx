@@ -16,7 +16,7 @@ the two lines directly under "concrete path: NumPy (float64), byte-
 identical to the pre-AD code" in ``coaxial_line_plane_voltage``'s body),
 which raises ``jax.errors.TracerArrayConversionError`` under
 ``jax.grad`` — empirically confirmed and pinned by
-``tests/test_coax_two_port_ad.py::
+``tests/unit/autodiff/test_coax_two_port_ad.py::
 test_coaxial_line_plane_voltage_severs_the_jax_tape``. See that test file
 for the full blocker writeup and issue #489's comment thread for the filed
 finding.

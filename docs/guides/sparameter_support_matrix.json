@@ -37,10 +37,10 @@
         "missing broad mesh, frequency, and geometry validation range"
       ],
       "evidence_artifacts": [
-        "tests/test_sparam.py",
+        "tests/unit/sparams/test_sparam.py",
         "tests/oracle/test_physics.py::test_two_port_reciprocity",
-        "tests/test_simulation.py::test_s_matrix_two_port_reciprocity",
-        "tests/test_port_dump_replay.py",
+        "tests/unit/runners/test_simulation.py::test_s_matrix_two_port_reciprocity",
+        "tests/unit/sparams/test_port_dump_replay.py",
         "scripts/diagnostics/generate_lumped_port_vi_dump.py",
         "scripts/diagnostics/replay_port_vi_dump.py",
         "scripts/diagnostics/report_lumped_analytic_oracles.py",
@@ -61,7 +61,7 @@
         "one-cell feed results must not be generalized to a transmission-line mode"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_s11_at_freq.py and tests/test_minimize_s11_at_freq_physical.py"
+      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/unit/autodiff/test_s11_at_freq.py and tests/unit/autodiff/test_minimize_s11_at_freq_physical.py"
     },
     {
       "primitive": "add_port(extent=...)",
@@ -94,10 +94,10 @@
       ],
       "evidence_artifacts": [
         "validation/crossval/05_patch_antenna.py",
-        "tests/test_twoport_wire_port.py",
-        "tests/test_wire_sparam.py",
-        "tests/test_wire_port_sparams_forward.py",
-        "tests/test_port_dump_replay.py",
+        "tests/unit/sparams/test_twoport_wire_port.py",
+        "tests/unit/sparams/test_wire_sparam.py",
+        "tests/unit/sparams/test_wire_port_sparams_forward.py",
+        "tests/unit/sparams/test_port_dump_replay.py",
         "scripts/diagnostics/generate_wire_port_vi_dump.py",
         "scripts/diagnostics/replay_wire_port_vi_dump.py",
         "scripts/diagnostics/report_wire_replay_sweep.py"
@@ -115,7 +115,7 @@
         "the off-diagonal replay follows the current per-cell impedance convention and is not modal-port calibration"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/test_wire_port_sparams_forward.py"
+      "ad_evidence": "jax.grad through forward(port_s11_freqs=...): tests/unit/sparams/test_wire_port_sparams_forward.py"
     },
     {
       "primitive": "add_msl_port(...)",
@@ -149,12 +149,12 @@
         "missing broader mesh, frequency, and substrate-cell validation outside the cited configurations"
       ],
       "evidence_artifacts": [
-        "tests/test_msl_port_integration.py",
-        "tests/test_msl_null_reliability_mask.py",
+        "tests/unit/sparams/test_msl_port_integration.py",
+        "tests/unit/sparams/test_msl_null_reliability_mask.py",
         "tests/fixtures/msl_replay_accumulators.npz",
         "tests/fixtures/msl_notch_e4/comparison_summary.json",
         "validation/crossval/06b_msl_notch_filter_uniform.py",
-        "tests/test_msl_source_fixture_static.py"
+        "tests/unit/ports/test_msl_source_fixture_static.py"
       ],
       "numeric_metrics": [
         "uniform thru-line: |S21| in (0.90, 1.05) and Re(Z0) in (40, 65) ohm for the cited dx=80 um setup",
@@ -171,7 +171,7 @@
         "scripts/diagnostics/replay_msl_3probe_dump.py is SUPERSEDED: retired raw_v123/single-ratio schema v1, does not run against schema_version>=3 dumps (raises a clear error rather than a bare KeyError); current independent check is scripts/diagnostics/msl_vi_flux_oracle.py"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "f64 AD-vs-FD referee (scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py, gpu-rtx4090, VESSL 369367251813/369367251827; tracked run log with both runs' full measurement tables and the actual pytest gate's PASS output -- the raw logs live only under the primary checkout's gitignored .omx/ -- is scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md): rel_err 0.0026 at num_periods=20 through the full extraction, on the gate's own fixture at its own h=1e-3, differentiating band-mean |S21|^2 (tests/_msl_ad_objective.py, shared with the #515 AD smoke) rather than the prior sum_ij|S_ij|^2 objective (issue #530 -- that objective was 99.96% a passivity-pinned structural constant, which is why it went blind after PR #516). A 5-point h-sweep over h in [3e-4, 1e-2] reads rel_err 0.0002-0.0146 with a 1.583% FD spread; the gate threshold 0.03 is derived from the sweep's worst point via tests._gate_policy.gate_from_envelope. A planted issue-#483-class defect (eps_override frozen before tracing, so the traced parameter never reaches the AD tape) reads rel_err 1.0000 on the same fixture -- the gate reds at 33x the threshold, the resolving-power falsifier issue #529 established as discipline. This supersedes the pre-#530 objective's rel_err 0.0331 against a 0.10 threshold (issue #527, closed; that run: VESSL 369367250775, gate's own measured run VESSL 369367250794) and the older pre-#516 0.000110 figure (issues #483/#486). The new objective is NOT immune to the same shape of failure an extractor fix could cause -- an extractor fix that shrinks |S11| would shrink this gradient too -- but MEASURED (not narrated): the level dropped 16x on this fixture (16.00599 to 0.99787211), cutting the loss's float32 ULP 32x and lifting f32 resolving power from 4.45 to 53.8 ULP at the gate's h, and the residue from unity (~2.5e-3, order |S11|^2 with |S11| ~ 0.05 here) is now a physical observable rather than a unitarity-violation artifact; that risk is CONTAINED -- by the f64 comparator's 2.9e6x resolving-power headroom above _MIN_FD_ULP_SPAN and by the resolving-power floor assert (issue #527's fix, unchanged by the objective swap) reporting a comparator failure loudly instead of silently -- not eliminated. What mechanism drives the gradient (a reference-plane artifact against the wave split's frozen Hammerstad-Jensen z0_hj, or genuine beta/reflection physics) is RESOLVED (issue #560, 2026-08-06; scripts/diagnostics/msl_ad_z0_anchor_probe.py, run log scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md): anchoring the wave split on a frozen per-port fitted z0 (measured at alpha=1, held constant) instead of the frozen analytic z0_hj and re-measuring g_ad on this same fixture (CPU/float32) collapsed |g_ad| from 1.602236e-03 (bit-identical across 2 repeats) to 6.885110e-05 (headline value from an un-repeated run, killed mid-way by a background-task duration limit; the bit-identical-2/2-confirmed value under a CLI-rounded anchor is 6.884444e-05, agreeing to 4 significant figures). Issue #560's own criterion is QUALITATIVE ('drops toward the FD-unresolvable floor'), not a numeric ratio: the estimated FD signal for this g_b at the gate's h is only ~1.16 ULP of a float32 loss, below the 4.449 ULP issue #527 measured for the retired objective's f32 comparator and declared untrustworthy -- g_b is noise-floor by this repo's own established standard, which settles the issue on its own terms. As a SECONDARY, self-declared check (NOT a quote from #560, whose body contains no numeric threshold -- an earlier draft of this evidence wrongly attributed '5x' to the issue as verbatim, corrected here), the ratio is ~23.3x, 4.6x past this PR's own pre-declared 5x bar. Either way, the reference-plane artifact (mechanism 2) is the dominant channel, not beta/reflection physics (mechanism 1); this is a channel-attribution finding and does not change the rel_err/threshold numbers above. Separately, anchor B's own loss exceeded 1 (a passivity violation, attributed to the raw unprojected eps_override channel per compute_msl_s_matrix's docstring, not a threat to the ratio-based attribution) -- evidence the fitted anchor is not self-evidently 'more correct', so whether compute_msl_s_matrix's PRODUCTION wave split should anchor on it is a SEPARATE, undecided design question this PR does not settle. Launch-fixture staticness is regression-locked by tests/test_msl_source_fixture_static.py (pre-fix 0.126 vs gate 0.03 at num_periods=1); smoke/end-to-end: tests/test_msl_sparam_ad.py (rebuilt alongside this gate, issue #515) and tests/test_sparam_ad_end_to_end.py."
+      "ad_evidence": "f64 AD-vs-FD referee (scripts/diagnostics/msl_ad_band_mean_s21_owner_measurement.py, gpu-rtx4090, VESSL 369367251813/369367251827; tracked run log with both runs' full measurement tables and the actual pytest gate's PASS output -- the raw logs live only under the primary checkout's gitignored .omx/ -- is scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md): rel_err 0.0026 at num_periods=20 through the full extraction, on the gate's own fixture at its own h=1e-3, differentiating band-mean |S21|^2 (tests/_msl_ad_objective.py, shared with the #515 AD smoke) rather than the prior sum_ij|S_ij|^2 objective (issue #530 -- that objective was 99.96% a passivity-pinned structural constant, which is why it went blind after PR #516). A 5-point h-sweep over h in [3e-4, 1e-2] reads rel_err 0.0002-0.0146 with a 1.583% FD spread; the gate threshold 0.03 is derived from the sweep's worst point via tests._gate_policy.gate_from_envelope. A planted issue-#483-class defect (eps_override frozen before tracing, so the traced parameter never reaches the AD tape) reads rel_err 1.0000 on the same fixture -- the gate reds at 33x the threshold, the resolving-power falsifier issue #529 established as discipline. This supersedes the pre-#530 objective's rel_err 0.0331 against a 0.10 threshold (issue #527, closed; that run: VESSL 369367250775, gate's own measured run VESSL 369367250794) and the older pre-#516 0.000110 figure (issues #483/#486). The new objective is NOT immune to the same shape of failure an extractor fix could cause -- an extractor fix that shrinks |S11| would shrink this gradient too -- but MEASURED (not narrated): the level dropped 16x on this fixture (16.00599 to 0.99787211), cutting the loss's float32 ULP 32x and lifting f32 resolving power from 4.45 to 53.8 ULP at the gate's h, and the residue from unity (~2.5e-3, order |S11|^2 with |S11| ~ 0.05 here) is now a physical observable rather than a unitarity-violation artifact; that risk is CONTAINED -- by the f64 comparator's 2.9e6x resolving-power headroom above _MIN_FD_ULP_SPAN and by the resolving-power floor assert (issue #527's fix, unchanged by the objective swap) reporting a comparator failure loudly instead of silently -- not eliminated. What mechanism drives the gradient (a reference-plane artifact against the wave split's frozen Hammerstad-Jensen z0_hj, or genuine beta/reflection physics) is RESOLVED (issue #560, 2026-08-06; scripts/diagnostics/msl_ad_z0_anchor_probe.py, run log scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md): anchoring the wave split on a frozen per-port fitted z0 (measured at alpha=1, held constant) instead of the frozen analytic z0_hj and re-measuring g_ad on this same fixture (CPU/float32) collapsed |g_ad| from 1.602236e-03 (bit-identical across 2 repeats) to 6.885110e-05 (headline value from an un-repeated run, killed mid-way by a background-task duration limit; the bit-identical-2/2-confirmed value under a CLI-rounded anchor is 6.884444e-05, agreeing to 4 significant figures). Issue #560's own criterion is QUALITATIVE ('drops toward the FD-unresolvable floor'), not a numeric ratio: the estimated FD signal for this g_b at the gate's h is only ~1.16 ULP of a float32 loss, below the 4.449 ULP issue #527 measured for the retired objective's f32 comparator and declared untrustworthy -- g_b is noise-floor by this repo's own established standard, which settles the issue on its own terms. As a SECONDARY, self-declared check (NOT a quote from #560, whose body contains no numeric threshold -- an earlier draft of this evidence wrongly attributed '5x' to the issue as verbatim, corrected here), the ratio is ~23.3x, 4.6x past this PR's own pre-declared 5x bar. Either way, the reference-plane artifact (mechanism 2) is the dominant channel, not beta/reflection physics (mechanism 1); this is a channel-attribution finding and does not change the rel_err/threshold numbers above. Separately, anchor B's own loss exceeded 1 (a passivity violation, attributed to the raw unprojected eps_override channel per compute_msl_s_matrix's docstring, not a threat to the ratio-based attribution) -- evidence the fitted anchor is not self-evidently 'more correct', so whether compute_msl_s_matrix's PRODUCTION wave split should anchor on it is a SEPARATE, undecided design question this PR does not settle. Launch-fixture staticness is regression-locked by tests/unit/ports/test_msl_source_fixture_static.py (pre-fix 0.126 vs gate 0.03 at num_periods=1); smoke/end-to-end: tests/unit/autodiff/test_msl_sparam_ad.py (rebuilt alongside this gate, issue #515) and tests/unit/autodiff/test_sparam_ad_end_to_end.py."
     },
     {
       "primitive": "add_waveguide_port(...)",
@@ -212,8 +212,8 @@
       ],
       "evidence_artifacts": [
         "tests/oracle/test_waveguide_port_validation_battery.py",
-        "tests/test_waveguide_phase_gate.py",
-        "tests/test_waveguide_twoport_contract_v1.py",
+        "tests/unit/sparams/test_waveguide_phase_gate.py",
+        "tests/unit/sparams/test_waveguide_twoport_contract_v1.py",
         "validation/crossval/11_waveguide_port_wr90.py",
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_envelope.json",
@@ -239,7 +239,7 @@
         "tests/fixtures/waveguide_nu_broad_e5/waveguide_wr90_nu_flux_broad_e5_envelope.json",
         "tests/fixtures/waveguide_nu_broad_e4/waveguide_wr90_nu_flux_broad_e4_comparison.json",
         "tests/fixtures/waveguide_tjunction_e4/waveguide_tjunction_meep_external_comparison.json",
-        "tests/test_waveguide_nu_flux_ad.py"
+        "tests/unit/autodiff/test_waveguide_nu_flux_ad.py"
       ],
       "numeric_metrics": [
         "uniform empty guide max |S11| < 0.02 and max column power < 1.02",
@@ -262,7 +262,7 @@
         "choose slab length and frequencies away from analytic reflection nulls and make slab length an integer number of cells"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "Uniform checks: tests/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable, and tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent. Nonuniform eps_override and sigma_override are normalize=flux only; tests/test_waveguide_nu_flux_ad.py finite-difference-checks eps_override, while sigma_override has no corresponding nonuniform AD-vs-FD test."
+      "ad_evidence": "Uniform checks: tests/unit/autodiff/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, tests/unit/autodiff/test_waveguide_sparam_ad.py::test_wg_smatrix_assembly_ad_traceable, and tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent. Nonuniform eps_override and sigma_override are normalize=flux only; tests/unit/autodiff/test_waveguide_nu_flux_ad.py finite-difference-checks eps_override, while sigma_override has no corresponding nonuniform AD-vs-FD test."
     },
     {
       "primitive": "add_coaxial_port(...)",
@@ -282,7 +282,7 @@
       "supported_configurations": [
         "3d_float32_second_order_uniform_yee_positive_z_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own EXPERIMENTAL label was LIFTED 2026-08-06 (PI decision) to VALIDATED WITH SCOPE once its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/test_coax_two_port_fdtd.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
+      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own EXPERIMENTAL label was LIFTED 2026-08-06 (PI decision) to VALIDATED WITH SCOPE once its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/unit/sparams/test_coax_two_port_fdtd.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
       "known_limits": [
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
@@ -297,7 +297,7 @@
         "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
         "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
         "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation",
-        "compute_coaxial_two_port(...) is VALIDATED WITH SCOPE (issue #489, PI decision 2026-08-06): an external openEMS referee (validation/crossval/21_coax_two_port_referee.py, VESSL run-3 369367251629 + VESSL 369367252220 first default-scale green promoted-lane run) brackets -- it does not judge -- this method's own |S21| and, via the port's own measured beta, its phase on the through-line class; a mesh-refinement convergence witness (VESSL 369367251845) moved the measured/analytic beta ratio 1.1208 -> 1.0662 (implied order p ~= 1.5); the eps_scale AD channel is GRAD_SAFE (tests/test_ad_surface_contract.py). NOT covered: every DUT it can currently gate against (none, a matched feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only TM0n modes, while the transition discontinuities issue #489 targets excite TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to the first probe plane) -- coax<->planar transitions use the SEPARATE compute_coax_msl_transition(...) primitive/lane (own entry, own status, unaffected by this promotion); nor does this evidence generalize to other coax geometry families; unlike compute_coaxial_line_reflection(...) its result IS routed through the shared automatic passivity guard"
+        "compute_coaxial_two_port(...) is VALIDATED WITH SCOPE (issue #489, PI decision 2026-08-06): an external openEMS referee (validation/crossval/21_coax_two_port_referee.py, VESSL run-3 369367251629 + VESSL 369367252220 first default-scale green promoted-lane run) brackets -- it does not judge -- this method's own |S21| and, via the port's own measured beta, its phase on the through-line class; a mesh-refinement convergence witness (VESSL 369367251845) moved the measured/analytic beta ratio 1.1208 -> 1.0662 (implied order p ~= 1.5); the eps_scale AD channel is GRAD_SAFE (tests/unit/autodiff/test_ad_surface_contract.py). NOT covered: every DUT it can currently gate against (none, a matched feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only TM0n modes, while the transition discontinuities issue #489 targets excite TE11 (cutoff 25.17 GHz on the validated SMA line, evanescently surviving to the first probe plane) -- coax<->planar transitions use the SEPARATE compute_coax_msl_transition(...) primitive/lane (own entry, own status, unaffected by this promotion); nor does this evidence generalize to other coax geometry families; unlike compute_coaxial_line_reflection(...) its result IS routed through the shared automatic passivity guard"
       ],
       "evidence_level": "E5-broad/E4-broad/differentiable",
       "validation_gaps": [
@@ -307,15 +307,15 @@
       "evidence_artifacts": [
         "rfx/api/_sparams.py::Simulation.compute_coaxial_line_reflection",
         "rfx/api/_spec.py::CoaxialLineReflectionResult",
-        "tests/test_coaxial_line_calibration.py",
-        "tests/test_coaxial_line_extraction.py",
-        "tests/test_coax_end_to_end_ad.py",
+        "tests/unit/sparams/test_coaxial_line_calibration.py",
+        "tests/unit/sparams/test_coaxial_line_extraction.py",
+        "tests/unit/autodiff/test_coax_end_to_end_ad.py",
         "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
         "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json",
         "rfx/api/_sparams.py::Simulation.compute_coaxial_two_port",
         "rfx/api/_spec.py::CoaxialTwoPortResult",
-        "tests/test_coax_two_port_fdtd.py",
-        "tests/test_coax_two_port_ad.py",
+        "tests/unit/sparams/test_coax_two_port_fdtd.py",
+        "tests/unit/autodiff/test_coax_two_port_ad.py",
         "validation/crossval/21_coax_two_port_referee.py",
         "tests/crossval/test_coax_two_port_referee_header.py"
       ],
@@ -324,7 +324,7 @@
         "matched single-cell resistor fixture is reported separately with max |Gamma| deviation 0.0929",
         "MEEP short/open comparison over 4--12 GHz: max_mag_abs_diff 0.0628 and mean_mag_abs_diff 0.0235",
         "end-to-end eps_scale AD versus finite difference discrepancy 2.6%",
-        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.051 (measured max 0.0502 at 12 GHz, tests/test_coax_two_port_fdtd.py:699; the committed gate itself is the wider inherited 1-port envelope <= 0.08), reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)",
+        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.051 (measured max 0.0502 at 12 GHz, tests/unit/sparams/test_coax_two_port_fdtd.py:699; the committed gate itself is the wider inherited 1-port envelope <= 0.08), reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)",
         "compute_coaxial_two_port label-lift evidence chain (issue #489, PI decision 2026-08-06): external openEMS referee (crossval 21, VESSL run-3 369367251629 + VESSL 369367252220 first default-scale green promoted-lane run) brackets this method's own |S21| and, via the port's own measured beta, phase on the through-line class; mesh-refinement convergence witness VESSL 369367251845 moved the measured/analytic beta ratio from 1.1208 to 1.0662 (annulus 3.79 -> 5.68 cells, implied convergence order p ~= 1.5, two-point, from a single 1.5x step)"
       ],
       "validated_scope": "The self-contained TEM coaxial-line model using the documented Simulation, port, and method arguments, in float32 precision on a three-dimensional, second-order uniform Yee grid with positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, no periodic boundary axes, exactly one face='top' coaxial port, at least three requested probe planes that all fit before the source, and the termination, frequency, characteristic-impedance, and mesh ranges in the committed fixtures. Separately registered geometry, sources, monitors, termination helpers, arbitrary launches, face='bottom', and mixed port families are outside this result; this 1-port broad-E5/E4 evidence does not itself cover multi-port networks -- it describes compute_coaxial_line_reflection(...) only. compute_coaxial_two_port(...) (issue #489, validated with scope) has its OWN, separate and narrower validated scope on the same port primitive: the two-drive through-line class on one SMA-class coax geometry family (a=0.635mm, b=2.055mm, PTFE eps_r=2.1, L12=58.4595mm), bracketed -- not judged -- by an external openEMS referee plus a mesh-refinement convergence witness and a GRAD_SAFE eps_scale AD gate; see its own known_limits entry above for the full statement. Neither this field's 1-port scope nor compute_coaxial_two_port(...)'s own scope covers arbitrary multi-port coaxial networks, coax<->planar transitions, or other coax geometry families.",
@@ -334,7 +334,7 @@
         "MEEP covers short/open; resistive cases are covered by the analytic transmission-line fixture"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (compute_coaxial_line_reflection). compute_coaxial_s_matrix (deprecated) is NOT traceable — concrete numpy extraction, no eps_scale/traced-input channel wired. compute_coaxial_two_port (issue #489 stage 2, validated with scope) gained the same eps_scale channel: gate compares float32 AD (as shipped) against a float64-loss central finite difference (scoped enable_x64 around the forward call — the FDTD fields stay float32, same baseline as the MSL f64 referee, but the DFT-accumulator-and-downstream math runs at float64, per rfx/probes/probes.py's jax.config.x64_enabled keying, independent of the precision='float32' pin); measured rel_err 0.51% at h=2e-3 against a 2% gate (tests/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent; regenerate/extend via scripts/coax_two_port_ad_fd_f64_referee.py), owner-platform (GPU) re-measurement pending. See tests/test_ad_surface_contract.py::AD_CLASSIFICATION for the per-calculator classification this family-level field cannot express."
+      "ad_evidence": "eps_scale -> FDTD -> DFT plane accumulators -> modal voltage -> matrix-pencil reflection -> Gamma; tests/unit/autodiff/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent (compute_coaxial_line_reflection). compute_coaxial_s_matrix (deprecated) is NOT traceable — concrete numpy extraction, no eps_scale/traced-input channel wired. compute_coaxial_two_port (issue #489 stage 2, validated with scope) gained the same eps_scale channel: gate compares float32 AD (as shipped) against a float64-loss central finite difference (scoped enable_x64 around the forward call — the FDTD fields stay float32, same baseline as the MSL f64 referee, but the DFT-accumulator-and-downstream math runs at float64, per rfx/probes/probes.py's jax.config.x64_enabled keying, independent of the precision='float32' pin); measured rel_err 0.51% at h=2e-3 against a 2% gate (tests/unit/autodiff/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent; regenerate/extend via scripts/coax_two_port_ad_fd_f64_referee.py), owner-platform (GPU) re-measurement pending. See tests/unit/autodiff/test_ad_surface_contract.py::AD_CLASSIFICATION for the per-calculator classification this family-level field cannot express."
     },
     {
       "primitive": "add_floquet_port(...)",
@@ -360,9 +360,9 @@
         "missing mesh, frequency, scan-angle, and polarization validation range"
       ],
       "evidence_artifacts": [
-        "tests/test_floquet.py",
-        "tests/test_floquet_s_params_contract.py",
-        "tests/test_sparameter_support_contract.py",
+        "tests/unit/ports/test_floquet.py",
+        "tests/unit/ports/test_floquet_s_params_contract.py",
+        "tests/unit/sparams/test_sparameter_support_contract.py",
         "scripts/diagnostics/report_floquet_modal_oracles.py",
         "scripts/diagnostics/generate_floquet_modal_field_dump.py",
         "scripts/diagnostics/replay_floquet_modal_field_dump.py",
@@ -384,7 +384,7 @@
         "Simulation.run() and Simulation.forward() reject high-level Floquet S-parameter requests"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "finite-gradient checks through compute_floquet_s_params and extract_floquet_modes in tests/test_floquet_s_params_contract.py; this is an AD execution check, not an RF-accuracy statement"
+      "ad_evidence": "finite-gradient checks through compute_floquet_s_params and extract_floquet_modes in tests/unit/ports/test_floquet_s_params_contract.py; this is an AD execution check, not an RF-accuracy statement"
     },
     {
       "primitive": "add_source(...) / add_polarized_source(...)",
@@ -512,7 +512,7 @@
         "single fixture class (vertical probe feed onto a microstrip line)"
       ],
       "evidence_artifacts": [
-        "tests/test_mixed_port_sparam.py"
+        "tests/unit/sparams/test_mixed_port_sparam.py"
       ],
       "numeric_metrics": [
         "reciprocity deviation 9.0% (flux channel) vs 55% (wave channel), probe-fed MSL fixture, dx=63.5um, settling -101/-100 dB",
@@ -550,7 +550,7 @@
         "the shared passivity guard (rfx/validation.py, check_passivity block around line 448) is ONE-SIDED: it flags only a column power that EXCEEDS the upper limit (max_column_power > limit), never a column power far BELOW 1 on a nominally lossless structure -- there is no lower-bound check at all. That asymmetry is exactly why the col_power<<1 open question above (issue #585 review finding B5) went undetected for two attempts: a too-low column silently passes the same guard that trips on a too-high one. Disclosure only -- the guard itself is unchanged by this PR.",
         "RETRACTED attribution (do not repeat, third on this lane): a prior write-up attributed the reciprocity miss to a coax/MSL drive-amplitude gap (~1.8e7-3.3e7x) -- mathematically impossible, since per-drive rescaling of the two-drive solve leaves S exactly invariant; the invoked 'amplitude ratio' also turned out to equal raw cond_a to 8 significant figures, the exact quantity this lane's own cond_a_equilibrated split already says not to read as a degeneracy witness",
         "gamma-vs-beta is now CONFIRMED (no longer provisional): a THIRD checkpoint (135000 steps, at full settling) lands inside [0.8,1.3] (1.148/0.859/1.051), alongside the two earlier checkpoints (20000/45000 steps) -- three in-band checkpoints in a row, the last one settled",
-        "the settled VESSL run (369367252283, n_steps=135000) clears the -40 dB ring-down rule for the first time on this lane; see SETTLED_RUN_RECORD in tests/test_coax_msl_transition.py (status RUN) and the tracked run log/result JSON under scripts/diagnostics/_coax_msl_transition_settled_run_logs/",
+        "the settled VESSL run (369367252283, n_steps=135000) clears the -40 dB ring-down rule for the first time on this lane; see SETTLED_RUN_RECORD in tests/unit/sparams/test_coax_msl_transition.py (status RUN) and the tracked run log/result JSON under scripts/diagnostics/_coax_msl_transition_settled_run_logs/",
         "raw cond_a (1e3-1e7 on both attempts) is dominated by per-drive amplitude scale, not geometric near-degeneracy -- see cond_a_equilibrated (near 1 on both attempts) on CoaxMSLTransitionResult",
         "the MSL side is extracted via the coax matrix-pencil fit (coaxial_line_reflection_from_plane_voltages) rather than the mixed lane's own N-probe fit, a deliberate deviation made because the coax fit deterministically pins the propagation-constant branch while the N-probe fit's sign is documented as unstable",
         "the registered impedance= on add_coaxial_port(...)/add_msl_port(...) sizes only the feed resistor / termination and (for coax) the TEM source amplitude calibration; the power-wave normalization (z0_ref) always uses the analytic TEM / Hammerstad-Jensen Z0 the method computes itself, so the registered impedance= is NOT the reference impedance of the returned s_params -- the method emits a divergence advisory when either port's registered impedance diverges more than 5% from the analytic Z0 it actually uses (issue #581 review N2)",
@@ -566,7 +566,7 @@
         "the MSL-driven column-power open question (B5) is SHARPENED by the settled run (frequency-dependent: ~99% missing at 6/8 GHz, ~20% at 10 GHz) but still unexplained -- the named closed-box discriminating check has not been run"
       ],
       "evidence_artifacts": [
-        "tests/test_coax_msl_transition.py",
+        "tests/unit/sparams/test_coax_msl_transition.py",
         "scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_run.log",
         "scripts/diagnostics/_coax_msl_transition_settled_run_logs/settled_run_369367252283_result.json"
       ],

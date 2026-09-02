@@ -118,7 +118,7 @@ exactly, and an emitter targeting a boolean solid modeller (HFSS) must ask or
 refuse rather than silently pick a subtraction order. The boolean helpers
 `union` / `difference` / `intersection` are defined at `csg.py:298,302,306` and
 have **zero call sites anywhere in `rfx/`** — they are exercised only in
-`tests/test_geometry.py`.
+`tests/unit/geometry/test_geometry.py`.
 
 **D5 — The container decision is deferred, deliberately.**
 `CanonicalExperimentSpec` (`rfx-experiment/v2`) is the strongest existing

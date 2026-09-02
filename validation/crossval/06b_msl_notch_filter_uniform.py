@@ -256,7 +256,7 @@ Scope:
     width; see "Mesh convention").
 
 Authoritative MSL port correctness gates: the unit + integration tests
-under ``tests/test_msl_port*.py``. This crossval is a **physics-level
+under ``tests/unit/ports/test_msl_port*.py``. This crossval is a **physics-level
 demo** that the new port API can resolve a stub-notch resonance without
 the wire-port + absorber workaround.
 

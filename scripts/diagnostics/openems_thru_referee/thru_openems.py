@@ -3,7 +3,7 @@
 
 Independent (different solver, different port model) bracket of the
 16 mm air-microstrip thru that ``tests/locks/test_refplane_port_waves.py`` /
-``tests/test_lumped_twoport_vi_validation_battery.py`` measure in rfx.
+``tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py`` measure in rfx.
 This script does NOT judge pass/fail — it reports |S11|, |S21|,
 unwrapped arg(S21), and group delay for an independent MSL-port model
 of the SAME geometry class, so a human/reviewer can compare against the
@@ -105,7 +105,7 @@ except ImportError as exc:
 # ---------------------------------------------------------------------------
 # Geometry constants (mm units; CSXCAD UNIT = 1e-3 m) -- matches the rfx
 # canonical thru fixture (tests/locks/test_refplane_port_waves.py _build_thru /
-# tests/test_lumped_twoport_vi_validation_battery.py _build_thru) exactly.
+# tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py _build_thru) exactly.
 # ---------------------------------------------------------------------------
 UNIT = 1e-3
 

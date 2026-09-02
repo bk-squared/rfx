@@ -76,7 +76,7 @@ again. "out of the network" (b2) = -z = A-branch = `forward_amp` again.
 independently below via a fast structural test that pushes PLANTED analytic V(z)
 values through the real assembly code path (bypassing FDTD) for a KNOWN, asymmetric
 synthetic two-port, before any FDTD time is spent. The tracked
-`tests/test_coax_two_port_solve.py::test_both_drive_swap_gap_requires_the_downstream_passivity_handle`
+`tests/unit/sparams/test_coax_two_port_solve.py::test_both_drive_swap_gap_requires_the_downstream_passivity_handle`
 documents why this check is needed for a defect that a symmetric through-line
 fixture cannot expose.
 

@@ -1,5 +1,5 @@
 """Fast structural companion to the @slow platform-envelope datum for issue
-#610 (see tests/test_msl_port_integration.py::
+#610 (see tests/unit/sparams/test_msl_port_integration.py::
 test_msl_thru_line_z0_length_invariance_and_positive_sign's docstring for the
 physics and PLATFORM ENVELOPE note). This file runs NO FDTD -- it checks that
 the recorded cross-platform datum ledger,
@@ -7,7 +7,7 @@ tests/fixtures/msl_z0_length_invariance/platform_datums.json, stays
 internally consistent, so a future red on this lock is diagnosable as
 platform-vs-code without re-deriving anything.
 
-Bounds are imported from tests/test_msl_port_integration.py, not restated --
+Bounds are imported from tests/unit/sparams/test_msl_port_integration.py, not restated --
 a hardcoded 0.007 / 0.15 in this second file would be exactly the "second
 copy of the gate that can drift from the mechanism" class of defect the
 #610 review flagged.
@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 
 from tests._gate_policy import gate_from_envelope
-from tests.test_msl_port_integration import LEG_S11_BOUND, MEASURED_SPREAD_ENVELOPE
+from tests.unit.sparams.test_msl_port_integration import LEG_S11_BOUND, MEASURED_SPREAD_ENVELOPE
 
 DATUMS_PATH = (
     Path(__file__).resolve().parents[1] / "fixtures" / "msl_z0_length_invariance" / "platform_datums.json"
@@ -51,7 +51,7 @@ def test_datums_file_exists_and_identifies_its_test():
     data = _load()
     assert data["schema"] == "rfx.msl_z0_length_invariance_platform_datums"
     assert data["test"] == (
-        "tests/test_msl_port_integration.py::"
+        "tests/unit/sparams/test_msl_port_integration.py::"
         "test_msl_thru_line_z0_length_invariance_and_positive_sign"
     )
 

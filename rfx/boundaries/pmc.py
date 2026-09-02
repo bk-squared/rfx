@@ -38,7 +38,7 @@ def apply_pmc_faces(state, faces: set[str]) -> object:
     not participate in the interior E-curl stencil and was previously
     zeroed with no effect — causing ``_hi`` PMC to be a silent no-op
     that let the wall behave as PEC. Fixed 2026-04 (see
-    tests/test_boundary_pmc_hi_faces.py for the regression lock).
+    tests/unit/boundaries/test_boundary_pmc_hi_faces.py for the regression lock).
     """
     if not faces:
         return state

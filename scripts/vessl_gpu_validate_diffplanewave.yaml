@@ -35,10 +35,10 @@ run: |-
   set +e
   timeout 9000 python -m pytest -m slow -q -ra -p no:cacheprovider \
     tests/oracle/test_forward_tfsf_fresnel_groundtruth.py \
-    tests/test_rcs_jax_differentiable.py \
+    tests/unit/autodiff/test_rcs_jax_differentiable.py \
     tests/oracle/test_oblique_fresnel_magnitude.py \
     tests/oracle/test_oblique_fresnel_phase.py \
-    tests/test_rcs_reduction_inverse_design.py \
+    tests/unit/autodiff/test_rcs_reduction_inverse_design.py \
     tests/oracle/test_ram_multilayer_inverse_design.py \
     tests/oracle/test_ram_magnetic_mu_r_design.py \
     > "$out/validate.log" 2>&1

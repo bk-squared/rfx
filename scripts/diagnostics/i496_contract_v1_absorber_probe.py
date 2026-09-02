@@ -58,7 +58,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 C0 = 299_792_458.0
 
-# Verbatim from tests/test_waveguide_twoport_contract_v1.py — imported by value
+# Verbatim from tests/unit/sparams/test_waveguide_twoport_contract_v1.py — imported by value
 # rather than restated loosely, because a probe that drifts from the file it is
 # probing answers about a configuration nobody ships.
 FREQS = np.linspace(4.5e9, 8.0e9, 20)

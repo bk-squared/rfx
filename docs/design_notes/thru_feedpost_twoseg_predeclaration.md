@@ -317,7 +317,7 @@ Falsifiers:
   segments, z0)` — exact wave-cascade removal of a lossless line
   segment (zc_seg, tau_seg) per port via the existing `_s_to_t`/
   `_t_to_s` helpers. NEW function only; nothing shipped calls it. Unit
-  tests in `tests/test_deembed.py` (embed with INDEPENDENT ABCD
+  tests in `tests/unit/sparams/test_deembed.py` (embed with INDEPENDENT ABCD
   arithmetic written in the test): round-trip 1e-12 class, zero-length
   identity, reduction to `deembed_series_inductance` in the tau->0,
   Zp*tau = L limit, input validation.

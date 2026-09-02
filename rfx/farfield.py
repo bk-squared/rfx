@@ -699,7 +699,7 @@ def compute_far_field_jax(
     # 214 GB and died AFTER an 8-hour solve (issue #727). The sum over
     # surface cells is independent per direction, so splitting theta is
     # EXACT — the chunked and unchunked results agree to the bit (locked by
-    # tests/test_farfield_chunking.py). max_phase_bytes bounds that array;
+    # tests/unit/farfield/test_farfield_chunking.py). max_phase_bytes bounds that array;
     # raise it to trade memory for fewer passes, or set it to inf to force
     # the single-shot path.
     theta = jnp.asarray(theta)

@@ -34,7 +34,7 @@ C0 = 299792458.0
 
 # ---------------------------------------------------------------- FIX-T ----
 # Canonical THRU battery geometry, verbatim constants
-# (tests/test_lumped_twoport_vi_validation_battery.py).
+# (tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py).
 DX = 0.5e-3
 DOMAIN = (0.032, 0.020, 0.010)
 NZ = int(round(DOMAIN[2] / DX))          # 20

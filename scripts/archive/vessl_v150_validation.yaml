@@ -29,22 +29,22 @@ run: |-
     --ignore=tests/test_meep_crossval_patch.py \
     --ignore=tests/crossval/test_openems_crossval.py \
     --ignore=tests/crossval/test_crossval_comprehensive.py \
-    --ignore=tests/test_subpixel.py \
-    --ignore=tests/test_distributed.py \
+    --ignore=tests/unit/geometry/test_subpixel.py \
+    --ignore=tests/unit/runners/test_distributed.py \
     -k "not slow" || true
 
   echo ""
   echo "=== 2. Gradient + optimization pipeline (41 tests) ==="
-  pytest tests/test_gradient_simple.py tests/test_differentiable.py \
-    tests/test_optimize.py tests/test_gradient_coverage.py \
-    tests/test_optimize_convergence.py tests/test_optimize_proxy_objectives.py \
-    tests/test_differentiable_material_fit.py \
+  pytest tests/unit/autodiff/test_gradient_simple.py tests/unit/autodiff/test_differentiable.py \
+    tests/unit/autodiff/test_optimize.py tests/unit/autodiff/test_gradient_coverage.py \
+    tests/unit/autodiff/test_optimize_convergence.py tests/unit/autodiff/test_optimize_proxy_objectives.py \
+    tests/unit/autodiff/test_differentiable_material_fit.py \
     --tb=short -q || true
 
   echo ""
   echo "=== 3. Non-uniform mesh (xy + z + 2-port) ==="
-  pytest tests/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py \
-    tests/test_nonuniform_xy.py tests/test_twoport_wire_port.py \
+  pytest tests/unit/nonuniform/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py \
+    tests/unit/nonuniform/test_nonuniform_xy.py tests/unit/sparams/test_twoport_wire_port.py \
     --tb=short -q || true
 
   echo ""

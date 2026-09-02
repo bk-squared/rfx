@@ -40,7 +40,7 @@ Run the relevant tests before opening a pull request:
 pytest tests/ -x -q
 
 # Run a specific test file
-pytest tests/test_lumped_rlc.py -x -q
+pytest tests/unit/ports/test_lumped_rlc.py -x -q
 
 # Run tests in parallel (requires pytest-xdist)
 pytest tests/ -x -q -n auto
@@ -70,7 +70,7 @@ codebase:
 
 ## How to Add a New Feature
 
-1. **Write a test first.** Add a file named `tests/test_<feature>.py` with at
+1. **Write a test first.** Add a file named `tests/unit/<module>/test_<feature>.py` with at
    least one failing test that captures the core behavior.
 2. **Implement the feature.** Place code in the appropriate module under
    `rfx/`. If a new module is needed, wire it into `rfx/__init__.py`.
@@ -117,7 +117,7 @@ Geometry primitives live in `rfx/geometry/`. Follow this pattern:
 3. **Export** it from the top-level `rfx/__init__.py` so users can write
    `from rfx import MyShape`.
 
-4. **Add tests** in `tests/test_<name>.py` covering:
+4. **Add tests** in `tests/unit/<module>/test_<name>.py` covering:
    - Basic mask correctness.
    - Edge cases such as zero thickness, single-cell shapes, and boundary
      overlap.

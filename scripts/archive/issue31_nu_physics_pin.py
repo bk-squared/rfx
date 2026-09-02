@@ -6,7 +6,7 @@ n_steps, then compares:
   (2) Segmented-off vs segmented-on gradient through a scalar
       `alpha` eps perturbation — agree on magnitude and sign.
 
-These strengthen the existing tests/test_nonuniform_segmented.py pin
+These strengthen the existing tests/unit/nonuniform/test_nonuniform_segmented.py pin
 (which is at n_steps=60) to a scale that matches actual inverse-design
 workloads.
 

@@ -278,7 +278,7 @@ def e_node_dual_spacing_at(profile_full, k: int):
     round-trip alone moves the last bits), and a traced profile must stay a
     tracer so the mesh-as-design-variable path keeps its gradient.
 
-    ``tests/test_nonuniform_source_port_dual_spacing.py`` pins this against
+    ``tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py`` pins this against
     :func:`e_node_dual_spacings` element-by-element, so the two spellings
     cannot drift.
     """
@@ -763,7 +763,7 @@ def _build_wp_meta(wire_ports, grid):
     enters the wave split (issue #673).
 
     Slot order (guarded by
-    tests/test_nonuniform_source_port_dual_spacing.py):
+    tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py):
       0..2  mid_i, mid_j, mid_k     (midpoint of the LIVE run, issue #764)
       3     component
       4     impedance (whole-port Z0)
@@ -1791,7 +1791,7 @@ def run_nonuniform(
     #     at small n_warmup up to 58% at the loss-window boundary itself,
     #     and EXACTLY zero (gradient fully vanished) once n_warmup extends
     #     far enough into the loss window (fixture:
-    #     tests/test_n_warmup.py::test_warmup_truncation_error_grows_with_k,
+    #     tests/unit/autodiff/test_n_warmup.py::test_warmup_truncation_error_grows_with_k,
     #     n_steps=100, loss window [80,100)).
     #   - FAR-FROM-SOURCE placement (design cell 62 cells from the source,
     #     K_safe=108 measured from the grid's own dt): AD matches the K=0
@@ -2006,7 +2006,7 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     # measured before the #764 fix: one geometry with only `excite` flipped
     # read S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j
     # driven though the quasi-static input impedance is identical; the
-    # 2-port MSL stub in tests/test_twoport_wire_port.py reached
+    # 2-port MSL stub in tests/unit/sparams/test_twoport_wire_port.py reached
     # max|S11| = 4.648 (the reciprocal class that (-V - Z0*I)/(-V + Z0*I)
     # applied to a driven port yields); a matched 50 ohm load read
     # S11 = +0.35426 and a PEC short +0.26780. Root cause was the #313/#318
@@ -2034,7 +2034,7 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     # Quasi-static check on the PASSIVE path: with Y_ext -> 0 and
     # w*C*Z0/n_live << 1 the per-cell convention gives
     # S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on both
-    # lanes (tests/test_nu_wire_port_lane_parity.py).
+    # lanes (tests/unit/nonuniform/test_nu_wire_port_lane_parity.py).
     #
     # `direction` is still carried on the port spec — the reference-plane
     # path (add_port(reference_plane_cells=...)) needs it for the outboard

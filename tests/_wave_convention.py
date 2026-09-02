@@ -36,14 +36,14 @@ picture and never against the extractor's labels.
 
 Precedent for a shared tests/ module: ``tests/_gate_policy.py`` (issue
 #528), imported as ``from tests._gate_policy import ...`` by
-``tests/test_coax_msl_transition.py`` among others. Keeping ONE copy is
+``tests/unit/sparams/test_coax_msl_transition.py`` among others. Keeping ONE copy is
 what makes "the convention is stated once" checkable; three byte-identical
 copies would be a convention nothing enforces.
 
 Consumers:
-  * tests/test_coax_msl_transition_wave_roles.py  (#822 gate, both ports)
-  * tests/test_coax_two_port_fdtd.py              (planted two-port fixtures)
-  * tests/test_coax_msl_transition.py             (planted unequal-Z0 fixture)
+  * tests/unit/sparams/test_coax_msl_transition_wave_roles.py  (#822 gate, both ports)
+  * tests/unit/sparams/test_coax_two_port_fdtd.py              (planted two-port fixtures)
+  * tests/unit/sparams/test_coax_msl_transition.py             (planted unequal-Z0 fixture)
 """
 from __future__ import annotations
 

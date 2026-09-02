@@ -13,7 +13,7 @@ It:
      within the same tolerances the committed rfx test suite uses,
   3. prints a PASS/FAIL verdict per case + an overall verdict line.
 
-Standalone form of the checks in rfx's tests/test_distributed.py
+Standalone form of the checks in rfx's tests/unit/runners/test_distributed.py
 (TestDistributedRunner / TestDistributedCPML / TestDistributedLumpedPort), which
 are device-count-adaptive: they EXECUTE (not skip) as soon as >= 2 real devices
 are present, so CI on a single-GPU pod cannot exercise them (issue #162).

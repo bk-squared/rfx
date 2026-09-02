@@ -1397,7 +1397,7 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
     # post-scan rect DFT (``_extract_global_waves_from_time_series``)
     # uses the right ``Δt`` even when the caller initialised the cfg
     # via the low-level ``init_waveguide_port`` without passing ``dt=``
-    # (legacy path used by ``tests/test_waveguide_port.py`` Python loops).
+    # (legacy path used by ``tests/unit/ports/test_waveguide_port.py`` Python loops).
     n_t = cfg.v_probe_t.shape[0]
     safe_step = jnp.clip(jnp.asarray(state.step, dtype=jnp.int32), 0, n_t - 1)
     return cfg._replace(

@@ -34,7 +34,7 @@ For evidence status and normative envelopes, the [S-parameter support matrix](..
 
 ## Coaxial Compute Path Caveat
 
-`compute_coaxial_line_reflection` is the coaxial transmission-line reflection path and is `broad_e5_passed`: broad-E5 physics (analytic Γ envelope) + independent Meep broad-E4 short/open, both with committed evidence (`tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`), plus an end-to-end differentiable path (`grad(S11)` w.r.t. the dielectric via `eps_scale`; composition AD-vs-FD gate `tests/test_coax_end_to_end_ad.py`). The clean-checkout auditor returns `coaxial_port` PASSED. The older `compute_coaxial_s_matrix` is deprecated/experimental; it can produce non-physical `|S11| > 1` for lossless shorts and must not be used as a validated coaxial S-parameter result. The [support matrix](../guides/sparameter_support_matrix.md) coaxial rows document both paths in detail.
+`compute_coaxial_line_reflection` is the coaxial transmission-line reflection path and is `broad_e5_passed`: broad-E5 physics (analytic Γ envelope) + independent Meep broad-E4 short/open, both with committed evidence (`tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`), plus an end-to-end differentiable path (`grad(S11)` w.r.t. the dielectric via `eps_scale`; composition AD-vs-FD gate `tests/unit/autodiff/test_coax_end_to_end_ad.py`). The clean-checkout auditor returns `coaxial_port` PASSED. The older `compute_coaxial_s_matrix` is deprecated/experimental; it can produce non-physical `|S11| > 1` for lossless shorts and must not be used as a validated coaxial S-parameter result. The [support matrix](../guides/sparameter_support_matrix.md) coaxial rows document both paths in detail.
 
 ## Compute-Path/Port Pairing Rules
 

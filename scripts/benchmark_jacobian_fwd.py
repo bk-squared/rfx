@@ -4,7 +4,7 @@
 
 The repo forbids publishing prose cost numbers (they rot) and forbids
 calling a compiler estimate a "profile" -- see
-`tests/test_estimate_ad_memory.py`'s forbidden-terms list, mirrored here.
+`tests/unit/autodiff/test_estimate_ad_memory.py`'s forbidden-terms list, mirrored here.
 This script is the regenerable source of truth: run it, quote its printed
 table (with the grid size / n_steps / backend / dtype it prints in its own
 header) in the PR body and CHANGELOG, and re-run it before trusting a
@@ -37,7 +37,7 @@ into the intercept, and that effect is largest where the marginal cost
 per tangent is smallest -- on an RTX 4090 the same ratio reads 1.4-1.9x
 across grid sizes (issue #632) with sharing intact. Do not treat this
 ratio as a regression signal on an accelerator; see G3 in
-tests/test_jacobian_fwd.py for the authoritative, backend-independent
+tests/unit/autodiff/test_jacobian_fwd.py for the authoritative, backend-independent
 structural check (it inspects the jaxpr directly for one unbatched
 primal scan rather than fitting wall-clock/flops numbers).
 
@@ -75,7 +75,7 @@ from rfx import Simulation
 from rfx.observables import dft_field, jacobian_fwd
 
 _DX = 1.0e-3
-# FORBIDDEN honesty-label terms (tests/test_estimate_ad_memory.py's
+# FORBIDDEN honesty-label terms (tests/unit/autodiff/test_estimate_ad_memory.py's
 # _FORBIDDEN_RECOMMENDATION_TERMS / _FORBIDDEN_CURRENT_EVIDENCE_FIELDS):
 # never call this a "profile", "runtime peak", "guaranteed", or
 # "certified" number, and never name a field observed_peak_gb /
@@ -302,7 +302,7 @@ def _print_table(table: dict[str, Any]) -> None:
               f"n_t into the intercept, and that effect is largest where "
               f"per-tangent marginal cost is smallest [issue #632]. Do not "
               f"read a high ratio here as a sharing regression by itself "
-              f"-- G3 in tests/test_jacobian_fwd.py is the authoritative, "
+              f"-- G3 in tests/unit/autodiff/test_jacobian_fwd.py is the authoritative, "
               f"backend-independent structural check: it inspects the "
               f"jaxpr directly for one unbatched primal scan.)")
     w = table["n_steps_independence_witness"]

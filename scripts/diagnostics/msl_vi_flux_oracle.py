@@ -49,7 +49,7 @@ This script is the committed re-measurement #525's own follow-up comment
      REFUSE to certify the ratio where the witness fails;
   3. a TERMINATED fixture (matched thru, not a bare port into CPML) so the
      plane sees a travelling wave — this script uses the SAME two-port thru
-     geometry as ``tests/test_msl_port_integration.py::
+     geometry as ``tests/unit/sparams/test_msl_port_integration.py::
      test_msl_thru_line_passive_gate``, drives only the near port, and
      leaves the far port passively matched (``add_msl_port(..., excite=
      False)`` → resistive Z0 termination via the port's own σ distribution,
@@ -160,7 +160,7 @@ matched line).
 FIXTURE
 -------
 Identical materials/geometry to the committed gate fixture
-(``tests/test_msl_port_integration.py``: EPS_R=3.66, H_SUB=254 µm,
+(``tests/unit/sparams/test_msl_port_integration.py``: EPS_R=3.66, H_SUB=254 µm,
 W_TRACE=600 µm, L_LINE=10 mm, one-cell PEC trace, PEC ground + CPML), TWO
 MSL ports (near driven ``+x``, far ``excite=False`` matched ``-x``), 5
 Ez/Hy/Hz DFT-plane probes + flux monitors placed at 30/40/50/60/70% of
@@ -363,7 +363,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.probes.probes import flux_spectrum  # noqa: E402
 from rfx.sources.msl_port import MSLPort, _msl_yz_cells, msl_loop_current  # noqa: E402
 
-# --- gate-fixture geometry, verbatim from tests/test_msl_port_integration.py ---
+# --- gate-fixture geometry, verbatim from tests/unit/sparams/test_msl_port_integration.py ---
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6

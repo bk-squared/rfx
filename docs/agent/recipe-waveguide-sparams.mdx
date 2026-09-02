@@ -111,7 +111,7 @@ S21 = S[1, 0, :]
 ## Baseline accuracy
 
 The `normalize=True` extraction is tracked by
-`tests/test_normalization.py::test_normalized_s21_straight_waveguide`, which
+`tests/unit/sparams/test_normalization.py::test_normalized_s21_straight_waveguide`, which
 asserts `mean |S21| > 0.95` for an empty straight waveguide (25 frequency
 points from 1.3·f_c to 9 GHz, `num_periods=25.0`). This corresponds to a
 worst-case mean deviation from unity of up to 5 %. For individual S-parameter
@@ -180,13 +180,13 @@ canonical geometries (empty guide, PEC short, dielectric slab), compared
 against analytic Airy and Meep references. The script documents band-edge
 artifacts and analytic phase-convention caveats. Authoritative regression
 gates live in `tests/oracle/test_waveguide_port_validation_battery.py` and
-`tests/test_waveguide_twoport_contract_v1.py`.
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`.
 
 ## References
 
 - Pozar, *Microwave Engineering* Ch. 4 — transmission-line S-parameters
 - rfx source: `rfx/api/_sparams.py::compute_waveguide_s_matrix`,
   `rfx/sources/` waveguide port implementations
-- rfx tests: `tests/test_normalization.py` (baseline accuracy),
+- rfx tests: `tests/unit/sparams/test_normalization.py` (baseline accuracy),
   `tests/oracle/test_conservation_laws.py` (reciprocity, unitarity)
 - Evidence and envelope: `docs/guides/sparameter_support_matrix.md`

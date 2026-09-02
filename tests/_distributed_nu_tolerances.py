@@ -2,7 +2,7 @@
 tests/_distributed_nu_tolerances.py
 
 Tolerance constants and assertion helpers for the distributed-NU composition
-test suite (``tests/test_distributed_nu_composition.py``).
+test suite (``tests/unit/runners/test_distributed_nu_composition.py``).
 
 Every tolerance class is tied to a specific failure mode the composition tests
 guard against.  Use the named constants and helpers rather than inline magic

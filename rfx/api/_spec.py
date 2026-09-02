@@ -1318,7 +1318,7 @@ class CoaxialTwoPortResult:
     convergence witness (VESSL ``369367251845``) moved the measured/analytic
     ``beta`` ratio from ``1.1208`` to ``1.0662`` (implied convergence order
     ``p ~= 1.5``, two-point, from a single 1.5x step); the ``eps_scale`` AD
-    channel below is ``GRAD_SAFE`` (``tests/test_ad_surface_contract.py``);
+    channel below is ``GRAD_SAFE`` (``tests/unit/autodiff/test_ad_surface_contract.py``);
     and this method's own reciprocity (``0.3%`` magnitude / ``0.21`` degree
     phase) and ``cond(A) <= 1.11`` are measured on the committed fixture
     (below). This extends the validated 1-port
@@ -1369,7 +1369,7 @@ class CoaxialTwoPortResult:
     internally self-consistent (agreeing between the two mirror-symmetric
     arrays to 2-5%), estimates; see
     :func:`_assemble_coaxial_two_port_from_voltages` for the full finding and
-    ``tests/test_coax_two_port_fdtd.py::
+    ``tests/unit/sparams/test_coax_two_port_fdtd.py::
     test_matched_through_line_transmits_reciprocally`` for the mechanism
     check this motivated. Do not read a single array's ``gamma`` as *the*
     line attenuation without averaging across all 4 (2 arrays x 2 drives)
@@ -1752,7 +1752,7 @@ class CoaxMSLTransitionResult:
     not track the analytic Hammerstad-Jensen propagation constant at all
     (off by a factor of 4-32x, and the two drives' own independent fits of
     the SAME array disagree with each other by 1-2 orders of magnitude —
-    see ``tests/test_coax_msl_transition.py``'s
+    see ``tests/unit/sparams/test_coax_msl_transition.py``'s
     ``test_coax_msl_transition_first_fixture_diagnostic`` for the locked
     assertions and
     ``test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit``
@@ -1771,7 +1771,7 @@ class CoaxMSLTransitionResult:
     1.000mm -> 8.000mm and widened the MSL port's x-CPML clearance
     200um -> 1500um, keeping the junction geometry byte-identical to
     attempt 1 (asserted, see
-    ``tests/test_coax_msl_transition.py::
+    ``tests/unit/sparams/test_coax_msl_transition.py::
     test_attempt2_junction_geometry_is_byte_identical_to_attempt1``).
 
     Verdict, per the RUN-LENGTH INVARIANCE TEST across two settling
@@ -1780,7 +1780,7 @@ class CoaxMSLTransitionResult:
     checkpoints and lands inside the predeclared [0.8, 1.3] band both
     times — CONFIRMED, but PROVISIONAL pending a fully settled run
     (neither checkpoint clears the -40 dB ring-down rule; see
-    ``tests/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, a
+    ``tests/unit/sparams/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, a
     predeclared-UNRUN follow-up targeting VESSL). Reciprocity (0.824 ->
     0.938), ``|S22|`` (0.451 -> 1.104), and max ``|S|`` (0.993 -> 1.104,
     crossing the passivity-guard hard limit) all FAIL that same
@@ -1820,7 +1820,7 @@ class CoaxMSLTransitionResult:
     this attempt.
 
     SETTLED RUN (VESSL 369367252283, 2026-08-06, ``n_steps=135000`` — see
-    ``tests/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, status
+    ``tests/unit/sparams/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, status
     ``RUN``): both drives clear the -40 dB ring-down rule for the first
     time on this lane (settling_db -45.94 / -44.17 dB). gamma-vs-beta is
     now **CONFIRMED**, not provisional — a THIRD checkpoint (after 20000
@@ -1992,10 +1992,10 @@ class CoaxMSLTransitionResult:
         DIAGNOSTIC ONLY, and label-FREE: these are modal voltages, not
         wave amplitudes — no incident/outgoing role is assigned here (that
         assignment is exactly what issue #589 hypothesis H1 disputes; see
-        ``tests/test_coax_msl_transition_wave_roles.py``). Attaching them
+        ``tests/unit/sparams/test_coax_msl_transition_wave_roles.py``). Attaching them
         cannot change any number: they are copies taken AFTER the assembler
         has consumed the same arrays
-        (``tests/test_coax_msl_transition_ladder_dump.py::
+        (``tests/unit/sparams/test_coax_msl_transition_ladder_dump.py::
         test_return_ladder_voltages_does_not_perturb_s``).
     """
 

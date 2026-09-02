@@ -203,7 +203,7 @@
       "expected_exit_codes": [0, 1],
       "gate_paths": [
         "validation/crossval/10_pmc_cpml_half_symmetric.py",
-        "tests/test_boundary_pmc_composition.py"
+        "tests/unit/boundaries/test_boundary_pmc_composition.py"
       ],
       "artifact_paths": [],
       "cpu_runner": {"order": 5},

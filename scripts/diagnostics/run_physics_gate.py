@@ -98,13 +98,13 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "optimization regressions."
         ),
         tests=(
-            "tests/test_sparam.py",
-            "tests/test_s11_at_freq.py",
-            "tests/test_minimize_s11_at_freq_physical.py",
-            "tests/test_lumped_port_sparams_jit.py",
-            "tests/test_wire_sparam.py",
-            "tests/test_wire_port_sparams_forward.py",
-            "tests/test_twoport_wire_port.py",
+            "tests/unit/sparams/test_sparam.py",
+            "tests/unit/autodiff/test_s11_at_freq.py",
+            "tests/unit/autodiff/test_minimize_s11_at_freq_physical.py",
+            "tests/unit/sparams/test_lumped_port_sparams_jit.py",
+            "tests/unit/sparams/test_wire_sparam.py",
+            "tests/unit/sparams/test_wire_port_sparams_forward.py",
+            "tests/unit/sparams/test_twoport_wire_port.py",
         ),
         claim_level="E1",
         validated_claims=(
@@ -129,18 +129,18 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "contracts, and forward-path behavior."
         ),
         tests=(
-            "tests/test_waveguide_port.py",
+            "tests/unit/ports/test_waveguide_port.py",
             "tests/oracle/test_waveguide_port_validation_battery.py",
-            "tests/test_waveguide_twoport_contract_v1.py",
-            "tests/test_waveguide_forward.py",
-            "tests/test_wr90_port_oracles.py",
+            "tests/unit/sparams/test_waveguide_twoport_contract_v1.py",
+            "tests/unit/autodiff/test_waveguide_forward.py",
+            "tests/unit/ports/test_wr90_port_oracles.py",
         ),
         claim_level="E2",
         validated_claims=(
             {
                 "claim": "waveguide-port oracle and reciprocity regression envelope",
                 "evidence_level": "E2",
-                "artifact": "tests/test_wr90_port_oracles.py and waveguide-port gate stdout",
+                "artifact": "tests/unit/ports/test_wr90_port_oracles.py and waveguide-port gate stdout",
             },
         ),
         blocked_claims=(
@@ -158,12 +158,12 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "extractor, and de-embedding helpers."
         ),
         tests=(
-            "tests/test_msl_port.py",
-            "tests/test_msl_port_integration.py",
-            "tests/test_msl_port_preflight.py",
-            "tests/test_msl_eigenmode_solver.py",
+            "tests/unit/ports/test_msl_port.py",
+            "tests/unit/sparams/test_msl_port_integration.py",
+            "tests/unit/ports/test_msl_port_preflight.py",
+            "tests/unit/ports/test_msl_eigenmode_solver.py",
             "tests/test_msl_plane_extractor_jax.py",
-            "tests/test_msl_wave_decomp_jvp.py",
+            "tests/unit/sparams/test_msl_wave_decomp_jvp.py",
         ),
         claim_level="E2",
         validated_claims=(
@@ -188,13 +188,13 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "extraction checks used by port calculators."
         ),
         tests=(
-            "tests/test_deembed.py",
-            "tests/test_eigenmode.py",
-            "tests/test_eigenmode_port.py",
-            "tests/test_multimode_waveguide.py",
-            "tests/test_normalization.py",
-            "tests/test_normalize_flux.py",
-            "tests/test_extract_s_matrix_pec_mask.py",
+            "tests/unit/sparams/test_deembed.py",
+            "tests/unit/ports/test_eigenmode.py",
+            "tests/unit/ports/test_eigenmode_port.py",
+            "tests/unit/ports/test_multimode_waveguide.py",
+            "tests/unit/sparams/test_normalization.py",
+            "tests/unit/sparams/test_normalize_flux.py",
+            "tests/unit/sparams/test_extract_s_matrix_pec_mask.py",
         ),
         claim_level="E1",
         validated_claims=(
@@ -213,12 +213,12 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "promoted by evidence."
         ),
         tests=(
-            "tests/test_coaxial_port.py",
-            "tests/test_floquet.py",
-            "tests/test_nonuniform_grad_sparams.py",
-            "tests/test_port_dump_replay.py",
-            "tests/test_port_observable_validation.py",
-            "tests/test_sparameter_support_contract.py",
+            "tests/unit/ports/test_coaxial_port.py",
+            "tests/unit/ports/test_floquet.py",
+            "tests/unit/autodiff/test_nonuniform_grad_sparams.py",
+            "tests/unit/sparams/test_port_dump_replay.py",
+            "tests/unit/sparams/test_port_observable_validation.py",
+            "tests/unit/sparams/test_sparameter_support_contract.py",
         ),
         claim_level="E0",
         coverage_scope="not_claims_bearing",
@@ -244,7 +244,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "Missing external references must report skip/unknown, not pass."
         ),
         tests=(
-            "tests/test_crossval_migration_smoke.py",
+            "tests/unit/boundaries/test_crossval_migration_smoke.py",
             "tests/crossval/test_crossval_comprehensive.py",
             "tests/crossval/test_meep_crossval.py",
             "tests/crossval/test_meep_crossval_dielectric_cavity.py",
@@ -295,7 +295,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         group_id="slow_boundary_absorber",
         description="Slow CPML/PML reflectivity and absorber-regression checks.",
         tests=(
-            "tests/test_cpml.py",
+            "tests/unit/boundaries/test_cpml.py",
             "tests/oracle/test_pml_reflectivity.py",
         ),
         pytest_args=("-m", "slow"),
@@ -338,9 +338,9 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         ),
         tests=(
             "tests/oracle/test_nonuniform_convergence.py",
-            "tests/test_subgrid_crossval.py",
-            "tests/test_subpixel.py",
-            "tests/test_subpixel_pec.py",
+            "tests/unit/subgrid/test_subgrid_crossval.py",
+            "tests/unit/geometry/test_subpixel.py",
+            "tests/unit/geometry/test_subpixel_pec.py",
         ),
         pytest_args=("-m", "slow"),
         claim_level="E1",
@@ -363,8 +363,8 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         group_id="slow_sbp_sat",
         description="Slow SBP-SAT stability and energy-conservation checks.",
         tests=(
-            "tests/test_sbp_sat_1d.py",
-            "tests/test_sbp_sat_2d.py",
+            "tests/unit/subgrid/test_sbp_sat_1d.py",
+            "tests/unit/subgrid/test_sbp_sat_2d.py",
         ),
         pytest_args=("-m", "slow"),
         claim_level="E1",
@@ -379,7 +379,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
     GateGroup(
         group_id="slow_msl",
         description="Slow MSL thru-line passive/eigenmode integration gates.",
-        tests=("tests/test_msl_port_integration.py",),
+        tests=("tests/unit/sparams/test_msl_port_integration.py",),
         pytest_args=("-m", "slow"),
         claim_level="E2",
         validated_claims=(

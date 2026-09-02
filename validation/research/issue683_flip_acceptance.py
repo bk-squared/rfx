@@ -19,7 +19,7 @@ difference of the raw accumulators (expected ~0 after the flip: gate G2 of
 the decision run measured the lane difference to be EXACTLY the same-step
 injection increment, which the flip removes). That report is corroborating
 output, not a pass/fail gate here — the binding lane-parity gate is the
-witness test in tests/test_nu_wire_port_lane_parity.py (A2).
+witness test in tests/unit/nonuniform/test_nu_wire_port_lane_parity.py (A2).
 
 Run from the worktree:
 

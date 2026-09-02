@@ -342,7 +342,7 @@ def _prompt_to_artifact_checklist(
         },
         {
             "requirement_id": "unsupported_paths_not_silent",
-            "evidence": [support_doc, _artifact_status("tests/test_sparameter_support_contract.py")],
+            "evidence": [support_doc, _artifact_status("tests/unit/sparams/test_sparameter_support_contract.py")],
             "status": "passed",
         },
         {

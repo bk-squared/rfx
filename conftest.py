@@ -8,7 +8,7 @@ pytest loads conftest.py at collection time, before test modules are imported,
 so this is the correct place to inject the flag.
 
 Without this, the distributed-NU composition tests in
-``tests/test_distributed_nu_composition.py`` fail in a subtle way: if jax
+``tests/unit/runners/test_distributed_nu_composition.py`` fail in a subtle way: if jax
 was already imported in another module before XLA_FLAGS was set, JAX will
 have already enumerated physical devices (typically 1 CPU) and the flag has
 no effect.  When that happens, ``len(jax.devices()) < 2`` causes those tests
@@ -73,7 +73,7 @@ def pytest_configure(config):
 # anything with pytest's pluginmanager — no hook exists at all, so there is
 # no per-test overhead beyond the one `os.environ.get` check done once at
 # session configure time. See
-# tests/test_weekly_rss_reporter.py::test_disabled_by_default_registers_nothing.
+# tests/unit/misc/test_weekly_rss_reporter.py::test_disabled_by_default_registers_nothing.
 #
 # NOTE: RFX_WEEKLY_RSS_THRESHOLD_MB is intentionally NOT parsed at module
 # scope. A malformed value would raise ValueError while conftest.py is being
@@ -82,7 +82,7 @@ def pytest_configure(config):
 # an env var this file's own default gate is supposed to make irrelevant.
 # The parse lives inside _maybe_register_rss_reporter, after the enable
 # gate, with a fallback to the 500 MB default on a bad value. See
-# tests/test_weekly_rss_reporter.py::test_malformed_threshold_with_reporter_off_does_not_raise.
+# tests/unit/misc/test_weekly_rss_reporter.py::test_malformed_threshold_with_reporter_off_does_not_raise.
 #
 # issue #545 step 3 (2026-08-06 discriminator run 31103127491): this reporter
 # alone left one structural gap disclosed in that run's writeup -- ru_maxrss

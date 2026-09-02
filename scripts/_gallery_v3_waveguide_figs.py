@@ -9,7 +9,7 @@ Produces into docs/public/gallery/assets/waveguide_wr90/:
   - autodiff.png    d|S21|^2/d(eps_r) of the dielectric fill via jax.value_and_grad
                     through compute_waveguide_s_matrix(normalize="flux", ...),
                     cross-checked against central finite differences (5% gate,
-                    mirroring tests/test_waveguide_flux_ad.py)
+                    mirroring tests/unit/autodiff/test_waveguide_flux_ad.py)
 
 The S-parameters themselves live in the committed sparams.json produced by
 scripts/precompute_gallery_artifacts.py (_build_waveguide_wr90). This script adds

@@ -29,7 +29,7 @@ run: |-
     --ignore=tests/test_meep_crossval_patch.py \
     --ignore=tests/crossval/test_openems_crossval.py \
     --ignore=tests/crossval/test_crossval_comprehensive.py \
-    --ignore=tests/test_distributed.py \
+    --ignore=tests/unit/runners/test_distributed.py \
     -k "not slow" || true
 
   echo ""

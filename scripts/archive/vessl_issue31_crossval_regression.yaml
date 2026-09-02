@@ -27,11 +27,11 @@ run: |-
   # 1) Full NU test suite including the new Phase A/C pins.
   echo ""
   echo "=== 1. NU test suite ==="
-  pytest tests/test_nonuniform_api.py \
-         tests/test_nonuniform_forward_grad.py \
-         tests/test_nonuniform_gradient.py \
-         tests/test_nonuniform_checkpoint.py \
-         tests/test_nonuniform_emit_ts.py \
+  pytest tests/unit/nonuniform/test_nonuniform_api.py \
+         tests/unit/autodiff/test_nonuniform_forward_grad.py \
+         tests/unit/autodiff/test_nonuniform_gradient.py \
+         tests/unit/nonuniform/test_nonuniform_checkpoint.py \
+         tests/unit/nonuniform/test_nonuniform_emit_ts.py \
          --tb=short -q
 
   # 2) Patch antenna resonance crossval — TM010 pin (prev: 2.4 GHz ±1%).
@@ -52,7 +52,7 @@ run: |-
     --ignore=tests/test_meep_crossval_patch.py \
     --ignore=tests/crossval/test_openems_crossval.py \
     --ignore=tests/crossval/test_crossval_comprehensive.py \
-    --ignore=tests/test_distributed.py \
+    --ignore=tests/unit/runners/test_distributed.py \
     -k "not slow"
 
   echo ""

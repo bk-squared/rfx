@@ -86,7 +86,7 @@ run: |-
   echo "(the /tmp clone itself is ephemeral and is NOT the artifact store)"
   echo "=== pytest: the actual rebuilt gate + its comparator-floor / dtype-lock tests ==="
   set +e
-  timeout 5400 python -u -m pytest tests/test_msl_ad_fd_converged.py -m "" -q -ra -s > "$OUT_DIR/gate_pytest.log" 2>&1
+  timeout 5400 python -u -m pytest tests/unit/autodiff/test_msl_ad_fd_converged.py -m "" -q -ra -s > "$OUT_DIR/gate_pytest.log" 2>&1
   gate_rc=$?
   set -e
   cat "$OUT_DIR/gate_pytest.log"

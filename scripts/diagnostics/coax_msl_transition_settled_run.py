@@ -6,7 +6,7 @@ continuing work -- see SETTLED_RUN_RECORD["tracking_issue"]).
 
 WHY THIS SCRIPT EXISTS
 -----------------------
-``tests/test_coax_msl_transition.py::SETTLED_RUN_RECORD`` predeclares the
+``tests/unit/sparams/test_coax_msl_transition.py::SETTLED_RUN_RECORD`` predeclares the
 next, not-yet-run step for ``compute_coax_msl_transition``'s attempt-2
 fixture (PR #585, merge da443f5): the committed 45000-step run only reached
 -19.7/-17.9 dB ring-down settling, well short of this repo's -40 dB rule
@@ -93,7 +93,7 @@ ones touching this driver are applied here):
   ``recurrence_residual`` per (port array, drive, bin) for BOTH ladders --
   the MSL ladder (array 1) side by side with the coax ladder (array 0) of
   the same run. Threshold provenance (review item 7): 0.02 is the coax
-  lane's own BORROWED convenience number (tests/test_coax_two_port_fdtd.py
+  lane's own BORROWED convenience number (tests/unit/sparams/test_coax_two_port_fdtd.py
   fit_residual gate, measured max 0.0127 there); a passing A3 on the MSL
   ladder means "not worse than the validated coax lane", NOT "single mode
   proven". The load-bearing criterion is the RELATIVE one: MSL-driven
@@ -228,7 +228,7 @@ the reference plane the ladder is referred to (the junction, x = 1.0 mm),
 where attempt 3's own nearest probe stands 0.4 mm = 1.33*h_sub off the feed.
 3b vs 3 is therefore a PURE LADDER-RECIPE comparison on bit-identical
 geometry; its predictions and falsifiers are
-``tests/test_coax_msl_transition.py::PREDECLARATION_ATTEMPT3B`` (status
+``tests/unit/sparams/test_coax_msl_transition.py::PREDECLARATION_ATTEMPT3B`` (status
 UNRUN), a NEW predeclaration that does not touch, relax or reinterpret
 PREDECLARATION_ATTEMPT2/3 or SETTLED_RUN_RECORD.
 
@@ -247,7 +247,7 @@ are not passed):
   the solve UNCHANGED (W1-W3 are then reported as SKIPPED; W4 and the
   label-swap counterfactual still work). The arrays are written to
   ``<output>.ladders.npz`` next to the JSON, never into the legacy keys.
-* ``--flux`` passes ``extra_flux_monitors=tests/test_coax_msl_transition.py
+* ``--flux`` passes ``extra_flux_monitors=tests/unit/sparams/test_coax_msl_transition.py
   ::_attempt3_scratch_flux_entries()`` -- the six faces of one lossless
   control volume around the junction (plus the full-plane +x comparator).
   attempt3 / attempt3b only: the plane coordinates are that grid's, and
@@ -774,7 +774,7 @@ def _witness_dump(*, result, ext, out_path, freqs_all, beta_coax_analytic,
 # lane exists to fix (#822: a mapping copied from a sibling whose geometry
 # made it correct there), so the dispatch is now a TOTAL function over
 # FIXTURE_CHOICES that raises on anything else, and
-# tests/test_coax_msl_transition.py::
+# tests/unit/sparams/test_coax_msl_transition.py::
 # test_settled_run_driver_fixture_selection_is_explicit_for_every_label pins
 # each label to its own builder and kwargs by identity.
 # ---------------------------------------------------------------------------
@@ -787,7 +787,7 @@ FluxFixtureSelection = collections.namedtuple(
 def _select_fixture(t, fixture: str, n_steps: int) -> "FluxFixtureSelection":
     """(build, kwargs, fixture_geom, banner) for one ``--fixture`` label.
 
-    ``t`` is the imported ``tests/test_coax_msl_transition.py`` module: the
+    ``t`` is the imported ``tests/unit/sparams/test_coax_msl_transition.py`` module: the
     fixtures, their kwargs and their geometry constants live there and are
     reused verbatim, never re-declared here.
     """
@@ -1187,7 +1187,7 @@ def main() -> int:
             "fit_residual": _pd(fit),
             "recurrence_residual": _pd(rec),
             "threshold_provenance": "0.02 = coax lane's borrowed convenience number "
-                                    "(tests/test_coax_two_port_fdtd.py, measured 0.0127); "
+                                    "(tests/unit/sparams/test_coax_two_port_fdtd.py, measured 0.0127); "
                                     "load-bearing criterion = MSL-driven residual at 6/8 GHz "
                                     "> 10x own 10 GHz value",
             "falsifier": "MSL-DRIVEN MSL-ladder fit or recurrence residual > 0.02 or > 10x "

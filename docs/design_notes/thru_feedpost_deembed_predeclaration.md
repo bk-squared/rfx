@@ -33,7 +33,7 @@ reference-plane path family, then pin the physical de-embedded floor.
 ## 2. Derivation: what de-embedding is correct for THIS fixture topology
 
 Fixture (canonical THRU battery, verbatim geometry of
-`tests/test_lumped_twoport_vi_validation_battery.py`): at each port a
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py`): at each port a
 1 mm vertical wire feed post (Ez column, 3 cells, top cell dead inside
 the PEC trace) connects the lumped port terminal pair (ground plane to
 trace) to the 16 mm air-microstrip line (measured Zc = 47.9-48.6 ohm,

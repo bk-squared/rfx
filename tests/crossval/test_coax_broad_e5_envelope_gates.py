@@ -22,7 +22,7 @@ Mirrors ``tests/crossval/test_waveguide_broad_e5_envelope_gates.py``, two layers
 
 Both layers REPLAY frozen numbers (pure Python, no FDTD). A regression in the
 live ``compute_coaxial_line_reflection`` would not flip them red — that gap is
-closed by the LIVE-physics anchor ``tests/test_coaxial_line_calibration.py``,
+closed by the LIVE-physics anchor ``tests/unit/sparams/test_coaxial_line_calibration.py``,
 which runs the production extractor against short/open/matched/resistive
 analytic gates at CI time.
 
@@ -32,7 +32,7 @@ AD-traceable extractor were still owed and this fixture alone did not flip
 the family status. Both have SINCE been delivered — the Meep broad-E4
 fixture (``tests/fixtures/coax_broad_e4/``, PR #259), the AD-traceable
 extractor + end-to-end ``eps_scale`` channel (PRs #260/#261, gated by
-``tests/test_coax_end_to_end_ad.py``) — and the family was promoted to
+``tests/unit/autodiff/test_coax_end_to_end_ad.py``) — and the family was promoted to
 ``broad_e5_passed`` (PR #262). This test remains the envelope-class gate
 WITHIN that promotion; weakening it would undermine the promoted claim.
 """

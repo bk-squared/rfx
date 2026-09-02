@@ -481,7 +481,7 @@ every arm fresh).
    consistent-sign interface bias — bring-up uniform arms drifted
    0.63 GHz across the ladder with mixed apparent order ~1. The ladder
    therefore runs with `subpixel_smoothing=True` (NU path validated,
-   `tests/test_subpixel_nonuniform.py`; the known subpixel caveat #582
+   `tests/unit/geometry/test_subpixel_nonuniform.py`; the known subpixel caveat #582
    is open-boundary only, this fixture is PEC-closed). With it the
    uniform arm converges monotonically at the 2nd-order class
    (5.4045 → 5.5021 → 5.5331 → 5.5436 GHz at s = 1.5/1.0/0.75/0.5).
@@ -750,7 +750,7 @@ sites:
   face on that side, read from the existing `_preflight_face_layers()`.
 
 The "allow" half is the absence of both on an in-cap multi-band profile;
-`tests/test_multiband_nu_envelope.py::test_preflight_multiband_within_cap_is_clean`
+`tests/unit/nonuniform/test_multiband_nu_envelope.py::test_preflight_multiband_within_cap_is_clean`
 locks it.
 
 **Depth provenance for the absorber check.** The pad replicates the
@@ -777,7 +777,7 @@ drift at 2.5e-6, and F-S4 shows the order is still 2 at that ratio. That
 is the evidence the old threshold lacked. Above the cap the warning still
 fires and now names the support-matrix row.
 
-**Emission-contract update** (`tests/test_preflight_advisory_emission_contract.py`,
+**Emission-contract update** (`tests/unit/preflight/test_preflight_advisory_emission_contract.py`,
 the procedure #738 and #755 established): `_FROZEN_TOTAL_SITES` 83 -> 85,
 `_FROZEN_LITERAL_CODE_COUNT` 55 -> 57, with the reason recorded inline at
 the constants. The dynamic-site freeze (by enclosing function) is
@@ -785,7 +785,7 @@ untouched — both new sites are literal-code sites.
 
 ### WP6c — regression packaging
 
-`tests/test_multiband_nu_envelope.py`:
+`tests/unit/nonuniform/test_multiband_nu_envelope.py`:
 
 - FAST lane (~30 s total, default markers): the f64 witness-validity gate
   plus the committed revert-proof run in an x64 subprocess; a reduced
@@ -876,7 +876,7 @@ and the 3e-4 floor dominates every arm regardless.
 | NU battery | every `tests/test_*` matching nonuniform / `_nu_` / `nu_` / graded / grading / subpixel / smooth_grading (53 modules) | **438 passed, 3 xfailed, 8 deselected** (715 s) |
 | Preflight battery | the 17 `test_*preflight*` modules | included in the row below |
 | Preflight + example-fidelity + tutorials | the 17 preflight modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **304 passed** (228 s) |
-| Multiband envelope, fast lane | `tests/test_multiband_nu_envelope.py` under default markers | **8 passed** (~30 s) |
+| Multiband envelope, fast lane | `tests/unit/nonuniform/test_multiband_nu_envelope.py` under default markers | **8 passed** (~30 s) |
 | Multiband envelope, slow lane | same file, `-m "slow_physics and not gpu"` | **5 passed** (160 s) — the four full 10^6-step 1-D F-S1 arms and the full four-scale W4R2 F-S4 ladder |
 | Multiband envelope, gpu lane | same file, `-m gpu` | not runnable on this CPU host; yaml emitted (below). The F-S1 3-D verdict itself is already committed evidence (VESSL 369367256892). |
 | Re-verification after the final doc/docstring edits | emission contract + example fidelity + multiband envelope + in-plane grading guards | **114 passed** (64 s) |
@@ -899,7 +899,7 @@ slow-lane run.
 cluster `remilab-c0`, preset `gpu-rtx4090`, image
 `nvcr.io/nvidia/jax:24.10-py3`, mount
 `/root/workspace/: volume://remilab-fs/personal-workspaces/`. It runs the
-`gpu`/`slow_physics` arms of `tests/test_multiband_nu_envelope.py` with
+`gpu`/`slow_physics` arms of `tests/unit/nonuniform/test_multiband_nu_envelope.py` with
 the marker override, i.e. it re-executes the already-recorded F-S1 3-D
 measurement through the committed test wrapper and the committed
 `evaluate_fs1` judge. It adds no claim and moves no window: a pass
@@ -1338,7 +1338,7 @@ editing WP6R.4, per the append-only rule.
 |---|---|---|
 | Preflight + example-fidelity + tutorials | the 17 `test_*preflight*` modules + `test_example_fidelity_contract` + `test_fidelity_report` + `test_crossval_example_imports` + `test_tutorial_examples` | **306 passed** (352 s CPU). WP6 recorded 304 for the same selection; the +2 are the enumerate-and-classify gate's per-file cases for the two new lane files. No other mover. |
 | Emission contract + example fidelity + fidelity report (re-run after the in-plane lock revert) | `test_preflight_advisory_emission_contract`, `test_example_fidelity_contract`, `test_fidelity_report` | **123 passed** |
-| Multi-band envelope, fast lane | `tests/test_multiband_nu_envelope.py`, default markers | **11 passed** (128 s) — including the new analytic z-dominance gate, the reduced W4R3 ladder through the committed judge, and the grading-defect test that must FIRE |
+| Multi-band envelope, fast lane | `tests/unit/nonuniform/test_multiband_nu_envelope.py`, default markers | **11 passed** (128 s) — including the new analytic z-dominance gate, the reduced W4R3 ladder through the committed judge, and the grading-defect test that must FIRE |
 | NU battery, first 89 tests | the 50-module NU selection, in file order: all five `test_distributed_nu_*`, both farfield modules, `test_inplane_grading_guards`, `test_msl_nu_abscissa`, and all 16 tests of `test_multiband_nu_envelope` **including its `slow_physics` arms** (the four full 1e6-step 1-D F-S1 arms and the full four-scale W4R3 F-S4 ladder) | **89 passed, 0 failed** before the run was stopped |
 | NU battery, remaining ~349 tests | `test_nonuniform_*`, `test_nu_*`, `test_subpixel*`, `test_waveguide_nu_*`, `test_smooth_grading_preserve`, `test_optimize_nonuniform`, `test_preflight_graded_rasterization`, `test_thin_conductor_nu_dual_spacing`, ... | **NOT COMPLETED in this session.** Another agent's concurrent pytest runs in other worktrees on this machine drove the 1-minute load average to 127 (5 heavyweight JAX processes plus forked children); the run advanced at roughly one test per five minutes and was left running. **This battery must be re-run on a quiet machine before merge.** |
 
@@ -1544,7 +1544,7 @@ This section corrects WP6R.12's own attribution the same way: read every
    edit from being undone. Added
    `test_inplane_grading_lock_stays_at_1_3[x|y]` and
    `test_inplane_and_z_caps_are_distinct_values`
-   (`tests/test_multiband_nu_envelope.py`). The discriminating ratio is
+   (`tests/unit/nonuniform/test_multiband_nu_envelope.py`). The discriminating ratio is
    **1.35** — inside the witnessed z cap, above the unwitnessed in-plane
    threshold — asserted to fire on x and y through BOTH paths (constructor
    warning and preflight advisory) and to stay silent on z. Verified

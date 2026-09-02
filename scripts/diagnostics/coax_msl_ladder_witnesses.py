@@ -7,7 +7,7 @@ flux-plane spectra that ``scripts/diagnostics/coax_msl_transition_settled_run.py
 back into ``s_params``; every number is REPORT-ONLY and is stated next to the
 convention it depends on so that a reader can re-derive the sign.
 
-Sign conventions (frozen, unit-tested in ``tests/test_coax_msl_ladder_witnesses.py``)
+Sign conventions (frozen, unit-tested in ``tests/unit/sparams/test_coax_msl_ladder_witnesses.py``)
 --------------------------------------------------------------------------------
 * DFT kernel is ``exp(-j 2 pi f t)`` (rfx/probes/probes.py). A wave travelling
   toward +axis, ``f(t - z/v)``, therefore has phasor ``F exp(-j beta z)``: its
@@ -117,7 +117,7 @@ outward signs, C1/C2 CONTROL runs that gate interpretation of the target
 ("must read ~0").
 
 W4 here is a SECOND, differently-placed box on the ATTEMPT-3 fixture
-(coordinates in ``tests/test_coax_msl_transition.py``: FLUX_BOX_X_3/Y_3/Z_3,
+(coordinates in ``tests/unit/sparams/test_coax_msl_transition.py``: FLUX_BOX_X_3/Y_3/Z_3,
 FLUX_COAX_Z_3), and it does not supersede that predeclaration. Two of its
 faces are forced by attempt 3: the clearance hole is OPEN, so the coax-shell
 interior is on the power path and the box needs a face INSIDE the coax, and
@@ -166,7 +166,7 @@ W4_MIN_SIGNAL_OVER_CLOSURE = 3.0    # |msl_x20| must exceed the box's own closur
 
 COAX_SUBSETS = ((0, 4), (2, 6))
 MSL_SUBSETS = ((0, 3), (3, 6), (6, 9), (0, 5), (4, 9))
-# The six faces of the attempt-3 W4 box (tests/test_coax_msl_transition.py:
+# The six faces of the attempt-3 W4 box (tests/unit/sparams/test_coax_msl_transition.py:
 # FLUX_BOX_X_3/Y_3/Z_3, FLUX_COAX_Z_3). NOT the face table pre-declared on #589
 # on 2026-08-07 and implemented in scripts/diagnostics/coax_msl_flux_adjudication.py
 # -- see the module docstring section "W4's box is NOT the predeclared #589 flux
@@ -850,7 +850,7 @@ def compute_witnesses(d):
                              "a 1 mm ladder). NOISE-LIMITED: at the settled run's own coax-ladder fit "
                              "residual (~2e-4) a synthetic LOSSLESS ladder already shows shifts of "
                              "0.05-1.1% (full 6-probe) and 0.6-4.8% (4-probe subsets) -- measured in "
-                             "tests/test_coax_msl_ladder_witnesses.py::test_h7_impact_on_the_coax_ladder"
+                             "tests/unit/sparams/test_coax_msl_ladder_witnesses.py::test_h7_impact_on_the_coax_ladder"
                              "_is_noise_limited_and_says_so -- so read the printed shift, not the "
                              "boolean, and treat a 'survives' at the 1-2% level as UNRESOLVED rather "
                              "than as evidence of real loss")

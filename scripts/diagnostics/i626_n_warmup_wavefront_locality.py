@@ -5,7 +5,7 @@ relative to the wavefront's travel time?
 
 Context: the shipped "fixture 1"/"fixture 2" curves in
 docs/agent-memory/rfx-known-issues.md's "#626 RESOLVED" entry, and in
-tests/test_n_warmup.py::test_warmup_truncation_error_grows_with_k and
+tests/unit/autodiff/test_n_warmup.py::test_warmup_truncation_error_grows_with_k and
 scripts/diagnostics/i626_n_warmup_truncation_sweep.py, both use a design
 cell only ~3 cells from the source. At that placement the field (and
 hence the loss's sensitivity to that cell) is nonzero from the first few
@@ -42,7 +42,7 @@ SMOOTH, monotonically growing curve starting well before K_safe (not a
 cliff): at this fixture's K_safe=108, K=104 measures 0.259%, K=106
 measures 0.601%, K=108 (=K_safe itself) measures 1.186% -- all still
 comfortably under this repo's own established ~1.5% AD-vs-FD noise floor
-(see e.g. `tests/test_n_warmup.py`'s docstrings), but not "near-exact to
+(see e.g. `tests/unit/autodiff/test_n_warmup.py`'s docstrings), but not "near-exact to
 every printed digit" the way K<=100 is. The falsifier below now (a)
 samples finely around K_safe rather than only at multiples of 20, and
 (b) gates on the ~1.5% noise floor rather than an arbitrarily tight

@@ -238,7 +238,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-# Documented single-run passivity envelope (tests/test_sparam_passivity_guard.py):
+# Documented single-run passivity envelope (tests/unit/sparams/test_sparam_passivity_guard.py):
 # |S| <= ~1.05  <=>  column power |S11|^2 + |S21|^2 <= 1.10.
 PASSIVITY_COLUMN_POWER_MAX = 1.10
 

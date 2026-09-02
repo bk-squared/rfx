@@ -10,7 +10,7 @@ committed lumped/wire<->MSL fixture (dx=80um) -- does the boundary-adjacent
 extent cell of the wire port conduct (live) or not?
 
 Method: dump, for the EXACT committed fixture
-(`tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`, reused
+(`tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`, reused
 verbatim, imitating i517_mixed_solve_vs_ratio_measurement.py's precedent):
 
   (a) the ADVISORY's counting path as it existed BEFORE this issue's fix
@@ -66,7 +66,7 @@ R3 pre-commit self-audit
 
 ======================================================================
 Fixture (pre-declared, the #488 lane's own committed lumped/wire<->MSL
-fixture, `tests/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`,
+fixture, `tests/unit/sparams/test_mixed_port_sparam.py::_base_sim/_add_feed/_add_msl`,
 reused verbatim) -- IDENTICAL to `i517_mixed_solve_vs_ratio_measurement.py`.
 ======================================================================
 
@@ -151,7 +151,7 @@ I517_JSON = (REPO / "scripts" / "diagnostics" / "i517_mixed_solve_vs_ratio"
              / "i517_mixed_solve_vs_ratio.json")
 
 # ---------------------------------------------------------------------------
-# Fixture -- verbatim from tests/test_mixed_port_sparam.py (_base_sim,
+# Fixture -- verbatim from tests/unit/sparams/test_mixed_port_sparam.py (_base_sim,
 # _add_feed, _add_msl), the #488 lane's own committed lumped/wire<->MSL
 # fixture. Not re-derived; imitates the lane's own test invocation (same
 # precedent as i517_mixed_solve_vs_ratio_measurement.py).

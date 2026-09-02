@@ -47,7 +47,7 @@ PMC-plane convention: REALIZE-DECLARED, decided on issue #722's ninth
 surface (2026-08-28, see validation/crossval/09_half_symmetric_waveguide.py
 for the full argument). apply_pmc_faces zeros H_tan a half-cell 0.5*dx
 INSIDE the declared y_lo wall (rfx/boundaries/pmc.py, index 0 on a `_lo`
-face; pinned by tests/test_boundary_pmc_hi_faces.py), so this script's
+face; pinned by tests/unit/boundaries/test_boundary_pmc_hi_faces.py), so this script's
 y=20 mm half-domain has its H_tan mirror plane at y=DX/2=0.5 mm, not
 y=0. UNLIKE cv09, this offset biases NO comparator here: this crossval
 is a self-consistency / regression lock against v1.7.5's own commits

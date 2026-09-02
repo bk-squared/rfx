@@ -111,7 +111,7 @@ jobs:
       # `--capture=tee-sys`. Only `-s` (`--capture=no`) sends the thread's
       # writes straight to the real stdout fd, where flush=True can actually
       # do its job. See
-      # tests/test_weekly_rss_reporter.py::test_live_sampler_line_survives_sigkill_with_dash_s
+      # tests/unit/misc/test_weekly_rss_reporter.py::test_live_sampler_line_survives_sigkill_with_dash_s
       # (and its without-`-s` regression-pin sibling) for the subprocess-level
       # proof of this property.
       #

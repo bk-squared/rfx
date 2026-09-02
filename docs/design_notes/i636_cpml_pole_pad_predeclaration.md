@@ -8,7 +8,7 @@ the CPML pad destabilizes high-Q edge-touching structures).
 ## R1 — tracked context (premise verification, already done)
 
 Re-measured on `b29f9de` with the lock-test fixture
-(`tests/test_cpml_pad_material_extension.py::test_pole_extension_stability_lock`,
+(`tests/unit/boundaries/test_cpml_pad_material_extension.py::test_pole_extension_stability_lock`,
 45x39x12 cells, dx=1mm, eps_inf=4 slab with one Lorentz pole
 omega_0 = 2*pi*3e9, delta = omega_0/120 (Q=60), kappa = 3*omega_0^2,
 edge-touching in x and y, cpml_layers=8), 20,000 steps:
@@ -302,14 +302,14 @@ surfaced by the preflight advisory `dispersive_pole_at_absorber_face`.
 
 ## Guards landed (deliverable 1 + 4)
 
-- `tests/test_cpml_pad_material_extension.py::test_pole_extension_divergence_repro_636`
+- `tests/unit/boundaries/test_cpml_pad_material_extension.py::test_pole_extension_divergence_repro_636`
   (slow lane): minimal committed repro + physics lock, both variants at
   20,000 steps (shipped 0.2145 decays / extended 5.032 grows, measured
   margins in the test); the 8,000-step lock re-scoped as the fast-lane
   shipped-decay canary (its historical numbers were stale post-#655).
 - `rfx/api/_preflight.py::_validate_cfg_dispersive_pole_at_absorber_face`
   advisory (code `dispersive_pole_at_absorber_face`), 8 targeted tests in
-  `tests/test_preflight_dispersive_pole_at_absorber.py`.
+  `tests/unit/preflight/test_preflight_dispersive_pole_at_absorber.py`.
 - NOT landed (measured unsupportable): pole-mask extension in any form,
   including behind the CFS alpha rule — C4 red. The `_vacuum`
   pole-fold and alpha_max plumbing drafted during the session were

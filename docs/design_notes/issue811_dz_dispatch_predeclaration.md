@@ -22,7 +22,7 @@ sentinel firing — the NU lane was never entered.
 
 The same two-profile gate is mirrored (with the byte-identical fence
 message, enforced by
-`tests/test_sparameter_support_contract.py::test_waveguide_nu_fence_message_parity_sparams_vs_preflight`)
+`tests/unit/sparams/test_sparameter_support_contract.py::test_waveguide_nu_fence_message_parity_sparams_vs_preflight`)
 in `rfx/api/_preflight.py:2595`
 (`_validate_waveguide_sparameter_request_for_preflight`).
 
@@ -92,7 +92,7 @@ dz_profile are not supported"), and `compute_mixed_s_matrix`
    Each keeps a history line pointing at #811 and states that dz-graded
    ACCURACY evidence is still pending (#810) — dispatch is fixed, the
    observable is not thereby validated.
-4. New `tests/test_dz_only_dispatch_contract.py`: a dz-only contract row for
+4. New `tests/unit/nonuniform/test_dz_only_dispatch_contract.py`: a dz-only contract row for
    every public `compute_*` S-matrix entry point plus `run()`/`forward()`
    lane selection, a no-FDTD dispatch witness (sentinel monkeypatch), a
    fail-loud check for the default `normalize=False` on dz-only, the AST
@@ -170,10 +170,10 @@ Only the enumerated stale guards/docs change and no committed pinned value
 moves. Commands (declared):
 
 ```
-pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py \
+pytest tests/unit/nonuniform/test_dz_only_dispatch_contract.py tests/unit/sparams/test_sparameter_support_contract.py \
        tests/contracts/test_support_matrix_parity.py tests/contracts/test_evidence_citation_pointers.py -q
 pytest tests -k "waveguide and (sparam or s_matrix or dispatch or nonuniform)" -q
-pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q
+pytest tests/unit/nonuniform/test_dz_only_dispatch_contract.py -m slow_physics -q
 ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
 ```
 
@@ -212,16 +212,16 @@ result was produced by `compute_waveguide_s_matrix` on a dz-only simulation.
 `grep -rl compute_waveguide_s_matrix tests/ | xargs grep -l dz_profile`
 returns six files, each verified benign:
 
-- `tests/test_stage2_dual_path.py` — its cwsm gate runs on a uniform sim;
+- `tests/unit/geometry/test_stage2_dual_path.py` — its cwsm gate runs on a uniform sim;
   its dz-only sim expects a raise from `run()`.
-- `tests/test_waveguide_nu_nontrivial.py` — grades dx; the manual
+- `tests/unit/sparams/test_waveguide_nu_nontrivial.py` — grades dx; the manual
   `sim._dz_profile` there feeds a dispatch-bypassing internals helper.
 - `tests/_example_fidelity_lib.py` — input-side fidelity snapshots; no
   variant combines dz_profile with a waveguide cwsm script.
-- `tests/test_sparameter_support_contract.py` — NU waveguide fixture is
+- `tests/unit/sparams/test_sparameter_support_contract.py` — NU waveguide fixture is
   dy-only; its dz fixtures are MSL/TFSF (dz-aware dispatches).
-- `tests/test_preflight_absorber_frame.py` — cwsm named in a docstring only.
-- `tests/test_sheet_lane_fences.py` — dz-only fixtures are fence/raise
+- `tests/unit/preflight/test_preflight_absorber_frame.py` — cwsm named in a docstring only.
+- `tests/unit/materials/test_sheet_lane_fences.py` — dz-only fixtures are fence/raise
   tests; the cwsm fences use the uniform `_wr90` fixture.
 
 So bucket (a) is EMPTY: the dispatch fix moves no committed pinned value.
@@ -332,10 +332,10 @@ dz-graded accuracy evidence remains open under #810.
 
 ### F4 — suite results
 
-- `pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py tests/contracts/test_support_matrix_parity.py tests/contracts/test_evidence_citation_pointers.py -q`
+- `pytest tests/unit/nonuniform/test_dz_only_dispatch_contract.py tests/unit/sparams/test_sparameter_support_contract.py tests/contracts/test_support_matrix_parity.py tests/contracts/test_evidence_citation_pointers.py -q`
   → **76 passed, 6 skipped, 1 deselected** (the deselected one is the
   slow_physics falsifier).
-- `pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q`
+- `pytest tests/unit/nonuniform/test_dz_only_dispatch_contract.py -m slow_physics -q`
   → **1 passed, 11 deselected** (two genuinely different graded z meshes
   change the answer; per-bin dump printed by the test).
 - `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402`

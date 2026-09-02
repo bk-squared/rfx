@@ -56,7 +56,7 @@ exact Mie series) during the same diagnosis.
   the empty-domain leakage + metrics. Clean-checkout durable.
 - `generate.py` — offline producer (pure rfx + scipy Mie oracle; no external
   solver, no CI deps). Emits `fixture.json` mechanically.
-- Gated by `tests/test_rcs280_reference_subtraction.py`, which re-derives Mie from
+- Gated by `tests/unit/farfield/test_rcs280_reference_subtraction.py`, which re-derives Mie from
   the committed analytic oracle and uses shape-robust metrics (lobe removal,
   correlation, mean, backscatter) — not max |distance| (a dB-amplified floor at
   deep pattern nulls). Additive; no existing gate touched.

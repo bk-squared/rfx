@@ -2,7 +2,7 @@
 
 Tracked evidence for `scripts/diagnostics/msl_ad_z0_anchor_probe.py`, run locally
 (CPU, float32, this worktree) against the exact fixture
-`tests/test_msl_ad_fd_converged.py::_build_msl_sim` uses at its own
+`tests/unit/autodiff/test_msl_ad_fd_converged.py::_build_msl_sim` uses at its own
 `_NUM_PERIODS=20`, `_N_FREQS=8`. Two process invocations produced this
 result — the second re-confirms determinism for anchor B after the first
 combined run was killed by a background-task duration limit before it

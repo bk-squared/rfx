@@ -1,5 +1,5 @@
 """Regenerate the waveguide S-matrix golden snapshots used by
-tests/test_waveguide_sparam_ad.py::test_wg_smatrix_golden_equivalence_float64.
+tests/unit/autodiff/test_waveguide_sparam_ad.py::test_wg_smatrix_golden_equivalence_float64.
 
 These goldens are a float64 SNAPSHOT of compute_waveguide_s_matrix output on the
 minimal WR-90 2-port sim. They were frozen in 7b3b03e (2026-05-22, WI-2 jnp-
@@ -14,7 +14,7 @@ num_periods=4, the _make_wr90_sim geometry):
     python scripts/diagnostics/regen_waveguide_smatrix_goldens.py
 
 It writes the three .npy fixtures and prints the new sha256 to paste into
-_EXPECTED_SHA in tests/test_waveguide_sparam_ad.py. Only run this when the
+_EXPECTED_SHA in tests/unit/autodiff/test_waveguide_sparam_ad.py. Only run this when the
 assembly change is VALIDATED (do not bake an unintended regression into the
 snapshot).
 """
@@ -39,7 +39,7 @@ _FREQS = jnp.linspace(5e9, 6.5e9, 4)
 
 
 def _make_wr90_sim():
-    """Must stay byte-identical to tests/test_waveguide_sparam_ad.py::_make_wr90_sim."""
+    """Must stay byte-identical to tests/unit/autodiff/test_waveguide_sparam_ad.py::_make_wr90_sim."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
@@ -79,7 +79,7 @@ def main() -> None:
             sha = hashlib.sha256(s.tobytes()).hexdigest()
             print(f'        "{name}": "{sha}",   # shape {s.shape}')
     print("\nPaste the above into _EXPECTED_SHA in "
-          "tests/test_waveguide_sparam_ad.py")
+          "tests/unit/autodiff/test_waveguide_sparam_ad.py")
 
 
 if __name__ == "__main__":

@@ -23,13 +23,13 @@ goes to the end and identifies paths that are not ready for closed-loop design.
    - Coaxial is `yes` for the documented scalar `eps_scale` path through
      `compute_coaxial_line_reflection`. The end-to-end AD/finite-difference
      check is
-     `tests/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent`.
+     `tests/unit/autodiff/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent`.
      This does not extend the result to arbitrary coaxial geometry parameters
      or the deprecated `compute_coaxial_s_matrix` API.
    - Waveguide `yes` covers BOTH the default extraction
      (`normalize=False`) and the power-flux extraction
      (`normalize='flux'`), which is AD-traceable
-     (evidence: `tests/test_waveguide_flux_ad.py`) — you can optimize
+     (evidence: `tests/unit/autodiff/test_waveguide_flux_ad.py`) — you can optimize
      directly through the production-recommended flux path.
 3. **Pick the optimization method.**
 4. **Validate the final design — never ship the loss number alone.**
@@ -37,7 +37,7 @@ goes to the end and identifies paths that are not ready for closed-loop design.
 ## `optimize()` / `forward(port_s11_freqs=...)` for lumped and wire ports
 
 For lumped and wire-port devices, this is the supported end-to-end loop,
-and it is CI-gated: `tests/test_minimize_s11_at_freq_physical.py` runs a
+and it is CI-gated: `tests/unit/autodiff/test_minimize_s11_at_freq_physical.py` runs a
 physical S11 design objective through `forward()` on every PR.
 
 - Objectives come from `rfx.optimize_objectives` (`minimize_s11`,
@@ -58,7 +58,7 @@ physical S11 design objective through `forward()` on every PR.
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
 is accurate (AD↔FD relative error 9.21e-5 on the last run of
 `examples/inverse_design/differentiable_s11_design.py`, whose gate is
-`tests/test_sparam_ad_end_to_end.py`). The objective callables from
+`tests/unit/autodiff/test_sparam_ad_end_to_end.py`). The objective callables from
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.
 
@@ -162,7 +162,7 @@ before reaching for it:
 
 Full contract, fence reasoning, and gates:
 `rfx/observables.py`'s `jacobian_fwd` docstring and
-`tests/test_jacobian_fwd.py`.
+`tests/unit/autodiff/test_jacobian_fwd.py`.
 
 ## Validate either method
 

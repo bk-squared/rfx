@@ -185,7 +185,7 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     case that the thru fixtures are (true ``S11 ≈ 0``) it reduces to
     ``|S11|² + |S21|² = 1 + γ²`` — the same power counted twice — which is the
     passivity violation #507 opened on.  Both cases are pinned in
-    ``tests/test_msl_modal_voltage_and_wave_solve.py``.
+    ``tests/unit/sparams/test_msl_modal_voltage_and_wave_solve.py``.
 
     ``cond_a`` bounds DEGENERACY of the drive system only — it is not a
     reliability score.  Same contract as the coax lane's
@@ -1151,7 +1151,7 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
     call covers all its drives with a single message (#697 principle 8).
 
     Mutation falsification (both directions, run 2026-08-24 in this
-    worktree against ``tests/test_ntff_smatrix_drop_warning.py``):
+    worktree against ``tests/unit/farfield/test_ntff_smatrix_drop_warning.py``):
     - warn DELETED (early ``return`` above the ``warnings.warn``):
       3 failed, 3 passed — ``test_msl_warns_with_ntff_box``,
       ``test_waveguide_warns_with_ntff_box``,
@@ -1586,7 +1586,7 @@ def _assemble_coaxial_two_port_from_voltages(
     Isolated from :meth:`_SparamMixin.compute_coaxial_two_port` so the
     convention wiring below can be exercised with PLANTED analytic V(z)
     values (no FDTD) — see
-    ``tests/test_coax_two_port_fdtd.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
+    ``tests/unit/sparams/test_coax_two_port_fdtd.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
 
     Parameters
     ----------
@@ -1643,7 +1643,7 @@ def _assemble_coaxial_two_port_from_voltages(
         all-4-average estimator chosen after seeing the own/other split —
         not predeclared) found `|S21|*exp(+Re(gamma_bar)*L12)` reproduces
         the measured `|S21|` to within 2.1% across 4-12 GHz (see
-        ``tests/test_coax_two_port_fdtd.py::
+        ``tests/unit/sparams/test_coax_two_port_fdtd.py::
         test_matched_through_line_transmits_reciprocally``), consistent with
         combined bulk-line attenuation (captured by the lower, own-drive
         estimate) plus additional loss/scattering concentrated at the
@@ -1940,7 +1940,7 @@ def _assemble_coax_msl_transition_from_voltages(
     Isolated from :meth:`_SparamMixin.compute_coax_msl_transition` so the
     cross-family normalization can be exercised with PLANTED analytic
     voltages (no FDTD) — see
-    ``tests/test_coax_msl_transition.py::test_planted_voltages_recover_known_s_matrix_with_unequal_z0``.
+    ``tests/unit/sparams/test_coax_msl_transition.py::test_planted_voltages_recover_known_s_matrix_with_unequal_z0``.
     Concrete NumPy only (no jnp/traced branch): AD is explicitly out of
     scope for this leg (see :class:`~rfx.api._spec.CoaxMSLTransitionResult`'s
     class docstring).
@@ -2041,7 +2041,7 @@ def _assemble_coax_msl_transition_from_voltages(
       junction below the ladder -- the committed attempt-2/3/3b fixture --
       and ``"+x"``, junction above it; see the method's
       ``(1 if msl_pe.direction == "+x" else -1)`` monotonicity branch).
-      Pinned by ``tests/test_coax_msl_transition_wave_roles.py::
+      Pinned by ``tests/unit/sparams/test_coax_msl_transition_wave_roles.py::
       test_assembler_wave_roles_hold_on_a_mirrored_msl_ladder``, whose
       docstring records what reading ``a = backward_amp`` at the MSL port
       of the mirrored fixture does to ``S_code``.
@@ -2060,7 +2060,7 @@ def _assemble_coax_msl_transition_from_voltages(
     ``b`` at BOTH ports; since ``S = B inv(A)``, exchanging ``A`` and ``B``
     returns ``inv(S_true)``. Every number this function produced before the
     fix is that inverse. The regression gate is
-    ``tests/test_coax_msl_transition_wave_roles.py::
+    ``tests/unit/sparams/test_coax_msl_transition_wave_roles.py::
     test_assembler_wave_roles_follow_the_junction_side_reference_plane``,
     whose planted voltages are built from GEOMETRY
     (``tests/_wave_convention.py::_plant_ladder_voltages_physical``) and
@@ -2956,7 +2956,7 @@ class _SparamMixin:
         # (staircase PEC, the supported floor) or a coarser mesh.  The
         # ``conformal_nan`` preflight warning carries the same guidance;
         # the strict-xfail tracker is
-        # tests/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec.
+        # tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec.
         if conformal_weights is not None and normalize:
             import warnings as _w
             _w.warn(
@@ -3140,7 +3140,7 @@ class _SparamMixin:
         at its edges). ADI refuses on both channels through the shared
         ``refuse_f0_sheets`` helper; the subgridded and distributed lanes
         carry their own call sites at whichever entry reaches them —
-        ``FENCE_REGISTRY`` in ``tests/test_sheet_lane_fences.py`` is the
+        ``FENCE_REGISTRY`` in ``tests/unit/materials/test_sheet_lane_fences.py`` is the
         authoritative per-lane list, AST-guarded against drift.
         ``subpixel_smoothing`` / ``conformal_pec`` are ``run()``-only
         keywords, so that combination is unreachable on the ``eps_override``
@@ -5735,7 +5735,7 @@ class _SparamMixin:
         the ``jax.numpy`` path (``coaxial_line_plane_voltage_jnp`` + the traced
         extractor) so the gradient flows design → FDTD → DFT planes → Γ. With
         ``eps_scale=None`` the result is byte-identical to the validated numpy
-        path. The AD↔FD gate is ``tests/test_coax_end_to_end_ad.py``.
+        path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
         """
 
         if self._boundary != "cpml" or self._cpml_layers <= 0:
@@ -6202,7 +6202,7 @@ class _SparamMixin:
         losses above (same "can't Python-branch on a tracer" reason), not a
         separate defect; ``cond_a`` is still RETURNED (as a tracer), so a
         caller can inspect it after concretizing the result if degeneracy
-        matters to them. The AD gate is ``tests/test_coax_two_port_ad.py``.
+        matters to them. The AD gate is ``tests/unit/autodiff/test_coax_two_port_ad.py``.
 
         ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
         an ENERGY-WITNESS channel, not an extractor change. Pass the entry
@@ -6215,7 +6215,7 @@ class _SparamMixin:
         flux, positive = +axis). The S-parameter math is untouched — the
         non-perturbation witness (S bit-identical with and without
         monitors) is gated in
-        ``tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+        ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
         The registered-monitor guard is unchanged: monitors registered ON
         this sim still raise, because this method builds its own probes.
         """
@@ -6684,7 +6684,7 @@ class _SparamMixin:
             (``docs/guides/sparameter_support_matrix.md`` / ``.json``). One
             pre-declared fixture has been run against this method; see that
             fixture's own predeclaration
-            (``tests/test_coax_msl_transition.py``) for the measured
+            (``tests/unit/sparams/test_coax_msl_transition.py``) for the measured
             envelope. NOT_TRACEABLE (see :class:`~rfx.api._spec.
             CoaxMSLTransitionResult`'s class docstring for the full honesty
             contract, including why the MSL side is extracted via the coax
@@ -6854,7 +6854,7 @@ class _SparamMixin:
         net flux, positive = +axis). The S-parameter math is untouched —
         the non-perturbation witness (S bit-identical with and without
         monitors) is gated in
-        ``tests/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+        ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
         The registered-monitor guard is unchanged: monitors registered ON
         this sim still raise, because this method builds its own probes.
 
@@ -6871,7 +6871,7 @@ class _SparamMixin:
         ``.copy()`` of arrays that are complete before, and consumed by,
         :func:`_assemble_coax_msl_transition_from_voltages`, so every
         S-parameter number is bit-identical with the option off or on —
-        gated by ``tests/test_coax_msl_transition_ladder_dump.py::
+        gated by ``tests/unit/sparams/test_coax_msl_transition_ladder_dump.py::
         test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
         the same discipline as the flux witness above; the round-trip
         assertion there also proves the dump IS what the assembler consumed).
@@ -7240,7 +7240,7 @@ class _SparamMixin:
         # Emitted with ``warnings.warn``, deliberately NOT by constructing a
         # PreflightWarning: this is not a preflight check (this method never
         # calls preflight — it is DIAGNOSTIC_ONLY in
-        # tests/test_preflight_advisory_emission_contract.py's
+        # tests/unit/preflight/test_preflight_advisory_emission_contract.py's
         # EMISSION_CLASSIFICATION) and the emission-site freeze in that file
         # counts PreflightWarning/PreflightErrorWarning/PreflightIssue/
         # PreflightConfigError constructions only.

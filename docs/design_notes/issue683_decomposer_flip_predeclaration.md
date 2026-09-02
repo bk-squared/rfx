@@ -265,7 +265,7 @@ active — the slow_physics THRU battery ran, not skipped):
 - Two movers surfaced by the sweep were code-following schema
   consequences of the new reference channel, fixed and re-run green,
   not lock moves: (a) the wire dump/replay savez mirrors in
-  tests/test_port_dump_replay.py and
+  tests/unit/sparams/test_port_dump_replay.py and
   scripts/diagnostics/report_wire_replay_sweep.py gained
   `raw_drive_ref_voltages_fdt` (without it a post-#683 dump replays the
   POST samples as the calibration reference — exactly the raw-flip

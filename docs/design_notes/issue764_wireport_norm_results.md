@@ -121,12 +121,12 @@ provenance; no gate touched)
 ## 4. Lock moves (pre-declared list) and mechanical edits
 
 Moved WITH written provenance (each carries it in-file):
-- `tests/test_twoport_wire_port.py::test_two_port_s_envelope_on_matched_line`
+- `tests/unit/sparams/test_twoport_wire_port.py::test_two_port_s_envelope_on_matched_line`
   — envelope 28.511 -> 4.84444; the +0.35426 / +0.26780 witnesses
   rewritten into historical provenance (|S11| now [0.115, 0.728],
   load-tracking; |S21| class unchanged — #308/#318 off-diagonal defect
   untouched).
-- `tests/test_nu_wire_port_lane_parity.py::test_excited_port_lane_ordering_disagreement_is_open_683`
+- `tests/unit/nonuniform/test_nu_wire_port_lane_parity.py::test_excited_port_lane_ordering_disagreement_is_open_683`
   — residuals re-measured: vacuum 1.983e-01 -> 4.975e-02, pec_plates
   6.109e-01 -> 1.051e-01 (normalization half removed; #683 ordering half
   remains, near-conjugate signature preserved). Stays xfail.
@@ -135,13 +135,13 @@ Moved WITH written provenance (each carries it in-file):
   DIFFER (default = #764 whole-port driven; refplane = byte-frozen #313
   legacy); the byte-equality pin became a byte-inequality pin so a
   silent "unification" reds loudly (open question 4 of the design).
-- `tests/test_sparam_driver_dump_parity.py` +
-  `tests/test_port_dump_replay.py` — dump schema grows
+- `tests/unit/sparams/test_sparam_driver_dump_parity.py` +
+  `tests/unit/sparams/test_port_dump_replay.py` — dump schema grows
   `raw_port_voltages_fdt` (None marks a pre-#764 dump; replay falls back
   to the legacy diagonal for those).
 
 Mechanical edit, NOT a lock move:
-- `tests/test_nu_wire_port_lane_parity.py::test_raw_port_ratio_matches_the_analytic_admittance`
+- `tests/unit/nonuniform/test_nu_wire_port_lane_parity.py::test_raw_port_ratio_matches_the_analytic_admittance`
   — unpack widened (`accs[0], accs[1]`); every asserted value
   byte-identical.
 
@@ -167,18 +167,18 @@ uniform-flip attempt:
 - Uniform-lane driven-diagonal gates keyed to the #683 flip, measured
   and re-pinned in this branch (each carries the keyed label in-file;
   every one must be restored to its physical form when the flip lands):
-    1. `tests/test_run_forward_s11_contract.py::test_run_s11_is_passive_both_boundaries`
+    1. `tests/unit/sparams/test_run_forward_s11_contract.py::test_run_s11_is_passive_both_boundaries`
        — xfail(strict) keyed; interim measured max|S11| 1.348 (cpml) /
        4.034 (pec).
-    2. `tests/test_wire_sparam.py::test_wire_port_jit_scan_s11_passivity`
+    2. `tests/unit/sparams/test_wire_sparam.py::test_wire_port_jit_scan_s11_passivity`
        — xfail(strict) keyed; interim measured max|S11| 5.769.
-    3. `tests/test_lumped_wire_sparam_cpml_dielectric.py::test_wire_port_sparam_cpml_dielectric_finite_passive`
+    3. `tests/unit/sparams/test_lumped_wire_sparam_cpml_dielectric.py::test_wire_port_sparam_cpml_dielectric_finite_passive`
        — passivity bound suspended, interim envelope 6.1968*1.10; the
        #203 finiteness guard stays live.
-    4. `tests/test_lumped_twoport_vi_validation_battery.py::test_thru_s11_floor`
+    4. `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::test_thru_s11_floor`
        (slow_physics) — physical floor 0.12 suspended; interim envelope
        2.8068 +/- 5% (per-bin |S11| 2.62-2.81); alive floor kept.
-    5. `tests/test_lumped_twoport_vi_validation_battery.py::test_thru_passivity_singular_values`
+    5. `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::test_thru_passivity_singular_values`
        (slow_physics) — physical bound 0.85 suspended; interim envelope
        3.2061 +/- 5%.
   WHY these red pre-flip: the whole-port driven V on PRE samples is
@@ -191,8 +191,8 @@ uniform-flip attempt:
   adversarial review's scoping (the 2026-08-29 evidence: flipping
   ordering broke them; changing only the diagonal does not).
 - Mechanical unpack widens (values byte-identical, NOT lock moves):
-  `tests/test_nu_wire_port_lane_parity.py` raw-ratio test,
-  `tests/test_wire_port_sparams_forward.py`.
+  `tests/unit/nonuniform/test_nu_wire_port_lane_parity.py` raw-ratio test,
+  `tests/unit/sparams/test_wire_port_sparams_forward.py`.
 
 ## 6. Open items forwarded
 

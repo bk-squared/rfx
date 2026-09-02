@@ -76,7 +76,7 @@ INSTRUMENT NOTES (measured during implementation, 2026-08-07)
   20000 steps, consistent with this launch's slow ring-down recorded
   across the lane's checkpoints (-10.7 / -17.9 / -44.2 dB).
 * Non-perturbation witness: S bit-identical with/without monitors —
-  committed as tests/test_coax_msl_transition.py::
+  committed as tests/unit/sparams/test_coax_msl_transition.py::
   test_extra_flux_monitors_do_not_perturb_s (slow_physics).
 * Flux sign convention verified live: a top-drive coax two-port run reads
   NEGATIVE net flux at a mid-line z-plane (power travels -z), so
@@ -169,7 +169,7 @@ def _bin_index(mfreqs, targets):
 def _build_target_entries(freqs_base):
     """All monitors for the target/C1 box, incl. shifted siblings."""
     from rfx.api import Simulation
-    from tests.test_coax_msl_transition import LX_2, LY, LZ_2, FREQ_MAX_2
+    from tests.unit.sparams.test_coax_msl_transition import LX_2, LY, LZ_2, FREQ_MAX_2
     mf = _monitor_freqs(freqs_base)
     scratch = Simulation(freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX,
                          boundary="cpml")
@@ -318,7 +318,7 @@ def run_c1(n_steps, outdir):
         compute_msl_mode_profile, setup_msl_port, make_msl_port_sources,
     )
     from rfx import GaussianPulse
-    import tests.test_coax_msl_transition as T
+    import tests.unit.sparams.test_coax_msl_transition as T
 
     sim = Simulation(freq_max=T.FREQ_MAX_2, domain=(T.LX_2, T.LY, T.LZ_2),
                      dx=DX, cpml_layers=8, boundary="cpml")
@@ -443,7 +443,7 @@ def run_c1(n_steps, outdir):
 def run_c2(n_steps, outdir):
     from rfx.api import Simulation
     from rfx import GaussianPulse
-    import tests.test_coax_two_port_fdtd as T2
+    import tests.unit.sparams.test_coax_two_port_fdtd as T2
 
     band = T2.BAND
     mf = _monitor_freqs(band)
@@ -549,7 +549,7 @@ def run_c2(n_steps, outdir):
 # ---------------------------------------------------------------------------
 
 def run_target(n_steps, outdir, c1_data, floor_eff=FLOOR):
-    import tests.test_coax_msl_transition as T
+    import tests.unit.sparams.test_coax_msl_transition as T
 
     p_inc_c1 = c1_data["p_inc_w"]
     b_nl_bg = np.asarray(c1_data["gates"]["launch_spill_B_nl"], float)

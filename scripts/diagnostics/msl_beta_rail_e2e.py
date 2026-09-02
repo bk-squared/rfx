@@ -1,7 +1,7 @@
 """Issue #681 end-to-end confirmation on real FDTD phasors (CPU-scale).
 
 Three single-port MSL runs on the same physical board (eps_r 2.2 open
-thru, dx = 200 um, f_max = 20 GHz — the tests/test_msl_probe_offset_interval
+thru, dx = 200 um, f_max = 20 GHz — the tests/unit/sparams/test_msl_probe_offset_interval
 open-thru geometry):
 
   A  control: port declared eps_r_sub = 2.2 (true). Expect NO beta-rail

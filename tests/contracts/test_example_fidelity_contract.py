@@ -210,7 +210,7 @@ def test_precision_is_pinned() -> None:
     """The snapshot is pinned at JAX_ENABLE_X64=0. conftest.py's autouse
     ``_no_x64_leak`` anchors to the SESSION's starting value, not to False,
     because "the supported way to reproduce #646 is to run the suite under
-    JAX_ENABLE_X64=1" (conftest.py; echoed at tests/test_x64_scan_carry_
+    JAX_ENABLE_X64=1" (conftest.py; echoed at tests/unit/grid/test_x64_scan_carry_
     dtypes.py:123,161,363). A hard ``assert not x64`` would therefore fail
     this whole file under that documented workflow -- skip instead, so the
     guard's actual purpose (never silently bless a wrong-precision

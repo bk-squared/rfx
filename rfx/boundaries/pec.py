@@ -129,7 +129,7 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
     applies a resistive update on them), so the PEC and sheet footprints
     are structurally identical — pinned by
-    tests/test_sheet_impedance_operator.py (G4 footprint identity). Both
+    tests/unit/materials/test_sheet_impedance_operator.py (G4 footprint identity). Both
     consumers must be handed the SAME ``periodic``, or that identity is
     computed against two different neighbour rules.
 
@@ -142,7 +142,7 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     disagreed with the single-device lane at a y or z domain face
     (measured, two 4x4 plates in a (6,6,10) domain: ``[32, 32, 32]``
     there against ``[32, 32, 0]`` here). Pinned by
-    ``tests/test_distributed_nu_pec_mask_lane_parity.py``.
+    ``tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py``.
 
     Still NOT moved in lockstep, and worth knowing before the next reader
     rediscovers it: the SOFT PEC path — :func:`apply_pec_occupancy` below,
@@ -150,7 +150,7 @@ def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
     AD-smooth dilation in ``rfx/geometry/smoothing.py`` — still spells the
     rule with ``roll``, so hard and soft PEC differ at a non-periodic
     domain face. Widening #689 into the differentiable-geometry lane was
-    out of its scope; ``tests/test_topology.py`` does not discriminate
+    out of its scope; ``tests/unit/autodiff/test_topology.py`` does not discriminate
     either way (its mask spans the full y/z extent, where wrap and zero
     pad agree).
 

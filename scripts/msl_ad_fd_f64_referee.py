@@ -90,7 +90,7 @@ Report-only. Modifies no gate.
 OBJECTIVE UPDATE (issue #530, 2026-08-04): the gate this script referees now
 differentiates band-mean ``|S21|**2`` (``tests._msl_ad_objective.
 msl_band_mean_s21_sq``), not ``sum_ij|S_ij|**2`` — see that module's
-docstring and ``tests/test_msl_ad_fd_converged.py`` for the replacement
+docstring and ``tests/unit/autodiff/test_msl_ad_fd_converged.py`` for the replacement
 rationale. This script's ``_objective`` helper was updated to match, so the
 numbers it reports going forward are on the CURRENT gate's objective; the
 historical ``sum|S_ij|**2`` numbers quoted above (rel_err 0.8519 f32 /

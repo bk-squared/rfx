@@ -24,7 +24,7 @@ WHAT IT MEASURES
 -----------------
 1. **Baseline envelope**: AD (float32, as the gate ships) vs a central FD
    reference (float64, scoped ``enable_x64``) across an h-sweep, on the
-   gate's own fixture (``tests.test_msl_ad_fd_converged._build_msl_sim``,
+   gate's own fixture (``tests.unit.autodiff.test_msl_ad_fd_converged._build_msl_sim``,
    ``_NUM_PERIODS=20``, ``_N_FREQS=8``) — reusing the SAME
    ``msl_band_mean_s21_sq`` reduction the gate itself calls, imported from
    ``tests._msl_ad_objective`` rather than re-derived here (the repeated

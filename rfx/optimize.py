@@ -90,7 +90,7 @@ def _adam_multistart(
     ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
     same arithmetic as the legacy inline ``optimize()`` loop — the default
     ``optimize()`` path is therefore byte-identical to before this helper
-    existed (see ``tests/test_optimize_multistart.py`` bit-identity gate).
+    existed (see ``tests/unit/autodiff/test_optimize_multistart.py`` bit-identity gate).
 
     Unlike the example, the step-clamp here is GENERIC: it bounds the L2
     norm of the DoF (latent) update vector, rescaling the whole step by
@@ -230,7 +230,7 @@ def _adam_multistart(
         return best_lat, best_lh, all_histories, best_start
     if len(latent_inits) == 1:
         # Single-start fail-soft: preserve the legacy warn-and-return-last-good
-        # contract (tests/test_result_finite_guard.py).
+        # contract (tests/unit/api/test_result_finite_guard.py).
         lh, rl, _sc = results[0]
         return rl, lh, all_histories, 0
     raise RuntimeError(

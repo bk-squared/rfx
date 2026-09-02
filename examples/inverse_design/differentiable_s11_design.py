@@ -24,7 +24,7 @@ from rfx import Simulation
 
 # ---------------------------------------------------------------------------
 # WR-90 geometry. The companion CPU-feasibility gate is
-# test_waveguide_s_matrix_ad_end_to_end (tests/test_sparam_ad_end_to_end.py);
+# test_waveguide_s_matrix_ad_end_to_end (tests/unit/autodiff/test_sparam_ad_end_to_end.py);
 # it keeps its own dx = 2 mm and a shorter 50 mm domain, so the two are no
 # longer cell-for-cell identical (see the dx note below).
 # ---------------------------------------------------------------------------

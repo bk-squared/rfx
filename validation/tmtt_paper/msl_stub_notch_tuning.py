@@ -75,14 +75,14 @@ Any change to ``pec_occupancy_override`` should be checked for mesh
 robustness: single-mesh shortcuts (σ-loading, a sharper sigmoid) can work at
 one dx and break at another.  Verify Adam descent at more than one dx and
 FD-vs-AD agreement (the Kottke differentiable-PEC path is gated by
-``tests/test_kottke_inv_eps_from_occupancy.py``) before trusting a new
+``tests/unit/geometry/test_kottke_inv_eps_from_occupancy.py``) before trusting a new
 parameterisation.
 
 Geometry: cv06b-class (uniform dx=127 µm = h_sub/2 = 2 substrate cells,
 L_LINE=30 mm).  Long enough for each MSL port's 3-probe extractor to sit
 outside the stub-junction standing-wave region (λ_g/4 reflector-clearance
 check, enforced by `sim.preflight()` — see
-`tests/test_msl_port_preflight.py::test_reflector_clearance_*`).  A shorter
+`tests/unit/ports/test_msl_port_preflight.py::test_reflector_clearance_*`).  A shorter
 5 mm line biases |S11|@notch to ≈ -7 dB instead of the physical 0 dB; this
 geometry avoids that.
 
@@ -144,7 +144,7 @@ L_LINE = 30.0e-3                       # cv06b-class line length.  Each
                                         # cleanly; preflight enforces
                                         # the bound (see
                                         # `_check_msl_port_geometry`,
-                                        # `tests/test_msl_port_preflight
+                                        # `tests/unit/ports/test_msl_port_preflight
                                         # .py::test_reflector_clearance_*`).
 PORT_MARGIN = 1.6e-3                   # ≥ cpml_extent (8·dx ≈ 1.02 mm)
                                         # + 2·h_sub safety; preflight

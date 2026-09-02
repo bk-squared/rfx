@@ -445,7 +445,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     # satisfies every caller at once:
     #   float16   -> float32    the #644 fix; "float16 fields, float32
     #                           accumulation" is exactly what this mode
-    #                           promises (tests/test_mixed_precision.py)
+    #                           promises (tests/unit/grid/test_mixed_precision.py)
     #   float32   -> float32    unchanged, bit-identical
     #   float64   -> float64    matches storage; float32 coeffs promote up
     #   complex64 -> complex64  preserves the #404 oblique Bloch path —

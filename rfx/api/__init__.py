@@ -339,7 +339,7 @@ class Simulation(
         float16 field storage is fine for transient and field-shape work
         (measured 0.20% relative L2 error on Ez vs ``"float32"`` at 50
         steps), but it raises the absorber's residual floor. On the
-        fixture in ``tests/test_mixed_precision.py`` — a 40**3 domain,
+        fixture in ``tests/unit/grid/test_mixed_precision.py`` — a 40**3 domain,
         dx = 3.0 mm, point source, 400 steps — total field energy settles
         to about -76 dB below peak under ``"float32"`` but only about
         -59.5 dB under ``"mixed"``: roughly 17 dB worse, consistent with
@@ -1063,7 +1063,7 @@ class Simulation(
                named by NEITHER kind. Cross-path amplitude ratios
                ``dt/(eps0*dV)`` (pec) and ``1/dV`` (open), measured
                2.15e8 and 1.00e9 at dx = 1 mm
-               (``tests/test_nonuniform_uniform_end_to_end_reduction.py``
+               (``tests/unit/nonuniform/test_nonuniform_uniform_end_to_end_reduction.py``
                pins both). **Exact migration for the open-uniform legacy
                contract**: multiply your waveform amplitude by the cell
                volume ``dV`` and pass ``amplitude_kind='current'`` —

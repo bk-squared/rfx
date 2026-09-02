@@ -204,7 +204,7 @@ SKIPPED [1] tests/crossval/test_openems_crossval.py:161: CSXCAD/openEMS is requi
 def test_strict_xfail_is_visible_as_passed_with_xfails():
     stdout = """
 =========================== short test summary info ============================
-XFAIL tests/test_msl_port_integration.py::test_msl_thru_line_eigenmode_gate - mode='eigenmode' is planned.
+XFAIL tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_eigenmode_gate - mode='eigenmode' is planned.
 1 passed, 1 xfailed, 18 warnings in 15.22s
 """
     group = run_gate.gate_groups_by_id()["slow_msl"]
@@ -407,7 +407,7 @@ def test_msl_report_infers_legacy_xfail_count_from_stdout(tmp_path: Path):
         "\n".join(
             [
                 "=========================== short test summary info ============================",
-                "XFAIL tests/test_msl_port_integration.py::test_msl_thru_line_eigenmode_gate - planned",
+                "XFAIL tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_eigenmode_gate - planned",
                 "1 passed, 1 xfailed, 18 warnings in 15.22s",
             ]
         ),
@@ -922,7 +922,7 @@ def test_port_external_reference_audit_requires_passed_comparison_for_broad_e5(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
-        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+        "ad_fd_test": "tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [],
@@ -1110,7 +1110,7 @@ def test_port_external_reference_shard_requires_comparison_and_envelope(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
-        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+        "ad_fd_test": "tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [str(yaml_path)],
@@ -1969,7 +1969,7 @@ def test_rf_infra_e5_goal_audit_requires_external_manifest_envelope(
         "required_for_e5": True,
         "required_scope": "broad_e5",
         "current_status": "broad_e5_passed",
-        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+        "ad_fd_test": "tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
         "missing_evidence": [],
         "existing_artifacts": [],
         "existing_vessl_yamls": [str(yaml_path)],
@@ -2096,7 +2096,7 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
                         "required_for_e5": True,
                         "required_scope": "broad_e5",
                         "current_status": "broad_e5_passed",
-                        "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+                        "ad_fd_test": "tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
                         "missing_evidence": [],
                         "existing_artifacts": [],
                         "existing_vessl_yamls": [str(yaml_path)],
@@ -2123,7 +2123,7 @@ def test_rf_infra_e5_goal_audit_rejects_failed_json_evidence_artifact(
     "ad_fd_test,expect_passed",
     [
         # A real, existing, non-xfail AD-vs-FD test -> the AD gate is satisfied.
-        ("tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent", True),
+        ("tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent", True),
         # No AD test declared -> the differentiability moat is absent -> blocked.
         (None, False),
         # Declared but the file/test does not exist -> dangling pointer -> blocked.
@@ -2140,7 +2140,7 @@ def test_ad_fd_gate_blocks_broad_e5_without_valid_ad_test(
     family GREEN->blocked — wiring the differentiability moat into the verdict
     (framework audit #6). The companion collection-time check (a declared test
     that is xfail/skip cannot satisfy the gate) lives in
-    tests/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip.
+    tests/unit/autodiff/test_ad_surface_contract.py::test_ad_fd_gate_tests_are_collected_and_not_xfail_skip.
     """
     support_matrix = tmp_path / "sparameter_support_matrix.json"
     support_matrix.write_text(
@@ -2355,7 +2355,7 @@ def test_require_committed_blocks_uncommitted_gating_artifacts(tmp_path: Path):
         json.dumps({"requirements": [{
             "family": "lumped_port", "required_for_e5": True,
             "required_scope": "broad_e5", "current_status": "broad_e5_passed",
-            "ad_fd_test": "tests/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
+            "ad_fd_test": "tests/unit/autodiff/test_waveguide_flux_ad.py::test_flux_smatrix_grad_finite_and_fd_consistent",
             "missing_evidence": [], "existing_artifacts": [],
             "existing_vessl_yamls": [str(yaml_path)],
             "external_comparison_artifacts": [str(comparison)],

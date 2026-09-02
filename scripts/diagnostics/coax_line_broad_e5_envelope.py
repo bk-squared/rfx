@@ -50,7 +50,7 @@ def run(term, fmax, a, b, R=None):
         # At fmax=20 GHz (dz~0.75 mm) this z-domain fits 9 of the default 12
         # probe planes; the silent drop of the surplus planes became fail-loud
         # in af167a90, so the count the sweep always ran on must be requested
-        # explicitly (same reasoning as tests/test_coaxial_line_calibration.py).
+        # explicitly (same reasoning as tests/unit/sparams/test_coaxial_line_calibration.py).
         kw["probe_count"] = 9
     if term == "res":
         kw["dut_impedance"] = R

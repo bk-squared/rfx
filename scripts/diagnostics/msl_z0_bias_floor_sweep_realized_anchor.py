@@ -5,7 +5,7 @@ This is a NEW, SIBLING artifact. It does NOT touch
 ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` or its committed JSON
 (``scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep.json``,
 sha256 pinned by ``test_msl_z0_bias_floor_sweep_json_is_frozen`` in
-``tests/test_msl_port_preflight.py``) — that script is the pre-declared
+``tests/unit/ports/test_msl_port_preflight.py``) — that script is the pre-declared
 sweep and its as-run verdict block is the auditable record of what was
 measured; both stay exactly as they are.
 

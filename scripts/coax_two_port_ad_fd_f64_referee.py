@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS
 ---------------
-``tests/test_coax_two_port_ad.py::
+``tests/unit/autodiff/test_coax_two_port_ad.py::
 test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent`` originally
 compared reverse-mode AD (float32) against a central finite difference whose
 two loss evaluations were ALSO computed in float32. An adversarial review of
@@ -11,7 +11,7 @@ the PR that added the gate found this was the exact #527 comparator-class
 mistake MSL hit: a float32 FD reference has quantized resolving power, and
 the review measured this fixture's f32 comparator at ``span x threshold =
 92.06`` -- just under this repo's own ``>= 100`` floor
-(``tests/test_msl_ad_fd_converged.py::
+(``tests/unit/autodiff/test_msl_ad_fd_converged.py::
 test_comparator_floor_rejects_the_f32_reference_that_caused_527``).
 
 The PR's own docstring additionally claimed a genuine float64 comparator was
@@ -76,7 +76,7 @@ DEFAULT_H = (2.0e-4, 5.0e-4, 1.0e-3, 2.0e-3, 5.0e-3, 1.0e-2, 2.0e-2)
 def _fd_ulp_span(f_plus: float, f_minus: float, dtype) -> float:
     """Resolving power of a central difference, in ULPs of ``dtype``.
 
-    Mirrors ``tests/test_msl_ad_fd_converged.py::_fd_ulp_span`` exactly
+    Mirrors ``tests/unit/autodiff/test_msl_ad_fd_converged.py::_fd_ulp_span`` exactly
     (``dtype`` must be the dtype the LOSS was computed in, not the Python
     float container both values arrived in as -- ``float(jnp_scalar)``
     always widens to a Python float, so keying off the value alone would
@@ -204,7 +204,7 @@ def main() -> int:
         print(f"  window [{h_lo:.1e}, {h_hi:.1e}] worst rel_err: "
               f"{float(rels[in_window].max()):.5f}")
         print("  -- a LOWER BOUND on the converged window, not the gate's own "
-              "window: the committed gate (tests/test_coax_two_port_ad.py) "
+              "window: the committed gate (tests/unit/autodiff/test_coax_two_port_ad.py) "
               "derives its threshold from the WIDER {1e-3, 2e-3, 5e-3} window "
               "(worst rel_err 0.01053, not this pair's 0.00508) -- a "
               "deliberately more conservative choice than the bare minimum "

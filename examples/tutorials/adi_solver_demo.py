@@ -23,7 +23,7 @@ trade is visible rather than asserted.
 
 Scope, stated plainly:
   - ADI is an EXPERIMENTAL solver lane.  Its 3D accuracy is validated against
-    this analytic cavity (``tests/test_review_tier1_validation_battery.py``
+    this analytic cavity (``tests/unit/misc/test_review_tier1_validation_battery.py``
     holds a 2% eigenfrequency gate at ``adi_cfl_factor=2``, ~15 cells per
     wavelength).  Its *throughput advantage on a genuinely stiff mesh* is not
     yet demonstrated -- do not read this demo as a speed claim.

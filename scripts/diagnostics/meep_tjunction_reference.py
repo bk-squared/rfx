@@ -8,7 +8,7 @@ we use power flux (sim.add_flux) through each port plane. In the single-mode ban
 the TE10 modal power, so |S_ji|^2 = P_j / P_inc (magnitudes only — exactly what
 the envelope gate compares). A straight-guide normalization run gives P_inc.
 
-Geometry matches tests/test_simulation.py::test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity:
+Geometry matches tests/unit/runners/test_simulation.py::test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity:
 2D H-plane T (Ez), guide width W=0.04 m. Air channels:
   horizontal arm y in [0.04,0.08], x in [0,0.12]  (left, right ports)
   vertical stub  x in [0.04,0.08], y in [0.08,0.12] (top port)

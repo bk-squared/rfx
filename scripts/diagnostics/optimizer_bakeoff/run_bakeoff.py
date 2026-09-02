@@ -52,7 +52,7 @@ beats the incumbent (``adam_multistart_bi``, the 4-C default) by >= 3 dB on the
 benchmark's natural metric (all three are "minimize a mean power", so dB =
 10*log10(loss)) at EQUAL budget on >= 2 of 3 benchmarks, with clean descent
 curves.  Otherwise the verdict is "no-adopt".  The gate test
-``tests/test_optimizer_bakeoff_gates.py`` re-derives this from the committed raw
+``tests/unit/autodiff/test_optimizer_bakeoff_gates.py`` re-derives this from the committed raw
 curves.
 
 Run

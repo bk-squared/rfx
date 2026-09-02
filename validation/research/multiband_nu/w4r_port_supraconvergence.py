@@ -18,7 +18,7 @@ both diagnosed at bring-up and recorded in the note's W4R section:
    makes the frequency observable ~1st order (bring-up: 0.63 GHz drift
    over the ladder), which would invalidate any 2nd-order fit; the
    ladder therefore runs with subpixel_smoothing=True (NU-validated,
-   tests/test_subpixel_nonuniform.py).
+   tests/unit/geometry/test_subpixel_nonuniform.py).
 
 Port design:
 
