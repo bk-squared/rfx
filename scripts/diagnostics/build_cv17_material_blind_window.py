@@ -131,8 +131,12 @@ def build() -> dict:
             "four gated coarse bins stays within coarse_gate_db. First-order "
             "model: the solver's discretization error is held fixed and only "
             "the material moves. It reproduces the live defect runs' PASS/FAIL "
-            "verdict at every probed permittivity (design note 5.1); those "
-            "live magnitudes are prose-only and are not copied here."),
+            "verdict at round 1's four probed permittivities (1.8/2.0/5.5/6.0, "
+            "design note 5.1) but NOT inside the resonance island: the live "
+            "probe cv17_permittivity_island.json passes at 4.6-4.8 where this "
+            "model fails, and fails only at 4.9 (round-2 review, note 7.6). "
+            "First-order means first-order: the solver's discretization error "
+            "is NOT independent of eps on the ka = 1.25 Mie resonance."),
         "config": {
             "declared_eps_r": DECLARED_EPS,
             "coarse_ka": [r["ka"] for r in rows],

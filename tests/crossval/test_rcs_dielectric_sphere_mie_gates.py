@@ -525,3 +525,35 @@ def test_blind_window_is_why_the_material_channel_exists(fixture, blind_window):
     # the withdrawn prose-only digits are gone from the live claim
     for digits in ("6.07 dB", "5.50 dB", "7.70 dB", "8.55 dB"):
         assert digits not in scope
+
+
+def test_island_probe_records_that_the_live_window_is_wider_than_the_model(fixture):
+    """#812 round 2 (VESSL 369367257712): the first-order blind-window model
+    predicts a FAIL island at eps 4.6-4.9; the live solver, with the
+    rasterizer delivering eps and the oracle at the declared 2.56, PASSES the
+    6.3 dB gate at 4.6 / 4.7 / 4.8 and fails only at 4.9. Pin the committed
+    probe so the disagreement cannot be softened by regeneration, and
+    re-derive each run's verdict from its own per-bin deltas."""
+    import json
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "validation/crossval/_17_dielectric_results/cv17_permittivity_island.json"
+    art = json.loads(path.read_text())
+    gate = art["coarse_gate_db"]
+    assert gate == fixture["gates"]["coarse_gate_db"]
+    assert art["oracle_eps_r"] == 2.56 and art["ka_gated"] == [0.5, 0.75, 1.0, 1.25]
+    by_eps = {}
+    for r in art["runs"]:
+        worst = max(abs(x) for x in r["per_bin_delta_db"])
+        assert r["max_abs_delta_db"] == pytest.approx(worst, abs=1e-3)
+        assert r["inside_db_gate"] is bool(worst <= gate)
+        assert r["verdict_agrees_with_model"] is (r["inside_db_gate"] == r["model_inside_db_gate"])
+        assert all(abs(e / r["eps_r"] - 1.0) < 1e-6 for e in r["eps_realized_per_bin"])
+        by_eps[r["eps_r"]] = r
+    assert sorted(by_eps) == [4.5, 4.6, 4.7, 4.8, 4.9, 5.0]
+    assert [e for e in sorted(by_eps) if not by_eps[e]["inside_db_gate"]] == [4.9]
+    assert [e for e in sorted(by_eps) if by_eps[e]["model_inside_db_gate"] is False] == [4.6, 4.7, 4.8, 4.9]
+    assert art["summary"]["n_verdicts_agree_with_model"] == 3
+    assert art["summary"]["live_fail_eps"] == [4.9]
+    # the island's worst live bin is the ka = 1.25 resonance bin, as the model said
+    assert all(abs(by_eps[e]["per_bin_delta_db"][3]) == by_eps[e]["max_abs_delta_db"]
+               for e in (4.7, 4.8, 4.9))

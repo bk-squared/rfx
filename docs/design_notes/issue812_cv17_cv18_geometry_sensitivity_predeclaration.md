@@ -554,3 +554,39 @@ to local disk before running (a script writing beside itself on the read-only NF
 checkout cost another lane a finished solve). Its first attempt (VESSL 369367257706)
 segfaulted at `import jax`: pinning `jax[cpu]==0.6.2` over the NVIDIA image leaves an
 incompatible CUDA plugin installed; the plugin is now removed first.
+
+### 7.6 The island, run live: the model over-predicts, the live window is wider
+
+`scripts/diagnostics/probe_cv17_permittivity_island.py`, VESSL 369367257712 (remilab-c0,
+CPU; log harvested, run deleted): the rasterizer delivers eps 4.5 … 5.0 while the oracle
+stays at the declared 2.56, on the four gated coarse bins — the audit's defect, exactly as
+round 1 built it, now inside the region 7.1 called model-only. Committed as
+`validation/crossval/_17_dielectric_results/cv17_permittivity_island.json` and pinned by
+`test_island_probe_records_that_the_live_window_is_wider_than_the_model`.
+
+| eps | live worst bin (dB) | live | model worst bin (dB) | model |
+|---:|---:|---|---:|---|
+| 4.5 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[0].max_abs_delta_db = 4.413` | PASS | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[0].model_max_abs_delta_db = 5.313` | PASS |
+| 4.6 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[1].max_abs_delta_db = 4.545` | PASS | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[1].model_max_abs_delta_db = 7.134` | FAIL |
+| 4.7 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[2].max_abs_delta_db = 5.152` | PASS | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[2].model_max_abs_delta_db = 9.039` | FAIL |
+| 4.8 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[3].max_abs_delta_db = 6.138` | PASS | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[3].model_max_abs_delta_db = 9.787` | FAIL |
+| 4.9 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[4].max_abs_delta_db = 6.405` | FAIL | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[4].model_max_abs_delta_db = 8.116` | FAIL |
+| 5.0 | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[5].max_abs_delta_db = 5.523` | PASS | `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[5].model_max_abs_delta_db = 5.299` | PASS |
+
+`validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_verdicts_agree_with_model = 3` of `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_runs = 6`. The worst
+live bin is the ka = 1.25 resonance bin in every island row, as the model said; its
+*magnitude* is not what the model said. The model holds the solver's discretization
+error fixed at the committed 2.56 value and moves only the oracle; on the resonance the
+FDTD sphere's own response moves with the permittivity too, so the two partly cancel and
+the live curve is shallower. First-order means first-order; 7.1's "the island's edges are
+model-only" is now measured: the live island on this grid is the single point 4.9, and
+4.8 passes 0.16 dB inside the gate.
+
+What this changes: nothing in the gates, and the direction of the conclusion is
+unchanged — the dB channel is *blinder* to a permittivity error than the model claimed,
+which is the whole reason G17-A/B exist. What it withdraws: every sentence that said the
+model "reproduces the live verdict at every probed permittivity" — it did so at round 1's
+four points and does not inside the island; the shared `claim_scope`, the builder's
+`method` string, the script docstring and gate comment, the manifest and the public row
+now say so with the keys above. The model artifact is kept as the declared-grid model it
+is, with its island; the live probe sits beside it as the measurement.
