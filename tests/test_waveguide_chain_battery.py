@@ -46,14 +46,20 @@ import pytest
 
 from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
+from tests._gate_policy import gate_from_envelope
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 
-# Live-layer tolerance on |S_live − S_fixture| (absolute, per entry). ``None``
-# until the pin commit derives it from the measured cross-backend envelope
-# (fixture on the VESSL GPU, live on the CI CPU) via ``gate_from_envelope``.
-LIVE_ABS_S_TOL: float | None = None
+# Live-layer tolerance on |S_live − S_fixture| (absolute, per entry), derived
+# from the measured cross-backend envelope through the shared policy: the 12
+# coarse + mid cells re-measured on this box (CPU, jax 0.6.2) against the
+# fixture (VESSL 369367257823, gpu-rtx4090, jax 0.4.33) differed by at most
+# 5.000e-6 (pec_short-coarse-flux; the others 9.6e-7 .. 2.6e-6). The quantum
+# is 1e-4 so the pin is not a 2x knife edge on a float32 reassociation
+# envelope; the fine rung (4x the steps) is compared on the GPU lane only.
+LIVE_ABS_S_ENVELOPE = 5.000e-6
+LIVE_ABS_S_TOL: float | None = gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=10000)   # 1e-4
 
 # Gates that are RED on the committed fixture, by test family and parameter
 # id, each with the measured number and the mechanism (root cause in the PR
@@ -509,6 +515,27 @@ def test_port_cutoff_witness_is_recorded(fx):
               f"rms at c/2a={fit['rms_deg_at_c_over_2a']:.2f}°, at discrete-guide={fit['rms_deg_at_discrete_guide']:.2f}°, "
               f"at port fc={fit['rms_deg_at_port_cutoff']:.2f}°")
         assert np.isfinite(fit["fc_fit_hz"]) and fit["rms_deg_at_fit"] < 5.0, (key, fit)
+
+
+def test_pins_are_derived_from_the_measured_envelopes(fx):
+    """The pin commit: every pinned gate equals the shared policy applied to
+    the stored measured quantity (a hand-moved pin is caught here)."""
+    pins = fx["pins"]
+    rels = [g["rel_change"] for k, p in _planes().items() for gk, g in p["gradient_invariance"].items()
+            if not g.get("skipped_under_ulp_floor") and g.get("pinned_gate") is not None]
+    assert rels and max(rels) == pytest.approx(pins["gradient_invariance_envelope"], rel=1e-12)
+    assert pins["gradient_invariance_gate"] == gate_from_envelope(max(rels), quantum=G.GRADIENT_PIN_QUANTUM)
+    for key, lad in fx["ladder"].items():
+        if lad["verdict"] == "not_interpretable":
+            assert lad["pinned_richardson_gate"] is None and lad["pinned_monotone_fraction_min"] is None, key
+            continue
+        if "richardson" in lad:
+            pair = lad["pinned_richardson_pair"]
+            assert lad["pinned_richardson_gate"] == gate_from_envelope(
+                lad["richardson"][pair]["max_abs_diff"], quantum=G.RICHARDSON_PIN_QUANTUM[lad["kind"]]), key
+        assert lad["pinned_monotone_fraction_min"] == G.pin_lower_from_envelope(
+            lad["monotone_fraction_of_bins"], quantum=G.MONOTONE_PIN_QUANTUM), key
+    assert LIVE_ABS_S_TOL == gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=10000)
 
 
 def test_stored_verdicts_equal_recomputed(fx):

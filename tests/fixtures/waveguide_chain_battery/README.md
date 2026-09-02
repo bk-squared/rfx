@@ -32,6 +32,7 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | `port_cutoff` | object | report-only mechanism witness: the port config's `f_cutoff` (the β / Z_TE the extractor uses) against the guide's cutoff fitted from the thru's S21 phase, per rung and lane (see below) |
 | `legs_rung` | string | the rung the AD/FD and plane-shift legs ran at (`"fine"`, the claims rung) |
 | `readme` | string | this file's path |
+| `pins` | object | written by the pin step (`--stages pin`): `gradient_invariance_envelope` / `gradient_invariance_gate` (quantum 1000), `richardson_quantum` (100 for magnitudes, 10 for degrees), `monotone_quantum` (100), `policy` |
 | `verdicts` | object | per gate: `"pass"`, `"fail"`, `"report_only"`, `"skipped"`, `"not_interpretable"` |
 
 Nothing under `verdicts` is derived by the replay test from the numbers alone; the replay test

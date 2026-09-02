@@ -13513,7 +13513,8 @@
    "dut": "slab",
    "lane": "false",
    "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_monotone_fraction_min": null,
+   "pin_note": "not interpretable at this ladder: no pin (\u00a75(c) guard 2)"
   },
   "slab_s11_mag|flux": {
    "kind": "mag",
@@ -13787,8 +13788,9 @@
    "observable": "slab_s11_mag",
    "dut": "slab",
    "lane": "flux",
-   "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_richardson_gate": 0.03,
+   "pinned_monotone_fraction_min": 0.66,
+   "pinned_richardson_pair": "mid-fine"
   },
   "slab_s21_mag|false": {
    "kind": "mag",
@@ -14063,7 +14065,8 @@
    "dut": "slab",
    "lane": "false",
    "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_monotone_fraction_min": null,
+   "pin_note": "not interpretable at this ladder: no pin (\u00a75(c) guard 2)"
   },
   "slab_s21_mag|flux": {
    "kind": "mag",
@@ -14337,8 +14340,9 @@
    "observable": "slab_s21_mag",
    "dut": "slab",
    "lane": "flux",
-   "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_richardson_gate": 0.02,
+   "pinned_monotone_fraction_min": 0.66,
+   "pinned_richardson_pair": "mid-fine"
   },
   "slab_s21_phase_deg|false": {
    "kind": "phase",
@@ -14612,8 +14616,9 @@
    "observable": "slab_s21_phase_deg",
    "dut": "slab",
    "lane": "false",
-   "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_richardson_gate": 3.1,
+   "pinned_monotone_fraction_min": 0.66,
+   "pinned_richardson_pair": "mid-fine"
   },
   "slab_s21_phase_deg|flux": {
    "kind": "phase",
@@ -14887,8 +14892,9 @@
    "observable": "slab_s21_phase_deg",
    "dut": "slab",
    "lane": "flux",
-   "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_richardson_gate": 2.9,
+   "pinned_monotone_fraction_min": 0.66,
+   "pinned_richardson_pair": "mid-fine"
   },
   "pec_short_s11_mag|false": {
    "kind": "mag",
@@ -15028,7 +15034,7 @@
    "dut": "pec_short",
    "lane": "false",
    "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_monotone_fraction_min": 0.66
   },
   "pec_short_s11_mag|flux": {
    "kind": "mag",
@@ -15168,7 +15174,7 @@
    "dut": "pec_short",
    "lane": "flux",
    "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_monotone_fraction_min": 0.66
   },
   "pec_short_s11_phase_deg|false": {
    "kind": "phase",
@@ -15482,8 +15488,9 @@
    "observable": "pec_short_s11_phase_deg",
    "dut": "pec_short",
    "lane": "false",
-   "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_richardson_gate": 1.4,
+   "pinned_monotone_fraction_min": 0.66,
+   "pinned_richardson_pair": "mid-fine"
   },
   "pec_short_s11_phase_deg|flux": {
    "kind": "phase",
@@ -15798,7 +15805,8 @@
    "dut": "pec_short",
    "lane": "flux",
    "pinned_richardson_gate": null,
-   "pinned_monotone_fraction_min": null
+   "pinned_monotone_fraction_min": null,
+   "pin_note": "not interpretable at this ladder: no pin (\u00a75(c) guard 2)"
   }
  },
  "plane_shift": {
@@ -16521,7 +16529,8 @@
      "value_shifted": -6.519092559814453,
      "rel_change": 7.314471894763474e-08,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s11_mag2": {
      "kind": "magnitude",
@@ -16529,7 +16538,8 @@
      "value_shifted": 7.743881724309176e-05,
      "rel_change": 0.0072335112266429915,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": null,
+     "excluded_from_envelope": "pre-declared ULP-floor skip leg (\u00a75(a)): a physically zero derivative, reported only"
     },
     "eps:s11_complex": {
      "kind": "complex",
@@ -16548,13 +16558,14 @@
      "phi_measured_deg": -172.05812208931013,
      "rel_change": 6.504768900388405e-08,
      "report_bar": 0.01,
-     "pinned_gate": null,
+     "pinned_gate": 0.001,
      "phi_predeclared_deg": 184.2284594545844,
      "rel_change_predeclared_phi": 0.06480009656339322,
      "from_objectives": [
       "re_s11",
       "im_s11"
-     ]
+     ],
+     "pinned_gate_envelope": 1.7938165062385892e-07
     }
    }
   },
@@ -17289,7 +17300,8 @@
      "value_shifted": -6.421444892883301,
      "rel_change": 0.0,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s11_mag2": {
      "kind": "magnitude",
@@ -17297,7 +17309,8 @@
      "value_shifted": 2.7009647965314798e-05,
      "rel_change": 0.006816092501138784,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": null,
+     "excluded_from_envelope": "pre-declared ULP-floor skip leg (\u00a75(a)): a physically zero derivative, reported only"
     },
     "eps:s11_complex": {
      "kind": "complex",
@@ -17316,13 +17329,14 @@
      "phi_measured_deg": -172.0581159686847,
      "rel_change": 1.7938165062385892e-07,
      "report_bar": 0.01,
-     "pinned_gate": null,
+     "pinned_gate": 0.001,
      "phi_predeclared_deg": 184.2284594545844,
      "rel_change_predeclared_phi": 0.06480007014988855,
      "from_objectives": [
       "re_s11",
       "im_s11"
-     ]
+     ],
+     "pinned_gate_envelope": 1.7938165062385892e-07
     }
    }
   },
@@ -18007,7 +18021,8 @@
      "value_shifted": 0.30634570121765137,
      "rel_change": 0.0,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s21_mag2": {
      "kind": "magnitude",
@@ -18015,7 +18030,8 @@
      "value_shifted": -0.306438684463501,
      "rel_change": 9.725379593722268e-08,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s21_complex": {
      "kind": "complex",
@@ -18034,13 +18050,14 @@
      "phi_measured_deg": -148.56539555453256,
      "rel_change": 5.978637351932458e-08,
      "report_bar": 0.01,
-     "pinned_gate": null,
+     "pinned_gate": 0.001,
      "phi_predeclared_deg": 207.2570168864075,
      "rel_change_predeclared_phi": 0.07289649656924106,
      "from_objectives": [
       "re_s21",
       "im_s21"
-     ]
+     ],
+     "pinned_gate_envelope": 1.7938165062385892e-07
     }
    }
   },
@@ -18737,7 +18754,8 @@
      "value_shifted": 0.31497669219970703,
      "rel_change": 9.461753934788645e-08,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s21_mag2": {
      "kind": "magnitude",
@@ -18745,7 +18763,8 @@
      "value_shifted": -0.31497693061828613,
      "rel_change": 0.0,
      "report_bar": 0.01,
-     "pinned_gate": null
+     "pinned_gate": 0.001,
+     "pinned_gate_envelope": 1.7938165062385892e-07
     },
     "eps:s21_complex": {
      "kind": "complex",
@@ -18764,13 +18783,14 @@
      "phi_measured_deg": -148.56538991048006,
      "rel_change": 9.780936563600405e-08,
      "report_bar": 0.01,
-     "pinned_gate": null,
+     "pinned_gate": 0.001,
      "phi_predeclared_deg": 207.2570168864075,
      "rel_change_predeclared_phi": 0.07289661422441002,
      "from_objectives": [
       "re_s21",
       "im_s21"
-     ]
+     ],
+     "pinned_gate_envelope": 1.7938165062385892e-07
     }
    }
   },
@@ -21734,58 +21754,69 @@
   "plane_shift_rotation_yee|pec_short|false": "fail",
   "plane_shift_rotation_continuous|pec_short|false": "fail",
   "plane_shift_wrong_sign|pec_short|false": "fail",
-  "gradient_invariance|pec_short|false|sigma:s11_mag2": "report_only",
+  "gradient_invariance|pec_short|false|sigma:s11_mag2": "pass",
   "gradient_invariance|pec_short|false|eps:s11_mag2": "report_only",
-  "gradient_invariance|pec_short|false|eps:s11_complex": "report_only",
+  "gradient_invariance|pec_short|false|eps:s11_complex": "pass",
   "plane_shift_abs_s|pec_short|flux": "pass",
   "plane_shift_rotation_yee|pec_short|flux": "fail",
   "plane_shift_rotation_continuous|pec_short|flux": "fail",
   "plane_shift_wrong_sign|pec_short|flux": "fail",
-  "gradient_invariance|pec_short|flux|sigma:s11_mag2": "report_only",
+  "gradient_invariance|pec_short|flux|sigma:s11_mag2": "pass",
   "gradient_invariance|pec_short|flux|eps:s11_mag2": "report_only",
-  "gradient_invariance|pec_short|flux|eps:s11_complex": "report_only",
+  "gradient_invariance|pec_short|flux|eps:s11_complex": "pass",
   "plane_shift_abs_s|slab|false": "pass",
   "plane_shift_rotation_yee|slab|false": "fail",
   "plane_shift_rotation_continuous|slab|false": "fail",
   "plane_shift_wrong_sign|slab|false": "fail",
-  "gradient_invariance|slab|false|eps:s11_mag2": "report_only",
-  "gradient_invariance|slab|false|eps:s21_mag2": "report_only",
-  "gradient_invariance|slab|false|eps:s21_complex": "report_only",
+  "gradient_invariance|slab|false|eps:s11_mag2": "pass",
+  "gradient_invariance|slab|false|eps:s21_mag2": "pass",
+  "gradient_invariance|slab|false|eps:s21_complex": "pass",
   "plane_shift_abs_s|slab|flux": "pass",
   "plane_shift_rotation_yee|slab|flux": "fail",
   "plane_shift_rotation_continuous|slab|flux": "fail",
   "plane_shift_wrong_sign|slab|flux": "fail",
-  "gradient_invariance|slab|flux|eps:s11_mag2": "report_only",
-  "gradient_invariance|slab|flux|eps:s21_mag2": "report_only",
-  "gradient_invariance|slab|flux|eps:s21_complex": "report_only",
+  "gradient_invariance|slab|flux|eps:s11_mag2": "pass",
+  "gradient_invariance|slab|flux|eps:s21_mag2": "pass",
+  "gradient_invariance|slab|flux|eps:s21_complex": "pass",
   "cheap_refute_flip_shift_sign": "pass",
   "ladder|slab_s11_mag|false": "not_interpretable",
   "ladder_richardson|slab_s11_mag|false": "report_only",
   "ladder_monotone|slab_s11_mag|false": "report_only",
   "ladder|slab_s11_mag|flux": "pass",
-  "ladder_richardson|slab_s11_mag|flux": "report_only",
-  "ladder_monotone|slab_s11_mag|flux": "report_only",
+  "ladder_richardson|slab_s11_mag|flux": "pass",
+  "ladder_monotone|slab_s11_mag|flux": "pass",
   "ladder|slab_s21_mag|false": "not_interpretable",
   "ladder_richardson|slab_s21_mag|false": "report_only",
   "ladder_monotone|slab_s21_mag|false": "report_only",
   "ladder|slab_s21_mag|flux": "pass",
-  "ladder_richardson|slab_s21_mag|flux": "report_only",
-  "ladder_monotone|slab_s21_mag|flux": "report_only",
+  "ladder_richardson|slab_s21_mag|flux": "pass",
+  "ladder_monotone|slab_s21_mag|flux": "pass",
   "ladder|slab_s21_phase_deg|false": "pass",
-  "ladder_richardson|slab_s21_phase_deg|false": "report_only",
-  "ladder_monotone|slab_s21_phase_deg|false": "report_only",
+  "ladder_richardson|slab_s21_phase_deg|false": "pass",
+  "ladder_monotone|slab_s21_phase_deg|false": "pass",
   "ladder|slab_s21_phase_deg|flux": "pass",
-  "ladder_richardson|slab_s21_phase_deg|flux": "report_only",
-  "ladder_monotone|slab_s21_phase_deg|flux": "report_only",
+  "ladder_richardson|slab_s21_phase_deg|flux": "pass",
+  "ladder_monotone|slab_s21_phase_deg|flux": "pass",
   "ladder|pec_short_s11_mag|false": "pass",
-  "ladder_monotone|pec_short_s11_mag|false": "report_only",
+  "ladder_monotone|pec_short_s11_mag|false": "pass",
   "ladder|pec_short_s11_mag|flux": "pass",
-  "ladder_monotone|pec_short_s11_mag|flux": "report_only",
+  "ladder_monotone|pec_short_s11_mag|flux": "pass",
   "ladder|pec_short_s11_phase_deg|false": "pass",
-  "ladder_richardson|pec_short_s11_phase_deg|false": "report_only",
-  "ladder_monotone|pec_short_s11_phase_deg|false": "report_only",
+  "ladder_richardson|pec_short_s11_phase_deg|false": "pass",
+  "ladder_monotone|pec_short_s11_phase_deg|false": "pass",
   "ladder|pec_short_s11_phase_deg|flux": "not_interpretable",
   "ladder_richardson|pec_short_s11_phase_deg|flux": "report_only",
   "ladder_monotone|pec_short_s11_phase_deg|flux": "report_only"
+ },
+ "pins": {
+  "gradient_invariance_envelope": 1.7938165062385892e-07,
+  "gradient_invariance_gate": 0.001,
+  "gradient_quantum": 1000,
+  "richardson_quantum": {
+   "mag": 100,
+   "phase": 10
+  },
+  "monotone_quantum": 100,
+  "policy": "tests/_gate_policy.py gate_from_envelope (x ENVELOPE_GATE_MULTIPLIER, rounded up); lower bounds rounded down by the same multiplier"
  }
 }
