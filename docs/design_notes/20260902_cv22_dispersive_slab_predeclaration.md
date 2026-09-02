@@ -567,3 +567,44 @@ All three land on nfft 16384 (df 26.1 MHz, ~230 gated bins), so the arms share o
 **(4) The gate test must be green** on the r3 set: baseline replay (recipe r3, derived n_steps per arm, tail ≤ 1e-2, all E2 gates), Meep primary legs at res 40 with `precheck.passed`, all G4/G5, every falsifier artifact failing on the band-mean, both Meep falsifiers failing E4 with `precheck.passed = false`, and the ladder summary reproducing from its rungs.
 
 Refutations accepted: the Lorentz baseline still failing G2_R at the derived record (then the residual is not truncation and the H3 branch of §11.2 reopens with the ADE as the suspect); a −40 dB witness failing (a slower mode than derived); a Meep res-40 leg failing G4 (Meep's first-order term is larger than the ladder measured, or the mapping is wrong in a way 1e-9 does not see).
+
+## 13. Round 3 read (VESSL 369367257810) — truncation diagnosis confirmed; Debye witness missed; round 4 pre-declared
+
+Artifacts: `~/mnt/remilab-fs/personal-workspaces/claude-workspace/rfx/runs/cv22-dispersive-r3-20260902T104347Z/_22_dispersive_results/` (`r3/`); log `~/Documents/vessl-run-logs/369367257810_cv22-dispersive-r3.log`.
+
+### 13.1 What fired
+
+| arm | E2 | `r3/rfx.json::arms.<arm>.{mean_dR_gated, mean_dT_gated}` | max | tail scat / trans (`::tail.*`, bar 1e-2) | E4 (Meep 40 px/cm) |
+|---|---|---|---|---|---|
+| Lorentz | **PASS** | 0.0028 / 0.0016 (windows 0.0104 / 0.0176) | 0.0050 / 0.0032 | 8.0e-4 / 6.4e-4 | pass |
+| Drude | **PASS** | 0.0005 / 0.0017 | — | 7.6e-5 / 4.1e-5 | pass |
+| Debye | accuracy PASS, **G3_tail FAIL** | 0.0024 / 0.0029 | 0.0077 / 0.0073 | **1.63e-2 / 1.69e-2** (−36 dB) | pass |
+
+The §12 prediction for Lorentz (0.0028–0.005 at the derived 1228 steps) landed on its floor: the truncation diagnosis is confirmed and the ADE is clear on every arm. All three Meep primaries at 40 px/cm: `precheck.max_rel_err` 2.0e-16 / 1.8e-15 / 8.2e-16, finite, every G4/G5 gate true. Ladders rc 0 except Debye 10 px/cm rc 1 — the pre-declared F-B instability witness. All eight rfx falsifiers rc 1 and both Meep falsifiers rc 1: with a passing Lorentz/Drude baseline they now discriminate. The only red is the Debye witness, which makes `verdict.exit_code = 1` and fails two gate-test replays.
+
+### 13.2 Why the Debye record was short — the slowest component is the sub-band etalon
+
+§12's derivation searched the etalon rate over the **gated** band only. There the slowest Debye component is the 4 GHz etalon (1.84e10 s⁻¹, n_ring 108). But the incident pulse is a differentiated Gaussian peaking at 3.5 GHz with 80 % amplitude at 2 GHz and 45 % at 1 GHz, and Debye's absorption per pass vanishes as k0 → 0 (`ρ = |r|² e^{−2k0 Im(n) d}` → |r_dc|² = 0.176 with n_dc = √6), so the etalon rate falls monotonically toward DC: 1.29e10 at 2 GHz, 1.12e10 at 1 GHz, 1.06e10 as f → 0. The r3 tail is that sub-band component: the record ends 108 steps after the pulse at a scattered level ≤ 0.53 (√R), and 1.63e-2 after 108 steps bounds the effective rate to **≤ 1.36e10 s⁻¹** (`ln(0.53/0.0163)/(108·dt)`), below the 1.84e10 that was assumed and inside the 1.1–1.3e10 of the 1–2.5 GHz etalon. (The r3 artifact does not carry the time record — a gap of the r1 schema, closed in §13.3 by storing the tail envelope and its fitted rate — so this is a bound from the witness value, not a fitted rate; the fit is owed by r4.) Lorentz and Drude are unaffected: their material poles (7.33e9, 9.42e9) are slower than any etalon in the incident band (Lorentz 1.77e10 min; Drude 1.27e10 min at 1.13 GHz), and their r3 tails (−62 dB, −82 dB) are consistent with that.
+
+### 13.3 Round 4 recipe — physics-derived, then adaptive; no window moves
+
+**Derivation (`derive_record_length`, §12 form with two corrections):**
+
+1. the ring-down search runs over the **incident ring band** — the frequencies where the incident amplitude is ≥ 0.5 of its peak, `[1.13, 15] GHz` (`ring_band_hz()`), not the gated band;
+2. each spectral component starts at most at its incident weight w(f), so it needs `ln(100·w(f)) / rate(f)` to reach −40 dB of the incident peak; `n_ring = ceil(max_f ln(100 w)/rate / dt)` with `rate(f) = min(material, etalon(f))`.
+
+Result at dt = 2.335 ps on the nx-1000 rig (`n_pulse_end = 908`, CPML gate 1262; locked by `test_r3_record_lengths_are_derived_from_the_slab_ringdown`):
+
+| arm | governing component | rate | n_ring | **n_steps_min** |
+|---|---|---|---|---|
+| Debye | etalon at 1.45 GHz, w = 0.62 | 1.18e10 s⁻¹ | 150 | **1108** (r3: 1066) |
+| Lorentz | material δ (w = 1 at 3.5 GHz) | 7.33e9 | 270 | **1228** (unchanged) |
+| Drude | material γ/2 | 9.42e9 | 210 | **1168** (unchanged) |
+
+**Adaptive witness (never clip):** the arm runs to `n_steps_min`, evaluates the −40 dB witness (and cv04's 1e-3 purity), and while it is not met extends the record by `RECORD_EXTEND_STEPS = 100` up to the CPML gate; if the gate would be crossed, the box grows by `NX_GROW_CELLS = 200` (cv04's rig rule: the gate is a property of the box) and the arm reruns. The artifact records `run.record.{n_steps_min, n_steps, extensions, nx_grows}`, the witness values, the last 300 steps of both tail envelopes (`tail.envelope_*`) and their log-linear fitted decay rates (`tail.fitted_rate_*_1_s`, block maxima over 50-step windows; `fit_tail_rate` reproduces 1.26e10 from a synthetic 1.2e10 decay).
+
+**Predictions.** Debye: from the r3 level 1.69e-2 at step 1016 decaying at ≥ 1.06e10 (the slowest etalon in the whole incident band), the tail at the 1108-step window start (1058) is ≤ 0.0169·e^{−1.06e10·42·dt} = **6.1e-3 (−44 dB)** → the witness is met at `n_steps = 1108` with **0 extensions** expected; if one extension fires, 1208 (tail ≈ 5e-4), still inside the 1262 gate, no box growth. Fitted Debye rate: **1.1–1.4e10 s⁻¹** (between the 1–2.5 GHz etalon rates and the r3 bound), i.e. below the material 3.1e10 and the 4 GHz etalon 1.84e10 — that ordering is the check that the component is the sub-band etalon. Lorentz 1228 / Drude 1168 with 0 extensions (their r3 tails were already 8e-4 and 7.6e-5 at those lengths); fitted rates ≈ 7e9 / 9e9 (the material poles). Debye E2 unchanged at the 1e-3 level (0.0024 / 0.0029 at 1066 steps is already inside the window; the longer record can only lower it). All windows as declared in §4.
+
+**Round 4 set** (`scripts/vessl_cv22_dispersive_slab_r4.yaml`, the r3 lane at the corrected recipe): Meep primaries at 40 px/cm (three arms) + both wrong-convention Meep falsifiers at 40; the 10/20/40 ladders (Debye 10 = instability witness); the rfx baseline; the eight rfx falsifiers (each must exit 1); `--meep-ladder-summary`; the gate test, which must be green: it now also asserts `n_steps = n_steps_min + 100·extensions ≤ gate`, `nx_interior ≥ 1000`, the witness ≤ 1e-2, and that the stored envelope refits to the recorded rate.
+
+Refutations accepted: a Debye witness still above the bar after box growth to 4× (a slower mode than any derived here — reopened as a finding); a fitted Debye rate above 1.84e10 (then the r3 tail was not the sub-band etalon and the explanation above is wrong even if the witness passes); any E2/E4 gate failing at the longer record.
