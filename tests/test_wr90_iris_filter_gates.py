@@ -96,7 +96,7 @@ A = 22.86e-3
 # constants doubles the gate with every guard still passing. That finding
 # became issue #528, and #539 gave the multiplier ONE repo-wide definition,
 # tests/_gate_policy.py, which this case consumes like every other gated
-# case. The falsifiers in tests/test_gate_policy_is_shared.py re-derive this
+# case. The falsifiers in tests/contracts/test_gate_policy_is_shared.py re-derive this
 # case's gate from the shared constant (discovered via the fixture glob), so
 # a local widening is caught from OUTSIDE this file.
 from tests._gate_policy import gate_from_envelope  # noqa: E402
@@ -680,12 +680,12 @@ def test_case_is_discovered_and_bound_by_the_shared_gate_policy(fixture):
     tests/_gate_policy.py now), which turned the scan into a guaranteed
     failure on any merge with main. The binding this file needs is different:
     that THIS case is inside the shared policy's blast radius. The falsifiers
-    in tests/test_gate_policy_is_shared.py re-derive every discovered case's
+    in tests/contracts/test_gate_policy_is_shared.py re-derive every discovered case's
     gate from the shared constant and prove a widened multiplier moves them
     all together -- being discovered there is what makes a local widening
     here visible from outside this file.
     """
-    from tests.test_gate_policy_is_shared import _REAL_CASES
+    from tests.contracts.test_gate_policy_is_shared import _REAL_CASES
     me = ("tests/fixtures/wr90_iris_filter/fixture.json",
           ("gates", "f0_measured_envelope_mhz"),
           ("gates", "f0_gate_mhz"),

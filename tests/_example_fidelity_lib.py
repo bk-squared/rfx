@@ -1,6 +1,6 @@
 """Shared machinery for the P4/#737 example-credibility contract.
 
-Both ``tests/test_example_fidelity_contract.py`` (the gate) and
+Both ``tests/contracts/test_example_fidelity_contract.py`` (the gate) and
 ``scripts/capture_example_fidelity_snapshot.py`` (the regen command) import
 this module, so the digest the gate compares against is BY CONSTRUCTION the
 same digest the snapshot was written with — there is no second, drifting
@@ -178,7 +178,7 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
 # entry: all 23 audited scripts carry a main guard AND no module-scope solve
 # call, both asserted per script by the "audited" branch of
 # test_not_auditable_classifications_are_machine_checked, so nothing solves
-# merely by loading them. Pattern matches tests/test_crossval_example_imports.py.
+# merely by loading them. Pattern matches tests/contracts/test_crossval_example_imports.py.
 # --------------------------------------------------------------------------
 
 class MissingOptionalDependency(ImportError):

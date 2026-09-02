@@ -20,7 +20,7 @@ The rule this gate enforces is exactly the reader's experience:
    because something moved can still grep for the name.
 
 It asserts NO physics and changes NO gate. It is a documentation-integrity
-contract, in the same family as ``tests/test_rcs_bistatic_caveat_docpin.py``.
+contract, in the same family as ``tests/contracts/test_rcs_bistatic_caveat_docpin.py``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 
 # The documents whose pointers are under contract. Both are read by humans as
 # the authoritative statement of a crossval case's delegated evidence.

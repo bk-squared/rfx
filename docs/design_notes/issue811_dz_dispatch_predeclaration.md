@@ -171,7 +171,7 @@ moves. Commands (declared):
 
 ```
 pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py \
-       tests/test_support_matrix_parity.py tests/test_evidence_citation_pointers.py -q
+       tests/contracts/test_support_matrix_parity.py tests/contracts/test_evidence_citation_pointers.py -q
 pytest tests -k "waveguide and (sparam or s_matrix or dispatch or nonuniform)" -q
 pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q
 ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
@@ -332,7 +332,7 @@ dz-graded accuracy evidence remains open under #810.
 
 ### F4 — suite results
 
-- `pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py tests/test_support_matrix_parity.py tests/test_evidence_citation_pointers.py -q`
+- `pytest tests/test_dz_only_dispatch_contract.py tests/test_sparameter_support_contract.py tests/contracts/test_support_matrix_parity.py tests/contracts/test_evidence_citation_pointers.py -q`
   → **76 passed, 6 skipped, 1 deselected** (the deselected one is the
   slow_physics falsifier).
 - `pytest tests/test_dz_only_dispatch_contract.py -m slow_physics -q`

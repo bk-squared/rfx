@@ -805,7 +805,7 @@ never rewrite `results/w4r2_analytic_cavity.json`.
 
 ### WP6d — movers found by the acceptance-gate batteries, with provenance
 
-1. **`tests/test_example_fidelity_contract.py::test_discovery_matches_classification_table` FAILED** —
+1. **`tests/contracts/test_example_fidelity_contract.py::test_discovery_matches_classification_table` FAILED** —
    the #737 enumerate-and-classify gate correctly refused the 13 new files
    under `validation/research/multiband_nu/` with no classification entry.
    This gate was never run in phase 1 (the phase-1 battery covered the NU

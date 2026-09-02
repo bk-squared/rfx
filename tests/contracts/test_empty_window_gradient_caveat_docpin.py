@@ -26,7 +26,7 @@ from pathlib import Path
 
 from rfx.optimize_objectives import minimize_reflected_energy
 
-_DOCS = Path(__file__).resolve().parents[1] / "docs/public"
+_DOCS = Path(__file__).resolve().parents[2] / "docs/public"
 
 
 def _norm(text: str) -> str:

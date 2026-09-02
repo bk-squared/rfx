@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 GATE_POLICY = REPO / "tests" / "_gate_policy.py"
 
 # The quantized-gate consumers: `gate = ceil(env * MULTIPLIER * quantum) /

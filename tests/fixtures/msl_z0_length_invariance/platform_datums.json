@@ -3,7 +3,7 @@
   "schema_version": 1,
   "test": "tests/test_msl_port_integration.py::test_msl_thru_line_z0_length_invariance_and_positive_sign",
   "issue": 610,
-  "_comment": "Deliberately NOT named 'fixture.json' -- tests/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
+  "_comment": "Deliberately NOT named 'fixture.json' -- tests/contracts/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
   "recipe": {
     "dx_m": 8e-05,
     "legs_mm": [8, 10, 12],

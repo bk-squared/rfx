@@ -2121,7 +2121,7 @@ class _PreflightMixin:
         Not audited (silent by construction, disclosed here): the
         non-uniform lane, 2-D mode, and a port whose position does not map
         into the grid (the compiler rejects that separately). Measured on
-        the example snapshot (tests/test_example_fidelity_contract.py):
+        the example snapshot (tests/contracts/test_example_fidelity_contract.py):
         the one coaxial variant has 0 PEC cells in the ring, so no
         snapshot row changes.
         """

@@ -470,7 +470,7 @@ delta_C = 56.0 fF; B_formula = 0.2326 -> **B_eff = min(B, 0.13) =
 [^33-correction]: **Correction (appended 2026-08-30, PR #779 review).**
   "33 PRE-EXISTING base snapshot failures" above is wrong and is
   withdrawn. Those rows are not base-branch failures independent of
-  this lane. Running `tests/test_example_fidelity_contract.py`
+  this lane. Running `tests/contracts/test_example_fidelity_contract.py`
   standalone off `agent/thru-deembed-r4` (no `main` merge) gives
   **6 failed, 99 passed**, not 33/83. All 6 failures are snapshot rows
   captured against a stale rfx build earlier in this same stacked
