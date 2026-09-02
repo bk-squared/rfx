@@ -43,6 +43,8 @@ MEEP_A_M = G.MEEP_A_M
 MEEP_COURANT = G.MEEP_COURANT
 MEEP_PRIMARY_RESOLUTION = G.MEEP_PRIMARY_RESOLUTION
 MEEP_LADDER_RESOLUTIONS = G.MEEP_LADDER_RESOLUTIONS
+MEEP_LADDER_RESOLUTIONS_R2 = (10, 20, 40, 80)   # note section 12: the res-80 rung
+RFX_DX_LADDER = (1, 2, 4)                        # note section 12: --dx-div K per arm
 MEEP_EPS_AVERAGING = False     # note section 1: conductivity is "not compatible with
                                # subpixel averaging" (Meep docs); faces sit on pixel
                                # boundaries at 10/20/40 px/cm anyway
@@ -243,10 +245,41 @@ def rfx_json_name(falsifier: str | None = None) -> str:
     return G.rfx_json_name(falsifier)
 
 
-def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
+
+
+# ---------------------------------------------------------------------------
+# Round 2 (note section 12): the derived lattice term and Meep's thickness excess
+# ---------------------------------------------------------------------------
+
+def lattice_rta(freqs_hz, params: dict, dx: float, dt: float):
+    """R, T, A of the exact 1-D Yee lattice for the staircase slab at (dx, dt)."""
+    R, T = de.yee_lattice_slab_rt(freqs_hz, float(params["eps_inf"]), float(params["sigma"]), D_SLAB_M, dx, dt)
+    return R, T, 1.0 - R - T
+
+
+def lattice_window(freqs_hz, params: dict, dx: float, dt: float):
+    """W_lat,{R,T,A}(f) = |lattice - TMM|: the rig's own discretization of the
+    slab (bulk dispersion + node interface + sigma warp), a priori. NOT a gate
+    term in round 2 (note section 12); evaluated and reported."""
+    R, T, A = analytic_rta(freqs_hz, params)
+    Rl, Tl, Al = lattice_rta(freqs_hz, params, dx, dt)
+    return np.abs(Rl - R), np.abs(Tl - T), np.abs(Al - A)
+
+
+def meep_thickness_excess_rta(freqs_hz, params: dict, resolution: int, cells: float = 1.0):
+    """The note-section-12 hypothesis for Meep's first-order term: the block
+    realizes d + cells * a/res (E nodes inclusive at both faces). R, T, A of
+    the transfer matrix at that thickness."""
+    eps = de.eps_analytic(freqs_hz, MODEL, params)
+    R, T = de.tmm_slab_rt(freqs_hz, eps, D_SLAB_M + cells * MEEP_A_M / resolution)
+    return R, T, 1.0 - R - T
+
+
+def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER_RESOLUTIONS_R2) -> dict:
     """Meep-vs-TMM per resolution and the measured order per doubling (R, T).
-    cv22's summary on cv23's artifacts; evidence of Meep's convergence, not a
-    window term."""
-    summ = G.meep_ladder_summary(results_dir, rfx_doc)
+    cv22's summary on cv23's artifacts (rungs 10/20/40 and, from round 2, 80);
+    evidence of Meep's convergence, not a window term."""
+    summ = G.meep_ladder_summary(results_dir, rfx_doc, resolutions=resolutions)
     summ["schema"] = "cv23-meep-ladder/v1"
     return summ
+

@@ -88,20 +88,24 @@ def _precheck(mp, medium, model, params, meep_params, fn_map_hz):
 
 
 def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float, nfreq: int,
-                      fcen_ghz: float, fwidth_ghz: float, decay: float, eps_averaging=None) -> dict:
+                      fcen_ghz: float, fwidth_ghz: float, decay: float, eps_averaging=None,
+                      d_slab_m: float | None = None) -> dict:
     """cv04's Meep slab geometry, two runs (vacuum reference, then the slab) with
     reference-flux subtraction. Shared by the cv22 and cv23 legs (factored out of
     this leg's main() unchanged when cv23 was added); ``medium`` is the slab.
-    ``eps_averaging=None`` leaves Meep's default (cv22); cv23 passes False."""
+    ``eps_averaging=None`` leaves Meep's default (cv22); cv23 passes False.
+    ``d_slab_m`` overrides the drawn block thickness (cv23 note section 12:
+    the thickness-excess discriminator); the monitors and source stay put."""
     fcen = fcen_ghz * 1e9 * a_m / DE.C0
     fwidth = fwidth_ghz * 1e9 * a_m / DE.C0
     sx = G.NX_INTERIOR * G.DX_M / a_m
     sy = 0.4
     dpml = G.N_CPML * G.DX_M / a_m
-    d_slab = G.D_SLAB_M / a_m
-    refl_x = -d_slab / 2 - 30 * G.DX_M / a_m
-    trans_x = d_slab / 2 + 30 * G.DX_M / a_m
-    src_x = -d_slab / 2 - 50 * G.DX_M / a_m
+    d_slab = (G.D_SLAB_M if d_slab_m is None else float(d_slab_m)) / a_m
+    d_nom = G.D_SLAB_M / a_m
+    refl_x = -d_nom / 2 - 30 * G.DX_M / a_m
+    trans_x = d_nom / 2 + 30 * G.DX_M / a_m
+    src_x = -d_nom / 2 - 50 * G.DX_M / a_m
     cell = mp.Vector3(sx, sy, 0)
     pml = [mp.PML(dpml, direction=mp.X)]
     src = [mp.Source(mp.GaussianSource(frequency=fcen, fwidth=fwidth), component=mp.Ez,
@@ -146,7 +150,7 @@ def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float
     freqs_hz = flux_freqs * DE.C0 / a_m
     dt_meep_s = courant / resolution * a_m / DE.C0
     return {"freqs_hz": freqs_hz, "R": R, "T": T, "dt_meep_s": dt_meep_s, "fcen": fcen, "fwidth": fwidth,
-            "t_ref_s": t_ref, "t_slab_s": t_slab, "eps_averaging": eps_averaging}
+            "t_ref_s": t_ref, "t_slab_s": t_slab, "eps_averaging": eps_averaging, "d_slab_m": d_slab * a_m}
 
 
 def main(argv=None) -> int:

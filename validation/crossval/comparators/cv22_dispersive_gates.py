@@ -488,17 +488,18 @@ def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: in
             "src_t0_s": t0, "src_tau_s": tau, "v_cells": float(v_cells), **cells}
 
 
-def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
+def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER_RESOLUTIONS) -> dict:
     """Meep-vs-TMM deviation per resolution (from meep_<arm>__res<N>.json) and the
     measured convergence order per doubling. Measured-in-r2 evidence, not a
     pre-declared window term."""
     import json as _json
-    out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(MEEP_LADDER_RESOLUTIONS), "arms": {}}
+    resolutions = tuple(int(r) for r in resolutions)
+    out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(resolutions), "arms": {}}
     for arm, ad in rfx_doc["arms"].items():
         e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"], ad["params"], ad["dt_s"],
                          tail=ad["tail"])
         rungs = {}
-        for res in MEEP_LADDER_RESOLUTIONS:
+        for res in resolutions:
             p = os.path.join(results_dir, f"meep_{arm}__res{res}.json")
             if not os.path.isfile(p):
                 continue
@@ -514,7 +515,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
                                "max_dR_meep_tmm_gated": e4["max_dR_meep_tmm_gated"],
                                "max_dT_meep_tmm_gated": e4["max_dT_meep_tmm_gated"]}
         orders = {}
-        for lo, hi in ((10, 20), (20, 40)):
+        for lo, hi in zip(resolutions[:-1], resolutions[1:]):
             a, b = rungs.get(str(lo)), rungs.get(str(hi))
             if a and b and a.get("finite") and b.get("finite"):
                 for q in ("mean_dR_meep_tmm_gated", "mean_dT_meep_tmm_gated"):

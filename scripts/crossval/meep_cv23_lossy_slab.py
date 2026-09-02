@@ -63,6 +63,9 @@ def main(argv=None) -> int:
     ap.add_argument("--decay", type=float, default=1e-3)
     ap.add_argument("--fcen-ghz", type=float, default=10.0)
     ap.add_argument("--fwidth-ghz", type=float, default=15.0)
+    ap.add_argument("--thickness-offset-cells", type=float, default=0.0,
+                    help="draw the block d + N a/res thick (note section 12: -1 tests the hypothesis that "
+                         "Meep's block realizes d + a/res); diagnostic, requires --tag")
     ap.add_argument("--tag", default=None,
                     help="write meep_<arm>__<tag>.json (ladder rungs); without it the leg is the one the case reads")
     a = ap.parse_args(argv)
@@ -74,6 +77,8 @@ def main(argv=None) -> int:
         return 2
     M22 = _load_cv22_leg()
 
+    if a.thickness_offset_cells and not a.tag:
+        ap.error("--thickness-offset-cells is a diagnostic and requires --tag")
     if a.falsifier and a.arm != L.MEEP_FALSIFIER_ARM:
         print(f"falsifiers are declared on the {L.MEEP_FALSIFIER_ARM} arm only")
         return 1
@@ -100,11 +105,11 @@ def main(argv=None) -> int:
 
     res = M22.run_slab_two_pass(mp, medium, a_m=a_m, resolution=a.resolution, courant=a.courant,
                                 nfreq=a.nfreq, fcen_ghz=a.fcen_ghz, fwidth_ghz=a.fwidth_ghz,
-                                decay=a.decay, eps_averaging=L.MEEP_EPS_AVERAGING)
+                                decay=a.decay, eps_averaging=L.MEEP_EPS_AVERAGING,
+                                d_slab_m=L.D_SLAB_M + a.thickness_offset_cells * a_m / a.resolution)
     R, T, freqs_hz = res["R"], res["T"], res["freqs_hz"]
     A = 1.0 - R - T
     finite = bool(np.all(np.isfinite(R)) and np.all(np.isfinite(T)))
-    g = L.gated_mask(freqs_hz) if hasattr(L, "gated_mask") else None
     import cv22_dispersive_gates as G  # noqa: E402
     g = G.gated_mask(freqs_hz)
     passive = bool(finite and np.all((R + T)[g] <= 1.0 + G.CONS_MAX_LIMIT))
@@ -126,6 +131,7 @@ def main(argv=None) -> int:
         "a_m": a_m, "resolution": a.resolution, "courant": a.courant, "dt_meep_s": res["dt_meep_s"],
         "nfreq": a.nfreq, "fcen_meep": res["fcen"], "fwidth_meep": res["fwidth"], "decay": a.decay,
         "eps_averaging": L.MEEP_EPS_AVERAGING,
+        "d_slab_m": res["d_slab_m"], "thickness_offset_cells": a.thickness_offset_cells,
         "material": {"model": L.MODEL, "params": params, "tan_delta_at_f_centre": L.ARM_TAN_DELTA[a.arm]},
         "meep_params": meep_params,
         "precheck": pre,

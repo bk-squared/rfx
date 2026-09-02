@@ -452,3 +452,138 @@ def test_meep_ladder_summary_reproduces_from_its_rungs():
         r40 = v["rungs"]["40"]
         assert r40["mean_dR_meep_tmm_gated"] <= L.W_MEAN_R and r40["mean_dT_meep_tmm_gated"] <= L.W_MEAN_T
     print("cv23-summary meep ladder:", {a: {k: round(o, 2) for k, o in v["orders"].items()} for a, v in summ["arms"].items()})
+
+
+# ---------------------------------------------------------------------------
+# 3. Round 2 (note section 12): the derived Yee-lattice term and Meep's
+#    thickness excess. Artifact-free predictions are LOCKED here; the replays
+#    print measured-vs-predicted and assert structure only (skip until the r2
+#    artifacts land). Selected on the pod with ``-k r2``.
+# ---------------------------------------------------------------------------
+
+# Note section 12 predictions (mean over the gated bins of |lattice - TMM|),
+# rfx dt at Courant 0.700, per (arm, dx_div): (R, T, A).
+_R2_LATTICE_PRED = {
+    ("tand0p1", 1): (0.00392, 0.00567, 0.00194), ("tand0p1", 2): (0.00096, 0.00139, 0.00048), ("tand0p1", 4): (0.00024, 0.00035, 0.00012),
+    ("tand1", 1): (0.00509, 0.00176, 0.00334), ("tand1", 2): (0.00126, 0.00044, 0.00081), ("tand1", 4): (0.00031, 0.00011, 0.00020),
+    ("tand3", 1): (0.01256, 0.00011, 0.01244), ("tand3", 2): (0.00311, 0.00003, 0.00308), ("tand3", 4): (0.00078, 0.00001, 0.00077),
+}
+# Meep thickness-excess hypothesis TMM(d + a/res): mean |dR| per (arm, res).
+_R2_MEEP_THICK_PRED = {("tand0p1", 10): 0.0593, ("tand0p1", 20): 0.0307, ("tand0p1", 40): 0.0155, ("tand0p1", 80): 0.0078,
+                       ("tand1", 10): 0.0100, ("tand1", 20): 0.0057, ("tand1", 40): 0.0030, ("tand1", 80): 0.0015}
+_R2_LATTICE_RESIDUAL_BAR = 3e-4     # 10x the r1 |rfx - lattice| mean (3e-5) -> "lattice confirmed"
+
+
+def test_r2_lattice_term_is_derived_and_predicts_the_ladder():
+    """The exact 1-D Yee lattice of the staircase slab converges to the TMM
+    second-order and, at the rig's dx/dt, gives the section-12 numbers; the
+    sqrt-free multilayer TMM reduces to the slab."""
+    f, dt = _rfx_bins()
+    g = G.gated_mask(f)
+    p3 = L.ARMS["tand3"]["params"]
+    R, T, _ = L.analytic_rta(f[g], p3)
+    errs = []
+    for dx in (1e-3, 2.5e-4, 6.25e-5):
+        Rl, Tl = de.yee_lattice_slab_rt(f[g], 4.0, p3["sigma"], L.D_SLAB_M, dx, 0.7 * dx / de.C0)
+        errs.append(np.abs(Rl - R).mean())
+    assert errs[0] / errs[1] > 3.5 and errs[1] / errs[2] > 3.5      # second order per x4 in dx
+    Rm, Tm = de.tmm_layers_rt(f[g], [(de.eps_analytic(f[g], "conductive", p3), L.D_SLAB_M)])
+    assert np.abs(Rm - R).max() < 1e-12 and np.abs(Tm - T).max() < 1e-12
+    for (arm, K), want in _R2_LATTICE_PRED.items():
+        p = L.ARMS[arm]["params"]
+        wR, wT, wA = L.lattice_window(f[g], p, G.DX_M / K, dt / K)
+        got = (wR.mean(), wT.mean(), wA.mean())
+        for gv, wv in zip(got, want):
+            assert abs(gv - wv) <= max(2e-5, 0.03 * wv), (arm, K, got, want)
+    for (arm, res), want in _R2_MEEP_THICK_PRED.items():
+        p = L.ARMS[arm]["params"]
+        R0, _, _ = L.analytic_rta(f[g], p)
+        Rt, _, _ = L.meep_thickness_excess_rta(f[g], p, res)
+        assert abs(np.abs(Rt - R0).mean() - want) <= 2e-4, (arm, res)
+    # the coordinator's two candidate mechanisms on tand3, a priori: both small
+    Rp, _ = de.tmm_slab_rt(f[g], de.eps_analytic(f[g], "conductive", p3), L.D_SLAB_M + 0.5e-3)
+    assert np.abs(Rp - R).mean() < 6e-4                              # +-dx/2 thickness: surface impedance is thickness-blind
+    eh = {"eps_inf": 2.5, "sigma": p3["sigma"] / 2}
+    Rh, _ = de.tmm_layers_rt(f[g], [(de.eps_analytic(f[g], "conductive", eh), 1e-3),
+                                    (de.eps_analytic(f[g], "conductive", p3), 8e-3),
+                                    (de.eps_analytic(f[g], "conductive", eh), 1e-3)])
+    assert np.mean(Rh - R) < -0.015                                  # half-weighted cells: wrong sign, 2x too big
+
+
+_R2_RFX_TAGS = {arm: [f"{arm}_dx2", f"{arm}_dx4"] for arm in L.ARM_ORDER}
+
+
+@pytest.mark.parametrize("arm", L.ARM_ORDER)
+def test_r2_rfx_dx_ladder_against_the_lattice_prediction(arm):
+    base = _baseline()["arms"][arm]
+    f0 = np.asarray(base["freqs_hz"]); g0 = np.asarray(base["gated"])
+    wR0, wT0, wA0 = L.lattice_window(f0[g0], base["params"], base["run"]["dx_m"], base["dt_s"])
+    res0 = np.mean(np.abs(np.asarray(base["R_rfx"])[g0] - np.asarray(base["R_tmm"])[g0] - (
+        L.lattice_rta(f0[g0], base["params"], base["run"]["dx_m"], base["dt_s"])[0] - np.asarray(base["R_tmm"])[g0])))
+    lines = [f"r2-summary rfx {arm} dx: mean|dR| {base['mean_dR_gated']:.5f} (lattice pred {wR0.mean():.5f}, "
+             f"|rfx - lattice| {res0:.2e}); |dT| {base['mean_dT_gated']:.5f} (pred {wT0.mean():.5f})"]
+    for tag in _R2_RFX_TAGS[arm]:
+        p = _RESULTS / f"rfx__{tag}.json"
+        if not p.is_file():
+            lines.append(f"r2-summary rfx {tag}: ABSENT")
+            continue
+        d = _read(p)["arms"][arm]
+        assert d["params"] == pytest.approx(L.ARMS[arm]["params"]) and d["params_run"] == pytest.approx(L.ARMS[arm]["params"])
+        K = d["run"]["dx_div"]
+        assert K == int(tag[-1]) and d["run"]["dx_m"] == pytest.approx(G.DX_M / K)
+        assert d["tail"]["ok"], (tag, d["tail"]["scat_refl_rel"], d["tail"]["total_trans_rel"])
+        re = _replay_e2(d)
+        assert re["gates"] == {k: v for k, v in d["gates"].items() if k in re["gates"]}
+        f = np.asarray(d["freqs_hz"]); g = np.asarray(d["gated"])
+        Rl, Tl, Al = L.lattice_rta(f[g], d["params"], d["run"]["dx_m"], d["dt_s"])
+        Rx = np.asarray(d["R_rfx"])[g]; Tx = np.asarray(d["T_rfx"])[g]
+        resid_R = np.mean(np.abs(Rx - Rl)); resid_T = np.mean(np.abs(Tx - Tl))
+        ratio = d["mean_dR_gated"] / base["mean_dR_gated"] if base["mean_dR_gated"] > 0 else float("nan")
+        pred = _R2_LATTICE_PRED[(arm, K)]
+        reading = ("lattice-confirmed" if max(resid_R, resid_T) <= _R2_LATTICE_RESIDUAL_BAR else
+                   "first-order" if (K == 2 and 0.4 <= ratio <= 0.6) or (K == 4 and 0.2 <= ratio <= 0.35) else
+                   "no-fall" if ratio >= 0.7 else "unresolved")
+        lines.append(f"r2-summary rfx {tag}: n_steps {d['run']['n_steps']} mean|dR| {d['mean_dR_gated']:.5f} "
+                     f"(x{ratio:.3f} of dx; lattice pred {pred[0]:.5f}) |dT| {d['mean_dT_gated']:.5f} (pred {pred[1]:.5f}) "
+                     f"|dA| {d['mean_dA_gated']:.5f} (pred {pred[2]:.5f}); |rfx - lattice| R {resid_R:.2e} T {resid_T:.2e} "
+                     f"-> {reading}; E2 {'PASS' if re['e2_ok'] else 'FAIL'}")
+    print("\n".join(lines))
+
+
+def test_r2_meep_res80_and_thin_block_against_the_predictions():
+    doc = _baseline()
+    lines = []
+    for arm, tag, pred, label in (("tand0p1", "res80", _R2_MEEP_THICK_PRED[("tand0p1", 80)], "thickness excess d + a/80"),
+                                  ("tand3", "res80", 0.0002, "lattice, second order"),
+                                  ("tand0p1", "res40_thin1", 0.0003, "block drawn d - a/40: lattice level")):
+        p = _RESULTS / f"meep_{arm}__{tag}.json"
+        if not p.is_file():
+            lines.append(f"r2-summary meep {arm}__{tag}: ABSENT")
+            continue
+        md = _read(p)
+        assert md["run"]["finite"] and md["precheck"]["passed"] and md["eps_averaging"] is False
+        if tag == "res40_thin1":
+            assert md["thickness_offset_cells"] == -1 and md["d_slab_m"] == pytest.approx(L.D_SLAB_M - L.MEEP_A_M / 40)
+        else:
+            assert md["resolution"] == 80 and md.get("thickness_offset_cells", 0) == 0
+        e4 = L.evaluate_e4(_replay_e2(doc["arms"][arm]), md)
+        lines.append(f"r2-summary meep {arm}__{tag}: Meep-vs-TMM mean|dR| {e4['mean_dR_meep_tmm_gated']:.5f} "
+                     f"(pred {pred:.4f}, {label}) |dT| {e4['mean_dT_meep_tmm_gated']:.5f} |dA| {e4['mean_dA_meep_tmm_gated']:.5f}; "
+                     f"G4_mean_R {'pass' if e4['gates']['G4_mean_R'] else 'FAIL'}")
+    print("\n".join(lines))
+
+
+def test_r2_meep_ladder_summary_carries_the_res80_rung():
+    p = _RESULTS / "meep_ladder_summary.json"
+    if not p.is_file():
+        pytest.skip("meep_ladder_summary.json absent")
+    summ = _read(p)
+    if 80 not in summ.get("resolutions", []):
+        pytest.skip("ladder summary predates the res-80 rung")
+    fresh = L.meep_ladder_summary(str(_RESULTS), _baseline())
+    for arm, v in summ["arms"].items():
+        assert v["rungs"].keys() == fresh["arms"][arm]["rungs"].keys()
+        for res, rung in v["rungs"].items():
+            if rung.get("finite"):
+                assert rung["mean_dR_meep_tmm_gated"] == pytest.approx(fresh["arms"][arm]["rungs"][res]["mean_dR_meep_tmm_gated"], rel=1e-9)
+    print("r2-summary meep ladder orders:", {a: {k: round(o, 2) for k, o in v["orders"].items()} for a, v in summ["arms"].items()})

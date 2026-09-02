@@ -361,3 +361,69 @@ def tmm_slab_rt(f_hz, eps, d_m: float) -> tuple[np.ndarray, np.ndarray]:
     r = (m11 + m12 - m21 - m22) / den
     t = 2.0 / den
     return np.abs(r) ** 2, np.abs(t) ** 2
+
+
+def tmm_layers_rt(f_hz, layers) -> tuple[np.ndarray, np.ndarray]:
+    """Normal-incidence R, T of a stack of homogeneous layers in vacuum:
+    ``layers`` = [(eps (scalar or per-bin array), thickness_m), ...] from the
+    incidence side. One layer reduces to ``tmm_slab_rt`` exactly."""
+    f = np.asarray(f_hz, dtype=float)
+    k0 = TWO_PI * f / C0
+    M = np.broadcast_to(np.eye(2, dtype=complex), (f.size, 2, 2)).copy()
+    for eps, d in layers:
+        n = np.sqrt(np.asarray(eps, dtype=complex) * np.ones(f.size))
+        ph = n * k0 * d
+        m = np.empty((f.size, 2, 2), dtype=complex)
+        m[:, 0, 0] = np.cos(ph); m[:, 0, 1] = 1j * np.sin(ph) / n
+        m[:, 1, 0] = 1j * n * np.sin(ph); m[:, 1, 1] = np.cos(ph)
+        M = M @ m
+    den = M[:, 0, 0] + M[:, 0, 1] + M[:, 1, 0] + M[:, 1, 1]
+    r = (M[:, 0, 0] + M[:, 0, 1] - M[:, 1, 0] - M[:, 1, 1]) / den
+    t = 2.0 / den
+    return np.abs(r) ** 2, np.abs(t) ** 2
+
+
+def yee_lattice_slab_rt(f_hz, eps_r: float, sigma: float, d_m: float, dx: float, dt: float,
+                        *, n_vac: int = 20) -> tuple[np.ndarray, np.ndarray]:
+    """EXACT time-harmonic R, T of the 1-D Yee lattice for a staircase slab
+    (cv23 note section 12): ``round(d/dx)`` E-nodes carry (eps', sigma) with
+    the semi-implicit sigma average, vacuum nodes either side; the normal-
+    incidence TMz rig with periodic y IS this lattice. With z = e^{j w dt},
+    w_hat = 2 sin(w dt/2)/dt, x = w dt/2, the update equations reduce to
+        H_{i+1/2} - H_{i-1/2} = dx (j w_hat eps_i + sigma_i cos x) E_i
+        E_{i+1}   - E_i       = dx (j w_hat mu0) H_{i+1/2}
+    which are marched from a unit transmitted lattice plane wave (vacuum
+    lattice wavenumber k = (2/dx) asin(w_hat dx/2c)) back to the incidence
+    side, where two nodes are decomposed into incident + reflected. Contains
+    the bulk numerical dispersion of the slab, the node interface and the
+    sigma warp at once; converges to ``tmm_slab_rt`` as dx -> 0 (second order).
+    """
+    mu0 = 1.0 / (C0 ** 2 * EPS_0)
+    f = np.asarray(f_hz, dtype=float)
+    w = TWO_PI * f
+    x = w * dt / 2.0
+    w_hat = 2.0 * np.sin(x) / dt
+    cx = np.cos(x)
+    n_slab = int(round(d_m / dx))
+    N = 2 * n_vac + n_slab + 1
+    eps = np.full(N, EPS_0); sig = np.zeros(N)
+    eps[n_vac:n_vac + n_slab] = EPS_0 * eps_r
+    sig[n_vac:n_vac + n_slab] = sigma
+    k = (2.0 / dx) * np.arcsin(w_hat * dx / (2.0 * C0))
+    R = np.empty(f.size); T = np.empty(f.size)
+    for m in range(f.size):
+        y = 1j * w_hat[m] * eps + sig * cx[m]
+        zm = 1j * w_hat[m] * mu0
+        E = np.zeros(N, complex); H = np.zeros(N - 1, complex)
+        E[N - 1] = 1.0
+        E[N - 2] = np.exp(1j * k[m] * dx)
+        H[N - 2] = (E[N - 1] - E[N - 2]) / (dx * zm)
+        for i in range(N - 2, 0, -1):
+            H[i - 1] = H[i] - dx * y[i] * E[i]
+            E[i - 1] = E[i] - dx * zm * H[i - 1]
+        M = np.array([[1.0, 1.0], [np.exp(-1j * k[m] * dx), np.exp(1j * k[m] * dx)]])
+        a, b = np.linalg.solve(M, E[:2])
+        R[m] = abs(b / a) ** 2
+        T[m] = abs(1.0 / a) ** 2
+    return R, T
+
