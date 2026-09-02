@@ -118,6 +118,16 @@ counts, rect DFT window). Tighten gates only with a fresh measured
 baseline; a failure here marks a postproc/calibration regression.
 """
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "unknown (2026-07-10 diagnostic lane script, not in tree)",
+    "commit": "63b0ed5",
+    "date": "2026-07-10",
+    "run_id": "local",
+    "host": "cpu (os / jax version not recorded in #302)",
+    "pinned_until": "2027-01-06",
+}
+
 import numpy as np
 import pytest
 import jax.numpy as jnp

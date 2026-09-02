@@ -33,6 +33,16 @@ measured 6e-11) rather than ``np.array_equal``.  The gate is deliberately
 NOT loosened beyond the measured pre-refactor envelope.
 """
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived",
+    "commit": "7fb7dcf",
+    "date": "2026-06-11",
+    "run_id": "unknown",
+    "host": "unknown",
+    "pinned_until": "2026-12-08",
+}
+
 import pytest
 import numpy as np
 

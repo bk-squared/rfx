@@ -40,6 +40,16 @@ resolution, so the floor df binds on both sides — the gate then reads
 by ~40x margin and the pre-fix realization fails by ~3.5x.
 """
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (A/B measured 2026-08-19 on this fixture)",
+    "commit": "13de212",
+    "date": "2026-08-20",
+    "run_id": "local",
+    "host": "JAX cpu float32 (os / jax version not recorded in #678)",
+    "pinned_until": "2027-02-16",
+}
+
 import warnings
 
 import numpy as np

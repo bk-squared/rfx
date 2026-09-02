@@ -34,6 +34,16 @@ the 2-D end-to-end witness) is pinned in
 ``tests/test_pec_mask_boundary_convention.py``.
 """
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (inline copy of the pre-refactor expressions)",
+    "commit": "13de212",
+    "date": "2026-08-20",
+    "run_id": "local",
+    "host": "JAX cpu float32 (os / jax version not recorded in #678)",
+    "pinned_until": "2027-02-16",
+}
+
 import numpy as np
 import jax.numpy as jnp
 

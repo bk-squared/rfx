@@ -35,6 +35,16 @@ records). If the glob ever matches nothing, that is itself a failure.
 """
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "tests/fixtures/waveguide_broad_e5/*_broad_e5_envelope.json, tests/fixtures/waveguide_nu_broad_e5/*_broad_e5_envelope.json",
+    "generator": "scripts/diagnostics/i574_e5_absorber_window_falsifier.py 16-case GPU sweep (its VESSL job yaml is not in tree); scripts/diagnostics/i496_unitarity_witness_audit.py (derivation)",
+    "commit": "2dcafdb",
+    "date": "2026-08-09",
+    "run_id": "unknown",
+    "host": "VESSL gpu backend (gpu model / jax version not recorded in #595)",
+    "pinned_until": "2027-02-05",
+}
+
 import json
 import math
 from pathlib import Path

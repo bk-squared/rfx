@@ -17,6 +17,16 @@ the whole field).
 
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived",
+    "commit": "e36fd8e",
+    "date": "2026-04-18",
+    "run_id": "unknown",
+    "host": "unknown",
+    "pinned_until": "2026-10-15",
+}
+
 import numpy as np
 
 from rfx import Simulation

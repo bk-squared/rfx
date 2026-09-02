@@ -113,6 +113,16 @@ cells). The raster gates are fast and run in the default selection.
 """
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (2026-08-30 configuration sweep on the CPU lane; script not in tree)",
+    "commit": "a8c3d52",
+    "date": "2026-08-30",
+    "run_id": "local",
+    "host": "cpu lane (os / jax version not recorded in #784)",
+    "pinned_until": "2027-02-26",
+}
+
 import math
 
 import numpy as np

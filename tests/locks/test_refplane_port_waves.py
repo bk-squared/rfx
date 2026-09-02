@@ -49,6 +49,16 @@ No module-level x64 flip (documented complex64 envelope).
 
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (issue #313 Phase-0 closed-box flux referee, 2026-07-10; SV gate re-measured at b281a69)",
+    "commit": "b37b9ab",
+    "date": "2026-07-11",
+    "run_id": "unknown",
+    "host": "unknown",
+    "pinned_until": "2027-01-07",
+}
+
 import numpy as np
 import pytest
 

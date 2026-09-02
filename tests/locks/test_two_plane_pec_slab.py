@@ -24,6 +24,16 @@ falsification results (each mutation applied by hand to
 reverted) are recorded verbatim in the affected tests' docstrings.
 """
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (same-process off-state contract; the 8e00497 golden was retired in #707)",
+    "commit": "4bc7707",
+    "date": "2026-08-24",
+    "run_id": "local",
+    "host": "authoring workstation, JAX_PLATFORMS=cpu (os / jax version not recorded in #707)",
+    "pinned_until": "2027-02-20",
+}
+
 import os
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")

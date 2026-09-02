@@ -111,6 +111,16 @@ raster lock below is fast and runs in the default lane.
 """
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "docs/design_notes/patch_edgefed_s11_band_repin_results.json",
+    "generator": "scripts/diagnostics/patch_edgefed_s11_band_repin.py",
+    "commit": "c7527cb",
+    "date": "2026-09-01",
+    "run_id": "local",
+    "host": "cpu, JAX_PLATFORMS=cpu (os / jax version not recorded in #840)",
+    "pinned_until": "2027-02-28",
+}
+
 import warnings
 
 import jax.numpy as jnp

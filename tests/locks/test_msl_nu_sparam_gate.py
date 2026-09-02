@@ -33,6 +33,16 @@ uniform issue-80 gate's resourcing).
 """
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "scripts/diagnostics/patch_edgefed_s11_band_repin.py (band imported from test_patch_edgefed_s11_passivity)",
+    "commit": "c7527cb",
+    "date": "2026-09-01",
+    "run_id": "unknown",
+    "host": "unknown (gpu+slow; NU lane not executed at pin time -- rides the next VESSL validation run)",
+    "pinned_until": "2027-02-28",
+}
+
 import warnings
 
 import jax.numpy as jnp

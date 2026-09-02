@@ -15,6 +15,16 @@ copy of the gate that can drift from the mechanism" class of defect the
 
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "tests/fixtures/msl_z0_length_invariance/platform_datums.json",
+    "generator": "hand-recorded (PR #611 docstring; validation.yml run logs; AMD EPYC re-measure at 1f005d0d)",
+    "commit": "826f686",
+    "date": "2026-08-30",
+    "run_id": "gh-actions 31367543755, 32004256088, 32700177994 (witness rows); derivation row unknown",
+    "host": "GitHub ubuntu-24.04 jax 0.6.2; AMD EPYC 9654 Linux jax 0.6.2; derivation platform not recorded",
+    "pinned_until": "2027-02-26",
+}
+
 import json
 from pathlib import Path
 
