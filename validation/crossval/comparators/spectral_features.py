@@ -25,7 +25,7 @@ in this repository at
 factors it out so the crossval scripts and the referee producers cannot drift
 apart.  ``refined_extremum`` reproduces the committed referee fixture's
 ``fdtd_doublet_ghz`` values to the 6 decimals the fixture stores (locked by
-``tests/test_spectral_feature_estimators.py``).
+``tests/crossval/test_spectral_feature_estimators.py``).
 
 WHAT THE REFINEMENT ASSUMES, AND WHERE IT STOPS.
 ------------------------------------------------

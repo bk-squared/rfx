@@ -124,12 +124,12 @@
       "gate_paths": [
         "validation/crossval/06b_msl_notch_filter_uniform.py",
         "validation/crossval/comparators/spectral_features.py",
-        "tests/test_spectral_feature_estimators.py",
+        "tests/crossval/test_spectral_feature_estimators.py",
         "scripts/diagnostics/cv06b_estimator_falsifiers.py",
         "scripts/diagnostics/cv06b_shallow_stub_model.py",
         "scripts/diagnostics/cv06b_build_falsifiers.py",
-        "tests/test_cv06b_shallow_stub_model.py",
-        "tests/test_cv06b_build_falsifier_plumbing.py",
+        "tests/crossval/test_cv06b_shallow_stub_model.py",
+        "tests/crossval/test_cv06b_build_falsifier_plumbing.py",
         "tests/crossval/test_msl_notch_e4_comparison_gates.py",
         "scripts/diagnostics/build_msl_notch_openems_comparison.py",
         "scripts/diagnostics/report_msl_envelope.py",
@@ -165,7 +165,7 @@
         "validation/crossval/07_sheen_lpf.py",
         "tests/crossval/test_sheen_lpf_palace_referee_gates.py",
         "validation/crossval/comparators/spectral_features.py",
-        "tests/test_spectral_feature_estimators.py",
+        "tests/crossval/test_spectral_feature_estimators.py",
         "scripts/diagnostics/cv07_estimator_falsifiers.py"
       ],
       "artifact_paths": [

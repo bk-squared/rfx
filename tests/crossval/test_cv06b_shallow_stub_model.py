@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 MODEL = REPO_ROOT / "scripts/diagnostics/cv06b_shallow_stub_model.py"
 SF = REPO_ROOT / "validation/crossval/comparators/spectral_features.py"
 CV06B = REPO_ROOT / "validation/crossval/06b_msl_notch_filter_uniform.py"

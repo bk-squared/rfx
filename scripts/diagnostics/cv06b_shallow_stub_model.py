@@ -18,7 +18,7 @@ own function), Getsinger dispersion, dielectric + conductor loss,
 Hammerstad–Bekkadal open-end fringing, and a 2×2 ABCD cascade referenced to
 the 50 Ω port impedance rather than to the line.  **No cv06b gate constant is
 read by any function here** — mechanically checked in
-``tests/test_cv06b_shallow_stub_model.py``.
+``tests/crossval/test_cv06b_shallow_stub_model.py``.
 
 The model is therefore free to disagree with the gate's reference, and it
 does: at the shipped width (stub == main line, r = 1) it does NOT return the

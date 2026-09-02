@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILDER = REPO_ROOT / "scripts/diagnostics/cv06b_build_falsifiers.py"
 FIXTURE = REPO_ROOT / "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json"
 
@@ -89,7 +89,7 @@ def test_committed_gpu_summary_records_criterion_a_and_the_fired_falsifier():
     shift) and is recorded as such, not softened."""
     import json
     from pathlib import Path
-    path = (Path(__file__).resolve().parents[1]
+    path = (Path(__file__).resolve().parents[2]
             / "validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json")
     s = json.loads(path.read_text())
     a = s["criterion_A_baseline"]

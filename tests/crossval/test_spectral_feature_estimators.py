@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULE = REPO_ROOT / "validation/crossval/comparators/spectral_features.py"
 REFEREE = REPO_ROOT / "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json"
 RFX_LEG = REPO_ROOT / "validation/crossval/_07_sheen_results/rfx.json"
