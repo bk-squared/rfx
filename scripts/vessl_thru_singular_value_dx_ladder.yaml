@@ -1,0 +1,96 @@
+name: rfx-thru-sv-dx-ladder
+description: "Wire-THRU singular-value dx ladder (issue #819 candidate 1, pre-declared in docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md): scripts/diagnostics/thru_singular_value_dx_ladder.py at dx, dx/2, dx/4 (0.5 / 0.25 / 0.125 mm) with the CPML physical thickness (4 mm) and the physical run time (4000 steps at dx) held; same extractor as tests/test_lumped_twoport_vi_validation_battery.py (sim.run compute_s_params). MEASUREMENT ONLY: one JSON per rung persisted to the NFS run dir before the next rung starts; no verdict logic in the job. Precision pinned JAX_ENABLE_X64=0 (the fixture as-is). Fetches RFX_EXPECT_SHA fresh from GitHub; does not use the mounted primary checkout. gpu-rtx4090 because the dx/4 rung (8M cells x 16000 steps x 3 passes) is a long CPU run."
+tags: [rfx, wire-thru, dx-ladder, singular-value, measurement]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # Precision is part of the measurement contract: the battery fixture pins
+  # no x64, so every rung runs the fixture as-is. An x64 rerun is a separate
+  # battery, never mixed into this ladder.
+  JAX_ENABLE_X64: "0"
+  # RFX_BRANCH is informational (echoed for a reader); the fetch is keyed by
+  # RFX_EXPECT_SHA alone, which is the pin.
+  RFX_BRANCH: "v18/wp8-thru-sv-dx-ladder"
+  RFX_EXPECT_SHA: "FILL_AFTER_PUSH"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx wire-THRU singular-value dx ladder (measurement only) ==="
+  date
+  if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_EXPECT_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "branch (informational): $RFX_BRANCH"
+  echo "pinned commit: $RFX_EXPECT_SHA"
+
+  # Fresh fetch of the pinned commit into the container; the mounted primary
+  # checkout stays untouched. git path first (the image ships git), tarball
+  # fallback keyed by the same SHA if it does not.
+  ROOT=/tmp/rfx-thru-sv-dx-ladder
+  rm -rf "$ROOT"
+  mkdir -p "$ROOT"
+  if command -v git >/dev/null 2>&1; then
+    cd "$ROOT"
+    git init -q
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$RFX_EXPECT_SHA"
+    git checkout -q FETCH_HEAD
+  else
+    TARBALL="/tmp/rfx-${RFX_EXPECT_SHA}.tar.gz"
+    URL="https://github.com/bk-squared/rfx/archive/${RFX_EXPECT_SHA}.tar.gz"
+    if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$TARBALL" "$URL";
+    else wget -q -O "$TARBALL" "$URL"; fi
+    tar -xzf "$TARBALL" -C "$ROOT" --strip-components=1
+    cd "$ROOT"
+  fi
+  test -f scripts/diagnostics/thru_singular_value_dx_ladder.py || { echo "FATAL: rung script missing in the fetched tree"; exit 3; }
+  test -f docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md || { echo "FATAL: predeclaration note missing in the fetched tree"; exit 3; }
+  echo "=== provenance ==="
+  git rev-parse HEAD 2>/dev/null || echo "(no .git: tarball fetch of $RFX_EXPECT_SHA)"
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export PYTHONPATH="$ROOT"
+  python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), 'from', os.path.dirname(rfx.__file__), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_EXPECT_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/thru_sv_dx_ladder/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+
+  # One rung at a time, in order; each rung's JSON is written by the script
+  # before it prints anything, and the loop continues past a failed rung so
+  # an earlier rung is never lost to a later one.
+  fails=0
+  for d in 1 2 4; do
+    echo "===== rung dx/$d ====="
+    date
+    set +e
+    timeout 14400 python -u scripts/diagnostics/thru_singular_value_dx_ladder.py \
+      --dx-divisor "$d" --output "$OUT/rung_dx_over_$d.json" --git-sha "$RFX_EXPECT_SHA" \
+      > "$OUT/rung_dx_over_$d.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rung_dx_over_$d.rc"
+    echo "rung dx/$d rc=$rc (log tail)"
+    tail -n 25 "$OUT/rung_dx_over_$d.log" || true
+    [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  done
+
+  echo "===== per-rung numbers (quoted from the JSONs; no verdict here) ====="
+  for f in "$OUT"/rung_dx_over_*.json; do
+    [ -f "$f" ] || continue
+    python -c 'import json,sys; r=json.load(open(sys.argv[1])); g=r["rung"]; s=r["singular_values"]; st=r["settling"]; print("dx/%d dx=%.4f mm cpml=%d n_steps=%d cells=%d | sv_max=%.7f @%.2f GHz excess3=%+.7f monotone=%s | settling per drive=%s main=%.1f | wall=%.0f s | jax=%s %s x64=%s" % (g["dx_divisor"], g["dx_m"]*1e3, g["cpml_layers"], g["n_steps"], r["rasterization"]["n_cells_total"], s["sv_max"], s["sv_max_freq_hz"]/1e9, s["excess_3ghz"], s["monotone_decreasing_in_f"], [round(d["settling_db"],1) for d in st["per_drive"]], st["main_pass_settling_db"], r["wall_time_s"]["total"], r["provenance"]["jax_version"], r["provenance"]["jax_backend"], r["provenance"]["x64_enabled"]))' "$f" || true
+  done
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "thru_sv_dx_ladder_failed_rungs=$fails"
+  [ "$fails" -eq 0 ]
