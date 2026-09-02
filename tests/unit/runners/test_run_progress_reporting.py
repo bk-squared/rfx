@@ -111,7 +111,7 @@ def _low_level_run(report_every=None, *, perturb=False, n_steps=_N_STEPS):
 
 
 def _msl_thru():
-    """The committed thru-line fixture (see tests/unit/sparams/test_msl_settling_witness.py)."""
+    """The committed thru-line fixture (see tests/unit/sparams/test_settling_witness.py)."""
     domain_y, y_c = 0.008, 0.004
     sim = Simulation(freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
