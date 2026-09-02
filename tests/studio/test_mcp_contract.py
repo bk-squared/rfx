@@ -15,7 +15,7 @@ pytest.importorskip("httpx")
 from rfx.studio.api import create_app
 
 
-SNAPSHOT = Path(__file__).parent / "fixtures" / "mcp" / "rfx_tools_v1.json"
+SNAPSHOT = Path(__file__).parents[1] / "fixtures" / "mcp" / "rfx_tools_v1.json"
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
 

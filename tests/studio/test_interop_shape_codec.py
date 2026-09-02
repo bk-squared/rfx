@@ -78,7 +78,7 @@ def test_kind_vocabulary_agrees_with_the_layers_it_claims_to_follow():
 
     # The canonical experiment layer rejects any geometry kind other than box;
     # read its refusal rather than trusting a comment about it.
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     canonical = (repo_root / "rfx/experiments/canonical.py").read_text()
     assert 'P0 supports box geometry' in canonical, (
         "canonical.py's box-only fence moved; re-check the shared vocabulary"

@@ -2430,7 +2430,7 @@ class _PreflightMixin:
             # checks below: fall back to the DECLARED width, which is the
             # pre-#738 behavior and is always defined. Measured
             # regression: without this fallback, the committed fixture
-            # tests/test_interop_design_document.py::
+            # tests/studio/test_interop_design_document.py::
             # _waveguide_with_dispersive_slab LOST its port_evanescent /
             # port_source_below_cutoff findings entirely.
             ap = [spans[ax]["aperture"] if spans[ax]["aperture"] is not None
@@ -4730,7 +4730,7 @@ class _PreflightMixin:
                         # its full 500k-step run instead of exiting —
                         # the worker process hung rather than dying,
                         # timing out the parent's ``subprocess.wait``
-                        # (tests/test_durable_worker_lifecycle.py
+                        # (tests/studio/test_durable_worker_lifecycle.py
                         # ::test_worker_timeout_is_durable_failed_outcome,
                         # 60s). ``rfx/api`` must not import
                         # ``rfx.experiments`` to name that exception type

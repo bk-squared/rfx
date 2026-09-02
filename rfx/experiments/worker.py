@@ -55,7 +55,7 @@ class RunTimedOut(BaseException):
     unavailable" advisory instead of propagating: the worker kept
     simulating for its full step count instead of dying, hanging the
     parent's ``subprocess.wait`` (issue #482,
-    ``tests/test_durable_worker_lifecycle.py::
+    ``tests/studio/test_durable_worker_lifecycle.py::
     test_worker_timeout_is_durable_failed_outcome``). ``rfx/api`` cannot
     import ``rfx.experiments`` to name this exception directly (wrong
     dependency direction), so PR #555 narrowed that one call site's

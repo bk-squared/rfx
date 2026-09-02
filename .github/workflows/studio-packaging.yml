@@ -38,20 +38,20 @@ jobs:
       - name: CPU Studio integration suite
         run: |
           pytest -q \
-            tests/test_golden_workflow_contracts.py \
-            tests/test_canonical_experiment_v2.py \
-            tests/test_experiment_spec.py \
-            tests/test_experiment_repository.py \
-            tests/test_experiment_cpu_smoke.py \
-            tests/test_experiment_cli.py \
-            tests/test_durable_experiments.py \
-            tests/test_durable_worker_lifecycle.py \
-            tests/test_studio_api.py \
-            tests/test_agent_control_plane.py \
-            tests/test_mcp_contract.py \
-            tests/test_provider_journey_smoke.py \
-            tests/test_analysis_studies_replay.py \
-            tests/test_operations_security_isolation.py
+            tests/studio/test_golden_workflow_contracts.py \
+            tests/studio/test_canonical_experiment_v2.py \
+            tests/studio/test_experiment_spec.py \
+            tests/studio/test_experiment_repository.py \
+            tests/studio/test_experiment_cpu_smoke.py \
+            tests/studio/test_experiment_cli.py \
+            tests/studio/test_durable_experiments.py \
+            tests/studio/test_durable_worker_lifecycle.py \
+            tests/studio/test_studio_api.py \
+            tests/studio/test_agent_control_plane.py \
+            tests/studio/test_mcp_contract.py \
+            tests/studio/test_provider_journey_smoke.py \
+            tests/studio/test_analysis_studies_replay.py \
+            tests/studio/test_operations_security_isolation.py
 
   clean-wheel-smoke:
     strategy:

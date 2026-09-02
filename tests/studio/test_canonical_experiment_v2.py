@@ -21,7 +21,7 @@ from rfx.experiments import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "experiments"
 V2_FIXTURES = tuple(sorted(FIXTURE_ROOT.glob("*_v2.json")))
 

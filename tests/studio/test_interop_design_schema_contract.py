@@ -6,7 +6,7 @@ reader validates against it, passes, and believes something false.
 Scope of what these tests actually pin: the top-level, excitation and observable
 key sets; the shape-kind vocabulary; the material payload including pole
 parameters; and validation of every design fixture in
-``tests/test_interop_design_document.py`` against the published schema. Entry
+``tests/studio/test_interop_design_document.py`` against the published schema. Entry
 field sets are pinned only insofar as a fixture populates that family — the
 coverage guard below names any family no fixture exercises.
 
@@ -35,7 +35,7 @@ from rfx.interop._design import (
 from rfx.interop._shapes import SUPPORTED_SHAPE_KINDS
 from rfx.materials.debye import DebyePole
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The design fixtures live in the sibling test module; reuse them rather than
 # maintaining a second, thinner set that would silently stop covering families.

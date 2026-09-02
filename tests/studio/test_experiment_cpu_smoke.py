@@ -7,7 +7,7 @@ from rfx.experiments import ExperimentService, verify_s11_artifact
 
 
 FIXTURE = (
-    Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
+    Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
 )
 
 

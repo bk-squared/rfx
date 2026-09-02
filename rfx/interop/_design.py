@@ -103,7 +103,7 @@ whose ``non_portable`` list has been edited is refused.  A downstream tool
 cannot strip the annotation to make rfx-only state look portable.
 
 Status: **provisional**.  Round-trip fidelity is gated by
-``tests/test_interop_design_document.py``; no external emitter exists yet.
+``tests/studio/test_interop_design_document.py``; no external emitter exists yet.
 """
 
 from __future__ import annotations
@@ -744,7 +744,7 @@ def _dump_list(
 # Exported / excluded attribute inventory
 # ---------------------------------------------------------------------------
 #
-# Anti-drift ledger.  ``tests/test_interop_design_document.py`` asserts that
+# Anti-drift ledger.  ``tests/studio/test_interop_design_document.py`` asserts that
 # every ``self._*`` attribute a fresh ``Simulation`` carries appears in exactly
 # one of these two tuples, so a new builder field cannot slip into rfx without
 # a decision being recorded here.

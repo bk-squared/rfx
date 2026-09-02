@@ -15,7 +15,7 @@ from rfx.studio.api import create_app
 from rfx.studio.cli import build_parser, validate_launch_security
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_v2.json"
 
 
 def _spec() -> dict:

@@ -13,7 +13,7 @@ from rfx.experiments import (
 )
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_v2.json"
 
 
 def _document() -> dict:

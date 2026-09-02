@@ -13,7 +13,7 @@ pytest.importorskip("httpx")
 from rfx.studio.api import create_app
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_v2.json"
 HEADERS = {"Accept": "application/json, text/event-stream"}
 
 

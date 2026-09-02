@@ -14,9 +14,9 @@ from rfx import cli
 
 
 FIXTURE = (
-    Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
+    Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
 )
-V2_FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+V2_FIXTURE = Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_v2.json"
 
 
 def test_experiment_parser_exposes_cpu_lifecycle_commands(tmp_path):
@@ -47,7 +47,7 @@ def test_experiment_validate_cli_prints_digests_and_preflight(capsys, fixture):
 
 def test_all_extra_self_reference_uses_distribution_name():
     pyproject = tomllib.loads(
-        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+        (Path(__file__).parents[2] / "pyproject.toml").read_text(encoding="utf-8")
     )
 
     assert pyproject["project"]["optional-dependencies"]["all"] == [

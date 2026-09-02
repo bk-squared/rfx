@@ -1381,7 +1381,7 @@ def test_non_portable_annotation_cannot_be_stripped():
 # ---------------------------------------------------------------------------
 
 SCHEMA_PATH = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "docs/design_notes/schemas/rfx-design-ir-v1.schema.json"
 )
 

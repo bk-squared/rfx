@@ -18,7 +18,7 @@ from rfx.experiments import (
 )
 
 
-FIXTURES = Path(__file__).parent / "fixtures" / "experiments"
+FIXTURES = Path(__file__).parents[1] / "fixtures" / "experiments"
 
 
 def _spec(name="patch_antenna_v2.json") -> dict:

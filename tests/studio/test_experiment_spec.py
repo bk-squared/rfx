@@ -9,7 +9,7 @@ from rfx.experiments import ExperimentSpec, ExperimentSpecError, compile_experim
 
 
 FIXTURE = (
-    Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
+    Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_cpu_v1.json"
 )
 
 

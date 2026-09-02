@@ -29,7 +29,7 @@ from rfx.studio.tenancy import (
 from rfx.telemetry import LocalTelemetrySink, TelemetryPolicy
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "experiments" / "patch_antenna_v2.json"
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "experiments" / "patch_antenna_v2.json"
 
 
 def _spec() -> dict:
