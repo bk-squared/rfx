@@ -1369,7 +1369,7 @@ class CoaxialTwoPortResult:
     internally self-consistent (agreeing between the two mirror-symmetric
     arrays to 2-5%), estimates; see
     :func:`_assemble_coaxial_two_port_from_voltages` for the full finding and
-    ``tests/unit/sparams/test_coax_two_port_fdtd.py::
+    ``tests/unit/sparams/test_coax_two_port_smatrix.py::
     test_matched_through_line_transmits_reciprocally`` for the mechanism
     check this motivated. Do not read a single array's ``gamma`` as *the*
     line attenuation without averaging across all 4 (2 arrays x 2 drives)

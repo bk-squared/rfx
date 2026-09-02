@@ -1287,7 +1287,7 @@ def test_config_error_exits_3_distinct_from_physics_failure(monkeypatch):
 
 def test_freqs_overlap_the_rfx_band():
     """The referee's Stage B frequency grid must cover the rfx BAND points
-    ([4,6,8,10,12] GHz, tests/unit/sparams/test_coax_two_port_fdtd.py) it will be
+    ([4,6,8,10,12] GHz, tests/unit/sparams/test_coax_two_port_smatrix.py) it will be
     compared against by hand."""
     module = _load_referee_module()
     freqs_ghz = set(round(float(f), 6) for f in module.B_FREQS_GHZ)

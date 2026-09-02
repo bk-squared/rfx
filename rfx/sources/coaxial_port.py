@@ -1656,7 +1656,7 @@ def coaxial_line_reflection_from_plane_voltages(
     ``tests/unit/autodiff/test_coax_end_to_end_ad.py``. This extractor is checked separately
     by
     ``tests/unit/autodiff/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable``
-    and ``tests/unit/sparams/test_coaxial_line_extraction.py``.
+    and ``tests/unit/sparams/test_coaxial_line_reflection.py``.
     """
 
     z = np.asarray(plane_positions_m, dtype=np.float64)
@@ -1827,7 +1827,7 @@ def solve_two_port_from_wave_amplitudes(
     terminator reflection ``Gamma_t`` lands entirely in the reported ``S11``.
     On a through line this makes ``|1 + S11 - S21| = |Gamma_t|`` exactly — a
     floor of 0.08 with rfx's validated matched terminator
-    (``tests/unit/sparams/test_coaxial_line_calibration.py`` asserts ``|Gamma| < 0.08``),
+    (``tests/unit/sparams/test_coaxial_line_reflection.py`` asserts ``|Gamma| < 0.08``),
     independent of how good the implementation is.
 
     Both drives together give four equations in four unknowns::
@@ -1880,7 +1880,7 @@ def solve_two_port_from_wave_amplitudes(
     shunt element (``S11 = S22``) makes ``M`` singular, so the defect collapses
     and appears "caught" by accident. Discriminating it needs an ASYMMETRIC DUT.
 
-    All three families are pinned in ``tests/unit/sparams/test_coax_two_port_solve.py``.
+    All three families are pinned in ``tests/unit/sparams/test_coax_two_port_smatrix.py``.
 
     AD note
     -------

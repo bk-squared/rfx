@@ -93,7 +93,7 @@ ones touching this driver are applied here):
   ``recurrence_residual`` per (port array, drive, bin) for BOTH ladders --
   the MSL ladder (array 1) side by side with the coax ladder (array 0) of
   the same run. Threshold provenance (review item 7): 0.02 is the coax
-  lane's own BORROWED convenience number (tests/unit/sparams/test_coax_two_port_fdtd.py
+  lane's own BORROWED convenience number (tests/unit/sparams/test_coax_two_port_smatrix.py
   fit_residual gate, measured max 0.0127 there); a passing A3 on the MSL
   ladder means "not worse than the validated coax lane", NOT "single mode
   proven". The load-bearing criterion is the RELATIVE one: MSL-driven
@@ -1187,7 +1187,7 @@ def main() -> int:
             "fit_residual": _pd(fit),
             "recurrence_residual": _pd(rec),
             "threshold_provenance": "0.02 = coax lane's borrowed convenience number "
-                                    "(tests/unit/sparams/test_coax_two_port_fdtd.py, measured 0.0127); "
+                                    "(tests/unit/sparams/test_coax_two_port_smatrix.py, measured 0.0127); "
                                     "load-bearing criterion = MSL-driven residual at 6/8 GHz "
                                     "> 10x own 10 GHz value",
             "falsifier": "MSL-DRIVEN MSL-ladder fit or recurrence residual > 0.02 or > 10x "

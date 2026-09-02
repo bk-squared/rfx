@@ -443,7 +443,7 @@ def run_c1(n_steps, outdir):
 def run_c2(n_steps, outdir):
     from rfx.api import Simulation
     from rfx import GaussianPulse
-    import tests.unit.sparams.test_coax_two_port_fdtd as T2
+    import tests.unit.sparams.test_coax_two_port_smatrix as T2
 
     band = T2.BAND
     mf = _monitor_freqs(band)

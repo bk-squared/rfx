@@ -1586,7 +1586,7 @@ def _assemble_coaxial_two_port_from_voltages(
     Isolated from :meth:`_SparamMixin.compute_coaxial_two_port` so the
     convention wiring below can be exercised with PLANTED analytic V(z)
     values (no FDTD) — see
-    ``tests/unit/sparams/test_coax_two_port_fdtd.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
+    ``tests/unit/sparams/test_coax_two_port_smatrix.py::test_planted_voltages_recover_known_asymmetric_s_matrix``.
 
     Parameters
     ----------
@@ -1643,7 +1643,7 @@ def _assemble_coaxial_two_port_from_voltages(
         all-4-average estimator chosen after seeing the own/other split —
         not predeclared) found `|S21|*exp(+Re(gamma_bar)*L12)` reproduces
         the measured `|S21|` to within 2.1% across 4-12 GHz (see
-        ``tests/unit/sparams/test_coax_two_port_fdtd.py::
+        ``tests/unit/sparams/test_coax_two_port_smatrix.py::
         test_matched_through_line_transmits_reciprocally``), consistent with
         combined bulk-line attenuation (captured by the lower, own-drive
         estimate) plus additional loss/scattering concentrated at the

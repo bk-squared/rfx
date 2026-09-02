@@ -214,7 +214,7 @@ def _physical_ladder_voltages(a, b, *, gamma, planes_m, ref_m, dut_sign, z0):
     Thin modal-voltage wrapper (the ``sqrt(z0)`` power-wave -> volt-wave
     scale) around the ONE frozen planting contract,
     :func:`tests._wave_convention.plant_ladder_voltages_physical`, shared
-    with ``tests/unit/sparams/test_coax_two_port_fdtd.py`` and
+    with ``tests/unit/sparams/test_coax_two_port_smatrix.py`` and
     ``tests/unit/sparams/test_coax_msl_transition.py`` (issue #822). ``dut_sign = +1``
     (coax here): the junction lies at LARGER coordinate than the ladder, so
     the incident wave travels +axis toward it as ``exp(-gamma (z - z_ref))``
@@ -452,7 +452,7 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     parameterised by WHERE THE DUT IS, so this test derives both signs from
     the realized plane positions and the junction coordinates rather than
     trusting the literals -- the same check
-    ``tests/unit/sparams/test_coax_two_port_fdtd.py`` makes for its own two ladders.
+    ``tests/unit/sparams/test_coax_two_port_smatrix.py`` makes for its own two ladders.
     """
     assert _REF_COAX_M > _Z_COAX_M.max()      # junction above the coax ladder
     assert _REF_MSL_M < _X_MSL_M.min()        # junction below the MSL ladder

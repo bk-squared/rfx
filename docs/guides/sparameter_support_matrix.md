@@ -676,10 +676,10 @@ nor does this evidence generalize beyond this single coax geometry family.
 The measured single-run envelope (60 mm /
 40 GHz fixture, 4-12 GHz): `|S21|`,`|S12|` 0.74-0.96, `|S11|`,`|S22|`
 `<= 0.051` (measured max `0.0502` at 12 GHz,
-`tests/unit/sparams/test_coax_two_port_fdtd.py:699`; the committed gate itself is the
+`tests/unit/sparams/test_coax_two_port_smatrix.py:699`; the committed gate itself is the
 wider inherited 1-port envelope `<= 0.08`), reciprocity within `0.3%`
 magnitude / `0.21` degree phase, `cond(A) <= 1.11`. See
-`tests/unit/sparams/test_coax_two_port_fdtd.py` for the full measured envelope and its
+`tests/unit/sparams/test_coax_two_port_smatrix.py` for the full measured envelope and its
 provenance.
 
 Coax<->planar transitions are a SEPARATE lane, `compute_coax_msl_transition(...)`

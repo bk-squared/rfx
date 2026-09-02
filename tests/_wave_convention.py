@@ -42,7 +42,7 @@ copies would be a convention nothing enforces.
 
 Consumers:
   * tests/unit/sparams/test_coax_msl_transition_wave_roles.py  (#822 gate, both ports)
-  * tests/unit/sparams/test_coax_two_port_fdtd.py              (planted two-port fixtures)
+  * tests/unit/sparams/test_coax_two_port_smatrix.py              (planted two-port fixtures)
   * tests/unit/sparams/test_coax_msl_transition.py             (planted unequal-Z0 fixture)
 """
 from __future__ import annotations

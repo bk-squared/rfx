@@ -25,7 +25,7 @@ blocks ``broad_e5_passed``. Magnitude only (reference-plane independent for the
 lossless line). The matched (|Γ|=0) and resistive loads are covered by the
 exact-analytic broad-E5 envelope, not Meep (a 1-cell Meep resistive sheet
 merely re-tests rfx's own resistor stamp — R5 trap). The live-physics anchor is
-``tests/unit/sparams/test_coaxial_line_calibration.py``.
+``tests/unit/sparams/test_coaxial_line_reflection.py``.
 """
 from __future__ import annotations
 

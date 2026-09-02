@@ -1,6 +1,6 @@
 """Tests for ``compute_coax_msl_transition`` (issue #489 leg 4).
 
-Structure (mirrors ``tests/unit/sparams/test_coax_two_port_fdtd.py`` and
+Structure (mirrors ``tests/unit/sparams/test_coax_two_port_smatrix.py`` and
 ``tests/crossval/test_coax_two_port_referee_header.py``, the two closest
 precedents):
 
@@ -52,8 +52,8 @@ def _plant_ab_power_wave(s_true, gamma_t, n_f):
     """Power-wave a/b at both ports for both drives, terminator ``gamma_t``.
 
     Identical signal-flow construction to
-    ``tests/unit/sparams/test_coax_two_port_fdtd.py::_plant_ab`` / the underlying
-    ``tests/unit/sparams/test_coax_two_port_solve.py::_plant`` (``a[j, i]`` / ``b[j, i]``
+    ``tests/unit/sparams/test_coax_two_port_smatrix.py::_plant_ab`` / the underlying
+    ``tests/unit/sparams/test_coax_two_port_smatrix.py::_plant`` (``a[j, i]`` / ``b[j, i]``
     indexed [measured_port, driven_port, freq]). Because this is a pure
     signal-flow identity with no Z0 anywhere, the resulting ``a``/``b`` are
     already POWER waves for ANY consistent choice of per-port reference

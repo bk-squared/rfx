@@ -50,7 +50,7 @@ WHAT WAS FIXED (this change):
 
 With ``eps_scale=None`` every path above is BYTE-IDENTICAL to the pre-fix
 code (the concrete branches were moved into an ``else:``, not rewritten) —
-regression-locked by the existing ``tests/unit/sparams/test_coax_two_port_fdtd.py``
+regression-locked by the existing ``tests/unit/sparams/test_coax_two_port_smatrix.py``
 (``slow_physics``) fixture, whose tightly-pinned measured numbers
 (|S21|/|S12| >= 0.70, cond_a < 3.0, recurrence_residual < 0.02, ...) still
 hold unchanged.
@@ -271,7 +271,7 @@ def test_compute_coaxial_two_port_has_a_traced_input_channel():
 # cross-section as the 1-port gate's fixture), z domain shrunk to the
 # minimum that fits BOTH probe arrays with probe_count=3 (verified via
 # rfx.api.Simulation._build_grid()'s own layout-fit arithmetic, the same
-# check tests/unit/sparams/test_coax_two_port_fdtd.py::test_default_domain_fits_the_
+# check tests/unit/sparams/test_coax_two_port_smatrix.py::test_default_domain_fits_the_
 # default_layout uses for the full-size fixture).
 #
 # N_STEPS=600 (not the originally-committed 400 -- adversarial review of

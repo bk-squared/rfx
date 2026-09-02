@@ -282,7 +282,7 @@
       "supported_configurations": [
         "3d_float32_second_order_uniform_yee_positive_z_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own EXPERIMENTAL label was LIFTED 2026-08-06 (PI decision) to VALIDATED WITH SCOPE once its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/unit/sparams/test_coax_two_port_fdtd.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
+      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API is deprecated and experimental. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own EXPERIMENTAL label was LIFTED 2026-08-06 (PI decision) to VALIDATED WITH SCOPE once its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/unit/sparams/test_coax_two_port_smatrix.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
       "known_limits": [
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
@@ -307,14 +307,14 @@
       "evidence_artifacts": [
         "rfx/api/_sparams.py::Simulation.compute_coaxial_line_reflection",
         "rfx/api/_spec.py::CoaxialLineReflectionResult",
-        "tests/unit/sparams/test_coaxial_line_calibration.py",
-        "tests/unit/sparams/test_coaxial_line_extraction.py",
+        "tests/unit/sparams/test_coaxial_line_reflection.py",
+        "tests/unit/sparams/test_coaxial_line_reflection.py",
         "tests/unit/autodiff/test_coax_end_to_end_ad.py",
         "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
         "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json",
         "rfx/api/_sparams.py::Simulation.compute_coaxial_two_port",
         "rfx/api/_spec.py::CoaxialTwoPortResult",
-        "tests/unit/sparams/test_coax_two_port_fdtd.py",
+        "tests/unit/sparams/test_coax_two_port_smatrix.py",
         "tests/unit/autodiff/test_coax_two_port_ad.py",
         "validation/crossval/21_coax_two_port_referee.py",
         "tests/crossval/test_coax_two_port_referee_header.py"
@@ -324,7 +324,7 @@
         "matched single-cell resistor fixture is reported separately with max |Gamma| deviation 0.0929",
         "MEEP short/open comparison over 4--12 GHz: max_mag_abs_diff 0.0628 and mean_mag_abs_diff 0.0235",
         "end-to-end eps_scale AD versus finite difference discrepancy 2.6%",
-        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.051 (measured max 0.0502 at 12 GHz, tests/unit/sparams/test_coax_two_port_fdtd.py:699; the committed gate itself is the wider inherited 1-port envelope <= 0.08), reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)",
+        "compute_coaxial_two_port single measured run (60 mm / 40 GHz fixture, 4-12 GHz): |S21|,|S12| 0.74-0.96, |S11|,|S22| <= 0.051 (measured max 0.0502 at 12 GHz, tests/unit/sparams/test_coax_two_port_smatrix.py:699; the committed gate itself is the wider inherited 1-port envelope <= 0.08), reciprocity within 0.3% magnitude / 0.21 degree phase, cond(A) <= 1.11; a post-hoc consistency check found the |S21| deficit matches the matrix-pencil-fitted exp(-Re(gamma)*L12) to within about 2% at every measured frequency (scale-sensitive, referral-blind — see the method docstring)",
         "compute_coaxial_two_port label-lift evidence chain (issue #489, PI decision 2026-08-06): external openEMS referee (crossval 21, VESSL run-3 369367251629 + VESSL 369367252220 first default-scale green promoted-lane run) brackets this method's own |S21| and, via the port's own measured beta, phase on the through-line class; mesh-refinement convergence witness VESSL 369367251845 moved the measured/analytic beta ratio from 1.1208 to 1.0662 (annulus 3.79 -> 5.68 cells, implied convergence order p ~= 1.5, two-point, from a single 1.5x step)"
       ],
       "validated_scope": "The self-contained TEM coaxial-line model using the documented Simulation, port, and method arguments, in float32 precision on a three-dimensional, second-order uniform Yee grid with positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, no periodic boundary axes, exactly one face='top' coaxial port, at least three requested probe planes that all fit before the source, and the termination, frequency, characteristic-impedance, and mesh ranges in the committed fixtures. Separately registered geometry, sources, monitors, termination helpers, arbitrary launches, face='bottom', and mixed port families are outside this result; this 1-port broad-E5/E4 evidence does not itself cover multi-port networks -- it describes compute_coaxial_line_reflection(...) only. compute_coaxial_two_port(...) (issue #489, validated with scope) has its OWN, separate and narrower validated scope on the same port primitive: the two-drive through-line class on one SMA-class coax geometry family (a=0.635mm, b=2.055mm, PTFE eps_r=2.1, L12=58.4595mm), bracketed -- not judged -- by an external openEMS referee plus a mesh-refinement convergence witness and a GRAD_SAFE eps_scale AD gate; see its own known_limits entry above for the full statement. Neither this field's 1-port scope nor compute_coaxial_two_port(...)'s own scope covers arbitrary multi-port coaxial networks, coax<->planar transitions, or other coax geometry families.",

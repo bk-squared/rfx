@@ -151,7 +151,7 @@ counts, not the nominal ``domain=`` argument:
     # then the SAME z_hi_coax_top/z_feed_top/z_lo_coax_bot/z_feed_bot
     # arithmetic compute_coaxial_two_port() itself uses (rfx/api/_sparams.py)
 
-This is the EXACT fixture ``tests/unit/sparams/test_coax_two_port_fdtd.py::
+This is the EXACT fixture ``tests/unit/sparams/test_coax_two_port_smatrix.py::
 test_matched_through_line_transmits_reciprocally`` (``slow_physics``) runs
 and that PR #534's numbers came from.
 
@@ -733,7 +733,7 @@ B_L12_MM = B_Z_FEED_TOP_REL_MM - B_Z_FEED_BOT_REL_MM  # 58.4595293 mm, port-to-p
 B_Z0_OHM = (_ETA0 / (2.0 * np.pi * np.sqrt(B_PTFE_EPS_R))) * np.log(B_B_MM / B_A_MM)
 
 # Frequency grid: 9 points 4-12 GHz (1 GHz step) -- overlaps the rfx BAND
-# ([4,6,8,10,12] GHz, tests/unit/sparams/test_coax_two_port_fdtd.py) at every other
+# ([4,6,8,10,12] GHz, tests/unit/sparams/test_coax_two_port_smatrix.py) at every other
 # point, with finer resolution in between for phase/group-delay.
 B_F_START_GHZ = 4.0
 B_F_STOP_GHZ = 12.0

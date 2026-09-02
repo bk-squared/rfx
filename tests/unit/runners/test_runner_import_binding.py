@@ -7,14 +7,14 @@ imported lazily -- the first time some ``Simulation`` call path actually
 needs the uniform-grid runner (see ``rfx/api/_execute.py`` /
 ``rfx/api/_sparams.py``, both of which import it locally, inside functions).
 If that first import happens while a test has ``rfx.simulation.run``
-monkeypatched (e.g. ``tests/unit/sparams/test_coax_two_port_fdtd.py``'s
+monkeypatched (e.g. ``tests/unit/sparams/test_coax_two_port_smatrix.py``'s
 ``test_compute_coaxial_two_port_drive_index_matches_physical_port``),
 ``rfx.runners.uniform._run`` permanently captures the patched stub -- pytest's
 ``monkeypatch`` teardown restores ``rfx.simulation.run`` on the SOURCE module,
 but has no way to reach the copy already bound into ``rfx.runners.uniform``'s
 own namespace. Every later uniform-lane run in that process then silently
 calls the stale stub. The concrete symptom was order-dependent:
-``pytest tests/unit/sparams/test_coax_two_port_fdtd.py tests/locks/test_refplane_port_waves.py``
+``pytest tests/unit/sparams/test_coax_two_port_smatrix.py tests/locks/test_refplane_port_waves.py``
 gave ``1 failed, 63 passed`` (a ``TypeError`` from the leaked stub), while
 either file alone, or the suite in its usual collection order, passed clean.
 
@@ -93,7 +93,7 @@ def test_coax_then_refplane_order_does_not_leak_fake_run():
     result = subprocess.run(
         [
             sys.executable, "-m", "pytest",
-            "tests/unit/sparams/test_coax_two_port_fdtd.py",
+            "tests/unit/sparams/test_coax_two_port_smatrix.py",
             "tests/locks/test_refplane_port_waves.py",
             "-q",
         ],

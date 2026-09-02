@@ -22,7 +22,7 @@ Mirrors ``tests/crossval/test_waveguide_broad_e5.py``, two layers:
 
 Both layers REPLAY frozen numbers (pure Python, no FDTD). A regression in the
 live ``compute_coaxial_line_reflection`` would not flip them red — that gap is
-closed by the LIVE-physics anchor ``tests/unit/sparams/test_coaxial_line_calibration.py``,
+closed by the LIVE-physics anchor ``tests/unit/sparams/test_coaxial_line_reflection.py``,
 which runs the production extractor against short/open/matched/resistive
 analytic gates at CI time.
 

@@ -4,7 +4,7 @@
 deprecated — it emits a ``DeprecationWarning`` and reports non-physical
 |S11| > 1 on lossless shorts (measured 1.02–1.16 on the PEC-short fixture
 here). The validated replacement is ``compute_coaxial_line_reflection``
-(coax-line method; see ``tests/unit/sparams/test_coaxial_line_calibration.py``). These
+(coax-line method; see ``tests/unit/sparams/test_coaxial_line_reflection.py``). These
 tests are retained as plumbing/regression guards for the deprecated path
 until its removal. They focus on:
 
@@ -16,7 +16,7 @@ until its removal. They focus on:
 - Validation contract on the returned ``CoaxialSMatrixResult``
 
 Calibrated physics gates live with the validated coax-line method
-(``tests/unit/sparams/test_coaxial_line_calibration.py``), NOT here — wiring physics
+(``tests/unit/sparams/test_coaxial_line_reflection.py``), NOT here — wiring physics
 gates onto the deprecated single-plane path would mark it as
 physics-validated by test-pass-alone, which the physics-validation
 evidence rule forbids.
