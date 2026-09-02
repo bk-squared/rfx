@@ -6002,7 +6002,7 @@
     "fitted_rate_total_trans_1_s": 24523347241.505253,
     "fitted_rate_blocks": 5,
     "fit_reliable": true,
-    "fit_note": "fitted_rate_* recomputed from the stored envelope after the run; a 2-block fit is a two-point estimate (fit_reliable = false); no FDTD rerun"
+    "fit_note": "fitted_rate_* recomputed from the stored envelope after the run (5 post-pulse blocks of 50 steps; fit_reliable = true); no FDTD rerun (note section 15)"
    },
    "gates": {
     "G1_R": true,

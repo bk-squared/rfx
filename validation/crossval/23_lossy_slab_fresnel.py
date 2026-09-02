@@ -201,8 +201,11 @@ def main(argv=None) -> int:
                     continue
                 before = (ad["tail"].get("fitted_rate_scat_refl_1_s"), ad["tail"].get("fitted_rate_blocks"))
                 ad["tail"] = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
-                ad["tail"]["fit_note"] = ("fitted_rate_* recomputed from the stored envelope after the run; a 2-block "
-                                          "fit is a two-point estimate (fit_reliable = false); no FDTD rerun")
+                nb = ad["tail"]["fitted_rate_blocks"]
+                ad["tail"]["fit_note"] = (
+                    f"fitted_rate_* recomputed from the stored envelope after the run ({nb} post-pulse blocks of "
+                    f"{G.TAIL_WINDOW} steps; fit_reliable = {'true' if nb >= 3 else 'false: a 2-block fit is a two-point estimate'}); "
+                    "no FDTD rerun (note section 15)")
                 print(f"{os.path.basename(path)} {arm}: rate {before[0]} ({before[1]} blocks) -> "
                       f"{ad['tail']['fitted_rate_scat_refl_1_s']:.3e} ({ad['tail']['fitted_rate_blocks']} blocks, "
                       f"reliable={ad['tail']['fit_reliable']})")
