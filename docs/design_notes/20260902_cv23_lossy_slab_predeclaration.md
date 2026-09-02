@@ -416,3 +416,40 @@ non-falsifier leg — the σ_D mapping is wrong and nothing downstream counts;
 (iv) a −40 dB witness not met after growth to 4× the box — a slower mode
 than derived; (v) `tand0p1_sigma_neg` non-finite — the passivity
 construction is unusable here (§6, F4).
+
+## 11. Addendum (2026-09-02, same day, before any measurement) — three corrections found while implementing
+
+None changes a window, an arm, a band, a falsifier or a record; all were
+found while writing the comparator, the leg and the gate test against this
+note, before the first FDTD run.
+
+1. **§6 F3 pre-check column.** The 4.58 / 2.60 quoted there are the maximum
+   relative ε errors over the 229 GATED bins; the leg's pre-check evaluates
+   at its three fixed frequencies (4.5 / 7 / 9.5 GHz, cv22's
+   `PRECHECK_FREQS_HZ`) and reads **4.44** (`σ_D × 2π`) and **2.52** (ε'
+   dropped) there — both ≫ 1e-9, the verdict is unchanged. The unit-level
+   twin asserts > 1 on the same seven test frequencies. Verified end-to-end
+   on a structural Meep stand-in (Meep's `Medium.epsilon` formula, canned
+   fluxes): the correct mapping pre-checks at 1.6e-16 through the same call
+   the pod will make.
+2. **§6 F1 `tand3_sigma_x1p5` R margin.** 8.1× is the ratio to `W_mean,R =
+   0.010`; the gate's band-mean window includes the arm's mean `W_σ,R`
+   (1.9e-4), so the ratio the test locks is **7.95×** of 0.01019. Same
+   arithmetic, same verdict; the gate test asserts > 7.
+3. **cv22's leg refactor.** `run_slab_two_pass` was extracted from
+   `meep_cv22_dispersive_slab.py::main` so cv23's leg shares the geometry
+   and the two-run subtraction rather than copying them; the cv22 leg's
+   behaviour is unchanged (default `eps_averaging` left to Meep; the
+   stand-in reproduces its committed `gamma_half` pre-check value 0.914 =
+   `validation/crossval/_22_dispersive_results/meep_lorentz__falsifier_gamma_half.json::precheck.max_rel_err = 0.91`).
+   Likewise `run_rfx_arm` became `comparators/slab_rig.py::run_slab_arm`
+   with the material as a hook; cv22's smoke reproduces its rig line
+   (grid, dt, slab cells, probes, record) exactly.
+
+Smoke (`--smoke`, 200-cell box, not evidence): all three arms execute in
+0.3 s each, the API-path arms assemble and match the direct arrays, the
+derived record and the adaptive extension run, and the gain arm
+`tand0p1_sigma_neg` is finite on the tiny box with `max R+T = 1.76` and
+`G3_passivity = False` — the F4 construction is usable on this rig as far as
+the smoke can say; the −40 dB witness necessarily fails there (the box's
+CPML gate is 176 steps), as in cv22's smoke.

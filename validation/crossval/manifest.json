@@ -560,6 +560,38 @@
       "cpu_runner": {"order": 17},
       "scheduled_external_order": 7,
       "failure_sentinel": "rfx accuracy: FAIL"
+    },
+    {
+      "id": "23_lossy_slab_fresnel",
+      "script": "validation/crossval/23_lossy_slab_fresnel.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "normal-incidence single-slab transfer matrix with the COMPLEX eps(f) = eps' - j sigma/(omega eps0) of the declared conductive slab (validation/crossval/comparators/dispersive_eps.py, model 'conductive'; the same 2x2 characteristic matrix as cv04 and cv22, evaluated per bin), for R, T and the absorption A = 1 - R - T",
+          "required_for_script_pass": true
+        },
+        {
+          "kind": "external-solver",
+          "name": "Meep slab R/T (A = 1 - R - T) with the same slab as Medium(epsilon=eps', D_conductivity=sigma_D), sigma_D = sigma a/(c eps0 eps') mapped by dispersive_eps.to_meep and pre-checked through Meep's own Medium.epsilon(f) to 1e-9, produced by scripts/crossval/meep_cv23_lossy_slab.py at 40 px/cm and read from validation/crossval/_23_lossy_results/meep_<arm>.json",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "PRE-DECLARED, NOT YET MEASURED: the VESSL run (scripts/vessl_cv23_lossy_slab.yaml) is pending, artifact_paths is empty and every number below is analytic; measured values will be quoted by artifact key (the #829 form) once the round-1 artifacts are committed. SCOPE (stated first): normal incidence only, one slab thickness (10 mm) and one mesh (dx 1 mm), sigma-only loss (dispersionless eps' = 4, no Debye/Lorentz pole, no sigma-plus-pole mix), 4-10 GHz; says nothing about oblique incidence, other thicknesses or meshes, frequency-dependent loss tangents (rfx exposes no tan-delta model -- add_material's only loss parameter is sigma), or Simulation.run()'s own scan body. WHY: dielectric loss is never the gated observable anywhere else in the campaign (cv15's sigma is ungated, the Leontovich and sheet-Q oracles are xfail, no E4 evidence for a lossy dielectric exists). WHAT: a conductive slab on the cv22 rig (validation/crossval/comparators/slab_rig.py -- cv04's 2-D TMz TFSF rig, nx 1000, record length derived per arm from the slab's own ring-down over the incident-weighted band to a -40 dB settling witness, extended adaptively, never clipped) with the ORDINARY update_e and materials.sigma; three arms with sigma from tan delta 0.1 / 1 / 3 at 7 GHz (0.15577 / 1.5577 / 4.6731 S/m; skin depth 68 / 7.5 / 3.3 mm at 7 GHz against d = 10 mm: a lossy perturbation of cv04's etalon, the transition regime with A up to 0.78, and the surface-impedance regime where the back face is invisible and the T gate is vacuous). MATERIAL PATHS: arms tand1 and tand3 go through the documented user path Simulation.add_material(name, eps_r=, sigma=) (docs/public/guide/materials-geometry.mdx, 'Register a named material') + Simulation.add(Box, material=) + _assemble_materials, asserted at run time to reproduce the direct init_materials + .at[slab].set arrays bit-for-bit (the registration, rasterization and CPML-pad wiring; the time stepping is the same update_e in every arm); arm tand0p1 is the direct construction, cv22's. GATED (pre-declared in docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md; every number in validation/crossval/comparators/cv23_lossy_gates.py): per rFFT bin in 4-10 GHz and band-mean, |R - R_TMM|, |T - T_TMM| AND |A - A_TMM| with A = 1 - R - T, against the transfer matrix with the complex eps' - j sigma/(omega eps0); windows are cv22's cv04-derived ones (per-bin 0.074, band-mean 0.010 / 0.017 via tests/_gate_policy.py) plus the sigma update's own temporal-discretization term -- the semi-implicit average in rfx/core/yee.py update_e realizes sigma_eff = sigma x/tan x, x = omega dt/2 (-1.79e-3 at 10 GHz), propagated through the same transfer matrix (<= 3.5e-4 in R, T, A; witnessed against the live update_e coefficients in the gate test) -- and the A windows are the triangle sums 0.148 per bin / 0.027 band-mean; the tighter closure-derived A window (0.074 / 0.014, from cv04's max|R+T-1| and mean_energy_closure_error) is stated as derivable and REPORTED as A_tight_ok, not gated. Witnesses: -40 dB settling, cv04's 1e-3 purity, passivity R + T <= 1.06, the 5 % incident floor. E4: Meep Medium(epsilon, D_conductivity=sigma_D) at 40 px/cm (the converged rung of cv22's measured first-order ladder; eps_averaging False) with sigma_D = sigma a/(c eps0 eps') derived from Meep's python/geom.py Medium._get_epsmu and step_generic.cpp (the same semi-implicit average, hence the same x/tan x term at Meep's dt), unit-tested to 1e-9 in tests/test_cv23_lossy_eps_mapping.py with wrong-scaling falsifiers (x 2 pi, eps' division dropped, a/c dropped, conjugate dropped), pre-checked on the pod through Meep's own Medium.epsilon(f); Meep gated against the transfer matrix (R, T, A) and rfx against Meep with the triangle-inequality windows; the Meep-side windows come from the DECLARED material, never from the parameters the Meep JSON reports; the 10/20/40 px/cm ladder is committed as evidence of Meep's convergence. FALSIFIERS (each must exit 1 against the DECLARED material): sigma x 1.5 per arm (analytic band-mean margins: tand0p1 R 0.99x -- a recorded coin toss -- T 5.1x; tand1 R 6.5x; tand3 R 8x with T vacuous), sigma = 0 per arm (cv04's lossless slab judged as lossy: A fails at all 229 gated bins), a GAIN arm sigma -> -sigma on tand0p1 (R + T = 1.25-1.49 at every gated bin, below the lasing threshold sigma d Z0/2 = 0.29) for the passivity gate, and the Meep material with the wrong sigma_D scaling (x 2 pi: pre-check 4.4, band-mean R 17x the window; eps' dropped: 2.5, 13x). RECORDS derived before the run: 1067 / 1158 / 1181 steps (etalon at the bottom of the incident band governs, no material pole), all on nfft 16384 (229 gated bins), tails predicted -43 to -54 dB with zero extensions; the witness is the gate, the derivation is the estimate (cv22 section 14).",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": [
+        "validation/crossval/23_lossy_slab_fresnel.py",
+        "tests/test_cv23_lossy_slab_gates.py",
+        "tests/test_cv23_lossy_eps_mapping.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 18},
+      "scheduled_external_order": 8,
+      "failure_sentinel": "rfx accuracy: FAIL"
     }
   ]
 }
