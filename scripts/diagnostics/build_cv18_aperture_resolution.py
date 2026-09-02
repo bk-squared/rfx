@@ -11,7 +11,7 @@ prose can reference an artifact key instead of restating a digit.
 NO FDTD.  This builder reads the committed cv18 record
 (``validation/crossval/_18_wr90_iris_results/rfx.json``) and evaluates the
 same mode-matching oracle the case gates against.  It is deterministic and
-runs in seconds; ``tests/test_wr90_iris_modematch_gates.py`` re-derives every
+runs in seconds; ``tests/crossval/test_wr90_iris_modematch_gates.py`` re-derives every
 emitted number from an INDEPENDENT re-implementation of that oracle, so the
 artifact is mechanically checked rather than trusted.
 

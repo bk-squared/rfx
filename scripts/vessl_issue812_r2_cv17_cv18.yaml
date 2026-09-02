@@ -85,8 +85,8 @@ run: |-
   # ---- 3. the frozen-fixture gate tests on the same tree -----------------
   set +e
   "$PY" -m pytest -q -o addopts="" -m "not gpu" \
-      tests/test_wr90_iris_modematch_gates.py \
-      tests/test_rcs_dielectric_sphere_mie_gates.py \
+      tests/crossval/test_wr90_iris_modematch_gates.py \
+      tests/crossval/test_rcs_dielectric_sphere_mie_gates.py \
       > "$OUT/gate_tests.log" 2>&1
   trc=$?
   set -e
