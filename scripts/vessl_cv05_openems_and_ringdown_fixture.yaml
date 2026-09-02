@@ -1,0 +1,54 @@
+name: rfx-812-cv05-openems-and-fixture
+description: "issue #812 round 2, cv05: (1) the shipped 05_patch_antenna.py through ALL THREE parts with a real openEMS (criterion (A) for the openEMS-leg mode-identification gate, which sits in all_ok and had never been observed passing -- review B1), JSON captured via RFX_CROSSVAL05_JSON; (2) the committed ring-down falsifier fixture rebuilt from the repo by scripts/diagnostics/build_cv05_ringdown_spectra.py and compared to the committed copy (review N2: round 1's harness was uncommitted). Report-only; no gate or window changes. vessl run create -f scripts/vessl_cv05_openems_and_ringdown_fixture.yaml"
+tags: [rfx, issue-812, cv05, crossval, openems, patch]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 32Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
+  ROOT=/root/work/regate-patch-selector
+  mkdir -p "$ROOT"
+  cp -r /root/workspace/claude-workspace/rfx/checkouts/regate-patch-selector/. "$ROOT/"
+  cd "$ROOT"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue812-cv05-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export PYTHONPATH="$ROOT"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok', jax.__version__, os.path.dirname(rfx.__file__))"
+
+  # (1) criterion (A) for BOTH identification legs: the shipped script, all three parts
+  set +e
+  RFX_CROSSVAL05_JSON="$OUT/cv05_run.json" "$PY" -u validation/crossval/05_patch_antenna.py > "$OUT/cv05_run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/cv05_run.rc"
+  echo "cv05 shipped-script rc=$rc"
+  tail -n 40 "$OUT/cv05_run.log" || true
+
+  # (2) the ring-down falsifier fixture, rebuilt from the repo and compared
+  set +e
+  "$PY" -u scripts/diagnostics/build_cv05_ringdown_spectra.py --output "$OUT/cv05_ringdown_spectra.json" > "$OUT/fixture_build.log" 2>&1
+  brc=$?
+  "$PY" -u scripts/diagnostics/build_cv05_ringdown_spectra.py --check --rel 1e-6 >> "$OUT/fixture_build.log" 2>&1
+  crc=$?
+  set -e
+  echo "$brc" > "$OUT/fixture_build.rc"; echo "$crc" > "$OUT/fixture_check.rc"
+  grep -E "^==|OK:|MISMATCH|wrote" "$OUT/fixture_build.log" || true
+  ls -la "$OUT"
+  echo "cv05_rc=$rc fixture_build_rc=$brc fixture_check_rc=$crc"

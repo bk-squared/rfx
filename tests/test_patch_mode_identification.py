@@ -462,7 +462,7 @@ def test_a_band_from_the_census_interval_does_separate_the_two_realizations():
 
     This is what makes the round-1 absolute false. It is NOT an endorsement:
     the width used here has no provenance but the two measurements it judges
-    (burned data, SPEC-00 0.2.2) -- see the artifact's ``verdict``."""
+    (burned data, the burned-data rule: a threshold may not be set from the measurements it will judge) -- see the artifact's ``verdict``."""
     band = _fixture("cv15_mode_pair_ratio_band.json")
     fx = _fixture("cv15_ringdown_spectra.json")
     members = _members(CV15)
@@ -488,3 +488,24 @@ def test_the_census_interval_is_far_tighter_than_anything_derivable():
         "upper_endpoint_over_identification_tolerance"] < 0.05
     assert "burned-data" in band["verdict"]
     assert "STOP" in band["verdict"]
+
+
+def test_cv05_constants_in_this_file_are_the_scripts_own():
+    """Round-2 review: the CV05 dict above was a hand copy of
+    05_patch_antenna.py's constants, pinned nowhere (the script cannot be
+    imported without solving). Read them out of the source text instead, so
+    a change to the case's declared geometry, c0 or harminv band fails
+    here rather than silently detuning the spectrum this file re-derives."""
+    import re
+    src = (REPO_ROOT / "validation" / "crossval" / "05_patch_antenna.py").read_text(encoding="utf-8")
+    def const(name):
+        m = re.search(r"^%s\s*=\s*([0-9.eE+-]+)" % re.escape(name), src, re.M)
+        assert m, name
+        return float(m.group(1))
+    assert const("C0") == CV05["c0"]
+    assert const("eps_r") == CV05["eps_r"]
+    assert const("h_sub") == CV05["h"]
+    assert const("L") == CV05["a"]
+    assert const("W") == CV05["b"]
+    m = re.search(r"^HARMINV_F_LO,\s*HARMINV_F_HI\s*=\s*([0-9.eE+-]+),\s*([0-9.eE+-]+)", src, re.M)
+    assert m and (float(m.group(1)), float(m.group(2))) == CV05["band"]

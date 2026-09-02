@@ -97,7 +97,7 @@ spectral observable — the mode-pair ratio included — is unchanged**.
 Issue #740's vacuum ground cell is precisely such a defect: it dilutes the
 cavity's series capacitance uniformly, so it rescales the spectrum instead of
 reshaping it. The audit's proposed remedy for cv15 was a mode-pair **ratio**
-band; a ratio band therefore **cannot** fire on #740, and this note records that
+band; a ratio band therefore **cannot** fire on #740 (withdrawn in §6.9 — the interval is non-empty; §6.9 and §6.10), and this note records that
 prediction before §6's measurement is quoted anywhere.
 
 Defects of that class belong to the realized-geometry checks
@@ -400,15 +400,15 @@ re-derived field by field in
 What the measurement supports: a declared-anchored band
 `|r_measured/r_declared − 1| ≤ w` on the TM100/TM010 pair admits the correct
 build **and** rejects the #740 realization for every `w` in
-[`cv15_mode_pair_ratio_band.json::declared_anchored_band.min_half_width_admitting_correct_build`,
-`…::declared_anchored_band.max_half_width_still_rejecting_740`). That interval
-is non-empty (`…::declared_anchored_band.admissible_interval_is_nonempty`), and
+[`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.min_half_width_admitting_correct_build = 0.001407`,
+`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.max_half_width_still_rejecting_740 = 0.003338`). That interval
+is non-empty (`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.admissible_interval_is_nonempty`), and
 a band at its geometric midpoint is exercised in both directions by
 `test_a_band_from_the_census_interval_does_separate_the_two_realizations`. §5's
 model statement — that an **exact** common-mode dilation leaves every
 dimensionless observable unchanged — is still true; the error was applying it to
 #740, whose dilation is only near-common
-(`cv15_ringdown_spectra.json::measured_common_mode_dilation.half_spread`), so
+(`tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json::measured_common_mode_dilation.half_spread`), so
 the pair ratio does move.
 
 **(2) cv15 lands as an honest STOP; round 1's cv15 re-gate is withdrawn.**
@@ -418,8 +418,8 @@ identification PASSES on the live reproduction through cv15's production
 `build_rfx_sim(two_plane=False)` (§6.5, unchanged). Per (1) a ratio band *can*
 be made to separate the two realizations, but not one this lane may adopt:
 both interval endpoints are properties of the two measurements the band would
-then judge (burned-data, SPEC-00 §0.2.2); the interval's upper endpoint is
-`…::declared_anchored_band.upper_endpoint_over_identification_tolerance` of the
+then judge (burned-data, the burned-data rule (a threshold may not be set from the measurements it will judge; the lane spec's rule 0.2.2, kept outside the repo)); the interval's upper endpoint is
+`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.upper_endpoint_over_identification_tolerance = 0.0314` of the
 tightest window derivable from declared geometry alone; and no committed run
 establishes the run-to-run reproducibility of the measured pair ratio at that
 scale. So the correct statement is **not** "no spectral instrument can meet (B)"
@@ -439,7 +439,7 @@ regeneration has no purpose and the leg is restored to #768's committed
 version, which owns it. No evidence is lost: the reproduction's ring-down and
 the committed leg's are the same solve to the bound asserted by
 `test_cv15_reproduction_ringdown_matches_the_committed_leg`, and the mode list
-lives in `cv15_ringdown_spectra.json::two_plane_ground.modes`, whose `source`
+lives in the `two_plane_ground.modes` list of `tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json`, whose `source`
 field now names the run rather than the leg. §6.6's wire-port |S11| bisection
 stands as a **report** — it is extractor territory, not this lane's, and it
 adjudicates nothing here.
@@ -448,19 +448,19 @@ adjudicates nothing here.
 round against the committed fixtures — the correct build's design-member
 residual is more than 3× inside the derived tolerance, and the audit's
 +24 % point fails by name at the closest realization the lattice offers
-(`cv05_ringdown_spectra.json::runs.patch_len_22p0mm`, with the reachable set in
-`::_realized_x_cell_census`). Every digit in those two sentences is re-derived
+(the `runs.patch_len_22p0mm` block of `tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json`, with the reachable set in
+the `_realized_x_cell_census` block of `tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json`). Every digit in those two sentences is re-derived
 from the fixture inside the assertions, not transcribed.
 
 **What would be needed to close cv15's (B) later.** The reviewer's reproduction
 is the starting point: `build_rfx_sim(two_plane=False)` reproduces the pre-#768
 frequencies, so the defect is available on demand. Closing (B) needs, in order:
 (i) a mode-pair ratio window **derived** from declared geometry or first
-principles at the scale of `…::declared_anchored_band.max_half_width_still_rejecting_740`,
+principles at the scale of `tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.max_half_width_still_rejecting_740 = 0.003338`,
 which the closed form's own 5–8 % accuracy does not supply; and (ii) a
 committed reproducibility census of the measured pair ratio across settling
 length and mesh showing scatter below
-`…::declared_anchored_band.min_half_width_admitting_correct_build`. Absent both,
+`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::declared_anchored_band.min_half_width_admitting_correct_build = 0.001407`. Absent both,
 #740's detector is and remains `assert_realized_stack` (PR #768).
 
 **Dangling pointer noted.** §6.5 quotes "`mode_id_ok: true` on the live
@@ -470,3 +470,49 @@ directly on the committed spectra by
 `test_cv15_740_defect_is_a_common_mode_dilation`
 (`assert ident_bad.ok` — the spectral identification passes on the #740
 realization). §6.5 is left as written; this is the correction.
+
+### 6.10 Round-2 review (2026-09-02) — two blockers, what closed them, what is recorded
+
+An independent reviewer re-derived the cv05 spectrum (TM010 1.914913 / TM100 2.423510 /
+TM110 3.088737 GHz), the tolerance (12.4988 %), every fixture row including the
++23.36 % point, the x-cell census (rebuilt from the grid without FDTD), and every key in
+the ratio-band census; confirmed the note is append-only and the windows were fixed
+(9f5c450) before the measurements (9c03c02); confirmed cv15's script and committed leg
+are byte-identical to `main`; and returned FIX-THEN-SHIP.
+
+**(B1) cv05's openEMS-leg identification sat in `all_ok` with no run ever showing it
+pass.** §6.1's PART 2/3 never ran here (no openEMS on this host), so
+`pass_mode_id_oe` was a gate added to the verdict by construction. It is not dropped —
+it is measured: `scripts/vessl_cv05_openems_and_ringdown_fixture.yaml` runs the shipped
+script through all three parts on the lab cluster's openEMS image, capturing the JSON
+the script already emits (`openems_mode_id_ok`). Recorded in 6.11 when it lands; until
+then this section says the gate is unobserved.
+
+**(B2) The withdrawn absolute survived in a fixture key.**
+`tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json::measured_common_mode_dilation.note` still said "every
+dimensionless spectral observable is blind to it" after §6.9 withdrew it; it now says the
+dilation is *nearly* common (half-spread 0.0023) and that the ratio moves by
+`tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json::measured_anchored_band.defect_offset_from_correct_build = 0.001934`.
+
+**Also closed.** "harminv_err_pct stays REPORTED and NOT gated" was false in effect: G2
+bounds the design mode's error to the log-symmetric window [−11.11 %, +12.50 %], so an
+error beyond it fails the case by identification; the docstring, the print and this
+note now say so (the lower edge had never been stated). The cv05 fixture's producer was
+an uncommitted runpy harness; `scripts/diagnostics/build_cv05_ringdown_spectra.py` is
+that harness, committed, driven by a `RFX_CV05_PATCH_L_MM` hook in the script, and the
+same VESSL job rebuilds the fixture and compares it to the committed copy. Nothing
+outside this note and the test said what changed: the manifest, README and public rows
+for cv05 now describe the identification gate, and those for cv15 state the blindness of
+the 8 % gate to #740 (+6.09 %, cited by key) and the STOP. §5's "cannot fire" sentence
+carries an in-place forward pointer to §6.9 (form only); the out-of-repo "SPEC-00 §0.2.2"
+pointer is replaced by the rule it named (a threshold may not be set from the
+measurements it will judge) in the note, the test and the census artifact. The ten
+citation spans that did not parse under the #829 gate are rewritten with repo-relative
+paths and values.
+
+**Recorded, not changed.** Identification does not enforce spectral *ordering*: a
+simultaneous x- and y-mis-realization that moves TM010 into TM100's window and the design
+mode into TM110's would pass G1–G3 — a two-parameter coincidence, stated as the
+instrument's limit. The public benchmarks table's patch far-field row still quotes the
+retired pre-#693 envelope (sign-flipped against the committed test constants); that is
+on `main`, outside this lane, and is left for its owner.
