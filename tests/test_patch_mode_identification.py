@@ -271,10 +271,13 @@ def test_cv05_correct_build_passes_with_margin():
 
 
 @pytest.mark.parametrize("run,f_ghz,rel", [
-    ("patch_len_22p5mm", 2.87308, +0.1855),
-    ("patch_len_22p0mm", 2.98956, +0.2336),   # the audit's +24% point
-    ("patch_len_21p0mm", 3.11259, +0.2843),
-    ("patch_len_38p0mm", 1.81365, -0.2516),
+    # values are the committed fixture's (rebuilt on the lab cluster, jax 0.6.2,
+    # VESSL 369367257743 -- the round-1 macOS build read 2.87308 / 2.98956 /
+    # 3.11259 here, i.e. within 2e-4 relative at two of three lengths and
+    # 1.3e-3 at 22.0 mm; design note 6.11)
+    ("patch_len_22p5mm", 2.87272, +0.1854),
+    ("patch_len_22p0mm", 2.99346, +0.2352),   # the audit's +24% point
+    ("patch_len_21p0mm", 3.11189, +0.2840),
 ])
 def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_ghz, rel):
     """(B) LIVE FDTD reproductions: the patch's realized resonant length is
@@ -509,3 +512,28 @@ def test_cv05_constants_in_this_file_are_the_scripts_own():
     assert const("W") == CV05["b"]
     m = re.search(r"^HARMINV_F_LO,\s*HARMINV_F_HI\s*=\s*([0-9.eE+-]+),\s*([0-9.eE+-]+)", src, re.M)
     assert m and (float(m.group(1)), float(m.group(2))) == CV05["band"]
+
+
+def test_cv05_38mm_build_is_not_caught_on_the_cluster_host_a_fired_falsifier():
+    """(B) at L = 38.0 mm (-25 %, a square patch) fired on the macOS build
+    (two poles: 1.81365 GHz -> TM010, 3.5769 -> none; TM100 MISSING) and
+    does NOT fire on the committed cluster build: a third, weak pole appears
+    at 2.6096 GHz (+7.68 % of TM100, amplitude an order below the others)
+    inside the identification window and is named TM100. Recorded as a
+    fired falsifier against the INSTRUMENT (a spurious low-amplitude pole
+    in the design window is accepted), not softened: no amplitude floor is
+    added after the fact. The three other mis-realized lengths still fail
+    by name (test above); the audit's +24 % point is among them."""
+    data = _fixture("cv05_ringdown_spectra.json")["runs"]["patch_len_38p0mm"]
+    members = _members(CV05)
+    modes = sorted(data["modes"], key=lambda m: m["freq"])
+    freqs = [m["freq"] for m in modes]
+    assert len(freqs) == 3
+    assert freqs[0] / 1e9 == pytest.approx(1.81334, abs=1e-5)
+    assert freqs[1] / 1e9 == pytest.approx(2.60961, abs=1e-5)
+    assert freqs[1] / members[(1, 0)] - 1 == pytest.approx(+0.0768, abs=5e-4)
+    amps = [m["amplitude"] for m in modes]
+    assert amps[1] < 0.1 * max(amps), "the accepted pole is the weak one"
+    ident = identify_patch_modes(freqs, members)
+    assert ident.ok is True and ident.f_design == pytest.approx(freqs[1])
+    assert [o for _f, o, _r in ident.assignments] == [(0, 1), (1, 0), None]

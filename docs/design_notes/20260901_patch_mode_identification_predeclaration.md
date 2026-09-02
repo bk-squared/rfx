@@ -516,3 +516,49 @@ mode into TM110's would pass G1–G3 — a two-parameter coincidence, stated as 
 instrument's limit. The public benchmarks table's patch far-field row still quotes the
 retired pre-#693 envelope (sign-flipped against the committed test constants); that is
 on `main`, outside this lane, and is left for its owner.
+
+### 6.11 The openEMS run and the fixture rebuild (VESSL 369367257743, 2026-09-02) — two falsifiers fired
+
+`scripts/vessl_cv05_openems_and_ringdown_fixture.yaml` on the lab cluster's openEMS image
+(jax 0.6.2 CPU, CI's jax); log harvested, run deleted; artifacts under
+`validation/crossval/_05_patch_results/`.
+
+**(1) The openEMS-leg identification does not pass — the gate is withdrawn to REPORTED.**
+The shipped script ran through all three parts: `validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json::rfx_mode_id_ok` is true
+(`validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json::rfx_vs_analytic_pct = 3.78` %, rfx vs openEMS harminv
+`validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json::rfx_vs_openems_harminv_pct = 6.48` %), but `validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json::openems_mode_id_ok` is false.
+openEMS's port-voltage ring-down carries seven poles above the pre-declared Q floor of 2
+— 1.7707 / 1.9304 / 2.1942 / 2.2589 / 2.4762 / 3.2115 / 3.3174 GHz, three of them low-Q
+(2.4 / 5.2 / 6.6) — so TM010, TM100 and TM110 are each claimed by two or three measured
+modes and the identifier refuses to name a resonance, exactly as designed for an
+ambiguous spectrum. Reviewer B1 was right that this gate had never been observed passing;
+it does not. Raising the Q floor now to admit that spectrum would be a post-measurement
+threshold change, so `pass_mode_id_oe` is removed from `all_ok` and stays printed and
+keyed (`openems_mode_id_gated` = false in the JSON, with the openEMS mode list, assignment
+and refusal reasons). A Q or amplitude floor derived from the openEMS spectrum's own
+statistics can be pre-declared in a later round. The rfx leg's gate stands.
+
+**(2) The fixture, rebuilt from the repo, is not the macOS fixture — and one (B) case
+stops firing.** `build_cv05_ringdown_spectra.py` (the round-1 harness, now committed,
+driven by the `RFX_CV05_PATCH_L_MM` hook) rebuilt all five lengths on the cluster. Same
+mode count at four of five lengths; the design-mode frequencies moved by ≤ 2e-4 relative
+at three lengths and 1.3e-3 at 22.0 mm (`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.patch_len_22p0mm.modes[0].freq = 2.993459 GHz`,
+was 2.98956; the audit's point now reads +23.52 %), Q by up to 4 %. The committed fixture
+is now the cluster build, with provenance, because it is the one the repo can regenerate
+and it matches the same job's shipped-script rfx leg exactly
+(`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.baseline.modes[0].freq = 2.331855 GHz` = `validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json::rfx_harminv_hz = 2.331855 GHz`).
+The macOS values are kept in the test's comment and in git history.
+
+At **38.0 mm** the cluster build has a **third pole**,
+`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.patch_len_38p0mm.modes[1].freq = 2.609612 GHz` (+7.68 % of TM100, Q 57.7,
+amplitude `tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.patch_len_38p0mm.modes[1].amplitude = 25317.8` against 2.8e5 and
+3.4e5 for its neighbours), inside the identification window. The identifier names it
+TM100 and the case PASSES on that build — the −25 % falsifier that fired on macOS does
+not fire here. This is a **fired falsifier against the instrument**: a spurious
+low-amplitude pole in the design window is accepted as the design mode. It is recorded
+(`test_cv05_38mm_build_is_not_caught_on_the_cluster_host_a_fired_falsifier`, the manifest,
+README and public row), not softened: no amplitude floor is added after seeing it. The
+three other mis-realized lengths, including the audit's +24 % point, still fail by name
+on this fixture. What would close it, pre-declared next time: an amplitude floor relative
+to the strongest pole (an order of magnitude would separate this case) and a check that
+the assigned design member is not the weakest pole in the band.

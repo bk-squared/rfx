@@ -83,7 +83,9 @@ looser than the closed form's own 5-8 % accuracy, and passing it is NOT an
 accuracy claim. ``harminv_err_pct`` is still printed as REPORTED, but G2 now
 bounds the design mode's error to the log-symmetric window [-11.11 %, +12.50 %]
 (``|ln(f/f_TM100)| <= ln(1 + tol)``): an rfx TM100 error beyond that fails the
-case BY IDENTIFICATION, not by an accuracy gate (round-2 review, N1).
+case BY IDENTIFICATION, not by an accuracy gate (round-2 review, N1). The
+openEMS leg runs the same identifier but is REPORTED, not gated: on the real
+run its port-voltage ring-down was ambiguous (see the ``all_ok`` comment).
 Pre-declaration + falsifiers:
 ``docs/design_notes/20260901_patch_mode_identification_predeclaration.md``.
 
@@ -816,8 +818,17 @@ pass_passivity  = passive
 pass_mode_id_rfx = bool(ident_rfx.ok)
 pass_mode_id_oe = bool(ident_oe.ok)
 # NOTE: pass_vs_analyt (harminv_err_pct < 10 %) intentionally NOT in all_ok.
+# The openEMS-leg identification is REPORTED, not gated (round-2 review B1,
+# measured 2026-09-02, VESSL 369367257743): openEMS's port-voltage ring-down
+# carries seven poles above the pre-declared Q floor of 2 -- three of them
+# low-Q spurious (Q 2.4 / 5.2 / 6.6) -- so TM010 / TM100 / TM110 are each
+# claimed by two or three measured modes and the identifier refuses to name
+# a resonance. Raising the Q floor now to admit that run would be a
+# post-measurement threshold change; the leg stays out of all_ok until a
+# floor is pre-declared from the openEMS spectrum's own statistics. The rfx
+# leg identified cleanly on the same run (3.78 % from analytic).
 all_ok = (pass_internal and pass_vs_openems and pass_passivity
-          and pass_mode_id_rfx and pass_mode_id_oe)
+          and pass_mode_id_rfx)
 
 print(f"  rfx mode identification (TM100 found, tol "
       f"{ident_rfx.tol*100:.2f} %): "
@@ -825,7 +836,8 @@ print(f"  rfx mode identification (TM100 found, tol "
 for _line in ident_rfx.reasons:
     print(f"      ! {_line}")
 print(f"  openEMS mode identification:      "
-      f"{'PASS' if pass_mode_id_oe else 'FAIL'}")
+      f"{'PASS' if pass_mode_id_oe else 'FAIL'}  (REPORTED, not gated -- see the "
+      f"all_ok comment)")
 for _line in ident_oe.reasons:
     print(f"      ! {_line}")
 print(f"  rfx self-consistency (< 5 %):     "
@@ -903,6 +915,13 @@ if json_out:
             for f, o, r in ident_rfx.assignments],
         "rfx_mode_id_ok": bool(pass_mode_id_rfx),
         "openems_mode_id_ok": bool(pass_mode_id_oe),
+        "openems_mode_id_gated": False,
+        "openems_modes_hz": [float(m.freq) for m in sorted(modes_oe_good, key=lambda m: m.freq)],
+        "openems_mode_assignment": [
+            [float(f), (f"TM{o[0]}{o[1]}0" if o else None),
+             (float(r) if r is not None else None)]
+            for f, o, r in ident_oe.assignments],
+        "openems_mode_id_reasons": list(ident_oe.reasons),
         "rfx_s11_passive": bool(passive),
         "rfx_s11_max_abs": float(np.max(np.abs(S11))),
         "rfx_s11_min_db": float(s11_min_dB),

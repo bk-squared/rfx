@@ -1,0 +1,227 @@
+======================================================================
+Crossval 05: 2.4 GHz Rectangular Patch Antenna on FR4
+======================================================================
+Substrate: εr=4.3, h=1.5 mm (FR4)
+Patch: W=38.0 x L=29.5 mm
+Ground plane: 60 x 55 mm
+Feed: probe at (33.2, 37.5) mm
+
+Analytic transmission-line model:
+  εr_eff = 4.009
+  ΔL     = 0.695 mm
+  L_eff  = 30.891 mm
+  f_res  = 2.424 GHz
+
+Domain: 80 x 75 x 38 mm, dx=1.0 mm
+
+======================================================================
+PART 1: rfx — Harminv ringdown resonance
+======================================================================
+Running rfx source-excitation run for Harminv...
+/root/work/regate-patch-selector/validation/crossval/05_patch_antenna.py:351: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.8.
+  sim.add_source(
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.3 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.5 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=20)/geometry[2](k=23) at in-plane column (48,45): sum(d/eps) mesh 422.4µm vs physical 348.8µm (+21.1%); sum(d*sqrt(eps)) mesh 3.766mm vs physical 3.11mm (+21.1%); node-to-node 1.816mm vs face-to-face 1.5mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the nonuniform lane; physical stack computed from Box entries only — 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  [PREFLIGHT] 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' y: extent 38mm, worst face residual 500µm (1.32% of the extent, df/f ~ 1.32%); geometry[2] 'pec' x: extent 29.5mm, worst face residual 250µm (0.85% of the extent, df/f ~ 0.85%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the nonuniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+/root/work/regate-patch-selector/validation/crossval/05_patch_antenna.py:368: UserWarning: [run] preflight found 5 advisory issue(s) - pass skip_preflight=True to suppress:
+  - 'pec' z-extent 250µm = 0.3 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  - 'pec' z-extent 250µm = 0.5 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  - 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=20)/geometry[2](k=23) at in-plane column (48,45): sum(d/eps) mesh 422.4µm vs physical 348.8µm (+21.1%); sum(d*sqrt(eps)) mesh 3.766mm vs physical 3.11mm (+21.1%); node-to-node 1.816mm vs face-to-face 1.5mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the nonuniform lane; physical stack computed from Box entries only — 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  - 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' y: extent 38mm, worst face residual 500µm (1.32% of the extent, df/f ~ 1.32%); geometry[2] 'pec' x: extent 29.5mm, worst face residual 250µm (0.85% of the extent, df/f ~ 0.85%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the nonuniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+  res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
+/root/work/regate-patch-selector/validation/crossval/05_patch_antenna.py:368: UserWarning: run ended at -14.7 dB of peak — ring-down truncated; Harminv/DFT/NTFF quantities may carry transient error; consider until_decay or more periods (issue #332)
+  res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
+Done in 158.1s
+Settling witness (#332/G1): end/peak = -21.6 dB (UNDERSETTLED (>-40): Harminv freq/Q suspect, raise num_periods)
+Harminv on last 13491 samples (ringdown region)
+
+Harminv modes (Q > 2, amp > 1e-8):
+  f = 2.3319 GHz, Q = 42.0, amp = 3.16e+05
+  f = 3.0273 GHz, Q = 72.5, amp = 3.90e+04
+  f = 3.6051 GHz, Q = 104.5, amp = 5.51e+05
+
+Mode identification vs the declared TM_mn0 spectrum:
+  declared TM010 = 1.91491 GHz
+  declared TM100 = 2.42351 GHz
+  declared TM110 = 3.08874 GHz
+  identification tol = 12.50% (derived: sqrt(min adjacent declared ratio) - 1); span [1.7022, 3.4748] GHz
+    f = 2.3319 GHz  ->  TM100          -3.78%
+    f = 3.0273 GHz  ->  TM110          -1.99%
+    f = 3.6051 GHz  ->  UNIDENTIFIED      n/a
+
+  TM100 (design mode, identified): f = 2.3319 GHz, Q = 42.0
+  Analytic target:    f = 2.4235 GHz
+  Harminv error:      3.78 %  (REPORTED as accuracy; identification bounds it to [-11.11 %, +12.50 %])
+
+======================================================================
+PART 2: OpenEMS — same patch, lumped-port S11
+======================================================================
+  OpenEMS mesh: 68 × 65 × 24 cells = 106,080
+  Running OpenEMS (GaussExcite f0=2.40 GHz, fc=1.00 GHz)...
+ ---------------------------------------------------------------------- 
+ | openEMS 64bit -- version v0.37.0-rc1-6-g2000574
+ | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license
+ ---------------------------------------------------------------------- 
+	Used external libraries:
+		CSXCAD -- Version: v0.7.0-rc1-3-ge558171
+		hdf5   -- Version: 1.10.4
+		          compiled against: HDF5 library version: 1.10.4
+		tinyxml -- compiled against: 2.6.2
+		fparser
+		boost  -- compiled against: 1_71
+		vtk -- Version: 7.1.1
+		       compiled against: 7.1.1
+
+Create FDTD operator (compressed SSE + multi-threading)
+FDTD simulation size: 68x65x24 --> 106080 FDTD cells 
+FDTD timestep is: 1.14571e-12 s; Nyquist rate: 128 timesteps @3.40945e+09 Hz
+Excitation signal length is: 2501 timesteps (2.86542e-09s)
+Max. number of timesteps: 25000 ( --> 9.996 * Excitation signal length)
+Create FDTD engine (compressed SSE + multi-threading)
+Running FDTD engine... this may take a while... grab a cup of coffee?!?
+[@        4s] Timestep:         1536 || Speed:   39.9 MC/s (2.656e-03 s/TS) || Energy: ~1.70e-15 (- 0.00dB)
+[@        8s] Timestep:         4064 || Speed:   66.8 MC/s (1.588e-03 s/TS) || Energy: ~7.38e-18 (-23.61dB)
+[@       12s] Timestep:         7520 || Speed:   91.5 MC/s (1.159e-03 s/TS) || Energy: ~9.08e-21 (-52.71dB)
+[@       16s] Timestep:        11392 || Speed:  102.1 MC/s (1.039e-03 s/TS) || Energy: ~3.32e-22 (-67.09dB)
+[@       20s] Timestep:        15520 || Speed:  108.8 MC/s (9.751e-04 s/TS) || Energy: ~1.52e-21 (-60.48dB)
+[@       24s] Timestep:        19552 || Speed:  106.6 MC/s (9.947e-04 s/TS) || Energy: ~1.86e-20 (-49.59dB)
+Multithreaded Engine: Best performance found using 5 threads.
+[@       28s] Timestep:        23680 || Speed:  108.7 MC/s (9.763e-04 s/TS) || Energy: ~3.49e-19 (-36.86dB)
+RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -70dB was reached... 
+	You may want to choose a higher number of max. timesteps... 
+Time for 25000 iterations with 106080.00 cells : 29.43 sec
+Speed: 90.11 MCells/s 
+  done in 29.6s
+
+  OpenEMS mode identification vs the declared TM_mn0 spectrum:
+    identification tol = 12.50% (derived: sqrt(min adjacent declared ratio) - 1); span [1.7022, 3.4748] GHz
+      f = 1.7707 GHz  ->  TM010          -7.53%
+      f = 1.9304 GHz  ->  TM010          +0.81%
+      f = 2.1942 GHz  ->  TM100          -9.46%
+      f = 2.2589 GHz  ->  TM100          -6.79%
+      f = 2.4762 GHz  ->  TM100          +2.17%
+      f = 3.2115 GHz  ->  TM110          +3.97%
+      f = 3.3174 GHz  ->  TM110          +7.40%
+      ! declared member TM010 is claimed by 2 measured modes ([1.7707, 1.9304] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM100 is claimed by 3 measured modes ([2.1942, 2.2589, 2.4762] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM110 is claimed by 2 measured modes ([3.2115, 3.3174] GHz) -- identification is ambiguous, refuse to name a resonance
+
+  OpenEMS Harminv modes (Q > 2) near analytic target:
+    f = 1.7707 GHz, Q = 75.0, amp = 2.84e-08
+    f = 1.9304 GHz, Q = 2.4, amp = 3.37e-07
+    f = 2.1942 GHz, Q = 242.3, amp = 5.22e-08
+    f = 2.2589 GHz, Q = 6.6, amp = 1.43e-07
+    f = 2.4762 GHz, Q = 5.2, amp = 2.78e-07
+    f = 3.2115 GHz, Q = 15.1, amp = 3.47e-07
+
+  OpenEMS Harminv:   f = 2.1900 GHz, Q = nan
+  OpenEMS S11 dip:   f = 2.1900 GHz, |S11| = -0.53 dB  (secondary)
+  Analytic target:   f = 2.4235 GHz
+  OpenEMS vs analytic: 9.64 %
+  rfx Harminv vs OpenEMS Harminv: 6.48 %  ← primary metric
+
+======================================================================
+PART 3: rfx — lumped port S11 (secondary check)
+======================================================================
+Preflight:
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.3 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.5 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] Wire port at (0.03325, 0.0375, 0.012375) (extent 0.0011249999999999993): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=20)/geometry[2](k=23) at in-plane column (48,45): sum(d/eps) mesh 422.4µm vs physical 348.8µm (+21.1%); sum(d*sqrt(eps)) mesh 3.766mm vs physical 3.11mm (+21.1%); node-to-node 1.816mm vs face-to-face 1.5mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the nonuniform lane; physical stack computed from Box entries only — 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  [PREFLIGHT] 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' y: extent 38mm, worst face residual 500µm (1.32% of the extent, df/f ~ 1.32%); geometry[2] 'pec' x: extent 29.5mm, worst face residual 250µm (0.85% of the extent, df/f ~ 0.85%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the nonuniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+
+/opt/conda/lib/python3.10/site-packages/numpy/core/getlimits.py:549: UserWarning: The value of the smallest subnormal for <class 'numpy.float32'> type is zero.
+  setattr(self, word, getattr(machar, word).flat[0])
+/opt/conda/lib/python3.10/site-packages/numpy/core/getlimits.py:89: UserWarning: The value of the smallest subnormal for <class 'numpy.float32'> type is zero.
+  return self._float_to_str(self.smallest_subnormal)
+Running rfx S-parameter sweep (long ringdown for patch Q ~50)...
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.3 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] 'pec' z-extent 250µm = 0.5 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  [PREFLIGHT] Wire port at (0.03325, 0.0375, 0.012375) (extent 0.0011249999999999993): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=20)/geometry[2](k=23) at in-plane column (48,45): sum(d/eps) mesh 422.4µm vs physical 348.8µm (+21.1%); sum(d*sqrt(eps)) mesh 3.766mm vs physical 3.11mm (+21.1%); node-to-node 1.816mm vs face-to-face 1.5mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the nonuniform lane; physical stack computed from Box entries only — 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  [PREFLIGHT] 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' y: extent 38mm, worst face residual 500µm (1.32% of the extent, df/f ~ 1.32%); geometry[2] 'pec' x: extent 29.5mm, worst face residual 250µm (0.85% of the extent, df/f ~ 0.85%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the nonuniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+/root/work/regate-patch-selector/validation/crossval/05_patch_antenna.py:673: UserWarning: [run] preflight found 6 advisory issue(s) - pass skip_preflight=True to suppress:
+  - 'pec' z-extent 250µm = 0.3 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  - 'pec' z-extent 250µm = 0.5 cells — below 1 cell resolution. A conductor thinner than a cell is modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge. That is usually what you want for metal many skin depths thick, and switching to add_thin_conductor() would not change it; but it means the sheet carries no conductor loss and its thickness is not modelled. For band-centre conductor loss use add_thin_conductor(..., surface_impedance_f0=...) (Leontovich surface resistance, issue #669).
+  - Wire port at (0.03325, 0.0375, 0.012375) (extent 0.0011249999999999993): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  - 1 sheet-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0](node k=20)/geometry[2](k=23) at in-plane column (48,45): sum(d/eps) mesh 422.4µm vs physical 348.8µm (+21.1%); sum(d*sqrt(eps)) mesh 3.766mm vs physical 3.11mm (+21.1%); node-to-node 1.816mm vs face-to-face 1.5mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run node-to-node across the run's own cells and assembled eps_r; physical sums run face-to-face through the geometry Box spans at the pair's shared column — the difference is the zero-thickness sheet model's honest cost (each sheet's thickness collapses onto its node) plus any off-lattice registration. TWO MECHANISMS, and any pair naming an OWN cell above has the second one: a sheet registered at its MID-PLANE collapses onto one node and the gap reads mid-plane to mid-plane (a modelling trade — which face the plane sits on — not a fixable defect), while a sheet whose two FACES are registered fills one cell, and rfx zeroes only tangential E on a one-cell PEC sheet, so that cell's normal-E edge is live and its permittivity sits inside the cavity. Face registration therefore does not shorten the electrical cavity; it trades a collapsed sheet for a live gap, which reads WORSE when that cell is vacuum. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) — a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: none required for the sheet model itself (this is a quantified limit, not a defect); if the governing measure's delta matters for a claims-bearing number, resolve the sheet thickness with cells or correct the extracted quantity by the printed delta. For an OWN-cell term the eps_r printed for that cell IS addressable: it is whatever the geometry puts on the live edge (issue #702), so a stack whose dielectric abuts the sheet's faces leaves vacuum there — extend the abutting dielectric across the sheet's cell, or register the sheet's mid-plane instead of its faces, and that term goes. COVERAGE: examined 1 adjacent sheet pair(s) from 2 node-thin conductor sheet(s) on the nonuniform lane; physical stack computed from Box entries only — 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor between). STALE IF: re-summing the printed column disagrees with these numbers, or sheets stop being registered node-thin.
+  - 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' y: extent 38mm, worst face residual 500µm (1.32% of the extent, df/f ~ 1.32%); geometry[2] 'pec' x: extent 29.5mm, worst face residual 250µm (0.85% of the extent, df/f ~ 0.85%). OBSERVED: distance from each Box face to its nearest E-node on this run's own node coordinates; the rasterized edge quantizes onto a node, so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points — three different boards solved under one name; the same campaign's board survived at dx=50µm only because every patterned dimension happened to be an exact multiple of 50µm. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box entr(y/ies) on the nonuniform lane; 2 sub-cell axis extent(s) excluded (the node-thin snap is the live-edge/cavity checks' domain); 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals, or box faces stop rasterizing on the E-node lattice.
+  result = sim.run(
+/opt/conda/lib/python3.10/site-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+Done in 98.8s
+S-matrix shape: (1, 1, 101)
+
+rfx S11 analysis:
+  Passivity advisory |S11| < 1.05: PASS (max=0.971)
+  Local resonance dip: 2.320 GHz
+  |S11| at dip:        -1.61 dB
+  Dip contrast:        1.10 dB
+  Analytic target:     2.424 GHz
+  Frequency error:     4.27 %
+
+Saved: /root/work/regate-patch-selector/validation/crossval/05_patch_antenna.png
+
+======================================================================
+SUMMARY
+======================================================================
+  Measurement                             f_res (GHz)    Δ vs TL (%)
+  ------------------------------------ -------------- --------------
+  Analytic (Balanis TL model)                  2.4235              —
+  OpenEMS Harminv (port V(t))                  2.1900 -         9.64
+  OpenEMS S11 local dip                        2.1900   (secondary)
+  rfx Harminv (probe ringdown)                 2.3319 -         3.78
+  rfx lumped-port S11 local dip                2.3200 -         4.27
+
+  rfx internal agreement (Harminv vs lumped-S11): 0.51 %
+  rfx vs Balanis TL analytic:                    3.78 %
+  rfx vs OpenEMS Harminv:                        6.48 %
+
+  rfx mode identification (TM100 found, tol 12.50 %): PASS
+  openEMS mode identification:      FAIL
+      ! declared member TM010 is claimed by 2 measured modes ([1.7707, 1.9304] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM100 is claimed by 3 measured modes ([2.1942, 2.2589, 2.4762] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM110 is claimed by 2 measured modes ([3.2115, 3.3174] GHz) -- identification is ambiguous, refuse to name a resonance
+  rfx self-consistency (< 5 %):     PASS  (0.51 %)
+  rfx vs analytic (report, not gated): 3.78 %  (Balanis TL is 5-8% approximate)
+  rfx vs OpenEMS (< 20 %, smoke):   PASS  (6.48 %)
+  S11 passivity advisory (|S11| < 1.05): PASS  (max|S11|=0.971)
+  Overall:                          FAIL
+
+  DIAGNOSTIC REPORT (not an accuracy gate): rfx and OpenEMS Harminv
+  agree to 6.48 % (smoke bound 20 %) on the TM010 patch
+  resonance; rfx vs the Balanis TL estimate is 3.78 %
+  (reported, NOT gated — the TL model is 5-8 % approximate). This is a
+  coarse-mesh integration check; the smoke bound passes over two
+  different substrate geometries (#325), so it does not validate
+  accuracy — see the committed patch tests (manifest gate_paths).
+
+  Root-cause history (see research note 2026-04-11_crossval12):
+   • Before the ground-plane fix, rfx used `pec_faces={"z_lo"}`
+     to get a free z-boundary PEC. That turned the entire domain
+     floor into an infinite PEC sheet — a cavity, not an antenna —
+     and shifted the resonance 8 % high (2.618 vs 2.424 GHz).
+   • Before the PML fix, OpenEMS used `MUR` at ≈λ/4 margin which
+     reflected energy and made the effective cavity larger,
+     shifting the resonance 8 % low (2.231 vs 2.424 GHz).
+   • The two bugs pointed in opposite directions and gave a 17 %
+     inter-tool gap. With both fixed (rfx = explicit finite PEC box
+     BELOW substrate; OpenEMS = PML_8 + 50 mm margin) the remaining
+     Harminv gap in this run is 6.48 %.
+
+  NOTES:
+   • Reference tool is OpenEMS (not Meep) because it is the
+     canonical open-source patch-antenna reference.
+   • rfx single-cell lumped-port S11 dip is shallow (~2 dB) because
+     the single-cell port has parasitic reactance — use Harminv for
+     the clean resonance frequency, the S11 dip only as a
+     passivity / local-dip confirmation.
+
+  Output: 05_patch_antenna.png
+  JSON output: /root/workspace/claude-workspace/rfx/runs/issue812-cv05-20260902T054714Z/cv05_run.json
