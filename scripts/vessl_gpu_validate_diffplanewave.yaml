@@ -34,13 +34,13 @@ run: |-
   # POSIX-safe rc capture (the VESSL runner shell chokes on ${PIPESTATUS[0]}; see gpu_suite.yaml).
   set +e
   timeout 9000 python -m pytest -m slow -q -ra -p no:cacheprovider \
-    tests/test_forward_tfsf_fresnel_groundtruth.py \
+    tests/oracle/test_forward_tfsf_fresnel_groundtruth.py \
     tests/test_rcs_jax_differentiable.py \
-    tests/test_oblique_fresnel_magnitude.py \
-    tests/test_oblique_fresnel_phase.py \
+    tests/oracle/test_oblique_fresnel_magnitude.py \
+    tests/oracle/test_oblique_fresnel_phase.py \
     tests/test_rcs_reduction_inverse_design.py \
-    tests/test_ram_multilayer_inverse_design.py \
-    tests/test_ram_magnetic_mu_r_design.py \
+    tests/oracle/test_ram_multilayer_inverse_design.py \
+    tests/oracle/test_ram_magnetic_mu_r_design.py \
     > "$out/validate.log" 2>&1
   rc=$?
   set -e

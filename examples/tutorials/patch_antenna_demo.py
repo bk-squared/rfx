@@ -39,7 +39,7 @@ Honest accuracy at this deliberately coarse resolution (dx = 2 mm):
   substrate permittivity on collocated cells at the air/dielectric interface —
   recoverable with the opt-in interface treatment
   ``sim.run(..., subpixel_smoothing=True)`` (see
-  ``tests/test_patch_cavity_eps_oracle.py`` for the cavity-oracle evidence).
+  ``tests/oracle/test_patch_cavity_eps_oracle.py`` for the cavity-oracle evidence).
   The rest is the staircased PEC patch edge.
 - The far field is the observable that agrees: broadside directivity within
   0.08 dB of openEMS (6.71 vs 6.79 dBi), measured on this same geometry and

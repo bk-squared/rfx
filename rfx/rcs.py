@@ -205,7 +205,7 @@ def compute_rcs(
         measured on the PRE-fix exclusive kernels; not re-measured in-tree
         on the inclusive kernels) —
         i.e. the argmax azimuth of the broad specular lobe is NOT converged to
-        ~1 deg. See ``tests/test_oblique_rcs_specular.py``.
+        ~1 deg. See ``tests/oracle/test_oblique_rcs_specular.py``.
 
         ABSOLUTE oblique sigma (issue #471 F7, all numbers measured): the
         normalization is the MEASURED 1D-aux incident spectrum (see
@@ -332,7 +332,7 @@ def compute_rcs(
     # transverse y-axis is OPEN (CPML) and z is thin/periodic (z-invariant far
     # field), so the fields stay real and the NTFF/DFT read physical fields.
     #
-    # VALIDATED by the specular-peak gate (tests/test_oblique_rcs_specular.py):
+    # VALIDATED by the specular-peak gate (tests/oracle/test_oblique_rcs_specular.py):
     # the bistatic far-field of a finite PEC plate (normal +x) peaks at the
     # reflection-law specular direction phi = pi - theta_inc (theta_obs = pi/2)
     # across {0, 20, 40} deg, within the measured envelope in the theta_inc

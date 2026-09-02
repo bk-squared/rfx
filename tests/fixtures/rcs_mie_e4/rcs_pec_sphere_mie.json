@@ -23,7 +23,7 @@
     "commit": "post-276-97ca6a5",
     "date": "2026-07-07",
     "committed_test_point": {
-      "test": "tests/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
+      "test": "tests/oracle/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
       "ka": 0.9431,
       "f0_hz": 3000000000.0,
       "note": "one-off R2 go/no-go falsifier at the committed test point (f0=3 GHz, lambda/10, ka=0.9431 -- NOT on the ladder) measured |rfx - Mie| ~ 4.9 dB. HISTORICAL: measured with the pre-#276 extraction (before PR #279); kept as the falsifier record, NOT a committed gate. The committed sphere gate is +/-15 dB vs the GO limit; the post-fix envelope at these settings is in meta.finding."

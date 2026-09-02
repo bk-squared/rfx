@@ -2,7 +2,7 @@
 
 Provides the monostatic (backscatter) RCS and the bistatic pattern used by
 the committed sphere fixture (``fixture.json``) and its gate test
-(``tests/test_rcs_mie_fixture.py``).
+(``tests/oracle/test_rcs_mie_fixture.py``).
 
 Convention (Bohren & Huffman, e^{-i w t}):
   Riccati-Bessel:  psi_n(x)  = x j_n(x),      psi_n'(x)  = j_n(x) + x j_n'(x)

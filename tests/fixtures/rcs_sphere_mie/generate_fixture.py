@@ -15,7 +15,7 @@ Usage (from the repo root, CPU is sufficient — wall ~7 s):
 
     JAX_PLATFORMS=cpu python tests/fixtures/rcs_sphere_mie/generate_fixture.py
 
-The gate test ``tests/test_rcs_mie_fixture.py`` recomputes the rfx value
+The gate test ``tests/oracle/test_rcs_mie_fixture.py`` recomputes the rfx value
 live and asserts both |rfx - Mie| <= 1.0 dB and |rfx - fixture| small
 (anti-drift), so regenerate this file whenever the RCS/NTFF path changes.
 """

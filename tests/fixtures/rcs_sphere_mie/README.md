@@ -1,7 +1,7 @@
 # PEC-sphere exact-Mie monostatic RCS fixture (issue #276)
 
 Committed evidence for the `compute_rcs` monostatic-extraction fix and its
-gate test `tests/test_rcs_mie_fixture.py`.
+gate test `tests/oracle/test_rcs_mie_fixture.py`.
 
 ## Files
 

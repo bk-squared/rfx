@@ -795,7 +795,7 @@ def _split_flat_groups(
 # Physical validation harness
 
 def _load_validation_battery() -> Any:
-    path = ROOT / "tests" / "test_waveguide_port_validation_battery.py"
+    path = ROOT / "tests" / "oracle" / "test_waveguide_port_validation_battery.py"
     if not path.exists():
         raise SpikeUnavailable(f"missing validation hook: {path}")
     spec = importlib.util.spec_from_file_location("_rfx_validation_battery_spike", path)

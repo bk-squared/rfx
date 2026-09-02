@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 ENVELOPE = REPO / "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json"
 
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))

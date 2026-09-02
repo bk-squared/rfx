@@ -5,7 +5,7 @@ THE REFERENCE QUESTION
 ----------------------
 rfx ships an FDTD RCS pipeline (``rfx/rcs.py``, TFSF illumination + NTFF
 transform, Taflove & Hagness Ch. 8-9). Its committed tests
-(``tests/test_rcs.py``) gate the PEC sphere only against the geometrical-optics
+(``tests/oracle/test_rcs.py``) gate the PEC sphere only against the geometrical-optics
 (GO) large-sphere limit ``sigma = pi a^2`` with a generous +/-15 dB tolerance,
 and the PEC plate against a physical-optics (PO) estimate. Neither is an exact
 solution: at ``ka ~ 1`` the true monostatic RCS oscillates well away from the GO
@@ -75,7 +75,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURES = _REPO_ROOT / "tests/fixtures/rcs_mie_e4"
 _FIXTURE = "rcs_pec_sphere_mie.json"
 
-# Committed-test sphere geometry (tests/test_rcs.py::TestRCSPECSphere).
+# Committed-test sphere geometry (tests/oracle/test_rcs.py::TestRCSPECSphere).
 _RADIUS_M = 0.015
 _DOMAIN_M = 0.10
 _CPML = 8
@@ -241,7 +241,7 @@ def _meta(commit: str) -> dict[str, Any]:
         "commit": commit,
         "date": "2026-07-07",
         "committed_test_point": {
-            "test": "tests/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
+            "test": "tests/oracle/test_rcs.py::TestRCSPECSphere::test_rcs_pec_sphere_mie",
             "ka": 0.9431,
             "f0_hz": 3.0e9,
             "note": "one-off R2 go/no-go falsifier at the committed test point "

@@ -27,7 +27,7 @@ Two teeth, split by what the evidence supports:
   integral chain (DFT-plane energy + H-jump quadrature) has NOT itself
   reproduced a known-Q analytic case, so this red cannot be attributed to
   the operator — the independent free-standing-sheet transmission oracle
-  (tests/test_leontovich_alpha_oracle.py) pins the delivered Rs to +-4.4%
+  (tests/oracle/test_leontovich_alpha_oracle.py) pins the delivered Rs to +-4.4%
   frequency-flat. Next step is validating the Q_pred comparator on an
   analytic lossy-wall cavity, not touching the operator (R2).
 """

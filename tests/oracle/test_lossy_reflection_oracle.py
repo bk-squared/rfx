@@ -1,8 +1,8 @@
 """Reflection Γ off a LOSSY half-space vs the complex-ε Fresnel (#403 blind spot).
 
 rfx already gates the two neighbouring physics:
-  - bulk attenuation α(f) and cavity Q≈1/tanδ  → tests/test_lossy_material_validation.py
-  - LOSSLESS slab reflection Γ=(1-√εr)/(1+√εr) → tests/test_forward_tfsf_fresnel_groundtruth.py
+  - bulk attenuation α(f) and cavity Q≈1/tanδ  → tests/oracle/test_lossy_material_validation.py
+  - LOSSLESS slab reflection Γ=(1-√εr)/(1+√εr) → tests/oracle/test_forward_tfsf_fresnel_groundtruth.py
 It did NOT gate the REFLECTION off a lossy interface — whether the σ loss term correctly
 enters the surface impedance the wave reflects from. This is that binding oracle.
 

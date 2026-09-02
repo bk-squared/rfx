@@ -52,7 +52,7 @@ dx = 1 mm and (a,b,d) = (50,30,40) mm the effective cavity is EXACTLY
 pure Yee numerical dispersion, which is small (~60 cells/wavelength at the
 fundamental) and CONVERGES at 2nd order. The optional ``--converge`` leg halves
 dx and shows the error drop ~4x, proving the residual is genuine dispersion,
-not extraction luck. (Contrast ``tests/test_cavity.py``, which uses auto-dx on a
+not extraction luck. (Contrast ``tests/oracle/test_cavity.py``, which uses auto-dx on a
 non-exact-divisor domain and honestly reports ~1.9% from wall registration +
 coarse mesh + convergence to ~0.5% at 2x — same physics, different mesh
 hygiene.)
@@ -167,7 +167,7 @@ def extract_modes(res, target_freq: float, channels=("ex", "ey", "ez"),
     The window (default +/-3%) is far wider than any plausible discretization
     error, and harminv resolves << 0.1%, so nearest-to-analytic is an
     UNAMBIGUOUS mode ID, not a bin-snap toward the expected value (same
-    reasoning as tests/test_cavity.py).
+    reasoning as tests/oracle/test_cavity.py).
     """
     ts = np.asarray(res.time_series)
     dt = float(res.dt)

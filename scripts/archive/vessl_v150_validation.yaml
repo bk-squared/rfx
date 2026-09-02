@@ -43,7 +43,7 @@ run: |-
 
   echo ""
   echo "=== 3. Non-uniform mesh (xy + z + 2-port) ==="
-  pytest tests/test_nonuniform_api.py tests/test_nonuniform_convergence.py \
+  pytest tests/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py \
     tests/test_nonuniform_xy.py tests/test_twoport_wire_port.py \
     --tb=short -q || true
 

@@ -90,7 +90,7 @@ _QUANTIZED_GATE_FILES = [
 _MARGIN_CEIL_FILES = [
     REPO / "tests" / "crossval" / "test_waveguide_broad_e5_tolerance_envelope.py",
     REPO / "tests" / "crossval" / "test_waveguide_broad_e5_phase_tolerance_envelope.py",
-    REPO / "tests" / "test_waveguide_group_delay_tolerance_envelope.py",
+    REPO / "tests" / "oracle" / "test_waveguide_group_delay_tolerance_envelope.py",
 ]
 
 _CROSSVAL_SCRIPTS = [

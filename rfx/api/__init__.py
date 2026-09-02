@@ -1475,7 +1475,7 @@ class Simulation(
               unusable for shielding-effectiveness claims beyond ~60 dB.
               (Validated against the closed form ``T = 2Rs/(2Rs+eta0)``
               to within a few percent, frequency-flat —
-              tests/test_leontovich_alpha_oracle.py.)
+              tests/oracle/test_leontovich_alpha_oracle.py.)
             - The operator touches TANGENTIAL sheet edges only; the
               sheet-normal E component is never loaded (#677 removed the
               pre-existing isotropic-fold caveat).

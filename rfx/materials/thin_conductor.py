@@ -24,7 +24,7 @@ MODEL CONTRACT (#711, measured 2026-08-26)
 ------------------------------------------
 The lossy path is a PENETRABLE resistive film: one cell of folded volumetric
 conductivity transmits, reflects and absorbs per the exact conductive-slab
-solution (pinned by tests/test_sheet_film_rta_analytic.py: at Rs = eta0/2,
+solution (pinned by tests/oracle/test_sheet_film_rta_analytic.py: at Rs = eta0/2,
 measured band-mean R/T land within 0.01 of the analytic 0.25/0.25). It is NOT
 an opaque Leontovich boundary. The ``surface_impedance_f0`` path feeds this
 same penetrable update a thick-conductor Leontovich Rs — a valid loss model

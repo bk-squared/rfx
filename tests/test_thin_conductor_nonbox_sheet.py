@@ -577,7 +577,7 @@ def test_mesh_shape_patterned_sheet_leaves_its_clearance_hole_alone():
 
 def _guide_planar_sheet(zs):
     """The oracle guide's plate, as a non-Box mask shape of equal footprint."""
-    from tests.test_leontovich_alpha_oracle import DOMAIN as _D
+    from tests.oracle.test_leontovich_alpha_oracle import DOMAIN as _D
     return PlanarSheet(2, zs, (0.0, 0.0), (_D[0], _D[1]))
 
 

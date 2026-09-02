@@ -62,7 +62,7 @@ from build_waveguide_near_cutoff_group_delay import (  # noqa: E402
 # interior point) -- see build_waveguide_group_delay_tolerance_envelope test
 # for the re-derivation from the committed fixture. 0.03201 ns x ~1.3 margin
 # = 0.0416 ns, rounded up to 0.042 ns. Bounded on both sides by
-# tests/test_waveguide_group_delay_tolerance_envelope.py (>= worst measured
+# tests/oracle/test_waveguide_group_delay_tolerance_envelope.py (>= worst measured
 # like-for-like case so it never fails a validated case; <= worst x 1.5 so it
 # is not slack), the same discipline as MAX_TOL (magnitude) and
 # MAX_PHASE_TOL_DEG (Lane 1 phase).

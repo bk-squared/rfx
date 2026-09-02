@@ -5,7 +5,7 @@ committed files with no committed artifact behind them. This script reproduces
 the scans behind BOTH gate lanes (#573 committed the xy lane; #596 added the
 z lane and the domain-size sweeps):
 
-xy lane (tests/test_nonuniform_xy_cavity_accuracy.py, TM110):
+xy lane (tests/oracle/test_nonuniform_xy_cavity_accuracy.py, TM110):
 
   * xy resolution / grading scan -> the per-configuration envelope the xy gate
                                     uses (5 points, committed envelope 0.0282 %)
@@ -16,7 +16,7 @@ xy lane (tests/test_nonuniform_xy_cavity_accuracy.py, TM110):
   * graded-vs-ungraded at IDENTICAL extents -> the grading term itself
                                     (0.0282% vs 0.0084%, factor 3.35x)
 
-z lane (tests/test_nonuniform_cavity_accuracy.py, TM111 — the z-graded axis):
+z lane (tests/oracle/test_nonuniform_cavity_accuracy.py, TM111 — the z-graded axis):
 
   * z resolution / grading scan  -> the committed envelope 0.0252 % plus its
                                     four neighbours, including the dx = 2.0 mm
@@ -116,7 +116,7 @@ def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
 
 
 def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000) -> float:
-    """z-lane leg, imitating tests/test_nonuniform_cavity_accuracy.py: uniform
+    """z-lane leg, imitating tests/oracle/test_nonuniform_cavity_accuracy.py: uniform
     xy from ``domain=(a, b)`` + ``dx``, genuinely graded z from ``dz_profile``,
     analytic TM111 from NOMINAL a, b and the REALIZED graded z extent d —
     exactly the quantities the test feeds its closed form."""
@@ -204,7 +204,7 @@ def main(argv=None) -> int:
             print(f"  n_steps {s:6d} -> {e:.4f} %")
         print(f"  -> span {max(win.values()) - min(win.values()):.4f} pt")
 
-    # z lane: the TM111 z-graded configuration of tests/test_nonuniform_cavity_accuracy.py
+    # z lane: the TM111 z-graded configuration of tests/oracle/test_nonuniform_cavity_accuracy.py
     az, bz = 40e-3, 35e-3
     dzp_z = _graded(17.0, 2.0, dx, fine)
 

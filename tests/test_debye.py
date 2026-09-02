@@ -10,7 +10,7 @@ The frequency-dependent permittivity ε(ω) itself — that the Debye ADE
 reproduces the analytic Debye formula ε(ω) = ε_∞ + Σ Δε/(1 + jωτ) — is NOT
 re-measured here. It is validated end-to-end (FDTD R(f) of a Debye slab vs a
 rigorous transfer-matrix oracle fed the identical ε(ω)) in
-``tests/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_debye``
+``tests/oracle/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_debye``
 (``slow_physics`` opt-in lane). This file pins the ADE
 coefficient / stability / masking mechanics only.
 """

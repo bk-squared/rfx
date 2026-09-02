@@ -3,7 +3,7 @@
 Pins the mechanism of ``rfx.boundaries.pmc.apply_pmc_faces``. The
 quantitative PMC physics (λ/4 mode-ladder vs PEC-PEC λ/2 ladder) is
 asserted separately in
-``tests/test_boundary_pmc_oracle.py::test_pmc_lambda_quarter_two_peak_ladder``
+``tests/oracle/test_boundary_pmc_oracle.py::test_pmc_lambda_quarter_two_peak_ladder``
 — that oracle is what makes the PMC claim load-bearing; this file
 only guarantees the mechanism wiring.
 

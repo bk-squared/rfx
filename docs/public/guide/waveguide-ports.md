@@ -10,7 +10,7 @@ S-parameter claims are intentionally bounded: the documented full-matrix path is
 in `docs/guides/sparameter_support_matrix.md`.
 
 Current evidence level: Recommended for the documented WR-style rectangular-guide
-cases. The main gates are in `tests/test_waveguide_port_validation_battery.py`
+cases. The main gates are in `tests/oracle/test_waveguide_port_validation_battery.py`
 (empty-guide max `|S11| < 0.02`, passivity `< 1.02`, PEC-short
 `0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and
 `validation/crossval/11_waveguide_port_wr90.py` (analytic Airy/reference-plane

@@ -321,7 +321,7 @@ class TestRCSResultStructure:
 
 def test_compute_rcs_oblique_fence_kept_for_unsupported():
     """Post-#404-fork-(a): oblique ez now ROUTES through Method B (validated
-    specular pattern, tests/test_oblique_rcs_specular.py), but the fence is KEPT
+    specular pattern, tests/oracle/test_oblique_rcs_specular.py), but the fence is KEPT
     for the combos Method B does not support — non-ez polarization and
     non-uniform grids — which must still fail loud rather than return a number."""
     import pytest

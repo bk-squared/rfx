@@ -2,7 +2,7 @@
 
 `compute_rcs` returns a full bistatic `rcs_dbsm`/`rcs_linear` pattern, but only
 the monostatic (backscatter) bin is cross-validated against the exact Mie series
-(``tests/test_rcs_mie_fixture.py``). At the auto-placed default NTFF box
+(``tests/oracle/test_rcs_mie_fixture.py``). At the auto-placed default NTFF box
 (``ntff_offset=1``, deep in the reactive near field) the off-backscatter bins
 can be several dB to ~20 dB off (a spurious forward-oblique lobe, ~10 dB high vs
 Mie on the committed ka~1 sphere; ``tests/fixtures/rcs_sphere_mie/``).
@@ -16,7 +16,7 @@ false-alarming those tests.
 
 This test locks the honesty text (docstrings + public guide) so the doc-pin
 cannot be silently stripped. It asserts NO physics and changes NO gate; the
-quantitative gate stays in ``tests/test_rcs_mie_fixture.py`` (monostatic) and
+quantitative gate stays in ``tests/oracle/test_rcs_mie_fixture.py`` (monostatic) and
 ``tests/crossval/test_rcs_mie_reference_gates.py`` (envelope).
 """
 

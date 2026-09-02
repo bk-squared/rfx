@@ -455,7 +455,7 @@ def _pec_short_sim(*, conformal: bool):
     """Validation-battery-style PEC-short setup. Two ports + a thin
     PEC wall midway through the guide; with num_periods=40 the round
     trip settles inside the DFT window and |S11| → 1.0 for a correct
-    extractor. Mirrors ``tests/test_waveguide_port_validation_battery
+    extractor. Mirrors ``tests/oracle/test_waveguide_port_validation_battery
     ::test_pec_short_s11_magnitude`` so the gate is directly comparable."""
     import jax.numpy as jnp
 

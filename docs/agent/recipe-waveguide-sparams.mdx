@@ -179,7 +179,7 @@ def waveguide_slab_rt(
 canonical geometries (empty guide, PEC short, dielectric slab), compared
 against analytic Airy and Meep references. The script documents band-edge
 artifacts and analytic phase-convention caveats. Authoritative regression
-gates live in `tests/test_waveguide_port_validation_battery.py` and
+gates live in `tests/oracle/test_waveguide_port_validation_battery.py` and
 `tests/test_waveguide_twoport_contract_v1.py`.
 
 ## References
@@ -188,5 +188,5 @@ gates live in `tests/test_waveguide_port_validation_battery.py` and
 - rfx source: `rfx/api/_sparams.py::compute_waveguide_s_matrix`,
   `rfx/sources/` waveguide port implementations
 - rfx tests: `tests/test_normalization.py` (baseline accuracy),
-  `tests/test_conservation_laws.py` (reciprocity, unitarity)
+  `tests/oracle/test_conservation_laws.py` (reciprocity, unitarity)
 - Evidence and envelope: `docs/guides/sparameter_support_matrix.md`

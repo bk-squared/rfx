@@ -156,7 +156,7 @@ def run_gate() -> Stage1NUGateResult:
     # Gate DERIVED from a measured envelope via the shared #528/#539 policy
     # (envelope x ENVELOPE_GATE_MULTIPLIER, quantized up; quantum=100 in
     # percent units — the same usage as the #573 sibling gates in
-    # tests/test_nonuniform_xy_cavity_accuracy.py):
+    # tests/oracle/test_nonuniform_xy_cavity_accuracy.py):
     #
     #   measured residual, THIS configuration, fresh post-#562 (2026-08-09):
     #     0.0144 %  (harminv peak 5.300394 GHz vs analytic TM110 5.299632 GHz,

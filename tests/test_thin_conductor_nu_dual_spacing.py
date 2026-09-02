@@ -53,7 +53,7 @@ fold from the mesh.
 
 These gates do NOT re-open the O3 envelope: alpha here is ~0.858 Np/m against
 1.055 analytic on every profile, which is the R2-STOPped one-cell sheet-dynamics
-deficit recorded in tests/test_leontovich_alpha_oracle.py. What is gated here is
+deficit recorded in tests/oracle/test_leontovich_alpha_oracle.py. What is gated here is
 mesh INVARIANCE of the realized sheet, which is independent of that offset.
 """
 
@@ -70,7 +70,7 @@ from rfx.nonuniform import e_node_dual_spacings
 from rfx.runners.nonuniform import (assemble_materials_nu,
                                     build_nonuniform_grid)
 
-from tests.test_leontovich_alpha_oracle import (
+from tests.oracle.test_leontovich_alpha_oracle import (
     ABSORBER_N, ABSORBER_SIGMA_MAX, ABSORBER_X0, DOMAIN, DX, F0, FIT_X,
     SIGMA_BULK, SRC_X, THICKNESS, Z_SHEET_HI, Z_SHEET_LO, _fit_alpha,
 )

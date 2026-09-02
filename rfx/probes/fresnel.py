@@ -26,7 +26,7 @@ The algorithm:
    which corresponds to the cell with best phase-front alignment
    between scattered and incident measurement planes.
 
-This was validated in ``tests/test_fresnel_investigation.py``:
+This was validated in ``tests/oracle/test_fresnel_investigation.py``:
 the best per-cell spectral value matches analytic |R_TE| to ~2.6%,
 confirming the 2D auxiliary grid physics is accurate.
 """

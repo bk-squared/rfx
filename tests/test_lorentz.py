@@ -12,7 +12,7 @@ Lorentz permittivity, hence the below-resonance phase-velocity slowdown — is
 NOT re-measured here. It is validated end-to-end (FDTD broadband R(f) of an
 in-band-resonant Lorentz slab vs a rigorous transfer-matrix oracle fed the
 identical ε(ω)) in
-``tests/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_lorentz``
+``tests/oracle/test_dispersive_fresnel_validation.py::test_dispersive_fresnel_lorentz``
 (``slow_physics`` opt-in lane). A time-domain "slows propagation" gate is
 deliberately NOT kept here: on a small PEC-walled cavity the pulse-arrival
 peak is dominated by wall reflections (a domain-size-dependent artifact — the

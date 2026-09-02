@@ -67,7 +67,7 @@ def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
     ΔE/(1+χ³|E^n|²/ε_r)``): the increment form applies ε_eff to the E-update increment
     ``ΔE ∝ ∂ₓH``, which is 90° out of phase with E, so the χ³ correction hits the
     increment where it is smallest ⇒ it UNDERESTIMATES the self-phase-modulation index
-    shift. The true-CW absolute oracle (tests/test_kerr_spm_absolute_oracle.py, #446, using
+    shift. The true-CW absolute oracle (tests/oracle/test_kerr_spm_absolute_oracle.py, #446, using
     ``waveform='continuous_wave'`` so ⟨E²⟩=A²/2 is unambiguous) pins the D-based operator at
     ratio ≈0.95 of the (3/8)χ³A² textbook (residual ~5% = Yee dispersion), while the increment
     form scores ~0.33 there — the gate cleanly discriminates them. (An earlier pulsed-source

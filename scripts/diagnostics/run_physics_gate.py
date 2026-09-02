@@ -78,9 +78,9 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "convergence, and reciprocal-network invariants."
         ),
         tests=(
-            "tests/test_physics.py",
-            "tests/test_physics_integrity.py",
-            "tests/test_conservation_laws.py",
+            "tests/oracle/test_physics.py",
+            "tests/oracle/test_physics_integrity.py",
+            "tests/oracle/test_conservation_laws.py",
         ),
         claim_level="E1",
         validated_claims=(
@@ -130,7 +130,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         ),
         tests=(
             "tests/test_waveguide_port.py",
-            "tests/test_waveguide_port_validation_battery.py",
+            "tests/oracle/test_waveguide_port_validation_battery.py",
             "tests/test_waveguide_twoport_contract_v1.py",
             "tests/test_waveguide_forward.py",
             "tests/test_wr90_port_oracles.py",
@@ -296,7 +296,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         description="Slow CPML/PML reflectivity and absorber-regression checks.",
         tests=(
             "tests/test_cpml.py",
-            "tests/test_pml_reflectivity.py",
+            "tests/oracle/test_pml_reflectivity.py",
         ),
         pytest_args=("-m", "slow"),
         claim_level="E1",
@@ -337,7 +337,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "checks."
         ),
         tests=(
-            "tests/test_nonuniform_convergence.py",
+            "tests/oracle/test_nonuniform_convergence.py",
             "tests/test_subgrid_crossval.py",
             "tests/test_subpixel.py",
             "tests/test_subpixel_pec.py",

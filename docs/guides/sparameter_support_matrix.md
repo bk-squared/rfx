@@ -437,8 +437,8 @@ outside the single-dielectric-slab configuration described next.
   falsifiers (skipping the phase-unwrap step, dropping the leading minus
   sign, and using the wrong `L_eff` -- domain length instead of
   reference-plane separation -- in the analytic comparator) all red at
-  `>= 1.5 ns`. See `tests/test_waveguide_group_delay_near_cutoff.py`,
-  `tests/test_waveguide_group_delay_tolerance_envelope.py`, and
+  `>= 1.5 ns`. See `tests/oracle/test_waveguide_group_delay_near_cutoff.py`,
+  `tests/oracle/test_waveguide_group_delay_tolerance_envelope.py`, and
   `tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json`.
 - Neither lane covers PEC-short, T-junction, nonuniform, or multimode
   configurations for phase or group delay -- those remain uncharacterized.

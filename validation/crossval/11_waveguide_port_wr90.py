@@ -14,7 +14,7 @@ read the full table before drawing conclusions because:
     accuracy, not an absolute correctness gate.
 
 Authoritative rfx correctness gates live in
-``tests/test_waveguide_port_validation_battery.py`` and
+``tests/oracle/test_waveguide_port_validation_battery.py`` and
 ``tests/test_waveguide_twoport_contract_v1.py``.
 
 Three canonical geometries drive the rfx waveguide-port S-parameter
@@ -97,7 +97,7 @@ Status (2026-05-04):
     Meep-class on this geometry.
   - This script remains a diagnostic reporter for the slab/reference-plane
     envelope. The authoritative correctness gates live in
-    ``tests/test_waveguide_port_validation_battery.py``.
+    ``tests/oracle/test_waveguide_port_validation_battery.py``.
 
 Mesh / reference convention (issue #722, #724):
   #722 requires that when a cell size does not divide a declared dimension,

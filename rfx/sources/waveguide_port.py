@@ -699,7 +699,7 @@ def init_waveguide_port(
     # reciprocity at the cost of capping PEC-short closure.
     #
     # 2026-04-29 update: test_mesh_convergence_s21_scaled_cpml in
-    # tests/test_waveguide_port_validation_battery.py is a LIVE, currently
+    # tests/oracle/test_waveguide_port_validation_battery.py is a LIVE, currently
     # green committed gate under DROP, not xfail. The 2026-04-22..04-29 jitter
     # that briefly locked it as xfail was root-caused to Box.mask_on_coords
     # closed-closed semantics (issue #75), not to the DROP weight; see the

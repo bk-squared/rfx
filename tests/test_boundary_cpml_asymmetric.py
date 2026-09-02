@@ -10,7 +10,7 @@ These tests pin the PADDED-PROFILE MECHANISM shipped in
   the (pre-flipped) hi-face.
 
 The QUANTITATIVE asymmetric-CPML evidence is COEFFICIENT-LEVEL (σ_max),
-not a field-reflection ratio. ``tests/test_boundary_cpml_oracle.py`` pins
+not a field-reflection ratio. ``tests/oracle/test_boundary_cpml_oracle.py`` pins
 σ_max on the 4-layer face at exactly 4× the 16-layer face
 (``test_asymmetric_sigma_max_ratio_matches_analytic``), the polynomial
 grading shape, and that the per-face σ arrays differ

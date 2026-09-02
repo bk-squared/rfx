@@ -1,7 +1,7 @@
 """Cross-validation: rfx vs Meep for Kerr χ³ self-phase modulation (SPM), issue #446.
 
 Independent external-FDTD confirmation of rfx's absolute-magnitude Kerr-SPM oracle
-(tests/test_kerr_spm_absolute_oracle.py, which gives ratio 0.955±0.03 vs the analytic textbook
+(tests/oracle/test_kerr_spm_absolute_oracle.py, which gives ratio 0.955±0.03 vs the analytic textbook
 Δn=(3/8)χ³A²). Here Meep measures the SAME observable with the SAME comparator:
   - χ³-only matched region (index=1 background ⇒ linear impedance-matched, single traveling wave)
   - true-CW source (mp.ContinuousSource) ⇒ ⟨E²⟩=A²/2 well-defined at steady state
@@ -37,7 +37,7 @@ CHI3_X0, CHI3_X1 = 6.0, 42.0
 PROBE_X0, PROBE_X1 = 12.0, 36.0
 T_FILL = 140.0
 T_MEAS = 60.0
-RFX_RATIO = 0.955             # tests/test_kerr_spm_absolute_oracle.py (committed rfx reference)
+RFX_RATIO = 0.955             # tests/oracle/test_kerr_spm_absolute_oracle.py (committed rfx reference)
 
 
 def _meep_spm(chi3, amp=1.0):

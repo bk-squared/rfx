@@ -91,7 +91,7 @@ The current reference lane should remain tied to concrete reproducible evidence,
 - `python -m pytest tests/contracts/test_crossval_manifest_contract.py -q`
 - `JAX_ENABLE_X64=1 python validation/crossval/01_waveguide_bend.py`
 - `PYTHONPATH=. python scripts/run_crossval_cpu.py`
-- `JAX_PLATFORM_NAME=cpu python -m pytest tests/test_api.py tests/test_nonuniform_api.py tests/test_nonuniform_convergence.py -q`
+- `JAX_PLATFORM_NAME=cpu python -m pytest tests/test_api.py tests/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py -q`
 - `vessl run create -f scripts/vessl_crossval_external.yaml`
 - `vessl run create -f scripts/vessl_gpu_suite.yaml`
 

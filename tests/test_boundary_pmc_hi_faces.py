@@ -6,7 +6,7 @@ Background — discovered 2026-04-19 while building
 wall on ``_hi`` faces (array index ``-1``). In a Yee grid with forward-
 difference update, that cell does not drive the interior E curl, so the
 write was a silent no-op and the wall behaved as PEC. The pre-existing
-oracle (:mod:`tests.test_boundary_pmc_oracle`) only exercised PMC on
+oracle (:mod:`tests.oracle.test_boundary_pmc_oracle`) only exercised PMC on
 ``z_lo`` / ``y_lo`` / ``x_lo``, hiding the bug.
 
 Fix (commit pending): both single-device (``rfx/boundaries/pmc.py``) and

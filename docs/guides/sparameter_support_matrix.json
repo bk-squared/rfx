@@ -38,7 +38,7 @@
       ],
       "evidence_artifacts": [
         "tests/test_sparam.py",
-        "tests/test_physics.py::test_two_port_reciprocity",
+        "tests/oracle/test_physics.py::test_two_port_reciprocity",
         "tests/test_simulation.py::test_s_matrix_two_port_reciprocity",
         "tests/test_port_dump_replay.py",
         "scripts/diagnostics/generate_lumped_port_vi_dump.py",
@@ -211,7 +211,7 @@
         "missing multimode and arbitrary-junction validation"
       ],
       "evidence_artifacts": [
-        "tests/test_waveguide_port_validation_battery.py",
+        "tests/oracle/test_waveguide_port_validation_battery.py",
         "tests/test_waveguide_phase_gate.py",
         "tests/test_waveguide_twoport_contract_v1.py",
         "validation/crossval/11_waveguide_port_wr90.py",
@@ -230,8 +230,8 @@
         "tests/fixtures/waveguide_group_delay/wr340_near_cutoff_group_delay_envelope.json",
         "tests/crossval/test_waveguide_broad_e5_phase_gates.py",
         "tests/crossval/test_waveguide_broad_e5_phase_tolerance_envelope.py",
-        "tests/test_waveguide_group_delay_near_cutoff.py",
-        "tests/test_waveguide_group_delay_tolerance_envelope.py",
+        "tests/oracle/test_waveguide_group_delay_near_cutoff.py",
+        "tests/oracle/test_waveguide_group_delay_tolerance_envelope.py",
         "scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py",
         "scripts/diagnostics/waveguide_phase_falsifier_and_domain_invariance.py",
         "scripts/diagnostics/build_waveguide_near_cutoff_group_delay.py",
