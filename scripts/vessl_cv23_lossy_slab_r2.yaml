@@ -1,0 +1,167 @@
+name: rfx-cv23-lossy-slab-r2
+description: "cv23 lossy slab, ROUND 2 -- pre-declared in docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md section 12 before this run. Discriminators: the rfx dx/2 and dx/4 ladder on tand3 (fired arm), tand1 (control) and tand0p1 against the exact Yee-lattice prediction (0.0031 / 0.0008 mean |dR| on tand3), Meep 80 px/cm for tand0p1 (thickness-excess prediction 0.0078) and tand3 (lattice 0.0002), and the tand0p1 40 px/cm block drawn one Meep cell thinner (prediction 0.0003). Plus the full round-1 set unchanged: Meep D_conductivity primaries at 40 px/cm for the three sigma arms (tan delta 0.1 / 1 / 3 at 7 GHz) + the two wrong-scaling Meep falsifiers at 40 px/cm, the 10/20/40 px/cm ladder on all three arms, the rfx baseline (records derived 1067 / 1158 / 1181 steps, -40 dB adaptive witness, R/T/A gated), the 9 falsifiers (sigma x1.5, x0 per arm, the gain passivity arm, the two Meep-side arms; each must exit 1), the ladder summary, then the gate test (must be green). No window moves. Outputs chmod a+rX. Submit: vessl run create -f scripts/vessl_cv23_lossy_slab_r2.yaml"
+tags: [rfx, crossval, cv23, lossy, conductivity, meep, gap-lane-2, round-2]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/gap2-lossy-slab
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx cv23 lossy slab ROUND 2 (section 12 discriminators + the round-1 set) ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cv23-lossy-r2-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv23-lossy-r2-LATEST"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  # -- 1. stage the checkout (NFS is read-only for the pod) --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-cv23
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  # Provenance (cv22 review finding 6): the NFS checkout is an rsync without
+  # .git; the orchestrator writes the source commit to .staged_commit at
+  # staging time and the case script reads it first.
+  if [ -s "$WORK/.staged_commit" ]; then
+    cat "$WORK/.staged_commit" > "$OUT/commit.txt"
+  else
+    git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo unknown > "$OUT/commit.txt"
+  fi
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES="$WORK/validation/crossval/_23_lossy_results"
+  mkdir -p "$RES"
+
+  # -- 2. rfx environment --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__)"
+
+  # -- 3. Meep environment (conda-forge pymeep, separate env) --
+  CONDA=/opt/conda/bin/conda
+  if [ ! -x "$CONDA" ]; then
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+    sh /tmp/miniconda.sh -b -p /opt/miniconda-cv23
+    CONDA=/opt/miniconda-cv23/bin/conda
+  fi
+  "$CONDA" create -y -q -n cv23meep --override-channels -c conda-forge python=3.11 pymeep numpy scipy
+  MEEP_PY="$(dirname "$CONDA")/../envs/cv23meep/bin/python"
+  test -x "$MEEP_PY" || MEEP_PY="$("$CONDA" run -n cv23meep which python)"
+  "$MEEP_PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
+  MEEP="$MEEP_PY scripts/crossval/meep_cv23_lossy_slab.py"
+
+  run_meep() {  # name, then args
+    NAME=$1; shift
+    set +e
+    $MEEP "$@" --out-dir "$RES" > "$OUT/meep_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/meep_$NAME.rc"; tail -n 6 "$OUT/meep_$NAME.log" || true
+    echo "meep_${NAME}_rc=$rc"
+  }
+  run_rfx() {  # name, then args
+    NAME=$1; shift
+    set +e
+    "$PY" validation/crossval/23_lossy_slab_fresnel.py "$@" --out-dir "$RES" > "$OUT/rfx_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rfx_$NAME.rc"; grep -E "^\[|  record|  E2:|  E2 gates|  E4|FDTD|artifact|PASSED|FAIL|SKIP" "$OUT/rfx_$NAME.log" | tail -n 18 || true
+    echo "rfx_${NAME}_rc=$rc"
+  }
+
+  # -- 4. Meep PRIMARY legs at 40 px/cm (the converged rung, cv22 section 12) for the three arms,
+  #       and the two wrong-scaling falsifiers at the same resolution (pre-check recorded failed) --
+  for ARM in tand0p1 tand1 tand3; do
+    run_meep $ARM --arm "$ARM" --resolution 40
+  done
+  run_meep tand1__falsifier_sigma_2pi --arm tand1 --falsifier sigma_2pi --resolution 40
+  run_meep tand1__falsifier_sigma_no_eps --arm tand1 --falsifier sigma_no_eps --resolution 40
+
+  # -- 5. Meep ladder (10/20/40 px/cm on all three arms) + the section-12 discriminators:
+  #       80 px/cm for tand0p1 (thickness-excess prediction 0.0078) and tand3 (lattice 0.0002),
+  #       and tand0p1 at 40 px/cm with the block one Meep cell thinner (prediction 0.0003) --
+  for ARM in tand0p1 tand1 tand3; do
+    for R in 10 20 40; do
+      run_meep ${ARM}__res$R --arm "$ARM" --resolution $R --tag res$R
+    done
+  done
+  run_meep tand0p1__res80 --arm tand0p1 --resolution 80 --tag res80
+  run_meep tand3__res80 --arm tand3 --resolution 80 --tag res80
+  run_meep tand0p1__res40_thin1 --arm tand0p1 --resolution 40 --thickness-offset-cells -1 --tag res40_thin1
+  ls -la "$RES"
+
+  # -- 6. rfx baseline (round 2: EXPECTED to exit 1 again -- no window moved; recorded, not a
+  #       lane failure), the nine falsifiers (each must exit 1), then the section-12(a) dx ladder
+  #       (diagnostic arms: rc 0/1/2 all admissible, the reading is made by the gate test) --
+  run_rfx baseline
+  base_rc=$(cat "$OUT/rfx_baseline.rc")
+  ladder_fail=0
+  for ARM in tand3 tand1 tand0p1; do
+    for K in 2 4; do
+      run_rfx ${ARM}_dx$K --arms "$ARM" --dx-div $K --tag ${ARM}_dx$K --no-plots
+      rc=$(cat "$OUT/rfx_${ARM}_dx$K.rc")
+      case "$rc" in 0|1|2) ;; *) echo "ERROR: dx ladder arm ${ARM}_dx$K exited $rc"; ladder_fail=1;; esac
+    done
+  done
+  fals_fail=0
+  for F in tand0p1_sigma_x1p5 tand0p1_sigma_zero tand1_sigma_x1p5 tand1_sigma_zero tand3_sigma_x1p5 tand3_sigma_zero tand0p1_sigma_neg meep_tand1_sigma_2pi meep_tand1_sigma_no_eps; do
+    run_rfx falsifier_$F --falsifier "$F" --no-plots
+    rc=$(cat "$OUT/rfx_falsifier_$F.rc")
+    [ "$rc" -eq 1 ] || { echo "ERROR: falsifier $F exited $rc, expected 1"; fals_fail=1; }
+  done
+
+  # -- 7. ladder summary incl. the 80 px/cm rung (no FDTD); the full gate test (recorded: the
+  #       baseline replays are expected red, no window moved) and the round-2 structural tests
+  #       (-k r2: the lattice predictions and the replay readings; MUST be green) --
+  "$PY" validation/crossval/23_lossy_slab_fresnel.py --meep-ladder-summary --out-dir "$RES" | tee "$OUT/meep_ladder_summary.log"
+  set +e
+  "$PY" -m pytest -q tests/test_cv23_lossy_slab_gates.py tests/test_cv23_lossy_eps_mapping.py -rs -s \
+    > "$OUT/pytest_gates.log" 2>&1
+  gate_rc=$?
+  "$PY" -m pytest -q tests/test_cv23_lossy_slab_gates.py -k r2 -rs -s > "$OUT/pytest_r2.log" 2>&1
+  r2_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_gates.rc"; echo "$r2_rc" > "$OUT/pytest_r2.rc"
+  grep -E "cv23-summary|r2-summary|passed|failed|SKIPPED|Error" "$OUT/pytest_gates.log" | tail -n 60 || true
+  echo "gate_test_rc=$gate_rc r2_structural_rc=$r2_rc"
+
+  # -- 8. hand back, readable --
+  cp -r --no-preserve=ownership,mode "$RES" "$OUT/_23_lossy_results"
+  cp "$OUT/rfx_baseline.log" "$OUT/_23_lossy_results/r2_rfx_baseline.log" || true
+  cp "$OUT/commit.txt" "$OUT/_23_lossy_results/r2_commit.txt" || true
+  chmod -R a+rX "$OUT"
+  echo "=== verdict ==="
+  echo "baseline_rc=$base_rc (round 2: 1 expected, no window moved) falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) dx_ladder_ok=$([ "$ladder_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc r2_structural_rc=$r2_rc"
+  echo "artifacts: $OUT/_23_lossy_results  (section 13 reads them; nothing is committed by round 2 unless the PI decides)"
+  for f in "$OUT"/meep_*.rc; do
+    rc=$(cat "$f"); case "$rc" in 0) ;; *) echo "NOTE: $(basename "$f") = $rc";; esac
+  done
+  fail=0
+  case "$base_rc" in 0|1) ;; *) echo "ERROR: baseline exit $base_rc"; fail=1;; esac
+  [ "$fals_fail" -eq 0 ] || fail=1
+  [ "$ladder_fail" -eq 0 ] || fail=1
+  [ "$r2_rc" -eq 0 ] || { echo "ERROR: round-2 structural tests exit $r2_rc"; fail=1; }
+  for T in tand0p1__res80 tand3__res80 tand0p1__res40_thin1; do
+    [ "$(cat "$OUT/meep_$T.rc")" -eq 0 ] || { echo "ERROR: Meep discriminator leg $T failed"; fail=1; }
+  done
+  for ARM in tand0p1 tand1 tand3; do
+    [ "$(cat "$OUT/meep_$ARM.rc")" -eq 0 ] || { echo "ERROR: Meep primary leg $ARM failed"; fail=1; }
+  done
+  exit "$fail"

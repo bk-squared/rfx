@@ -453,3 +453,67 @@ derived record and the adaptive extension run, and the gain arm
 `G3_passivity = False` — the F4 construction is usable on this rig as far as
 the smoke can say; the −40 dB witness necessarily fails there (the box's
 CPML gate is 176 steps), as in cv22's smoke.
+
+## 12. Round 1 read (VESSL 369367257813) — two gates fired; the rfx residual is the Yee lattice's own term, derived exactly; round 2 pre-declared
+
+Artifacts (world-readable): `~/mnt/remilab-fs/personal-workspaces/claude-workspace/rfx/runs/cv23-lossy-20260902T115843Z/_23_lossy_results/` (`r1/` below); log `~/Documents/vessl-run-logs/369367257813_cv23-lossy-r1.log`; ran the tree at `04d6e88` (= `3400143` after the coordinator's rebase; `r1/rfx.json::commit`). Every number is by key. No artifact is committed by this section (the baseline fails; round 2 re-runs the full set); no window moves.
+
+### 12.1 What fired
+
+| arm | E2 (`r1/rfx.json::arms.<arm>`) | mean\|ΔR\| / \|ΔT\| / \|ΔA\| vs windows | signed ΔR at 4 / 7 / 10 GHz | witness | E4 (Meep 40 px/cm) |
+|---|---|---|---|---|---|
+| tand0p1 (direct) | PASS | 0.0039 / 0.0057 / 0.0020 vs 0.0100 / 0.0172 / 0.0272 (`A_tight_ok` true) | +0.0016 / −0.0007 / +0.0140 | 1067 steps, 0 ext., tails 8.9e-4 / 1.0e-3 | **G4_mean_R FAIL**: Meep-vs-TMM `::meep.mean_dR_meep_tmm_gated = 0.0157` vs 0.0100 (1.57×; the coordinator's 0.0106 was the leg's diagnostic on Meep's own bins); T 0.0113 / A 0.0066 pass; rfx-vs-Meep 0.0127 / 0.0076 / 0.0059 pass (G5) |
+| tand1 (api) | PASS | 0.0051 / 0.0018 / 0.0033 | +0.0026 / +0.0050 / +0.0077 | 1158, 0 ext., 9.8e-5 / 2.8e-5 | all pass: Meep-vs-TMM 0.0031 / 0.0035 / 0.0033; rfx-vs-Meep 0.0045 / 0.0018 / 0.0063 |
+| tand3 (api) | **G2_R FAIL**: `::mean_dR_gated = 0.0126` vs `::mean_window_R = 0.0102` (1.24×); per-bin max 0.0190 < 0.074; T 0.0001 (vacuous, as declared); A 0.0124 vs 0.0272 pass, `A_tight_ok` true | | **+0.0067 / +0.0124 / +0.0190** (monotone, ∝ f) | 1181, 0 ext., 8.7e-5 / 1.0e-5 | all pass — but read the numbers: **Meep-vs-TMM `::meep.mean_dR_meep_tmm_gated = 0.0009`**, rfx-vs-Meep `::meep.mean_dR_rfx_meep_gated = 0.0117`. Meep at 40 px/cm agrees with the transfer matrix to 0.001; rfx is 0.012 above BOTH. The premise "rfx and Meep sit together ~0.01 from TMM" does not hold; the TMM/interface model is not implicated |
+
+Falsifiers: all nine `verdict.exit_code = 1` as pre-declared (`r1/rfx__falsifier_tand0p1_sigma_neg.json::arms.tand0p1.gates.G3_passivity = false`, mean|ΔA| 0.62; the σ×1.5 / σ = 0 arms reproduce §6's margins to two digits: 0.008/0.092, 0.036/0.214, 0.072/0.036, 0.081/0.778, 0.099/0.001, 0.242/0.830). The API path assembled and matched the direct arrays on both API arms (`::arms.tand1.materials.api_equals_direct = true`). Meep pre-checks 5.5e-17 / 1.6e-16 / 1.9e-16; both wrong-scaling legs pre-checked failed. Witness predictions of §8 held (0 extensions everywhere; tails −61 to −100 dB, well under the predicted −43 to −54: the starting-level assumption was again the conservative one). Meep ladder (`r1/meep_ladder_summary.json::arms.<arm>.orders`): tand0p1 R 1.00 / 1.01, tand1 1.03 / 1.00 (first order, as cv22), **tand3 R 1.95 / 1.90 (second order)** — Meep's first-order term is absent on the surface-impedance arm.
+
+### 12.2 The rfx residual, derived a priori: the exact 1-D Yee lattice of the staircase slab
+
+The rig at normal incidence with periodic y IS a 1-D Yee lattice: E nodes `515..524` carry (ε', σ), all others vacuum. Its time-harmonic solution is exact and needs no measurement. With `z = e^{jωdt}`, `ω̂ = 2 sin(ωdt/2)/dt`, `x = ωdt/2`, the two update equations become
+
+    H_{i+1/2} − H_{i−1/2} = dx (jω̂ ε_i + σ_i cos x) E_i,      E_{i+1} − E_i = dx (jω̂ μ0) H_{i+1/2},
+
+marched from a unit transmitted lattice plane wave (vacuum lattice wavenumber `k = (2/dx) asin(ω̂dx/2c)`) back to the incidence side, where two nodes are decomposed into incident + reflected (`dispersive_eps.yee_lattice_slab_rt`; it converges to `tmm_slab_rt` second-order: mean|ΔR| 0.019 → 1.2e-3 → 4.6e-5 → 1.8e-6 at dx = 1, 0.25, 0.05, 0.01 mm on tand3). It contains at once the slab's bulk numerical dispersion (`|n| k0 dx = 0.64` at 10 GHz on tand3 — ten cells per wavelength inside the conductor), the node interface, and the σ warp of §3.
+
+Evaluated on the r1 bin grid at the rig's dx = 1 mm, dt = 2.335 ps, against the r1 measurement (`r1/rfx.json::arms.<arm>.{R_rfx,T_rfx}`):
+
+| arm | lattice − TMM: mean\|ΔR\| / \|ΔT\| / \|ΔA\| (signed ΔR at 4 / 7 / 10 GHz) | measured rfx − TMM | **\|rfx − lattice\|** mean / max (R) |
+|---|---|---|---|
+| tand0p1 | 0.00392 / 0.00567 / 0.00194 (+0.0016 / −0.0007 / +0.0140) | 0.0039 / 0.0057 / 0.0020 | **3e-5 / 1.4e-4** |
+| tand1 | 0.00509 / 0.00176 / 0.00334 (+0.0026 / +0.0050 / +0.0078) | 0.0051 / 0.0018 / 0.0033 | **2e-5 / 5e-5** |
+| tand3 | 0.01256 / 0.00011 / 0.01244 (+0.0067 / +0.0124 / +0.0189) | 0.0126 / 0.0001 / 0.0124 | **3e-5 / 8e-5** |
+
+The measurement is the lattice solution to 3e-5 in the mean on every arm and every observable, bin by bin (the ∝ f trend on tand3 is `(|n| k0 dx)² ∝ f²·(σ/ωε0) ∝ f`). What is left after the lattice term — the truncation / CPML / probe residual the cv04 envelope was meant to cover — is ≤ 1.4e-4. Read plainly: **cv04's committed 0.0066 was itself mostly the lattice term of the lossless ε = 4 slab** (|n| = 2), and §4's assumption that the cv04 window transfers to |n| = 3–4.6 is what fired, exactly as §10(i) allowed. rfx's σ path (§3) is confirmed at the 1e-4 level; nothing in `update_e`, the API assembly or the R extraction is implicated.
+
+The coordinator's two candidate mechanisms, computed a priori as asked (gated-band mean|ΔR| through the TMM): a ±dx/2 thickness error gives 0.031 / 0.006 / **0.0005** on tand0p1 / tand1 / tand3 — the surface-impedance arm is thickness-blind, so an interface shift cannot be its 0.0126 — and half-weighted interface cells (1 | 8 | 1 mm at (ε'+1)/2, σ/2) give 0.058 / 0.017 / 0.022 with the **wrong sign** on tand3 (−0.022 vs the measured +0.0126). Neither is the mechanism; the lattice term is.
+
+### 12.3 Meep: the tand3 ladder is the same lattice term; the tand0p1/tand1 first-order term is a one-cell thickness excess
+
+The same lattice solution at Meep's (dx = a/res, Courant 0.5) predicts tand3 Meep-vs-TMM mean|ΔR| **0.0127 / 0.0031 / 0.0008** at 10 / 20 / 40 px/cm; measured `r1/meep_ladder_summary.json::arms.tand3.rungs.{10,20,40}.mean_dR_meep_tmm_gated` = **0.0131 / 0.0034 / 0.0009**. At the same dx = 1 mm, Meep (0.0131) and rfx (0.0126) carry the same term. For tand0p1 / tand1 the lattice predicts only 0.0040 / 0.0052 at 10 px/cm, while Meep measured 0.0633 / 0.0128 — the first-order excess. Hypothesis, a priori: Meep's block `[−d/2, d/2]` includes the E nodes ON both faces (inclusive containment, `eps_averaging` off), so it realizes **d + a/res**. TMM(d + a/res) − TMM(d), gated mean|ΔR| / |ΔT|:
+
+| arm | 10 px/cm (pred / measured) | 20 | 40 | **80 (prediction)** |
+|---|---|---|---|---|
+| tand0p1 | 0.0593 / 0.0427 vs 0.0633 / 0.0473 | 0.0307 / 0.0219 vs 0.0316 / 0.0230 | 0.0155 / 0.0110 vs 0.0157 / 0.0113 | **0.0078 / 0.0055** |
+| tand1 | 0.0100 / 0.0124 vs 0.0128 / 0.0140 | 0.0057 / 0.0067 vs 0.0063 / 0.0071 | 0.0030 / 0.0034 vs 0.0031 / 0.0035 | 0.0015 / 0.0018 |
+| tand3 | 0.0008 vs 0.0131 (lattice-dominated) | 0.0002 | 0.0001 | lattice 0.0002 |
+
+(The tand0p1 10 px/cm row is 6 % short because the lattice term, 0.004, adds to it there; the 20 and 40 rows agree to 3 %.) The reviewer's cv22 warning ("converged by one rung only") is now a mechanism: the 40 px/cm reference on the etalon arms carries a d + 0.25 mm slab.
+
+### 12.4 Round 2 — pre-declared before the run (`scripts/vessl_cv23_lossy_slab_r2.yaml`)
+
+**No window moves.** Every r1 leg is re-run unchanged (baseline expected to exit 1 again on tand3 G2_R and tand0p1 G4_mean_R; nine falsifiers each 1; Meep 40 px/cm primaries; 10/20/40 ladders), plus:
+
+**(a) rfx dx ladder** (`--dx-div 2|4 --tag <arm>_dx<K>`, geometry identical in cells, record re-derived per rung): tand3 (the fired arm), tand1 (control), tand0p1 (completeness). Predictions from the lattice term alone (gated mean |ΔR| / |ΔT| / |ΔA|), locked in `tests/test_cv23_lossy_slab_gates.py::_R2_LATTICE_PRED`:
+
+| arm | dx (r1 measured) | **dx/2** | **dx/4** |
+|---|---|---|---|
+| tand3 | 0.0126 / 0.0001 / 0.0124 | **0.0031 / 0.00003 / 0.0031** | **0.0008 / 0.00001 / 0.0008** |
+| tand1 | 0.0051 / 0.0018 / 0.0033 | 0.0013 / 0.0004 / 0.0008 | 0.0003 / 0.0001 / 0.0002 |
+| tand0p1 | 0.0039 / 0.0057 / 0.0020 | 0.0010 / 0.0014 / 0.0005 | 0.0002 / 0.0004 / 0.0001 |
+
+Reading rules: **lattice-confirmed** iff mean|rfx − lattice(dx/K)| ≤ 3e-4 (10× the r1 residual) in R and T on every rung — the fall is then second order (×0.25, ×0.062) by construction; **first-order** iff the ratio to r1 is in [0.4, 0.6] at dx/2 and [0.2, 0.35] at dx/4 with the lattice residual above the bar (an interface term outside the lattice model — would contradict the 3e-5 match, so unlikely, but pre-declared); **no-fall** ≥ 0.7 (then the σ update or the extraction path in a strongly absorbing slab, and the r1 match would have been a coincidence); anything else "unresolved", not fitted. At dx/2 the tand3 arm's mean|ΔR| 0.0031 sits inside the 0.0102 window with 3× margin — a diagnostic reading, not a re-gate.
+
+**(b) Meep 80 px/cm** for tand0p1 and tand3 (`--resolution 80 --tag res80`; Courant 0.5; ladder summary extended to 10/20/40/80). Predictions: tand0p1 Meep-vs-TMM mean|ΔR| **0.0078** (first order, thickness excess d + 0.125 mm) — inside the 0.0100 G4 mean by only 1.28×; if it lands there the residual is Meep's own model of the same interface and 80 px/cm passes for that reason, which is said here rather than by choosing the resolution; tand3 **0.0002–0.0003** (second order, lattice). **(c) The decisive thickness test**: tand0p1 at 40 px/cm with the block drawn **one Meep cell thinner** (`--thickness-offset-cells -1 --tag res40_thin1`, d − 0.25 mm; monitors and source unmoved). Prediction: Meep-vs-TMM falls from 0.0157 to the lattice level **≈ 0.0003 in R, 0.0004 in T**. If it does, Meep's first-order term (here and in cv22) is the inclusive-node thickness excess; if it stays ~0.016 or flips sign at the same size, the hypothesis is wrong and the 80 px/cm reading stands alone.
+
+**(d) What §13 may propose, PI decides — nothing is changed by this run.** If (a) reads lattice-confirmed on all rungs: the term `W_lat(f) = |lattice(f; ε', σ, d, dx, dt) − TMM(f)|` is an a priori, measurement-free function of the declared material and the rig — the same class as `W_ADE` (cv22 §3) and `W_σ` (§3) — and §13 will put to the PI (i) carrying it as a named E2/E4 window term for R, T, A on every arm (the cv04 envelope then covers only the ≤ 1.4e-4 residual it was actually measured to cover), against (ii) declaring dx = 1 mm under-resolved for |n| ≥ 3 and running the tand3 arm at dx/2 as its primary with the windows untouched; and, if (c) confirms, (iii) drawing the Meep D_conductivity block at d − a/res on the etalon arms (a documented Meep-side model correction) against (iv) 80 px/cm with its 1.28× margin stated. Refutations accepted: (a) not lattice-confirmed on any rung (then §12.2's identification is withdrawn and the H3 branch reopens with the extraction path as the suspect); (c) not falling (then §12.3's mechanism is withdrawn); a −40 dB witness failing on a refined rung (record re-derived per rung, as in cv22 r2). Cost: dx/4 on the nx-1000 rig ≈ 64× the r1 arm (~30 s each); Meep 80 px/cm ≈ 4× the 40 px/cm leg.
