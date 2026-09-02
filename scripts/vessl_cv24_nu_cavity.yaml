@@ -1,0 +1,108 @@
+name: rfx-cv24-nu-cavity
+description: "cv24 graded-z PEC cavity eigenfrequencies vs the exact Pozar spectrum (E2) -- pre-declared in docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md before this run. Four arms (uniform 1 mm control, single graded band, small-large-small-large, uniform 0.5 mm cost control), each gated on cv14's tolerance, the #810 allowance on the equal-dt spatial eigenvalue, the exact-lattice prediction to 4 ppm, mode count 7 by (m,n,l), the #785 F-S1 energy envelope and two-window stationarity; five falsifiers (ratio2_abrupt, metric_defect, grading_at_wall, extent_plus_one_fine_cell, mode_count_drop_te102), each must exit 1; the gate test must be green on the produced set. CPU: the largest arm is 480 000 cells x 33 587 steps (~1 min of JAX CPU); the harminv windows on 8000 raw samples (no decimation) are ~85 s per arm; no GPU needed. Exit 0 iff baseline 0 / every falsifier 1 / gate test 0. Submit: vessl run create -f scripts/vessl_cv24_nu_cavity.yaml"
+tags: [rfx, crossval, cv24, nonuniform, graded-mesh, cavity, pozar, gap-lane-3]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "8"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/gap3-nu-observable
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx cv24 graded-z PEC cavity vs Pozar (round 1; note sections 2-7) ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cv24-nu-cavity-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv24-nu-cavity-LATEST"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  # -- 1. stage the checkout (NFS is read-only for the pod) --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-cv24
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  # Provenance (cv22 review finding 6): the NFS checkout is an rsync without
+  # .git; the orchestrator writes the source commit to .staged_commit at
+  # staging time and the case script reads it first.
+  if [ -s "$WORK/.staged_commit" ]; then
+    cat "$WORK/.staged_commit" > "$OUT/commit.txt"
+  else
+    git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo unknown > "$OUT/commit.txt"
+  fi
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES="$WORK/validation/crossval/_24_nu_cavity_results"
+  mkdir -p "$RES"
+
+  # -- 2. rfx environment (CPU jax; no external solver in this case) --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__, jax.default_backend())"
+  nproc || true
+
+  run_rfx() {  # name, then args
+    NAME=$1; shift
+    set +e
+    "$PY" validation/crossval/24_nu_rect_cavity_pozar.py "$@" --out-dir "$RES" > "$OUT/rfx_$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/rfx_$NAME.rc"
+    grep -E "^\[|^  (TE|TM)[0-9]{3} |clusters in band|energy:|gates:|falsifier:|artifact:|PASSED|FAIL|SMOKE|Error|Traceback" "$OUT/rfx_$NAME.log" | tail -n 40 || true
+    echo "rfx_${NAME}_rc=$rc"
+  }
+
+  # -- 3. the artifact-free half of the gate test first: every declared number
+  #       re-derived, the 3-D separation, the identifier -- a red here is a
+  #       rig defect and nothing should run --
+  "$PY" -m pytest -q tests/test_cv24_nu_cavity_gates.py -rs -p no:cacheprovider > "$OUT/pytest_predeclared.log" 2>&1 || { tail -n 30 "$OUT/pytest_predeclared.log"; echo "ERROR: pre-declaration witnesses red"; exit 4; }
+  tail -n 3 "$OUT/pytest_predeclared.log"
+
+  # -- 4. baseline: the four arms, every gate, energy audits (expect exit 0) --
+  run_rfx baseline
+  base_rc=$(cat "$OUT/rfx_baseline.rc")
+
+  # -- 5. the five pre-declared falsifiers (each = uniform control + the defective arm; each MUST exit 1) --
+  fals_fail=0
+  for F in ratio2_abrupt metric_defect grading_at_wall extent_plus_one_fine_cell mode_count_drop_te102; do
+    run_rfx falsifier_$F --falsifier "$F"
+    rc=$(cat "$OUT/rfx_falsifier_$F.rc")
+    [ "$rc" -eq 1 ] || { echo "ERROR: falsifier $F exited $rc, expected 1"; fals_fail=1; }
+  done
+
+  # -- 6. the full gate test on the produced set (artifact replay must be green, no skips on rfx*.json) --
+  set +e
+  "$PY" -m pytest -q tests/test_cv24_nu_cavity_gates.py -rs -s -p no:cacheprovider > "$OUT/pytest_gates.log" 2>&1
+  gate_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_gates.rc"
+  grep -E "cv24-summary|passed|failed|SKIPPED|Error" "$OUT/pytest_gates.log" | tail -n 30 || true
+  echo "gate_test_rc=$gate_rc"
+
+  # -- 7. hand back, readable --
+  cp -r --no-preserve=ownership,mode "$RES" "$OUT/_24_nu_cavity_results"
+  cp "$OUT/rfx_baseline.log" "$OUT/_24_nu_cavity_results/r1_rfx_baseline.log" || true
+  cp "$OUT/commit.txt" "$OUT/_24_nu_cavity_results/r1_commit.txt" || true
+  chmod -R a+rX "$OUT"
+  echo "=== verdict ==="
+  echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
+  echo "artifacts: $OUT/_24_nu_cavity_results  (commit into validation/crossval/_24_nu_cavity_results/ and fill artifact_paths)"
+  fail=0
+  [ "$base_rc" -eq 0 ] || { echo "ERROR: baseline exit $base_rc"; fail=1; }
+  [ "$fals_fail" -eq 0 ] || fail=1
+  [ "$gate_rc" -eq 0 ] || { echo "ERROR: gate test exit $gate_rc"; fail=1; }
+  exit "$fail"
