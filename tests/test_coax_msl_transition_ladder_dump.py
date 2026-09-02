@@ -60,14 +60,15 @@ _NUMERIC_FIELDS = (
     "s_params", "freqs", "reference_planes", "z0_ref", "cond_a",
     "cond_a_equilibrated", "recurrence_residual", "fit_residual", "gamma",
     "a_inc", "b_out", "settling_db",
-    # Issue #823 ladder self-consistency witness. Classified INTO the
-    # byte-identity witness (not as an opt-in payload): both are computed
-    # from the same ladder voltages every run produces, unconditionally, so
-    # the read-only ``return_ladder_voltages`` channel must not move them
-    # either. Report-only diagnostics -- see
-    # tests/test_msl_ladder_standoff.py for what they measure.
-    "ladder_split_gamma_dev", "ladder_split_reflection_decades",
 )
+
+# Issue #823 ladder self-consistency witness: OPT-IN PAYLOADS carried by the
+# same ``return_ladder_voltages`` flag as the dump (a Python-loop refit over
+# the very arrays the dump exposes; None on a default call). Report-only
+# diagnostics -- see tests/test_msl_ladder_standoff.py for what they measure.
+# Their presence/absence is asserted below; their VALUES cannot be in the
+# byte-identity witness because they only exist on one side of it.
+_LADDER_WITNESS_FIELDS = ("ladder_split_gamma_dev", "ladder_split_reflection_decades")
 
 
 def _ladder_dump_scratch_flux_entries():
@@ -124,11 +125,17 @@ def _assert_numerically_identical(r_a, r_b, label):
 
 
 def test_return_ladder_voltages_does_not_perturb_s(_abc):
-    """Off vs on: every numeric field bit-identical; off yields no dump."""
+    """Off vs on: every numeric field bit-identical; off yields no dump and
+    no ladder witness; on yields both."""
     off, on, _ = _abc
     assert off.ladder_voltages is None
     assert on.ladder_voltages is not None
     _assert_numerically_identical(off, on, "ladders off vs on")
+    n_f = len(on.freqs)
+    for name in _LADDER_WITNESS_FIELDS:
+        assert getattr(off, name) is None, name
+        arr = np.asarray(getattr(on, name))
+        assert arr.shape == (2, 2, n_f) and arr.dtype == np.float64, (name, arr.shape, arr.dtype)
 
 
 def test_ladder_dump_and_flux_opt_ins_compose(_abc):
@@ -262,7 +269,7 @@ def test_ladder_dump_witness_covers_every_numeric_field():
 
     names = {f.name for f in dataclasses.fields(CoaxMSLTransitionResult)}
     non_numeric = {"port_names", "status"}
-    opt_in_payloads = {"flux_monitors", "ladder_voltages"}
+    opt_in_payloads = {"flux_monitors", "ladder_voltages", *_LADDER_WITNESS_FIELDS}
     assert names == set(_NUMERIC_FIELDS) | non_numeric | opt_in_payloads, (
         sorted(names ^ (set(_NUMERIC_FIELDS) | non_numeric | opt_in_payloads))
     )

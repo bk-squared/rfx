@@ -1264,7 +1264,7 @@ def main() -> int:
                      "to; the same issue-#80 Fix B constant add_msl_port already "
                      "floors its AUTO probe offset at. REPORT-ONLY here."),
         }
-        print(f"\n=== #823 MSL ladder standoff (report-only) ===")
+        print("\n=== #823 MSL ladder standoff (report-only) ===")
         print(f"  recipe (count/start/spacing) : "
               f"{kwargs['msl_probe_count']}/{kwargs['msl_probe_start_cells']}/"
               f"{kwargs['msl_probe_spacing_cells']}")
@@ -1284,9 +1284,19 @@ def main() -> int:
     # Report-only, and DETECTED rather than assumed: on a checkout where the
     # production half of #823 is not merged the result carries no such fields
     # and the driver says so instead of failing (the same pattern
-    # --dump-ladders uses for return_ladder_voltages).
+    # --dump-ladders uses for return_ladder_voltages). The witness is opt-in
+    # WITH return_ladder_voltages (--dump-ladders): without it the fields are
+    # present but None, and the driver says that too.
     split_fields = ("ladder_split_gamma_dev", "ladder_split_reflection_decades")
-    if all(hasattr(result, f) for f in split_fields):
+    if all(hasattr(result, f) for f in split_fields) and \
+            any(getattr(result, f) is None for f in split_fields):
+        ext["ladder_split_witness"] = (
+            "NOT COMPUTED: the witness is opt-in with return_ladder_voltages "
+            "(--dump-ladders / DUMP_LADDERS=1) and this run had it off; the "
+            "solve ran UNCHANGED and no legacy key is affected"
+        )
+        print(f"\n  #823 ladder self-consistency witness: {ext['ladder_split_witness']}")
+    elif all(hasattr(result, f) for f in split_fields):
         ext["ladder_split_witness"] = {f: _pd(np.asarray(getattr(result, f)))
                                        for f in split_fields}
         print("\n=== #823 ladder self-consistency witness (disjoint halves; report-only) ===")

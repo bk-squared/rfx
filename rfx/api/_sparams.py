@@ -6701,8 +6701,9 @@ class _SparamMixin:
             ``UserWarning`` naming the offending probes. REPORT-ONLY:
             nothing is refused. Read it together with
             ``result.ladder_split_gamma_dev`` /
-            ``result.ladder_split_reflection_decades``, which say whether
-            the ladder actually disagrees with itself.
+            ``result.ladder_split_reflection_decades`` (computed when
+            ``return_ladder_voltages=True``, ``None`` otherwise), which say
+            whether the ladder actually disagrees with itself.
 
         ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
         an ENERGY-WITNESS channel, not an extractor change. Pass the entry
@@ -6730,13 +6731,21 @@ class _SparamMixin:
         LABEL. The dict is documented field-by-field on
         :class:`~rfx.api._spec.CoaxMSLTransitionResult`. It is built from
         ``.copy()`` of arrays that are complete before, and consumed by,
-        :func:`_assemble_coax_msl_transition_from_voltages`, and nothing else
-        in this method reads the flag, so every returned number is
-        bit-identical with the option off or on — gated by
-        ``tests/test_coax_msl_transition_ladder_dump.py::
+        :func:`_assemble_coax_msl_transition_from_voltages`, so every
+        S-parameter number is bit-identical with the option off or on —
+        gated by ``tests/test_coax_msl_transition_ladder_dump.py::
         test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
         the same discipline as the flux witness above; the round-trip
         assertion there also proves the dump IS what the assembler consumed).
+        The same flag switches on the issue-#823 LADDER SELF-CONSISTENCY
+        WITNESS, ``result.ladder_split_gamma_dev`` /
+        ``result.ladder_split_reflection_decades`` (``None`` when the flag
+        is off): a disjoint-half refit of each ladder, i.e. a Python loop of
+        2 drives x n_freqs x 2 matrix pencils per ladder over exactly the
+        arrays the dump exposes. It is computed AFTER the assembler from
+        those arrays and moves no S-parameter number; it is opt-in so that
+        a default call pays for no extra pencil solves. Documented
+        field-by-field on :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
 
         Returns
         -------
@@ -7146,9 +7155,10 @@ class _SparamMixin:
                 "ladder inside [junction + 5·h_sub, feed - 5·h_sub] by raising "
                 "msl_probe_start_cells and/or lowering msl_probe_count, and "
                 "read result.ladder_split_gamma_dev / "
-                "result.ladder_split_reflection_decades for whether this "
-                "ladder actually disagrees with itself. REPORT-ONLY: nothing "
-                "is refused.",
+                "result.ladder_split_reflection_decades (computed when "
+                "return_ladder_voltages=True) for whether this ladder "
+                "actually disagrees with itself. REPORT-ONLY: nothing is "
+                "refused.",
                 stacklevel=2,
             )
 
@@ -7305,12 +7315,19 @@ class _SparamMixin:
         # number above, from the same arrays, so it cannot move one:
         # ``fit_residual`` cannot detect that its own window is the problem,
         # this can. See _ladder_split_witness for the measured separation.
-        _split_g_coax, _split_d_coax = _ladder_split_witness(
-            z_planes_coax_m, v_coax_by_drive, ref_coax_m)
-        _split_g_msl, _split_d_msl = _ladder_split_witness(
-            np.asarray(xs_sorted), v_msl_by_drive, float(junction_x))
-        ladder_split_gamma_dev = np.stack([_split_g_coax, _split_g_msl])
-        ladder_split_reflection_decades = np.stack([_split_d_coax, _split_d_msl])
+        # OPT-IN with the ladder dump: it is a Python-loop refit (2 drives x
+        # n_freqs x 2 matrix pencils per ladder) over the very arrays
+        # ``return_ladder_voltages`` exposes, so a default call never runs
+        # it and both fields stay None.
+        ladder_split_gamma_dev = None
+        ladder_split_reflection_decades = None
+        if return_ladder_voltages:
+            _split_g_coax, _split_d_coax = _ladder_split_witness(
+                z_planes_coax_m, v_coax_by_drive, ref_coax_m)
+            _split_g_msl, _split_d_msl = _ladder_split_witness(
+                np.asarray(xs_sorted), v_msl_by_drive, float(junction_x))
+            ladder_split_gamma_dev = np.stack([_split_g_coax, _split_g_msl])
+            ladder_split_reflection_decades = np.stack([_split_d_coax, _split_d_msl])
 
         # #589 ladder dump (read-only). Taken AFTER the assembler consumed
         # the very same arrays, so no number above can depend on the flag.

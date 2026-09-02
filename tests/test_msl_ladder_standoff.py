@@ -437,6 +437,9 @@ def _attempt3_smoke():
     ring-down witness rightly screams and every number below is a truncation
     artifact) -- irrelevant here: the advisory is pure ladder GEOMETRY and
     the witness's SHAPE/dtype/finiteness contract is step-count independent.
+    ``return_ladder_voltages=True`` because the split witness is opt-in with
+    the ladder dump (None on a default call; pinned in
+    tests/test_coax_msl_transition_ladder_dump.py).
     """
     import test_coax_msl_transition as T
 
@@ -444,7 +447,7 @@ def _attempt3_smoke():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = sim.compute_coax_msl_transition(
-            **T._attempt2_kwargs(_N_STEPS_SMOKE))
+            **T._attempt2_kwargs(_N_STEPS_SMOKE), return_ladder_voltages=True)
     return res, [str(w.message) for w in caught]
 
 
@@ -468,8 +471,9 @@ def test_realized_ladder_standoff_advisory_fires_on_attempt3(_attempt3_smoke):
 
 
 def test_witness_fields_are_on_the_result_and_report_only(_attempt3_smoke):
-    """The two witness fields exist, are shaped like the diagnostics they sit
-    beside, and refuse nothing."""
+    """The two witness fields exist (the fixture opted in with
+    ``return_ladder_voltages=True``), are shaped like the diagnostics they
+    sit beside, and refuse nothing."""
     res, _msgs = _attempt3_smoke
     n_f = len(res.freqs)
     for name in ("ladder_split_gamma_dev", "ladder_split_reflection_decades"):

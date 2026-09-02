@@ -3522,7 +3522,9 @@ PREDECLARATION_ATTEMPT3B = {
         ),
         "witness": (
             "ladder_split_gamma_dev / ladder_split_reflection_decades "
-            "(disjoint-half refit of each ladder; report-only, new in this PR)."
+            "(disjoint-half refit of each ladder; report-only, new in this PR; "
+            "opt-in with return_ladder_voltages=True, which the settled-run "
+            "driver sets under --dump-ladders)."
         ),
         "advisory": (
             "the msl_port_geometry near-field standoff advisory must NOT fire "

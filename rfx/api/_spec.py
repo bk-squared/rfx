@@ -1913,9 +1913,13 @@ class CoaxMSLTransitionResult:
         audit (issue #581 review finding B2) — e.g. to check each drive's
         own excitation actually reached a comparable amplitude before
         trusting ``cond_a``/``cond_a_equilibrated``.
-    ladder_split_gamma_dev, ladder_split_reflection_decades : (2, 2, n_freqs) float
-        LADDER SELF-CONSISTENCY WITNESS (issue #823), same
-        ``[port_array, drive, freq]`` indexing as ``fit_residual``/``gamma``
+    ladder_split_gamma_dev, ladder_split_reflection_decades : (2, 2, n_freqs) float or None
+        LADDER SELF-CONSISTENCY WITNESS (issue #823). ``None`` unless the
+        run was made with ``return_ladder_voltages=True``: the witness is a
+        Python-loop refit (2 drives x n_freqs x 2 matrix pencils per
+        ladder) over the same raw ladders that flag exposes, so it is
+        opt-in with them and a default call never runs it. When present,
+        same ``[port_array, drive, freq]`` indexing as ``fit_residual``/``gamma``
         so the rows line up with those diagnostics. Each port's ladder is
         refit on two DISJOINT CONTIGUOUS halves — ``idx[0:N//2]`` and
         ``idx[N-N//2:N]``, so for odd ``N`` the middle probe belongs to
