@@ -453,3 +453,125 @@ def test_rule_ii_does_not_change_the_emission_classification():
     calls = {n.func.attr for n in ast.walk(tree)
              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert not calls & {"preflight", "_auto_preflight", "preflight_sparameters"}
+
+
+# ---------------------------------------------------------------------------
+# (i) never drops a conductor silently: a rasterization failure is a
+# finding, and the audit says where it is incomplete. Rasterize-once.
+# ---------------------------------------------------------------------------
+
+class _NoBoundsBox(Box):
+    """A Box that exposes no bounding_box() (the ``no-analytic-bounds``
+    branch of fidelity_report), while ``mask()`` still works so the
+    ASSEMBLY is untouched -- only the audit's own rasterization is made to
+    fail, via the monkeypatch in the tests below."""
+
+    def bounding_box(self):
+        raise AttributeError("no analytic bounds")
+
+
+def _sheet_then_cylinder_sim(sheet_cls):
+    """Minimal ordered pair: a one-node PEC sheet at node 4, then a
+    dielectric Cylinder through it (the shape of the #589 no-op)."""
+    sim = Simulation(freq_max=20e9, domain=(1.0e-3, 1.0e-3, 1.0e-3), dx=DX,
+                     cpml_layers=4,
+                     boundary=BoundarySpec(x="pec", y="pec", z="pec"))
+    sim.add_material("d", eps_r=2.0)
+    z_lo, z_hi = _half_cell(4, 4)
+    sim.add(sheet_cls((0.0, 0.0, z_lo), (1.0e-3, 1.0e-3, z_hi)), material="pec")
+    sim.add(Cylinder(center=(0.5e-3, 0.5e-3, 0.5e-3), radius=0.25e-3,
+                     height=0.6e-3, axis="z"), material="d")
+    return sim
+
+
+def _failing_entity_mask(monkeypatch, shape_cls, exc):
+    """Make fidelity_report's OWN rasterization raise for entities whose
+    shape is ``shape_cls``; everything else rasterizes as before."""
+    import rfx.fidelity as fid
+    real = fid._entity_mask
+
+    def patched(entry, sim, grid, nonuniform):
+        if isinstance(entry.shape, shape_cls):
+            raise exc
+        return real(entry, sim, grid, nonuniform)
+
+    monkeypatch.setattr(fid, "_entity_mask", patched)
+
+
+def test_rule_i_reports_a_conductor_whose_mask_fails_instead_of_dropping_it(monkeypatch):
+    """Before this test: ``except Exception: pass`` around the accumulator
+    silently left the conductor out of pec_before, so a real
+    dielectric-after-conductor no-op went UNREPORTED with no marker. Now
+    the conductor's own row carries ``rasterization-failed`` with the
+    exception class, and the later dielectric row says the ordered audit
+    is incomplete and names the conductor."""
+    _failing_entity_mask(monkeypatch, _NoBoundsBox,
+                         RuntimeError("synthetic rasterization failure"))
+    sim = _sheet_then_cylinder_sim(_NoBoundsBox)
+    report = sim.fidelity_report(print_report=False)
+
+    (gnd,) = [it for it in report if it["entity"].startswith("geometry[0]")]
+    assert "'pec'" in gnd["entity"]
+    kinds = [f["kind"] for f in gnd["findings"]]
+    assert "no-analytic-bounds" in kinds
+    (rf,) = _findings(gnd, "rasterization-failed")
+    assert rf["exception"] == "RuntimeError"
+    assert "RuntimeError" in rf["detail"]
+    assert "synthetic rasterization failure" in rf["detail"]
+    assert rf["remedy"]
+
+    (d,) = _rows(report, "d")
+    # the no-op finding CANNOT fire (the conductor's cells are unknown) ...
+    assert _findings(d, RULE_I_KIND) == []
+    # ... and that gap is stated, not silent.
+    (un,) = _findings(d, "dielectric-after-conductor-unaudited")
+    assert un["conductor_entities"] == [0]
+    assert "geometry[0]" in un["detail"] and "RuntimeError" in un["detail"]
+
+
+def test_rule_i_control_the_same_pair_with_a_working_mask_fires_normally():
+    """Control for the test above: identical geometry, the sheet as a plain
+    Box, no injected failure -> the ordered no-op finding fires on the
+    Cylinder row and no rasterization/unaudited finding exists anywhere."""
+    report = _sheet_then_cylinder_sim(Box).fidelity_report(print_report=False)
+    (d,) = _rows(report, "d")
+    (f,) = _findings(d, RULE_I_KIND)
+    assert f["conductor_entities"] == [0] and f["overlap_cells"] > 0
+    for it in report:
+        assert _findings(it, "rasterization-failed") == [], it["entity"]
+        assert _findings(it, "dielectric-after-conductor-unaudited") == [], it["entity"]
+
+
+def test_rule_i_rasterizes_each_conductor_once(monkeypatch):
+    """Twelve PEC strips at one node, then a dielectric slab over all of
+    them: every conductor is named as a contributor, and the audit
+    rasterized each entity exactly once (the earlier implementation
+    re-rasterized every earlier conductor per overlapping dielectric)."""
+    import rfx.fidelity as fid
+    real = fid._entity_mask
+    calls = []
+
+    def counting(entry, sim, grid, nonuniform):
+        calls.append(id(entry))
+        return real(entry, sim, grid, nonuniform)
+
+    monkeypatch.setattr(fid, "_entity_mask", counting)
+
+    n_strips = 12
+    sim = Simulation(freq_max=20e9, domain=(1.2e-3, 1.0e-3, 1.0e-3), dx=DX,
+                     cpml_layers=4,
+                     boundary=BoundarySpec(x="pec", y="pec", z="pec"))
+    sim.add_material("d", eps_r=2.0)
+    z_lo, z_hi = _half_cell(4, 4)
+    for s in range(n_strips):
+        x_lo, x_hi = _half_cell(s, s)
+        sim.add(Box((x_lo, 0.0, z_lo), (x_hi, 1.0e-3, z_hi)), material="pec")
+    sim.add(Box((0.0, 0.0, _half_cell(3, 5)[0]), (1.2e-3, 1.0e-3, _half_cell(3, 5)[1])),
+            material="d")
+    report = sim.fidelity_report(print_report=False)
+
+    (d,) = _rows(report, "d")
+    (f,) = _findings(d, RULE_I_KIND)
+    assert f["conductor_entities"] == list(range(n_strips))
+    assert len(calls) == n_strips + 1
+    assert len(set(calls)) == n_strips + 1
