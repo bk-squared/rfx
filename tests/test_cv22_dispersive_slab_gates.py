@@ -111,14 +111,21 @@ def test_r3_record_lengths_are_derived_from_the_slab_ringdown():
     arms land on the same nfft so the gated bin grid is shared."""
     dt = _rig_dt()
     recs = _r3_records(dt)
-    assert {a: r["n_steps"] for a, r in recs.items()} == {"debye": 1066, "lorentz": 1228, "drude": 1168}
+    # §13: incident-weighted ring band (w >= 0.5 -> 1.13-15 GHz). Debye's slowest
+    # component is the 1.4 GHz etalon (w 0.62, 1.18e10/s), not the 4 GHz one
+    # r3 used (1.84e10/s, 1066 steps, witness -36 dB); Lorentz/Drude unchanged.
+    assert {a: r["n_steps"] for a, r in recs.items()} == {"debye": 1108, "lorentz": 1228, "drude": 1168}
+    f_lo, f_hi = G.ring_band_hz()
+    assert 1.1e9 < f_lo < 1.2e9 and f_hi == 15e9
     for arm, r in recs.items():
         assert r["cpml_gate_ok"] and r["t_safe_cpml_steps"] == 1262
         assert r["n_pulse_end"] == 908 and r["settling_limit"] == 1e-2
         assert r["nx_interior"] == G.NX_INTERIOR_R3 == 1000
-        # the slowest rate is the material pole for Lorentz/Drude, the etalon for Debye
-        slow = "material" if arm in ("lorentz", "drude") else "etalon_slowest"
-        assert r["rate_slowest_1_s"] == r[f"rate_{slow}_1_s"]
+        assert r["ring_band_hz"] == [f_lo, f_hi]
+    assert recs["debye"]["rate_ring_1_s"] < recs["debye"]["rate_material_1_s"]
+    assert 1.4e9 < recs["debye"]["f_ring_hz"] < 1.5e9
+    for arm in ("lorentz", "drude"):
+        assert recs[arm]["rate_ring_1_s"] == recs[arm]["rate_material_1_s"]
     nffts = {int(2 ** np.ceil(np.log2(r["n_steps"])) * G.NFFT_OVERSAMPLE) for r in recs.values()}
     assert nffts == {16384}
     # cv04's own 719-step gate truncates every arm's ring-down (the r2 finding).
@@ -294,11 +301,23 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
         assert ad["params_run"] == pytest.approx(G.ARMS[arm]["params"])
         assert ad["run"]["recipe"] == G.RECIPE_R3, "the baseline must be the r3 (derived-record) recipe"
-        assert ad["run"]["nx_interior"] == G.NX_INTERIOR_R3
         rec = ad["run"]["record"]
-        want = G.derive_record_length(ad["model"], ad["params"], ad["dt_s"])
-        assert ad["run"]["n_steps"] == rec["n_steps"] == want["n_steps"], arm
+        want = G.derive_record_length(ad["model"], ad["params"], ad["dt_s"], nx_interior=ad["run"]["nx_interior"])
+        assert rec["n_steps_min"] == want["n_steps"], arm
+        assert ad["run"]["n_steps"] == rec["n_steps"] == rec["n_steps_min"] + rec["extensions"] * G.RECORD_EXTEND_STEPS
+        assert rec["n_steps"] <= rec["t_safe_cpml_steps"]
+        assert ad["run"]["nx_interior"] >= G.NX_INTERIOR_R3
         assert ad["tail"]["limit"] == G.SETTLING_LIMIT and ad["tail"]["ok"], (arm, ad["tail"])
+        # the stored envelope refits to the recorded rate, and the rate is a
+        # physical decay (positive, finite)
+        rate, nb = G.fit_tail_rate(ad["tail"]["envelope_scat_refl_rel"], ad["dt_s"])
+        assert nb >= 3 and rate == pytest.approx(ad["tail"]["fitted_rate_scat_refl_1_s"])
+        assert np.isfinite(rate) and rate > 0
+        print(f"r4-summary rfx {arm}: n_steps_min {rec['n_steps_min']} reached {rec['n_steps']} "
+              f"(+{rec['extensions']} ext, box grows {len(rec.get('nx_grows', []))}); tail scat/trans "
+              f"{ad['tail']['scat_refl_rel']:.2e}/{ad['tail']['total_trans_rel']:.2e}; fitted rate scat/trans "
+              f"{ad['tail']['fitted_rate_scat_refl_1_s']:.3e}/{ad['tail']['fitted_rate_total_trans_1_s']:.3e} /s "
+              f"vs derived ring rate {rec['rate_ring_1_s']:.3e} (component {rec['f_ring_hz']/1e9:.2f} GHz)")
         assert ad["band_inc_ok"]
         re = _replay_e2(ad)
         assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}, arm

@@ -116,19 +116,29 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
     t_safe_lo = int(2 * dist_to_cpml_lo / v_cells * 0.95)
     # Smoke ignores the CPML time gate (it only proves the rig executes).
     rec = None
+    t_safe = min(t_safe_hi, t_safe_lo)
     if smoke:
-        n_steps = n_steps_cap
+        # Smoke exercises the adaptive path too: the derived minimum on this
+        # tiny box, a fake gate two extensions away, the witness necessarily
+        # failing (CPML contamination) -> two extensions -> "grow", which smoke
+        # reports instead of acting on.
+        rec = G.derive_record_length(model, params, dt, nx_interior=nx_interior // K, dx_div=K)
+        n_steps = max(n_steps_cap, rec["n_steps"])
+        t_safe = n_steps + 2 * G.RECORD_EXTEND_STEPS
     elif recipe == G.RECIPE_R3:
-        # §12: record length from the slab's own ring-down (-40 dB), not cv04's
-        # CPML rule; the CPML gate must still exceed it.
+        # §12/§13: record length from the slab's own ring-down (-40 dB), not
+        # cv04's CPML rule; the CPML gate must exceed the derived minimum, and
+        # the record is extended adaptively below while the witness is above
+        # the bar (never past the gate: then the caller grows the box).
         rec = G.derive_record_length(model, params, dt, nx_interior=nx_interior // K, dx_div=K)
         assert rec["probe_trans"] == probe_trans_x and rec["x_lo"] == x_lo, "rig bookkeeping drift"
         n_steps = rec["n_steps"]
-        assert n_steps <= min(t_safe_hi, t_safe_lo), \
-            f"derived record {n_steps} exceeds the CPML round-trip gate {min(t_safe_hi, t_safe_lo)}"
+        if n_steps > t_safe:
+            return {"grow": True, "record": rec, "t_safe": t_safe}
     else:
-        n_steps = min(t_safe_hi, t_safe_lo, n_steps_cap * K)
+        n_steps = min(t_safe, n_steps_cap * K)
     tail_limit = G.SETTLING_LIMIT if recipe == G.RECIPE_R3 else G.TAIL_LIMIT
+    n_alloc = t_safe if (rec is not None) else n_steps
 
     if verbose:
         print(f"  grid {grid.shape}, dt={dt:.4e} s, slab cells [{slab_lo_g},{slab_hi_g}), "
@@ -168,29 +178,74 @@ def run_rfx_arm(model: str, params: dict, *, nx_interior: int, n_steps_cap: int,
 
     step_fn = jax.jit(step)
 
-    ts = np.zeros((4, n_steps))
+    ts = np.zeros((4, n_alloc))
+    tw = G.TAIL_WINDOW * K
     t0_wall = time.time()
-    for n in range(n_steps):
-        state, cs, tfsf_st, dstate, samples = step_fn(state, cs, tfsf_st, dstate, n * dt)
-        ts[:, n] = [float(s) for s in samples]
+    n_done = 0
+    extensions = 0
+
+    def _advance(upto):
+        nonlocal state, cs, tfsf_st, dstate, n_done
+        for n in range(n_done, upto):
+            state, cs, tfsf_st, dstate, samples = step_fn(state, cs, tfsf_st, dstate, n * dt)
+            ts[:, n] = [float(s) for s in samples]
+        n_done = upto
+
+    def _witness(n):
+        ts_refl, ts_trans, ts_inc_refl, ts_inc_trans = ts[:, :n]
+        inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
+        scat = ts_refl - ts_inc_refl
+        purity = max(np.max(np.abs(ts_inc_refl[-tw:])), np.max(np.abs(ts_inc_trans[-tw:]))) / inc_peak
+        refl = np.max(np.abs(scat[-tw:])) / inc_peak
+        trans = np.max(np.abs(ts_trans[-tw:])) / inc_peak
+        return float(purity), float(refl), float(trans), inc_peak, scat
+
+    _advance(n_steps)
+    purity, refl_rel, trans_rel, inc_peak, ts_scat_refl = _witness(n_steps)
+    # §13 adaptive extension: while the -40 dB witness is not met and the CPML
+    # gate allows, run RECORD_EXTEND_STEPS more (the arrays were allocated to
+    # the gate). If the gate is reached with the witness still above the bar,
+    # hand back to the caller to grow the box (cv04's rig rule; never clip).
+    smoke_grow = False
+    if rec is not None:
+        while (max(refl_rel, trans_rel) >= tail_limit or purity >= G.TAIL_PURITY_LIMIT):
+            if n_steps + G.RECORD_EXTEND_STEPS > t_safe:
+                if smoke:
+                    smoke_grow = True
+                    break
+                return {"grow": True, "record": rec, "t_safe": t_safe, "n_steps_reached": n_steps,
+                        "tail_at_gate": [refl_rel, trans_rel]}
+            n_steps += G.RECORD_EXTEND_STEPS
+            extensions += 1
+            _advance(n_steps)
+            purity, refl_rel, trans_rel, inc_peak, ts_scat_refl = _witness(n_steps)
     elapsed = time.time() - t0_wall
+    ts = ts[:, :n_steps]
     ts_refl, ts_trans, ts_inc_refl, ts_inc_trans = ts
     if not np.all(np.isfinite(ts)):
         raise RuntimeError("non-finite probe samples (ADE blow-up?)")
-    ts_scat_refl = ts_refl - ts_inc_refl
+    if rec is not None:
+        rec = dict(rec, n_steps_min=rec["n_steps"], n_steps=int(n_steps), extensions=int(extensions),
+                   extend_steps=G.RECORD_EXTEND_STEPS, smoke_grow=smoke_grow)
 
-    # --- cv04 tail witnesses (issue #341), unchanged ---
-    inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
-    tw = G.TAIL_WINDOW * K
-    tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-tw:])), np.max(np.abs(ts_inc_trans[-tw:]))) / inc_peak
-    tail_refl_rel = np.max(np.abs(ts_scat_refl[-tw:])) / inc_peak
-    tail_trans_rel = np.max(np.abs(ts_trans[-tw:])) / inc_peak
+    # --- cv04 tail witnesses (issue #341) at the reached record, plus the stored
+    # envelope and its fitted decay rate (§13) ---
+    tail_inc_rel, tail_refl_rel, tail_trans_rel = purity, refl_rel, trans_rel
     tail_clean = bool(tail_inc_rel < G.TAIL_PURITY_LIMIT)
+    n_env = min(G.TAIL_ENVELOPE_STEPS * K, n_steps)
+    env_refl = (np.abs(ts_scat_refl[-n_env:]) / inc_peak)
+    env_trans = (np.abs(ts_trans[-n_env:]) / inc_peak)
+    rate_refl, nb_r = G.fit_tail_rate(env_refl, dt)
+    rate_trans, nb_t = G.fit_tail_rate(env_trans, dt)
     tail = {
         "window_steps": tw, "purity_inc_rel": float(tail_inc_rel),
         "scat_refl_rel": float(tail_refl_rel), "total_trans_rel": float(tail_trans_rel),
         "purity_limit": G.TAIL_PURITY_LIMIT, "limit": tail_limit,
         "ok": bool(tail_clean and tail_refl_rel < tail_limit and tail_trans_rel < tail_limit),
+        "envelope_steps": int(n_env),
+        "envelope_scat_refl_rel": env_refl.tolist(), "envelope_total_trans_rel": env_trans.tolist(),
+        "fitted_rate_scat_refl_1_s": rate_refl, "fitted_rate_total_trans_1_s": rate_trans,
+        "fitted_rate_blocks": int(min(nb_r, nb_t)),
     }
 
     # --- cv04 spectral analysis, unchanged ---
@@ -326,7 +381,7 @@ def main(argv=None) -> int:
 
     nx_default = G.NX_INTERIOR_R3 if a.recipe == G.RECIPE_R3 else G.NX_INTERIOR
     nx_interior = 200 if a.smoke else (a.nx_interior or nx_default)
-    n_steps_cap = 450 if a.smoke else 8000
+    n_steps_cap = 300 if a.smoke else 8000
 
     print("=" * 70)
     print(f"Crossval 22: dispersive slab -- arms {arms}; falsifier={a.falsifier}; smoke={a.smoke}")
@@ -357,8 +412,24 @@ def main(argv=None) -> int:
             print(f"\n[{arm}] FALSIFIER {rfx_fals}: {G.FALSIFIERS[rfx_fals][1]} "
                   f"(FDTD built with the defect; judged against the DECLARED material)")
         print(f"\n[{arm}] model={model} params_run={ {k: float(v) for k, v in params_run.items()} }")
-        run = run_rfx_arm(model, params_run, nx_interior=nx_interior, n_steps_cap=n_steps_cap, smoke=a.smoke,
-                          dx_div=a.dx_div, recipe=a.recipe)
+        nx_arm = nx_interior
+        grows = []
+        while True:
+            run = run_rfx_arm(model, params_run, nx_interior=nx_arm, n_steps_cap=n_steps_cap, smoke=a.smoke,
+                              dx_div=a.dx_div, recipe=a.recipe)
+            if not run.get("grow"):
+                break
+            # §13: the CPML gate was reached before the witness: grow the box
+            # (cv04's rig rule) and rerun; never clip the record.
+            grows.append({"nx_interior": nx_arm, "t_safe": run["t_safe"],
+                          "n_steps_reached": run.get("n_steps_reached"), "tail_at_gate": run.get("tail_at_gate")})
+            print(f"  record: CPML gate {run['t_safe']} reached before the -40 dB witness "
+                  f"(n_steps {run.get('n_steps_reached')}, tail {run.get('tail_at_gate')}); "
+                  f"growing nx_interior {nx_arm} -> {nx_arm + G.NX_GROW_CELLS}")
+            nx_arm += G.NX_GROW_CELLS
+            if nx_arm > 4 * G.NX_INTERIOR_R3:
+                raise RuntimeError("record never settled to -40 dB within 4x the declared box")
+        run["record"] = None if run["record"] is None else dict(run["record"], nx_grows=grows)
         # The oracle is ALWAYS the declared material; a falsifier that were
         # judged against its own defective eps(f) would be self-consistent
         # and pass (caught in review before the first run).
@@ -371,12 +442,15 @@ def main(argv=None) -> int:
                                          "dx_m", "dx_div", "n_cpml", "recipe", "record")}
         if run["record"] is not None:
             r_ = run["record"]
-            print(f"  record (r3): n_pulse_end {r_['n_pulse_end']} + n_ring {r_['n_ring']} "
-                  f"(slowest rate {r_['rate_slowest_1_s']:.3e}/s: material {r_['rate_material_1_s']:.3e}, "
-                  f"etalon {r_['rate_etalon_slowest_1_s']:.3e} at {r_['f_etalon_slowest_hz']/1e9:.2f} GHz) "
-                  f"+ window {r_['tail_window']} = n_steps {r_['n_steps']} (CPML gate {r_['t_safe_cpml_steps']}); "
+            print(f"  record (r3/§13): n_pulse_end {r_['n_pulse_end']} + n_ring {r_['n_ring']} "
+                  f"(ring component at {r_['f_ring_hz']/1e9:.2f} GHz, w {r_['w_ring']:.2f}, rate {r_['rate_ring_1_s']:.3e}/s; "
+                  f"material {r_['rate_material_1_s']:.3e}, slowest etalon {r_['rate_etalon_slowest_1_s']:.3e} "
+                  f"at {r_['f_etalon_slowest_hz']/1e9:.2f} GHz) + window {r_['tail_window']} = n_steps_min "
+                  f"{r_['n_steps_min']}; reached {r_['n_steps']} after {r_['extensions']} extension(s) "
+                  f"(CPML gate {r_['t_safe_cpml_steps']}, box grows {len(r_.get('nx_grows', []))}); "
                   f"tail scat/trans {run['tail']['scat_refl_rel']:.2e}/{run['tail']['total_trans_rel']:.2e} "
-                  f"vs {G.SETTLING_LIMIT:g} -> {'ok' if run['tail']['ok'] else 'FAIL'}")
+                  f"vs {G.SETTLING_LIMIT:g} -> {'ok' if run['tail']['ok'] else 'FAIL'}; fitted tail rate "
+                  f"scat/trans {run['tail']['fitted_rate_scat_refl_1_s']:.3e}/{run['tail']['fitted_rate_total_trans_1_s']:.3e} /s")
         if not run["band_inc_ok"]:
             e2["gates"]["rig_incident_floor"] = False
             e2["e2_ok"] = False

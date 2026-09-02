@@ -66,6 +66,19 @@ PROBE_OFFSET_CELLS = 30
 SRC_T0_OVER_TAU = 3.0          # rfx.sources.tfsf: src_t0 = 3 tau for differentiated_gaussian
 PULSE_END_ARG_40DB = 2.5255070008312575   # 2a e^{-a^2} = 1e-2 x peak (peak at a = 1/sqrt2)
 MEEP_PRIMARY_RESOLUTION = 40   # §12: the converged Meep reference (first-order ladder measured in r2)
+# §13 (round 4): the ring-down search covers the incident band where the
+# differentiated-Gaussian amplitude is >= RING_W_MIN of its peak (not only the
+# gated band): the r3 Debye tail decayed at <= 1.36e10/s, the etalon rate of the
+# 1-2.5 GHz content where Debye's per-pass absorption is weakest. Each component
+# starts at most at its incident weight w(f), so it needs ln(100 w)/rate, not
+# ln(100)/rate. The witness is then ADAPTIVE: extend the record in
+# RECORD_EXTEND_STEPS while the -40 dB bar is not met, and grow the box by
+# NX_GROW_CELLS when the CPML gate is reached (never clip).
+RING_W_MIN = 0.5
+RING_F_MAX_HZ = MASK_F_HI_HZ
+RECORD_EXTEND_STEPS = 100
+NX_GROW_CELLS = 200
+TAIL_ENVELOPE_STEPS = 300      # stored in the artifact so the decay can be fitted offline
 MEEP_LADDER_RESOLUTIONS = (10, 20, 40)
 
 # Gated band (§5) and the rig-sanity floor on incident amplitude inside it.
@@ -359,11 +372,33 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
             "x_lo": x_lo, "probe_refl": probe_refl, "probe_trans": probe_trans}
 
 
+def incident_amplitude_rel(f_hz):
+    """Amplitude spectrum of the rig's differentiated-Gaussian incident pulse,
+    relative to its peak: |S(f)| ∝ f exp(-(pi f tau)^2), tau = 1/(pi f0 bw)."""
+    tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
+    f = np.asarray(f_hz, dtype=float)
+    s = f * np.exp(-(math.pi * f * tau) ** 2)
+    peak = (1.0 / (math.sqrt(2.0) * math.pi * tau)) * math.exp(-0.5)
+    return s / peak
+
+
+def ring_band_hz():
+    """[f_lo, RING_F_MAX_HZ]: the incident band with amplitude >= RING_W_MIN of peak."""
+    f = np.linspace(1e7, TFSF_F0_HZ, 20000)
+    w = incident_amplitude_rel(f)
+    f_lo = float(f[np.argmax(w >= RING_W_MIN)])
+    return f_lo, RING_F_MAX_HZ
+
+
 def slab_ringdown_rates(model: str, params: dict):
-    """Amplitude decay rates (1/s) of the slab's own ring-down in the gated band:
-    the material pole (Debye 1/tau, Lorentz delta, Drude gamma/2) and the
-    slowest etalon round-trip, rho = |r|^2 exp(-2 k0 Im(n) d) per t_rt = 2 Re(n) d / c."""
-    f = np.linspace(BAND_GATED_HZ[0], BAND_GATED_HZ[1], 601)
+    """Amplitude decay rates (1/s) of the slab's own ring-down over the incident
+    ring band: the material pole (Debye 1/tau, Lorentz delta, Drude gamma/2)
+    and the etalon round-trip, rho = |r|^2 exp(-2 k0 Im(n) d) per
+    t_rt = 2 Re(n) d / c, each component weighted by its incident amplitude
+    w(f): a component starting at w needs ln(100 w)/rate to reach -40 dB. The
+    slowest entry is the one with the largest ln(100 w)/rate."""
+    f_lo, f_hi = ring_band_hz()
+    f = np.linspace(f_lo, f_hi, 1401)
     eps = de.eps_analytic(f, model, params)
     n = np.sqrt(eps)
     n = np.where(n.imag > 0, -n, n)         # decaying branch in e^{+jwt}
@@ -372,27 +407,36 @@ def slab_ringdown_rates(model: str, params: dict):
     rho = np.abs(r) ** 2 * np.exp(-2 * k0 * (-n.imag) * D_SLAB_M)
     t_rt = 2 * np.abs(n.real) * D_SLAB_M / C0
     rate_et = -np.log(rho) / t_rt
-    i = int(np.argmin(rate_et))
     if model == "debye":
         rate_mat = 1.0 / params["tau"]
     elif model == "lorentz":
         rate_mat = float(params["delta"])
     else:
         rate_mat = float(params["gamma"]) / 2.0
-    return {"rate_material_1_s": float(rate_mat), "rate_etalon_slowest_1_s": float(rate_et[i]),
-            "f_etalon_slowest_hz": float(f[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
+    w = incident_amplitude_rel(f)
+    rate = np.minimum(rate_et, rate_mat)
+    t_need = np.log(100.0 * w) / rate       # seconds to -40 dB of the incident peak
+    i = int(np.argmax(t_need))
+    return {"rate_material_1_s": float(rate_mat), "rate_etalon_slowest_1_s": float(rate_et.min()),
+            "f_etalon_slowest_hz": float(f[int(np.argmin(rate_et))]),
+            "ring_band_hz": [f_lo, f_hi], "ring_w_min": RING_W_MIN,
+            "t_ring_s": float(t_need[i]), "f_ring_hz": float(f[i]), "w_ring": float(w[i]),
+            "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
 
 
 def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: int = NX_INTERIOR_R3,
                          dx_div: int = 1) -> dict:
-    """n_steps = n_pulse_end + n_ring + TAIL_WINDOW (all in steps):
+    """n_steps_min = n_pulse_end + n_ring + TAIL_WINDOW (all in steps):
       n_pulse_end : the differentiated-Gaussian incident has fallen to -40 dB at
                     the transmission probe: t0 + a40 tau, plus propagation from the
                     TFSF injection plane at the Courant speed;
-      n_ring      : ln(100) / (slowest ring-down rate) -- from amplitude 1 (an upper
-                    bound on any reflected/transmitted level) to 1e-2 = -40 dB;
+      n_ring      : max over the incident ring band of ln(100 w(f)) / rate(f) --
+                    each spectral component starts at most at its incident weight
+                    w(f) and must reach 1e-2 = -40 dB of the incident peak
+                    (section 13; rounds 1-3 used ln(100)/rate over the gated band);
       TAIL_WINDOW : the witness window itself sits after the ring-down.
-    The CPML round-trip gate of the rig must exceed n_steps (asserted)."""
+    The CPML round-trip gate of the rig must exceed n_steps (asserted). The case
+    script then EXTENDS the record adaptively while the witness is above the bar."""
     K = int(dx_div)
     dx = DX_M / K
     cells = rig_cells(nx_interior, dx_div)
@@ -402,8 +446,8 @@ def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: in
     n_pulse_end = int(math.ceil((t0 + PULSE_END_ARG_40DB * tau) / dt
                                 + (cells["probe_trans"] - cells["x_lo"]) / v_cells))
     rates = slab_ringdown_rates(model, params)
-    rate_slow = min(rates["rate_material_1_s"], rates["rate_etalon_slowest_1_s"])
-    n_ring = int(math.ceil(math.log(100.0) / (rate_slow * dt)))
+    rate_slow = rates["rate_ring_1_s"]
+    n_ring = int(math.ceil(rates["t_ring_s"] / dt))
     tail_window = TAIL_WINDOW * K
     n_steps = n_pulse_end + n_ring + tail_window
     dist_hi = cells["nx"] - cells["n_cpml"] - cells["probe_trans"]
@@ -450,3 +494,20 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict) -> dict:
                         orders[f"order_{q[5:7]}_{lo}_{hi}"] = float(math.log2(a[q] / b[q]))
         out["arms"][arm] = {"rungs": rungs, "orders": orders}
     return out
+
+
+def fit_tail_rate(env_rel, dt: float):
+    """Amplitude decay rate (1/s) of a stored tail envelope (relative to the
+    incident peak): log-linear least squares through the running maxima of
+    |signal| over TAIL_WINDOW-sized blocks (the etalon is oscillatory; the block
+    maxima trace the envelope). Returns (rate, n_blocks)."""
+    e = np.asarray(env_rel, dtype=float)
+    nb = e.size // TAIL_WINDOW
+    if nb < 3:
+        return float("nan"), int(nb)
+    blocks = e[: nb * TAIL_WINDOW].reshape(nb, TAIL_WINDOW).max(axis=1)
+    if np.any(blocks <= 0):
+        return float("nan"), int(nb)
+    t = (np.arange(nb) + 0.5) * TAIL_WINDOW * dt
+    slope, _ = np.polyfit(t, np.log(blocks), 1)
+    return float(-slope), int(nb)
