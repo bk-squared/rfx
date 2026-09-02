@@ -17,7 +17,7 @@ env:
   # RFX_BRANCH is informational (echoed for a reader); the fetch is keyed by
   # RFX_EXPECT_SHA alone, which is the pin.
   RFX_BRANCH: "v18/wp8-thru-sv-dx-ladder"
-  RFX_EXPECT_SHA: "FILL_AFTER_PUSH"
+  RFX_EXPECT_SHA: "088281899727fcc644814f0ae9451b6b89a26af8"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
