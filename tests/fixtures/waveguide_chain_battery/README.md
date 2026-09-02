@@ -195,9 +195,13 @@ strictly between the port probe planes (0.03810 / 0.08382 m) and the slab — re
 single-port solves, the `slab` device run and a `thru` reference run:
 `closure_M = [F_dev(guide_in) − F_dev(guide_out)] / F_ref(guide_in)`.
 Gate: `max_f |closure_S − closure_M| ≤ 0.02`, the column-power tolerance named by the plan's
-WP3 Falsifier. Independence scope: the plane and the aperture weighting only — both routes call
-`rfx/probes/probes.py::flux_spectrum`, so a shared-kernel defect that scales every plane
-equally cancels in both ratios and is not caught.
+WP3 Falsifier. Independence scope: the PLANE INDEX only. Both routes integrate the same
+transverse window with the same uniform `dA = dx²` (measured `u[0,10)`, `v[0,5)`,
+`dA = 6.4516003e-06`) through `rfx/probes/probes.py::flux_spectrum` — the port's `aperture_dA`,
+which drops the +face PEC cell, serves the modal V/I integral and reaches neither monitor. So a
+shared-kernel defect that scales every plane equally, and any area-weighting error, cancel in
+both ratios and are not caught. What is caught: a wrong port plane index, a wrong de-embedding
+of the port planes, and any failure of power transport in the guide between the two plane pairs.
 
 **Rung and cost.** Coarse rung only: `dx = 2.54 mm`, 17 CPML layers, grid 83 × 10 × 5,
 713 steps at `num_periods = 40`, `precision="float32"`, jax 0.6.2 on CPU. Wall time
@@ -264,9 +268,14 @@ the `normalize=False` (modal V/I) lane's non-passivity where it belongs. At the 
 interior monitors put the physical power imbalance at 6.887e-05 —
 `max_f |closure_S(false) − closure_M| = 1.756e-02`, 800x the flux lane's disagreement and
 still inside 0.02. The `thru|coarse|false` cell shows 1.825e-02 on an EMPTY guide, where no
-DUT can absorb anything, which corroborates the reading: the V/I lane's ~1.8 % is its own
-Yee `Z_TE` magnitude error, not lost power. Not gated — it was not pre-declared, and the
-plan's WP3 comparison is against the flux lane.
+DUT can absorb anything, which corroborates the reading: the V/I lane's ~1.8 % is extractor
+error, not lost power. The specific mechanism — a Yee `Z_TE` magnitude error — is INFERRED here,
+not instrumented. What supports it: the extractor's own docstring records ~3 % `Z_TE` error on
+`normalize=False` S11 at `dx/λ = 0.07`, and the excess falls as `dx²` across the battery's rungs
+(1.8253e-02, 4.0817e-03, 9.8341e-04 at dx = 2.54, 1.27, 0.635 mm; ratios 4.47 and 4.15). The
+missing step is a direct comparison of the lane's modal `Z_TE` against the analytic value at the
+coarse rung. Tracked in issue #873. Not gated — it was not pre-declared, and the plan's WP3
+comparison is against the flux lane.
 
 **Provenance.** `provenance.run_lane` reads `"local"` — this measurement ran on a CPU
 developer box, not on VESSL. Unlike `fixture.json`, that does not make it

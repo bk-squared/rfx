@@ -21,19 +21,29 @@ THE INDEPENDENT WITNESS. The same power balance, evaluated at two planes the
 S-extraction never touches: two full-plane ``add_flux_monitor`` planes placed
 INSIDE the guide, one between the left port probe plane and the slab, one
 between the slab and the right port probe plane. Route A and route B share the
-lossless guide between them, so they must agree; they do not share the plane
-index, the aperture weighting, or the monitor-config construction.
+lossless guide between them, so they must agree; what they do not share is the
+plane index.
 
-INDEPENDENCE SCOPE, stated so it is not overclaimed (memory:
-``feedback_agreement_is_not_independence``). Route B calls the same
-``rfx/probes/probes.py::flux_spectrum`` kernel the flux lane calls. What is
-independent is (i) the plane — guide interior vs port probe planes — and (ii)
-the area weighting: ``add_flux_monitor`` integrates the full grid plane, while
-the port monitor uses the port's own ``u_widths × v_widths`` aperture weights
-with the +face PEC cell dropped. A defect in the shared Poynting kernel that
-scales every plane by the same factor cancels in both ratios and is NOT caught
-by this test. A defect in the port aperture weighting, the port plane index, or
-the guide's power transport between the two plane pairs is.
+INDEPENDENCE SCOPE — ONE axis, the plane index (memory:
+``feedback_agreement_is_not_independence``). An earlier draft of this docstring
+claimed a second independent axis, the area weighting, and that claim was wrong:
+both routes integrate with the SAME uniform ``dx²`` weight over the SAME
+transverse window on this fixture. ``extract_waveguide_s_matrix_flux``'s
+``_make_flux_monitors`` (``rfx/sources/waveguide_port.py``) passes
+``d1 = d2 = cfg.dx`` with ``lo/hi`` from the port's ``u/v`` span and never passes
+``cfg.aperture_dA``; the public ``add_flux_monitor`` path
+(``rfx/runners/uniform.py``) passes ``d1 = d2 = grid.dx`` over the full grid
+plane, which on this WR-90 fixture is the same window — measured ``u[0, 10)``,
+``v[0, 5)``, ``dA = 6.4516003e-06`` for both. ``aperture_dA`` (the array that
+drops the +face PEC cell, zeroing 14 of 50 cells here) serves the modal V/I
+integral and reaches neither monitor.
+
+So route B calls the same ``rfx/probes/probes.py::flux_spectrum`` kernel with the
+same weights at a different plane. NOT caught by this test: a shared Poynting
+kernel defect that scales every plane by the same factor, and any area-weighting
+error, both of which cancel in the two ratios alike. Caught: a wrong port plane
+index, a wrong de-embedding of the port planes, and any failure of power
+transport in the guide between the two plane pairs.
 
 Nor does it bound the far absorber. Both routes divide by a reference run's net
 flux, so a reflection there biases ``F_ref`` and the flux lane's ``F_ref[i]``
@@ -272,6 +282,14 @@ def _run_flux_lane(dx: float = RUNG_DX_M) -> dict:
     }
 
 
+INDEPENDENCE_SCOPE = (
+    "independent in the PLANE INDEX ONLY; both routes integrate the same transverse "
+    "window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) "
+    "through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an "
+    "area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell "
+    "dropped) reaches neither monitor")
+
+
 def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
     """Run route A and route B once and return the full record.
 
@@ -320,10 +338,7 @@ def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
                         "run on the slab and reference run on the thru"),
             "monitor_x_m": {MON_IN_NAME: MON_IN_X_M, MON_OUT_NAME: MON_OUT_X_M},
             "monitor_coarse_cells": {MON_IN_NAME: K_MON_IN, MON_OUT_NAME: K_MON_OUT},
-            "independence_scope": (
-                "independent in the PLANE and the aperture weighting only; both routes "
-                "call rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect "
-                "that scales every plane equally cancels in both ratios"),
+            "independence_scope": INDEPENDENCE_SCOPE,
             "settling_db_max": SETTLING_DB_MAX,
             "non_vacuity_min_s11": NON_VACUITY_MIN_S11,
         },
@@ -378,6 +393,9 @@ def test_witness_declaration_matches_this_module(witness):
     assert d["monitor_x_m"][MON_IN_NAME] == pytest.approx(MON_IN_X_M, abs=1e-12)
     assert d["monitor_x_m"][MON_OUT_NAME] == pytest.approx(MON_OUT_X_M, abs=1e-12)
     assert d["monitor_coarse_cells"] == {MON_IN_NAME: K_MON_IN, MON_OUT_NAME: K_MON_OUT}
+    # The scope sentence is a claim about what this witness can and cannot catch,
+    # so it is gated like a number: the frozen artifact and this module must agree.
+    assert d["independence_scope"] == INDEPENDENCE_SCOPE
     assert witness["dut"] == DUT and witness["reference_dut"] == REFERENCE_DUT
     assert witness["dx_m"] == pytest.approx(RUNG_DX_M, abs=1e-15)
     assert witness["num_periods"] == pytest.approx(F.NUM_PERIODS)
@@ -593,10 +611,14 @@ def test_live_closure_routes_agree_within_the_column_power_tolerance(witness):
     assert measured <= CLOSURE_ABS_DIFF_GATE, (
         f"live interior-vs-port closure disagreement {measured:.6g} > "
         f"{CLOSURE_ABS_DIFF_GATE} at {live['freqs_hz'][worst] / 1e9:.2f} GHz")
-    # And the committed artifact still describes this box's physics: the
-    # cross-backend envelope the battery measured for |S| is 5e-6, so a
-    # closure difference an order above that is a real change, not float32
-    # reassociation.
+    # And the committed artifact still describes this box's physics. This is a
+    # coherence check, not a reproduction gate: it must fire when the witness
+    # stops describing the run at all, and must not fire on run-to-run float32
+    # noise. The bound is the gate itself divided by 20 (0.02 / 20 = 1e-3): a
+    # drift that large is a fifth of the disagreement the gate allows, so it
+    # cannot hide a real change, while sitting far above the 5e-6 cross-backend
+    # |S| envelope the battery measured. Tightening it to that envelope would
+    # make this assert a second, undeclared reproduction gate.
     assert live["max_abs_diff"] == pytest.approx(
         witness["max_abs_diff"], abs=1e-3), (live["max_abs_diff"],
                                              witness["max_abs_diff"])

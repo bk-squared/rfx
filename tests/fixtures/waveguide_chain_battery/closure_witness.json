@@ -20,7 +20,7 @@
    "guide_in": 18,
    "guide_out": 30
   },
-  "independence_scope": "independent in the PLANE and the aperture weighting only; both routes call rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect that scales every plane equally cancels in both ratios",
+  "independence_scope": "independent in the PLANE INDEX ONLY; both routes integrate the same transverse window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell dropped) reaches neither monitor",
   "settling_db_max": -40.0,
   "non_vacuity_min_s11": 0.2
  },
@@ -740,7 +740,7 @@
  "wall_time_s": 13.514640092849731,
  "generated_at": "2026-09-02T14:19:10.701561+00:00",
  "provenance": {
-  "commit": "505210970630711c1a6c992c5863e8e41df374f7",
+  "commit": "6216e06fff27d6b351457cb4807379bec14ced15",
   "run_id": "local",
   "run_lane": "local",
   "jax_version": "0.6.2",
@@ -755,7 +755,8 @@
   "hostname": "run-execution-rfrcjp0gsxry-0",
   "rfx_version": "1.7.0",
   "recapture_entry_point": "scripts/diagnostics/waveguide_chain_battery_closure_measure.py",
-  "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_closure_measure.py --out tests/fixtures/waveguide_chain_battery/closure_witness.json --run-id <run id> --run-lane <vessl|local>"
+  "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_closure_measure.py --out tests/fixtures/waveguide_chain_battery/closure_witness.json --run-id <run id> --run-lane <vessl|local>",
+  "commit_note": "the measurement ran at 50521097, the pre-rebase twin of 6216e06f; that SHA became unreachable in the replay-only rebase onto main, so commit records its post-rebase twin, which carries the same tree"
  },
  "driver": "scripts/diagnostics/waveguide_chain_battery_closure_measure.py"
 }
