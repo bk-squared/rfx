@@ -353,12 +353,20 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         if ad["materials_path"] == "api":
             assert ad["materials"]["api_equals_direct"] is True and ad["materials"]["api_no_pec"] is True
         assert ad["run"]["recipe"] == G.RECIPE_R3
+        assert ad["run"]["dx_div"] == L.ARM_DX_DIV[arm], "note section 13: tand3 at dx/2, the others at dx"
+        assert ad["run"]["dx_m"] == pytest.approx(G.DX_M / L.ARM_DX_DIV[arm])
+        # the exact-lattice witness (reported, not gated) must reproduce and the run must sit on it
+        lat = ad["lattice"]
+        Rl, Tl, Al = L.lattice_rta(np.asarray(ad["freqs_hz"]), ad["params"], ad["run"]["dx_m"], ad["dt_s"])
+        assert np.allclose(Rl, lat["R_lattice"], atol=1e-12) and np.allclose(Tl, lat["T_lattice"], atol=1e-12)
+        assert lat["mean_dR_lattice_gated"] <= 3e-4 and lat["mean_dT_lattice_gated"] <= 3e-4, (arm, lat["mean_dR_lattice_gated"])
         rec = ad["run"]["record"]
-        want = L.derive_record_length(ad["params"], ad["dt_s"], nx_interior=ad["run"]["nx_interior"])
+        want = L.derive_record_length(ad["params"], ad["dt_s"], nx_interior=ad["run"]["nx_interior"] // ad["run"]["dx_div"],
+                                      dx_div=ad["run"]["dx_div"])
         assert rec["n_steps_min"] == want["n_steps"], arm
         assert ad["run"]["n_steps"] == rec["n_steps"] == rec["n_steps_min"] + rec["extensions"] * G.RECORD_EXTEND_STEPS
         assert rec["n_steps"] <= rec["t_safe_cpml_steps"]
-        assert ad["run"]["nx_interior"] >= G.NX_INTERIOR_R3
+        assert ad["run"]["nx_interior"] >= G.NX_INTERIOR_R3 * ad["run"]["dx_div"]
         assert ad["tail"]["limit"] == G.SETTLING_LIMIT and ad["tail"]["ok"], (arm, ad["tail"])
         assert ad["tail"]["fit_start_step"] == rec["n_pulse_end"] + G.TAIL_WINDOW
         refit = G.refit_tail(ad["tail"], ad["dt_s"], ad["run"]["n_steps"], rec["n_pulse_end"])
@@ -375,6 +383,10 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         re = _replay_e2(ad)
         assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}, arm
         assert re["e2_ok"], (arm, re["gates"], re["max_dR_gated"], re["max_dT_gated"], re["max_dA_gated"])
+        # section 13 predictions (the lattice at the arm's recipe), reported
+        pred = _R2_LATTICE_PRED[(arm, L.ARM_DX_DIV[arm])]
+        print(f"cv23-summary rfx {arm} vs lattice prediction: mean|dR| {ad['mean_dR_gated']:.5f} (pred {pred[0]:.5f}) "
+              f"|dT| {ad['mean_dT_gated']:.5f} (pred {pred[1]:.5f}) |dA| {ad['mean_dA_gated']:.5f} (pred {pred[2]:.5f})")
         assert abs(re["mean_dA_gated"] - ad["mean_dA_gated"]) < 1e-12
         assert re["A_tight_ok"] == ad["A_tight_ok"]
         assert re["n_bins_gated"] >= 200
@@ -389,7 +401,8 @@ def test_baseline_artifact_e4_against_the_committed_meep_jsons():
     for arm, ad in doc["arms"].items():
         md = _read(_RESULTS / L.meep_json_name(arm))
         assert md["falsifier"] is None and md["arm"] == arm
-        assert md["resolution"] == L.MEEP_PRIMARY_RESOLUTION == 40
+        assert md["resolution"] == L.MEEP_PRIMARY_RESOLUTION_BY_ARM[arm], (arm, md["resolution"])
+        assert md.get("thickness_offset_cells", 0) == 0 and md.get("center_offset_cells", 0) == 0
         assert md["eps_averaging"] is False and md["run"]["finite"]
         assert md["precheck"]["passed"] and md["precheck"]["max_rel_err"] < 1e-9
         assert md["meep_params"]["kind"] == "D_conductivity"
@@ -413,6 +426,7 @@ def test_rfx_falsifier_artifacts_fail_for_the_declared_reason(name):
     ad = doc["arms"][arm]
     assert ad["params_run"] == pytest.approx(bad)
     assert ad["params"] == pytest.approx(L.ARMS[arm]["params"])
+    assert ad["run"]["dx_div"] == L.ARM_DX_DIV[arm], "falsifiers run at the arm's primary recipe"
     re = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], L.ARMS[arm]["params"], ad["dt_s"], tail=ad["tail"])
     assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}
     assert not re["e2_ok"]
@@ -449,8 +463,10 @@ def test_meep_ladder_summary_reproduces_from_its_rungs():
             assert rung.get("finite"), (arm, res)
             assert rung["mean_dT_meep_tmm_gated"] == pytest.approx(
                 fresh["arms"][arm]["rungs"][res]["mean_dT_meep_tmm_gated"], rel=1e-9)
-        r40 = v["rungs"]["40"]
-        assert r40["mean_dR_meep_tmm_gated"] <= L.W_MEAN_R and r40["mean_dT_meep_tmm_gated"] <= L.W_MEAN_T
+        prim = v["rungs"][str(L.MEEP_PRIMARY_RESOLUTION_BY_ARM[arm])]
+        assert prim["mean_dR_meep_tmm_gated"] <= L.W_MEAN_R and prim["mean_dT_meep_tmm_gated"] <= L.W_MEAN_T, arm
+        if arm == "tand0p1":   # section 13: one rung under the window, stated
+            assert v["rungs"]["40"]["mean_dR_meep_tmm_gated"] > L.W_MEAN_R
     print("cv23-summary meep ladder:", {a: {k: round(o, 2) for k, o in v["orders"].items()} for a, v in summ["arms"].items()})
 
 
@@ -520,8 +536,8 @@ def test_r2_rfx_dx_ladder_against_the_lattice_prediction(arm):
     wR0, wT0, wA0 = L.lattice_window(f0[g0], base["params"], base["run"]["dx_m"], base["dt_s"])
     res0 = np.mean(np.abs(np.asarray(base["R_rfx"])[g0] - np.asarray(base["R_tmm"])[g0] - (
         L.lattice_rta(f0[g0], base["params"], base["run"]["dx_m"], base["dt_s"])[0] - np.asarray(base["R_tmm"])[g0])))
-    lines = [f"r2-summary rfx {arm} dx: mean|dR| {base['mean_dR_gated']:.5f} (lattice pred {wR0.mean():.5f}, "
-             f"|rfx - lattice| {res0:.2e}); |dT| {base['mean_dT_gated']:.5f} (pred {wT0.mean():.5f})"]
+    lines = [f"r2-summary rfx {arm} baseline (dx/{base['run']['dx_div']}): mean|dR| {base['mean_dR_gated']:.5f} "
+             f"(lattice pred {wR0.mean():.5f}, |rfx - lattice| {res0:.2e}); |dT| {base['mean_dT_gated']:.5f} (pred {wT0.mean():.5f})"]
     for tag in _R2_RFX_TAGS[arm]:
         p = _RESULTS / f"rfx__{tag}.json"
         if not p.is_file():
@@ -538,7 +554,7 @@ def test_r2_rfx_dx_ladder_against_the_lattice_prediction(arm):
         Rl, Tl, Al = L.lattice_rta(f[g], d["params"], d["run"]["dx_m"], d["dt_s"])
         Rx = np.asarray(d["R_rfx"])[g]; Tx = np.asarray(d["T_rfx"])[g]
         resid_R = np.mean(np.abs(Rx - Rl)); resid_T = np.mean(np.abs(Tx - Tl))
-        ratio = d["mean_dR_gated"] / base["mean_dR_gated"] if base["mean_dR_gated"] > 0 else float("nan")
+        ratio = d["mean_dR_gated"] / _R2_LATTICE_PRED[(arm, 1)][0]     # reference: the lattice at dx
         pred = _R2_LATTICE_PRED[(arm, K)]
         reading = ("lattice-confirmed" if max(resid_R, resid_T) <= _R2_LATTICE_RESIDUAL_BAR else
                    "first-order" if (K == 2 and 0.4 <= ratio <= 0.6) or (K == 4 and 0.2 <= ratio <= 0.35) else
@@ -587,3 +603,39 @@ def test_r2_meep_ladder_summary_carries_the_res80_rung():
             if rung.get("finite"):
                 assert rung["mean_dR_meep_tmm_gated"] == pytest.approx(fresh["arms"][arm]["rungs"][res]["mean_dR_meep_tmm_gated"], rel=1e-9)
     print("r2-summary meep ladder orders:", {a: {k: round(o, 2) for k, o in v["orders"].items()} for a, v in summ["arms"].items()})
+
+
+# ---------------------------------------------------------------------------
+# 4. Round 3 (note section 13.2): the two Meep node-count discriminators on
+#    tand0p1 at 40 px/cm. Predictions locked; the replay prints and asserts
+#    structure (skips until the r3 artifacts land).
+# ---------------------------------------------------------------------------
+
+def test_r3_meep_node_count_discriminators_against_the_predictions():
+    doc = _baseline()
+    f, _ = _rfx_bins()
+    g = G.gated_mask(f)
+    p = L.ARMS["tand0p1"]["params"]
+    R0, T0, _ = L.analytic_rta(f[g], p)
+    Rm1, Tm1, _ = L.meep_thickness_excess_rta(f[g], p, 40, cells=-1.0)     # 39 nodes: d - a/40
+    Rl, Tl = de.yee_lattice_slab_rt(f[g], p["eps_inf"], p["sigma"], L.D_SLAB_M, L.MEEP_A_M / 40, 0.5 * L.MEEP_A_M / 40 / de.C0)
+    pred = {"res40_thin1": (np.abs(Rm1 - R0).mean(), "39 nodes, mirrored (r2 measured 0.01537)"),
+            "res40_thin_half": (np.abs(Rm1 - R0).mean(), "39 nodes, mirrored -- NOT a collapse"),
+            "res40_shift_half": (np.abs(Rl - R0).mean(), "40 nodes -> the lattice level")}
+    assert pred["res40_thin_half"][0] == pytest.approx(0.0156, abs=3e-4) and pred["res40_shift_half"][0] < 5e-4
+    lines = []
+    for tag, (pv, label) in pred.items():
+        q = _RESULTS / f"meep_tand0p1__{tag}.json"
+        if not q.is_file():
+            lines.append(f"r3-summary meep tand0p1__{tag}: ABSENT (pred {pv:.5f}, {label})")
+            continue
+        md = _read(q)
+        assert md["run"]["finite"] and md["precheck"]["passed"] and md["resolution"] == 40
+        e4 = L.evaluate_e4(_replay_e2(doc["arms"]["tand0p1"]), md)
+        fm = np.asarray(md["freqs_hz"]); Rm = np.interp(f[g], fm, np.asarray(md["R"]))
+        corr_minus = float(np.corrcoef(Rm - R0, Rm1 - R0)[0, 1])
+        lines.append(f"r3-summary meep tand0p1__{tag}: d_slab {md['d_slab_m']:.5f} m centre {md.get('center_offset_m', 0):.5f} m; "
+                     f"Meep-vs-TMM mean|dR| {e4['mean_dR_meep_tmm_gated']:.5f} (pred {pv:.5f}, {label}); "
+                     f"corr with TMM(d - a/40) {corr_minus:+.3f}; |dT| {e4['mean_dT_meep_tmm_gated']:.5f}")
+    print("\n".join(lines))
+

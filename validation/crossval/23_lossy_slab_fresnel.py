@@ -172,8 +172,10 @@ def main(argv=None) -> int:
     ap.add_argument("--out-dir", default=None, help="artifact directory (default: _23_lossy_results)")
     ap.add_argument("--meep-dir", default=None, help="where the Meep JSONs live (default: out-dir)")
     ap.add_argument("--no-plots", action="store_true")
-    ap.add_argument("--dx-div", type=int, default=1, choices=(1, 2, 4),
-                    help="refine the rig in cells by K (dx/K, all cell counts x K); diagnostic")
+    ap.add_argument("--dx-div", type=int, default=None, choices=(1, 2, 4),
+                    help="refine the rig in cells by K (dx/K, all cell counts x K). Default: the arm's "
+                         "declared primary recipe (note section 13: tand3 at dx/2, the others at dx); an "
+                         "explicit value is a diagnostic and requires --tag")
     ap.add_argument("--nx-interior", type=int, default=None,
                     help="interior cells at dx (default cv22's 1000)")
     ap.add_argument("--tag", default=None,
@@ -196,7 +198,7 @@ def main(argv=None) -> int:
                   {k: round(o, 2) for k, o in v["orders"].items()})
         print("wrote", os.path.join(od, "meep_ladder_summary.json"))
         return 0
-    if (a.dx_div != 1 or a.nx_interior not in (None, G.NX_INTERIOR_R3)) and not a.tag and not a.smoke:
+    if (a.dx_div is not None or a.nx_interior not in (None, G.NX_INTERIOR_R3)) and not a.tag and not a.smoke:
         ap.error("--dx-div / --nx-interior arms are diagnostics and require --tag")
 
     out_dir = a.out_dir or (tempfile.mkdtemp(prefix="cv23_smoke_") if a.smoke else RESULTS_DIR)
@@ -230,6 +232,7 @@ def main(argv=None) -> int:
         "schema": L.SCHEMA, "case_id": L.CASE_ID, "commit": _git_commit(),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "falsifier": a.falsifier, "smoke": bool(a.smoke), "tag": a.tag, "dx_div": a.dx_div,
+        "arm_dx_div": dict(L.ARM_DX_DIV),
         "recipe": a.recipe,
         "rig": {"dx_m": G.DX_M, "d_slab_m": G.D_SLAB_M, "nx_interior": nx_interior, "n_cpml": G.N_CPML,
                 "tfsf_f0_hz": G.TFSF_F0_HZ, "tfsf_bw": G.TFSF_BW, "band_gated_hz": list(G.BAND_GATED_HZ),
@@ -252,12 +255,14 @@ def main(argv=None) -> int:
             print(f"\n[{arm}] FALSIFIER {rfx_fals}: {L.FALSIFIERS[rfx_fals][1]} "
                   f"(FDTD built with the defect; judged against the DECLARED material)")
         print(f"\n[{arm}] tan delta @ {L.F_CENTRE_HZ/1e9:g} GHz = {L.ARM_TAN_DELTA[arm]:g}; "
-              f"params_run={ {k: float(v) for k, v in params_run.items()} }; materials path: {path}")
+              f"params_run={ {k: float(v) for k, v in params_run.items()} }; materials path: {path}; "
+              f"recipe dx/{a.dx_div if a.dx_div is not None else L.ARM_DX_DIV[arm]}")
+        dx_div = a.dx_div if a.dx_div is not None else L.ARM_DX_DIV[arm]
         nx_arm = nx_interior
         grows = []
         while True:
             run = run_rfx_arm(params_run, path, nx_interior=nx_arm, n_steps_cap=n_steps_cap, smoke=a.smoke,
-                              dx_div=a.dx_div, recipe=a.recipe)
+                              dx_div=dx_div, recipe=a.recipe)
             if not run.get("grow"):
                 break
             grows.append({"nx_interior": nx_arm, "t_safe": run["t_safe"],
@@ -270,7 +275,8 @@ def main(argv=None) -> int:
                 raise RuntimeError("record never settled to -40 dB within 4x the declared box")
         run["record"] = None if run["record"] is None else dict(run["record"], nx_grows=grows)
         # The oracle is ALWAYS the declared material (cv22 note section 10.1).
-        e2 = L.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], params, run["dt_s"], tail=run["tail"])
+        e2 = L.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], params, run["dt_s"], tail=run["tail"],
+                           dx=run["dx_m"])
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["materials_path"] = path
         e2["materials"] = run["materials"]
@@ -298,6 +304,11 @@ def main(argv=None) -> int:
               f"mean|dA|={e2['mean_dA_gated']:.4f}/{e2['mean_window_A']:.4f}; A_tight_ok={e2['A_tight_ok']}; "
               f"max R+T (masked) = {1 + e2['max_RT_closure_masked']:.4f}")
         print(f"  E2 gates: {e2['gates']} -> {'PASS' if e2['e2_ok'] else 'FAIL'}")
+        lat = e2["lattice"]
+        print(f"  lattice witness (reported, not gated): W_lat mean R/T/A {lat['mean_W_lat_R_gated']:.5f}/"
+              f"{lat['mean_W_lat_T_gated']:.5f}/{lat['mean_W_lat_A_gated']:.5f}; |rfx - lattice| mean R/T/A "
+              f"{lat['mean_dR_lattice_gated']:.2e}/{lat['mean_dT_lattice_gated']:.2e}/{lat['mean_dA_lattice_gated']:.2e} "
+              f"(max R {lat['max_dR_lattice_gated']:.2e})")
         for fi in (4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0):
             i = int(np.argmin(np.abs(np.asarray(e2["freqs_hz"]) - fi * 1e9)))
             print(f"    {e2['freqs_hz'][i]/1e9:6.2f} GHz  R {e2['R_tmm'][i]:.4f}/{e2['R_rfx'][i]:.4f} | "

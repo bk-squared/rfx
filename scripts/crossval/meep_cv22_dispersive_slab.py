@@ -89,13 +89,15 @@ def _precheck(mp, medium, model, params, meep_params, fn_map_hz):
 
 def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float, nfreq: int,
                       fcen_ghz: float, fwidth_ghz: float, decay: float, eps_averaging=None,
-                      d_slab_m: float | None = None) -> dict:
+                      d_slab_m: float | None = None, center_offset_m: float = 0.0) -> dict:
     """cv04's Meep slab geometry, two runs (vacuum reference, then the slab) with
     reference-flux subtraction. Shared by the cv22 and cv23 legs (factored out of
     this leg's main() unchanged when cv23 was added); ``medium`` is the slab.
     ``eps_averaging=None`` leaves Meep's default (cv22); cv23 passes False.
     ``d_slab_m`` overrides the drawn block thickness (cv23 note section 12:
-    the thickness-excess discriminator); the monitors and source stay put."""
+    the thickness-excess discriminator) and ``center_offset_m`` shifts the block
+    centre along x (cv23 section 13: the half-pixel node-count discriminator);
+    the monitors and source stay put."""
     fcen = fcen_ghz * 1e9 * a_m / DE.C0
     fwidth = fwidth_ghz * 1e9 * a_m / DE.C0
     sx = G.NX_INTERIOR * G.DX_M / a_m
@@ -133,7 +135,7 @@ def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float
     t0 = time.time()
     sim = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src,
                         resolution=resolution, Courant=courant, k_point=mp.Vector3(),
-                        geometry=[mp.Block(center=mp.Vector3(0, 0),
+                        geometry=[mp.Block(center=mp.Vector3(center_offset_m / a_m, 0),
                                            size=mp.Vector3(d_slab, mp.inf, mp.inf),
                                            material=medium)], **sim_kw)
     refl = sim.add_flux(fcen, fwidth, nfreq, refl_fr)
@@ -150,7 +152,8 @@ def run_slab_two_pass(mp, medium, *, a_m: float, resolution: int, courant: float
     freqs_hz = flux_freqs * DE.C0 / a_m
     dt_meep_s = courant / resolution * a_m / DE.C0
     return {"freqs_hz": freqs_hz, "R": R, "T": T, "dt_meep_s": dt_meep_s, "fcen": fcen, "fwidth": fwidth,
-            "t_ref_s": t_ref, "t_slab_s": t_slab, "eps_averaging": eps_averaging, "d_slab_m": d_slab * a_m}
+            "t_ref_s": t_ref, "t_slab_s": t_slab, "eps_averaging": eps_averaging, "d_slab_m": d_slab * a_m,
+            "center_offset_m": center_offset_m}
 
 
 def main(argv=None) -> int:

@@ -56,8 +56,9 @@ def main(argv=None) -> int:
     ap.add_argument("--arm", required=True, choices=list(L.ARM_ORDER))
     ap.add_argument("--falsifier", choices=sorted(L.MEEP_FALSIFIERS), default=None)
     ap.add_argument("--out-dir", required=True)
-    ap.add_argument("--resolution", type=int, default=L.MEEP_PRIMARY_RESOLUTION,
-                    help="px/cm (default: the 40 px/cm primary reference; the ladder passes 10/20/40)")
+    ap.add_argument("--resolution", type=int, default=None,
+                    help="px/cm (default: the arm's declared primary reference, note section 13: tand0p1 80, "
+                         "tand1 / tand3 40; the ladder passes 10/20/40/80 explicitly)")
     ap.add_argument("--courant", type=float, default=L.MEEP_COURANT)
     ap.add_argument("--nfreq", type=int, default=200)
     ap.add_argument("--decay", type=float, default=1e-3)
@@ -66,6 +67,9 @@ def main(argv=None) -> int:
     ap.add_argument("--thickness-offset-cells", type=float, default=0.0,
                     help="draw the block d + N a/res thick (note section 12: -1 tests the hypothesis that "
                          "Meep's block realizes d + a/res); diagnostic, requires --tag")
+    ap.add_argument("--center-offset-cells", type=float, default=0.0,
+                    help="shift the block centre by N a/res along x (note section 13: +0.5 realizes 40 integer-"
+                         "position nodes instead of 41); diagnostic, requires --tag")
     ap.add_argument("--tag", default=None,
                     help="write meep_<arm>__<tag>.json (ladder rungs); without it the leg is the one the case reads")
     a = ap.parse_args(argv)
@@ -77,8 +81,10 @@ def main(argv=None) -> int:
         return 2
     M22 = _load_cv22_leg()
 
-    if a.thickness_offset_cells and not a.tag:
-        ap.error("--thickness-offset-cells is a diagnostic and requires --tag")
+    if (a.thickness_offset_cells or a.center_offset_cells) and not a.tag:
+        ap.error("--thickness-offset-cells / --center-offset-cells are diagnostics and require --tag")
+    if a.resolution is None:
+        a.resolution = L.MEEP_PRIMARY_RESOLUTION_BY_ARM[a.arm]
     if a.falsifier and a.arm != L.MEEP_FALSIFIER_ARM:
         print(f"falsifiers are declared on the {L.MEEP_FALSIFIER_ARM} arm only")
         return 1
@@ -106,7 +112,8 @@ def main(argv=None) -> int:
     res = M22.run_slab_two_pass(mp, medium, a_m=a_m, resolution=a.resolution, courant=a.courant,
                                 nfreq=a.nfreq, fcen_ghz=a.fcen_ghz, fwidth_ghz=a.fwidth_ghz,
                                 decay=a.decay, eps_averaging=L.MEEP_EPS_AVERAGING,
-                                d_slab_m=L.D_SLAB_M + a.thickness_offset_cells * a_m / a.resolution)
+                                d_slab_m=L.D_SLAB_M + a.thickness_offset_cells * a_m / a.resolution,
+                                center_offset_m=a.center_offset_cells * a_m / a.resolution)
     R, T, freqs_hz = res["R"], res["T"], res["freqs_hz"]
     A = 1.0 - R - T
     finite = bool(np.all(np.isfinite(R)) and np.all(np.isfinite(T)))
@@ -132,6 +139,7 @@ def main(argv=None) -> int:
         "nfreq": a.nfreq, "fcen_meep": res["fcen"], "fwidth_meep": res["fwidth"], "decay": a.decay,
         "eps_averaging": L.MEEP_EPS_AVERAGING,
         "d_slab_m": res["d_slab_m"], "thickness_offset_cells": a.thickness_offset_cells,
+        "center_offset_m": res["center_offset_m"], "center_offset_cells": a.center_offset_cells,
         "material": {"model": L.MODEL, "params": params, "tan_delta_at_f_centre": L.ARM_TAN_DELTA[a.arm]},
         "meep_params": meep_params,
         "precheck": pre,

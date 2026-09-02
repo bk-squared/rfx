@@ -42,6 +42,15 @@ D_SLAB_M = G.D_SLAB_M
 MEEP_A_M = G.MEEP_A_M
 MEEP_COURANT = G.MEEP_COURANT
 MEEP_PRIMARY_RESOLUTION = G.MEEP_PRIMARY_RESOLUTION
+# Note section 13 (round 3): the Meep primary reference per arm -- 80 px/cm on
+# tand0p1 (its first-order thickness term is inside the window by 1.28x
+# there, one rung under, stated), 40 px/cm on tand1 / tand3.
+MEEP_PRIMARY_RESOLUTION_BY_ARM = {"tand0p1": 80, "tand1": 40, "tand3": 40}
+# Note section 13: the rfx primary recipe per arm -- dx/2 for tand3, whose
+# |n| k0 dx = 0.64 at the band top puts the lattice term outside a window
+# derived at |n| = 2; dx for tand0p1 and tand1 (inside). Resolution, not
+# tolerance: the windows are unchanged.
+ARM_DX_DIV = {"tand0p1": 1, "tand1": 1, "tand3": 2}
 MEEP_LADDER_RESOLUTIONS = G.MEEP_LADDER_RESOLUTIONS
 MEEP_LADDER_RESOLUTIONS_R2 = (10, 20, 40, 80)   # note section 12: the res-80 rung
 RFX_DX_LADDER = (1, 2, 4)                        # note section 12: --dx-div K per arm
@@ -163,8 +172,12 @@ def _f(x):
     return float(x)
 
 
-def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None) -> dict:
-    """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses)."""
+def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
+                dx: float | None = None) -> dict:
+    """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
+    With ``dx`` given, the exact Yee-lattice solution at (dx, dt) is added as
+    a REPORTED witness (``lattice``: W_lat per bin and |rfx - lattice|; note
+    section 13) -- it enters no gate."""
     out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail)
     f = np.asarray(freqs_hz, dtype=float)
     g = np.asarray(out["gated"], dtype=bool)
@@ -194,6 +207,20 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
         "A_tight_ok": tight, "A_tight_windows": {"per_bin": W_BIN_A_TIGHT, "mean": W_MEAN_A_TIGHT},
         "tan_delta_gated": de.tan_delta_of(f[g], params).tolist(),
     })
+    if dx is not None:
+        Rl, Tl, Al = lattice_rta(f, params, float(dx), dt)
+        wl_R, wl_T, wl_A = np.abs(Rl - R_an), np.abs(Tl - T_an), np.abs(Al - A_an)
+        rl_R, rl_T, rl_A = np.abs(R_x - Rl), np.abs(T_x - Tl), np.abs(A_x - Al)
+        out["lattice"] = {
+            "dx_m": float(dx), "dt_s": float(dt), "gated": False,
+            "R_lattice": Rl.tolist(), "T_lattice": Tl.tolist(), "A_lattice": Al.tolist(),
+            "W_lat_R": wl_R.tolist(), "W_lat_T": wl_T.tolist(), "W_lat_A": wl_A.tolist(),
+            "mean_W_lat_R_gated": _f(wl_R[g].mean()), "mean_W_lat_T_gated": _f(wl_T[g].mean()),
+            "mean_W_lat_A_gated": _f(wl_A[g].mean()),
+            "mean_dR_lattice_gated": _f(rl_R[g].mean()), "max_dR_lattice_gated": _f(rl_R[g].max()),
+            "mean_dT_lattice_gated": _f(rl_T[g].mean()), "max_dT_lattice_gated": _f(rl_T[g].max()),
+            "mean_dA_lattice_gated": _f(rl_A[g].mean()), "max_dA_lattice_gated": _f(rl_A[g].max()),
+        }
     out["e2_ok"] = bool(all(v for v in out["gates"].values() if v is not None))
     return out
 
