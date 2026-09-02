@@ -2,7 +2,8 @@
 
 Status: contract document, the first v1.8 deliverable
 (`docs/agent-memory/rfx-known-issues.md:196-197`). Criteria source: `ROADMAP.md:25-32`. Audited
-base: main 1c38b0d7, 2026-09-02.
+base: main 1c38b0d7, 2026-09-02. The seven questions raised here were decided by the PI on the same
+day (the plan's "Decisions"); deferred items are #854.
 
 ## The chain
 
@@ -10,23 +11,22 @@ base: main 1c38b0d7, 2026-09-02.
 `eps_override` / `sigma_override`) enters the solver on the JAX tape, the extractor returns complex
 S_ij(f) without leaving the tape, and a scalar objective built from that S has a gradient matching
 FD, on a fixture whose S also passes the family's physics gates and at least one referee. A gradient
-matching FD on an uncalibrated S is not closure; a calibrated S with no gradient is not closure
-either.
+matching FD on an uncalibrated S is not closure; a calibrated S with no gradient is not closure either.
 
 ## Criterion 1 — in-graph S
 
-Per documented lane, three tests decide it. (1) **Trace:** `jax.value_and_grad` of a scalar of
-`compute_*(..., eps_override=θ).s_params` returns finite values with no
-`TracerArrayConversionError`. (2) **Forward identity:** S under a no-op traced override equals the
-untraced call to `rtol=1e-5, atol=1e-7` (the bound at `tests/test_waveguide_flux_ad.py:104`). (3)
-**Unsupported lane:** any lane that cannot trace raises `NotImplementedError` at public dispatch,
-naming the lane — the shape already used on the non-uniform path at `rfx/api/_sparams.py:2332-2341`,
-locked by `tests/test_waveguide_nu_sparam.py:377-390`.
+Three tests decide it per lane. (1) **Trace:** `jax.value_and_grad` of a scalar of
+`compute_*(..., eps_override=θ).s_params` returns finite values with no `TracerArrayConversionError`.
+(2) **Forward identity:** S under a no-op traced override equals the untraced call to
+`rtol=1e-5, atol=1e-7` (the bound at `tests/test_waveguide_flux_ad.py:104`). (3) **Unsupported
+lane:** any lane that cannot trace raises `NotImplementedError` at public dispatch, naming the lane —
+the shape at `rfx/api/_sparams.py:2332-2341`, locked by `tests/test_waveguide_nu_sparam.py:377-390`.
 
 A `np.*` call on the S path is admissible only behind an explicit tracer guard: an `is_tracer(...)`
 or `isinstance(..., jax.core.Tracer)` branch that returns before the call, the form at
 `rfx/sources/waveguide_port.py:1826-1827` and `rfx/probes/probes.py:745-764`. There is no grep-based
-pass condition; tests 1 and 3 decide this criterion. Artifacts: one trace test and one
+pass condition; tests 1 and 3 decide this criterion. **Dtype:** all three waveguide lanes follow
+`JAX_ENABLE_X64`; none hard-casts its assembled column. Artifacts: one trace test and one
 unsupported-lane test per lane; a docstring sentence naming the traced inputs and the
 reference-impedance convention.
 
@@ -38,16 +38,15 @@ reciprocity `max_f |S_ij − S_ji| / max|S| ≤ tol_r`; power closure `|1 − Σ
 lossless DUT. Tolerances are derived from a measured envelope by `gate_from_envelope`
 (`tests/_gate_policy.py:89`, `ENVELOPE_GATE_MULTIPLIER = 1.5` at `:81`), never chosen.
 
-**Settling witness.** Energy-based `settling_db ≤ −40 dB` is required where the lane emits one, as
-the waveguide lanes now do (`rfx/api/_sparams.py:7758-7763`). Exactly one substitute is admissible
-where no energy monitor exists: **record-length invariance** in the form of
+**Settling witness.** Energy-based `settling_db ≤ −40 dB` is required where the lane emits one, as the
+waveguide lanes do (`rfx/api/_sparams.py:7758-7763`). Where no energy monitor exists, one substitute
+is admissible: **record-length invariance** in the form of
 `tests/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` — double the record window at a fixed
-absorber, require the max|S11| shift below one tenth of the magnitude gate, and require column power
-within 1e-3 of unity on a lossless structure. That file's docstring at `:175-176` gives the reason:
-rfx exposes no total-energy monitor, so truncation shows up first as non-passive column power. A
-two-window Harminv comparison is not a witness. Artifacts: the gate test in the fast lane, the
-measured envelope in the docstring, and the `settling_db` value or the named substitute in the
-fixture JSON.
+absorber, require the max|S11| shift below one tenth of the magnitude gate and column power within
+1e-3 of unity on a lossless structure. Reason at `:175-176`: rfx has no total-energy monitor, so
+truncation shows first as non-passive column power. A two-window Harminv comparison is not a witness.
+Artifacts: the fast-lane gate test, the docstring's measured envelope, and `settling_db` or the named
+substitute in the fixture JSON.
 
 ## Criterion 3 — falsifier battery
 
@@ -58,17 +57,24 @@ One common fixture set (thru, PEC-short, dielectric slab) across the differentia
 falsifier `:629-634`), evaluated **before** the accuracy gate. `rel ≤ 0.05` on |S11|², |S21|² and
 one complex-S objective. An FD leg below the span floor skips with the span printed.
 
-**(b) Reference-plane invariance.** Under a plane change: |S| invariant to `rtol=1e-3, atol=1e-4`
-(the pinned form at `tests/test_waveguide_twoport_contract_v1.py:270`); ∠S11 rotates by 2βL within a
-pre-declared angle; d(objective)/dθ invariant. The gradient quantity has never been measured here,
-so it is **report-only on its first run**: the predeclaration note fixes 1e-2 as the number above
-which a result must be reported and explained rather than absorbed, and the same PR then pins the
-gate at `gate_from_envelope(measured, quantum=1000)`. Without that second step criterion 3 is open.
+**(b) Reference-plane invariance.** Under a plane change: |S| invariant to `rtol=1e-3, atol=1e-4` (the
+pinned form at `tests/test_waveguide_twoport_contract_v1.py:270`); ∠S11 rotates by 2βL within a
+pre-declared angle; d(objective)/dθ invariant. The shift is post-processing by a unit-modulus
+`exp(∓jβΔ)` (`waveguide_port.py:1681-1682`) whose β is a property of the port cross-section, not of θ.
+A **magnitude** objective (|S11|², |S21|²) is therefore gradient-invariant up to rounding, ~1e-6; a
+**complex** objective is rotation-covariant instead, `d(S21·e^{jφ})/dθ = e^{jφ}·dS21/dθ`. The leg
+catches a β that reaches the tape, or a non-unit-modulus shift factor. Never measured here, so
+**report-only on its first run** against a pre-declared 1e-2, the same PR pinning
+`gate_from_envelope(measured, quantum=1000)`; without that step criterion 3 is open.
 
-**(c) Mesh refinement.** A 3-point dx ladder where the fine-minus-finest delta does not exceed the
-coarse delta plus a stated floor, on |S11|, |S21| and ∠S21. **Stated limitation:** this is a
-non-increase test, not a convergence test — a lane plateaued at the wrong value passes it. A
-monotone-approach clause is PI question 6.
+**(c) Mesh refinement.** A 3-point dx ladder whose fine-minus-finest delta stays within the coarse
+delta plus a stated floor, on |S11|, |S21| and ∠S21. **Stated limitation:** a non-increase test, not a
+convergence test — a lane stuck at the wrong value passes it. Two report-first witnesses narrow it:
+monotonicity with the successive-delta ratio, and Richardson `2*S_fine - S_coarse` vs the oracle on
+adjacent pairs (cv18: envelope 0.0051 → gate 0.01, `crossval/18_wr90_iris_modematch.py:162`). Three
+guards: rungs are `dx = a/N` at integer N, so all realize one guide; every bin is evaluated, the worst
+reported, the ladder uninterpretable when the ratio-2 successive-delta ratio is far from 0.5 (first
+order) or 0.25 (second); each rung asserts rasterized cell counts scale with 1/dx.
 
 **(d) Referee.** One analytic or external referee inside a pinned tolerance, conventions recorded
 (Yee half-step; time-convention conjugation, `rfx-known-issues.md:4093-4112`). A magnitude-only flux
@@ -92,6 +98,8 @@ waveguide (`n_modes > 1`): the host-side assembly at `rfx/sources/waveguide_port
 `:3036` is documented, not fixed. Tracing `freqs` or the plane position as θ; both are static
 (`rfx/api/__init__.py:2472`, `waveguide_port.py:1679`). Phase agreement with external solvers (Airy
 suffices). `normalize=True` for reflection of strong reflectors (`rfx-known-issues.md:3384-3395`).
+Runtime wiring of the reciprocity warning (`rfx/validation.py:468-486`, off at `:342`) — sequenced
+after WP2 measures the complex envelope, #854 item 4.
 - **The #812 artifact lane.** v1.8 consumes `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`
 as it stands, keeps its `STALE` label, and edits neither it nor the crossval gates
 cv02/03/04/09/10/14/20/21 or cv06b. That decision is #812 Phase 0 item 2
@@ -101,11 +109,10 @@ here."
 
 ## How a family is declared chain-closed
 
-One PR that (1) links the four artifacts by path, (2) adds the per-lane ledger row, (3) updates
-`docs/guides/support_matrix.md` and `sparameter_support_matrix.{md,json}` in the same diff, (4)
-carries the R3 line, and (5) is signed off by a verifier agent that did not author it. Until
-`ROADMAP.md:41` redefines the matrix the row wording stays "limited"/"experimental" plus
-"chain-closed (v1.8)"; "supported" is a v2.0 word.
+One PR that (1) links the four artifacts by path, (2) adds the ledger row, (3) updates
+`docs/guides/support_matrix.md` and `sparameter_support_matrix.{md,json}` in one diff, (4) carries the
+R3 line, (5) is signed off by a verifier that did not author it. Until `ROADMAP.md:41` redefines the
+matrix, wording stays "limited"/"experimental" plus "chain-closed (v1.8)"; "supported" is a v2.0 word.
 
 ## Status today (main 1c38b0d7)
 
