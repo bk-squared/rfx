@@ -511,6 +511,38 @@
       "cpu_runner": {"excluded_reason": "Four arms x (FDTD + three harminv windows on <= 8000 raw samples WITHOUT decimation (measured 20 / 64 / 62 / 45 s on the 16-CPU pod; the decimated path is the 10-20 ppm estimator floor the rig check found) + a source-free energy audit of the arm's own grid) plus the 480 000-cell uniform-fine arm (35 s FDTD + 34 s audit): ~5 min measured on the pod, inside the lane's 900 s timeout but ~10 min on a 2-core CI runner, so it is not budgeted a CPU slot. The evidence lane is VESSL (scripts/vessl_cv24_nu_cavity.yaml: four arms, five falsifiers, the gate test); the evidence floor on a clean checkout is the committed artifact replayed by tests/test_cv24_nu_cavity_gates.py with no FDTD, plus that test's artifact-free re-derivation of every declared number."},
       "scheduled_external_order": null,
       "failure_sentinel": "rfx accuracy: FAIL"
+    },
+    {
+      "id": "22_dispersive_slab_fresnel",
+      "script": "validation/crossval/22_dispersive_slab_fresnel.py",
+      "role": "claims-bearing",
+      "public_group": "A",
+      "execution_tiers": ["cpu-runner", "scheduled-external"],
+      "evidence_levels": ["E2", "E4"],
+      "references": [
+        {
+          "kind": "analytic",
+          "name": "normal-incidence single-slab transfer matrix with the COMPLEX, frequency-dependent eps(f) of the declared Debye / Lorentz / Drude pole (validation/crossval/comparators/dispersive_eps.py; the same 2x2 characteristic matrix as cv04 and tests/test_dispersive_fresnel_validation.py, evaluated per bin)",
+          "required_for_script_pass": true
+        },
+        {
+          "kind": "external-solver",
+          "name": "Meep slab R/T with the same material mapped into Meep's LorentzianSusceptibility / DrudeSusceptibility by dispersive_eps.to_meep (Debye as the declared overdamped-Lorentzian with its residual carried in the window), produced by scripts/crossval/meep_cv22_dispersive_slab.py and read from validation/crossval/_22_dispersive_results/meep_<arm>.json",
+          "required_for_script_pass": true
+        }
+      ],
+      "claim_scope": "First crossval coverage of rfx's dispersive-material ADE paths (rfx/materials/debye.py, rfx/materials/lorentz.py incl. drude_pole): normal-incidence R(f) AND T(f) of a 10 mm single-pole slab on cv04's TFSF rig (dx = 1 mm, 2-D TMz, byte-identical rig except the slab E-update), three arms -- Debye (eps_inf 2, delta_eps 4, tau = 1/(2 pi 5 GHz)), Lorentz (eps_inf 2, delta_eps 1.5, f0 7 GHz, Q 3) and Drude (eps_inf 3, fp 7 GHz, gamma 2 pi 3 GHz) -- chosen so |eps| varies >= 30% across the gated band and the loss tangent sits in or crosses 0.1-1. GATED (pre-declared before any run in docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md; every number lives in validation/crossval/comparators/cv22_dispersive_gates.py): per rFFT bin in 4-10 GHz, |R_rfx - R_TMM| and |T_rfx - T_TMM| within W_bin + W_ADE(f), and band-mean within W_mean + mean W_ADE, where W_bin / W_mean_R / W_mean_T are round-up(cv04's committed envelope x 1.5) via tests/_gate_policy.py (per-bin max|R+T-1| 0.0487 from the cv04 script's #341 comment; band-mean 0.0066 / 0.011 from tests/fixtures/golden_workflows/multilayer_fresnel.json) and W_ADE(f) is the ADE's own temporal-discretization error of eps(f) -- the bilinear-warped Debye pole and the sin-warped Lorentz/Drude pole -- propagated through the same transfer matrix (named and carried although it is 1e-4-class at this dt); cv04's tail-purity/tail-level witnesses and a passivity ceiling are carried unchanged. E4 gates Meep against the TMM (reference soundness) and rfx against Meep with the triangle-inequality sum of the two windows plus Meep's own discrete-time term and, for the Debye arm, the declared mapping residual; the Meep-side windows are derived from the DECLARED material, never from the parameters the Meep JSON reports. Pre-declared falsifiers, each of which must exit 1: tau x2 (tau x1.3 was evaluated and rejected as a coin toss at 1.05x the window), f0 x1.3, fp x1.3, delta_eps = 0 / omega_p = 0, and -- this repo's round-1 failure class -- the Meep material mapped with the wrong convention (2 pi dropped from the pole frequency; gamma built from delta instead of 2 delta), with the unit-level twin in tests/test_cv22_dispersive_eps_mapping.py asserting the 1e-9 mapping test FAILS for each wrong convention. Edges 3-4 GHz and 10-11.9 GHz of cv04's mask are reported, not gated (incident amplitude < 8.6% of peak above 10 GHz is the mask-amplified class; below 4 GHz the 719-step record resolves under two bins per record length). STATUS: no measurement has been committed yet -- artifact_paths is empty until the VESSL run (scripts/vessl_cv22_dispersive_slab.yaml) lands rfx.json, the six falsifier rfx JSONs and the five Meep JSONs; until then the script exits 2 (Meep reference missing) and the public rows carry prose and no numbers. Says nothing about oblique incidence, multi-pole fits, conductivity-plus-pole mixes, mixed Debye+Lorentz cells, or the high-level Simulation.add_material path (the case drives update_e_debye / update_e_lorentz directly, as cv04 drives update_e).",
+      "external_dependencies": ["pymeep"],
+      "expected_exit_codes": [0, 1, 2],
+      "gate_paths": [
+        "validation/crossval/22_dispersive_slab_fresnel.py",
+        "tests/test_cv22_dispersive_slab_gates.py",
+        "tests/test_cv22_dispersive_eps_mapping.py"
+      ],
+      "artifact_paths": [],
+      "cpu_runner": {"order": 17},
+      "scheduled_external_order": 7,
+      "failure_sentinel": "rfx accuracy: FAIL"
     }
   ]
 }
