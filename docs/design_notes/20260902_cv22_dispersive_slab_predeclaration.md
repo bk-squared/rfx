@@ -505,3 +505,65 @@ fails when nature disagrees with a hypothesis is the wrong instrument.
 
 Cost: every leg is seconds (r1 rfx arm 0.4 s, Meep leg 0.1–0.6 s); dx/4 is
 16× cells × 4× steps ≈ 64× → ≈ 30 s; Meep 40 px/cm ≈ 16× → seconds.
+
+## 12. Round 2 read (VESSL 369367257805) — two mechanisms decided; round 3 pre-declared
+
+Artifacts (world-readable): `~/mnt/remilab-fs/personal-workspaces/claude-workspace/rfx/runs/cv22-dispersive-r2-20260902T103036Z/_22_dispersive_results/` (abbreviated `r2/` below); log `~/Documents/vessl-run-logs/369367257805_cv22-dispersive-r2.log`. Every number is by key; the derived Meep-vs-TMM numbers are `evaluate_e4(rfx.json::arms.<arm>, <meep file>)` fields, reproduced verbatim by `meep_ladder_summary.json` (§12.3) once committed.
+
+### 12.1 rfx Lorentz — TRUNCATION, decided by the §11.2(a)/(a') reading rules
+
+| artifact | mean\|ΔR\| (`::arms.lorentz.mean_dR_gated`) | ratio to baseline | mean\|ΔT\| | tail scat / trans (`::arms.lorentz.tail.*`) |
+|---|---|---|---|---|
+| `r2/rfx.json` (dx, 719 steps) | 0.01221 | 1 | 0.01403 | 0.0308 / 0.0584 (−30 / −25 dB) |
+| `r2/rfx__lorentz_dx2.json` (1438 steps) | 0.01135 | ×0.93 | 0.01277 | 0.0350 / 0.0595 |
+| `r2/rfx__lorentz_dx4.json` (2876 steps) | 0.01034 | ×0.85 | 0.01150 | 0.0363 / 0.0598 |
+| `r2/rfx__lorentz_nx1500.json` (1940 steps, gate opened) | **0.00284** | **×0.23** | 0.00153 | 2.1e-5 / 2.5e-5 (−94 dB) |
+
+The dx/4 ratio 0.85 is in the pre-declared "no fall ≥ 0.7" band (§11.2(a), H3): the excess is **not spatial discretization**. The (a') arm collapses it ×0.23 to 0.0028 (max|ΔR| 0.0049, E2 PASS) with the tail witness falling from −25 dB to −94 dB: the excess is **record truncation** — cv04's 719-step CPML rule cuts the Lorentz slab's ring-down (material pole δ = 7.33e9 s⁻¹, −40 dB in 0.63 ns = 269 steps, starting only after the incident pulse has passed the probe at step ~622; the record ends at 719). The dx ladder kept the *physical* record length constant (steps ×K at dt/K), which is exactly why it could not move the truncation term — consistent, not a coincidence. cv04's own #341 comment found the same mechanism for its fringe (0.0487 → 0.0002 at nx 1500); cv04's envelope was borrowed for a lossless slab with fast etalon decay and does not transfer to a Q = 3 pole. Debye (`r2/rfx.json::arms.debye.mean_dR_gated = 0.00521`, PASS; dx ladder 0.00465 / 0.00427, no-fall) and Drude (0.00051, PASS) carry the same truncated tails (−24 dB / −40 dB) but their windows absorb it. **The ADE is not implicated on any arm.**
+
+### 12.2 Meep — its own FIRST-ORDER spatial discretization is the missing E4 term
+
+Meep-vs-TMM, gated band, `evaluate_e4(rfx.json::arms.<arm>, r2/meep_<arm>[__tag].json)::mean_d{R,T}_meep_tmm_gated`:
+
+| arm | res 10 (`meep_<arm>.json`) | res 20 (`__res20`) | res 40 (`__res40`) | decay 1e-6 (`__decay1e-6`) | source 7 GHz (`__src7`) |
+|---|---|---|---|---|---|
+| Lorentz R / T | 0.0211 / 0.0196 | 0.0101 / 0.0100 | **0.0049 / 0.0051** | 0.0211 / 0.0196 (×1.00) | 0.0211 / 0.0196 (×1.00) |
+| Drude R / T | 0.0077 / 0.0377 | 0.0040 / 0.0189 | **0.0020 / 0.0095** | 0.0077 / 0.0377 (×1.00) | 0.0077 / 0.0377 (×1.00) |
+
+Measured order per doubling (`meep_ladder_summary.json::arms.<arm>.orders`): Lorentz R 1.06 / 1.03, T 0.97 / 0.98; Drude R 0.94 / 0.97, T 0.99 / 1.00 — the §11.2(b) "first-order" prediction (0.0377 → ≈ 0.019 → ≈ 0.009; measured 0.0189, 0.0095). Decay tolerance and source re-centring change nothing (×1.00): truncation and the source floor are excluded (§11.2(b')). So the E4 window's derivation (§4: "Meep at the same dx has the same class … stated, not measured") was wrong for Meep's *interface* handling — Meep converges first-order on this slab where rfx at the same dx sits at 0.0005–0.006. rfx-vs-Meep at res 40: Lorentz 0.0127 / 0.0127, Drude 0.0017 / 0.0078, Debye 0.0065 / 0.0078 — all inside the declared G5 means (0.020 / 0.034).
+
+### 12.3 Meep Debye — the §11.2(c) fix held; the cross-check did not run
+
+`r2/meep_debye.json` (40 px/cm, f_n 100 GHz): `::run.finite = true`, `::precheck.max_rel_err = 1.97e-16`, `::resolution = 40`; ω_n·dt = 0.262, ε_num(Nyq) = 1.930 as predicted. Meep-vs-TMM 0.0046 / 0.0084, rfx-vs-Meep 0.0065 / 0.0078, all G4/G5 pass. The f_n = 40 GHz cross-check (`meep_debye__fn40`, rc 1) **did not run**: the leg's pre-run check applies the declared residual bound 3e-3 (§7) to every Debye mapping and rejected the 1.6e-2 residual of the f_n = 40 GHz pole (`precheck: max_rel_err 1.9e-16 … FAIL`, because `passed` also requires `residual < 3e-3`), before any FDTD. §11.2(c) promised to carry the larger W_map for that leg but did not exempt it from the bound; the bound is the stricter statement and stands. With the primary stable and passing, the cross-check is moot and is dropped. 10 px/cm remains the pre-declared F-B instability witness and is re-run in r3 as the Debye rung 10 (expected NaN, `run.finite = false`).
+
+### 12.4 Round 3 — pre-declared before the run (`scripts/vessl_cv22_dispersive_slab_r3.yaml`)
+
+**(1) Recipe correction, physics-derived** (`cv22_dispersive_gates.derive_record_length`, locked by `tests/test_cv22_dispersive_slab_gates.py::test_r3_record_lengths_are_derived_from_the_slab_ringdown`). This corrects a truncated measurement; it moves NO tolerance. The record length comes from the slab's own ring-down, not from cv04:
+
+    n_steps = n_pulse_end + n_ring + TAIL_WINDOW
+    n_pulse_end = ceil( (t0 + a40·τ)/dt + (probe_trans − x_lo)/v_cells )
+        τ = 1/(π f0 bw) = 63.66 ps, t0 = 3τ (rfx.sources.tfsf), a40 = 2.5255
+        (2a e^{−a²} = 1e-2 of its peak), v_cells = c·dt/dx = 0.700
+    n_ring = ceil( ln(100) / (rate_slowest · dt) )        -- amplitude 1 → 1e-2 (−40 dB)
+        rate_slowest = min(material pole, slowest etalon round-trip in 4–10 GHz)
+        material: Debye 1/τ = 3.14e10, Lorentz δ = 7.33e9, Drude γ/2 = 9.42e9 s⁻¹
+        etalon: −ln ρ / t_rt, ρ = |r|² e^{−2 k0 Im(n) d}, t_rt = 2 Re(n) d / c:
+                Debye 1.84e10 (4.0 GHz), Lorentz 1.77e10 (4.35 GHz), Drude 2.92e10 (10 GHz)
+
+The rig is widened to `nx_interior = 1000` — the smallest round value whose CPML round-trip gate (cv04's 0.95 rule, 1262 steps) exceeds the longest derived record; everything else (dx, CPML depth, TFSF, probes at ±30 cells, mask, FFT oversampling) is cv04's. Derived, per arm, at dt = 2.335 ps (n_pulse_end = 908 on the nx-1000 rig):
+
+| arm | rate_slowest (which) | n_ring | **n_steps** | CPML gate | nfft |
+|---|---|---|---|---|---|
+| Debye | 1.84e10 s⁻¹ (etalon, 4.0 GHz) | 108 | **1066** | 1262 | 16384 |
+| Lorentz | 7.33e9 s⁻¹ (material δ) | 270 | **1228** | 1262 | 16384 |
+| Drude | 9.42e9 s⁻¹ (material γ/2) | 210 | **1168** | 1262 | 16384 |
+
+All three land on nfft 16384 (df 26.1 MHz, ~230 gated bins), so the arms share one bin grid. The r2 datum (nx 1500 / 1940 steps) is not copied: 1228 is what the ring-down requires; 1940 was the CPML rule of a wider box. **Witness gate:** the last-50-step tail of the scattered-reflected and total-transmitted records must be **below 1e-2 (−40 dB) of the incident peak** (`SETTLING_LIMIT`; cv04's −20 dB `TAIL_LIMIT` is retired for this case), with cv04's 1e-3 purity check unchanged; the witness values are recorded per arm (`rfx.json::arms.<arm>.tail.{scat_refl_rel,total_trans_rel}`) and the derivation itself is stored (`::arms.<arm>.run.record`). Prediction: the tails land near −46 dB (the ring-down starts from ≤ 0.5, the derivation assumed 1), so a witness failure would mean a slower mode than the two derived ones, which would itself be a finding. Predicted Lorentz mean|ΔR| after the correction: between the r2 floor 0.0028 (−94 dB) and ≈ 0.005 (scaling the 0.009 truncation excess by 1e-2/0.045) — inside the 0.0104 window with ≥ 2× margin. The cv04-derived windows (§4) stay as declared; a truncation-dominated envelope is a conservative one for a record that is no longer truncated.
+
+**(2) E4 reference = Meep at 40 px/cm for all three arms** (`MEEP_PRIMARY_RESOLUTION`), the converged rung of the measured ladder; its remaining deviation (0.002–0.010) sits inside the declared G4 means and no E4 window is widened to admit 10 px/cm. The two wrong-convention Meep falsifiers run at 40 px/cm too (same reference resolution), and the ladder (Lorentz/Drude at 10/20/40; Debye at 10 [instability witness] / 20 / 40) is re-produced and committed as evidence of Meep's first-order term (`meep_ladder_summary.json`, written from the committed rungs by `--meep-ladder-summary`; the gate test replays it and locks the order to [0.8, 1.3] — that lock is **measured-in-r2**, not pre-declared in §4). No derived Meep term is added to the window: at 40 px/cm none is needed, and adding one now would be fitting.
+
+**(3) Falsifiers.** All eight rfx-side arms re-run at the corrected recipe; each must exit 1 — with a passing baseline they now discriminate on every arm. Analytic margins (§6) are unchanged by the recipe (the defects enter through ε(f), not the record).
+
+**(4) The gate test must be green** on the r3 set: baseline replay (recipe r3, derived n_steps per arm, tail ≤ 1e-2, all E2 gates), Meep primary legs at res 40 with `precheck.passed`, all G4/G5, every falsifier artifact failing on the band-mean, both Meep falsifiers failing E4 with `precheck.passed = false`, and the ladder summary reproducing from its rungs.
+
+Refutations accepted: the Lorentz baseline still failing G2_R at the derived record (then the residual is not truncation and the H3 branch of §11.2 reopens with the ADE as the suspect); a −40 dB witness failing (a slower mode than derived); a Meep res-40 leg failing G4 (Meep's first-order term is larger than the ladder measured, or the mapping is wrong in a way 1e-9 does not see).
