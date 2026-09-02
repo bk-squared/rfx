@@ -28,7 +28,7 @@ TE10 cutoff is solved on an aperture one cell wider than the guide (criterion
 3(b) — issue #868); and three dx ladders below the next admissible rung
 `a/72` (criterion 3(c)). Criterion 3(d) is green at the claims rung, with the
 analytic Airy slab, the PEC short and the five broad-E5 replay bands as
-referees. Independent power closure is **bounded** rather than demonstrated:
+referees. Power closure is witnessed **independent in the plane index only (both routes integrate the same transverse window with the same uniform dA through the same flux kernel, and neither sees the reference-plane de-embedding, which is phase-only)** and is **bounded** rather than demonstrated:
 two interior `add_flux_monitor` planes and the port route agree to `2.146e-05`
 against a `0.02` gate at the coarse rung, but both sit at that rung's float32
 field-noise floor; that measurement is under review on PR #870 and is not yet

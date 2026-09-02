@@ -516,8 +516,11 @@ before the first run, and no gate was moved afterwards.
   ULP-floor skip. The float64 FD resolved a residual `-7.245e-7` instead of
   skipping, and float32 reverse-mode AD returned `+2.683e-5` — its own noise
   floor — so the accuracy gate applied and failed. The x64 witness of the same
-  reverse-mode call gives `-9.82e-7`, agreeing with FD, so the tape is right and
-  the float32 noise floor is the limit. The other 15 legs pass at `1e-4` to
+  reverse-mode call gives `-9.821e-7`: same sign and same order as FD, a
+  relative difference of `0.356` that would not itself pass the `0.05` gate.
+  That is the point rather than a caveat — float32 AD's `+2.683e-5` has the
+  wrong sign and is 37x larger, so the tape is reading a real `O(1e-6)`
+  residual and the float32 noise floor is the limit. The other 15 legs pass at `1e-4` to
   `1.1e-2` against the `0.05` gate, with FD ULP spans from `6.53e8` upward.
 - **Criterion 3(b) (reference-plane invariance) — `|S|` and both gradient legs
   green, rotation red.** `|S|` is invariant to `2.22e-7`, well inside
@@ -545,7 +548,10 @@ before the first run, and no gate was moved afterwards.
   rung has only `5.1` cells per dielectric wavelength. No pin is written for
   those three; the next admissible rung is `a/72`.
 - **Criterion 3(d) (referee) — green at the claims rung.** PEC-short `|S11|`
-  stays within `0.999967`--`1.000005` against the `0.99`--`1.03` window, and the
+  stays within `0.999967`--`1.000008` over both lanes at that rung
+  (`normalize=False` `0.999967`--`1.000005`, `normalize="flux"`
+  `0.999992`--`1.000008`; the gate reads each lane separately) against the
+  `0.99`--`1.03` window, and the
   slab against the analytic Airy oracle differs by at most `0.02072` in
   magnitude and `7.37 degrees` in phase against `0.05` and `15.0 degrees`. The
   referee set is this battery's Airy slab and PEC short **plus** the five
@@ -559,12 +565,16 @@ Scope of the battery, stated rather than assumed: it covers the **uniform
 single-mode** rectangular guide on the two differentiable lanes. Junctions,
 multimode extraction and nonuniform meshes are outside it, and the
 `normalize=True` two-run lane is outside the differentiable chain by
-construction. Independent power closure has a witness that **bounds** the
-disagreement rather than resolving it: at the coarse rung two interior
-`add_flux_monitor` planes reproduce `1 - |S11|^2 - |S21|^2` to within
-`2.146e-05` of the port route against a `0.02` gate, but both routes sit at
-about `1e-05`, the float32 field-noise floor of that rung, so the number caps
-the disagreement instead of demonstrating closure; that measurement is under
+construction. Power closure has a witness that **bounds** the disagreement
+rather than resolving it: at the coarse rung two interior `add_flux_monitor`
+planes reproduce `1 - |S11|^2 - |S21|^2` to within `2.146e-05` of the port
+route against a `0.02` gate, but both routes sit at about `1e-05`, the float32
+field-noise floor of that rung, so the number caps the disagreement instead of
+demonstrating closure. That witness is independent in the **plane index only**:
+both routes integrate the same transverse window with the same uniform `dA`
+through the same flux kernel, so an area-weighting or shared-kernel error
+cancels in both ratios, and neither route sees the reference-plane de-embedding,
+which is phase-only; that measurement is under
 review on PR #870 and is not yet on `main`. A separate observation from the same
 comparison is open as issue #873: the `normalize=False` extractor reports
 `1.825e-2` column power on an **empty** WR-90 guide at the coarse rung, falling
