@@ -1,0 +1,56 @@
+{
+ "n_shards": 4,
+ "shards": [
+  [
+   "tests/test_distributed_nu_kernel.py",
+   "tests/test_msl_nu_sparam_gate.py",
+   "tests/test_decay_convergence.py",
+   "tests/test_adi_gradient.py"
+  ],
+  [
+   "tests/test_distributed.py",
+   "tests/test_subpixel.py",
+   "tests/test_mixed_precision.py",
+   "tests/test_decay_flux_convergence.py",
+   "tests/test_cpml.py",
+   "tests/test_precision_lane_guard.py",
+   "tests/test_objective_library.py",
+   "tests/test_differentiable.py",
+   "tests/test_gradient_simple.py",
+   "tests/test_gpu.py"
+  ],
+  [
+   "tests/test_msl_ad_fd_converged.py",
+   "tests/test_differentiable_material_fit.py",
+   "tests/test_optimize_proxy_objectives.py",
+   "tests/test_sparam_ad_end_to_end.py",
+   "tests/test_optimize_multistart.py",
+   "tests/test_sbp_sat_1d.py",
+   "tests/test_optimize_convergence.py",
+   "tests/test_subgrid_crossval.py",
+   "tests/test_custom_waveforms.py",
+   "tests/test_pml_reflectivity.py",
+   "tests/test_sbp_sat_2d.py"
+  ],
+  [
+   "tests/test_topology.py",
+   "tests/test_adi.py",
+   "tests/test_multiband_nu_envelope.py",
+   "tests/test_patch_edgefed_s11_passivity.py",
+   "tests/test_vmap_sweep.py",
+   "tests/test_conformal_convergence.py",
+   "tests/test_convergence.py",
+   "tests/test_nonlinear.py",
+   "tests/test_optimize.py",
+   "tests/test_gradient_coverage.py"
+  ]
+ ],
+ "external_solver_files": [
+  "tests/test_crossval_comprehensive.py",
+  "tests/test_meep_crossval.py",
+  "tests/test_meep_crossval_dielectric_cavity.py",
+  "tests/test_meep_crossval_kerr_spm.py",
+  "tests/test_openems_crossval.py"
+ ],
+ "balanced_by": "line count (no durations file exists: these files have never run in CI)"
+}
