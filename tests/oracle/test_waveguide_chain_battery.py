@@ -71,7 +71,9 @@ _RED_ROTATION = (
     "fine rung: the port config de-embeds with f_cutoff = 6.378 GHz (discrete cutoff of an "
     "aperture one cell wider than the guide) while the guide propagates with 6.555 GHz (thru "
     "S21 phase fit); against the port's own beta the residual is 6e-5 deg. Mechanism, not "
-    "tolerance — see PR body")
+    "tolerance — see PR body. The aperture is corrected in the branch that carries this "
+    "note (issue #868); the FIXTURE stays frozen, so this replay stays red until a new "
+    "pre-declared battery run measures the corrected port")
 _RED_IDENTITY_FLUX = (
     "measured max scaled diff 1.440 (slab) / 1.065 (PEC-short) against rtol 1e-5 / atol 1e-7 "
     "(abs 0.9-1.1e-5): the float32 reverse-mode primal of the flux lane differs from the "
@@ -598,7 +600,29 @@ def _live_compare(fx, rung: str):
                 assert m["reciprocity_complex_max"] <= G.RECIPROCITY_COMPLEX_MAX, cid
 
 
+# The fixture was measured with the port aperture one cell wider than the guide
+# (issue #868: the transverse mode operator was built on the node span, N + 1
+# cells, instead of the N cells the walls enclose). The correction moves
+# ``WaveguidePortConfig.f_cutoff`` from 5.877 / 6.205 / 6.378 GHz to the
+# guide's own discrete cutoff 6.524 / 6.549 / 6.555 GHz at the three rungs, so
+# a live re-measure no longer reproduces the frozen numbers. Re-measured on
+# this box (CPU, jax 0.6.2) over the 12 coarse + mid cells:
+# max|S_live − S_fixture| = 1.0e-3 (thru-mid-flux) .. 1.6e-1
+# (pec_short-coarse-false), against LIVE_ABS_S_TOL = 1e-4.
+#
+# The fixture is NOT re-pinned and the live layer is NOT weakened: closing the
+# family needs a NEW pre-declared battery run (the pre-declaration is a
+# one-run artifact — §2, and repo rule R2), which this change deliberately does
+# not perform. Until that run lands these three carry the reason below.
+_LIVE_STALE_VS_FIXTURE = (
+    "the frozen fixture was measured with the (N+1)-cell port aperture (issue #868); "
+    "with the corrected N-cell aperture the live cells differ from it by up to 1.6e-1 "
+    "(thru-mid-flux 1.0e-3, pec_short-coarse-false 1.6e-1) against LIVE_ABS_S_TOL=1e-4. "
+    "Needs a NEW pre-declared battery run, not a re-pin — see the PR body")
+
+
 @pytest.mark.slow
+@pytest.mark.xfail(strict=True, reason=_LIVE_STALE_VS_FIXTURE)
 @pytest.mark.parametrize("rung", ["coarse", "mid"])
 def test_live_cells_reproduce_the_fixture_cpu(fx, rung):
     _live_compare(fx, rung)
@@ -606,11 +630,20 @@ def test_live_cells_reproduce_the_fixture_cpu(fx, rung):
 
 @pytest.mark.slow
 @pytest.mark.gpu
+@pytest.mark.xfail(strict=True, reason=_LIVE_STALE_VS_FIXTURE)
 def test_live_cells_reproduce_the_fixture_fine_rung(fx):
     _live_compare(fx, "fine")
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(strict=True, reason=(
+    "the wrong-sign leg, not the rotation: with the corrected port cutoff the coarse "
+    "rung measures resid_yee 1.279 deg (gate 3) and resid_cont 1.671 deg (gate 6) — both "
+    "green, from 23.320 / 22.718 deg before — but wrong_sign_resid_min is 1.801 deg "
+    "against a 10 deg floor (0.542 deg before). The declared shifts put 2*beta*Delta "
+    "within a few degrees of 180, where +prediction and -prediction nearly coincide, so "
+    "the witness cannot separate them at ANY cutoff. Needs a re-declared shift distance "
+    "— see the PR body"))
 @pytest.mark.parametrize("lane", F.LANES, ids=lambda l: G.LANE_LABELS[l])
 def test_live_plane_shift_rotation_coarse_rung(lane):
     """The §5(b) rotation gates hold at every rung; re-measured live at the

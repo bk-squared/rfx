@@ -111,11 +111,36 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     # normalize=True is stencil-bias-invariant — its golden is bit-IDENTICAL to
     # the pre-#92 snapshot (SHA unchanged below), which corroborates that this is
     # a fixture refresh to validated behaviour, NOT a masked regression.
+    #
+    # Re-pinned again (issue #868, port aperture cell count). WHY THE NEW NUMBER
+    # IS THE RIGHT ONE, in the order the evidence was taken:
+    #   1. The quantity that moved is derivable in closed form, not fitted. This
+    #      sim declares a = 40.000 mm and rasterizes to 14 cells x 3 mm =
+    #      42.000 mm (preflight already reports that snap as
+    #      ``port_aperture_snap``). The port used to solve its transverse mode
+    #      on 15 cells — the node span — giving the discrete TE10 cutoff
+    #      (2/dx)*sin(pi/30)*c/2pi = 3.324943 GHz, the cutoff of a 45 mm guide.
+    #      It now solves on the guide's 14 cells: (2/dx)*sin(pi/28)*c/2pi =
+    #      3.561474 GHz. Both are the closed form; only the cell count changed,
+    #      and 14 is the count the PEC walls make.
+    #   2. This snapshot itself carries no physical oracle — at num_periods = 4
+    #      the source peak (t0 = 0.318 ns) sits barely inside a 0.667 ns record,
+    #      so its |S21| ~ 0.014 is a half-captured transient. The SAME geometry
+    #      run to settling (num_periods = 40, settling -47.9 / -49.8 dB) is the
+    #      oracle, and it moves the right way: an empty matched guide's |S21|
+    #      deviation from 1 falls 0.91% -> 0.39% and its max column power falls
+    #      1.0349 -> 1.0206 (normalize=False); the flux lane is unchanged to
+    #      1.3e-5, magnitudes from Poynting ratios being cutoff-blind.
+    #   3. Invariance witness, as in #92: normalize=True is unchanged — the
+    #      regenerated array differs from the committed one by max|d| = 0.0 (a
+    #      signed-zero flip only), so its file and SHA are left untouched.
+    # Measured deltas on this snapshot: normalize=False max|d| = 5.925e-02
+    # (S00), normalize=flux max|d| = 5.195e-02 (S10).
     # Regenerate with scripts/diagnostics/regen_waveguide_smatrix_goldens.py.
     _EXPECTED_SHA = {
-        "false": "4d39bbe1331f533195757e0172e840e051315d48089f136039effd9a9628614e",
+        "false": "270665e4efd8871a331753633975a68ec80691b9c28461bcfe27b80446ddfb4f",
         "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
-        "flux":  "4299dd94b866f0d81393bb8d32a35f97267db29f498141e45233de6a61b4c0bb",
+        "flux":  "3433d3be6bc007ad57b8b03e892fa18008eebfc13ffcacd00c0a48b4a92381a0",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
         f"Golden fixture sha256 mismatch for normalize={normalize}: "

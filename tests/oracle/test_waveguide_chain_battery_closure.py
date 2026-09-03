@@ -27,16 +27,24 @@ plane index.
 INDEPENDENCE SCOPE — ONE axis, the plane index (memory:
 ``feedback_agreement_is_not_independence``). An earlier draft of this docstring
 claimed a second independent axis, the area weighting, and that claim was wrong:
-both routes integrate with the SAME uniform ``dx²`` weight over the SAME
-transverse window on this fixture. ``extract_waveguide_s_matrix_flux``'s
+both routes integrate with the SAME uniform ``dx²`` weight over the same NONZERO
+transverse support on this fixture. ``extract_waveguide_s_matrix_flux``'s
 ``_make_flux_monitors`` (``rfx/sources/waveguide_port.py``) passes
 ``d1 = d2 = cfg.dx`` with ``lo/hi`` from the port's ``u/v`` span and never passes
 ``cfg.aperture_dA``; the public ``add_flux_monitor`` path
 (``rfx/runners/uniform.py``) passes ``d1 = d2 = grid.dx`` over the full grid
-plane, which on this WR-90 fixture is the same window — measured ``u[0, 10)``,
-``v[0, 5)``, ``dA = 6.4516003e-06`` for both. ``aperture_dA`` (the array that
-drops the +face PEC cell, zeroing 14 of 50 cells here) serves the modal V/I
-integral and reaches neither monitor.
+plane. ``dA = 6.4516003e-06`` for both.
+
+The two INDEX ranges are not identical: route B spans ``u[0, 10)``, ``v[0, 5)``
+(the whole grid plane) while the port lane spans the guide's cells,
+``u[0, 9)``, ``v[0, 4)`` — the port aperture is a cell span, not the node span
+that produced it (issue #868). That difference contributes nothing, measured
+rather than argued: on the port plane the row ``u = 9`` and the column
+``v = 4`` carry ``Re(Ey·Hz* − Ez·Hy*)·dA = 0.000e+00`` at every one of the 17
+bins, because both tangential E components are exactly zero there (the PEC wall
+node, and the unused outermost slot), against a full-plane flux of 1.2e-22 at
+the band centre. ``aperture_dA`` serves the modal V/I integral and reaches
+neither monitor.
 
 So route B calls the same ``rfx/probes/probes.py::flux_spectrum`` kernel with the
 same weights at a different plane.
@@ -304,11 +312,18 @@ def _run_flux_lane(dx: float = RUNG_DX_M) -> dict:
 
 
 INDEPENDENCE_SCOPE = (
-    "independent in the PLANE INDEX ONLY; both routes integrate the same transverse "
-    "window with the same uniform dA = dx^2 (measured u[0,10) v[0,5), dA = 6.4516003e-06) "
-    "through rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an "
-    "area-weighting error cancels in both ratios; the port's aperture_dA (+face PEC cell "
-    "dropped) reaches neither monitor. "
+    "independent in the PLANE INDEX ONLY; both routes integrate the same NONZERO transverse "
+    "support with the same uniform dA = dx^2 (dA = 6.4516003e-06) through "
+    "rfx/probes/probes.py::flux_spectrum, so a shared-kernel defect or an area-weighting "
+    "error cancels in both ratios; the port's aperture_dA reaches neither monitor. The two "
+    "windows are not the same INDEX range: route B's full-plane monitor spans u[0,10) "
+    "v[0,5) while the port lane's spans the guide's cells u[0,9) v[0,4) (issue #868 — the "
+    "port aperture is a cell span, not the node span). Measured on this fixture rather "
+    "than argued: on the port plane the row u=9 and the column v=4 carry Re(Ey.Hz* - "
+    "Ez.Hy*).dA = 0.000e+00 at every one of the 17 bins (both tangential E components are "
+    "exactly 0 there — the PEC wall node and the unused outer slot), against a full-plane "
+    "flux of 1.2e-22 at the band centre, so the extra index range contributes nothing and "
+    "the shared-support argument above is unchanged. "
     "NOT caught either: the reference-plane de-embedding — both routes are magnitude-only, "
     "|S| = sqrt(P_num/P_inc) is built from flux alone and ref_shifts reaches only "
     "jnp.angle(ratio), so moving the left reference plane five coarse cells (12.7 mm) swings "
